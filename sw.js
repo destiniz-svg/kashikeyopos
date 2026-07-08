@@ -1,6 +1,6 @@
 /* NexusPOS service worker — offline-first shell caching.
    Bump VERSION on releases to force clients onto the new build. */
-const VERSION = 'nexuspos-web-2.4.1';
+const VERSION = 'kashikeyo-2.5.0';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

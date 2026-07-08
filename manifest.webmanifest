@@ -1,7 +1,7 @@
 {
-  "name": "NexusPOS",
-  "short_name": "NexusPOS",
-  "description": "Point of sale built for the Maldives — sell, scan, tables, credit, shifts, reports.",
+  "name": "KashikeyoPOS",
+  "short_name": "Kashikeyo",
+  "description": "KashikeyoPOS — point of sale built for the Maldives.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
