@@ -2,25 +2,29 @@
    Install Dexie in the real frontend source package: npm i dexie */
 import Dexie from "dexie";
 
+export const DEFAULT_STORE_ID = "main";
 export const db = new Dexie("kashikeyo-pos-offline");
 
-db.version(1).stores({
-  products: "id, cat, updatedAt, rowver",
+db.version(2).stores({
+  products: "id, storeId, cat, updatedAt, rowver",
   customers: "id, name, phone, updatedAt, rowver",
-  orders: "id, no, status, createdAt, businessDate, synced, rowver",
-  payments: "id, orderId, method, createdAt, synced",
-  tables: "id, name, zoneId, rowver",
-  zones: "id, name, rowver",
-  settings: "id, rowver",
-  syncQueue: "opId, status, createdAt, entityKind, entityId",
+  orders: "id, storeId, no, status, createdAt, businessDate, synced, rowver",
+  payments: "id, storeId, orderId, method, createdAt, synced",
+  tables: "id, storeId, name, zoneId, rowver",
+  zones: "id, storeId, name, rowver",
+  stores: "id, code, name, active",
+  settings: "id, storeId, rowver",
+  syncQueue: "opId, storeId, status, createdAt, entityKind, entityId",
   syncState: "key",
   auth: "key"
 });
 
 export const uuid = () => crypto.randomUUID();
+export const cleanStoreId = (value) => String(value || DEFAULT_STORE_ID).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || DEFAULT_STORE_ID;
 
 export async function getCloudSession() {
-  return db.auth.get("cloud");
+  const session = await db.auth.get("cloud");
+  return session ? { ...session, storeId: cleanStoreId(session.storeId) } : session;
 }
 
 export async function saveCloudSession(session) {
@@ -30,15 +34,22 @@ export async function saveCloudSession(session) {
     token: session.token || "",
     slug: session.slug || "",
     register: session.register || "R1",
+    storeId: cleanStoreId(session.storeId),
     savedAt: Date.now()
   });
 }
 
-export async function getPullCursor() {
-  const state = await db.syncState.get("pull");
+export async function getSelectedStoreId() {
+  const session = await getCloudSession();
+  return cleanStoreId(session?.storeId);
+}
+
+export async function getPullCursor(storeId = DEFAULT_STORE_ID) {
+  const key = `pull:${cleanStoreId(storeId)}`;
+  const state = await db.syncState.get(key);
   return Number(state?.rowver || 0);
 }
 
-export async function setPullCursor(rowver) {
-  return db.syncState.put({ key: "pull", rowver: Number(rowver || 0), updatedAt: Date.now() });
+export async function setPullCursor(rowver, storeId = DEFAULT_STORE_ID) {
+  return db.syncState.put({ key: `pull:${cleanStoreId(storeId)}`, storeId: cleanStoreId(storeId), rowver: Number(rowver || 0), updatedAt: Date.now() });
 }
