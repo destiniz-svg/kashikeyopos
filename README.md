@@ -2,6 +2,8 @@
 
 Postgres-backed KashikeyoPOS cloud sync for Railway.
 
+Production domain: https://kashikeyopos.com
+
 This build serves the existing POS/PWA from `web/dist` and adds a Node/Express sync server. Tills pair from Admin -> Cloud Sync, push menu/tables/zones/customers to Postgres, pull remote orders in real time, and expose public customer/table links at `/p/:slug/...`.
 
 ## What This Build Supports
@@ -41,6 +43,26 @@ If `/api/health` returns `db: false` or a phone shows `order failed: ECONNREFUSE
 
 Expected monthly Railway cost is roughly USD 15-27 depending on usage and database size.
 
+## Custom Domain
+
+The production customer/POS URL is `https://kashikeyopos.com`.
+
+After changing domains, open each till's Admin -> Cloud Sync screen and confirm the server URL is either blank while using `https://kashikeyopos.com`, or explicitly set to `https://kashikeyopos.com`. Tills that were paired to an old Railway domain can keep polling the old host until they are re-paired or updated.
+
+Customer and table links should use the same custom domain, for example:
+
+```text
+https://kashikeyopos.com/?s=<workspace>&c=<customerId>
+https://kashikeyopos.com/?s=<workspace>&t=T1
+```
+
+For branch-specific links, include `storeId`:
+
+```text
+https://kashikeyopos.com/?s=<workspace>&c=<customerId>&storeId=<storeId>
+https://kashikeyopos.com/?s=<workspace>&t=T1&storeId=<storeId>
+```
+
 ## Free Testing Alternative
 
 For free testing only, this same server can run on Render with a Neon Postgres database:
@@ -70,7 +92,7 @@ After deployment:
 You can also run:
 
 ```bash
-BASE=https://your-service.up.railway.app node smoke.js
+BASE=https://kashikeyopos.com node smoke.js
 ```
 
 The smoke test covers workspace creation, catalog sync, second-register pull, guest boot, guest order, POS pull, order status sync, guest status polling, waiter-call sync, numeric customer IDs and multi-store isolation.
