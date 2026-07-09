@@ -80,6 +80,47 @@ const guestCheckout =
 const guestCall =
   'ub=async()=>{if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${fe.slug}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:fe.table,custId:fe.custId,storeId:Sd})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}';
 
+/* "Lovable" theme: a warm cream/terracotta palette (from a Lovable.dev
+   preview) added as a third theme alongside the existing Dark/Light toggle.
+   The whole app already reads every color through one `_` object computed
+   once per render (`_.app`, `_.panel`, `_.primary`, ...), so adding a theme
+   here is a single swap, not hundreds of call-site edits. Custom CSS classes
+   are required (not Tailwind's bg-[#hex] syntax) because this bundle ships
+   pre-compiled, purged CSS — only classes Tailwind's build actually saw get
+   a rule, so an invented arbitrary-value class here would render unstyled. */
+const lovableCss = `
+.ksh-lv-app{background-color:#F3ECE1;color:#2A241E}
+.ksh-lv-header{background-color:rgba(250,246,239,.92);border-color:#E8DFCF}
+.ksh-lv-panel{background-color:#FFFFFF;border:1px solid #EFE6D6}
+.ksh-lv-panel2{background-color:#ECE3D3}
+.ksh-lv-border{border-color:#E8DFCF}
+.ksh-lv-sub{color:#8A8074}
+.ksh-lv-faint{color:#B7AE9F}
+.ksh-lv-input{background-color:#FFFFFF;border:1px solid #E8DFCF;color:#2A241E}
+.ksh-lv-input::placeholder{color:#B7AE9F}
+.ksh-lv-chip{background-color:#FBF7EF;color:#4A4238}
+.ksh-lv-chipOn{background-color:#C1502D;color:#FFFFFF;border:1px solid #C1502D}
+.ksh-lv-tile{background-color:#FFFFFF;border:1px solid #EFE6D6}
+.ksh-lv-tile:hover{border-color:#C1502D}
+.ksh-lv-nav{background-color:rgba(243,236,225,.95);border-color:#E8DFCF}
+.ksh-lv-navOn{color:#C1502D}
+.ksh-lv-navOff{color:#A79E8F}
+.ksh-lv-modal{background-color:#FFFFFF;border:1px solid #EFE6D6}
+.ksh-lv-btn{background-color:#F1E8D8;color:#4A4238}
+.ksh-lv-btn:hover{background-color:#E8DCC5}
+.ksh-lv-primary{background-color:#C1502D;color:#FFFFFF}
+.ksh-lv-primary:hover{background-color:#AA4526}
+.ksh-lv-accent{color:#C1502D}
+.ksh-lv-accentBd{border-color:rgba(193,80,45,.4)}
+`.replace(/\n/g, "");
+const lovablePalette =
+  '{app:"ksh-lv-app",header:"ksh-lv-header",panel:"ksh-lv-panel",panel2:"ksh-lv-panel2",border:"ksh-lv-border",sub:"ksh-lv-sub",faint:"ksh-lv-faint",input:"ksh-lv-input",chip:"ksh-lv-chip",chipOn:"ksh-lv-chipOn",tile:"ksh-lv-tile",nav:"ksh-lv-nav",navOn:"ksh-lv-navOn",navOff:"ksh-lv-navOff",modal:"ksh-lv-modal",btn:"ksh-lv-btn",primary:"ksh-lv-primary",accent:"ksh-lv-accent",accentBd:"ksh-lv-accentBd",axis:"#B7AE9F",bar:"#C1502D",grid:"#EFE6D6",tipBg:"#FFFFFF"}';
+
+function injectCss(html, css) {
+  if (html.includes(css)) return html;
+  return html.replace("</style>", css + "</style>");
+}
+
 function injectScript(html, src) {
   if (html.includes(src)) return html;
   const tag = `<script src="/${src}"></script>`;
@@ -87,7 +128,31 @@ function injectScript(html, src) {
   return tag + html;
 }
 
-patchFile(indexPath, (html) => injectScript(html, "offline-bridge.js")
+patchFile(indexPath, (html) => injectCss(injectScript(html, "offline-bridge.js"), lovableCss)
+  .replace(
+    '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
+    '[i,a]=R.useState(!0),[KshLovable,KshSetLovable]=R.useState(!1),[o,s]=R.useState("sell")'
+  )
+  .replace(
+    'const _=i?{app:"bg-slate-950 text-slate-100",header:"bg-slate-950/90 border-slate-800",panel:"bg-slate-900 border border-slate-800",panel2:"bg-slate-800/60",border:"border-slate-800",sub:"text-slate-400",faint:"text-slate-500",input:"bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-500",chip:"bg-slate-800 text-slate-300",chipOn:"bg-cyan-500/15 text-cyan-300 border border-cyan-500/40",tile:"bg-slate-900 border border-slate-800 hover:border-cyan-500/60",nav:"bg-slate-950/95 border-slate-800",navOn:"text-cyan-400",navOff:"text-slate-500",modal:"bg-slate-900 border border-slate-700",btn:"bg-slate-800 hover:bg-slate-700 text-slate-200",primary:"bg-cyan-500 hover:bg-cyan-400 text-slate-950",accent:"text-cyan-400",accentBd:"border-cyan-500/40",axis:"#64748b",bar:"#22d3ee",grid:"#1e293b",tipBg:"#0f172a"}:{app:"bg-slate-100 text-slate-900",header:"bg-white/90 border-slate-200",panel:"bg-white border border-slate-200",panel2:"bg-slate-100",border:"border-slate-200",sub:"text-slate-500",faint:"text-slate-400",input:"bg-white border border-slate-300 text-slate-900 placeholder-slate-400",chip:"bg-slate-200 text-slate-600",chipOn:"bg-cyan-600/10 text-cyan-700 border border-cyan-600/40",tile:"bg-white border border-slate-200 hover:border-cyan-500",nav:"bg-white/95 border-slate-200",navOn:"text-cyan-600",navOff:"text-slate-400",modal:"bg-white border border-slate-200",btn:"bg-slate-200 hover:bg-slate-300 text-slate-700",primary:"bg-cyan-600 hover:bg-cyan-500 text-white",accent:"text-cyan-600",accentBd:"border-cyan-600/40",axis:"#94a3b8",bar:"#0891b2",grid:"#e2e8f0",tipBg:"#ffffff"}',
+    `const _=KshLovable?${lovablePalette}:i?{app:"bg-slate-950 text-slate-100",header:"bg-slate-950/90 border-slate-800",panel:"bg-slate-900 border border-slate-800",panel2:"bg-slate-800/60",border:"border-slate-800",sub:"text-slate-400",faint:"text-slate-500",input:"bg-slate-900 border border-slate-700 text-slate-100 placeholder-slate-500",chip:"bg-slate-800 text-slate-300",chipOn:"bg-cyan-500/15 text-cyan-300 border border-cyan-500/40",tile:"bg-slate-900 border border-slate-800 hover:border-cyan-500/60",nav:"bg-slate-950/95 border-slate-800",navOn:"text-cyan-400",navOff:"text-slate-500",modal:"bg-slate-900 border border-slate-700",btn:"bg-slate-800 hover:bg-slate-700 text-slate-200",primary:"bg-cyan-500 hover:bg-cyan-400 text-slate-950",accent:"text-cyan-400",accentBd:"border-cyan-500/40",axis:"#64748b",bar:"#22d3ee",grid:"#1e293b",tipBg:"#0f172a"}:{app:"bg-slate-100 text-slate-900",header:"bg-white/90 border-slate-200",panel:"bg-white border border-slate-200",panel2:"bg-slate-100",border:"border-slate-200",sub:"text-slate-500",faint:"text-slate-400",input:"bg-white border border-slate-300 text-slate-900 placeholder-slate-400",chip:"bg-slate-200 text-slate-600",chipOn:"bg-cyan-600/10 text-cyan-700 border border-cyan-600/40",tile:"bg-white border border-slate-200 hover:border-cyan-500",nav:"bg-white/95 border-slate-200",navOn:"text-cyan-600",navOff:"text-slate-400",modal:"bg-white border border-slate-200",btn:"bg-slate-200 hover:bg-slate-300 text-slate-700",primary:"bg-cyan-600 hover:bg-cyan-500 text-white",accent:"text-cyan-600",accentBd:"border-cyan-600/40",axis:"#94a3b8",bar:"#0891b2",grid:"#e2e8f0",tipBg:"#ffffff"}`
+  )
+  .replace(
+    'dark:i,units:T',
+    'dark:i,lovable:KshLovable,units:T'
+  )
+  .replace(
+    'a(f.dark!==!1),rn.current=f.seq||1041',
+    'a(f.dark!==!1),KshSetLovable(f.lovable===!0),rn.current=f.seq||1041'
+  )
+  .replace(
+    '350))},[c,p,m,b,g,C,E,ce,d1,Ti,h1,i]),R.useEffect',
+    '350))},[c,p,m,b,g,C,E,ce,d1,Ti,h1,i,KshLovable]),R.useEffect'
+  )
+  .replace(
+    'h.jsxs("button",{onClick:()=>a(!i),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[i?h.jsx(Ck,{size:16}):h.jsx(pk,{size:16}),h.jsx("span",{className:"flex-1 text-left",children:i?"Switch to light theme":"Switch to dark theme"})]}),h.jsxs("button",{onClick:jI,',
+    'h.jsxs("button",{onClick:()=>a(!i),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[i?h.jsx(Ck,{size:16}):h.jsx(pk,{size:16}),h.jsx("span",{className:"flex-1 text-left",children:i?"Switch to light theme":"Switch to dark theme"})]}),h.jsxs("button",{onClick:()=>KshSetLovable(v=>!v),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[h.jsx("span",{className:"w-4 h-4 rounded-full inline-block flex-shrink-0",style:{background:"linear-gradient(135deg,#C1502D 50%,#F3ECE1 50%)",border:"1px solid rgba(0,0,0,.15)"}}),h.jsx("span",{className:"flex-1 text-left",children:KshLovable?"Switch to classic theme":"Switch to Lovable theme"})]}),h.jsxs("button",{onClick:jI,'
+  )
   .replace(
     'h.jsx("div",{className:"flex gap-1.5 mb-2",children:(fe.table?[["table","To table "+fe.table],["delivery","Delivery"]]:[["pickup","Pickup"],["delivery","Delivery"]]).map(([ne,ke])=>h.jsx("button",{onClick:()=>Dn(ze=>({...ze,gtype:ne})),className:`flex-1 rounded-lg py-2 text-xs font-semibold ${fe.gtype===ne?_.chipOn:_.chip}`,children:ke},ne))}),fe.gtype==="delivery"&&',
     orderTypeToggle
