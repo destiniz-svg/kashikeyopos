@@ -36,17 +36,14 @@ patchFile(indexPath, (html) => {
 });
 
 patchFile(serverPath, (server) => server.replace(
-  `const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgres://kash:kash@127.0.0.1:5432/kash",
-  ssl: process.env.DATABASE_URL && !/localhost|127\\.0\\.0\\.1/.test(process.env.DATABASE_URL)
-    ? { rejectUnauthorized: false } : false,
-});`,
+  /const pool = new Pool\(\{[\s\S]*?\n\}\);\n\/\* auto-migrate:/,
   `const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
 const localDatabaseUrl = process.env.NODE_ENV === "production" ? "" : "postgres://kash:kash@127.0.0.1:5432/kash";
 const connectionString = databaseUrl || localDatabaseUrl;
 const poolConfig = connectionString ? { connectionString } : {};
 if (connectionString && !/localhost|127\\.0\\.0\\.1/.test(connectionString)) poolConfig.ssl = { rejectUnauthorized: false };
-const pool = new Pool(poolConfig);`
+const pool = new Pool(poolConfig);
+/* auto-migrate:`
 ));
 
 patchFile(serverPath, (server) => server.replace(
@@ -66,6 +63,21 @@ patchFile(serverPath, (server) => server.replace(
   }).filter(Boolean);`
 ));
 
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.8\.[0-2]/g, "kashikeyo-2.8.3"));
+patchFile(serverPath, (server) => server
+  .replace("[org.id, order.id, order]);", "[org.id, order.id, JSON.stringify(order)]);")
+  .replace(
+    `  } catch (e) {
+    console.error("guest order failed:", e);
+    res.status(500).json({ error: "order failed: " + e.message });
+  }`,
+    `  } catch (e) {
+    const detail = (e && (e.message || e.code)) || String(e || "unknown database error");
+    console.error("guest order failed:", detail, e);
+    res.status(500).json({ error: "order failed: " + detail });
+  }`
+  )
+);
+
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.8\.[0-3]/g, "kashikeyo-2.8.4"));
 
 require("./index.js");
