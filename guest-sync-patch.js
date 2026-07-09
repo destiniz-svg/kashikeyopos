@@ -15,7 +15,7 @@ function patchFile(filePath, patcher) {
 
 patchFile(indexPath, (html) => {
   const checkout =
-    'rI=async f=>{if(!fe.cart.length)return Q("Cart is empty","warn");const A=fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!Ou&&M.length)return Q("Pick your delivery zone first","warn");const N={items:fe.cart.map(W=>({pid:W.pid||W.id||W.productId,qty:W.qty||1,...W})),table:fe.table||(A==="delivery"?"Delivery":"Pickup"),custId:fe.custId||null,gtype:fe.gtype,zoneId:fe.zoneId||null,note:(fe.note||"").trim()||A==="delivery"&&ia&&ia.address||"",payOnline:f};try{const I=await fetch(`/p/${fe.slug}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(N)}),j=await I.json();if(!I.ok)throw new Error(j.error||"Order failed");const F=j.order||{};x(W=>W.some(he=>he.id===F.id)?W:[...W,F]),f1(W=>W?{...W,orders:[F,...(W.orders||[]).filter(he=>he.id!==F.id)]}:W),Dn(W=>({...W,cart:[],tab:"orders",note:""})),Q(`New order ${F.no||"sent"} · ${F.customerName?F.customerName+(F.table?" @ "+F.table:""):F.table||N.table}${f?" · paid online":""}`)}catch(I){Q(I.message||"Could not send order","warn")}},Hw=(f,A)=>';
+    'rI=async f=>{if(!fe.cart.length)return Q("Cart is empty","warn");const A=fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!Ou&&M.length)return Q("Pick your delivery zone first","warn");const N={items:fe.cart.map(W=>({...W,pid:W.pid||W.id||W.productId,qty:W.qty||1})),table:fe.table||(A==="delivery"?"Delivery":"Pickup"),custId:fe.custId||null,gtype:fe.gtype,zoneId:fe.zoneId||null,note:(fe.note||"").trim()||A==="delivery"&&ia&&ia.address||"",payOnline:f};try{const I=await fetch(`/p/${fe.slug}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(N)}),j=await I.json();if(!I.ok)throw new Error(j.error||"Order failed");const F=j.order||{};x(W=>W.some(he=>he.id===F.id)?W:[...W,F]),f1(W=>W?{...W,orders:[F,...(W.orders||[]).filter(he=>he.id!==F.id)]}:W),Dn(W=>({...W,cart:[],tab:"orders",note:""})),Q(`New order ${F.no||"sent"} · ${F.customerName?F.customerName+(F.table?" @ "+F.table:""):F.table||N.table}${f?" · paid online":""}`)}catch(I){Q(I.message||"Could not send order","warn")}},Hw=(f,A)=>';
   const call =
     'nI=async()=>{try{if(fe&&fe.slug){await fetch(`/p/${fe.slug}/call`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({table:fe.table,custId:fe.custId||null})})}}catch{}Hw(fe.table,ia?ia.name:null)}';
 
@@ -26,6 +26,10 @@ patchFile(indexPath, (html) => {
     )
     .replace(
       /rI=async f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/,
+      checkout
+    )
+    .replace(
+      /rI=async f=>\{if\(!fe\.cart\.length\)return Q\("Cart is empty","warn"\);const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/,
       checkout
     )
     .replace("nI=()=>Hw(fe.table,ia?ia.name:null)", call);
@@ -48,6 +52,6 @@ patchFile(serverPath, (server) => server.replace(
   }).filter(Boolean);`
 ));
 
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.8\.[01]/g, "kashikeyo-2.8.2"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.8\.[0-2]/g, "kashikeyo-2.8.3"));
 
 require("./index.js");
