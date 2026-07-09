@@ -65,7 +65,7 @@ import { startSyncLoop } from "./frontend/offline/syncManager.js";
 import { saveCloudSession } from "./frontend/offline/db.js";
 
 await saveCloudSession({
-  serverUrl: "https://kashikeyopos-production.up.railway.app",
+  serverUrl: "https://kashikeyopos.com",
   token: cloudToken,
   slug: workspaceSlug,
   register: "R1"

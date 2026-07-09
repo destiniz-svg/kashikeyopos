@@ -5,7 +5,14 @@
   const DB_NAME = "kashikeyo-pos-offline-bridge";
   const DB_VERSION = 2;
   const STORE = "queuedWrites";
-  const WRITE_PATH = /^(\/api\/ops|\/p\/[^/]+\/(order|call))/;
+  /* Only the till's own catalog/order sync (api ops) is safe to queue offline -
+     it's idempotent server-side via op_id. Guest checkout writes must never be
+     silently queued here: on any fetch failure this bridge used to return a
+     synthetic 202 "success" with a fake local order, so a customer saw "order
+     sent" while nothing reached the kitchen and the write sat invisible in
+     that phone's IndexedDB until/unless the same tab came back online. The
+     guest checkout already retries and shows a clear error itself. */
+  const WRITE_PATH = /^\/api\/ops/;
   const originalFetch = window.fetch.bind(window);
   let replaying = false;
 

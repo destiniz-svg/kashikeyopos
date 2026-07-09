@@ -27,6 +27,14 @@ const checkout =
 const call =
   'nI=async()=>{try{const St=fe&&fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(St){const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main",Dt=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"",Tb=fe.table||Pa.get("t")||Dt||"";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${St}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:Tb||fe.table,custId:fe.custId||null,storeId:Sd})})}}catch{}Hw(fe.table,ia?ia.name:null)}';
 
+/* Customer-facing guest links carried a "Staff sign-in" lock icon in the top
+   corner that wiped the guest session and fell through to the till's staff
+   login screen — confusing for real customers. Hide it for genuine guest
+   sessions (urlMode, i.e. reached via a shared ?s=&c= link); staff previewing
+   the guest view from inside the till (urlMode false) keep their close (X). */
+const hideStaffSignIn =
+  'fe.urlMode?null:h.jsx("button",{onClick:()=>Dn(null),className:`p-1.5 rounded-full ${_.btn}`,children:h.jsx(Be,{size:15})})';
+
 function injectScript(html, src) {
   if (html.includes(src)) return html;
   const tag = `<script src="/${src}"></script>`;
@@ -44,6 +52,10 @@ patchFile(indexPath, (html) => injectRuntimeGuards(html)
   .replace(/rI=async f=>\{if\(!fe\.cart\.length\)return Q\("Cart is empty","warn"\);const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
   .replace("nI=()=>Hw(fe.table,ia?ia.name:null)", call)
   .replace(/nI=async\(\)=>\{try\{[\s\S]*?Hw\(fe\.table,ia\?ia\.name:null\)\}/, call)
+  .replace(
+    'fe.urlMode?h.jsx("button",{onClick:_6,className:`p-1.5 rounded-full ${_.chip}`,title:"Staff sign-in",children:h.jsx(C3,{size:13})}):h.jsx("button",{onClick:()=>Dn(null),className:`p-1.5 rounded-full ${_.btn}`,children:h.jsx(Be,{size:15})})',
+    hideStaffSignIn
+  )
 );
 
 /* Force every installed PWA onto the current build. */
