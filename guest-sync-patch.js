@@ -48,6 +48,6 @@ patchFile(indexPath, (html) => injectRuntimeGuards(html)
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.8"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.9"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
