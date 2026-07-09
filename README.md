@@ -23,7 +23,8 @@ This build serves the existing POS/PWA from `web/dist` and adds a Node/Express s
 5. Confirm the web service has either `DATABASE_URL`, `POSTGRES_URL`, `RAILWAY_DATABASE_URL`, or the standard `PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` variables from the Postgres service.
 6. Add `JWT_SECRET` with a long random value.
 7. Deploy from GitHub branch `main`.
-8. Confirm `/api/health` returns `ok: true` and `db: true`.
+8. Railway liveness healthcheck should use `/`, not `/api/health`.
+9. After deployment, open `/api/health` manually and confirm it returns `ok: true` and `db: true`.
 
 Healthy response:
 
