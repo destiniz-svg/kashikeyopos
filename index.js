@@ -210,35 +210,44 @@ app.get("/p/:slug/boot", async (req, res) => {
 });
 
 app.post("/p/:slug/order", async (req, res) => {
-  const org = await orgBySlug(req.params.slug);
-  if (!org) return res.status(404).json({ error: "unknown workspace" });
-  const { items, table, custId, gtype, zoneId, note, payOnline } = req.body || {};
-  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "cart is empty" });
-  const [products, zones, customers] = await Promise.all([
-    kindAll(org.id, "products"), kindAll(org.id, "zones"), kindAll(org.id, "customers")]);
-  const lines = items.map((ci) => {
-    const p = products.find((x) => x.id === ci.pid);
-    return p ? { pid: p.id, name: p.name, emoji: p.emoji, price: p.price, cost: p.cost || 0,
-                 unit: p.unit || "pcs", vendor: !!p.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: 0 } : null;
-  }).filter(Boolean);
-  if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
-  const otype = gtype === "delivery" ? "delivery" : gtype === "pickup" ? "takeaway" : "dinein";
-  const zone = otype === "delivery" ? zones.find((z) => z.id === zoneId) || null : null;
-  const cust = custId ? customers.find((c) => c.id === custId) || null : null;
-  const upd = await pool.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]);
-  const order = {
-    id: uid(), no: "ORD-" + upd.rows[0].oseq,
-    table: table || (otype === "delivery" ? "Delivery" : "Pickup"),
-    items: lines, status: "new", createdAt: Date.now(), paidOnline: !!payOnline, call: false,
-    source: "qr", otype, covers: 1,
-    customerId: cust ? cust.id : null, customerName: cust ? cust.name : null,
-    zone: zone ? zone.name : null, fee: zone ? zone.fee : 0,
-    note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
-  const r = await pool.query(
-    `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver`,
-    [org.id, order.id, order]);
-  poke(org.id, Number(r.rows[0].rowver));
-  res.json({ ok: true, order });
+  try {
+    const org = await orgBySlug(req.params.slug);
+    if (!org) return res.status(404).json({ error: "unknown workspace" });
+    const { items, table, custId, gtype, zoneId, note, payOnline } = req.body || {};
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "cart is empty" });
+    const [products, zones, customers] = await Promise.all([
+      kindAll(org.id, "products"), kindAll(org.id, "zones"), kindAll(org.id, "customers")]);
+    const lines = items.map((ci) => {
+      const pid = String(ci.pid || ci.id || ci.productId || "");
+      const p = products.find((x) => String(x.id) === pid);
+      const src = p || ci;
+      if (!src || (!pid && !src.name)) return null;
+      return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "",
+               price: Number(src.price) || 0, cost: Number(src.cost) || 0, unit: src.unit || "pcs",
+               vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0 };
+    }).filter(Boolean);
+    if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
+    const otype = gtype === "delivery" ? "delivery" : gtype === "pickup" ? "takeaway" : "dinein";
+    const zone = otype === "delivery" ? zones.find((z) => z.id === zoneId) || null : null;
+    const cust = custId ? customers.find((c) => c.id === custId) || null : null;
+    const upd = await pool.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]);
+    const order = {
+      id: uid(), no: "ORD-" + upd.rows[0].oseq,
+      table: table || (otype === "delivery" ? "Delivery" : "Pickup"),
+      items: lines, status: "new", createdAt: Date.now(), paidOnline: !!payOnline, call: false,
+      source: "qr", otype, covers: 1,
+      customerId: cust ? cust.id : null, customerName: cust ? cust.name : null,
+      zone: zone ? zone.name : null, fee: zone ? zone.fee : 0,
+      note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
+    const r = await pool.query(
+      `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver`,
+      [org.id, order.id, order]);
+    poke(org.id, Number(r.rows[0].rowver));
+    res.json({ ok: true, order });
+  } catch (e) {
+    console.error("guest order failed:", e);
+    res.status(500).json({ error: "order failed: " + e.message });
+  }
 });
 
 app.get("/p/:slug/orders", async (req, res) => {
