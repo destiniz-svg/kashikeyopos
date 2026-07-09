@@ -50,6 +50,20 @@ const hideStaffSignIn =
 const skipEchoGuard =
   'if(wu.current.has(I)&&I!=="orders"&&I!=="sales"){wu.current.delete(I),Qf.current[I]=F;return}';
 
+/* The checkout/call fixes above all patch rI/nI — but those are only ever
+   reached through their `else` branch. The actual guest page (Qw) defines its
+   OWN checkout (lb) and waiter-call (ub) functions in a separate closure with
+   different local variable names, and calls fetch directly whenever fe.slug
+   is set — i.e. on every real, shared customer/table link. rI/nI only run
+   for the till's own no-slug guest preview. This is why dine-in table
+   selection, storeId scoping and the friendlier error handling never reached
+   real customers: lb/ub never knew any of it existed. Patched in place using
+   Qw's own variable names (yt=cart, ye=selected zone, I=zones list). */
+const guestCheckout =
+  'lb=async ne=>{if(yt.length){const Mo=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getOrderMode?window.KashikeyoGuestProfile.getOrderMode():"",A=Mo==="dinein"?"dinein":fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!ye&&I.length)return Q("Pick your delivery zone first","warn");if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";let Tb=fe.table||Pa.get("t")||(Mo==="dinein"&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"")||"",Gt=Tb&&A!=="delivery"?"table":fe.gtype;if(Mo==="dinein"&&!Tb&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.pickTable){Tb=await window.KashikeyoGuestProfile.pickTable();Gt=Tb?"table":fe.gtype;if(!Tb)return Q("Select a table for dine in","warn")}try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const ke=await fetch(`/p/${fe.slug}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({items:fe.cart,table:Tb||fe.table,custId:fe.custId,gtype:Gt,zoneId:fe.zoneId,note:fe.note||"",payOnline:ne,storeId:Sd})}),ze=await ke.json();if(!ke.ok)return Q(ze.error||"Couldn\'t place the order","warn");try{window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.refreshOrders&&window.KashikeyoGuestProfile.refreshOrders()}catch{}Dn(on=>({...on,cart:[],tab:"orders",note:""})),f1(on=>on&&{...on,orders:[ze.order,...on.orders||[]]}),Q(`Order ${ze.order.no} sent to the kitchen 🎉`)}catch{Q("Network hiccup — try again","warn")}else rI(ne)}}';
+const guestCall =
+  'ub=async()=>{if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main",Dt=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"",Tb=fe.table||Pa.get("t")||Dt||"";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${fe.slug}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:Tb||fe.table,custId:fe.custId,storeId:Sd})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}';
+
 function injectScript(html, src) {
   if (html.includes(src)) return html;
   const tag = `<script src="/${src}"></script>`;
@@ -74,6 +88,14 @@ patchFile(indexPath, (html) => injectRuntimeGuards(html)
   .replace(
     'if(wu.current.has(I)){wu.current.delete(I),Qf.current[I]=F;return}',
     skipEchoGuard
+  )
+  .replace(
+    'lb=async ne=>{if(yt.length){if(fe.gtype==="delivery"&&!ye&&I.length)return Q("Pick your delivery zone first","warn");if(fe.slug)try{const ke=await fetch(`/p/${fe.slug}/order`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({items:fe.cart,table:fe.table,custId:fe.custId,gtype:fe.gtype,zoneId:fe.zoneId,note:fe.note||"",payOnline:ne})}),ze=await ke.json();if(!ke.ok)return Q(ze.error||"Couldn\'t place the order","warn");Dn(on=>({...on,cart:[],tab:"orders",note:""})),f1(on=>on&&{...on,orders:[ze.order,...on.orders||[]]}),Q(`Order ${ze.order.no} sent to the kitchen \u{1F389}`)}catch{Q("Network hiccup — try again","warn")}else rI(ne)}}',
+    guestCheckout
+  )
+  .replace(
+    'ub=async()=>{if(fe.slug)try{await fetch(`/p/${fe.slug}/call`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({table:fe.table,custId:fe.custId})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}',
+    guestCall
   )
 );
 
