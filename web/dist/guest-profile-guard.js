@@ -167,20 +167,31 @@
     dine.style.opacity = active ? '1' : '.86';
     dine.style.boxShadow = active ? 'inset 0 0 0 2px #06bfd4' : '';
   }
+  /* The till's own dine-in table picker (the "Which table?" grid in the order-type
+     modal) is a grid of tappable buttons driven by real state — tapping one just
+     flips which button is highlighted, nothing is ever torn down and rebuilt.
+     This guest picker used a plain <select> whose innerHTML was unconditionally
+     rebuilt every 1.2s by the UI refresh timer, which destroyed the open dropdown
+     out from under a customer mid-tap. Ported to the same button-grid pattern,
+     and the rebuild is now skipped whenever nothing has actually changed so an
+     open interaction is never interrupted by the timer. */
   function renderTableSelect() {
     const found = modeGroup();
     let row = document.getElementById('kashikeyo-dinein-table');
     if (!found || orderMode() !== 'dinein') { if (row) row.remove(); return; }
     const tables = tableOptions();
-    if (!tables.length) return;
+    if (!tables.length) { if (row) row.remove(); return; }
+    const current = selectedTable();
+    const sig = current + '|' + tables.join('');
+    if (row && row.dataset.sig === sig) return;
     if (!row) {
       row = document.createElement('div');
       row.id = 'kashikeyo-dinein-table';
       found.group.insertAdjacentElement('afterend', row);
     }
-    const current = selectedTable();
-    row.innerHTML = `<style>#kashikeyo-dinein-table{margin:10px 0 0}#kashikeyo-dinein-table select{width:100%;border:0;border-radius:14px;background:#1f2d41;color:#f8fafc;padding:13px 12px;font-size:15px;font-weight:800;font-family:inherit}</style><select aria-label="Select table"><option value="">Select table</option>${tables.map((t) => `<option value="${esc(t)}" ${String(t) === current ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
-    row.querySelector('select').addEventListener('change', (e) => setSelectedTable(e.target.value));
+    row.dataset.sig = sig;
+    row.innerHTML = `<style>#kashikeyo-dinein-table{margin:10px 0 0}#kashikeyo-dinein-table .kgt-label{font-size:12px;color:#a7b3c7;margin-bottom:6px}#kashikeyo-dinein-table .kgt-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}#kashikeyo-dinein-table .kgt-btn{border:0;border-radius:14px;background:#1f2d41;color:#f8fafc;padding:12px 8px;font-size:14px;font-weight:700;font-family:inherit}#kashikeyo-dinein-table .kgt-btn.kgt-on{box-shadow:inset 0 0 0 2px #06bfd4;background:#0f2a33}</style><div class="kgt-label">Which table?</div><div class="kgt-grid">${tables.map((t) => `<button type="button" class="kgt-btn${String(t) === current ? ' kgt-on' : ''}" data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div>`;
+    row.querySelectorAll('.kgt-btn').forEach((btn) => btn.addEventListener('click', () => setSelectedTable(btn.getAttribute('data-t'))));
   }
   function refreshUi() {
     ensureDineButton();
@@ -192,8 +203,8 @@
     const t = selectedTable();
     if (t) return t;
     refreshUi();
-    const select = document.querySelector('#kashikeyo-dinein-table select');
-    if (select) select.focus();
+    const row = document.getElementById('kashikeyo-dinein-table');
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return '';
   }
 
