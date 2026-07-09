@@ -48,18 +48,30 @@ const j = async (r) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ items: [{ pid: "p1", qty: 2 }], table: "T1", custId: "c1", gtype: "table", storeId: "main" }),
   }).then(j);
-  console.log("6 guest order:", ord.order.no, "by", ord.order.customerName, "@", ord.order.table, "store", ord.order.storeId);
+  console.log("6 guest dine-in order:", ord.order.no, "by", ord.order.customerName, "@", ord.order.table, "store", ord.order.storeId);
+
+  const missingTable = await fetch(`${B}/p/${reg.slug}/order`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items: [{ pid: "p1", qty: 1 }], custId: "c1", gtype: "table", storeId: "main" }),
+  }).then(async (res) => ({ ok: res.ok, body: await res.json().catch(() => ({})) }));
+  if (missingTable.ok || !String(missingTable.body.error || "").includes("table")) throw new Error("dine-in order without table was accepted");
+  console.log("7 dine-in table required: yes");
 
   const pull2 = await fetch(B + "/api/pull?since=" + pull.rowver + "&storeId=main", { headers: H }).then(j);
   const got = pull2.entities.find((e) => e.kind === "orders" && e.data.id === ord.order.id);
   if (!got) throw new Error("main POS did not pull guest order");
-  console.log("7 till pulled order:", got.data.no, "-", got.data.status);
+  console.log("8 till pulled order:", got.data.no, "-", got.data.status);
 
   await fetch(B + "/api/ops", { method: "POST", headers: H, body: JSON.stringify({ ops: [
-    { opId: "op-status-" + uniq, storeId: "main", puts: [{ kind: "orders", id: got.id, data: { ...got.data, status: "preparing" } }] },
+    { opId: "op-status-" + uniq, storeId: "main", puts: [{ kind: "orders", id: got.id, data: { ...got.data, status: "settled", settledAt: Date.now(), updatedAt: Date.now() } }] },
   ] }) }).then(j);
   const gv = await fetch(`${B}/p/${reg.slug}/orders?c=c1&storeId=main`).then(j);
-  console.log("8 guest sees live status:", gv.orders[0].status);
+  if (gv.orders[0].status !== "settled") throw new Error("guest orders endpoint did not reflect settled status");
+  const bootLive = await fetch(`${B}/p/${reg.slug}/boot?c=c1&storeId=main`).then(j);
+  if (!bootLive.cust.orders.length || bootLive.cust.orders[0].status !== "settled") throw new Error("guest boot did not include live settled order");
+  if (bootLive.cust.visits < 1 || bootLive.cust.spent <= 0) throw new Error("settled order did not update profile visits/spent");
+  console.log("9 guest sees settled status:", gv.orders[0].status, "visits", bootLive.cust.visits);
 
   await fetch(`${B}/p/${reg.slug}/call`, {
     method: "POST",
@@ -69,7 +81,7 @@ const j = async (r) => {
   const pull3 = await fetch(B + "/api/pull?since=" + pull2.rowver + "&storeId=main", { headers: H }).then(j);
   const call = pull3.entities.find((e) => e.kind === "waiterCalls");
   if (!call) throw new Error("main POS did not pull waiter call");
-  console.log("9 till alarm:", call.data.name, "-", call.data.table);
+  console.log("10 till alarm:", call.data.name, "-", call.data.table);
 
   await fetch(B + "/api/ops", { method: "POST", headers: H, body: JSON.stringify({ ops: [
     { opId: "op-legacy-" + uniq, storeId: "main", puts: [
@@ -86,7 +98,7 @@ const j = async (r) => {
   if (!ord2.order.customerName) throw new Error("guest order not linked to numeric-id customer");
   const gv2 = await fetch(`${B}/p/${reg.slug}/orders?c=1719400000001&storeId=main`).then(j);
   if (!gv2.orders.length) throw new Error("numeric-id customer cannot see own orders");
-  console.log("10 numeric-id profile:", boot2.cust.name, "-", ord2.order.no, "by", ord2.order.customerName);
+  console.log("11 numeric-id profile:", boot2.cust.name, "-", ord2.order.no, "by", ord2.order.customerName);
 
   const store = await fetch(B + "/api/stores", {
     method: "POST",
@@ -117,7 +129,7 @@ const j = async (r) => {
   if (!airPull.entities.some((e) => e.kind === "orders" && e.data.id === airOrder.order.id && e.data.storeId === "airport")) throw new Error("airport register did not pull airport order");
   const mainPullAgain = await fetch(B + "/api/pull?since=0&storeId=main", { headers: H }).then(j);
   if (mainPullAgain.entities.some((e) => e.kind === "orders" && e.data.id === airOrder.order.id)) throw new Error("airport order leaked into main store pull");
-  console.log("11 multi-store:", store.store.name, "order", airOrder.order.no, "isolated");
+  console.log("12 multi-store:", store.store.name, "order", airOrder.order.no, "isolated");
 
   console.log("ALL SMOKE CHECKS PASSED");
   process.exit(0);
