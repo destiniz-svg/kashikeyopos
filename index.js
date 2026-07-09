@@ -197,6 +197,16 @@ const poke = (orgId, rowver) => {
   for (const res of set) { try { res.write(`data: ${JSON.stringify({ rowver })}\n\n`); } catch {} }
 };
 
+/* Small in-memory ring buffer the developer panel's health view reads from -
+   resets on restart, which is fine for "what's gone wrong recently", not
+   meant as a durable audit log. */
+const bootedAt = Date.now();
+const recentErrors = [];
+const recordError = (where, e) => {
+  recentErrors.unshift({ t: Date.now(), where, message: errDetail(e) });
+  if (recentErrors.length > 50) recentErrors.length = 50;
+};
+
 const sign = (orgId, register, storeId = DEFAULT_STORE_ID) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId) }, SECRET, { expiresIn: "365d" });
 const auth = (req, res, next) => {
   const h = req.headers.authorization || "";
@@ -333,14 +343,60 @@ app.get("/api/dev/me", devAuth, wrap(async (req, res) => {
   res.json({ admin: req.admin });
 }));
 
+const DEV_PLANS = new Set(["trial", "starter", "pro", "enterprise"]);
+const DEV_STATUSES = new Set(["active", "suspended", "cancelled"]);
+
 app.get("/api/dev/orgs", devAuth, wrap(async (req, res) => {
-  const r = await withSystem((client) => client.query(
-    "SELECT id, slug, store_name, owner_name, email, phone, plan, status, registers, trial_ends_at, created_at FROM orgs ORDER BY created_at DESC"));
+  const [orgs, stores, usage] = await withSystem((client) => Promise.all([
+    client.query("SELECT id, slug, store_name, owner_name, email, phone, plan, status, registers, trial_ends_at, created_at FROM orgs ORDER BY created_at DESC"),
+    client.query("SELECT org_id, count(*)::int AS n FROM stores WHERE active=true GROUP BY org_id"),
+    client.query("SELECT org_id, kind, count(*)::int AS n FROM entities WHERE deleted=false AND kind IN ('orders','products','customers') GROUP BY org_id, kind"),
+  ]));
+  const storeCount = new Map(stores.rows.map((r) => [r.org_id, r.n]));
+  const usageByOrg = new Map();
+  for (const row of usage.rows) {
+    if (!usageByOrg.has(row.org_id)) usageByOrg.set(row.org_id, { orders: 0, products: 0, customers: 0 });
+    usageByOrg.get(row.org_id)[row.kind] = row.n;
+  }
   res.json({
-    orgs: r.rows.map((o) => ({
+    orgs: orgs.rows.map((o) => ({
       id: o.id, slug: o.slug, storeName: o.store_name, ownerName: o.owner_name, email: o.email, phone: o.phone,
       plan: o.plan, status: o.status, registers: o.registers, trialEndsAt: o.trial_ends_at, createdAt: o.created_at,
+      stores: storeCount.get(o.id) || 0,
+      usage: usageByOrg.get(o.id) || { orders: 0, products: 0, customers: 0 },
     })),
+  });
+}));
+
+app.patch("/api/dev/orgs/:id", devAuth, wrap(async (req, res) => {
+  const { plan, status } = req.body || {};
+  if (plan !== undefined && !DEV_PLANS.has(plan)) return res.status(400).json({ error: "invalid plan" });
+  if (status !== undefined && !DEV_STATUSES.has(status)) return res.status(400).json({ error: "invalid status" });
+  if (plan === undefined && status === undefined) return res.status(400).json({ error: "nothing to update" });
+  const r = await withSystem((client) => client.query(
+    `UPDATE orgs SET plan=COALESCE($2,plan), status=COALESCE($3,status) WHERE id=$1
+     RETURNING id, slug, plan, status`,
+    [req.params.id, plan || null, status || null]));
+  if (!r.rowCount) return res.status(404).json({ error: "unknown store" });
+  res.json({ org: r.rows[0] });
+}));
+
+app.get("/api/dev/health", devAuth, wrap(async (req, res) => {
+  const dbEnv = { databaseUrl: !!databaseUrl, pgEnv: hasPgEnv };
+  const startedAt = Date.now();
+  let dbOk = true, dbMs = null;
+  try { await pool.query("SELECT 1"); dbMs = Date.now() - startedAt; }
+  catch { dbOk = false; }
+  const totals = await withSystem((client) => client.query(
+    "SELECT (SELECT count(*)::int FROM orgs) AS orgs, (SELECT count(*)::int FROM stores WHERE active=true) AS stores, (SELECT count(*)::int FROM entities WHERE deleted=false) AS entities"));
+  const mem = process.memoryUsage();
+  res.json({
+    db: { ok: dbOk, ms: dbMs, ...dbEnv },
+    uptimeSec: Math.round((Date.now() - bootedAt) / 1000),
+    node: process.version,
+    memoryMb: { rss: Math.round(mem.rss / 1048576), heapUsed: Math.round(mem.heapUsed / 1048576) },
+    totals: totals.rows[0],
+    recentErrors,
   });
 }));
 
@@ -576,6 +632,7 @@ app.get("/", wrap(async (req, res, next) => {
 const siteDir = path.join(__dirname, "site");
 app.get("/login", (req, res) => res.sendFile(path.join(siteDir, "login.html")));
 app.get("/signup", (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
+app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
@@ -606,8 +663,9 @@ app.get("/", (req, res) => res.sendFile(path.join(siteDir, "landing.html")));
 
 app.use((err, req, res, next) => {
   console.error("request failed:", req.method, req.originalUrl, errDetail(err));
+  recordError(req.method + " " + req.originalUrl, err);
   if (res.headersSent) return res.end();
   res.status(500).json({ error: "something went wrong on our side - please try again" });
 });
-process.on("unhandledRejection", (e) => console.error("unhandled rejection:", errDetail(e)));
+process.on("unhandledRejection", (e) => { console.error("unhandled rejection:", errDetail(e)); recordError("unhandledRejection", e); });
 app.listen(PORT, () => console.log("KashikeyoPOS Cloud on :" + PORT));
