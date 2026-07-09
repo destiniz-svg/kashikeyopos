@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Developer panel — KashikeyoPOS</title>
+<link rel="icon" href="/icon-192.png" />
+<style>
+  :root {
+    --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
+    --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5;
+    --ok: #2E7D46; --warn: #A3391F;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--app); color: var(--text); min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--primary); }
+
+  /* Login gate */
+  #gate { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .card {
+    width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .logo-mark {
+    width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+  }
+  .logo-text { font-weight: 700; font-size: 16px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  p.sub { color: var(--sub); font-size: 13px; margin: 0 0 20px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 10px 12px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--input); color: var(--text); font-size: 14px; outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  button { border: none; border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer; padding: 10px 16px; }
+  button.primary { background: var(--primary); color: #fff; width: 100%; margin-top: 18px; }
+  button.primary:hover { background: var(--primary-hov); }
+  button.primary:disabled { opacity: .6; cursor: default; }
+  .error {
+    display: none; margin-top: 14px; padding: 9px 11px; border-radius: 8px;
+    background: #FBEAE4; color: var(--warn); font-size: 13px;
+  }
+
+  /* Dashboard */
+  #dash { display: none; }
+  header { position: sticky; top: 0; z-index: 5; background: rgba(243,236,225,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .bar { max-width: 1180px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .who { font-size: 13px; color: var(--sub); }
+  .who b { color: var(--text); }
+  button.ghost { background: var(--btn); color: var(--text); }
+  button.ghost:hover { background: var(--btn-hov); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 60px; }
+  h2 { font-size: 15px; margin: 0 0 14px; color: var(--sub); text-transform: uppercase; letter-spacing: .05em; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 34px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+  .stat .n { font-size: 24px; font-weight: 700; }
+  .stat .l { font-size: 12px; color: var(--sub); margin-top: 2px; }
+  .stat.ok .n { color: var(--ok); }
+  .stat.bad .n { color: var(--warn); }
+
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--sub); font-weight: 600; background: var(--panel2); }
+  tr:last-child td { border-bottom: none; }
+  .tbl-wrap { overflow-x: auto; border-radius: 14px; }
+  select {
+    padding: 6px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--input); font-size: 12px; color: var(--text);
+  }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge.active { background: #E4F2E7; color: var(--ok); }
+  .badge.suspended, .badge.cancelled { background: #FBEAE4; color: var(--warn); }
+  .save-row { padding: 4px 8px; font-size: 11px; background: var(--btn); }
+  .save-row:hover { background: var(--btn-hov); }
+  .save-row.dirty { background: var(--primary); color: #fff; }
+  .errlist { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 4px 0; max-height: 220px; overflow-y: auto; }
+  .errlist .row { padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .errlist .row:last-child { border-bottom: none; }
+  .errlist .row .t { color: var(--faint); margin-right: 8px; }
+  .errlist .row .w { color: var(--warn); font-weight: 600; }
+  .empty { padding: 16px; font-size: 13px; color: var(--sub); }
+  section { margin-bottom: 34px; }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <div class="logo"><div class="logo-mark">K</div><div class="logo-text">Developer panel</div></div>
+    <h1>Sign in</h1>
+    <p class="sub">Restricted to KashikeyoPOS staff.</p>
+    <form id="gateForm">
+      <label for="gEmail">Email</label>
+      <input id="gEmail" type="email" required />
+      <label for="gPass">Password</label>
+      <input id="gPass" type="password" required />
+      <div class="error" id="gErr"></div>
+      <button class="primary" id="gBtn" type="submit">Sign in</button>
+    </form>
+  </div>
+</div>
+
+<div id="dash">
+  <header>
+    <div class="bar">
+      <div class="logo"><div class="logo-mark">K</div><div class="logo-text">Developer panel</div></div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span class="who">Signed in as <b id="whoName"></b></span>
+        <button class="ghost" id="signOut">Sign out</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section>
+      <h2>System health</h2>
+      <div class="cards" id="healthCards"></div>
+    </section>
+    <section>
+      <h2>Stores</h2>
+      <div class="tbl-wrap">
+        <table id="orgsTable">
+          <thead>
+            <tr>
+              <th>Store</th><th>Owner</th><th>Email</th><th>Plan</th><th>Status</th>
+              <th>Stores</th><th>Orders</th><th>Products</th><th>Customers</th><th>Trial ends</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="orgsBody"></tbody>
+        </table>
+      </div>
+    </section>
+    <section>
+      <h2>Recent errors</h2>
+      <div class="errlist" id="errList"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  var gate = document.getElementById("gate");
+  var dash = document.getElementById("dash");
+
+  function fmtDate(s) { if (!s) return "-"; var d = new Date(s); return d.toLocaleDateString(); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+
+  async function api(path, opts) {
+    var res = await fetch(path, Object.assign({ credentials: "same-origin", headers: { "Content-Type": "application/json" } }, opts || {}));
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) throw new Error(data.error || ("request failed (" + res.status + ")"));
+    return data;
+  }
+
+  function renderHealth(h) {
+    var cards = [
+      { l: "Database", n: h.db.ok ? "OK" : "DOWN", cls: h.db.ok ? "ok" : "bad" },
+      { l: "DB latency", n: h.db.ms != null ? h.db.ms + " ms" : "-", cls: "" },
+      { l: "Uptime", n: Math.floor(h.uptimeSec / 60) + " min", cls: "" },
+      { l: "Node", n: h.node, cls: "" },
+      { l: "Memory (RSS)", n: h.memoryMb.rss + " MB", cls: "" },
+      { l: "Stores", n: h.totals.orgs, cls: "" },
+      { l: "Branches", n: h.totals.stores, cls: "" },
+      { l: "Records", n: h.totals.entities, cls: "" },
+    ];
+    document.getElementById("healthCards").innerHTML = cards.map(function (c) {
+      return '<div class="stat ' + c.cls + '"><div class="n">' + esc(c.n) + '</div><div class="l">' + esc(c.l) + '</div></div>';
+    }).join("");
+
+    var errList = document.getElementById("errList");
+    if (!h.recentErrors.length) {
+      errList.innerHTML = '<div class="empty">No errors recorded since the server started.</div>';
+    } else {
+      errList.innerHTML = h.recentErrors.map(function (e) {
+        return '<div class="row"><span class="t">' + esc(new Date(e.t).toLocaleString()) + '</span><span class="w">' + esc(e.where) + '</span> — ' + esc(e.message) + '</div>';
+      }).join("");
+    }
+  }
+
+  var PLANS = ["trial", "starter", "pro", "enterprise"];
+  var STATUSES = ["active", "suspended", "cancelled"];
+
+  function renderOrgs(orgs) {
+    document.getElementById("orgsBody").innerHTML = orgs.map(function (o) {
+      var planOpts = PLANS.map(function (p) { return '<option value="' + p + '"' + (p === o.plan ? " selected" : "") + '>' + p + '</option>'; }).join("");
+      var statusOpts = STATUSES.map(function (s) { return '<option value="' + s + '"' + (s === o.status ? " selected" : "") + '>' + s + '</option>'; }).join("");
+      return '<tr data-id="' + esc(o.id) + '">' +
+        '<td><b>' + esc(o.storeName) + '</b><br><span style="color:var(--sub)">' + esc(o.slug) + '</span></td>' +
+        '<td>' + esc(o.ownerName || "-") + (o.phone ? "<br><span style='color:var(--sub)'>" + esc(o.phone) + "</span>" : "") + '</td>' +
+        '<td>' + esc(o.email) + '</td>' +
+        '<td><select class="plan">' + planOpts + '</select></td>' +
+        '<td><select class="status">' + statusOpts + '</select></td>' +
+        '<td>' + o.stores + '</td>' +
+        '<td>' + o.usage.orders + '</td>' +
+        '<td>' + o.usage.products + '</td>' +
+        '<td>' + o.usage.customers + '</td>' +
+        '<td>' + fmtDate(o.trialEndsAt) + '</td>' +
+        '<td><button class="save-row" data-act="save">Save</button></td>' +
+        '</tr>';
+    }).join("") || '<tr><td colspan="11" class="empty">No stores yet.</td></tr>';
+
+    document.querySelectorAll("#orgsBody select").forEach(function (sel) {
+      sel.addEventListener("change", function () {
+        var btn = sel.closest("tr").querySelector(".save-row");
+        btn.classList.add("dirty");
+        btn.textContent = "Save";
+      });
+    });
+    document.querySelectorAll('#orgsBody [data-act="save"]').forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        var tr = btn.closest("tr");
+        var id = tr.dataset.id;
+        var plan = tr.querySelector(".plan").value;
+        var status = tr.querySelector(".status").value;
+        btn.disabled = true;
+        btn.textContent = "Saving…";
+        try {
+          await api("/api/dev/orgs/" + encodeURIComponent(id), { method: "PATCH", body: JSON.stringify({ plan: plan, status: status }) });
+          btn.classList.remove("dirty");
+          btn.textContent = "Saved";
+          setTimeout(function () { btn.textContent = "Save"; }, 1200);
+        } catch (e) {
+          btn.textContent = "Failed";
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  async function loadDash() {
+    var me = await api("/api/dev/me");
+    document.getElementById("whoName").textContent = me.admin.name || me.admin.email;
+    gate.style.display = "none";
+    dash.style.display = "block";
+    var health = await api("/api/dev/health");
+    renderHealth(health);
+    var orgsRes = await api("/api/dev/orgs");
+    renderOrgs(orgsRes.orgs);
+  }
+
+  document.getElementById("gateForm").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var err = document.getElementById("gErr");
+    var btn = document.getElementById("gBtn");
+    err.style.display = "none";
+    btn.disabled = true;
+    btn.textContent = "Signing in…";
+    try {
+      await api("/api/dev/login", { method: "POST", body: JSON.stringify({ email: document.getElementById("gEmail").value.trim(), password: document.getElementById("gPass").value }) });
+      await loadDash();
+    } catch (e2) {
+      err.textContent = e2.message;
+      err.style.display = "block";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Sign in";
+    }
+  });
+
+  document.getElementById("signOut").addEventListener("click", async function () {
+    try { await api("/api/dev/logout", { method: "POST" }); } catch (e) {}
+    dash.style.display = "none";
+    gate.style.display = "flex";
+  });
+
+  loadDash().catch(function () { gate.style.display = "flex"; dash.style.display = "none"; });
+})();
+</script>
+</body>
+</html>
