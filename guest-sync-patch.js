@@ -1,6 +1,7 @@
 /* Startup patcher for the prebuilt web bundle (web/dist).
    Rewrites the guest checkout + waiter call inside the minified index.html so
-   guest orders always go through the cloud API, then boots the server.
+   guest orders always go through the cloud API, injects the offline write
+   bridge, then boots the server.
    Every patch is idempotent: if the file already contains the fixed code the
    regexes either don't match or replace with identical text (no write).
    Run with PATCH_ONLY=1 to apply the patches without starting the server
@@ -27,7 +28,14 @@ const checkout =
 const call =
   'nI=async()=>{try{const St=fe&&fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(St){await fetch(`/p/${St}/call`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({table:fe.table,custId:fe.custId||null})})}}catch{}Hw(fe.table,ia?ia.name:null)}';
 
-patchFile(indexPath, (html) => html
+function injectOfflineBridge(html) {
+  if (html.includes("offline-bridge.js")) return html;
+  const tag = '<script src="/offline-bridge.js"></script>';
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${tag}`);
+  return tag + html;
+}
+
+patchFile(indexPath, (html) => injectOfflineBridge(html)
   /* original local-only checkout */
   .replace(
     /rI=f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/,
@@ -50,6 +58,6 @@ patchFile(indexPath, (html) => html
 
 /* Force every installed PWA onto the current build (old cached bundles carried
    the raw-error toasts and a service worker that cached live API data). */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-8]\.\d+/g, "kashikeyo-2.9.0"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.1"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
