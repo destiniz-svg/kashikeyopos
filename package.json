@@ -2,7 +2,7 @@
   "name": "kashikeyo-cloud",
   "version": "1.0.0",
   "type": "commonjs",
-  "scripts": { "start": "node index.js" },
+  "scripts": { "start": "node guest-sync-patch.js" },
   "dependencies": {
     "express": "^4.21.0",
     "pg": "^8.13.0",
