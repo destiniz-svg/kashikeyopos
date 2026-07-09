@@ -255,8 +255,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         const r = await client.query(
           `UPDATE entities SET
              data = data
-               || jsonb_build_object('points', COALESCE((data->>'points')::numeric, 0) + $4)
-               || jsonb_build_object('balance', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $5)),
+               || jsonb_build_object('points', COALESCE((data->>'points')::numeric, 0) + $3)
+               || jsonb_build_object('balance', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4)),
              rowver = nextval('entities_rowver_seq'), updated_at = now()
            WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver`,
           [req.org.o, String(c.id), Number(c.pts) || 0, Number(c.bal) || 0]);

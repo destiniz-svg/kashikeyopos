@@ -35,6 +35,21 @@ const call =
 const hideStaffSignIn =
   'fe.urlMode?null:h.jsx("button",{onClick:()=>Dn(null),className:`p-1.5 rounded-full ${_.btn}`,children:h.jsx(Be,{size:15})})';
 
+/* Sync race: after pulling remote changes, the till marks each touched entity
+   kind as "just came from the server" for one diff cycle so it doesn't echo
+   that data straight back. If a local edit (e.g. a cashier accepting/settling
+   an order) lands in the SAME React batch as an unrelated incoming pull for
+   that same kind, the shortcut discards the local change instead of pushing
+   it — the till's own screen shows the new status, but it silently never
+   reaches the server or any other device. Reproduced end to end: settling a
+   guest order updated the till's UI (table freed, order left the active
+   list) while Postgres kept the previous status forever. Orders and sales
+   are the kinds this actually bit (order status/settlement), so only they
+   skip the shortcut and always get a real diff; every other kind keeps the
+   original echo suppression unchanged. */
+const skipEchoGuard =
+  'if(wu.current.has(I)&&I!=="orders"&&I!=="sales"){wu.current.delete(I),Qf.current[I]=F;return}';
+
 function injectScript(html, src) {
   if (html.includes(src)) return html;
   const tag = `<script src="/${src}"></script>`;
@@ -55,6 +70,10 @@ patchFile(indexPath, (html) => injectRuntimeGuards(html)
   .replace(
     'fe.urlMode?h.jsx("button",{onClick:_6,className:`p-1.5 rounded-full ${_.chip}`,title:"Staff sign-in",children:h.jsx(C3,{size:13})}):h.jsx("button",{onClick:()=>Dn(null),className:`p-1.5 rounded-full ${_.btn}`,children:h.jsx(Be,{size:15})})',
     hideStaffSignIn
+  )
+  .replace(
+    'if(wu.current.has(I)){wu.current.delete(I),Qf.current[I]=F;return}',
+    skipEchoGuard
   )
 );
 
