@@ -8,10 +8,30 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
+const { createRemoteJWKSet, jwtVerify } = require("jose");
 
 const PORT = process.env.PORT || 4000;
 const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
 const DEFAULT_STORE_ID = "main";
+
+/* "Sign in with Google/Apple" both hand back a signed OIDC ID token rather
+   than a redirect-and-exchange flow, so login only needs the public client
+   id (safe to expose to the browser) plus verifying that token's signature,
+   issuer and audience against the provider's published keys - no client
+   secret or server-to-server call required for identity alone. */
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const APPLE_CLIENT_ID = process.env.APPLE_CLIENT_ID || "";
+const APPLE_REDIRECT_URI = process.env.APPLE_REDIRECT_URI || "";
+const googleJwks = GOOGLE_CLIENT_ID ? createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs")) : null;
+const appleJwks = APPLE_CLIENT_ID ? createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys")) : null;
+async function verifyGoogleIdToken(idToken) {
+  const { payload } = await jwtVerify(idToken, googleJwks, { issuer: ["https://accounts.google.com", "accounts.google.com"], audience: GOOGLE_CLIENT_ID });
+  return payload;
+}
+async function verifyAppleIdToken(idToken) {
+  const { payload } = await jwtVerify(idToken, appleJwks, { issuer: "https://appleid.apple.com", audience: APPLE_CLIENT_ID });
+  return payload;
+}
 const SHARED_KINDS = new Set(["settings", "customers", "units", "categories", "vendors"]);
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
 const hasPgEnv = !!(process.env.PGHOST || process.env.PGUSER || process.env.PGDATABASE);
@@ -286,18 +306,108 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
     .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
 }
 
+async function uniqueSlug(client, base) {
+  let slug = base;
+  for (let i = 0; i < 5; i++) {
+    const hit = await client.query("SELECT 1 FROM orgs WHERE slug=$1", [slug]);
+    if (!hit.rowCount) break;
+    slug = base + "-" + crypto.randomBytes(2).toString("hex");
+  }
+  return slug;
+}
+
+/* Google and Apple both hand back a verified email (and, once, a name) - not
+   a password - so signing in and signing up are the same operation here:
+   find the org already linked to this provider's subject id, else adopt an
+   existing org with a matching email (letting someone who registered with a
+   password later sign in with the same address via OAuth), else create a
+   fresh one. auth_provider/google_sub/apple_sub are informational only;
+   pass_hash still gets a random, never-disclosed value so the NOT NULL
+   constraint holds even though this account has no password to check. */
+async function findOrCreateOAuthOrg({ provider, sub, email, name }) {
+  const subCol = provider === "google" ? "google_sub" : "apple_sub";
+  return withSystem(async (client) => {
+    let r = await client.query(`SELECT * FROM orgs WHERE ${subCol}=$1`, [sub]);
+    if (r.rowCount) return r.rows[0];
+    const cleanEmail = (email || "").toLowerCase();
+    if (cleanEmail) {
+      r = await client.query("SELECT * FROM orgs WHERE email=$1", [cleanEmail]);
+      if (r.rowCount) {
+        const upd = await client.query(`UPDATE orgs SET ${subCol}=$1 WHERE id=$2 RETURNING *`, [sub, r.rows[0].id]);
+        return upd.rows[0];
+      }
+    }
+    const base = slugify(name || (cleanEmail ? cleanEmail.split("@")[0] : provider + "-store"));
+    const slug = await uniqueSlug(client, base);
+    const id = uid();
+    const placeholderHash = bcrypt.hashSync(crypto.randomBytes(24).toString("hex"), 10);
+    const ins = await client.query(
+      `INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, auth_provider, ${subCol}, registers)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1) RETURNING *`,
+      [id, slug, cleanEmail || `${sub}@${provider}.oauth.kashikeyopos`, placeholderHash, "My Store", String(name || "").slice(0, 100), provider, sub]);
+    return ins.rows[0];
+  });
+}
+
+async function finishOAuthLogin(org) {
+  if (org.status && org.status !== "active") return { error: "this workspace is " + org.status + " - contact support", status: 403 };
+  await ensureDefaultStore(org.id, org.store_name);
+  const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]));
+  const register = "R" + upd.rows[0].registers;
+  return { token: sign(org.id, register, DEFAULT_STORE_ID), slug: org.slug, register, storeId: DEFAULT_STORE_ID };
+}
+
+app.get("/api/auth/config", (req, res) => {
+  res.json({
+    google: GOOGLE_CLIENT_ID ? { enabled: true, clientId: GOOGLE_CLIENT_ID } : { enabled: false },
+    apple: APPLE_CLIENT_ID && APPLE_REDIRECT_URI ? { enabled: true, clientId: APPLE_CLIENT_ID, redirectUri: APPLE_REDIRECT_URI } : { enabled: false },
+  });
+});
+
+app.post("/api/auth/google", wrap(async (req, res) => {
+  if (!GOOGLE_CLIENT_ID) return res.status(503).json({ error: "Google sign-in is not configured" });
+  const { credential } = req.body || {};
+  if (!credential) return res.status(400).json({ error: "missing credential" });
+  let payload;
+  try { payload = await verifyGoogleIdToken(credential); }
+  catch { return res.status(401).json({ error: "Google sign-in failed - please try again" }); }
+  const org = await findOrCreateOAuthOrg({ provider: "google", sub: payload.sub, email: payload.email, name: payload.name });
+  const result = await finishOAuthLogin(org);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  res.json(result);
+}));
+
+/* Apple's web flow POSTs the result to this exact registered Return URL as
+   a top-level form submission from the popup Sign in with Apple opens (not
+   a fetch call our JS could read the response of directly), so the response
+   here is a tiny HTML page that hands the outcome back to the window that
+   opened the popup via postMessage, then closes itself. */
+app.post("/auth/apple/callback", express.urlencoded({ extended: false }), wrap(async (req, res) => {
+  const respond = (payload) => {
+    const safe = JSON.stringify(payload).replace(/</g, "\\u003c");
+    res.set("Content-Type", "text/html").send(
+      `<!doctype html><script>(function(){try{window.opener&&window.opener.postMessage(${safe},window.location.origin);}catch(e){}window.close();})();</script>`);
+  };
+  if (!APPLE_CLIENT_ID) return respond({ kashikeyoAppleAuth: true, error: "Apple sign-in is not configured" });
+  const idToken = req.body && req.body.id_token;
+  if (!idToken) return respond({ kashikeyoAppleAuth: true, error: "missing id_token" });
+  let payload;
+  try { payload = await verifyAppleIdToken(idToken); }
+  catch { return respond({ kashikeyoAppleAuth: true, error: "Apple sign-in failed - please try again" }); }
+  let name = "";
+  try {
+    if (req.body.user) { const u = JSON.parse(req.body.user); name = [u.name && u.name.firstName, u.name && u.name.lastName].filter(Boolean).join(" "); }
+  } catch {}
+  const org = await findOrCreateOAuthOrg({ provider: "apple", sub: payload.sub, email: payload.email, name });
+  const result = await finishOAuthLogin(org);
+  respond(result.error ? { kashikeyoAppleAuth: true, error: result.error } : Object.assign({ kashikeyoAppleAuth: true }, result));
+}));
+
 app.post("/api/register", wrap(async (req, res) => {
   const { email, password, storeName, ownerName, phone } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
   const base = slugify(storeName || email.split("@")[0]);
-  let slug = base;
-  await withSystem(async (client) => {
-    for (let i = 0; i < 5; i++) {
-      const hit = await client.query("SELECT 1 FROM orgs WHERE slug=$1", [slug]);
-      if (!hit.rowCount) break;
-      slug = base + "-" + crypto.randomBytes(2).toString("hex");
-    }
-  });
+  const slug = await withSystem((client) => uniqueSlug(client, base));
   const id = uid();
   try {
     await withSystem((client) => client.query(
@@ -630,6 +740,7 @@ app.get("/", wrap(async (req, res, next) => {
 }));
 
 const siteDir = path.join(__dirname, "site");
+app.use(express.static(siteDir, { index: false }));
 app.get("/login", (req, res) => res.sendFile(path.join(siteDir, "login.html")));
 app.get("/signup", (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
 app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));

@@ -14,6 +14,11 @@ ALTER TABLE orgs ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMPTZ NOT NULL DEFAULT now() + interval '14 days';
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS owner_name TEXT NOT NULL DEFAULT '';
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'password';
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS google_sub TEXT;
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS apple_sub TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS orgs_google_sub_uq ON orgs (google_sub) WHERE google_sub IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS orgs_apple_sub_uq ON orgs (apple_sub) WHERE apple_sub IS NOT NULL;
 
 -- one company/workspace can operate many physical stores/branches
 CREATE TABLE IF NOT EXISTS stores (

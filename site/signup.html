@@ -68,6 +68,19 @@
   .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
   .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
   .foot a:hover { text-decoration: underline; }
+
+  #oauthBox { display: none; gap: 10px; margin-bottom: 4px; }
+  #googleBtn { display: flex; justify-content: center; }
+  #googleBtn > div { width: 100% !important; }
+  .oauth-btn {
+    display: none; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    padding: 10px; border-radius: 999px; border: 1px solid #000; background: #000; color: #fff;
+    font-size: 14px; font-weight: 600; cursor: pointer; flex: none;
+  }
+  .oauth-btn:hover { background: #1a1a1a; }
+  .oauth-btn svg { width: 16px; height: 16px; flex: none; }
+  .divider { display: none; align-items: center; gap: 10px; margin: 18px 0; color: var(--faint); font-size: 12px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 </style>
 </head>
 <body>
@@ -77,6 +90,16 @@
       <div class="logo-mark">K</div>
       <div class="logo-text">KashikeyoPOS</div>
     </div>
+
+    <div id="oauthBox">
+      <div id="googleBtn"></div>
+      <button type="button" id="appleBtn" class="oauth-btn">
+        <svg viewBox="0 0 384 512" fill="#fff"><path d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141 4 184.8 4 273.5c0 26.2 4.8 53.3 14.4 81.2 12.8 37.1 59 128 107.2 126.5 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-83.5 102.6-120.7-65.2-30.7-61.7-90-61.7-91.8zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.6-67.9 35.2-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.6z"/></svg>
+        Continue with Apple
+      </button>
+    </div>
+    <div class="divider" id="oauthDivider"><span>or set up with an email</span></div>
+
     <div class="steps"><i class="on" data-s="1"></i><i data-s="2"></i><i data-s="3"></i></div>
 
     <form id="f">
@@ -138,12 +161,17 @@
 
     <div class="foot">Already have a store? <a href="/login">Sign in</a></div>
   </div>
-
+  <script src="/oauth.js"></script>
   <script>
     (function () {
       try {
         if (localStorage.getItem("kashikeyo-cloud")) { location.replace("/app"); return; }
       } catch (e) {}
+
+      window.KashikeyoOAuth.init({
+        boxId: "oauthBox", googleId: "googleBtn", appleId: "appleBtn", dividerId: "oauthDivider",
+        onError: function (msg) { var e = document.getElementById("err1"); e.textContent = msg; e.style.display = "block"; },
+      });
 
       var state = 1;
       var steps = document.querySelectorAll(".step");
