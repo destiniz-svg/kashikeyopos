@@ -575,6 +575,7 @@ app.get("/", wrap(async (req, res, next) => {
 
 const siteDir = path.join(__dirname, "site");
 app.get("/login", (req, res) => res.sendFile(path.join(siteDir, "login.html")));
+app.get("/signup", (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
 
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {

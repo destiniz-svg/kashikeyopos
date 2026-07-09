@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Create your store — KashikeyoPOS</title>
+<link rel="icon" href="/icon-192.png" />
+<style>
+  :root {
+    --app: #F3ECE1; --panel: #FFFFFF; --border: #E8DFCF; --text: #2A241E;
+    --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--app); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .logo-mark {
+    width: 36px; height: 36px; border-radius: 10px; background: var(--primary);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px;
+  }
+  .logo-text { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+  .back { display: inline-block; margin-bottom: 18px; color: var(--sub); text-decoration: none; font-size: 13px; }
+  .back:hover { color: var(--text); }
+
+  .steps { display: flex; gap: 6px; margin-bottom: 24px; }
+  .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }
+  .steps i.on { background: var(--primary); }
+
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--sub); font-size: 14px; margin: 0 0 22px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--input); color: var(--text); font-size: 15px; outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .actions { display: flex; gap: 10px; margin-top: 26px; }
+  button {
+    flex: 1; padding: 12px; border-radius: 10px; border: none;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button.primary { background: var(--primary); color: #fff; }
+  button.primary:hover { background: var(--primary-hov); }
+  button.primary:disabled { opacity: .6; cursor: default; }
+  button.ghost { background: var(--btn); color: var(--text); flex: 0 0 auto; padding: 12px 18px; }
+  button.ghost:hover { background: var(--btn-hov); }
+  .error {
+    display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px;
+    background: #FBEAE4; color: #A3391F; font-size: 13px;
+  }
+  .hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
+  .step { display: none; }
+  .step.on { display: block; }
+  .review dl { margin: 4px 0 0; }
+  .review dt { font-size: 12px; color: var(--sub); margin-top: 12px; }
+  .review dd { margin: 2px 0 0; font-size: 15px; }
+  .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
+  .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  .foot a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <a class="back" href="/">&larr; kashikeyopos.com</a>
+    <div class="logo">
+      <div class="logo-mark">K</div>
+      <div class="logo-text">KashikeyoPOS</div>
+    </div>
+    <div class="steps"><i class="on" data-s="1"></i><i data-s="2"></i><i data-s="3"></i></div>
+
+    <form id="f">
+      <div class="step on" data-step="1">
+        <h1>Tell us about your outlet</h1>
+        <p class="sub">Step 1 of 3 — store details</p>
+        <label for="storeName">Store / outlet name</label>
+        <input id="storeName" required placeholder="e.g. Island Zone Cafe" />
+        <div class="error" id="err1"></div>
+        <div class="actions">
+          <button type="button" class="primary" data-next>Continue</button>
+        </div>
+      </div>
+
+      <div class="step" data-step="2">
+        <h1>Create your admin account</h1>
+        <p class="sub">Step 2 of 3 — you'll manage everything from here</p>
+        <label for="ownerName">Your name</label>
+        <input id="ownerName" required placeholder="e.g. Aisha Naeem" />
+        <label for="phone">Phone number</label>
+        <input id="phone" type="tel" placeholder="e.g. 960 7XXXXXX" />
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="email" required />
+        <div class="row">
+          <div>
+            <label for="password">Password</label>
+            <input id="password" type="password" autocomplete="new-password" required minlength="8" />
+          </div>
+          <div>
+            <label for="password2">Confirm password</label>
+            <input id="password2" type="password" autocomplete="new-password" required minlength="8" />
+          </div>
+        </div>
+        <div class="hint">At least 8 characters.</div>
+        <div class="error" id="err2"></div>
+        <div class="actions">
+          <button type="button" class="ghost" data-back>Back</button>
+          <button type="button" class="primary" data-next>Continue</button>
+        </div>
+      </div>
+
+      <div class="step" data-step="3">
+        <h1>Review &amp; confirm</h1>
+        <p class="sub">Step 3 of 3 — this creates your workspace</p>
+        <div class="review">
+          <dl>
+            <dt>Store</dt><dd id="rvStore"></dd>
+            <dt>Admin</dt><dd id="rvOwner"></dd>
+            <dt>Email</dt><dd id="rvEmail"></dd>
+          </dl>
+        </div>
+        <div class="error" id="err3"></div>
+        <div class="actions">
+          <button type="button" class="ghost" data-back>Back</button>
+          <button id="submit" type="submit" class="primary">Create my store</button>
+        </div>
+      </div>
+    </form>
+
+    <div class="foot">Already have a store? <a href="/login">Sign in</a></div>
+  </div>
+
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("kashikeyo-cloud")) { location.replace("/app"); return; }
+      } catch (e) {}
+
+      var state = 1;
+      var steps = document.querySelectorAll(".step");
+      var dots = document.querySelectorAll(".steps i");
+      function show(n) {
+        state = n;
+        steps.forEach(function (el) { el.classList.toggle("on", Number(el.dataset.step) === n); });
+        dots.forEach(function (el) { el.classList.toggle("on", Number(el.dataset.s) <= n); });
+      }
+      function errFor(n) { return document.getElementById("err" + n); }
+      function showErr(n, msg) { var e = errFor(n); e.textContent = msg; e.style.display = "block"; }
+      function clearErr(n) { var e = errFor(n); e.style.display = "none"; }
+
+      function validateStep1() {
+        clearErr(1);
+        if (!document.getElementById("storeName").value.trim()) { showErr(1, "Enter your store name"); return false; }
+        return true;
+      }
+      function validateStep2() {
+        clearErr(2);
+        if (!document.getElementById("ownerName").value.trim()) { showErr(2, "Enter your name"); return false; }
+        var email = document.getElementById("email").value.trim();
+        if (!email || !/.+@.+\..+/.test(email)) { showErr(2, "Enter a valid email"); return false; }
+        var pass = document.getElementById("password").value;
+        if (pass.length < 8) { showErr(2, "Password must be at least 8 characters"); return false; }
+        if (pass !== document.getElementById("password2").value) { showErr(2, "Passwords don't match"); return false; }
+        return true;
+      }
+
+      document.querySelectorAll("[data-next]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          if (state === 1 && !validateStep1()) return;
+          if (state === 2 && !validateStep2()) return;
+          if (state === 2) {
+            document.getElementById("rvStore").textContent = document.getElementById("storeName").value.trim();
+            document.getElementById("rvOwner").textContent = document.getElementById("ownerName").value.trim();
+            document.getElementById("rvEmail").textContent = document.getElementById("email").value.trim();
+          }
+          show(state + 1);
+        });
+      });
+      document.querySelectorAll("[data-back]").forEach(function (btn) {
+        btn.addEventListener("click", function () { show(state - 1); });
+      });
+
+      document.getElementById("f").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        clearErr(3);
+        var btn = document.getElementById("submit");
+        btn.disabled = true;
+        btn.textContent = "Creating your store…";
+        try {
+          var res = await fetch("/api/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storeName: document.getElementById("storeName").value.trim(),
+              ownerName: document.getElementById("ownerName").value.trim(),
+              phone: document.getElementById("phone").value.trim(),
+              email: document.getElementById("email").value.trim(),
+              password: document.getElementById("password").value,
+            }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Couldn't create your store");
+          localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url: "", token: data.token, slug: data.slug, register: data.register }));
+          location.href = "/app";
+        } catch (err) {
+          showErr(3, err.message || "Something went wrong — please try again");
+          btn.disabled = false;
+          btn.textContent = "Create my store";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
