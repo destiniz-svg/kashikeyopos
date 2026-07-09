@@ -103,9 +103,9 @@ app.post("/api/ops", auth, async (req, res) => {
       const dup = await client.query(
         "INSERT INTO ops (org_id, op_id, register) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING RETURNING 1",
         [req.org.o, op.opId || uid(), req.org.r]);
-      if (!dup.rowCount) continue;                       // replay → skip
+      if (!dup.rowCount) continue;                       // replay -> skip
       for (const p of op.puts || []) {
-        /* Stage 2: server owns the counters — puts never clobber stock / balance / points */
+        /* Stage 2: server owns the counters; puts never clobber stock / balance / points. */
         const preserve = p.kind === "products"
           ? " || jsonb_build_object('stock', COALESCE(entities.data->'stock', excluded.data->'stock', '0'::jsonb))"
           : p.kind === "customers"
@@ -119,7 +119,7 @@ app.post("/api/ops", auth, async (req, res) => {
            RETURNING rowver`, [req.org.o, p.kind, String(p.id), JSON.stringify(p.data)]);
         rowver = Math.max(rowver, Number(r.rows[0].rowver));
       }
-      /* Stage 2: arithmetic deltas — multi-till safe stock & credit */
+      /* Stage 2: arithmetic deltas; multi-till safe stock & credit. */
       const dz = op.deltas || {};
       for (const s of dz.stock || []) {
         const r = await client.query(
@@ -280,7 +280,15 @@ app.post("/p/:slug/call", async (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/health", (req, res) => res.json({ ok: true, service: "kashikeyo-cloud" }));
+app.get("/api/health", async (req, res) => {
+  const dbEnv = { databaseUrl: !!databaseUrl, pgEnv: hasPgEnv };
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, service: "kashikeyo-cloud", db: true, dbEnv });
+  } catch (e) {
+    res.status(500).json({ ok: false, service: "kashikeyo-cloud", db: false, dbEnv, error: errDetail(e) });
+  }
+});
 
 /* ── serve the till + guest PWA ── */
 const webDir = path.join(__dirname, "web", "dist");
