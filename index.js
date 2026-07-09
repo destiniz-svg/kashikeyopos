@@ -602,9 +602,7 @@ if (fs.existsSync(webDir)) {
   app.use(express.static(webDir, { ...noCacheShell, index: false }));
 }
 
-/* Landing page lands here in a follow-up change; until then bare "/" sends
-   fresh visitors to sign in. */
-app.get("/", (req, res) => res.redirect(302, "/login"));
+app.get("/", (req, res) => res.sendFile(path.join(siteDir, "landing.html")));
 
 app.use((err, req, res, next) => {
   console.error("request failed:", req.method, req.originalUrl, errDetail(err));
