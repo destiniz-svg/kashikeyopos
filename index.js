@@ -20,37 +20,126 @@ const connectionString = databaseUrl || (hasPgEnv ? "" : localDatabaseUrl);
 const poolConfig = connectionString ? { connectionString } : {};
 if (connectionString && !/localhost|127\.0\.0\.1/.test(connectionString)) poolConfig.ssl = { rejectUnauthorized: false };
 if (process.env.NODE_ENV === "production" && !databaseUrl && !hasPgEnv) console.warn("No Postgres variables found. Attach DATABASE_URL.");
-const pool = new Pool(poolConfig);
+
+/* Row Level Security only has teeth if the role running app queries is
+   NOT the table owner and NOT a superuser — both bypass RLS regardless of
+   policies (superusers unconditionally; owners unless FORCE is set, and
+   Railway's default Postgres template grants a superuser role, which no
+   FORCE setting can override). bootPool connects with whatever credentials
+   were provided (owner-level, needed to create tables/roles/policies).
+   pool — used for every request — connects as a separate, restricted
+   kashikeyo_app role with only DML rights, so the tenant_isolation
+   policies in schema.sql are actually enforced by Postgres itself. */
+const bootPool = new Pool(poolConfig);
+const APP_DB_ROLE = "kashikeyo_app";
+const appRolePassword = crypto.createHash("sha256").update(`${SECRET}:kashikeyo_app_role`).digest("hex");
+
+function appPoolConfig() {
+  if (connectionString) {
+    try {
+      const u = new URL(connectionString);
+      u.username = APP_DB_ROLE;
+      u.password = appRolePassword;
+      const cfg = { connectionString: u.toString() };
+      if (!/localhost|127\.0\.0\.1/.test(connectionString)) cfg.ssl = { rejectUnauthorized: false };
+      return cfg;
+    } catch { /* fall through to poolConfig below */ }
+  }
+  if (hasPgEnv) {
+    const cfg = {
+      host: process.env.PGHOST, port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
+      database: process.env.PGDATABASE, user: APP_DB_ROLE, password: appRolePassword,
+    };
+    if (!/localhost|127\.0\.0\.1/.test(String(process.env.PGHOST || ""))) cfg.ssl = { rejectUnauthorized: false };
+    return cfg;
+  }
+  return poolConfig;
+}
+let pool = bootPool; // until ensureAppRole() below swaps in the restricted-role pool
+
+async function ensureAppRole() {
+  await bootPool.query(`
+    DO $do$
+    DECLARE db text := current_database();
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${APP_DB_ROLE}') THEN
+        EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', '${APP_DB_ROLE}', '${appRolePassword}');
+      ELSE
+        EXECUTE format('ALTER ROLE %I PASSWORD %L', '${APP_DB_ROLE}', '${appRolePassword}');
+      END IF;
+      EXECUTE format('GRANT CONNECT ON DATABASE %I TO %I', db, '${APP_DB_ROLE}');
+    END $do$;
+  `);
+  await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APP_DB_ROLE}`);
+}
 
 /* One-time repair: an earlier revision of this server stored store-scoped rows
    as "<storeId>:<id>" instead of tagging data.storeId on the original row, so
    every edit to a pre-existing product/table/zone forked a stale duplicate
    alongside the live one. Fold any such fork back into its canonical row. */
 async function mergeForkedStoreRows() {
-  const forked = await pool.query("SELECT org_id, kind, id, data, updated_at FROM entities WHERE id LIKE '%:%'");
+  const forked = await bootPool.query("SELECT org_id, kind, id, data, updated_at FROM entities WHERE id LIKE '%:%'");
   for (const row of forked.rows) {
     const rawId = row.id.split(":").pop();
     if (!rawId || rawId === row.id) continue;
-    const canon = await pool.query(
+    const canon = await bootPool.query(
       "SELECT data, updated_at FROM entities WHERE org_id=$1 AND kind=$2 AND id=$3",
       [row.org_id, row.kind, rawId]);
     const winner = canon.rowCount && new Date(canon.rows[0].updated_at) >= new Date(row.updated_at)
       ? canon.rows[0].data : row.data;
-    await pool.query(
+    await bootPool.query(
       `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
        VALUES ($1,$2,$3,$4,false,now())
        ON CONFLICT (org_id, kind, id)
        DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
       [row.org_id, row.kind, rawId, JSON.stringify(winner)]);
-    await pool.query("DELETE FROM entities WHERE org_id=$1 AND kind=$2 AND id=$3", [row.org_id, row.kind, row.id]);
+    await bootPool.query("DELETE FROM entities WHERE org_id=$1 AND kind=$2 AND id=$3", [row.org_id, row.kind, row.id]);
   }
   if (forked.rowCount) console.log(`merged ${forked.rowCount} forked store-prefixed row(s) back to their canonical id`);
 }
 
+/* Every request-handling query runs inside one of these two scopes so the
+   tenant_isolation RLS policies (schema.sql) can do their job:
+   - withOrg: ordinary tenant requests, scoped to exactly one org_id.
+   - withSystem: trusted system-level lookups where no single org_id
+     applies yet (login by email, guest boot by slug, new-org registration,
+     the developer panel). Both run in a short transaction so the GUC set
+     via set_config(..., true) is transaction-local and can never leak
+     across pooled connection reuse. */
+async function withScope(setup, fn) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await setup(client);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+const withOrg = (orgId, fn) => withScope(
+  (client) => client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(orgId)]),
+  fn
+);
+const withSystem = (fn) => withScope(
+  (client) => client.query("SELECT set_config('app.is_superadmin','on',true), set_config('app.org_id','',true)"),
+  fn
+);
+
 (async () => {
   try {
-    await pool.query(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
+    await bootPool.query(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
     console.log("schema ready");
+    await ensureAppRole();
+    pool = new Pool(appPoolConfig());
+    pool.on("error", (e) => console.error("app pool error:", errDetail(e)));
+    console.log(`connected as restricted role ${APP_DB_ROLE} for request handling`);
     await mergeForkedStoreRows();
   } catch (e) { console.error("schema init failed:", e.message); }
 })();
@@ -106,20 +195,21 @@ const auth = (req, res, next) => {
 };
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
-  await pool.query(
+  await withOrg(orgId, (client) => client.query(
     `INSERT INTO stores (org_id, id, code, name)
      VALUES ($1,$2,$3,$4)
      ON CONFLICT (org_id, id) DO NOTHING`,
-    [orgId, DEFAULT_STORE_ID, "MAIN", storeName || "Main Store"]);
+    [orgId, DEFAULT_STORE_ID, "MAIN", storeName || "Main Store"]));
 }
 
 async function orgBySlug(slug) {
-  return (await pool.query("SELECT * FROM orgs WHERE slug=$1", [slug])).rows[0];
+  return withSystem(async (client) => (await client.query("SELECT * FROM orgs WHERE slug=$1", [slug])).rows[0]);
 }
 
 async function kindAll(orgId, kind, storeId = DEFAULT_STORE_ID) {
-  const r = await pool.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind=$2 AND deleted=false", [orgId, kind]);
-  return r.rows.map((row) => row.data).filter((data) => isVisibleInStore(data, storeId));
+  const rows = await withOrg(orgId, async (client) =>
+    (await client.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind=$2 AND deleted=false", [orgId, kind])).rows);
+  return rows.map((row) => row.data).filter((data) => isVisibleInStore(data, storeId));
 }
 
 const lineTotal = (l) => Math.round(Number(l.price || 0) * Number(l.qty || 1) * (1 - (Number(l.discPct || 0)) / 100));
@@ -147,20 +237,22 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
 }
 
 app.post("/api/register", wrap(async (req, res) => {
-  const { email, password, storeName } = req.body || {};
+  const { email, password, storeName, ownerName, phone } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
   const base = slugify(storeName || email.split("@")[0]);
   let slug = base;
-  for (let i = 0; i < 5; i++) {
-    const hit = await pool.query("SELECT 1 FROM orgs WHERE slug=$1", [slug]);
-    if (!hit.rowCount) break;
-    slug = base + "-" + crypto.randomBytes(2).toString("hex");
-  }
+  await withSystem(async (client) => {
+    for (let i = 0; i < 5; i++) {
+      const hit = await client.query("SELECT 1 FROM orgs WHERE slug=$1", [slug]);
+      if (!hit.rowCount) break;
+      slug = base + "-" + crypto.randomBytes(2).toString("hex");
+    }
+  });
   const id = uid();
   try {
-    await pool.query(
-      "INSERT INTO orgs (id, slug, email, pass_hash, store_name, registers) VALUES ($1,$2,$3,$4,$5,1)",
-      [id, slug, email.toLowerCase(), bcrypt.hashSync(password, 10), storeName || "My Store"]);
+    await withSystem((client) => client.query(
+      "INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, phone, registers) VALUES ($1,$2,$3,$4,$5,$6,$7,1)",
+      [id, slug, email.toLowerCase(), bcrypt.hashSync(password, 10), storeName || "My Store", String(ownerName || "").slice(0, 100), String(phone || "").slice(0, 30)]));
   } catch {
     return res.status(409).json({ error: "email already registered - use Sign in" });
   }
@@ -170,21 +262,22 @@ app.post("/api/register", wrap(async (req, res) => {
 
 app.post("/api/login", wrap(async (req, res) => {
   const { email, password, storeId } = req.body || {};
-  const r = await pool.query("SELECT * FROM orgs WHERE email=$1", [(email || "").toLowerCase()]);
-  const org = r.rows[0];
+  const org = await withSystem(async (client) =>
+    (await client.query("SELECT * FROM orgs WHERE email=$1", [(email || "").toLowerCase()])).rows[0]);
   if (!org || !bcrypt.compareSync(password || "", org.pass_hash)) return res.status(401).json({ error: "wrong email or password" });
+  if (org.status && org.status !== "active") return res.status(403).json({ error: "this workspace is " + org.status + " - contact support" });
   await ensureDefaultStore(org.id, org.store_name);
   const selectedStore = cleanStoreId(storeId || DEFAULT_STORE_ID);
-  const store = await pool.query("SELECT 1 FROM stores WHERE org_id=$1 AND id=$2 AND active=true", [org.id, selectedStore]);
-  if (!store.rowCount) return res.status(404).json({ error: "unknown store" });
-  const upd = await pool.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]);
+  const storeHit = await withOrg(org.id, (client) => client.query("SELECT 1 FROM stores WHERE org_id=$1 AND id=$2 AND active=true", [org.id, selectedStore]));
+  if (!storeHit.rowCount) return res.status(404).json({ error: "unknown store" });
+  const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]));
   const register = "R" + upd.rows[0].registers;
   res.json({ token: sign(org.id, register, selectedStore), slug: org.slug, register, storeId: selectedStore });
 }));
 
 app.get("/api/stores", auth, wrap(async (req, res) => {
   await ensureDefaultStore(req.org.o);
-  const r = await pool.query("SELECT id, code, name, address, active, created_at FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.org.o]);
+  const r = await withOrg(req.org.o, (client) => client.query("SELECT id, code, name, address, active, created_at FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.org.o]));
   res.json({ stores: r.rows.map((s) => ({ id: s.id, code: s.code, name: s.name, address: s.address, active: s.active, createdAt: s.created_at })) });
 }));
 
@@ -194,17 +287,17 @@ app.post("/api/stores", auth, wrap(async (req, res) => {
   const id = cleanStoreId(req.body?.id || name);
   const code = String(req.body?.code || id).toUpperCase().replace(/[^A-Z0-9]+/g, "-").slice(0, 16) || "STORE";
   const address = String(req.body?.address || "").slice(0, 200);
-  const r = await pool.query(
+  const r = await withOrg(req.org.o, (client) => client.query(
     `INSERT INTO stores (org_id, id, code, name, address) VALUES ($1,$2,$3,$4,$5)
      ON CONFLICT (org_id, id) DO UPDATE SET code=excluded.code, name=excluded.name, address=excluded.address, active=true
      RETURNING id, code, name, address, active`,
-    [req.org.o, id, code, name, address]);
+    [req.org.o, id, code, name, address]));
   res.json({ store: r.rows[0] });
 }));
 
 app.post("/api/select-store", auth, wrap(async (req, res) => {
   const storeId = cleanStoreId(req.body?.storeId || req.query.storeId || DEFAULT_STORE_ID);
-  const hit = await pool.query("SELECT * FROM stores WHERE org_id=$1 AND id=$2 AND active=true", [req.org.o, storeId]);
+  const hit = await withOrg(req.org.o, (client) => client.query("SELECT * FROM stores WHERE org_id=$1 AND id=$2 AND active=true", [req.org.o, storeId]));
   if (!hit.rowCount) return res.status(404).json({ error: "unknown store" });
   res.json({ token: sign(req.org.o, req.org.r, storeId), register: req.org.r, storeId, store: hit.rows[0] });
 }));
@@ -215,6 +308,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   let rowver = 0;
   try {
     await client.query("BEGIN");
+    await client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(req.org.o)]);
     for (const op of ops) {
       const storeId = opStore(req, op);
       await client.query("INSERT INTO stores (org_id, id, code, name) VALUES ($1,$2,$3,$4) ON CONFLICT (org_id, id) DO NOTHING", [req.org.o, storeId, storeId.toUpperCase().slice(0, 16), storeId === DEFAULT_STORE_ID ? "Main Store" : storeId]);
@@ -283,10 +377,10 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
 app.get("/api/pull", auth, wrap(async (req, res) => {
   const since = Number(req.query.since) || 0;
   const storeId = cleanStoreId(req.query.storeId || req.org.s || DEFAULT_STORE_ID);
-  const r = await pool.query(
+  const r = await withOrg(req.org.o, (client) => client.query(
     `SELECT kind, id, data, deleted, rowver FROM entities
      WHERE org_id=$1 AND rowver>$2 AND COALESCE(data->>'storeId','global') IN ('global',$3)
-     ORDER BY rowver ASC LIMIT 500`, [req.org.o, since, storeId]);
+     ORDER BY rowver ASC LIMIT 500`, [req.org.o, since, storeId]));
   const entities = r.rows.map((x) => ({ kind: x.kind, id: publicId(x), data: x.data, deleted: x.deleted, rowver: Number(x.rowver), storeId: entityStore(x.data) }));
   const rowver = entities.length ? entities[entities.length - 1].rowver : since;
   res.json({ rowver, storeId, entities, more: entities.length === 500 });
@@ -323,7 +417,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   await ensureDefaultStore(org.id, org.store_name);
   const [settingsArr, products, zones, tables, stores] = await Promise.all([
     kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "tables", storeId),
-    pool.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id])]);
+    withOrg(org.id, (client) => client.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id]))]);
   const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, currency: "MVR" };
   let cust = null;
   if (req.query.c) {
@@ -361,9 +455,9 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
   if (otype === "dinein" && !requestedTable) return res.status(400).json({ error: "select your table number before ordering" });
   const zone = otype === "delivery" ? zones.find((z) => idEq(z.id, zoneId)) || null : null;
   const cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
-  const upd = await pool.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]);
+  const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]));
   const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: "new", createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
-  const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]);
+  const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, order: normalizeOrder(order) });
 }));
@@ -386,7 +480,7 @@ app.post("/p/:slug/call", wrap(async (req, res) => {
   let name = null;
   if (custId) name = ((await kindAll(org.id, "customers", storeId)).find((c) => idEq(c.id, custId)) || {}).name || null;
   const call = { id: uid(), storeId, table: table || (name ? "Pickup" : "-"), name, t: Date.now() };
-  const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]);
+  const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true });
 }));
@@ -399,7 +493,7 @@ app.get("/api/health", wrap(async (req, res) => {
 
 app.get("/", wrap(async (req, res, next) => {
   if ((req.query.c || req.query.t) && !req.query.s) {
-    const r = await pool.query("SELECT slug FROM orgs");
+    const r = await withSystem((client) => client.query("SELECT slug FROM orgs"));
     if (r.rowCount === 1) {
       const q = new URLSearchParams();
       for (const [k, v] of Object.entries(req.query)) q.set(k, String(v));
