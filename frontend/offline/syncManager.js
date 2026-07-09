@@ -5,6 +5,7 @@ const KIND_TABLES = {
   products: db.products,
   customers: db.customers,
   orders: db.orders,
+  payments: db.payments,
   tables: db.tables,
   zones: db.zones,
   settings: db.settings
