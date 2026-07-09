@@ -36,28 +36,14 @@ function injectOfflineBridge(html) {
 }
 
 patchFile(indexPath, (html) => injectOfflineBridge(html)
-  /* original local-only checkout */
-  .replace(
-    /rI=f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/,
-    checkout
-  )
-  /* earlier patched variants (raw-error toasts) */
-  .replace(
-    /rI=async f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/,
-    checkout
-  )
-  .replace(
-    /rI=async f=>\{if\(!fe\.cart\.length\)return Q\("Cart is empty","warn"\);const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/,
-    checkout
-  )
+  .replace(/rI=f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
+  .replace(/rI=async f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
+  .replace(/rI=async f=>\{if\(!fe\.cart\.length\)return Q\("Cart is empty","warn"\);const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
   .replace("nI=()=>Hw(fe.table,ia?ia.name:null)", call)
-  .replace(
-    /nI=async\(\)=>\{try\{[\s\S]*?Hw\(fe\.table,ia\?ia\.name:null\)\}/,
-    call
-  ));
+  .replace(/nI=async\(\)=>\{try\{[\s\S]*?Hw\(fe\.table,ia\?ia\.name:null\)\}/, call)
+);
 
-/* Force every installed PWA onto the current build (old cached bundles carried
-   the raw-error toasts and a service worker that cached live API data). */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.1"));
+/* Force every installed PWA onto the current build. */
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.2"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
