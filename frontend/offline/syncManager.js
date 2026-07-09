@@ -1,4 +1,4 @@
-import { db, getCloudSession, getPullCursor, setPullCursor } from "./db.js";
+import { cleanStoreId, db, getCloudSession, getPullCursor, setPullCursor } from "./db.js";
 import { markOpsFailed, markOpsSynced } from "./syncQueue.js";
 
 const KIND_TABLES = {
@@ -8,6 +8,7 @@ const KIND_TABLES = {
   payments: db.payments,
   tables: db.tables,
   zones: db.zones,
+  stores: db.stores,
   settings: db.settings
 };
 
@@ -20,14 +21,17 @@ function apiBase(session) {
 function authHeaders(session) {
   return {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${session.token}`
+    Authorization: `Bearer ${session.token}`,
+    "X-Store-Id": cleanStoreId(session.storeId)
   };
 }
 
 export async function pushPendingOps(session) {
+  const storeId = cleanStoreId(session.storeId);
   const pending = await db.syncQueue
     .where("status")
     .equals("pending")
+    .filter((op) => cleanStoreId(op.storeId) === storeId)
     .sortBy("createdAt");
 
   if (!pending.length) return { pushed: 0 };
@@ -35,7 +39,7 @@ export async function pushPendingOps(session) {
   const res = await fetch(`${apiBase(session)}/api/ops`, {
     method: "POST",
     headers: authHeaders(session),
-    body: JSON.stringify({ ops: pending })
+    body: JSON.stringify({ storeId, ops: pending })
   });
 
   const body = await res.json().catch(() => ({}));
@@ -50,9 +54,10 @@ export async function pushPendingOps(session) {
 }
 
 export async function pullRemoteChanges(session) {
-  const since = await getPullCursor();
-  const res = await fetch(`${apiBase(session)}/api/pull?since=${since}`, {
-    headers: { Authorization: `Bearer ${session.token}` }
+  const storeId = cleanStoreId(session.storeId);
+  const since = await getPullCursor(storeId);
+  const res = await fetch(`${apiBase(session)}/api/pull?since=${since}&storeId=${encodeURIComponent(storeId)}`, {
+    headers: { Authorization: `Bearer ${session.token}`, "X-Store-Id": storeId }
   });
 
   const body = await res.json().catch(() => ({}));
@@ -63,12 +68,24 @@ export async function pullRemoteChanges(session) {
       const table = KIND_TABLES[entity.kind];
       if (!table) continue;
       if (entity.deleted) await table.delete(String(entity.id));
-      else await table.put({ ...entity.data, id: String(entity.id), rowver: entity.rowver, synced: true });
+      else await table.put({ ...entity.data, id: String(entity.id), storeId: entity.data?.storeId || entity.storeId || "global", rowver: entity.rowver, synced: true });
     }
-    await setPullCursor(body.rowver || since);
+    await setPullCursor(body.rowver || since, storeId);
   });
 
-  return { pulled: (body.entities || []).length, rowver: body.rowver || since, more: !!body.more };
+  return { pulled: (body.entities || []).length, rowver: body.rowver || since, more: !!body.more, storeId };
+}
+
+export async function syncStores() {
+  const session = await getCloudSession();
+  if (!session?.token || !session?.serverUrl || !navigator.onLine) return { ok: false };
+  const res = await fetch(`${apiBase(session)}/api/stores`, { headers: authHeaders(session) });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || "store pull failed");
+  await db.transaction("rw", db.stores, async () => {
+    for (const store of body.stores || []) await db.stores.put(store);
+  });
+  return { ok: true, stores: (body.stores || []).length };
 }
 
 export async function syncNow() {
@@ -79,6 +96,7 @@ export async function syncNow() {
 
   syncing = true;
   try {
+    await syncStores().catch(console.warn);
     const push = await pushPendingOps(session);
     let pull = await pullRemoteChanges(session);
     while (pull.more) pull = await pullRemoteChanges(session);
