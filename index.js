@@ -75,6 +75,19 @@ async function ensureAppRole() {
   await bootPool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APP_DB_ROLE}`);
 }
 
+/* platform_admins has no RLS (it holds no store data), so it's queried
+   through the regular request pool once that's swapped in. Seeds the first
+   developer-panel account from env vars, once — later password changes are
+   expected to happen through the panel itself, not by re-running this. */
+async function ensurePlatformAdmin() {
+  const email = process.env.PLATFORM_ADMIN_EMAIL;
+  const password = process.env.PLATFORM_ADMIN_PASSWORD;
+  if (!email || !password) return;
+  await pool.query(
+    "INSERT INTO platform_admins (id, email, pass_hash, name) VALUES ($1,$2,$3,$4) ON CONFLICT (email) DO NOTHING",
+    [uid(), email.toLowerCase(), bcrypt.hashSync(password, 10), process.env.PLATFORM_ADMIN_NAME || "Admin"]);
+}
+
 /* One-time repair: an earlier revision of this server stored store-scoped rows
    as "<storeId>:<id>" instead of tagging data.storeId on the original row, so
    every edit to a pre-existing product/table/zone forked a stale duplicate
@@ -141,6 +154,7 @@ const withSystem = (fn) => withScope(
     pool.on("error", (e) => console.error("app pool error:", errDetail(e)));
     console.log(`connected as restricted role ${APP_DB_ROLE} for request handling`);
     await mergeForkedStoreRows();
+    await ensurePlatformAdmin();
   } catch (e) { console.error("schema init failed:", e.message); }
 })();
 
@@ -192,6 +206,32 @@ const auth = (req, res, next) => {
     req.org.s = cleanStoreId(req.headers["x-store-id"] || req.query.storeId || req.org.s || DEFAULT_STORE_ID);
     next();
   } catch { res.status(401).json({ error: "unauthorized" }); }
+};
+
+/* Developer-panel sessions are a separate credential namespace from store
+   logins (payload.a instead of payload.o) so an org JWT can never be replayed
+   here, carried in an httpOnly cookie since the panel is a plain server-
+   rendered page rather than the SPA's bearer-token client. */
+const DEV_COOKIE = "kdev_session";
+const parseCookies = (req) => Object.fromEntries((req.headers.cookie || "").split(";").map((p) => p.trim()).filter(Boolean).map((p) => {
+  const i = p.indexOf("=");
+  return [decodeURIComponent(p.slice(0, i)), decodeURIComponent(p.slice(i + 1))];
+}));
+const signAdmin = (adminId) => jwt.sign({ a: adminId }, SECRET, { expiresIn: "30d" });
+const setDevCookie = (res, token) => res.cookie(DEV_COOKIE, token, {
+  httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 30 * 24 * 3600 * 1000, path: "/",
+});
+const devAuth = (req, res, next) => {
+  const tok = parseCookies(req)[DEV_COOKIE];
+  let payload;
+  try { payload = jwt.verify(tok, SECRET); } catch { return res.status(401).json({ error: "sign in required" }); }
+  if (!payload.a) return res.status(401).json({ error: "sign in required" });
+  pool.query("SELECT id, email, name FROM platform_admins WHERE id=$1", [payload.a])
+    .then((r) => {
+      if (!r.rowCount) return res.status(401).json({ error: "sign in required" });
+      req.admin = r.rows[0];
+      next();
+    }).catch(next);
 };
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
@@ -273,6 +313,35 @@ app.post("/api/login", wrap(async (req, res) => {
   const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]));
   const register = "R" + upd.rows[0].registers;
   res.json({ token: sign(org.id, register, selectedStore), slug: org.slug, register, storeId: selectedStore });
+}));
+
+app.post("/api/dev/login", wrap(async (req, res) => {
+  const { email, password } = req.body || {};
+  const r = await pool.query("SELECT * FROM platform_admins WHERE email=$1", [(email || "").toLowerCase()]);
+  const admin = r.rows[0];
+  if (!admin || !bcrypt.compareSync(password || "", admin.pass_hash)) return res.status(401).json({ error: "wrong email or password" });
+  setDevCookie(res, signAdmin(admin.id));
+  res.json({ ok: true, admin: { id: admin.id, email: admin.email, name: admin.name } });
+}));
+
+app.post("/api/dev/logout", wrap(async (req, res) => {
+  res.clearCookie(DEV_COOKIE, { path: "/" });
+  res.json({ ok: true });
+}));
+
+app.get("/api/dev/me", devAuth, wrap(async (req, res) => {
+  res.json({ admin: req.admin });
+}));
+
+app.get("/api/dev/orgs", devAuth, wrap(async (req, res) => {
+  const r = await withSystem((client) => client.query(
+    "SELECT id, slug, store_name, owner_name, email, phone, plan, status, registers, trial_ends_at, created_at FROM orgs ORDER BY created_at DESC"));
+  res.json({
+    orgs: r.rows.map((o) => ({
+      id: o.id, slug: o.slug, storeName: o.store_name, ownerName: o.owner_name, email: o.email, phone: o.phone,
+      plan: o.plan, status: o.status, registers: o.registers, trialEndsAt: o.trial_ends_at, createdAt: o.created_at,
+    })),
+  });
 }));
 
 app.get("/api/stores", auth, wrap(async (req, res) => {
