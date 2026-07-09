@@ -7,12 +7,17 @@ This build serves the existing POS/PWA from `web/dist` and adds a Node/Express s
 ## What This Build Supports
 
 - Create workspace / sign in from the POS Cloud Sync screen.
+- Multi-store companies: one workspace can operate multiple physical stores/branches.
+- Store-scoped sync for orders, payments, tables, zones, waiter calls and branch-specific products/stock.
+- Shared customer/settings data across stores where appropriate.
 - Sync products, customers, tables, zones, settings, orders, shifts, stock and logs through `/api/ops` and `/api/pull`.
 - Queue till changes offline in the browser and flush them when the till comes back online.
 - Customer and table links load menu/catalog data from Postgres.
 - Guest orders are written as synced `orders` entities, so the main POS pulls them into Orders/Kitchen.
 - Guest waiter calls are written as synced `waiterCalls` entities and trigger the till through SSE/polling.
 - Guest profile boot returns name, visits, spent, points, credit balance and recent orders.
+
+See `docs/multi-store-architecture.md` for the multi-store API and data model.
 
 ## Railway Walkthrough
 
@@ -60,6 +65,7 @@ After deployment:
 7. Place an order from the phone.
 8. Confirm the main POS receives the order in Orders/Kitchen without manual import.
 9. Press the guest call button and confirm the till receives the waiter call.
+10. Create/select another store through the API and confirm pulls are isolated by `storeId`.
 
 You can also run:
 
@@ -67,7 +73,7 @@ You can also run:
 BASE=https://your-service.up.railway.app node smoke.js
 ```
 
-The smoke test covers workspace creation, catalog sync, second-register pull, guest boot, guest order, POS pull, order status sync, guest status polling and waiter-call sync.
+The smoke test covers workspace creation, catalog sync, second-register pull, guest boot, guest order, POS pull, order status sync, guest status polling, waiter-call sync, numeric customer IDs and multi-store isolation.
 
 ## GitHub Pages Standalone Build
 
