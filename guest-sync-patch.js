@@ -36,6 +36,20 @@ patchFile(indexPath, (html) => {
 });
 
 patchFile(serverPath, (server) => server.replace(
+  `const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgres://kash:kash@127.0.0.1:5432/kash",
+  ssl: process.env.DATABASE_URL && !/localhost|127\\.0\\.0\\.1/.test(process.env.DATABASE_URL)
+    ? { rejectUnauthorized: false } : false,
+});`,
+  `const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
+const localDatabaseUrl = process.env.NODE_ENV === "production" ? "" : "postgres://kash:kash@127.0.0.1:5432/kash";
+const connectionString = databaseUrl || localDatabaseUrl;
+const poolConfig = connectionString ? { connectionString } : {};
+if (connectionString && !/localhost|127\\.0\\.0\\.1/.test(connectionString)) poolConfig.ssl = { rejectUnauthorized: false };
+const pool = new Pool(poolConfig);`
+));
+
+patchFile(serverPath, (server) => server.replace(
   `  const lines = items.map((ci) => {
     const p = products.find((x) => x.id === ci.pid);
     return p ? { pid: p.id, name: p.name, emoji: p.emoji, price: p.price, cost: p.cost || 0,
