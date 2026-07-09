@@ -38,10 +38,18 @@ app.use((req, res, next) => {           // CORS for tills paired from other orig
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
+app.use((req, res, next) => {           // live data must never be cached by browsers or the PWA service worker
+  if (req.path.startsWith("/api") || req.path.startsWith("/p/")) res.set("Cache-Control", "no-store");
+  next();
+});
 
 const uid = () => crypto.randomUUID();
 const slugify = (s) => (s || "shop").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "shop";
 const errDetail = (e) => [e && e.message, e && e.code, e && e.address, e && e.port].filter(Boolean).join(" ") || String(e || "unknown error");
+/* ids arrive as strings from URLs but may be stored as numbers by older tills */
+const idEq = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);
+/* async route errors must land in the JSON error handler, never as an unhandled rejection */
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 /* ── SSE hub: org → set of responses ── */
 const hubs = new Map();
@@ -60,7 +68,7 @@ const auth = (req, res, next) => {
   catch { res.status(401).json({ error: "unauthorized" }); }
 };
 
-app.post("/api/register", async (req, res) => {
+app.post("/api/register", wrap(async (req, res) => {
   const { email, password, storeName } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
   const base = slugify(storeName || email.split("@")[0]);
@@ -79,9 +87,9 @@ app.post("/api/register", async (req, res) => {
     return res.status(409).json({ error: "email already registered — use Sign in" });
   }
   res.json({ token: sign(id, "R1"), slug, register: "R1" });
-});
+}));
 
-app.post("/api/login", async (req, res) => {
+app.post("/api/login", wrap(async (req, res) => {
   const { email, password } = req.body || {};
   const r = await pool.query("SELECT * FROM orgs WHERE email=$1", [(email || "").toLowerCase()]);
   const org = r.rows[0];
@@ -90,10 +98,10 @@ app.post("/api/login", async (req, res) => {
   const upd = await pool.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]);
   const register = "R" + upd.rows[0].registers;
   res.json({ token: sign(org.id, register), slug: org.slug, register });
-});
+}));
 
 /* ── op-log sync: idempotent batched puts/dels ── */
-app.post("/api/ops", auth, async (req, res) => {
+app.post("/api/ops", auth, wrap(async (req, res) => {
   const ops = (req.body && req.body.ops) || [];
   const client = await pool.connect();
   let rowver = 0;
@@ -157,9 +165,9 @@ app.post("/api/ops", auth, async (req, res) => {
   client.release();
   if (rowver) poke(req.org.o, rowver);
   res.json({ ok: true, rowver });
-});
+}));
 
-app.get("/api/pull", auth, async (req, res) => {
+app.get("/api/pull", auth, wrap(async (req, res) => {
   const since = Number(req.query.since) || 0;
   const r = await pool.query(
     "SELECT kind, id, data, deleted, rowver FROM entities WHERE org_id=$1 AND rowver > $2 ORDER BY rowver ASC LIMIT 500",
@@ -167,7 +175,7 @@ app.get("/api/pull", auth, async (req, res) => {
   const entities = r.rows.map((x) => ({ kind: x.kind, id: x.id, data: x.data, deleted: x.deleted, rowver: Number(x.rowver) }));
   const rowver = entities.length ? entities[entities.length - 1].rowver : since;
   res.json({ rowver, entities, more: entities.length === 500 });
-});
+}));
 
 app.get("/api/events", auth, (req, res) => {
   res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
@@ -187,7 +195,7 @@ const kindAll = async (orgId, kind) =>
     .rows.map((r) => r.data);
 const lineTotal = (l) => Math.round(l.price * l.qty * (1 - (l.discPct || 0) / 100));
 
-app.get("/p/:slug/boot", async (req, res) => {
+app.get("/p/:slug/boot", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const [settingsArr, products, zones, tables] = await Promise.all([
@@ -196,10 +204,10 @@ app.get("/p/:slug/boot", async (req, res) => {
   let cust = null;
   if (req.query.c) {
     const cs = await kindAll(org.id, "customers");
-    const c = cs.find((x) => x.id === req.query.c);
+    const c = cs.find((x) => idEq(x.id, req.query.c));
     if (c) {
       const orders = await kindAll(org.id, "orders");
-      const mine = orders.filter((o) => o.customerId === c.id && o.status === "completed");
+      const mine = orders.filter((o) => idEq(o.customerId, c.id) && o.status === "completed");
       const spent = mine.reduce((a, o) => {
         const sub = (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (o.fee || 0);
         return a + sub + Math.round(sub * (settings.gstBp || 800) / 10000);
@@ -213,9 +221,9 @@ app.get("/p/:slug/boot", async (req, res) => {
     products: products.filter((p) => (p.stock || 0) > 0)
       .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock })),
     cust });
-});
+}));
 
-app.post("/p/:slug/order", async (req, res) => {
+app.post("/p/:slug/order", wrap(async (req, res) => {
   try {
     const org = await orgBySlug(req.params.slug);
     if (!org) return res.status(404).json({ error: "unknown workspace" });
@@ -234,8 +242,8 @@ app.post("/p/:slug/order", async (req, res) => {
     }).filter(Boolean);
     if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
     const otype = gtype === "delivery" ? "delivery" : gtype === "pickup" ? "takeaway" : "dinein";
-    const zone = otype === "delivery" ? zones.find((z) => z.id === zoneId) || null : null;
-    const cust = custId ? customers.find((c) => c.id === custId) || null : null;
+    const zone = otype === "delivery" ? zones.find((z) => idEq(z.id, zoneId)) || null : null;
+    const cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
     const upd = await pool.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]);
     const order = {
       id: uid(), no: "ORD-" + upd.rows[0].oseq,
@@ -255,32 +263,32 @@ app.post("/p/:slug/order", async (req, res) => {
     console.error("guest order failed:", detail, e);
     res.status(500).json({ error: "order failed: " + detail });
   }
-});
+}));
 
-app.get("/p/:slug/orders", async (req, res) => {
+app.get("/p/:slug/orders", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const orders = await kindAll(org.id, "orders");
-  const mine = orders.filter((o) => (req.query.c ? o.customerId === req.query.c : o.table === req.query.t))
+  const mine = orders.filter((o) => (req.query.c ? idEq(o.customerId, req.query.c) : idEq(o.table, req.query.t)))
     .sort((a, b) => b.createdAt - a.createdAt).slice(0, 25);
   res.json({ orders: mine });
-});
+}));
 
-app.post("/p/:slug/call", async (req, res) => {
+app.post("/p/:slug/call", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const { table, custId } = req.body || {};
   let name = null;
-  if (custId) { const cs = await kindAll(org.id, "customers"); name = (cs.find((c) => c.id === custId) || {}).name || null; }
+  if (custId) { const cs = await kindAll(org.id, "customers"); name = (cs.find((c) => idEq(c.id, custId)) || {}).name || null; }
   const call = { id: uid(), table: table || (name ? "Pickup" : "—"), name, t: Date.now() };
   const r = await pool.query(
     "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver",
     [org.id, call.id, JSON.stringify(call)]);
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true });
-});
+}));
 
-app.get("/api/health", async (req, res) => {
+app.get("/api/health", wrap(async (req, res) => {
   const dbEnv = { databaseUrl: !!databaseUrl, pgEnv: hasPgEnv };
   try {
     await pool.query("SELECT 1");
@@ -288,13 +296,23 @@ app.get("/api/health", async (req, res) => {
   } catch (e) {
     res.status(500).json({ ok: false, service: "kashikeyo-cloud", db: false, dbEnv, error: errDetail(e) });
   }
-});
+}));
 
 /* ── serve the till + guest PWA ── */
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
-  app.use(express.static(webDir));
-  app.get(/^\/(?!api|p\/).*/, (req, res) => res.sendFile(path.join(webDir, "index.html")));
+  /* html + service worker must revalidate so phones pick up new builds promptly */
+  const noCacheShell = { setHeaders: (res, file) => { if (file.endsWith(".html") || file.endsWith("sw.js")) res.set("Cache-Control", "no-cache"); } };
+  app.use(express.static(webDir, noCacheShell));
+  app.get(/^\/(?!api|p\/).*/, (req, res) => res.sendFile(path.join(webDir, "index.html"), { headers: { "Cache-Control": "no-cache" } }));
 }
+
+app.use((err, req, res, next) => {      // eslint-disable-line no-unused-vars — express error handlers need 4 args
+  console.error("request failed:", req.method, req.originalUrl, errDetail(err));
+  if (res.headersSent) return res.end();
+  res.status(500).json({ error: "something went wrong on our side — please try again" });
+});
+
+process.on("unhandledRejection", (e) => console.error("unhandled rejection:", errDetail(e)));
 
 app.listen(PORT, () => console.log("KashikeyoPOS Cloud on :" + PORT));

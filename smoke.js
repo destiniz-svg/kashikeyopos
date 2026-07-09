@@ -71,6 +71,24 @@ const j = async (r) => {
   if (!call) throw new Error("main POS did not pull waiter call");
   console.log("9 till alarm:", call.data.name, "-", call.data.table);
 
+  /* older tills stored numeric customer ids — the guest link passes them as strings */
+  await fetch(B + "/api/ops", { method: "POST", headers: H, body: JSON.stringify({ ops: [
+    { opId: "op-legacy-" + uniq, puts: [
+      { kind: "customers", id: "1719400000001", data: { id: 1719400000001, name: "Hawwa Zahir", points: 120, balance: 0, address: "Malé" } },
+    ] },
+  ] }) }).then(j);
+  const boot2 = await fetch(`${B}/p/${reg.slug}/boot?c=1719400000001`).then(j);
+  if (!boot2.cust || boot2.cust.name !== "Hawwa Zahir") throw new Error("numeric-id customer profile did not load");
+  const ord2 = await fetch(`${B}/p/${reg.slug}/order`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items: [{ pid: "p1", qty: 1 }], custId: "1719400000001", gtype: "pickup" }),
+  }).then(j);
+  if (!ord2.order.customerName) throw new Error("guest order not linked to numeric-id customer");
+  const gv2 = await fetch(`${B}/p/${reg.slug}/orders?c=1719400000001`).then(j);
+  if (!gv2.orders.length) throw new Error("numeric-id customer cannot see own orders");
+  console.log("10 numeric-id profile:", boot2.cust.name, "-", ord2.order.no, "by", ord2.order.customerName, "-", gv2.orders.length, "order(s) visible");
+
   console.log("ALL SMOKE CHECKS PASSED");
   process.exit(0);
 })().catch((e) => {
