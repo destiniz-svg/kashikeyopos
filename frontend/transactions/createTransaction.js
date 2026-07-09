@@ -1,4 +1,4 @@
-import { db, uuid } from "../offline/db.js";
+import { cleanStoreId, db, getSelectedStoreId, uuid } from "../offline/db.js";
 import { enqueueCustomerDelta, enqueuePut, enqueueStockDelta } from "../offline/syncQueue.js";
 import { syncNow } from "../offline/syncManager.js";
 
@@ -13,10 +13,10 @@ function lineTotal(line) {
   return Math.round(price * qty * (1 - discount));
 }
 
-function makeLocalOrderNumber(register = "R1") {
+function makeLocalOrderNumber(register = "R1", storeId = "main") {
   const d = new Date();
   const day = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  return `LOCAL-${register}-${day}-${String(Date.now()).slice(-6)}`;
+  return `LOCAL-${storeId.toUpperCase()}-${register}-${day}-${String(Date.now()).slice(-6)}`;
 }
 
 export async function createTransaction({
@@ -27,10 +27,12 @@ export async function createTransaction({
   payments = [],
   settings = {},
   register = "R1",
+  storeId,
   note = ""
 }) {
   if (!Array.isArray(cart) || !cart.length) throw new Error("cart is empty");
 
+  const selectedStore = cleanStoreId(storeId || await getSelectedStoreId());
   const now = Date.now();
   const orderId = uuid();
   const gstBp = Number(settings.gstBp ?? 800);
@@ -52,7 +54,8 @@ export async function createTransaction({
 
   const order = {
     id: orderId,
-    no: makeLocalOrderNumber(register),
+    storeId: selectedStore,
+    no: makeLocalOrderNumber(register, selectedStore),
     localNo: true,
     table,
     items,
@@ -73,6 +76,7 @@ export async function createTransaction({
 
   const paymentRows = payments.map((payment) => ({
     id: uuid(),
+    storeId: selectedStore,
     orderId,
     method: payment.method || "cash",
     amount: money(payment.amount),
@@ -84,14 +88,14 @@ export async function createTransaction({
     await db.orders.put(order);
     for (const payment of paymentRows) await db.payments.put(payment);
 
-    await enqueuePut("orders", order.id, order);
-    for (const payment of paymentRows) await enqueuePut("payments", payment.id, payment);
+    await enqueuePut("orders", order.id, order, selectedStore);
+    for (const payment of paymentRows) await enqueuePut("payments", payment.id, payment, selectedStore);
 
     for (const item of items) {
       if (!item.pid) continue;
       const current = await db.products.get(item.pid);
-      if (current) await db.products.update(item.pid, { stock: Number(current.stock || 0) - item.qty, updatedAt: now });
-      await enqueueStockDelta(item.pid, -item.qty);
+      if (current) await db.products.update(item.pid, { stock: Number(current.stock || 0) - item.qty, storeId: current.storeId || selectedStore, updatedAt: now });
+      await enqueueStockDelta(item.pid, -item.qty, selectedStore);
     }
 
     if (order.customerId) {
@@ -103,7 +107,7 @@ export async function createTransaction({
           updatedAt: now
         });
       }
-      if (earnedPoints) await enqueueCustomerDelta(order.customerId, { points: earnedPoints });
+      if (earnedPoints) await enqueueCustomerDelta(order.customerId, { points: earnedPoints }, selectedStore);
     }
   });
 
