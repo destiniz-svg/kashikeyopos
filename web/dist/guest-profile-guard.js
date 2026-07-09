@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const state = { boot: null, orders: [], loading: false, polling: null, events: null, observer: null };
+  const state = { boot: null, orders: [], loading: false, polling: null, events: null, uiTimer: null };
   const finalStatuses = ['completed', 'complete', 'settled', 'paid', 'closed'];
 
   function qp() { return new URLSearchParams(location.search || ''); }
@@ -20,18 +20,17 @@
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
   function money(v) { const n = Number(v || 0); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
   function text(el) { return (el && el.textContent || '').trim().toLowerCase(); }
-  function buttons() { return Array.from(document.querySelectorAll('button,[role="button"],a')); }
+  function buttons() { return Array.from(document.querySelectorAll('button,[role="button"]')); }
   function byText(s) { const n = s.toLowerCase(); return buttons().find((b) => text(b).includes(n)); }
   function statusName(s) {
     const v = String(s || 'new').toLowerCase();
-    if (v === 'new') return 'New';
     if (v === 'accepted' || v === 'accept') return 'Accepted';
     if (v === 'preparing' || v === 'kitchen') return 'Preparing';
     if (v === 'ready') return 'Ready';
     if (v === 'served') return 'Served';
     if (finalStatuses.includes(v)) return 'Settled';
     if (v === 'cancelled' || v === 'canceled' || v === 'void') return 'Cancelled';
-    return v.charAt(0).toUpperCase() + v.slice(1);
+    return v.charAt(0).toUpperCase() + v.slice(1 || 1) || 'New';
   }
   function selectedTable() {
     const c = ctx();
@@ -41,7 +40,8 @@
     const clean = String(v || '').trim();
     if (clean) sessionStorage.setItem(key('guestTable'), clean);
     else sessionStorage.removeItem(key('guestTable'));
-    renderCheckoutMode();
+    paintDineButton();
+    renderTableSelect();
     return clean;
   }
   function orderMode() {
@@ -54,7 +54,8 @@
     if (mode) sessionStorage.setItem(key('guestMode'), mode);
     else sessionStorage.removeItem(key('guestMode'));
     if (mode !== 'dinein') setSelectedTable('');
-    renderCheckoutMode();
+    paintDineButton();
+    renderTableSelect();
     return mode;
   }
 
@@ -86,7 +87,6 @@
       if (r.ok) {
         const data = await r.json();
         state.orders = Array.isArray(data.orders) ? data.orders : [];
-        patchVisibleOrders();
         renderLiveStatus();
       }
     } catch {}
@@ -109,28 +109,11 @@
     if (!node.parentElement) tab.parentElement.insertAdjacentElement('afterend', node);
   }
 
-  function patchVisibleOrders() {
-    for (const order of state.orders) {
-      if (!order.no && !order.id) continue;
-      const needle = String(order.no || order.id).toLowerCase();
-      const host = Array.from(document.querySelectorAll('div,li,section,article')).find((el) => text(el).includes(needle));
-      if (!host) continue;
-      let badge = host.querySelector('[data-kashikeyo-live-status]');
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.setAttribute('data-kashikeyo-live-status', '1');
-        badge.style.cssText = 'display:inline-flex;margin-left:8px;padding:4px 8px;border-radius:999px;background:#0f2a33;color:#67e8f9;font-weight:900;font-size:12px;vertical-align:middle';
-        host.appendChild(badge);
-      }
-      badge.textContent = statusName(order.status);
-    }
-  }
-
   function tableOptions() {
     const tables = state.boot && Array.isArray(state.boot.tables) ? state.boot.tables : [];
     return tables.filter(Boolean);
   }
-  function findModeGroup() {
+  function modeGroup() {
     const pickup = byText('pickup');
     const delivery = byText('delivery');
     if (!pickup || !delivery) return null;
@@ -139,98 +122,97 @@
       if (p.contains(delivery)) return { group: p, pickup, delivery };
       p = p.parentElement;
     }
-    return pickup.parentElement ? { group: pickup.parentElement, pickup, delivery } : null;
+    return { group: pickup.parentElement, pickup, delivery };
   }
-  function renderCheckoutMode() {
+  function copyButtonLook(from, to) {
+    to.className = from.className || '';
+    const cs = getComputedStyle(from);
+    ['borderRadius', 'padding', 'font', 'fontSize', 'fontWeight', 'minHeight', 'height'].forEach((k) => { try { to.style[k] = cs[k]; } catch {} });
+    to.style.border = cs.border;
+    to.style.background = orderMode() === 'dinein' ? cs.backgroundColor : cs.background;
+    to.style.color = cs.color;
+  }
+  function ensureDineButton() {
     const c = ctx();
-    if (!c.isGuest || c.table) return;
-    const found = findModeGroup();
-    if (!found) return;
+    if (!c.isGuest || c.table) return null;
+    const found = modeGroup();
+    if (!found || !found.group) return null;
     const { group, pickup, delivery } = found;
-    if (!pickup.dataset.kashikeyoMode) {
-      pickup.dataset.kashikeyoMode = 'pickup';
-      pickup.addEventListener('click', () => setOrderMode('pickup'), true);
+    if (!pickup.dataset.kashikeyoNative) {
+      pickup.dataset.kashikeyoNative = '1';
+      pickup.addEventListener('click', () => setOrderMode('pickup'));
     }
-    if (!delivery.dataset.kashikeyoMode) {
-      delivery.dataset.kashikeyoMode = 'delivery';
-      delivery.addEventListener('click', () => setOrderMode('delivery'), true);
+    if (!delivery.dataset.kashikeyoNative) {
+      delivery.dataset.kashikeyoNative = '1';
+      delivery.addEventListener('click', () => setOrderMode('delivery'));
     }
     let dine = document.getElementById('kashikeyo-dinein-mode');
     if (!dine) {
-      dine = pickup.cloneNode(true);
+      dine = document.createElement('button');
       dine.id = 'kashikeyo-dinein-mode';
+      dine.type = 'button';
       dine.textContent = 'Dine in';
-      dine.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); setOrderMode('dinein'); }, true);
+      dine.addEventListener('click', () => setOrderMode('dinein'));
       group.appendChild(dine);
     }
-    const mode = orderMode();
-    dine.style.opacity = mode === 'dinein' ? '1' : '.82';
-    dine.style.outline = mode === 'dinein' ? '2px solid #06bfd4' : '0';
-    dine.style.outlineOffset = '-2px';
-    renderTableSelect(group, mode);
+    copyButtonLook(pickup, dine);
+    paintDineButton();
+    return dine;
   }
-  function renderTableSelect(group, mode) {
+  function paintDineButton() {
+    const dine = document.getElementById('kashikeyo-dinein-mode');
+    if (!dine) return;
+    const active = orderMode() === 'dinein';
+    dine.style.opacity = active ? '1' : '.86';
+    dine.style.boxShadow = active ? 'inset 0 0 0 2px #06bfd4' : '';
+  }
+  function renderTableSelect() {
+    const found = modeGroup();
     let row = document.getElementById('kashikeyo-dinein-table');
-    if (mode !== 'dinein') { if (row) row.remove(); return; }
+    if (!found || orderMode() !== 'dinein') { if (row) row.remove(); return; }
     const tables = tableOptions();
     if (!tables.length) return;
     if (!row) {
       row = document.createElement('div');
       row.id = 'kashikeyo-dinein-table';
-      group.insertAdjacentElement('afterend', row);
+      found.group.insertAdjacentElement('afterend', row);
     }
     const current = selectedTable();
-    row.innerHTML = `<style>#kashikeyo-dinein-table{margin:10px 0 0}#kashikeyo-dinein-table select{width:100%;border:0;border-radius:14px;background:#1f2d41;color:#f8fafc;padding:13px 12px;font-size:15px;font-weight:800}</style><select aria-label="Select table"><option value="">Select table</option>${tables.map((t) => `<option value="${esc(t)}" ${String(t) === current ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
+    row.innerHTML = `<style>#kashikeyo-dinein-table{margin:10px 0 0}#kashikeyo-dinein-table select{width:100%;border:0;border-radius:14px;background:#1f2d41;color:#f8fafc;padding:13px 12px;font-size:15px;font-weight:800;font-family:inherit}</style><select aria-label="Select table"><option value="">Select table</option>${tables.map((t) => `<option value="${esc(t)}" ${String(t) === current ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
     row.querySelector('select').addEventListener('change', (e) => setSelectedTable(e.target.value));
+  }
+  function refreshUi() {
+    ensureDineButton();
+    renderTableSelect();
   }
   async function pickTable() {
     await boot(true);
     if (orderMode() !== 'dinein') return '';
-    const table = selectedTable();
-    if (table) return table;
-    renderCheckoutMode();
-    const sel = document.querySelector('#kashikeyo-dinein-table select');
-    if (sel) sel.focus();
+    const t = selectedTable();
+    if (t) return t;
+    refreshUi();
+    const select = document.querySelector('#kashikeyo-dinein-table select');
+    if (select) select.focus();
     return '';
   }
 
-  function showProfile() {
-    const latest = state.orders[0];
-    if (!latest) return false;
-    renderLiveStatus();
-    const tab = byText('my orders') || byText('orders');
-    if (tab) tab.click();
-    return true;
-  }
-  function isTopRight(event) {
-    const target = event.target && event.target.closest && event.target.closest('button,a,[role="button"]');
-    if (!target) return false;
-    const rect = target.getBoundingClientRect();
-    const right = Math.max(document.documentElement.clientWidth, innerWidth || 0) - rect.right;
-    return rect.top <= 130 && right <= 130 && rect.width <= 100 && rect.height <= 100;
-  }
   function start() {
     if (!ctx().isGuest) return;
-    boot(true).then(refreshOrders).then(renderCheckoutMode);
+    boot(true).then(() => { refreshOrders(); refreshUi(); });
     clearInterval(state.polling);
-    state.polling = setInterval(refreshOrders, 4000);
+    state.polling = setInterval(refreshOrders, 5000);
+    clearInterval(state.uiTimer);
+    state.uiTimer = setInterval(refreshUi, 1200);
     if (state.events) state.events.close();
     try {
       const c = ctx();
       state.events = new EventSource(`/p/${encodeURIComponent(c.slug)}/events?storeId=${encodeURIComponent(c.storeId)}`);
       state.events.onmessage = refreshOrders;
     } catch {}
-    if (state.observer) state.observer.disconnect();
-    state.observer = new MutationObserver(() => { renderCheckoutMode(); patchVisibleOrders(); });
-    state.observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  document.addEventListener('click', (event) => {
-    if (!ctx().isGuest || !isTopRight(event)) return;
-    event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation(); showProfile();
-  }, true);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 
-  window.KashikeyoGuestProfile = { context: ctx, show: showProfile, refreshOrders, getSelectedTable: selectedTable, setSelectedTable, getOrderMode: orderMode, setOrderMode, pickTable };
+  window.KashikeyoGuestProfile = { context: ctx, refreshOrders, getSelectedTable: selectedTable, setSelectedTable, getOrderMode: orderMode, setOrderMode, pickTable };
 })();
