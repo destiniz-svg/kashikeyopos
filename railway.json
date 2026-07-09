@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "npm start",
-    "healthcheckPath": "/api/health",
+    "healthcheckPath": "/",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE"
   }
