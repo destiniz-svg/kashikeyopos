@@ -11,11 +11,16 @@ const fs = require("fs");
 
 const PORT = process.env.PORT || 4000;
 const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgres://kash:kash@127.0.0.1:5432/kash",
-  ssl: process.env.DATABASE_URL && !/localhost|127\.0\.0\.1/.test(process.env.DATABASE_URL)
-    ? { rejectUnauthorized: false } : false,
-});
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
+const hasPgEnv = !!(process.env.PGHOST || process.env.PGUSER || process.env.PGDATABASE);
+const localDatabaseUrl = process.env.NODE_ENV === "production" ? "" : "postgres://kash:kash@127.0.0.1:5432/kash";
+const connectionString = databaseUrl || (hasPgEnv ? "" : localDatabaseUrl);
+const poolConfig = connectionString ? { connectionString } : {};
+if (connectionString && !/localhost|127\.0\.0\.1/.test(connectionString)) poolConfig.ssl = { rejectUnauthorized: false };
+if (process.env.NODE_ENV === "production" && !databaseUrl && !hasPgEnv) {
+  console.warn("No Railway Postgres variables found. Attach a Postgres database or add DATABASE_URL.");
+}
+const pool = new Pool(poolConfig);
 /* auto-migrate: create tables on first boot (schema is idempotent) */
 (async () => {
   try {
@@ -36,6 +41,7 @@ app.use((req, res, next) => {           // CORS for tills paired from other orig
 
 const uid = () => crypto.randomUUID();
 const slugify = (s) => (s || "shop").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "shop";
+const errDetail = (e) => [e && e.message, e && e.code, e && e.address, e && e.port].filter(Boolean).join(" ") || String(e || "unknown error");
 
 /* ── SSE hub: org → set of responses ── */
 const hubs = new Map();
@@ -110,7 +116,7 @@ app.post("/api/ops", auth, async (req, res) => {
            VALUES ($1,$2,$3,$4,false,now())
            ON CONFLICT (org_id, kind, id)
            DO UPDATE SET data = excluded.data${preserve}, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()
-           RETURNING rowver`, [req.org.o, p.kind, String(p.id), p.data]);
+           RETURNING rowver`, [req.org.o, p.kind, String(p.id), JSON.stringify(p.data)]);
         rowver = Math.max(rowver, Number(r.rows[0].rowver));
       }
       /* Stage 2: arithmetic deltas — multi-till safe stock & credit */
@@ -146,7 +152,7 @@ app.post("/api/ops", auth, async (req, res) => {
   } catch (e) {
     await client.query("ROLLBACK");
     client.release();
-    return res.status(500).json({ error: "ops failed: " + e.message });
+    return res.status(500).json({ error: "ops failed: " + errDetail(e) });
   }
   client.release();
   if (rowver) poke(req.org.o, rowver);
@@ -241,12 +247,13 @@ app.post("/p/:slug/order", async (req, res) => {
       note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
     const r = await pool.query(
       `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver`,
-      [org.id, order.id, order]);
+      [org.id, order.id, JSON.stringify(order)]);
     poke(org.id, Number(r.rows[0].rowver));
     res.json({ ok: true, order });
   } catch (e) {
-    console.error("guest order failed:", e);
-    res.status(500).json({ error: "order failed: " + e.message });
+    const detail = errDetail(e);
+    console.error("guest order failed:", detail, e);
+    res.status(500).json({ error: "order failed: " + detail });
   }
 });
 
@@ -268,7 +275,7 @@ app.post("/p/:slug/call", async (req, res) => {
   const call = { id: uid(), table: table || (name ? "Pickup" : "—"), name, t: Date.now() };
   const r = await pool.query(
     "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver",
-    [org.id, call.id, call]);
+    [org.id, call.id, JSON.stringify(call)]);
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true });
 });
