@@ -2,14 +2,30 @@
 
 This is the front-end migration path for a Plattoo-style POS flow: the cashier can create orders and payments without internet, the UI updates instantly from IndexedDB, and the cloud sync engine pushes changes when the connection returns.
 
-## New Source Modules
+## Production Wiring Added
+
+The repository currently deploys a prebuilt/minified POS shell under `web/dist`, not a normal editable React/Vue source tree. To wire offline-first behavior into that real deployed POS immediately, this build includes:
+
+- `web/dist/offline-bridge.js` - a browser runtime bridge that intercepts existing write `fetch()` calls.
+- `guest-sync-patch.js` - injects `/offline-bridge.js` into the POS shell at startup.
+- `web/dist/sw.js` - caches `/offline-bridge.js` with the app shell.
+
+The bridge queues failed writes in IndexedDB and replays them when the browser returns online. It currently catches:
+
+- `POST /api/ops` - main POS sync operations.
+- `POST /p/:slug/order` - guest/customer/table orders.
+- `POST /p/:slug/call` - waiter calls.
+
+This gives the current deployed app an offline write safety net without editing the minified POS internals.
+
+## Source Modules Added
+
+These are the clean source-level modules to use when the real frontend source is restored and rebuilt:
 
 - `frontend/offline/db.js` - Dexie IndexedDB schema and cloud session helpers.
 - `frontend/offline/syncQueue.js` - idempotent operation queue helpers that match the existing `/api/ops` backend contract.
 - `frontend/offline/syncManager.js` - push `/api/ops`, pull `/api/pull`, and merge remote entities by row version.
 - `frontend/transactions/createTransaction.js` - local-first Save Order / Create Transaction path.
-
-These files are a source-level reference implementation. The current deployed app is a prebuilt/minified `web/dist` bundle, so this code should be wired into the real frontend source project before producing the next `web/dist` build.
 
 ## Save Order Flow
 
@@ -30,7 +46,18 @@ The new offline-first flow is:
 6. `syncNow()` pushes queued ops when online.
 7. Server responds with row versions; pull sync merges canonical cloud state back into IndexedDB.
 
-## Example Integration
+## Runtime Bridge Behavior
+
+When the current minified POS makes a write request and the network fails:
+
+1. `offline-bridge.js` stores the request URL, method, headers and body in IndexedDB.
+2. It returns a synthetic success response so the POS UI can continue.
+3. It replays queued writes on the `online` event and every 15 seconds while online.
+4. Successfully replayed writes are marked `synced`.
+
+The bridge is intentionally conservative: it only queues write calls that match the POS sync and guest-order endpoints.
+
+## Example Source Integration
 
 ```js
 import { createTransaction } from "./frontend/transactions/createTransaction.js";
@@ -82,4 +109,6 @@ The existing backend already supports the core shape:
 
 ## Next Implementation Step
 
-Replace the current POS checkout handler with `createTransaction()` and make Orders/Kitchen screens render from IndexedDB first. After that, migrate product/customer/table/settings reads to IndexedDB and use `syncManager` to keep them fresh.
+For the current deployment, test by opening the POS once online, going offline, creating a sale/order, then reconnecting. Pending writes are visible in DevTools under IndexedDB -> `kashikeyo-pos-offline-bridge` -> `queuedWrites`.
+
+For the proper long-term frontend, replace the checkout handler with `createTransaction()` and make Orders/Kitchen screens render from IndexedDB first. After that, migrate product/customer/table/settings reads to IndexedDB and use `syncManager` to keep them fresh.
