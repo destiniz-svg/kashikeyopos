@@ -18,18 +18,33 @@ This build serves the existing POS/PWA from `web/dist` and adds a Node/Express s
 
 1. Create or open the Railway project.
 2. Set the region to Singapore if your users are in Maldives/South Asia.
-3. Add a Postgres database plugin.
+3. Add a Postgres database service in the same Railway project.
 4. Open the web service -> Variables.
-5. Add `DATABASE_URL` from the Railway Postgres plugin if Railway does not inject it automatically.
+5. Confirm the web service has either `DATABASE_URL`, `POSTGRES_URL`, `RAILWAY_DATABASE_URL`, or the standard `PGHOST` / `PGUSER` / `PGPASSWORD` / `PGDATABASE` variables from the Postgres service.
 6. Add `JWT_SECRET` with a long random value.
 7. Deploy from GitHub branch `main`.
-8. Confirm `/api/health` returns:
+8. Confirm `/api/health` returns `ok: true` and `db: true`.
+
+Healthy response:
 
 ```json
-{ "ok": true, "service": "kashikeyo-cloud" }
+{ "ok": true, "service": "kashikeyo-cloud", "db": true, "dbEnv": { "databaseUrl": true, "pgEnv": false } }
 ```
 
+If `/api/health` returns `db: false` or a phone shows `order failed: ECONNREFUSED`, the web service cannot reach Postgres. Attach a Railway Postgres service to the same project, then add or reference its database URL in the web service variables and redeploy.
+
 Expected monthly Railway cost is roughly USD 15-27 depending on usage and database size.
+
+## Free Testing Alternative
+
+For free testing only, this same server can run on Render with a Neon Postgres database:
+
+1. Create a Neon project in Singapore and copy its Postgres connection string.
+2. Create a Render web service from this GitHub repo.
+3. Add `DATABASE_URL` with the Neon connection string and add `JWT_SECRET`.
+4. Deploy and open the Render URL.
+
+Render free services sleep after idle time, so this is not suitable for a live cafe till.
 
 ## Test Flow
 
