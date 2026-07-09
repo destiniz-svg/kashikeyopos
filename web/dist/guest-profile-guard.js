@@ -18,7 +18,8 @@
     return `kashikeyo.${name}.${c.slug}.${c.storeId}.${c.customerId || c.table || 'guest'}`;
   }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
-  function money(v) { const n = Number(v || 0); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
+  /* amounts are stored in fils/cents throughout the app (e.g. price 3500 = MVR 35.00) */
+  function money(v) { const n = Number(v || 0) / 100; return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
   function text(el) { return (el && el.textContent || '').trim().toLowerCase(); }
   function buttons() { return Array.from(document.querySelectorAll('button,[role="button"]')); }
   function byText(s) { const n = s.toLowerCase(); return buttons().find((b) => text(b).includes(n)); }

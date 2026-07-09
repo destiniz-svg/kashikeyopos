@@ -22,10 +22,36 @@ if (connectionString && !/localhost|127\.0\.0\.1/.test(connectionString)) poolCo
 if (process.env.NODE_ENV === "production" && !databaseUrl && !hasPgEnv) console.warn("No Postgres variables found. Attach DATABASE_URL.");
 const pool = new Pool(poolConfig);
 
+/* One-time repair: an earlier revision of this server stored store-scoped rows
+   as "<storeId>:<id>" instead of tagging data.storeId on the original row, so
+   every edit to a pre-existing product/table/zone forked a stale duplicate
+   alongside the live one. Fold any such fork back into its canonical row. */
+async function mergeForkedStoreRows() {
+  const forked = await pool.query("SELECT org_id, kind, id, data, updated_at FROM entities WHERE id LIKE '%:%'");
+  for (const row of forked.rows) {
+    const rawId = row.id.split(":").pop();
+    if (!rawId || rawId === row.id) continue;
+    const canon = await pool.query(
+      "SELECT data, updated_at FROM entities WHERE org_id=$1 AND kind=$2 AND id=$3",
+      [row.org_id, row.kind, rawId]);
+    const winner = canon.rowCount && new Date(canon.rows[0].updated_at) >= new Date(row.updated_at)
+      ? canon.rows[0].data : row.data;
+    await pool.query(
+      `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
+       VALUES ($1,$2,$3,$4,false,now())
+       ON CONFLICT (org_id, kind, id)
+       DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
+      [row.org_id, row.kind, rawId, JSON.stringify(winner)]);
+    await pool.query("DELETE FROM entities WHERE org_id=$1 AND kind=$2 AND id=$3", [row.org_id, row.kind, row.id]);
+  }
+  if (forked.rowCount) console.log(`merged ${forked.rowCount} forked store-prefixed row(s) back to their canonical id`);
+}
+
 (async () => {
   try {
     await pool.query(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
     console.log("schema ready");
+    await mergeForkedStoreRows();
   } catch (e) { console.error("schema init failed:", e.message); }
 })();
 
@@ -55,11 +81,10 @@ const isVisibleInStore = (data, storeId) => {
   const s = entityStore(data || {});
   return s === "global" || s === cleanStoreId(storeId);
 };
-const storageId = (kind, id, storeId, shared) => {
-  const raw = String(id);
-  if (shared || raw.includes(":")) return raw;
-  return cleanStoreId(storeId) + ":" + raw;
-};
+/* store-scoping lives entirely in data.storeId (see isVisibleInStore below) —
+   the physical entities.id column always stays the raw entity id, otherwise
+   every edit to a row written before store-scoping existed forks it into a
+   second, stale copy instead of updating it in place. */
 const publicId = (row) => String(row.data && row.data.id ? row.data.id : row.id).split(":").pop();
 
 const hubs = new Map();
@@ -213,18 +238,17 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
            ON CONFLICT (org_id, kind, id)
            DO UPDATE SET data = excluded.data${preserve}, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()
            RETURNING rowver`,
-          [req.org.o, p.kind, storageId(p.kind, p.id, data.storeId || "global", shared), JSON.stringify(data)]);
+          [req.org.o, p.kind, String(p.id), JSON.stringify(data)]);
         rowver = Math.max(rowver, Number(r.rows[0].rowver));
       }
       const dz = op.deltas || {};
       for (const s of dz.stock || []) {
-        const ids = [String(s.id), storageId("products", s.id, storeId, false)];
         const r = await client.query(
           `UPDATE entities SET
              data = jsonb_set(data, '{stock}', to_jsonb(COALESCE((data->>'stock')::numeric, 0) + $4), true),
              rowver = nextval('entities_rowver_seq'), updated_at = now()
-           WHERE org_id=$1 AND kind='products' AND id = ANY($2) AND COALESCE(data->>'storeId',$3) IN ('global',$3)
-           RETURNING rowver`, [req.org.o, ids, storeId, Number(s.d) || 0]);
+           WHERE org_id=$1 AND kind='products' AND id=$2 AND COALESCE(data->>'storeId',$3) IN ('global',$3)
+           RETURNING rowver`, [req.org.o, String(s.id), storeId, Number(s.d) || 0]);
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
       }
       for (const c of dz.cust || []) {
@@ -239,11 +263,9 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
       }
       for (const d of op.dels || []) {
-        const shared = SHARED_KINDS.has(d.kind) && !d.storeId;
-        const id = storageId(d.kind, d.id, cleanStoreId(d.storeId || storeId), shared);
         const r = await client.query(
           `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
-           WHERE org_id=$1 AND kind=$2 AND id=$3 RETURNING rowver`, [req.org.o, d.kind, id]);
+           WHERE org_id=$1 AND kind=$2 AND id=$3 RETURNING rowver`, [req.org.o, d.kind, String(d.id)]);
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
       }
     }
@@ -341,7 +363,7 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
   const cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
   const upd = await pool.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]);
   const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: "new", createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
-  const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, storageId("orders", order.id, storeId, false), JSON.stringify(order)]);
+  const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]);
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, order: normalizeOrder(order) });
 }));
@@ -364,7 +386,7 @@ app.post("/p/:slug/call", wrap(async (req, res) => {
   let name = null;
   if (custId) name = ((await kindAll(org.id, "customers", storeId)).find((c) => idEq(c.id, custId)) || {}).name || null;
   const call = { id: uid(), storeId, table: table || (name ? "Pickup" : "-"), name, t: Date.now() };
-  const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, storageId("waiterCalls", call.id, storeId, false), JSON.stringify(call)]);
+  const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]);
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true });
 }));
