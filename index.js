@@ -573,12 +573,37 @@ app.get("/", wrap(async (req, res, next) => {
   next();
 }));
 
+const siteDir = path.join(__dirname, "site");
+app.get("/login", (req, res) => res.sendFile(path.join(siteDir, "login.html")));
+
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
   const noCacheShell = { setHeaders: (res, file) => { if (file.endsWith(".html") || file.endsWith("sw.js")) res.set("Cache-Control", "no-cache"); } };
-  app.use(express.static(webDir, noCacheShell));
-  app.get(/^\/(?!api|p\/).*/, (req, res) => res.sendFile(path.join(webDir, "index.html"), { headers: { "Cache-Control": "no-cache" } }));
+  const sendTill = (req, res) => res.sendFile(path.join(webDir, "index.html"), { headers: { "Cache-Control": "no-cache" } });
+
+  /* Already-printed guest QR codes and shared links point at bare "/" with
+     ?s=slug&t=table / &c=custId (see the SPA's own client-side urlMode
+     detection) - keep serving the till bundle there so they keep working.
+     The till itself now lives at /app; bare "/" with none of those params
+     falls through to the marketing page below. */
+  app.get("/", (req, res, next) => {
+    if (req.query.s || req.query.t || req.query.c) return sendTill(req, res);
+    next();
+  });
+
+  app.use("/app", express.static(webDir, noCacheShell));
+  app.get(/^\/app(\/.*)?$/, sendTill);
+
+  /* Assets the bundle references with root-relative paths (offline-bridge.js,
+     manifest, icons, sw.js) stay reachable at "/" too, for already-installed
+     PWAs and their service workers - index disabled so it never shadows the
+     "/" routes above. */
+  app.use(express.static(webDir, { ...noCacheShell, index: false }));
 }
+
+/* Landing page lands here in a follow-up change; until then bare "/" sends
+   fresh visitors to sign in. */
+app.get("/", (req, res) => res.redirect(302, "/login"));
 
 app.use((err, req, res, next) => {
   console.error("request failed:", req.method, req.originalUrl, errDetail(err));

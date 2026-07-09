@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sign in — KashikeyoPOS</title>
+<link rel="icon" href="/icon-192.png" />
+<style>
+  :root {
+    --app: #F3ECE1; --panel: #FFFFFF; --border: #E8DFCF; --text: #2A241E;
+    --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+    --input: #FFFFFF; --btn: #F1E8D8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--app); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 380px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .logo-mark {
+    width: 36px; height: 36px; border-radius: 10px; background: var(--primary);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px;
+  }
+  .logo-text { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--sub); font-size: 14px; margin: 0 0 24px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin: 16px 0 6px; }
+  input {
+    width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--input); color: var(--text); font-size: 15px; outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  button {
+    width: 100%; margin-top: 24px; padding: 12px; border-radius: 10px; border: none;
+    background: var(--primary); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: var(--primary-hov); }
+  button:disabled { opacity: .6; cursor: default; }
+  .error {
+    display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px;
+    background: #FBEAE4; color: #A3391F; font-size: 13px;
+  }
+  .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
+  .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  .foot a:hover { text-decoration: underline; }
+  .back { display: inline-block; margin-bottom: 18px; color: var(--sub); text-decoration: none; font-size: 13px; }
+  .back:hover { color: var(--text); }
+</style>
+</head>
+<body>
+  <div class="card">
+    <a class="back" href="/">&larr; kashikeyopos.com</a>
+    <div class="logo">
+      <div class="logo-mark">K</div>
+      <div class="logo-text">KashikeyoPOS</div>
+    </div>
+    <h1>Sign in</h1>
+    <p class="sub">Welcome back — sign in to your workspace.</p>
+    <form id="f">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required />
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <div class="error" id="err"></div>
+      <button id="submit" type="submit">Sign in</button>
+    </form>
+    <div class="foot">New here? <a href="/signup">Create your store</a></div>
+  </div>
+  <script>
+    (function () {
+      try {
+        if (localStorage.getItem("kashikeyo-cloud")) { location.replace("/app"); return; }
+      } catch (e) {}
+      var form = document.getElementById("f");
+      var err = document.getElementById("err");
+      var btn = document.getElementById("submit");
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        err.style.display = "none";
+        btn.disabled = true;
+        btn.textContent = "Signing in…";
+        try {
+          var res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: document.getElementById("email").value.trim(),
+              password: document.getElementById("password").value,
+            }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Sign in failed");
+          localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url: "", token: data.token, slug: data.slug, register: data.register }));
+          location.href = "/app";
+        } catch (e2) {
+          err.textContent = e2.message || "Something went wrong — please try again";
+          err.style.display = "block";
+          btn.disabled = false;
+          btn.textContent = "Sign in";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
