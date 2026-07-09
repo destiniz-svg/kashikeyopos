@@ -48,6 +48,6 @@ patchFile(serverPath, (server) => server.replace(
   }).filter(Boolean);`
 ));
 
-patchFile(swPath, (sw) => sw.replace("kashikeyo-2.8.0", "kashikeyo-2.8.1"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.8\.[01]/g, "kashikeyo-2.8.2"));
 
 require("./index.js");
