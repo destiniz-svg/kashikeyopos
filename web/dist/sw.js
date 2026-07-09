@@ -1,6 +1,6 @@
 /* NexusPOS service worker — offline-first shell caching.
    Bump VERSION on releases to force clients onto the new build. */
-const VERSION = 'kashikeyo-2.8.4';
+const VERSION = 'kashikeyo-2.9.0';
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -21,6 +21,11 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  /* Live data (guest portal + sync API) must always come from the network —
+     serving these cache-first froze customer profiles, menus and order status. */
+  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/p/')) return;
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req)
@@ -36,7 +41,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
       try {
-        if (res.ok && new URL(req.url).origin === self.location.origin) {
+        if (res.ok) {
           const copy = res.clone();
           caches.open(VERSION).then((c) => c.put(req, copy));
         }
