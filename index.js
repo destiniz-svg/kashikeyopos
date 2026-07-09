@@ -98,6 +98,28 @@ async function kindAll(orgId, kind, storeId = DEFAULT_STORE_ID) {
 }
 
 const lineTotal = (l) => Math.round(Number(l.price || 0) * Number(l.qty || 1) * (1 - (Number(l.discPct || 0)) / 100));
+const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (Number(o.fee) || 0);
+const orderTotal = (o, settings = {}) => {
+  const sub = orderSubtotal(o);
+  return sub + Math.round(sub * (Number(settings.gstBp || 800)) / 10000);
+};
+const normalizeOrder = (o, settings = {}) => ({
+  ...o,
+  status: String(o.status || "new"),
+  table: o.table || (o.otype === "delivery" ? "Delivery" : "Pickup"),
+  total: o.total != null ? Number(o.total) : orderTotal(o, settings),
+  updatedAt: o.updatedAt || o.settledAt || o.completedAt || o.createdAt || Date.now(),
+});
+const finalStatuses = new Set(["completed", "settled", "paid", "closed"]);
+async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
+  const orders = await kindAll(orgId, "orders", storeId);
+  const customerId = selector.customerId;
+  const table = selector.table;
+  return orders
+    .filter((o) => customerId ? idEq(o.customerId, customerId) : table ? idEq(o.table, table) : false)
+    .map((o) => normalizeOrder(o, settings))
+    .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
+}
 
 app.post("/api/register", wrap(async (req, res) => {
   const { email, password, storeName } = req.body || {};
@@ -259,6 +281,19 @@ app.get("/api/events", auth, (req, res) => {
   req.on("close", () => { clearInterval(hb); set.delete(res); });
 });
 
+app.get("/p/:slug/events", wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).end();
+  res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+  res.flushHeaders();
+  res.write("data: {\"hello\":true}\n\n");
+  let set = hubs.get(org.id);
+  if (!set) { set = new Set(); hubs.set(org.id, set); }
+  set.add(res);
+  const hb = setInterval(() => { try { res.write(": hb\n\n"); } catch {} }, 25000);
+  req.on("close", () => { clearInterval(hb); set.delete(res); });
+}));
+
 app.get("/p/:slug/boot", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
@@ -272,12 +307,10 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   if (req.query.c) {
     const c = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, req.query.c));
     if (c) {
-      const mine = (await kindAll(org.id, "orders", storeId)).filter((o) => idEq(o.customerId, c.id) && o.status === "completed");
-      const spent = mine.reduce((a, o) => {
-        const sub = (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (o.fee || 0);
-        return a + sub + Math.round(sub * (settings.gstBp || 800) / 10000);
-      }, 0);
-      cust = { id: c.id, name: c.name, points: c.points || 0, balance: c.balance || 0, address: c.address || "", visits: mine.length, spent };
+      const orders = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
+      const completed = orders.filter((o) => finalStatuses.has(String(o.status || "").toLowerCase()));
+      const spent = completed.reduce((a, o) => a + Number(o.total || 0), 0);
+      cust = { id: c.id, name: c.name, points: c.points || 0, balance: c.balance || 0, address: c.address || "", visits: completed.length, spent, orders };
     }
   }
   res.json({ settings, storeId, stores: stores.rows, zones,
@@ -302,20 +335,24 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
   const otype = gtype === "delivery" ? "delivery" : gtype === "pickup" ? "takeaway" : "dinein";
+  const requestedTable = String(table || "").trim().slice(0, 40);
+  if (otype === "dinein" && !requestedTable) return res.status(400).json({ error: "select your table number before ordering" });
   const zone = otype === "delivery" ? zones.find((z) => idEq(z.id, zoneId)) || null : null;
   const cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
   const upd = await pool.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]);
-  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: table || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: "new", createdAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
+  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: "new", createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
   const r = await pool.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, storageId("orders", order.id, storeId, false), JSON.stringify(order)]);
   poke(org.id, Number(r.rows[0].rowver));
-  res.json({ ok: true, order });
+  res.json({ ok: true, order: normalizeOrder(order) });
 }));
 
 app.get("/p/:slug/orders", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
-  const mine = (await kindAll(org.id, "orders", storeId)).filter((o) => (req.query.c ? idEq(o.customerId, req.query.c) : idEq(o.table, req.query.t))).sort((a, b) => b.createdAt - a.createdAt).slice(0, 25);
+  const settingsArr = await kindAll(org.id, "settings", storeId);
+  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, currency: "MVR" };
+  const mine = (await guestOrders(org.id, storeId, { customerId: req.query.c, table: req.query.t }, settings)).slice(0, 25);
   res.json({ storeId, orders: mine });
 }));
 
