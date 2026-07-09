@@ -298,6 +298,21 @@ app.get("/api/health", wrap(async (req, res) => {
   }
 }));
 
+/* old guest links carry only ?c=/?t= without the workspace (?s=) — links made
+   before the till was cloud-paired. When exactly one workspace exists, recover it. */
+app.get("/", wrap(async (req, res, next) => {
+  if ((req.query.c || req.query.t) && !req.query.s) {
+    const r = await pool.query("SELECT slug FROM orgs");
+    if (r.rowCount === 1) {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(req.query)) q.set(k, String(v));
+      q.set("s", r.rows[0].slug);
+      return res.redirect(302, "/?" + q.toString());
+    }
+  }
+  next();
+}));
+
 /* ── serve the till + guest PWA ── */
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
