@@ -13,40 +13,69 @@
     --btn: #F1E8D8; --btn-hov: #E8DCC5;
   }
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  html { scroll-behavior: smooth; overflow-x: hidden; }
   body {
     margin: 0; background: var(--app); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    overflow-x: hidden;
+    overflow-x: hidden; width: 100%;
   }
   a { color: inherit; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  img, svg { max-width: 100%; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  @media (min-width: 640px) { .wrap { padding: 0 24px; } }
 
   header {
     position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px);
     background: rgba(243,236,225,.85); border-bottom: 1px solid var(--border);
   }
-  nav { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; }
-  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; text-decoration: none; }
+  nav { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 12px 0; gap: 10px; }
+  .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; white-space: nowrap; }
   .logo-mark {
-    width: 32px; height: 32px; border-radius: 9px; background: var(--primary);
-    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 15px;
+    flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--primary);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;
   }
   .nav-links { display: flex; align-items: center; gap: 22px; }
-  .nav-links a.link { font-size: 14px; color: var(--sub); text-decoration: none; }
+  .nav-links a.link { font-size: 14px; color: var(--sub); text-decoration: none; white-space: nowrap; }
   .nav-links a.link:hover { color: var(--text); }
+  .nav-auth { display: flex; align-items: center; gap: 10px; }
   .btn {
     display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
-    padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+    padding: 10px 18px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; white-space: nowrap;
   }
   .btn-primary { background: var(--primary); color: #fff; }
   .btn-primary:hover { background: var(--primary-hov); }
   .btn-ghost { background: var(--btn); color: var(--text); }
   .btn-ghost:hover { background: var(--btn-hov); }
+
+  .hamburger {
+    display: none; flex: none; width: 38px; height: 38px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--panel); align-items: center; justify-content: center; cursor: pointer; padding: 0;
+  }
+  .hamburger span, .hamburger span::before, .hamburger span::after {
+    display: block; width: 18px; height: 2px; background: var(--text); position: relative; transition: transform .15s;
+  }
+  .hamburger span::before, .hamburger span::after { content: ""; position: absolute; left: 0; }
+  .hamburger span::before { top: -6px; }
+  .hamburger span::after { top: 6px; }
+
+  @media (max-width: 760px) {
+    .nav-links {
+      display: none; position: absolute; top: calc(100% + 1px); left: 0; right: 0; z-index: 30;
+      flex-direction: column; align-items: stretch; gap: 4px; background: var(--panel);
+      border: 1px solid var(--border); border-top: none; border-radius: 0 0 14px 14px; padding: 12px 20px 18px;
+      box-shadow: 0 12px 24px rgba(42,36,30,.1);
+    }
+    .nav-links.open { display: flex; }
+    .nav-links a.link { padding: 10px 4px; border-bottom: 1px solid var(--border); }
+    .nav-auth { flex-direction: column; align-items: stretch; gap: 8px; margin-top: 6px; }
+    .nav-auth .btn { width: 100%; }
+    .hamburger { display: flex; }
+  }
   .btn-lg { padding: 14px 26px; font-size: 15px; border-radius: 12px; }
 
   /* Hero */
-  .hero { position: relative; padding: 90px 0 70px; text-align: center; }
+  .hero { position: relative; overflow: hidden; padding: 64px 0 56px; text-align: center; }
+  @media (min-width: 640px) { .hero { padding: 90px 0 70px; } }
   .blob {
     position: absolute; border-radius: 50%; filter: blur(60px); opacity: .35; z-index: 0;
   }
@@ -163,12 +192,17 @@
         <div class="logo-mark">K</div>
         KashikeyoPOS
       </a>
-      <div class="nav-links">
+      <button class="hamburger" id="navToggle" aria-label="Menu" aria-expanded="false">
+        <span></span>
+      </button>
+      <div class="nav-links" id="navLinks">
         <a class="link" href="#features">Features</a>
         <a class="link" href="#how">How it works</a>
         <a class="link" href="#themes">Themes</a>
-        <a class="btn btn-ghost" href="/login">Sign in</a>
-        <a class="btn btn-primary" href="/signup">Get started</a>
+        <div class="nav-auth">
+          <a class="btn btn-ghost" href="/login">Sign in</a>
+          <a class="btn btn-primary" href="/signup">Get started</a>
+        </div>
       </div>
     </nav>
   </div>
@@ -329,9 +363,28 @@
 <script>
   document.getElementById("yr").textContent = new Date().getFullYear();
 
-  // Returning admins with an existing session skip the pitch entirely.
+  (function () {
+    var toggle = document.getElementById("navToggle");
+    var links = document.getElementById("navLinks");
+    toggle.addEventListener("click", function () {
+      var open = links.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    links.querySelectorAll("a").forEach(function (a) {
+      a.addEventListener("click", function () { links.classList.remove("open"); toggle.setAttribute("aria-expanded", "false"); });
+    });
+  })();
+
+  // Returning admins with a session get pointed straight at their workspace
+  // instead of "Sign in" / "Get started" - but visiting "/" always shows the
+  // page itself rather than forcibly redirecting away from it.
   try {
-    if (localStorage.getItem("kashikeyo-cloud")) location.replace("/app");
+    if (localStorage.getItem("kashikeyo-cloud")) {
+      document.querySelectorAll('a[href="/login"], a[href="/signup"]').forEach(function (a) {
+        a.href = "/app";
+        a.textContent = a.classList.contains("btn-primary") ? "Go to your dashboard" : "Dashboard";
+      });
+    }
   } catch (e) {}
 
   (function () {
