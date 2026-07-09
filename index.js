@@ -238,15 +238,35 @@ const auth = (req, res, next) => {
   } catch { res.status(401).json({ error: "unauthorized" }); }
 };
 
+const parseCookies = (req) => Object.fromEntries((req.headers.cookie || "").split(";").map((p) => p.trim()).filter(Boolean).map((p) => {
+  const i = p.indexOf("=");
+  return [decodeURIComponent(p.slice(0, i)), decodeURIComponent(p.slice(i + 1))];
+}));
+
+/* /app is the till itself - it must only ever load for someone who has
+   actually signed in (password, Google or Apple), not fall back to a
+   standalone/offline mode the way the underlying till bundle historically
+   could. The session lives in an httpOnly cookie (checked server-side,
+   before the bundle is even served) alongside the existing localStorage
+   copy the bundle's own JS uses for its Authorization: Bearer calls. */
+const APP_COOKIE = "kashikeyo_session";
+const setAppCookie = (res, token) => res.cookie(APP_COOKIE, token, {
+  httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 24 * 3600 * 1000, path: "/",
+});
+const requireAppSession = (req, res, next) => {
+  let payload;
+  try { payload = jwt.verify(parseCookies(req)[APP_COOKIE], SECRET); } catch { return res.redirect(302, "/login"); }
+  if (!payload.o) return res.redirect(302, "/login");
+  withSystem((client) => client.query("SELECT status FROM orgs WHERE id=$1", [payload.o]))
+    .then((r) => { if (!r.rowCount || (r.rows[0].status && r.rows[0].status !== "active")) return res.redirect(302, "/login"); next(); })
+    .catch(() => res.redirect(302, "/login"));
+};
+
 /* Developer-panel sessions are a separate credential namespace from store
    logins (payload.a instead of payload.o) so an org JWT can never be replayed
    here, carried in an httpOnly cookie since the panel is a plain server-
    rendered page rather than the SPA's bearer-token client. */
 const DEV_COOKIE = "kdev_session";
-const parseCookies = (req) => Object.fromEntries((req.headers.cookie || "").split(";").map((p) => p.trim()).filter(Boolean).map((p) => {
-  const i = p.indexOf("=");
-  return [decodeURIComponent(p.slice(0, i)), decodeURIComponent(p.slice(i + 1))];
-}));
 const signAdmin = (adminId) => jwt.sign({ a: adminId }, SECRET, { expiresIn: "30d" });
 const setDevCookie = (res, token) => res.cookie(DEV_COOKIE, token, {
   httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 30 * 24 * 3600 * 1000, path: "/",
@@ -270,6 +290,40 @@ async function ensureDefaultStore(orgId, storeName = "Main Store") {
      VALUES ($1,$2,$3,$4)
      ON CONFLICT (org_id, id) DO NOTHING`,
     [orgId, DEFAULT_STORE_ID, "MAIN", storeName || "Main Store"]));
+}
+
+/* Same DJB2-ish hash the till bundle itself uses for till-PIN staff entries
+   (see Xo() in web/dist/index.html) - reimplemented here so a PIN chosen (or
+   generated) at signup can be seeded server-side as a real "users" entity
+   in the exact shape the till expects. Not a security boundary (the till PIN
+   is just a fast per-shift operator switch) - the account itself is secured
+   by the password/OAuth login below. */
+function hashTillPin(pin) {
+  let h = 5381;
+  for (const ch of String(pin)) h = (h * 33 ^ ch.charCodeAt(0)) >>> 0;
+  return String(h);
+}
+
+/* Without a seeded "users" entity, the till bundle falls back to its own
+   hardcoded demo staff (Abdulla/Shifna/Ahmed) - every fresh signup would
+   land on a PIN gate showing three fake employees that aren't theirs,
+   with no way to know their secret demo PINs. This seeds the real admin
+   as the till's "owner" user instead: with the PIN they chose at signup
+   if they chose one, or - for OAuth signups and any pre-existing org that
+   still has zero staff - a freshly generated one, returned so the caller
+   can show it to the user (they have no other way to learn it). */
+async function ensureOwnerSeed(org, explicitPin) {
+  return withOrg(org.id, async (client) => {
+    if (!explicitPin) {
+      const hit = await client.query("SELECT 1 FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false LIMIT 1", [org.id]);
+      if (hit.rowCount) return null;
+    }
+    const pin = explicitPin || String(Math.floor(1000 + Math.random() * 9000));
+    const name = (org.owner_name && org.owner_name.trim()) || (org.email ? org.email.split("@")[0] : "Owner");
+    const data = { id: uid(), name, role: "owner", pin: hashTillPin(pin) };
+    await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'users',$2,$3)", [org.id, data.id, JSON.stringify(data)]);
+    return explicitPin ? null : pin;
+  });
 }
 
 async function orgBySlug(slug) {
@@ -354,7 +408,10 @@ async function finishOAuthLogin(org) {
   await ensureDefaultStore(org.id, org.store_name);
   const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]));
   const register = "R" + upd.rows[0].registers;
-  return { token: sign(org.id, register, DEFAULT_STORE_ID), slug: org.slug, register, storeId: DEFAULT_STORE_ID };
+  const pin = await ensureOwnerSeed(org);
+  const result = { token: sign(org.id, register, DEFAULT_STORE_ID), slug: org.slug, register, storeId: DEFAULT_STORE_ID };
+  if (pin) result.pin = pin;
+  return result;
 }
 
 app.get("/api/auth/config", (req, res) => {
@@ -374,6 +431,7 @@ app.post("/api/auth/google", wrap(async (req, res) => {
   const org = await findOrCreateOAuthOrg({ provider: "google", sub: payload.sub, email: payload.email, name: payload.name });
   const result = await finishOAuthLogin(org);
   if (result.error) return res.status(result.status).json({ error: result.error });
+  setAppCookie(res, result.token);
   res.json(result);
 }));
 
@@ -400,24 +458,33 @@ app.post("/auth/apple/callback", express.urlencoded({ extended: false }), wrap(a
   } catch {}
   const org = await findOrCreateOAuthOrg({ provider: "apple", sub: payload.sub, email: payload.email, name });
   const result = await finishOAuthLogin(org);
-  respond(result.error ? { kashikeyoAppleAuth: true, error: result.error } : Object.assign({ kashikeyoAppleAuth: true }, result));
+  if (result.error) return respond({ kashikeyoAppleAuth: true, error: result.error });
+  setAppCookie(res, result.token);
+  respond(Object.assign({ kashikeyoAppleAuth: true }, result));
 }));
 
 app.post("/api/register", wrap(async (req, res) => {
-  const { email, password, storeName, ownerName, phone } = req.body || {};
+  const { email, password, storeName, ownerName, phone, pin } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
   const base = slugify(storeName || email.split("@")[0]);
   const slug = await withSystem((client) => uniqueSlug(client, base));
   const id = uid();
+  const cleanOwnerName = String(ownerName || "").slice(0, 100);
   try {
     await withSystem((client) => client.query(
       "INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, phone, registers) VALUES ($1,$2,$3,$4,$5,$6,$7,1)",
-      [id, slug, email.toLowerCase(), bcrypt.hashSync(password, 10), storeName || "My Store", String(ownerName || "").slice(0, 100), String(phone || "").slice(0, 30)]));
+      [id, slug, email.toLowerCase(), bcrypt.hashSync(password, 10), storeName || "My Store", cleanOwnerName, String(phone || "").slice(0, 30)]));
   } catch {
     return res.status(409).json({ error: "email already registered - use Sign in" });
   }
   await ensureDefaultStore(id, storeName || "Main Store");
-  res.json({ token: sign(id, "R1", DEFAULT_STORE_ID), slug, register: "R1", storeId: DEFAULT_STORE_ID });
+  const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
+  const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
+  const token = sign(id, "R1", DEFAULT_STORE_ID);
+  setAppCookie(res, token);
+  const result = { token, slug, register: "R1", storeId: DEFAULT_STORE_ID };
+  if (seededPin) result.pin = seededPin;
+  res.json(result);
 }));
 
 app.post("/api/login", wrap(async (req, res) => {
@@ -432,8 +499,18 @@ app.post("/api/login", wrap(async (req, res) => {
   if (!storeHit.rowCount) return res.status(404).json({ error: "unknown store" });
   const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET registers = registers + 1 WHERE id=$1 RETURNING registers", [org.id]));
   const register = "R" + upd.rows[0].registers;
-  res.json({ token: sign(org.id, register, selectedStore), slug: org.slug, register, storeId: selectedStore });
+  const seededPin = await ensureOwnerSeed(org);
+  const token = sign(org.id, register, selectedStore);
+  setAppCookie(res, token);
+  const result = { token, slug: org.slug, register, storeId: selectedStore };
+  if (seededPin) result.pin = seededPin;
+  res.json(result);
 }));
+
+app.post("/api/logout", (req, res) => {
+  res.clearCookie(APP_COOKIE, { path: "/" });
+  res.json({ ok: true });
+});
 
 app.post("/api/dev/login", wrap(async (req, res) => {
   const { email, password } = req.body || {};
@@ -760,8 +837,8 @@ if (fs.existsSync(webDir)) {
     next();
   });
 
-  app.use("/app", express.static(webDir, noCacheShell));
-  app.get(/^\/app(\/.*)?$/, sendTill);
+  app.use("/app", express.static(webDir, { ...noCacheShell, index: false }));
+  app.get(/^\/app(\/.*)?$/, requireAppSession, sendTill);
 
   /* Assets the bundle references with root-relative paths (offline-bridge.js,
      manifest, icons, sw.js) stay reachable at "/" too, for already-installed

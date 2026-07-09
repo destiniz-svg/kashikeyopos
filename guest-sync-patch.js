@@ -195,6 +195,33 @@ patchFile(indexPath, (html) => injectCss(injectScript(html, "offline-bridge.js")
      directly into the committed bundle; strip it now that table selection is
      native and that script is gone. */
   .replace('<script src="/guest-profile-guard.js"></script>', "")
+  /* "Disconnect" used to just clear local cloud state and fall back to a
+     standalone/offline mode - harmless for the original single-till product,
+     but /app is now gated on a real server session (see requireAppSession in
+     index.js), so this needs to actually sign out: clear the server cookie
+     too (keepalive so the request survives the navigation that follows) and
+     land back on /login rather than a demo-like standalone screen. */
+  .replace(
+    'UT=()=>{fw(null),Ew(null),ki.current=[],rd(),Q("Cloud disconnected — running standalone")}',
+    'UT=()=>{fw(null),Ew(null),ki.current=[],rd(),fetch("/api/logout",{method:"POST",keepalive:!0}).catch(()=>{}),location.href="/login"}'
+  )
+  .replace(
+    'h.jsx("button",{onClick:UT,className:"w-full rounded-xl py-3 text-sm font-semibold border border-rose-500/40 text-rose-400",children:"Disconnect"})',
+    'h.jsx("button",{onClick:UT,className:"w-full rounded-xl py-3 text-sm font-semibold border border-rose-500/40 text-rose-400",children:"Sign out"})'
+  )
+  /* Qv is a hardcoded demo staff roster (Abdulla/Shifna/Ahmed) baked into the
+     bundle for the original standalone product's very first run. It's meant
+     as a fallback only when there's no real staff yet, but the sync merge
+     that's supposed to replace it with real data only ever adds to it, so
+     every fresh signup saw these three fake employees alongside their own
+     seeded owner account (see ensureOwnerSeed/hashTillPin in index.js) with
+     no indication they were fake or how to sign in as them. Every org now
+     always gets a real seeded owner from the moment they sign in, so the
+     fallback can just go away outright instead of ever needing to be merged
+     away - a brand new store starts with exactly the staff it actually has. */
+  .replace('[g,w]=R.useState(Qv),', '[g,w]=R.useState([]),')
+  .replace('w(f.users&&f.users.length?f.users:Qv),', 'w(f.users||[]),')
+  .replace('x([]),w(Qv),S([]),O(Jv)', 'x([]),w([]),S([]),O(Jv)')
 );
 
 /* Force every installed PWA onto the current build. */

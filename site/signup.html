@@ -134,6 +134,9 @@
           </div>
         </div>
         <div class="hint">At least 8 characters.</div>
+        <label for="pin">Till PIN (4 digits)</label>
+        <input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required placeholder="e.g. 4821" />
+        <div class="hint">Used to sign in at the till counter itself - quick to type between staff during a shift. You can add more staff PINs later.</div>
         <div class="error" id="err2"></div>
         <div class="actions">
           <button type="button" class="ghost" data-back>Back</button>
@@ -149,6 +152,7 @@
             <dt>Store</dt><dd id="rvStore"></dd>
             <dt>Admin</dt><dd id="rvOwner"></dd>
             <dt>Email</dt><dd id="rvEmail"></dd>
+            <dt>Till PIN</dt><dd id="rvPin"></dd>
           </dl>
         </div>
         <div class="error" id="err3"></div>
@@ -198,6 +202,7 @@
         var pass = document.getElementById("password").value;
         if (pass.length < 8) { showErr(2, "Password must be at least 8 characters"); return false; }
         if (pass !== document.getElementById("password2").value) { showErr(2, "Passwords don't match"); return false; }
+        if (!/^\d{4}$/.test(document.getElementById("pin").value.trim())) { showErr(2, "Till PIN must be exactly 4 digits"); return false; }
         return true;
       }
 
@@ -209,6 +214,7 @@
             document.getElementById("rvStore").textContent = document.getElementById("storeName").value.trim();
             document.getElementById("rvOwner").textContent = document.getElementById("ownerName").value.trim();
             document.getElementById("rvEmail").textContent = document.getElementById("email").value.trim();
+            document.getElementById("rvPin").textContent = document.getElementById("pin").value.trim();
           }
           show(state + 1);
         });
@@ -233,11 +239,13 @@
               phone: document.getElementById("phone").value.trim(),
               email: document.getElementById("email").value.trim(),
               password: document.getElementById("password").value,
+              pin: document.getElementById("pin").value.trim(),
             }),
           });
           var data = await res.json().catch(function () { return {}; });
           if (!res.ok) throw new Error(data.error || "Couldn't create your store");
           localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url: "", token: data.token, slug: data.slug, register: data.register }));
+          if (data.pin) alert("Your till PIN is " + data.pin + " - you'll use this to sign in at the till counter. You can change it anytime from Staff settings.");
           location.href = "/app";
         } catch (err) {
           showErr(3, err.message || "Something went wrong — please try again");
