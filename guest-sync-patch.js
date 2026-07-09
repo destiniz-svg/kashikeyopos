@@ -1,11 +1,12 @@
 /* Startup patcher for the prebuilt web bundle (web/dist).
    Rewrites the guest checkout + waiter call inside the minified index.html so
-   guest orders always go through the cloud API, injects the offline write
-   bridge and guest-profile guard, then boots the server.
+   guest orders always go through the cloud API, adds a native dine-in table
+   picker to the guest page itself, injects the offline write bridge, then
+   boots the server.
    Every patch is idempotent: if the file already contains the fixed code the
-   regexes either don't match or replace with identical text (no write).
-   Run with PATCH_ONLY=1 to apply the patches without starting the server
-   (used to bake the fixes into the committed dist). */
+   regexes/strings either don't match or replace with identical text (no
+   write). Run with PATCH_ONLY=1 to apply the patches without starting the
+   server (used to bake the fixes into the committed dist). */
 const fs = require("fs");
 const path = require("path");
 
@@ -20,12 +21,26 @@ function patchFile(filePath, patcher) {
   if (after !== before) fs.writeFileSync(filePath, after, "utf8");
 }
 
-/* Guest checkout: post to the cloud, preserve store/table, and only override
-   the original portal's order type when the added Dine in mode is selected. */
+/* Dine-in table selection used to be bolted on with an external script that
+   injected a <select>/button grid into the DOM outside React's control. Any
+   re-render of the guest page (a poll tick, an SSE push, anything) could
+   discard those foreign nodes — the picker "just vanished" mid-tap, and
+   there was no reliable way to make external DOM survive a tree React owns.
+   This patches the guest page's own order-type toggle (Pickup/Delivery) to
+   add a real "Dine in" option, and its own JSX to render a table grid when
+   picked — exactly the same pattern the till itself uses for "Which table?"
+   in its own order-type modal: real state (fe.table via Dn), so it can never
+   be wiped by a re-render. table/gtype flow through to checkout as fe.table/
+   fe.gtype, already the highest-priority source in both rI and lb below. */
+const orderTypeToggle =
+  'h.jsx("div",{className:"flex gap-1.5 mb-2",children:(fe.table?[["table","To table "+fe.table],["delivery","Delivery"]]:[["pickup","Pickup"],["table","Dine in"],["delivery","Delivery"]]).map(([ne,ke])=>h.jsx("button",{onClick:()=>Dn(ze=>({...ze,gtype:ne})),className:`flex-1 rounded-lg py-2 text-xs font-semibold ${fe.gtype===ne?_.chipOn:_.chip}`,children:ke},ne))}),fe.gtype==="table"&&!fe.table&&h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:`text-xs mb-1.5 ${_.sub}`,children:"Which table?"}),h.jsx("div",{className:"grid grid-cols-4 gap-1.5",children:((f&&f.tables)||[]).map(Tn=>h.jsx("button",{onClick:()=>Dn(ze=>({...ze,table:Tn})),className:`rounded-lg py-2 text-xs font-semibold ${_.chip}`,children:Tn},Tn))})]}),fe.gtype==="delivery"&&';
+
+/* Guest checkout (till's no-slug preview fallback): fe.table/fe.gtype are
+   now the only source of truth, set natively by the toggle above. */
 const checkout =
-  'rI=async f=>{if(!fe.cart.length)return Q("Cart is empty","warn");const Mo=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getOrderMode?window.KashikeyoGuestProfile.getOrderMode():"",A=Mo==="dinein"?"dinein":fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!Ou&&M.length)return Q("Pick your delivery zone first","warn");const St=fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(!St)return Q("Not connected to the cloud caf\u00e9 \u2014 open the shared customer link or pair Cloud Sync first","warn");const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";let Tb=fe.table||Pa.get("t")||(Mo==="dinein"&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"")||"",Gt=Tb&&A!=="delivery"?"table":fe.gtype;if(Mo==="dinein"&&!Tb&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.pickTable){Tb=await window.KashikeyoGuestProfile.pickTable();Gt=Tb?"table":fe.gtype;if(!Tb)return Q("Select a table for dine in","warn")}try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const N={items:fe.cart.map(W=>({...W,pid:W.pid||W.id||W.productId,qty:W.qty||1})),table:Tb||(A==="delivery"?"Delivery":"Pickup"),custId:fe.custId||null,gtype:Gt,zoneId:fe.zoneId||null,note:(fe.note||"").trim()||A==="delivery"&&ia&&ia.address||"",payOnline:f,storeId:Sd};try{const I=await fetch(`/p/${St}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify(N)}),j=await I.json().catch(()=>({}));if(!I.ok)return Q(j.error||"Couldn\'t place the order — please try again","warn");const F=j.order||{};try{window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.refreshOrders&&window.KashikeyoGuestProfile.refreshOrders()}catch{}x(W=>W.some(he=>he.id===F.id)?W:[...W,F]),f1(W=>W?{...W,orders:[F,...(W.orders||[]).filter(he=>he.id!==F.id)]}:W),Dn(W=>({...W,cart:[],tab:"orders",note:""})),Q(`New order ${F.no||"sent"} · ${F.customerName?F.customerName+(F.table?" @ "+F.table:""):F.table||N.table}${f?" · paid online":""}`)}catch{Q("Can\'t reach the café — check your connection and try again","warn")}},Hw=(f,A)=>';
+  'rI=async f=>{if(!fe.cart.length)return Q("Cart is empty","warn");if(fe.gtype==="table"&&!fe.table)return Q("Select a table for dine in","warn");const A=fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!Ou&&M.length)return Q("Pick your delivery zone first","warn");const St=fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(!St)return Q("Not connected to the cloud café — open the shared customer link or pair Cloud Sync first","warn");const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const N={items:fe.cart.map(W=>({...W,pid:W.pid||W.id||W.productId,qty:W.qty||1})),table:fe.table||(A==="delivery"?"Delivery":"Pickup"),custId:fe.custId||null,gtype:fe.gtype,zoneId:fe.zoneId||null,note:(fe.note||"").trim()||A==="delivery"&&ia&&ia.address||"",payOnline:f,storeId:Sd};try{const I=await fetch(`/p/${St}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify(N)}),j=await I.json().catch(()=>({}));if(!I.ok)return Q(j.error||"Couldn\'t place the order — please try again","warn");const F=j.order||{};x(W=>W.some(he=>he.id===F.id)?W:[...W,F]),f1(W=>W?{...W,orders:[F,...(W.orders||[]).filter(he=>he.id!==F.id)]}:W),Dn(W=>({...W,cart:[],tab:"orders",note:""})),Q(`New order ${F.no||"sent"} · ${F.customerName?F.customerName+(F.table?" @ "+F.table:""):F.table||N.table}${f?" · paid online":""}`)}catch{Q("Can\'t reach the café — check your connection and try again","warn")}},Hw=(f,A)=>';
 const call =
-  'nI=async()=>{try{const St=fe&&fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(St){const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main",Dt=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"",Tb=fe.table||Pa.get("t")||Dt||"";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${St}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:Tb||fe.table,custId:fe.custId||null,storeId:Sd})})}}catch{}Hw(fe.table,ia?ia.name:null)}';
+  'nI=async()=>{try{const St=fe&&fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(St){const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${St}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:fe.table,custId:fe.custId||null,storeId:Sd})})}}catch{}Hw(fe.table,ia?ia.name:null)}';
 
 /* Customer-facing guest links carried a "Staff sign-in" lock icon in the top
    corner that wiped the guest session and fell through to the till's staff
@@ -50,19 +65,20 @@ const hideStaffSignIn =
 const skipEchoGuard =
   'if(wu.current.has(I)&&I!=="orders"&&I!=="sales"){wu.current.delete(I),Qf.current[I]=F;return}';
 
-/* The checkout/call fixes above all patch rI/nI — but those are only ever
+/* The checkout/call fixes above patch rI/nI — but those are only ever
    reached through their `else` branch. The actual guest page (Qw) defines its
-   OWN checkout (lb) and waiter-call (ub) functions in a separate closure with
-   different local variable names, and calls fetch directly whenever fe.slug
-   is set — i.e. on every real, shared customer/table link. rI/nI only run
-   for the till's own no-slug guest preview. This is why dine-in table
-   selection, storeId scoping and the friendlier error handling never reached
-   real customers: lb/ub never knew any of it existed. Patched in place using
-   Qw's own variable names (yt=cart, ye=selected zone, I=zones list). */
+   OWN checkout (lb) and waiter-call (ub) in a separate closure with different
+   local variable names, and calls fetch directly whenever fe.slug is set —
+   i.e. on every real, shared customer/table link. rI/nI only run for the
+   till's own no-slug guest preview. Patched using Qw's own variable names
+   (yt=cart, ye=selected zone, I=zones list). Table/gtype now come straight
+   from fe (set natively by the order-type toggle above), so this stays as
+   close to the original native lb/ub as possible — only storeId scoping and
+   a same table-required check are added. */
 const guestCheckout =
-  'lb=async ne=>{if(yt.length){const Mo=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getOrderMode?window.KashikeyoGuestProfile.getOrderMode():"",A=Mo==="dinein"?"dinein":fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!ye&&I.length)return Q("Pick your delivery zone first","warn");if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";let Tb=fe.table||Pa.get("t")||(Mo==="dinein"&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"")||"",Gt=Tb&&A!=="delivery"?"table":fe.gtype;if(Mo==="dinein"&&!Tb&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.pickTable){Tb=await window.KashikeyoGuestProfile.pickTable();Gt=Tb?"table":fe.gtype;if(!Tb)return Q("Select a table for dine in","warn")}try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const ke=await fetch(`/p/${fe.slug}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({items:fe.cart,table:Tb||fe.table,custId:fe.custId,gtype:Gt,zoneId:fe.zoneId,note:fe.note||"",payOnline:ne,storeId:Sd})}),ze=await ke.json();if(!ke.ok)return Q(ze.error||"Couldn\'t place the order","warn");try{window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.refreshOrders&&window.KashikeyoGuestProfile.refreshOrders()}catch{}Dn(on=>({...on,cart:[],tab:"orders",note:""})),f1(on=>on&&{...on,orders:[ze.order,...on.orders||[]]}),Q(`Order ${ze.order.no} sent to the kitchen 🎉`)}catch{Q("Network hiccup — try again","warn")}else rI(ne)}}';
+  'lb=async ne=>{if(yt.length){if(fe.gtype==="table"&&!fe.table)return Q("Select a table for dine in","warn");if(fe.gtype==="delivery"&&!ye&&I.length)return Q("Pick your delivery zone first","warn");if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const ke=await fetch(`/p/${fe.slug}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({items:fe.cart,table:fe.table,custId:fe.custId,gtype:fe.gtype,zoneId:fe.zoneId,note:fe.note||"",payOnline:ne,storeId:Sd})}),ze=await ke.json();if(!ke.ok)return Q(ze.error||"Couldn\'t place the order","warn");Dn(on=>({...on,cart:[],tab:"orders",note:""})),f1(on=>on&&{...on,orders:[ze.order,...on.orders||[]]}),Q(`Order ${ze.order.no} sent to the kitchen \u{1F389}`)}catch{Q("Network hiccup — try again","warn")}else rI(ne)}}';
 const guestCall =
-  'ub=async()=>{if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main",Dt=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"",Tb=fe.table||Pa.get("t")||Dt||"";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${fe.slug}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:Tb||fe.table,custId:fe.custId,storeId:Sd})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}';
+  'ub=async()=>{if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${fe.slug}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:fe.table,custId:fe.custId,storeId:Sd})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}';
 
 function injectScript(html, src) {
   if (html.includes(src)) return html;
@@ -71,14 +87,19 @@ function injectScript(html, src) {
   return tag + html;
 }
 
-function injectRuntimeGuards(html) {
-  return ["offline-bridge.js", "guest-profile-guard.js"].reduce((out, src) => injectScript(out, src), html);
-}
-
-patchFile(indexPath, (html) => injectRuntimeGuards(html)
+patchFile(indexPath, (html) => injectScript(html, "offline-bridge.js")
+  .replace(
+    'h.jsx("div",{className:"flex gap-1.5 mb-2",children:(fe.table?[["table","To table "+fe.table],["delivery","Delivery"]]:[["pickup","Pickup"],["delivery","Delivery"]]).map(([ne,ke])=>h.jsx("button",{onClick:()=>Dn(ze=>({...ze,gtype:ne})),className:`flex-1 rounded-lg py-2 text-xs font-semibold ${fe.gtype===ne?_.chipOn:_.chip}`,children:ke},ne))}),fe.gtype==="delivery"&&',
+    orderTypeToggle
+  )
   .replace(/rI=f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
   .replace(/rI=async f=>\{if\(!R1\.length\)return;const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
   .replace(/rI=async f=>\{if\(!fe\.cart\.length\)return Q\("Cart is empty","warn"\);const A=fe\.gtype==="delivery"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
+  .replace(/rI=async f=>\{if\(!fe\.cart\.length\)return Q\("Cart is empty","warn"\);if\(fe\.gtype==="table"[\s\S]*?\},Hw=\(f,A\)=>/, checkout)
+  .replace(
+    'rI=async f=>{if(!fe.cart.length)return Q("Cart is empty","warn");const Mo=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getOrderMode?window.KashikeyoGuestProfile.getOrderMode():"",A=Mo==="dinein"?"dinein":fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!Ou&&M.length)return Q("Pick your delivery zone first","warn");const St=fe.slug||(typeof Ie!=="undefined"&&Ie&&Ie.slug)||"";if(!St)return Q("Not connected to the cloud café — open the shared customer link or pair Cloud Sync first","warn");const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";let Tb=fe.table||Pa.get("t")||(Mo==="dinein"&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"")||"",Gt=Tb&&A!=="delivery"?"table":fe.gtype;if(Mo==="dinein"&&!Tb&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.pickTable){Tb=await window.KashikeyoGuestProfile.pickTable();Gt=Tb?"table":fe.gtype;if(!Tb)return Q("Select a table for dine in","warn")}try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const N={items:fe.cart.map(W=>({...W,pid:W.pid||W.id||W.productId,qty:W.qty||1})),table:Tb||(A==="delivery"?"Delivery":"Pickup"),custId:fe.custId||null,gtype:Gt,zoneId:fe.zoneId||null,note:(fe.note||"").trim()||A==="delivery"&&ia&&ia.address||"",payOnline:f,storeId:Sd};try{const I=await fetch(`/p/${St}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify(N)}),j=await I.json().catch(()=>({}));if(!I.ok)return Q(j.error||"Couldn\'t place the order — please try again","warn");const F=j.order||{};try{window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.refreshOrders&&window.KashikeyoGuestProfile.refreshOrders()}catch{}x(W=>W.some(he=>he.id===F.id)?W:[...W,F]),f1(W=>W?{...W,orders:[F,...(W.orders||[]).filter(he=>he.id!==F.id)]}:W),Dn(W=>({...W,cart:[],tab:"orders",note:""})),Q(`New order ${F.no||"sent"} · ${F.customerName?F.customerName+(F.table?" @ "+F.table:""):F.table||N.table}${f?" · paid online":""}`)}catch{Q("Can\'t reach the café — check your connection and try again","warn")}},Hw=(f,A)=>',
+    checkout
+  )
   .replace("nI=()=>Hw(fe.table,ia?ia.name:null)", call)
   .replace(/nI=async\(\)=>\{try\{[\s\S]*?Hw\(fe\.table,ia\?ia\.name:null\)\}/, call)
   .replace(
@@ -94,12 +115,24 @@ patchFile(indexPath, (html) => injectRuntimeGuards(html)
     guestCheckout
   )
   .replace(
+    'lb=async ne=>{if(yt.length){const Mo=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getOrderMode?window.KashikeyoGuestProfile.getOrderMode():"",A=Mo==="dinein"?"dinein":fe.gtype==="delivery"?"delivery":fe.gtype==="pickup"?"takeaway":"dinein";if(A==="delivery"&&!ye&&I.length)return Q("Pick your delivery zone first","warn");if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main";let Tb=fe.table||Pa.get("t")||(Mo==="dinein"&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"")||"",Gt=Tb&&A!=="delivery"?"table":fe.gtype;if(Mo==="dinein"&&!Tb&&window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.pickTable){Tb=await window.KashikeyoGuestProfile.pickTable();Gt=Tb?"table":fe.gtype;if(!Tb)return Q("Select a table for dine in","warn")}try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}const ke=await fetch(`/p/${fe.slug}/order?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({items:fe.cart,table:Tb||fe.table,custId:fe.custId,gtype:Gt,zoneId:fe.zoneId,note:fe.note||"",payOnline:ne,storeId:Sd})}),ze=await ke.json();if(!ke.ok)return Q(ze.error||"Couldn\'t place the order","warn");try{window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.refreshOrders&&window.KashikeyoGuestProfile.refreshOrders()}catch{}Dn(on=>({...on,cart:[],tab:"orders",note:""})),f1(on=>on&&{...on,orders:[ze.order,...on.orders||[]]}),Q(`Order ${ze.order.no} sent to the kitchen \u{1F389}`)}catch{Q("Network hiccup — try again","warn")}else rI(ne)}}',
+    guestCheckout
+  )
+  .replace(
     'ub=async()=>{if(fe.slug)try{await fetch(`/p/${fe.slug}/call`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({table:fe.table,custId:fe.custId})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}',
     guestCall
   )
+  .replace(
+    'ub=async()=>{if(fe.slug)try{const Pa=new URLSearchParams(location.search),Sd=fe.storeId||Pa.get("storeId")||Pa.get("store")||Pa.get("st")||localStorage.getItem("kashikeyo.storeId")||"main",Dt=window.KashikeyoGuestProfile&&window.KashikeyoGuestProfile.getSelectedTable?window.KashikeyoGuestProfile.getSelectedTable():"",Tb=fe.table||Pa.get("t")||Dt||"";try{window.KashikeyoOffline&&window.KashikeyoOffline.setStoreId&&window.KashikeyoOffline.setStoreId(Sd)}catch{}await fetch(`/p/${fe.slug}/call?storeId=${encodeURIComponent(Sd)}`,{method:"POST",headers:{"Content-Type":"application/json","X-Store-Id":Sd},body:JSON.stringify({table:Tb||fe.table,custId:fe.custId,storeId:Sd})}),Q("\u{1F514} We\'re on our way!")}catch{}else nI()}',
+    guestCall
+  )
+  /* An earlier revision injected a separate guest-profile-guard.js script tag
+     directly into the committed bundle; strip it now that table selection is
+     native and that script is gone. */
+  .replace('<script src="/guest-profile-guard.js"></script>', "")
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.10"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.11"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
