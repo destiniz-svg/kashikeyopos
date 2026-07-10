@@ -3,7 +3,7 @@
    pages stay light and consistent. Theme-aware via prefers-color-scheme. */
 :root {
   --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
-  --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+  --sub: #8A8074; --faint: #B7AE9F; --primary: #9A2130; --primary-hov: #7F1A27;
   --btn: #F1E8D8; --ok: #2E7D46; --code-bg: #F6EFE2;
   --glass: rgba(255,255,255,.55); --glass-border: rgba(255,255,255,.6);
 }
