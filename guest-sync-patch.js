@@ -584,6 +584,38 @@ patchFile(indexPath, (html) => html
     'children:[h.jsx(C3,{size:16})," Lock · switch user"]}),h.jsx("button",{onClick:UT,className:"w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 mt-2 text-sm font-semibold border border-rose-500/40 text-rose-400",children:"Sign out"})]})'
   )
 
+  /* 38. Guest order status bar: the progress segments were a hardcoded
+     bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
+     a red (or any non-cyan) store theme. Recolour both from the live theme
+     accent (_.bar is the palette's hex) so the customer profile matches the
+     outlet's colours. Find strings carry the old class names, so both are
+     consumed and the patch is a no-op on re-runs. */
+  .replace(
+    'cb.map((sn,Iu)=>h.jsx("div",{className:`flex-1 h-1.5 rounded-full ${Iu<=ke?"bg-cyan-500":_.panel2}`},sn))',
+    'cb.map((sn,Iu)=>h.jsx("div",{className:`flex-1 h-1.5 rounded-full ${Iu<=ke?"":_.panel2}`,style:Iu<=ke?{background:_.bar}:void 0},sn))'
+  )
+  .replace(
+    'h.jsxs("span",{className:`text-xs font-medium ${ke>=2?"text-emerald-400":_.sub}`,children:[S6[ne.status]||ne.status',
+    'h.jsxs("span",{className:`text-xs font-medium ${ke>=2?"":_.sub}`,style:ke>=2?{color:_.bar}:void 0,children:[S6[ne.status]||ne.status'
+  )
+
+  /* 36. Guest/member profile: time-of-day greeting instead of a flat "Hi" —
+     "Good evening, Ahmed! 👋" by the device's local clock. */
+  .replace(
+    'children:["Hi, ",j.name.split(" ")[0]," 👋"]',
+    'children:[(kh=>kh<5?"Good night":kh<12?"Good morning":kh<18?"Good afternoon":"Good evening")(new Date().getHours())+", "+j.name.split(" ")[0]+"! 👋"]'
+  )
+
+  /* 37. Guest pages follow the store's theme: the till mirrors its palette
+     into settings (ktheme/ktdark, patches #30/31) and the guest boot payload
+     carries settings — apply it so a watermelon-dark store shows guests a
+     watermelon-dark profile instead of the default orange. React bails out
+     on identical setState values, so re-applying on each 6s poll is free. */
+  .replace(
+    'f&&f1({boot:I,orders:j.orders||[]})',
+    'f&&(f1({boot:I,orders:j.orders||[]}),(()=>{try{const kt=I&&I.settings;kt&&kt.ktheme&&KshSetTheme(kt.ktheme),kt&&kt.ktdark!==void 0&&a(kt.ktdark===!0)}catch{}})())'
+  )
+
   /* 32. Guest/member profile: rewards card with tier progress + "your usuals"
      one-tap reorder chips, inserted above the Visits/Spent/On-account tiles.
      Uses only data already on the page: j = customer from /p/:slug/boot
@@ -707,6 +739,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.21"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.23"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

@@ -127,8 +127,8 @@
     margin: 56px auto 0; max-width: 760px; background: var(--panel); border: 1px solid var(--border);
     border-radius: 18px; box-shadow: 0 20px 60px rgba(42,36,30,.12); overflow: hidden; text-align: left;
   }
-  .mock-bar { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel2); }
-  .mock-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
+  .mock-bar { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--primary); background: var(--primary); }
+  .mock-bar i { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.55); }
   .mock-body { padding: 22px; display: grid; grid-template-columns: 1.1fr .9fr; gap: 20px; }
   @media (max-width: 620px) { .mock-body { grid-template-columns: 1fr; } }
   .mock-col h4 { margin: 0 0 12px; font-size: 13px; color: var(--sub); text-transform: uppercase; letter-spacing: .06em; }
@@ -210,25 +210,6 @@
   .fv-branch .store:nth-child(2) .rail::after { animation-delay: .55s; } .fv-branch .store:nth-child(3) .rail::after { animation-delay: 1.1s; }
   .fv-branch .btag { position: absolute; right: 9px; top: 8px; border-radius: 999px; background: rgba(107,122,66,.12); color: var(--leaf); font-size: 9px; font-weight: 700; padding: 3px 6px; }
 
-  /* Customer portal: phone status + cycling cards */
-  .fv-portal { display: grid; grid-template-columns: .92fr 1.08fr; gap: 8px; padding: 14px; }
-  .fv-portal .pphone { display: grid; gap: 6px; border: 5px solid var(--text); border-radius: 18px; background: #fff; padding: 8px 7px; align-content: start; }
-  .fv-portal .pstatus { border-radius: 11px; background: rgba(154,33,48,.1); padding: 7px; }
-  .fv-portal .pstatus small { display: block; color: var(--sub); font-size: 8px; } .fv-portal .pstatus strong { display: block; color: var(--primary); font-size: 12px; margin-top: 2px; }
-  .fv-portal .prow { display: flex; justify-content: space-between; border: 1px solid var(--border); border-radius: 10px; padding: 6px 7px; font-size: 9px; color: var(--sub); }
-  .fv-portal .prow b { color: var(--text); }
-  .fv-portal .pcards { display: grid; gap: 6px; }
-  .fv-portal .pcard { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 9px; }
-  .fv-portal .pcard small { color: var(--primary); font-size: 9px; font-weight: 700; } .fv-portal .pcard strong { display: block; font-size: 12px; margin-top: 4px; } .fv-portal .pcard span { display: block; color: var(--sub); font-size: 9px; margin-top: 3px; }
-  .fv-portal .pcard:nth-child(1) { animation: fvFocus 4s infinite; } .fv-portal .pcard:nth-child(2) { animation: fvFocus 4s infinite 1.3s; } .fv-portal .pcard:nth-child(3) { animation: fvFocus 4s infinite 2.6s; }
-
-  /* Walk-in QR: QR + floating temporary-portal ticket */
-  .fv-walkin { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 16px; }
-  .fv-walkin .wqr { display: grid; width: 76px; height: 76px; grid-template-columns: repeat(4,1fr); gap: 4px; border-radius: 13px; background: #fff; padding: 9px; }
-  .fv-walkin .wqr i { border-radius: 3px; background: var(--primary); } .fv-walkin .wqr i:nth-child(3n) { background: var(--text); }
-  .fv-walkin .wticket { border-radius: 13px; background: #fff; border: 1px solid var(--border); padding: 11px; animation: fvFloat 4s infinite; }
-  .fv-walkin .wticket strong { display: block; font-size: 13px; } .fv-walkin .wticket span { display: block; margin-top: 6px; color: var(--sub); font-size: 10px; }
-
   /* Loyalty: points pill + filling bar + reward chips */
   .fv-loyal { display: grid; align-content: center; gap: 9px; padding: 18px; }
   .fv-loyal .pill { width: fit-content; border-radius: 999px; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; padding: 6px 10px; }
@@ -236,11 +217,6 @@
   .fv-loyal .bar::after { content: ""; display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--primary),var(--gold)); width: 60%; animation: fvPoints 3.4s infinite; }
   .fv-loyal .rewards { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
   .fv-loyal .rewards span { border-radius: 9px; background: #fff; border: 1px solid var(--border); color: var(--sub); font-size: 10px; font-weight: 600; text-align: center; padding: 7px 3px; }
-
-  /* Dine-in table map: moving live highlight */
-  .fv-tables { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; padding: 18px; }
-  .fv-tables::after { content: ""; position: absolute; left: 18px; top: 62px; z-index: 0; width: calc((100% - 54px)/3); height: 40px; border-radius: 12px; background: var(--primary); box-shadow: 0 0 0 6px rgba(154,33,48,.12); animation: fvTableMove 4.8s infinite; }
-  .fv-tables .seat { position: relative; z-index: 1; min-height: 40px; border: 1px solid var(--border); border-radius: 12px; color: var(--sub); font-size: 11px; font-weight: 800; text-align: center; padding-top: 13px; }
 
   /* Offline-first: the Offline -> Syncing -> Synced demo */
   .fv-offline { display: grid; align-content: center; gap: 0; padding: 0; }
@@ -285,6 +261,45 @@
   .bo-good { color: var(--leaf); font-weight: 700; }
   .bo-warn { color: var(--primary); font-weight: 700; }
 
+  /* Live order tracking: 5 stages filling + status label cycling */
+  .fv-track { display: grid; align-content: center; gap: 10px; padding: 18px; }
+  .fv-track .tstat { font-size: 13px; font-weight: 800; color: var(--primary); min-height: 18px; }
+  .fv-track .tstat::after { content: "Order received"; animation: fvStage5 10s infinite; }
+  .fv-track .segs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+  .fv-track .segs i { height: 7px; border-radius: 999px; background: rgba(42,36,30,.12); position: relative; overflow: hidden; }
+  .fv-track .segs i::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--primary); transform: translateX(-102%); animation: fvSeg 10s infinite; }
+  .fv-track .segs i:nth-child(2)::after { animation-delay: 2s; }
+  .fv-track .segs i:nth-child(3)::after { animation-delay: 4s; }
+  .fv-track .segs i:nth-child(4)::after { animation-delay: 6s; }
+  .fv-track .segs i:nth-child(5)::after { animation-delay: 8s; }
+  .fv-track .tnote { font-size: 10.5px; color: var(--sub); }
+  @keyframes fvSeg { 0% { transform: translateX(-102%); } 6%, 100% { transform: translateX(0); } }
+  @keyframes fvStage5 {
+    0%, 19%  { content: "Order received"; }
+    20%, 39% { content: "Kitchen is preparing"; }
+    40%, 59% { content: "Ready — coming to you"; }
+    60%, 79% { content: "Delivered — enjoy!"; }
+    80%, 100%{ content: "Settled — thank you"; }
+  }
+  /* Billing: discount lands, total re-prices */
+  .fv-bill .brow.disc { animation: fvDiscIn 6s infinite; }
+  .fv-bill .btot::after { content: "125.50"; animation: fvTot 6s infinite; }
+  @keyframes fvDiscIn { 0%, 28% { opacity: .25; transform: translateX(-4px); } 36%, 100% { opacity: 1; transform: translateX(0); } }
+  @keyframes fvTot { 0%, 32% { content: "125.50"; } 36%, 100% { content: "114.70"; } }
+  /* FX: the two currencies take turns */
+  .fv-fx .fxrow { animation: fvFxA 5s infinite; }
+  .fv-fx .fxrow.dim { animation: fvFxB 5s infinite; }
+  @keyframes fvFxA { 0%, 44% { border-color: rgba(154,33,48,.5); transform: translateY(0); } 55%, 90% { border-color: var(--border); } }
+  @keyframes fvFxB { 0%, 44% { border-color: var(--border); } 55%, 90% { border-color: rgba(107,122,66,.6); transform: translateY(-2px); } 100% { transform: translateY(0); } }
+  /* Security: shield heartbeat */
+  .fv-secure .shield { animation: fvShield 3.2s infinite; }
+  @keyframes fvShield { 0%, 100% { box-shadow: 0 0 0 0 rgba(42,36,30,.25); } 50% { box-shadow: 0 0 0 12px rgba(42,36,30,0); } }
+  /* Members: tiers light up in turn */
+  .fv-loyal .rewards span:nth-child(1) { animation: fvTier 5.4s infinite; }
+  .fv-loyal .rewards span:nth-child(2) { animation: fvTier 5.4s infinite 1.8s; }
+  .fv-loyal .rewards span:nth-child(3) { animation: fvTier 5.4s infinite 3.6s; }
+  @keyframes fvTier { 0%, 100% { border-color: var(--border); transform: translateY(0); } 16% { border-color: rgba(154,33,48,.5); transform: translateY(-2px); } 32% { border-color: var(--border); } }
+
   @keyframes fvScan { 0%,100% { transform: translateY(0); } 50% { transform: translateY(60px); } }
   @keyframes fvStage { 0%,100% { border-color: var(--border); transform: translateY(0); } 45% { border-color: rgba(154,33,48,.42); transform: translateY(-3px); } }
   @keyframes fvSyncDot { 0%,100% { transform: translateX(0); } 50% { transform: translateX(16px); } }
@@ -298,7 +313,8 @@
   @keyframes fvLabel { 0%,32% { content: "Offline"; } 33%,72% { content: "Syncing"; } 73%,100% { content: "Synced"; } }
   @media (prefers-reduced-motion: reduce) {
     .fv-qr .scan, .fv-sync .stage, .fv-sync .arrow::after, .fv-branch .bdot, .fv-branch .rail::after,
-    .fv-portal .pcard, .fv-walkin .wticket, .fv-loyal .bar::after, .fv-tables::after,
+    .fv-track .tstat::after, .fv-track .segs i::after, .fv-bill .brow.disc, .fv-bill .btot::after,
+    .fv-fx .fxrow, .fv-secure .shield, .fv-loyal .rewards span, .fv-loyal .bar::after,
     .fv-offline .spill::after, .fv-offline .track::after { animation: none !important; }
   }
 
@@ -326,14 +342,33 @@
   }
   .theme-chip.on { border-color: var(--primary); background: #FBEAE4; }
   .theme-chip .dot { width: 10px; height: 10px; border-radius: 50%; }
-  .preview-card {
-    border-radius: 14px; padding: 20px; border: 1px solid; transition: background .2s, color .2s, border-color .2s;
+  /* Mini till: a themed miniature of the real sell screen, driven by the
+     till's actual palette values via --tm-* variables. */
+  .tillmock {
+    --tm-bg: #F3ECE1; --tm-panel: #FFFFFF; --tm-border: #E8DFCF; --tm-text: #2A241E;
+    --tm-sub: #8A8074; --tm-accent: #C1502D; --tm-chip: #FBF7EF;
+    border-radius: 16px; overflow: hidden; border: 1px solid var(--tm-border);
+    background: var(--tm-bg); color: var(--tm-text); box-shadow: 0 16px 44px rgba(42,36,30,.14);
+    transition: background .35s, color .35s, border-color .35s; font-size: 12px;
   }
-  .preview-card .p-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-  .preview-card .p-name { font-weight: 700; font-size: 14px; }
-  .preview-card .p-badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; }
-  .preview-card .p-row { display: flex; justify-content: space-between; padding: 9px 0; border-top: 1px solid; font-size: 13px; }
-  .preview-card .p-total { display: flex; justify-content: space-between; padding-top: 12px; margin-top: 6px; border-top: 1px solid; font-weight: 700; font-size: 14px; }
+  .tillmock * { transition: background .35s, color .35s, border-color .35s; }
+  .tm-top { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid var(--tm-border); }
+  .tm-top b { font-size: 12px; }
+  .tm-top span { font-size: 10px; color: var(--tm-sub); }
+  .tm-body { display: grid; grid-template-columns: 1.15fr .85fr; gap: 9px; padding: 10px; }
+  .tm-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; align-content: start; }
+  .tm-tile { border: 1px solid var(--tm-border); border-radius: 11px; background: var(--tm-panel); padding: 8px; }
+  .tm-tile .e { font-size: 16px; }
+  .tm-tile b { display: block; font-size: 10.5px; margin-top: 3px; }
+  .tm-tile span { font-size: 10px; color: var(--tm-sub); font-family: ui-monospace, Menlo, monospace; }
+  .tm-cart { border: 1px solid var(--tm-border); border-radius: 12px; background: var(--tm-panel); padding: 9px; display: grid; gap: 6px; align-content: start; }
+  .tm-cart .h { display: flex; justify-content: space-between; font-size: 10px; color: var(--tm-sub); }
+  .tm-line { display: flex; justify-content: space-between; font-size: 10.5px; }
+  .tm-line b { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+  .tm-tot { display: flex; justify-content: space-between; border-top: 1px solid var(--tm-border); padding-top: 6px; font-weight: 800; font-size: 11.5px; }
+  .tm-tot b { color: var(--tm-accent); font-family: ui-monospace, Menlo, monospace; }
+  .tm-pay { border: none; border-radius: 9px; background: var(--tm-accent); color: #fff; font-size: 11px; font-weight: 700; padding: 8px; text-align: center; }
+  .tm-usd { font-size: 9.5px; color: var(--tm-sub); text-align: center; }
 
   /* CTA band */
   .cta-band {
@@ -467,7 +502,7 @@
       <div class="feature">
         <div class="ico">📱</div>
         <h3>Guest QR ordering</h3>
-        <p>Guests scan a table code, browse your menu, and order straight from their own phone — dine-in, pickup or delivery.</p>
+        <p>Guests scan a table code and order from their own phone — dine-in, pickup or delivery. Walk-ins get a temporary portal to track their order, no account needed.</p>
         <div class="fv fv-qr" aria-hidden="true">
           <div class="vphone"></div>
           <div class="scan"></div>
@@ -487,43 +522,23 @@
         </div>
       </div>
       <div class="feature">
-        <div class="ico">🏬</div>
-        <h3>Multi-branch management</h3>
-        <p>Built for resorts, restaurant groups and multi-location cafés — one account, with each branch's menu, tables and stock kept separate.</p>
-        <div class="fv fv-branch" aria-hidden="true">
-          <div class="hub"><strong>HQ control</strong><span>All branches synced</span></div>
-          <div class="stores">
-            <div class="store"><i class="bdot"></i><span><strong>Malé</strong><small>42 orders today</small><i class="rail"></i></span><b class="btag">Live</b></div>
-            <div class="store"><i class="bdot"></i><span><strong>Hulhumalé</strong><small>18 orders today</small><i class="rail"></i></span><b class="btag">Live</b></div>
-            <div class="store"><i class="bdot"></i><span><strong>Resort</strong><small>Menus &amp; stock synced</small><i class="rail"></i></span><b class="btag">Sync</b></div>
-          </div>
+        <div class="ico">📶</div>
+        <h3>Offline-first reliability</h3>
+        <p>Keep taking orders through a dropped connection — everything queues up and syncs the moment you're back online.</p>
+        <div class="fv fv-offline" aria-hidden="true">
+          <div class="top"><strong>Order queue</strong><span class="spill"></span></div>
+          <div class="track"></div>
+          <div class="states"><span>Offline</span><span>Syncing</span><span>Synced</span></div>
         </div>
       </div>
       <div class="feature">
-        <div class="ico">👤</div>
-        <h3>Customer portals</h3>
-        <p>Personal links with live order tracking through five stages — received, preparing, ready, delivered, settled — plus waiter calls, history and balances.</p>
-        <div class="fv fv-portal" aria-hidden="true">
-          <div class="pphone">
-            <div class="pstatus"><small>Order status</small><strong>Delivered — enjoy!</strong></div>
-            <div class="prow"><span>Delivery</span><b>Tracking</b></div>
-            <div class="prow"><span>Waiter</span><b>Called</b></div>
-            <div class="prow"><span>Total</span><b>MVR 285</b></div>
-          </div>
-          <div class="pcards">
-            <div class="pcard"><small>Portal</small><strong>Personal link</strong><span>Dine-in, home, pickup, delivery</span></div>
-            <div class="pcard"><small>Loyalty</small><strong>1,240 points</strong><span>Rewards &amp; visit history</span></div>
-            <div class="pcard"><small>Credit</small><strong>MVR 420 balance</strong><span>Visible customer credit</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="feature">
-        <div class="ico">🚶</div>
-        <h3>Walk-in QR ordering</h3>
-        <p>Walk-in guests scan, get a temporary portal, track their order until it's settled, and leave — no account needed.</p>
-        <div class="fv fv-walkin" aria-hidden="true">
-          <div class="wqr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-          <div class="wticket"><strong>Temporary portal</strong><span>Order #W-104 · Ready soon</span><span>No login needed</span></div>
+        <div class="ico">📍</div>
+        <h3>Live order tracking</h3>
+        <p>Every order moves through five visible stages — received, preparing, ready, delivered, settled — on the guest's own phone, with waiter calls and history.</p>
+        <div class="fv fv-track" aria-hidden="true">
+          <div class="tstat"></div>
+          <div class="segs"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="tnote">ORD-508 · Table T4 · updates live</div>
         </div>
       </div>
       <div class="feature">
@@ -534,25 +549,6 @@
           <span class="pill">🥈 Silver · 140 pts</span>
           <div class="bar"></div>
           <div class="rewards"><span>🥉 Bronze</span><span>🥈 Silver</span><span>🥇 Gold</span></div>
-        </div>
-      </div>
-      <div class="feature">
-        <div class="ico">🍽️</div>
-        <h3>Dine-in table tracking</h3>
-        <p>Pick a table the same way at the till and on the guest profile, so nothing gets lost between the two.</p>
-        <div class="fv fv-tables" aria-hidden="true">
-          <span class="seat">T1</span><span class="seat">T4</span><span class="seat">T7</span>
-          <span class="seat">T2</span><span class="seat">T5</span><span class="seat">T8</span>
-        </div>
-      </div>
-      <div class="feature">
-        <div class="ico">📶</div>
-        <h3>Offline-first reliability</h3>
-        <p>Keep taking orders through a dropped connection — everything queues up and syncs the moment you're back online.</p>
-        <div class="fv fv-offline" aria-hidden="true">
-          <div class="top"><strong>Order queue</strong><span class="spill"></span></div>
-          <div class="track"></div>
-          <div class="states"><span>Offline</span><span>Syncing</span><span>Synced</span></div>
         </div>
       </div>
       <div class="feature">
@@ -573,7 +569,20 @@
           <div class="brow"><span>Subtotal</span><b>108.00</b></div>
           <div class="brow disc"><span>Discount 10%</span><b>−10.80</b></div>
           <div class="brow"><span>GST 8% · Svc 10%</span><b>17.50</b></div>
-          <div class="brow tot"><span>TOTAL</span><b>114.70</b></div>
+          <div class="brow tot"><span>TOTAL</span><b class="btot"></b></div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ico">🏬</div>
+        <h3>Multi-branch management</h3>
+        <p>Built for resorts, restaurant groups and multi-location cafés — one account, with each branch's menu, tables and stock kept separate.</p>
+        <div class="fv fv-branch" aria-hidden="true">
+          <div class="hub"><strong>HQ control</strong><span>All branches synced</span></div>
+          <div class="stores">
+            <div class="store"><i class="bdot"></i><span><strong>Malé</strong><small>42 orders today</small><i class="rail"></i></span><b class="btag">Live</b></div>
+            <div class="store"><i class="bdot"></i><span><strong>Hulhumalé</strong><small>18 orders today</small><i class="rail"></i></span><b class="btag">Live</b></div>
+            <div class="store"><i class="bdot"></i><span><strong>Resort</strong><small>Menus &amp; stock synced</small><i class="rail"></i></span><b class="btag">Sync</b></div>
+          </div>
         </div>
       </div>
       <div class="feature">
@@ -659,7 +668,7 @@
     <p class="section-lead">Five fruit themes, each in light and dark — and the till, back office and guest pages all follow whichever you pick.</p>
     <div class="theme-demo">
       <div>
-        <p style="color:var(--sub);font-size:14px;line-height:1.6;margin:0 0 6px;">Try it — this changes the little order card on the right.</p>
+        <p style="color:var(--sub);font-size:14px;line-height:1.6;margin:0 0 6px;">The till on the right restyles itself every few seconds — or take over and pick your own palette and light/dark.</p>
         <div class="theme-picker" id="themePicker">
           <div class="theme-chip on" data-theme="orange"><span class="dot" style="background:#C1502D"></span>Orange</div>
           <div class="theme-chip" data-theme="green"><span class="dot" style="background:#4E8A3A"></span>Green Apple</div>
@@ -672,14 +681,25 @@
           <div class="theme-chip" data-dark="d"><span class="dot" style="background:#241A14"></span>Dark</div>
         </div>
       </div>
-      <div class="preview-card" id="previewCard">
-        <div class="p-header">
-          <span class="p-name">Order · ORD-508</span>
-          <span class="p-badge">Table T4</span>
+      <div class="tillmock" id="tillMock" aria-label="Till preview">
+        <div class="tm-top"><b>Island Zone Cafe</b><span>Shift 04 · Aisha</span></div>
+        <div class="tm-body">
+          <div class="tm-menu">
+            <div class="tm-tile"><span class="e">🍕</span><b>Margherita</b><span>95.00</span></div>
+            <div class="tm-tile"><span class="e">🍛</span><b>Chicken Curry</b><span>120.00</span></div>
+            <div class="tm-tile"><span class="e">🥤</span><b>Mango Juice</b><span>45.00</span></div>
+            <div class="tm-tile"><span class="e">🥟</span><b>Masroshi</b><span>15.00</span></div>
+          </div>
+          <div class="tm-cart">
+            <div class="h"><span>Table T4</span><span>2 guests</span></div>
+            <div class="tm-line"><span>2× Margherita</span><b>190.00</b></div>
+            <div class="tm-line"><span>1× Mango Juice</span><b>45.00</b></div>
+            <div class="tm-line"><span style="color:var(--tm-sub)">GST 8%</span><b style="color:var(--tm-sub)">18.80</b></div>
+            <div class="tm-tot"><span>TOTAL</span><b>MVR 253.80</b></div>
+            <div class="tm-pay">Charge · Cash</div>
+            <div class="tm-usd">≈ USD 16.46</div>
+          </div>
         </div>
-        <div class="p-row"><span>2× Chicken Curry</span><span>MVR 240</span></div>
-        <div class="p-row"><span>1× Mango Juice</span><span>MVR 45</span></div>
-        <div class="p-total"><span>Total</span><span>MVR 285</span></div>
       </div>
     </div>
   </div>
@@ -777,31 +797,41 @@
       mango:      { l: { bg:"#FFFFFF", border:"#EEE2C4", text:"#2A2410", sub:"#8A7C58", accent:"#E19A12" }, d: { bg:"#1F1B0E", border:"#3E3620", text:"#F0E9D2", sub:"#B5A578", accent:"#F2B733" } },
       strawberry: { l: { bg:"#FFFFFF", border:"#F0D6E0", text:"#2A1620", sub:"#8A6E78", accent:"#D8437A" }, d: { bg:"#1F1118", border:"#3E2432", text:"#F1E1E8", sub:"#B58CA0", accent:"#F06C9B" } },
     };
-    var card = document.getElementById("previewCard");
+    /* app backgrounds per theme (the tillmock body), light + dark */
+    var appBg = {
+      orange: { l: "#F3ECE1", d: "#241A14" }, green: { l: "#EEF4E8", d: "#131C0F" },
+      watermelon: { l: "#FCECEC", d: "#1F1113" }, mango: { l: "#FBF3E0", d: "#1F1B0E" },
+      strawberry: { l: "#FDECF1", d: "#1F1118" },
+    };
+    var mock = document.getElementById("tillMock");
     var sel = { name: "orange", mode: "l" };
     function apply() {
       var t = themes[sel.name][sel.mode];
-      card.style.background = t.bg;
-      card.style.borderColor = t.border;
-      card.style.color = t.text;
-      card.querySelectorAll(".p-row, .p-total").forEach(function (el) { el.style.borderColor = t.border; });
-      card.querySelector(".p-name").style.color = t.text;
-      card.querySelectorAll(".p-row span:last-child").forEach(function (el) { el.style.color = t.sub; });
-      card.querySelector(".p-total").style.color = t.accent;
-      var badge = card.querySelector(".p-badge");
-      badge.style.background = t.accent; badge.style.color = "#fff";
+      var st = mock.style;
+      st.setProperty("--tm-bg", appBg[sel.name][sel.mode]);
+      st.setProperty("--tm-panel", sel.mode === "d" ? "rgba(255,255,255,.06)" : t.bg);
+      st.setProperty("--tm-border", t.border);
+      st.setProperty("--tm-text", t.text);
+      st.setProperty("--tm-sub", t.sub);
+      st.setProperty("--tm-accent", t.accent);
+      document.querySelectorAll("#themePicker .theme-chip").forEach(function (c) { c.classList.toggle("on", c.dataset.theme === sel.name); });
+      document.querySelectorAll("#darkToggle .theme-chip").forEach(function (c) { c.classList.toggle("on", c.dataset.dark === sel.mode); });
     }
+    /* auto-cycle through the palettes (alternating light/dark) until the
+       visitor takes over by clicking a chip */
+    var names = Object.keys(themes), autoI = 0;
+    var autoTimer = setInterval(function () {
+      autoI++;
+      sel.name = names[autoI % names.length];
+      if (autoI % names.length === 0) sel.mode = sel.mode === "l" ? "d" : "l";
+      apply();
+    }, 2800);
+    function takeOver() { if (autoTimer) { clearInterval(autoTimer); autoTimer = null; } }
     document.querySelectorAll("#themePicker .theme-chip").forEach(function (chip) {
-      chip.addEventListener("click", function () {
-        document.querySelectorAll("#themePicker .theme-chip").forEach(function (c) { c.classList.remove("on"); });
-        chip.classList.add("on"); sel.name = chip.dataset.theme; apply();
-      });
+      chip.addEventListener("click", function () { takeOver(); sel.name = chip.dataset.theme; apply(); });
     });
     document.querySelectorAll("#darkToggle .theme-chip").forEach(function (chip) {
-      chip.addEventListener("click", function () {
-        document.querySelectorAll("#darkToggle .theme-chip").forEach(function (c) { c.classList.remove("on"); });
-        chip.classList.add("on"); sel.mode = chip.dataset.dark; apply();
-      });
+      chip.addEventListener("click", function () { takeOver(); sel.mode = chip.dataset.dark; apply(); });
     });
     apply();
   })();

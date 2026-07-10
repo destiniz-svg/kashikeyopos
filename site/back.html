@@ -143,7 +143,12 @@
 
   /* phones / small tablets */
   @media (max-width: 720px) {
-    .bar { padding: 10px 14px; }
+    .bar { padding: 10px 14px; flex-wrap: wrap; row-gap: 8px; }
+    .bar > div:last-child { width: 100%; justify-content: space-between; gap: 8px; }
+    .till-link { padding: 7px 12px; font-size: 12px; }
+    #signOut { padding: 7px 10px; font-size: 12px; }
+    .theme-ctl { gap: 5px; }
+    .theme-ctl .sw { width: 16px; height: 16px; }
     .tabs { padding: 0 8px; }
     main { padding: 16px 12px 90px; }
     #alerts { padding: 10px 12px 0; }
