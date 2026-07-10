@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>System status — KashikeyoPOS</title>
+<meta name="description" content="Live operational status of the KashikeyoPOS platform and its API." />
+<link rel="icon" href="/icon-192.png" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+<header class="site">
+  <div class="bar">
+    <a class="logo" href="/"><div class="logo-mark">K</div>KashikeyoPOS</a>
+    <div class="header-cta">
+      <a class="btn btn-ghost" href="/login">Sign in</a>
+      <a class="btn btn-primary" href="/signup">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <div class="kicker">System status</div>
+      <h1>Platform status</h1>
+      <p>Live health of the KashikeyoPOS service, checked the moment you loaded this page.</p>
+    </div>
+
+    <div class="status-hero" id="overall">
+      <span class="big-dot"></span>
+      <div>
+        <h2 id="overallText">Checking…</h2>
+        <p id="overallSub">Contacting the service…</p>
+      </div>
+    </div>
+
+    <div class="status-row">
+      <span class="name">API</span>
+      <span class="status-pill" id="pillApi"><span class="dot"></span><span>Checking…</span></span>
+    </div>
+    <div class="status-row">
+      <span class="name">Database</span>
+      <span class="status-pill" id="pillDb"><span class="dot"></span><span>Checking…</span></span>
+    </div>
+
+    <p class="muted" style="font-size:13px;margin-top:22px;" id="checkedAt"></p>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="row">
+    <span>&copy; <span id="yr"></span> KashikeyoPOS</span>
+    <span>
+      <a href="/docs">Documentation</a>
+      <a href="/api">API reference</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </span>
+  </div>
+</footer>
+
+<script>
+  document.getElementById("yr").textContent = new Date().getFullYear();
+  function setPill(id, ok) {
+    var el = document.getElementById(id);
+    el.className = "status-pill " + (ok ? "ok" : "down");
+    el.querySelector("span:last-child").textContent = ok ? "Operational" : "Unavailable";
+  }
+  fetch("/api/health").then(function (r) { return r.json().then(function (d) { return { status: r.status, d: d }; }); })
+    .then(function (res) {
+      var apiOk = res.status >= 200 && res.status < 500;
+      var dbOk = !!(res.d && res.d.db);
+      setPill("pillApi", apiOk);
+      setPill("pillDb", dbOk);
+      var allOk = apiOk && dbOk;
+      var hero = document.getElementById("overall");
+      hero.className = "status-hero " + (allOk ? "ok" : "down");
+      document.getElementById("overallText").textContent = allOk ? "All systems operational" : "Service degraded";
+      document.getElementById("overallSub").textContent = allOk
+        ? "Everything is running normally."
+        : "We're seeing an issue with one or more components.";
+    })
+    .catch(function () {
+      setPill("pillApi", false); setPill("pillDb", false);
+      var hero = document.getElementById("overall");
+      hero.className = "status-hero down";
+      document.getElementById("overallText").textContent = "Service unreachable";
+      document.getElementById("overallSub").textContent = "We couldn't reach the service from your browser.";
+    })
+    .finally(function () {
+      document.getElementById("checkedAt").textContent = "Last checked " + new Date().toLocaleString();
+    });
+</script>
+</body>
+</html>

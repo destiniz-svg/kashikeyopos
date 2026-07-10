@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Help center — KashikeyoPOS</title>
+<meta name="description" content="Guides and answers for setting up and running your KashikeyoPOS store." />
+<link rel="icon" href="/icon-192.png" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+<header class="site">
+  <div class="bar">
+    <a class="logo" href="/"><div class="logo-mark">K</div>KashikeyoPOS</a>
+    <div class="header-cta">
+      <a class="btn btn-ghost" href="/login">Sign in</a>
+      <a class="btn btn-primary" href="/signup">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <div class="kicker">Help center</div>
+      <h1>Documentation &amp; FAQ</h1>
+      <p>Everything you need to set up your store and start taking orders. More guides are added as the platform grows.</p>
+    </div>
+
+    <section class="card">
+      <h2 style="margin-top:0">Getting started</h2>
+      <h3>1. Create your workspace</h3>
+      <p>Go to <a href="/signup">Sign up</a>, enter your store details and admin account (name, email, contact number), and choose a 4-digit till PIN. You become the store's admin with full control.</p>
+      <h3>2. Add your menu</h3>
+      <p>From the till at <a href="/app">/app</a>, add your products, categories, tables and delivery zones. You can do this on a desktop, laptop or tablet.</p>
+      <h3>3. Share your QR code</h3>
+      <p>Print a table QR code or share your store link. Guests scan it, browse your menu and order straight from their phone.</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">Common questions</h2>
+
+      <h3>How does guest QR ordering work?</h3>
+      <p>Each table gets a QR code. A guest scans it, sees your live menu, adds items to a cart and sends the order — it appears on your till and kitchen display instantly. Guests can also call a waiter and track their order status.</p>
+
+      <h3>What happens if the internet goes down?</h3>
+      <p>KashikeyoPOS is offline-first. The till keeps working through a dropped connection — orders and changes queue up locally and sync automatically the moment you're back online. Nothing is lost.</p>
+
+      <h3>How do I add staff?</h3>
+      <p>As the admin, open the staff settings inside the till and add each employee with their own name, role (owner, manager or cashier) and till PIN. Roles control what each person can access.</p>
+
+      <h3>Can I run more than one branch?</h3>
+      <p>Yes. A single account can manage multiple stores/branches, each with its own menu, tables and stock kept separate. Switch between them from the store selector.</p>
+
+      <h3>Is my data private to my store?</h3>
+      <p>Yes. Every store's data is isolated at the database level using PostgreSQL row-level security, so one store can never see another's data. See our <a href="/privacy">privacy policy</a> for details.</p>
+
+      <h3>How does billing and the free trial work?</h3>
+      <p>New workspaces start on a 14-day free trial — no card required. We'll share plan details before your trial ends. For questions, contact support.</p>
+    </section>
+
+    <div class="note">
+      This help center is an early version and expands regularly. If you can't find an answer here, reach out to support and we'll help directly.
+    </div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="row">
+    <span>&copy; <span id="yr"></span> KashikeyoPOS</span>
+    <span>
+      <a href="/api">API reference</a>
+      <a href="/status">Status</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </span>
+  </div>
+</footer>
+<script>document.getElementById("yr").textContent = new Date().getFullYear();</script>
+</body>
+</html>

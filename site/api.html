@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>API reference — KashikeyoPOS</title>
+<meta name="description" content="The KashikeyoPOS HTTP API: authentication, the offline-safe sync model, and store &amp; guest endpoints." />
+<link rel="icon" href="/icon-192.png" />
+<link rel="stylesheet" href="/pages.css" />
+</head>
+<body>
+<header class="site">
+  <div class="bar">
+    <a class="logo" href="/"><div class="logo-mark">K</div>KashikeyoPOS</a>
+    <div class="header-cta">
+      <a class="btn btn-ghost" href="/login">Sign in</a>
+      <a class="btn btn-primary" href="/signup">Get started</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="page-head">
+      <div class="kicker">Developers</div>
+      <h1>API reference</h1>
+      <p>KashikeyoPOS is API-first. Everything the till and guest pages do runs over this HTTP API, so you can build on top of it too.</p>
+    </div>
+
+    <section class="card">
+      <h2 style="margin-top:0">Basics</h2>
+      <p><strong>Base URL:</strong> <code>https://kashikeyopos.com</code></p>
+      <p><strong>Format:</strong> All request and response bodies are JSON (<code>Content-Type: application/json</code>).</p>
+      <p><strong>Authentication:</strong> Store endpoints require a bearer token obtained from <code>/api/register</code> or <code>/api/login</code>. Send it as a header:</p>
+      <pre><code>Authorization: Bearer &lt;token&gt;</code></pre>
+      <p>Each store's data is isolated at the database level, so a token only ever sees its own workspace.</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-top:0">The sync model</h2>
+      <p>KashikeyoPOS is offline-first. Instead of editing rows directly, clients send an idempotent <strong>op-log</strong> to <code>/api/ops</code> and read changes back with a rowversion cursor from <code>/api/pull</code>. Each op carries a client-generated <code>opId</code> so it's applied at most once, even if retried after a dropped connection.</p>
+    </section>
+
+    <h2>Authentication</h2>
+
+    <section class="card">
+      <p><span class="method post">POST</span><span class="endpoint">/api/register</span></p>
+      <p class="muted">Create a new store workspace and its admin account. Returns a session token.</p>
+      <table class="api">
+        <tr><th>Field</th><th>Notes</th></tr>
+        <tr><td><code>email</code>, <code>password</code></td><td>Required. Admin credentials.</td></tr>
+        <tr><td><code>storeName</code>, <code>ownerName</code>, <code>phone</code></td><td>Store &amp; owner details.</td></tr>
+        <tr><td><code>pin</code></td><td>4-digit till PIN for the owner.</td></tr>
+      </table>
+    </section>
+
+    <section class="card">
+      <p><span class="method post">POST</span><span class="endpoint">/api/login</span></p>
+      <p class="muted">Sign in with email and password. Returns a session token and sets a session cookie.</p>
+    </section>
+
+    <section class="card">
+      <p><span class="method post">POST</span><span class="endpoint">/api/logout</span></p>
+      <p class="muted">Clear the current session cookie.</p>
+    </section>
+
+    <section class="card">
+      <p><span class="method post">POST</span><span class="endpoint">/api/auth/google</span></p>
+      <p class="muted">Sign in / sign up with a Google ID token. Apple sign-in uses <code>/auth/apple/callback</code>. Availability is reported by <span class="method get">GET</span> <code>/api/auth/config</code>.</p>
+    </section>
+
+    <h2>Store data (bearer token required)</h2>
+
+    <section class="card">
+      <p><span class="method post">POST</span><span class="endpoint">/api/ops</span></p>
+      <p class="muted">Apply a batch of idempotent operations (menu, orders, stock, customers…). The heart of the sync model.</p>
+    </section>
+
+    <section class="card">
+      <p><span class="method get">GET</span><span class="endpoint">/api/pull?since=&lt;rowver&gt;</span></p>
+      <p class="muted">Fetch every change since a rowversion cursor. Returns the new cursor to pass next time.</p>
+    </section>
+
+    <section class="card">
+      <p><span class="method get">GET</span><span class="endpoint">/api/stores</span> &nbsp; <span class="method post">POST</span><span class="endpoint">/api/stores</span> &nbsp; <span class="method post">POST</span><span class="endpoint">/api/select-store</span></p>
+      <p class="muted">List, create and switch between the branches in your workspace.</p>
+    </section>
+
+    <section class="card">
+      <p><span class="method get">GET</span><span class="endpoint">/api/events</span></p>
+      <p class="muted">Server-sent events stream — pushes a signal whenever your workspace's data changes, so clients update in realtime instead of polling.</p>
+    </section>
+
+    <h2>Guest ordering (public, per store)</h2>
+
+    <section class="card">
+      <p><span class="method get">GET</span><span class="endpoint">/p/:slug/boot</span></p>
+      <p class="muted">Public menu, store info and (optionally) a guest's profile for the storefront. <code>:slug</code> is your store's public handle.</p>
+    </section>
+
+    <section class="card">
+      <p><span class="method post">POST</span><span class="endpoint">/p/:slug/order</span> &nbsp; <span class="method post">POST</span><span class="endpoint">/p/:slug/call</span> &nbsp; <span class="method get">GET</span><span class="endpoint">/p/:slug/orders</span></p>
+      <p class="muted">Place a guest order, call a waiter, and read back a guest's own orders and their live status.</p>
+    </section>
+
+    <h2>Service</h2>
+    <section class="card">
+      <p><span class="method get">GET</span><span class="endpoint">/api/health</span></p>
+      <p class="muted">Liveness and database connectivity. Powers the <a href="/status">status page</a>. No auth required.</p>
+    </section>
+
+    <div class="note">
+      This reference covers the main endpoints and is expanding. Exact request/response schemas and rate limits will be documented in full — if you're building an integration and need specifics now, contact us.
+    </div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="row">
+    <span>&copy; <span id="yr"></span> KashikeyoPOS</span>
+    <span>
+      <a href="/docs">Documentation</a>
+      <a href="/status">Status</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </span>
+  </div>
+</footer>
+<script>document.getElementById("yr").textContent = new Date().getFullYear();</script>
+</body>
+</html>
