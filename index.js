@@ -92,6 +92,8 @@ async function ensureAppRole() {
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
+    audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APP_DB_ROLE}`);
 }
 
@@ -310,6 +312,12 @@ const devAuth = (req, res, next) => {
       next();
     }).catch(next);
 };
+
+/* Inventory & Pricing (recipes, stock checks, procurement) lives in its own
+   module — it plugs into the same withOrg/RLS scope and into /api/ops below,
+   where settled sales trigger the real-time ingredient deductions. */
+const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth });
+app.use("/api/inv", inventory.router);
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
   await withOrg(orgId, (client) => client.query(
@@ -657,6 +665,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   const ops = (req.body && req.body.ops) || [];
   const client = await pool.connect();
   let rowver = 0;
+  const settledSales = [];
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(req.org.o)]);
@@ -685,6 +694,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
            RETURNING rowver`,
           [req.org.o, p.kind, String(p.id), JSON.stringify(data)]);
         rowver = Math.max(rowver, Number(r.rows[0].rowver));
+        if (p.kind === "sales" && data.lines) settledSales.push(data);
       }
       const dz = op.deltas || {};
       for (const s of dz.stock || []) {
@@ -722,6 +732,12 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   }
   client.release();
   if (rowver) poke(req.org.o, rowver);
+  /* Recipe-based ingredient deduction runs AFTER the sync commit, never
+     inside it: a till sale must never be rejected because inventory math
+     failed. The ledger's (org_id, ref, ingredient_id) uniqueness makes the
+     deduction idempotent, so a crash between commit and here at worst skips
+     a deduction the next audit reconciles — it can never double-deduct. */
+  if (settledSales.length) inventory.processSales(req.org.o, settledSales);
   res.json({ ok: true, rowver });
 }));
 
