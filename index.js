@@ -316,7 +316,7 @@ const devAuth = (req, res, next) => {
 /* Inventory & Pricing (recipes, stock checks, procurement) lives in its own
    module — it plugs into the same withOrg/RLS scope and into /api/ops below,
    where settled sales trigger the real-time ingredient deductions. */
-const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth });
+const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke });
 app.use("/api/inv", inventory.router);
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
@@ -685,7 +685,12 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
           ? " || jsonb_build_object('stock', COALESCE(entities.data->'stock', excluded.data->'stock', '0'::jsonb))"
           : p.kind === "customers"
             ? " || jsonb_build_object('points', COALESCE(entities.data->'points', excluded.data->'points', '0'::jsonb), 'balance', COALESCE(entities.data->'balance', excluded.data->'balance', '0'::jsonb))"
-            : "";
+            : p.kind === "pords"
+              /* A PO received in the back office must never be re-opened by a
+                 till pushing its stale local copy (same echo race the stock
+                 and points fields have). Received is terminal either way. */
+              ? " || CASE WHEN entities.data->>'status'='received' THEN jsonb_build_object('status','received','receivedAt',COALESCE(entities.data->'receivedAt',excluded.data->'receivedAt'),'receivedVia',COALESCE(entities.data->'receivedVia',excluded.data->'receivedVia')) ELSE '{}'::jsonb END"
+              : "";
         const r = await client.query(
           `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
            VALUES ($1,$2,$3,$4,false,now())
@@ -922,7 +927,11 @@ app.use((err, req, res, next) => {
   console.error("request failed:", req.method, req.originalUrl, errDetail(err));
   recordError(req.method + " " + req.originalUrl, err);
   if (res.headersSent) return res.end();
-  res.status(500).json({ error: "something went wrong on our side - please try again" });
+  /* Handlers throw Object.assign(new Error(msg), { status: 4xx }) for
+     client-facing validation/conflict errors — pass those through so the
+     UI can show the real message instead of a generic 500. */
+  const code = err && Number(err.status) >= 400 && Number(err.status) < 500 ? Number(err.status) : 500;
+  res.status(code).json({ error: code === 500 ? "something went wrong on our side - please try again" : err.message });
 });
 process.on("unhandledRejection", (e) => { console.error("unhandled rejection:", errDetail(e)); recordError("unhandledRejection", e); });
 app.listen(PORT, () => console.log("KashikeyoPOS Cloud on :" + PORT));

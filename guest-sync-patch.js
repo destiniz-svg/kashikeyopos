@@ -516,6 +516,33 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"flex flex-col items-center mt-4",children:[h.jsx(Uu,{size:40,className:"opacity-40"}),ce.usdRate&&ce.currency==="MVR"&&h.jsx("div",{className:"mt-1 opacity-60 text-xs",children:"≈ USD "+(Pe.total/ce.usdRate).toFixed(2)}),ce.usdRate&&ce.currency==="USD"&&h.jsx("div",{className:"mt-1 opacity-60 text-xs",children:"≈ MVR "+(Pe.total*ce.usdRate/10000).toFixed(2)}),h.jsx("div",{className:"mt-1 opacity-60",children:ce.footer})]'
   )
 
+  /* 30. Theme picker: also persist the chosen theme into the settings entity
+     (ktheme) so the back office (/back) can render in the same palette. The
+     till itself keeps using its per-device local copy — this is sync-out only.
+     Find is consumed: the bare KshSetTheme(tn) onClick no longer exists. */
+  .replace(
+    'onClick:()=>KshSetTheme(tn),title:tl',
+    'onClick:()=>{KshSetTheme(tn);try{xs(kv=>({...kv,ktheme:tn}))}catch{}},title:tl'
+  )
+
+  /* 31. Dark toggle: mirror the dark flag into settings (ktdark) for /back. */
+  .replace(
+    'h.jsxs("button",{onClick:()=>a(!i),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`',
+    'h.jsxs("button",{onClick:()=>{a(!i);try{xs(kv=>({...kv,ktdark:!i}))}catch{}},className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`'
+  )
+
+  /* 32. Guest/member profile: rewards card with tier progress + "your usuals"
+     one-tap reorder chips, inserted above the Visits/Spent/On-account tiles.
+     Uses only data already on the page: j = customer from /p/:slug/boot
+     (points + last 25 orders), N = live menu products, Zv = existing tier fn
+     (Bronze <100 / Silver <500 / Gold), $1 = add-to-cart. Chips only offer
+     items that still exist on the menu with stock. Find is consumed: the
+     children array no longer starts with the stats grid. */
+  .replace(
+    'children:[j&&h.jsxs("div",{className:"grid grid-cols-3 gap-2 mb-3"',
+    'children:[j&&(()=>{const pt=j.points||0,tr=Zv(pt),nx=pt>=500?null:pt>=100?["Gold",500]:["Silver",100],pc=nx?Math.min(100,Math.round(pt/nx[1]*100)):100,fav=(()=>{const ctn={};return((j.orders||[]).forEach(o=>(o.items||[]).forEach(it=>{if(it.pid){ctn[it.pid]=ctn[it.pid]||{n:0,name:it.name,emoji:it.emoji||""};ctn[it.pid].n+=Number(it.qty)||1}})),Object.keys(ctn).map(pid=>({pid,...ctn[pid]})).filter(x=>N.some(p=>String(p.id)===String(x.pid)&&(p.stock||0)>0)).sort((a,b)=>b.n-a.n).slice(0,4))})();return h.jsxs("div",{className:`rounded-2xl p-4 mb-3 ${_.panel}`,children:[h.jsxs("div",{className:"flex items-center justify-between mb-1.5",children:[h.jsxs("span",{className:"text-sm font-bold",children:[tr==="Gold"?"🥇":tr==="Silver"?"🥈":"🥉"," ",tr," member"]}),h.jsxs("span",{className:`text-xs font-mono ${_.sub}`,children:[pt," pts"]})]}),h.jsx("div",{style:{height:"6px",borderRadius:"3px",background:"rgba(128,128,128,.18)",overflow:"hidden"},children:h.jsx("div",{style:{width:pc+"%",height:"100%",borderRadius:"3px",background:_.bar,transition:"width .4s"}})}),h.jsx("div",{className:`text-xs mt-1.5 ${_.faint}`,children:nx?nx[1]-pt+" pts to "+nx[0]+" — you earn points on every order":"Top tier — thanks for being a regular ⭐"}),fav.length?h.jsxs("div",{className:"mt-3",children:[h.jsx("div",{className:`text-xs font-semibold mb-1.5 ${_.sub}`,children:"Your usuals — tap to reorder"}),h.jsx("div",{className:"flex gap-1.5 flex-wrap",children:fav.map(x=>h.jsxs("button",{onClick:()=>{$1(x.pid,1);Q(`${x.name} added to your cart`)},className:`px-3 py-1.5 rounded-full text-xs font-semibold ${_.chip}`,children:[x.emoji?x.emoji+" ":"",x.name," +"]},x.pid))})]}):null]})})(),j&&h.jsxs("div",{className:"grid grid-cols-3 gap-2 mb-3"'
+  )
+
   /* 15. Product form: add taxable to new-product initial state */
   .replace(
     'onClick:()=>qt({name:"",emoji:"",cat:"",price:"",cost:"",barcode:"",reorder:"10",stock:"0",unit:"pcs",img:"",vendor:!1})',
@@ -627,6 +654,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.16"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.17"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

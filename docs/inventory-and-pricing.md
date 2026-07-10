@@ -205,7 +205,48 @@ Design decisions & deferred items:
   flow is the receiving path v1. `purchase_invoices` is the natural anchor
   for a `status` column when POs arrive.
 
-## 5. Verification
+## 5. Bridges to the till's admin panel (and the seam audit)
+
+The till already had a money/product-level supply side: POs (`pords`
+entities) whose Receive books an expense, per-product GRN receiving, a
+flat Kitchen Supplies list, and the Expenses ledger its reports read.
+Left alone, that and this module double-enter or miss each other. Bridged:
+
+- **Delivery → Expenses (bridge 1).** Posting an invoice in `/back` also
+  writes an `expenses` entity (cat "Purchases", `srcRef invoice:<id>` /
+  `po:<id>`) inside the same transaction, so the till's expense reports
+  and P&L include ingredient purchases from a single entry. `srcRef` has a
+  NOT EXISTS guard — the booking is idempotent, and a PO received in
+  `/back` can never be expense-booked a second time by the till because
+  receiving flips its status.
+- **PO → delivery (bridge 2).** `GET /api/inv/pos` lists open till POs;
+  `POST /api/inv/pos/:id/receive` posts them as a normal invoice
+  (pre-filled in the Deliveries tab, lines matched to ingredients by name
+  with manual fallback), books the expense once, and marks the PO
+  received — which also hides the till's own Receive button.
+- **Echo protection.** `/api/ops` now preserves a received PO's status
+  against a till pushing its stale local copy — the same race the
+  `stock` and `points/balance` fields already guard against. Received is
+  terminal.
+
+Known seams left as-is (deliberately, documented):
+
+- **Two supplier books.** Till `vendors` entities vs `/back` `suppliers`.
+  PO receiving carries the supplier as free text so nothing breaks;
+  unifying them is a later migration.
+- **Kitchen Supplies vs ingredients.** Same concept, different depth —
+  supplies have no conversions, costing history, or audits. Candidate for
+  migration into ingredients; not urgent, they don't corrupt each other.
+- **Waste log vs stock-check reasons.** The till's waste entries deduct
+  product stock; `/back` variance reasons annotate ingredient counts.
+  Different layers; a stock check absorbs unlogged ingredient waste by
+  design.
+- **GRN vs deliveries.** Complementary, not duplicate: GRN receives
+  resale *products*, `/back` receives *ingredients*. A GRN does not book
+  an expense (it never did) — owners who want the bill on the books
+  should receive via PO or `/back`.
+
+## 6. Verification
 
 Integration-tested against a real Postgres 16 cluster (`schema.sql`
 applied twice — idempotent): bulk-unit conversion, weighted-average

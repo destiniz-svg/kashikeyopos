@@ -12,7 +12,7 @@
    comes in. Money: NUMERIC laari (the platform's integer sub-unit); unit
    costs carry 6 decimals because cost per gram is a fraction of a laari. */
 
-module.exports = function createInventory({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth }) {
+module.exports = function createInventory({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth, poke }) {
   const express = require("express");
   const router = express.Router();
 
@@ -111,7 +111,15 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
           return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), recipeLines: recipeCounts[id] || 0 };
         })
         .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
-      return { currency: st.rowCount ? (st.rows[0].data.currency || "MVR") : "MVR", products };
+      const sd = st.rowCount ? st.rows[0].data : {};
+      return {
+        currency: sd.currency || "MVR",
+        storeName: sd.storeName || "",
+        /* till writes its chosen theme into settings (see guest-sync-patch
+           #30/31) so the back office can follow the same palette */
+        theme: { name: sd.ktheme || "orange", dark: sd.ktdark === true },
+        products,
+      };
     });
     res.json(out);
   }));
@@ -231,49 +239,123 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      re-averages cost — weighted average, the method a non-accountant never
      has to think about: new cost = (old stock value + this delivery's value)
      / total units. Ledger refs are per invoice LINE so two lines of the same
-     ingredient on one invoice both land. */
+     ingredient on one invoice both land.
+
+     Bridge to the till's books: the same transaction writes an "expenses"
+     entity (cat Purchases) into the regular sync stream, so the till's
+     expense reports and P&L include ingredient purchases without anyone
+     entering the bill twice. srcRef makes the booking idempotent — an
+     expense for this invoice/PO can only ever exist once. */
+  async function postInvoiceTx(client, orgId, { supplierId, supplierName, invoiceNo, lines, expenseRef, expenseNote }) {
+    const invId = uid();
+    let total = 0;
+    const posted = [];
+    for (const l of lines) {
+      const qty = num(l.qty), lineCost = Math.round(num(l.cost));
+      if (!l.ingredientId || !(qty > 0) || !(lineCost >= 0)) continue;
+      const factor = await factorFor(client, orgId, String(l.ingredientId), l.unitName);
+      const baseQty = round3(qty * factor);
+      const lineId = uid();
+      const cur = await client.query(
+        "SELECT current_stock, avg_cost FROM ingredients WHERE org_id=$1 AND id=$2 AND active FOR UPDATE",
+        [orgId, l.ingredientId]);
+      if (!cur.rowCount) throw Object.assign(new Error("unknown ingredient on invoice line"), { status: 400 });
+      const stock = Number(cur.rows[0].current_stock), avg = Number(cur.rows[0].avg_cost);
+      const unitCost = baseQty > 0 ? lineCost / baseQty : 0;
+      /* Negative on-hand (over-deduction awaiting an audit) must not poison
+         the average — fold new stock in against max(stock,0). */
+      const posStock = Math.max(stock, 0);
+      const newAvg = (posStock + baseQty) > 0 ? (posStock * avg + lineCost) / (posStock + baseQty) : avg;
+      await client.query(
+        "INSERT INTO purchase_invoice_lines (org_id, id, invoice_id, ingredient_id, qty, unit_name, factor, base_qty, line_cost) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        [orgId, lineId, invId, l.ingredientId, qty, String(l.unitName || ""), factor, baseQty, lineCost]);
+      await client.query(
+        "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, ref) VALUES ($1,$2,$3,'purchase',$4,$5,$6)",
+        [orgId, uid(), l.ingredientId, baseQty, unitCost, `invoice:${invId}:${lineId}`]);
+      await client.query(
+        "UPDATE ingredients SET current_stock = current_stock + $3, avg_cost = $4, updated_at = now() WHERE org_id=$1 AND id=$2",
+        [orgId, l.ingredientId, baseQty, newAvg]);
+      total += lineCost;
+      posted.push({ ingredientId: l.ingredientId, baseQty, lineCost });
+    }
+    if (!posted.length) throw Object.assign(new Error("no valid invoice lines"), { status: 400 });
+    await client.query(
+      "INSERT INTO purchase_invoices (org_id, id, supplier_id, invoice_no, total) VALUES ($1,$2,$3,$4,$5)",
+      [orgId, invId, String(supplierId || ""), String(invoiceNo || ""), total]);
+    const expense = {
+      id: uid(), no: "EXP-" + (invoiceNo || invId.slice(0, 6).toUpperCase()), t: Date.now(),
+      cat: "Purchases", supplier: String(supplierName || ""), amount: total,
+      note: expenseNote || `${invoiceNo || "Delivery"} · ${posted.length} line${posted.length === 1 ? "" : "s"} · back office`,
+      paidFrom: "other", userName: "Back office", shiftId: null, img: "",
+      srcRef: expenseRef || "invoice:" + invId,
+    };
+    const exp = await client.query(
+      `INSERT INTO entities (org_id, kind, id, data)
+       SELECT $1, 'expenses', $2, $3
+       WHERE NOT EXISTS (SELECT 1 FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false AND data->>'srcRef'=$4)
+       RETURNING rowver`,
+      [orgId, expense.id, JSON.stringify(expense), expense.srcRef]);
+    return { id: invId, total, lines: posted, rowver: exp.rowCount ? Number(exp.rows[0].rowver) : 0 };
+  }
+
   router.post("/invoices", authAny, wrap(async (req, res) => {
     const { supplierId, invoiceNo, lines } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "invoice needs at least one line" });
-    const invId = uid();
     const out = await withOrg(req.orgId, async (client) => {
-      let total = 0;
-      const posted = [];
-      for (const l of lines) {
-        const qty = num(l.qty), lineCost = Math.round(num(l.cost));
-        if (!l.ingredientId || !(qty > 0) || !(lineCost >= 0)) continue;
-        const factor = await factorFor(client, req.orgId, String(l.ingredientId), l.unitName);
-        const baseQty = round3(qty * factor);
-        const lineId = uid();
-        const cur = await client.query(
-          "SELECT current_stock, avg_cost FROM ingredients WHERE org_id=$1 AND id=$2 AND active FOR UPDATE",
-          [req.orgId, l.ingredientId]);
-        if (!cur.rowCount) throw Object.assign(new Error("unknown ingredient on invoice line"), { status: 400 });
-        const stock = Number(cur.rows[0].current_stock), avg = Number(cur.rows[0].avg_cost);
-        const unitCost = baseQty > 0 ? lineCost / baseQty : 0;
-        /* Negative on-hand (over-deduction awaiting an audit) must not poison
-           the average — fold new stock in against max(stock,0). */
-        const posStock = Math.max(stock, 0);
-        const newAvg = (posStock + baseQty) > 0 ? (posStock * avg + lineCost) / (posStock + baseQty) : avg;
-        await client.query(
-          "INSERT INTO purchase_invoice_lines (org_id, id, invoice_id, ingredient_id, qty, unit_name, factor, base_qty, line_cost) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-          [req.orgId, lineId, invId, l.ingredientId, qty, String(l.unitName || ""), factor, baseQty, lineCost]);
-        await client.query(
-          "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, ref) VALUES ($1,$2,$3,'purchase',$4,$5,$6)",
-          [req.orgId, uid(), l.ingredientId, baseQty, unitCost, `invoice:${invId}:${lineId}`]);
-        await client.query(
-          "UPDATE ingredients SET current_stock = current_stock + $3, avg_cost = $4, updated_at = now() WHERE org_id=$1 AND id=$2",
-          [req.orgId, l.ingredientId, baseQty, newAvg]);
-        total += lineCost;
-        posted.push({ ingredientId: l.ingredientId, baseQty, lineCost });
+      let supplierName = "";
+      if (supplierId) {
+        const s = await client.query("SELECT name FROM suppliers WHERE org_id=$1 AND id=$2", [req.orgId, supplierId]);
+        supplierName = s.rowCount ? s.rows[0].name : "";
       }
-      if (!posted.length) throw Object.assign(new Error("no valid invoice lines"), { status: 400 });
-      await client.query(
-        "INSERT INTO purchase_invoices (org_id, id, supplier_id, invoice_no, total) VALUES ($1,$2,$3,$4,$5)",
-        [req.orgId, invId, String(supplierId || ""), String(invoiceNo || ""), total]);
-      return { id: invId, total, lines: posted };
+      return postInvoiceTx(client, req.orgId, { supplierId, supplierName, invoiceNo, lines });
     });
-    res.json({ ok: true, ...out });
+    if (out.rowver && poke) poke(req.orgId, out.rowver);
+    res.json({ ok: true, id: out.id, total: out.total, lines: out.lines });
+  }));
+
+  /* ── Bridge 2: purchase orders raised at the till ───────────────────────
+     POs live as "pords" entities in the till's own sync stream. The back
+     office lists the open ones and can receive one as a pre-filled delivery:
+     one tap posts the invoice (stock + weighted cost), books the expense
+     (ref po:<id>, so the till's own Receive can never double-book), and
+     flips the PO to received — which also hides the till's Receive button. */
+  router.get("/pos", authAny, wrap(async (req, res) => {
+    const r = await withOrg(req.orgId, (client) => client.query(
+      `SELECT id, data FROM entities
+       WHERE org_id=$1 AND kind='pords' AND deleted=false AND data->>'status'='open'
+       ORDER BY (data->>'t')::numeric DESC LIMIT 50`, [req.orgId]));
+    res.json({ pos: r.rows.map((x) => {
+      const d = x.data || {};
+      return { id: String(d.id || x.id), no: d.no || "", supplier: d.supplier || "", total: num(d.total), t: num(d.t), note: d.note || "",
+        items: (d.items || []).map((it) => ({ desc: it.desc || "", qty: num(it.qty, 1), cost: num(it.cost) })) };
+    }) });
+  }));
+
+  router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {
+    const { lines, invoiceNo } = req.body || {};
+    if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });
+    const out = await withOrg(req.orgId, async (client) => {
+      const po = await client.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='pords' AND id=$2 AND deleted=false", [req.orgId, req.params.id]);
+      if (!po.rowCount) throw Object.assign(new Error("purchase order not found"), { status: 404 });
+      const d = po.rows[0].data || {};
+      if (d.status !== "open") throw Object.assign(new Error("this PO was already received"), { status: 409 });
+      const inv = await postInvoiceTx(client, req.orgId, {
+        supplierId: "", supplierName: d.supplier || "", invoiceNo: invoiceNo || d.no || "",
+        lines, expenseRef: "po:" + req.params.id,
+        expenseNote: `${d.no || "PO"} received · ${lines.length} line${lines.length === 1 ? "" : "s"} · back office`,
+      });
+      const upd = await client.query(
+        `UPDATE entities SET
+           data = data || jsonb_build_object('status','received','receivedAt',$3::numeric,'receivedVia','back-office'),
+           rowver = nextval('entities_rowver_seq'), updated_at = now()
+         WHERE org_id=$1 AND kind='pords' AND id=$2 AND data->>'status'='open'
+         RETURNING rowver`, [req.orgId, req.params.id, Date.now()]);
+      if (!upd.rowCount) throw Object.assign(new Error("this PO was already received"), { status: 409 });
+      return { ...inv, rowver: Math.max(inv.rowver, Number(upd.rows[0].rowver)) };
+    });
+    if (out.rowver && poke) poke(req.orgId, out.rowver);
+    res.json({ ok: true, id: out.id, total: out.total, lines: out.lines });
   }));
 
   router.get("/invoices", authAny, wrap(async (req, res) => {

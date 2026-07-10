@@ -6,21 +6,30 @@
 <title>Back office — KashikeyoPOS</title>
 <link rel="icon" href="/logo-mark.svg" />
 <style>
+  /* Palette vars are set by applyTheme() below — the same five fruit themes
+     (light + dark) the till uses, following the till's own choice via the
+     synced settings entity (ktheme/ktdark), with a local override picker. */
   :root {
     --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
     --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
-    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5;
-    --ok: #2E7D46; --warn: #A3391F; --amber: #9A6A00; --amber-bg: #FBF3DC;
+    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5; --header: rgba(243,236,225,.92);
+    --ok: #2E7D46; --ok-bg: #E4F2E7; --warn: #A3391F; --warn-bg: #FBEAE4;
+    --amber: #9A6A00; --amber-bg: #FBF3DC;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--app); color: var(--text); min-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    transition: background .25s, color .25s;
   }
   a { color: var(--primary); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
-  header { position: sticky; top: 0; z-index: 5; background: rgba(243,236,225,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--header); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .theme-ctl { display: flex; align-items: center; gap: 6px; }
+  .theme-ctl .sw { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .theme-ctl .sw.on { border-color: var(--text); transform: scale(1.12); }
+  .theme-ctl .dk { background: var(--btn); border-radius: 999px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
   .bar { max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .logo { display: flex; align-items: center; gap: 10px; }
   .logo-img { display: block; height: 28px; width: auto; }
@@ -63,8 +72,8 @@
   .tbl-wrap table { border: none; }
 
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .badge.low { background: #FBEAE4; color: var(--warn); }
-  .badge.ok { background: #E4F2E7; color: var(--ok); }
+  .badge.low { background: var(--warn-bg); color: var(--warn); }
+  .badge.ok { background: var(--ok-bg); color: var(--ok); }
   .badge.amber { background: var(--amber-bg); color: var(--amber); }
   .badge.dim { background: var(--panel2); color: var(--sub); }
 
@@ -77,7 +86,7 @@
   #alerts { max-width: 1180px; margin: 0 auto; padding: 12px 24px 0; display: flex; gap: 8px; flex-wrap: wrap; }
   #alerts .chip { font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; }
   #alerts .chip.low { background: var(--amber-bg); color: var(--amber); }
-  #alerts .chip.review { background: #FBEAE4; color: var(--warn); }
+  #alerts .chip.review { background: var(--warn-bg); color: var(--warn); }
 
   /* modal */
   .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(42,36,30,.45); display: flex; align-items: center; justify-content: center; padding: 18px; }
@@ -114,10 +123,35 @@
   .bigstat .n { font-size: 30px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
   .bigstat .l { font-size: 13px; color: var(--sub); margin-top: 4px; }
 
-  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 40; background: var(--text); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 40; background: var(--text); color: var(--app); padding: 10px 18px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
   .toast.show { opacity: 1; }
   .hint { font-size: 11.5px; color: var(--faint); margin-top: 4px; }
   section { margin-bottom: 30px; }
+
+  /* open-PO cards (Deliveries tab) */
+  .po-card { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .po-card:last-child { border-bottom: none; }
+  .po-card .meta { flex: 1; min-width: 180px; }
+  .po-card .meta b { font-size: 13.5px; }
+  .po-card .meta .hint { margin-top: 2px; }
+  .po-lock { font-size: 12.5px; padding: 7px 11px; border-radius: 9px; background: var(--panel2); }
+
+  /* phones / small tablets */
+  @media (max-width: 720px) {
+    .bar { padding: 10px 14px; }
+    .tabs { padding: 0 8px; }
+    main { padding: 16px 12px 90px; }
+    #alerts { padding: 10px 12px 0; }
+    th, td { padding: 8px 9px; font-size: 12.5px; }
+    .toolbar { flex-direction: column; align-items: stretch; }
+    .toolbar > * { width: 100%; }
+    .toolbar button.primary { width: 100%; }
+    .row2 { grid-template-columns: 1fr; }
+    .margin-bar { grid-template-columns: repeat(2, 1fr); }
+    .modal { max-height: 96vh; border-radius: 14px; padding: 16px; }
+    button { padding: 10px 14px; }
+    input, select { padding: 10px 11px; font-size: 16px; } /* 16px stops iOS zoom-on-focus */
+  }
 </style>
 </head>
 <body>
@@ -125,7 +159,7 @@
 <header>
   <div class="bar">
     <div class="logo"><img class="logo-img" src="/logo-mark.svg" alt="KashikeyoPOS" /><div class="logo-text">Back office</div></div>
-    <a href="/app">Open the till &rarr;</a>
+    <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a href="/app">Till &rarr;</a></div>
   </div>
   <nav class="tabs" id="tabs"></nav>
 </header>
@@ -148,8 +182,50 @@
     // stock check wizard
     wiz: null, // { session, groups:[{location,lines}], step, entries:{ingredientId:{qty,unitName,reason}}, result }
     // deliveries
-    inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [],
+    inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [], pos: [],
+    theme: { name: "orange", dark: false, override: false },
   };
+  try {
+    var savedTheme = JSON.parse(localStorage.getItem("kback-theme"));
+    if (savedTheme && savedTheme.name) S.theme = { name: savedTheme.name, dark: !!savedTheme.dark, override: true };
+  } catch (e) {}
+
+  /* The till's five fruit palettes, light + dark — same values as the till
+     bundle so both screens read as one product. */
+  var THEMES = {
+    orange: { l: { bg:"#F3ECE1",text:"#2A241E",sub:"#8A8074",faint:"#B7AE9F",pri:"#C1502D",prih:"#AA4526",panel:"rgba(255,255,255,.86)",panel2:"rgba(236,227,211,.72)",border:"#E8DFCF",input:"#FFFFFF",btn:"#F1E8D8",btnh:"#E8DCC5",nav:"rgba(243,236,225,.92)" },
+              d: { bg:"#241A14",text:"#EDE6DA",sub:"#A79E8F",faint:"#7C7466",pri:"#E0794F",prih:"#E88A62",panel:"rgba(46,38,30,.72)",panel2:"rgba(58,48,38,.6)",border:"#3A3025",input:"#2A2118",btn:"#3A3025",btnh:"#483C2C",nav:"rgba(30,22,16,.85)" } },
+    green: { l: { bg:"#EEF4E8",text:"#1E2A18",sub:"#6E7A64",faint:"#A6B29A",pri:"#4E8A3A",prih:"#457C33",panel:"rgba(255,255,255,.86)",panel2:"rgba(228,238,219,.72)",border:"#DBE6CF",input:"#FFFFFF",btn:"#E4EEDA",btnh:"#D6E4C8",nav:"rgba(238,244,232,.92)" },
+             d: { bg:"#131C0F",text:"#E4EFDD",sub:"#93A085",faint:"#6B7660",pri:"#7FBF5E",prih:"#8ECB6E",panel:"rgba(30,42,24,.72)",panel2:"rgba(38,52,30,.6)",border:"#2C3A22",input:"#1C2716",btn:"#2C3A22",btnh:"#38492A",nav:"rgba(18,26,12,.85)" } },
+    watermelon: { l: { bg:"#FCECEC",text:"#2A1618",sub:"#8A6E70",faint:"#C4A6A8",pri:"#DA3B4B",prih:"#C43140",panel:"rgba(255,255,255,.86)",panel2:"rgba(250,224,224,.72)",border:"#F0D6D6",input:"#FFFFFF",btn:"#FAE2E2",btnh:"#F2D2D2",nav:"rgba(252,236,236,.92)" },
+                  d: { bg:"#1F1113",text:"#F1E1E2",sub:"#B58C8E",faint:"#7A5A5C",pri:"#F05563",prih:"#F26E7A",panel:"rgba(46,26,28,.72)",panel2:"rgba(58,34,36,.6)",border:"#3E2427",input:"#2A1618",btn:"#3E2427",btnh:"#4E3034",nav:"rgba(28,16,18,.85)" } },
+    mango: { l: { bg:"#FBF3E0",text:"#2A2410",sub:"#8A7C58",faint:"#C4B688",pri:"#E19A12",prih:"#C9880C",panel:"rgba(255,255,255,.86)",panel2:"rgba(248,238,214,.72)",border:"#EEE2C4",input:"#FFFFFF",btn:"#F6ECD2",btnh:"#EEE0BE",nav:"rgba(251,243,224,.92)" },
+             d: { bg:"#1F1B0E",text:"#F0E9D2",sub:"#B5A578",faint:"#7A6E48",pri:"#F2B733",prih:"#F5C24A",panel:"rgba(46,40,22,.72)",panel2:"rgba(58,50,28,.6)",border:"#3E3620",input:"#2A2412",btn:"#3E3620",btnh:"#4E4428",nav:"rgba(28,24,12,.85)" } },
+    strawberry: { l: { bg:"#FDECF1",text:"#2A1620",sub:"#8A6E78",faint:"#C4A6B2",pri:"#D8437A",prih:"#C43A6E",panel:"rgba(255,255,255,.86)",panel2:"rgba(250,224,234,.72)",border:"#F0D6E0",input:"#FFFFFF",btn:"#FAE2EC",btnh:"#F2D2E0",nav:"rgba(253,236,241,.92)" },
+                  d: { bg:"#1F1118",text:"#F1E1E8",sub:"#B58CA0",faint:"#7A5A68",pri:"#F06C9B",prih:"#F282AC",panel:"rgba(46,26,34,.72)",panel2:"rgba(58,34,44,.6)",border:"#3E2432",input:"#2A1620",btn:"#3E2432",btnh:"#4E3040",nav:"rgba(28,16,22,.85)" } },
+  };
+  var SWATCH = { orange:"#C1502D", green:"#4E8A3A", watermelon:"#DA3B4B", mango:"#E19A12", strawberry:"#D8437A" };
+
+  function applyTheme() {
+    var t = THEMES[S.theme.name] || THEMES.orange, c = t[S.theme.dark ? "d" : "l"], r = document.documentElement.style;
+    var map = { "--app": c.bg, "--text": c.text, "--sub": c.sub, "--faint": c.faint, "--primary": c.pri, "--primary-hov": c.prih,
+      "--panel": c.panel, "--panel2": c.panel2, "--border": c.border, "--input": c.input, "--btn": c.btn, "--btn-hov": c.btnh, "--header": c.nav };
+    if (S.theme.dark) Object.assign(map, { "--ok": "#8FCE9B", "--ok-bg": "rgba(70,160,95,.2)", "--warn": "#F28B82", "--warn-bg": "rgba(215,80,80,.2)", "--amber": "#E8C06A", "--amber-bg": "rgba(200,150,40,.18)" });
+    else Object.assign(map, { "--ok": "#2E7D46", "--ok-bg": "#E4F2E7", "--warn": "#A3391F", "--warn-bg": "#FBEAE4", "--amber": "#9A6A00", "--amber-bg": "#FBF3DC" });
+    Object.keys(map).forEach(function (k) { r.setProperty(k, map[k]); });
+    renderThemeCtl();
+  }
+  function renderThemeCtl() {
+    var h = Object.keys(SWATCH).map(function (n) {
+      return '<button class="sw ' + (S.theme.name === n ? "on" : "") + '" title="' + n + '" style="background:' + SWATCH[n] + '" data-th="' + n + '"></button>';
+    }).join("") + '<button class="dk" id="dkTgl" title="Light / dark">' + (S.theme.dark ? "☀️" : "🌙") + "</button>";
+    var host = el("themeCtl");
+    host.innerHTML = h;
+    host.querySelectorAll("[data-th]").forEach(function (b) {
+      b.onclick = function () { S.theme.name = b.dataset.th; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
+    });
+    el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
+  }
   var TABS = [["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["ingredients", "Ingredients"], ["suppliers", "Suppliers"]];
   var REASONS = ["Spoilage", "Staff meal", "Waste", "Count error", "Other"];
   var LOCATIONS = ["Fridge", "Freezer", "Dry", "Bar", "Other"];
@@ -180,10 +256,12 @@
   /* ── data loading ────────────────────────────────────────────────── */
   function loadAll() {
     return Promise.all([
-      api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"),
+      api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"), api("/pos"),
     ]).then(function (r) {
       S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products;
-      S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices;
+      S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
+      if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "orange"; S.theme.dark = !!r[1].theme.dark; }
+      applyTheme();
       renderAlerts(r[4]);
     });
   }
@@ -404,12 +482,25 @@
     var supOpts = S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (S.inv.supplierId === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
     var lines = S.inv.lines.map(function (l, i) {
       var ing = ingById(l.ingredientId);
+      if (!ing) {
+        /* PO line not matched to an ingredient yet — offer the full list */
+        var mOpts = '<option value="">— pick ingredient —</option>' + S.ingredients.map(function (x) {
+          return '<option value="' + x.id + '">' + esc(x.name) + "</option>";
+        }).join("");
+        return '<tr><td><span class="badge amber">from PO</span> ' + esc(l.desc || "?") +
+          '<div style="margin-top:5px"><select data-dm="' + i + '">' + mOpts + "</select></div></td>" +
+          '<td class="mono"><input class="num" data-dq="' + i + '" inputmode="decimal" value="' + esc(l.qty) + '" style="width:80px" /></td>' +
+          "<td>—</td>" +
+          '<td class="mono"><input class="num" data-dc="' + i + '" inputmode="decimal" value="' + esc(l.cost) + '" placeholder="0.00" style="width:100px" /></td>' +
+          '<td class="mono">—</td>' +
+          '<td style="width:40px"><button class="tiny ghost" data-dx="' + i + '">✕</button></td></tr>';
+      }
       var unitOpts = '<option value="">' + esc(ing.base_unit) + "</option>" + (ing.units || []).map(function (u) {
         return '<option value="' + esc(u.name) + '"' + (l.unitName === u.name ? " selected" : "") + ">" + esc(u.name) + "</option>";
       }).join("");
       var baseQty = (parseFloat(l.qty) || 0) * (l.unitName ? (ing.units.find(function (u) { return u.name === l.unitName; }) || { factor: 1 }).factor : 1);
       var per = baseQty > 0 && l.cost ? (parseFloat(l.cost) / baseQty).toFixed(4) : "—";
-      return "<tr><td>" + esc(ing.name) + "</td>" +
+      return "<tr><td>" + (l.desc ? '<span class="badge dim">' + esc(l.desc) + "</span> " : "") + esc(ing.name) + "</td>" +
         '<td class="mono"><input class="num" data-dq="' + i + '" inputmode="decimal" value="' + esc(l.qty) + '" style="width:80px" /></td>' +
         '<td><select data-du="' + i + '">' + unitOpts + "</select></td>" +
         '<td class="mono"><input class="num" data-dc="' + i + '" inputmode="decimal" value="' + esc(l.cost) + '" placeholder="0.00" style="width:100px" /></td>' +
@@ -420,23 +511,54 @@
     var recent = S.invoices.slice(0, 12).map(function (v) {
       return "<tr><td>" + new Date(v.received_at).toLocaleDateString() + "</td><td>" + esc(v.supplier || "—") + "</td><td>" + esc(v.invoice_no || "—") + '</td><td class="mono">' + Y(v.total) + "</td></tr>";
     }).join("");
+    var poCards = S.pos.map(function (po) {
+      return '<div class="po-card">' +
+        '<div class="meta"><b>' + esc(po.no || "PO") + "</b> · " + esc(po.supplier || "no supplier") +
+        '<div class="hint">' + new Date(po.t).toLocaleDateString() + " · " + po.items.length + " line" + (po.items.length === 1 ? "" : "s") + " · " + esc(S.currency) + " " + Y(po.total) + "</div></div>" +
+        '<button class="primary tiny" data-po="' + po.id + '" style="padding:8px 14px">Receive here</button></div>';
+    }).join("");
     el("main").innerHTML =
+      (poCards ? '<section><h2>Purchase orders from the till</h2><div class="panel">' + poCards + "</div>" +
+        '<p class="hint">Raised at the till, waiting for delivery. Receiving here does everything in one tap: stock in, costs re-averaged, and the bill booked to the till\u2019s Expenses.</p></section>' : "") +
       "<section><h2>What arrived?</h2>" +
       '<div class="panel pad">' +
-      '<div class="row2"><div><label>Supplier</label><div style="display:flex;gap:8px"><select id="dSup" style="flex:1"><option value="">— pick a supplier —</option>' + supOpts + '</select><button class="ghost" id="dNewSup">+ New</button></div></div>' +
+      '<div class="row2"><div><label>Supplier</label>' +
+      (S.inv.poId
+        ? '<div class="po-lock">' + esc(S.inv.supplierName || "From " + (S.inv.poNo || "PO")) + ' · <a href="#" id="dCancelPo">cancel</a></div>'
+        : '<div style="display:flex;gap:8px"><select id="dSup" style="flex:1"><option value="">— pick a supplier —</option>' + supOpts + '</select><button class="ghost" id="dNewSup">+ New</button></div>') +
+      "</div>" +
       '<div><label>Invoice number (optional)</label><input id="dNo" value="' + esc(S.inv.invoiceNo) + '" style="width:100%" /></div></div>' +
       '<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Ingredient</th><th class="mono">Qty</th><th>Unit</th><th class="mono">Cost (' + esc(S.currency) + ')</th><th class="mono">Adds to stock</th><th></th></tr></thead><tbody>' +
       (lines || '<tr><td colspan="6" class="empty">No lines yet.</td></tr>') + "</tbody></table></div>" +
       '<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><select id="dAdd" style="flex:1"><option value="">+ Add a delivery line…</option>' + addOpts + "</select>" +
       '<button class="primary" id="dPost"' + (S.inv.lines.length ? "" : " disabled") + ">Add to stock</button></div>" +
-      '<p class="hint">Posting updates stock levels instantly and re-averages each ingredient’s cost — no other bookkeeping needed.</p>' +
+      '<p class="hint">Posting updates stock instantly, re-averages each ingredient\u2019s cost, and books the bill to the till\u2019s Expenses — enter it once, it lands everywhere.</p>' +
       "</div></section>" +
       "<section><h2>Recent deliveries</h2><div class=\"tbl-wrap\"><table><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th class=\"mono\">Total</th></tr></thead><tbody>" +
       (recent || '<tr><td colspan="4" class="empty">Nothing yet.</td></tr>') + "</tbody></table></div></section>";
 
-    el("dSup").onchange = function () { S.inv.supplierId = el("dSup").value; };
+    el("main").querySelectorAll("[data-po]").forEach(function (b) {
+      b.onclick = function () {
+        var po = S.pos.find(function (x) { return x.id === b.dataset.po; });
+        if (!po) return;
+        S.inv = { supplierId: "", invoiceNo: po.no, poId: po.id, poNo: po.no, supplierName: po.supplier,
+          lines: po.items.map(function (it) {
+            var match = S.ingredients.find(function (x) { return x.name.toLowerCase() === (it.desc || "").toLowerCase(); }) ||
+                        S.ingredients.find(function (x) { return (it.desc || "").toLowerCase().includes(x.name.toLowerCase()) || x.name.toLowerCase().includes((it.desc || "").toLowerCase()); });
+            return { ingredientId: match ? match.id : "", desc: it.desc, qty: String(it.qty || 1), unitName: "", cost: it.cost ? ((it.cost * (it.qty || 1)) / 100).toFixed(2) : "" };
+          }) };
+        renderDeliveries();
+        toast(po.no + " loaded — check each line, then Add to stock");
+      };
+    });
+    var cp = el("dCancelPo");
+    if (cp) cp.onclick = function (e) { e.preventDefault(); S.inv = { supplierId: "", invoiceNo: "", lines: [] }; renderDeliveries(); };
+    if (el("dSup")) el("dSup").onchange = function () { S.inv.supplierId = el("dSup").value; };
     el("dNo").oninput = function () { S.inv.invoiceNo = el("dNo").value; };
-    el("dNewSup").onclick = function () { supplierModal(null, function () { renderDeliveries(); }); };
+    if (el("dNewSup")) el("dNewSup").onclick = function () { supplierModal(null, function () { renderDeliveries(); }); };
+    el("main").querySelectorAll("[data-dm]").forEach(function (sel) {
+      sel.onchange = function () { S.inv.lines[Number(sel.dataset.dm)].ingredientId = sel.value; renderDeliveries(); };
+    });
     el("dAdd").onchange = function () {
       if (!el("dAdd").value) return;
       S.inv.lines.push({ ingredientId: el("dAdd").value, qty: "", unitName: "", cost: "" });
@@ -447,16 +569,21 @@
     el("main").querySelectorAll("[data-du]").forEach(function (s) { s.onchange = function () { S.inv.lines[Number(s.dataset.du)].unitName = s.value; renderDeliveries(); }; });
     el("main").querySelectorAll("[data-dx]").forEach(function (b) { b.onclick = function () { S.inv.lines.splice(Number(b.dataset.dx), 1); renderDeliveries(); }; });
     el("dPost").onclick = function () {
-      var body = {
-        supplierId: S.inv.supplierId, invoiceNo: S.inv.invoiceNo,
-        lines: S.inv.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: parseFloat(l.qty) || 0, unitName: l.unitName, cost: Math.round((parseFloat(l.cost) || 0) * 100) }; })
-          .filter(function (l) { return l.qty > 0; }),
-      };
-      if (!body.lines.length) return toast("Enter quantities first");
+      var unmapped = S.inv.lines.filter(function (l) { return !l.ingredientId; }).length;
+      if (unmapped) return toast("Match or remove " + unmapped + " PO line" + (unmapped === 1 ? "" : "s") + " first");
+      var lines = S.inv.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: parseFloat(l.qty) || 0, unitName: l.unitName, cost: Math.round((parseFloat(l.cost) || 0) * 100) }; })
+        .filter(function (l) { return l.qty > 0; });
+      if (!lines.length) return toast("Enter quantities first");
       el("dPost").disabled = true;
-      api("/invoices", { method: "POST", body: JSON.stringify(body) })
-        .then(function (r) { S.inv = { supplierId: "", invoiceNo: "", lines: [] }; toast("Stock updated — " + esc(S.currency) + " " + Y(r.total) + " received"); return loadAll(); })
-        .then(render).catch(function (e) { toast(e.message); el("dPost").disabled = false; });
+      var req = S.inv.poId
+        ? api("/pos/" + encodeURIComponent(S.inv.poId) + "/receive", { method: "POST", body: JSON.stringify({ lines: lines, invoiceNo: S.inv.invoiceNo }) })
+        : api("/invoices", { method: "POST", body: JSON.stringify({ supplierId: S.inv.supplierId, invoiceNo: S.inv.invoiceNo, lines: lines }) });
+      req.then(function (r) {
+        var wasPo = S.inv.poNo;
+        S.inv = { supplierId: "", invoiceNo: "", lines: [] };
+        toast((wasPo ? wasPo + " received — " : "Stock updated — ") + S.currency + " " + Y(r.total) + " booked to expenses");
+        return loadAll();
+      }).then(render).catch(function (e) { toast(e.message); el("dPost").disabled = false; });
     };
   }
 
@@ -653,10 +780,24 @@
     el("wDone").onclick = function () { S.wiz = null; renderAudit(); };
   }
 
-  /* ── boot ────────────────────────────────────────────────────────── */
+  /* ── boot + background refresh ───────────────────────────────────── */
+  applyTheme();
   loadAll().then(render).catch(function (e) {
     el("main").innerHTML = '<div class="empty">Couldn’t load the back office: ' + esc(e.message) + "</div>";
   });
+
+  /* Other devices (the till, another phone) change data underneath us —
+     quietly re-pull when it can't clobber in-progress work: no modal open,
+     no stock-check underway, no delivery draft, no recipe being edited. */
+  function safeToRefresh() {
+    return document.visibilityState === "visible" &&
+      !document.querySelector(".overlay") && !S.wiz &&
+      !(S.inv.lines.length || S.inv.poId) &&
+      !(S.tab === "recipes" && S.selProduct);
+  }
+  function bgRefresh() { if (safeToRefresh()) loadAll().then(render).catch(function () {}); }
+  setInterval(bgRefresh, 60000);
+  document.addEventListener("visibilitychange", bgRefresh);
 })();
 </script>
 </body>
