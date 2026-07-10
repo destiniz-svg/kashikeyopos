@@ -232,6 +232,53 @@ const chartObj = "{" + Object.keys(THEMES).map((t) => {
 }).join(",") + "}";
 const kpalJs = `window.__kpal=function(t,dark){var CH=${chartObj};var ok=CH[t]?t:"orange";var c=CH[ok][dark?"d":"l"];return{app:"ksh-app kt-"+ok+(dark?"-d":"-l"),header:"ksh-header",panel:"ksh-panel",panel2:"ksh-panel2",border:"ksh-border",sub:"ksh-sub",faint:"ksh-faint",input:"ksh-input",chip:"ksh-chip",chipOn:"ksh-chipOn",tile:"ksh-tile",nav:"ksh-nav",navOn:"ksh-navOn",navOff:"ksh-navOff",modal:"ksh-modal",btn:"ksh-btn",primary:"ksh-primary",accent:"ksh-accent",accentBd:"ksh-accentBd",axis:c.axis,bar:c.bar,grid:c.grid,tipBg:c.tipBg};};`;
 
+/* ── Sound alerts ─────────────────────────────────────────────────────────
+   A tiny WebAudio chime synthesizer (no audio files) shared by the till and
+   the guest portal via window.__ksnd. Browsers block audio until a user
+   gesture, so the AudioContext is resumed on the first pointer/key event —
+   staff tap a PIN and guests tap to order, so it unlocks naturally. Plays are
+   suppressed for the first few seconds after load so the initial data sync
+   (which pulls historic orders/calls) is silent. Per-device mute lives in
+   localStorage. Distinct patterns: waiter (urgent triple), order (two-note
+   ding), status (soft rising chime), ok (single blip), alert (buzz). */
+const sndJs = `(function(){
+  var ctx=null, armed=false;
+  function ac(){ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return ctx; }
+  function unlock(){ var c=ac(); if(c&&c.state==='suspended'){ try{c.resume();}catch(e){} } }
+  try{ document.addEventListener('pointerdown',unlock,true); document.addEventListener('keydown',unlock,true); }catch(e){}
+  setTimeout(function(){ armed=true; }, 3500);
+  function muted(){ try{ return localStorage.getItem('kashikeyo-mute')==='1'; }catch(e){ return false; } }
+  function tone(freq,dur,when,type,gain){
+    var c=ac(); if(!c) return;
+    var o=c.createOscillator(), g=c.createGain();
+    o.type=type||'sine'; o.frequency.value=freq; o.connect(g); g.connect(c.destination);
+    var t=c.currentTime+(when||0);
+    g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(gain||0.18,t+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+    o.start(t); o.stop(t+dur+0.03);
+  }
+  var P={
+    waiter:function(){ tone(880,0.15,0,'sine',0.25); tone(1175,0.18,0.17,'sine',0.25); tone(880,0.22,0.36,'sine',0.22); },
+    order:function(){ tone(660,0.13,0,'sine',0.22); tone(988,0.17,0.14,'sine',0.22); },
+    status:function(){ tone(784,0.11,0,'sine',0.17); tone(1047,0.15,0.11,'sine',0.17); },
+    ok:function(){ tone(1047,0.11,0,'sine',0.15); },
+    alert:function(){ tone(392,0.16,0,'triangle',0.16); tone(392,0.16,0.2,'triangle',0.16); }
+  };
+  var last={};
+  window.__ksnd={
+    play:function(kind,opts){
+      if(muted()) return;
+      if(!(opts&&opts.force)&&!armed) return;
+      var now=Date.now(); if(!(opts&&opts.force) && now-(last[kind]||0)<700) return; last[kind]=now;
+      unlock(); (P[kind]||P.ok)();
+      try{ navigator.vibrate && navigator.vibrate(kind==='waiter'?[90,60,90]:60); }catch(e){}
+    },
+    muted:muted,
+    setMuted:function(m){ try{ localStorage.setItem('kashikeyo-mute',m?'1':'0'); }catch(e){} },
+    unlock:unlock
+  };
+})();`;
+
 function injectCss(html, css) {
   if (html.includes(css)) return html;
   return html.replace("</style>", css + "</style>");
@@ -256,6 +303,7 @@ patchFile(indexPath, (html) => {
   html = injectCss(html, lovableCss);
   html = injectCss(html, themeVarsCss + themeUtilCss);
   html = injectInline(html, "ksh-kpal", kpalJs);
+  html = injectInline(html, "ksh-snd", sndJs);
   return html
   .replace(
     '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
@@ -647,6 +695,48 @@ patchFile(indexPath, (html) => html
     '`rounded-xl py-2 text-xs font-semibold ${_.btn}`,children:"Viber"'
   )
 
+  /* 41. Sound: till plays an alert when new portal orders and waiter calls
+     arrive. Hooked into zT (the inbound entity-apply) right after entities
+     are grouped by kind: a non-deleted waiterCall → "waiter" chime; a
+     non-deleted order that's freshly placed from a portal (status "new",
+     source "qr") → "order" chime. The helper stays silent for the first few
+     seconds so the initial sync doesn't blast historic rows. Find spans into
+     "const N=" so the anchor is displaced after insertion (idempotent). */
+  .replace(
+    'f.forEach(I=>{(A[I.kind]=A[I.kind]||[]).push(I)});const N=(I,j,F,W)=>{',
+    'f.forEach(I=>{(A[I.kind]=A[I.kind]||[]).push(I)});try{if(window.__ksnd){var _sn=window.__ksndSeen||(window.__ksndSeen={o:{},w:{}});A.waiterCalls&&A.waiterCalls.forEach(function(_c){!_c.deleted&&!_sn.w[_c.id]&&(_sn.w[_c.id]=1,window.__ksnd.play("waiter"))}),A.orders&&A.orders.forEach(function(_o){!_o.deleted&&_o.data&&_o.data.status==="new"&&_o.data.source==="qr"&&!_sn.o[_o.id]&&(_sn.o[_o.id]=1,window.__ksnd.play("order"))})}}catch{}const N=(I,j,F,W)=>{'
+  )
+
+  /* 42. Sound: guest device chimes when one of its orders changes status
+     (preparing → ready → delivered → settled). Extends the boot-poll handler
+     (patch 37): compares each order's status against the previous poll and
+     plays "status" if any advanced. First poll just seeds the map (no chime).
+     Find is the patch-37 tail; consumed by the inserted comparison. */
+  .replace(
+    'kt&&kt.ktdark!==void 0&&a(kt.ktdark===!0)}catch{}})())',
+    'kt&&kt.ktdark!==void 0&&a(kt.ktdark===!0);var _os=j.orders||[],_pv=window.__ksndGuestPrev||{},_chg=!1;_os.forEach(function(_o){_o&&_o.id&&_pv[_o.id]!==void 0&&_pv[_o.id]!==_o.status&&(_chg=!0)}),window.__ksndGuestPrev=Object.fromEntries(_os.map(function(_o){return[_o.id,_o.status]})),_chg&&window.__ksnd&&window.__ksnd.play("status")}catch{}})())'
+  )
+
+  /* 43. Sound: a per-device mute toggle in the till side menu (above the Back
+     office link). Available to all staff. Reads/writes localStorage via the
+     helper; updates its own label imperatively (no React state needed) and
+     plays a test chime when switched on. */
+  .replace(
+    '}},tn))})]}),br("refund")&&h.jsxs("button",{onClick:()=>{location.href="/back"}',
+    '}},tn))})]}),h.jsx("button",{onClick:_e=>{var _m=!(window.__ksnd&&window.__ksnd.muted());window.__ksnd&&window.__ksnd.setMuted(_m),_e.currentTarget.textContent=_m?"🔕 Alert sounds off":"🔔 Alert sounds on",!_m&&window.__ksnd&&window.__ksnd.play("order",{force:!0})},className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:window.__ksnd&&window.__ksnd.muted()?"🔕 Alert sounds off":"🔔 Alert sounds on"}),br("refund")&&h.jsxs("button",{onClick:()=>{location.href="/back"}'
+  )
+
+  /* 44. Sound: guest gets a confirmation blip when their order is sent and a
+     chime when they call a waiter (forced — direct user actions, always on). */
+  .replace(
+    'sent to the kitchen 🎉`)}catch{',
+    'sent to the kitchen 🎉`),window.__ksnd&&window.__ksnd.play("ok",{force:!0})}catch{'
+  )
+  .replace(
+    'storeId:Sd})}),Q("🔔 We\'re on our way!")}catch',
+    'storeId:Sd})}),window.__ksnd&&window.__ksnd.play("status",{force:!0}),Q("🔔 We\'re on our way!")}catch'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -802,6 +892,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.25"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.26"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
