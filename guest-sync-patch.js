@@ -394,10 +394,15 @@ patchFile(indexPath, (html) => {
    ─────────────────────────────────────────────────────────────────────────── */
 
 patchFile(indexPath, (html) => html
-  /* 1. Settings default object: add loyaltyBp and svcChargeBp */
+  /* 1. Settings default object: add loyaltyBp, svcChargeBp, and usdRate (fresh bundle) */
   .replace(
     'gstBp:800,currency:"MVR",footer:',
-    'gstBp:800,loyaltyBp:10000,svcChargeBp:0,currency:"MVR",footer:'
+    'gstBp:800,loyaltyBp:10000,svcChargeBp:0,usdRate:1542,currency:"MVR",footer:'
+  )
+  /* 1b. Already-baked bundle: loyaltyBp/svcChargeBp present but usdRate not yet */
+  .replace(
+    'gstBp:800,loyaltyBp:10000,svcChargeBp:0,currency:"MVR",footer:',
+    'gstBp:800,loyaltyBp:10000,svcChargeBp:0,usdRate:1542,currency:"MVR",footer:'
   )
 
   /* 2. Y5 subtotal helper: exclude non-taxable items from the GST base */
@@ -442,10 +447,14 @@ patchFile(indexPath, (html) => html
     'const j=Math.floor(N.total/(ce.loyaltyBp||10000)),F=A==="Credit"?N.total:0;'
   )
 
-  /* 9. Gate per-item discount button to admin/manager (cashier has no "refund" perm) */
+  /* 9. Gate per-item discount button to admin/manager (cashier has no "refund" perm).
+     Anchored on the price-display span that immediately precedes the button, so after
+     insertion the button is no longer the immediate successor of the span — idempotent.
+     Regex normalizer first collapses any accumulated duplicates from earlier bad runs. */
+  .replace(/(br\("refund"\)&&){2,}h\.jsxs\("button",\{onClick:\(\)=>GT\(A\)/g, 'br("refund")&&h.jsxs("button",{onClick:()=>GT(A)')
   .replace(
-    'h.jsxs("button",{onClick:()=>GT(A),className:`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:[h.jsx(vk,{size:11}),f.discPct?`-${f.discPct}%`:"disc"]})',
-    'br("refund")&&h.jsxs("button",{onClick:()=>GT(A),className:`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:[h.jsx(vk,{size:11}),f.discPct?`-${f.discPct}%`:"disc"]})'
+    'children:["@ ",Y(f.price),"/",f.unit||"pcs"]}),h.jsxs("button",{onClick:()=>GT(A),className:`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:[h.jsx(vk,{size:11}),f.discPct?`-${f.discPct}%`:"disc"]})',
+    'children:["@ ",Y(f.price),"/",f.unit||"pcs"]}),br("refund")&&h.jsxs("button",{onClick:()=>GT(A),className:`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:[h.jsx(vk,{size:11}),f.discPct?`-${f.discPct}%`:"disc"]})'
   )
 
   /* 10. Copy taxable flag when a product is added to a till order line */
@@ -473,12 +482,38 @@ patchFile(indexPath, (html) => html
   )
 
   /* 14. Settings form: add service charge and loyalty rate inputs after GST/Currency grid.
-     Find string anchors on the currency input's unique toUpperCase().slice(0,4) call so that
-     after first application that exact sequence no longer precedes "Changes apply…" and the
-     patch is a no-op on every subsequent server boot (server runs node guest-sync-patch.js). */
+     Anchored on the currency input's unique toUpperCase().slice(0,4) onChange call so the
+     find string spans from that call to "Changes apply…", and after insertion the grid sits
+     between them — the original span no longer exists, making this patch a no-op on re-runs.
+     Fresh bundle: toUpperCase...Changes apply is present → grid inserted.
+     Already-baked bundle: grid is already between them → no-op. */
   .replace(
     'toUpperCase().slice(0,4)})),className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]})]}),h.jsx("div",{className:`text-xs px-1 ${_.faint}`,children:"Changes apply immediately and save automatically — receipts, reports, and the tax engine all follow these settings."})',
     'toUpperCase().slice(0,4)})),className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]})]}),h.jsxs("div",{className:"grid grid-cols-2 gap-3 mt-2",children:[h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Service charge (%)"}),h.jsx("input",{value:String((ce.svcChargeBp||0)/100),inputMode:"decimal",onChange:f=>{const A=parseFloat(f.target.value);xs(N=>({...N,svcChargeBp:isNaN(A)?0:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Loyalty (MVR/$ per point)"}),h.jsx("input",{value:String((ce.loyaltyBp||10000)/100),inputMode:"decimal",onChange:f=>{const A=parseFloat(f.target.value);xs(N=>({...N,loyaltyBp:isNaN(A)||A<=0?10000:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]})]}),h.jsx("div",{className:`text-xs px-1 ${_.faint}`,children:"Changes apply immediately and save automatically — receipts, reports, and the tax engine all follow these settings."})'
+  )
+
+  /* 24. Settings form: add exchange rate input after svc/loyalty grid.
+     Find anchors on the tail of the loyalty input followed immediately by "Changes apply" —
+     after insertion the exchange rate div sits between them, breaking the anchor. */
+  .replace(
+    'loyaltyBp:isNaN(A)||A<=0?10000:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]})]}),h.jsx("div",{className:`text-xs px-1 ${_.faint}`,children:"Changes apply immediately and save automatically — receipts, reports, and the tax engine all follow these settings."})',
+    'loyaltyBp:isNaN(A)||A<=0?10000:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]})]}),h.jsxs("div",{className:"mt-2",children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Exchange rate (MVR per USD)"}),h.jsx("input",{value:String((ce.usdRate||1542)/100),inputMode:"decimal",onChange:f=>{const A=parseFloat(f.target.value);xs(N=>({...N,usdRate:isNaN(A)||A<=0?1542:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsx("div",{className:`text-xs px-1 ${_.faint}`,children:"Changes apply immediately and save automatically — receipts, reports, and the tax engine all follow these settings."})'
+  )
+
+  /* 25. Thermal receipt: show secondary currency below TOTAL.
+     MVR stores → show USD equivalent; USD stores → show MVR equivalent.
+     Anchored on payQrNote+footer sequence; secondary lines are inserted between them. */
+  .replace(
+    'ce.payQrNote&&j.push({c:ce.payQrNote,small:!0,accent:!0}),j.push({c:ce.footer,small:!0,dim:!0}),j}',
+    'ce.payQrNote&&j.push({c:ce.payQrNote,small:!0,accent:!0}),ce.usdRate&&ce.currency==="MVR"&&j.push({c:"≈ USD "+(f.total/ce.usdRate).toFixed(2),small:!0,dim:!0}),ce.usdRate&&ce.currency==="USD"&&j.push({c:"≈ MVR "+(f.total*ce.usdRate/10000).toFixed(2),small:!0,dim:!0}),j.push({c:ce.footer,small:!0,dim:!0}),j}'
+  )
+
+  /* 26. Screen receipt footer: show secondary currency below the receipt icon.
+     The outer div uses h.jsxs (multiple children). After patching the icon is no longer
+     immediately followed by the footer div, breaking the original match on re-runs. */
+  .replace(
+    'h.jsxs("div",{className:"flex flex-col items-center mt-4",children:[h.jsx(Uu,{size:40,className:"opacity-40"}),h.jsx("div",{className:"mt-1 opacity-60",children:ce.footer})]',
+    'h.jsxs("div",{className:"flex flex-col items-center mt-4",children:[h.jsx(Uu,{size:40,className:"opacity-40"}),ce.usdRate&&ce.currency==="MVR"&&h.jsx("div",{className:"mt-1 opacity-60 text-xs",children:"≈ USD "+(Pe.total/ce.usdRate).toFixed(2)}),ce.usdRate&&ce.currency==="USD"&&h.jsx("div",{className:"mt-1 opacity-60 text-xs",children:"≈ MVR "+(Pe.total*ce.usdRate/10000).toFixed(2)}),h.jsx("div",{className:"mt-1 opacity-60",children:ce.footer})]'
   )
 
   /* 15. Product form: add taxable to new-product initial state */
@@ -537,6 +572,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.14"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.15"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

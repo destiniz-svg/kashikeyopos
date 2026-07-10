@@ -65,6 +65,14 @@
   .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
   .foot a:hover { text-decoration: underline; }
 
+  .currency-pick { display: flex; gap: 10px; margin-top: 6px; }
+  .currency-pick label { flex: 1; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px; transition: border-color .15s; }
+  .currency-pick input[type=radio] { width: auto; accent-color: var(--primary); }
+  .currency-pick label:has(input:checked) { border-color: var(--primary); background: #FBF7EF; }
+  .currency-pick .flag { font-size: 20px; line-height: 1; }
+  .currency-pick .cname { font-weight: 600; }
+  .currency-pick .csub { font-size: 11px; color: var(--sub); }
+
   #oauthBox { display: none; gap: 10px; margin-bottom: 4px; }
   #googleBtn { display: flex; justify-content: center; }
   #googleBtn > div { width: 100% !important; }
@@ -103,6 +111,19 @@
         <p class="sub">Step 1 of 3 — store details</p>
         <label for="storeName">Store / outlet name</label>
         <input id="storeName" required placeholder="e.g. Island Zone Cafe" />
+        <label>Store currency</label>
+        <div class="currency-pick">
+          <label>
+            <input type="radio" name="currency" id="currMVR" value="MVR" checked />
+            <span class="flag">🇲🇻</span>
+            <span><span class="cname">MVR</span><br><span class="csub">Maldivian Rufiyaa</span></span>
+          </label>
+          <label>
+            <input type="radio" name="currency" id="currUSD" value="USD" />
+            <span class="flag">🇺🇸</span>
+            <span><span class="cname">USD</span><br><span class="csub">US Dollar</span></span>
+          </label>
+        </div>
         <div class="error" id="err1"></div>
         <div class="actions">
           <button type="button" class="primary" data-next>Continue</button>
@@ -145,6 +166,7 @@
         <div class="review">
           <dl>
             <dt>Store</dt><dd id="rvStore"></dd>
+            <dt>Currency</dt><dd id="rvCurrency"></dd>
             <dt>Admin</dt><dd id="rvOwner"></dd>
             <dt>Email</dt><dd id="rvEmail"></dd>
             <dt>Till PIN</dt><dd id="rvPin"></dd>
@@ -206,6 +228,9 @@
           if (state === 2 && !validateStep2()) return;
           if (state === 2) {
             document.getElementById("rvStore").textContent = document.getElementById("storeName").value.trim();
+            var selCur = document.querySelector('input[name="currency"]:checked');
+            var curVal = selCur ? selCur.value : "MVR";
+            document.getElementById("rvCurrency").textContent = curVal === "USD" ? "USD — US Dollar" : "MVR — Maldivian Rufiyaa";
             document.getElementById("rvOwner").textContent = document.getElementById("ownerName").value.trim();
             document.getElementById("rvEmail").textContent = document.getElementById("email").value.trim();
             document.getElementById("rvPin").textContent = document.getElementById("pin").value.trim();
@@ -224,6 +249,7 @@
         btn.disabled = true;
         btn.textContent = "Creating your store…";
         try {
+          var chosenCur = (document.querySelector('input[name="currency"]:checked') || {}).value || "MVR";
           var res = await fetch("/api/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -234,6 +260,7 @@
               email: document.getElementById("email").value.trim(),
               password: document.getElementById("password").value,
               pin: document.getElementById("pin").value.trim(),
+              currency: chosenCur,
             }),
           });
           var data = await res.json().catch(function () { return {}; });

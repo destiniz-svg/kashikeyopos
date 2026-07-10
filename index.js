@@ -175,6 +175,21 @@ const withSystem = (fn) => withScope(
     console.log(`connected as restricted role ${APP_DB_ROLE} for request handling`);
     await mergeForkedStoreRows();
     await ensurePlatformAdmin();
+    /* Backfill: existing settings entities that pre-date multi-currency get
+       currency:"MVR" and usdRate:1542 if those keys are absent. */
+    try {
+      const staleSettings = await bootPool.query(
+        "SELECT org_id, id, data FROM entities WHERE kind='settings' AND deleted=false AND (data->>'usdRate' IS NULL OR data->>'currency' IS NULL)");
+      for (const row of staleSettings.rows) {
+        const d = row.data || {};
+        if (!d.currency) d.currency = "MVR";
+        if (!d.usdRate) d.usdRate = 1542;
+        await bootPool.query(
+          "UPDATE entities SET data=$1, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$2 AND kind='settings' AND id=$3",
+          [JSON.stringify(d), row.org_id, row.id]);
+      }
+      if (staleSettings.rowCount) console.log(`backfilled multi-currency defaults for ${staleSettings.rowCount} settings entity(s)`);
+    } catch (e) { console.warn("currency backfill skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); }
 })();
 
@@ -478,12 +493,13 @@ app.post("/auth/apple/callback", express.urlencoded({ extended: false }), wrap(a
 }));
 
 app.post("/api/register", wrap(async (req, res) => {
-  const { email, password, storeName, ownerName, phone, pin } = req.body || {};
+  const { email, password, storeName, ownerName, phone, pin, currency } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
   const base = slugify(storeName || email.split("@")[0]);
   const slug = await withSystem((client) => uniqueSlug(client, base));
   const id = uid();
   const cleanOwnerName = String(ownerName || "").slice(0, 100);
+  const cleanCurrency = currency === "USD" ? "USD" : "MVR";
   try {
     await withSystem((client) => client.query(
       "INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, phone, registers) VALUES ($1,$2,$3,$4,$5,$6,$7,1)",
@@ -492,6 +508,10 @@ app.post("/api/register", wrap(async (req, res) => {
     return res.status(409).json({ error: "email already registered - use Sign in" });
   }
   await ensureDefaultStore(id, storeName || "Main Store");
+  const initSettings = { storeName: storeName || "My Store", gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: cleanCurrency, footer: "" };
+  await withOrg(id, (client) => client.query(
+    "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) ON CONFLICT (org_id, kind, id) DO NOTHING",
+    [id, JSON.stringify(initSettings)]));
   const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
   const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
   const token = sign(id, "R1", DEFAULT_STORE_ID);
@@ -744,7 +764,10 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   const [settingsArr, products, zones, tables, stores] = await Promise.all([
     kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "tables", storeId),
     withOrg(org.id, (client) => client.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id]))]);
-  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, currency: "MVR" };
+  const rawSettings = settingsArr[0] || {};
+  const settings = settingsArr[0]
+    ? { usdRate: 1542, ...rawSettings }
+    : { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
   let cust = null;
   if (req.query.c) {
     const c = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, req.query.c));
@@ -793,7 +816,9 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   const settingsArr = await kindAll(org.id, "settings", storeId);
-  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, currency: "MVR" };
+  const settings = settingsArr[0]
+    ? { usdRate: 1542, ...settingsArr[0] }
+    : { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
   const mine = (await guestOrders(org.id, storeId, { customerId: req.query.c, table: req.query.t }, settings)).slice(0, 25);
   res.json({ storeId, orders: mine });
 }));
