@@ -72,18 +72,30 @@ table.api th, table.api td { text-align: left; padding: 8px 10px; border-bottom:
 table.api th { color: var(--sub); font-weight: 600; }
 
 /* status page */
+@keyframes statusPulseOk {
+  0%   { box-shadow: 0 0 0 0   rgba(46,125,70,.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(46,125,70,0);  }
+  100% { box-shadow: 0 0 0 0   rgba(46,125,70,0);  }
+}
+@keyframes statusBlinkDown {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .2; }
+}
 .status-hero { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; margin-bottom: 20px; }
 .status-hero .big-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--faint); flex: none; }
-.status-hero.ok .big-dot { background: var(--ok); box-shadow: 0 0 0 5px rgba(46,125,70,.18); }
-.status-hero.down .big-dot { background: var(--primary); box-shadow: 0 0 0 5px rgba(193,80,45,.18); }
+.status-hero.ok   .big-dot { background: var(--ok);      animation: statusPulseOk   2s ease-out   infinite; }
+.status-hero.down .big-dot { background: var(--primary); animation: statusBlinkDown 1s ease-in-out infinite; }
+.status-hero.down h2 { color: var(--primary); }
 .status-hero h2 { margin: 0; font-size: 20px; }
 .status-hero p { margin: 2px 0 0; font-size: 14px; color: var(--sub); }
 .status-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); margin-bottom: 10px; }
 .status-row .name { font-weight: 600; font-size: 15px; }
 .status-pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--sub); }
 .status-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
-.status-pill.ok { color: var(--ok); } .status-pill.ok .dot { background: var(--ok); }
-.status-pill.down { color: var(--primary); } .status-pill.down .dot { background: var(--primary); }
+.status-pill.ok { color: var(--ok); }
+.status-pill.ok .dot { background: var(--ok); animation: statusPulseOk 2s ease-out infinite; }
+.status-pill.down { color: var(--primary); }
+.status-pill.down .dot { background: var(--primary); animation: statusBlinkDown 1s ease-in-out infinite; }
 
 footer.site { border-top: 1px solid var(--border); padding: 26px 0; margin-top: 40px; }
 footer.site .row { max-width: 1000px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--faint); }

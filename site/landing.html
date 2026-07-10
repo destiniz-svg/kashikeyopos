@@ -329,10 +329,20 @@
   .foot-col h5 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 0 0 14px; }
   .foot-col a { display: block; font-size: 14px; color: var(--sub); text-decoration: none; margin-bottom: 10px; }
   .foot-col a:hover { color: var(--primary); }
-  .foot-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sub); }
+  .foot-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sub); text-decoration: none; }
   .foot-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
-  .foot-status.ok .dot { background: #2E7D46; box-shadow: 0 0 0 3px rgba(46,125,70,.18); }
-  .foot-status.down .dot { background: #C1502D; box-shadow: 0 0 0 3px rgba(193,80,45,.18); }
+  @keyframes footPulseOk {
+    0%   { box-shadow: 0 0 0 0   rgba(46,125,70,.55); }
+    70%  { box-shadow: 0 0 0 6px rgba(46,125,70,0);   }
+    100% { box-shadow: 0 0 0 0   rgba(46,125,70,0);   }
+  }
+  @keyframes footBlinkDown {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .25; }
+  }
+  .foot-status.ok .dot  { background: #2E7D46; animation: footPulseOk 1.8s ease-out infinite; }
+  .foot-status.down      { color: #C1502D; }
+  .foot-status.down .dot { background: #C1502D; animation: footBlinkDown 1s ease-in-out infinite; }
   .foot-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 26px; border-top: 1px solid var(--border); }
   footer .copy { font-size: 13px; color: var(--faint); }
 </style>
@@ -633,8 +643,8 @@
     var txt = document.getElementById("footStatusText");
     fetch("/api/health").then(function (r) { return r.json(); }).then(function (d) {
       if (d && d.ok) { el.className = "foot-status ok"; txt.textContent = "All systems operational"; }
-      else throw new Error();
-    }).catch(function () { el.className = "foot-status down"; txt.textContent = "Checking status…"; });
+      else { el.className = "foot-status down"; txt.textContent = "Service disruption"; }
+    }).catch(function () { el.className = "foot-status down"; txt.textContent = "Service disruption"; });
   })();
 
   (function () {
