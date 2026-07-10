@@ -531,6 +531,16 @@ patchFile(indexPath, (html) => html
     'h.jsxs("button",{onClick:()=>{a(!i);try{xs(kv=>({...kv,ktdark:!i}))}catch{}},className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`'
   )
 
+  /* 33. Till side menu: "Back office" switcher between the theme picker and
+     the Lock button, gated to admin/manager (br("refund")) — cashiers don't
+     see it. Same session cookie powers /back, so it's a plain navigation.
+     Find spans the theme-picker tail + Lock button head; after insertion the
+     button sits between them, so the find no longer matches on re-runs. */
+  .replace(
+    '}},tn))})]}),h.jsxs("button",{onClick:jI,',
+    '}},tn))})]}),br("refund")&&h.jsxs("button",{onClick:()=>{location.href="/back"},className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[h.jsx("span",{className:"text-base leading-none",children:"📦"}),h.jsx("span",{className:"flex-1 text-left",children:"Back office — stock, recipes & deliveries"}),h.jsx("span",{className:`text-xs ${_.faint}`,children:"→"})]}),h.jsxs("button",{onClick:jI,'
+  )
+
   /* 32. Guest/member profile: rewards card with tier progress + "your usuals"
      one-tap reorder chips, inserted above the Visits/Spent/On-account tiles.
      Uses only data already on the page: j = customer from /p/:slug/boot
@@ -654,6 +664,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.17"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.18"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

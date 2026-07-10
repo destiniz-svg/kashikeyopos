@@ -30,6 +30,11 @@
   .theme-ctl .sw { width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
   .theme-ctl .sw.on { border-color: var(--text); transform: scale(1.12); }
   .theme-ctl .dk { background: var(--btn); border-radius: 999px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
+  .till-link {
+    display: inline-flex; align-items: center; gap: 7px; background: var(--primary); color: #fff !important;
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; text-decoration: none !important;
+  }
+  .till-link:hover { background: var(--primary-hov); }
   .bar { max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .logo { display: flex; align-items: center; gap: 10px; }
   .logo-img { display: block; height: 28px; width: auto; }
@@ -159,7 +164,7 @@
 <header>
   <div class="bar">
     <div class="logo"><img class="logo-img" src="/logo-mark.svg" alt="KashikeyoPOS" /><div class="logo-text">Back office</div></div>
-    <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a href="/app">Till &rarr;</a></div>
+    <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a class="till-link" href="/app">🧾 Open the till</a></div>
   </div>
   <nav class="tabs" id="tabs"></nav>
 </header>
