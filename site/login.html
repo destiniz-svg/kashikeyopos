@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Sign in — KashikeyoPOS</title>
-<link rel="icon" href="/icon-192.png" />
+<link rel="icon" href="/logo-mark.svg" />
 <style>
   :root {
     --app: #F3ECE1; --panel: #FFFFFF; --border: #E8DFCF; --text: #2A241E;
@@ -23,11 +23,7 @@
     border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
   }
   .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
-  .logo-mark {
-    width: 36px; height: 36px; border-radius: 10px; background: var(--primary);
-    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 16px;
-  }
-  .logo-text { font-weight: 700; font-size: 17px; letter-spacing: -.01em; }
+  .logo-img { display: block; height: 38px; width: auto; }
   h1 { font-size: 20px; margin: 0 0 4px; }
   p.sub { color: var(--sub); font-size: 14px; margin: 0 0 24px; }
   label { display: block; font-size: 13px; color: var(--sub); margin: 16px 0 6px; }
@@ -70,8 +66,7 @@
   <div class="card">
     <a class="back" href="/">&larr; kashikeyopos.com</a>
     <div class="logo">
-      <div class="logo-mark">K</div>
-      <div class="logo-text">KashikeyoPOS</div>
+      <img class="logo-img" src="/logo.svg" alt="KashikeyoPOS" />
     </div>
     <h1>Sign in</h1>
     <p class="sub">Welcome back — sign in to your workspace.</p>

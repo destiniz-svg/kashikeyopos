@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>KashikeyoPOS — Point of sale built for the Maldives</title>
 <meta name="description" content="KashikeyoPOS: guest QR ordering, realtime kitchen sync, multi-store management and offline-first reliability — all in one point of sale." />
-<link rel="icon" href="/icon-192.png" />
+<link rel="icon" href="/logo-mark.svg" />
 <style>
   :root {
     --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
@@ -30,10 +30,18 @@
   }
   nav { position: relative; display: flex; align-items: center; justify-content: space-between; padding: 12px 0; gap: 10px; }
   .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; white-space: nowrap; }
+  .logo-img { display: block; height: 32px; width: auto; }
   .logo-mark {
     flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--primary);
     display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;
   }
+  /* Maldives flag (CSS-drawn - the 🇲🇻 emoji doesn't render on many browsers) */
+  .flag-mv {
+    position: relative; display: inline-block; width: 21px; height: 14px; flex: 0 0 auto;
+    overflow: hidden; border-radius: 3px; background: #d21034; box-shadow: 0 0 0 1px rgba(42,36,30,.12);
+  }
+  .flag-mv::before { content: ""; position: absolute; inset: 3px 5px; background: #007e3a; }
+  .flag-mv::after { content: ""; position: absolute; top: 3.5px; left: 8.2px; width: 6px; height: 7px; border-radius: 50%; box-shadow: -2px 0 0 0 #fff; }
   .nav-links { display: flex; align-items: center; gap: 22px; }
   .nav-links a.link { font-size: 14px; color: var(--sub); text-decoration: none; white-space: nowrap; }
   .nav-links a.link:hover { color: var(--text); }
@@ -327,9 +335,8 @@
 <header>
   <div class="wrap">
     <nav>
-      <a class="logo" href="/">
-        <div class="logo-mark">K</div>
-        KashikeyoPOS
+      <a class="logo" href="/" aria-label="KashikeyoPOS home">
+        <img class="logo-img" src="/logo.svg" alt="KashikeyoPOS" />
       </a>
       <button class="hamburger" id="navToggle" aria-label="Menu" aria-expanded="false">
         <span></span>
@@ -351,7 +358,7 @@
   <div class="blob blob1"></div>
   <div class="blob blob2"></div>
   <div class="wrap">
-    <div class="eyebrow">🇲🇻 &nbsp;Built for restaurants &amp; cafés in the <b>Maldives</b></div>
+    <div class="eyebrow"><span class="flag-mv" aria-hidden="true"></span> Built for restaurants &amp; cafés in the <b>Maldives</b></div>
     <h1>The point of sale that keeps your <span>whole floor</span> in sync.</h1>
     <p class="hero-sub"><b>Never sleeps</b> — keep taking orders even when the internet goes down.</p>
     <p class="lead">Guests order from their phone, the kitchen sees it instantly, and every branch stays in sync — even when the internet doesn't cooperate.</p>
@@ -579,9 +586,8 @@
   <div class="wrap">
     <div class="foot-top">
       <div class="foot-brand">
-        <a class="logo" href="/">
-          <div class="logo-mark">K</div>
-          KashikeyoPOS
+        <a class="logo" href="/" aria-label="KashikeyoPOS home">
+          <img class="logo-img" src="/logo.svg" alt="KashikeyoPOS" style="height:38px" />
         </a>
         <p>The offline-first point of sale for restaurants &amp; cafés in the Maldives.</p>
       </div>
