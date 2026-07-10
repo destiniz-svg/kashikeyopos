@@ -1,26 +1,27 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 548 132" role="img" aria-label="KashikeyoPOS">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 604 160" role="img" aria-label="KashikeyoPOS">
   <title>KashikeyoPOS</title>
-  <!-- Low-poly "kashikeyo" mark: grey faceted cap, red body, green base -->
+  <!-- Low-poly "kashikeyo" mark -->
   <g>
-    <!-- grey cap -->
-    <polygon points="36,32 46,13 52,13 52,32" fill="#e0e0e0"/>
-    <polygon points="52,32 52,13 60,13 70,32" fill="#bfbfbf"/>
-    <polygon points="46,13 60,13 52,20" fill="#efefef"/>
-    <!-- red body -->
-    <polygon points="30,31 52,31 52,59 18,61" fill="#e5432f"/>
-    <polygon points="52,31 74,31 86,61 52,59" fill="#cb3121"/>
-    <polygon points="18,61 52,59 52,87 31,87" fill="#f2604c"/>
-    <polygon points="52,59 86,61 74,87 52,87" fill="#b92a1b"/>
-    <polygon points="49,31 55,31 55,87 49,87" fill="#e5432f" opacity=".55"/>
-    <!-- green base -->
-    <polygon points="24,85 52,85 52,105 10,105" fill="#8fc47d"/>
-    <polygon points="52,85 80,85 94,105 52,105" fill="#6fae5b"/>
-    <polygon points="10,105 52,105 52,123 25,123" fill="#a9d195"/>
-    <polygon points="52,105 94,105 80,123 52,123" fill="#5f9b4d"/>
+    <!-- grey faceted cap -->
+    <polygon points="54,10 74,10 80,22 48,22" fill="#e6e6e6"/>
+    <polygon points="48,22 64,22 64,33 48,32" fill="#cfcfcf"/>
+    <polygon points="64,22 80,22 80,32 64,33" fill="#a9a9a9"/>
+    <polygon points="58,10 70,10 64,14" fill="#f4f4f4"/>
+    <!-- red faceted body -->
+    <polygon points="48,32 64,32 64,62 30,62" fill="#e5432f"/>
+    <polygon points="64,32 80,32 98,62 64,62" fill="#c5301f"/>
+    <polygon points="30,62 64,62 64,90 18,104" fill="#f0563f"/>
+    <polygon points="98,62 64,62 64,90 110,104" fill="#b62a1a"/>
+    <polygon points="60,32 68,32 68,90 60,90" fill="#f7806e" opacity=".45"/>
+    <!-- green faceted base -->
+    <polygon points="18,104 64,90 64,120 20,122" fill="#8fc47d"/>
+    <polygon points="110,104 64,90 64,120 108,122" fill="#639e4e"/>
+    <polygon points="20,122 64,120 64,144 58,150 26,150" fill="#a9d195"/>
+    <polygon points="108,122 64,120 64,144 70,150 102,150" fill="#588f45"/>
   </g>
   <!-- wordmark -->
-  <text x="120" y="72" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
-        font-weight="800" font-size="58" letter-spacing="-1" fill="#6e2f34">Kashikeyo</text>
-  <text x="122" y="116" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
-        font-weight="600" font-size="42" letter-spacing="6" fill="#7c7c7c">POS<tspan font-size="17" dy="-21">™</tspan></text>
+  <text x="150" y="86" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="800" font-size="70" letter-spacing="-1" fill="#6e2f34">Kashikeyo</text>
+  <text x="152" y="138" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
+        font-weight="600" font-size="44" letter-spacing="6" fill="#7c7c7c">POS<tspan font-size="18" dy="-22">™</tspan></text>
 </svg>
