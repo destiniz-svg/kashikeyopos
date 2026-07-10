@@ -785,6 +785,25 @@
     el("wDone").onclick = function () { S.wiz = null; renderAudit(); };
   }
 
+  /* ── "Open the till" ─────────────────────────────────────────────────
+     The till bundle boots from a cloud pairing kept in localStorage, which
+     only /login and /signup normally seed. On a device that signed in but
+     never opened the till (this cookie, no pairing), /app would boot the
+     bundle's baked-in demo store — so mint the pairing first via /api/pair,
+     then navigate. Devices already paired go straight through. */
+  document.querySelector(".till-link").addEventListener("click", function (e) {
+    e.preventDefault();
+    var go = function () { location.href = "/app"; };
+    try { if (localStorage.getItem("kashikeyo-cloud")) return go(); } catch (err) {}
+    fetch("/api/pair", { method: "POST" }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.token) {
+        try { localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url: "", token: d.token, slug: d.slug, register: d.register })); } catch (err) {}
+        if (d.pin) alert("Your till PIN is " + d.pin + " — you'll use it to sign in at the till. You can change it in Staff settings.");
+      }
+      go();
+    }).catch(go);
+  });
+
   /* ── boot + background refresh ───────────────────────────────────── */
   applyTheme();
   loadAll().then(render).catch(function (e) {

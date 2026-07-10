@@ -554,6 +554,25 @@ app.post("/api/login", wrap(async (req, res) => {
   res.json(result);
 }));
 
+/* A browser can hold a valid app-session cookie without ever having gone
+   through /login on that device — e.g. the owner's phone that only opened
+   /back. The till bundle reads its cloud pairing from localStorage, so on
+   such a device /app boots into the bundle's baked-in standalone demo
+   ("Nexus Café") instead of the user's store. This mints the pairing for
+   the cookie's org (new register, same as a fresh login) so "Open the
+   till" works from any signed-in device; the caller stores it in
+   localStorage before navigating. */
+app.post("/api/pair", wrap(async (req, res) => {
+  const orgId = await resolveAppSession(req);
+  if (!orgId) return res.status(401).json({ error: "sign in required" });
+  const org = await withSystem(async (client) => (await client.query("SELECT * FROM orgs WHERE id=$1", [orgId])).rows[0]);
+  if (!org) return res.status(401).json({ error: "sign in required" });
+  const result = await finishOAuthLogin(org);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+  setAppCookie(res, result.token);
+  res.json(result);
+}));
+
 app.post("/api/logout", (req, res) => {
   res.clearCookie(APP_COOKIE, { path: "/" });
   res.json({ ok: true });
