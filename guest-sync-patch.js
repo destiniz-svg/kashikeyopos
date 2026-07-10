@@ -116,6 +116,122 @@ const lovableCss = `
 const lovablePalette =
   '{app:"ksh-lv-app",header:"ksh-lv-header",panel:"ksh-lv-panel",panel2:"ksh-lv-panel2",border:"ksh-lv-border",sub:"ksh-lv-sub",faint:"ksh-lv-faint",input:"ksh-lv-input",chip:"ksh-lv-chip",chipOn:"ksh-lv-chipOn",tile:"ksh-lv-tile",nav:"ksh-lv-nav",navOn:"ksh-lv-navOn",navOff:"ksh-lv-navOff",modal:"ksh-lv-modal",btn:"ksh-lv-btn",primary:"ksh-lv-primary",accent:"ksh-lv-accent",accentBd:"ksh-lv-accentBd",axis:"#B7AE9F",bar:"#C1502D",grid:"#EFE6D6",tipBg:"#FFFFFF"}';
 
+/* ── Multi-theme system ────────────────────────────────────────────────
+   Five named fruit themes (Orange/Green Apple/Watermelon/Mango/Strawberry),
+   each with a light (default) and a dark variant. Colours are delivered as
+   CSS variables set by a per-theme class (.kt-<name>-<l|d>) on the app root;
+   every `_` palette key maps to a fixed .ksh-* utility class that reads those
+   variables. So switching theme is just swapping the root class — no
+   per-theme class explosion, and fixed-position modals (in-tree) inherit the
+   variables through the cascade. A light glass look (translucent panels +
+   backdrop-blur + a soft gradient app background) is baked into the utility
+   classes. Critically, picking a light theme also sets the app's existing
+   dark flag to false, so the many `${i?"bg-slate-900":"bg-white"}` controls
+   (steppers, amounts) render their light variant instead of dark-on-cream. */
+const THEMES = {
+  orange: {
+    l: { bg:"#F3ECE1", text:"#2A241E", sub:"#8A8074", faint:"#B7AE9F", primary:"#C1502D", primaryHover:"#AA4526", accent:"#C1502D",
+         panel:"rgba(255,255,255,.86)", panel2:"rgba(236,227,211,.72)", border:"#E8DFCF", input:"#FFFFFF", inputBorder:"#E8DFCF", ph:"#B7AE9F",
+         chip:"rgba(251,247,239,.85)", chipText:"#4A4238", nav:"rgba(243,236,225,.72)", navOff:"#A79E8F",
+         modal:"rgba(255,255,255,.82)", btn:"#F1E8D8", btnText:"#4A4238", btnHover:"#E8DCC5", accentBd:"rgba(193,80,45,.4)",
+         axis:"#B7AE9F", bar:"#C1502D", grid:"#EFE6D6", tip:"#FFFFFF" },
+    d: { bg:"#241A14", text:"#EDE6DA", sub:"#A79E8F", faint:"#7C7466", primary:"#E0794F", primaryHover:"#E88A62", accent:"#E0794F",
+         panel:"rgba(46,38,30,.72)", panel2:"rgba(58,48,38,.6)", border:"#3A3025", input:"#2A2118", inputBorder:"#3A3025", ph:"#7C7466",
+         chip:"rgba(58,48,38,.62)", chipText:"#D8CFC0", nav:"rgba(30,22,16,.72)", navOff:"#7C7466",
+         modal:"rgba(40,32,24,.82)", btn:"#3A3025", btnText:"#E7DECF", btnHover:"#483C2C", accentBd:"rgba(224,121,79,.5)",
+         axis:"#7C7466", bar:"#E0794F", grid:"#3A3025", tip:"#2A2018" } },
+  green: {
+    l: { bg:"#EEF4E8", text:"#1E2A18", sub:"#6E7A64", faint:"#A6B29A", primary:"#4E8A3A", primaryHover:"#457C33", accent:"#4E8A3A",
+         panel:"rgba(255,255,255,.86)", panel2:"rgba(228,238,219,.72)", border:"#DBE6CF", input:"#FFFFFF", inputBorder:"#DBE6CF", ph:"#A6B29A",
+         chip:"rgba(240,246,233,.85)", chipText:"#3C4A32", nav:"rgba(238,244,232,.72)", navOff:"#93A085",
+         modal:"rgba(255,255,255,.82)", btn:"#E4EEDA", btnText:"#3C4A32", btnHover:"#D6E4C8", accentBd:"rgba(78,138,58,.4)",
+         axis:"#A6B29A", bar:"#4E8A3A", grid:"#E1EAD6", tip:"#FFFFFF" },
+    d: { bg:"#131C0F", text:"#E4EFDD", sub:"#93A085", faint:"#6B7660", primary:"#7FBF5E", primaryHover:"#8ECB6E", accent:"#7FBF5E",
+         panel:"rgba(30,42,24,.72)", panel2:"rgba(38,52,30,.6)", border:"#2C3A22", input:"#1C2716", inputBorder:"#2C3A22", ph:"#6B7660",
+         chip:"rgba(38,52,30,.62)", chipText:"#CDDAC0", nav:"rgba(18,26,12,.72)", navOff:"#6B7660",
+         modal:"rgba(28,40,22,.82)", btn:"#2C3A22", btnText:"#DDE9D2", btnHover:"#38492A", accentBd:"rgba(127,191,94,.5)",
+         axis:"#6B7660", bar:"#7FBF5E", grid:"#2C3A22", tip:"#1C2716" } },
+  watermelon: {
+    l: { bg:"#FCECEC", text:"#2A1618", sub:"#8A6E70", faint:"#C4A6A8", primary:"#DA3B4B", primaryHover:"#C43140", accent:"#4E9A54",
+         panel:"rgba(255,255,255,.86)", panel2:"rgba(250,224,224,.72)", border:"#F0D6D6", input:"#FFFFFF", inputBorder:"#F0D6D6", ph:"#C4A6A8",
+         chip:"rgba(253,240,240,.85)", chipText:"#5A3E40", nav:"rgba(252,236,236,.72)", navOff:"#B58C8E",
+         modal:"rgba(255,255,255,.82)", btn:"#FAE2E2", btnText:"#5A3E40", btnHover:"#F2D2D2", accentBd:"rgba(218,59,75,.4)",
+         axis:"#C4A6A8", bar:"#DA3B4B", grid:"#F3DEDE", tip:"#FFFFFF" },
+    d: { bg:"#1F1113", text:"#F1E1E2", sub:"#B58C8E", faint:"#7A5A5C", primary:"#F05563", primaryHover:"#F26E7A", accent:"#6FBF74",
+         panel:"rgba(46,26,28,.72)", panel2:"rgba(58,34,36,.6)", border:"#3E2427", input:"#2A1618", inputBorder:"#3E2427", ph:"#7A5A5C",
+         chip:"rgba(58,34,36,.62)", chipText:"#E0C4C6", nav:"rgba(28,16,18,.72)", navOff:"#7A5A5C",
+         modal:"rgba(40,22,24,.82)", btn:"#3E2427", btnText:"#EAD6D8", btnHover:"#4E3034", accentBd:"rgba(240,85,99,.5)",
+         axis:"#7A5A5C", bar:"#F05563", grid:"#3E2427", tip:"#241618" } },
+  mango: {
+    l: { bg:"#FBF3E0", text:"#2A2410", sub:"#8A7C58", faint:"#C4B688", primary:"#E19A12", primaryHover:"#C9880C", accent:"#E19A12",
+         panel:"rgba(255,255,255,.86)", panel2:"rgba(248,238,214,.72)", border:"#EEE2C4", input:"#FFFFFF", inputBorder:"#EEE2C4", ph:"#C4B688",
+         chip:"rgba(253,246,228,.85)", chipText:"#5A4E28", nav:"rgba(251,243,224,.72)", navOff:"#B5A578",
+         modal:"rgba(255,255,255,.82)", btn:"#F6ECD2", btnText:"#5A4E28", btnHover:"#EEE0BE", accentBd:"rgba(225,154,18,.4)",
+         axis:"#C4B688", bar:"#E19A12", grid:"#F1E8CE", tip:"#FFFFFF" },
+    d: { bg:"#1F1B0E", text:"#F0E9D2", sub:"#B5A578", faint:"#7A6E48", primary:"#F2B733", primaryHover:"#F5C24A", accent:"#F2B733",
+         panel:"rgba(46,40,22,.72)", panel2:"rgba(58,50,28,.6)", border:"#3E3620", input:"#2A2412", inputBorder:"#3E3620", ph:"#7A6E48",
+         chip:"rgba(58,50,28,.62)", chipText:"#E0D2A8", nav:"rgba(28,24,12,.72)", navOff:"#7A6E48",
+         modal:"rgba(40,34,18,.82)", btn:"#3E3620", btnText:"#EADFC0", btnHover:"#4E4428", accentBd:"rgba(242,183,51,.5)",
+         axis:"#7A6E48", bar:"#F2B733", grid:"#3E3620", tip:"#241E10" } },
+  strawberry: {
+    l: { bg:"#FDECF1", text:"#2A1620", sub:"#8A6E78", faint:"#C4A6B2", primary:"#D8437A", primaryHover:"#C43A6E", accent:"#D8437A",
+         panel:"rgba(255,255,255,.86)", panel2:"rgba(250,224,234,.72)", border:"#F0D6E0", input:"#FFFFFF", inputBorder:"#F0D6E0", ph:"#C4A6B2",
+         chip:"rgba(253,240,245,.85)", chipText:"#5A3E48", nav:"rgba(253,236,241,.72)", navOff:"#B58CA0",
+         modal:"rgba(255,255,255,.82)", btn:"#FAE2EC", btnText:"#5A3E48", btnHover:"#F2D2E0", accentBd:"rgba(216,67,122,.4)",
+         axis:"#C4A6B2", bar:"#D8437A", grid:"#F3DEE8", tip:"#FFFFFF" },
+    d: { bg:"#1F1118", text:"#F1E1E8", sub:"#B58CA0", faint:"#7A5A68", primary:"#F06C9B", primaryHover:"#F282AC", accent:"#F06C9B",
+         panel:"rgba(46,26,34,.72)", panel2:"rgba(58,34,44,.6)", border:"#3E2432", input:"#2A1620", inputBorder:"#3E2432", ph:"#7A5A68",
+         chip:"rgba(58,34,44,.62)", chipText:"#E0C4D0", nav:"rgba(28,16,22,.72)", navOff:"#7A5A68",
+         modal:"rgba(40,22,30,.82)", btn:"#3E2432", btnText:"#EAD6E0", btnHover:"#4E3040", accentBd:"rgba(240,108,155,.5)",
+         axis:"#7A5A68", bar:"#F06C9B", grid:"#3E2432", tip:"#241620" } },
+};
+
+function hexA(hex, a) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+  if (!m) return hex;
+  return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})`;
+}
+function appGrad(c) {
+  return `radial-gradient(circle at 8% 4%, ${hexA(c.primary, 0.12)}, transparent 32%),radial-gradient(circle at 94% 2%, ${hexA(c.accent, 0.12)}, transparent 28%),radial-gradient(circle at 72% 84%, ${hexA(c.primary, 0.07)}, transparent 34%),${c.bg}`;
+}
+function varBlock(sel, c) {
+  return `${sel}{--k-appbg:${appGrad(c)};--k-text:${c.text};--k-sub:${c.sub};--k-faint:${c.faint};--k-primary:${c.primary};--k-primary-h:${c.primaryHover};--k-accent:${c.accent};--k-panel:${c.panel};--k-panel2:${c.panel2};--k-border:${c.border};--k-input:${c.input};--k-input-border:${c.inputBorder};--k-ph:${c.ph};--k-chip:${c.chip};--k-chip-text:${c.chipText};--k-nav:${c.nav};--k-navoff:${c.navOff};--k-modal:${c.modal};--k-btn:${c.btn};--k-btn-text:${c.btnText};--k-btn-h:${c.btnHover};--k-accentbd:${c.accentBd}}`;
+}
+const themeVarsCss = (
+  varBlock(":root", THEMES.orange.l) +
+  Object.keys(THEMES).map((t) => varBlock(`.kt-${t}-l`, THEMES[t].l) + varBlock(`.kt-${t}-d`, THEMES[t].d)).join("")
+);
+const themeUtilCss = `
+.ksh-app{background:var(--k-appbg);color:var(--k-text)}
+.ksh-header{background:var(--k-nav);border-color:var(--k-border);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
+.ksh-nav{background:var(--k-nav);border-color:var(--k-border);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
+.ksh-panel{background:var(--k-panel);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ksh-panel2{background:var(--k-panel2)}
+.ksh-border{border-color:var(--k-border)}
+.ksh-sub{color:var(--k-sub)}
+.ksh-faint{color:var(--k-faint)}
+.ksh-input{background:var(--k-input);border:1px solid var(--k-input-border);color:var(--k-text)}
+.ksh-input::placeholder{color:var(--k-ph)}
+.ksh-chip{background:var(--k-chip);color:var(--k-chip-text)}
+.ksh-chipOn{background:var(--k-primary);color:#fff;border:1px solid var(--k-primary)}
+.ksh-tile{background:var(--k-panel);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ksh-tile:hover{border-color:var(--k-primary)}
+.ksh-navOn{color:var(--k-primary)}
+.ksh-navOff{color:var(--k-navoff)}
+.ksh-modal{background:var(--k-modal);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4)}
+.ksh-btn{background:var(--k-btn);color:var(--k-btn-text)}
+.ksh-btn:hover{background:var(--k-btn-h)}
+.ksh-primary{background:var(--k-primary);color:#fff}
+.ksh-primary:hover{background:var(--k-primary-h)}
+.ksh-accent{color:var(--k-accent)}
+.ksh-accentBd{border-color:var(--k-accentbd)}
+`.replace(/\n/g, "");
+const chartObj = "{" + Object.keys(THEMES).map((t) => {
+  const ch = (v) => `{axis:"${THEMES[t][v].axis}",bar:"${THEMES[t][v].bar}",grid:"${THEMES[t][v].grid}",tipBg:"${THEMES[t][v].tip}"}`;
+  return `${t}:{l:${ch("l")},d:${ch("d")}}`;
+}).join(",") + "}";
+const kpalJs = `window.__kpal=function(t,dark){var CH=${chartObj};var ok=CH[t]?t:"orange";var c=CH[ok][dark?"d":"l"];return{app:"ksh-app kt-"+ok+(dark?"-d":"-l"),header:"ksh-header",panel:"ksh-panel",panel2:"ksh-panel2",border:"ksh-border",sub:"ksh-sub",faint:"ksh-faint",input:"ksh-input",chip:"ksh-chip",chipOn:"ksh-chipOn",tile:"ksh-tile",nav:"ksh-nav",navOn:"ksh-navOn",navOff:"ksh-navOff",modal:"ksh-modal",btn:"ksh-btn",primary:"ksh-primary",accent:"ksh-accent",accentBd:"ksh-accentBd",axis:c.axis,bar:c.bar,grid:c.grid,tipBg:c.tipBg};};`;
+
 function injectCss(html, css) {
   if (html.includes(css)) return html;
   return html.replace("</style>", css + "</style>");
@@ -128,7 +244,19 @@ function injectScript(html, src) {
   return tag + html;
 }
 
-patchFile(indexPath, (html) => injectCss(injectScript(html, "offline-bridge.js"), lovableCss)
+function injectInline(html, marker, js) {
+  if (html.includes(marker)) return html;
+  const tag = `<script>/*${marker}*/${js}</script>`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${tag}`);
+  return tag + html;
+}
+
+patchFile(indexPath, (html) => {
+  html = injectScript(html, "offline-bridge.js");
+  html = injectCss(html, lovableCss);
+  html = injectCss(html, themeVarsCss + themeUtilCss);
+  html = injectInline(html, "ksh-kpal", kpalJs);
+  return html
   .replace(
     '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
     '[i,a]=R.useState(!0),[KshLovable,KshSetLovable]=R.useState(!1),[o,s]=R.useState("sell")'
@@ -222,9 +350,31 @@ patchFile(indexPath, (html) => injectCss(injectScript(html, "offline-bridge.js")
   .replace('[g,w]=R.useState(Qv),', '[g,w]=R.useState([]),')
   .replace('w(f.users&&f.users.length?f.users:Qv),', 'w(f.users||[]),')
   .replace('x([]),w(Qv),S([]),O(Jv)', 'x([]),w([]),S([]),O(Jv)')
-);
+  /* ── Multi-theme upgrade ──────────────────────────────────────────────
+     Transforms the earlier single-boolean "Lovable" theme into the five
+     named themes (each light+dark) defined above. These patches target the
+     already-Lovable-baked strings, so on a fresh build the Lovable patches
+     above run first and these transform their output; on the committed
+     (already-baked) bundle the Lovable patches no-op and these match. */
+  // theme state: KshLovable(bool) -> KshTheme(name); default to a light theme
+  .replace(
+    '[i,a]=R.useState(!0),[KshLovable,KshSetLovable]=R.useState(!1),[o,s]=R.useState("sell")',
+    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("orange"),[o,s]=R.useState("sell")'
+  )
+  // palette: read from window.__kpal(theme,dark); classic dark/light stays as fallback
+  .replace(`const _=KshLovable?${lovablePalette}:`, 'const _=window.__kpal?window.__kpal(KshTheme,i):')
+  // persist + restore the chosen theme; default restore to light + orange
+  .replace('dark:i,lovable:KshLovable,units:T', 'dark:i,ktheme:KshTheme,units:T')
+  .replace('a(f.dark!==!1),KshSetLovable(f.lovable===!0),rn.current=f.seq||1041', 'a(f.dark===!0),KshSetTheme(f.ktheme||"orange"),rn.current=f.seq||1041')
+  .replace('350))},[c,p,m,b,g,C,E,ce,d1,Ti,h1,i,KshLovable]),R.useEffect', '350))},[c,p,m,b,g,C,E,ce,d1,Ti,h1,i,KshTheme]),R.useEffect')
+  // settings UI: replace the single Lovable toggle with a 5-swatch theme picker
+  .replace(
+    'h.jsxs("button",{onClick:()=>KshSetLovable(v=>!v),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[h.jsx("span",{className:"w-4 h-4 rounded-full inline-block flex-shrink-0",style:{background:"linear-gradient(135deg,#C1502D 50%,#F3ECE1 50%)",border:"1px solid rgba(0,0,0,.15)"}}),h.jsx("span",{className:"flex-1 text-left",children:KshLovable?"Switch to classic theme":"Switch to Lovable theme"})]}),',
+    'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:`text-xs mb-1.5 px-1 ${_.sub}`,children:"Theme"}),h.jsx("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"8px"},children:[["orange","Orange","#C1502D"],["green","Green Apple","#4E8A3A"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]].map(([tn,tl,col])=>h.jsx("button",{onClick:()=>KshSetTheme(tn),title:tl,style:{height:"38px",borderRadius:"12px",background:col,cursor:"pointer",border:KshTheme===tn?"2px solid #fff":"2px solid transparent",boxShadow:KshTheme===tn?"0 0 0 2px "+col:"inset 0 0 0 1px rgba(0,0,0,.12)",transform:KshTheme===tn?"scale(1.06)":"none",transition:"transform .12s"}},tn))})]}),'
+  );
+});
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.11"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.12"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
