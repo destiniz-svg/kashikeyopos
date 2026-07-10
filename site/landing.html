@@ -10,7 +10,7 @@
   :root {
     --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
     --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
-    --btn: #F1E8D8; --btn-hov: #E8DCC5;
+    --btn: #F1E8D8; --btn-hov: #E8DCC5; --gold: #E8B24A; --leaf: #4D7A57;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; overflow-x: hidden; }
@@ -103,7 +103,7 @@
   }
   .trust-badge svg { width: 15px; height: 15px; flex: none; color: var(--primary); }
   .feature-badge {
-    display: inline-block; margin-top: 12px; padding: 3px 10px; border-radius: 999px;
+    display: inline-block; align-self: flex-start; margin-top: 12px; padding: 3px 10px; border-radius: 999px;
     background: #FBEAE4; color: var(--primary); font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
   }
 
@@ -148,6 +148,120 @@
   }
   .feature h3 { font-size: 16px; margin: 0 0 8px; }
   .feature p { font-size: 14px; color: var(--sub); line-height: 1.5; margin: 0; }
+  .feature { display: flex; flex-direction: column; }
+
+  /* ── Animated feature visuals ─────────────────────────────────────────
+     Each card carries a small live illustration of what the feature does.
+     Everything is pure CSS (no images/GIFs) so it stays crisp and light. */
+  .fv {
+    position: relative; overflow: hidden; margin-top: 16px; min-height: 128px; flex: 1;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: radial-gradient(circle at 82% 16%, rgba(232,178,74,.16), transparent 34%), var(--panel2);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  .feature:hover .fv { border-color: rgba(193,80,45,.34); box-shadow: 0 14px 28px rgba(42,36,30,.08); }
+
+  /* QR ordering: phone + scanning beam */
+  .fv-qr .vphone { position: absolute; left: 18px; top: 16px; width: 60px; height: 92px; border: 5px solid var(--text); border-radius: 16px; background: #fff; }
+  .fv-qr .vphone::before { content: ""; position: absolute; inset: 11px 8px auto; height: 9px; border-radius: 999px; background: var(--primary); }
+  .fv-qr .vphone::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 12px; height: 40px; border-radius: 8px;
+    background: linear-gradient(var(--panel2),var(--panel2)) 0 0/100% 11px no-repeat, linear-gradient(var(--panel2),var(--panel2)) 0 18px/72% 9px no-repeat, linear-gradient(var(--gold),var(--gold)) 0 34px/46% 7px no-repeat; }
+  .fv .qr { position: absolute; right: 18px; top: 22px; display: grid; width: 66px; height: 66px; grid-template-columns: repeat(4,1fr); gap: 4px; border-radius: 12px; background: #fff; padding: 9px; }
+  .fv .qr i { border-radius: 3px; background: var(--text); opacity: .9; }
+  .fv .qr i:nth-child(2n) { background: var(--primary); }
+  .fv-qr .scan { position: absolute; left: 92px; right: 14px; top: 26px; height: 2px; background: var(--primary); box-shadow: 0 0 16px rgba(193,80,45,.6); animation: fvScan 3.6s infinite; }
+
+  /* Realtime sync: QR -> Till -> KDS */
+  .fv-sync { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; gap: 7px; align-items: center; padding: 16px; }
+  .fv-sync .stage { display: grid; align-content: center; justify-items: center; min-height: 78px; border: 1px solid var(--border); border-radius: 13px; background: #fff; padding: 8px 5px; }
+  .fv-sync .stage strong { font-size: 13px; } .fv-sync .stage span { margin-top: 5px; color: var(--sub); font-size: 10px; }
+  .fv-sync .stage:nth-child(1) { animation: fvStage 2.2s infinite; }
+  .fv-sync .stage:nth-child(3) { animation: fvStage 2.2s infinite .55s; }
+  .fv-sync .stage:nth-child(5) { animation: fvStage 2.2s infinite 1.1s; }
+  .fv-sync .arrow { position: relative; width: 22px; height: 3px; border-radius: 999px; background: rgba(42,36,30,.14); }
+  .fv-sync .arrow::after { content: ""; position: absolute; top: -4px; left: 0; width: 11px; height: 11px; border-radius: 50%; background: var(--primary); animation: fvSyncDot 2.2s infinite; }
+
+  /* Multi-branch: HQ + stores with pulsing dots and rails */
+  .fv-branch { display: grid; grid-template-rows: auto 1fr; gap: 8px; padding: 14px; }
+  .fv-branch .hub { display: flex; align-items: center; justify-content: space-between; border-radius: 12px; background: var(--primary); color: #fff; padding: 8px 11px; }
+  .fv-branch .hub strong { font-size: 12px; } .fv-branch .hub span { font-size: 9px; color: rgba(255,255,255,.8); }
+  .fv-branch .stores { display: grid; gap: 6px; }
+  .fv-branch .store { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 7px 9px; }
+  .fv-branch .store strong { font-size: 11px; } .fv-branch .store small { display: block; color: var(--sub); font-size: 9px; }
+  .fv-branch .bdot { width: 9px; height: 9px; border-radius: 50%; background: var(--leaf); box-shadow: 0 0 0 4px rgba(77,122,87,.12); animation: fvBranchDot 2.4s infinite; }
+  .fv-branch .store:nth-child(2) .bdot { animation-delay: .45s; } .fv-branch .store:nth-child(3) .bdot { animation-delay: .9s; }
+  .fv-branch .rail { position: relative; height: 4px; margin-top: 5px; overflow: hidden; border-radius: 999px; background: var(--panel2); }
+  .fv-branch .rail::after { content: ""; position: absolute; inset: 0; width: 42%; border-radius: inherit; background: linear-gradient(90deg,var(--primary),var(--gold)); animation: fvRail 3s infinite ease-in-out; }
+  .fv-branch .store:nth-child(2) .rail::after { animation-delay: .55s; } .fv-branch .store:nth-child(3) .rail::after { animation-delay: 1.1s; }
+  .fv-branch .btag { position: absolute; right: 9px; top: 8px; border-radius: 999px; background: rgba(77,122,87,.12); color: var(--leaf); font-size: 9px; font-weight: 700; padding: 3px 6px; }
+
+  /* Customer portal: phone status + cycling cards */
+  .fv-portal { display: grid; grid-template-columns: .92fr 1.08fr; gap: 8px; padding: 14px; }
+  .fv-portal .pphone { display: grid; gap: 6px; border: 5px solid var(--text); border-radius: 18px; background: #fff; padding: 8px 7px; align-content: start; }
+  .fv-portal .pstatus { border-radius: 11px; background: rgba(193,80,45,.1); padding: 7px; }
+  .fv-portal .pstatus small { display: block; color: var(--sub); font-size: 8px; } .fv-portal .pstatus strong { display: block; color: var(--primary); font-size: 12px; margin-top: 2px; }
+  .fv-portal .prow { display: flex; justify-content: space-between; border: 1px solid var(--border); border-radius: 10px; padding: 6px 7px; font-size: 9px; color: var(--sub); }
+  .fv-portal .prow b { color: var(--text); }
+  .fv-portal .pcards { display: grid; gap: 6px; }
+  .fv-portal .pcard { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 9px; }
+  .fv-portal .pcard small { color: var(--primary); font-size: 9px; font-weight: 700; } .fv-portal .pcard strong { display: block; font-size: 12px; margin-top: 4px; } .fv-portal .pcard span { display: block; color: var(--sub); font-size: 9px; margin-top: 3px; }
+  .fv-portal .pcard:nth-child(1) { animation: fvFocus 4s infinite; } .fv-portal .pcard:nth-child(2) { animation: fvFocus 4s infinite 1.3s; } .fv-portal .pcard:nth-child(3) { animation: fvFocus 4s infinite 2.6s; }
+
+  /* Walk-in QR: QR + floating temporary-portal ticket */
+  .fv-walkin { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; padding: 16px; }
+  .fv-walkin .wqr { display: grid; width: 76px; height: 76px; grid-template-columns: repeat(4,1fr); gap: 4px; border-radius: 13px; background: #fff; padding: 9px; }
+  .fv-walkin .wqr i { border-radius: 3px; background: var(--primary); } .fv-walkin .wqr i:nth-child(3n) { background: var(--text); }
+  .fv-walkin .wticket { border-radius: 13px; background: #fff; border: 1px solid var(--border); padding: 11px; animation: fvFloat 4s infinite; }
+  .fv-walkin .wticket strong { display: block; font-size: 13px; } .fv-walkin .wticket span { display: block; margin-top: 6px; color: var(--sub); font-size: 10px; }
+
+  /* Loyalty: points pill + filling bar + reward chips */
+  .fv-loyal { display: grid; align-content: center; gap: 9px; padding: 18px; }
+  .fv-loyal .pill { width: fit-content; border-radius: 999px; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; padding: 6px 10px; }
+  .fv-loyal .bar { height: 11px; overflow: hidden; border-radius: 999px; background: rgba(42,36,30,.12); }
+  .fv-loyal .bar::after { content: ""; display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--primary),var(--gold)); width: 60%; animation: fvPoints 3.4s infinite; }
+  .fv-loyal .rewards { display: grid; grid-template-columns: repeat(3,1fr); gap: 7px; }
+  .fv-loyal .rewards span { border-radius: 9px; background: #fff; border: 1px solid var(--border); color: var(--sub); font-size: 10px; font-weight: 600; text-align: center; padding: 7px 3px; }
+
+  /* Dine-in table map: moving live highlight */
+  .fv-tables { display: grid; grid-template-columns: repeat(3,1fr); gap: 9px; padding: 18px; }
+  .fv-tables::after { content: ""; position: absolute; left: 18px; top: 62px; z-index: 0; width: calc((100% - 54px)/3); height: 40px; border-radius: 12px; background: var(--primary); box-shadow: 0 0 0 6px rgba(193,80,45,.12); animation: fvTableMove 4.8s infinite; }
+  .fv-tables .seat { position: relative; z-index: 1; min-height: 40px; border: 1px solid var(--border); border-radius: 12px; color: var(--sub); font-size: 11px; font-weight: 800; text-align: center; padding-top: 13px; }
+
+  /* Offline-first: the Offline -> Syncing -> Synced demo */
+  .fv-offline { display: grid; align-content: center; gap: 0; padding: 0; }
+  .fv-offline .top { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); padding: 11px 13px; }
+  .fv-offline .top strong { font-size: 12px; }
+  .fv-offline .spill { border-radius: 999px; background: rgba(193,80,45,.12); color: var(--primary); font-size: 11px; font-weight: 800; padding: 5px 9px; min-width: 62px; text-align: center; }
+  .fv-offline .spill::after { content: "Offline"; animation: fvLabel 5s infinite; }
+  .fv-offline .track { position: relative; height: 8px; margin: 14px 13px 10px; overflow: hidden; border-radius: 999px; background: rgba(42,36,30,.12); }
+  .fv-offline .track::after { content: ""; position: absolute; inset: 0; width: 42%; border-radius: inherit; background: linear-gradient(90deg,var(--primary),var(--gold)); animation: fvBar 5s infinite; }
+  .fv-offline .states { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; padding: 0 13px 13px; }
+  .fv-offline .states span { border-radius: 8px; background: var(--panel2); color: var(--sub); font-size: 10px; font-weight: 800; text-align: center; padding: 6px 4px; }
+
+  /* Isolated data: lock shield + data lines */
+  .fv-secure { display: grid; grid-template-columns: .8fr 1.2fr; gap: 12px; align-items: center; padding: 18px; }
+  .fv-secure .shield { display: grid; height: 80px; place-items: center; border-radius: 20px; background: var(--text); color: #fff8eb; font-size: 28px; }
+  .fv-secure .lines { display: grid; gap: 8px; }
+  .fv-secure .lines span { display: block; height: 12px; border-radius: 999px; background: rgba(193,80,45,.16); }
+  .fv-secure .lines span:nth-child(2) { width: 74%; background: rgba(77,122,87,.18); }
+  .fv-secure .lines span:nth-child(3) { width: 52%; background: rgba(232,178,74,.26); }
+
+  @keyframes fvScan { 0%,100% { transform: translateY(0); } 50% { transform: translateY(60px); } }
+  @keyframes fvStage { 0%,100% { border-color: var(--border); transform: translateY(0); } 45% { border-color: rgba(193,80,45,.42); transform: translateY(-3px); } }
+  @keyframes fvSyncDot { 0%,100% { transform: translateX(0); } 50% { transform: translateX(16px); } }
+  @keyframes fvBranchDot { 0%,100% { box-shadow: 0 0 0 4px rgba(77,122,87,.12); transform: scale(.92); } 50% { box-shadow: 0 0 0 8px rgba(77,122,87,.05); transform: scale(1); } }
+  @keyframes fvRail { 0%,100% { transform: translateX(-105%); } 50% { transform: translateX(145%); } }
+  @keyframes fvFocus { 0%,100% { border-color: var(--border); transform: translateY(0); } 42% { border-color: rgba(193,80,45,.34); box-shadow: 0 12px 24px rgba(193,80,45,.12); transform: translateY(-2px); } }
+  @keyframes fvFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+  @keyframes fvPoints { 0%,100% { width: 48%; } 50% { width: 82%; } }
+  @keyframes fvTableMove { 0%,18% { transform: translate(0,0); } 32%,50% { transform: translate(calc(100% + 9px),0); } 64%,82% { transform: translate(calc((100% + 9px)*2),50px); } 100% { transform: translate(0,0); } }
+  @keyframes fvBar { 0%,20% { transform: translateX(-12%); width: 26%; } 42%,62% { transform: translateX(90%); width: 38%; } 82%,100% { transform: translateX(220%); width: 46%; } }
+  @keyframes fvLabel { 0%,32% { content: "Offline"; } 33%,72% { content: "Syncing"; } 73%,100% { content: "Synced"; } }
+  @media (prefers-reduced-motion: reduce) {
+    .fv-qr .scan, .fv-sync .stage, .fv-sync .arrow::after, .fv-branch .bdot, .fv-branch .rail::after,
+    .fv-portal .pcard, .fv-walkin .wticket, .fv-loyal .bar::after, .fv-tables::after,
+    .fv-offline .spill::after, .fv-offline .track::after { animation: none !important; }
+  }
 
   /* How it works */
   .steps3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
@@ -298,32 +412,102 @@
         <div class="ico">📱</div>
         <h3>Guest QR ordering</h3>
         <p>Guests scan a table code, browse your menu, and order straight from their own phone — dine-in, pickup or delivery.</p>
+        <div class="fv fv-qr" aria-hidden="true">
+          <div class="vphone"></div>
+          <div class="scan"></div>
+          <div class="qr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        </div>
       </div>
       <div class="feature">
         <div class="ico">⚡</div>
         <h3>Realtime sync</h3>
         <p>Every order, status change and waiter call reaches the till and kitchen the moment it happens — no refreshing.</p>
+        <div class="fv fv-sync" aria-hidden="true">
+          <div class="stage"><strong>QR</strong><span>Guest order</span></div>
+          <div class="arrow"></div>
+          <div class="stage"><strong>Till</strong><span>Paid / open</span></div>
+          <div class="arrow"></div>
+          <div class="stage"><strong>KDS</strong><span>Kitchen live</span></div>
+        </div>
       </div>
       <div class="feature">
         <div class="ico">🏬</div>
-        <h3>Multi-store management</h3>
-        <p>Run more than one branch from a single account, with each store's menu, tables and stock kept separate.</p>
+        <h3>Multi-branch management</h3>
+        <p>Built for resorts, restaurant groups and multi-location cafés — one account, with each branch's menu, tables and stock kept separate.</p>
+        <div class="fv fv-branch" aria-hidden="true">
+          <div class="hub"><strong>HQ control</strong><span>All branches synced</span></div>
+          <div class="stores">
+            <div class="store"><i class="bdot"></i><span><strong>Malé</strong><small>42 orders today</small><i class="rail"></i></span><b class="btag">Live</b></div>
+            <div class="store"><i class="bdot"></i><span><strong>Hulhumalé</strong><small>18 orders today</small><i class="rail"></i></span><b class="btag">Live</b></div>
+            <div class="store"><i class="bdot"></i><span><strong>Resort</strong><small>Menus &amp; stock synced</small><i class="rail"></i></span><b class="btag">Sync</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ico">👤</div>
+        <h3>Customer portals</h3>
+        <p>Personal links for dine-in, home, pickup and delivery — with waiter calls, live status, order history, credit balances and loyalty points.</p>
+        <div class="fv fv-portal" aria-hidden="true">
+          <div class="pphone">
+            <div class="pstatus"><small>Order status</small><strong>Preparing now</strong></div>
+            <div class="prow"><span>Delivery</span><b>Tracking</b></div>
+            <div class="prow"><span>Waiter</span><b>Called</b></div>
+            <div class="prow"><span>Total</span><b>MVR 285</b></div>
+          </div>
+          <div class="pcards">
+            <div class="pcard"><small>Portal</small><strong>Personal link</strong><span>Dine-in, home, pickup, delivery</span></div>
+            <div class="pcard"><small>Loyalty</small><strong>1,240 points</strong><span>Rewards &amp; visit history</span></div>
+            <div class="pcard"><small>Credit</small><strong>MVR 420 balance</strong><span>Visible customer credit</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ico">🚶</div>
+        <h3>Walk-in QR ordering</h3>
+        <p>Walk-in guests scan, get a temporary portal, track their order until it's settled, and leave — no account needed.</p>
+        <div class="fv fv-walkin" aria-hidden="true">
+          <div class="wqr"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="wticket"><strong>Temporary portal</strong><span>Order #W-104 · Ready soon</span><span>No login needed</span></div>
+        </div>
+      </div>
+      <div class="feature">
+        <div class="ico">⭐</div>
+        <h3>Loyalty points</h3>
+        <p>Customers earn points inside their portal, see rewards, and use loyalty history — a simple reason to keep coming back.</p>
+        <div class="fv fv-loyal" aria-hidden="true">
+          <span class="pill">1,240 points</span>
+          <div class="bar"></div>
+          <div class="rewards"><span>Free drink</span><span>VIP</span><span>History</span></div>
+        </div>
       </div>
       <div class="feature">
         <div class="ico">🍽️</div>
         <h3>Dine-in table tracking</h3>
         <p>Pick a table the same way at the till and on the guest profile, so nothing gets lost between the two.</p>
+        <div class="fv fv-tables" aria-hidden="true">
+          <span class="seat">T1</span><span class="seat">T4</span><span class="seat">T7</span>
+          <span class="seat">T2</span><span class="seat">T5</span><span class="seat">T8</span>
+        </div>
       </div>
       <div class="feature">
         <div class="ico">📶</div>
-        <h3>Offline-first</h3>
+        <h3>Offline-first reliability</h3>
         <p>Keep taking orders through a dropped connection — everything queues up and syncs the moment you're back online.</p>
+        <div class="fv fv-offline" aria-hidden="true">
+          <div class="top"><strong>Order queue</strong><span class="spill"></span></div>
+          <div class="track"></div>
+          <div class="states"><span>Offline</span><span>Syncing</span><span>Synced</span></div>
+        </div>
       </div>
       <div class="feature">
         <div class="ico">🔒</div>
         <h3>Your data, isolated</h3>
         <p>Every store's data is enforced at the database level with row level security — never mixed with anyone else's.</p>
         <span class="feature-badge">Enterprise-grade security</span>
+        <div class="fv fv-secure" aria-hidden="true">
+          <div class="shield">🔒</div>
+          <div class="lines"><span></span><span></span><span></span></div>
+        </div>
       </div>
     </div>
   </div>
