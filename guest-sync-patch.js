@@ -531,6 +531,39 @@ patchFile(indexPath, (html) => html
     'h.jsxs("button",{onClick:()=>{a(!i);try{xs(kv=>({...kv,ktdark:!i}))}catch{}},className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`'
   )
 
+  /* 34. Order lifecycle: add a "delivered" stage between ready and settled.
+     Guests watched the status stick at "Ready — coming to you" until the
+     bill was settled — nothing ever said the food arrived. New flow across
+     both screens: received → preparing → ready → delivered → settled.
+
+     34a. Guest status bar: 5 stages + friendlier terminal labels. */
+  .replace(
+    'cb=["new","preparing","ready","completed"],S6={new:"Order received",preparing:"Kitchen is preparing",ready:"Ready — coming to you",completed:"Completed"}',
+    'cb=["new","preparing","ready","delivered","completed"],S6={new:"Order received",preparing:"Kitchen is preparing",ready:"Ready — coming to you",delivered:"Delivered — enjoy!",completed:"Settled — thank you"}'
+  )
+
+  /* 34b. Till advance handler (Vw): ready now marks delivered; settling (or
+     completing a paid-online order) happens from delivered. */
+  .replace(
+    ':f.status==="preparing"?x(A=>A.map(N=>N.id===f.id?{...N,status:"ready"}:N)):f.status==="ready"&&(f.paidOnline?B1(f,"QR (online)"):As(f))',
+    ':f.status==="preparing"?x(A=>A.map(N=>N.id===f.id?{...N,status:"ready"}:N)):f.status==="ready"?x(A=>A.map(N=>N.id===f.id?{...N,status:"delivered"}:N)):f.status==="delivered"&&(f.paidOnline?B1(f,"QR (online)"):As(f))'
+  )
+
+  /* 34c. Order-card action button: "Mark delivered" at ready, settle wording
+     moves to the delivered stage; both stages keep the primary styling. */
+  .replace(
+    'className:`mt-3 w-full rounded-xl py-2.5 text-sm font-semibold ${f.status==="ready"?_.primary:_.btn}`,children:f.status==="ready"?f.paidOnline?"Complete (already paid)":"Settle & pay":MI[f.status]',
+    'className:`mt-3 w-full rounded-xl py-2.5 text-sm font-semibold ${f.status==="ready"||f.status==="delivered"?_.primary:_.btn}`,children:f.status==="ready"?"Mark delivered":f.status==="delivered"?f.paidOnline?"Complete (already paid)":"Settle & pay":MI[f.status]'
+  )
+
+  /* 34d. Orders tab filter chips: a Delivered filter between Ready and Done.
+     (The Active/table-occupancy checks all use !["completed","wasted"], so
+     delivered orders already stay active and keep their table.) */
+  .replace(
+    '[["active","Active"],["new","New"],["preparing","Preparing"],["ready","Ready"],["completed","Done"],["wasted","Wasted"],["all","All"]]',
+    '[["active","Active"],["new","New"],["preparing","Preparing"],["ready","Ready"],["delivered","Delivered"],["completed","Done"],["wasted","Wasted"],["all","All"]]'
+  )
+
   /* 33. Till side menu: "Back office" switcher between the theme picker and
      the Lock button, gated to admin/manager (br("refund")) — cashiers don't
      see it. Same session cookie powers /back, so it's a plain navigation.
@@ -664,6 +697,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.18"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.19"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
