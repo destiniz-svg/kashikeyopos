@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "start": "node guest-sync-patch.js"
+    "start": "node favicon-patch.js && node guest-sync-patch.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
