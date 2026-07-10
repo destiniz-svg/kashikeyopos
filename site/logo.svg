@@ -18,7 +18,7 @@
   </g>
   <!-- wordmark -->
   <text x="150" y="86" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
-        font-weight="800" font-size="70" letter-spacing="-1" fill="#6e2f34">Kashikeyo</text>
+        font-weight="800" font-size="70" letter-spacing="-1" fill="#b52a2f">Kashikeyo</text>
   <text x="152" y="138" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
-        font-weight="600" font-size="44" letter-spacing="6" fill="#7c7c7c">POS<tspan font-size="18" dy="-22">™</tspan></text>
+        font-weight="600" font-size="44" letter-spacing="6" fill="#6f8e3f">POS<tspan font-size="18" dy="-22">™</tspan></text>
 </svg>
