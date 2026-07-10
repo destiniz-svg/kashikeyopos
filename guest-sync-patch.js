@@ -620,6 +620,33 @@ patchFile(indexPath, (html) => html
      ~2.3:1. The purged Tailwind build has no emerald-600 to calm it with.
      The real problem was alignment, fixed above.) */
 
+  /* 40. Customer profile modal: simplify the colour palette. It had a
+     rainbow of button colours — orange (Share/Sell), green (WhatsApp x2 +
+     Receive), purple (Viber), amber (money). Rule now: accent = primary
+     share/sell actions; green kept ONLY for the semantic "Receive payment"
+     (money in); amber only for money owed; the messaging buttons (WhatsApp,
+     Viber) become neutral so the eye lands on what matters. Find strings
+     carry the old brand tints, so this is a no-op on re-runs. */
+  .replace(
+    /"rounded-xl py-2\.5 text-xs font-semibold bg-emerald-500\/15 text-emerald-400",children:"WhatsApp"/g,
+    '`rounded-xl py-2.5 text-xs font-semibold ${_.btn}`,children:"WhatsApp"'
+  )
+  .replace(
+    '"rounded-xl py-2.5 text-xs font-semibold bg-purple-500/15 text-purple-400",children:"Viber"',
+    '`rounded-xl py-2.5 text-xs font-semibold ${_.btn}`,children:"Viber"'
+  )
+  /* 40b. Same statement-share buttons rendered per-customer in the credit
+     list view (variable A instead of xe): neutralise WhatsApp + Viber to
+     match the modal. WhatsApp keeps its no-phone muted state. */
+  .replace(
+    '${A.phone?"bg-emerald-500/15 text-emerald-400":_.chip}`,children:"WhatsApp"',
+    '${A.phone?_.btn:_.chip}`,children:"WhatsApp"'
+  )
+  .replace(
+    '"rounded-xl py-2 text-xs font-semibold bg-purple-500/15 text-purple-400",children:"Viber"',
+    '`rounded-xl py-2 text-xs font-semibold ${_.btn}`,children:"Viber"'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -775,6 +802,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.24"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.25"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
