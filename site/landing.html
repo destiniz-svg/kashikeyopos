@@ -329,8 +329,8 @@
   .foot-col h5 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 0 0 14px; }
   .foot-col a { display: block; font-size: 14px; color: var(--sub); text-decoration: none; margin-bottom: 10px; }
   .foot-col a:hover { color: var(--primary); }
-  .foot-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sub); text-decoration: none; }
-  .foot-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .foot-status, .foot-col a.foot-status { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--sub); text-decoration: none; }
+  .foot-status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; vertical-align: middle; }
   @keyframes footPulseOk {
     0%   { box-shadow: 0 0 0 0   rgba(46,125,70,.55); }
     70%  { box-shadow: 0 0 0 6px rgba(46,125,70,0);   }
