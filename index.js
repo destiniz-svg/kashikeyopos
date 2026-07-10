@@ -352,7 +352,9 @@ const lineTotal = (l) => Math.round(Number(l.price || 0) * Number(l.qty || 1) * 
 const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (Number(o.fee) || 0);
 const orderTotal = (o, settings = {}) => {
   const sub = orderSubtotal(o);
-  return sub + Math.round(sub * (Number(settings.gstBp || 800)) / 10000);
+  const gst = Math.round(sub * (Number(settings.gstBp || 800)) / 10000);
+  const svc = Math.round(sub * (Number(settings.svcChargeBp || 0)) / 10000);
+  return sub + gst + svc;
 };
 const normalizeOrder = (o, settings = {}) => ({
   ...o,
@@ -742,7 +744,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   const [settingsArr, products, zones, tables, stores] = await Promise.all([
     kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "tables", storeId),
     withOrg(org.id, (client) => client.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id]))]);
-  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, currency: "MVR" };
+  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, currency: "MVR" };
   let cust = null;
   if (req.query.c) {
     const c = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, req.query.c));
@@ -791,7 +793,7 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   const settingsArr = await kindAll(org.id, "settings", storeId);
-  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, currency: "MVR" };
+  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, currency: "MVR" };
   const mine = (await guestOrders(org.id, storeId, { customerId: req.query.c, table: req.query.t }, settings)).slice(0, 25);
   res.json({ storeId, orders: mine });
 }));

@@ -383,7 +383,157 @@ patchFile(indexPath, (html) => {
   );
 });
 
+/* ── Billing features ────────────────────────────────────────────────────────
+   All patches here implement:
+   1. Configurable loyalty rate (loyaltyBp in settings; default 1 pt per MVR 100)
+   2. Service charge (svcChargeBp in settings; tracked in sales/reports)
+   3. Bill-level discount (admin/manager only; cycles 0→5→10→15→20→25%)
+   4. Customer auto-discount (discPct on customer profile; admin-only field)
+   5. Per-item discount button gated to admin/manager (cashiers cannot access)
+   6. Per-item GST flag (taxable field on products; non-taxable items skip GST)
+   ─────────────────────────────────────────────────────────────────────────── */
+
+patchFile(indexPath, (html) => html
+  /* 1. Settings default object: add loyaltyBp and svcChargeBp */
+  .replace(
+    'gstBp:800,currency:"MVR",footer:',
+    'gstBp:800,loyaltyBp:10000,svcChargeBp:0,currency:"MVR",footer:'
+  )
+
+  /* 2. Y5 subtotal helper: exclude non-taxable items from the GST base */
+  .replace(
+    'Y5=(t,e=800)=>{const r=t.reduce((i,a)=>i+Un(a),0),n=Math.round(r*e/1e4);return{subtotal:r,gst:n,total:r+n}}',
+    'Y5=(t,e=800)=>{const r=t.reduce((i,a)=>i+Un(a),0),tb=t.reduce((i,a)=>a.taxable===false?i:i+Un(a),0),n=Math.round(tb*e/1e4);return{subtotal:r,gst:n,total:r+n}}'
+  )
+
+  /* 3. $n checkout totals: add service charge + optional bill-level discount param */
+  .replace(
+    '$n=(f,A=0)=>{const I=Y5(f,ce.gstBp).subtotal+(A||0),j=Math.round(I*ce.gstBp/1e4);return{subtotal:I,gst:j,total:I+j,fee:A||0}}',
+    '$n=(f,A=0,KshBD=0)=>{const I=f.reduce((a,b)=>a+Un(b),0)+(A||0),tb=f.reduce((a,b)=>b.taxable===false?a:a+Un(b),0)+(A||0),disc=KshBD>0?Math.round(I*KshBD/100):0,gstBase=Math.round(tb*(1-KshBD/100)),j=Math.round(gstBase*(ce.gstBp||0)/1e4),sv=Math.round((I-disc)*(ce.svcChargeBp||0)/1e4);return{subtotal:I,billDisc:disc,billDiscPct:KshBD,gst:j,svcCharge:sv,total:I-disc+j+sv,fee:A||0}}'
+  )
+
+  /* 4. Add KshBillDisc state next to KshTheme */
+  .replace(
+    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("orange"),[o,s]=R.useState("sell")',
+    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("orange"),[KshBillDisc,KshSetBillDisc]=R.useState(0),[o,s]=R.useState("sell")'
+  )
+
+  /* 5. cr computation: pass effective bill discount (manual or customer auto-discount) */
+  .replace(
+    'bu=nt==="delivery"&&nn?nn.fee:0,cr=$n(Rt,bu),C1=',
+    'bu=nt==="delivery"&&nn?nn.fee:0,KshBD=KshBillDisc>0?KshBillDisc:(He&&He.discPct||0),cr=$n(Rt,bu,KshBD),C1='
+  )
+
+  /* 6. Fix loyalty points rate in JT (main register settlement) */
+  .replace(
+    'if(sd(Rt),He){const j=Math.floor(cr.total/1e3);',
+    'if(sd(Rt),He){const j=Math.floor(cr.total/(ce.loyaltyBp||10000));'
+  )
+
+  /* 7. Reset bill discount + store billDiscPct in sale after JT settlement */
+  .replace(
+    'y(j=>[...j,I]),Pi({open:!1,payments:[],amt:""}),od(_e.id),vu(I)',
+    'y(j=>[...j,I]),Pi({open:!1,payments:[],amt:""}),KshSetBillDisc(0),od(_e.id),vu(I)'
+  )
+
+  /* 8. Fix loyalty points rate in B1 (settle from Orders tab) */
+  .replace(
+    'const j=Math.floor(N.total/1e3),F=A==="Credit"?N.total:0;',
+    'const j=Math.floor(N.total/(ce.loyaltyBp||10000)),F=A==="Credit"?N.total:0;'
+  )
+
+  /* 9. Gate per-item discount button to admin/manager (cashier has no "refund" perm) */
+  .replace(
+    'h.jsxs("button",{onClick:()=>GT(A),className:`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:[h.jsx(vk,{size:11}),f.discPct?`-${f.discPct}%`:"disc"]})',
+    'br("refund")&&h.jsxs("button",{onClick:()=>GT(A),className:`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:[h.jsx(vk,{size:11}),f.discPct?`-${f.discPct}%`:"disc"]})'
+  )
+
+  /* 10. Copy taxable flag when a product is added to a till order line */
+  .replace(
+    '{pid:f.id,name:f.name,emoji:f.emoji,price:f.price,cost:f.cost,unit:f.unit||"pcs",vendor:!!f.vendor,qty:1,discPct:0}',
+    '{pid:f.id,name:f.name,emoji:f.emoji,price:f.price,cost:f.cost,unit:f.unit||"pcs",vendor:!!f.vendor,qty:1,discPct:0,taxable:f.taxable!==false}'
+  )
+
+  /* 11. Bill summary: add bill-discount toggle button, discount row, service-charge row */
+  .replace(
+    'h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["GST ",ce.gstBp/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(cr.gst)})]}),h.jsxs("div",{className:"flex justify-between items-baseline mt-2"',
+    'br("refund")&&h.jsx("button",{onClick:()=>KshSetBillDisc(f=>{const j=[0,5,10,15,20,25];return j[(j.indexOf(f)+1)%j.length]}),className:`flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs mt-1 ${KshBD>0?"bg-amber-500/15 text-amber-500":_.chip}`,children:KshBD>0?"Bill disc "+KshBD+"%":"+ Bill disc"}),KshBD>0&&h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["Discount ",KshBD,"%"]}),h.jsx("span",{className:"font-mono tabular-nums text-amber-500",children:"-"+Y(cr.billDisc||0)})]}),h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["GST ",ce.gstBp/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(cr.gst)})]}),(ce.svcChargeBp||0)>0&&h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["Svc charge ",(ce.svcChargeBp||0)/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(cr.svcCharge||0)})]}),h.jsxs("div",{className:"flex justify-between items-baseline mt-2"'
+  )
+
+  /* 12. Thermal receipt VT: add bill discount and service charge lines */
+  .replace(
+    'j.push({l:`GST ${ce.gstBp/100}%`,r:Y(f.gst),dim:!0},{l:"TOTAL",r:ue(f.total),bold:!0,big:!0})',
+    '(f.billDisc||0)>0&&j.push({l:`Discount ${f.billDiscPct||0}%`,r:"-"+Y(f.billDisc),dim:!0,accent:!0}),j.push({l:`GST ${ce.gstBp/100}%`,r:Y(f.gst),dim:!0}),(f.svcCharge||0)>0&&j.push({l:`Svc charge ${(ce.svcChargeBp||0)/100}%`,r:Y(f.svcCharge),dim:!0}),j.push({l:"TOTAL",r:ue(f.total),bold:!0,big:!0})'
+  )
+
+  /* 13. Screen receipt modal (Pe): add service charge and bill discount rows */
+  .replace(
+    'h.jsxs("div",{className:"flex justify-between",children:[h.jsxs("span",{children:["GST ",ce.gstBp/100,"%"]}),h.jsx("span",{className:"tabular-nums",children:Y(Pe.gst)})]}),Pe.foc&&',
+    '(Pe.billDisc||0)>0&&h.jsxs("div",{className:"flex justify-between",children:[h.jsxs("span",{children:["Disc ",Pe.billDiscPct||0,"%"]}),h.jsx("span",{className:"tabular-nums text-amber-500",children:"-"+Y(Pe.billDisc)})]}),h.jsxs("div",{className:"flex justify-between",children:[h.jsxs("span",{children:["GST ",ce.gstBp/100,"%"]}),h.jsx("span",{className:"tabular-nums",children:Y(Pe.gst)})]}),(Pe.svcCharge||0)>0&&h.jsxs("div",{className:"flex justify-between",children:[h.jsxs("span",{children:["Svc charge ",(ce.svcChargeBp||0)/100,"%"]}),h.jsx("span",{className:"tabular-nums",children:Y(Pe.svcCharge)})]}),Pe.foc&&'
+  )
+
+  /* 14. Settings form: add service charge and loyalty rate inputs after GST/Currency grid */
+  .replace(
+    'h.jsx("div",{className:`text-xs px-1 ${_.faint}`,children:"Changes apply immediately and save automatically — receipts, reports, and the tax engine all follow these settings."})',
+    'h.jsxs("div",{className:"grid grid-cols-2 gap-3 mt-2",children:[h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Service charge (%)"}),h.jsx("input",{value:String((ce.svcChargeBp||0)/100),inputMode:"decimal",onChange:f=>{const A=parseFloat(f.target.value);xs(N=>({...N,svcChargeBp:isNaN(A)?0:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Loyalty (MVR/$ per point)"}),h.jsx("input",{value:String((ce.loyaltyBp||10000)/100),inputMode:"decimal",onChange:f=>{const A=parseFloat(f.target.value);xs(N=>({...N,loyaltyBp:isNaN(A)||A<=0?10000:Math.round(A*100)}))},className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]})]}),h.jsx("div",{className:`text-xs px-1 ${_.faint}`,children:"Changes apply immediately and save automatically — receipts, reports, and the tax engine all follow these settings."})'
+  )
+
+  /* 15. Product form: add taxable to new-product initial state */
+  .replace(
+    'onClick:()=>qt({name:"",emoji:"",cat:"",price:"",cost:"",barcode:"",reorder:"10",stock:"0",unit:"pcs",img:"",vendor:!1})',
+    'onClick:()=>qt({name:"",emoji:"",cat:"",price:"",cost:"",barcode:"",reorder:"10",stock:"0",unit:"pcs",img:"",vendor:!1,taxable:!0})'
+  )
+
+  /* 16. Product form: add taxable when opening an existing product for edit */
+  .replace(
+    'onClick:()=>qt({id:f.id,name:f.name,emoji:f.emoji,cat:f.cat,price:Y(f.price),cost:Y(f.cost),barcode:f.barcode||"",reorder:String(f.reorder),stock:String(f.stock),unit:f.unit||"pcs",img:f.img||"",vendor:!!f.vendor})',
+    'onClick:()=>qt({id:f.id,name:f.name,emoji:f.emoji,cat:f.cat,price:Y(f.price),cost:Y(f.cost),barcode:f.barcode||"",reorder:String(f.reorder),stock:String(f.stock),unit:f.unit||"pcs",img:f.img||"",vendor:!!f.vendor,taxable:f.taxable!==false})'
+  )
+
+  /* 17. Product save (uI): persist taxable on both edit and create paths */
+  .replace(
+    'f.id?(d(I=>I.map(j=>j.id===f.id?{...j,name:f.name.trim(),emoji:f.emoji||"📦",cat:f.cat.trim()||"General",price:A,cost:N,barcode:f.barcode.trim(),reorder:Number(f.reorder)||0,unit:f.unit||"pcs",img:f.img||"",vendor:!!f.vendor}:j)),Q("Product updated")):(d(I=>[...I,{id:ct(),name:f.name.trim(),emoji:f.emoji||"📦",cat:f.cat.trim()||"General",price:A,cost:N,barcode:f.barcode.trim()||String(1e5+I.length+1),reorder:Number(f.reorder)||0,stock:Number(f.stock)||0,unit:f.unit||"pcs",img:f.img||"",vendor:!!f.vendor}]),Q("Product added"))',
+    'f.id?(d(I=>I.map(j=>j.id===f.id?{...j,name:f.name.trim(),emoji:f.emoji||"📦",cat:f.cat.trim()||"General",price:A,cost:N,barcode:f.barcode.trim(),reorder:Number(f.reorder)||0,unit:f.unit||"pcs",img:f.img||"",vendor:!!f.vendor,taxable:f.taxable!==false}:j)),Q("Product updated")):(d(I=>[...I,{id:ct(),name:f.name.trim(),emoji:f.emoji||"📦",cat:f.cat.trim()||"General",price:A,cost:N,barcode:f.barcode.trim()||String(1e5+I.length+1),reorder:Number(f.reorder)||0,stock:Number(f.stock)||0,unit:f.unit||"pcs",img:f.img||"",vendor:!!f.vendor,taxable:f.taxable!==false}]),Q("Product added"))'
+  )
+
+  /* 18. Product form UI: add GST toggle button next to Vendor-supplied */
+  .replace(
+    'h.jsxs("button",{onClick:()=>qt({...Ge,vendor:!Ge.vendor}),className:`w-full flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium text-left ${Ge.vendor?_.chipOn:_.panel2}`,children:[h.jsx(xv,{size:13})," Vendor-supplied — brought in ready, no kitchen prep",Ge.vendor?" ✓":""]})',
+    'h.jsxs("div",{className:"flex gap-2",children:[h.jsxs("button",{onClick:()=>qt({...Ge,vendor:!Ge.vendor}),className:`flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium text-left ${Ge.vendor?_.chipOn:_.panel2}`,children:[h.jsx(xv,{size:13})," Vendor-supplied",Ge.vendor?" ✓":""]}),h.jsxs("button",{onClick:()=>qt({...Ge,taxable:Ge.taxable===false}),className:`flex-1 flex items-center gap-2 rounded-xl px-3 py-2.5 text-xs font-medium text-left ${Ge.taxable===false?_.panel2:_.chipOn}`,children:["GST",Ge.taxable===false?" exempt":" ✓"]}),]})'
+  )
+
+  /* 19. Customer "Add" button: include discPct in new-customer form state */
+  .replace(
+    'onClick:()=>tn({name:"",phone:"",email:"",address:"",company:"",notes:"",creditLimit:""})',
+    'onClick:()=>tn({name:"",phone:"",email:"",address:"",company:"",notes:"",creditLimit:"",discPct:""})'
+  )
+
+  /* 20. Customer "full profile" button from checkout attach panel: include discPct */
+  .replace(
+    'tn({name:g1.trim(),phone:"",email:"",address:"",company:"",notes:"",creditLimit:"",attach:!0})',
+    'tn({name:g1.trim(),phone:"",email:"",address:"",company:"",notes:"",creditLimit:"",discPct:"",attach:!0})'
+  )
+
+  /* 21. Customer edit: pre-populate discPct in the form when opening an existing customer */
+  .replace(
+    'onClick:()=>tn({id:xe.id,name:xe.name,phone:xe.phone||"",email:xe.email||"",address:xe.address||"",company:xe.company||"",notes:xe.notes||"",creditLimit:xe.creditLimit?Y(xe.creditLimit):""})',
+    'onClick:()=>tn({id:xe.id,name:xe.name,phone:xe.phone||"",email:xe.email||"",address:xe.address||"",company:xe.company||"",notes:xe.notes||"",creditLimit:xe.creditLimit?Y(xe.creditLimit):"",discPct:xe.discPct?String(xe.discPct):""})'
+  )
+
+  /* 22. Customer save (pI): persist discPct (admin-only field; stored as number 0–100) */
+  .replace(
+    'const A=Math.round(parseFloat(f.creditLimit||"0")*100)||0,N={name:f.name.trim(),phone:(f.phone||"").trim(),email:(f.email||"").trim(),address:(f.address||"").trim(),company:(f.company||"").trim(),notes:(f.notes||"").trim(),creditLimit:A}',
+    'const A=Math.round(parseFloat(f.creditLimit||"0")*100)||0,dp=Math.min(100,Math.max(0,parseFloat(f.discPct||"0")||0)),N={name:f.name.trim(),phone:(f.phone||"").trim(),email:(f.email||"").trim(),address:(f.address||"").trim(),company:(f.company||"").trim(),notes:(f.notes||"").trim(),creditLimit:A,discPct:dp}'
+  )
+
+  /* 23. Customer edit modal: add discount input after creditLimit (admin/manager only) */
+  .replace(
+    'h.jsxs("div",{children:[h.jsxs("div",{className:`text-xs mb-1 ${_.sub}`,children:["Credit limit (",ce.currency,") — 0 or blank disables the cap"]}),h.jsx("input",{value:Xt.creditLimit,inputMode:"decimal",onChange:f=>tn({...Xt,creditLimit:f.target.value.replace(/[^0-9.]/g,"")}),placeholder:"e.g. 5000.00",className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsx("button",{onClick:pI',
+    'h.jsxs("div",{children:[h.jsxs("div",{className:`text-xs mb-1 ${_.sub}`,children:["Credit limit (",ce.currency,") — 0 or blank disables the cap"]}),h.jsx("input",{value:Xt.creditLimit,inputMode:"decimal",onChange:f=>tn({...Xt,creditLimit:f.target.value.replace(/[^0-9.]/g,"")}),placeholder:"e.g. 5000.00",className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),br("refund")&&h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Auto-discount on bills (%) — admin only"}),h.jsx("input",{value:Xt.discPct||"",inputMode:"decimal",onChange:f=>tn({...Xt,discPct:f.target.value.replace(/[^0-9.]/g,"")}),placeholder:"e.g. 10 for 10%",className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsx("button",{onClick:pI'
+  )
+);
+
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.13"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.14"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
