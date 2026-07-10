@@ -584,6 +584,42 @@ patchFile(indexPath, (html) => html
     'children:[h.jsx(C3,{size:16})," Lock · switch user"]}),h.jsx("button",{onClick:UT,className:"w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 mt-2 text-sm font-semibold border border-rose-500/40 text-rose-400",children:"Sign out"})]})'
   )
 
+  /* 39. Customer profile modal (till Admin -> Customers): align the action
+     button rows.
+     39a. The "Share... / Copy / WhatsApp" buttons for the personal ordering
+     link lived INSIDE the link card (px-4), so they were inset and narrower
+     than the "Sell / Receive" and "Share image..." rows below. Pull them out
+     to a full-width sibling row (label + URL stay in the card) so all three
+     button rows line up. Find consumed (mt-2 grid no longer inside card). */
+  .replace(
+    'text-xs font-mono break-all mt-1 opacity-80",children:td(xe.id)}),h.jsxs("div",{className:"grid grid-cols-3 gap-2 mt-2",children:[',
+    'text-xs font-mono break-all mt-1 opacity-80",children:td(xe.id)})]}),h.jsxs("div",{className:"grid grid-cols-3 gap-2 mb-3",children:['
+  )
+  /* 39a-ii. The card used to close AFTER the grid; now that the grid is a
+     sibling, drop that orphaned card-close so the JSX stays balanced. */
+  .replace(
+    'children:"WhatsApp"})]})]}),h.jsxs("div",{className:"flex gap-2 mb-4"',
+    'children:"WhatsApp"})]}),h.jsxs("div",{className:"flex gap-2 mb-4"'
+  )
+  /* 39b. Unify the pulled-out buttons to the statement row height (py-2 -> py-2.5). */
+  .replace(
+    'rounded-xl py-2 text-xs font-semibold ${_.chipOn}`,children:"Share…"',
+    'rounded-xl py-2.5 text-xs font-semibold ${_.chipOn}`,children:"Share…"'
+  )
+  .replace(
+    'rounded-xl py-2 text-xs font-semibold ${_.btn}`,children:"Copy"',
+    'rounded-xl py-2.5 text-xs font-semibold ${_.btn}`,children:"Copy"'
+  )
+  .replace(
+    'rounded-xl py-2 text-xs font-semibold bg-emerald-500/15 text-emerald-400",children:"WhatsApp"',
+    'rounded-xl py-2.5 text-xs font-semibold bg-emerald-500/15 text-emerald-400",children:"WhatsApp"'
+  )
+  /* (No colour change on "Receive payment": its green is an intentional
+     money-in semantic like the amber balance/credit badges, and its dark
+     text is the accessible choice on emerald-500 — white would drop to
+     ~2.3:1. The purged Tailwind build has no emerald-600 to calm it with.
+     The real problem was alignment, fixed above.) */
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -739,6 +775,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.23"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.24"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
