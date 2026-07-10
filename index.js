@@ -253,13 +253,25 @@ const APP_COOKIE = "kashikeyo_session";
 const setAppCookie = (res, token) => res.cookie(APP_COOKIE, token, {
   httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 24 * 3600 * 1000, path: "/",
 });
-const requireAppSession = (req, res, next) => {
+/* Resolves the app-session cookie to a live, active org id, or null. The one
+   place that decides "is this browser really signed in?" - both the /app gate
+   and the /login,/signup "skip straight to the app" shortcut go through it, so
+   they can never disagree and bounce the user back and forth (that mismatch -
+   a stale localStorage token with no valid cookie - was an infinite
+   /login<->/app redirect flash). */
+async function resolveAppSession(req) {
   let payload;
-  try { payload = jwt.verify(parseCookies(req)[APP_COOKIE], SECRET); } catch { return res.redirect(302, "/login"); }
-  if (!payload.o) return res.redirect(302, "/login");
-  withSystem((client) => client.query("SELECT status FROM orgs WHERE id=$1", [payload.o]))
-    .then((r) => { if (!r.rowCount || (r.rows[0].status && r.rows[0].status !== "active")) return res.redirect(302, "/login"); next(); })
-    .catch(() => res.redirect(302, "/login"));
+  try { payload = jwt.verify(parseCookies(req)[APP_COOKIE], SECRET); } catch { return null; }
+  if (!payload.o) return null;
+  const r = await withSystem((client) => client.query("SELECT status FROM orgs WHERE id=$1", [payload.o]));
+  if (!r.rowCount || (r.rows[0].status && r.rows[0].status !== "active")) return null;
+  return payload.o;
+}
+const requireAppSession = (req, res, next) => {
+  resolveAppSession(req).then((orgId) => orgId ? next() : res.redirect(302, "/login")).catch(() => res.redirect(302, "/login"));
+};
+const redirectIfAppSession = (req, res, next) => {
+  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app") : next()).catch(() => next());
 };
 
 /* Developer-panel sessions are a separate credential namespace from store
@@ -818,8 +830,8 @@ app.get("/", wrap(async (req, res, next) => {
 
 const siteDir = path.join(__dirname, "site");
 app.use(express.static(siteDir, { index: false }));
-app.get("/login", (req, res) => res.sendFile(path.join(siteDir, "login.html")));
-app.get("/signup", (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
+app.get("/login", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "login.html")));
+app.get("/signup", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
 app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 
 const webDir = path.join(__dirname, "web", "dist");
