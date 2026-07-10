@@ -6,6 +6,9 @@
 (function () {
   function storeSessionAndGo(data) {
     localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url: "", token: data.token, slug: data.slug, register: data.register }));
+    /* Brand-new social sign-ins finish setup on /welcome (store name,
+       currency, PIN — chosen there, so no PIN alert needed yet). */
+    if (data.needsSetup) { location.href = "/welcome"; return; }
     if (data.pin) alert("Your till PIN is " + data.pin + " - you'll use this to sign in at the till counter. You can change it anytime from Staff settings.");
     location.href = "/app";
   }

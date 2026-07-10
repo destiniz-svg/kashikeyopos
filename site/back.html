@@ -164,7 +164,7 @@
 <header>
   <div class="bar">
     <div class="logo"><img class="logo-img" src="/logo-mark.svg" alt="KashikeyoPOS" /><div class="logo-text">Back office</div></div>
-    <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a class="till-link" href="/app">🧾 Open the till</a></div>
+    <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a class="till-link" href="/app">🧾 Open the till</a><button class="ghost" id="signOut" title="Sign out" style="padding:8px 12px;border-radius:999px">Sign out</button></div>
   </div>
   <nav class="tabs" id="tabs"></nav>
 </header>
@@ -802,6 +802,12 @@
       }
       go();
     }).catch(go);
+  });
+
+  el("signOut").addEventListener("click", function () {
+    fetch("/api/logout", { method: "POST", keepalive: true }).catch(function () {});
+    try { localStorage.removeItem("kashikeyo-cloud"); } catch (err) {}
+    location.href = "/login";
   });
 
   /* ── boot + background refresh ───────────────────────────────────── */

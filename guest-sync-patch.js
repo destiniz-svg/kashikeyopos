@@ -574,6 +574,16 @@ patchFile(indexPath, (html) => html
     '}},tn))})]}),br("refund")&&h.jsxs("button",{onClick:()=>{location.href="/back"},className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[h.jsx("span",{className:"text-base leading-none",children:"📦"}),h.jsx("span",{className:"flex-1 text-left",children:"Back office — stock, recipes & deliveries"}),h.jsx("span",{className:`text-xs ${_.faint}`,children:"→"})]}),h.jsxs("button",{onClick:jI,'
   )
 
+  /* 35. Till side menu: a visible "Sign out" under Lock · switch user. The
+     only sign-out used to hide inside Admin → Cloud sync; UT (already wired:
+     clears the server cookie + local pairing, lands on /login) lives in the
+     same component scope. Find is consumed — after insertion the Lock button
+     is no longer immediately followed by the menu's closing brackets. */
+  .replace(
+    'children:[h.jsx(C3,{size:16})," Lock · switch user"]})]})',
+    'children:[h.jsx(C3,{size:16})," Lock · switch user"]}),h.jsx("button",{onClick:UT,className:"w-full flex items-center justify-center gap-2 rounded-xl px-4 py-3 mt-2 text-sm font-semibold border border-rose-500/40 text-rose-400",children:"Sign out"})]})'
+  )
+
   /* 32. Guest/member profile: rewards card with tier progress + "your usuals"
      one-tap reorder chips, inserted above the Visits/Spent/On-account tiles.
      Uses only data already on the page: j = customer from /p/:slug/boot
@@ -697,6 +707,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.19"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.20"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

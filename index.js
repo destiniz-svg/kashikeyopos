@@ -280,12 +280,21 @@ async function resolveAppSession(req) {
   let payload;
   try { payload = jwt.verify(parseCookies(req)[APP_COOKIE], SECRET); } catch { return null; }
   if (!payload.o) return null;
-  const r = await withSystem((client) => client.query("SELECT status FROM orgs WHERE id=$1", [payload.o]));
+  const r = await withSystem((client) => client.query("SELECT status, onboarded FROM orgs WHERE id=$1", [payload.o]));
   if (!r.rowCount || (r.rows[0].status && r.rows[0].status !== "active")) return null;
+  /* Side-channel for requireAppSession so it can steer un-onboarded orgs to
+     /welcome without a second lookup; API callers simply ignore it. */
+  req.kOnboarded = r.rows[0].onboarded !== false;
   return payload.o;
 }
 const requireAppSession = (req, res, next) => {
-  resolveAppSession(req).then((orgId) => orgId ? next() : res.redirect(302, "/login")).catch(() => res.redirect(302, "/login"));
+  resolveAppSession(req)
+    .then((orgId) => {
+      if (!orgId) return res.redirect(302, "/login");
+      if (!req.kOnboarded && req.path !== "/welcome" && !req.originalUrl.startsWith("/welcome")) return res.redirect(302, "/welcome");
+      next();
+    })
+    .catch(() => res.redirect(302, "/login"));
 };
 const redirectIfAppSession = (req, res, next) => {
   resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app") : next()).catch(() => next());
@@ -437,9 +446,11 @@ async function findOrCreateOAuthOrg({ provider, sub, email, name }) {
     const slug = await uniqueSlug(client, base);
     const id = uid();
     const placeholderHash = bcrypt.hashSync(crypto.randomBytes(24).toString("hex"), 10);
+    /* onboarded=false: a first-time social sign-in still owes the /welcome
+       step (store name, currency, PIN) before the till makes sense. */
     const ins = await client.query(
-      `INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, auth_provider, ${subCol}, registers)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1) RETURNING *`,
+      `INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, auth_provider, ${subCol}, registers, onboarded)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,false) RETURNING *`,
       [id, slug, cleanEmail || `${sub}@${provider}.oauth.kashikeyopos`, placeholderHash, "My Store", String(name || "").slice(0, 100), provider, sub]);
     return ins.rows[0];
   });
@@ -453,6 +464,9 @@ async function finishOAuthLogin(org) {
   const pin = await ensureOwnerSeed(org);
   const result = { token: sign(org.id, register, DEFAULT_STORE_ID), slug: org.slug, register, storeId: DEFAULT_STORE_ID };
   if (pin) result.pin = pin;
+  /* Tells oauth.js to route this sign-in through /welcome instead of /app —
+     the org exists but the owner hasn't named the store or picked a PIN. */
+  if (org.onboarded === false) result.needsSetup = true;
   return result;
 }
 
@@ -571,6 +585,46 @@ app.post("/api/pair", wrap(async (req, res) => {
   if (result.error) return res.status(result.status).json({ error: result.error });
   setAppCookie(res, result.token);
   res.json(result);
+}));
+
+/* Completes onboarding for an org created by a first-time social sign-in:
+   names the store, sets the currency, and (re)sets the owner's name and
+   till PIN — the same facts the email signup wizard collects up front. */
+app.post("/api/onboard", wrap(async (req, res) => {
+  const orgId = await resolveAppSession(req);
+  if (!orgId) return res.status(401).json({ error: "sign in required" });
+  const { storeName, currency, ownerName, pin } = req.body || {};
+  const cleanStore = String(storeName || "").trim().slice(0, 80);
+  if (!cleanStore) return res.status(400).json({ error: "give your store a name" });
+  const cleanCurrency = currency === "USD" ? "USD" : "MVR";
+  const cleanOwner = String(ownerName || "").trim().slice(0, 100);
+  const cleanPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
+  await withOrg(orgId, async (client) => {
+    await client.query("UPDATE orgs SET store_name=$2, owner_name=COALESCE(NULLIF($3,''), owner_name), onboarded=true WHERE id=$1",
+      [orgId, cleanStore, cleanOwner]);
+    await client.query("UPDATE stores SET name=$3 WHERE org_id=$1 AND id=$2", [orgId, DEFAULT_STORE_ID, cleanStore]);
+    const defaults = { storeName: cleanStore, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: cleanCurrency, footer: "" };
+    await client.query(
+      `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
+       ON CONFLICT (org_id, kind, id) DO UPDATE SET
+         data = entities.data || jsonb_build_object('storeName',$3::text,'currency',$4::text),
+         deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
+      [orgId, JSON.stringify(defaults), cleanStore, cleanCurrency]);
+    if (cleanOwner || cleanPin) {
+      /* the seeded owner from ensureOwnerSeed — first (usually only) owner-role user */
+      const owner = await client.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'role'='owner' ORDER BY updated_at ASC LIMIT 1", [orgId]);
+      if (owner.rowCount) {
+        const d = owner.rows[0].data;
+        if (cleanOwner) d.name = cleanOwner;
+        if (cleanPin) d.pin = hashTillPin(cleanPin);
+        await client.query(
+          "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='users' AND id=$2",
+          [orgId, owner.rows[0].id, JSON.stringify(d)]);
+      }
+    }
+  });
+  res.json({ ok: true });
 }));
 
 app.post("/api/logout", (req, res) => {
@@ -908,6 +962,15 @@ app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 /* Back office: recipes, stock checks, deliveries — owner/manager work that
    doesn't belong on the till. Same session cookie as /app. */
 app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir, "back.html")));
+/* Post-social-login onboarding: name the store, pick currency + PIN. Only
+   meaningful while the org is un-onboarded; afterwards it's just /app. */
+app.get("/welcome", (req, res) => {
+  resolveAppSession(req).then((orgId) => {
+    if (!orgId) return res.redirect(302, "/login");
+    if (req.kOnboarded) return res.redirect(302, "/app");
+    res.sendFile(path.join(siteDir, "welcome.html"));
+  }).catch(() => res.redirect(302, "/login"));
+});
 /* Clean URLs for the marketing content pages (footer links). The files also
    sit in siteDir so /docs.html etc. resolve via express.static above; these
    just give them the extensionless paths used across the site. */

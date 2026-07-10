@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Set up your store — KashikeyoPOS</title>
+<link rel="icon" href="/logo-mark.svg" />
+<style>
+  :root {
+    --app: #F3ECE1; --panel: #FFFFFF; --border: #E8DFCF; --text: #2A241E;
+    --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: var(--app); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
+  }
+  .logo-img { display: block; height: 38px; width: auto; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { color: var(--sub); font-size: 14px; margin: 0 0 22px; }
+  label { display: block; font-size: 13px; color: var(--sub); margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border);
+    background: var(--input); color: var(--text); font-size: 15px; outline: none;
+  }
+  input:focus { border-color: var(--primary); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button.primary {
+    width: 100%; margin-top: 24px; padding: 13px; border-radius: 10px; border: none;
+    font-size: 15px; font-weight: 600; cursor: pointer; background: var(--primary); color: #fff;
+  }
+  button.primary:hover { background: var(--primary-hov); }
+  button.primary:disabled { opacity: .6; cursor: default; }
+  .error {
+    display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px;
+    background: #FBEAE4; color: #A3391F; font-size: 13px;
+  }
+  .hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
+  .currency-pick { display: flex; gap: 10px; margin-top: 6px; }
+  .currency-pick label { flex: 1; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px; margin: 0; color: var(--text); }
+  .currency-pick input[type=radio] { width: auto; accent-color: var(--primary); }
+  .currency-pick label:has(input:checked) { border-color: var(--primary); background: #FBF7EF; }
+  .currency-pick .flag { font-size: 20px; line-height: 1; }
+  .currency-pick .cname { font-weight: 600; }
+  .currency-pick .csub { font-size: 11px; color: var(--sub); }
+  .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
+  .foot a { color: var(--primary); text-decoration: none; font-weight: 600; cursor: pointer; }
+  .foot a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <img class="logo-img" src="/logo.svg" alt="KashikeyoPOS" />
+    <h1>Welcome! Let's set up your store 🎉</h1>
+    <p class="sub">You're signed in — one quick step and your till is ready.</p>
+    <form id="f">
+      <label for="storeName">Store / outlet name</label>
+      <input id="storeName" required placeholder="e.g. Island Zone Cafe" autofocus />
+      <label>Store currency</label>
+      <div class="currency-pick">
+        <label>
+          <input type="radio" name="currency" value="MVR" checked />
+          <span class="flag">🇲🇻</span>
+          <span><span class="cname">MVR</span><br><span class="csub">Maldivian Rufiyaa</span></span>
+        </label>
+        <label>
+          <input type="radio" name="currency" value="USD" />
+          <span class="flag">🇺🇸</span>
+          <span><span class="cname">USD</span><br><span class="csub">US Dollar</span></span>
+        </label>
+      </div>
+      <div class="row">
+        <div>
+          <label for="ownerName">Your name</label>
+          <input id="ownerName" placeholder="e.g. Aisha Naeem" />
+        </div>
+        <div>
+          <label for="pin">Till PIN (4 digits)</label>
+          <input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required placeholder="e.g. 4821" />
+        </div>
+      </div>
+      <div class="hint">The PIN signs you in at the till counter — quick to type between staff during a shift.</div>
+      <div class="error" id="err"></div>
+      <button id="go" class="primary" type="submit">Open my store</button>
+    </form>
+    <div class="foot">Wrong account? <a id="signout">Sign out</a></div>
+  </div>
+  <script>
+    (function () {
+      function showErr(msg) { var e = document.getElementById("err"); e.textContent = msg; e.style.display = "block"; }
+      document.getElementById("f").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        document.getElementById("err").style.display = "none";
+        var storeName = document.getElementById("storeName").value.trim();
+        var pin = document.getElementById("pin").value.trim();
+        if (!storeName) return showErr("Give your store a name");
+        if (!/^\d{4}$/.test(pin)) return showErr("Till PIN must be exactly 4 digits");
+        var btn = document.getElementById("go");
+        btn.disabled = true; btn.textContent = "Setting up…";
+        try {
+          var sel = document.querySelector('input[name="currency"]:checked');
+          var res = await fetch("/api/onboard", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              storeName: storeName,
+              currency: sel ? sel.value : "MVR",
+              ownerName: document.getElementById("ownerName").value.trim(),
+              pin: pin,
+            }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Couldn't finish setup");
+          location.href = "/app";
+        } catch (err) {
+          showErr(err.message || "Something went wrong — please try again");
+          btn.disabled = false; btn.textContent = "Open my store";
+        }
+      });
+      document.getElementById("signout").addEventListener("click", function () {
+        fetch("/api/logout", { method: "POST", keepalive: true }).catch(function () {});
+        try { localStorage.removeItem("kashikeyo-cloud"); } catch (e) {}
+        location.href = "/login";
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -17,6 +17,10 @@ ALTER TABLE orgs ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'password';
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS google_sub TEXT;
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS apple_sub TEXT;
+-- false only for orgs created by a first-time social sign-in: they still owe
+-- the /welcome step (store name, currency, PIN). Email signups collected all
+-- of that in the wizard, and every pre-existing org is grandfathered in.
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS onboarded BOOLEAN NOT NULL DEFAULT true;
 CREATE UNIQUE INDEX IF NOT EXISTS orgs_google_sub_uq ON orgs (google_sub) WHERE google_sub IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS orgs_apple_sub_uq ON orgs (apple_sub) WHERE apple_sub IS NOT NULL;
 
