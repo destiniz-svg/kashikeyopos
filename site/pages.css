@@ -1,0 +1,94 @@
+/* Shared styling for KashikeyoPOS content pages (docs, api, status, legal).
+   Same Lovable palette and shell as the landing page, kept in one file so the
+   pages stay light and consistent. Theme-aware via prefers-color-scheme. */
+:root {
+  --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
+  --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+  --btn: #F1E8D8; --ok: #2E7D46; --code-bg: #F6EFE2;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--app); color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+}
+a { color: var(--primary); }
+.wrap { max-width: 820px; margin: 0 auto; padding: 0 20px; }
+.wrap-wide { max-width: 1000px; }
+
+header.site {
+  position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px);
+  background: rgba(243,236,225,.85); border-bottom: 1px solid var(--border);
+}
+header.site .bar { max-width: 1000px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
+.logo-mark {
+  width: 30px; height: 30px; border-radius: 9px; background: var(--primary);
+  display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;
+}
+.header-cta { display: flex; gap: 10px; align-items: center; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+  padding: 9px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap;
+}
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-hov); }
+.btn-ghost { background: var(--btn); color: var(--text); }
+
+main { padding: 48px 0 72px; }
+.page-head { margin-bottom: 36px; }
+.page-head .kicker { font-size: 13px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
+h1 { font-size: clamp(28px, 4vw, 38px); margin: 0 0 12px; letter-spacing: -0.01em; }
+.page-head p { color: var(--sub); font-size: 17px; margin: 0; }
+h2 { font-size: 22px; margin: 40px 0 14px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+p, li { color: var(--text); }
+.muted { color: var(--sub); }
+section.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 18px;
+}
+.note {
+  background: #FBEAE4; border: 1px solid #F0CBBE; border-radius: 12px; padding: 14px 16px; font-size: 14px; color: #8A3A22; margin: 20px 0;
+}
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code { background: var(--code-bg); padding: 2px 6px; border-radius: 5px; font-size: 13px; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px; overflow-x: auto; font-size: 13px; line-height: 1.5;
+}
+pre code { background: none; padding: 0; }
+.method { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; color: #fff; margin-right: 8px; vertical-align: middle; }
+.method.get { background: #2E7D46; }
+.method.post { background: var(--primary); }
+.endpoint { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+table.api { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+table.api th, table.api td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+table.api th { color: var(--sub); font-weight: 600; }
+
+/* status page */
+.status-hero { display: flex; align-items: center; gap: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; margin-bottom: 20px; }
+.status-hero .big-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--faint); flex: none; }
+.status-hero.ok .big-dot { background: var(--ok); box-shadow: 0 0 0 5px rgba(46,125,70,.18); }
+.status-hero.down .big-dot { background: var(--primary); box-shadow: 0 0 0 5px rgba(193,80,45,.18); }
+.status-hero h2 { margin: 0; font-size: 20px; }
+.status-hero p { margin: 2px 0 0; font-size: 14px; color: var(--sub); }
+.status-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); margin-bottom: 10px; }
+.status-row .name { font-weight: 600; font-size: 15px; }
+.status-pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--sub); }
+.status-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); }
+.status-pill.ok { color: var(--ok); } .status-pill.ok .dot { background: var(--ok); }
+.status-pill.down { color: var(--primary); } .status-pill.down .dot { background: var(--primary); }
+
+footer.site { border-top: 1px solid var(--border); padding: 26px 0; margin-top: 40px; }
+footer.site .row { max-width: 1000px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--faint); }
+footer.site a { color: var(--sub); text-decoration: none; margin-left: 16px; }
+footer.site a:hover { color: var(--primary); }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app: #1B1712; --panel: #241E18; --panel2: #2B241C; --border: #37301F; --text: #EDE6DA;
+    --sub: #A79E8F; --faint: #7C7466; --primary: #E0794F; --primary-hov: #E88A62;
+    --btn: #322A20; --code-bg: #2B241C;
+  }
+  .note { background: #3A241C; border-color: #5A3421; color: #F0C3B0; }
+}

@@ -833,6 +833,12 @@ app.use(express.static(siteDir, { index: false }));
 app.get("/login", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "login.html")));
 app.get("/signup", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
 app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
+/* Clean URLs for the marketing content pages (footer links). The files also
+   sit in siteDir so /docs.html etc. resolve via express.static above; these
+   just give them the extensionless paths used across the site. */
+for (const p of ["docs", "api", "status", "privacy", "terms"]) {
+  app.get("/" + p, (req, res) => res.sendFile(path.join(siteDir, p + ".html")));
+}
 
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
