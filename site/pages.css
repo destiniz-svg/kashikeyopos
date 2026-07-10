@@ -5,6 +5,7 @@
   --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
   --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
   --btn: #F1E8D8; --ok: #2E7D46; --code-bg: #F6EFE2;
+  --glass: rgba(255,255,255,.55); --glass-border: rgba(255,255,255,.6);
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -17,11 +18,15 @@ a { color: var(--primary); }
 .wrap { max-width: 820px; margin: 0 auto; padding: 0 20px; }
 .wrap-wide { max-width: 1000px; }
 
+/* Floating "glass" top banner (matches the landing page). */
 header.site {
-  position: sticky; top: 0; z-index: 20; backdrop-filter: blur(8px);
-  background: rgba(243,236,225,.85); border-bottom: 1px solid var(--border);
+  position: fixed; z-index: 30; top: 14px; left: 50%; transform: translateX(-50%);
+  width: min(1000px, calc(100% - 24px)); border-radius: 16px;
+  background: var(--glass); border: 1px solid var(--glass-border);
+  box-shadow: 0 18px 50px rgba(42,36,30,.14);
+  backdrop-filter: blur(20px) saturate(1.5); -webkit-backdrop-filter: blur(20px) saturate(1.5);
 }
-header.site .bar { max-width: 1000px; margin: 0 auto; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
+header.site .bar { max-width: none; padding: 11px 18px; display: flex; align-items: center; justify-content: space-between; }
 .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 16px; text-decoration: none; color: var(--text); }
 .logo-img { display: block; height: 32px; width: auto; }
 .logo-mark {
@@ -37,7 +42,7 @@ header.site .bar { max-width: 1000px; margin: 0 auto; padding: 12px 20px; displa
 .btn-primary:hover { background: var(--primary-hov); }
 .btn-ghost { background: var(--btn); color: var(--text); }
 
-main { padding: 48px 0 72px; }
+main { padding: 96px 0 72px; }
 .page-head { margin-bottom: 36px; }
 .page-head .kicker { font-size: 13px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 10px; }
 h1 { font-size: clamp(28px, 4vw, 38px); margin: 0 0 12px; letter-spacing: -0.01em; }
@@ -90,6 +95,7 @@ footer.site a:hover { color: var(--primary); }
     --app: #1B1712; --panel: #241E18; --panel2: #2B241C; --border: #37301F; --text: #EDE6DA;
     --sub: #A79E8F; --faint: #7C7466; --primary: #E0794F; --primary-hov: #E88A62;
     --btn: #322A20; --code-bg: #2B241C;
+    --glass: rgba(36,30,24,.6); --glass-border: rgba(255,255,255,.1);
   }
   .note { background: #3A241C; border-color: #5A3421; color: #F0C3B0; }
 }
