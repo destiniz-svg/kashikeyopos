@@ -881,6 +881,9 @@ app.use(express.static(siteDir, { index: false }));
 app.get("/login", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "login.html")));
 app.get("/signup", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "signup.html")));
 app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
+/* Back office: recipes, stock checks, deliveries — owner/manager work that
+   doesn't belong on the till. Same session cookie as /app. */
+app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir, "back.html")));
 /* Clean URLs for the marketing content pages (footer links). The files also
    sit in siteDir so /docs.html etc. resolve via express.static above; these
    just give them the extensionless paths used across the site. */

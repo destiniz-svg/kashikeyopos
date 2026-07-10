@@ -91,6 +91,31 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     }
   }
 
+  /* ── Menu items (for the recipe mapper) ─────────────────────────────────
+     The back office needs the org's menu to map recipes onto. Products live
+     as entities (kind='products'); expose the fields the editor needs plus
+     which items already have a recipe, and the store currency for labels. */
+  router.get("/products", authAny, wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (client) => {
+      const r = await client.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.orgId]);
+      const st = await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [req.orgId]);
+      const rc = await client.query(
+        "SELECT product_id, count(*) AS n FROM recipe_lines WHERE org_id=$1 GROUP BY product_id", [req.orgId]);
+      const recipeCounts = Object.fromEntries(rc.rows.map((x) => [x.product_id, Number(x.n)]));
+      const products = r.rows
+        .map((x) => {
+          const d = x.data || {};
+          const id = String(d.id || x.id).split(":").pop();
+          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), recipeLines: recipeCounts[id] || 0 };
+        })
+        .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
+      return { currency: st.rowCount ? (st.rows[0].data.currency || "MVR") : "MVR", products };
+    });
+    res.json(out);
+  }));
+
   /* ── Ingredients ──────────────────────────────────────────────────────── */
   router.get("/ingredients", authAny, wrap(async (req, res) => {
     const rows = await withOrg(req.orgId, async (client) => {

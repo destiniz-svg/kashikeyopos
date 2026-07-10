@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Back office — KashikeyoPOS</title>
+<link rel="icon" href="/logo-mark.svg" />
+<style>
+  :root {
+    --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
+    --sub: #8A8074; --faint: #B7AE9F; --primary: #C1502D; --primary-hov: #AA4526;
+    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5;
+    --ok: #2E7D46; --warn: #A3391F; --amber: #9A6A00; --amber-bg: #FBF3DC;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--app); color: var(--text); min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  header { position: sticky; top: 0; z-index: 5; background: rgba(243,236,225,.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+  .bar { max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-img { display: block; height: 28px; width: auto; }
+  .logo-text { font-weight: 700; font-size: 15px; color: var(--sub); }
+
+  .tabs { max-width: 1180px; margin: 0 auto; padding: 0 24px; display: flex; gap: 4px; overflow-x: auto; }
+  .tabs button {
+    border: none; background: none; padding: 10px 14px; font-size: 13.5px; font-weight: 600;
+    color: var(--sub); cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap;
+  }
+  .tabs button.on { color: var(--primary); border-bottom-color: var(--primary); }
+
+  main { max-width: 1180px; margin: 0 auto; padding: 22px 24px 80px; }
+  h2 { font-size: 14px; margin: 0 0 12px; color: var(--sub); text-transform: uppercase; letter-spacing: .05em; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
+  .pad { padding: 18px; }
+
+  button { border: none; border-radius: 9px; font-size: 13.5px; font-weight: 600; cursor: pointer; padding: 9px 14px; }
+  button.primary { background: var(--primary); color: #fff; }
+  button.primary:hover { background: var(--primary-hov); }
+  button.primary:disabled { opacity: .55; cursor: default; }
+  button.ghost { background: var(--btn); color: var(--text); }
+  button.ghost:hover { background: var(--btn-hov); }
+  button.tiny { padding: 4px 10px; font-size: 12px; border-radius: 7px; }
+
+  input, select {
+    padding: 9px 11px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--input); color: var(--text); font-size: 14px; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--primary); }
+  input.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+  label { display: block; font-size: 12.5px; color: var(--sub); margin: 12px 0 5px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  th { color: var(--sub); font-weight: 600; background: var(--panel2); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; white-space: nowrap; }
+  .tbl-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); }
+  .tbl-wrap table { border: none; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge.low { background: #FBEAE4; color: var(--warn); }
+  .badge.ok { background: #E4F2E7; color: var(--ok); }
+  .badge.amber { background: var(--amber-bg); color: var(--amber); }
+  .badge.dim { background: var(--panel2); color: var(--sub); }
+
+  .empty { padding: 18px; font-size: 13px; color: var(--sub); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar input[type=search] { min-width: 220px; }
+
+  /* alerts strip */
+  #alerts { max-width: 1180px; margin: 0 auto; padding: 12px 24px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+  #alerts .chip { font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; }
+  #alerts .chip.low { background: var(--amber-bg); color: var(--amber); }
+  #alerts .chip.review { background: #FBEAE4; color: var(--warn); }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; z-index: 20; background: rgba(42,36,30,.45); display: flex; align-items: center; justify-content: center; padding: 18px; }
+  .modal { width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
+  .modal h3 { margin: 0 0 4px; font-size: 17px; }
+  .modal .sub { font-size: 12.5px; color: var(--sub); margin: 0 0 8px; }
+  .modal .actions { display: flex; gap: 10px; margin-top: 20px; }
+  .modal .actions .primary { flex: 1; }
+
+  /* recipes layout */
+  .split { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 820px) { .split { grid-template-columns: 1fr; } }
+  .prodlist { max-height: 70vh; overflow-y: auto; }
+  .prodlist .p { display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13.5px; }
+  .prodlist .p:hover { background: var(--panel2); }
+  .prodlist .p.on { background: var(--panel2); box-shadow: inset 3px 0 0 var(--primary); }
+  .prodlist .p .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prodlist .p .pr { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--sub); }
+  .margin-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; border-top: 1px solid var(--border); padding: 14px 18px; }
+  .margin-bar .m .l { font-size: 11px; color: var(--sub); }
+  .margin-bar .m .v { font-size: 17px; font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+  .m.good .v { color: var(--ok); } .m.mid .v { color: var(--amber); } .m.bad .v { color: var(--warn); }
+
+  /* stock check wizard */
+  .steps { display: flex; gap: 6px; margin: 0 0 16px; }
+  .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }
+  .steps i.on { background: var(--primary); }
+  .diff { font-size: 11.5px; font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+  .diff.zero { color: var(--faint); } .diff.up { color: var(--ok); } .diff.down { color: var(--warn); }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chips button { padding: 5px 11px; font-size: 12px; border-radius: 999px; background: var(--btn); }
+  .chips button.on { background: var(--primary); color: #fff; }
+  .bigstat { text-align: center; padding: 26px 18px; }
+  .bigstat .n { font-size: 30px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
+  .bigstat .l { font-size: 13px; color: var(--sub); margin-top: 4px; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 40; background: var(--text); color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+  .toast.show { opacity: 1; }
+  .hint { font-size: 11.5px; color: var(--faint); margin-top: 4px; }
+  section { margin-bottom: 30px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="logo"><img class="logo-img" src="/logo-mark.svg" alt="KashikeyoPOS" /><div class="logo-text">Back office</div></div>
+    <a href="/app">Open the till &rarr;</a>
+  </div>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+
+<div id="alerts"></div>
+<main id="main"><div class="empty">Loading…</div></main>
+<div id="modalHost"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── state + helpers ─────────────────────────────────────────────── */
+  var S = {
+    tab: "recipes", currency: "MVR",
+    ingredients: [], products: [], suppliers: [], audits: [],
+    // recipes tab
+    prodFilter: "", selProduct: null, recipe: null,
+    // stock check wizard
+    wiz: null, // { session, groups:[{location,lines}], step, entries:{ingredientId:{qty,unitName,reason}}, result }
+    // deliveries
+    inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [],
+  };
+  var TABS = [["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["ingredients", "Ingredients"], ["suppliers", "Suppliers"]];
+  var REASONS = ["Spoilage", "Staff meal", "Waste", "Count error", "Other"];
+  var LOCATIONS = ["Fridge", "Freezer", "Dry", "Bar", "Other"];
+
+  function Y(n) { return (Number(n || 0) / 100).toFixed(2); }             // laari → display
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function qty3(n) { var v = Number(n || 0); return (Math.round(v * 1000) / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 }); }
+  function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+
+  function api(path, opts) {
+    return fetch("/api/inv" + path, Object.assign({ headers: { "Content-Type": "application/json" } }, opts)).then(function (r) {
+      if (r.status === 401) { location.href = "/login"; throw new Error("signed out"); }
+      return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || "request failed"); return j; });
+    });
+  }
+  function el(id) { return document.getElementById(id); }
+  function ingById(id) { return S.ingredients.find(function (i) { return i.id === id; }); }
+
+  /* Friendly qty: "2 Cases + 1,540 ml" when the ingredient has pack units */
+  function friendlyQty(ing, baseQty) {
+    var best = (ing.units || []).slice().sort(function (a, b) { return b.factor - a.factor; })[0];
+    if (!best || Math.abs(baseQty) < best.factor) return qty3(baseQty) + " " + ing.base_unit;
+    var whole = Math.floor(Math.abs(baseQty) / best.factor) * (baseQty < 0 ? -1 : 1);
+    var rem = Math.round((Math.abs(baseQty) - Math.abs(whole) * best.factor) * 1000) / 1000;
+    return whole + " " + best.name + (rem ? " + " + qty3(rem) + " " + ing.base_unit : "");
+  }
+
+  /* ── data loading ────────────────────────────────────────────────── */
+  function loadAll() {
+    return Promise.all([
+      api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"),
+    ]).then(function (r) {
+      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products;
+      S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices;
+      renderAlerts(r[4]);
+    });
+  }
+
+  function renderAlerts(a) {
+    var h = "";
+    (a.lowStock || []).forEach(function (i) {
+      h += '<span class="chip low">Low: ' + esc(i.name) + " — " + qty3(i.current_stock) + " " + esc(i.base_unit) + " left</span>";
+    });
+    (a.needsReview || []).forEach(function (r) {
+      h += '<span class="chip review">Check difference: ' + esc(r.name) + " (" + (r.variance > 0 ? "+" : "") + qty3(r.variance) + ")</span>";
+    });
+    el("alerts").innerHTML = h;
+  }
+
+  /* ── tabs ────────────────────────────────────────────────────────── */
+  function renderTabs() {
+    el("tabs").innerHTML = TABS.map(function (t) {
+      return '<button data-t="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + t[1] + "</button>";
+    }).join("");
+    el("tabs").querySelectorAll("button").forEach(function (b) {
+      b.onclick = function () { S.tab = b.dataset.t; render(); };
+    });
+  }
+
+  function render() {
+    renderTabs();
+    if (S.tab === "recipes") renderRecipes();
+    else if (S.tab === "audit") renderAudit();
+    else if (S.tab === "deliveries") renderDeliveries();
+    else if (S.tab === "ingredients") renderIngredients();
+    else if (S.tab === "suppliers") renderSuppliers();
+  }
+
+  /* ── Ingredients tab ─────────────────────────────────────────────── */
+  function renderIngredients() {
+    var rows = S.ingredients.map(function (i) {
+      return "<tr>" +
+        "<td>" + esc(i.name) + (i.sku ? ' <span class="badge dim">' + esc(i.sku) + "</span>" : "") + "</td>" +
+        "<td>" + esc(i.location) + "</td>" +
+        '<td class="mono">' + qty3(i.current_stock) + " " + esc(i.base_unit) + "</td>" +
+        '<td class="mono">' + (i.avg_cost / 100).toFixed(4) + "/" + esc(i.base_unit) + "</td>" +
+        "<td>" + (i.low ? '<span class="badge low">Low</span>' : '<span class="badge ok">OK</span>') + "</td>" +
+        "<td>" + (i.units || []).map(function (u) { return '<span class="badge dim">1 ' + esc(u.name) + " = " + qty3(u.factor) + " " + esc(i.base_unit) + "</span>"; }).join(" ") + "</td>" +
+        '<td><button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
+        "</tr>";
+    }).join("");
+    el("main").innerHTML =
+      '<div class="toolbar"><h2 style="margin:0">Ingredients</h2><button class="primary" id="addIng">+ New ingredient</button></div>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Where</th><th class="mono">In stock</th><th class="mono">Avg cost /unit</th><th>Status</th><th>Pack sizes</th><th></th></tr></thead>' +
+      "<tbody>" + (rows || '<tr><td colspan="7" class="empty">No ingredients yet — add your first one.</td></tr>') + "</tbody></table></div>" +
+      '<p class="hint">Avg cost is per base unit (' + esc(S.currency) + " sub-units) and updates automatically each time you enter a delivery.</p>";
+    el("addIng").onclick = function () { ingredientModal(null); };
+    el("main").querySelectorAll("[data-edit]").forEach(function (b) { b.onclick = function () { ingredientModal(ingById(b.dataset.edit)); }; });
+    el("main").querySelectorAll("[data-del]").forEach(function (b) {
+      b.onclick = function () {
+        var i = ingById(b.dataset.del);
+        if (!confirm('Remove "' + i.name + '"? Recipes using it will lose this line.')) return;
+        api("/ingredients/" + encodeURIComponent(i.id), { method: "DELETE" }).then(function () { toast("Removed " + i.name); return loadAll(); }).then(render).catch(function (e) { toast(e.message); });
+      };
+    });
+  }
+
+  function ingredientModal(ing) {
+    var units = (ing && ing.units || []).slice();
+    function draw() {
+      el("modalHost").innerHTML =
+        '<div class="overlay" id="ov"><div class="modal">' +
+        "<h3>" + (ing ? "Edit ingredient" : "New ingredient") + "</h3>" +
+        '<p class="sub">Track it in the smallest unit you portion with — grams, millilitres or pieces.</p>' +
+        '<label>Name</label><input id="mName" value="' + esc(ing ? ing.name : "") + '" placeholder="e.g. Mozzarella" style="width:100%" />' +
+        '<div class="row2"><div><label>SKU / code (optional)</label><input id="mSku" value="' + esc(ing ? ing.sku : "") + '" style="width:100%" /></div>' +
+        '<div><label>Counted in</label><select id="mBase" style="width:100%"' + (ing ? " disabled" : "") + ">" +
+        ["g", "ml", "pcs"].map(function (u) { return '<option value="' + u + '"' + (ing && ing.base_unit === u ? " selected" : "") + ">" + { g: "grams (g)", ml: "millilitres (ml)", pcs: "pieces (pcs)" }[u] + "</option>"; }).join("") +
+        "</select></div></div>" +
+        '<div class="row2"><div><label>Storage location</label><select id="mLoc" style="width:100%">' +
+        LOCATIONS.map(function (l) { return '<option value="' + l + '"' + (ing && ing.location === l ? " selected" : "") + ">" + l + "</option>"; }).join("") +
+        "</select></div>" +
+        '<div><label>Alert me below</label><input id="mMin" class="num" inputmode="decimal" value="' + (ing ? qty3(ing.min_stock).replace(/,/g, "") : "0") + '" style="width:100%" /></div></div>' +
+        "<label>Pack sizes — how it arrives from suppliers</label>" +
+        '<div id="mUnits">' + units.map(function (u, i) {
+          return '<div class="row2" style="margin-bottom:8px"><input data-un="' + i + '" value="' + esc(u.name) + '" placeholder="e.g. Case" />' +
+            '<div style="display:flex;gap:8px;align-items:center"><input data-uf="' + i + '" class="num" inputmode="decimal" value="' + String(u.factor) + '" style="flex:1" /><span class="hint" style="margin:0;white-space:nowrap">' + (ing ? esc(ing.base_unit) : "base units") + ' each</span><button class="tiny ghost" data-ux="' + i + '">✕</button></div></div>';
+        }).join("") + "</div>" +
+        '<button class="tiny ghost" id="mAddU">+ Add a pack size</button>' +
+        '<div class="actions"><button class="ghost" id="mCancel">Cancel</button><button class="primary" id="mSave">' + (ing ? "Save" : "Add ingredient") + "</button></div>" +
+        "</div></div>";
+      el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
+      el("mCancel").onclick = close;
+      el("mAddU").onclick = function () { pull(); units.push({ name: "", factor: "" }); draw(); };
+      el("modalHost").querySelectorAll("[data-ux]").forEach(function (b) { b.onclick = function () { pull(); units.splice(Number(b.dataset.ux), 1); draw(); }; });
+      el("mSave").onclick = save;
+    }
+    function pull() {
+      units = units.map(function (u, i) {
+        var n = el("modalHost").querySelector('[data-un="' + i + '"]'), f = el("modalHost").querySelector('[data-uf="' + i + '"]');
+        return { name: n ? n.value : u.name, factor: f ? f.value : u.factor };
+      });
+    }
+    function close() { el("modalHost").innerHTML = ""; }
+    function save() {
+      pull();
+      var body = {
+        id: ing ? ing.id : undefined,
+        name: el("mName").value.trim(), sku: el("mSku").value.trim(),
+        baseUnit: el("mBase").value, minStock: parseFloat(el("mMin").value) || 0, location: el("mLoc").value,
+        units: units.map(function (u) { return { name: String(u.name).trim(), factor: parseFloat(u.factor) || 0 }; }).filter(function (u) { return u.name && u.factor > 0; }),
+      };
+      if (!body.name) return toast("Give it a name");
+      api("/ingredients", { method: "POST", body: JSON.stringify(body) })
+        .then(function () { close(); toast(body.name + " saved"); return loadAll(); }).then(render)
+        .catch(function (e) { toast(e.message); });
+    }
+    draw();
+  }
+
+  /* ── Menu & Recipes tab ──────────────────────────────────────────── */
+  function renderRecipes() {
+    var q = S.prodFilter.toLowerCase();
+    var prods = S.products.filter(function (p) { return !q || p.name.toLowerCase().includes(q) || p.cat.toLowerCase().includes(q); });
+    var list = prods.map(function (p) {
+      return '<div class="p ' + (S.selProduct === p.id ? "on" : "") + '" data-p="' + p.id + '">' +
+        "<span>" + esc(p.emoji || "🍽") + '</span><span class="nm">' + esc(p.name) + "</span>" +
+        (p.recipeLines ? '<span class="badge ok">recipe</span>' : '<span class="badge dim">none</span>') +
+        '<span class="pr">' + Y(p.price) + "</span></div>";
+    }).join("");
+    el("main").innerHTML =
+      '<div class="split">' +
+      '<div><div class="toolbar" style="margin-bottom:10px"><input type="search" id="pSearch" placeholder="Search the menu…" value="' + esc(S.prodFilter) + '" style="width:100%" /></div>' +
+      '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
+      '<div class="panel" id="redit"><div class="empty">Pick a menu item to build its recipe.</div></div>' +
+      "</div>";
+    var ps = el("pSearch");
+    ps.oninput = function () { S.prodFilter = ps.value; renderRecipes(); ps = el("pSearch"); ps.focus(); ps.setSelectionRange(ps.value.length, ps.value.length); };
+    el("plist").querySelectorAll("[data-p]").forEach(function (d) {
+      d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
+    });
+    if (S.selProduct) { if (S.recipe) drawRecipeEditor(); else loadRecipe(); }
+  }
+
+  function loadRecipe() {
+    api("/recipes/" + encodeURIComponent(S.selProduct)).then(function (r) { S.recipe = r; drawRecipeEditor(); }).catch(function (e) { toast(e.message); });
+  }
+
+  function recipeTotals() {
+    var cost = S.recipe.lines.reduce(function (a, l) { return a + Math.round(l.qty * l.unitCost); }, 0);
+    var price = S.recipe.price;
+    return { cost: cost, price: price, profit: price - cost, pct: price > 0 ? Math.round((price - cost) / price * 1000) / 10 : 0 };
+  }
+
+  function drawRecipeEditor() {
+    var p = S.products.find(function (x) { return x.id === S.selProduct; }) || { name: "?", price: S.recipe.price };
+    var t = recipeTotals();
+    var cls = t.pct >= 60 ? "good" : t.pct >= 40 ? "mid" : "bad";
+    var lines = S.recipe.lines.map(function (l, i) {
+      return "<tr><td>" + esc(l.name) + "</td>" +
+        '<td class="mono" style="width:150px"><input class="num" data-q="' + i + '" inputmode="decimal" value="' + String(l.qty) + '" style="width:90px" /> ' + esc(l.baseUnit) + "</td>" +
+        '<td class="mono">' + Y(Math.round(l.qty * l.unitCost)) + "</td>" +
+        '<td style="width:40px"><button class="tiny ghost" data-x="' + i + '">✕</button></td></tr>';
+    }).join("");
+    var opts = S.ingredients
+      .filter(function (i) { return !S.recipe.lines.some(function (l) { return l.ingredientId === i.id; }); })
+      .map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + " (" + esc(i.base_unit) + ")</option>"; }).join("");
+    el("redit").innerHTML =
+      '<div class="pad" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+      "<div><b>" + esc(p.emoji || "") + " " + esc(p.name) + '</b><div class="hint">Sells at ' + esc(S.currency) + " " + Y(t.price) + "</div></div>" +
+      '<button class="primary" id="rSave">Save recipe</button></div>' +
+      '<div class="tbl-wrap" style="border-left:none;border-right:none;border-radius:0">' +
+      '<table><thead><tr><th>Ingredient</th><th>Amount per serving</th><th class="mono">Cost</th><th></th></tr></thead><tbody>' +
+      (lines || '<tr><td colspan="4" class="empty">Nothing mapped yet — add the first ingredient below.</td></tr>') +
+      "</tbody></table></div>" +
+      '<div class="pad" style="display:flex;gap:8px;align-items:center">' +
+      '<select id="rAdd" style="flex:1"><option value="">+ Add an ingredient…</option>' + opts + "</select>" +
+      '<input class="num" id="rAddQty" inputmode="decimal" placeholder="qty" style="width:90px" /><button class="ghost" id="rAddBtn">Add</button></div>' +
+      '<div class="margin-bar">' +
+      '<div class="m"><div class="l">Ingredient cost</div><div class="v">' + Y(t.cost) + "</div></div>" +
+      '<div class="m"><div class="l">Selling price</div><div class="v">' + Y(t.price) + "</div></div>" +
+      '<div class="m ' + cls + '"><div class="l">Profit / serving</div><div class="v">' + Y(t.profit) + "</div></div>" +
+      '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div></div>";
+    el("redit").querySelectorAll("[data-q]").forEach(function (inp) {
+      inp.oninput = function () { S.recipe.lines[Number(inp.dataset.q)].qty = parseFloat(inp.value) || 0; refreshMargin(); };
+    });
+    el("redit").querySelectorAll("[data-x]").forEach(function (b) {
+      b.onclick = function () { S.recipe.lines.splice(Number(b.dataset.x), 1); drawRecipeEditor(); };
+    });
+    el("rAddBtn").onclick = function () {
+      var id = el("rAdd").value, q = parseFloat(el("rAddQty").value);
+      if (!id) return toast("Pick an ingredient");
+      var ing = ingById(id);
+      if (!(q > 0)) return toast("How much " + ing.base_unit + " per serving?");
+      S.recipe.lines.push({ ingredientId: id, name: ing.name, baseUnit: ing.base_unit, qty: q, unitCost: ing.avg_cost, lineCost: Math.round(q * ing.avg_cost) });
+      drawRecipeEditor();
+    };
+    el("rSave").onclick = function () {
+      var body = { lines: S.recipe.lines.filter(function (l) { return l.qty > 0; }).map(function (l) { return { ingredientId: l.ingredientId, qty: l.qty }; }) };
+      api("/recipes/" + encodeURIComponent(S.selProduct), { method: "PUT", body: JSON.stringify(body) })
+        .then(function (r) {
+          S.recipe.lines = r.lines; S.recipe.cost = r.cost;
+          var p2 = S.products.find(function (x) { return x.id === S.selProduct; });
+          if (p2) p2.recipeLines = r.lines.length;
+          toast("Recipe saved — margin " + t.pct + "%"); drawRecipeEditor(); renderTabs();
+        }).catch(function (e) { toast(e.message); });
+    };
+  }
+  function refreshMargin() {
+    var t = recipeTotals();
+    var bar = el("redit").querySelector(".margin-bar");
+    var cls = t.pct >= 60 ? "good" : t.pct >= 40 ? "mid" : "bad";
+    bar.innerHTML =
+      '<div class="m"><div class="l">Ingredient cost</div><div class="v">' + Y(t.cost) + "</div></div>" +
+      '<div class="m"><div class="l">Selling price</div><div class="v">' + Y(t.price) + "</div></div>" +
+      '<div class="m ' + cls + '"><div class="l">Profit / serving</div><div class="v">' + Y(t.profit) + "</div></div>" +
+      '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div>";
+  }
+
+  /* ── Deliveries tab ──────────────────────────────────────────────── */
+  function renderDeliveries() {
+    var supOpts = S.suppliers.map(function (s) { return '<option value="' + s.id + '"' + (S.inv.supplierId === s.id ? " selected" : "") + ">" + esc(s.name) + "</option>"; }).join("");
+    var lines = S.inv.lines.map(function (l, i) {
+      var ing = ingById(l.ingredientId);
+      var unitOpts = '<option value="">' + esc(ing.base_unit) + "</option>" + (ing.units || []).map(function (u) {
+        return '<option value="' + esc(u.name) + '"' + (l.unitName === u.name ? " selected" : "") + ">" + esc(u.name) + "</option>";
+      }).join("");
+      var baseQty = (parseFloat(l.qty) || 0) * (l.unitName ? (ing.units.find(function (u) { return u.name === l.unitName; }) || { factor: 1 }).factor : 1);
+      var per = baseQty > 0 && l.cost ? (parseFloat(l.cost) / baseQty).toFixed(4) : "—";
+      return "<tr><td>" + esc(ing.name) + "</td>" +
+        '<td class="mono"><input class="num" data-dq="' + i + '" inputmode="decimal" value="' + esc(l.qty) + '" style="width:80px" /></td>' +
+        '<td><select data-du="' + i + '">' + unitOpts + "</select></td>" +
+        '<td class="mono"><input class="num" data-dc="' + i + '" inputmode="decimal" value="' + esc(l.cost) + '" placeholder="0.00" style="width:100px" /></td>' +
+        '<td class="mono">' + qty3(baseQty) + " " + esc(ing.base_unit) + '<div class="hint">' + per + " /" + esc(ing.base_unit) + "</div></td>" +
+        '<td style="width:40px"><button class="tiny ghost" data-dx="' + i + '">✕</button></td></tr>';
+    }).join("");
+    var addOpts = S.ingredients.map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + "</option>"; }).join("");
+    var recent = S.invoices.slice(0, 12).map(function (v) {
+      return "<tr><td>" + new Date(v.received_at).toLocaleDateString() + "</td><td>" + esc(v.supplier || "—") + "</td><td>" + esc(v.invoice_no || "—") + '</td><td class="mono">' + Y(v.total) + "</td></tr>";
+    }).join("");
+    el("main").innerHTML =
+      "<section><h2>What arrived?</h2>" +
+      '<div class="panel pad">' +
+      '<div class="row2"><div><label>Supplier</label><div style="display:flex;gap:8px"><select id="dSup" style="flex:1"><option value="">— pick a supplier —</option>' + supOpts + '</select><button class="ghost" id="dNewSup">+ New</button></div></div>' +
+      '<div><label>Invoice number (optional)</label><input id="dNo" value="' + esc(S.inv.invoiceNo) + '" style="width:100%" /></div></div>' +
+      '<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Ingredient</th><th class="mono">Qty</th><th>Unit</th><th class="mono">Cost (' + esc(S.currency) + ')</th><th class="mono">Adds to stock</th><th></th></tr></thead><tbody>' +
+      (lines || '<tr><td colspan="6" class="empty">No lines yet.</td></tr>') + "</tbody></table></div>" +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><select id="dAdd" style="flex:1"><option value="">+ Add a delivery line…</option>' + addOpts + "</select>" +
+      '<button class="primary" id="dPost"' + (S.inv.lines.length ? "" : " disabled") + ">Add to stock</button></div>" +
+      '<p class="hint">Posting updates stock levels instantly and re-averages each ingredient’s cost — no other bookkeeping needed.</p>' +
+      "</div></section>" +
+      "<section><h2>Recent deliveries</h2><div class=\"tbl-wrap\"><table><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th class=\"mono\">Total</th></tr></thead><tbody>" +
+      (recent || '<tr><td colspan="4" class="empty">Nothing yet.</td></tr>') + "</tbody></table></div></section>";
+
+    el("dSup").onchange = function () { S.inv.supplierId = el("dSup").value; };
+    el("dNo").oninput = function () { S.inv.invoiceNo = el("dNo").value; };
+    el("dNewSup").onclick = function () { supplierModal(null, function () { renderDeliveries(); }); };
+    el("dAdd").onchange = function () {
+      if (!el("dAdd").value) return;
+      S.inv.lines.push({ ingredientId: el("dAdd").value, qty: "", unitName: "", cost: "" });
+      renderDeliveries();
+    };
+    el("main").querySelectorAll("[data-dq]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.dq)].qty = i.value; }; i.onchange = renderDeliveries; });
+    el("main").querySelectorAll("[data-dc]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.dc)].cost = i.value; }; i.onchange = renderDeliveries; });
+    el("main").querySelectorAll("[data-du]").forEach(function (s) { s.onchange = function () { S.inv.lines[Number(s.dataset.du)].unitName = s.value; renderDeliveries(); }; });
+    el("main").querySelectorAll("[data-dx]").forEach(function (b) { b.onclick = function () { S.inv.lines.splice(Number(b.dataset.dx), 1); renderDeliveries(); }; });
+    el("dPost").onclick = function () {
+      var body = {
+        supplierId: S.inv.supplierId, invoiceNo: S.inv.invoiceNo,
+        lines: S.inv.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: parseFloat(l.qty) || 0, unitName: l.unitName, cost: Math.round((parseFloat(l.cost) || 0) * 100) }; })
+          .filter(function (l) { return l.qty > 0; }),
+      };
+      if (!body.lines.length) return toast("Enter quantities first");
+      el("dPost").disabled = true;
+      api("/invoices", { method: "POST", body: JSON.stringify(body) })
+        .then(function (r) { S.inv = { supplierId: "", invoiceNo: "", lines: [] }; toast("Stock updated — " + esc(S.currency) + " " + Y(r.total) + " received"); return loadAll(); })
+        .then(render).catch(function (e) { toast(e.message); el("dPost").disabled = false; });
+    };
+  }
+
+  /* ── Suppliers tab ───────────────────────────────────────────────── */
+  function renderSuppliers() {
+    var rows = S.suppliers.map(function (s) {
+      return "<tr><td>" + esc(s.name) + "</td><td>" + esc(s.phone || "—") + "</td><td>" + esc(s.email || "—") + "</td><td>" + esc(s.notes || "") + '</td><td><button class="tiny ghost" data-se="' + s.id + '">Edit</button></td></tr>';
+    }).join("");
+    el("main").innerHTML =
+      '<div class="toolbar"><h2 style="margin:0">Suppliers</h2><button class="primary" id="addSup">+ New supplier</button></div>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Notes</th><th></th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="5" class="empty">No suppliers yet.</td></tr>') + "</tbody></table></div>";
+    el("addSup").onclick = function () { supplierModal(null, renderSuppliers); };
+    el("main").querySelectorAll("[data-se]").forEach(function (b) {
+      b.onclick = function () { supplierModal(S.suppliers.find(function (s) { return s.id === b.dataset.se; }), renderSuppliers); };
+    });
+  }
+
+  function supplierModal(sup, after) {
+    el("modalHost").innerHTML =
+      '<div class="overlay" id="ov"><div class="modal"><h3>' + (sup ? "Edit supplier" : "New supplier") + "</h3>" +
+      '<label>Name</label><input id="sName" value="' + esc(sup ? sup.name : "") + '" style="width:100%" />' +
+      '<div class="row2"><div><label>Phone</label><input id="sPhone" value="' + esc(sup ? sup.phone : "") + '" style="width:100%" /></div>' +
+      '<div><label>Email</label><input id="sEmail" value="' + esc(sup ? sup.email : "") + '" style="width:100%" /></div></div>' +
+      '<label>Notes</label><input id="sNotes" value="' + esc(sup ? sup.notes : "") + '" style="width:100%" />' +
+      '<div class="actions"><button class="ghost" id="sCancel">Cancel</button><button class="primary" id="sSave">Save</button></div></div></div>';
+    el("ov").onclick = function (e) { if (e.target === el("ov")) el("modalHost").innerHTML = ""; };
+    el("sCancel").onclick = function () { el("modalHost").innerHTML = ""; };
+    el("sSave").onclick = function () {
+      var body = { id: sup ? sup.id : undefined, name: el("sName").value.trim(), phone: el("sPhone").value.trim(), email: el("sEmail").value.trim(), notes: el("sNotes").value.trim() };
+      if (!body.name) return toast("Supplier needs a name");
+      api("/suppliers", { method: "POST", body: JSON.stringify(body) })
+        .then(function () { el("modalHost").innerHTML = ""; toast(body.name + " saved"); return loadAll(); })
+        .then(function () { render(); if (after) after(); }).catch(function (e) { toast(e.message); });
+    };
+  }
+
+  /* ── Stock Check tab (guided wizard) ─────────────────────────────── */
+  function renderAudit() {
+    var open = S.audits.find(function (a) { return a.status === "open"; });
+    if (S.wiz && S.wiz.result) return drawWizDone();
+    if (open && (!S.wiz || S.wiz.session.id !== open.id)) {
+      el("main").innerHTML = '<div class="empty">Loading stock check…</div>';
+      return api("/audits/" + encodeURIComponent(open.id)).then(function (r) {
+        var groups = Object.keys(r.byLocation).map(function (loc) { return { location: loc, lines: r.byLocation[loc] }; });
+        S.wiz = { session: r.session, groups: groups, step: 0, entries: {} };
+        groups.forEach(function (g) { g.lines.forEach(function (l) {
+          if (l.counted !== null) S.wiz.entries[l.ingredientId] = { qty: String(l.counted), unitName: "", reason: l.reason || "" };
+        }); });
+        drawWizStep();
+      }).catch(function (e) { toast(e.message); });
+    }
+    if (S.wiz) return S.wiz.step >= S.wiz.groups.length ? drawWizReview() : drawWizStep();
+
+    var last = S.audits.find(function (a) { return a.status === "closed"; });
+    var history = S.audits.filter(function (a) { return a.status === "closed"; }).slice(0, 10).map(function (a) {
+      return "<tr><td>" + esc(a.label || "Stock check") + "</td><td>" + new Date(a.closed_at).toLocaleDateString() + '</td><td class="mono">' + Y(a.closing_value) + '</td><td class="mono">' + Y(a.cogs) + "</td></tr>";
+    }).join("");
+    el("main").innerHTML =
+      '<section><div class="panel pad" style="text-align:center;padding:34px 18px">' +
+      "<h3 style=\"margin:0 0 6px\">Weekly stock check</h3>" +
+      '<p class="sub" style="color:var(--sub);font-size:13px;margin:0 0 18px">' +
+      (last ? "Last check " + new Date(last.closed_at).toLocaleDateString() + " · your kitchen used " + esc(S.currency) + " " + Y(last.cogs) + " that period."
+            : "Walk the store once a week, type what you see, and we’ll do the maths.") + "</p>" +
+      '<button class="primary" id="wStart" style="padding:12px 26px">Start stock check</button>' +
+      '<p class="hint" style="margin-top:12px">~' + S.ingredients.length + " items across " + [...new Set(S.ingredients.map(function (i) { return i.location; }))].join(" · ") + "</p>" +
+      "</div></section>" +
+      "<section><h2>Past checks</h2><div class=\"tbl-wrap\"><table><thead><tr><th>Check</th><th>Date</th><th class=\"mono\">Stock value</th><th class=\"mono\">Kitchen used</th></tr></thead><tbody>" +
+      (history || '<tr><td colspan="4" class="empty">No checks yet — the first one sets your baseline.</td></tr>') + "</tbody></table></div></section>";
+    el("wStart").onclick = function () {
+      if (!S.ingredients.length) return toast("Add ingredients first");
+      api("/audits", { method: "POST", body: JSON.stringify({ label: "Stock check — " + new Date().toLocaleDateString() }) })
+        .then(function () { return api("/audits"); })
+        .then(function (r) { S.audits = r.audits; S.wiz = null; renderAudit(); })
+        .catch(function (e) { toast(e.message); });
+    };
+  }
+
+  function entryBase(l) {
+    var e = S.wiz.entries[l.ingredientId];
+    if (!e || e.qty === "" || e.qty === undefined) return null;
+    var f = 1;
+    if (e.unitName) { var u = (l.units || []).find(function (x) { return x.name === e.unitName; }); f = u ? u.factor : 1; }
+    return (parseFloat(e.qty) || 0) * f;
+  }
+
+  function drawWizStep() {
+    var g = S.wiz.groups[S.wiz.step];
+    var dots = "";
+    for (var i = 0; i <= S.wiz.groups.length; i++) dots += '<i class="' + (i <= S.wiz.step ? "on" : "") + '"></i>';
+    var rows = g.lines.map(function (l, idx) {
+      var e = S.wiz.entries[l.ingredientId] || { qty: "", unitName: "" };
+      var unitOpts = '<option value="">' + esc(l.baseUnit) + "</option>" + (l.units || []).map(function (u) {
+        return '<option value="' + esc(u.name) + '"' + (e.unitName === u.name ? " selected" : "") + ">" + esc(u.name) + "</option>";
+      }).join("");
+      var base = entryBase(l);
+      var d = base === null ? "" : Math.round((base - l.expected) * 1000) / 1000;
+      var dCls = d === "" ? "" : d === 0 ? "zero" : d > 0 ? "up" : "down";
+      var ingRef = ingById(l.ingredientId) || { units: l.units, base_unit: l.baseUnit };
+      return "<tr><td>" + esc(l.name) + '<div class="hint">should be ' + friendlyQty(ingRef, l.expected) + "</div></td>" +
+        '<td class="mono"><input class="num" data-wq="' + idx + '" inputmode="decimal" value="' + esc(e.qty) + '" placeholder="count" style="width:90px" /></td>' +
+        '<td><select data-wu="' + idx + '">' + unitOpts + "</select></td>" +
+        '<td class="mono">' + (d === "" ? '<span class="diff zero">—</span>' : '<span class="diff ' + dCls + '">' + (d > 0 ? "+" : "") + qty3(d) + " " + esc(l.baseUnit) + "</span>") + "</td></tr>";
+    }).join("");
+    el("main").innerHTML =
+      '<div class="steps">' + dots + "</div>" +
+      '<div class="toolbar"><h2 style="margin:0">' + esc(g.location) + ' <span style="text-transform:none;letter-spacing:0;color:var(--faint)">· step ' + (S.wiz.step + 1) + " of " + (S.wiz.groups.length + 1) + "</span></h2>" +
+      "<div>" + (S.wiz.step > 0 ? '<button class="ghost" id="wBack">Back</button> ' : "") + '<button class="primary" id="wNext">Save &amp; continue</button></div></div>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="mono">You counted</th><th>In</th><th class="mono">Difference</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="hint">Count in whatever’s easiest — cases, bottles or ' + "base units — we convert. Leave blank anything you didn’t check.</p>";
+    g.lines.forEach(function (l, idx) {
+      var qi = el("main").querySelector('[data-wq="' + idx + '"]'), ui = el("main").querySelector('[data-wu="' + idx + '"]');
+      qi.oninput = function () {
+        S.wiz.entries[l.ingredientId] = Object.assign(S.wiz.entries[l.ingredientId] || {}, { qty: qi.value, unitName: ui.value });
+        var base = entryBase(l), cell = qi.closest("tr").lastElementChild;
+        if (base === null) cell.innerHTML = '<span class="diff zero">—</span>';
+        else { var d = Math.round((base - l.expected) * 1000) / 1000; cell.innerHTML = '<span class="diff ' + (d === 0 ? "zero" : d > 0 ? "up" : "down") + '">' + (d > 0 ? "+" : "") + qty3(d) + " " + esc(l.baseUnit) + "</span>"; }
+      };
+      ui.onchange = function () { S.wiz.entries[l.ingredientId] = Object.assign(S.wiz.entries[l.ingredientId] || { qty: "" }, { unitName: ui.value }); qi.oninput(); };
+    });
+    if (el("wBack")) el("wBack").onclick = function () { S.wiz.step--; drawWizStep(); };
+    el("wNext").onclick = function () {
+      saveCounts(g.lines).then(function () { S.wiz.step++; S.wiz.step >= S.wiz.groups.length ? drawWizReview() : drawWizStep(); }).catch(function (e) { toast(e.message); });
+    };
+  }
+
+  function saveCounts(lines) {
+    var counts = lines.map(function (l) {
+      var e = S.wiz.entries[l.ingredientId];
+      if (!e || e.qty === "" || e.qty === undefined) return null;
+      return { ingredientId: l.ingredientId, qty: parseFloat(e.qty) || 0, unitName: e.unitName || "", reason: e.reason || undefined };
+    }).filter(Boolean);
+    if (!counts.length) return Promise.resolve();
+    return api("/audits/" + encodeURIComponent(S.wiz.session.id) + "/counts", { method: "PUT", body: JSON.stringify({ counts: counts }) });
+  }
+
+  function drawWizReview() {
+    var flagged = [];
+    S.wiz.groups.forEach(function (g) { g.lines.forEach(function (l) {
+      var base = entryBase(l);
+      if (base === null) return;
+      var v = base - l.expected;
+      var pct = Math.abs(l.expected) > 0 ? Math.abs(v) / Math.abs(l.expected) * 100 : (v !== 0 ? 100 : 0);
+      if (pct > 5) flagged.push({ l: l, v: v, pct: Math.round(pct * 10) / 10 });
+    }); });
+    var dots = "";
+    for (var i = 0; i <= S.wiz.groups.length; i++) dots += '<i class="on"></i>';
+    var rows = flagged.map(function (f, idx) {
+      var e = S.wiz.entries[f.l.ingredientId] || {};
+      return "<tr><td>" + esc(f.l.name) + '<div class="hint">' + esc(f.l.baseUnit) + "</div></td>" +
+        '<td class="mono"><span class="diff ' + (f.v > 0 ? "up" : "down") + '">' + (f.v > 0 ? "+" : "") + qty3(f.v) + " (" + f.pct + "%)</span></td>" +
+        '<td><div class="chips" data-fc="' + idx + '">' + REASONS.map(function (r) {
+          return '<button data-r="' + r + '" class="' + (e.reason === r ? "on" : "") + '">' + r + "</button>";
+        }).join("") + "</div></td></tr>";
+    }).join("");
+    el("main").innerHTML =
+      '<div class="steps">' + dots + "</div>" +
+      '<div class="toolbar"><h2 style="margin:0">Anything look off?</h2>' +
+      '<div><button class="ghost" id="wBack">Back</button> <button class="primary" id="wClose">Finish stock check</button></div></div>' +
+      (flagged.length
+        ? '<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="mono">Difference</th><th>What happened?</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+          '<p class="hint">These are more than 5% off what the system expected. A quick reason keeps your reports honest — no adjustments to type.</p>'
+        : '<div class="panel pad" style="text-align:center;padding:30px"><b>Everything matches 👌</b><div class="hint" style="margin-top:6px">All counts are within 5% of what the system expected.</div></div>');
+    el("main").querySelectorAll("[data-fc]").forEach(function (div) {
+      var f = flagged[Number(div.dataset.fc)];
+      div.querySelectorAll("button").forEach(function (b) {
+        b.onclick = function () {
+          var e = S.wiz.entries[f.l.ingredientId];
+          e.reason = e.reason === b.dataset.r ? "" : b.dataset.r;
+          div.querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x.dataset.r === e.reason); });
+        };
+      });
+    });
+    el("wBack").onclick = function () { S.wiz.step = S.wiz.groups.length - 1; drawWizStep(); };
+    el("wClose").onclick = function () {
+      el("wClose").disabled = true;
+      var all = []; S.wiz.groups.forEach(function (g) { all = all.concat(g.lines); });
+      saveCounts(all)
+        .then(function () { return api("/audits/" + encodeURIComponent(S.wiz.session.id) + "/close", { method: "POST", body: "{}" }); })
+        .then(function (r) { S.wiz.result = r; return loadAll(); })
+        .then(drawWizDone)
+        .catch(function (e) { toast(e.message); el("wClose").disabled = false; });
+    };
+  }
+
+  function drawWizDone() {
+    var r = S.wiz.result;
+    el("main").innerHTML =
+      '<div class="panel bigstat"><div class="l">Your kitchen used this period</div>' +
+      '<div class="n">' + esc(S.currency) + " " + Y(r.cogs) + "</div>" +
+      '<div class="l" style="margin-top:10px">Started at ' + Y(r.openingValue) + " · deliveries " + Y(r.purchasesValue) + " · counted " + Y(r.closingValue) + "</div>" +
+      (r.flaggedForReview ? '<div style="margin-top:12px"><span class="badge amber">' + r.flaggedForReview + " item(s) had notable differences</span></div>" : "") +
+      '<div style="margin-top:20px"><button class="primary" id="wDone">Done</button></div></div>';
+    el("wDone").onclick = function () { S.wiz = null; renderAudit(); };
+  }
+
+  /* ── boot ────────────────────────────────────────────────────────── */
+  loadAll().then(render).catch(function (e) {
+    el("main").innerHTML = '<div class="empty">Couldn’t load the back office: ' + esc(e.message) + "</div>";
+  });
+})();
+</script>
+</body>
+</html>
