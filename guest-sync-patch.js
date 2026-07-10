@@ -569,9 +569,64 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{children:[h.jsxs("div",{className:`text-xs mb-1 ${_.sub}`,children:["Credit limit (",ce.currency,") — 0 or blank disables the cap"]}),h.jsx("input",{value:Xt.creditLimit,inputMode:"decimal",onChange:f=>tn({...Xt,creditLimit:f.target.value.replace(/[^0-9.]/g,"")}),placeholder:"e.g. 5000.00",className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsx("button",{onClick:pI',
     'h.jsxs("div",{children:[h.jsxs("div",{className:`text-xs mb-1 ${_.sub}`,children:["Credit limit (",ce.currency,") — 0 or blank disables the cap"]}),h.jsx("input",{value:Xt.creditLimit,inputMode:"decimal",onChange:f=>tn({...Xt,creditLimit:f.target.value.replace(/[^0-9.]/g,"")}),placeholder:"e.g. 5000.00",className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),br("refund")&&h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Auto-discount on bills (%) — admin only"}),h.jsx("input",{value:Xt.discPct||"",inputMode:"decimal",onChange:f=>tn({...Xt,discPct:f.target.value.replace(/[^0-9.]/g,"")}),placeholder:"e.g. 10 for 10%",className:`w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none ${_.input}`})]}),h.jsx("button",{onClick:pI'
   )
+
+  /* ── Order-settlement parity (guest/QR + POS orders settled from the Orders tab) ──
+     Guest-profile orders were settled through B1/the settle modal with none of the
+     billing features the register has: no item or bill discounts, no GST-exempt
+     handling (guest lines had no taxable flag until the server started copying it),
+     and no visible GST/service-charge breakdown. Patches 27-29 give that path the
+     exact same math ($n), the same discount controls (gated to admin/manager via
+     br("refund"), same as the register), and the same on-screen breakdown, so a
+     settled guest order produces a sale — and therefore a receipt — identical in
+     format to a cashier-created bill. */
+
+  /* 27a. B1 head: enrich legacy lines with taxable (looked up from products by pid),
+     resolve the effective bill discount (manual from the modal via f.KshBD, else the
+     customer's auto-discount — skipped for paid-online orders whose amount is already
+     fixed), and pass it into $n. Find is consumed: $n(f.items,...) no longer exists. */
+  .replace(
+    'Q("Open a shift before settling orders","warn");const N=$n(f.items,f.fee||0);if(A==="Credit")',
+    'Q("Open a shift before settling orders","warn");const Ki=(f.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1}),Kc=f.customerId?p.find(W=>W.id===f.customerId):null,Kb=(f.KshBD||0)>0?f.KshBD:f.paidOnline?0:Kc&&Kc.discPct||0,N=$n(Ki,f.fee||0,Kb);if(A==="Credit")'
+  )
+  /* 27b. Sale lines come from the enriched/discount-edited items */
+  .replace(
+    't:Date.now(),lines:f.items,...N',
+    't:Date.now(),lines:Ki,...N'
+  )
+  /* 27c. Stock deduction uses the same enriched lines */
+  .replace(
+    'De.id};if(sd(f.items),f.customerId)',
+    'De.id};if(sd(Ki),f.customerId)'
+  )
+  /* 27d. Persist edited items + final settled total onto the order itself, so the
+     guest's order history (server normalizeOrder honours a stored total) shows the
+     exact amount that was billed, discounts included. */
+  .replace(
+    'x(j=>j.map(F=>F.id===f.id?{...F,status:"completed",call:!1,saleId:I.id,settledWith:A}:F))',
+    'x(j=>j.map(F=>F.id===f.id?{...F,status:"completed",call:!1,saleId:I.id,settledWith:A,items:Ki,total:N.total}:F))'
+  )
+
+  /* 28. Settle modal: itemised rows with per-line discount buttons (0→5→10→20%,
+     same cycle as the register's GT, gated to admin/manager). Edits live on the
+     modal's own Rn state so B1 receives them on settle. */
+  .replace(
+    'h.jsx("div",{className:`text-xs mb-3 ${_.sub}`,children:Rn.items.map(f=>`${f.qty}× ${f.name}`).join(" · ")})',
+    'h.jsx("div",{className:`text-xs mb-3 space-y-1 ${_.sub}`,children:Rn.items.map((f,A)=>h.jsxs("div",{className:"flex items-center gap-2",children:[h.jsxs("span",{className:"flex-1",children:[f.qty,"× ",f.name]}),br("refund")&&h.jsx("button",{onClick:()=>As({...Rn,items:Rn.items.map((N,I)=>{if(I!==A)return N;const j=[0,5,10,20];return{...N,discPct:j[(j.indexOf(N.discPct||0)+1)%j.length]}})}),className:`text-xs px-2 py-0.5 rounded-lg ${f.discPct?"bg-amber-500/15 text-amber-500":_.chip}`,children:f.discPct?`-${f.discPct}%`:"disc"}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Un(f))})]},A))})'
+  )
+
+  /* 29. Settle modal: replace the bare "Amount due" figure with the register's full
+     breakdown (subtotal / bill discount / GST / service charge / total) plus the
+     bill-discount cycle button (0→5→10→15→20→25%, admin/manager only). Discounts
+     are applied to the pre-tax amount: $n discounts the subtotal first, then
+     computes GST on the discounted taxable base. Find is consumed:
+     ue($n(Rn.items,...)) no longer exists after patching. */
+  .replace(
+    'h.jsxs("div",{className:"text-center my-4",children:[h.jsx("div",{className:`text-xs ${_.sub}`,children:"Amount due"}),h.jsx("div",{className:"font-mono tabular-nums text-3xl font-bold",children:ue($n(Rn.items,Rn.fee||0).total)})]})',
+    '(()=>{const Kc=Rn.customerId?p.find(W=>W.id===Rn.customerId):null,Kb=(Rn.KshBD||0)>0?Rn.KshBD:Rn.paidOnline?0:Kc&&Kc.discPct||0,Kq=$n((Rn.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1}),Rn.fee||0,Kb);return h.jsxs("div",{className:"my-4",children:[br("refund")&&!Rn.paidOnline&&h.jsx("button",{onClick:()=>{const j=[0,5,10,15,20,25];As({...Rn,KshBD:j[(j.indexOf(Rn.KshBD||0)+1)%j.length]})},className:`rounded-xl px-3 py-1 text-xs mb-2 ${(Rn.KshBD||0)>0?"bg-amber-500/15 text-amber-500":_.chip}`,children:(Rn.KshBD||0)>0?"Bill disc "+Rn.KshBD+"%":"+ Bill disc"}),h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsx("span",{children:"Subtotal"}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Kq.subtotal)})]}),(Kq.billDisc||0)>0&&h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["Discount ",Kq.billDiscPct,"%"]}),h.jsx("span",{className:"font-mono tabular-nums text-amber-500",children:"-"+Y(Kq.billDisc)})]}),h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["GST ",(ce.gstBp||0)/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Kq.gst)})]}),(Kq.svcCharge||0)>0&&h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["Svc charge ",(ce.svcChargeBp||0)/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Kq.svcCharge)})]}),h.jsxs("div",{className:"text-center mt-3",children:[h.jsx("div",{className:`text-xs ${_.sub}`,children:"Amount due"}),h.jsx("div",{className:"font-mono tabular-nums text-3xl font-bold",children:ue(Kq.total)})]})]})})()'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.15"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.16"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

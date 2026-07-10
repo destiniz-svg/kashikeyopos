@@ -365,9 +365,14 @@ async function kindAll(orgId, kind, storeId = DEFAULT_STORE_ID) {
 
 const lineTotal = (l) => Math.round(Number(l.price || 0) * Number(l.qty || 1) * (1 - (Number(l.discPct || 0)) / 100));
 const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (Number(o.fee) || 0);
+/* Mirrors the till's $n checkout math exactly (see guest-sync-patch.js #3):
+   GST only on taxable lines (products can be GST-exempt), service charge on
+   the full subtotal — so what a guest sees for an open order matches what
+   the cashier settles it for. */
 const orderTotal = (o, settings = {}) => {
   const sub = orderSubtotal(o);
-  const gst = Math.round(sub * (Number(settings.gstBp || 800)) / 10000);
+  const taxBase = (o.items || []).reduce((x, l) => l.taxable === false ? x : x + lineTotal(l), 0) + (Number(o.fee) || 0);
+  const gst = Math.round(taxBase * (Number(settings.gstBp || 800)) / 10000);
   const svc = Math.round(sub * (Number(settings.svcChargeBp || 0)) / 10000);
   return sub + gst + svc;
 };
@@ -796,7 +801,7 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
     const p = products.find((x) => String(x.id) === pid);
     const src = p || ci;
     if (!src || (!pid && !src.name)) return null;
-    return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: Number(src.price) || 0, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0 };
+    return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: Number(src.price) || 0, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false };
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
   const otype = gtype === "delivery" ? "delivery" : gtype === "pickup" ? "takeaway" : "dinein";
