@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Developer panel — KashikeyoPOS</title>
-<link rel="icon" href="/icon-192.png" />
+<link rel="icon" href="/logo-mark.svg" />
 <style>
   :root {
     --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
@@ -26,11 +26,8 @@
     border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
   }
   .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-  .logo-mark {
-    width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color: #fff;
-    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
-  }
-  .logo-text { font-weight: 700; font-size: 16px; }
+  .logo-img { display: block; height: 30px; width: auto; }
+  .logo-text { font-weight: 700; font-size: 16px; color: var(--sub); }
   h1 { font-size: 19px; margin: 0 0 4px; }
   p.sub { color: var(--sub); font-size: 13px; margin: 0 0 20px; }
   label { display: block; font-size: 13px; color: var(--sub); margin: 14px 0 6px; }
@@ -94,7 +91,7 @@
 
 <div id="gate">
   <div class="card">
-    <div class="logo"><div class="logo-mark">K</div><div class="logo-text">Developer panel</div></div>
+    <div class="logo"><img class="logo-img" src="/logo-mark.svg" alt="KashikeyoPOS" /><div class="logo-text">Developer panel</div></div>
     <h1>Sign in</h1>
     <p class="sub">Restricted to KashikeyoPOS staff.</p>
     <form id="gateForm">
@@ -111,7 +108,7 @@
 <div id="dash">
   <header>
     <div class="bar">
-      <div class="logo"><div class="logo-mark">K</div><div class="logo-text">Developer panel</div></div>
+      <div class="logo"><img class="logo-img" src="/logo-mark.svg" alt="KashikeyoPOS" /><div class="logo-text">Developer panel</div></div>
       <div style="display:flex;align-items:center;gap:14px;">
         <span class="who">Signed in as <b id="whoName"></b></span>
         <button class="ghost" id="signOut">Sign out</button>

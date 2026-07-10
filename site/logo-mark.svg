@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 132" role="img" aria-label="KashikeyoPOS">
+  <title>KashikeyoPOS</title>
+  <!-- grey cap -->
+  <polygon points="36,32 46,13 52,13 52,32" fill="#e0e0e0"/>
+  <polygon points="52,32 52,13 60,13 70,32" fill="#bfbfbf"/>
+  <polygon points="46,13 60,13 52,20" fill="#efefef"/>
+  <!-- red body -->
+  <polygon points="30,31 52,31 52,59 18,61" fill="#e5432f"/>
+  <polygon points="52,31 74,31 86,61 52,59" fill="#cb3121"/>
+  <polygon points="18,61 52,59 52,87 31,87" fill="#f2604c"/>
+  <polygon points="52,59 86,61 74,87 52,87" fill="#b92a1b"/>
+  <polygon points="49,31 55,31 55,87 49,87" fill="#e5432f" opacity=".55"/>
+  <!-- green base -->
+  <polygon points="24,85 52,85 52,105 10,105" fill="#8fc47d"/>
+  <polygon points="52,85 80,85 94,105 52,105" fill="#6fae5b"/>
+  <polygon points="10,105 52,105 52,123 25,123" fill="#a9d195"/>
+  <polygon points="52,105 94,105 80,123 52,123" fill="#5f9b4d"/>
+</svg>
