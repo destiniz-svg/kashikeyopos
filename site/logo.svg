@@ -2,22 +2,19 @@
   <title>KashikeyoPOS</title>
   <!-- Low-poly "kashikeyo" mark -->
   <g>
-    <!-- grey faceted cap -->
-    <polygon points="54,10 74,10 80,22 48,22" fill="#e6e6e6"/>
-    <polygon points="48,22 64,22 64,33 48,32" fill="#cfcfcf"/>
-    <polygon points="64,22 80,22 80,32 64,33" fill="#a9a9a9"/>
-    <polygon points="58,10 70,10 64,14" fill="#f4f4f4"/>
-    <!-- red faceted body -->
-    <polygon points="48,32 64,32 64,62 30,62" fill="#e5432f"/>
-    <polygon points="64,32 80,32 98,62 64,62" fill="#c5301f"/>
-    <polygon points="30,62 64,62 64,90 18,104" fill="#f0563f"/>
-    <polygon points="98,62 64,62 64,90 110,104" fill="#b62a1a"/>
-    <polygon points="60,32 68,32 68,90 60,90" fill="#f7806e" opacity=".45"/>
-    <!-- green faceted base -->
-    <polygon points="18,104 64,90 64,120 20,122" fill="#8fc47d"/>
-    <polygon points="110,104 64,90 64,120 108,122" fill="#639e4e"/>
-    <polygon points="20,122 64,120 64,144 58,150 26,150" fill="#a9d195"/>
-    <polygon points="108,122 64,120 64,144 70,150 102,150" fill="#588f45"/>
+    <polygon points="52,9 76,9 82,21 46,21" fill="#e4e4e4"/>
+    <polygon points="46,21 64,21 64,32 49,31" fill="#c9c9c9"/>
+    <polygon points="64,21 82,21 79,31 64,32" fill="#a6a6a6"/>
+    <polygon points="57,9 71,9 64,13" fill="#f2f2f2"/>
+    <polygon points="44,30 64,30 64,60 28,62" fill="#e5432f"/>
+    <polygon points="64,30 84,30 100,62 64,60" fill="#c5301f"/>
+    <polygon points="28,62 64,60 64,80 14,98" fill="#f0563f"/>
+    <polygon points="100,62 64,60 64,80 114,98" fill="#b62a1a"/>
+    <polygon points="60,30 68,30 68,80 60,80" fill="#f7806e" opacity=".45"/>
+    <polygon points="14,98 64,80 64,118 18,121" fill="#8fc47d"/>
+    <polygon points="114,98 64,80 64,118 110,121" fill="#639e4e"/>
+    <polygon points="18,121 64,118 64,144 58,150 26,150" fill="#a9d195"/>
+    <polygon points="110,121 64,118 64,144 70,150 102,150" fill="#588f45"/>
   </g>
   <!-- wordmark -->
   <text x="150" y="86" font-family="'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif"
