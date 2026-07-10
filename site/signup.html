@@ -168,10 +168,9 @@
   <script src="/oauth.js"></script>
   <script>
     (function () {
-      try {
-        if (localStorage.getItem("kashikeyo-cloud")) { location.replace("/app"); return; }
-      } catch (e) {}
-
+      // "Already signed in?" is decided server-side by the session cookie
+      // (redirectIfAppSession on GET /signup), never by a possibly-stale
+      // localStorage token - that mismatch caused a /signup->/app->/login loop.
       window.KashikeyoOAuth.init({
         boxId: "oauthBox", googleId: "googleBtn", appleId: "appleBtn", dividerId: "oauthDivider",
         onError: function (msg) { var e = document.getElementById("err1"); e.textContent = msg; e.style.display = "block"; },
