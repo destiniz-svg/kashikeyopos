@@ -867,6 +867,21 @@ patchFile(indexPath, (html) => html
     'h.jsx("button",{onClick:()=>{uu(A=>A.filter(N=>N.id!==f.id));try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"})'
   )
 
+  /* 53. Tablet/phone POS order drawer clipped its footer off-screen. Below
+     the lg breakpoint the cart moves into a bottom-sheet fixed at height:85vh
+     that held a drag handle *and* the cart body Jw (flex flex-col h-full).
+     Because the sheet was a plain block, Jw's h-full resolved to 100% of the
+     full 85vh — so stacked under the handle and the p-4 padding the total
+     overflowed the sheet and the totals + Charge button fell below the
+     viewport, unreachable. Make the sheet a flex column and give Jw a
+     flex-1 slot (minHeight:0 inline — min-h-0 isn't in the purged CSS) so it
+     fills only the space left under the handle and its inner list scrolls.
+     Find lacks "flex flex-col", so this is a no-op on re-bakes. */
+  .replace(
+    'className:`w-full rounded-t-3xl p-4 ${_.modal}`,style:{height:"85vh"},children:[h.jsx("div",{className:`w-10 h-1 rounded-full mx-auto mb-3 ${i?"bg-slate-700":"bg-slate-300"}`}),Jw]})',
+    'className:`w-full rounded-t-3xl p-4 flex flex-col ${_.modal}`,style:{height:"85vh"},children:[h.jsx("div",{className:`w-10 h-1 rounded-full mx-auto mb-3 shrink-0 ${i?"bg-slate-700":"bg-slate-300"}`}),h.jsx("div",{className:"flex-1",style:{minHeight:0},children:Jw})]})'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1022,6 +1037,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.29"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.30"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
