@@ -279,6 +279,35 @@ const sndJs = `(function(){
   };
 })();`;
 
+/* ── Dashboard chart ──────────────────────────────────────────────────────
+   The bundle only tree-shook Recharts' BarChart in, so the line/area view is
+   drawn as hand-built SVG. window.__ksChart returns an <svg> string holding
+   both a line+area group and a bar group; the visible one is chosen from the
+   localStorage mode (default "line"). The Line/Bars toggle flips them via the
+   DOM — React state would reset on the dashboard's data-poll re-render. */
+const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
+window.__ksChart=function(data,pal){
+  var mode=window.__ksChartMode();
+  var W=320,H=120,PL=2,PR=2,PT=8,PB=6,D=data||[],n=D.length||1,max=1;
+  D.forEach(function(d){ if(d.v>max) max=d.v; });
+  function X(i){ return n<=1?W/2:PL+i*(W-PL-PR)/(n-1); }
+  function Y(v){ return H-PB-(v/max)*(H-PT-PB); }
+  var lp='';D.forEach(function(d,i){ lp+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(d.v).toFixed(1)+' '; });
+  var ap=D.length?('M'+X(0).toFixed(1)+' '+(H-PB)+' '+lp.replace(/^M/,'L')+'L'+X(D.length-1).toFixed(1)+' '+(H-PB)+' Z'):'';
+  var bw=Math.max(2,(W-PL-PR)/n*0.6),bars='';
+  D.forEach(function(d,i){ var by=Y(d.v); bars+='<rect x="'+(X(i)-bw/2).toFixed(1)+'" y="'+by.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0.5,(H-PB)-by).toFixed(1)+'" rx="2" fill="'+pal.bar+'"/>'; });
+  var grid='';for(var g=1;g<=3;g++){ var gy=(PT+(H-PT-PB)*g/4).toFixed(1); grid+='<line x1="'+PL+'" y1="'+gy+'" x2="'+(W-PR)+'" y2="'+gy+'" stroke="'+pal.grid+'" stroke-width="0.6" stroke-dasharray="3 4"/>'; }
+  var lineG='<g class="ksch-line" style="'+(mode==='bar'?'display:none':'')+'"><path d="'+ap+'" fill="url(#ksgrad)"/><path d="'+lp+'" fill="none" stroke="'+pal.bar+'" stroke-width="2.4" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></g>';
+  var barG='<g class="ksch-bar" style="'+(mode==='bar'?'':'display:none')+'">'+bars+'</g>';
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><defs><linearGradient id="ksgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+pal.bar+'" stop-opacity="0.30"/><stop offset="1" stop-color="'+pal.bar+'" stop-opacity="0.02"/></linearGradient></defs>'+grid+lineG+barG+'</svg>';
+};
+window.__ksChartToggle=function(mode){
+  try{ localStorage.setItem('ksh-chart',mode); }catch(e){}
+  document.querySelectorAll('.ksch-line').forEach(function(el){ el.style.display=mode==='bar'?'none':''; });
+  document.querySelectorAll('.ksch-bar').forEach(function(el){ el.style.display=mode==='bar'?'':'none'; });
+  document.querySelectorAll('[data-kscht]').forEach(function(b){ b.setAttribute('data-on', b.getAttribute('data-kscht')===mode?'1':'0'); });
+};`;
+
 function injectCss(html, css) {
   if (html.includes(css)) return html;
   return html.replace("</style>", css + "</style>");
@@ -304,6 +333,8 @@ patchFile(indexPath, (html) => {
   html = injectCss(html, themeVarsCss + themeUtilCss);
   html = injectInline(html, "ksh-kpal", kpalJs);
   html = injectInline(html, "ksh-snd", sndJs);
+  html = injectInline(html, "ksh-chart", chartJs);
+  html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   .replace(
     '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
@@ -737,6 +768,45 @@ patchFile(indexPath, (html) => html
     'storeId:Sd})}),window.__ksnd&&window.__ksnd.play("status",{force:!0}),Q("🔔 We\'re on our way!")}catch'
   )
 
+  /* 45. Dashboard chart: default to a line+area view with a Line/Bars toggle.
+     Replaces the Recharts bar chart with hand-drawn SVG (window.__ksChart via
+     dangerouslySetInnerHTML) plus a segmented toggle and an hour-label row. */
+  .replace(
+    'chart:h.jsxs("div",{className:`rounded-2xl p-4 ${_.panel}`,children:[h.jsx("div",{className:"text-sm font-semibold mb-3",children:"Sales by hour (today)"}),h.jsx("div",{className:"h-44",children:h.jsx(VA,{width:"100%",height:"100%",children:h.jsxs(gC,{data:Ir.hours,margin:{top:4,right:4,left:-18,bottom:0},children:[h.jsx(D5,{strokeDasharray:"3 3",stroke:_.grid,vertical:!1}),h.jsx(Af,{dataKey:"h",tick:{fontSize:10,fill:_.axis},axisLine:!1,tickLine:!1}),h.jsx(e1,{tick:{fontSize:10,fill:_.axis},axisLine:!1,tickLine:!1}),h.jsx(Bi,{cursor:{fill:"transparent"},formatter:f=>[ce.currency+" "+f.toFixed(2),"Sales"],contentStyle:{background:_.tipBg,border:"1px solid "+_.grid,borderRadius:10,fontSize:12}}),h.jsx(fo,{dataKey:"v",fill:_.bar,radius:[5,5,0,0]})]})})})]})',
+    'chart:h.jsxs("div",{className:`rounded-2xl p-4 ${_.panel}`,children:[h.jsxs("div",{className:"flex items-center justify-between mb-3",children:[h.jsx("div",{className:"text-sm font-semibold",children:"Sales by hour (today)"}),h.jsxs("div",{className:`flex gap-0.5 rounded-lg p-0.5 ${_.panel2}`,children:[h.jsx("button",{"data-kscht":"line","data-on":window.__ksChartMode&&window.__ksChartMode()==="bar"?"0":"1",onClick:()=>window.__ksChartToggle&&window.__ksChartToggle("line"),className:"ksch-tab px-2.5 py-1 rounded-md text-xs font-semibold",children:"Line"}),h.jsx("button",{"data-kscht":"bar","data-on":window.__ksChartMode&&window.__ksChartMode()==="bar"?"1":"0",onClick:()=>window.__ksChartToggle&&window.__ksChartToggle("bar"),className:"ksch-tab px-2.5 py-1 rounded-md text-xs font-semibold",children:"Bars"})]})]}),h.jsx("div",{className:"h-44",dangerouslySetInnerHTML:{__html:window.__ksChart?window.__ksChart(Ir.hours,_):""}}),h.jsx("div",{className:`flex justify-between mt-1.5 text-xs ${_.faint}`,children:(Ir.hours||[]).filter((d,i)=>i%4===0||i===(Ir.hours.length-1)).map((d,i)=>h.jsx("span",{children:d.h},i))})]})'
+  )
+
+  /* 46. Dashboard KPI tiles: bigger number + uppercase label for a cleaner,
+     more premium look. */
+  .replace(
+    'vd=(f,A,N)=>h.jsxs("div",{className:`rounded-2xl p-4 ${_.panel}`,children:[h.jsx("div",{className:`text-xs ${_.sub}`,children:f}),h.jsx("div",{className:`font-mono tabular-nums text-lg font-bold mt-1 ${N||""}`,children:A})]})',
+    'vd=(f,A,N)=>h.jsxs("div",{className:`rounded-2xl p-4 ${_.panel}`,children:[h.jsx("div",{className:`text-xs uppercase tracking-wide ${_.sub}`,children:f}),h.jsx("div",{className:`font-mono tabular-nums text-2xl font-bold mt-1 ${N||_.accent}`,children:A})]})'
+  )
+
+  /* 47. Member card revamp (guest portal): a glassy, tier-coloured membership
+     card — Bronze/Silver/Gold gradient, medal watermark, member name + code,
+     points and progress. 47a = header + name, 47b = progress + hint colours,
+     47c = the "usuals" chips restyled to read on the gradient. */
+  .replace(
+    'return h.jsxs("div",{className:`rounded-2xl p-4 mb-3 ${_.panel}`,children:[h.jsxs("div",{className:"flex items-center justify-between mb-1.5",children:[h.jsxs("span",{className:"text-sm font-bold",children:[tr==="Gold"?"🥇":tr==="Silver"?"🥈":"🥉"," ",tr," member"]}),h.jsxs("span",{className:`text-xs font-mono ${_.sub}`,children:[pt," pts"]})]}),',
+    'var _tc=tr==="Gold"?{g:"linear-gradient(135deg,#F6D869 0%,#C99A1E 100%)",b:"rgba(214,175,54,.65)",t:"#3a2e00",m:"🥇",tag:"GOLD MEMBER"}:tr==="Silver"?{g:"linear-gradient(135deg,#EEF0F3 0%,#AEB4BE 100%)",b:"rgba(174,180,190,.75)",t:"#2a2e35",m:"🥈",tag:"SILVER MEMBER"}:{g:"linear-gradient(135deg,#E6A972 0%,#A9683B 100%)",b:"rgba(169,104,59,.65)",t:"#3a2410",m:"🥉",tag:"BRONZE MEMBER"},_code="NO. "+String(j.id||"").replace(/[^a-zA-Z0-9]/g,"").slice(-6).toUpperCase();return h.jsxs("div",{style:{position:"relative",overflow:"hidden",borderRadius:"18px",padding:"18px",marginBottom:"12px",background:_tc.g,border:"1px solid "+_tc.b,boxShadow:"0 12px 32px rgba(0,0,0,.22)",color:_tc.t},children:[h.jsx("div",{style:{position:"absolute",inset:0,background:"linear-gradient(120deg,rgba(255,255,255,.45),transparent 44%)",pointerEvents:"none"}}),h.jsx("div",{style:{position:"absolute",right:"-14px",top:"-22px",fontSize:"96px",opacity:.18,pointerEvents:"none",lineHeight:1},children:_tc.m}),h.jsxs("div",{style:{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between"},children:[h.jsxs("div",{style:{display:"flex",alignItems:"center",gap:"9px"},children:[h.jsx("span",{style:{fontSize:"26px"},children:_tc.m}),h.jsxs("div",{children:[h.jsx("div",{style:{fontSize:"11px",fontWeight:800,letterSpacing:".07em",opacity:.9},children:_tc.tag}),h.jsx("div",{style:{fontSize:"10px",fontFamily:"ui-monospace,monospace",opacity:.72,marginTop:"1px"},children:_code})]})]}),h.jsxs("div",{style:{textAlign:"right"},children:[h.jsx("div",{style:{fontSize:"23px",fontWeight:800,fontFamily:"ui-monospace,monospace",lineHeight:1},children:pt}),h.jsx("div",{style:{fontSize:"10px",opacity:.78},children:"points"})]})]}),h.jsx("div",{style:{position:"relative",fontSize:"20px",fontWeight:700,marginTop:"14px"},children:j.name}),'
+  )
+  .replace(
+    'h.jsx("div",{style:{height:"6px",borderRadius:"3px",background:"rgba(128,128,128,.18)",overflow:"hidden"},children:h.jsx("div",{style:{width:pc+"%",height:"100%",borderRadius:"3px",background:_.bar,transition:"width .4s"}})}),h.jsx("div",{className:`text-xs mt-1.5 ${_.faint}`,children:nx?nx[1]-pt+" pts to "+nx[0]+" — you earn points on every order":"Top tier — thanks for being a regular ⭐"}),',
+    'h.jsx("div",{style:{position:"relative",height:"7px",borderRadius:"4px",background:"rgba(0,0,0,.16)",overflow:"hidden",marginTop:"14px"},children:h.jsx("div",{style:{width:pc+"%",height:"100%",borderRadius:"4px",background:"rgba(255,255,255,.9)",transition:"width .5s"}})}),h.jsx("div",{style:{position:"relative",fontSize:"11.5px",marginTop:"7px",opacity:.9,fontWeight:600},children:nx?nx[1]-pt+" pts to "+nx[0]+" ✨":"Top tier — thank you for being a regular 👑"}),'
+  )
+  .replace(
+    'h.jsxs("div",{className:"mt-3",children:[h.jsx("div",{className:`text-xs font-semibold mb-1.5 ${_.sub}`,children:"Your usuals — tap to reorder"}),h.jsx("div",{className:"flex gap-1.5 flex-wrap",children:fav.map(x=>h.jsxs("button",{onClick:()=>{$1(x.pid,1);Q(`${x.name} added to your cart`)},className:`px-3 py-1.5 rounded-full text-xs font-semibold ${_.chip}`,children:',
+    'h.jsxs("div",{style:{position:"relative"},className:"mt-3",children:[h.jsx("div",{style:{fontSize:"11px",fontWeight:700,marginBottom:"6px",opacity:.85},children:"Your usuals — tap to reorder"}),h.jsx("div",{className:"flex gap-1.5 flex-wrap",children:fav.map(x=>h.jsxs("button",{onClick:()=>{$1(x.pid,1);Q(`${x.name} added to your cart`)},style:{background:"rgba(255,255,255,.6)",color:"inherit"},className:"px-3 py-1.5 rounded-full text-xs font-semibold",children:'
+  )
+
+  /* 48. Dashboard payment-mix bar was a hardcoded bg-cyan-500 — recolour it
+     from the theme accent so it matches the store's palette. */
+  .replace(
+    'h.jsx("div",{className:"h-1.5 rounded-full bg-cyan-500",style:{width:Math.round(A/Ir.gross*100)+"%"}})',
+    'h.jsx("div",{className:"h-1.5 rounded-full",style:{width:Math.round(A/Ir.gross*100)+"%",background:_.bar}})'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -892,6 +962,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.26"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.27"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
