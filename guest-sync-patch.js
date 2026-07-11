@@ -882,6 +882,39 @@ patchFile(indexPath, (html) => html
     'className:`w-full rounded-t-3xl p-4 flex flex-col ${_.modal}`,style:{height:"85vh"},children:[h.jsx("div",{className:`w-10 h-1 rounded-full mx-auto mb-3 shrink-0 ${i?"bg-slate-700":"bg-slate-300"}`}),h.jsx("div",{className:"flex-1",style:{minHeight:0},children:Jw})]})'
   )
 
+  /* 54. Menu ordering (the guest/table "Menu" tab, shared by the customer QR
+     portal and the in-till table-order flow) stacked every item in a single
+     rounded panel with dashed dividers — one tall vertical column that wasted
+     all the horizontal room on a tablet. Turn each category's list into a
+     responsive grid of individual cards (1 col on a phone, 2 on a tablet, 3
+     on a large screen) matching the main POS card grid. Find carries the old
+     panel+divider classes, so this is a no-op on re-bakes. */
+  .replace(
+    '`rounded-2xl ${_.panel}`,children:ke.map(ze=>{const on=fe.cart.find(To=>To.pid===ze.id);return h.jsxs("div",{className:`flex items-center gap-3 px-3.5 py-3 border-b border-dashed last:border-0 ${_.border}`',
+    '`grid gap-2 sm:grid-cols-2 lg:grid-cols-3`,children:ke.map(ze=>{const on=fe.cart.find(To=>To.pid===ze.id);return h.jsxs("div",{className:`flex items-center gap-3 px-3.5 py-3 rounded-2xl ${_.panel}`'
+  )
+
+  /* 55. That same menu was capped at max-w-md (448px) and centred, so even on
+     a wide tablet it never grew past a single narrow column. Widen it (inline
+     maxWidth, since no wider max-w-* class survived the CSS purge) so the new
+     grid actually spreads; phones are unaffected (screen < the cap). */
+  .replace(
+    'max-w-md mx-auto px-4",style:{paddingBottom:"16rem"}',
+    'mx-auto px-4",style:{paddingBottom:"16rem",maxWidth:"56rem"}'
+  )
+
+  /* 56. The menu's floating order summary (item toggle · total · Charge/Send)
+     was fixed at bottom-0 z-20 — fine on the QR portal, but in the till the
+     bottom nav bar (fixed bottom-0 z-30) sat on top of it, hiding the action
+     buttons so a table order could never be completed on a tablet. Lift the
+     card above the nav (and any safe-area inset) whenever it's the in-till
+     flow (!fe.urlMode); the QR portal, which has no nav, stays at bottom-0.
+     Raised to z-40 so it can never be occluded. */
+  .replace(
+    'className:"fixed inset-x-0 bottom-0 z-20 p-3",children:',
+    'className:"fixed inset-x-0 z-40 p-3",style:{bottom:fe.urlMode?0:"calc(4.5rem + env(safe-area-inset-bottom,0px))"},children:'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1037,6 +1070,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.30"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.31"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
