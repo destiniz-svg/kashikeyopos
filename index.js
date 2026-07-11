@@ -192,6 +192,19 @@ const withSystem = (fn) => withScope(
       }
       if (staleSettings.rowCount) console.log(`backfilled multi-currency defaults for ${staleSettings.rowCount} settings entity(s)`);
     } catch (e) { console.warn("currency backfill skipped:", e.message); }
+    /* Waiter calls are ephemeral notifications, but nothing on the server
+       ever expired them — every call ever raised sat deleted=false forever
+       and re-appeared on the till whenever it reloaded. Soft-delete any
+       older than 6 hours so a fresh till never shows a backlog of stale
+       (or already-handled) calls. Runs on every boot; the till picks up the
+       deletions on its next pull. Handled calls are also deleted live now
+       (see guest-sync-patch #52). */
+    try {
+      const staleCalls = await bootPool.query(
+        "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE kind='waiterCalls' AND deleted=false AND COALESCE((data->>'t')::bigint, 0) < $1",
+        [Date.now() - 6 * 3600 * 1000]);
+      if (staleCalls.rowCount) console.log(`expired ${staleCalls.rowCount} stale waiter call(s)`);
+    } catch (e) { console.warn("waiter-call cleanup skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); }
 })();
 

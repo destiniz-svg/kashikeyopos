@@ -856,6 +856,17 @@ patchFile(indexPath, (html) => html
     'h.jsx("div",{className:"h-1.5 rounded-full",style:{width:Math.round(A/Ir.gross*100)+"%",background:_.bar}})'
   )
 
+  /* 52. Waiter-call notifications that wouldn't clear. "On my way" only did
+     uu(filter) — it removed the call from local state but never deleted the
+     waiterCalls entity, so it stayed deleted=false on the server and
+     reappeared on the next pull / when the till was reopened (the sync-diff
+     delete could also be swallowed by the echo guard). Accept now also pushes
+     an explicit delete op (FT) so the entity is really removed everywhere. */
+  .replace(
+    'h.jsx("button",{onClick:()=>uu(A=>A.filter(N=>N.id!==f.id)),className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"})',
+    'h.jsx("button",{onClick:()=>{uu(A=>A.filter(N=>N.id!==f.id));try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"})'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1011,6 +1022,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.28"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.29"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
