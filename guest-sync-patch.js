@@ -262,7 +262,10 @@ const sndJs = `(function(){
     order:function(){ tone(660,0.13,0,'sine',0.22); tone(988,0.17,0.14,'sine',0.22); },
     status:function(){ tone(784,0.11,0,'sine',0.17); tone(1047,0.15,0.11,'sine',0.17); },
     ok:function(){ tone(1047,0.11,0,'sine',0.15); },
-    alert:function(){ tone(392,0.16,0,'triangle',0.16); tone(392,0.16,0.2,'triangle',0.16); }
+    alert:function(){ tone(392,0.16,0,'triangle',0.16); tone(392,0.16,0.2,'triangle',0.16); },
+    /* "food's up" — a bright rising chime the counter hears when the kitchen
+       marks an order ready to be delivered. */
+    ready:function(){ tone(1047,0.13,0,'sine',0.24); tone(1319,0.15,0.12,'sine',0.24); tone(1568,0.26,0.26,'sine',0.2); }
   };
   var last={};
   window.__ksnd={
@@ -932,13 +935,59 @@ patchFile(indexPath, (html) => html
     '"ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer",style:{background:_.bar+"26",color:_.bar},children:[h.jsx(ks,{size:11})," Call"'
   )
 
-  /* 59. The member's "On account" balance card lit up amber (bg + label +
-     amount) when a balance was owed — again off every non-amber theme.
-     Drive the highlight from the accent instead (_.bar, +"1a" ≈ the old /10
-     card tint); the zero-balance state keeps its neutral _.panel/_.faint. */
+  /* 59. The member's "On account" balance is intentionally a WARNING tone,
+     not the store accent: it flags money the member owes, so it should read
+     as caution (amber) regardless of theme — unlike the Waiter/Call action
+     pills above, which follow the accent. Left at the bundle's original
+     amber (bg-amber-500/10 · text-amber-500); no override needed. */
+
+  /* 60. Kitchen role — a new staff role for a chef on the pass. It can only
+     reach the Orders queue (the kitchen display), nothing else. */
   .replace(
-    '`rounded-xl p-3 ${(j.balance||0)>0?"bg-amber-500/10":_.panel}`,children:[h.jsx("div",{className:`text-xs ${(j.balance||0)>0?"text-amber-500":_.faint}`,children:"On account"}),h.jsx("div",{className:`font-mono text-sm font-bold mt-0.5 ${(j.balance||0)>0?"text-amber-500":""}`,children:Y(j.balance||0)})',
-    '`rounded-xl p-3 ${(j.balance||0)>0?"":_.panel}`,style:(j.balance||0)>0?{background:_.bar+"1a"}:void 0,children:[h.jsx("div",{className:`text-xs ${(j.balance||0)>0?"":_.faint}`,style:(j.balance||0)>0?{color:_.bar}:void 0,children:"On account"}),h.jsx("div",{className:"font-mono text-sm font-bold mt-0.5",style:(j.balance||0)>0?{color:_.bar}:void 0,children:Y(j.balance||0)})'
+    'iae={cashier:["sell","orders","customers"],manager:',
+    'iae={cashier:["sell","orders","customers"],kitchen:["orders"],manager:'
+  )
+
+  /* 61. Offer "Kitchen" in the Users & PINs role picker so an owner can
+     create a "Kitchen" login (the button label is capitalised from the id). */
+  .replace(
+    '["cashier","manager","owner"].map(f=>h.jsx("button",{onClick:()=>ra({...ui,role:f})',
+    '["cashier","kitchen","manager","owner"].map(f=>h.jsx("button",{onClick:()=>ra({...ui,role:f})'
+  )
+
+  /* 62. On PIN sign-in, land a kitchen user straight on the Orders board
+     (their only permitted view) instead of the Sell screen. */
+  .replace(
+    'n(gu.id),Yf(null),Es(""),s("sell"),u("menu")',
+    'n(gu.id),Yf(null),Es(""),s(gu.role==="kitchen"?"orders":"sell"),u("menu")'
+  )
+
+  /* 63. The Sell tab was pinned always-on in the bottom nav (gate !0). Gate
+     it by br("sell") so a kitchen login (no "sell" perm) sees only Orders;
+     cashier/manager/owner all have "sell", so nothing changes for them. */
+  .replace(
+    'w6=[["sell","Sell",$d,!0],',
+    'w6=[["sell","Sell",$d,br("sell")],'
+  )
+
+  /* 64. Kitchen advance stops at "ready". On an order card the advance button
+     normally runs the full lifecycle (…→ready→delivered→settle). For a
+     kitchen user it may only push new→preparing→ready (cooking); once ready
+     it becomes a static "Ready ✓ — for delivery" badge (delivering + settling
+     are front-of-house). Find has the bare onClick:()=>Vw(f), which the
+     guarded replacement lacks, so it's a no-op on re-bakes. */
+  .replace(
+    'onClick:()=>Vw(f),className:`mt-3 w-full rounded-xl py-2.5 text-sm font-semibold ${f.status==="ready"||f.status==="delivered"?_.primary:_.btn}`,children:f.status==="ready"?"Mark delivered":f.status==="delivered"?f.paidOnline?"Complete (already paid)":"Settle & pay":MI[f.status]',
+    'onClick:()=>{if(Ne&&Ne.role==="kitchen"&&f.status!=="new"&&f.status!=="preparing")return;Vw(f)},className:`mt-3 w-full rounded-xl py-2.5 text-sm font-semibold ${Ne&&Ne.role==="kitchen"&&f.status!=="new"&&f.status!=="preparing"?_.chipOn:f.status==="ready"||f.status==="delivered"?_.primary:_.btn}`,children:Ne&&Ne.role==="kitchen"&&f.status!=="new"&&f.status!=="preparing"?"Ready ✓ — for delivery":f.status==="ready"?"Mark delivered":f.status==="delivered"?f.paidOnline?"Complete (already paid)":"Settle & pay":MI[f.status]'
+  )
+
+  /* 65. When an order flips to "ready", chime "food's up" on every till so the
+     counter knows it's ready to be delivered — the same inbound-sync hook that
+     already announces new QR orders and waiter calls (the 3.5s arm delay keeps
+     it from firing a burst for pre-existing ready orders on first load). */
+  .replace(
+    'A.orders&&A.orders.forEach(function(_o){!_o.deleted&&_o.data&&_o.data.status==="new"&&_o.data.source==="qr"&&!_sn.o[_o.id]&&(_sn.o[_o.id]=1,window.__ksnd.play("order"))})',
+    'A.orders&&A.orders.forEach(function(_o){if(_o.deleted||!_o.data)return;_o.data.status==="new"&&_o.data.source==="qr"&&!_sn.o[_o.id]&&(_sn.o[_o.id]=1,window.__ksnd.play("order"));_o.data.status==="ready"&&!(_sn.r=_sn.r||{})[_o.id]&&(_sn.r[_o.id]=1,window.__ksnd.play("ready"))})'
   )
 
   /* 38. Guest order status bar: the progress segments were a hardcoded
@@ -1096,6 +1145,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.32"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.33"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
