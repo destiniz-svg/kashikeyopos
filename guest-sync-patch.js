@@ -915,6 +915,32 @@ patchFile(indexPath, (html) => html
     'className:"fixed inset-x-0 z-40 p-3",style:{bottom:fe.urlMode?0:"calc(4.5rem + env(safe-area-inset-bottom,0px))"},children:'
   )
 
+  /* 57. Customer portal — "Waiter" call button was a hardcoded amber pill
+     (bg-amber-500/15 text-amber-500) that clashed with every store theme
+     except the amber one. Recolour it from the live accent (_.bar hex; the
+     +"26" alpha ≈ the old /15 tint). Find carries the amber classes, so the
+     patch is a no-op on re-runs. */
+  .replace(
+    '"flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-500",children:[h.jsx(ks,{size:12})," Waiter"]',
+    '"flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold",style:{background:_.bar+"26",color:_.bar},children:[h.jsx(ks,{size:12})," Waiter"]'
+  )
+
+  /* 58. Same for the per-order "Call" (waiter) pill in the customer's order
+     list — off-theme amber → the store accent. */
+  .replace(
+    '"ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-500 cursor-pointer",children:[h.jsx(ks,{size:11})," Call"',
+    '"ml-auto flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer",style:{background:_.bar+"26",color:_.bar},children:[h.jsx(ks,{size:11})," Call"'
+  )
+
+  /* 59. The member's "On account" balance card lit up amber (bg + label +
+     amount) when a balance was owed — again off every non-amber theme.
+     Drive the highlight from the accent instead (_.bar, +"1a" ≈ the old /10
+     card tint); the zero-balance state keeps its neutral _.panel/_.faint. */
+  .replace(
+    '`rounded-xl p-3 ${(j.balance||0)>0?"bg-amber-500/10":_.panel}`,children:[h.jsx("div",{className:`text-xs ${(j.balance||0)>0?"text-amber-500":_.faint}`,children:"On account"}),h.jsx("div",{className:`font-mono text-sm font-bold mt-0.5 ${(j.balance||0)>0?"text-amber-500":""}`,children:Y(j.balance||0)})',
+    '`rounded-xl p-3 ${(j.balance||0)>0?"":_.panel}`,style:(j.balance||0)>0?{background:_.bar+"1a"}:void 0,children:[h.jsx("div",{className:`text-xs ${(j.balance||0)>0?"":_.faint}`,style:(j.balance||0)>0?{color:_.bar}:void 0,children:"On account"}),h.jsx("div",{className:"font-mono text-sm font-bold mt-0.5",style:(j.balance||0)>0?{color:_.bar}:void 0,children:Y(j.balance||0)})'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1070,6 +1096,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.31"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.32"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
