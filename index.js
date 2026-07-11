@@ -873,9 +873,15 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   await ensureDefaultStore(org.id, org.store_name);
-  const [settingsArr, products, zones, tables, stores] = await Promise.all([
+  const [settingsArr, products, zones, tables, stores, recipeRows] = await Promise.all([
     kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "tables", storeId),
-    withOrg(org.id, (client) => client.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id]))]);
+    withOrg(org.id, (client) => client.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id])),
+    /* Products tracked by the Inventory module carry their availability in
+       ingredient stock, not the product-level `stock` field (which defaults
+       to 0 on the product form). Without this, a fully-available recipe item
+       would be filtered out of the guest menu below. */
+    withOrg(org.id, (client) => client.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [org.id]))]);
+  const hasRecipe = new Set(recipeRows.rows.map((r) => String(r.product_id)));
   const rawSettings = settingsArr[0] || {};
   const settings = settingsArr[0]
     ? { usdRate: 1542, ...rawSettings }
@@ -892,7 +898,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   }
   res.json({ settings, storeId, stores: stores.rows, zones,
     tables: tables.map((t) => t.name),
-    products: products.filter((p) => (p.stock || 0) > 0).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock, storeId: p.storeId || "global" })),
+    products: products.filter((p) => (p.stock || 0) > 0 || hasRecipe.has(String(p.id))).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock, storeId: p.storeId || "global" })),
     cust });
 }));
 
