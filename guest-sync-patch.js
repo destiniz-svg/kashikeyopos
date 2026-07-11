@@ -306,6 +306,16 @@ window.__ksChartToggle=function(mode){
   document.querySelectorAll('.ksch-line').forEach(function(el){ el.style.display=mode==='bar'?'none':''; });
   document.querySelectorAll('.ksch-bar').forEach(function(el){ el.style.display=mode==='bar'?'':'none'; });
   document.querySelectorAll('[data-kscht]').forEach(function(b){ b.setAttribute('data-on', b.getAttribute('data-kscht')===mode?'1':'0'); });
+};
+window.__ksSpark=function(data,pal){
+  var D=data||[],W=200,H=34,P=3,n=D.length||1,max=1,min=1e18;
+  D.forEach(function(d){ if(d.v>max)max=d.v; if(d.v<min)min=d.v; });
+  if(min===1e18)min=0; var rng=(max-min)||1;
+  function X(i){ return n<=1?W/2:P+i*(W-2*P)/(n-1); }
+  function Y(v){ return H-P-((v-min)/rng)*(H-2*P); }
+  var lp='';D.forEach(function(d,i){ lp+=(i?'L':'M')+X(i).toFixed(1)+' '+Y(d.v).toFixed(1)+' '; });
+  var ap=D.length?('M'+X(0).toFixed(1)+' '+(H-P)+' '+lp.replace(/^M/,'L')+'L'+X(D.length-1).toFixed(1)+' '+(H-P)+' Z'):'';
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><defs><linearGradient id="kssg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+pal.bar+'" stop-opacity="0.24"/><stop offset="1" stop-color="'+pal.bar+'" stop-opacity="0"/></linearGradient></defs><path d="'+ap+'" fill="url(#kssg)"/><path d="'+lp+'" fill="none" stroke="'+pal.bar+'" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 };`;
 
 function injectCss(html, css) {
@@ -321,8 +331,12 @@ function injectScript(html, src) {
 }
 
 function injectInline(html, marker, js) {
-  if (html.includes(marker)) return html;
   const tag = `<script>/*${marker}*/${js}</script>`;
+  /* Update-in-place: if this marker's script already exists, replace its body
+     so edits to the helper propagate on re-bake (and re-baking identical
+     content is a no-op). */
+  const re = new RegExp(`<script>/\\*${marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\*/[\\s\\S]*?</script>`);
+  if (re.test(html)) return html.replace(re, tag);
   if (/<head[^>]*>/i.test(html)) return html.replace(/<head([^>]*)>/i, `<head$1>${tag}`);
   return tag + html;
 }
@@ -800,6 +814,41 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{style:{position:"relative"},className:"mt-3",children:[h.jsx("div",{style:{fontSize:"11px",fontWeight:700,marginBottom:"6px",opacity:.85},children:"Your usuals — tap to reorder"}),h.jsx("div",{className:"flex gap-1.5 flex-wrap",children:fav.map(x=>h.jsxs("button",{onClick:()=>{$1(x.pid,1);Q(`${x.name} added to your cart`)},style:{background:"rgba(255,255,255,.6)",color:"inherit"},className:"px-3 py-1.5 rounded-full text-xs font-semibold",children:'
   )
 
+  /* 49. Dashboard analytics roll-up: extend the Ir memo with yesterday's
+     net/txns (for KPI deltas), a 7-day daily-total series (sparkline) and
+     the peak hour. All derived from the same sales array m + today-start pd,
+     inside the existing useMemo so it only recomputes when sales change. */
+  .replace(
+    'reorder);return{today:f,net:A,txns:N,',
+    'reorder);const _dy=864e5,_p0=pd.getTime(),_yf=m.filter(ie=>ie.t>=_p0-_dy&&ie.t<_p0&&ie.type==="sale"),_yNet=_yf.reduce((a,e)=>a+e.total,0),_yTxns=_yf.length,_wk=[];for(let _d=6;_d>=0;_d--){const _s=_p0-_d*_dy;_wk.push({d:new Date(_s).toLocaleDateString([],{weekday:"short"}).slice(0,2),v:m.filter(ie=>ie.t>=_s&&ie.t<_s+_dy&&ie.type==="sale").reduce((a,x)=>a+x.total,0)/100})}const _pk=j.reduce((a,x)=>x.v>a.v?x:a,{h:"",v:0});return{today:f,net:A,txns:N,'
+  )
+  .replace(
+    ',low:yt}},[m,c])',
+    ',low:yt,prevNet:_yNet,prevTxns:_yTxns,week:_wk,peak:_pk}},[m,c])'
+  )
+
+  /* 50. KPI tiles: show a delta chip vs yesterday (▲/▼ %) when a prior value
+     is available. vd gains two optional args (current, previous). */
+  .replace(
+    'vd=(f,A,N)=>h.jsxs("div",{className:`rounded-2xl p-4 ${_.panel}`,children:[h.jsx("div",{className:`text-xs uppercase tracking-wide ${_.sub}`,children:f}),h.jsx("div",{className:`font-mono tabular-nums text-2xl font-bold mt-1 ${N||_.accent}`,children:A})]})',
+    'vd=(f,A,N,cu,pv)=>{var dl=cu!=null&&pv!=null&&pv>0?Math.round((cu-pv)/pv*100):null;return h.jsxs("div",{className:`rounded-2xl p-4 ${_.panel}`,children:[h.jsxs("div",{className:"flex items-center justify-between gap-1",children:[h.jsx("div",{className:`text-xs uppercase tracking-wide ${_.sub}`,children:f}),dl!=null?h.jsxs("span",{className:`text-xs font-bold ${dl>=0?"text-emerald-400":"text-rose-400"}`,children:[dl>=0?"▲":"▼",Math.abs(dl),"%"]}):null]}),h.jsx("div",{className:`font-mono tabular-nums text-2xl font-bold mt-1 ${N||_.accent}`,children:A})]})}'
+  )
+  .replace(
+    'kpis:h.jsxs("div",{className:"grid grid-cols-2 lg:grid-cols-4 gap-3",children:[vd("Net sales today",ue(Ir.net),_.accent),vd("Transactions",Ir.txns),vd("Avg basket",ue(Ir.avg)),vd("Items sold",Ir.items)]})',
+    'kpis:h.jsxs("div",{className:"grid grid-cols-2 lg:grid-cols-4 gap-3",children:[vd("Net sales today",ue(Ir.net),_.accent,Ir.net,Ir.prevNet),vd("Transactions",Ir.txns,"",Ir.txns,Ir.prevTxns),vd("Avg basket",ue(Ir.avg)),vd("Items sold",Ir.items)]})'
+  )
+
+  /* 51. Chart card: a "Busiest …" subtitle (peak hour) under the title, and a
+     7-day trend sparkline row under the hour labels. */
+  .replace(
+    'h.jsx("div",{className:"text-sm font-semibold",children:"Sales by hour (today)"}),h.jsxs("div",{className:`flex gap-0.5 rounded-lg p-0.5',
+    'h.jsxs("div",{children:[h.jsx("div",{className:"text-sm font-semibold",children:"Sales by hour (today)"}),Ir.peak&&Ir.peak.v>0?h.jsxs("div",{className:`text-xs ${_.faint}`,children:["Busiest ",Ir.peak.h," · ",ce.currency," ",Ir.peak.v.toFixed(2)]}):null]}),h.jsxs("div",{className:`flex gap-0.5 rounded-lg p-0.5'
+  )
+  .replace(
+    'map((d,i)=>h.jsx("span",{children:d.h},i))})]})',
+    'map((d,i)=>h.jsx("span",{children:d.h},i))}),window.__ksSpark&&(Ir.week||[]).length?h.jsxs("div",{className:"flex items-center gap-3 mt-3 pt-3",style:{borderTop:"1px solid "+_.grid},children:[h.jsx("div",{className:`text-xs ${_.sub}`,style:{whiteSpace:"nowrap"},children:"7-day trend"}),h.jsx("div",{style:{flex:1,height:"32px"},dangerouslySetInnerHTML:{__html:window.__ksSpark(Ir.week,_)}}),h.jsxs("div",{className:`text-xs font-semibold ${_.accent}`,style:{whiteSpace:"nowrap"},children:[ce.currency," ",(Ir.week||[]).reduce((a,x)=>a+x.v,0).toFixed(0)]})]}):null]})'
+  )
+
   /* 48. Dashboard payment-mix bar was a hardcoded bg-cyan-500 — recolour it
      from the theme accent so it matches the store's palette. */
   .replace(
@@ -962,6 +1011,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.27"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.28"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
