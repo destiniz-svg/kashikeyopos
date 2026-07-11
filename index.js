@@ -210,10 +210,29 @@ const withSystem = (fn) => withScope(
 
 const app = express();
 app.use(express.json({ limit: "25mb" }));
+/* CORS is only for the cross-origin surface: the sync API and the public
+   guest endpoints. A paired till PWA can be served from a different origin
+   than the cloud it syncs to, and both authenticate with a Bearer token
+   (cookies are never read cross-origin), so a wildcard is safe there. Set
+   ALLOWED_ORIGINS to a comma-separated allow-list to lock it down to known
+   origins instead. The cookie-gated pages (/app, /back, /dev, /login…) are
+   navigated to directly and deliberately get no CORS headers at all. */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
 app.use((req, res, next) => {
-  res.set("Access-Control-Allow-Origin", "*");
+  if (!req.path.startsWith("/api") && !req.path.startsWith("/p/")) return next();
+  const origin = req.headers.origin;
+  if (allowedOrigins.length) {
+    if (origin && allowedOrigins.includes(origin)) {
+      res.set("Access-Control-Allow-Origin", origin);
+      res.set("Vary", "Origin");
+    }
+    /* origin absent or not on the list → no ACAO header, so a browser blocks
+       the cross-origin read while same-origin calls are unaffected. */
+  } else {
+    res.set("Access-Control-Allow-Origin", "*");
+  }
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
@@ -372,6 +391,10 @@ function hashTillPin(pin) {
 async function ensureOwnerSeed(org, explicitPin) {
   return withOrg(org.id, async (client) => {
     if (!explicitPin) {
+      /* Serialize concurrent first-logins for this org: without the lock,
+         two of them could both see zero staff and each seed an owner. The
+         xact-scoped advisory lock releases automatically on commit/rollback. */
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", ["ownerseed:" + org.id]);
       const hit = await client.query("SELECT 1 FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false LIMIT 1", [org.id]);
       if (hit.rowCount) return null;
     }

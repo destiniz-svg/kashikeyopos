@@ -21,6 +21,17 @@ ALTER TABLE orgs ADD COLUMN IF NOT EXISTS apple_sub TEXT;
 -- the /welcome step (store name, currency, PIN). Email signups collected all
 -- of that in the wizard, and every pre-existing org is grandfathered in.
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS onboarded BOOLEAN NOT NULL DEFAULT true;
+-- Each till session mints a fresh register id (R1, R2, …) for op attribution,
+-- so this counter only ever climbs. Widen INT → BIGINT so it can never
+-- overflow over a busy store's lifetime. Guarded so the boot migration is a
+-- no-op once widened.
+DO $reg$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+             WHERE table_name='orgs' AND column_name='registers' AND data_type='integer') THEN
+    ALTER TABLE orgs ALTER COLUMN registers TYPE BIGINT;
+  END IF;
+END $reg$;
 CREATE UNIQUE INDEX IF NOT EXISTS orgs_google_sub_uq ON orgs (google_sub) WHERE google_sub IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS orgs_apple_sub_uq ON orgs (apple_sub) WHERE apple_sub IS NOT NULL;
 
