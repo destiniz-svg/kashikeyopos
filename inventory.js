@@ -227,6 +227,29 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true });
   }));
 
+  /* ── Stock history / movement timeline (§12) ────────────────────────────
+     Every movement of an ingredient, straight from the immutable ledger, so
+     the owner can read "what came in, where it went, and what's left" without
+     any accounting. The running balance is derived, never stored. */
+  router.get("/history/:ingredientId", authAny, wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (client) => {
+      const ing = await client.query(
+        "SELECT id, name, base_unit, current_stock, avg_cost FROM ingredients WHERE org_id=$1 AND id=$2",
+        [req.orgId, req.params.ingredientId]);
+      if (!ing.rowCount) throw Object.assign(new Error("ingredient not found"), { status: 404 });
+      const mv = await client.query(
+        `SELECT id, kind, qty, unit_cost, ref, note, created_at
+         FROM stock_moves WHERE org_id=$1 AND ingredient_id=$2 ORDER BY created_at ASC, id ASC LIMIT 500`,
+        [req.orgId, req.params.ingredientId]);
+      const i = ing.rows[0];
+      return {
+        ingredient: { id: i.id, name: i.name, baseUnit: i.base_unit, currentStock: Number(i.current_stock), avgCost: Number(i.avg_cost) },
+        moves: mv.rows.map((m) => ({ id: m.id, kind: m.kind, qty: Number(m.qty), unitCost: Number(m.unit_cost), ref: m.ref, note: m.note, at: m.created_at })),
+      };
+    });
+    res.json(out);
+  }));
+
   /* ── Recipes + live margin preview ──────────────────────────────────────
      The margin figures come straight from the same avg_cost the deduction
      and audit math use, so the number the owner sees while building a

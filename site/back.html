@@ -121,6 +121,12 @@
   .flow .st .ic { font-size: 19px; }
   .flow .st .nm { font-size: 12.5px; font-weight: 700; margin-top: 5px; }
   .flow .st .ar { color: var(--faint); align-self: center; font-size: 18px; }
+  /* stock-history timeline rows reuse .flow/.st */
+  .hist-list { display: block; gap: 8px; overflow: visible; margin: 0; }
+  .hist-list .st { min-width: 0; margin-bottom: 8px; cursor: default; border-left: 4px solid var(--faint); }
+  .hist-list .st.good { border-left-color: var(--ok); }
+  .hist-list .st.warn { border-left-color: var(--warn); }
+  .hist-list .st.amber { border-left-color: var(--amber); }
   .flow-explain { font-size: 13px; color: var(--sub); background: var(--panel2); border-radius: 10px; padding: 12px 14px; line-height: 1.5; margin-bottom: 22px; }
 
   /* alerts strip */
@@ -441,7 +447,7 @@
         '<td class="mono">' + (i.avg_cost / 100).toFixed(4) + "/" + esc(i.base_unit) + "</td>" +
         "<td>" + (i.low ? '<span class="badge low">Low</span>' : '<span class="badge ok">OK</span>') + "</td>" +
         "<td>" + (i.units || []).map(function (u) { return '<span class="badge dim">1 ' + esc(u.name) + " = " + qty3(u.factor) + " " + esc(i.base_unit) + "</span>"; }).join(" ") + "</td>" +
-        '<td><button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
+        '<td><button class="tiny ghost" data-hist="' + i.id + '">History</button> <button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
         "</tr>";
     }).join("");
     el("main").innerHTML =
@@ -450,6 +456,7 @@
       "<tbody>" + (rows || '<tr><td colspan="7" class="empty">No ingredients yet — add your first one.</td></tr>') + "</tbody></table></div>" +
       '<p class="hint">Avg cost is per base unit (' + esc(S.currency) + " sub-units) and updates automatically each time you enter a delivery.</p>";
     el("addIng").onclick = function () { ingredientModal(null); };
+    el("main").querySelectorAll("[data-hist]").forEach(function (b) { b.onclick = function () { historyModal(ingById(b.dataset.hist)); }; });
     el("main").querySelectorAll("[data-edit]").forEach(function (b) { b.onclick = function () { ingredientModal(ingById(b.dataset.edit)); }; });
     el("main").querySelectorAll("[data-del]").forEach(function (b) {
       b.onclick = function () {
@@ -458,6 +465,59 @@
         api("/ingredients/" + encodeURIComponent(i.id), { method: "DELETE" }).then(function () { toast("Removed " + i.name); return loadAll(); }).then(render).catch(function (e) { toast(e.message); });
       };
     });
+  }
+
+  var MOVE_KINDS = {
+    purchase: { label: "Received", icon: "📥", cls: "good" },
+    sale: { label: "Used in sales", icon: "🍳", cls: "" },
+    refund: { label: "Returned", icon: "↩️", cls: "" },
+    audit: { label: "Stock check", icon: "📋", cls: "amber" },
+    waste: { label: "Wastage", icon: "🗑️", cls: "warn" },
+    transfer: { label: "Transfer", icon: "🔀", cls: "" },
+    manual: { label: "Correction", icon: "✏️", cls: "amber" }
+  };
+  function historyModal(ing) {
+    if (!ing) return;
+    el("modalHost").innerHTML =
+      '<div class="overlay" id="ov"><div class="modal" style="max-width:560px">' +
+      "<h3>Stock history — " + esc(ing.name) + "</h3>" +
+      '<p class="sub">Every change to this ingredient, newest first. The running total shows what the system thought you had after each event.</p>' +
+      '<div id="histBody"><p class="hint">Loading…</p></div>' +
+      '<div class="actions"><button class="ghost" id="mClose">Close</button></div>' +
+      "</div></div>";
+    el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
+    el("mClose").onclick = close;
+    function close() { el("modalHost").innerHTML = ""; }
+    api("/history/" + encodeURIComponent(ing.id)).then(function (r) {
+      var moves = r.moves || [], u = esc((r.ingredient && r.ingredient.baseUnit) || ing.base_unit || "");
+      // Running balance forward from 0 (moves come oldest-first)
+      var bal = 0, withBal = moves.map(function (m) { bal = Math.round((bal + m.qty) * 1000) / 1000; return { m: m, bal: bal }; });
+      if (!moves.length) {
+        el("histBody").innerHTML = '<p class="empty">Nothing recorded yet. History starts building as you enter deliveries, ring up sales and run stock checks.</p>';
+        return;
+      }
+      var received = 0, used = 0;
+      moves.forEach(function (m) { if (m.qty > 0) received += m.qty; else used += -m.qty; });
+      var nowStock = (r.ingredient && r.ingredient.currentStock) != null ? r.ingredient.currentStock : bal;
+      var chips = '<div class="cards" style="grid-template-columns:repeat(3,1fr);margin:0 0 14px">' +
+        '<div class="card good"><div class="k">Received in total</div><div class="v mono">' + qty3(received) + " <small>" + u + "</small></div></div>" +
+        '<div class="card"><div class="k">Used / removed</div><div class="v mono">' + qty3(used) + " <small>" + u + "</small></div></div>" +
+        '<div class="card"><div class="k">In stock now</div><div class="v mono">' + qty3(nowStock) + " <small>" + u + "</small></div></div>" +
+        "</div>";
+      var rows = withBal.slice().reverse().map(function (w) {
+        var m = w.m, k = MOVE_KINDS[m.kind] || { label: m.kind, icon: "•", cls: "" };
+        var sign = m.qty > 0 ? "+" : "";
+        var when = new Date(m.at);
+        var whenStr = when.toLocaleDateString() + " " + when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        var costStr = m.unitCost ? " · " + esc(S.currency) + " " + (m.unitCost / 100).toFixed(4) + "/" + u : "";
+        var note = m.note ? ' · <span style="color:var(--sub)">' + esc(m.note) + "</span>" : "";
+        return '<div class="st ' + k.cls + '" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:10px 12px">' +
+          "<div><div style=\"font-weight:600;font-size:13.5px\">" + k.icon + " " + esc(k.label) + '</div><div class="hint" style="margin:3px 0 0">' + whenStr + costStr + note + "</div></div>" +
+          '<div style="text-align:right;white-space:nowrap"><div class="mono" style="font-weight:700;color:' + (m.qty > 0 ? "var(--ok)" : "var(--text)") + '">' + sign + qty3(m.qty) + " " + u + '</div><div class="hint mono" style="margin:3px 0 0">balance ' + qty3(w.bal) + "</div></div>" +
+          "</div>";
+      }).join("");
+      el("histBody").innerHTML = chips + '<div class="flow hist-list">' + rows + "</div>";
+    }).catch(function (e) { el("histBody").innerHTML = '<p class="empty">Could not load history: ' + esc(e.message) + "</p>"; });
   }
 
   function ingredientModal(ing) {
@@ -786,7 +846,7 @@
       '<button class="primary" id="wStart" style="padding:12px 26px">Start stock check</button>' +
       '<p class="hint" style="margin-top:12px">~' + S.ingredients.length + " items across " + [...new Set(S.ingredients.map(function (i) { return i.location; }))].join(" · ") + "</p>" +
       "</div></section>" +
-      "<section><h2>Past checks</h2><div class=\"tbl-wrap\"><table><thead><tr><th>Check</th><th>Date</th><th class=\"mono\">Stock value</th><th class=\"mono\">Kitchen used</th></tr></thead><tbody>" +
+      "<section><h2>Past checks</h2><div class=\"tbl-wrap\"><table><thead><tr><th>Check</th><th>Date</th><th class=\"mono\">Stock value counted</th><th class=\"mono\">Ingredients used</th></tr></thead><tbody>" +
       (history || '<tr><td colspan="4" class="empty">No checks yet — the first one sets your baseline.</td></tr>') + "</tbody></table></div></section>";
     el("wStart").onclick = function () {
       if (!S.ingredients.length) return toast("Add ingredients first");
@@ -827,8 +887,9 @@
       '<div class="steps">' + dots + "</div>" +
       '<div class="toolbar"><h2 style="margin:0">' + esc(g.location) + ' <span style="text-transform:none;letter-spacing:0;color:var(--faint)">· step ' + (S.wiz.step + 1) + " of " + (S.wiz.groups.length + 1) + "</span></h2>" +
       "<div>" + (S.wiz.step > 0 ? '<button class="ghost" id="wBack">Back</button> ' : "") + '<button class="primary" id="wNext">Save &amp; continue</button></div></div>' +
-      '<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="mono">You counted</th><th>In</th><th class="mono">Difference</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
-      '<p class="hint">Count in whatever’s easiest — cases, bottles or ' + "base units — we convert. Leave blank anything you didn’t check.</p>";
+      '<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="mono">You counted</th><th>Unit</th><th class="mono">Difference</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="hint">Count in whatever’s easiest — cases, bottles or ' + "base units — we convert. Leave blank anything you didn’t check.</p>" +
+      '<p class="hint" style="margin-top:2px"><b>Difference</b> is your count minus what the system expected: a red number means you have less on the shelf than the records show (usually waste or a missed sale), green means more.</p>';
     g.lines.forEach(function (l, idx) {
       var qi = el("main").querySelector('[data-wq="' + idx + '"]'), ui = el("main").querySelector('[data-wu="' + idx + '"]');
       qi.oninput = function () {
@@ -907,9 +968,9 @@
   function drawWizDone() {
     var r = S.wiz.result;
     el("main").innerHTML =
-      '<div class="panel bigstat"><div class="l">Your kitchen used this period</div>' +
+      '<div class="panel bigstat"><div class="l">Cost of ingredients used since your last check</div>' +
       '<div class="n">' + esc(S.currency) + " " + Y(r.cogs) + "</div>" +
-      '<div class="l" style="margin-top:10px">Started at ' + Y(r.openingValue) + " · deliveries " + Y(r.purchasesValue) + " · counted " + Y(r.closingValue) + "</div>" +
+      '<div class="l" style="margin-top:10px;line-height:1.7">Stock value at last check <b>' + esc(S.currency) + " " + Y(r.openingValue) + "</b> + deliveries since <b>" + esc(S.currency) + " " + Y(r.purchasesValue) + "</b> − counted on shelves now <b>" + esc(S.currency) + " " + Y(r.closingValue) + "</b></div>" +
       (r.flaggedForReview ? '<div style="margin-top:12px"><span class="badge amber">' + r.flaggedForReview + " item(s) had notable differences</span></div>" : "") +
       '<div style="margin-top:20px"><button class="primary" id="wDone">Done</button></div></div>';
     el("wDone").onclick = function () { S.wiz = null; renderAudit(); };
