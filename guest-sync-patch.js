@@ -1041,6 +1041,15 @@ patchFile(indexPath, (html) => html
     '"ksh-display tabular-nums text-xl font-bold",children:ue(cr.total)'
   )
 
+  /* 68. Manager dashboard §4.2 — the Orders board's status filters double as
+     the stat strip: show each filter's live count so the chips ARE the stats
+     (one control, never a separate counter that can drift). Counts derive
+     from the same `b` orders array + qf filter logic used to render the list. */
+  .replace(
+    '.map(([f,A])=>h.jsx("button",{onClick:()=>PT(f),className:`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${qf===f?_.chipOn:_.chip}`,children:A},f))',
+    '.map(([f,A])=>h.jsxs("button",{onClick:()=>PT(f),className:`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${qf===f?_.chipOn:_.chip}`,children:[A,h.jsx("span",{className:"ml-1.5 tabular-nums opacity-60",children:f==="all"?b.length:f==="active"?b.filter(N=>!["completed","wasted"].includes(N.status)).length:b.filter(N=>N.status===f).length})]},f))'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1196,6 +1205,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.34"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.35"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
