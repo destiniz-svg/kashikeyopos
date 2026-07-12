@@ -234,6 +234,12 @@ const themeUtilCss = `
 .ksh-accentBd{border-color:var(--k-accentbd)}
 @media(min-width:1024px){.ksh-reg-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}.ksh-col1{grid-column:span 1/span 1}}
 .ksh-pill{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;line-height:1;white-space:nowrap}
+@keyframes kshexfill{0%,100%{opacity:.16}50%{opacity:1}}
+.ksh-hexspin{display:block}
+.ksh-hexspin path{fill:var(--k-primary);stroke:var(--k-appbg);stroke-width:2;animation:kshexfill 1.15s ease-in-out infinite}
+.ksh-hexspin path:nth-child(1){animation-delay:0s}.ksh-hexspin path:nth-child(2){animation-delay:.19s}.ksh-hexspin path:nth-child(3){animation-delay:.38s}.ksh-hexspin path:nth-child(4){animation-delay:.57s}.ksh-hexspin path:nth-child(5){animation-delay:.76s}.ksh-hexspin path:nth-child(6){animation-delay:.95s}
+.ksh-hexbg path{fill:none;stroke:var(--k-primary);stroke-width:1.4;opacity:.28}
+@media (prefers-reduced-motion:reduce){.ksh-hexspin path{animation:none;opacity:.6}}
 `.replace(/\n/g, "");
 
 /* Design system §3 typography. Self-hosted (web/dist/fonts) variable woff2 —
@@ -321,6 +327,12 @@ const sndJs = `(function(){
    settled→completed green, wasted→cancelled red). */
 const statusJs = `window.__kstatus=function(s){s=String(s||'').toLowerCase();var M={new:['#FEF3C7','#B45309','New'],pending:['#FEF3C7','#B45309','Pending'],preparing:['#DBEAFE','#1D4ED8','Preparing'],cooking:['#DBEAFE','#1D4ED8','Preparing'],ready:['#CCFBF1','#0F766E','Ready'],served:['#CCFBF1','#0F766E','Served'],delivered:['#DCFCE7','#15803D','Delivered'],completed:['#DCFCE7','#15803D','Done'],settled:['#DCFCE7','#15803D','Done'],paid:['#DCFCE7','#15803D','Done'],closed:['#DCFCE7','#15803D','Done'],wasted:['#FEE2E2','#B91C1C','Void'],cancelled:['#FEE2E2','#B91C1C','Cancelled'],refunded:['#FEE2E2','#B91C1C','Refunded'],offline:['#E7E5E4','#78716C','Offline']};var c=M[s]||['#F4F1EB','#8A8378',(s?s.charAt(0).toUpperCase()+s.slice(1):'—')];return{bg:c[0],fg:c[1],label:c[2]};};`;
 
+/* Design system §1 signature: the kashikeyo hex-segment motif (fruit
+   cross-section) — a hexagon split into six wedges from the centre. Used only
+   in the loading spinner (wedges pulse clockwise) and empty states (faint
+   outline). __kshexSvg(cls,size) returns the raw SVG for dangerouslySetInnerHTML. */
+const hexJs = "window.__kshexSvg=function(cls,size){var p='';for(var i=0;i<6;i++){var a1=i*Math.PI/3,a2=(i+1)*Math.PI/3;p+='<path d=\"M50 50L'+(50+42*Math.cos(a1)).toFixed(1)+' '+(50+42*Math.sin(a1)).toFixed(1)+'L'+(50+42*Math.cos(a2)).toFixed(1)+' '+(50+42*Math.sin(a2)).toFixed(1)+'Z\"/>';}return '<svg viewBox=\"0 0 100 100\" class=\"'+cls+'\" width=\"'+size+'\" height=\"'+size+'\" aria-hidden=\"true\">'+p+'</svg>';};";
+
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
 window.__ksChart=function(data,pal){
   var mode=window.__ksChartMode();
@@ -392,6 +404,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-snd", sndJs);
   html = injectInline(html, "ksh-chart", chartJs);
   html = injectInline(html, "ksh-status", statusJs);
+  html = injectInline(html, "ksh-hex", hexJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   .replace(
@@ -1075,6 +1088,20 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:"ksh-display text-2xl font-bold leading-tight",children:"Order now & savor"}),h.jsx("div",{className:`text-xs mt-0.5 ${_.sub}`,children:"Order from your phone — we\'ll bring it to you."})]})'
   )
 
+  /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
+     the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
+  .replace(
+    'h.jsx("img",{src:Po,alt:"",className:"w-12 h-12 object-contain mb-3"}),h.jsx("div",{className:`text-sm ${_.sub}`,children:"Connecting to the café…"',
+    'h.jsx("div",{className:"mb-3",dangerouslySetInnerHTML:{__html:window.__kshexSvg("ksh-hexspin",52)}}),h.jsx("div",{className:`text-sm ${_.sub}`,children:"Connecting to the café…"'
+  )
+
+  /* 72b. Empty states get the faint hex-segment motif above the sentence
+     (design §1 / §7). */
+  .replace(
+    'h.jsx("div",{className:`rounded-2xl p-8 text-center text-sm ${_.panel} ${_.faint}`,children:"No orders here yet — open a guest view above and place one."})',
+    'h.jsxs("div",{className:`rounded-2xl p-8 text-center text-sm ${_.panel} ${_.faint}`,children:[h.jsx("div",{className:"flex justify-center mb-3",dangerouslySetInnerHTML:{__html:window.__kshexSvg("ksh-hexbg",64)}}),"No orders here yet — open a guest view above and place one."]})'
+  )
+
   /* 71. Status-pill scale §5 — the order card's leading status word was plain
      faint text ("new · 3 min · QR"). Render it as the one shared status pill
      (tint bg + 700 text from __kstatus) so Orders and the Kitchen display
@@ -1258,6 +1285,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.38"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.39"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
