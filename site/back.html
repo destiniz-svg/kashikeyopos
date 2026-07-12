@@ -166,6 +166,12 @@
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chips button { padding: 5px 11px; font-size: 12px; border-radius: 999px; background: var(--btn); }
   .chips button.on { background: var(--primary); color: #fff; }
+  .seg { display: flex; gap: 8px; margin: 4px 0 14px; }
+  .seg button { flex: 1; padding: 12px 10px; border-radius: 12px; background: var(--panel2); border: 1.5px solid var(--border); font-size: 13.5px; font-weight: 600; text-align: center; line-height: 1.35; }
+  .seg button.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--panel)); color: var(--primary); }
+  .seg button small { display: block; font-weight: 400; color: var(--sub); font-size: 11.5px; margin-top: 2px; }
+  .adj-preview { background: var(--panel2); border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.6; margin-top: 14px; }
+  .adj-preview b { font-weight: 700; }
   .bigstat { text-align: center; padding: 26px 18px; }
   .bigstat .n { font-size: 30px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
   .bigstat .l { font-size: 13px; color: var(--sub); margin-top: 4px; }
@@ -447,7 +453,7 @@
         '<td class="mono">' + (i.avg_cost / 100).toFixed(4) + "/" + esc(i.base_unit) + "</td>" +
         "<td>" + (i.low ? '<span class="badge low">Low</span>' : '<span class="badge ok">OK</span>') + "</td>" +
         "<td>" + (i.units || []).map(function (u) { return '<span class="badge dim">1 ' + esc(u.name) + " = " + qty3(u.factor) + " " + esc(i.base_unit) + "</span>"; }).join(" ") + "</td>" +
-        '<td><button class="tiny ghost" data-hist="' + i.id + '">History</button> <button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
+        '<td><button class="tiny ghost" data-adj="' + i.id + '">Adjust</button> <button class="tiny ghost" data-hist="' + i.id + '">History</button> <button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
         "</tr>";
     }).join("");
     el("main").innerHTML =
@@ -456,6 +462,7 @@
       "<tbody>" + (rows || '<tr><td colspan="7" class="empty">No ingredients yet — add your first one.</td></tr>') + "</tbody></table></div>" +
       '<p class="hint">Avg cost is per base unit (' + esc(S.currency) + " sub-units) and updates automatically each time you enter a delivery.</p>";
     el("addIng").onclick = function () { ingredientModal(null); };
+    el("main").querySelectorAll("[data-adj]").forEach(function (b) { b.onclick = function () { adjustModal(ingById(b.dataset.adj)); }; });
     el("main").querySelectorAll("[data-hist]").forEach(function (b) { b.onclick = function () { historyModal(ingById(b.dataset.hist)); }; });
     el("main").querySelectorAll("[data-edit]").forEach(function (b) { b.onclick = function () { ingredientModal(ingById(b.dataset.edit)); }; });
     el("main").querySelectorAll("[data-del]").forEach(function (b) {
@@ -465,6 +472,89 @@
         api("/ingredients/" + encodeURIComponent(i.id), { method: "DELETE" }).then(function () { toast("Removed " + i.name); return loadAll(); }).then(render).catch(function (e) { toast(e.message); });
       };
     });
+  }
+
+  var WASTE_REASONS = ["Spoiled", "Expired", "Broken / spill", "Staff meal", "Prep loss"];
+  var CORRECT_REASONS = ["Miscount", "Found extra", "Went missing", "Supplier short"];
+  function adjustModal(ing) {
+    if (!ing) return;
+    var st = { mode: "waste", reason: "", qty: "", unit: "" };
+    function unitOpts() {
+      return '<option value="">' + esc(ing.base_unit) + "</option>" +
+        (ing.units || []).map(function (u) { return '<option value="' + esc(u.name) + '"' + (st.unit === u.name ? " selected" : "") + ">" + esc(u.name) + " (" + qty3(u.factor) + " " + esc(ing.base_unit) + ")</option>"; }).join("");
+    }
+    function factorOf(name) { if (!name) return 1; var u = (ing.units || []).find(function (x) { return x.name === name; }); return u ? u.factor : 1; }
+    function draw() {
+      var isW = st.mode === "waste";
+      var reasons = isW ? WASTE_REASONS : CORRECT_REASONS;
+      el("modalHost").innerHTML =
+        '<div class="overlay" id="ov"><div class="modal">' +
+        "<h3>Adjust stock — " + esc(ing.name) + "</h3>" +
+        '<p class="sub">On the shelf now: <b>' + friendlyQty(ing, ing.current_stock) + "</b>. Every adjustment is logged so your figures stay honest.</p>" +
+        '<div class="seg">' +
+        '<button data-m="waste" class="' + (isW ? "on" : "") + '">🗑️ Record wastage<small>Something spoiled or was thrown out</small></button>' +
+        '<button data-m="correct" class="' + (isW ? "" : "on") + '">✏️ Correct the count<small>The shelf doesn’t match the system</small></button>' +
+        "</div>" +
+        "<label>" + (isW ? "How much was thrown out or spoiled?" : "What’s actually on the shelf right now?") + "</label>" +
+        '<div class="row2"><input id="aQty" class="num" inputmode="decimal" placeholder="' + (isW ? "amount" : "true count") + '" value="' + esc(st.qty) + '" style="width:100%" />' +
+        '<select id="aUnit" style="width:100%">' + unitOpts() + "</select></div>" +
+        '<label style="margin-top:10px">Reason' + (isW ? "" : " (optional)") + "</label>" +
+        '<div class="chips" id="aReasons">' + reasons.map(function (r) { return '<button data-r="' + esc(r) + '" class="' + (st.reason === r ? "on" : "") + '">' + esc(r) + "</button>"; }).join("") + "</div>" +
+        '<input id="aNote" placeholder="Add a note (optional)" value="' + esc(st.reason) + '" style="width:100%;margin-top:8px" />' +
+        '<div class="adj-preview" id="aPrev">Enter an amount to see the effect.</div>' +
+        '<div class="actions"><button class="ghost" id="aCancel">Cancel</button><button class="primary" id="aSave">' + (isW ? "Record wastage" : "Save correction") + "</button></div>" +
+        "</div></div>";
+      el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
+      el("aCancel").onclick = close;
+      el("modalHost").querySelectorAll(".seg [data-m]").forEach(function (b) { b.onclick = function () { st.mode = b.dataset.m; draw(); }; });
+      el("modalHost").querySelectorAll("#aReasons [data-r]").forEach(function (b) {
+        b.onclick = function () {
+          st.reason = st.reason === b.dataset.r ? "" : b.dataset.r;
+          el("aNote").value = st.reason;
+          el("modalHost").querySelectorAll("#aReasons [data-r]").forEach(function (x) { x.classList.toggle("on", x.dataset.r === st.reason); });
+        };
+      });
+      el("aNote").oninput = function () { st.reason = el("aNote").value; };
+      el("aQty").oninput = function () { st.qty = el("aQty").value; preview(); };
+      el("aUnit").onchange = function () { st.unit = el("aUnit").value; preview(); };
+      el("aSave").onclick = save;
+      el("aQty").focus();
+      preview();
+    }
+    function preview() {
+      var amt = parseFloat(el("aQty").value);
+      var box = el("aPrev");
+      if (isNaN(amt) || amt < 0) { box.innerHTML = "Enter an amount to see the effect."; return; }
+      var base = Math.round(amt * factorOf(el("aUnit").value) * 1000) / 1000;
+      var avg = ing.avg_cost / 100;
+      if (st.mode === "waste") {
+        if (base > ing.current_stock + 1e-9) {
+          box.innerHTML = '<span style="color:var(--warn)">You only have <b>' + friendlyQty(ing, ing.current_stock) + "</b> — you can’t waste more than that.</span>";
+          return;
+        }
+        box.innerHTML = "Removes <b>" + qty3(base) + " " + esc(ing.base_unit) + "</b> · value lost <b>" + esc(S.currency) + " " + (base * avg).toFixed(2) + "</b><br>New stock: <b>" + friendlyQty(ing, Math.round((ing.current_stock - base) * 1000) / 1000) + "</b>";
+      } else {
+        var delta = Math.round((base - ing.current_stock) * 1000) / 1000;
+        if (delta === 0) { box.innerHTML = "That matches the system — nothing to correct."; return; }
+        box.innerHTML = "System says <b>" + friendlyQty(ing, ing.current_stock) + "</b> → you counted <b>" + friendlyQty(ing, base) + "</b><br>Records a <b style=\"color:" + (delta < 0 ? "var(--warn)" : "var(--ok)") + '">' + (delta > 0 ? "+" : "") + qty3(delta) + " " + esc(ing.base_unit) + "</b> difference.";
+      }
+    }
+    function close() { el("modalHost").innerHTML = ""; }
+    function save() {
+      var amt = parseFloat(el("aQty").value);
+      if (isNaN(amt) || amt < 0) return toast("Enter an amount first");
+      if (st.mode === "waste" && !(amt > 0)) return toast("Enter how much was thrown out");
+      var body = { ingredientId: ing.id, mode: st.mode, qty: amt, unitName: el("aUnit").value || "", reason: el("aNote").value.trim() };
+      el("aSave").disabled = true;
+      api("/adjust", { method: "POST", body: JSON.stringify(body) })
+        .then(function (r) {
+          toast(r.unchanged ? "Already matches — no change" : (st.mode === "waste" ? "Wastage recorded" : "Stock corrected"));
+          close(); return loadAll();
+        })
+        .then(render)
+        .catch(function (e) { el("aSave").disabled = false; toast(e.message); });
+    }
+    draw();
   }
 
   var MOVE_KINDS = {

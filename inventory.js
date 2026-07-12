@@ -250,6 +250,64 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json(out);
   }));
 
+  /* ── Wastage & stock corrections (Phase 2) ──────────────────────────────
+     Two everyday realities that used to have nowhere to go: something spoiled
+     or got thrown out (waste), and "the shelf just doesn't match the system"
+     (a correction). Both land as first-class ledger entries so the stock
+     figure, the value on hand and the COGS reports all stay honest — no
+     silent edits to current_stock behind the ledger's back.
+
+       mode "waste"   — staff say how much was thrown out; qty is a positive
+                        amount that we subtract. Guarded so you can never
+                        waste more than you actually hold.
+       mode "correct" — staff type the true amount now on the shelf; we work
+                        out the difference and record it. Enter what you SEE,
+                        not a delta, so there's nothing to get backwards. */
+  router.post("/adjust", authAny, wrap(async (req, res) => {
+    const { ingredientId, mode, qty, unitName, reason } = req.body || {};
+    if (!ingredientId) return res.status(400).json({ error: "which ingredient?" });
+    if (mode !== "waste" && mode !== "correct") return res.status(400).json({ error: "mode must be waste or correct" });
+    const amount = num(qty);
+    if (mode === "waste" && !(amount > 0)) return res.status(400).json({ error: "enter how much was thrown out" });
+    if (mode === "correct" && amount < 0) return res.status(400).json({ error: "a stock count can't be negative" });
+
+    const out = await withOrg(req.orgId, async (client) => {
+      const ing = await client.query(
+        "SELECT id, name, base_unit, current_stock, avg_cost FROM ingredients WHERE org_id=$1 AND id=$2 AND active FOR UPDATE",
+        [req.orgId, ingredientId]);
+      if (!ing.rowCount) throw Object.assign(new Error("ingredient not found"), { status: 404 });
+      const i = ing.rows[0];
+      const factor = await factorFor(client, req.orgId, ingredientId, unitName);
+      const stock = Number(i.current_stock), avg = Number(i.avg_cost);
+      const baseAmt = round3(amount * factor);
+
+      let kind, delta, newStock;
+      if (mode === "waste") {
+        if (baseAmt > stock + 1e-9) {
+          throw Object.assign(new Error(`You only have ${round3(stock)} ${i.base_unit} of ${i.name} in stock — you can't waste more than that.`), { status: 400 });
+        }
+        kind = "waste"; delta = round3(-baseAmt); newStock = round3(stock - baseAmt);
+      } else {
+        newStock = baseAmt; delta = round3(baseAmt - stock);
+        if (delta === 0) return { unchanged: true, name: i.name };
+        kind = "manual";
+      }
+
+      const noteBase = mode === "waste" ? "wastage" : "stock correction";
+      const note = String(reason || "").trim() ? `${noteBase}: ${String(reason).trim().slice(0, 120)}` : noteBase;
+      await client.query(
+        "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, note) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        [req.orgId, uid(), ingredientId, kind, delta, avg, note]);
+      await client.query(
+        "UPDATE ingredients SET current_stock=$3, updated_at=now() WHERE org_id=$1 AND id=$2",
+        [req.orgId, ingredientId, newStock]);
+      return { name: i.name, baseUnit: i.base_unit, newStock, delta, valueChange: round3(delta * avg) };
+    });
+
+    if (out && !out.unchanged) await recomputeAvailability(req.orgId, [String(ingredientId)]);
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
   /* ── Recipes + live margin preview ──────────────────────────────────────
      The margin figures come straight from the same avg_cost the deduction
      and audit math use, so the number the owner sees while building a
