@@ -233,6 +233,7 @@ const themeUtilCss = `
 .ksh-accent{color:var(--k-accent)}
 .ksh-accentBd{border-color:var(--k-accentbd)}
 @media(min-width:1024px){.ksh-reg-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}.ksh-col1{grid-column:span 1/span 1}}
+.ksh-pill{display:inline-flex;align-items:center;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;line-height:1;white-space:nowrap}
 `.replace(/\n/g, "");
 
 /* Design system §3 typography. Self-hosted (web/dist/fonts) variable woff2 —
@@ -314,6 +315,12 @@ const sndJs = `(function(){
    both a line+area group and a bar group; the visible one is chosen from the
    localStorage mode (default "line"). The Line/Bars toggle flips them via the
    DOM — React state would reset on the dashboard's data-poll re-render. */
+/* Design system §5: ONE status scale, resolved identically everywhere. Each
+   entry is [tint-bg, 700-text, label] straight from the §2 semantic tokens;
+   the app's lifecycle statuses fold onto it (ready→served teal, delivered/
+   settled→completed green, wasted→cancelled red). */
+const statusJs = `window.__kstatus=function(s){s=String(s||'').toLowerCase();var M={new:['#FEF3C7','#B45309','New'],pending:['#FEF3C7','#B45309','Pending'],preparing:['#DBEAFE','#1D4ED8','Preparing'],cooking:['#DBEAFE','#1D4ED8','Preparing'],ready:['#CCFBF1','#0F766E','Ready'],served:['#CCFBF1','#0F766E','Served'],delivered:['#DCFCE7','#15803D','Delivered'],completed:['#DCFCE7','#15803D','Done'],settled:['#DCFCE7','#15803D','Done'],paid:['#DCFCE7','#15803D','Done'],closed:['#DCFCE7','#15803D','Done'],wasted:['#FEE2E2','#B91C1C','Void'],cancelled:['#FEE2E2','#B91C1C','Cancelled'],refunded:['#FEE2E2','#B91C1C','Refunded'],offline:['#E7E5E4','#78716C','Offline']};var c=M[s]||['#F4F1EB','#8A8378',(s?s.charAt(0).toUpperCase()+s.slice(1):'—')];return{bg:c[0],fg:c[1],label:c[2]};};`;
+
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
 window.__ksChart=function(data,pal){
   var mode=window.__ksChartMode();
@@ -384,6 +391,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-kpal", kpalJs);
   html = injectInline(html, "ksh-snd", sndJs);
   html = injectInline(html, "ksh-chart", chartJs);
+  html = injectInline(html, "ksh-status", statusJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   .replace(
@@ -1067,6 +1075,23 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:"ksh-display text-2xl font-bold leading-tight",children:"Order now & savor"}),h.jsx("div",{className:`text-xs mt-0.5 ${_.sub}`,children:"Order from your phone — we\'ll bring it to you."})]})'
   )
 
+  /* 71. Status-pill scale §5 — the order card's leading status word was plain
+     faint text ("new · 3 min · QR"). Render it as the one shared status pill
+     (tint bg + 700 text from __kstatus) so Orders and the Kitchen display
+     speak the same status language; the age + source stay as faint meta. */
+  .replace(
+    'children:[f.status," · ",Math.floor((Date.now()-f.createdAt)/6e4)," min · ",f.source==="pos"?"POS":"QR"]',
+    'children:[(qp=>h.jsx("span",{className:"ksh-pill mr-1.5",style:{background:qp.bg,color:qp.fg},children:qp.label}))(window.__kstatus(f.status)),Math.floor((Date.now()-f.createdAt)/6e4)," min · ",f.source==="pos"?"POS":"QR"]'
+  )
+
+  /* 71b. The Orders board / Kitchen display card subtitle rendered the status
+     inside a template string (`${A} min · ${status}`). Split it: the shared
+     status pill + the faint age. Completed orders keep their settled-time. */
+  .replace(
+    'h.jsx("div",{className:`text-xs ${N}`,children:f.status==="completed"?Vr(f.createdAt):`${A} min · ${f.status}`})',
+    'h.jsx("div",{className:`text-xs ${N} flex items-center`,children:f.status==="completed"?Vr(f.createdAt):(qp=>h.jsxs("span",{className:"flex items-center",children:[h.jsx("span",{className:"ksh-pill mr-1.5",style:{background:qp.bg,color:qp.fg},children:qp.label}),A+" min"]}))(window.__kstatus(f.status))})'
+  )
+
   /* 70. Register three-zone layout §4.1 — add the left order-queue rail on
      desktop: the open bills/tickets (Ti) as a vertical list with tap-to-switch
      (parked → resume, active → select), current highlighted. Reuses the same
@@ -1233,6 +1258,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.37"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.38"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
