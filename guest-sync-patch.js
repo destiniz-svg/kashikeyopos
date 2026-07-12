@@ -333,6 +333,13 @@ const statusJs = `window.__kstatus=function(s){s=String(s||'').toLowerCase();var
    outline). __kshexSvg(cls,size) returns the raw SVG for dangerouslySetInnerHTML. */
 const hexJs = "window.__kshexSvg=function(cls,size){var p='';for(var i=0;i<6;i++){var a1=i*Math.PI/3,a2=(i+1)*Math.PI/3;p+='<path d=\"M50 50L'+(50+42*Math.cos(a1)).toFixed(1)+' '+(50+42*Math.sin(a1)).toFixed(1)+'L'+(50+42*Math.cos(a2)).toFixed(1)+' '+(50+42*Math.sin(a2)).toFixed(1)+'Z\"/>';}return '<svg viewBox=\"0 0 100 100\" class=\"'+cls+'\" width=\"'+size+'\" height=\"'+size+'\" aria-hidden=\"true\">'+p+'</svg>';};";
 
+/* Out-of-stock predicate shared by every ordering surface: a product is
+   unavailable when it's manually sold out, when it's recipe-tracked and the
+   ingredient engine says zero servings remain (data.recipeAvail<=0), or when a
+   stock-tracked product hit zero. Items with no stock field (services) are
+   always sellable. */
+const availJs = "window.__ksOut=function(f){if(!f)return false;if(f.soldOut===true||f.available===false)return true;if(f.recipeAvail!=null)return Number(f.recipeAvail)<=0;return f.stock!=null&&Number(f.stock)<=0;};";
+
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
 window.__ksChart=function(data,pal){
   var mode=window.__ksChartMode();
@@ -405,6 +412,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-chart", chartJs);
   html = injectInline(html, "ksh-status", statusJs);
   html = injectInline(html, "ksh-hex", hexJs);
+  html = injectInline(html, "ksh-avail", availJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   .replace(
@@ -1088,6 +1096,36 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:"ksh-display text-2xl font-bold leading-tight",children:"Order now & savor"}),h.jsx("div",{className:`text-xs mt-0.5 ${_.sub}`,children:"Order from your phone — we\'ll bring it to you."})]})'
   )
 
+  /* 73b. Hardening: the "Recent sales" list did f.payments.map(...) unguarded,
+     so a single sale row without a payments array (an FOC/refund edge, or an
+     imported record) crashed the entire till to a blank screen. Guard it. */
+  .replace(
+    'f.payments.map(A=>A.method)',
+    '(f.payments||[]).map(A=>A.method)'
+  )
+
+  /* 73. Availability §2 / Phase 3 — a till catalog tile whose ingredients (or
+     tracked stock) have run out can no longer be tapped into an order: it dims,
+     shows a "Sold out" pill, and its add handler is blocked. Restores itself
+     automatically when the availability engine reports stock again. */
+  .replace(
+    'Sw.map(f=>h.jsxs("button",{onClick:()=>id(f),className:`relative rounded-2xl p-3 text-left transition active:scale-95 ${_.tile}`,children:[',
+    'Sw.map(f=>h.jsxs("button",{onClick:()=>{if(window.__ksOut(f))return;id(f)},className:`relative rounded-2xl p-3 text-left transition active:scale-95 ${_.tile} ${window.__ksOut(f)?"opacity-50":""}`,children:[window.__ksOut(f)?h.jsx("span",{className:"absolute top-2 right-2 ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px",zIndex:2},children:"Sold out"}):null,'
+  )
+
+  /* 74. Availability §2 on the customer QR menu — a recipe/stock item that has
+     sold out stays on the menu (dimmed) with a "Sold out" pill instead of an
+     add button, so guests see it but can't order it. Items already in the cart
+     keep their stepper so they can still be removed. */
+  .replace(
+    'return h.jsxs("div",{className:`flex items-center gap-3 px-3.5 py-3 rounded-2xl ${_.panel}`,children:[ze.img?',
+    'return h.jsxs("div",{className:`flex items-center gap-3 px-3.5 py-3 rounded-2xl ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?'
+  )
+  .replace(
+    ']}),on?h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel2}`,children:[h.jsx("button",{onClick:()=>$1(ze.id,-1)',
+    ']}),ze.soldOut&&!on?h.jsx("span",{className:"ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px"},children:"Sold out"}):on?h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel2}`,children:[h.jsx("button",{onClick:()=>$1(ze.id,-1)'
+  )
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1285,6 +1323,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.39"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.41"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

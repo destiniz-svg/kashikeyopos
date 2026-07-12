@@ -921,7 +921,11 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   }
   res.json({ settings, storeId, stores: stores.rows, zones,
     tables: tables.map((t) => t.name),
-    products: products.filter((p) => (p.stock || 0) > 0 || hasRecipe.has(String(p.id))).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock, storeId: p.storeId || "global" })),
+    /* Recipe-tracked items stay on the menu even at zero servings so the guest
+       sees them as "Sold out" (soldOut/soldOutReason from the availability
+       engine) rather than silently vanishing; plain stock-tracked items with
+       no stock are still hidden. */
+    products: products.filter((p) => (p.stock || 0) > 0 || hasRecipe.has(String(p.id))).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
     cust });
 }));
 
@@ -940,6 +944,12 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
     return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: Number(src.price) || 0, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false };
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
+  /* Enforce availability server-side: a guest must never place an order for an
+     item that has just sold out (ingredient-driven recipeAvail<=0, or a
+     stock-tracked item at zero), even if their menu was loaded moments ago. */
+  const soldOut = lines.map((l) => products.find((p) => String(p.id) === String(l.pid)))
+    .filter((p) => p && (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)));
+  if (soldOut.length) return res.status(409).json({ error: `${soldOut[0].name} just sold out — please remove it and try again.` });
   const otype = gtype === "delivery" ? "delivery" : gtype === "pickup" ? "takeaway" : "dinein";
   const requestedTable = String(table || "").trim().slice(0, 40);
   if (otype === "dinein" && !requestedTable) return res.status(400).json({ error: "select your table number before ordering" });

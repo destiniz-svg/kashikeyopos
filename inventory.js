@@ -51,6 +51,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      a retried call, or a crash-and-rerun all deduct exactly once.
      Refund sales put the ingredients back under a distinct ref. */
   async function processSales(orgId, sales) {
+    const touched = new Set();
     for (const sale of sales || []) {
       if (!sale || !Array.isArray(sale.lines) || !sale.id) continue;
       const isRefund = sale.type === "refund";
@@ -84,11 +85,63 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
               await client.query(
                 "UPDATE ingredients SET current_stock = current_stock + $3, updated_at = now() WHERE org_id=$1 AND id=$2",
                 [orgId, ingredientId, round3(sign * baseQty)]);
+              touched.add(ingredientId);
             }
           }
         });
       } catch (e) { recordError("inventory deduction " + ref, e); }
     }
+    if (touched.size) await recomputeAvailability(orgId, [...touched]);
+  }
+
+  /* ── Availability engine (the central "what remains" made sellable) ──────
+     A recipe-tracked product can be sold only while every ingredient it needs
+     is in stock. We fold that down to one number the till + guest already
+     understand — how many servings the current ingredient levels can still
+     make — and write it onto the product entity (data.recipeAvail) together
+     with the limiting ingredient's name (data.soldOutReason). Because that
+     rides the normal sync stream, every ordering surface disables the item
+     the moment an ingredient runs out, and restores it when stock returns —
+     no separate availability feed to keep in step. Recomputed after any
+     ingredient-stock change (sale, purchase, audit) or recipe edit; scoped to
+     the affected products so a busy till never recomputes the whole menu. */
+  async function recomputeAvailability(orgId, ingredientIds) {
+    try {
+      let maxRowver = 0;
+      await withOrg(orgId, async (client) => {
+        const prodQ = ingredientIds && ingredientIds.length
+          ? await client.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1 AND ingredient_id = ANY($2)", [orgId, ingredientIds])
+          : await client.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [orgId]);
+        const productIds = prodQ.rows.map((r) => r.product_id);
+        if (!productIds.length) return;
+        const rc = await client.query(
+          `SELECT rl.product_id, rl.qty, i.name, i.current_stock
+           FROM recipe_lines rl JOIN ingredients i ON i.org_id=rl.org_id AND i.id=rl.ingredient_id
+           WHERE rl.org_id=$1 AND rl.product_id = ANY($2) AND i.active`, [orgId, productIds]);
+        const byProduct = new Map();
+        for (const row of rc.rows) { (byProduct.get(row.product_id) || byProduct.set(row.product_id, []).get(row.product_id)).push(row); }
+        for (const pid of productIds) {
+          const lines = byProduct.get(pid) || [];
+          let servings = lines.length ? Infinity : null, limName = null;
+          for (const l of lines) {
+            const q = Number(l.qty) || 0; if (q <= 0) continue;
+            const s = Math.floor(Number(l.current_stock) / q);
+            if (s < servings) { servings = s; limName = l.name; }
+          }
+          if (servings === Infinity) servings = null;
+          const avail = servings == null ? null : Math.max(0, servings);
+          const reason = servings != null && servings <= 0 ? "Out of " + (limName || "ingredients") : null;
+          const upd = await client.query(
+            `UPDATE entities SET
+               data = data || jsonb_build_object('recipeAvail', $3::int, 'soldOutReason', $4::text),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+             WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver`,
+            [orgId, pid, avail, reason]);
+          for (const row of upd.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+        }
+      });
+      if (maxRowver && poke) poke(orgId, maxRowver);
+    } catch (e) { recordError("availability recompute", e); }
   }
 
   /* ── Menu items (for the recipe mapper) ─────────────────────────────────
@@ -214,6 +267,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       }
       return recipeCost(client, req.orgId, req.params.productId);
     });
+    /* Editing a recipe changes what the product needs, so its availability
+       must be re-derived even if no stock moved. */
+    await recomputeAvailability(req.orgId, lines.map((l) => l && String(l.ingredientId)).filter(Boolean));
     res.json({ ok: true, ...out });
   }));
 
@@ -310,6 +366,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       return postInvoiceTx(client, req.orgId, { supplierId, supplierName, invoiceNo, lines });
     });
     if (out.rowver && poke) poke(req.orgId, out.rowver);
+    await recomputeAvailability(req.orgId, (out.lines || []).map((l) => l && String(l.ingredientId)).filter(Boolean));
     res.json({ ok: true, id: out.id, total: out.total, lines: out.lines });
   }));
 
@@ -355,6 +412,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       return { ...inv, rowver: Math.max(inv.rowver, Number(upd.rows[0].rowver)) };
     });
     if (out.rowver && poke) poke(req.orgId, out.rowver);
+    await recomputeAvailability(req.orgId, (out.lines || []).map((l) => l && String(l.ingredientId)).filter(Boolean));
     res.json({ ok: true, id: out.id, total: out.total, lines: out.lines });
   }));
 
@@ -496,6 +554,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         [req.orgId, req.params.id, purchasesValue, closing, cogs]);
       return { openingValue: opening, purchasesValue, closingValue: closing, cogs, flaggedForReview: review };
     });
+    /* A stock check snaps every counted ingredient to its physical figure, so
+       re-derive availability across the whole recipe menu. */
+    await recomputeAvailability(req.orgId);
     res.json({ ok: true, ...out });
   }));
 
