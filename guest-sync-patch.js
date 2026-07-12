@@ -129,17 +129,21 @@ const lovablePalette =
    dark flag to false, so the many `${i?"bg-slate-900":"bg-white"}` controls
    (steppers, amounts) render their light variant instead of dark-on-cream. */
 const THEMES = {
+  /* KashikeyoPOS design system v1 (§2 tokens): kashikeyo-fruit palette —
+     keyo-600 #C7431D ripe segment (primary), sand-warm neutrals, flat white
+     cards. Light mode is the money screen (bright cafés → sunlight legible:
+     sand-900 #26221C text on white, never gray-on-gray). */
   orange: {
-    l: { bg:"#F3ECE1", text:"#2A241E", sub:"#8A8074", faint:"#B7AE9F", primary:"#C1502D", primaryHover:"#AA4526", accent:"#C1502D",
-         panel:"rgba(255,255,255,.86)", panel2:"rgba(236,227,211,.72)", border:"#E8DFCF", input:"#FFFFFF", inputBorder:"#E8DFCF", ph:"#B7AE9F",
-         chip:"rgba(251,247,239,.85)", chipText:"#4A4238", nav:"rgba(243,236,225,.72)", navOff:"#A79E8F",
-         modal:"rgba(255,255,255,.82)", btn:"#F1E8D8", btnText:"#4A4238", btnHover:"#E8DCC5", accentBd:"rgba(193,80,45,.4)",
-         axis:"#B7AE9F", bar:"#C1502D", grid:"#EFE6D6", tip:"#FFFFFF" },
-    d: { bg:"#241A14", text:"#EDE6DA", sub:"#A79E8F", faint:"#7C7466", primary:"#E0794F", primaryHover:"#E88A62", accent:"#E0794F",
-         panel:"rgba(46,38,30,.72)", panel2:"rgba(58,48,38,.6)", border:"#3A3025", input:"#2A2118", inputBorder:"#3A3025", ph:"#7C7466",
-         chip:"rgba(58,48,38,.62)", chipText:"#D8CFC0", nav:"rgba(30,22,16,.72)", navOff:"#7C7466",
-         modal:"rgba(40,32,24,.82)", btn:"#3A3025", btnText:"#E7DECF", btnHover:"#483C2C", accentBd:"rgba(224,121,79,.5)",
-         axis:"#7C7466", bar:"#E0794F", grid:"#3A3025", tip:"#2A2018" } },
+    l: { bg:"#FBFAF7", text:"#26221C", sub:"#8A8378", faint:"#B8B0A3", primary:"#C7431D", primaryHover:"#A33417", accent:"#C7431D",
+         panel:"#FFFFFF", panel2:"#F4F1EB", border:"#E3DED4", input:"#FFFFFF", inputBorder:"#E3DED4", ph:"#B8B0A3",
+         chip:"#F4F1EB", chipText:"#26221C", nav:"#FFFFFF", navOff:"#8A8378",
+         modal:"#FFFFFF", btn:"#FFFFFF", btnText:"#26221C", btnHover:"#F4F1EB", accentBd:"rgba(199,67,29,.4)",
+         axis:"#B8B0A3", bar:"#C7431D", grid:"#EFEBE2", tip:"#FFFFFF" },
+    d: { bg:"#1B1713", text:"#ECE5DA", sub:"#A79E90", faint:"#7C7365", primary:"#E0794F", primaryHover:"#E88A62", accent:"#E0794F",
+         panel:"#26211B", panel2:"#2F2922", border:"#3A322A", input:"#221D17", inputBorder:"#3A322A", ph:"#7C7365",
+         chip:"#2F2922", chipText:"#D8CFC0", nav:"#211C16", navOff:"#7C7365",
+         modal:"#26211B", btn:"#2F2922", btnText:"#E7DECF", btnHover:"#3A322A", accentBd:"rgba(224,121,79,.5)",
+         axis:"#7C7365", bar:"#E0794F", grid:"#3A322A", tip:"#221D17" } },
   green: {
     l: { bg:"#EEF4E8", text:"#1E2A18", sub:"#6E7A64", faint:"#A6B29A", primary:"#4E8A3A", primaryHover:"#457C33", accent:"#4E8A3A",
          panel:"rgba(255,255,255,.86)", panel2:"rgba(228,238,219,.72)", border:"#DBE6CF", input:"#FFFFFF", inputBorder:"#DBE6CF", ph:"#A6B29A",
@@ -191,8 +195,11 @@ function hexA(hex, a) {
   if (!m) return hex;
   return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})`;
 }
+/* Design system §4 rejects "stacked glows" — the register is a dense,
+   sunlight-legible screen, so the app background is the flat sand-25 well,
+   not a layered radial gradient. */
 function appGrad(c) {
-  return `radial-gradient(circle at 8% 4%, ${hexA(c.primary, 0.12)}, transparent 32%),radial-gradient(circle at 94% 2%, ${hexA(c.accent, 0.12)}, transparent 28%),radial-gradient(circle at 72% 84%, ${hexA(c.primary, 0.07)}, transparent 34%),${c.bg}`;
+  return c.bg;
 }
 function varBlock(sel, c) {
   return `${sel}{--k-appbg:${appGrad(c)};--k-text:${c.text};--k-sub:${c.sub};--k-faint:${c.faint};--k-primary:${c.primary};--k-primary-h:${c.primaryHover};--k-accent:${c.accent};--k-panel:${c.panel};--k-panel2:${c.panel2};--k-border:${c.border};--k-input:${c.input};--k-input-border:${c.inputBorder};--k-ph:${c.ph};--k-chip:${c.chip};--k-chip-text:${c.chipText};--k-nav:${c.nav};--k-navoff:${c.navOff};--k-modal:${c.modal};--k-btn:${c.btn};--k-btn-text:${c.btnText};--k-btn-h:${c.btnHover};--k-accentbd:${c.accentBd}}`;
@@ -205,7 +212,7 @@ const themeUtilCss = `
 .ksh-app{background:var(--k-appbg);color:var(--k-text)}
 .ksh-header{background:var(--k-nav);border-color:var(--k-border);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
 .ksh-nav{background:var(--k-nav);border-color:var(--k-border);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
-.ksh-panel{background:var(--k-panel);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ksh-panel{background:var(--k-panel);border:1px solid var(--k-border);box-shadow:0 1px 3px rgba(38,34,28,.08)}
 .ksh-panel2{background:var(--k-panel2)}
 .ksh-border{border-color:var(--k-border)}
 .ksh-sub{color:var(--k-sub)}
@@ -214,18 +221,36 @@ const themeUtilCss = `
 .ksh-input::placeholder{color:var(--k-ph)}
 .ksh-chip{background:var(--k-chip);color:var(--k-chip-text)}
 .ksh-chipOn{background:var(--k-primary);color:#fff;border:1px solid var(--k-primary)}
-.ksh-tile{background:var(--k-panel);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.ksh-tile{background:var(--k-panel);border:1px solid var(--k-border);box-shadow:0 1px 3px rgba(38,34,28,.08)}
 .ksh-tile:hover{border-color:var(--k-primary)}
 .ksh-navOn{color:var(--k-primary)}
 .ksh-navOff{color:var(--k-navoff)}
 .ksh-modal{background:var(--k-modal);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4)}
-.ksh-btn{background:var(--k-btn);color:var(--k-btn-text)}
+.ksh-btn{background:var(--k-btn);color:var(--k-btn-text);border:1px solid var(--k-border)}
 .ksh-btn:hover{background:var(--k-btn-h)}
 .ksh-primary{background:var(--k-primary);color:#fff}
 .ksh-primary:hover{background:var(--k-primary-h)}
 .ksh-accent{color:var(--k-accent)}
 .ksh-accentBd{border-color:var(--k-accentbd)}
 `.replace(/\n/g, "");
+
+/* Design system §3 typography. Self-hosted (web/dist/fonts) variable woff2 —
+   no font CDN, so it works offline in the PWA. DM Sans body (continuity with
+   the Steva family), Bricolage Grotesque for headings + big numbers ("a face
+   that isn't Inter-everywhere"), JetBrains Mono for order IDs/receipts. Two
+   subsets per family (latin + latin-ext, the latter covers names like Malé).
+   Injected after Tailwind so .font-mono/body overrides win on source order. */
+const UR_LATIN = "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD";
+const UR_LATIN_EXT = "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF";
+const face = (fam, wght, file, range) => `@font-face{font-family:'${fam}';font-style:normal;font-weight:${wght};font-display:swap;src:url(/fonts/${file}.woff2) format('woff2');unicode-range:${range}}`;
+const fontsCss = (
+  face("DM Sans", "400 700", "dmsans-1", UR_LATIN) + face("DM Sans", "400 700", "dmsans-0", UR_LATIN_EXT) +
+  face("Bricolage Grotesque", "500 800", "bricolage-1", UR_LATIN) + face("Bricolage Grotesque", "500 800", "bricolage-0", UR_LATIN_EXT) +
+  face("JetBrains Mono", "400 600", "jbmono-1", UR_LATIN) + face("JetBrains Mono", "400 600", "jbmono-0", UR_LATIN_EXT) +
+  `.ksh-app{font-family:'DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}` +
+  `.ksh-app .font-mono,.ksh-app code,.ksh-app kbd,.ksh-app pre{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}` +
+  `.ksh-app h1,.ksh-app h2,.ksh-app h3,.ksh-display{font-family:'Bricolage Grotesque','DM Sans',sans-serif;letter-spacing:-0.01em}`
+);
 const chartObj = "{" + Object.keys(THEMES).map((t) => {
   const ch = (v) => `{axis:"${THEMES[t][v].axis}",bar:"${THEMES[t][v].bar}",grid:"${THEMES[t][v].grid}",tipBg:"${THEMES[t][v].tip}"}`;
   return `${t}:{l:${ch("l")},d:${ch("d")}}`;
@@ -321,9 +346,15 @@ window.__ksSpark=function(data,pal){
   return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><defs><linearGradient id="kssg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+pal.bar+'" stop-opacity="0.24"/><stop offset="1" stop-color="'+pal.bar+'" stop-opacity="0"/></linearGradient></defs><path d="'+ap+'" fill="url(#kssg)"/><path d="'+lp+'" fill="none" stroke="'+pal.bar+'" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>';
 };`;
 
-function injectCss(html, css) {
-  if (html.includes(css)) return html;
-  return html.replace("</style>", css + "</style>");
+/* Update-in-place CSS injection: wrap the payload in a marker comment and
+   replace it on re-bake, so *changing* a CSS block (e.g. the theme palette)
+   never leaves a stale duplicate behind. Appends before the first </style>
+   the first time, so the block sits after Tailwind and wins on source order. */
+function injectCss(html, css, marker) {
+  const block = `/*${marker}*/${css}/*/${marker}*/`;
+  const re = new RegExp(`/\\*${marker}\\*/[\\s\\S]*?/\\*/${marker}\\*/`);
+  if (re.test(html)) return html.replace(re, block);
+  return html.replace("</style>", block + "</style>");
 }
 
 function injectScript(html, src) {
@@ -346,8 +377,9 @@ function injectInline(html, marker, js) {
 
 patchFile(indexPath, (html) => {
   html = injectScript(html, "offline-bridge.js");
-  html = injectCss(html, lovableCss);
-  html = injectCss(html, themeVarsCss + themeUtilCss);
+  html = injectCss(html, lovableCss, "ksh-lovable");
+  html = injectCss(html, themeVarsCss + themeUtilCss, "ksh-theme");
+  html = injectCss(html, fontsCss, "ksh-fonts");
   html = injectInline(html, "ksh-kpal", kpalJs);
   html = injectInline(html, "ksh-snd", sndJs);
   html = injectInline(html, "ksh-chart", chartJs);
@@ -990,6 +1022,25 @@ patchFile(indexPath, (html) => html
     'A.orders&&A.orders.forEach(function(_o){if(_o.deleted||!_o.data)return;_o.data.status==="new"&&_o.data.source==="qr"&&!_sn.o[_o.id]&&(_sn.o[_o.id]=1,window.__ksnd.play("order"));_o.data.status==="ready"&&!(_sn.r=_sn.r||{})[_o.id]&&(_sn.r[_o.id]=1,window.__ksnd.play("ready"))})'
   )
 
+  /* 66. Register restyle (design §4.1): the Pay button is the money screen's
+     hero — full-width keyo-600, ≥56px tall. Bump py-3 → py-4 + minHeight 56px,
+     and drop the off-theme cyan drop-shadow (§4 allows one flat shadow only,
+     never a coloured glow). Find carries the shadow-cyan classes, absent from
+     the replacement, so it's a no-op on re-bakes. */
+  .replace(
+    'className:`flex-1 rounded-xl py-3 font-semibold text-sm shadow-lg ${i?"shadow-cyan-500/20":"shadow-cyan-600/20"} ${_.primary} active:scale-95 transition`,children:["Charge ",ue(cr.total)]',
+    'className:`flex-1 rounded-xl py-4 font-semibold text-sm ${_.primary} active:scale-95 transition`,style:{minHeight:"56px"},children:["Charge ",ue(cr.total)]'
+  )
+
+  /* 67. Register ticket TOTAL is a "big number" (design §3) — render it in the
+     Bricolage display face with tabular figures instead of the receipt mono,
+     so the amount the cashier reads all day has the product's own typographic
+     signature. */
+  .replace(
+    '"font-mono tabular-nums text-xl font-bold",children:ue(cr.total)',
+    '"ksh-display tabular-nums text-xl font-bold",children:ue(cr.total)'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1145,6 +1196,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.33"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.34"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
