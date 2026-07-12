@@ -1050,6 +1050,22 @@ patchFile(indexPath, (html) => html
     '.map(([f,A])=>h.jsxs("button",{onClick:()=>PT(f),className:`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${qf===f?_.chipOn:_.chip}`,children:[A,h.jsx("span",{className:"ml-1.5 tabular-nums opacity-60",children:f==="all"?b.length:f==="active"?b.filter(N=>!["completed","wasted"].includes(N.status)).length:b.filter(N=>N.status===f).length})]},f))'
   )
 
+  /* 69. Customer QR menu §4.3 (editorial warmth): the returning-member
+     greeting becomes a large Bricolage display hero instead of a plain
+     text-lg line. */
+  .replace(
+    'h.jsxs("div",{className:"text-lg font-bold",children:[(kh=>kh<5?"Good night":kh<12?"Good morning":kh<18?"Good afternoon":"Good evening")',
+    'h.jsxs("div",{className:"ksh-display text-2xl font-bold",children:[(kh=>kh<5?"Good night":kh<12?"Good morning":kh<18?"Good afternoon":"Good evening")'
+  )
+
+  /* 69b. First-time guests (table QR, no member) had only a small grey
+     subtitle — give them the same editorial hero: an appetising Bricolage
+     display headline over the "order from your phone" line. */
+  .replace(
+    'h.jsx("div",{className:`text-xs mb-2 ${_.sub}`,children:"Order from your phone — we\'ll bring it to you."})',
+    'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:"ksh-display text-2xl font-bold leading-tight",children:"Order now & savor"}),h.jsx("div",{className:`text-xs mt-0.5 ${_.sub}`,children:"Order from your phone — we\'ll bring it to you."})]})'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1205,6 +1221,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.35"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.36"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
