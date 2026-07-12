@@ -232,6 +232,7 @@ const themeUtilCss = `
 .ksh-primary:hover{background:var(--k-primary-h)}
 .ksh-accent{color:var(--k-accent)}
 .ksh-accentBd{border-color:var(--k-accentbd)}
+@media(min-width:1024px){.ksh-reg-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}.ksh-col1{grid-column:span 1/span 1}}
 `.replace(/\n/g, "");
 
 /* Design system §3 typography. Self-hosted (web/dist/fonts) variable woff2 —
@@ -1066,6 +1067,17 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:"ksh-display text-2xl font-bold leading-tight",children:"Order now & savor"}),h.jsx("div",{className:`text-xs mt-0.5 ${_.sub}`,children:"Order from your phone — we\'ll bring it to you."})]})'
   )
 
+  /* 70. Register three-zone layout §4.1 — add the left order-queue rail on
+     desktop: the open bills/tickets (Ti) as a vertical list with tap-to-switch
+     (parked → resume, active → select), current highlighted. Reuses the same
+     handlers the in-cart ticket strip already uses ($w/ea/_e), so it's a pure
+     layout add. Grid goes 5→6 cols (rail 1 · menu 3 · ticket 2); the rail is
+     hidden below lg, where the ticket tabs still live in the cart drawer. */
+  .replace(
+    'kI=h.jsxs("div",{className:"lg:grid lg:grid-cols-5 lg:gap-4",children:[',
+    'kI=h.jsxs("div",{className:"ksh-reg-grid",children:[h.jsx("div",{className:"hidden lg:block ksh-col1",children:h.jsxs("div",{className:`rounded-2xl p-2 sticky top-20 ${_.panel}`,style:{maxHeight:"78vh",overflowY:"auto"},children:[h.jsx("div",{className:`text-xs font-semibold uppercase tracking-wide px-1.5 mb-2 ${_.faint}`,children:"Open bills"}),h.jsx("div",{className:"space-y-2",children:Ti.map(rj=>h.jsxs("button",{onClick:()=>rj.parked?$w(rj.id):ea(rj.id),className:`w-full text-left rounded-xl px-2.5 py-2 ${_e&&rj.id===_e.id&&!rj.parked?_.chipOn:_.chip}`,children:[h.jsx("div",{className:"text-xs font-semibold truncate",children:rj.table?rj.table:rj.otype==="delivery"?"🛵 "+rj.label:rj.label}),h.jsx("div",{className:"text-xs opacity-60 truncate",children:rj.parked?"Parked":rj.label})]},rj.id))})]})}),'
+  )
+
   /* 38. Guest order status bar: the progress segments were a hardcoded
      bg-cyan-500 and the status label text-emerald-400 — a cyan/green bar on
      a red (or any non-cyan) store theme. Recolour both from the live theme
@@ -1221,6 +1233,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.36"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.37"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
