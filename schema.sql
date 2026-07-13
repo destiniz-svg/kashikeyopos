@@ -306,3 +306,12 @@ CREATE INDEX IF NOT EXISTS stock_moves_ing_loc ON stock_moves (org_id, ingredien
 ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS sellable   BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS sell_price NUMERIC(14,2) NOT NULL DEFAULT 0; -- laari
 ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS product_id TEXT NOT NULL DEFAULT '';         -- linked entities product
+
+-- Item roles (§6, prep step): an ingredient can also carry the "producible"
+-- role — a prep / made-in-house item (dough, sauce, cold-brew concentrate)
+-- built from other ingredients. Its build recipe lives in recipe_lines keyed
+-- by the prep ingredient's OWN id (product_id = ingredient id), reusing the
+-- recipe machinery. Making a batch consumes the components and stocks the prep
+-- item, rolling their cost into its weighted average — so one item is both
+-- built-from-a-recipe and a stock item consumed by other recipes.
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS producible BOOLEAN NOT NULL DEFAULT false;

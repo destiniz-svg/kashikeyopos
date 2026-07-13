@@ -450,13 +450,13 @@
   function renderIngredients() {
     var rows = S.ingredients.map(function (i) {
       return "<tr>" +
-        "<td>" + esc(i.name) + (i.sku ? ' <span class="badge dim">' + esc(i.sku) + "</span>" : "") + (i.sellable ? ' <span class="badge ok">Sells on till · ' + esc(S.currency) + " " + Y(i.sell_price) + "</span>" : "") + "</td>" +
+        "<td>" + esc(i.name) + (i.sku ? ' <span class="badge dim">' + esc(i.sku) + "</span>" : "") + (i.sellable ? ' <span class="badge ok">Sells on till · ' + esc(S.currency) + " " + Y(i.sell_price) + "</span>" : "") + (i.producible ? ' <span class="badge amber">Made in-house</span>' : "") + "</td>" +
         "<td>" + esc(i.location) + "</td>" +
         '<td class="mono">' + qty3(i.current_stock) + " " + esc(i.base_unit) + "</td>" +
         '<td class="mono">' + (i.avg_cost / 100).toFixed(4) + "/" + esc(i.base_unit) + "</td>" +
         "<td>" + (i.low ? '<span class="badge low">Low</span>' : '<span class="badge ok">OK</span>') + "</td>" +
         "<td>" + (i.units || []).map(function (u) { return '<span class="badge dim">1 ' + esc(u.name) + " = " + qty3(u.factor) + " " + esc(i.base_unit) + "</span>"; }).join(" ") + "</td>" +
-        '<td><button class="tiny ghost" data-adj="' + i.id + '">Adjust</button> <button class="tiny ghost" data-hist="' + i.id + '">History</button> <button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
+        "<td>" + (i.producible ? '<button class="tiny ghost" data-batch="' + i.id + '">Make batch</button> ' : "") + '<button class="tiny ghost" data-adj="' + i.id + '">Adjust</button> <button class="tiny ghost" data-hist="' + i.id + '">History</button> <button class="tiny ghost" data-edit="' + i.id + '">Edit</button> <button class="tiny ghost" data-del="' + i.id + '">Remove</button></td>' +
         "</tr>";
     }).join("");
     el("main").innerHTML =
@@ -465,6 +465,7 @@
       "<tbody>" + (rows || '<tr><td colspan="7" class="empty">No ingredients yet — add your first one.</td></tr>') + "</tbody></table></div>" +
       '<p class="hint">Avg cost is per base unit (' + esc(S.currency) + " sub-units) and updates automatically each time you enter a delivery.</p>";
     el("addIng").onclick = function () { ingredientModal(null); };
+    el("main").querySelectorAll("[data-batch]").forEach(function (b) { b.onclick = function () { batchModal(ingById(b.dataset.batch)); }; });
     el("main").querySelectorAll("[data-adj]").forEach(function (b) { b.onclick = function () { adjustModal(ingById(b.dataset.adj)); }; });
     el("main").querySelectorAll("[data-hist]").forEach(function (b) { b.onclick = function () { historyModal(ingById(b.dataset.hist)); }; });
     el("main").querySelectorAll("[data-edit]").forEach(function (b) { b.onclick = function () { ingredientModal(ingById(b.dataset.edit)); }; });
@@ -614,6 +615,61 @@
     }).catch(function () {});
   }
 
+  function batchModal(ing) {
+    if (!ing) return;
+    var st = { qty: "", unit: "", recipe: null };
+    function factorOf(name) { if (!name) return 1; var u = (ing.units || []).find(function (x) { return x.name === name; }); return u ? u.factor : 1; }
+    function unitOpts() {
+      return '<option value="">' + esc(ing.base_unit) + "</option>" +
+        (ing.units || []).map(function (u) { return '<option value="' + esc(u.name) + '"' + (st.unit === u.name ? " selected" : "") + ">" + esc(u.name) + " (" + qty3(u.factor) + " " + esc(ing.base_unit) + ")</option>"; }).join("");
+    }
+    el("modalHost").innerHTML =
+      '<div class="overlay" id="ov"><div class="modal">' +
+      "<h3>Make a batch — " + esc(ing.name) + "</h3>" +
+      '<p class="sub">Producing a batch uses up the ingredients below and adds the finished amount to stock. In stock now: <b>' + friendlyQty(ing, ing.current_stock) + "</b>.</p>" +
+      '<label>How much did you make?</label>' +
+      '<div class="row2"><input id="bQty" class="num" inputmode="decimal" placeholder="batch amount" style="width:100%" />' +
+      '<select id="bUnit" style="width:100%">' + unitOpts() + "</select></div>" +
+      '<div class="adj-preview" id="bPrev">Loading recipe…</div>' +
+      '<div class="actions"><button class="ghost" id="bCancel">Cancel</button><button class="primary" id="bSave" disabled>Make batch</button></div>' +
+      "</div></div>";
+    el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
+    el("bCancel").onclick = close;
+    function close() { el("modalHost").innerHTML = ""; }
+    function preview() {
+      var box = el("bPrev");
+      if (!st.recipe) return;
+      if (!st.recipe.lines.length) { box.innerHTML = '<span style="color:var(--warn)">No recipe yet — open Edit and add what this is made from.</span>'; return; }
+      var amt = parseFloat(el("bQty").value);
+      if (isNaN(amt) || amt <= 0) { box.innerHTML = "Enter a batch amount to see what it uses."; return; }
+      var outBase = Math.round(amt * factorOf(el("bUnit").value) * 1000) / 1000;
+      var short = null, cost = 0;
+      var rows = st.recipe.lines.map(function (l) {
+        var need = Math.round(l.qty * outBase * 1000) / 1000;
+        var have = (ingById(l.ingredientId) || {}).current_stock;
+        cost += need * (l.unitCost / 100);
+        var ok = have == null || need <= have + 1e-9;
+        if (!ok && !short) short = l.name;
+        return '<div style="display:flex;justify-content:space-between">' + esc(l.name) + '<span class="mono' + (ok ? "" : '" style="color:var(--warn)') + '">' + qty3(need) + " " + esc(l.baseUnit) + (ok ? "" : " (only " + qty3(have) + ")") + "</span></div>";
+      }).join("");
+      box.innerHTML = "Uses:" + rows + '<div style="display:flex;justify-content:space-between;margin-top:6px;border-top:1px solid var(--border);padding-top:6px"><b>Makes ' + qty3(outBase) + " " + esc(ing.base_unit) + "</b><b>" + esc(S.currency) + " " + cost.toFixed(2) + "</b></div>" +
+        (short ? '<div style="color:var(--warn);margin-top:6px">Not enough ' + esc(short) + " for this batch.</div>" : "");
+      el("bSave").disabled = !!short;
+    }
+    el("bQty").oninput = preview; el("bUnit").onchange = preview;
+    el("bSave").onclick = function () {
+      var amt = parseFloat(el("bQty").value);
+      if (isNaN(amt) || !(amt > 0)) return toast("Enter a batch amount");
+      el("bSave").disabled = true;
+      api("/produce", { method: "POST", body: JSON.stringify({ ingredientId: ing.id, qty: amt, unitName: el("bUnit").value || "" }) })
+        .then(function (r) { toast("Made " + qty3(r.made) + " " + r.baseUnit + " of " + r.name); close(); return loadAll(); })
+        .then(render)
+        .catch(function (e) { el("bSave").disabled = false; toast(e.message); });
+    };
+    api("/recipes/" + encodeURIComponent(ing.id)).then(function (r) { st.recipe = r; preview(); })
+      .catch(function (e) { el("bPrev").innerHTML = '<span style="color:var(--warn)">Could not load recipe: ' + esc(e.message) + "</span>"; });
+  }
+
   var MOVE_KINDS = {
     purchase: { label: "Received", icon: "📥", cls: "good" },
     sale: { label: "Used in sales", icon: "🍳", cls: "" },
@@ -621,6 +677,8 @@
     audit: { label: "Stock check", icon: "📋", cls: "amber" },
     waste: { label: "Wastage", icon: "🗑️", cls: "warn" },
     transfer: { label: "Transfer", icon: "🔀", cls: "" },
+    produce: { label: "Made a batch", icon: "🍲", cls: "good" },
+    prep: { label: "Used in a batch", icon: "🧑‍🍳", cls: "" },
     manual: { label: "Correction", icon: "✏️", cls: "amber" }
   };
   function historyModal(ing) {
@@ -670,6 +728,12 @@
   function ingredientModal(ing) {
     var units = (ing && ing.units || []).slice();
     var sell = { on: !!(ing && ing.sellable), price: (ing && ing.sellable && ing.sell_price) ? String(ing.sell_price / 100) : "", emoji: "🥤", cat: "Resale" };
+    var prep = { on: !!(ing && ing.producible), lines: [] };
+    function prepPickOpts(selId) {
+      return '<option value="">choose ingredient…</option>' + S.ingredients
+        .filter(function (x) { return !ing || x.id !== ing.id; })
+        .map(function (x) { return '<option value="' + esc(x.id) + '"' + (x.id === selId ? " selected" : "") + ">" + esc(x.name) + " (" + esc(x.base_unit) + ")</option>"; }).join("");
+    }
     function draw() {
       el("modalHost").innerHTML =
         '<div class="overlay" id="ov"><div class="modal">' +
@@ -697,6 +761,16 @@
         '<label>Tile emoji</label><input id="mSellEmoji" value="' + esc(sell.emoji) + '" maxlength="4" style="width:80px" />' +
         (ing && ing.base_unit !== "pcs" ? '<p class="hint" style="margin-top:8px">Heads up: this is counted in ' + esc(ing.base_unit) + ", so each sale removes 1 " + esc(ing.base_unit) + ' — resale works best for items counted in pieces.</p>' : "") +
         "</div></div>" +
+        '<div class="sell-role"><label class="sell-toggle"><input type="checkbox" id="mPrep"' + (prep.on ? " checked" : "") + " /> <span><b>Made in-house (prep item)</b><br><span class=\"hint\" style=\"margin:0\">Built from other ingredients — dough, a sauce, cold brew. You'll “Make a batch” to turn the components into stock.</span></span></label>" +
+        '<div id="mPrepDetail" style="' + (prep.on ? "" : "display:none") + 'margin-top:10px">' +
+        '<label>What it’s made from — amount per 1 ' + esc(ing ? ing.base_unit : "unit") + ' produced</label>' +
+        '<div id="mPrepLines">' + prep.lines.map(function (l, i) {
+          return '<div class="row2" style="margin-bottom:8px"><select data-pi="' + i + '">' + prepPickOpts(l.ingredientId) + "</select>" +
+            '<div style="display:flex;gap:8px;align-items:center"><input data-pq="' + i + '" class="num" inputmode="decimal" value="' + esc(String(l.qty)) + '" placeholder="qty" style="flex:1" /><button class="tiny ghost" data-px="' + i + '">✕</button></div></div>';
+        }).join("") + "</div>" +
+        '<button class="tiny ghost" id="mAddPrep">+ Add an ingredient</button>' +
+        (ing ? "" : '<p class="hint" style="margin-top:8px">Save the item first, then add deliveries for the components before your first batch.</p>') +
+        "</div></div>" +
         '<div class="actions"><button class="ghost" id="mCancel">Cancel</button><button class="primary" id="mSave">' + (ing ? "Save" : "Add ingredient") + "</button></div>" +
         "</div></div>";
       el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
@@ -704,6 +778,9 @@
       el("mAddU").onclick = function () { pull(); units.push({ name: "", factor: "" }); draw(); };
       el("modalHost").querySelectorAll("[data-ux]").forEach(function (b) { b.onclick = function () { pull(); units.splice(Number(b.dataset.ux), 1); draw(); }; });
       el("mSell").onchange = function () { sell.on = el("mSell").checked; el("mSellDetail").style.display = sell.on ? "" : "none"; if (sell.on) el("mSellPrice").focus(); };
+      el("mPrep").onchange = function () { prep.on = el("mPrep").checked; el("mPrepDetail").style.display = prep.on ? "" : "none"; if (prep.on && !prep.lines.length) { prep.lines.push({ ingredientId: "", qty: "" }); draw(); } };
+      el("mAddPrep").onclick = function () { pull(); prep.lines.push({ ingredientId: "", qty: "" }); draw(); };
+      el("modalHost").querySelectorAll("[data-px]").forEach(function (b) { b.onclick = function () { pull(); prep.lines.splice(Number(b.dataset.px), 1); draw(); }; });
       el("mSave").onclick = save;
     }
     function pull() {
@@ -717,6 +794,13 @@
         if (el("mSellCat")) sell.cat = el("mSellCat").value;
         if (el("mSellEmoji")) sell.emoji = el("mSellEmoji").value;
       }
+      if (el("mPrep")) {
+        prep.on = el("mPrep").checked;
+        prep.lines = prep.lines.map(function (l, i) {
+          var s = el("modalHost").querySelector('[data-pi="' + i + '"]'), q = el("modalHost").querySelector('[data-pq="' + i + '"]');
+          return { ingredientId: s ? s.value : l.ingredientId, qty: q ? q.value : l.qty };
+        });
+      }
     }
     function close() { el("modalHost").innerHTML = ""; }
     function save() {
@@ -728,14 +812,22 @@
         units: units.map(function (u) { return { name: String(u.name).trim(), factor: parseFloat(u.factor) || 0 }; }).filter(function (u) { return u.name && u.factor > 0; }),
         sellable: sell.on, sellPrice: sell.on ? Math.round((parseFloat(sell.price) || 0) * 100) : 0,
         sellEmoji: sell.emoji, sellCat: String(sell.cat || "Resale").trim() || "Resale",
+        producible: prep.on,
+        prepLines: prep.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: parseFloat(l.qty) || 0 }; }).filter(function (l) { return l.ingredientId && l.qty > 0; }),
       };
       if (!body.name) return toast("Give it a name");
       if (body.sellable && !(body.sellPrice > 0)) return toast("Set a selling price for the resale item");
+      if (body.producible && !body.prepLines.length) return toast("Add what the prep item is made from");
       api("/ingredients", { method: "POST", body: JSON.stringify(body) })
         .then(function () { close(); toast(body.name + " saved"); return loadAll(); }).then(render)
         .catch(function (e) { toast(e.message); });
     }
     draw();
+    /* Load the existing prep recipe so editing a made-in-house item shows its
+       components instead of an empty editor. */
+    if (ing && ing.producible) api("/recipes/" + encodeURIComponent(ing.id)).then(function (r) {
+      if (r.lines && r.lines.length && el("mPrep")) { pull(); prep.lines = r.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: l.qty }; }); draw(); }
+    }).catch(function () {});
   }
 
   /* ── Menu & Recipes tab ──────────────────────────────────────────── */

@@ -240,14 +240,14 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   router.get("/ingredients", authAny, wrap(async (req, res) => {
     const rows = await withOrg(req.orgId, async (client) => {
       const ing = await client.query(
-        "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location, sellable, sell_price FROM ingredients WHERE org_id=$1 AND active ORDER BY location, name",
+        "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location, sellable, sell_price, producible FROM ingredients WHERE org_id=$1 AND active ORDER BY location, name",
         [req.orgId]);
       const units = await client.query(
         "SELECT ingredient_id, name, factor FROM ingredient_units WHERE org_id=$1", [req.orgId]);
       return ing.rows.map((i) => ({
         ...i,
         current_stock: Number(i.current_stock), min_stock: Number(i.min_stock), avg_cost: Number(i.avg_cost),
-        sellable: i.sellable === true, sell_price: Number(i.sell_price),
+        sellable: i.sellable === true, sell_price: Number(i.sell_price), producible: i.producible === true,
         low: Number(i.min_stock) > 0 && Number(i.current_stock) <= Number(i.min_stock),
         units: units.rows.filter((u) => u.ingredient_id === i.id).map((u) => ({ name: u.name, factor: Number(u.factor) })),
       }));
@@ -256,20 +256,22 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   }));
 
   router.post("/ingredients", authAny, wrap(async (req, res) => {
-    const { id, name, sku, baseUnit, minStock, location, units, sellable, sellPrice, sellEmoji, sellCat } = req.body || {};
+    const { id, name, sku, baseUnit, minStock, location, units, sellable, sellPrice, sellEmoji, sellCat, producible, prepLines } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "ingredient name required" });
     const base = ["g", "ml", "pcs"].includes(baseUnit) ? baseUnit : "g";
     const ingId = id || uid();
     const willSell = sellable === true && num(sellPrice) > 0;
+    const cleanPrep = Array.isArray(prepLines) ? prepLines.filter((l) => l && l.ingredientId && String(l.ingredientId) !== String(ingId) && num(l.qty) > 0) : [];
+    const willPrep = producible === true && cleanPrep.length > 0;
     const out = await withOrg(req.orgId, async (client) => {
       await client.query(
-        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price, producible)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT (org_id, id) DO UPDATE SET
            name=excluded.name, sku=excluded.sku, min_stock=excluded.min_stock,
            location=excluded.location, sellable=excluded.sellable, sell_price=excluded.sell_price,
-           active=true, updated_at=now()`,
-        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice))]);
+           producible=excluded.producible, active=true, updated_at=now()`,
+        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice)), willPrep]);
       if (Array.isArray(units)) {
         await client.query("DELETE FROM ingredient_units WHERE org_id=$1 AND ingredient_id=$2", [req.orgId, ingId]);
         for (const u of units) {
@@ -277,6 +279,18 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
           await client.query(
             "INSERT INTO ingredient_units (org_id, id, ingredient_id, name, factor) VALUES ($1,$2,$3,$4,$5)",
             [req.orgId, uid(), ingId, String(u.name).trim(), num(u.factor)]);
+        }
+      }
+      /* The prep recipe lives in recipe_lines keyed by the item's own id.
+         Rewrite it whenever the producible role is present; clear it if the
+         role was turned off (only when prepLines was explicitly sent, so a
+         plain edit that omits it leaves an existing recipe untouched). */
+      if (producible !== undefined) {
+        await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, ingId]);
+        for (const l of cleanPrep) {
+          await client.query(
+            "INSERT INTO recipe_lines (org_id, id, product_id, ingredient_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (org_id, product_id, ingredient_id) DO UPDATE SET qty=excluded.qty",
+            [req.orgId, uid(), ingId, String(l.ingredientId), num(l.qty)]);
         }
       }
       /* Seed the linked product's emoji/category on first enable so the till
@@ -294,8 +308,10 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       /* Drop the sellable role too, so its till tile disappears with it. */
       await client.query("UPDATE ingredients SET sellable=false, sell_price=0 WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]);
       const rv = await syncResaleProduct(client, req.orgId, req.params.id);
+      /* Drop its prep recipe (keyed by its own id) and the producible role. */
+      await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, req.params.id]);
       await client.query(
-        "UPDATE ingredients SET active=false, updated_at=now() WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]);
+        "UPDATE ingredients SET active=false, producible=false, updated_at=now() WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]);
       return rv;
     });
     if (rowver && poke) poke(req.orgId, rowver);
@@ -435,6 +451,74 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         [req.orgId, uid(), ingredientId, base, avg, toLoc, note]);
       return { name: ing.name, baseUnit: ing.base_unit, moved: base, fromLoc, toLoc, breakdown: await perLocation(client, req.orgId, ingredientId, ing.location) };
     });
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
+  /* ── Make a batch of a prep item (§6 producible role) ───────────────────
+     "Made in-house" items (dough, sauce, cold brew) are built from other
+     ingredients. Producing a batch consumes the components (ledger 'prep')
+     and stocks the finished item (ledger 'produce'), rolling the components'
+     cost into the prep item's weighted-average cost — the same number recipes
+     and COGS already trust. The build recipe is stored in recipe_lines keyed
+     by the prep item's own id, with qty = components per ONE base unit made. */
+  router.post("/produce", authAny, wrap(async (req, res) => {
+    const { ingredientId, qty, unitName } = req.body || {};
+    if (!ingredientId) return res.status(400).json({ error: "which item are you making?" });
+    if (!(num(qty) > 0)) return res.status(400).json({ error: "enter how much you made" });
+
+    const out = await withOrg(req.orgId, async (client) => {
+      const ing = (await client.query(
+        "SELECT id, name, base_unit, current_stock, avg_cost, producible FROM ingredients WHERE org_id=$1 AND id=$2 AND active FOR UPDATE",
+        [req.orgId, ingredientId])).rows[0];
+      if (!ing) throw Object.assign(new Error("ingredient not found"), { status: 404 });
+      const comps = (await client.query(
+        `SELECT rl.ingredient_id, rl.qty, i.name, i.base_unit, i.current_stock, i.avg_cost
+         FROM recipe_lines rl JOIN ingredients i ON i.org_id=rl.org_id AND i.id=rl.ingredient_id
+         WHERE rl.org_id=$1 AND rl.product_id=$2 AND i.active`, [req.orgId, ingredientId])).rows;
+      if (!comps.length) throw Object.assign(new Error(`${ing.name} has no recipe yet — add what it's made from first.`), { status: 400 });
+
+      const factor = await factorFor(client, req.orgId, ingredientId, unitName);
+      const outputBase = round3(num(qty) * factor);
+      /* Check every component is in stock before touching anything. */
+      const plan = comps.map((c) => ({ c, need: round3(Number(c.qty) * outputBase) }));
+      for (const { c, need } of plan) {
+        if (need > Number(c.current_stock) + 1e-9) {
+          throw Object.assign(new Error(`Not enough ${c.name}: this batch needs ${round3(need)} ${c.base_unit} but only ${round3(Number(c.current_stock))} is in stock.`), { status: 400 });
+        }
+      }
+      const ref = "produce:" + uid();
+      let batchCost = 0;
+      for (const { c, need } of plan) {
+        const cAvg = Number(c.avg_cost);
+        batchCost += need * cAvg;
+        await client.query(
+          "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, ref, note) VALUES ($1,$2,$3,'prep',$4,$5,$6,$7)",
+          [req.orgId, uid(), c.ingredient_id, round3(-need), cAvg, ref, "used to make " + ing.name]);
+        await client.query(
+          "UPDATE ingredients SET current_stock = current_stock - $3, updated_at=now() WHERE org_id=$1 AND id=$2",
+          [req.orgId, c.ingredient_id, need]);
+      }
+      batchCost = Math.round(batchCost);
+      const stock = Number(ing.current_stock), avg = Number(ing.avg_cost);
+      const posStock = Math.max(stock, 0);
+      const newAvg = (posStock + outputBase) > 0 ? (posStock * avg + batchCost) / (posStock + outputBase) : avg;
+      const unitCost = outputBase > 0 ? batchCost / outputBase : 0;
+      await client.query(
+        "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, ref, note) VALUES ($1,$2,$3,'produce',$4,$5,$6,$7)",
+        [req.orgId, uid(), ingredientId, outputBase, unitCost, ref, "made a batch"]);
+      await client.query(
+        "UPDATE ingredients SET current_stock = current_stock + $3, avg_cost=$4, producible=true, updated_at=now() WHERE org_id=$1 AND id=$2",
+        [req.orgId, ingredientId, outputBase, newAvg]);
+      return {
+        name: ing.name, baseUnit: ing.base_unit, made: outputBase,
+        newStock: round3(stock + outputBase), batchCost, unitCost: round3(unitCost),
+        components: plan.map(({ c, need }) => ({ name: c.name, used: need, baseUnit: c.base_unit })),
+        touched: comps.map((c) => String(c.ingredient_id)).concat([String(ingredientId)]),
+      };
+    });
+    /* The prep item's stock rose and its components fell, so any menu item
+       that uses either must re-derive how many servings remain. */
+    await recomputeAvailability(req.orgId, out.touched);
     res.json(Object.assign({ ok: true }, out));
   }));
 
