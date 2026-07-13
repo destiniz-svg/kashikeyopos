@@ -995,7 +995,7 @@
         var mOpts = '<option value="">— pick ingredient —</option>' + S.ingredients.map(function (x) {
           return '<option value="' + x.id + '">' + esc(x.name) + "</option>";
         }).join("");
-        return '<tr><td><span class="badge amber">from PO</span> ' + esc(l.desc || "?") +
+        return '<tr><td><span class="badge amber">match?</span> ' + esc(l.desc || "?") +
           '<div style="margin-top:5px"><select data-dm="' + i + '">' + mOpts + "</select></div></td>" +
           '<td class="mono"><input class="num" data-dq="' + i + '" inputmode="decimal" value="' + esc(l.qty) + '" style="width:80px" /></td>' +
           "<td>—</td>" +
@@ -1028,7 +1028,9 @@
     el("main").innerHTML =
       (poCards ? '<section><h2>Purchase orders from the till</h2><div class="panel">' + poCards + "</div>" +
         '<p class="hint">Raised at the till, waiting for delivery. Receiving here does everything in one tap: stock in, costs re-averaged, and the bill booked to the till\u2019s Expenses.</p></section>' : "") +
-      "<section><h2>What arrived?</h2>" +
+      '<section><div class="toolbar"><h2 style="margin:0">What arrived?</h2>' +
+      '<div><input type="file" id="dScanFile" accept="image/*" capture="environment" style="display:none" />' +
+      '<button class="ghost" id="dScan">📷 Scan a delivery note</button></div></div>' +
       '<div class="panel pad">' +
       '<div class="row2"><div><label>Supplier</label>' +
       (S.inv.poId
@@ -1063,6 +1065,30 @@
     if (cp) cp.onclick = function (e) { e.preventDefault(); S.inv = { supplierId: "", invoiceNo: "", lines: [] }; renderDeliveries(); };
     if (el("dSup")) el("dSup").onchange = function () { S.inv.supplierId = el("dSup").value; };
     el("dNo").oninput = function () { S.inv.invoiceNo = el("dNo").value; };
+    el("dScan").onclick = function () { el("dScanFile").click(); };
+    el("dScanFile").onchange = function () {
+      var f = el("dScanFile").files && el("dScanFile").files[0];
+      if (!f) return;
+      if (f.size > 20 * 1024 * 1024) return toast("That photo is too large — try a smaller one.");
+      var scanBtn = el("dScan"); scanBtn.disabled = true; scanBtn.textContent = "⏳ Reading…";
+      var reader = new FileReader();
+      reader.onload = function () {
+        api("/ocr", { method: "POST", body: JSON.stringify({ image: reader.result }) })
+          .then(function (r) {
+            if (!r.configured) { toast(r.message || "Scanning isn't set up yet."); return; }
+            if (!r.lines || !r.lines.length) { toast("Couldn't find any lines on that note — try a clearer photo."); return; }
+            var matched = r.lines.filter(function (l) { return l.ingredientId; }).length;
+            S.inv = { supplierId: "", invoiceNo: r.invoiceNo || "", lines: r.lines.map(function (l) {
+              return { ingredientId: l.ingredientId || "", desc: l.description, qty: String(l.qty || ""), unitName: l.unitName || "", cost: l.cost ? (l.cost / 100).toFixed(2) : "" };
+            }) };
+            toast("Read " + r.lines.length + " line" + (r.lines.length === 1 ? "" : "s") + " · " + matched + " matched — check each, then Add to stock");
+            renderDeliveries();
+          })
+          .catch(function (e) { toast(e.message); })
+          .then(function () { var b = el("dScan"); if (b) { b.disabled = false; b.textContent = "📷 Scan a delivery note"; } });
+      };
+      reader.readAsDataURL(f);
+    };
     if (el("dNewSup")) el("dNewSup").onclick = function () { supplierModal(null, function () { renderDeliveries(); }); };
     el("main").querySelectorAll("[data-dm]").forEach(function (sel) {
       sel.onchange = function () { S.inv.lines[Number(sel.dataset.dm)].ingredientId = sel.value; renderDeliveries(); };

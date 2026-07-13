@@ -6,6 +6,7 @@
     "start": "node favicon-patch.js && node guest-sync-patch.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "bcryptjs": "^2.4.3",
     "express": "^4.21.0",
     "jose": "^6.2.3",

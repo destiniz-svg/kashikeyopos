@@ -522,6 +522,119 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json(Object.assign({ ok: true }, out));
   }));
 
+  /* ── Scan a delivery note (§13, OCR) ────────────────────────────────────
+     Photograph a supplier's delivery note / invoice and let a vision model
+     read the line items, so the owner reviews a pre-filled delivery instead of
+     typing it. The model is given the store's ingredient catalogue and maps
+     each printed line to an existing ingredient (or leaves it for the owner to
+     pick), and returns the pack unit + quantity + line total it read. Nothing
+     is written here — the endpoint returns a draft the UI posts through the
+     normal /invoices path once the owner confirms.
+
+     Needs ANTHROPIC_API_KEY in the environment; without it the endpoint says
+     so plainly rather than failing, and the rest of Deliveries is unaffected. */
+  let _anthropic; // lazily constructed so a missing SDK/key never blocks boot
+  function anthropicClient() {
+    if (!process.env.ANTHROPIC_API_KEY) return null;
+    if (_anthropic === undefined) {
+      try { const Anthropic = require("@anthropic-ai/sdk"); _anthropic = new (Anthropic.default || Anthropic)(); }
+      catch (e) { recordError("anthropic sdk load", e); _anthropic = null; }
+    }
+    return _anthropic;
+  }
+
+  const OCR_SCHEMA = {
+    type: "object", additionalProperties: false,
+    properties: {
+      supplier: { type: "string", description: "Supplier / vendor name printed on the note, or empty string" },
+      invoiceNo: { type: "string", description: "Invoice or delivery-note number, or empty string" },
+      date: { type: "string", description: "Date on the note as printed, or empty string" },
+      lines: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false,
+          properties: {
+            description: { type: "string", description: "The item text exactly as printed" },
+            ingredientId: { type: "string", description: "The id of the best-matching ingredient from the catalogue, or empty string if none is a clear match" },
+            unitName: { type: "string", description: "The pack unit name from that ingredient's catalogue that matches how this line is sold (e.g. Case), or empty string for the base unit" },
+            qty: { type: "number", description: "How many of that unit were delivered" },
+            lineTotal: { type: "number", description: "The total money for this line in the note's currency (0 if not printed)" },
+          },
+          required: ["description", "ingredientId", "unitName", "qty", "lineTotal"],
+        },
+      },
+    },
+    required: ["supplier", "invoiceNo", "date", "lines"],
+  };
+
+  router.post("/ocr", authAny, wrap(async (req, res) => {
+    const client = anthropicClient();
+    if (!client) {
+      return res.json({ ok: true, configured: false, message: "Scanning isn't set up yet. Add an ANTHROPIC_API_KEY to turn it on — or enter this delivery by hand below." });
+    }
+    let { image, mediaType } = req.body || {};
+    if (!image) return res.status(400).json({ error: "no image" });
+    /* Accept a data URL or a bare base64 payload. */
+    const m = /^data:([^;]+);base64,(.*)$/s.exec(String(image));
+    if (m) { mediaType = m[1]; image = m[2]; }
+    mediaType = ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(mediaType) ? mediaType : "image/jpeg";
+
+    const cat = await withOrg(req.orgId, async (dbc) => {
+      const ing = await dbc.query("SELECT id, name, base_unit FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [req.orgId]);
+      const units = await dbc.query("SELECT ingredient_id, name FROM ingredient_units WHERE org_id=$1", [req.orgId]);
+      return ing.rows.map((i) => {
+        const packs = units.rows.filter((u) => u.ingredient_id === i.id).map((u) => u.name);
+        return { id: i.id, name: i.name, base_unit: i.base_unit, packs };
+      });
+    });
+    const catalogue = cat.map((i) => `${i.id} | ${i.name} | base unit ${i.base_unit}${i.packs.length ? " | packs: " + i.packs.join(", ") : ""}`).join("\n") || "(no ingredients yet)";
+
+    let parsed;
+    try {
+      const model = process.env.OCR_MODEL || "claude-opus-4-8";
+      const msg = await client.messages.create({
+        model,
+        max_tokens: 4096,
+        thinking: { type: "adaptive" },
+        system:
+          "You read a photographed supplier delivery note or invoice and return its line items as data. " +
+          "Only report what is printed — never invent items, quantities or prices. " +
+          "Match each printed line to the single best ingredient from the catalogue the user provides; " +
+          "use that ingredient's exact id. If no catalogue ingredient clearly matches, leave ingredientId empty. " +
+          "When a line is sold by a pack that matches one of that ingredient's pack names, put that pack name in unitName; otherwise leave unitName empty (the base unit).",
+        output_config: { format: { type: "json_schema", schema: OCR_SCHEMA } },
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: image } },
+            { type: "text", text: "Ingredient catalogue (id | name | base unit | packs):\n" + catalogue + "\n\nRead this delivery note and return its supplier, invoice number, date and line items." },
+          ],
+        }],
+      });
+      if (msg.stop_reason === "refusal") throw Object.assign(new Error("The scanner declined to read that image."), { status: 422 });
+      const txt = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+      parsed = JSON.parse(txt);
+    } catch (e) {
+      recordError("ocr delivery note", e);
+      return res.status(e.status === 422 ? 422 : 502).json({ error: e.status === 422 ? e.message : "Couldn't read that photo — try a clearer, straight-on shot, or enter the delivery by hand." });
+    }
+
+    const byId = new Map(cat.map((i) => [String(i.id), i]));
+    const lines = (parsed.lines || []).map((l) => {
+      const ing = l.ingredientId && byId.get(String(l.ingredientId));
+      return {
+        description: String(l.description || "").slice(0, 200),
+        ingredientId: ing ? ing.id : "",
+        ingredientName: ing ? ing.name : "",
+        unitName: ing && l.unitName && ing.packs.includes(l.unitName) ? l.unitName : "",
+        qty: num(l.qty) > 0 ? num(l.qty) : 1,
+        cost: Math.max(0, Math.round(num(l.lineTotal) * 100)), // note currency → laari
+      };
+    }).filter((l) => l.description);
+
+    res.json({ ok: true, configured: true, supplier: String(parsed.supplier || ""), invoiceNo: String(parsed.invoiceNo || ""), date: String(parsed.date || ""), lines });
+  }));
+
   /* ── Recipes + live margin preview ──────────────────────────────────────
      The margin figures come straight from the same avg_cost the deduction
      and audit math use, so the number the owner sees while building a
