@@ -220,7 +220,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         .map((x) => {
           const d = x.data || {};
           const id = String(d.id || x.id).split(":").pop();
-          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), recipeLines: recipeCounts[id] || 0 };
+          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
         })
         .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
       const sd = st.rowCount ? st.rows[0].data : {};
@@ -544,10 +544,108 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       const prod = await client.query(
         "SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false",
         [req.orgId, req.params.productId]);
-      const price = prod.rowCount ? num(prod.rows[0].data.price) : 0;
-      return { lines, cost, price, margin: price - cost, marginPct: price > 0 ? Math.round((price - cost) / price * 10000) / 100 : 0 };
+      const data = prod.rowCount ? prod.rows[0].data : {};
+      const price = num(data.price);
+      /* Surface the stock-item link so the editor can show its toggle state. */
+      let stock = null;
+      if (data.stockIngredientId) {
+        const b = await client.query(
+          "SELECT id, name, base_unit, current_stock FROM ingredients WHERE org_id=$1 AND id=$2 AND active", [req.orgId, data.stockIngredientId]);
+        if (b.rowCount) {
+          const self = lines.find((l) => String(l.ingredientId) === String(data.stockIngredientId));
+          stock = { ingredientId: b.rows[0].id, name: b.rows[0].name, unit: b.rows[0].base_unit, currentStock: Number(b.rows[0].current_stock), perSale: self ? self.qty : 1 };
+        }
+      }
+      return { lines, cost, price, margin: price - cost, marginPct: price > 0 ? Math.round((price - cost) / price * 10000) / 100 : 0, stock };
     });
     res.json(out);
+  }));
+
+  /* ── Stockable menu product (§6, mirror of the resale role) ──────────────
+     Promote a menu item to a tracked stock item so it can be sold from stock
+     AND used in other recipes (a bottled sauce you sell and also cook with).
+     A backing ingredient is created; the product's raw recipe moves onto it as
+     a build recipe (scaled to one stock unit), and the product's own recipe
+     becomes a single line that draws `perSale` units of that stock when sold —
+     so the existing sale-deduction and availability paths do all the work.
+     Demote reverses it (blocked while other recipes still use the stock item). */
+  router.post("/products/:id/stockable", authAny, wrap(async (req, res) => {
+    const { on, unit, perSale } = req.body || {};
+    const stockUnit = ["g", "ml", "pcs"].includes(unit) ? unit : "pcs";
+    const per = num(perSale) > 0 ? num(perSale) : 1;
+    const pid = req.params.id;
+    const round6 = (v) => Math.round(v * 1e6) / 1e6;
+
+    const out = await withOrg(req.orgId, async (client) => {
+      const prodQ = await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid]);
+      if (!prodQ.rowCount) throw Object.assign(new Error("menu item not found"), { status: 404 });
+      const data = prodQ.rows[0].data || {};
+
+      if (on) {
+        let bId = data.stockIngredientId;
+        if (bId) {
+          const ex = await client.query("SELECT 1 FROM ingredients WHERE org_id=$1 AND id=$2 AND active", [req.orgId, bId]);
+          if (!ex.rowCount) bId = null;
+        }
+        if (bId) {
+          /* Already stockable — just update how much a sale draws. */
+          await client.query("UPDATE recipe_lines SET qty=$4 WHERE org_id=$1 AND product_id=$2 AND ingredient_id=$3", [req.orgId, pid, bId, per]);
+          await client.query("UPDATE ingredients SET base_unit=$3 WHERE org_id=$1 AND id=$2", [req.orgId, bId, stockUnit]);
+        } else {
+          bId = uid();
+          /* The product's current recipe lines become the build recipe, scaled
+             from "per serving" to "per one stock unit" (÷ perSale). */
+          const raws = await client.query("SELECT ingredient_id, qty FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, pid]);
+          await client.query(
+            `INSERT INTO ingredients (org_id, id, name, base_unit, location, product_id, producible)
+             VALUES ($1,$2,$3,$4,'Prep',$5,$6)`,
+            [req.orgId, bId, String(data.name || "Item"), stockUnit, pid, raws.rowCount > 0]);
+          for (const r of raws.rows) {
+            await client.query(
+              "INSERT INTO recipe_lines (org_id, id, product_id, ingredient_id, qty) VALUES ($1,$2,$3,$4,$5)",
+              [req.orgId, uid(), bId, r.ingredient_id, round6(Number(r.qty) / per)]);
+          }
+          await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, pid]);
+          await client.query(
+            "INSERT INTO recipe_lines (org_id, id, product_id, ingredient_id, qty) VALUES ($1,$2,$3,$4,$5)",
+            [req.orgId, uid(), pid, bId, per]);
+        }
+        const up = await client.query(
+          `UPDATE entities SET data = data || jsonb_build_object('stockIngredientId',$3::text),
+             rowver = nextval('entities_rowver_seq'), updated_at=now()
+           WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver`, [req.orgId, pid, bId]);
+        return { rowver: Number(up.rows[0].rowver), stockIngredientId: bId, touched: [bId] };
+      }
+
+      /* Demote. */
+      const bId = data.stockIngredientId;
+      if (!bId) return { rowver: 0 };
+      const others = await client.query(
+        "SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1 AND ingredient_id=$2 AND product_id NOT IN ($3,$2)", [req.orgId, bId, pid]);
+      if (others.rowCount) throw Object.assign(new Error(`This item is used in ${others.rowCount} other recipe(s) — remove it from those first.`), { status: 409 });
+      const self = await client.query("SELECT qty FROM recipe_lines WHERE org_id=$1 AND product_id=$2 AND ingredient_id=$3", [req.orgId, pid, bId]);
+      const perNow = self.rowCount ? Number(self.rows[0].qty) : 1;
+      await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, pid]);
+      /* Move the build recipe back onto the product, scaled to "per serving". */
+      const prep = await client.query("SELECT ingredient_id, qty FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, bId]);
+      for (const r of prep.rows) {
+        await client.query(
+          "INSERT INTO recipe_lines (org_id, id, product_id, ingredient_id, qty) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (org_id, product_id, ingredient_id) DO UPDATE SET qty=excluded.qty",
+          [req.orgId, uid(), pid, r.ingredient_id, round6(Number(r.qty) * perNow)]);
+      }
+      await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, bId]);
+      await client.query("UPDATE ingredients SET active=false, producible=false, updated_at=now() WHERE org_id=$1 AND id=$2", [req.orgId, bId]);
+      const up = await client.query(
+        `UPDATE entities SET data = data - 'stockIngredientId',
+           rowver = nextval('entities_rowver_seq'), updated_at=now()
+         WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver`, [req.orgId, pid]);
+      return { rowver: Number(up.rows[0].rowver), touched: prep.rows.map((r) => String(r.ingredient_id)) };
+    });
+
+    if (out.rowver && poke) poke(req.orgId, out.rowver);
+    if (out.touched && out.touched.length) await recomputeAvailability(req.orgId, out.touched);
+    res.json(Object.assign({ ok: true }, out));
   }));
 
   router.put("/recipes/:productId", authAny, wrap(async (req, res) => {

@@ -837,7 +837,7 @@
     var list = prods.map(function (p) {
       return '<div class="p ' + (S.selProduct === p.id ? "on" : "") + '" data-p="' + p.id + '">' +
         "<span>" + esc(p.emoji || "🍽") + '</span><span class="nm">' + esc(p.name) + "</span>" +
-        (p.recipeLines ? '<span class="badge ok">recipe</span>' : '<span class="badge dim">none</span>') +
+        (p.stockable ? '<span class="badge ok">📦 stock</span>' : p.recipeLines ? '<span class="badge ok">recipe</span>' : '<span class="badge dim">none</span>') +
         '<span class="pr">' + Y(p.price) + "</span></div>";
     }).join("");
     el("main").innerHTML =
@@ -866,6 +866,7 @@
 
   function drawRecipeEditor() {
     var p = S.products.find(function (x) { return x.id === S.selProduct; }) || { name: "?", price: S.recipe.price };
+    if (S.recipe.stock) return drawStockPanel(p, S.recipe.stock);
     var t = recipeTotals();
     var cls = t.pct >= 60 ? "good" : t.pct >= 40 ? "mid" : "bad";
     var lines = S.recipe.lines.map(function (l, i) {
@@ -892,7 +893,9 @@
       '<div class="m"><div class="l">Ingredient cost</div><div class="v">' + Y(t.cost) + "</div></div>" +
       '<div class="m"><div class="l">Selling price</div><div class="v">' + Y(t.price) + "</div></div>" +
       '<div class="m ' + cls + '"><div class="l">Profit / serving</div><div class="v">' + Y(t.profit) + "</div></div>" +
-      '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div></div>";
+      '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div></div>" +
+      '<div class="pad" style="border-top:1px solid var(--border)"><button class="ghost" id="rStock">📦 Also track as stock — use it in other recipes</button>' +
+      '<div class="hint" style="margin-top:6px">For an item you both sell and cook with (a house sauce, cold brew). It becomes a stock item you make in batches and can add to other recipes.</div></div>';
     el("redit").querySelectorAll("[data-q]").forEach(function (inp) {
       inp.oninput = function () { S.recipe.lines[Number(inp.dataset.q)].qty = parseFloat(inp.value) || 0; refreshMargin(); };
     });
@@ -916,6 +919,59 @@
           if (p2) p2.recipeLines = r.lines.length;
           toast("Recipe saved — margin " + t.pct + "%"); drawRecipeEditor(); renderTabs();
         }).catch(function (e) { toast(e.message); });
+    };
+    el("rStock").onclick = function () { promoteModal(p); };
+  }
+
+  function promoteModal(p) {
+    el("modalHost").innerHTML =
+      '<div class="overlay" id="ov"><div class="modal">' +
+      "<h3>Track “" + esc(p.name) + "” as stock</h3>" +
+      '<p class="sub">It becomes a stock item you make in batches and can add to other recipes. Any recipe it already has moves onto the stock item as its build recipe.</p>' +
+      '<div class="row2"><div><label>Count the stock in</label><select id="pUnit" style="width:100%">' +
+      [["pcs", "pieces (pcs)"], ["ml", "millilitres (ml)"], ["g", "grams (g)"]].map(function (u) { return '<option value="' + u[0] + '">' + u[1] + "</option>"; }).join("") +
+      "</select></div>" +
+      '<div><label>Each sale uses</label><div style="display:flex;gap:6px;align-items:center"><input id="pPer" class="num" inputmode="decimal" value="1" style="width:100%" /><span class="hint" id="pPerU" style="margin:0">pcs</span></div></div></div>' +
+      '<p class="hint" style="margin-top:8px">e.g. a bottled sauce counted in <b>ml</b> where one sale is a 500&nbsp;ml bottle — set “each sale uses” to 500.</p>' +
+      '<div class="actions"><button class="ghost" id="pCancel">Cancel</button><button class="primary" id="pSave">Make it stockable</button></div>' +
+      "</div></div>";
+    el("ov").onclick = function (e) { if (e.target === el("ov")) el("modalHost").innerHTML = ""; };
+    el("pCancel").onclick = function () { el("modalHost").innerHTML = ""; };
+    el("pUnit").onchange = function () { el("pPerU").textContent = el("pUnit").value; };
+    el("pSave").onclick = function () {
+      var per = parseFloat(el("pPer").value);
+      if (!(per > 0)) return toast("How much does one sale use?");
+      el("pSave").disabled = true;
+      api("/products/" + encodeURIComponent(p.id) + "/stockable", { method: "POST", body: JSON.stringify({ on: true, unit: el("pUnit").value, perSale: per }) })
+        .then(function () { el("modalHost").innerHTML = ""; toast(p.name + " is now a stock item"); S.recipe = null; return loadAll(); })
+        .then(function () { renderRecipes(); })
+        .catch(function (e) { el("pSave").disabled = false; toast(e.message); });
+    };
+  }
+
+  function drawStockPanel(p, stk) {
+    var bing = ingById(stk.ingredientId);
+    el("redit").innerHTML =
+      '<div class="pad" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
+      "<div><b>" + esc(p.emoji || "") + " " + esc(p.name) + '</b><div class="hint">Sells at ' + esc(S.currency) + " " + Y(S.recipe.price) + " · stock item</div></div>" +
+      '<span class="badge ok">📦 Stocked</span></div>' +
+      '<div class="pad"><div class="adj-preview" style="margin:0">' +
+      "In stock now: <b>" + qty3(stk.currentStock) + " " + esc(stk.unit) + "</b><br>" +
+      "Each sale uses <b>" + qty3(stk.perSale) + " " + esc(stk.unit) + "</b> · sells about <b>" + Math.floor(stk.currentStock / (stk.perSale || 1)) + "</b> more before it runs out." +
+      "</div>" +
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">' +
+      (bing && bing.producible ? '<button class="primary" id="sBatch">🍲 Make a batch</button>' : "") +
+      '<button class="ghost" id="sEdit">Edit build recipe</button>' +
+      '<button class="ghost" id="sStop" style="color:var(--warn)">Stop stocking this</button></div>' +
+      '<div class="hint" style="margin-top:10px">This item is in your ingredient list too, so you can add it to other recipes. Add stock by making a batch or entering a delivery.</div></div>';
+    if (el("sBatch")) el("sBatch").onclick = function () { if (bing) batchModal(bing); };
+    el("sEdit").onclick = function () { if (bing) ingredientModal(bing); };
+    el("sStop").onclick = function () {
+      if (!confirm("Stop tracking " + p.name + " as stock? Its build recipe moves back onto the menu item.")) return;
+      api("/products/" + encodeURIComponent(p.id) + "/stockable", { method: "POST", body: JSON.stringify({ on: false }) })
+        .then(function () { toast("No longer a stock item"); S.recipe = null; return loadAll(); })
+        .then(function () { renderRecipes(); })
+        .catch(function (e) { toast(e.message); });
     };
   }
   function refreshMargin() {
