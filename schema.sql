@@ -286,3 +286,23 @@ BEGIN
       WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')$p$, t);
   END LOOP;
 END $rls$;
+
+-- ── Incremental migrations (idempotent, run on every boot) ─────────────────
+
+-- Per-location stock. A move happens AT a location; a blank location means the
+-- ingredient's own "home" location (ingredients.location), so historical rows
+-- need no backfill. Per-location balances are derived from this ledger
+-- (SUM(qty) grouped by COALESCE(NULLIF(location,''), home)); the total stays
+-- the cached ingredients.current_stock. A transfer is two net-zero moves
+-- (kind='transfer'): -qty at the source location, +qty at the destination.
+ALTER TABLE stock_moves ADD COLUMN IF NOT EXISTS location TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS stock_moves_ing_loc ON stock_moves (org_id, ingredient_id, location);
+
+-- Item roles (§6, first step): an ingredient can also carry the "sellable"
+-- role — a resale item bought and sold as-is (a canned drink), no recipe to
+-- build. When set, the app keeps a linked till product + a 1:1 self-recipe in
+-- step, so the one item plays both the stockable and the sellable role while
+-- the underlying tables stay as they are.
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS sellable   BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS sell_price NUMERIC(14,2) NOT NULL DEFAULT 0; -- laari
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS product_id TEXT NOT NULL DEFAULT '';         -- linked entities product

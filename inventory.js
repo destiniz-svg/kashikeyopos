@@ -144,6 +144,65 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     } catch (e) { recordError("availability recompute", e); }
   }
 
+  /* Per-location balances, derived from the ledger. A move with a blank
+     location belongs to the ingredient's home location, so the buckets always
+     sum to current_stock and no history backfill is needed. */
+  async function perLocation(client, orgId, ingredientId, homeLoc) {
+    const r = await client.query(
+      `SELECT COALESCE(NULLIF(location,''), $3) AS loc, SUM(qty) AS qty
+       FROM stock_moves WHERE org_id=$1 AND ingredient_id=$2
+       GROUP BY 1 HAVING SUM(qty) <> 0 ORDER BY 2 DESC`,
+      [orgId, ingredientId, homeLoc]);
+    return r.rows.map((x) => ({ location: x.loc, qty: Number(x.qty) }));
+  }
+
+  /* Item roles (§6): keep an ingredient's "sellable" role in step with a real
+     till product + a 1:1 self-recipe. Selling one unit then deducts one base
+     unit of the same item, and the availability engine flips it sold-out at
+     zero — the item plays both roles off one stock figure. Returns the sync
+     rowver to poke (0 when nothing changed). */
+  async function syncResaleProduct(client, orgId, ingId, seed) {
+    const ing = (await client.query(
+      "SELECT id, name, sellable, sell_price, product_id, base_unit FROM ingredients WHERE org_id=$1 AND id=$2",
+      [orgId, ingId])).rows[0];
+    if (!ing) return 0;
+    let rowver = 0;
+    if (ing.sellable && Number(ing.sell_price) > 0) {
+      const pid = ing.product_id || uid();
+      const meta = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, pid])).rows[0];
+      const prev = (meta && meta.data) || {};
+      const data = Object.assign({}, prev, {
+        id: pid, name: ing.name, price: Number(ing.sell_price),
+        emoji: prev.emoji || (seed && seed.emoji) || "🥤",
+        cat: prev.cat || (seed && seed.cat) || "Resale", unit: "pcs",
+        srcRef: "resale:" + ingId,
+      });
+      const up = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data, deleted)
+         VALUES ($1,'products',$2,$3,false)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET
+           data = excluded.data, deleted = false,
+           rowver = nextval('entities_rowver_seq'), updated_at = now()
+         RETURNING rowver`,
+        [orgId, pid, JSON.stringify(data)]);
+      rowver = up.rowCount ? Number(up.rows[0].rowver) : 0;
+      await client.query(
+        `INSERT INTO recipe_lines (org_id, id, product_id, ingredient_id, qty) VALUES ($1,$2,$3,$4,1)
+         ON CONFLICT (org_id, product_id, ingredient_id) DO UPDATE SET qty=1`,
+        [orgId, uid(), pid, ingId]);
+      if (!ing.product_id) await client.query("UPDATE ingredients SET product_id=$3 WHERE org_id=$1 AND id=$2", [orgId, ingId, pid]);
+    } else if (ing.product_id) {
+      const del = await client.query(
+        `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver`,
+        [orgId, ing.product_id]);
+      rowver = del.rowCount ? Number(del.rows[0].rowver) : 0;
+      await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [orgId, ing.product_id]);
+    }
+    return rowver;
+  }
+
   /* ── Menu items (for the recipe mapper) ─────────────────────────────────
      The back office needs the org's menu to map recipes onto. Products live
      as entities (kind='products'); expose the fields the editor needs plus
@@ -181,13 +240,14 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   router.get("/ingredients", authAny, wrap(async (req, res) => {
     const rows = await withOrg(req.orgId, async (client) => {
       const ing = await client.query(
-        "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location FROM ingredients WHERE org_id=$1 AND active ORDER BY location, name",
+        "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location, sellable, sell_price FROM ingredients WHERE org_id=$1 AND active ORDER BY location, name",
         [req.orgId]);
       const units = await client.query(
         "SELECT ingredient_id, name, factor FROM ingredient_units WHERE org_id=$1", [req.orgId]);
       return ing.rows.map((i) => ({
         ...i,
         current_stock: Number(i.current_stock), min_stock: Number(i.min_stock), avg_cost: Number(i.avg_cost),
+        sellable: i.sellable === true, sell_price: Number(i.sell_price),
         low: Number(i.min_stock) > 0 && Number(i.current_stock) <= Number(i.min_stock),
         units: units.rows.filter((u) => u.ingredient_id === i.id).map((u) => ({ name: u.name, factor: Number(u.factor) })),
       }));
@@ -196,18 +256,20 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   }));
 
   router.post("/ingredients", authAny, wrap(async (req, res) => {
-    const { id, name, sku, baseUnit, minStock, location, units } = req.body || {};
+    const { id, name, sku, baseUnit, minStock, location, units, sellable, sellPrice, sellEmoji, sellCat } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "ingredient name required" });
     const base = ["g", "ml", "pcs"].includes(baseUnit) ? baseUnit : "g";
     const ingId = id || uid();
-    await withOrg(req.orgId, async (client) => {
+    const willSell = sellable === true && num(sellPrice) > 0;
+    const out = await withOrg(req.orgId, async (client) => {
       await client.query(
-        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)
+        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
          ON CONFLICT (org_id, id) DO UPDATE SET
            name=excluded.name, sku=excluded.sku, min_stock=excluded.min_stock,
-           location=excluded.location, active=true, updated_at=now()`,
-        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry")]);
+           location=excluded.location, sellable=excluded.sellable, sell_price=excluded.sell_price,
+           active=true, updated_at=now()`,
+        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice))]);
       if (Array.isArray(units)) {
         await client.query("DELETE FROM ingredient_units WHERE org_id=$1 AND ingredient_id=$2", [req.orgId, ingId]);
         for (const u of units) {
@@ -217,13 +279,26 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
             [req.orgId, uid(), ingId, String(u.name).trim(), num(u.factor)]);
         }
       }
+      /* Seed the linked product's emoji/category on first enable so the till
+         tile looks right; syncResaleProduct preserves the till's own edits
+         (prev.emoji/cat) on later saves. */
+      return await syncResaleProduct(client, req.orgId, ingId, { emoji: sellEmoji, cat: sellCat });
     });
+    if (out && poke) poke(req.orgId, out);
+    if (willSell) await recomputeAvailability(req.orgId, [String(ingId)]);
     res.json({ ok: true, id: ingId });
   }));
 
   router.delete("/ingredients/:id", authAny, wrap(async (req, res) => {
-    await withOrg(req.orgId, (client) => client.query(
-      "UPDATE ingredients SET active=false, updated_at=now() WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]));
+    const rowver = await withOrg(req.orgId, async (client) => {
+      /* Drop the sellable role too, so its till tile disappears with it. */
+      await client.query("UPDATE ingredients SET sellable=false, sell_price=0 WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]);
+      const rv = await syncResaleProduct(client, req.orgId, req.params.id);
+      await client.query(
+        "UPDATE ingredients SET active=false, updated_at=now() WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]);
+      return rv;
+    });
+    if (rowver && poke) poke(req.orgId, rowver);
     res.json({ ok: true });
   }));
 
@@ -234,17 +309,17 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   router.get("/history/:ingredientId", authAny, wrap(async (req, res) => {
     const out = await withOrg(req.orgId, async (client) => {
       const ing = await client.query(
-        "SELECT id, name, base_unit, current_stock, avg_cost FROM ingredients WHERE org_id=$1 AND id=$2",
+        "SELECT id, name, base_unit, current_stock, avg_cost, location FROM ingredients WHERE org_id=$1 AND id=$2",
         [req.orgId, req.params.ingredientId]);
       if (!ing.rowCount) throw Object.assign(new Error("ingredient not found"), { status: 404 });
+      const i = ing.rows[0];
       const mv = await client.query(
-        `SELECT id, kind, qty, unit_cost, ref, note, created_at
+        `SELECT id, kind, qty, unit_cost, ref, note, location, created_at
          FROM stock_moves WHERE org_id=$1 AND ingredient_id=$2 ORDER BY created_at ASC, id ASC LIMIT 500`,
         [req.orgId, req.params.ingredientId]);
-      const i = ing.rows[0];
       return {
-        ingredient: { id: i.id, name: i.name, baseUnit: i.base_unit, currentStock: Number(i.current_stock), avgCost: Number(i.avg_cost) },
-        moves: mv.rows.map((m) => ({ id: m.id, kind: m.kind, qty: Number(m.qty), unitCost: Number(m.unit_cost), ref: m.ref, note: m.note, at: m.created_at })),
+        ingredient: { id: i.id, name: i.name, baseUnit: i.base_unit, currentStock: Number(i.current_stock), avgCost: Number(i.avg_cost), location: i.location },
+        moves: mv.rows.map((m) => ({ id: m.id, kind: m.kind, qty: Number(m.qty), unitCost: Number(m.unit_cost), ref: m.ref, note: m.note, location: m.location || i.location, at: m.created_at })),
       };
     });
     res.json(out);
@@ -305,6 +380,61 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     });
 
     if (out && !out.unchanged) await recomputeAvailability(req.orgId, [String(ingredientId)]);
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
+  /* ── Per-location balances & transfers ──────────────────────────────────
+     Where an ingredient physically sits. Balances are derived from the ledger
+     so there's nothing extra to keep in sync; a transfer just redistributes
+     the same total between two shelves. */
+  router.get("/locations/:ingredientId", authAny, wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (client) => {
+      const ing = (await client.query(
+        "SELECT id, name, base_unit, current_stock, location FROM ingredients WHERE org_id=$1 AND id=$2 AND active",
+        [req.orgId, req.params.ingredientId])).rows[0];
+      if (!ing) throw Object.assign(new Error("ingredient not found"), { status: 404 });
+      const units = (await client.query(
+        "SELECT name, factor FROM ingredient_units WHERE org_id=$1 AND ingredient_id=$2", [req.orgId, ing.id])).rows
+        .map((u) => ({ name: u.name, factor: Number(u.factor) }));
+      return {
+        ingredient: { id: ing.id, name: ing.name, baseUnit: ing.base_unit, currentStock: Number(ing.current_stock), home: ing.location, units },
+        breakdown: await perLocation(client, req.orgId, ing.id, ing.location),
+      };
+    });
+    res.json(out);
+  }));
+
+  router.post("/transfer", authAny, wrap(async (req, res) => {
+    const { ingredientId, fromLoc, toLoc, qty, unitName, reason } = req.body || {};
+    if (!ingredientId) return res.status(400).json({ error: "which ingredient?" });
+    if (!fromLoc || !toLoc) return res.status(400).json({ error: "pick where it's moving from and to" });
+    if (fromLoc === toLoc) return res.status(400).json({ error: "pick two different locations" });
+    if (!(num(qty) > 0)) return res.status(400).json({ error: "enter how much to move" });
+
+    const out = await withOrg(req.orgId, async (client) => {
+      const ing = (await client.query(
+        "SELECT id, name, base_unit, avg_cost, location FROM ingredients WHERE org_id=$1 AND id=$2 AND active FOR UPDATE",
+        [req.orgId, ingredientId])).rows[0];
+      if (!ing) throw Object.assign(new Error("ingredient not found"), { status: 404 });
+      const factor = await factorFor(client, req.orgId, ingredientId, unitName);
+      const base = round3(num(qty) * factor);
+      const balances = await perLocation(client, req.orgId, ingredientId, ing.location);
+      const have = (balances.find((b) => b.location === fromLoc) || { qty: 0 }).qty;
+      if (base > have + 1e-9) {
+        throw Object.assign(new Error(`Only ${round3(have)} ${ing.base_unit} of ${ing.name} is in ${fromLoc} — you can't move more than that.`), { status: 400 });
+      }
+      const avg = Number(ing.avg_cost);
+      const noteBase = `${fromLoc} → ${toLoc}`;
+      const note = String(reason || "").trim() ? `${noteBase} · ${String(reason).trim().slice(0, 100)}` : noteBase;
+      /* Two net-zero legs: the total stock (current_stock) never changes. */
+      await client.query(
+        "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, location, note) VALUES ($1,$2,$3,'transfer',$4,$5,$6,$7)",
+        [req.orgId, uid(), ingredientId, round3(-base), avg, fromLoc, note]);
+      await client.query(
+        "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, location, note) VALUES ($1,$2,$3,'transfer',$4,$5,$6,$7)",
+        [req.orgId, uid(), ingredientId, base, avg, toLoc, note]);
+      return { name: ing.name, baseUnit: ing.base_unit, moved: base, fromLoc, toLoc, breakdown: await perLocation(client, req.orgId, ingredientId, ing.location) };
+    });
     res.json(Object.assign({ ok: true }, out));
   }));
 

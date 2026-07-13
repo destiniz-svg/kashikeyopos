@@ -172,6 +172,9 @@
   .seg button small { display: block; font-weight: 400; color: var(--sub); font-size: 11.5px; margin-top: 2px; }
   .adj-preview { background: var(--panel2); border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.6; margin-top: 14px; }
   .adj-preview b { font-weight: 700; }
+  .sell-role { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .sell-toggle { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; cursor: pointer; }
+  .sell-toggle input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--primary); }
   .bigstat { text-align: center; padding: 26px 18px; }
   .bigstat .n { font-size: 30px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
   .bigstat .l { font-size: 13px; color: var(--sub); margin-top: 4px; }
@@ -447,7 +450,7 @@
   function renderIngredients() {
     var rows = S.ingredients.map(function (i) {
       return "<tr>" +
-        "<td>" + esc(i.name) + (i.sku ? ' <span class="badge dim">' + esc(i.sku) + "</span>" : "") + "</td>" +
+        "<td>" + esc(i.name) + (i.sku ? ' <span class="badge dim">' + esc(i.sku) + "</span>" : "") + (i.sellable ? ' <span class="badge ok">Sells on till · ' + esc(S.currency) + " " + Y(i.sell_price) + "</span>" : "") + "</td>" +
         "<td>" + esc(i.location) + "</td>" +
         '<td class="mono">' + qty3(i.current_stock) + " " + esc(i.base_unit) + "</td>" +
         '<td class="mono">' + (i.avg_cost / 100).toFixed(4) + "/" + esc(i.base_unit) + "</td>" +
@@ -478,36 +481,62 @@
   var CORRECT_REASONS = ["Miscount", "Found extra", "Went missing", "Supplier short"];
   function adjustModal(ing) {
     if (!ing) return;
-    var st = { mode: "waste", reason: "", qty: "", unit: "" };
+    var st = { mode: "waste", reason: "", qty: "", unit: "", from: ing.location || "", to: "", breakdown: [{ location: ing.location || "Store", qty: ing.current_stock }] };
     function unitOpts() {
       return '<option value="">' + esc(ing.base_unit) + "</option>" +
         (ing.units || []).map(function (u) { return '<option value="' + esc(u.name) + '"' + (st.unit === u.name ? " selected" : "") + ">" + esc(u.name) + " (" + qty3(u.factor) + " " + esc(ing.base_unit) + ")</option>"; }).join("");
     }
     function factorOf(name) { if (!name) return 1; var u = (ing.units || []).find(function (x) { return x.name === name; }); return u ? u.factor : 1; }
+    function balAt(loc) { var b = st.breakdown.find(function (x) { return x.location === loc; }); return b ? b.qty : 0; }
+    function locBreakdownHtml() {
+      if (st.breakdown.length < 2) return "";
+      return '<div class="chips" style="margin:2px 0 12px">' + st.breakdown.map(function (b) {
+        return '<span class="badge dim">' + esc(b.location) + ": " + qty3(b.qty) + " " + esc(ing.base_unit) + "</span>";
+      }).join("") + "</div>";
+    }
     function draw() {
-      var isW = st.mode === "waste";
+      var mode = st.mode, isW = mode === "waste", isMove = mode === "move";
       var reasons = isW ? WASTE_REASONS : CORRECT_REASONS;
+      var fields;
+      if (isMove) {
+        var fromOpts = st.breakdown.filter(function (b) { return b.qty > 0; }).map(function (b) {
+          return '<option value="' + esc(b.location) + '"' + (st.from === b.location ? " selected" : "") + ">" + esc(b.location) + " (" + qty3(b.qty) + " " + esc(ing.base_unit) + ")</option>";
+        }).join("");
+        var toOpts = LOCATIONS.map(function (l) { return '<option value="' + esc(l) + '"' + (st.to === l ? " selected" : "") + ">" + esc(l) + "</option>"; }).join("");
+        fields =
+          '<div class="row2"><div><label>From</label><select id="aFrom" style="width:100%">' + (fromOpts || '<option value="">nothing in stock</option>') + "</select></div>" +
+          '<div><label>To</label><select id="aTo" style="width:100%">' + toOpts + "</select></div></div>" +
+          '<label style="margin-top:10px">How much to move?</label>' +
+          '<div class="row2"><input id="aQty" class="num" inputmode="decimal" placeholder="amount" value="' + esc(st.qty) + '" style="width:100%" />' +
+          '<select id="aUnit" style="width:100%">' + unitOpts() + "</select></div>" +
+          '<input id="aNote" placeholder="Add a note (optional)" value="' + esc(st.reason) + '" style="width:100%;margin-top:10px" />';
+      } else {
+        fields =
+          "<label>" + (isW ? "How much was thrown out or spoiled?" : "What’s actually on the shelf right now?") + "</label>" +
+          '<div class="row2"><input id="aQty" class="num" inputmode="decimal" placeholder="' + (isW ? "amount" : "true count") + '" value="' + esc(st.qty) + '" style="width:100%" />' +
+          '<select id="aUnit" style="width:100%">' + unitOpts() + "</select></div>" +
+          '<label style="margin-top:10px">Reason' + (isW ? "" : " (optional)") + "</label>" +
+          '<div class="chips" id="aReasons">' + reasons.map(function (r) { return '<button data-r="' + esc(r) + '" class="' + (st.reason === r ? "on" : "") + '">' + esc(r) + "</button>"; }).join("") + "</div>" +
+          '<input id="aNote" placeholder="Add a note (optional)" value="' + esc(st.reason) + '" style="width:100%;margin-top:8px" />';
+      }
       el("modalHost").innerHTML =
         '<div class="overlay" id="ov"><div class="modal">' +
         "<h3>Adjust stock — " + esc(ing.name) + "</h3>" +
         '<p class="sub">On the shelf now: <b>' + friendlyQty(ing, ing.current_stock) + "</b>. Every adjustment is logged so your figures stay honest.</p>" +
+        locBreakdownHtml() +
         '<div class="seg">' +
-        '<button data-m="waste" class="' + (isW ? "on" : "") + '">🗑️ Record wastage<small>Something spoiled or was thrown out</small></button>' +
-        '<button data-m="correct" class="' + (isW ? "" : "on") + '">✏️ Correct the count<small>The shelf doesn’t match the system</small></button>' +
+        '<button data-m="waste" class="' + (isW ? "on" : "") + '">🗑️ Wastage<small>Spoiled or thrown out</small></button>' +
+        '<button data-m="correct" class="' + (mode === "correct" ? "on" : "") + '">✏️ Correct count<small>Shelf ≠ system</small></button>' +
+        '<button data-m="move" class="' + (isMove ? "on" : "") + '">🔀 Move<small>Between locations</small></button>' +
         "</div>" +
-        "<label>" + (isW ? "How much was thrown out or spoiled?" : "What’s actually on the shelf right now?") + "</label>" +
-        '<div class="row2"><input id="aQty" class="num" inputmode="decimal" placeholder="' + (isW ? "amount" : "true count") + '" value="' + esc(st.qty) + '" style="width:100%" />' +
-        '<select id="aUnit" style="width:100%">' + unitOpts() + "</select></div>" +
-        '<label style="margin-top:10px">Reason' + (isW ? "" : " (optional)") + "</label>" +
-        '<div class="chips" id="aReasons">' + reasons.map(function (r) { return '<button data-r="' + esc(r) + '" class="' + (st.reason === r ? "on" : "") + '">' + esc(r) + "</button>"; }).join("") + "</div>" +
-        '<input id="aNote" placeholder="Add a note (optional)" value="' + esc(st.reason) + '" style="width:100%;margin-top:8px" />' +
+        fields +
         '<div class="adj-preview" id="aPrev">Enter an amount to see the effect.</div>' +
-        '<div class="actions"><button class="ghost" id="aCancel">Cancel</button><button class="primary" id="aSave">' + (isW ? "Record wastage" : "Save correction") + "</button></div>" +
+        '<div class="actions"><button class="ghost" id="aCancel">Cancel</button><button class="primary" id="aSave">' + (isW ? "Record wastage" : isMove ? "Move stock" : "Save correction") + "</button></div>" +
         "</div></div>";
       el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
       el("aCancel").onclick = close;
       el("modalHost").querySelectorAll(".seg [data-m]").forEach(function (b) { b.onclick = function () { st.mode = b.dataset.m; draw(); }; });
-      el("modalHost").querySelectorAll("#aReasons [data-r]").forEach(function (b) {
+      if (el("aReasons")) el("modalHost").querySelectorAll("#aReasons [data-r]").forEach(function (b) {
         b.onclick = function () {
           st.reason = st.reason === b.dataset.r ? "" : b.dataset.r;
           el("aNote").value = st.reason;
@@ -517,6 +546,8 @@
       el("aNote").oninput = function () { st.reason = el("aNote").value; };
       el("aQty").oninput = function () { st.qty = el("aQty").value; preview(); };
       el("aUnit").onchange = function () { st.unit = el("aUnit").value; preview(); };
+      if (el("aFrom")) el("aFrom").onchange = function () { st.from = el("aFrom").value; preview(); };
+      if (el("aTo")) el("aTo").onchange = function () { st.to = el("aTo").value; preview(); };
       el("aSave").onclick = save;
       el("aQty").focus();
       preview();
@@ -524,6 +555,16 @@
     function preview() {
       var amt = parseFloat(el("aQty").value);
       var box = el("aPrev");
+      if (st.mode === "move") {
+        var from = el("aFrom") ? el("aFrom").value : "", to = el("aTo") ? el("aTo").value : "";
+        if (!from || !to) { box.innerHTML = "Nothing in stock to move yet."; return; }
+        if (from === to) { box.innerHTML = '<span style="color:var(--warn)">Pick two different locations.</span>'; return; }
+        if (isNaN(amt) || amt <= 0) { box.innerHTML = "Enter how much to move from <b>" + esc(from) + "</b> to <b>" + esc(to) + "</b>."; return; }
+        var mbase = Math.round(amt * factorOf(el("aUnit").value) * 1000) / 1000, fbal = balAt(from);
+        if (mbase > fbal + 1e-9) { box.innerHTML = '<span style="color:var(--warn)">Only <b>' + qty3(fbal) + " " + esc(ing.base_unit) + "</b> in " + esc(from) + " — can’t move more than that.</span>"; return; }
+        box.innerHTML = esc(from) + " <b>" + qty3(fbal) + "→" + qty3(Math.round((fbal - mbase) * 1000) / 1000) + "</b> · " + esc(to) + " <b>" + qty3(balAt(to)) + "→" + qty3(Math.round((balAt(to) + mbase) * 1000) / 1000) + "</b> " + esc(ing.base_unit) + "<br>Total stock stays <b>" + friendlyQty(ing, ing.current_stock) + "</b>.";
+        return;
+      }
       if (isNaN(amt) || amt < 0) { box.innerHTML = "Enter an amount to see the effect."; return; }
       var base = Math.round(amt * factorOf(el("aUnit").value) * 1000) / 1000;
       var avg = ing.avg_cost / 100;
@@ -543,9 +584,18 @@
     function save() {
       var amt = parseFloat(el("aQty").value);
       if (isNaN(amt) || amt < 0) return toast("Enter an amount first");
-      if (st.mode === "waste" && !(amt > 0)) return toast("Enter how much was thrown out");
-      var body = { ingredientId: ing.id, mode: st.mode, qty: amt, unitName: el("aUnit").value || "", reason: el("aNote").value.trim() };
+      if (st.mode !== "correct" && !(amt > 0)) return toast("Enter an amount first");
       el("aSave").disabled = true;
+      if (st.mode === "move") {
+        var from = el("aFrom").value, to = el("aTo").value;
+        if (!from || !to || from === to) { el("aSave").disabled = false; return toast("Pick two different locations"); }
+        api("/transfer", { method: "POST", body: JSON.stringify({ ingredientId: ing.id, fromLoc: from, toLoc: to, qty: amt, unitName: el("aUnit").value || "", reason: el("aNote").value.trim() }) })
+          .then(function () { toast("Moved " + from + " → " + to); close(); return loadAll(); })
+          .then(render)
+          .catch(function (e) { el("aSave").disabled = false; toast(e.message); });
+        return;
+      }
+      var body = { ingredientId: ing.id, mode: st.mode, qty: amt, unitName: el("aUnit").value || "", reason: el("aNote").value.trim() };
       api("/adjust", { method: "POST", body: JSON.stringify(body) })
         .then(function (r) {
           toast(r.unchanged ? "Already matches — no change" : (st.mode === "waste" ? "Wastage recorded" : "Stock corrected"));
@@ -555,6 +605,13 @@
         .catch(function (e) { el("aSave").disabled = false; toast(e.message); });
     }
     draw();
+    /* Pull real per-location balances; the modal opens instantly on the
+       single-location fallback and upgrades in place when they arrive. */
+    api("/locations/" + encodeURIComponent(ing.id)).then(function (r) {
+      if (Array.isArray(r.breakdown) && r.breakdown.length) st.breakdown = r.breakdown;
+      if (!st.to) { var other = LOCATIONS.find(function (l) { return l !== st.from; }); st.to = other || ""; }
+      if (el("modalHost").querySelector(".modal")) draw();
+    }).catch(function () {});
   }
 
   var MOVE_KINDS = {
@@ -612,6 +669,7 @@
 
   function ingredientModal(ing) {
     var units = (ing && ing.units || []).slice();
+    var sell = { on: !!(ing && ing.sellable), price: (ing && ing.sellable && ing.sell_price) ? String(ing.sell_price / 100) : "", emoji: "🥤", cat: "Resale" };
     function draw() {
       el("modalHost").innerHTML =
         '<div class="overlay" id="ov"><div class="modal">' +
@@ -632,12 +690,20 @@
             '<div style="display:flex;gap:8px;align-items:center"><input data-uf="' + i + '" class="num" inputmode="decimal" value="' + String(u.factor) + '" style="flex:1" /><span class="hint" style="margin:0;white-space:nowrap">' + (ing ? esc(ing.base_unit) : "base units") + ' each</span><button class="tiny ghost" data-ux="' + i + '">✕</button></div></div>';
         }).join("") + "</div>" +
         '<button class="tiny ghost" id="mAddU">+ Add a pack size</button>' +
+        '<div class="sell-role"><label class="sell-toggle"><input type="checkbox" id="mSell"' + (sell.on ? " checked" : "") + " /> <span><b>Also sell this directly</b><br><span class=\"hint\" style=\"margin:0\">A resale item you sell as-is — it appears on the till and each sale takes one off this stock.</span></span></label>" +
+        '<div id="mSellDetail" style="' + (sell.on ? "" : "display:none") + 'margin-top:10px">' +
+        '<div class="row2"><div><label>Selling price (' + esc(S.currency) + ')</label><input id="mSellPrice" class="num" inputmode="decimal" value="' + esc(sell.price) + '" placeholder="0.00" style="width:100%" /></div>' +
+        '<div><label>Till category</label><input id="mSellCat" value="' + esc(sell.cat) + '" style="width:100%" /></div></div>' +
+        '<label>Tile emoji</label><input id="mSellEmoji" value="' + esc(sell.emoji) + '" maxlength="4" style="width:80px" />' +
+        (ing && ing.base_unit !== "pcs" ? '<p class="hint" style="margin-top:8px">Heads up: this is counted in ' + esc(ing.base_unit) + ", so each sale removes 1 " + esc(ing.base_unit) + ' — resale works best for items counted in pieces.</p>' : "") +
+        "</div></div>" +
         '<div class="actions"><button class="ghost" id="mCancel">Cancel</button><button class="primary" id="mSave">' + (ing ? "Save" : "Add ingredient") + "</button></div>" +
         "</div></div>";
       el("ov").onclick = function (e) { if (e.target === el("ov")) close(); };
       el("mCancel").onclick = close;
       el("mAddU").onclick = function () { pull(); units.push({ name: "", factor: "" }); draw(); };
       el("modalHost").querySelectorAll("[data-ux]").forEach(function (b) { b.onclick = function () { pull(); units.splice(Number(b.dataset.ux), 1); draw(); }; });
+      el("mSell").onchange = function () { sell.on = el("mSell").checked; el("mSellDetail").style.display = sell.on ? "" : "none"; if (sell.on) el("mSellPrice").focus(); };
       el("mSave").onclick = save;
     }
     function pull() {
@@ -645,6 +711,12 @@
         var n = el("modalHost").querySelector('[data-un="' + i + '"]'), f = el("modalHost").querySelector('[data-uf="' + i + '"]');
         return { name: n ? n.value : u.name, factor: f ? f.value : u.factor };
       });
+      if (el("mSell")) {
+        sell.on = el("mSell").checked;
+        if (el("mSellPrice")) sell.price = el("mSellPrice").value;
+        if (el("mSellCat")) sell.cat = el("mSellCat").value;
+        if (el("mSellEmoji")) sell.emoji = el("mSellEmoji").value;
+      }
     }
     function close() { el("modalHost").innerHTML = ""; }
     function save() {
@@ -654,8 +726,11 @@
         name: el("mName").value.trim(), sku: el("mSku").value.trim(),
         baseUnit: el("mBase").value, minStock: parseFloat(el("mMin").value) || 0, location: el("mLoc").value,
         units: units.map(function (u) { return { name: String(u.name).trim(), factor: parseFloat(u.factor) || 0 }; }).filter(function (u) { return u.name && u.factor > 0; }),
+        sellable: sell.on, sellPrice: sell.on ? Math.round((parseFloat(sell.price) || 0) * 100) : 0,
+        sellEmoji: sell.emoji, sellCat: String(sell.cat || "Resale").trim() || "Resale",
       };
       if (!body.name) return toast("Give it a name");
+      if (body.sellable && !(body.sellPrice > 0)) return toast("Set a selling price for the resale item");
       api("/ingredients", { method: "POST", body: JSON.stringify(body) })
         .then(function () { close(); toast(body.name + " saved"); return loadAll(); }).then(render)
         .catch(function (e) { toast(e.message); });
