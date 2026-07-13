@@ -415,6 +415,31 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-avail", availJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
+  /* 75. Waiter calls stuck on the till after "On my way". Accepting removed
+     the call from local state and pushed a server delete (patch 52), but a
+     pull already in flight when the button was tapped could re-apply the same
+     call (still deleted=false on the server for those few hundred ms) — and it
+     lands back in the shared waiterCalls state that feeds the Orders list, the
+     header 🔔 count and the nav badge, so it looks stuck on the main module.
+     Fix: a device-local "dismissed" set. Accept records the id; both the
+     incremental pull-apply and the saved-state restore drop any dismissed id,
+     so an in-flight echo can never resurrect an accepted call on this device.
+     The server delete still clears it for everyone else, and a fresh reload
+     (empty set) correctly re-shows anything that was never really handled.
+     Each find is consumed by its replacement, so all three are no-ops on
+     re-bakes. */
+  .replace(
+    'h.jsx("button",{onClick:()=>{uu(A=>A.filter(N=>N.id!==f.id));try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"})',
+    'h.jsx("button",{onClick:()=>{try{(window.__ksDismissedCalls=window.__ksDismissedCalls||new Set).add(f.id)}catch{}uu(A=>A.filter(N=>N.id!==f.id));try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"})'
+  )
+  .replace(
+    'N(uu,A.waiterCalls,"waiterCalls")',
+    'N(uu,A.waiterCalls.filter(_c=>!(window.__ksDismissedCalls&&window.__ksDismissedCalls.has(_c.id))),"waiterCalls")'
+  )
+  .replace(
+    'uu(f.waiterCalls||[])',
+    'uu((f.waiterCalls||[]).filter(_c=>!(window.__ksDismissedCalls&&window.__ksDismissedCalls.has(_c.id))))'
+  )
   .replace(
     '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
     '[i,a]=R.useState(!0),[KshLovable,KshSetLovable]=R.useState(!1),[o,s]=R.useState("sell")'
@@ -1323,6 +1348,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.41"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.42"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
