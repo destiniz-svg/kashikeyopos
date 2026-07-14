@@ -1028,6 +1028,13 @@
     im.src = url;
   }
 
+  function addonRowHtml(name, price) {
+    return '<div class="ao-row" style="display:flex;gap:6px;margin-bottom:4px">' +
+      '<input class="ao-name" placeholder="Extra cheese" value="' + esc(name || "") + '" style="flex:1" />' +
+      '<input class="ao-price num" inputmode="decimal" placeholder="price" value="' + (price || price === 0 ? price : "") + '" style="width:80px" />' +
+      '<button class="ao-del tiny ghost" type="button" title="Remove">✕</button></div>';
+  }
+
   function drawRecipeEditor() {
     var p = S.products.find(function (x) { return x.id === S.selProduct; }) || { name: "?", price: S.recipe.price };
     if (S.recipe.stock) return drawStockPanel(p, S.recipe.stock);
@@ -1065,8 +1072,27 @@
       '<div class="m"><div class="l">Selling price</div><div class="v">' + Y(t.price) + "</div></div>" +
       '<div class="m ' + cls + '"><div class="l">Profit / serving</div><div class="v">' + Y(t.profit) + "</div></div>" +
       '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div></div>" +
+      '<div class="pad" style="border-top:1px solid var(--border)">' +
+      '<div style="font-weight:600;margin-bottom:6px">Guest item details</div>' +
+      '<div class="hint">Allergens — shown on the guest menu &amp; item sheet</div>' +
+      '<input id="pAllerg" value="' + esc(p.allergens || "") + '" placeholder="e.g. Beef, Gluten, Nuts" style="width:100%;margin:4px 0 10px" />' +
+      '<div class="hint">Add-ons — optional extras a guest can add (name + price in ' + esc(S.currency) + ")</div>" +
+      '<div id="addonRows" style="margin-top:6px">' + (p.addons || []).map(function (a) { return addonRowHtml(a.name, a.price / 100); }).join("") + "</div>" +
+      '<div style="display:flex;gap:8px;margin-top:6px"><button class="tiny ghost" id="pAddonAdd" type="button">+ Add-on</button><button class="primary tiny" id="pMetaSave" type="button">Save details</button></div></div>' +
       '<div class="pad" style="border-top:1px solid var(--border)"><button class="ghost" id="rStock">📦 Also track as stock — use it in other recipes</button>' +
       '<div class="hint" style="margin-top:6px">For an item you both sell and cook with (a house sauce, cold brew). It becomes a stock item you make in batches and can add to other recipes.</div></div>';
+    function bindAoDel() { el("redit").querySelectorAll(".ao-del").forEach(function (b) { b.onclick = function () { b.parentNode.remove(); }; }); }
+    bindAoDel();
+    el("pAddonAdd").onclick = function () { el("addonRows").insertAdjacentHTML("beforeend", addonRowHtml("", "")); bindAoDel(); };
+    el("pMetaSave").onclick = function () {
+      var addons = [].slice.call(el("redit").querySelectorAll(".ao-row")).map(function (r) {
+        return { name: r.querySelector(".ao-name").value.trim(), price: parseFloat(r.querySelector(".ao-price").value) || 0 };
+      }).filter(function (a) { return a.name; });
+      var allergens = el("pAllerg").value.trim();
+      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ allergens: allergens, addons: addons }) })
+        .then(function () { p.allergens = allergens; p.addons = addons.map(function (a) { return { name: a.name, price: Math.round(a.price * 100) }; }); toast("Item details saved — live on the guest menu"); })
+        .catch(function (e) { toast(e.message || "Couldn't save"); });
+    };
     el("pPhoto").onclick = function () { el("pPhotoFile").click(); };
     el("pPhotoFile").onchange = function () {
       var f = el("pPhotoFile").files && el("pPhotoFile").files[0];

@@ -120,14 +120,18 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     return rows;
   }
 
-  const MENU_COLS = ["SKU / ID", "Name", "Category", "Price (MVR)", "Taxable (Yes/No)", "Stock", "Image URL", "Emoji", "Description"];
+  const MENU_COLS = ["SKU / ID", "Name", "Category", "Price (MVR)", "Taxable (Yes/No)", "Stock", "Image URL", "Emoji", "Description", "Allergens", "Add-ons (name:price, …)"];
+  const addonsToCell = (arr) => (Array.isArray(arr) ? arr : []).map((a) => `${a.name}:${num(a.price) / 100}`).join(", ");
+  const cellToAddons = (s) => String(s || "").split(/[,;\n]+/).map((part) => {
+    const m = part.match(/^\s*(.+?)\s*[:=]\s*([0-9.]+)\s*$/); return m ? { name: m[1].trim().slice(0, 40), price: Math.round(parseFloat(m[2]) * 100) } : null;
+  }).filter((a) => a && a.name).slice(0, 20);
   async function menuRows(orgId) {
     const r = await withOrg(orgId, (c) => c.query(
       "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false ORDER BY data->>'cat', data->>'name'", [orgId]));
     return r.rows.map((x) => { const d = x.data || {}; return [
       String(d.id || x.id), d.name || "", d.cat || "", num(d.price) / 100,
       d.taxable === false ? "No" : "Yes", d.stock == null ? "" : num(d.stock),
-      d.img || "", d.emoji || "", d.desc || "",
+      d.img || "", d.emoji || "", d.desc || "", d.allergens || "", addonsToCell(d.addons),
     ]; });
   }
   const menuIdFromName = (s) => (String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || uid());
@@ -376,7 +380,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         .map((x) => {
           const d = x.data || {};
           const id = String(d.id || x.id).split(":").pop();
-          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
+          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", allergens: d.allergens || "", addons: Array.isArray(d.addons) ? d.addons : [], desc: d.desc || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
         })
         .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
       const sd = st.rowCount ? st.rows[0].data : {};
@@ -419,6 +423,30 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, rowver });
   }));
 
+  /* Set a menu item's allergen note and add-on options (the guest item sheet
+     shows both). Add-on prices arrive in MVR and are stored as laari, matching
+     product.price. Empty values clear the field. */
+  const cleanAddons = (arr) => (Array.isArray(arr) ? arr : [])
+    .map((a) => ({ name: String((a && a.name) || "").trim().slice(0, 40), price: Math.max(0, Math.round(num(a && a.price) * 100)) }))
+    .filter((a) => a.name).slice(0, 20);
+  router.put("/products/:id/meta", authAny, wrap(async (req, res) => {
+    const pid = req.params.id, body = req.body || {};
+    const allergens = typeof body.allergens === "string" ? body.allergens.slice(0, 200) : undefined;
+    const addons = body.addons !== undefined ? cleanAddons(body.addons) : undefined;
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid])).rows[0];
+      if (!row) return null;
+      const data = Object.assign({}, row.data || {});
+      if (allergens !== undefined) { if (allergens.trim()) data.allergens = allergens.trim(); else delete data.allergens; }
+      if (addons !== undefined) { if (addons.length) data.addons = addons; else delete data.addons; }
+      const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, pid, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : null;
+    });
+    if (rowver == null) return res.status(404).json({ error: "unknown menu item" });
+    if (poke) poke(req.orgId, rowver);
+    res.json({ ok: true, rowver });
+  }));
+
   /* ── Menu import / export (Excel) ───────────────────────────────────────
      Download a template or the live menu as .xlsx, edit in any spreadsheet
      app, and re-import to bulk create/update items. Import matches rows to
@@ -432,8 +460,8 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   router.get("/menu/template.xlsx", authAny, wrap(async (req, res) => {
     sendXlsx(res, "menu-import-template.xlsx", buildXlsx([
       MENU_COLS,
-      ["AMI-EX-001", "Flat White", "Coffee", 45, "Yes", 30, "https://example.com/photo.jpg", "☕", "Optional description"],
-      ["AMI-EX-002", "Still Water", "Drinks", 10, "No", 30, "", "💧", ""],
+      ["AMI-EX-001", "Beef Burger", "Food", 45, "Yes", 30, "https://example.com/photo.jpg", "🍔", "Juicy beef patty, melted cheese, fresh veg.", "Beef, Gluten", "Extra meat:4, Extra cheese:1, Extra sauce:1"],
+      ["AMI-EX-002", "Still Water", "Drinks", 10, "No", 30, "", "💧", "", "", ""],
     ]));
   }));
   router.get("/menu/export.xlsx", authAny, wrap(async (req, res) => {
@@ -447,7 +475,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     catch (e) { return res.status(400).json({ error: "couldn't read that .xlsx file — use the template" }); }
     const header = (rows[0] || []).map((h) => String(h || "").toLowerCase());
     const find = (...keys) => header.findIndex((h) => keys.some((k) => h.includes(k)));
-    const ci = { id: find("sku", "id"), name: find("name"), cat: find("categ"), price: find("price"), tax: find("tax"), stock: find("stock"), img: find("image", "photo", "img", "url"), emoji: find("emoji"), desc: find("desc") };
+    const ci = { id: find("sku", "id"), name: find("name"), cat: find("categ"), price: find("price"), tax: find("tax"), stock: find("stock"), img: find("image", "photo", "img", "url"), emoji: find("emoji"), desc: find("desc"), allergens: find("allerg"), addons: find("add-on", "addon", "add on", "extras") };
     if (ci.name < 0) return res.status(400).json({ error: "no 'Name' column found — start from the template" });
     const cell = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : "");
     const items = [];
@@ -460,6 +488,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         taxable: ci.tax < 0 ? true : !/^(no|n|zero|false|0|exempt)/i.test(cell(row, ci.tax)),
         stock: ci.stock >= 0 && cell(row, ci.stock) !== "" ? num(String(row[ci.stock]).replace(/[^0-9.-]/g, "")) : null,
         img: cell(row, ci.img), emoji: cell(row, ci.emoji), desc: cell(row, ci.desc),
+        allergens: cell(row, ci.allergens), addons: ci.addons >= 0 ? cellToAddons(cell(row, ci.addons)) : null,
       });
     }
     if (!items.length) return res.status(400).json({ error: "no rows with a Name to import" });
@@ -480,6 +509,8 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         if (it.stock != null) data.stock = it.stock;      // blank stock keeps the current level
         if (it.img !== "") data.img = it.img;             // blank image/description keeps the current value
         if (it.desc !== "") data.desc = it.desc;
+        if (it.allergens !== "") data.allergens = it.allergens;
+        if (it.addons != null && it.addons.length) data.addons = it.addons;   // only replace add-ons when the cell has some
         const up = await client.query(
           `INSERT INTO entities (org_id, kind, id, data, deleted) VALUES ($1,'products',$2,$3,false)
            ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$3, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()
