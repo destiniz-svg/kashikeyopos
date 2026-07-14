@@ -1,0 +1,562 @@
+[
+ {
+  "sku": "AMI-BRK-001",
+  "name": "Roshi",
+  "cat": "Breakfast",
+  "priceMVR": 2.0,
+  "taxable": false,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=600&q=80",
+  "desc": "Traditional soft Maldivian flatbread, freshly baked."
+ },
+ {
+  "sku": "AMI-BRK-002",
+  "name": "Mashuni",
+  "cat": "Breakfast",
+  "priceMVR": 35.0,
+  "taxable": false,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600&q=80",
+  "desc": "Traditional Maldivian breakfast mixture of tuna, coconut, onions, and chili."
+ },
+ {
+  "sku": "AMI-BRK-003",
+  "name": "Rihaakuru",
+  "cat": "Breakfast",
+  "priceMVR": 25.0,
+  "taxable": false,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=600&q=80",
+  "desc": "Savory Maldivian fish paste served with warm Roshi or bread."
+ },
+ {
+  "sku": "AMI-BRK-004",
+  "name": "Sausage",
+  "cat": "Breakfast",
+  "priceMVR": 10.0,
+  "taxable": true,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1532246420286-127bcd803104?w=600&q=80",
+  "desc": "Pan-fried savory cocktail sausages."
+ },
+ {
+  "sku": "AMI-BRK-005",
+  "name": "Disk",
+  "cat": "Breakfast",
+  "priceMVR": 6.0,
+  "taxable": false,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=600&q=80",
+  "desc": "Thick Maldivian toasted flatbread cooked to a golden crisp."
+ },
+ {
+  "sku": "AMI-BRK-006",
+  "name": "Continental Breakfast",
+  "cat": "Breakfast",
+  "priceMVR": 40.0,
+  "taxable": true,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=600&q=80",
+  "desc": "Classic spread with fried eggs, toast, butter, jam, and coffee/tea."
+ },
+ {
+  "sku": "AMI-BRK-007",
+  "name": "Boiled Egg",
+  "cat": "Breakfast",
+  "priceMVR": 5.0,
+  "taxable": false,
+  "emoji": "🍳",
+  "img": "https://images.unsplash.com/photo-1587486913049-53fc88980cfc?w=600&q=80",
+  "desc": "Perfectly hard or soft boiled farm-fresh egg."
+ },
+ {
+  "sku": "AMI-KOT-001",
+  "name": "Tuna Kotthu",
+  "cat": "Kotthu",
+  "priceMVR": 35.0,
+  "taxable": true,
+  "emoji": "🍛",
+  "img": "https://images.unsplash.com/photo-1610192244261-3f33de3f55e4?w=600&q=80",
+  "desc": "Finely chopped flatbread stir-fried with fresh tuna, vegetables, and aromatic spices."
+ },
+ {
+  "sku": "AMI-KOT-002",
+  "name": "Chicken Kotthu",
+  "cat": "Kotthu",
+  "priceMVR": 45.0,
+  "taxable": true,
+  "emoji": "🍛",
+  "img": "https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=600&q=80",
+  "desc": "Chopped flatbread stir-fried with seasoned chicken, fresh veggies, and rich gravy."
+ },
+ {
+  "sku": "AMI-KOT-003",
+  "name": "Beef Kotthu",
+  "cat": "Kotthu",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍛",
+  "img": "https://images.unsplash.com/photo-1514516345957-556ca7d90a29?w=600&q=80",
+  "desc": "Finely chopped flatbread wok-tossed with tender beef strips and aromatic herbs."
+ },
+ {
+  "sku": "AMI-KOT-004",
+  "name": "Seafood Kotthu",
+  "cat": "Kotthu",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍛",
+  "img": "https://images.unsplash.com/photo-1534080391025-a77c4e78a602?w=600&q=80",
+  "desc": "Premium blend of chopped flatbread, mixed seafood, vegetables, and savory sauce."
+ },
+ {
+  "sku": "AMI-KOT-005",
+  "name": "Valhomas Kotthu",
+  "cat": "Kotthu",
+  "priceMVR": 45.0,
+  "taxable": true,
+  "emoji": "🍛",
+  "img": "https://images.unsplash.com/photo-1608897013039-887f21d8c804?w=600&q=80",
+  "desc": "Local favorite - chopped flatbread stir-fried with traditional smoked tuna."
+ },
+ {
+  "sku": "AMI-KOT-006",
+  "name": "Mixed Kotthu",
+  "cat": "Kotthu",
+  "priceMVR": 55.0,
+  "taxable": true,
+  "emoji": "🍛",
+  "img": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80",
+  "desc": "A heavy combination of chicken, beef, tuna, and fresh vegetables tossed with chopped flatbread."
+ },
+ {
+  "sku": "AMI-BGS-001",
+  "name": "Burger",
+  "cat": "Burger & Sandwich",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍔",
+  "img": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&q=80",
+  "desc": "Juicy grilled patty served with lettuce, tomatoes, and house dressing in a soft bun."
+ },
+ {
+  "sku": "AMI-BGS-002",
+  "name": "Club Sandwich",
+  "cat": "Burger & Sandwich",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍔",
+  "img": "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?w=600&q=80",
+  "desc": "Triple-decker sandwich with grilled chicken, eggs, cheese, lettuce, and tomatoes."
+ },
+ {
+  "sku": "AMI-RND-001",
+  "name": "Tuna fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 35.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1603133872878-685f208637c2?w=600&q=80",
+  "desc": "Classic Chinese-style fried rice tossed with fresh tuna and light soy sauce."
+ },
+ {
+  "sku": "AMI-RND-002",
+  "name": "Chicken fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 45.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=600&q=80",
+  "desc": "Stir-fried rice loaded with tender chicken pieces, scallions, and fresh veggies."
+ },
+ {
+  "sku": "AMI-RND-003",
+  "name": "Beef fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=600&q=80",
+  "desc": "Wok-fried premium rice tossed with tender thin beef slices and savory seasonings."
+ },
+ {
+  "sku": "AMI-RND-004",
+  "name": "Mixed fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 55.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=600&q=80",
+  "desc": "A combination of beef, chicken, tuna, and fresh farm vegetables in fried rice."
+ },
+ {
+  "sku": "AMI-RND-005",
+  "name": "Valhomas fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1536304997881-a372c179924b?w=600&q=80",
+  "desc": "Fragrant wok-fried rice tossed with traditional Maldivian smoked tuna."
+ },
+ {
+  "sku": "AMI-RND-006",
+  "name": "Seafood fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=600&q=80",
+  "desc": "Rice stir-fried with rich seafood including prawns, calamari, and fresh fish."
+ },
+ {
+  "sku": "AMI-RND-007",
+  "name": "Vegetable fried Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 35.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1569562211093-4ed0d0758f12?w=600&q=80",
+  "desc": "Healthy and light fried rice loaded with mixed garden veggies."
+ },
+ {
+  "sku": "AMI-RND-008",
+  "name": "Mongolian Rice",
+  "cat": "Rice & Noodles",
+  "priceMVR": 60.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=600&q=80",
+  "desc": "Spicy and smoky Mongolian style fried rice with a rich barbecue glaze."
+ },
+ {
+  "sku": "AMI-RND-009",
+  "name": "Nasi Goreng",
+  "cat": "Rice & Noodles",
+  "priceMVR": 55.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1569562211093-4ed0d0758f12?w=600&q=80",
+  "desc": "Indonesian-style spicy fried rice, served with fried egg and crackers."
+ },
+ {
+  "sku": "AMI-RND-010",
+  "name": "Biryani",
+  "cat": "Rice & Noodles",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&q=80",
+  "desc": "Fragrant basmati rice cooked with premium spices, yogurt, and served with tender meat."
+ },
+ {
+  "sku": "AMI-RND-011",
+  "name": "Tuna fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 35.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1585032226651-759b368d7246?w=600&q=80",
+  "desc": "Stir-fried noodles with shredded tuna, onions, bell peppers, and savory sauce."
+ },
+ {
+  "sku": "AMI-RND-012",
+  "name": "Chicken fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 45.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1612966608967-302fc54ad730?w=600&q=80",
+  "desc": "Wok-fried egg noodles tossed with juicy chicken strips and savory seasoning."
+ },
+ {
+  "sku": "AMI-RND-013",
+  "name": "Beef fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1552611052-33e04de081de?w=600&q=80",
+  "desc": "Thick noodles tossed in a scorching wok with beef strips and fresh bok choy."
+ },
+ {
+  "sku": "AMI-RND-014",
+  "name": "Valhomas fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1608897013039-887f21d8c804?w=600&q=80",
+  "desc": "Delicious stir-fried noodles infused with flavorful traditional smoked tuna."
+ },
+ {
+  "sku": "AMI-RND-015",
+  "name": "Mixed fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 55.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=600&q=80",
+  "desc": "Sautéed combination noodles with chicken, beef, fish, and rich sauces."
+ },
+ {
+  "sku": "AMI-RND-016",
+  "name": "Seafood fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=600&q=80",
+  "desc": "Premium stir-fried noodles featuring fresh calamari, prawns, and reef fish."
+ },
+ {
+  "sku": "AMI-RND-017",
+  "name": "Vegetable fried Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 35.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1569562211093-4ed0d0758f12?w=600&q=80",
+  "desc": "A lighter option of wok-tossed noodles packed with healthy seasonal vegetables."
+ },
+ {
+  "sku": "AMI-RND-018",
+  "name": "Mongolian Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 60.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1585032226651-759b368d7246?w=600&q=80",
+  "desc": "Bold, spicy Mongolian sauce tossed with thick noodles and mixed greens."
+ },
+ {
+  "sku": "AMI-RND-019",
+  "name": "Thai Noodles",
+  "cat": "Rice & Noodles",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1617093727343-374698b1b08d?w=600&q=80",
+  "desc": "Savory, nutty, and slightly sweet Thai-style flat noodles."
+ },
+ {
+  "sku": "AMI-RND-020",
+  "name": "Bami Goreng",
+  "cat": "Rice & Noodles",
+  "priceMVR": 55.0,
+  "taxable": true,
+  "emoji": "🍜",
+  "img": "https://images.unsplash.com/photo-1552611052-33e04de081de?w=600&q=80",
+  "desc": "Classic Indonesian street-style spicy stir-fried egg noodles."
+ },
+ {
+  "sku": "AMI-SUB-001",
+  "name": "Tuna Submarine",
+  "cat": "Submarine",
+  "priceMVR": 58.0,
+  "taxable": true,
+  "emoji": "🥖",
+  "img": "https://images.unsplash.com/photo-1509722747041-616f39b57569?w=600&q=80",
+  "desc": "Toasted sub roll packed with high-quality tuna, mayo, onions, and melted cheese."
+ },
+ {
+  "sku": "AMI-SUB-002",
+  "name": "Chicken Submarine",
+  "cat": "Submarine",
+  "priceMVR": 63.0,
+  "taxable": true,
+  "emoji": "🥖",
+  "img": "https://images.unsplash.com/photo-1553909489-cd47e0907980?w=600&q=80",
+  "desc": "Fresh French roll stuffed with sliced grilled chicken breast, greens, and cheese."
+ },
+ {
+  "sku": "AMI-SUB-003",
+  "name": "Beef Submarine",
+  "cat": "Submarine",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🥖",
+  "img": "https://images.unsplash.com/photo-1534790566855-4cb788d389ec?w=600&q=80",
+  "desc": "Savory steak strips sautéed with onions and peppers, served hot in a soft baguette."
+ },
+ {
+  "sku": "AMI-PZZ-001",
+  "name": "Tuna & Mashroom Pizza",
+  "cat": "Pizza",
+  "priceMVR": 100.0,
+  "taxable": true,
+  "emoji": "🍕",
+  "img": "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&q=80",
+  "desc": "Hand-stretched crust topped with robust pizza sauce, premium tuna, sliced mushrooms, and mozzarella."
+ },
+ {
+  "sku": "AMI-PZZ-002",
+  "name": "Chicken & Mashroom Pizza",
+  "cat": "Pizza",
+  "priceMVR": 110.0,
+  "taxable": true,
+  "emoji": "🍕",
+  "img": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&q=80",
+  "desc": "Italian marinara, seasoned chicken breast, mushrooms, and a gooey layer of mozzarella."
+ },
+ {
+  "sku": "AMI-PZZ-003",
+  "name": "Beef & Mashroom Pizza",
+  "cat": "Pizza",
+  "priceMVR": 120.0,
+  "taxable": true,
+  "emoji": "🍕",
+  "img": "https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=600&q=80",
+  "desc": "Hearty pizza loaded with premium ground beef, sliced mushrooms, and double cheese."
+ },
+ {
+  "sku": "AMI-PZZ-004",
+  "name": "Beef Bolognese Pizza",
+  "cat": "Pizza",
+  "priceMVR": 120.0,
+  "taxable": true,
+  "emoji": "🍕",
+  "img": "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&q=80",
+  "desc": "Savoury slow-cooked beef Bolognese sauce base topped with fresh mozzarella."
+ },
+ {
+  "sku": "AMI-PZZ-005",
+  "name": "BBQ Chicken Pizza",
+  "cat": "Pizza",
+  "priceMVR": 115.0,
+  "taxable": true,
+  "emoji": "🍕",
+  "img": "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=600&q=80",
+  "desc": "Tangy BBQ sauce base, roasted chicken pieces, caramelized onions, and cilantro."
+ },
+ {
+  "sku": "AMI-PZZ-006",
+  "name": "Tandoori Chicken Pizza",
+  "cat": "Pizza",
+  "priceMVR": 120.0,
+  "taxable": true,
+  "emoji": "🍕",
+  "img": "https://images.unsplash.com/photo-1593560708920-61dd98c46a4e?w=600&q=80",
+  "desc": "Spiced tandoori chicken, red onions, bell peppers, and coriander on thin crust."
+ },
+ {
+  "sku": "AMI-SOP-001",
+  "name": "Noodles Soup",
+  "cat": "Soup",
+  "priceMVR": 20.0,
+  "taxable": true,
+  "emoji": "🍲",
+  "img": "https://images.unsplash.com/photo-1547592165-e1d17fed6005?w=600&q=80",
+  "desc": "Light, steaming broth loaded with tender noodles and a touch of scallions."
+ },
+ {
+  "sku": "AMI-SOP-002",
+  "name": "Vegetable Soup",
+  "cat": "Soup",
+  "priceMVR": 20.0,
+  "taxable": true,
+  "emoji": "🍲",
+  "img": "https://images.unsplash.com/photo-1547592165-e1d17fed6005?w=600&q=80",
+  "desc": "Nourishing, slow-simmered vegetable broth packed with freshly sliced seasonal greens."
+ },
+ {
+  "sku": "AMI-SOP-003",
+  "name": "Chinese Fish Soup",
+  "cat": "Soup",
+  "priceMVR": 35.0,
+  "taxable": true,
+  "emoji": "🍲",
+  "img": "https://images.unsplash.com/photo-1547592165-e1d17fed6005?w=600&q=80",
+  "desc": "Aromatic clear fish broth with ginger, garlic, coriander, and fresh fish chunks."
+ },
+ {
+  "sku": "AMI-SOP-004",
+  "name": "Creamy Chicken Soup",
+  "cat": "Soup",
+  "priceMVR": 40.0,
+  "taxable": true,
+  "emoji": "🍲",
+  "img": "https://images.unsplash.com/photo-1602253053499-4d39aa475a59?w=600&q=80",
+  "desc": "Rich, velvet cream-based soup loaded with shredded chicken and sweet herbs."
+ },
+ {
+  "sku": "AMI-SOP-005",
+  "name": "Creamy Pumpkin Soup",
+  "cat": "Soup",
+  "priceMVR": 40.0,
+  "taxable": true,
+  "emoji": "🍲",
+  "img": "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=600&q=80",
+  "desc": "Smooth, pureed roasted pumpkin soup with a drizzle of heavy cream."
+ },
+ {
+  "sku": "AMI-SOP-006",
+  "name": "Tom Yum Soup",
+  "cat": "Soup",
+  "priceMVR": 40.0,
+  "taxable": true,
+  "emoji": "🍲",
+  "img": "https://images.unsplash.com/photo-1547592165-e1d17fed6005?w=600&q=80",
+  "desc": "Classic hot and sour Thai soup with lemongrass, kaffir lime, and chilies."
+ },
+ {
+  "sku": "AMI-PST-001",
+  "name": "Tuna Pasta",
+  "cat": "Pasta",
+  "priceMVR": 50.0,
+  "taxable": true,
+  "emoji": "🍝",
+  "img": "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&q=80",
+  "desc": "Al dente pasta tossed with seasoned tuna, olive oil, and herbs."
+ },
+ {
+  "sku": "AMI-PST-002",
+  "name": "Beef Pasta",
+  "cat": "Pasta",
+  "priceMVR": 70.0,
+  "taxable": true,
+  "emoji": "🍝",
+  "img": "https://images.unsplash.com/photo-1556761175-b273fc65049d?w=600&q=80",
+  "desc": "Tender beef stripes tossed in marinara or cream sauce with fresh penne."
+ },
+ {
+  "sku": "AMI-PST-003",
+  "name": "Seafood Spaghetti",
+  "cat": "Pasta",
+  "priceMVR": 65.0,
+  "taxable": true,
+  "emoji": "🍝",
+  "img": "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=600&q=80",
+  "desc": "Spaghetti tossed with delicious shrimp, squid, and fish in herbed marinara sauce."
+ },
+ {
+  "sku": "AMI-PST-004",
+  "name": "Spaghetti Aglio Olio",
+  "cat": "Pasta",
+  "priceMVR": 70.0,
+  "taxable": true,
+  "emoji": "🍝",
+  "img": "https://images.unsplash.com/photo-1556761175-b273fc65049d?w=600&q=80",
+  "desc": "Traditional Roman pasta with olive oil, minced garlic, and red chili flakes."
+ },
+ {
+  "sku": "AMI-PST-005",
+  "name": "Spaghetti Carbonara",
+  "cat": "Pasta",
+  "priceMVR": 70.0,
+  "taxable": true,
+  "emoji": "🍝",
+  "img": "https://images.unsplash.com/photo-1612874742237-6526221588e3?w=600&q=80",
+  "desc": "Creamy carbonara sauce made of eggs, parmesan, and crisp protein, tossed with spaghetti."
+ },
+ {
+  "sku": "AMI-PST-006",
+  "name": "Spaghetti Bolognese",
+  "cat": "Pasta",
+  "priceMVR": 70.0,
+  "taxable": true,
+  "emoji": "🍝",
+  "img": "https://images.unsplash.com/photo-1556761175-b273fc65049d?w=600&q=80",
+  "desc": "Hearty slow-cooked beef ragu served over spaghetti with fresh parmesan cheese."
+ }
+]
