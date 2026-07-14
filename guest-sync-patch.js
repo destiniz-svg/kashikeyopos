@@ -1253,6 +1253,19 @@ patchFile(indexPath, (html) => html
     ']}),ze.soldOut&&!on?h.jsx("span",{className:"ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px"},children:"Sold out"}):on?h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel2}`,children:[h.jsx("button",{onClick:()=>$1(ze.id,-1)'
   )
 
+  /* 81. Photo-forward guest menu cards (§4.3, from the reference design). The
+     QR menu listed items as compact rows with an 11px thumbnail; make each a
+     card with the dish photo filling the top, the name, a two-line
+     description/allergen note, and the price + add stepper along the bottom —
+     the same add/stepper/sold-out logic, restyled. Needs data.desc from the
+     guest boot (added in index.js). Runs after #74, whose card it rewrites; the
+     find keeps the compact `flex items-center gap-3 … w-11 h-11` layout, the
+     replacement is the photo card, so it is a no-op on re-bake. */
+  .replace(
+    'return h.jsxs("div",{className:`flex items-center gap-3 px-3.5 py-3 rounded-2xl ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-11 h-11 rounded-lg object-cover"}):h.jsx("span",{className:"text-2xl",children:ze.emoji}),h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsx("div",{className:"text-sm font-medium",children:ze.name}),h.jsx("div",{className:`text-xs font-mono ${_.faint}`,children:Y(ze.price)})]}),ze.soldOut&&!on?h.jsx("span",{className:"ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px"},children:"Sold out"}):on?h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel2}`,children:[h.jsx("button",{onClick:()=>$1(ze.id,-1),className:"px-2.5 py-1.5",children:h.jsx(Lu,{size:13})}),h.jsx("span",{className:"w-6 text-center text-sm font-mono",children:on.qty}),h.jsx("button",{onClick:()=>$1(ze.id,1),className:"px-2.5 py-1.5",children:h.jsx(fi,{size:13})})]}):h.jsx("button",{onClick:()=>$1(ze.id,1),className:`p-2 rounded-lg ${_.btn}`,children:h.jsx(fi,{size:15})})]},ze.id)',
+    'return h.jsxs("div",{className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full object-cover",style:{height:"150px"}}):h.jsx("div",{className:`w-full flex items-center justify-center text-4xl ${_.panel2}`,style:{height:"150px"},children:ze.emoji}),h.jsxs("div",{className:"p-3",children:[h.jsx("div",{className:"text-sm font-medium leading-tight",children:ze.name}),ze.desc?h.jsx("div",{className:`text-xs mt-1 ${_.faint}`,style:{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"},children:ze.desc}):null,h.jsxs("div",{className:"flex items-center justify-between mt-2",children:[h.jsx("div",{className:"text-sm font-mono font-semibold",children:Y(ze.price)}),ze.soldOut&&!on?h.jsx("span",{className:"ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px"},children:"Sold out"}):on?h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel2}`,children:[h.jsx("button",{onClick:()=>$1(ze.id,-1),className:"px-2.5 py-1.5",children:h.jsx(Lu,{size:13})}),h.jsx("span",{className:"w-6 text-center text-sm font-mono",children:on.qty}),h.jsx("button",{onClick:()=>$1(ze.id,1),className:"px-2.5 py-1.5",children:h.jsx(fi,{size:13})})]}):h.jsx("button",{onClick:()=>$1(ze.id,1),className:`p-2 rounded-lg ${_.btn}`,children:h.jsx(fi,{size:15})})]})]})]},ze.id)'
+  )
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1450,6 +1463,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.46"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.47"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
