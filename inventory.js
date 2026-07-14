@@ -92,6 +92,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       } catch (e) { recordError("inventory deduction " + ref, e); }
     }
     if (touched.size) await recomputeAvailability(orgId, [...touched]);
+    if ((sales || []).some((s) => s && Array.isArray(s.lines) && s.lines.length)) await recomputeBestSellers(orgId);
   }
 
   /* ── Availability engine (the central "what remains" made sellable) ──────
@@ -142,6 +143,57 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       });
       if (maxRowver && poke) poke(orgId, maxRowver);
     } catch (e) { recordError("availability recompute", e); }
+  }
+
+  /* Best-sellers (§4 menu polish): the top movers over the trailing 30 days,
+     flagged onto the product entity (data.bestSeller) so the till menu can
+     badge them — the same "annotate the entity, let sync carry it" pattern the
+     availability engine uses. Ranked by net units sold (sales minus refunds);
+     an item must have moved at least a small threshold so a brand-new product
+     isn't crowned on its first sale. Only the products entering or leaving the
+     top set are rewritten, so re-running after every sale barely churns rowver. */
+  async function recomputeBestSellers(orgId) {
+    const TOP_N = 6, MIN_UNITS = 2;
+    try {
+      let maxRowver = 0;
+      await withOrg(orgId, async (client) => {
+        const agg = await client.query(
+          `SELECT ln->>'pid' AS pid,
+                  SUM(COALESCE(NULLIF(ln->>'qty','')::numeric,1)
+                      * CASE WHEN data->>'type'='refund' THEN -1 ELSE 1 END) AS sold
+             FROM entities, jsonb_array_elements(data->'lines') AS ln
+            WHERE org_id=$1 AND kind='sales' AND deleted=false
+              AND jsonb_typeof(data->'lines')='array'
+              AND updated_at > now() - interval '30 days'
+            GROUP BY 1`, [orgId]);
+        const top = new Set(agg.rows
+          .map((r) => ({ pid: String(r.pid || ""), sold: Number(r.sold) || 0 }))
+          .filter((r) => r.pid && r.sold >= MIN_UNITS)
+          .sort((a, b) => b.sold - a.sold)
+          .slice(0, TOP_N)
+          .map((r) => r.pid));
+        const cur = await client.query(
+          "SELECT id FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false AND (data->>'bestSeller')::boolean IS TRUE", [orgId]);
+        const curSet = new Set(cur.rows.map((r) => String(r.id)));
+        const setTrue = [...top].filter((p) => !curSet.has(p));
+        const clear = [...curSet].filter((p) => !top.has(p));
+        for (const pid of setTrue) {
+          const u = await client.query(
+            `UPDATE entities SET data = data || jsonb_build_object('bestSeller', true),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+             WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver`, [orgId, pid]);
+          for (const row of u.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+        }
+        for (const pid of clear) {
+          const u = await client.query(
+            `UPDATE entities SET data = data - 'bestSeller',
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+             WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver`, [orgId, pid]);
+          for (const row of u.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+        }
+      });
+      if (maxRowver && poke) poke(orgId, maxRowver);
+    } catch (e) { recordError("best-sellers recompute", e); }
   }
 
   /* Per-location balances, derived from the ledger. A move with a blank

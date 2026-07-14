@@ -340,6 +340,15 @@ const hexJs = "window.__kshexSvg=function(cls,size){var p='';for(var i=0;i<6;i++
    always sellable. */
 const availJs = "window.__ksOut=function(f){if(!f)return false;if(f.soldOut===true||f.available===false)return true;if(f.recipeAvail!=null)return Number(f.recipeAvail)<=0;return f.stock!=null&&Number(f.stock)<=0;};";
 
+/* Order-progress ring (§4, from the reference design): each live order card
+   carries a small circular gauge of how far along it is. Progress is derived
+   from the order's lifecycle status (new→preparing→ready→done) so it needs no
+   extra data; a finished order shows a check instead of a number. __ksRing
+   returns raw SVG for dangerouslySetInnerHTML; the track uses the theme border
+   var and the arc + label take the status colour from __kstatus. */
+const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M={new:12,pending:12,preparing:55,cooking:55,ready:88,served:88,delivered:100,completed:100,settled:100,paid:100,closed:100,done:100};return M[s]!=null?M[s]:12;};"
+  + "window.__ksRing=function(pct,color,size){pct=Math.max(0,Math.min(100,Number(pct)||0));var r=15.5,c=2*Math.PI*r,off=c*(1-pct/100),s=size||40,col=color||'#C1502D';var mid=pct>=100?'<path d=\"M14.5 20.4l3.6 3.6 7-7.6\" fill=\"none\" stroke=\"'+col+'\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>':'<text x=\"20\" y=\"20\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" font-weight=\"700\" fill=\"'+col+'\">'+Math.round(pct)+'</text>';return '<svg width=\"'+s+'\" height=\"'+s+'\" viewBox=\"0 0 40 40\" style=\"display:block\"><circle cx=\"20\" cy=\"20\" r=\"'+r+'\" fill=\"none\" stroke=\"var(--k-border)\" stroke-width=\"3.5\"/><circle cx=\"20\" cy=\"20\" r=\"'+r+'\" fill=\"none\" stroke=\"'+col+'\" stroke-width=\"3.5\" stroke-linecap=\"round\" stroke-dasharray=\"'+c.toFixed(2)+'\" stroke-dashoffset=\"'+off.toFixed(2)+'\" transform=\"rotate(-90 20 20)\"/>'+mid+'</svg>';};";
+
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
 window.__ksChart=function(data,pal){
   var mode=window.__ksChartMode();
@@ -413,6 +422,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-status", statusJs);
   html = injectInline(html, "ksh-hex", hexJs);
   html = injectInline(html, "ksh-avail", availJs);
+  html = injectInline(html, "ksh-ring", ringJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -1203,6 +1213,31 @@ patchFile(indexPath, (html) => html
   .replace(
     'window.__ksOut(f)?h.jsx("span",{className:"absolute top-2 right-2 ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px",zIndex:2},children:"Sold out"}):null,',
     'window.__ksOut(f)?h.jsx("span",{onClick:ke=>{if(f.recipeAvail!=null||f.stock==null)return;ke.stopPropagation();var kq=parseInt(window.prompt("Restock "+(f.name||"item")+" — add how many "+(f.unit||"pcs")+"?","1"),10);if(kq>0){d(cj=>cj.map(cf=>cf.id===f.id?{...cf,stock:(Number(cf.stock)||0)+kq}:cf));na({stock:[{id:f.id,d:kq}]})}},title:(f.recipeAvail!=null||f.stock==null)?"Sold out":"Tap to restock",className:"absolute top-2 right-2 ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px",zIndex:2,cursor:(f.recipeAvail!=null||f.stock==null)?"default":"pointer"},children:(f.recipeAvail!=null||f.stock==null)?"Sold out":"Sold out +"}):null,'
+  )
+
+  /* 79. Best-seller tags (§4 menu polish, from the reference design). A product
+     the backend flagged as a top mover (data.bestSeller, set by
+     recomputeBestSellers, arriving on the normal sync stream) gets a small
+     brand-coloured "★ Best seller" badge in the tile's top-left. Hidden while
+     the item is sold out, so the sold-out pill never competes with it. Runs
+     after #78, whose "Sold out +" text it anchors on; the find keeps the
+     `f.img?…:f.emoji}),` tail whereas the replacement pushes that tail behind
+     the new badge, so it is a no-op on re-bake. */
+  .replace(
+    '"Sold out +"}):null,f.img?h.jsx("img",{src:f.img,alt:"",className:"w-full h-16 rounded-lg object-cover mb-1.5"}):h.jsx("div",{className:"text-3xl mb-1.5",children:f.emoji}),',
+    '"Sold out +"}):null,(!window.__ksOut(f)&&f.bestSeller)?h.jsx("span",{className:"absolute top-2 left-2 ksh-pill",style:{background:"var(--k-primary)",color:"#fff",fontSize:"9px",fontWeight:"600",padding:"2px 7px",zIndex:2},children:"★ Best seller"}):null,f.img?h.jsx("img",{src:f.img,alt:"",className:"w-full h-16 rounded-lg object-cover mb-1.5"}):h.jsx("div",{className:"text-3xl mb-1.5",children:f.emoji}),'
+  )
+
+  /* 80. Order-progress rings on the Orders board (§4, reference design). Each
+     live order card leads with a circular gauge of its lifecycle progress
+     (new→preparing→ready→done via __ksProg), coloured by the same status token
+     the pill uses. Inserted as the first child of the card's header flex row,
+     before the table chip. The find keeps `children:[h.jsx("span"…f.table})`
+     contiguous whereas the replacement wedges the ring div between them, so it
+     is a no-op on re-bake. */
+  .replace(
+    'h.jsxs("div",{className:"flex items-center gap-3",children:[h.jsx("span",{className:`px-2.5 py-1.5 rounded-xl text-sm font-bold ${_.chipOn}`,children:f.table}),',
+    'h.jsxs("div",{className:"flex items-center gap-3",children:[h.jsx("div",{className:"shrink-0",title:"Order progress",dangerouslySetInnerHTML:{__html:window.__ksRing(window.__ksProg(f.status),window.__kstatus(f.status).fg,40)}}),h.jsx("span",{className:`px-2.5 py-1.5 rounded-xl text-sm font-bold ${_.chipOn}`,children:f.table}),'
   )
 
   /* 74. Availability §2 on the customer QR menu — a recipe/stock item that has
