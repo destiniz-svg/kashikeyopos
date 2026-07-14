@@ -635,6 +635,145 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, configured: true, supplier: String(parsed.supplier || ""), invoiceNo: String(parsed.invoiceNo || ""), date: String(parsed.date || ""), lines });
   }));
 
+  /* ── Insights: learn each item's rhythm from its own ledger (§19) ────────
+     No model, no training — just read the immutable stock_moves history and
+     work out how fast each ingredient is actually being used, how long the
+     current stock will last, and what's worth ordering or watching. This is
+     the "behaviour learning" the store already paid for by recording every
+     movement; the AI assistant (§18) then narrates and answers questions on
+     top of exactly these numbers. */
+  const REORDER_AT_DAYS = 7;   // flag when cover drops below a week
+  const REORDER_TO_DAYS = 21;  // top back up to about three weeks
+  async function computeInsights(orgId) {
+    return withOrg(orgId, async (client) => {
+      const settings = await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [orgId]);
+      const currency = (settings.rowCount && settings.rows[0].data.currency) || "MVR";
+      const ing = await client.query(
+        "SELECT id, name, base_unit, current_stock, min_stock, avg_cost FROM ingredients WHERE org_id=$1 AND active", [orgId]);
+      const units = await client.query("SELECT ingredient_id, name, factor FROM ingredient_units WHERE org_id=$1", [orgId]);
+      /* Outflow (what got consumed) and wastage per ingredient over the window,
+         plus the first move seen so a young store isn't judged over a full 30
+         days it hasn't lived yet. */
+      const mv = await client.query(
+        `SELECT ingredient_id,
+            SUM(CASE WHEN kind IN ('sale','prep','waste') AND qty < 0 THEN -qty ELSE 0 END) AS used,
+            SUM(CASE WHEN kind='waste' THEN -qty ELSE 0 END) AS wasted,
+            MIN(created_at) AS first_at, MAX(created_at) AS last_at
+         FROM stock_moves
+         WHERE org_id=$1 AND created_at > now() - interval '30 days'
+         GROUP BY ingredient_id`, [orgId]);
+      const lastEver = await client.query(
+        "SELECT ingredient_id, MAX(created_at) AS last_at FROM stock_moves WHERE org_id=$1 GROUP BY ingredient_id", [orgId]);
+      const byIng = new Map(mv.rows.map((r) => [r.ingredient_id, r]));
+      const lastByIng = new Map(lastEver.rows.map((r) => [r.ingredient_id, r.last_at]));
+      const now = Date.now();
+
+      const items = ing.rows.map((i) => {
+        const m = byIng.get(i.id);
+        const packs = units.rows.filter((u) => u.ingredient_id === i.id).map((u) => ({ name: u.name, factor: Number(u.factor) }));
+        const used = m ? Number(m.used) : 0;
+        const wasted = m ? Number(m.wasted) : 0;
+        const firstAt = m && m.first_at ? new Date(m.first_at).getTime() : now;
+        const days = Math.min(30, Math.max(1, Math.round((now - firstAt) / 86400000) + 1));
+        const dailyRate = round3(used / days);
+        const stock = Number(i.current_stock);
+        const daysCover = dailyRate > 0 ? Math.floor(stock / dailyRate) : null; // null = not moving
+        const lastMoveAt = lastByIng.get(i.id) || null;
+        const idleDays = lastMoveAt ? Math.round((now - new Date(lastMoveAt).getTime()) / 86400000) : null;
+        return {
+          id: i.id, name: i.name, baseUnit: i.base_unit, stock: round3(stock), minStock: Number(i.min_stock),
+          avgCost: Number(i.avg_cost), dailyRate, daysCover, used: round3(used), wasted: round3(wasted),
+          wastePct: used > 0 ? Math.round((wasted / used) * 100) : 0, idleDays, packs,
+        };
+      });
+
+      /* Reorder list: cover under a week (or already below the alert level), and
+         actually moving. Suggest enough to reach the target cover, expressed in
+         the largest pack that fits so it reads like "order 2 Cases". */
+      const reorder = items.filter((it) => it.dailyRate > 0 && (it.daysCover != null && it.daysCover < REORDER_AT_DAYS))
+        .map((it) => {
+          const need = Math.max(0, round3(it.dailyRate * REORDER_TO_DAYS - it.stock));
+          const pack = it.packs.slice().sort((a, b) => b.factor - a.factor).find((p) => p.factor <= need) || null;
+          const suggestUnit = pack ? pack.name : it.baseUnit;
+          const suggestQty = pack ? Math.max(1, Math.ceil(need / pack.factor)) : Math.ceil(need);
+          const orderedBase = pack ? suggestQty * pack.factor : suggestQty;
+          return { id: it.id, name: it.name, baseUnit: it.baseUnit, stock: it.stock, daysCover: it.daysCover,
+            dailyRate: it.dailyRate, suggestQty, suggestUnit, suggestCost: Math.round(orderedBase * it.avgCost) };
+        }).sort((a, b) => a.daysCover - b.daysCover);
+
+      const watch = [];
+      items.forEach((it) => {
+        if (it.minStock > 0 && it.stock <= it.minStock) watch.push({ id: it.id, name: it.name, type: "low", detail: `Below your alert level (${qtyStr(it.stock, it.baseUnit)} left, alert at ${qtyStr(it.minStock, it.baseUnit)})` });
+        else if (it.wastePct >= 15 && it.wasted > 0) watch.push({ id: it.id, name: it.name, type: "wastage", detail: `${it.wastePct}% of what you used was thrown out this month` });
+        if (it.stock > 0 && it.dailyRate === 0 && (it.idleDays == null || it.idleDays >= 21)) watch.push({ id: it.id, name: it.name, type: "dead", detail: `${qtyStr(it.stock, it.baseUnit)} sitting unused${it.idleDays ? ` for ${it.idleDays} days` : ""}` });
+      });
+
+      const moving = items.filter((it) => it.dailyRate > 0).sort((a, b) => b.used - a.used);
+      const stockValue = items.reduce((a, it) => a + it.stock * it.avgCost, 0);
+      return { currency, windowDays: 30, generatedAt: new Date().toISOString(), items, reorder, watch,
+        fast: moving.slice(0, 5).map((it) => ({ name: it.name, used: it.used, baseUnit: it.baseUnit })),
+        stockValue: Math.round(stockValue), ingredientCount: items.length };
+    });
+  }
+  function qtyStr(n, unit) { return (Math.round(Number(n || 0) * 1000) / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 }) + " " + unit; }
+
+  router.get("/insights", authAny, wrap(async (req, res) => {
+    const out = await computeInsights(req.orgId);
+    /* The full per-item table is only needed by the assistant digest; the UI
+       wants the actionable lists, so keep the response lean. */
+    res.json({ currency: out.currency, windowDays: out.windowDays, reorder: out.reorder, watch: out.watch, fast: out.fast, stockValue: out.stockValue, ingredientCount: out.ingredientCount });
+  }));
+
+  /* ── AI assistant (§18) — answers grounded on the numbers above ──────────
+     The store's data never leaves as a training signal; each question is
+     answered against a fresh, compact digest of the current figures, so the
+     assistant can only talk about what's actually true right now. Degrades to
+     a plain message when no key is configured (the insights above still work). */
+  router.post("/assistant", authAny, wrap(async (req, res) => {
+    const client = anthropicClient();
+    const question = String((req.body && req.body.question) || "").trim().slice(0, 500);
+    if (!question) return res.status(400).json({ error: "ask a question first" });
+    if (!client) return res.json({ ok: true, configured: false, answer: "The assistant isn't set up yet. Add an ANTHROPIC_API_KEY to switch it on — the reorder and watch lists below work without it." });
+
+    const ins = await computeInsights(req.orgId);
+    const recent = await withOrg(req.orgId, (dbc) => dbc.query(
+      "SELECT invoice_no, total, received_at FROM purchase_invoices WHERE org_id=$1 ORDER BY received_at DESC LIMIT 8", [req.orgId]));
+    const money = (laari) => ins.currency + " " + (Number(laari) / 100).toFixed(2);
+    /* A tight, factual digest — top items by usage, the reorder + watch lists,
+       and recent deliveries. Small enough to stay cheap and current. */
+    const digest = {
+      currency: ins.currency, stockValueOnHand: money(ins.stockValue), ingredientCount: ins.ingredientCount,
+      items: ins.items.slice().sort((a, b) => b.used - a.used).slice(0, 40).map((it) => ({
+        name: it.name, inStock: qtyStr(it.stock, it.baseUnit), usedPerDay: it.dailyRate + " " + it.baseUnit,
+        daysOfCover: it.daysCover == null ? "not moving" : it.daysCover, avgCost: money(it.avgCost) + "/" + it.baseUnit,
+        wasteThisMonth: it.wasted ? qtyStr(it.wasted, it.baseUnit) + ` (${it.wastePct}%)` : "none",
+      })),
+      reorderSoon: ins.reorder.map((r) => ({ name: r.name, coverDays: r.daysCover, suggestOrder: `${r.suggestQty} ${r.suggestUnit}`, estCost: money(r.suggestCost) })),
+      watch: ins.watch.map((w) => `${w.name}: ${w.detail}`),
+      recentDeliveries: recent.rows.map((d) => ({ invoice: d.invoice_no || "—", total: money(d.total), when: new Date(d.received_at).toISOString().slice(0, 10) })),
+    };
+
+    let answer;
+    try {
+      const model = process.env.OCR_MODEL || "claude-opus-4-8";
+      const msg = await client.messages.create({
+        model, max_tokens: 1024, thinking: { type: "adaptive" },
+        system:
+          "You are the inventory assistant for a small café or shop. Answer the owner's question using ONLY the JSON data provided — it is the current state of their stock, usage, costs and deliveries. " +
+          "Never invent items, numbers or trends that aren't in the data. If the data can't answer the question, say so plainly. " +
+          "Be brief and practical: a sentence or two, or a short list. All money is already formatted in the store's currency; don't recompute it.",
+        messages: [{ role: "user", content: "Here is my current inventory data as JSON:\n\n" + JSON.stringify(digest) + "\n\nQuestion: " + question }],
+      });
+      if (msg.stop_reason === "refusal") throw Object.assign(new Error("I can't answer that one."), { status: 422 });
+      answer = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    } catch (e) {
+      recordError("inventory assistant", e);
+      return res.status(e.status === 422 ? 422 : 502).json({ error: e.status === 422 ? e.message : "The assistant couldn't answer just now — try again in a moment." });
+    }
+    res.json({ ok: true, configured: true, answer: answer || "I don't have enough data to answer that yet." });
+  }));
+
   /* ── Recipes + live margin preview ──────────────────────────────────────
      The margin figures come straight from the same avg_cost the deduction
      and audit math use, so the number the owner sees while building a

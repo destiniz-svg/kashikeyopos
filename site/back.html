@@ -105,6 +105,16 @@
   .card.attn .v { color: var(--warn); }
   .card.good .v { color: var(--ok); }
 
+  /* Assistant ask box */
+  .ask { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 18px; margin-bottom: 22px; box-shadow: 0 1px 3px rgba(38,34,28,.06); }
+  .ask input { padding: 11px 13px; }
+  .ask-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .chip-q { font-size: 12px; padding: 6px 12px; border-radius: 999px; background: var(--panel2); color: var(--sub); border: 1px solid var(--border); }
+  .chip-q:hover { border-color: var(--primary); color: var(--primary); }
+  .ai-a { margin-top: 14px; background: var(--panel2); border-radius: 12px; padding: 14px 16px; font-size: 14px; line-height: 1.6; }
+  .ai-a.thinking { color: var(--sub); font-style: italic; }
+  .ai-a.warn { background: var(--warn-bg); color: var(--warn); }
+
   /* Suggested actions */
   .suggest { display: flex; flex-direction: column; gap: 8px; }
   .suggest .s { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--faint); border-radius: 12px; padding: 13px 15px; }
@@ -287,11 +297,12 @@
     });
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
-  var TABS = [["overview", "Overview"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"]];
+  var TABS = [["overview", "Overview"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"]];
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
     overview: ["Inventory overview", "What came in, what's running low, and what needs your attention today."],
+    assistant: ["Assistant", "What to reorder, what to watch, and answers to your questions — learned from your own stock history."],
     ingredients: ["Ingredients & stock items", "Everything you buy, store and count — how much is left and what it costs."],
     recipes: ["Menu & recipes", "Link each menu item to the ingredients it uses, so stock is deducted automatically when it sells."],
     audit: ["Stock check", "Count what's physically on your shelves; the system works out the difference for you."],
@@ -361,6 +372,7 @@
   function render() {
     renderTabs();
     if (S.tab === "overview") renderOverview();
+    else if (S.tab === "assistant") renderAssistant();
     else if (S.tab === "recipes") renderRecipes();
     else if (S.tab === "audit") renderAudit();
     else if (S.tab === "deliveries") renderDeliveries();
@@ -376,6 +388,69 @@
     }
   }
   function go(tab) { S.tab = tab; render(); window.scrollTo(0, 0); }
+
+  /* ── Assistant tab (§18–19) ──────────────────────────────────────────
+     Reorder + watch lists learned from the ledger (always on), plus a
+     question box that answers grounded on the same numbers when a key is set. */
+  function renderAssistant() {
+    el("main").innerHTML =
+      '<div class="ask"><label style="font-weight:600;font-size:14px">Ask about your stock</label>' +
+      '<div style="display:flex;gap:8px;margin-top:8px"><input id="aiQ" placeholder="e.g. What should I order this week?" style="flex:1" />' +
+      '<button class="primary" id="aiAsk">Ask</button></div>' +
+      '<div class="ask-chips" id="aiChips">' +
+      ["What should I reorder?", "What's being wasted?", "What's my slowest item?"].map(function (q) { return '<button class="chip-q" data-q="' + esc(q) + '">' + esc(q) + "</button>"; }).join("") +
+      "</div><div id=\"aiAnswer\"></div></div>" +
+      '<div id="aiBody"><p class="hint">Reading your stock history…</p></div>';
+    function ask(q) {
+      if (!q || !q.trim()) return;
+      el("aiQ").value = q;
+      var box = el("aiAnswer"); box.innerHTML = '<div class="ai-a thinking">Thinking…</div>';
+      el("aiAsk").disabled = true;
+      api("/assistant", { method: "POST", body: JSON.stringify({ question: q }) })
+        .then(function (r) { box.innerHTML = '<div class="ai-a">' + esc(r.answer).replace(/\n/g, "<br>") + "</div>"; })
+        .catch(function (e) { box.innerHTML = '<div class="ai-a warn">' + esc(e.message) + "</div>"; })
+        .then(function () { el("aiAsk").disabled = false; });
+    }
+    el("aiAsk").onclick = function () { ask(el("aiQ").value); };
+    el("aiQ").onkeydown = function (e) { if (e.key === "Enter") ask(el("aiQ").value); };
+    el("aiChips").querySelectorAll("[data-q]").forEach(function (b) { b.onclick = function () { ask(b.dataset.q); }; });
+
+    api("/insights").then(function (r) {
+      S.currency = r.currency || S.currency;
+      var body = el("aiBody"); if (!body) return;
+      var reorder = r.reorder || [], watch = r.watch || [];
+      var reHtml = reorder.length
+        ? '<div class="cards">' + reorder.map(function (it) {
+            return '<div class="card attn"><div class="k">' + esc(it.name) + "</div>" +
+              '<div class="v" style="font-size:20px">' + it.suggestQty + " " + esc(it.suggestUnit) + "</div>" +
+              '<div class="n">' + (it.daysCover === 0 ? "out within a day" : "~" + it.daysCover + " day" + (it.daysCover === 1 ? "" : "s") + " of cover left") + " · ≈ " + esc(r.currency) + " " + Y(it.suggestCost) + "</div>" +
+              '<button class="tiny ghost" data-order="' + it.id + '" style="margin-top:8px">Add to a delivery</button></div>';
+          }).join("") + "</div>"
+        : '<div class="panel pad" style="text-align:center"><b>Nothing needs ordering right now 👍</b><div class="hint" style="margin-top:6px">As items sell down, they’ll show up here with a suggested order.</div></div>';
+      var wHtml = watch.length
+        ? '<div class="suggest">' + watch.map(function (w) {
+            var cls = w.type === "low" ? "warn" : w.type === "wastage" ? "amber" : "ok";
+            var ic = w.type === "low" ? "⚠️" : w.type === "wastage" ? "🗑️" : "💤";
+            return '<div class="s ' + cls + '"><span style="font-size:18px">' + ic + '</span><div class="txt"><b>' + esc(w.name) + "</b> — " + esc(w.detail) + '</div><button class="tiny ghost" data-look="' + w.id + '">Open</button></div>';
+          }).join("") + "</div>"
+        : '<p class="hint">Nothing to flag — no low stock, unusual wastage or dead stock right now.</p>';
+      var fastHtml = (r.fast || []).length ? '<div class="chips" style="margin-top:8px">' + r.fast.map(function (f) { return '<span class="badge dim">' + esc(f.name) + " · " + qty3(f.used) + " " + esc(f.baseUnit) + "/mo</span>"; }).join("") + "</div>" : "";
+      body.innerHTML =
+        "<section><h2>Order soon</h2>" + reHtml + '<p class="hint">Suggested from how fast each item has actually been used — enough to last about three weeks.</p></section>' +
+        "<section><h2>Keep an eye on</h2>" + wHtml + "</section>" +
+        (fastHtml ? "<section><h2>Moving fastest</h2>" + fastHtml + "</section>" : "");
+      body.querySelectorAll("[data-order]").forEach(function (b) {
+        b.onclick = function () {
+          var it = reorder.find(function (x) { return x.id === b.dataset.order; });
+          var ing = ingById(it.id) || {};
+          var isPack = (ing.units || []).some(function (u) { return u.name === it.suggestUnit; });
+          S.inv = { supplierId: "", invoiceNo: "", lines: [{ ingredientId: it.id, desc: "", qty: String(it.suggestQty), unitName: isPack ? it.suggestUnit : "", cost: (it.suggestCost / 100).toFixed(2) }] };
+          go("deliveries"); toast(it.name + " added — set the supplier, then Add to stock");
+        };
+      });
+      body.querySelectorAll("[data-look]").forEach(function (b) { b.onclick = function () { var ing = ingById(b.dataset.look); if (ing) historyModal(ing); }; });
+    }).catch(function (e) { var body = el("aiBody"); if (body) body.innerHTML = '<p class="empty">Could not load insights: ' + esc(e.message) + "</p>"; });
+  }
 
   /* ── Overview tab (§4) ───────────────────────────────────────────────
      Answers "what came in, what's low, what's out, what needs a recipe, and
