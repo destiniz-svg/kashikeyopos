@@ -812,11 +812,16 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
       }
       const dz = op.deltas || {};
       for (const s of dz.stock || []) {
+        /* Only products that already carry a numeric stock value are stock-
+           tracked; a sale must never conjure a stock field onto an untracked
+           item (that used to drive it to -1 and lock it "sold out"). Clamp at
+           zero so an oversell floors instead of going negative. */
         const r = await client.query(
           `UPDATE entities SET
-             data = jsonb_set(data, '{stock}', to_jsonb(COALESCE((data->>'stock')::numeric, 0) + $4), true),
+             data = jsonb_set(data, '{stock}', to_jsonb(GREATEST(0, (data->>'stock')::numeric + $4)), true),
              rowver = nextval('entities_rowver_seq'), updated_at = now()
            WHERE org_id=$1 AND kind='products' AND id=$2 AND COALESCE(data->>'storeId',$3) IN ('global',$3)
+             AND jsonb_typeof(data->'stock') = 'number'
            RETURNING rowver`, [req.org.o, String(s.id), storeId, Number(s.d) || 0]);
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
       }
@@ -923,9 +928,10 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
     tables: tables.map((t) => t.name),
     /* Recipe-tracked items stay on the menu even at zero servings so the guest
        sees them as "Sold out" (soldOut/soldOutReason from the availability
-       engine) rather than silently vanishing; plain stock-tracked items with
-       no stock are still hidden. */
-    products: products.filter((p) => (p.stock || 0) > 0 || hasRecipe.has(String(p.id))).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
+       engine) rather than silently vanishing; untracked items (no numeric
+       stock) always show; only plain stock-tracked items counted down to zero
+       are hidden. */
+    products: products.filter((p) => hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
     cust });
 }));
 

@@ -415,6 +415,42 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-avail", availJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
+  /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
+     The catalogue form defaulted a new product's stock to "0", so patch #73's
+     sold-out gate (__ksOut: stock<=0 ⇒ unavailable) fired on every product a
+     merchant added but never stocked — and any item left untracked was driven
+     to -1 by the first sale's stock delta. A café that sells make-to-order
+     items (coffee, juice) never wants that. Now: leave stock blank ⇒ the item
+     is untracked and always sellable; enter a number ⇒ it is stock-tracked and
+     the §24 sold-out gate applies. (Mirror server guards live in index.js: the
+     sale delta only touches products that already carry a numeric stock, and
+     the guest menu keeps untracked items visible.)
+     Each find is consumed by its replacement, so all five are no-ops on re-bake. */
+  /* 76a. New-product form starts with stock blank, not "0". */
+  .replace(
+    'reorder:"10",stock:"0",unit:"pcs"',
+    'reorder:"10",stock:"",unit:"pcs"'
+  )
+  /* 76b. Editing an untracked product shows a blank stock field, not "null". */
+  .replace(
+    'reorder:String(f.reorder),stock:String(f.stock),unit:f.unit',
+    'reorder:String(f.reorder),stock:f.stock==null?"":String(f.stock),unit:f.unit'
+  )
+  /* 76c. Saving with stock left blank stores no stock (untracked), not 0. */
+  .replace(
+    'reorder:Number(f.reorder)||0,stock:Number(f.stock)||0,unit:f.unit',
+    'reorder:Number(f.reorder)||0,stock:f.stock===""||f.stock==null?null:Number(f.stock)||0,unit:f.unit'
+  )
+  /* 76d. Settling a sale never decrements (or oversell-warns) an untracked item. */
+  .replace(
+    'const I=f.find(F=>F.pid===N.id);if(!I)return N;const j=N.stock-I.qty;',
+    'const I=f.find(F=>F.pid===N.id);if(!I||N.stock==null)return N;const j=N.stock-I.qty;'
+  )
+  /* 76e. Refunding never re-stocks an untracked item. */
+  .replace(
+    'return F?{...j,stock:j.stock+F.qty}:j',
+    'return F&&j.stock!=null?{...j,stock:j.stock+F.qty}:j'
+  )
   /* 75. Waiter calls stuck on the till after "On my way". Accepting removed
      the call from local state and pushed a server delete (patch 52), but a
      pull already in flight when the button was tapped could re-apply the same
@@ -1348,6 +1384,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.42"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.43"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
