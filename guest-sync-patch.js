@@ -1266,6 +1266,54 @@ patchFile(indexPath, (html) => html
     'return h.jsxs("div",{className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full object-cover",style:{height:"150px"}}):h.jsx("div",{className:`w-full flex items-center justify-center text-4xl ${_.panel2}`,style:{height:"150px"},children:ze.emoji}),h.jsxs("div",{className:"p-3",children:[h.jsx("div",{className:"text-sm font-medium leading-tight",children:ze.name}),ze.desc?h.jsx("div",{className:`text-xs mt-1 ${_.faint}`,style:{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"},children:ze.desc}):null,h.jsxs("div",{className:"flex items-center justify-between mt-2",children:[h.jsx("div",{className:"text-sm font-mono font-semibold",children:Y(ze.price)}),ze.soldOut&&!on?h.jsx("span",{className:"ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px"},children:"Sold out"}):on?h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel2}`,children:[h.jsx("button",{onClick:()=>$1(ze.id,-1),className:"px-2.5 py-1.5",children:h.jsx(Lu,{size:13})}),h.jsx("span",{className:"w-6 text-center text-sm font-mono",children:on.qty}),h.jsx("button",{onClick:()=>$1(ze.id,1),className:"px-2.5 py-1.5",children:h.jsx(fi,{size:13})})]}):h.jsx("button",{onClick:()=>$1(ze.id,1),className:`p-2 rounded-lg ${_.btn}`,children:h.jsx(fi,{size:15})})]})]})]},ze.id)'
   )
 
+  /* 82. Interactive item sheet (§4.3, reference design). Tapping a menu card
+     opens a bottom sheet — big photo, description, allergens, a quantity
+     stepper and the item's add-ons (each a priced toggle) — then "Add to cart"
+     folds the choice into the cart. The open item + its pending qty/add-ons
+     live on the guest state object (fe.sheet / fe.sheetQty / fe.sheetAddons),
+     toggled through the same Dn(N=>({...N,…})) updater the rest of the guest
+     view uses, so no new React hook is needed. Add-on prices are re-validated
+     server-side (see index.js), so the sheet's price is display-only.
+     82a — tapping a card opens the sheet; the +/- controls stopPropagation so
+     they still just change quantity. */
+  .replace(
+    'return h.jsxs("div",{className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[',
+    'return h.jsxs("div",{onClick:()=>{if(!ze.soldOut)Dn(N=>{const ex=N.cart.find(x=>x.pid===ze.id)||{};return{...N,sheet:ze,sheetQty:ex.qty||1,sheetAddons:ex.addons||[]}})},style:{cursor:"pointer"},className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:['
+  )
+  .replace('onClick:()=>$1(ze.id,-1),className:"px-2.5 py-1.5"', 'onClick:e=>{e.stopPropagation();$1(ze.id,-1)},className:"px-2.5 py-1.5"')
+  .replace('onClick:()=>$1(ze.id,1),className:"px-2.5 py-1.5"', 'onClick:e=>{e.stopPropagation();$1(ze.id,1)},className:"px-2.5 py-1.5"')
+  .replace('onClick:()=>$1(ze.id,1),className:`p-2 rounded-lg ${_.btn}`', 'onClick:e=>{e.stopPropagation();$1(ze.id,1)},className:`p-2 rounded-lg ${_.btn}`')
+  /* 82b — the sheet overlay, injected as a sibling of the menu/member view. */
+  .replace(
+    ']}),fe.tab==="menu"?h.jsx("div",{className:"mx-auto px-4",style:{paddingBottom:"16rem",maxWidth:"56rem"},children:he.map(ne=>{',
+    ']}),fe.sheet?(so=>h.jsx("div",{onClick:()=>Dn(N=>({...N,sheet:null})),style:{position:"fixed",inset:0,zIndex:70,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"flex-end",justifyContent:"center"},children:h.jsxs("div",{onClick:e=>e.stopPropagation(),className:_.panel,style:{width:"100%",maxWidth:"32rem",maxHeight:"92vh",overflowY:"auto",borderTopLeftRadius:"1.25rem",borderTopRightRadius:"1.25rem"},children:[so.img?h.jsx("img",{src:so.img,alt:"",className:"w-full object-cover",style:{height:"200px"}}):h.jsx("div",{className:`w-full flex items-center justify-center text-6xl ${_.panel2}`,style:{height:"200px"},children:so.emoji}),h.jsxs("div",{className:"p-4",children:[h.jsxs("div",{className:"flex items-start justify-between gap-3",children:[h.jsx("div",{className:"text-lg font-bold leading-tight",children:so.name}),h.jsx("button",{onClick:()=>Dn(N=>({...N,sheet:null})),className:_.faint,style:{fontSize:"22px",lineHeight:1},children:"✕"})]}),so.desc?h.jsx("div",{className:`text-sm mt-1 ${_.sub}`,children:so.desc}):null,so.allergens?h.jsx("div",{className:`text-xs mt-2 ${_.faint}`,children:"⚠ Allergens: "+so.allergens}):null,(so.addons&&so.addons.length)?h.jsxs("div",{className:"mt-4",children:[h.jsx("div",{className:"text-sm font-semibold mb-2",children:"Add-ons"}),h.jsx("div",{children:so.addons.map(ao=>{const sel=(fe.sheetAddons||[]).some(x=>x.name===ao.name);return h.jsxs("button",{onClick:()=>Dn(N=>{const cur=N.sheetAddons||[],has=cur.some(x=>x.name===ao.name);return{...N,sheetAddons:has?cur.filter(x=>x.name!==ao.name):[...cur,{name:ao.name,price:ao.price}]}}),className:`w-full flex items-center justify-between px-3 py-2.5 rounded-xl mb-1.5 ${_.panel2}`,children:[h.jsxs("span",{className:"flex items-center gap-2 text-sm",children:[h.jsx("span",{style:{width:"18px",height:"18px",borderRadius:"999px",border:"2px solid",borderColor:sel?"var(--k-primary)":"var(--k-border)",background:sel?"var(--k-primary)":"transparent",flex:"none"}}),ao.name]}),h.jsx("span",{className:"text-sm font-mono",children:"+"+Y(ao.price)})]},ao.name)})})]}):null,h.jsxs("div",{className:"flex items-center gap-3 mt-5",children:[h.jsxs("div",{className:`flex items-center rounded-xl ${_.panel2}`,children:[h.jsx("button",{onClick:()=>Dn(N=>({...N,sheetQty:Math.max(1,(N.sheetQty||1)-1)})),className:"px-3.5 py-2.5 text-lg",children:"−"}),h.jsx("span",{className:"w-8 text-center font-mono",children:fe.sheetQty||1}),h.jsx("button",{onClick:()=>Dn(N=>({...N,sheetQty:(N.sheetQty||1)+1})),className:"px-3.5 py-2.5 text-lg",children:"+"})]}),h.jsx("button",{onClick:()=>Dn(N=>({...N,cart:[...N.cart.filter(x=>x.pid!==so.id),{pid:so.id,qty:N.sheetQty||1,addons:N.sheetAddons||[]}],sheet:null})),className:`flex-1 rounded-xl py-3 text-sm font-semibold ${_.primary}`,children:"Add to cart · "+Y((so.price+(fe.sheetAddons||[]).reduce((s,a)=>s+(a.price||0),0))*(fe.sheetQty||1))})]})]})]})}))(fe.sheet):null,fe.tab==="menu"?h.jsx("div",{className:"mx-auto px-4",style:{paddingBottom:"16rem",maxWidth:"56rem"},children:he.map(ne=>{'
+  )
+  /* 82c — the cart/total preview folds each line's add-on prices into its price
+     and appends the add-on names, so the guest sees the right total. */
+  .replace(
+    'return A?{pid:A.id,name:A.name,emoji:A.emoji,price:A.price,cost:A.cost,unit:A.unit||"pcs",vendor:!!A.vendor,qty:f.qty,discPct:0}:null',
+    'return A?{pid:A.id,name:A.name+((f.addons&&f.addons.length)?" · "+f.addons.map(a=>a.name).join(", "):""),emoji:A.emoji,price:A.price+((f.addons||[]).reduce((s,a)=>s+(a.price||0),0)),cost:A.cost,unit:A.unit||"pcs",vendor:!!A.vendor,qty:f.qty,discPct:0,addons:f.addons}:null'
+  )
+  /* 82d — the guest cart drawer + its running total (yt/ie) also fold add-on
+     prices into each line and show the add-on names. */
+  .replace(
+    'return ke?{pid:ke.id,name:ke.name,emoji:ke.emoji,price:ke.price,cost:ke.cost||0,unit:ke.unit||"pcs",qty:ne.qty,discPct:0}:null',
+    'return ke?{pid:ke.id,name:ke.name+((ne.addons&&ne.addons.length)?" · "+ne.addons.map(a=>a.name).join(", "):""),emoji:ke.emoji,price:ke.price+((ne.addons||[]).reduce((s,a)=>s+(a.price||0),0)),cost:ke.cost||0,unit:ke.unit||"pcs",qty:ne.qty,discPct:0,addons:ne.addons}:null'
+  )
+  /* 82e — the Orders board line summary spells out each item's chosen add-ons
+     (server stores them on line.note), so staff read "2× Tuna Kotthu (+Extra
+     tuna, Fried egg)". */
+  .replace(
+    'f.items.map(I=>`${I.qty}× ${I.name}`).join(" · ")',
+    'f.items.map(I=>`${I.qty}× ${I.name}`+(I.note?" (+"+I.note+")":"")).join(" · ")'
+  )
+  /* 82f — the kitchen ticket (KOT) prints the add-ons under each item name so
+     the cook makes it right. */
+  .replace(
+    'h.jsx("span",{className:"flex-1",children:f.name})]},A)),ut.order.note',
+    'h.jsxs("span",{className:"flex-1",children:[f.name,f.note?h.jsx("span",{className:"block text-xs font-medium opacity-70",children:"+ "+f.note}):null]})]},A)),ut.order.note'
+  )
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1463,6 +1511,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.47"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.49"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

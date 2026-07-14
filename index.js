@@ -947,7 +947,16 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
     const p = products.find((x) => String(x.id) === pid);
     const src = p || ci;
     if (!src || (!pid && !src.name)) return null;
-    return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: Number(src.price) || 0, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false };
+    /* Add-ons the guest chose: match each against the product's own defined
+       add-ons and take the SERVER price, so a tampered cart can't set its own
+       prices. Their cost rolls into the line price; their names ride on the
+       line (and a note) for the kitchen ticket. */
+    const defined = p && Array.isArray(p.addons) ? p.addons : [];
+    const addons = (Array.isArray(ci.addons) ? ci.addons : [])
+      .map((a) => defined.find((d) => String(d.name) === String(a && a.name)))
+      .filter(Boolean).map((d) => ({ name: d.name, price: Number(d.price) || 0 }));
+    const addOnSum = addons.reduce((s, a) => s + a.price, 0);
+    return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: (Number(src.price) || 0) + addOnSum, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false, addons: addons.length ? addons : undefined, note: addons.length ? addons.map((a) => a.name).join(", ") : undefined };
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
   /* Enforce availability server-side: a guest must never place an order for an
