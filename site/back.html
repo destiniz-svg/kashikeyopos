@@ -922,6 +922,7 @@
       '<button class="ghost tiny" id="mTemplate" title="Download a blank Excel template to fill in">⬇ Template</button>' +
       '<button class="ghost tiny" id="mExport" title="Download the current menu as Excel">⬇ Export</button>' +
       '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
+      '<button class="ghost tiny" id="mEmbed" title="Download every web photo and store it compressed for offline use">⤓ Embed photos</button>' +
       '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
       '<div class="panel" id="redit"><div class="empty">Pick a menu item to build its recipe.</div></div>' +
@@ -949,6 +950,26 @@
       };
       reader.readAsDataURL(f);
       el("mImportFile").value = "";
+    };
+    el("mEmbed").onclick = function () {
+      var targets = S.products.filter(function (p) { return /^https?:/i.test(p.img || ""); });
+      if (!targets.length) return toast("No web photos to embed — every photo is already stored offline.");
+      if (!confirm("Download and embed " + targets.length + " photo" + (targets.length > 1 ? "s" : "") + " for offline use?\n\nEach is compressed and stored with the item. This may take a moment.")) return;
+      var i = 0, done = 0, failed = 0;
+      function next() {
+        if (i >= targets.length) {
+          toast("Embedded " + done + " photo" + (done !== 1 ? "s" : "") + " offline" + (failed ? " · " + failed + " couldn't be fetched (kept their link)" : ""));
+          return api("/products").then(function (r) { S.products = r.products; renderRecipes(); });
+        }
+        var p = targets[i++];
+        toast("Embedding photos… " + i + "/" + targets.length);
+        urlToDataUri(p.img, function (uri) {
+          if (!uri) { failed++; return next(); }
+          api("/products/" + encodeURIComponent(p.id) + "/image", { method: "PUT", body: JSON.stringify({ img: uri }) })
+            .then(function () { done++; p.img = uri; }).catch(function () { failed++; }).then(next);
+        });
+      }
+      next();
     };
     el("plist").querySelectorAll("[data-p]").forEach(function (d) {
       d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
@@ -984,6 +1005,27 @@
       im.src = reader.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  /* Pull a web-hosted image into a compressed, self-contained data URI so the
+     photo works offline. Draws it through a canvas (≤512px, JPEG q0.6), which
+     both shrinks it and re-encodes it; needs the host to allow cross-origin
+     reads (Unsplash and most CDNs do) — a blocked/failed image yields null so
+     the caller keeps the original URL. */
+  function urlToDataUri(url, cb) {
+    var im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = function () {
+      try {
+        var s = Math.min(1, 512 / Math.max(im.width, im.height));
+        var cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(im.width * s)); cv.height = Math.max(1, Math.round(im.height * s));
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        cb(cv.toDataURL("image/jpeg", 0.6));
+      } catch (e) { cb(null); }
+    };
+    im.onerror = function () { cb(null); };
+    im.src = url;
   }
 
   function drawRecipeEditor() {
