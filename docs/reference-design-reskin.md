@@ -40,9 +40,23 @@ string-`.replace()` patch or an injected-CSS/helper block in `guest-sync-patch.j
   "55" (Preparing) live while the other stayed "12" — the ring tracks progress.
 - Bake is idempotent; `index.js`/`inventory.js` syntax-checked; zero console errors.
 
-## Not done (needs merchant data / a decision)
+4. **Product photos from the back office** — the till's product editor already
+   had photo upload (resizes to 512px), but `/back`'s "Menu & Recipes" editor —
+   where merchants do catalogue work — couldn't set a photo. Now it can:
+   - `GET /api/inv/products` returns `img`; new `PUT /api/inv/products/:id/image`
+     writes (or clears) `data.img` on the product entity, capped + validated as
+     an image data URI, and pokes sync.
+   - The recipe editor shows the item's photo (or emoji placeholder) with
+     **Add / Change / Remove photo**; a `resizeImage` helper downscales the
+     chosen file to a ≤512px JPEG client-side (same as the till) so a phone
+     photo never bloats the sync stream. `/back`-only + server — no bake.
+   - Verified end-to-end: uploaded a photo to Chocolate Cake in `/back` → stored
+     as a 7.6 KB data URI → the till tile renders it photo-forward. Zero errors.
 
-- **Photo-forward tiles** — the till already renders `f.img`; the demo catalog
-  just uses emoji. With real product photos the grid already looks like the mock.
+   With this, the menu grid matches the mock as merchants add photos — no more
+   "needs merchant data" blocker for the visual.
+
+## Not done (a decision, not a limitation)
+
 - **Emerald green palette** — a one-line `--k-primary` swap if the brand ever
   moves off orange.

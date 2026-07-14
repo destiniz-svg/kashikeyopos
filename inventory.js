@@ -272,7 +272,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         .map((x) => {
           const d = x.data || {};
           const id = String(d.id || x.id).split(":").pop();
-          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
+          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
         })
         .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
       const sd = st.rowCount ? st.rows[0].data : {};
@@ -286,6 +286,33 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       };
     });
     res.json(out);
+  }));
+
+  /* Set (or clear) a menu item's photo from the back office. The till already
+     resizes photos on upload; the back office does the same client-side, so we
+     only accept a bounded image data URI here and write it onto the product
+     entity — it then rides the normal sync stream onto every till tile and the
+     guest menu. Passing an empty img clears the photo (back to the emoji). */
+  router.put("/products/:id/image", authAny, wrap(async (req, res) => {
+    const pid = req.params.id;
+    const img = typeof (req.body && req.body.img) === "string" ? req.body.img : "";
+    if (img && !/^data:image\/(png|jpe?g|webp);base64,/.test(img)) return res.status(400).json({ error: "expected an image" });
+    if (img.length > 700000) return res.status(413).json({ error: "image too large — use a smaller photo" });
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid])).rows[0];
+      if (!row) return null;
+      const data = Object.assign({}, row.data || {});
+      if (img) data.img = img; else delete data.img;
+      const up = await client.query(
+        `UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver`,
+        [req.orgId, pid, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : null;
+    });
+    if (rowver == null) return res.status(404).json({ error: "unknown menu item" });
+    if (poke) poke(req.orgId, rowver);
+    res.json({ ok: true, rowver });
   }));
 
   /* ── Ingredients ──────────────────────────────────────────────────────── */

@@ -939,6 +939,26 @@
     return { cost: cost, price: price, profit: price - cost, pct: price > 0 ? Math.round((price - cost) / price * 1000) / 10 : 0 };
   }
 
+  /* Downscale a chosen photo to a small JPEG data URI (max 512px, the same
+     size the till uses) before it's stored on the product entity, so a full-res
+     phone photo never bloats the sync stream. */
+  function resizeImage(file, max, q, cb) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        var s = Math.min(1, max / Math.max(im.width, im.height));
+        var cv = document.createElement("canvas");
+        cv.width = Math.round(im.width * s); cv.height = Math.round(im.height * s);
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        try { cb(cv.toDataURL("image/jpeg", q)); } catch (e) { toast("Couldn't process that image"); }
+      };
+      im.onerror = function () { toast("Couldn't read that image"); };
+      im.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
   function drawRecipeEditor() {
     var p = S.products.find(function (x) { return x.id === S.selProduct; }) || { name: "?", price: S.recipe.price };
     if (S.recipe.stock) return drawStockPanel(p, S.recipe.stock);
@@ -955,7 +975,14 @@
       .map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + " (" + esc(i.base_unit) + ")</option>"; }).join("");
     el("redit").innerHTML =
       '<div class="pad" style="display:flex;align-items:center;justify-content:space-between;gap:10px">' +
-      "<div><b>" + esc(p.emoji || "") + " " + esc(p.name) + '</b><div class="hint">Sells at ' + esc(S.currency) + " " + Y(t.price) + "</div></div>" +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+      (p.img
+        ? '<img src="' + p.img + '" alt="" style="width:46px;height:46px;border-radius:10px;object-fit:cover;flex:none" />'
+        : '<div style="width:46px;height:46px;border-radius:10px;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px;background:var(--panel2)">' + esc(p.emoji || "🍽️") + "</div>") +
+      "<div><b>" + esc(p.name) + '</b><div class="hint">Sells at ' + esc(S.currency) + " " + Y(t.price) + "</div>" +
+      '<div style="margin-top:4px"><button class="tiny ghost" id="pPhoto">' + (p.img ? "Change photo" : "📷 Add photo") + "</button>" +
+      (p.img ? ' <button class="tiny ghost" id="pPhotoRm">Remove</button>' : "") +
+      '<input type="file" id="pPhotoFile" accept="image/*" style="display:none" /></div></div></div>' +
       '<button class="primary" id="rSave">Save recipe</button></div>' +
       '<div class="tbl-wrap" style="border-left:none;border-right:none;border-radius:0">' +
       '<table><thead><tr><th>Ingredient</th><th>Amount per serving</th><th class="mono">Cost</th><th></th></tr></thead><tbody>' +
@@ -971,6 +998,22 @@
       '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div></div>" +
       '<div class="pad" style="border-top:1px solid var(--border)"><button class="ghost" id="rStock">📦 Also track as stock — use it in other recipes</button>' +
       '<div class="hint" style="margin-top:6px">For an item you both sell and cook with (a house sauce, cold brew). It becomes a stock item you make in batches and can add to other recipes.</div></div>';
+    el("pPhoto").onclick = function () { el("pPhotoFile").click(); };
+    el("pPhotoFile").onchange = function () {
+      var f = el("pPhotoFile").files && el("pPhotoFile").files[0];
+      if (!f) return;
+      if (f.size > 25 * 1024 * 1024) return toast("That photo is too large — try a smaller one.");
+      resizeImage(f, 512, 0.72, function (uri) {
+        api("/products/" + encodeURIComponent(S.selProduct) + "/image", { method: "PUT", body: JSON.stringify({ img: uri }) })
+          .then(function () { p.img = uri; var pp = S.products.find(function (x) { return x.id === S.selProduct; }); if (pp) pp.img = uri; toast("Photo updated — it's now on the till"); drawRecipeEditor(); })
+          .catch(function (e) { toast(e.message); });
+      });
+    };
+    if (el("pPhotoRm")) el("pPhotoRm").onclick = function () {
+      api("/products/" + encodeURIComponent(S.selProduct) + "/image", { method: "PUT", body: JSON.stringify({ img: "" }) })
+        .then(function () { p.img = ""; var pp = S.products.find(function (x) { return x.id === S.selProduct; }); if (pp) pp.img = ""; toast("Photo removed"); drawRecipeEditor(); })
+        .catch(function (e) { toast(e.message); });
+    };
     el("redit").querySelectorAll("[data-q]").forEach(function (inp) {
       inp.oninput = function () { S.recipe.lines[Number(inp.dataset.q)].qty = parseFloat(inp.value) || 0; refreshMargin(); };
     });
