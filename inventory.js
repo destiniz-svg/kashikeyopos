@@ -28,6 +28,110 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   const num = (v, d = 0) => { const n = Number(v); return isNaN(n) ? d : n; };
   const round3 = (v) => Math.round(v * 1000) / 1000;
 
+  /* ── Minimal XLSX read/write (no dependency) ────────────────────────────
+     An .xlsx is a ZIP of XML parts. Node's built-in zlib does the (in|de)flate,
+     so a tiny ZIP container + a one-sheet workbook is all we need to export and
+     re-import the menu as a real Excel file that Excel/Numbers/Sheets open. */
+  const zlib = require("zlib");
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  const crc32 = (b) => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const xesc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const xunesc = (s) => String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  const colName = (n) => { let s = ""; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; };
+  const colIdx = (ref) => { let n = 0; for (const ch of ref) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
+
+  function zipParts(files) {
+    const chunks = [], central = []; let offset = 0;
+    for (const f of files) {
+      const name = Buffer.from(f.name, "utf8"), comp = zlib.deflateRawSync(f.data), crc = crc32(f.data);
+      const lh = Buffer.alloc(30);
+      lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(8, 8);
+      lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(f.data.length, 22); lh.writeUInt16LE(name.length, 26);
+      chunks.push(lh, name, comp);
+      const cd = Buffer.alloc(46);
+      cd.writeUInt32LE(0x02014b50, 0); cd.writeUInt16LE(20, 4); cd.writeUInt16LE(20, 6); cd.writeUInt16LE(8, 10);
+      cd.writeUInt32LE(crc, 16); cd.writeUInt32LE(comp.length, 20); cd.writeUInt32LE(f.data.length, 24); cd.writeUInt16LE(name.length, 28); cd.writeUInt32LE(offset, 42);
+      central.push(cd, name);
+      offset += lh.length + name.length + comp.length;
+    }
+    const cbuf = Buffer.concat(central), eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(files.length, 8); eocd.writeUInt16LE(files.length, 10); eocd.writeUInt32LE(cbuf.length, 12); eocd.writeUInt32LE(offset, 16);
+    return Buffer.concat([...chunks, cbuf, eocd]);
+  }
+  function unzipParts(buf) {
+    let eo = -1;
+    for (let i = buf.length - 22; i >= 0; i--) { if (buf.readUInt32LE(i) === 0x06054b50) { eo = i; break; } }
+    if (eo < 0) throw new Error("not a zip");
+    const count = buf.readUInt16LE(eo + 10); let p = buf.readUInt32LE(eo + 16); const out = {};
+    for (let n = 0; n < count && buf.readUInt32LE(p) === 0x02014b50; n++) {
+      const method = buf.readUInt16LE(p + 10), compSize = buf.readUInt32LE(p + 20);
+      const nameLen = buf.readUInt16LE(p + 28), extraLen = buf.readUInt16LE(p + 30), commLen = buf.readUInt16LE(p + 32), lho = buf.readUInt32LE(p + 42);
+      const name = buf.toString("utf8", p + 46, p + 46 + nameLen);
+      const ds = lho + 30 + buf.readUInt16LE(lho + 26) + buf.readUInt16LE(lho + 28);
+      const comp = buf.subarray(ds, ds + compSize);
+      out[name] = method === 8 ? zlib.inflateRawSync(comp) : Buffer.from(comp);
+      p += 46 + nameLen + extraLen + commLen;
+    }
+    return out;
+  }
+  function buildXlsx(rows) {
+    let sd = "";
+    rows.forEach((row, ri) => {
+      sd += `<row r="${ri + 1}">`;
+      (row || []).forEach((cell, ci) => {
+        if (cell == null || cell === "") return;
+        const ref = colName(ci) + (ri + 1);
+        if (typeof cell === "number" && isFinite(cell)) sd += `<c r="${ref}"><v>${cell}</v></c>`;
+        else sd += `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xesc(cell)}</t></is></c>`;
+      });
+      sd += "</row>";
+    });
+    const P = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+    return zipParts([
+      { name: "[Content_Types].xml", data: Buffer.from(P + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>') },
+      { name: "_rels/.rels", data: Buffer.from(P + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>') },
+      { name: "xl/workbook.xml", data: Buffer.from(P + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Menu" sheetId="1" r:id="rId1"/></sheets></workbook>') },
+      { name: "xl/_rels/workbook.xml.rels", data: Buffer.from(P + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>') },
+      { name: "xl/worksheets/sheet1.xml", data: Buffer.from(P + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>' + sd + "</sheetData></worksheet>") },
+    ]);
+  }
+  function parseXlsx(buf) {
+    const files = unzipParts(buf);
+    const shared = [];
+    const ssKey = Object.keys(files).find((k) => k.toLowerCase().endsWith("sharedstrings.xml"));
+    if (ssKey) for (const m of files[ssKey].toString("utf8").matchAll(/<si>([\s\S]*?)<\/si>/g))
+      shared.push([...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((x) => xunesc(x[1])).join(""));
+    const shKey = Object.keys(files).filter((k) => /xl\/worksheets\/.*\.xml$/i.test(k)).sort()[0];
+    if (!shKey) throw new Error("no worksheet");
+    const sx = files[shKey].toString("utf8"), rows = [];
+    for (const rm of sx.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+      const cells = [];
+      for (const cm of rm[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const attrs = cm[1], inner = cm[2] || "", ref = (attrs.match(/r="([A-Z]+)\d+"/) || [])[1];
+        if (!ref) continue;
+        const t = (attrs.match(/t="([^"]+)"/) || [])[1] || "n";
+        let val = "";
+        if (t === "inlineStr") { const im = inner.match(/<t[^>]*>([\s\S]*?)<\/t>/); val = im ? xunesc(im[1]) : ""; }
+        else { const vm = inner.match(/<v>([\s\S]*?)<\/v>/); const raw = vm ? vm[1] : ""; val = t === "s" ? (shared[Number(raw)] || "") : xunesc(raw); }
+        cells[colIdx(ref)] = val;
+      }
+      rows.push(cells);
+    }
+    return rows;
+  }
+
+  const MENU_COLS = ["SKU / ID", "Name", "Category", "Price (MVR)", "Taxable (Yes/No)", "Stock", "Image URL", "Emoji", "Description"];
+  async function menuRows(orgId) {
+    const r = await withOrg(orgId, (c) => c.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false ORDER BY data->>'cat', data->>'name'", [orgId]));
+    return r.rows.map((x) => { const d = x.data || {}; return [
+      String(d.id || x.id), d.name || "", d.cat || "", num(d.price) / 100,
+      d.taxable === false ? "No" : "Yes", d.stock == null ? "" : num(d.stock),
+      d.img || "", d.emoji || "", d.desc || "",
+    ]; });
+  }
+  const menuIdFromName = (s) => (String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || uid());
+
   /* ── Unit conversion ────────────────────────────────────────────────────
      factorFor resolves "how many base units is one <unitName>" for an
      ingredient. '' or 'base' means the base unit itself. Unknown names are a
@@ -313,6 +417,84 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     if (rowver == null) return res.status(404).json({ error: "unknown menu item" });
     if (poke) poke(req.orgId, rowver);
     res.json({ ok: true, rowver });
+  }));
+
+  /* ── Menu import / export (Excel) ───────────────────────────────────────
+     Download a template or the live menu as .xlsx, edit in any spreadsheet
+     app, and re-import to bulk create/update items. Import matches rows to
+     products by SKU/ID (falling back to a slug of the name), so the same file
+     round-trips: export → edit → import updates the same items. */
+  const sendXlsx = (res, name, buf) => {
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.send(buf);
+  };
+  router.get("/menu/template.xlsx", authAny, wrap(async (req, res) => {
+    sendXlsx(res, "menu-import-template.xlsx", buildXlsx([
+      MENU_COLS,
+      ["AMI-EX-001", "Flat White", "Coffee", 45, "Yes", 30, "https://example.com/photo.jpg", "☕", "Optional description"],
+      ["AMI-EX-002", "Still Water", "Drinks", 10, "No", 30, "", "💧", ""],
+    ]));
+  }));
+  router.get("/menu/export.xlsx", authAny, wrap(async (req, res) => {
+    sendXlsx(res, "menu-export.xlsx", buildXlsx([MENU_COLS, ...await menuRows(req.orgId)]));
+  }));
+  router.post("/menu/import", authAny, wrap(async (req, res) => {
+    const src = String((req.body && req.body.file) || "");
+    const b64 = (src.match(/^data:[^;]*;base64,(.*)$/) || [, src])[1];
+    let rows;
+    try { rows = parseXlsx(Buffer.from(b64, "base64")); }
+    catch (e) { return res.status(400).json({ error: "couldn't read that .xlsx file — use the template" }); }
+    const header = (rows[0] || []).map((h) => String(h || "").toLowerCase());
+    const find = (...keys) => header.findIndex((h) => keys.some((k) => h.includes(k)));
+    const ci = { id: find("sku", "id"), name: find("name"), cat: find("categ"), price: find("price"), tax: find("tax"), stock: find("stock"), img: find("image", "photo", "img", "url"), emoji: find("emoji"), desc: find("desc") };
+    if (ci.name < 0) return res.status(400).json({ error: "no 'Name' column found — start from the template" });
+    const cell = (row, i) => (i >= 0 && row[i] != null ? String(row[i]).trim() : "");
+    const items = [];
+    for (let r = 1; r < rows.length; r++) {
+      const row = rows[r]; if (!row) continue;
+      const name = cell(row, ci.name); if (!name) continue;
+      items.push({
+        id: cell(row, ci.id), name, cat: cell(row, ci.cat),
+        price: ci.price >= 0 ? num(String(row[ci.price]).replace(/[^0-9.]/g, "")) : 0,
+        taxable: ci.tax < 0 ? true : !/^(no|n|zero|false|0|exempt)/i.test(cell(row, ci.tax)),
+        stock: ci.stock >= 0 && cell(row, ci.stock) !== "" ? num(String(row[ci.stock]).replace(/[^0-9.-]/g, "")) : null,
+        img: cell(row, ci.img), emoji: cell(row, ci.emoji), desc: cell(row, ci.desc),
+      });
+    }
+    if (!items.length) return res.status(400).json({ error: "no rows with a Name to import" });
+    const replace = !!(req.body && req.body.replace);
+    const out = await withOrg(req.orgId, async (client) => {
+      const ex = await client.query("SELECT id FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.orgId]);
+      const exIds = new Set(ex.rows.map((r) => String(r.id)));
+      const keep = new Set(); let maxRowver = 0, created = 0, updated = 0, removed = 0;
+      for (const it of items) {
+        const pid = it.id || menuIdFromName(it.name); keep.add(pid);
+        const prev = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2", [req.orgId, pid])).rows[0];
+        const base = (prev && prev.data) || {};
+        const data = Object.assign({}, base, {
+          id: pid, name: it.name, cat: it.cat || base.cat || "General",
+          price: Math.round((it.price || 0) * 100), unit: base.unit || "pcs", taxable: it.taxable,
+          emoji: it.emoji || base.emoji || "🍽️",
+        });
+        if (it.stock != null) data.stock = it.stock;      // blank stock keeps the current level
+        if (it.img !== "") data.img = it.img;             // blank image/description keeps the current value
+        if (it.desc !== "") data.desc = it.desc;
+        const up = await client.query(
+          `INSERT INTO entities (org_id, kind, id, data, deleted) VALUES ($1,'products',$2,$3,false)
+           ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$3, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()
+           RETURNING rowver`, [req.orgId, pid, JSON.stringify(data)]);
+        maxRowver = Math.max(maxRowver, Number(up.rows[0].rowver));
+        exIds.has(pid) ? updated++ : created++;
+      }
+      if (replace) for (const id of exIds) if (!keep.has(id)) {
+        const d = await client.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, id]);
+        if (d.rows[0]) { maxRowver = Math.max(maxRowver, Number(d.rows[0].rowver)); removed++; }
+      }
+      return { maxRowver, created, updated, removed };
+    });
+    if (out.maxRowver && poke) poke(req.orgId, out.maxRowver);
+    res.json({ ok: true, created: out.created, updated: out.updated, removed: out.removed, total: items.length });
   }));
 
   /* ── Ingredients ──────────────────────────────────────────────────────── */

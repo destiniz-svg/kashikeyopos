@@ -917,12 +917,39 @@
     }).join("");
     el("main").innerHTML =
       '<div class="split">' +
-      '<div><div class="toolbar" style="margin-bottom:10px"><input type="search" id="pSearch" placeholder="Search the menu…" value="' + esc(S.prodFilter) + '" style="width:100%" /></div>' +
+      '<div><div class="toolbar" style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
+      '<input type="search" id="pSearch" placeholder="Search the menu…" value="' + esc(S.prodFilter) + '" style="flex:1;min-width:130px" />' +
+      '<button class="ghost tiny" id="mTemplate" title="Download a blank Excel template to fill in">⬇ Template</button>' +
+      '<button class="ghost tiny" id="mExport" title="Download the current menu as Excel">⬇ Export</button>' +
+      '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
+      '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
       '<div class="panel" id="redit"><div class="empty">Pick a menu item to build its recipe.</div></div>' +
       "</div>";
     var ps = el("pSearch");
     ps.oninput = function () { S.prodFilter = ps.value; renderRecipes(); ps = el("pSearch"); ps.focus(); ps.setSelectionRange(ps.value.length, ps.value.length); };
+    function dlFile(path) { var a = document.createElement("a"); a.href = path; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); }
+    el("mTemplate").onclick = function () { dlFile("/api/inv/menu/template.xlsx"); };
+    el("mExport").onclick = function () { dlFile("/api/inv/menu/export.xlsx"); };
+    el("mImport").onclick = function () { el("mImportFile").click(); };
+    el("mImportFile").onchange = function () {
+      var f = el("mImportFile").files && el("mImportFile").files[0]; if (!f) return;
+      var go = confirm("Import “" + f.name + "” and bulk add / update the menu?");
+      if (!go) { el("mImportFile").value = ""; return; }
+      var replace = confirm("Also REMOVE current items that are NOT in the file?\n\nOK = full replace (delete anything missing).\nCancel = only add / update the items in the file (keep the rest).");
+      var reader = new FileReader();
+      reader.onload = function () {
+        api("/menu/import", { method: "POST", body: JSON.stringify({ file: reader.result, replace: replace }) })
+          .then(function (r) {
+            toast("Imported — " + r.created + " added, " + r.updated + " updated" + (r.removed ? ", " + r.removed + " removed" : ""));
+            return api("/products");
+          })
+          .then(function (r) { S.products = r.products; S.currency = r.currency; renderRecipes(); })
+          .catch(function (e) { toast(e.message || "Import failed"); });
+      };
+      reader.readAsDataURL(f);
+      el("mImportFile").value = "";
+    };
     el("plist").querySelectorAll("[data-p]").forEach(function (d) {
       d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
     });
