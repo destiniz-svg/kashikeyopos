@@ -99,11 +99,17 @@ changes need no bake) — happy to implement on the next pass.
 3. ~~**Pre-focus "Exact" in the payment modal.**~~ **ALREADY PRESENT** — the modal
    opens with `amt = cr.total` (the exact amount) pre-filled, so the cashier only
    picks a method and confirms. No change needed.
-4. **Restore a mistakenly-oversold item in one tap.** When a tracked item hits 0
-   from an oversell, offer a "+ restock" affordance on the sold-out tile instead of
-   forcing a trip to `/back`. Medium.
-5. **Keep the numeric keypad open** after "Add" in the manual-price path (it closes
-   and re-opening costs a tap). Low.
+4. ~~**One-tap restock from the sell screen.**~~ **SHIPPED (patch #78)** — a
+   stock-tracked item at zero now shows *"Sold out +"*; tapping the pill prompts
+   for a quantity and adds it (optimistic bump + a stock delta, the same path the
+   manual adjust uses), so the item goes back on sale without a trip to `/back`.
+   Recipe-driven sold-outs keep a plain "Sold out" (restocking the product can't
+   fix an ingredient shortage). Verified live: "Sold out +" → prompt → +12 →
+   tile un-dims to "12 pcs", sellable again.
+5. ~~**Keep the numeric keypad open after "Add".**~~ **NOT APPLICABLE** — this
+   build has no manual-price keypad: the manual-entry path is the search/barcode
+   box, which already clears and keeps focus after each Enter-add (`id(I),ws("")`
+   with no blur), and cart quantities use a +/- stepper. Both are already optimal.
 
 ## 4. Data note
 

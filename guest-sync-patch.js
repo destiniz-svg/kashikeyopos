@@ -1190,6 +1190,21 @@ patchFile(indexPath, (html) => html
     'Sw.map(f=>h.jsxs("button",{onClick:()=>{if(window.__ksOut(f))return;id(f)},className:`relative rounded-2xl p-3 text-left transition active:scale-95 ${_.tile} ${window.__ksOut(f)?"opacity-50":""}`,children:[window.__ksOut(f)?h.jsx("span",{className:"absolute top-2 right-2 ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px",zIndex:2},children:"Sold out"}):null,'
   )
 
+  /* 78. One-tap restock from the sell screen. A stock-tracked item that has
+     counted down to zero shows "Sold out +" — tapping the pill prompts for a
+     quantity and adds it (optimistic local bump + a stock delta the same way
+     the manual adjust does), so a cashier can put an item back on sale without
+     leaving for /back. Only offered for plain stock items (f.stock is a number):
+     a recipe-driven sold-out is an ingredient shortage the product can't fix, so
+     its pill stays a plain "Sold out". stopPropagation keeps the tap off the
+     (blocked) add handler. Runs after #73, which creates the pill it rewrites;
+     the find ends `children:"Sold out"}):null,` and the replacement begins
+     `h.jsx("span",{onClick:`, so it is a no-op on re-bake. */
+  .replace(
+    'window.__ksOut(f)?h.jsx("span",{className:"absolute top-2 right-2 ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px",zIndex:2},children:"Sold out"}):null,',
+    'window.__ksOut(f)?h.jsx("span",{onClick:ke=>{if(f.recipeAvail!=null||f.stock==null)return;ke.stopPropagation();var kq=parseInt(window.prompt("Restock "+(f.name||"item")+" — add how many "+(f.unit||"pcs")+"?","1"),10);if(kq>0){d(cj=>cj.map(cf=>cf.id===f.id?{...cf,stock:(Number(cf.stock)||0)+kq}:cf));na({stock:[{id:f.id,d:kq}]})}},title:(f.recipeAvail!=null||f.stock==null)?"Sold out":"Tap to restock",className:"absolute top-2 right-2 ksh-pill",style:{background:"#FEE2E2",color:"#B91C1C",fontSize:"10px",padding:"2px 8px",zIndex:2,cursor:(f.recipeAvail!=null||f.stock==null)?"default":"pointer"},children:(f.recipeAvail!=null||f.stock==null)?"Sold out":"Sold out +"}):null,'
+  )
+
   /* 74. Availability §2 on the customer QR menu — a recipe/stock item that has
      sold out stays on the menu (dimmed) with a "Sold out" pill instead of an
      add button, so guests see it but can't order it. Items already in the cart
@@ -1400,6 +1415,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.44"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.45"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
