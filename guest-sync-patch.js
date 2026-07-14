@@ -457,6 +457,16 @@ patchFile(indexPath, (html) => {
     'placeholder:"Opening stock"',
     'placeholder:"Opening stock — blank if not counted"'
   )
+  /* 77. Loyalty preview: when a member is on the ticket, their points line now
+     also shows what the current sale will earn (+N this sale), so the cashier
+     can tell the guest before settling — not only on the receipt afterwards.
+     Same formula the settle path uses (floor(total / loyaltyBp)); hidden when
+     the earn rounds to zero or the cart is empty. Find ends `pts`}) whereas the
+     replacement ends `pts${…}`}), so it is a no-op on re-bake. */
+  .replace(
+    'children:(He.balance||0)>0?`owes ${Y(He.balance)}`:`${He.points} pts`})',
+    'children:(He.balance||0)>0?`owes ${Y(He.balance)}`:`${He.points} pts${Math.floor(cr.total/(ce.loyaltyBp||1e4))>0?` · +${Math.floor(cr.total/(ce.loyaltyBp||1e4))} this sale`:""}`})'
+  )
   /* 75. Waiter calls stuck on the till after "On my way". Accepting removed
      the call from local state and pushed a server delete (patch 52), but a
      pull already in flight when the button was tapped could re-apply the same
@@ -1390,6 +1400,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.43"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.44"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

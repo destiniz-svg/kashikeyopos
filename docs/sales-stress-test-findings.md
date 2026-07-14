@@ -92,13 +92,16 @@ changes need no bake) — happy to implement on the next pass.
 1. ~~**"Opening stock (optional)" label.**~~ **SHIPPED (patch #76f)** — the stock
    field placeholder now reads *"Opening stock — blank if not counted"* so the
    opt-in behaviour is discoverable at the point of entry.
-2. **Restore a mistakenly-oversold item in one tap.** When a tracked item hits 0
+2. ~~**Customer-on-ticket points preview.**~~ **SHIPPED (patch #77)** — an attached
+   member's points line now reads e.g. *"120 pts · +1 this sale"* (same
+   `floor(total / loyaltyBp)` the settle path uses; hidden when the earn rounds
+   to zero), so the cashier can tell the guest before settling. Verified live.
+3. ~~**Pre-focus "Exact" in the payment modal.**~~ **ALREADY PRESENT** — the modal
+   opens with `amt = cr.total` (the exact amount) pre-filled, so the cashier only
+   picks a method and confirms. No change needed.
+4. **Restore a mistakenly-oversold item in one tap.** When a tracked item hits 0
    from an oversell, offer a "+ restock" affordance on the sold-out tile instead of
    forcing a trip to `/back`. Medium.
-3. **Quick-tender "Exact" as the default focus** in the payment modal — most cash
-   sales are exact; pre-selecting it saves a tap. Low.
-4. **Customer-on-ticket points preview** — show "earns +N pts" next to the total
-   before settling, not only after. Low.
 5. **Keep the numeric keypad open** after "Add" in the manual-price path (it closes
    and re-opening costs a tap). Low.
 
