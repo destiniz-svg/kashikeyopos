@@ -212,7 +212,7 @@ const themeUtilCss = `
 .ksh-app{background:var(--k-appbg);color:var(--k-text)}
 .ksh-header{background:var(--k-nav);border-color:var(--k-border);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
 .ksh-nav{background:var(--k-nav);border-color:var(--k-border);-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
-.ksh-panel{background:var(--k-panel);border:1px solid var(--k-border);box-shadow:0 1px 3px rgba(38,34,28,.08)}
+.ksh-panel{background:var(--k-panel);border:1px solid var(--k-border);box-shadow:0 1px 2px rgba(38,34,28,.04),0 10px 30px rgba(38,34,28,.05)}
 .ksh-panel2{background:var(--k-panel2)}
 .ksh-border{border-color:var(--k-border)}
 .ksh-sub{color:var(--k-sub)}
@@ -221,8 +221,8 @@ const themeUtilCss = `
 .ksh-input::placeholder{color:var(--k-ph)}
 .ksh-chip{background:var(--k-chip);color:var(--k-chip-text)}
 .ksh-chipOn{background:var(--k-primary);color:#fff;border:1px solid var(--k-primary)}
-.ksh-tile{background:var(--k-panel);border:1px solid var(--k-border);box-shadow:0 1px 3px rgba(38,34,28,.08)}
-.ksh-tile:hover{border-color:var(--k-primary)}
+.ksh-tile{background:var(--k-panel);border:1px solid var(--k-border);box-shadow:0 1px 2px rgba(38,34,28,.05);transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease}
+.ksh-tile:hover{border-color:var(--k-primary);box-shadow:0 6px 18px rgba(38,34,28,.10);transform:translateY(-2px)}
 .ksh-navOn{color:var(--k-primary)}
 .ksh-navOff{color:var(--k-navoff)}
 .ksh-modal{background:var(--k-modal);border:1px solid var(--k-border);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4)}
@@ -1415,6 +1415,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.45"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.46"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
