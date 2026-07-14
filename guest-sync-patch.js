@@ -451,6 +451,12 @@ patchFile(indexPath, (html) => {
     'return F?{...j,stock:j.stock+F.qty}:j',
     'return F&&j.stock!=null?{...j,stock:j.stock+F.qty}:j'
   )
+  /* 76f. Make the opt-in stock behaviour discoverable at the point of entry:
+     the stock field placeholder spells out that blank means untracked. */
+  .replace(
+    'placeholder:"Opening stock"',
+    'placeholder:"Opening stock — blank if not counted"'
+  )
   /* 75. Waiter calls stuck on the till after "On my way". Accepting removed
      the call from local state and pushed a server delete (patch 52), but a
      pull already in flight when the button was tapped could re-apply the same

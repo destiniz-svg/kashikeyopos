@@ -79,15 +79,19 @@ products.filter(p => hasRecipe.has(p.id) || p.stock == null || Number(p.stock) >
 - Tracked "Bottled Water" 3 → sell 1 → 2 → oversell 5 → **floors at 0** (not −1).
 - Guest `/p/:slug/boot`: untracked item visible with `soldOut:false`; tracked-at-0 hidden.
 - Bundle re-bake is a no-op (idempotent); SPA parses with zero console errors.
+- **Live till render (headless):** Fresh Juice tile is not dimmed and has no pill
+  (sellable); Bottled Water (tracked @ 0) and the pre-fix corrupt Espresso (−1)
+  both dim and show the "Sold out" pill. The §24 gate still fires for genuinely
+  tracked-and-empty items — exactly as intended.
 
 ## 3. Prioritised convenience improvements (proposed, not yet shipped)
 
 Ranked by user value ÷ risk. Each is a self-contained bundle patch (`/back`
 changes need no bake) — happy to implement on the next pass.
 
-1. **"Opening stock (optional)" label + track toggle.** Now that blank = untracked,
-   the field placeholder should read *"Opening stock — leave blank if you don't
-   count it"* so the new behaviour is discoverable. Low risk, `stock`-input string patch.
+1. ~~**"Opening stock (optional)" label.**~~ **SHIPPED (patch #76f)** — the stock
+   field placeholder now reads *"Opening stock — blank if not counted"* so the
+   opt-in behaviour is discoverable at the point of entry.
 2. **Restore a mistakenly-oversold item in one tap.** When a tracked item hits 0
    from an oversell, offer a "+ restock" affordance on the sold-out tile instead of
    forcing a trip to `/back`. Medium.
