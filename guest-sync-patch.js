@@ -1417,6 +1417,17 @@ patchFile(indexPath, (html) => html
     'onClick:e=>e.stopPropagation(),className:"ksh-isheet",style:{width:"100%",maxWidth:"32rem"'
   )
 
+  /* 88. Editable order panel: the checkout sheet showed only an item count and
+     total. Add an expandable list of the lines (name, unit price, quantity
+     stepper, remove) above the summary, so a guest can review and edit before
+     ordering — reusing the cart's own $1 add/remove. Collapsed by default with
+     an "Edit ▾" toggle (fe.cexp). The summary line gains `mt-1` so this patch is
+     a no-op on re-bake. */
+  .replace(
+    'h.jsx("div",{className:`flex justify-between text-xs ${_.sub}`,children:h.jsxs("span",{children:[yt.reduce((ne,ke)=>ne+ke.qty,0)," items"',
+    'h.jsxs("div",{className:"mb-2",children:[h.jsxs("button",{onClick:()=>Dn(N=>({...N,cexp:!N.cexp})),className:"w-full flex items-center justify-between py-1 text-sm font-semibold",children:[h.jsxs("span",{children:[yt.reduce((a,b)=>a+b.qty,0)," item",yt.reduce((a,b)=>a+b.qty,0)===1?"":"s"," in your order"]}),h.jsx("span",{className:`text-xs ${_.faint}`,children:fe.cexp?"Hide ▴":"Edit ▾"})]}),fe.cexp?h.jsx("div",{className:"space-y-1.5 mt-1.5",children:yt.map(ne=>h.jsxs("div",{className:`flex items-center gap-2 rounded-xl px-2.5 py-2 ${_.panel2}`,children:[h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsx("div",{className:"text-sm font-medium truncate",children:ne.name}),h.jsx("div",{className:`text-xs font-mono ${_.faint}`,children:Y(ne.price)})]}),h.jsxs("div",{className:`flex items-center rounded-lg ${_.panel}`,children:[h.jsx("button",{onClick:()=>$1(ne.pid,-1),className:"px-2.5 py-1",children:"−"}),h.jsx("span",{className:"w-6 text-center text-sm font-mono",children:ne.qty}),h.jsx("button",{onClick:()=>$1(ne.pid,1),className:"px-2.5 py-1",children:"+"})]}),h.jsx("button",{onClick:()=>$1(ne.pid,-ne.qty),className:`px-1 text-lg ${_.faint}`,children:"×"})]},ne.pid))}):null]}),h.jsx("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:h.jsxs("span",{children:[yt.reduce((ne,ke)=>ne+ke.qty,0)," items"'
+  )
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1614,6 +1625,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.54"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.55"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
