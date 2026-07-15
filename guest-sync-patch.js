@@ -1254,6 +1254,20 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"flex items-center gap-3",children:[h.jsx("div",{className:"shrink-0",title:"Order progress",dangerouslySetInnerHTML:{__html:window.__ksRing(window.__ksProg(f.status),window.__kstatus(f.status).fg,40)}}),h.jsx("span",{className:`px-2.5 py-1.5 rounded-xl text-sm font-bold ${_.chipOn}`,children:f.table}),'
   )
 
+  /* 89. Orders-board card header alignment (from IMG_6949). The type/table chip
+     ("Pickup"/"Takeaway"/table no) was oversized (px-2.5 py-1.5 text-sm),
+     hogging width and forcing the order number ("ORD-522") and customer name to
+     wrap onto their own broken lines. This shrinks the chip and pins it
+     (shrink-0), makes the meta row wrap between chips instead of within them
+     (flex-wrap gap-x/gap-y), and keeps the order number + customer name each on
+     one line (whitespace-nowrap). Idempotent: the find carries the old
+     px-2.5/rounded-xl/text-sm chip + the non-wrapping meta row, none of which
+     survive into the replacement. */
+  .replace(
+    'h.jsx("span",{className:`px-2.5 py-1.5 rounded-xl text-sm font-bold ${_.chipOn}`,children:f.table}),h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsxs("div",{className:"text-sm font-medium flex items-center gap-2",children:[f.no,f.customerName&&h.jsx("span",{className:"text-xs px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400",children:f.customerName}),',
+    'h.jsx("span",{className:`px-2 py-0.5 rounded-lg text-xs font-bold ${_.chipOn} shrink-0 whitespace-nowrap`,children:f.table}),h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsxs("div",{className:"text-sm font-medium flex flex-wrap items-center gap-x-2 gap-y-1",children:[h.jsx("span",{className:"whitespace-nowrap font-semibold",children:f.no}),f.customerName&&h.jsx("span",{className:"text-xs px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 whitespace-nowrap",children:f.customerName}),'
+  )
+
   /* 74. Availability §2 on the customer QR menu — a recipe/stock item that has
      sold out stays on the menu (dimmed) with a "Sold out" pill instead of an
      add button, so guests see it but can't order it. Items already in the cart
@@ -1625,6 +1639,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.55"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.56"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
