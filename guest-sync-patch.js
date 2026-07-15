@@ -1358,6 +1358,17 @@ patchFile(indexPath, (html) => html
   .replace('children:"Walk-in · attach"', 'children:"Add customer"')
   .replace('children:"Walk-in (no customer)"', 'children:"No customer"')
 
+  /* 84. Guest wording matches the till: "Pickup" → "Takeaway" (and "Dine in" →
+     "Dine-in"). The internal gtype value stays "pickup" (it already maps to
+     takeaway in the order), so this is label-only; the orders filter keeps
+     "Pickup" alongside "Takeaway" so already-placed orders still resolve. */
+  .replace(
+    '[["pickup","Pickup"],["table","Dine in"],["delivery","Delivery"]]',
+    '[["pickup","Takeaway"],["table","Dine-in"],["delivery","Delivery"]]'
+  )
+  .replace('(A==="delivery"?"Delivery":"Pickup")', '(A==="delivery"?"Delivery":"Takeaway")')
+  .replace('["Pickup","Delivery"].includes(ne.table)', '["Pickup","Takeaway","Delivery"].includes(ne.table)')
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1555,6 +1566,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.50"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.51"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
