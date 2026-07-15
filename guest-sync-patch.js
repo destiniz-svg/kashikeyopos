@@ -349,6 +349,12 @@ const availJs = "window.__ksOut=function(f){if(!f)return false;if(f.soldOut===tr
 const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M={new:12,pending:12,preparing:55,cooking:55,ready:88,served:88,delivered:100,completed:100,settled:100,paid:100,closed:100,done:100};return M[s]!=null?M[s]:12;};"
   + "window.__ksRing=function(pct,color,size){pct=Math.max(0,Math.min(100,Number(pct)||0));var r=15.5,c=2*Math.PI*r,off=c*(1-pct/100),s=size||40,col=color||'#C1502D';var mid=pct>=100?'<path d=\"M14.5 20.4l3.6 3.6 7-7.6\" fill=\"none\" stroke=\"'+col+'\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>':'<text x=\"20\" y=\"20\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" font-weight=\"700\" fill=\"'+col+'\">'+Math.round(pct)+'</text>';return '<svg width=\"'+s+'\" height=\"'+s+'\" viewBox=\"0 0 40 40\" style=\"display:block\"><circle cx=\"20\" cy=\"20\" r=\"'+r+'\" fill=\"none\" stroke=\"var(--k-border)\" stroke-width=\"3.5\"/><circle cx=\"20\" cy=\"20\" r=\"'+r+'\" fill=\"none\" stroke=\"'+col+'\" stroke-width=\"3.5\" stroke-linecap=\"round\" stroke-dasharray=\"'+c.toFixed(2)+'\" stroke-dashoffset=\"'+off.toFixed(2)+'\" transform=\"rotate(-90 20 20)\"/>'+mid+'</svg>';};";
 
+/* Rotating guest welcome (§4.3). A café gets the same faces every day, so the
+   QR menu greets with a different friendly line each visit. Picked once per page
+   load (memoised) and never the same as the previous visit (last index kept in
+   localStorage), so repeat visits keep feeling fresh. */
+const greetJs = "window.__ksGreet=(function(){var p=null,L=['Order now and savor your favorites','What are you craving today?','Freshly made, just for you','Treat yourself today','Hungry? You are in the right place','So good to see you again','Find your new favorite','Great taste starts right here','Your feast is a few taps away','Pick something delicious','Good things are cooking here','A warm welcome to your table'];return function(){if(p!==null)return p;try{var last=parseInt(localStorage.getItem('ksh-greet'),10);if(isNaN(last))last=-1;var i;do{i=Math.floor(Math.random()*L.length)}while(L.length>1&&i===last);localStorage.setItem('ksh-greet',String(i));p=L[i]}catch(e){p=L[0]}return p}})();";
+
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
 window.__ksChart=function(data,pal){
   var mode=window.__ksChartMode();
@@ -423,6 +429,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-hex", hexJs);
   html = injectInline(html, "ksh-avail", availJs);
   html = injectInline(html, "ksh-ring", ringJs);
+  html = injectInline(html, "ksh-greet", greetJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -1391,6 +1398,11 @@ patchFile(indexPath, (html) => html
     '(ze.allergens||ze.desc)?h.jsx("div",{className:`text-xs mt-1 ${_.faint}`,style:{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"},children:ze.allergens?"Allergies: "+ze.allergens:ze.desc}):null'
   )
 
+  /* 86. Guest menu: two photo cards per row on mobile (reference design) and a
+     rotating welcome greeting that changes each visit. */
+  .replace('`grid gap-2 sm:grid-cols-2 lg:grid-cols-3`', '`grid grid-cols-2 gap-2 lg:grid-cols-3`')
+  .replace('children:"Order now & savor"', 'children:window.__ksGreet()')
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1588,6 +1600,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.52"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.53"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
