@@ -1369,6 +1369,28 @@ patchFile(indexPath, (html) => html
   .replace('(A==="delivery"?"Delivery":"Pickup")', '(A==="delivery"?"Delivery":"Takeaway")')
   .replace('["Pickup","Delivery"].includes(ne.table)', '["Pickup","Takeaway","Delivery"].includes(ne.table)')
 
+  /* 85. Category filter chips on the guest menu (§4.3, reference design). The
+     QR menu stacked every category as a headed section; add a horizontal chip
+     row (All · Breakfast · Kotthu …) that filters the menu to one category —
+     the reference's Food/Dessert/Drinks tabs, in the store's own palette. The
+     chosen category rides on fe.mcat via the existing Dn updater. 85a wraps the
+     menu container to prepend the chips and filter the category map (start) and
+     close the new children array (end). */
+  .replace(
+    'fe.tab==="menu"?h.jsx("div",{className:"mx-auto px-4",style:{paddingBottom:"16rem",maxWidth:"56rem"},children:he.map(ne=>{',
+    'fe.tab==="menu"?h.jsxs("div",{className:"mx-auto px-4",style:{paddingBottom:"16rem",maxWidth:"56rem"},children:[h.jsx("div",{className:"flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1",children:[["","All"],...he.map(ce=>[ce,ce])].map(([cv,cl])=>h.jsx("button",{onClick:()=>Dn(N=>({...N,mcat:cv})),className:`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap ${(fe.mcat||"")===cv?_.chipOn:_.chip}`,children:cl},cv))}),he.filter(ne=>!fe.mcat||ne===fe.mcat).map(ne=>{'
+  )
+  .replace(
+    ',ne):null})}):h.jsxs("div",{className:"max-w-md mx-auto px-4 pb-16"',
+    ',ne):null})]}):h.jsxs("div",{className:"max-w-md mx-auto px-4 pb-16"'
+  )
+  /* 85b — menu cards lead with the allergen note (reference design) when set,
+     falling back to the description. */
+  .replace(
+    'ze.desc?h.jsx("div",{className:`text-xs mt-1 ${_.faint}`,style:{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"},children:ze.desc}):null',
+    '(ze.allergens||ze.desc)?h.jsx("div",{className:`text-xs mt-1 ${_.faint}`,style:{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"},children:ze.allergens?"Allergies: "+ze.allergens:ze.desc}):null'
+  )
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1566,6 +1588,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.51"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.52"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
