@@ -417,9 +417,16 @@ function injectInline(html, marker, js) {
   return tag + html;
 }
 
+/* Dark item sheet (§4.3, reference design): only the guest item-detail sheet
+   goes charcoal — the rest of the app keeps its light palette. Scoped to the
+   .ksh-isheet wrapper so the add-on rows, muted text and radios follow, while
+   the orange "Add to cart" (ksh-primary) is untouched. */
+const isheetCss = ".ksh-isheet{background:#211c19;color:#f5f1ea;box-shadow:0 -8px 40px rgba(0,0,0,.45)}.ksh-isheet .ksh-panel2{background:rgba(255,255,255,.09)}.ksh-isheet .ksh-sub{color:rgba(245,241,234,.74)}.ksh-isheet .ksh-faint{color:rgba(245,241,234,.5)}";
+
 patchFile(indexPath, (html) => {
   html = injectScript(html, "offline-bridge.js");
   html = injectCss(html, lovableCss, "ksh-lovable");
+  html = injectCss(html, isheetCss, "ksh-isheet");
   html = injectCss(html, themeVarsCss + themeUtilCss, "ksh-theme");
   html = injectCss(html, fontsCss, "ksh-fonts");
   html = injectInline(html, "ksh-kpal", kpalJs);
@@ -1403,6 +1410,13 @@ patchFile(indexPath, (html) => html
   .replace('`grid gap-2 sm:grid-cols-2 lg:grid-cols-3`', '`grid grid-cols-2 gap-2 lg:grid-cols-3`')
   .replace('children:"Order now & savor"', 'children:window.__ksGreet()')
 
+  /* 87. Dark item sheet — swap its light panel class for the scoped .ksh-isheet
+     dark wrapper (CSS injected above). */
+  .replace(
+    'onClick:e=>e.stopPropagation(),className:_.panel,style:{width:"100%",maxWidth:"32rem"',
+    'onClick:e=>e.stopPropagation(),className:"ksh-isheet",style:{width:"100%",maxWidth:"32rem"'
+  )
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1600,6 +1614,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.53"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.54"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
