@@ -1314,6 +1314,50 @@ patchFile(indexPath, (html) => html
     'h.jsxs("span",{className:"flex-1",children:[f.name,f.note?h.jsx("span",{className:"block text-xs font-medium opacity-70",children:"+ "+f.note}):null]})]},A)),ut.order.note'
   )
 
+  /* 83. Sales channels: three order types — Dine-in, Takeaway, Delivery. A
+     counter "walk-in" is just takeaway, so the separate Walk-in type is retired
+     and folded into Takeaway everywhere (default, segment, effective-otype,
+     order label, orders board, receipts, reports). The customer-side "Walk-in"
+     (= no customer attached) is a different concept and is relabelled so nothing
+     still reads "Walk-in" as a type. */
+  /* 83a — default a new ticket to takeaway (the old walk-in). */
+  .replace('covers:1,otype:"walkin",deliveryNote:""', 'covers:1,otype:"takeaway",deliveryNote:""')
+  /* 83b — the segment control: Dine-in · Takeaway · Delivery. */
+  .replace(
+    'SC=[["walkin","Walk-in",_k],["takeaway","Takeaway",Ak],["dinein","Dine-in",Ls],["delivery","Delivery",SO]]',
+    'SC=[["dinein","Dine-in",Ls],["takeaway","Takeaway",Ak],["delivery","Delivery",SO]]'
+  )
+  /* 83c — any legacy walk-in order now labels as Takeaway. */
+  .replace('_C={walkin:"Walk-in",takeaway:"Takeaway"', '_C={walkin:"Takeaway",takeaway:"Takeaway"')
+  /* 83d — effective order type: no table ⇒ takeaway; a legacy walkin ⇒ takeaway. */
+  .replace(
+    'nt=_e?_e.otype||(_e.table?"dinein":"walkin"):"walkin"',
+    'nt=_e?(_e.otype==="walkin"?"takeaway":_e.otype)||(_e.table?"dinein":"takeaway"):"takeaway"'
+  )
+  /* 83e — the ticket's table label for a non-delivery, no-table sale. */
+  .replace('table:_e.table||(nt==="delivery"?"Delivery":"Walk-in")', 'table:_e.table||(nt==="delivery"?"Delivery":"Takeaway")')
+  /* 83f — orders board channel label. */
+  .replace('${f.otype==="takeaway"?"Takeaway":"Walk-in"}', '${f.otype==="dinein"?"Dine-in":"Takeaway"}')
+  /* 83g — reports: classify no-table / legacy-walkin sales as takeaway. */
+  .replace(
+    'const Ee=ie.otype||(ie.table?"dinein":"walkin");yt[Ee]&&',
+    'const Ee=(ie.otype==="walkin"?null:ie.otype)||(ie.table?"dinein":"takeaway");yt[Ee]&&'
+  )
+  /* 83h — reports channel summary drops the (now-empty) walk-in count. */
+  .replace(
+    '`${mt.chan.walkin.n} walk-in · ${mt.chan.takeaway.n} takeaway · ${mt.chan.dinein.n} dine-in · ${mt.chan.delivery.n} delivery`',
+    '`${mt.chan.takeaway.n} takeaway · ${mt.chan.dinein.n} dine-in · ${mt.chan.delivery.n} delivery`'
+  )
+  /* 83i — reports channel table drops the Walk-in row. */
+  .replace(
+    '[["Walk-in",mt.chan.walkin],["Takeaway",mt.chan.takeaway],["Dine-in",mt.chan.dinein],["Delivery",mt.chan.delivery]]',
+    '[["Takeaway",mt.chan.takeaway],["Dine-in",mt.chan.dinein],["Delivery",mt.chan.delivery]]'
+  )
+  /* 83j — customer chip/picker: "Walk-in" (no customer) relabelled so it no
+     longer clashes with the retired order type. */
+  .replace('children:"Walk-in · attach"', 'children:"Add customer"')
+  .replace('children:"Walk-in (no customer)"', 'children:"No customer"')
+
   /* 72. Brand motif §1 — the boot loader showed a static logo; replace it with
      the kashikeyo hex-segment spinner whose six wedges pulse clockwise. */
   .replace(
@@ -1511,6 +1555,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.49"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.50"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
