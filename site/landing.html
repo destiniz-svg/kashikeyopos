@@ -4,13 +4,13 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>KashikeyoPOS — Point of sale built for the Maldives</title>
-<meta name="description" content="KashikeyoPOS: guest QR ordering, realtime kitchen sync, recipes &amp; food costing, supplier deliveries, MVR + USD billing and offline-first reliability — the whole restaurant in one point of sale." />
+<meta name="description" content="KashikeyoPOS: photo QR menus with guest ordering, realtime kitchen sync, recipe costing with AI reorder insights, scan-a-photo supplier deliveries, MVR + USD billing and offline-first reliability — the whole restaurant in one point of sale." />
 <link rel="icon" href="/logo-mark.png" />
 <style>
   :root {
-    --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
-    --sub: #8A8074; --faint: #B7AE9F; --primary: #9A2130; --primary-hov: #7F1A27;
-    --btn: #F1E8D8; --btn-hov: #E8DCC5; --gold: #E8B24A; --leaf: #6B7A42;
+    --app: #FBFAF7; --panel: #FFFFFF; --panel2: #F4F1EB; --border: #E3DED4; --text: #26221C;
+    --sub: #8A8378; --faint: #B8B0A3; --primary: #C7431D; --primary-hov: #A33417;
+    --btn: #F4F1EB; --btn-hov: #E8E1D2; --gold: #E8B24A; --leaf: #6B7A42;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; overflow-x: hidden; }
@@ -94,7 +94,7 @@
   .blob {
     position: absolute; border-radius: 50%; filter: blur(60px); opacity: .35; z-index: 0;
   }
-  .blob1 { width: 420px; height: 420px; background: #9A2130; top: -160px; left: -120px; }
+  .blob1 { width: 420px; height: 420px; background: #C7431D; top: -160px; left: -120px; }
   .blob2 { width: 380px; height: 380px; background: #E8B24A; top: -80px; right: -140px; }
   .hero .wrap { position: relative; z-index: 1; }
   .eyebrow {
@@ -391,9 +391,8 @@
   .cta-band .btn-ghost:hover { background: #F3ECE1; }
 
   footer { border-top: 1px solid var(--border); padding: 48px 0 32px; }
-  .foot-top { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 34px; }
-  @media (max-width: 760px) { .foot-top { grid-template-columns: 1fr 1fr; gap: 28px 20px; } }
-  @media (max-width: 420px) { .foot-top { grid-template-columns: 1fr; } }
+  .foot-top { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; margin-bottom: 34px; }
+  @media (max-width: 420px) { .foot-top { grid-template-columns: 1fr; gap: 24px; } }
   .foot-brand .logo { font-size: 15px; margin-bottom: 12px; }
   .foot-brand p { font-size: 13px; color: var(--sub); line-height: 1.55; margin: 0; max-width: 260px; }
   .foot-col h5 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 0 0 14px; }
@@ -414,10 +413,52 @@
     50%       { opacity: .2; }
   }
   .foot-status.ok .dot  { background: #2E7D46; animation: footPulseOk   1.8s ease-out   infinite; }
-  .foot-status.down      { color: #9A2130; }
-  .foot-status.down .dot { background: #9A2130; animation: footBlinkDown 0.9s ease-in-out infinite; }
+  .foot-status.down      { color: #A3391F; }
+  .foot-status.down .dot { background: #A3391F; animation: footBlinkDown 0.9s ease-in-out infinite; }
   .foot-bottom { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 26px; border-top: 1px solid var(--border); }
   footer .copy { font-size: 13px; color: var(--faint); }
+  /* Glass treatment — align with the till / back-office / auth front-end:
+     a warm gradient canvas and frosted, blurred surfaces. */
+  body {
+    background:
+      radial-gradient(1200px 680px at 12% -6%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 60%),
+      radial-gradient(1000px 560px at 108% 2%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 58%),
+      var(--app);
+    background-attachment: fixed;
+  }
+  header {
+    background: color-mix(in srgb, var(--panel) 62%, transparent);
+    border-color: color-mix(in srgb, var(--panel) 55%, transparent);
+  }
+  .eyebrow, .trust-badge {
+    background: color-mix(in srgb, var(--panel) 66%, transparent);
+    -webkit-backdrop-filter: blur(12px) saturate(1.3); backdrop-filter: blur(12px) saturate(1.3);
+    border-color: color-mix(in srgb, var(--border) 60%, transparent);
+  }
+  .feature, .bo-card {
+    background: color-mix(in srgb, var(--panel) 72%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3); backdrop-filter: blur(14px) saturate(1.3);
+    border-color: color-mix(in srgb, var(--border) 60%, transparent);
+    box-shadow: 0 1px 2px rgba(38,34,28,.04), 0 14px 34px rgba(38,34,28,.06);
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+  }
+  .feature:hover, .bo-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 24px rgba(38,34,28,.08), 0 24px 50px rgba(38,34,28,.10);
+    border-color: color-mix(in srgb, var(--primary) 34%, transparent);
+  }
+  .btn-primary {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 90%, #fff 10%), var(--primary));
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 32%, transparent);
+    transition: background .15s, box-shadow .15s, transform .08s;
+  }
+  .btn-primary:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 94%, #fff 6%), var(--primary-hov)); box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
+  .btn-primary:active { transform: translateY(1px); }
+  .btn-ghost {
+    background: color-mix(in srgb, var(--panel) 60%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, var(--border) 66%, transparent);
+  }
 </style>
 </head>
 <body>
@@ -513,7 +554,7 @@
       <div class="feature">
         <div class="ico">📱</div>
         <h3>Guest QR ordering</h3>
-        <p>Guests scan a table code and order from their own phone — dine-in, pickup or delivery. Walk-ins get a temporary portal to track their order, no account needed.</p>
+        <p>Guests scan a table code and order from their own phone — a photo menu with add-ons, extras and allergen notes, for dine-in, takeaway or delivery. They can switch it to light or dark, and walk-ins track their order with no account needed.</p>
         <div class="fv fv-qr" aria-hidden="true">
           <div class="vphone"></div>
           <div class="scan"></div>
@@ -643,6 +684,33 @@
           <div class="bo-row"><span>Booked to expenses</span><b class="bo-good">✓</b></div>
         </div>
       </div>
+      <div class="bo-card">
+        <h3>📸 Scan a delivery note</h3>
+        <p>Snap a photo of a supplier invoice and it reads every line, matches them to your ingredients and drafts the delivery — you just glance over it and confirm.</p>
+        <div class="bo-vis" aria-hidden="true">
+          <div class="bo-row"><span>📄 invoice-4821.jpg</span><b>Reading…</b></div>
+          <div class="bo-row"><span>Flour 25kg · Oil 4×1L · …</span><b class="bo-good">6 lines matched</b></div>
+          <div class="bo-row"><span>Draft delivery</span><b class="bo-good">Ready ✓</b></div>
+        </div>
+      </div>
+      <div class="bo-card">
+        <h3>🤖 Ask your inventory</h3>
+        <p>A built-in assistant answers questions about stock, costs and margins in plain language — and learns your usage to flag exactly what to reorder before you run out.</p>
+        <div class="bo-vis" aria-hidden="true">
+          <div class="bo-row"><span>"What should I reorder?"</span><b>Ask</b></div>
+          <div class="bo-row"><span>Mozzarella · ~2 days left</span><b class="bo-warn">Reorder</b></div>
+          <div class="bo-row"><span>Learned from your sales</span><b class="bo-good">✓</b></div>
+        </div>
+      </div>
+      <div class="bo-card">
+        <h3>🧩 Ingredients that sell themselves</h3>
+        <p>Sell an ingredient as-is, prep a batch from its components, or track a menu item's own stock. Anything that runs out marks itself sold-out on the till and the guest menu — automatically.</p>
+        <div class="bo-vis" aria-hidden="true">
+          <div class="bo-row"><span>Kurumba · sell as-is</span><b class="bo-good">18 left</b></div>
+          <div class="bo-row"><span>Chilli paste · made a batch</span><b class="bo-good">+2.5 kg</b></div>
+          <div class="bo-row"><span>Fish curry · out of stock</span><b class="bo-warn">Sold out</b></div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -661,7 +729,7 @@
       <div class="step3">
         <div class="num">2</div>
         <h3>Add your menu</h3>
-        <p>Add products, tables and zones from the till, on desktop or tablet.</p>
+        <p>Bulk-import your whole menu from Excel, add photos, and set up tables and zones — from the till or back office, on desktop or tablet. Every new outlet you open starts with your menu ready to go.</p>
       </div>
       <div class="step3">
         <div class="num">3</div>
@@ -743,21 +811,10 @@
         <a href="#themes">Themes</a>
         <a href="/signup">Start free trial</a>
       </div>
-      <div class="foot-col">
-        <h5>Resources</h5>
-        <a href="/docs">Documentation</a>
-        <a href="/api">API reference</a>
-        <a href="/status">System status</a>
-      </div>
-      <div class="foot-col">
-        <h5>Legal</h5>
-        <a href="/privacy">Privacy policy</a>
-        <a href="/terms">Terms of service</a>
-        <a href="/status" class="foot-status" id="footStatus"><span class="dot"></span><span id="footStatusText">Checking status…</span></a>
-      </div>
     </div>
     <div class="foot-bottom">
       <div class="copy">&copy; <span id="yr"></span> KashikeyoPOS · Built for restaurants &amp; cafés in the Maldives</div>
+      <span class="foot-status" id="footStatus"><span class="dot"></span><span id="footStatusText">Checking status…</span></span>
     </div>
   </div>
 </footer>
