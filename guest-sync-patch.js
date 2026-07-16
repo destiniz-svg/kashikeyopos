@@ -360,6 +360,17 @@ const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M=
    Shared by the till Sell view and the guest menu so one arrangement drives both. */
 const catSortJs = "window.__ksCatSort=function(cats,order){cats=Array.isArray(cats)?cats:[];order=Array.isArray(order)?order:[];if(!order.length)return cats;var idx={};order.forEach(function(c,i){if(idx[c]==null)idx[c]=i;});var pin=cats.filter(function(c){return idx[c]!=null;}).sort(function(a,b){return idx[a]-idx[b];});var rest=cats.filter(function(c){return idx[c]==null;});return pin.concat(rest);};";
 
+/* Durable dismissed-waiter-calls set. The till hides an accepted ("On my way")
+   waiter call by adding its id to window.__ksDismissedCalls and filtering it out
+   of the notification list. That Set used to live only in memory, so after a
+   page refresh a call that was accepted (but whose server delete hadn't yet
+   reconciled into the till's local snapshot, e.g. an incremental pull past the
+   delete's rowver) reappeared. Back the Set with localStorage so a dismissed
+   call stays dismissed across refreshes — permanently. Defined before the
+   bundle runs; the till's `__ksDismissedCalls || new Set` keeps this instance,
+   and its .add persists (capped so it can't grow without bound). */
+const dismissCallsJs = "window.__ksDismissedCalls=(function(){var K='ksh-dismissed-calls',a=[];try{a=JSON.parse(localStorage.getItem(K))||[]}catch(e){}if(!Array.isArray(a))a=[];var s=new Set(a),_add=s.add.bind(s);s.add=function(id){_add(id);try{var arr=Array.from(s);if(arr.length>500)arr=arr.slice(arr.length-500);localStorage.setItem(K,JSON.stringify(arr))}catch(e){}return s};return s;})();";
+
 /* Touch+mouse drag-to-reorder for the till category chips. Staff press-and-hold
    a category chip (~280ms, so a quick horizontal swipe still scrolls the row)
    then drag it left/right; on release the new order is written back through the
@@ -455,6 +466,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-greet", greetJs);
   html = injectInline(html, "ksh-catsort", catSortJs);
   html = injectInline(html, "ksh-catdnd", catDragJs);
+  html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -533,6 +545,19 @@ patchFile(indexPath, (html) => {
   .replace(
     'uu(f.waiterCalls||[])',
     'uu((f.waiterCalls||[]).filter(_c=>!(window.__ksDismissedCalls&&window.__ksDismissedCalls.has(_c.id))))'
+  )
+
+  /* 96. Make "On my way" delete the waiter call durably. The queued FT push
+     flushes ~400ms later, so a till refreshed (or backgrounded) right after
+     accepting could lose the unsent delete, leaving the call alive on the
+     server to re-appear. Fire an immediate keepalive fetch to /api/ops as well,
+     which survives page unload — so the delete lands even on an instant
+     refresh. Combined with the durable dismissed-set (ksh-dismiss) this makes an
+     accepted call stay gone for good. Idempotent: the bare `FT(...)}catch{}}`
+     accept (no keepalive fetch) is gone from the replacement. */
+  .replace(
+    'try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"}',
+    'try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}try{Ie&&Ie.token&&fetch((Ie.url||"")+"/api/ops",{method:"POST",keepalive:!0,headers:{"Content-Type":"application/json",Authorization:"Bearer "+Ie.token},body:JSON.stringify({ops:[{opId:"wc-del-"+f.id,dels:[{kind:"waiterCalls",id:f.id}]}]})})}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"}'
   )
   .replace(
     '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
@@ -1755,6 +1780,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.62"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.63"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
