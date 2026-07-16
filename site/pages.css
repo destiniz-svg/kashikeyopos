@@ -2,10 +2,10 @@
    Same Lovable palette and shell as the landing page, kept in one file so the
    pages stay light and consistent. Theme-aware via prefers-color-scheme. */
 :root {
-  --app: #F3ECE1; --panel: #FFFFFF; --panel2: #ECE3D3; --border: #E8DFCF; --text: #2A241E;
-  --sub: #8A8074; --faint: #B7AE9F; --primary: #9A2130; --primary-hov: #7F1A27;
-  --btn: #F1E8D8; --ok: #2E7D46; --code-bg: #F6EFE2;
-  --glass: rgba(255,255,255,.55); --glass-border: rgba(255,255,255,.6);
+  --app: #FBFAF7; --panel: #FFFFFF; --panel2: #F4F1EB; --border: #E3DED4; --text: #26221C;
+  --sub: #8A8378; --faint: #B8B0A3; --primary: #C7431D; --primary-hov: #A33417;
+  --btn: #F4F1EB; --ok: #2E7D46; --code-bg: #F4F0E8;
+  --glass: rgba(255,255,255,.62); --glass-border: rgba(255,255,255,.6);
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
@@ -101,6 +101,38 @@ footer.site { border-top: 1px solid var(--border); padding: 26px 0; margin-top: 
 footer.site .row { max-width: 1000px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--faint); }
 footer.site a { color: var(--sub); text-decoration: none; margin-left: 16px; }
 footer.site a:hover { color: var(--primary); }
+
+/* Glass treatment — align these content pages with the till / back-office /
+   landing front-end: warm gradient canvas + frosted, blurred surfaces. Colours
+   are mixed from the theme vars, so it holds in light and dark. */
+body {
+  background:
+    radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--primary) 12%, transparent), transparent 58%),
+    radial-gradient(950px 520px at 108% 3%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 55%),
+    var(--app);
+  background-attachment: fixed;
+}
+section.card, .status-hero, .status-row {
+  background: color-mix(in srgb, var(--panel) 74%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+  box-shadow: 0 1px 2px rgba(38,34,28,.04), 0 14px 34px rgba(38,34,28,.06);
+}
+section.card { border-radius: 16px; }
+.btn { transition: background .15s, box-shadow .15s, transform .08s, border-color .15s; }
+.btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 90%, #fff 10%), var(--primary));
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 32%, transparent);
+}
+.btn-primary:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 94%, #fff 6%), var(--primary-hov)); box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-ghost {
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in srgb, var(--border) 66%, transparent);
+}
+pre { background: color-mix(in srgb, var(--code-bg) 82%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
 
 @media (prefers-color-scheme: dark) {
   :root {
