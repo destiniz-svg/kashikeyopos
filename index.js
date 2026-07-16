@@ -838,7 +838,21 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         data.id = String(data.id || p.id);
         if (!shared) data.storeId = cleanStoreId(p.storeId || data.storeId || storeId);
         const preserve = p.kind === "products"
-          ? " || jsonb_build_object('stock', COALESCE(entities.data->'stock', excluded.data->'stock', '0'::jsonb))"
+          /* The till bundle is prebuilt and doesn't know about the back-office-
+             managed menu meta (allergens, add-ons, spice levels, guest-note
+             toggle, no-kitchen flag) or the photo — so its product pushes omit
+             them. Keep whatever the DB already holds for those owner-set fields
+             so a routine till re-sync can't wipe an owner's menu customisation.
+             (Same protective intent as stock: the server/back office is the
+             authority, the till is not.) A non-empty img in the push still wins
+             so photos set on the till aren't ignored. */
+          ? " || jsonb_build_object('stock', COALESCE(entities.data->'stock', excluded.data->'stock', '0'::jsonb))" +
+            " || CASE WHEN entities.data ? 'allergens'   THEN jsonb_build_object('allergens',   entities.data->'allergens')   ELSE '{}'::jsonb END" +
+            " || CASE WHEN entities.data ? 'addons'      THEN jsonb_build_object('addons',      entities.data->'addons')      ELSE '{}'::jsonb END" +
+            " || CASE WHEN entities.data ? 'spiceLevels' THEN jsonb_build_object('spiceLevels', entities.data->'spiceLevels') ELSE '{}'::jsonb END" +
+            " || CASE WHEN entities.data ? 'comments'    THEN jsonb_build_object('comments',    entities.data->'comments')    ELSE '{}'::jsonb END" +
+            " || CASE WHEN entities.data ? 'noKitchen'   THEN jsonb_build_object('noKitchen',   entities.data->'noKitchen')   ELSE '{}'::jsonb END" +
+            " || CASE WHEN COALESCE(excluded.data->>'img','')='' AND entities.data ? 'img' THEN jsonb_build_object('img', entities.data->'img') ELSE '{}'::jsonb END"
           : p.kind === "customers"
             ? " || jsonb_build_object('points', COALESCE(entities.data->'points', excluded.data->'points', '0'::jsonb), 'balance', COALESCE(entities.data->'balance', excluded.data->'balance', '0'::jsonb))"
             : p.kind === "pords"
