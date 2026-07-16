@@ -1434,6 +1434,25 @@ patchFile(indexPath, (html) => html
     'he.filter(ne=>window.__ksSecShow?window.__ksSecShow(ne,fe.mcat,fe.scat,A&&A.catGroups):(!fe.mcat||ne===fe.mcat))'
   )
 
+  /* 104. Fit guest menu card photos to the tile like the till does. The grid
+     card image used object-cover, so the square dish illustration (halo + edge
+     diamonds) was cropped top/bottom. Switch to object-contain over a panel
+     background so the whole image shows, matching the till tile (#95).
+     Idempotent: the `object-cover",style:{height:"150px"}` find is gone from
+     the replacement. */
+  .replace(
+    'ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full object-cover",style:{height:"150px"}})',
+    'ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full",style:{height:"150px",objectFit:"contain",background:"var(--k-panel2)"}})'
+  )
+
+  /* 105. Same contain-fit for the larger guest item-detail sheet photo (was
+     object-cover at 200px). Idempotent: the `object-cover",style:{height:"200px"}`
+     find is gone from the replacement. */
+  .replace(
+    'so.img?h.jsx("img",{src:so.img,alt:"",className:"w-full object-cover",style:{height:"200px"}})',
+    'so.img?h.jsx("img",{src:so.img,alt:"",className:"w-full",style:{height:"200px",objectFit:"contain",background:"var(--k-panel2)"}})'
+  )
+
   /* 93. Show stock-untracked items on the guest menu. The guest category grid
      filtered products with `ze.stock>0`, which hid every item whose stock is
      left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
@@ -1890,6 +1909,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.67"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.68"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
