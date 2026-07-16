@@ -1453,6 +1453,18 @@ patchFile(indexPath, (html) => html
     'so.img?h.jsx("img",{src:so.img,alt:"",className:"w-full",style:{height:"200px",objectFit:"contain",background:"var(--k-panel2)"}})'
   )
 
+  /* 106. Revamp the guest menu card to match the till tile (§4.3). The photo was
+     a full-bleed 150px block, which read oversized against the guest theme. Now
+     the card is padded and the photo is inset with rounded corners at the till's
+     4/3 aspect ratio (contain over the panel background) — same proportions as
+     the register tiles, so the whole illustration sits neatly in a compact card.
+     Idempotent: the full-bleed find (overflow-hidden + height:150px + p-3) is gone
+     from the replacement. */
+  .replace(
+    'style:{cursor:"pointer"},className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full",style:{height:"150px",objectFit:"contain",background:"var(--k-panel2)"}}):h.jsx("div",{className:`w-full flex items-center justify-center text-4xl ${_.panel2}`,style:{height:"150px"},children:ze.emoji}),h.jsxs("div",{className:"p-3",children:[',
+    'style:{cursor:"pointer",padding:"10px"},className:`rounded-2xl ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full rounded-lg mb-1.5",style:{aspectRatio:"4/3",objectFit:"contain",background:"var(--k-panel2)"}}):h.jsx("div",{className:`w-full rounded-lg mb-1.5 flex items-center justify-center text-4xl ${_.panel2}`,style:{aspectRatio:"4/3"},children:ze.emoji}),h.jsxs("div",{children:['
+  )
+
   /* 93. Show stock-untracked items on the guest menu. The guest category grid
      filtered products with `ze.stock>0`, which hid every item whose stock is
      left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
@@ -1909,6 +1921,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.68"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.69"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
