@@ -360,6 +360,15 @@ const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M=
    Shared by the till Sell view and the guest menu so one arrangement drives both. */
 const catSortJs = "window.__ksCatSort=function(cats,order){cats=Array.isArray(cats)?cats:[];order=Array.isArray(order)?order:[];if(!order.length)return cats;var idx={};order.forEach(function(c,i){if(idx[c]==null)idx[c]=i;});var pin=cats.filter(function(c){return idx[c]!=null;}).sort(function(a,b){return idx[a]-idx[b];});var rest=cats.filter(function(c){return idx[c]==null;});return pin.concat(rest);};";
 
+/* Touch+mouse drag-to-reorder for the till category chips. Staff press-and-hold
+   a category chip (~280ms, so a quick horizontal swipe still scrolls the row)
+   then drag it left/right; on release the new order is written back through the
+   till's own settings setter (bound onto the scroller as __ksSave → xs), which
+   persists settings.catOrder and syncs it to every device + the guest menu.
+   Each chip registers itself via a React ref (window.__ksCatDnd.bind); the
+   "All" chip is never draggable. Idempotent to re-wire (guards on the node). */
+const catDragJs = "window.__ksCatDnd=(function(){var reg=[];function clean(){for(var i=reg.length-1;i>=0;i--){if(!reg[i].el||!document.body.contains(reg[i].el))reg.splice(i,1);}}function live(){clean();return reg.filter(function(r){return r.cat&&r.cat!=='All';});}function bind(el,cat){if(!el)return;for(var i=reg.length-1;i>=0;i--){if(reg[i].el===el)reg.splice(i,1);}reg.push({el:el,cat:cat});if(el.__ksWired)return;el.__ksWired=1;if(!cat||cat==='All')return;el.style.touchAction='pan-x';el.addEventListener('pointerdown',function(ev){down(ev,el,cat);});}function down(ev,el,cat){if(ev.button&&ev.button!==0)return;var sx=ev.clientX,sy=ev.clientY,hold,active=false;function begin(){active=true;try{el.setPointerCapture(ev.pointerId)}catch(e){}el.style.transition='none';el.style.zIndex='40';el.style.opacity='0.9';el.style.transform='scale(1.06)';if(navigator.vibrate)try{navigator.vibrate(8)}catch(e){}}hold=setTimeout(begin,280);function move(e){if(!active){if(Math.abs(e.clientX-sx)>8||Math.abs(e.clientY-sy)>8){clearTimeout(hold);stop();}return;}e.preventDefault();el.style.transform='translateX('+(e.clientX-sx)+'px) scale(1.06)';}function up(e){clearTimeout(hold);if(active){commit(e);var sink=function(ev){ev.stopPropagation();ev.preventDefault();el.removeEventListener('click',sink,true);};el.addEventListener('click',sink,true);setTimeout(function(){el.removeEventListener('click',sink,true);},350);}stop();}function stop(){document.removeEventListener('pointermove',move,true);document.removeEventListener('pointerup',up,true);document.removeEventListener('pointercancel',up,true);if(active){el.style.transition='';el.style.transform='';el.style.opacity='';el.style.zIndex='';}active=false;}function commit(e){var chips=live();if(chips.length<2)return;chips.sort(function(a,b){return a.el.offsetLeft-b.el.offsetLeft;});var order=chips.map(function(c){return c.cat;});var others=chips.filter(function(c){return c.cat!==cat;});var idx=others.length;for(var i=0;i<others.length;i++){var r=others[i].el.getBoundingClientRect();if(e.clientX<r.left+r.width/2){idx=i;break;}}var no=order.filter(function(c){return c!==cat;});no.splice(idx,0,cat);if(no.join('\\u0001')===order.join('\\u0001'))return;var sc=el.parentNode;var save=sc&&sc.__ksSave;if(save)save(no);}document.addEventListener('pointermove',move,true);document.addEventListener('pointerup',up,true);document.addEventListener('pointercancel',up,true);}return{bind:bind};})();";
+
 const greetJs = "window.__ksGreet=(function(){var p=null,L=['Order now and savor your favorites','What are you craving today?','Freshly made, just for you','Treat yourself today','Hungry? You are in the right place','So good to see you again','Find your new favorite','Great taste starts right here','Your feast is a few taps away','Pick something delicious','Good things are cooking here','A warm welcome to your table'];return function(){if(p!==null)return p;try{var last=parseInt(localStorage.getItem('ksh-greet'),10);if(isNaN(last))last=-1;var i;do{i=Math.floor(Math.random()*L.length)}while(L.length>1&&i===last);localStorage.setItem('ksh-greet',String(i));p=L[i]}catch(e){p=L[0]}return p}})();";
 
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
@@ -445,6 +454,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-ring", ringJs);
   html = injectInline(html, "ksh-greet", greetJs);
   html = injectInline(html, "ksh-catsort", catSortJs);
+  html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -1288,6 +1298,19 @@ patchFile(indexPath, (html) => html
     'BT=R.useMemo(()=>["All",...(window.__ksCatSort?window.__ksCatSort([...new Set([...xC,...c.map(f=>f.cat)])],ce&&ce.catOrder):[...new Set([...xC,...c.map(f=>f.cat)])])],[c,ce&&ce.catOrder])'
   )
 
+  /* 94c. Let staff drag the till category chips to reorder them (§ drag-on-till).
+     Each chip registers with the drag manager (window.__ksCatDnd.bind) via a
+     ref; the scroller carries an __ksSave hook that writes the new order through
+     the till's settings setter (xs → settings.catOrder), which persists and
+     syncs to every device and the guest menu. Press-and-hold to drag; a quick
+     swipe still scrolls; a tap still selects (NT). Idempotent: the bare
+     chip-row find (no ref on the div, no ref on the button) is gone from the
+     replacement. */
+  .replace(
+    'h.jsx("div",{className:"flex gap-2 overflow-x-auto py-3",children:BT.map(f=>h.jsx("button",{onClick:()=>NT(f),className:`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${f===p1?_.chipOn:_.chip}`,children:f},f))})',
+    'h.jsx("div",{className:"flex gap-2 overflow-x-auto py-3",ref:el=>{if(el)el.__ksSave=function(o){try{xs(kv=>({...kv,catOrder:o}))}catch(e){}}},children:BT.map(f=>h.jsx("button",{ref:el=>{window.__ksCatDnd&&window.__ksCatDnd.bind(el,f)},title:f==="All"?"":"Hold and drag to reorder",onClick:()=>NT(f),className:`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${f===p1?_.chipOn:_.chip}`,children:f},f))})'
+  )
+
   /* 94b. Same saved category order on the guest/user menu. `A` is the guest's
      settings object (falls back to the till settings). Idempotent: the bare
      `he=[...new Set(N.map(ne=>ne.cat))]` find is gone from the replacement. */
@@ -1720,6 +1743,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.60"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.61"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
