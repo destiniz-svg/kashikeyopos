@@ -1014,6 +1014,7 @@
       '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
       '<button class="ghost tiny" id="mEmbed" title="Download every web photo and store it compressed for offline use">⤓ Embed photos</button>' +
       '<button class="ghost tiny" id="mCatOrder" title="Set up main categories and sub categories for the till and guest menu">☰ Menu layout</button>' +
+      '<button class="ghost tiny" id="mRestock" title="Set stock for every item at once, or make them all always-available">📦 Restock all</button>' +
       '</div>' +
       '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
@@ -1064,6 +1065,7 @@
       next();
     };
     el("mCatOrder").onclick = openMenuLayout;
+    el("mRestock").onclick = openRestock;
     el("plist").querySelectorAll("[data-p]").forEach(function (d) {
       d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
     });
@@ -1079,6 +1081,41 @@
     (S.catOrder || []).forEach(function (c) { if (have[c] && !seen[c]) { seen[c] = true; out.push(c); } });
     Object.keys(have).sort().forEach(function (c) { if (!seen[c]) { seen[c] = true; out.push(c); } });
     return out;
+  }
+
+  /* Bulk restock every menu item to a quantity, or make them all
+     always-available (stock-untracked, never "sold out"). Fixes a whole menu
+     that has gone out of stock. Writes stock onto the products and syncs to the
+     till + guest menu. */
+  function openRestock() {
+    var n = S.products.length;
+    el("modalHost").innerHTML =
+      '<div class="overlay" id="ov"><div class="modal" style="max-width:420px">' +
+      '<h3 style="margin:0 0 4px">Restock all items</h3>' +
+      '<p class="sub" style="margin:0 0 14px">Applies to all ' + n + ' menu items on the till and the guest menu.</p>' +
+      '<label class="hint" style="display:block;margin-bottom:4px">Set stock quantity for every item</label>' +
+      '<input id="rsQty" type="number" min="0" inputmode="numeric" value="50" style="width:100%;margin-bottom:12px" />' +
+      '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:4px 0 2px;font-size:13.5px;cursor:pointer"><input type="checkbox" id="rsClear" style="width:16px;height:16px;accent-color:var(--primary)" /> Make them always-available instead (don\'t track stock — never sold out)</label>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">' +
+      '<button class="ghost" id="rsClose">Cancel</button>' +
+      '<button class="primary" id="rsSave">Apply</button></div>' +
+      '</div></div>';
+    el("rsClear").onchange = function () { el("rsQty").disabled = el("rsClear").checked; el("rsQty").style.opacity = el("rsClear").checked ? "0.5" : "1"; };
+    el("rsClose").onclick = function () { el("modalHost").innerHTML = ""; };
+    var sv = el("rsSave");
+    sv.onclick = function () {
+      var clear = el("rsClear").checked;
+      var qty = Math.max(0, Math.round(Number(el("rsQty").value) || 0));
+      sv.disabled = true;
+      api("/products/restock", { method: "POST", body: JSON.stringify(clear ? { clear: true } : { qty: qty }) })
+        .then(function (r) {
+          el("modalHost").innerHTML = "";
+          toast(clear ? "All items are now always-available" : "Restocked " + (r.count || n) + " items to " + qty);
+          return loadAll();
+        })
+        .then(render)
+        .catch(function (e) { sv.disabled = false; toast(e.message || "Couldn't restock"); });
+    };
   }
 
   /* Two-level menu layout editor. Main categories (top nav row on the till and

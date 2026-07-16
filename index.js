@@ -872,7 +872,13 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
              (Same protective intent as stock: the server/back office is the
              authority, the till is not.) A non-empty img in the push still wins
              so photos set on the till aren't ignored. */
-          ? " || jsonb_build_object('stock', COALESCE(entities.data->'stock', excluded.data->'stock', '0'::jsonb))" +
+          /* Preserve an existing stock count (server is authoritative), else take
+             one the till sent, else leave the item stock-UNtracked. The old
+             `COALESCE(..., '0')` fallback forced stock:0 onto every untracked
+             menu item the till re-synced, which flipped the whole menu to
+             "sold out" and hid it from the guest portal. Untracked items must
+             stay always-available (no stock key). */
+          ? " || CASE WHEN entities.data ? 'stock' THEN jsonb_build_object('stock', entities.data->'stock') WHEN excluded.data ? 'stock' THEN jsonb_build_object('stock', excluded.data->'stock') ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'allergens'   THEN jsonb_build_object('allergens',   entities.data->'allergens')   ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'addons'      THEN jsonb_build_object('addons',      entities.data->'addons')      ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'spiceLevels' THEN jsonb_build_object('spiceLevels', entities.data->'spiceLevels') ELSE '{}'::jsonb END" +

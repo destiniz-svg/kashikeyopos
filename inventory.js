@@ -537,6 +537,29 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, rowver });
   }));
 
+  /* Bulk restock: set every menu item's stock to a quantity, or clear it so the
+     items go back to always-available (stock-untracked). Handy to recover a whole
+     menu that has been driven to "sold out". Writes onto the products entities so
+     it rides the sync stream to the till tiles and guest menu. */
+  router.post("/products/restock", authAny, wrap(async (req, res) => {
+    const body = req.body || {};
+    const clear = body.clear === true;
+    const qty = clear ? null : Math.max(0, Math.round(num(body.qty)));
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const r = clear
+        ? await client.query(
+            `UPDATE entities SET data = data - 'stock', rowver=nextval('entities_rowver_seq'), updated_at=now()
+             WHERE org_id=$1 AND kind='products' AND deleted=false AND data ? 'stock' RETURNING rowver`, [req.orgId])
+        : await client.query(
+            `UPDATE entities SET data = jsonb_set(data, '{stock}', to_jsonb($2::numeric), true), rowver=nextval('entities_rowver_seq'), updated_at=now()
+             WHERE org_id=$1 AND kind='products' AND deleted=false RETURNING rowver`, [req.orgId, qty]);
+      let mx = 0; for (const row of r.rows) mx = Math.max(mx, Number(row.rowver));
+      return { count: r.rowCount, rowver: mx };
+    });
+    if (poke && rowver.rowver) poke(req.orgId, rowver.rowver);
+    res.json({ ok: true, count: rowver.count, qty: clear ? null : qty });
+  }));
+
   /* ── Menu import / export (Excel) ───────────────────────────────────────
      Download a template or the live menu as .xlsx, edit in any spreadsheet
      app, and re-import to bulk create/update items. Import matches rows to
