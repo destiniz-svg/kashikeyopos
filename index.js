@@ -432,6 +432,27 @@ async function ensureDefaultMenu(orgId) {
     };
     await seedSetting("catGroups", CAT_GROUPS);
     await seedSetting("catOrder", CAT_ORDER);
+    /* One-time repair (per org): earlier builds forced stock:0 onto untracked
+       default menu items whenever the till re-synced them, flipping the whole
+       menu to "sold out" and blanking the guest portal. Clear stock from the
+       seeded items once so they return to always-available; the flag stops it
+       re-running, so it never fights an owner who later tracks stock on an item.
+       (Combined with the ops fix that no longer conjures stock:0, they stay
+       untracked from here on.) */
+    const repaired = await client.query(
+      "SELECT 1 FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false AND (data ? 'defaultsUntracked')", [orgId]);
+    if (!repaired.rowCount) {
+      const clr = await client.query(
+        `UPDATE entities SET data = data - 'stock', rowver = nextval('entities_rowver_seq'), updated_at = now()
+         WHERE org_id=$1 AND kind='products' AND deleted=false AND id = ANY($2::text[]) AND data ? 'stock'
+         RETURNING rowver`,
+        [orgId, DEFAULT_MENU.map((i) => i.id)]);
+      for (const row of clr.rows) mx = Math.max(mx, Number(row.rowver));
+      await client.query(
+        `UPDATE entities SET data = jsonb_set(data, '{defaultsUntracked}', 'true', true),
+           rowver = nextval('entities_rowver_seq'), updated_at = now()
+         WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false`, [orgId]);
+    }
     return mx;
   });
   if (maxRowver) poke(orgId, maxRowver);
@@ -897,7 +918,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
                    on settings; keep it if a till pushes a settings snapshot taken
                    before it learned it (same protective intent as product meta). */
                 ? " || CASE WHEN NOT (excluded.data ? 'catOrder')  AND entities.data ? 'catOrder'  THEN jsonb_build_object('catOrder',  entities.data->'catOrder')  ELSE '{}'::jsonb END" +
-                  " || CASE WHEN NOT (excluded.data ? 'catGroups') AND entities.data ? 'catGroups' THEN jsonb_build_object('catGroups', entities.data->'catGroups') ELSE '{}'::jsonb END"
+                  " || CASE WHEN NOT (excluded.data ? 'catGroups') AND entities.data ? 'catGroups' THEN jsonb_build_object('catGroups', entities.data->'catGroups') ELSE '{}'::jsonb END" +
+                  " || CASE WHEN NOT (excluded.data ? 'defaultsUntracked') AND entities.data ? 'defaultsUntracked' THEN jsonb_build_object('defaultsUntracked', entities.data->'defaultsUntracked') ELSE '{}'::jsonb END"
                 : "";
         const r = await client.query(
           `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
