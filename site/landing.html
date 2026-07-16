@@ -391,8 +391,9 @@
   .cta-band .btn-ghost:hover { background: #F3ECE1; }
 
   footer { border-top: 1px solid var(--border); padding: 48px 0 32px; }
-  .foot-top { display: grid; grid-template-columns: 2fr 1fr; gap: 32px; margin-bottom: 34px; }
-  @media (max-width: 420px) { .foot-top { grid-template-columns: 1fr; gap: 24px; } }
+  .foot-top { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 32px; margin-bottom: 34px; }
+  @media (max-width: 760px) { .foot-top { grid-template-columns: 1fr 1fr; gap: 28px 20px; } }
+  @media (max-width: 420px) { .foot-top { grid-template-columns: 1fr; } }
   .foot-brand .logo { font-size: 15px; margin-bottom: 12px; }
   .foot-brand p { font-size: 13px; color: var(--sub); line-height: 1.55; margin: 0; max-width: 260px; }
   .foot-col h5 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 0 0 14px; }
@@ -811,10 +812,21 @@
         <a href="#themes">Themes</a>
         <a href="/signup">Start free trial</a>
       </div>
+      <div class="foot-col">
+        <h5>Resources</h5>
+        <a href="/docs">Documentation</a>
+        <a href="/api">API reference</a>
+        <a href="/status">System status</a>
+      </div>
+      <div class="foot-col">
+        <h5>Legal</h5>
+        <a href="/privacy">Privacy policy</a>
+        <a href="/terms">Terms of service</a>
+        <a href="/status" class="foot-status" id="footStatus"><span class="dot"></span><span id="footStatusText">Checking status…</span></a>
+      </div>
     </div>
     <div class="foot-bottom">
       <div class="copy">&copy; <span id="yr"></span> KashikeyoPOS · Built for restaurants &amp; cafés in the Maldives</div>
-      <span class="foot-status" id="footStatus"><span class="dot"></span><span id="footStatusText">Checking status…</span></span>
     </div>
   </div>
 </footer>
