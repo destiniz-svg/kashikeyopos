@@ -7,9 +7,9 @@
 <link rel="icon" href="/logo-mark.png" />
 <style>
   :root {
-    --app: #F3ECE1; --panel: #FFFFFF; --border: #E8DFCF; --text: #2A241E;
-    --sub: #8A8074; --faint: #B7AE9F; --primary: #9A2130; --primary-hov: #7F1A27;
-    --input: #FFFFFF; --btn: #F1E8D8; --btn-hov: #E8DCC5;
+    --app: #FBFAF7; --panel: #FFFFFF; --border: #E3DED4; --text: #26221C;
+    --sub: #8A8378; --faint: #B8B0A3; --primary: #C7431D; --primary-hov: #A33417;
+    --input: #FFFFFF; --btn: #F4F1EB; --btn-hov: #E8E1D2;
   }
   * { box-sizing: border-box; }
   body {
@@ -85,6 +85,46 @@
   .oauth-btn svg { width: 16px; height: 16px; flex: none; }
   .divider { display: none; align-items: center; gap: 10px; margin: 18px 0; color: var(--faint); font-size: 12px; }
   .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+  /* Glass treatment — match the till / back-office front-end: warm gradient
+     canvas with a frosted, blurred card, gradient primary button, frosted
+     ghost button and a soft input focus ring. */
+  body {
+    background:
+      radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 58%),
+      radial-gradient(950px 520px at 108% 4%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 55%),
+      var(--app);
+    background-attachment: fixed;
+  }
+  .card {
+    background: color-mix(in srgb, var(--panel) 72%, transparent);
+    -webkit-backdrop-filter: blur(22px) saturate(1.4);
+    backdrop-filter: blur(22px) saturate(1.4);
+    border-color: color-mix(in srgb, var(--border) 60%, transparent);
+    border-radius: 20px;
+    box-shadow: 0 1px 2px rgba(38,34,28,.05), 0 24px 56px rgba(38,34,28,.12);
+  }
+  input {
+    background: color-mix(in srgb, var(--input) 82%, transparent);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+  button { transition: background .15s, box-shadow .15s, transform .08s; }
+  button.primary {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 90%, #fff 10%), var(--primary));
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 32%, transparent);
+  }
+  button.primary:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 94%, #fff 6%), var(--primary-hov)); box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
+  button.primary:active { transform: translateY(1px); }
+  button.ghost {
+    background: color-mix(in srgb, var(--panel) 60%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  }
+  button.ghost:hover { background: color-mix(in srgb, var(--panel2, var(--btn)) 82%, transparent); border-color: color-mix(in srgb, var(--primary) 42%, transparent); color: var(--primary); }
+  .currency-pick label { background: color-mix(in srgb, var(--panel) 55%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+  .currency-pick label:has(input:checked) { background: color-mix(in srgb, var(--primary) 8%, var(--panel)); }
 </style>
 </head>
 <body>
