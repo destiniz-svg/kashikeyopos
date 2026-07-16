@@ -223,6 +223,94 @@
     button { padding: 10px 14px; }
     input, select { padding: 10px 11px; font-size: 16px; } /* 16px stops iOS zoom-on-focus */
   }
+
+  /* ============================================================
+     Glass revamp — bring the back office in line with the till /
+     guest front-end: a warm gradient canvas with frosted, blurred
+     surfaces, pill tabs, softer buttons. Works across all five fruit
+     themes + dark because every colour is mixed from the theme vars.
+     ============================================================ */
+  body {
+    background:
+      radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--primary) 13%, transparent), transparent 58%),
+      radial-gradient(950px 520px at 108% 3%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 55%),
+      var(--app);
+    background-attachment: fixed;
+  }
+  /* frosted surfaces */
+  .panel, .card, .ask, .tbl-wrap, .modal, .ai-a, .adj-preview, .flow-explain,
+  .suggest .s, .flow .st, .po-lock, .seg button, .chip-q, .prodlist {
+    background: color-mix(in srgb, var(--panel) 74%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(1.3);
+    backdrop-filter: blur(14px) saturate(1.3);
+  }
+  .panel, .card, .ask, .tbl-wrap, .modal {
+    border-radius: 16px;
+    border-color: color-mix(in srgb, var(--border) 62%, transparent);
+    box-shadow: 0 1px 2px rgba(38,34,28,.05), 0 14px 34px rgba(38,34,28,.07);
+  }
+  .card.tap { transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+  .card.tap:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(38,34,28,.10), 0 22px 46px rgba(38,34,28,.10); }
+  .modal { box-shadow: 0 20px 60px rgba(38,34,28,.28); }
+  .overlay { background: color-mix(in srgb, var(--text) 42%, transparent); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+
+  header {
+    background: color-mix(in srgb, var(--header) 80%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    backdrop-filter: blur(20px) saturate(1.4);
+    border-bottom-color: color-mix(in srgb, var(--border) 55%, transparent);
+  }
+
+  /* pill tabs */
+  .tabs { gap: 6px; padding-top: 4px; padding-bottom: 8px; }
+  .tabs button {
+    border-radius: 999px; border-bottom: none; padding: 8px 15px;
+    background: color-mix(in srgb, var(--panel) 52%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+    transition: background .15s, color .15s, box-shadow .15s, border-color .15s;
+  }
+  .tabs button:hover { color: var(--text); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
+  .tabs button.on {
+    color: #fff; border-bottom: none; border-color: transparent;
+    background: var(--primary);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 38%, transparent);
+  }
+
+  /* buttons */
+  button { transition: background .15s, box-shadow .15s, transform .08s, border-color .15s; }
+  button.primary {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 90%, #fff 10%), var(--primary));
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 32%, transparent);
+  }
+  button.primary:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 94%, #fff 6%), var(--primary-hov)); box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
+  button.primary:active { transform: translateY(1px); }
+  button.ghost {
+    background: color-mix(in srgb, var(--panel) 60%, transparent);
+    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+    border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  }
+  button.ghost:hover { background: color-mix(in srgb, var(--panel2) 82%, transparent); border-color: color-mix(in srgb, var(--primary) 42%, transparent); color: var(--primary); }
+
+  /* inputs */
+  input, select {
+    background: color-mix(in srgb, var(--input) 82%, transparent);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  }
+  input:focus, select:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+
+  /* button grid used by tab toolbars (Menu & Recipes actions, etc.) */
+  .btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .btnrow button { flex: 0 1 auto; }
+
+  /* Mobile: lay tab-toolbar buttons out as a tidy 2-up grid instead of a
+     column of full-width bars (the old .toolbar>*{width:100%} stack). */
+  @media (max-width: 720px) {
+    .toolbar > button, .toolbar .btnrow button { flex: 1 1 calc(50% - 4px); width: auto; }
+    .toolbar > button.primary, .toolbar .btnrow button.primary { flex-basis: 100%; }
+    .btnrow { gap: 8px; }
+    .tabs button { padding: 8px 13px; }
+  }
 </style>
 </head>
 <body>
@@ -918,13 +1006,15 @@
     }).join("");
     el("main").innerHTML =
       '<div class="split">' +
-      '<div><div class="toolbar" style="margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">' +
-      '<input type="search" id="pSearch" placeholder="Search the menu…" value="' + esc(S.prodFilter) + '" style="flex:1;min-width:130px" />' +
+      '<div><div class="toolbar" style="margin-bottom:12px;display:flex;flex-direction:column;gap:9px;align-items:stretch">' +
+      '<input type="search" id="pSearch" placeholder="Search the menu…" value="' + esc(S.prodFilter) + '" style="width:100%" />' +
+      '<div class="btnrow">' +
       '<button class="ghost tiny" id="mTemplate" title="Download a blank Excel template to fill in">⬇ Template</button>' +
       '<button class="ghost tiny" id="mExport" title="Download the current menu as Excel">⬇ Export</button>' +
       '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
       '<button class="ghost tiny" id="mEmbed" title="Download every web photo and store it compressed for offline use">⤓ Embed photos</button>' +
       '<button class="ghost tiny" id="mCatOrder" title="Arrange the order categories appear in on the till and the guest menu">↕ Category order</button>' +
+      '</div>' +
       '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
       '<div class="panel" id="redit"><div class="empty">Pick a menu item to build its recipe.</div></div>' +
@@ -999,8 +1089,8 @@
     function draw() {
       var rows = order.map(function (c, i) {
         var n = S.products.filter(function (p) { return p.cat === c; }).length;
-        return '<div class="catrow" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--card)">' +
-          '<span style="width:20px;text-align:right;color:var(--muted)">' + (i + 1) + '</span>' +
+        return '<div class="catrow" style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;background:var(--panel2)">' +
+          '<span style="width:20px;text-align:right;color:var(--sub);font-variant-numeric:tabular-nums">' + (i + 1) + '</span>' +
           '<span style="flex:1;font-weight:600">' + esc(c) + '</span>' +
           '<span class="badge dim">' + n + ' item' + (n === 1 ? "" : "s") + '</span>' +
           '<button class="ghost tiny" data-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' title="Move up">↑</button>' +
