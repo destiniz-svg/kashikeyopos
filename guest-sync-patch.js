@@ -1268,6 +1268,20 @@ patchFile(indexPath, (html) => html
     'h.jsx("span",{className:`px-2 py-0.5 rounded-lg text-xs font-bold ${_.chipOn} shrink-0 whitespace-nowrap`,children:f.table}),h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsxs("div",{className:"text-sm font-medium flex flex-wrap items-center gap-x-2 gap-y-1",children:[h.jsx("span",{className:"whitespace-nowrap font-semibold",children:f.no}),f.customerName&&h.jsx("span",{className:"text-xs px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 whitespace-nowrap",children:f.customerName}),'
   )
 
+  /* 93. Show stock-untracked items on the guest menu. The guest category grid
+     filtered products with `ze.stock>0`, which hid every item whose stock is
+     left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
+     always-available items rendered as empty categories. Boot already decides
+     visibility (untracked + in-stock + sold-out recipe items pass; only plain
+     stock-tracked-to-zero items are dropped), so the card grid only needs to
+     drop items that have gone to zero live: keep untracked (stock==null) and
+     positive-stock items. Idempotent: the bare `ze.stock>0` find is gone from
+     the replacement. */
+  .replace(
+    'const ke=N.filter(ze=>ze.cat===ne&&ze.stock>0);',
+    'const ke=N.filter(ze=>ze.cat===ne&&(ze.stock==null||ze.stock>0));'
+  )
+
   /* 90. Keep the Orders-board elapsed-time subtitle on one line. The status
      pill + "N min" text lived in a plain `flex items-center` span, so on a
      narrow (mobile) card the number and "min" could break across two lines
@@ -1678,6 +1692,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.58"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.59"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

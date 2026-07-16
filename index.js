@@ -9,6 +9,7 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const { createRemoteJWKSet, jwtVerify } = require("jose");
+const { DEFAULT_MENU } = require("./default-menu");
 
 const PORT = process.env.PORT || 4000;
 const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
@@ -205,6 +206,16 @@ const withSystem = (fn) => withScope(
         [Date.now() - 6 * 3600 * 1000]);
       if (staleCalls.rowCount) console.log(`expired ${staleCalls.rowCount} stale waiter call(s)`);
     } catch (e) { console.warn("waiter-call cleanup skipped:", e.message); }
+    /* Ensure every existing outlet carries the shared starter menu with its
+       photos. Idempotent (ensureDefaultMenu only writes when an image is
+       missing or changed), so this is a no-op on subsequent boots. New outlets
+       get the same menu at registration. */
+    try {
+      const orgs = (await bootPool.query("SELECT id FROM orgs")).rows;
+      let touched = 0;
+      for (const o of orgs) { if (await ensureDefaultMenu(o.id)) touched++; }
+      if (touched) console.log(`default menu applied/refreshed for ${touched} of ${orgs.length} outlet(s)`);
+    } catch (e) { console.warn("default-menu backfill skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); }
 })();
 
@@ -366,6 +377,39 @@ async function ensureDefaultStore(orgId, storeName = "Main Store") {
      VALUES ($1,$2,$3,$4)
      ON CONFLICT (org_id, id) DO NOTHING`,
     [orgId, DEFAULT_STORE_ID, "MAIN", storeName || "Main Store"]));
+}
+
+/* Seed the shared starter menu (default-menu.js) into an org as GLOBAL products
+   so it is available across every store/outlet in the org, on the till and the
+   guest portal. Idempotent and non-destructive:
+   - a product that does not exist yet is inserted in full (with its photo),
+   - a product that already exists (an outlet that has the menu but no photos,
+     or whose line the owner has since edited) only has its `img` merged in,
+     and only when it actually changed — so re-running is a true no-op and an
+     owner's own name/price/category edits are never overwritten.
+   Returns the highest rowver it touched (0 if nothing changed) so the caller
+   can poke SSE. */
+async function ensureDefaultMenu(orgId) {
+  if (!DEFAULT_MENU.length) return 0;
+  const maxRowver = await withOrg(orgId, async (client) => {
+    let mx = 0;
+    for (const item of DEFAULT_MENU) {
+      const r = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data)
+         VALUES ($1,'products',$2,$3::jsonb)
+         ON CONFLICT (org_id, kind, id) DO UPDATE
+           SET data = entities.data || jsonb_build_object('img', EXCLUDED.data->'img'),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+           WHERE entities.deleted = false
+             AND (entities.data->>'img') IS DISTINCT FROM (EXCLUDED.data->>'img')
+         RETURNING rowver`,
+        [orgId, item.id, JSON.stringify(item)]);
+      if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
+    }
+    return mx;
+  });
+  if (maxRowver) poke(orgId, maxRowver);
+  return maxRowver;
 }
 
 /* Same DJB2-ish hash the till bundle itself uses for till-PIN staff entries
@@ -575,6 +619,9 @@ app.post("/api/register", wrap(async (req, res) => {
   await withOrg(id, (client) => client.query(
     "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) ON CONFLICT (org_id, kind, id) DO NOTHING",
     [id, JSON.stringify(initSettings)]));
+  /* Every new outlet starts with the shared starter menu (same items + photos
+     as every other outlet), on the till and the guest portal. Non-fatal. */
+  try { await ensureDefaultMenu(id); } catch (e) { console.warn("default-menu seed on register skipped:", e.message); }
   const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
   const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
   const token = sign(id, "R1", DEFAULT_STORE_ID);
