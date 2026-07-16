@@ -360,6 +360,28 @@ const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M=
    Shared by the till Sell view and the guest menu so one arrangement drives both. */
 const catSortJs = "window.__ksCatSort=function(cats,order){cats=Array.isArray(cats)?cats:[];order=Array.isArray(order)?order:[];if(!order.length)return cats;var idx={};order.forEach(function(c,i){if(idx[c]==null)idx[c]=i;});var pin=cats.filter(function(c){return idx[c]!=null;}).sort(function(a,b){return idx[a]-idx[b];});var rest=cats.filter(function(c){return idx[c]==null;});return pin.concat(rest);};";
 
+/* Two-level menu geography (settings.catGroups = [{name, subs:[...]}], arranged
+   from the back office). Drives the two-row category nav on both the till Sell
+   view and the guest menu: main categories on top, and — once a main is picked —
+   its sub categories below. A product's `cat` is its sub category; its main is
+   whichever group lists that sub. Present sub categories that aren't in any group
+   fall under a trailing "More" main so nothing is ever hidden. With no groups
+   configured every helper degrades to the previous single flat row.
+   Exposes: __ksMains / __ksSubsOf / __ksMainOf (structure), __ksCatMatch (till
+   item filter), __ksSecShow (guest section filter), __ksCatRows (till two-row
+   nav), __ksGuestNav (guest two-row nav). */
+const catNavJs =
+  "window.__ksGN=function(g){return Array.isArray(g)?g.filter(function(x){return x&&x.name;}).map(function(x){return{name:x.name,subs:Array.isArray(x.subs)?x.subs:[]};}):[];};" +
+  "window.__ksPresent=function(list){var s={};(list||[]).forEach(function(x){var c=typeof x==='string'?x:(x&&x.cat);if(c)s[c]=1;});return s;};" +
+  "window.__ksMainOf=function(cat,g){g=window.__ksGN(g);for(var i=0;i<g.length;i++)if(g[i].subs.indexOf(cat)>=0)return g[i].name;return null;};" +
+  "window.__ksMains=function(g,pr){g=window.__ksGN(g);var has=window.__ksPresent(pr),out=[],gp={};g.forEach(function(gr){gr.subs.forEach(function(s){gp[s]=1;});});g.forEach(function(gr){if(gr.subs.some(function(s){return has[s];}))out.push(gr.name);});var un=Object.keys(has).filter(function(c){return !gp[c];});if(un.length)out.push('More');return out;};" +
+  "window.__ksSubsOf=function(m,g,pr){g=window.__ksGN(g);var has=window.__ksPresent(pr);if(m==='More'){var gp={};g.forEach(function(gr){gr.subs.forEach(function(s){gp[s]=1;});});return Object.keys(has).filter(function(c){return !gp[c];}).sort();}for(var i=0;i<g.length;i++)if(g[i].name===m)return g[i].subs.filter(function(s){return has[s];});return [];};" +
+  "window.__ksCatMatch=function(cat,sel,g){if(!sel||sel==='All')return true;if(cat===sel)return true;var G=window.__ksGN(g);for(var i=0;i<G.length;i++)if(G[i].name===sel)return G[i].subs.indexOf(cat)>=0;if(sel==='More'){var gp={};G.forEach(function(gr){gr.subs.forEach(function(s){gp[s]=1;});});return !gp[cat];}return false;};" +
+  "window.__ksSecShow=function(ne,mc,sc,g){if(sc)return ne===sc;if(!mc)return true;if(mc==='More'){var G=window.__ksGN(g),gp={};G.forEach(function(gr){gr.subs.forEach(function(s){gp[s]=1;});});return !gp[ne];}return window.__ksMainOf(ne,g)===mc;};" +
+  "window.__ksChipRow=function(h,items,isA,on,onc,ch,rc,bb){bb=bb||'px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ';return h.jsx('div',{className:'flex gap-2 overflow-x-auto '+(rc||''),children:items.map(function(it){return h.jsx('button',{onClick:function(){on(it.v);},className:bb+(isA(it.v)?onc:ch),children:it.label},String(it.v)+'|'+it.label);})});};" +
+  "window.__ksCatRows=function(h,o){var g=window.__ksGN(o.groups),onc=o.chipOn,ch=o.chip,sel=o.sel,on=o.onSel;if(!g.length){var pr=Object.keys(window.__ksPresent(o.present)).sort();var it=[{v:'All',label:'All'}].concat(pr.map(function(c){return{v:c,label:c};}));return window.__ksChipRow(h,it,function(v){return v===sel;},on,onc,ch,'py-3');}var mains=window.__ksMains(o.groups,o.present);var am=(!sel||sel==='All')?'All':(mains.indexOf(sel)>=0?sel:(window.__ksMainOf(sel,o.groups)||(window.__ksSubsOf('More',o.groups,o.present).indexOf(sel)>=0?'More':'All')));var mi=[{v:'All',label:'All'}].concat(mains.map(function(m){return{v:m,label:m};}));var r1=window.__ksChipRow(h,mi,function(v){return v===am;},on,onc,ch,'pt-3 pb-1.5');var r2=null;if(am!=='All'){var subs=window.__ksSubsOf(am,o.groups,o.present);var si=[{v:am,label:'All'}].concat(subs.map(function(s){return{v:s,label:s};}));r2=window.__ksChipRow(h,si,function(v){return v===sel;},on,onc,ch,'pb-2.5');}return h.jsxs('div',{children:[r1,r2]});};" +
+  "window.__ksGuestNav=function(h,o){var g=window.__ksGN(o.groups),onc=o.chipOn,ch=o.chip,set=o.setSel,mc=o.mcat||'',sc=o.scat||'',BB='px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap ';if(!g.length){var pr=Object.keys(window.__ksPresent(o.present)).sort();var it=[{v:'',label:'All'}].concat(pr.map(function(c){return{v:c,label:c};}));return window.__ksChipRow(h,it,function(v){return v===mc;},function(v){set(v,'');},onc,ch,'pb-2 mb-3 -mx-1 px-1',BB);}var mains=window.__ksMains(o.groups,o.present);var mi=[{v:'',label:'All'}].concat(mains.map(function(m){return{v:m,label:m};}));var r1=window.__ksChipRow(h,mi,function(v){return v===mc;},function(v){set(v,'');},onc,ch,'pb-2 -mx-1 px-1',BB);var r2=null;if(mc){var subs=window.__ksSubsOf(mc,o.groups,o.present);var si=[{v:'',label:'All'}].concat(subs.map(function(s){return{v:s,label:s};}));r2=window.__ksChipRow(h,si,function(v){return v===sc;},function(v){set(mc,v);},onc,ch,'pb-2 mb-1 -mx-1 px-1',BB);}return h.jsxs('div',{className:'mb-3',children:[r1,r2]});};";
+
 /* Durable dismissed-waiter-calls set. The till hides an accepted ("On my way")
    waiter call by adding its id to window.__ksDismissedCalls and filtering it out
    of the notification list. That Set used to live only in memory, so after a
@@ -465,6 +487,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-ring", ringJs);
   html = injectInline(html, "ksh-greet", greetJs);
   html = injectInline(html, "ksh-catsort", catSortJs);
+  html = injectInline(html, "ksh-catnav", catNavJs);
   html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
@@ -1368,6 +1391,49 @@ patchFile(indexPath, (html) => html
     'he=window.__ksCatSort?window.__ksCatSort([...new Set(N.map(ne=>ne.cat))],A&&A.catOrder):[...new Set(N.map(ne=>ne.cat))]'
   )
 
+  /* 100. Two-row category nav on the till Sell view. Replaces the single chip
+     row (main categories on top; the picked main's sub categories below), driven
+     by settings.catGroups (ce.catGroups). `p1` (the till's selected category)
+     now holds either "All", a main name, or a sub name; __ksCatRows renders both
+     rows and calls NT to set it. With no catGroups the helper falls back to the
+     old single flat row. Supersedes the drag-to-reorder chips (#94c) — ordering
+     now lives in the back-office Menu layout, which syncs to every device.
+     Idempotent: the #94c chip-row find (its __ksSave / __ksCatDnd refs) is gone
+     from the replacement. */
+  .replace(
+    'h.jsx("div",{className:"flex gap-2 overflow-x-auto py-3",ref:el=>{if(el)el.__ksSave=function(o){try{xs(kv=>({...kv,catOrder:o}))}catch(e){}}},children:BT.map(f=>h.jsx("button",{ref:el=>{window.__ksCatDnd&&window.__ksCatDnd.bind(el,f)},title:f==="All"?"":"Hold and drag to reorder",onClick:()=>NT(f),className:`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${f===p1?_.chipOn:_.chip}`,children:f},f))})',
+    'window.__ksCatRows(h,{groups:ce&&ce.catGroups,present:c,sel:p1,onSel:NT,chipOn:_.chipOn,chip:_.chip})'
+  )
+
+  /* 101. Till item-grid filter honours the two-level selection: when `p1` is a
+     main category, show every item whose sub category is in that main; when it is
+     a sub, exact-match; "All" shows everything. Idempotent: the bare
+     `Sw=c.filter(f=>(p1==="All"||f.cat===p1)` find is gone from the replacement. */
+  .replace(
+    'Sw=c.filter(f=>(p1==="All"||f.cat===p1)',
+    'Sw=c.filter(f=>(window.__ksCatMatch?window.__ksCatMatch(f.cat,p1,ce&&ce.catGroups):(p1==="All"||f.cat===p1))'
+  )
+
+  /* 102. Two-row category nav on the guest/user menu, mirroring the till. `A` is
+     the guest settings object (A.catGroups); selection is (fe.mcat = main,
+     fe.scat = sub). __ksGuestNav renders both rows and updates both via Dn. With
+     no catGroups it falls back to the previous single flat row. Idempotent: the
+     bare `[["","All"],...he.map(...)]` nav find (with its mcat:cv onClick) is
+     gone from the replacement. */
+  .replace(
+    'h.jsx("div",{className:"flex gap-2 overflow-x-auto pb-2 mb-3 -mx-1 px-1",children:[["","All"],...he.map(ce=>[ce,ce])].map(([cv,cl])=>h.jsx("button",{onClick:()=>Dn(N=>({...N,mcat:cv})),className:`px-4 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap ${(fe.mcat||"")===cv?_.chipOn:_.chip}`,children:cl},cv))})',
+    'window.__ksGuestNav(h,{groups:A&&A.catGroups,present:N,mcat:fe.mcat,scat:fe.scat,setSel:(m,s)=>Dn(q=>({...q,mcat:m,scat:s})),chipOn:_.chipOn,chip:_.chip})'
+  )
+
+  /* 103. Guest section list respects the two-level selection: a sub-category
+     section shows when it belongs to the selected main (or all mains) and, when a
+     sub is picked, only that one. Idempotent: the bare
+     `he.filter(ne=>!fe.mcat||ne===fe.mcat)` find is gone from the replacement. */
+  .replace(
+    'he.filter(ne=>!fe.mcat||ne===fe.mcat)',
+    'he.filter(ne=>window.__ksSecShow?window.__ksSecShow(ne,fe.mcat,fe.scat,A&&A.catGroups):(!fe.mcat||ne===fe.mcat))'
+  )
+
   /* 93. Show stock-untracked items on the guest menu. The guest category grid
      filtered products with `ze.stock>0`, which hid every item whose stock is
      left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
@@ -1824,6 +1890,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.65"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.66"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

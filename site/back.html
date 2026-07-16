@@ -343,7 +343,7 @@
     // deliveries
     inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [], pos: [],
     theme: { name: "orange", dark: false, override: false },
-    catOrder: [],
+    catOrder: [], catGroups: [],
   };
   try {
     var savedTheme = JSON.parse(localStorage.getItem("kback-theme"));
@@ -429,7 +429,7 @@
     return Promise.all([
       api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"), api("/pos"),
     ]).then(function (r) {
-      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || [];
+      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
       if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "orange"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
@@ -1013,7 +1013,7 @@
       '<button class="ghost tiny" id="mExport" title="Download the current menu as Excel">⬇ Export</button>' +
       '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
       '<button class="ghost tiny" id="mEmbed" title="Download every web photo and store it compressed for offline use">⤓ Embed photos</button>' +
-      '<button class="ghost tiny" id="mCatOrder" title="Arrange the order categories appear in on the till and the guest menu">↕ Category order</button>' +
+      '<button class="ghost tiny" id="mCatOrder" title="Set up main categories and sub categories for the till and guest menu">☰ Menu layout</button>' +
       '</div>' +
       '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
@@ -1063,7 +1063,7 @@
       }
       next();
     };
-    el("mCatOrder").onclick = openCatOrder;
+    el("mCatOrder").onclick = openMenuLayout;
     el("plist").querySelectorAll("[data-p]").forEach(function (d) {
       d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
     });
@@ -1081,43 +1081,112 @@
     return out;
   }
 
-  /* Reorder the menu categories. The saved order drives both the till Sell view
-     and the guest menu (they read settings.catOrder). Up/down keeps it simple
-     and reliable on touch. */
-  function openCatOrder() {
-    var order = orderedCats();
+  /* Two-level menu layout editor. Main categories (top nav row on the till and
+     guest menu) each hold an ordered list of sub categories; products carry the
+     sub category (`cat`). Owners can add / rename / delete / reorder mains,
+     move & reorder subs between mains, add empty sub "buckets" to drop items
+     into later, and assign any stray sub that isn't in a group yet.
+
+     Working model: groups = [{name, subs:[{name, orig}]}]. `orig` is the sub's
+     original category label (null for a brand-new empty bucket) — used to count
+     items and to migrate product.cat when a sub is renamed. */
+  function openMenuLayout() {
+    var groups = (S.catGroups || []).map(function (g) {
+      return { name: g.name, subs: (g.subs || []).map(function (s) { return { name: s, orig: s }; }) };
+    });
+    // count items per sub label (by original category on the products)
+    function itemCount(orig) { if (!orig) return 0; return S.products.filter(function (p) { return p.cat === orig; }).length; }
+    // present product categories that aren't placed in any group yet
+    function unassigned() {
+      var placed = {}; groups.forEach(function (g) { g.subs.forEach(function (s) { if (s.orig) placed[s.orig] = true; }); });
+      var have = {}; S.products.forEach(function (p) { if (p.cat) have[p.cat] = true; });
+      return Object.keys(have).filter(function (c) { return !placed[c]; }).sort();
+    }
     function draw() {
-      var rows = order.map(function (c, i) {
-        var n = S.products.filter(function (p) { return p.cat === c; }).length;
-        return '<div class="catrow" style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;background:var(--panel2)">' +
-          '<span style="width:20px;text-align:right;color:var(--sub);font-variant-numeric:tabular-nums">' + (i + 1) + '</span>' +
-          '<span style="flex:1;font-weight:600">' + esc(c) + '</span>' +
-          '<span class="badge dim">' + n + ' item' + (n === 1 ? "" : "s") + '</span>' +
-          '<button class="ghost tiny" data-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' title="Move up">↑</button>' +
-          '<button class="ghost tiny" data-dn="' + i + '"' + (i === order.length - 1 ? " disabled" : "") + ' title="Move down">↓</button>' +
+      var gHtml = groups.map(function (g, gi) {
+        var subRows = g.subs.map(function (s, si) {
+          var n = itemCount(s.orig);
+          return '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid var(--border);border-radius:10px;margin:5px 0;background:var(--panel)">' +
+            '<input data-sname="' + gi + '.' + si + '" value="' + esc(s.name) + '" style="flex:1;min-width:0;padding:5px 7px;font-size:13px" />' +
+            '<span class="badge dim" style="white-space:nowrap">' + n + '</span>' +
+            '<button class="ghost tiny" data-sup="' + gi + '.' + si + '"' + (si === 0 ? " disabled" : "") + ' title="Move up">↑</button>' +
+            '<button class="ghost tiny" data-sdn="' + gi + '.' + si + '"' + (si === g.subs.length - 1 ? " disabled" : "") + ' title="Move down">↓</button>' +
+            (groups.length > 1 ? '<select data-smove="' + gi + '.' + si + '" title="Move to another main" style="max-width:96px;font-size:12px;padding:4px">' +
+              '<option value="">move…</option>' + groups.map(function (gg, ggi) { return ggi === gi ? "" : '<option value="' + ggi + '">' + esc(gg.name) + '</option>'; }).join("") + '</select>' : '') +
+            '<button class="ghost tiny" data-sdel="' + gi + '.' + si + '" title="Remove from this main">✕</button>' +
+          '</div>';
+        }).join("");
+        return '<div style="border:1px solid var(--border);border-radius:14px;padding:11px 12px;margin-bottom:12px;background:var(--panel2)">' +
+          '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">' +
+          '<span style="color:var(--sub);font-weight:700;width:18px">' + (gi + 1) + '</span>' +
+          '<input data-gname="' + gi + '" value="' + esc(g.name) + '" style="flex:1;min-width:0;font-weight:700;padding:6px 8px" title="Main category name" />' +
+          '<button class="ghost tiny" data-gup="' + gi + '"' + (gi === 0 ? " disabled" : "") + ' title="Move up">↑</button>' +
+          '<button class="ghost tiny" data-gdn="' + gi + '"' + (gi === groups.length - 1 ? " disabled" : "") + ' title="Move down">↓</button>' +
+          '<button class="ghost tiny" data-gdel="' + gi + '" title="Delete this main (its sub categories become unassigned)">🗑</button>' +
+          '</div>' +
+          (subRows || '<div class="hint" style="margin:4px 0 2px">No sub categories yet.</div>') +
+          '<div style="display:flex;gap:6px;margin-top:6px">' +
+          '<input id="addSub' + gi + '" placeholder="+ Add a sub category" style="flex:1;padding:6px 8px;font-size:13px" />' +
+          '<button class="ghost tiny" data-saddbtn="' + gi + '">Add</button></div>' +
         '</div>';
       }).join("");
+      var un = unassigned();
+      var unHtml = un.length ? '<div style="border:1px dashed var(--border);border-radius:12px;padding:10px 12px;margin-bottom:12px">' +
+        '<div class="hint" style="margin:0 0 6px">Not in any main yet — pick a main category for each:</div>' +
+        un.map(function (c) {
+          return '<div style="display:flex;align-items:center;gap:6px;margin:5px 0">' +
+            '<span style="flex:1">' + esc(c) + ' <span class="badge dim">' + itemCount(c) + '</span></span>' +
+            '<select data-assign="' + esc(c) + '" style="font-size:12px;padding:4px"><option value="">assign to…</option>' +
+            groups.map(function (gg, ggi) { return '<option value="' + ggi + '">' + esc(gg.name) + '</option>'; }).join("") + '</select></div>';
+        }).join("") + '</div>' : "";
       el("modalHost").innerHTML =
-        '<div class="overlay" id="ov"><div class="modal" style="max-width:440px">' +
-        '<h3 style="margin:0 0 4px">Category order</h3>' +
-        '<p class="sub" style="margin:0 0 12px">Arrange how categories appear on the till and the guest menu. Applies to both.</p>' +
-        '<div id="catList">' + (rows || '<div class="empty">Add menu items first.</div>') + '</div>' +
+        '<div class="overlay" id="ov"><div class="modal" style="max-width:560px;max-height:88vh;overflow:auto">' +
+        '<h3 style="margin:0 0 4px">Menu layout</h3>' +
+        '<p class="sub" style="margin:0 0 12px">Set up the two-row menu used on the till and the guest menu: main categories on top, their sub categories below. Renaming a sub category moves its items with it.</p>' +
+        unHtml + gHtml +
+        '<div style="display:flex;gap:6px;margin:10px 0 4px">' +
+        '<input id="addMain" placeholder="+ Add a main category" style="flex:1;padding:7px 9px" />' +
+        '<button class="ghost" id="addMainBtn">Add main</button></div>' +
         '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
         '<button class="ghost" id="cClose">Cancel</button>' +
-        '<button class="primary" id="cSave"' + (order.length ? "" : " disabled") + '>Save order</button></div>' +
+        '<button class="primary" id="cSave">Save layout</button></div>' +
         '</div></div>';
-      el("modalHost").querySelectorAll("[data-up]").forEach(function (b) {
-        b.onclick = function () { var i = +b.dataset.up; var t = order[i - 1]; order[i - 1] = order[i]; order[i] = t; draw(); };
-      });
-      el("modalHost").querySelectorAll("[data-dn]").forEach(function (b) {
-        b.onclick = function () { var i = +b.dataset.dn; var t = order[i + 1]; order[i + 1] = order[i]; order[i] = t; draw(); };
-      });
+      // keep any half-typed sub/main names when a structural button re-draws
+      function syncNames() {
+        el("modalHost").querySelectorAll("[data-gname]").forEach(function (i) { groups[+i.dataset.gname].name = i.value; });
+        el("modalHost").querySelectorAll("[data-sname]").forEach(function (i) { var p = i.dataset.sname.split("."); groups[+p[0]].subs[+p[1]].name = i.value; });
+      }
+      function q(sel, fn) { el("modalHost").querySelectorAll(sel).forEach(fn); }
+      q("[data-gup]", function (b) { b.onclick = function () { syncNames(); var i = +b.dataset.gup; var t = groups[i - 1]; groups[i - 1] = groups[i]; groups[i] = t; draw(); }; });
+      q("[data-gdn]", function (b) { b.onclick = function () { syncNames(); var i = +b.dataset.gdn; var t = groups[i + 1]; groups[i + 1] = groups[i]; groups[i] = t; draw(); }; });
+      q("[data-gdel]", function (b) { b.onclick = function () { syncNames(); groups.splice(+b.dataset.gdel, 1); draw(); }; });
+      q("[data-sup]", function (b) { b.onclick = function () { syncNames(); var p = b.dataset.sup.split("."), g = groups[+p[0]].subs, i = +p[1]; var t = g[i - 1]; g[i - 1] = g[i]; g[i] = t; draw(); }; });
+      q("[data-sdn]", function (b) { b.onclick = function () { syncNames(); var p = b.dataset.sdn.split("."), g = groups[+p[0]].subs, i = +p[1]; var t = g[i + 1]; g[i + 1] = g[i]; g[i] = t; draw(); }; });
+      q("[data-sdel]", function (b) { b.onclick = function () { syncNames(); var p = b.dataset.sdel.split("."); groups[+p[0]].subs.splice(+p[1], 1); draw(); }; });
+      q("[data-smove]", function (sel) { sel.onchange = function () { if (sel.value === "") return; syncNames(); var p = sel.dataset.smove.split("."); var moved = groups[+p[0]].subs.splice(+p[1], 1)[0]; groups[+sel.value].subs.push(moved); draw(); }; });
+      q("[data-saddbtn]", function (b) { b.onclick = function () { syncNames(); var gi = +b.dataset.saddbtn; var v = (el("addSub" + gi).value || "").trim(); if (!v) return; groups[gi].subs.push({ name: v, orig: null }); draw(); }; });
+      q("[data-assign]", function (sel) { sel.onchange = function () { if (sel.value === "") return; syncNames(); var c = sel.dataset.assign; groups[+sel.value].subs.push({ name: c, orig: c }); draw(); }; });
+      el("addMainBtn").onclick = function () { syncNames(); var v = (el("addMain").value || "").trim(); if (!v) return; groups.push({ name: v, subs: [] }); draw(); };
       el("cClose").onclick = function () { el("modalHost").innerHTML = ""; };
       var sv = el("cSave");
-      if (sv) sv.onclick = function () {
+      sv.onclick = function () {
+        syncNames();
+        // build payload + rename map (orig -> new) for subs whose label changed
+        var renames = {}, outGroups = [];
+        groups.forEach(function (g) {
+          var name = (g.name || "").trim(); if (!name) return;
+          var subs = [];
+          g.subs.forEach(function (s) {
+            var nm = (s.name || "").trim(); if (!nm) return;
+            if (s.orig && nm !== s.orig) renames[s.orig] = nm;
+            subs.push(nm);
+          });
+          outGroups.push({ name: name, subs: subs });
+        });
         sv.disabled = true;
-        api("/category-order", { method: "PUT", body: JSON.stringify({ order: order }) })
-          .then(function () { S.catOrder = order.slice(); el("modalHost").innerHTML = ""; toast("Category order saved — the till and guest menu will follow."); })
+        api("/category-groups", { method: "PUT", body: JSON.stringify({ groups: outGroups, renames: renames }) })
+          .then(function () { el("modalHost").innerHTML = ""; toast("Menu layout saved — the till and guest menu will follow."); return loadAll(); })
+          .then(render)
           .catch(function (e) { sv.disabled = false; toast(e.message || "Couldn't save"); });
       };
     }
@@ -1175,6 +1244,22 @@
     im.src = url;
   }
 
+  /* Options for a product's sub-category selector: every sub grouped under its
+     main (from S.catGroups). If the item's current cat isn't in any group it is
+     shown first as "(unassigned)" so nothing is silently lost. */
+  function subcatOptions(current) {
+    var groups = S.catGroups || [], seen = {}, html = "";
+    groups.forEach(function (g) {
+      if (!g.subs || !g.subs.length) return;
+      html += '<optgroup label="' + esc(g.name) + '">';
+      g.subs.forEach(function (s) { seen[s] = true; html += '<option value="' + esc(s) + '"' + (s === current ? " selected" : "") + '>' + esc(s) + "</option>"; });
+      html += "</optgroup>";
+    });
+    if (current && !seen[current]) html = '<option value="' + esc(current) + '" selected>' + esc(current) + " (unassigned)</option>" + html;
+    if (!current) html = '<option value="" selected>—</option>' + html;
+    return html;
+  }
+
   function addonRowHtml(name, price) {
     return '<div class="ao-row" style="display:flex;gap:6px;margin-bottom:4px">' +
       '<input class="ao-name" placeholder="Extra cheese" value="' + esc(name || "") + '" style="flex:1" />' +
@@ -1221,6 +1306,8 @@
       '<div class="m ' + cls + '"><div class="l">Margin</div><div class="v">' + t.pct + "%</div></div></div>" +
       '<div class="pad" style="border-top:1px solid var(--border)">' +
       '<div style="font-weight:600;margin-bottom:6px">Guest item details</div>' +
+      '<div class="hint">Category — which sub category this item shows under (set the main categories in ☰ Menu layout)</div>' +
+      '<select id="pSubcat" style="width:100%;margin:4px 0 10px">' + subcatOptions(p.cat) + '</select>' +
       '<div class="hint">Allergens — shown on the guest menu &amp; item sheet</div>' +
       '<input id="pAllerg" value="' + esc(p.allergens || "") + '" placeholder="e.g. Beef, Gluten, Nuts" style="width:100%;margin:4px 0 10px" />' +
       '<div class="hint">Add-ons — optional priced extras a guest can add (name + price in ' + esc(S.currency) + ")</div>" +
@@ -1243,8 +1330,10 @@
       var allergens = el("pAllerg").value.trim();
       var spiceLevels = el("pSpice").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
       var comments = el("pComments").checked, noKitchen = el("pNoKitchen").checked;
-      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ allergens: allergens, addons: addons, spiceLevels: spiceLevels, comments: comments, noKitchen: noKitchen }) })
+      var cat = (el("pSubcat") && el("pSubcat").value || "").trim();
+      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ cat: cat, allergens: allergens, addons: addons, spiceLevels: spiceLevels, comments: comments, noKitchen: noKitchen }) })
         .then(function () {
+          if (cat) p.cat = cat;
           p.allergens = allergens; p.addons = addons.map(function (a) { return { name: a.name, price: Math.round(a.price * 100) }; });
           p.spiceLevels = spiceLevels; p.comments = comments; p.noKitchen = noKitchen;
           toast("Item details saved — live on the guest menu");

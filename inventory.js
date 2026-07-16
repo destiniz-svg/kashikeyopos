@@ -393,6 +393,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         /* owner-defined menu category order (applied on the till + guest menu);
            empty means "no custom order — fall back to insertion/default" */
         catOrder: Array.isArray(sd.catOrder) ? sd.catOrder : [],
+        /* owner-defined two-level menu tree (main category -> sub categories),
+           drives the till + guest two-row nav. [{name, subs:[...]}] */
+        catGroups: Array.isArray(sd.catGroups) ? sd.catGroups : [],
         products,
       };
     });
@@ -419,6 +422,56 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     });
     if (poke && rowver) poke(req.orgId, rowver);
     res.json({ ok: true, order });
+  }));
+
+  /* Persist the owner's two-level menu tree (main category -> sub categories)
+     into the shared settings entity. The till and guest menu read catGroups and
+     render a two-row nav (main categories on top; the selected main's sub
+     categories below). We also keep the flat catOrder in step (the concatenated
+     sub order) so older/other readers stay consistent. Groups + subs are trimmed,
+     de-duplicated and bounded. */
+  router.put("/category-groups", authAny, wrap(async (req, res) => {
+    const seenSub = new Set();
+    const groups = (Array.isArray(req.body && req.body.groups) ? req.body.groups : [])
+      .map((g) => {
+        const name = String((g && g.name) || "").trim().slice(0, 40);
+        const subs = [...new Set((Array.isArray(g && g.subs) ? g.subs : [])
+          .map((s) => String(s || "").trim().slice(0, 40)).filter(Boolean))]
+          .filter((s) => !seenSub.has(s) && seenSub.add(s)) // a sub belongs to one main
+          .slice(0, 60);
+        return { name, subs };
+      })
+      .filter((g) => g.name)
+      .slice(0, 40);
+    const order = groups.reduce((a, g) => a.concat(g.subs), []);
+    /* Sub-category renames from the layout editor: move every product on the old
+       label to the new one so items travel with their renamed sub category. */
+    const renames = (req.body && req.body.renames && typeof req.body.renames === "object") ? req.body.renames : {};
+    const rowver = await withOrg(req.orgId, async (client) => {
+      let last = null;
+      for (const from of Object.keys(renames)) {
+        const to = String(renames[from] || "").trim().slice(0, 40);
+        if (!to || to === from) continue;
+        const mv = await client.query(
+          `UPDATE entities SET data = jsonb_set(data, '{cat}', to_jsonb($3::text), true),
+             rowver = nextval('entities_rowver_seq'), updated_at = now()
+           WHERE org_id=$1 AND kind='products' AND deleted=false AND data->>'cat' = $2
+           RETURNING rowver`, [req.orgId, from, to]);
+        for (const row of mv.rows) last = Number(row.rowver);
+      }
+      const row = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];
+      const data = Object.assign({}, (row && row.data) || {});
+      data.catGroups = groups;
+      data.catOrder = order;
+      const up = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         RETURNING rowver`, [req.orgId, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : last;
+    });
+    if (poke && rowver) poke(req.orgId, rowver);
+    res.json({ ok: true, groups });
   }));
 
   /* Set (or clear) a menu item's photo from the back office. The till already
@@ -460,6 +513,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     .map((s) => String(s || "").trim().slice(0, 30)).filter(Boolean).slice(0, 8);
   router.put("/products/:id/meta", authAny, wrap(async (req, res) => {
     const pid = req.params.id, body = req.body || {};
+    const cat = typeof body.cat === "string" ? body.cat.trim().slice(0, 40) : undefined;
     const allergens = typeof body.allergens === "string" ? body.allergens.slice(0, 200) : undefined;
     const addons = body.addons !== undefined ? cleanAddons(body.addons) : undefined;
     const spiceLevels = body.spiceLevels !== undefined ? cleanSpice(body.spiceLevels) : undefined;
@@ -469,6 +523,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid])).rows[0];
       if (!row) return null;
       const data = Object.assign({}, row.data || {});
+      if (cat !== undefined && cat) data.cat = cat; // reassign to a sub category
       if (allergens !== undefined) { if (allergens.trim()) data.allergens = allergens.trim(); else delete data.allergens; }
       if (addons !== undefined) { if (addons.length) data.addons = addons; else delete data.addons; }
       if (spiceLevels !== undefined) { if (spiceLevels.length) data.spiceLevels = spiceLevels; else delete data.spiceLevels; }

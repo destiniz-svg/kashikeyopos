@@ -9,12 +9,7 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const { createRemoteJWKSet, jwtVerify } = require("jose");
-const { DEFAULT_MENU, CAT_ORDER } = require("./default-menu");
-/* The generic starter menu that shipped before the production Oakwood menu.
-   Retired on seed/backfill so it doesn't linger next to the real menu as
-   duplicate tiles. (Owner-created products get random uids, never p1..p19, so
-   removing these can't touch a real outlet product.) */
-const LEGACY_DEFAULT_IDS = Array.from({ length: 19 }, (_, i) => "p" + (i + 1));
+const { DEFAULT_MENU, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
 
 const PORT = process.env.PORT || 4000;
 const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
@@ -398,45 +393,45 @@ async function ensureDefaultMenu(orgId) {
   if (!DEFAULT_MENU.length) return 0;
   const maxRowver = await withOrg(orgId, async (client) => {
     let mx = 0;
-    /* Retire the previous generic starter menu so it doesn't sit alongside the
-       production menu as duplicate tiles. Soft-delete (deleted=true) rides the
-       pull stream so every till/guest removes them too. */
-    const del = await client.query(
-      `UPDATE entities SET deleted = true, rowver = nextval('entities_rowver_seq'), updated_at = now()
-       WHERE org_id=$1 AND kind='products' AND id = ANY($2::text[]) AND deleted = false
-       RETURNING rowver`,
-      [orgId, LEGACY_DEFAULT_IDS]);
-    for (const row of del.rows) mx = Math.max(mx, Number(row.rowver));
-    /* Seed / refresh the production menu. On re-seed we only refresh the photo
-       so an outlet's own edits (price, add-ons, allergens, availability) are
-       kept; a brand-new item lands in full. */
+    /* Seed / refresh the starter menu.
+       - New item -> inserted in full.
+       - Live item an outlet has edited -> only the photo is refreshed, so their
+         price / add-ons / allergens / availability / category edits are kept.
+       - A default item that had been retired (deleted) is restored in full,
+         re-categorised to the current tree. */
     for (const item of DEFAULT_MENU) {
       const r = await client.query(
         `INSERT INTO entities (org_id, kind, id, data)
          VALUES ($1,'products',$2,$3::jsonb)
          ON CONFLICT (org_id, kind, id) DO UPDATE
-           SET data = entities.data || jsonb_build_object('img', EXCLUDED.data->'img'),
+           SET data = CASE WHEN entities.deleted
+                            THEN EXCLUDED.data
+                            ELSE entities.data || jsonb_build_object('img', EXCLUDED.data->'img') END,
+               deleted = false,
                rowver = nextval('entities_rowver_seq'), updated_at = now()
-           WHERE entities.deleted = false
-             AND (entities.data->>'img') IS DISTINCT FROM (EXCLUDED.data->>'img')
+           WHERE entities.deleted = true
+              OR (entities.data->>'img') IS DISTINCT FROM (EXCLUDED.data->>'img')
          RETURNING rowver`,
         [orgId, item.id, JSON.stringify(item)]);
       if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
     }
-    /* Seed the intended category order once, without overriding an outlet that
-       has arranged its own (settings.catOrder already set). Only writes when a
-       settings entity exists and has no catOrder yet. */
-    if (Array.isArray(CAT_ORDER) && CAT_ORDER.length) {
-      const so = await client.query(
+    /* Seed the menu geography once, without overriding an outlet that has
+       arranged its own. Only writes a field the settings entity is missing, so a
+       back-office rearrangement (catGroups / catOrder already set) is untouched. */
+    const seedSetting = async (key, value) => {
+      if (!Array.isArray(value) || !value.length) return;
+      const r = await client.query(
         `UPDATE entities
-           SET data = jsonb_set(data, '{catOrder}', $2::jsonb, true),
+           SET data = jsonb_set(data, ARRAY[$3], $2::jsonb, true),
                rowver = nextval('entities_rowver_seq'), updated_at = now()
          WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted = false
-           AND NOT (data ? 'catOrder')
+           AND NOT (data ? $3)
          RETURNING rowver`,
-        [orgId, JSON.stringify(CAT_ORDER)]);
-      for (const row of so.rows) mx = Math.max(mx, Number(row.rowver));
-    }
+        [orgId, JSON.stringify(value), key]);
+      for (const row of r.rows) mx = Math.max(mx, Number(row.rowver));
+    };
+    await seedSetting("catGroups", CAT_GROUPS);
+    await seedSetting("catOrder", CAT_ORDER);
     return mx;
   });
   if (maxRowver) poke(orgId, maxRowver);
@@ -892,10 +887,11 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
                  and points fields have). Received is terminal either way. */
               ? " || CASE WHEN entities.data->>'status'='received' THEN jsonb_build_object('status','received','receivedAt',COALESCE(entities.data->'receivedAt',excluded.data->'receivedAt'),'receivedVia',COALESCE(entities.data->'receivedVia',excluded.data->'receivedVia')) ELSE '{}'::jsonb END"
               : p.kind === "settings"
-                /* The owner's menu category order lives on settings; keep it if a
-                   till pushes a settings snapshot taken before it learned the
-                   order (same protective intent as product meta above). */
-                ? " || CASE WHEN NOT (excluded.data ? 'catOrder') AND entities.data ? 'catOrder' THEN jsonb_build_object('catOrder', entities.data->'catOrder') ELSE '{}'::jsonb END"
+                /* The owner's menu geography (category groups + flat order) lives
+                   on settings; keep it if a till pushes a settings snapshot taken
+                   before it learned it (same protective intent as product meta). */
+                ? " || CASE WHEN NOT (excluded.data ? 'catOrder')  AND entities.data ? 'catOrder'  THEN jsonb_build_object('catOrder',  entities.data->'catOrder')  ELSE '{}'::jsonb END" +
+                  " || CASE WHEN NOT (excluded.data ? 'catGroups') AND entities.data ? 'catGroups' THEN jsonb_build_object('catGroups', entities.data->'catGroups') ELSE '{}'::jsonb END"
                 : "";
         const r = await client.query(
           `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
