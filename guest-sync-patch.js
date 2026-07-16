@@ -559,6 +559,18 @@ patchFile(indexPath, (html) => {
     'try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"}',
     'try{FT([],[{kind:"waiterCalls",id:f.id}])}catch{}try{Ie&&Ie.token&&fetch((Ie.url||"")+"/api/ops",{method:"POST",keepalive:!0,headers:{"Content-Type":"application/json",Authorization:"Bearer "+Ie.token},body:JSON.stringify({ops:[{opId:"wc-del-"+f.id,dels:[{kind:"waiterCalls",id:f.id}]}]})})}catch{}},className:"rounded-lg px-3 py-1.5 text-xs font-semibold bg-amber-500 text-slate-950",children:"On my way"}'
   )
+
+  /* 97. Don't chime the waiter alert for a call the staff already dismissed.
+     The alert sound checked only `!_c.deleted`, so in the brief window between
+     accepting a call and its server delete reconciling, a pull could still play
+     the "waiter" chime for it. Skip any id in the durable dismissed set too, so
+     a handled call never re-chimes — matching the banner filter. Idempotent: the
+     bare `!_c.deleted&&!_sn.w` (no dismissed guard) find is gone from the
+     replacement. */
+  .replace(
+    '!_c.deleted&&!_sn.w[_c.id]&&(_sn.w[_c.id]=1,window.__ksnd.play("waiter"))',
+    '!_c.deleted&&!(window.__ksDismissedCalls&&window.__ksDismissedCalls.has(_c.id))&&!_sn.w[_c.id]&&(_sn.w[_c.id]=1,window.__ksnd.play("waiter"))'
+  )
   .replace(
     '[i,a]=R.useState(!0),[o,s]=R.useState("sell")',
     '[i,a]=R.useState(!0),[KshLovable,KshSetLovable]=R.useState(!1),[o,s]=R.useState("sell")'
@@ -1780,6 +1792,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.63"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.64"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
