@@ -1268,6 +1268,17 @@ patchFile(indexPath, (html) => html
     'h.jsx("span",{className:`px-2 py-0.5 rounded-lg text-xs font-bold ${_.chipOn} shrink-0 whitespace-nowrap`,children:f.table}),h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsxs("div",{className:"text-sm font-medium flex flex-wrap items-center gap-x-2 gap-y-1",children:[h.jsx("span",{className:"whitespace-nowrap font-semibold",children:f.no}),f.customerName&&h.jsx("span",{className:"text-xs px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 whitespace-nowrap",children:f.customerName}),'
   )
 
+  /* 90. Keep the Orders-board elapsed-time subtitle on one line. The status
+     pill + "N min" text lived in a plain `flex items-center` span, so on a
+     narrow (mobile) card the number and "min" could break across two lines
+     ("1954" / "min"). Pin the row with whitespace-nowrap so the pill and time
+     stay together. Idempotent: the find carries the pre-nowrap class string,
+     which the replacement no longer contains. */
+  .replace(
+    '(qp=>h.jsxs("span",{className:"flex items-center",children:[h.jsx("span",{className:"ksh-pill mr-1.5"',
+    '(qp=>h.jsxs("span",{className:"flex items-center whitespace-nowrap",children:[h.jsx("span",{className:"ksh-pill mr-1.5"'
+  )
+
   /* 74. Availability §2 on the customer QR menu — a recipe/stock item that has
      sold out stays on the menu (dimmed) with a "Sold out" pill instead of an
      add button, so guests see it but can't order it. Items already in the cart
@@ -1639,6 +1650,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.56"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.57"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
