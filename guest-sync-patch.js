@@ -1260,6 +1260,18 @@ patchFile(indexPath, (html) => html
     '"Sold out +"}):null,(!window.__ksOut(f)&&f.bestSeller)?h.jsx("span",{className:"absolute top-2 left-2 ksh-pill",style:{background:"var(--k-primary)",color:"#fff",fontSize:"9px",fontWeight:"600",padding:"2px 7px",zIndex:2},children:"★ Best seller"}):null,f.img?h.jsx("img",{src:f.img,alt:"",className:"w-full h-16 rounded-lg object-cover mb-1.5"}):h.jsx("div",{className:"text-3xl mb-1.5",children:f.emoji}),'
   )
 
+  /* 95. The till menu tile photo was a short, full-width band (h-16 object-cover),
+     so a square product illustration got cropped to a thin middle strip — the cup
+     or glass sat half off-screen. Give the image a fixed 4:3 aspect box (scales
+     with the tile width instead of a fixed 64px height) with object-contain and a
+     soft panel backdrop, so the whole picture always shows, uncropped and evenly
+     aligned across every tile. Idempotent: the old `h-16 …` (no style) find is
+     gone from the replacement. */
+  .replace(
+    'f.img?h.jsx("img",{src:f.img,alt:"",className:"w-full h-16 rounded-lg object-cover mb-1.5"}):h.jsx("div",{className:"text-3xl mb-1.5",children:f.emoji}),',
+    'f.img?h.jsx("img",{src:f.img,alt:"",className:"w-full rounded-lg mb-1.5",style:{aspectRatio:"4/3",objectFit:"contain",background:"var(--k-panel2)"}}):h.jsx("div",{className:"text-3xl mb-1.5",children:f.emoji}),'
+  )
+
   /* 80. Order-progress rings on the Orders board (§4, reference design). Each
      live order card leads with a circular gauge of its lifecycle progress
      (new→preparing→ready→done via __ksProg), coloured by the same status token
@@ -1743,6 +1755,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.61"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.62"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
