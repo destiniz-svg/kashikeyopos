@@ -380,7 +380,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         .map((x) => {
           const d = x.data || {};
           const id = String(d.id || x.id).split(":").pop();
-          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", allergens: d.allergens || "", addons: Array.isArray(d.addons) ? d.addons : [], desc: d.desc || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
+          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", allergens: d.allergens || "", addons: Array.isArray(d.addons) ? d.addons : [], spiceLevels: Array.isArray(d.spiceLevels) ? d.spiceLevels : [], comments: !!d.comments, noKitchen: !!d.noKitchen, desc: d.desc || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
         })
         .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
       const sd = st.rowCount ? st.rows[0].data : {};
@@ -454,16 +454,26 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   const cleanAddons = (arr) => (Array.isArray(arr) ? arr : [])
     .map((a) => ({ name: String((a && a.name) || "").trim().slice(0, 40), price: Math.max(0, Math.round(num(a && a.price) * 100)) }))
     .filter((a) => a.name).slice(0, 20);
+  /* Spice levels are a free single-choice modifier (no price) — the owner names
+     the options per item (e.g. "Non-spicy, Spicy" or "Mild, Medium, Hot"). */
+  const cleanSpice = (arr) => (Array.isArray(arr) ? arr : [])
+    .map((s) => String(s || "").trim().slice(0, 30)).filter(Boolean).slice(0, 8);
   router.put("/products/:id/meta", authAny, wrap(async (req, res) => {
     const pid = req.params.id, body = req.body || {};
     const allergens = typeof body.allergens === "string" ? body.allergens.slice(0, 200) : undefined;
     const addons = body.addons !== undefined ? cleanAddons(body.addons) : undefined;
+    const spiceLevels = body.spiceLevels !== undefined ? cleanSpice(body.spiceLevels) : undefined;
+    const comments = body.comments !== undefined ? !!body.comments : undefined;
+    const noKitchen = body.noKitchen !== undefined ? !!body.noKitchen : undefined;
     const rowver = await withOrg(req.orgId, async (client) => {
       const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid])).rows[0];
       if (!row) return null;
       const data = Object.assign({}, row.data || {});
       if (allergens !== undefined) { if (allergens.trim()) data.allergens = allergens.trim(); else delete data.allergens; }
       if (addons !== undefined) { if (addons.length) data.addons = addons; else delete data.addons; }
+      if (spiceLevels !== undefined) { if (spiceLevels.length) data.spiceLevels = spiceLevels; else delete data.spiceLevels; }
+      if (comments !== undefined) { if (comments) data.comments = true; else delete data.comments; }
+      if (noKitchen !== undefined) { if (noKitchen) data.noKitchen = true; else delete data.noKitchen; }
       const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, pid, JSON.stringify(data)]);
       return up.rows[0] ? Number(up.rows[0].rowver) : null;
     });

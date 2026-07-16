@@ -1223,9 +1223,14 @@
       '<div style="font-weight:600;margin-bottom:6px">Guest item details</div>' +
       '<div class="hint">Allergens — shown on the guest menu &amp; item sheet</div>' +
       '<input id="pAllerg" value="' + esc(p.allergens || "") + '" placeholder="e.g. Beef, Gluten, Nuts" style="width:100%;margin:4px 0 10px" />' +
-      '<div class="hint">Add-ons — optional extras a guest can add (name + price in ' + esc(S.currency) + ")</div>" +
+      '<div class="hint">Add-ons — optional priced extras a guest can add (name + price in ' + esc(S.currency) + ")</div>" +
       '<div id="addonRows" style="margin-top:6px">' + (p.addons || []).map(function (a) { return addonRowHtml(a.name, a.price / 100); }).join("") + "</div>" +
-      '<div style="display:flex;gap:8px;margin-top:6px"><button class="tiny ghost" id="pAddonAdd" type="button">+ Add-on</button><button class="primary tiny" id="pMetaSave" type="button">Save details</button></div></div>' +
+      '<div style="margin-top:6px"><button class="tiny ghost" id="pAddonAdd" type="button">+ Add-on</button></div>' +
+      '<div class="hint" style="margin-top:12px">Spice levels — a single free choice for the guest (comma-separated). Leave blank for none.</div>' +
+      '<input id="pSpice" value="' + esc((p.spiceLevels || []).join(", ")) + '" placeholder="e.g. Non-spicy, Spicy   ·   or   Mild, Medium, Hot" style="width:100%;margin:4px 0 10px" />' +
+      '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:8px 0;font-size:13.5px;cursor:pointer"><input type="checkbox" id="pComments" ' + (p.comments ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Allow a special-instructions note from the guest</label>' +
+      '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:8px 0;font-size:13.5px;cursor:pointer"><input type="checkbox" id="pNoKitchen" ' + (p.noKitchen ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Not a kitchen item — skip the kitchen display &amp; KOT <span class="hint" style="margin:0">(hedhikaa, cakes, packaged goods…)</span></label>' +
+      '<div style="display:flex;gap:8px;margin-top:10px"><button class="primary tiny" id="pMetaSave" type="button">Save details</button></div></div>' +
       '<div class="pad" style="border-top:1px solid var(--border)"><button class="ghost" id="rStock">📦 Also track as stock — use it in other recipes</button>' +
       '<div class="hint" style="margin-top:6px">For an item you both sell and cook with (a house sauce, cold brew). It becomes a stock item you make in batches and can add to other recipes.</div></div>';
     function bindAoDel() { el("redit").querySelectorAll(".ao-del").forEach(function (b) { b.onclick = function () { b.parentNode.remove(); }; }); }
@@ -1236,8 +1241,14 @@
         return { name: r.querySelector(".ao-name").value.trim(), price: parseFloat(r.querySelector(".ao-price").value) || 0 };
       }).filter(function (a) { return a.name; });
       var allergens = el("pAllerg").value.trim();
-      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ allergens: allergens, addons: addons }) })
-        .then(function () { p.allergens = allergens; p.addons = addons.map(function (a) { return { name: a.name, price: Math.round(a.price * 100) }; }); toast("Item details saved — live on the guest menu"); })
+      var spiceLevels = el("pSpice").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      var comments = el("pComments").checked, noKitchen = el("pNoKitchen").checked;
+      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ allergens: allergens, addons: addons, spiceLevels: spiceLevels, comments: comments, noKitchen: noKitchen }) })
+        .then(function () {
+          p.allergens = allergens; p.addons = addons.map(function (a) { return { name: a.name, price: Math.round(a.price * 100) }; });
+          p.spiceLevels = spiceLevels; p.comments = comments; p.noKitchen = noKitchen;
+          toast("Item details saved — live on the guest menu");
+        })
         .catch(function (e) { toast(e.message || "Couldn't save"); });
     };
     el("pPhoto").onclick = function () { el("pPhotoFile").click(); };

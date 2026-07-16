@@ -1433,6 +1433,38 @@ patchFile(indexPath, (html) => html
     'return h.jsxs("div",{className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[',
     'return h.jsxs("div",{onClick:()=>{if(!ze.soldOut)Dn(N=>{const ex=N.cart.find(x=>x.pid===ze.id)||{};return{...N,sheet:ze,sheetQty:ex.qty||1,sheetAddons:ex.addons||[]}})},style:{cursor:"pointer"},className:`rounded-2xl overflow-hidden ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:['
   )
+
+  /* 98. Guest item sheet: spice level + special-instruction comment (managed per
+     item from the back office). Below the add-ons the sheet shows a single-
+     choice spice picker (only if the item defines levels) and a comments box
+     (only if the item allows one); the chosen spice/comment ride onto the cart
+     line and into the order note for the kitchen. Chips/box use the theme tokens
+     (_.chipOn/_.panel2) so they follow the dark sheet + every palette. Three
+     idempotent edits: (a) carry spice/comment when (re)opening the sheet from an
+     existing cart line, (b) render the pickers, (c) write them onto the cart. */
+  .replace(
+    'sheetAddons:ex.addons||[]}})',
+    'sheetAddons:ex.addons||[],sheetSpice:ex.spice||null,sheetComment:ex.comment||""}})'
+  )
+  .replace(
+    ',ao.name)})})]}):null,h.jsxs("div",{className:"flex items-center gap-3 mt-5",children:[',
+    ',ao.name)})})]}):null,(so.spiceLevels&&so.spiceLevels.length)?h.jsxs("div",{className:"mt-4",children:[h.jsx("div",{className:"text-sm font-semibold mb-2",children:"Spice level"}),h.jsx("div",{className:"flex flex-wrap gap-2",children:so.spiceLevels.map(sl=>h.jsx("button",{onClick:()=>Dn(N=>({...N,sheetSpice:N.sheetSpice===sl?null:sl})),className:`px-3 py-1.5 rounded-full text-sm ${(fe.sheetSpice||"")===sl?_.chipOn:_.panel2}`,children:sl},sl))})]}):null,so.comments?h.jsxs("div",{className:"mt-4",children:[h.jsx("div",{className:"text-sm font-semibold mb-2",children:"Special instructions"}),h.jsx("textarea",{value:fe.sheetComment||"",onChange:_e=>{var _v=_e.target.value;Dn(N=>({...N,sheetComment:_v}))},maxLength:140,rows:2,placeholder:"e.g. no onions, less sugar…",className:`w-full rounded-xl px-3 py-2 text-sm ${_.panel2}`,style:{resize:"none",outline:"none",border:"none",color:"inherit"}})]}):null,h.jsxs("div",{className:"flex items-center gap-3 mt-5",children:['
+  )
+  .replace(
+    '{pid:so.id,qty:N.sheetQty||1,addons:N.sheetAddons||[]}',
+    '{pid:so.id,qty:N.sheetQty||1,addons:N.sheetAddons||[],spice:N.sheetSpice||null,comment:N.sheetComment||""}'
+  )
+
+  /* 99. Keep non-kitchen items off the printed kitchen ticket (KOT). Items the
+     owner flagged "not a kitchen item" (hedhikaa, cakes, packaged goods) are
+     still on the bill/receipt, but there's nothing to cook — so drop them from
+     the KOT. A whole order of only such items already skips the queue server-
+     side (starts "ready"); this handles the mixed-order case. Idempotent: the
+     unfiltered `ut.order.items.map(` find is gone from the replacement. */
+  .replace(
+    'ut.order.items.map((f,A)=>h.jsxs("div",{className:"flex gap-3 py-1.5 text-base font-bold"',
+    'ut.order.items.filter(f=>!f.noKitchen).map((f,A)=>h.jsxs("div",{className:"flex gap-3 py-1.5 text-base font-bold"'
+  )
   .replace('onClick:()=>$1(ze.id,-1),className:"px-2.5 py-1.5"', 'onClick:e=>{e.stopPropagation();$1(ze.id,-1)},className:"px-2.5 py-1.5"')
   .replace('onClick:()=>$1(ze.id,1),className:"px-2.5 py-1.5"', 'onClick:e=>{e.stopPropagation();$1(ze.id,1)},className:"px-2.5 py-1.5"')
   .replace('onClick:()=>$1(ze.id,1),className:`p-2 rounded-lg ${_.btn}`', 'onClick:e=>{e.stopPropagation();$1(ze.id,1)},className:`p-2 rounded-lg ${_.btn}`')
@@ -1792,6 +1824,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.64"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.65"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

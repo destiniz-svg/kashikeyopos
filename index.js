@@ -978,7 +978,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
        engine) rather than silently vanishing; untracked items (no numeric
        stock) always show; only plain stock-tracked items counted down to zero
        are hidden. */
-    products: products.filter((p) => hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", desc: p.desc || "", allergens: p.allergens || "", addons: Array.isArray(p.addons) ? p.addons : [], stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
+    products: products.filter((p) => hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", desc: p.desc || "", allergens: p.allergens || "", addons: Array.isArray(p.addons) ? p.addons : [], spiceLevels: Array.isArray(p.spiceLevels) ? p.spiceLevels : [], comments: !!p.comments, noKitchen: !!p.noKitchen, stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
     cust });
 }));
 
@@ -1003,7 +1003,17 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
       .map((a) => defined.find((d) => String(d.name) === String(a && a.name)))
       .filter(Boolean).map((d) => ({ name: d.name, price: Number(d.price) || 0 }));
     const addOnSum = addons.reduce((s, a) => s + a.price, 0);
-    return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: (Number(src.price) || 0) + addOnSum, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false, addons: addons.length ? addons : undefined, note: addons.length ? addons.map((a) => a.name).join(", ") : undefined };
+    /* Spice level: single choice, validated against the product's own list so a
+       tampered cart can't inject a fake modifier. Comment: free special
+       instruction, only if the item allows it. Both ride the kitchen note. */
+    const spiceOpts = p && Array.isArray(p.spiceLevels) ? p.spiceLevels : [];
+    const spice = spiceOpts.includes(String(ci.spice)) ? String(ci.spice) : null;
+    const comment = (p && p.comments && typeof ci.comment === "string") ? ci.comment.trim().slice(0, 140) : "";
+    const noKitchen = !!(p && p.noKitchen);
+    const noteBits = addons.map((a) => a.name);
+    if (spice) noteBits.push(spice);
+    if (comment) noteBits.push("“" + comment + "”");
+    return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: (Number(src.price) || 0) + addOnSum, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false, addons: addons.length ? addons : undefined, spice: spice || undefined, comment: comment || undefined, noKitchen: noKitchen || undefined, note: noteBits.length ? noteBits.join(" · ") : undefined };
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
   /* Enforce availability server-side: a guest must never place an order for an
@@ -1018,7 +1028,12 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
   const zone = otype === "delivery" ? zones.find((z) => idEq(z.id, zoneId)) || null : null;
   const cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
   const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]));
-  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: "new", createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
+  /* An order made up entirely of non-kitchen items (hedhikaa, cakes, pastries,
+     packaged goods) has nothing to cook, so it skips the kitchen queue and is
+     "ready" to hand over / settle straight away. Mixed orders stay "new" and
+     the kitchen display just hides the non-kitchen lines. */
+  const allNoKitchen = lines.length > 0 && lines.every((l) => l.noKitchen);
+  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
   const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, order: normalizeOrder(order) });
