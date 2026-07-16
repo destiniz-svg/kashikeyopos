@@ -255,6 +255,7 @@
     // deliveries
     inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [], pos: [],
     theme: { name: "orange", dark: false, override: false },
+    catOrder: [],
   };
   try {
     var savedTheme = JSON.parse(localStorage.getItem("kback-theme"));
@@ -340,7 +341,7 @@
     return Promise.all([
       api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"), api("/pos"),
     ]).then(function (r) {
-      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products;
+      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
       if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "orange"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
@@ -923,6 +924,7 @@
       '<button class="ghost tiny" id="mExport" title="Download the current menu as Excel">⬇ Export</button>' +
       '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
       '<button class="ghost tiny" id="mEmbed" title="Download every web photo and store it compressed for offline use">⤓ Embed photos</button>' +
+      '<button class="ghost tiny" id="mCatOrder" title="Arrange the order categories appear in on the till and the guest menu">↕ Category order</button>' +
       '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
       '<div class="panel" id="redit"><div class="empty">Pick a menu item to build its recipe.</div></div>' +
@@ -971,10 +973,65 @@
       }
       next();
     };
+    el("mCatOrder").onclick = openCatOrder;
     el("plist").querySelectorAll("[data-p]").forEach(function (d) {
       d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
     });
     if (S.selProduct) { if (S.recipe) drawRecipeEditor(); else loadRecipe(); }
+  }
+
+  /* Full ordered category list = the saved order (kept only for categories that
+     still exist on the menu) followed by any remaining categories, so a new
+     category always shows up (at the end) even before it's been arranged. */
+  function orderedCats() {
+    var have = {}; S.products.forEach(function (p) { if (p.cat) have[p.cat] = true; });
+    var seen = {}, out = [];
+    (S.catOrder || []).forEach(function (c) { if (have[c] && !seen[c]) { seen[c] = true; out.push(c); } });
+    Object.keys(have).sort().forEach(function (c) { if (!seen[c]) { seen[c] = true; out.push(c); } });
+    return out;
+  }
+
+  /* Reorder the menu categories. The saved order drives both the till Sell view
+     and the guest menu (they read settings.catOrder). Up/down keeps it simple
+     and reliable on touch. */
+  function openCatOrder() {
+    var order = orderedCats();
+    function draw() {
+      var rows = order.map(function (c, i) {
+        var n = S.products.filter(function (p) { return p.cat === c; }).length;
+        return '<div class="catrow" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:var(--card)">' +
+          '<span style="width:20px;text-align:right;color:var(--muted)">' + (i + 1) + '</span>' +
+          '<span style="flex:1;font-weight:600">' + esc(c) + '</span>' +
+          '<span class="badge dim">' + n + ' item' + (n === 1 ? "" : "s") + '</span>' +
+          '<button class="ghost tiny" data-up="' + i + '"' + (i === 0 ? " disabled" : "") + ' title="Move up">↑</button>' +
+          '<button class="ghost tiny" data-dn="' + i + '"' + (i === order.length - 1 ? " disabled" : "") + ' title="Move down">↓</button>' +
+        '</div>';
+      }).join("");
+      el("modalHost").innerHTML =
+        '<div class="overlay" id="ov"><div class="modal" style="max-width:440px">' +
+        '<h3 style="margin:0 0 4px">Category order</h3>' +
+        '<p class="sub" style="margin:0 0 12px">Arrange how categories appear on the till and the guest menu. Applies to both.</p>' +
+        '<div id="catList">' + (rows || '<div class="empty">Add menu items first.</div>') + '</div>' +
+        '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px">' +
+        '<button class="ghost" id="cClose">Cancel</button>' +
+        '<button class="primary" id="cSave"' + (order.length ? "" : " disabled") + '>Save order</button></div>' +
+        '</div></div>';
+      el("modalHost").querySelectorAll("[data-up]").forEach(function (b) {
+        b.onclick = function () { var i = +b.dataset.up; var t = order[i - 1]; order[i - 1] = order[i]; order[i] = t; draw(); };
+      });
+      el("modalHost").querySelectorAll("[data-dn]").forEach(function (b) {
+        b.onclick = function () { var i = +b.dataset.dn; var t = order[i + 1]; order[i + 1] = order[i]; order[i] = t; draw(); };
+      });
+      el("cClose").onclick = function () { el("modalHost").innerHTML = ""; };
+      var sv = el("cSave");
+      if (sv) sv.onclick = function () {
+        sv.disabled = true;
+        api("/category-order", { method: "PUT", body: JSON.stringify({ order: order }) })
+          .then(function () { S.catOrder = order.slice(); el("modalHost").innerHTML = ""; toast("Category order saved — the till and guest menu will follow."); })
+          .catch(function (e) { sv.disabled = false; toast(e.message || "Couldn't save"); });
+      };
+    }
+    draw();
   }
 
   function loadRecipe() {

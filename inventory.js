@@ -390,10 +390,35 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         /* till writes its chosen theme into settings (see guest-sync-patch
            #30/31) so the back office can follow the same palette */
         theme: { name: sd.ktheme || "orange", dark: sd.ktdark === true },
+        /* owner-defined menu category order (applied on the till + guest menu);
+           empty means "no custom order — fall back to insertion/default" */
+        catOrder: Array.isArray(sd.catOrder) ? sd.catOrder : [],
         products,
       };
     });
     res.json(out);
+  }));
+
+  /* Persist the owner's menu category order into the shared settings entity.
+     The till (ce.catOrder) and guest menu (A.catOrder) both read this and sort
+     their category chips + sections by it, so one arrangement drives both. */
+  router.put("/category-order", authAny, wrap(async (req, res) => {
+    const order = Array.isArray(req.body && req.body.order)
+      ? [...new Set(req.body.order.filter((c) => typeof c === "string").map((c) => c.trim()).filter(Boolean))].slice(0, 200)
+      : [];
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];
+      const data = Object.assign({}, (row && row.data) || {});
+      data.catOrder = order;
+      const up = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         RETURNING rowver`, [req.orgId, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : null;
+    });
+    if (poke && rowver) poke(req.orgId, rowver);
+    res.json({ ok: true, order });
   }));
 
   /* Set (or clear) a menu item's photo from the back office. The till already

@@ -353,6 +353,13 @@ const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M=
    QR menu greets with a different friendly line each visit. Picked once per page
    load (memoised) and never the same as the previous visit (last index kept in
    localStorage), so repeat visits keep feeling fresh. */
+/* Sort a list of menu categories by the owner's saved order (settings.catOrder,
+   arranged from the back office). Categories present in the order come first in
+   that sequence; any not listed (e.g. a brand-new category) keep their original
+   relative order and trail behind. No saved order ⇒ list is returned unchanged.
+   Shared by the till Sell view and the guest menu so one arrangement drives both. */
+const catSortJs = "window.__ksCatSort=function(cats,order){cats=Array.isArray(cats)?cats:[];order=Array.isArray(order)?order:[];if(!order.length)return cats;var idx={};order.forEach(function(c,i){if(idx[c]==null)idx[c]=i;});var pin=cats.filter(function(c){return idx[c]!=null;}).sort(function(a,b){return idx[a]-idx[b];});var rest=cats.filter(function(c){return idx[c]==null;});return pin.concat(rest);};";
+
 const greetJs = "window.__ksGreet=(function(){var p=null,L=['Order now and savor your favorites','What are you craving today?','Freshly made, just for you','Treat yourself today','Hungry? You are in the right place','So good to see you again','Find your new favorite','Great taste starts right here','Your feast is a few taps away','Pick something delicious','Good things are cooking here','A warm welcome to your table'];return function(){if(p!==null)return p;try{var last=parseInt(localStorage.getItem('ksh-greet'),10);if(isNaN(last))last=-1;var i;do{i=Math.floor(Math.random()*L.length)}while(L.length>1&&i===last);localStorage.setItem('ksh-greet',String(i));p=L[i]}catch(e){p=L[0]}return p}})();";
 
 const chartJs = `window.__ksChartMode=function(){try{return localStorage.getItem('ksh-chart')==='bar'?'bar':'line';}catch(e){return 'line';}};
@@ -437,6 +444,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-avail", availJs);
   html = injectInline(html, "ksh-ring", ringJs);
   html = injectInline(html, "ksh-greet", greetJs);
+  html = injectInline(html, "ksh-catsort", catSortJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -1268,6 +1276,26 @@ patchFile(indexPath, (html) => html
     'h.jsx("span",{className:`px-2 py-0.5 rounded-lg text-xs font-bold ${_.chipOn} shrink-0 whitespace-nowrap`,children:f.table}),h.jsxs("div",{className:"flex-1 min-w-0",children:[h.jsxs("div",{className:"text-sm font-medium flex flex-wrap items-center gap-x-2 gap-y-1",children:[h.jsx("span",{className:"whitespace-nowrap font-semibold",children:f.no}),f.customerName&&h.jsx("span",{className:"text-xs px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-400 whitespace-nowrap",children:f.customerName}),'
   )
 
+  /* 94. Honour the owner's saved menu category order (settings.catOrder, set in
+     the back office) on the till Sell view. The category chip list was the
+     hardcoded base set + product categories in insertion order; now it is
+     sorted by catOrder (unlisted categories trail, keeping their order). `ce`
+     is the till's settings object; the memo also depends on ce.catOrder so the
+     chips reorder live when the arrangement syncs in. Idempotent: the bare
+     unsorted `["All",...new Set(...)]` find is gone from the replacement. */
+  .replace(
+    'BT=R.useMemo(()=>["All",...new Set([...xC,...c.map(f=>f.cat)])],[c])',
+    'BT=R.useMemo(()=>["All",...(window.__ksCatSort?window.__ksCatSort([...new Set([...xC,...c.map(f=>f.cat)])],ce&&ce.catOrder):[...new Set([...xC,...c.map(f=>f.cat)])])],[c,ce&&ce.catOrder])'
+  )
+
+  /* 94b. Same saved category order on the guest/user menu. `A` is the guest's
+     settings object (falls back to the till settings). Idempotent: the bare
+     `he=[...new Set(N.map(ne=>ne.cat))]` find is gone from the replacement. */
+  .replace(
+    'he=[...new Set(N.map(ne=>ne.cat))]',
+    'he=window.__ksCatSort?window.__ksCatSort([...new Set(N.map(ne=>ne.cat))],A&&A.catOrder):[...new Set(N.map(ne=>ne.cat))]'
+  )
+
   /* 93. Show stock-untracked items on the guest menu. The guest category grid
      filtered products with `ze.stock>0`, which hid every item whose stock is
      left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
@@ -1692,6 +1720,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.59"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.60"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
