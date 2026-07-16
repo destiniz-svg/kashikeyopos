@@ -1647,9 +1647,37 @@ patchFile(indexPath, (html) => html
     'h.jsxs("div",{className:"text-center my-4",children:[h.jsx("div",{className:`text-xs ${_.sub}`,children:"Amount due"}),h.jsx("div",{className:"font-mono tabular-nums text-3xl font-bold",children:ue($n(Rn.items,Rn.fee||0).total)})]})',
     '(()=>{const Kc=Rn.customerId?p.find(W=>W.id===Rn.customerId):null,Kb=(Rn.KshBD||0)>0?Rn.KshBD:Rn.paidOnline?0:Kc&&Kc.discPct||0,Kq=$n((Rn.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1}),Rn.fee||0,Kb);return h.jsxs("div",{className:"my-4",children:[br("refund")&&!Rn.paidOnline&&h.jsx("button",{onClick:()=>{const j=[0,5,10,15,20,25];As({...Rn,KshBD:j[(j.indexOf(Rn.KshBD||0)+1)%j.length]})},className:`rounded-xl px-3 py-1 text-xs mb-2 ${(Rn.KshBD||0)>0?"bg-amber-500/15 text-amber-500":_.chip}`,children:(Rn.KshBD||0)>0?"Bill disc "+Rn.KshBD+"%":"+ Bill disc"}),h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsx("span",{children:"Subtotal"}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Kq.subtotal)})]}),(Kq.billDisc||0)>0&&h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["Discount ",Kq.billDiscPct,"%"]}),h.jsx("span",{className:"font-mono tabular-nums text-amber-500",children:"-"+Y(Kq.billDisc)})]}),h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["GST ",(ce.gstBp||0)/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Kq.gst)})]}),(Kq.svcCharge||0)>0&&h.jsxs("div",{className:`flex justify-between text-xs mt-1 ${_.sub}`,children:[h.jsxs("span",{children:["Svc charge ",(ce.svcChargeBp||0)/100,"%"]}),h.jsx("span",{className:"font-mono tabular-nums",children:Y(Kq.svcCharge)})]}),h.jsxs("div",{className:"text-center mt-3",children:[h.jsx("div",{className:`text-xs ${_.sub}`,children:"Amount due"}),h.jsx("div",{className:"font-mono tabular-nums text-3xl font-bold",children:ue(Kq.total)})]})]})})()'
   )
+
+  /* 91. Guest theme switcher on the customer portal. The store's chosen palette
+     already flows to the portal (from settings.ktheme/ktdark, applied in the
+     guest boot effect below), but the guest had no way to change it. This adds
+     a 🎨 button to the guest header that opens a small popover of the five
+     available themes (Orange/Green Apple/Watermelon/Mango/Strawberry) plus a
+     light/dark toggle. Picking a theme calls the app's own KshSetTheme / dark
+     setter (`a`) — the palette `_` recomputes and the root `kt-*` class swaps —
+     and persists the guest's choice in localStorage (ksh-gtheme / ksh-gdark),
+     independent of the store default. Popover open state rides on fe.themeOpen
+     (Dn spread, same pattern as fe.sheet/fe.cexp) so no new React hook is
+     needed. Idempotent: the find is the bare header action group before the
+     Waiter button; the replacement wedges the 🎨 button + popover in front of
+     it, so the exact `children:[(fe.table||fe.slug)` opener no longer appears. */
+  .replace(
+    'h.jsxs("div",{className:"ml-auto flex items-center gap-1.5",children:[(fe.table||fe.slug)&&h.jsxs("button",{onClick:ub,',
+    'h.jsxs("div",{className:"ml-auto flex items-center gap-1.5",children:[h.jsx("button",{onClick:()=>Dn(N=>({...N,themeOpen:!(N&&N.themeOpen)})),className:`p-1.5 rounded-full ${_.btn}`,title:"Theme","aria-label":"Change theme",children:h.jsx("span",{style:{fontSize:"14px",lineHeight:1},children:"🎨"})}),fe.themeOpen&&h.jsxs("div",{style:{position:"fixed",top:"56px",right:"10px",zIndex:60,minWidth:"172px"},className:`p-3 rounded-2xl shadow-xl ${_.modal}`,children:[h.jsx("div",{className:`text-[11px] font-semibold uppercase tracking-wide mb-2 ${_.sub}`,children:"Theme"}),h.jsx("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"8px"},children:[["orange","#C1502D"],["green","#4E8A3A"],["watermelon","#DA3B4B"],["mango","#E19A12"],["strawberry","#D8437A"]].map(([tn,col])=>h.jsx("button",{onClick:()=>{KshSetTheme(tn);try{localStorage.setItem("ksh-gtheme",tn)}catch(e){}},title:tn,style:{height:"30px",borderRadius:"9px",background:col,cursor:"pointer",border:"2px solid "+(KshTheme===tn?"#fff":"transparent"),boxShadow:KshTheme===tn?"0 0 0 2px "+col:"inset 0 0 0 1px rgba(0,0,0,.14)"}},tn))}),h.jsx("button",{onClick:()=>{try{localStorage.setItem("ksh-gdark",i?"0":"1")}catch(e){}a(v=>!v)},className:`mt-2.5 w-full text-xs font-medium py-1.5 rounded-lg ${_.btn}`,children:i?"☀️  Light mode":"🌙  Dark mode"})]}),(fe.table||fe.slug)&&h.jsxs("button",{onClick:ub,'
+  )
+
+  /* 92. Let the guest theme choice (patch #91) survive reloads and win over the
+     store default. The guest boot effect used to apply only the store settings;
+     now it reads the guest's saved ksh-gtheme/ksh-gdark first and falls back to
+     the store palette when the guest hasn't overridden. Idempotent: the find is
+     the original store-only apply, which the replacement no longer contains. */
+  .replace(
+    'const kt=I&&I.settings;kt&&kt.ktheme&&KshSetTheme(kt.ktheme),kt&&kt.ktdark!==void 0&&a(kt.ktdark===!0)',
+    'const kt=I&&I.settings;var _gt=null,_gd=null;try{_gt=localStorage.getItem("ksh-gtheme");_gd=localStorage.getItem("ksh-gdark")}catch(e){}var _th=_gt||(kt&&kt.ktheme);_th&&KshSetTheme(_th);if(_gd!=null)a(_gd==="1");else if(kt&&kt.ktdark!==void 0)a(kt.ktdark===!0)'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.57"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.58"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
