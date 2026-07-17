@@ -2210,9 +2210,21 @@ patchFile(indexPath, (html) => html
     ',Ns=b.filter(f=>f.status!=="completed")',
     ',Ns=b.filter(f=>!["completed","wasted","cancelled","refunded","void","voided"].includes(f.status))'
   )
+
+  /* 128. Order-details panel: adapt to the device height. The desktop panel was
+     pinned to a fixed 78vh, so on taller screens it left dead space and on
+     shorter ones the item list was squeezed to a couple of rows. It is already
+     flex-col h-full with a flex-1 scrolling item list, so switching the card to
+     a viewport-relative height (100vh minus the sticky top offset + a small
+     margin) lets the list grow/shrink with the screen. Idempotent: the find
+     carries the literal 78vh the replacement no longer has. */
+  .replace(
+    'style:{height:"78vh"},children:Jw}',
+    'style:{height:"calc(100vh - 100px)"},children:Jw}'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.91"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.92"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
