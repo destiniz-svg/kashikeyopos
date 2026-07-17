@@ -488,7 +488,17 @@ const outletSwitchJs =
    and returns the boolean. Used for float sign-out and own-tables-only. */
 const outletPrefJs =
   "window.__ksStore=function(){try{var c=JSON.parse(localStorage.getItem('kashikeyo-cloud')||'{}');if(c.storeId)return c.storeId;if(c.token){var p=JSON.parse(atob(c.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return p.s||'main';}}catch(e){}return 'main';};" +
-  "window.__ksOutletPref=function(ce,name){try{var m=(ce&&ce.outletPrefs)||{};var s=m[window.__ksStore()]||{};return !!s[name];}catch(e){return false;}};";
+  "window.__ksOutletPref=function(ce,name){try{var m=(ce&&ce.outletPrefs)||{};var s=m[window.__ksStore()]||{};return !!s[name];}catch(e){return false;}};" +
+  "window.__ksOutletPrefVal=function(ce,name){try{var m=(ce&&ce.outletPrefs)||{};var s=m[window.__ksStore()]||{};return s[name];}catch(e){return undefined;}};";
+
+/* Idle auto-lock: when the current outlet sets an idle timeout (idleLockSec) and a
+   staff member is signed in, return the till to the PIN lock after that many
+   seconds without pointer/key/touch activity. Fully self-contained (no React
+   surgery): tracks last activity, and every 2s checks the synced per-outlet pref
+   (window.__ksCE / __ksStore) and the signed-in flag (window.__ksMe), calling the
+   exposed lock (window.__ksLock). Does nothing at the PIN gate (no __ksMe). */
+const idleLockJs =
+  "(function(){var last=Date.now();function bump(){last=Date.now();}['pointerdown','keydown','touchstart','wheel','click','mousemove'].forEach(function(ev){try{document.addEventListener(ev,bump,true);}catch(e){}});setInterval(function(){try{var s=Number(window.__ksOutletPrefVal&&window.__ksOutletPrefVal(window.__ksCE,'idleLockSec'))||0;if(s>0&&window.__ksMe&&window.__ksLock&&(Date.now()-last)>=s*1000){last=Date.now();window.__ksLock();}}catch(e){}},2000);})();";
 
 patchFile(indexPath, (html) => {
   html = injectScript(html, "offline-bridge.js");
@@ -508,6 +518,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-catnav", catNavJs);
   html = injectInline(html, "ksh-outlet", outletSwitchJs);
   html = injectInline(html, "ksh-outletpref", outletPrefJs);
+  html = injectInline(html, "ksh-idlelock", idleLockJs);
   html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
@@ -2110,6 +2121,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.76"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.77"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

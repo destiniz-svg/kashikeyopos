@@ -596,8 +596,12 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       const cur = Object.assign({}, prefs[sid] || {});
       if (body.floatLogout !== undefined) cur.floatLogout = !!body.floatLogout;
       if (body.ownTablesOnly !== undefined) cur.ownTablesOnly = !!body.ownTablesOnly;
-      // drop all-false entries to keep the map tidy
-      if (!cur.floatLogout && !cur.ownTablesOnly) delete prefs[sid]; else prefs[sid] = cur;
+      if (body.idleLockSec !== undefined) {
+        const n = Math.max(0, Math.min(3600, Math.round(num(body.idleLockSec))));
+        if (n) cur.idleLockSec = n; else delete cur.idleLockSec;
+      }
+      // drop empty entries to keep the map tidy
+      if (!cur.floatLogout && !cur.ownTablesOnly && !cur.idleLockSec) delete prefs[sid]; else prefs[sid] = cur;
       data.outletPrefs = prefs;
       const up = await client.query(
         `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
