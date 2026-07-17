@@ -1465,6 +1465,21 @@ patchFile(indexPath, (html) => html
     'style:{cursor:"pointer",padding:"10px"},className:`rounded-2xl ${_.panel} ${ze.soldOut?"opacity-60":""}`,children:[ze.img?h.jsx("img",{src:ze.img,alt:"",className:"w-full rounded-lg mb-1.5",style:{aspectRatio:"4/3",objectFit:"contain",background:"var(--k-panel2)"}}):h.jsx("div",{className:`w-full rounded-lg mb-1.5 flex items-center justify-center text-4xl ${_.panel2}`,style:{aspectRatio:"4/3"},children:ze.emoji}),h.jsxs("div",{children:['
   )
 
+  /* 107. Dark-mode photo frame. The menu illustrations are drawn on a bright
+     cream canvas, so in a dark theme they glared as light blocks and the
+     theme-panel letterbox (var(--k-panel2)) went dark, clashing with the light
+     art. Frame every contained photo (till tile + guest card + guest sheet) on a
+     fixed warm-cream tile in both light and dark mode, so the picture reads as an
+     intentional "photo card" instead of a mismatched bright square. (In light
+     mode --k-panel2 already IS this cream, so light mode is unchanged; only dark
+     mode gains the light frame.) Global regex so all three photo spots update.
+     Idempotent: `objectFit:"contain",background:"var(--k-panel2)"` is gone from
+     the replacement, so a re-bake matches nothing. */
+  .replace(
+    /objectFit:"contain",background:"var\(--k-panel2\)"/g,
+    'objectFit:"contain",background:"#F4F1EB"'
+  )
+
   /* 93. Show stock-untracked items on the guest menu. The guest category grid
      filtered products with `ze.stock>0`, which hid every item whose stock is
      left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
@@ -1921,6 +1936,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.69"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.70"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
