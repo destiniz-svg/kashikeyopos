@@ -1514,6 +1514,27 @@ patchFile(indexPath, (html) => html
     'iae={cashier:["sell","orders","customers","inventory"],kitchen:["orders"],'
   )
 
+  /* 116. Waiter (server) role — the classic front-of-house operator login. A
+     waiter signs in at the shared till with their own PIN so every order/sale is
+     attributed to them (sales-by-server, accountability), and can take orders,
+     open tables, attach customers and settle — but NOT refund, view reports,
+     touch inventory/products or store settings (owner/manager only). Caps match
+     the front-of-house set. Runs after #108 so it matches that patch's cashier
+     array. Idempotent: the `iae={cashier:...,inventory...` find is gone from the
+     replacement. */
+  .replace(
+    'iae={cashier:["sell","orders","customers","inventory"],kitchen:["orders"],',
+    'iae={waiter:["sell","orders","customers"],cashier:["sell","orders","customers","inventory"],kitchen:["orders"],'
+  )
+
+  /* 116b. Offer Waiter in the staff-PIN role picker (Staff PINs, owner-only) so
+     owners can create waiter logins. Front-of-house first. Idempotent: the bare
+     4-role array is gone from the replacement. */
+  .replace(
+    'children:["cashier","kitchen","manager","owner"].map(f=>h.jsx("button",{onClick:()=>ra({...ui,role:f})',
+    'children:["waiter","cashier","kitchen","manager","owner"].map(f=>h.jsx("button",{onClick:()=>ra({...ui,role:f})'
+  )
+
   /* 109. Purchasing is operational stock work, so gate Purchase Orders on
      "inventory" (was "reports"). This lets cashiers raise POs / receive supplier
      bills via #108 WITHOUT exposing sales reports & the dashboard (still gated on
@@ -2036,6 +2057,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.74"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.75"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
