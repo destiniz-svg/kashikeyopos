@@ -2135,18 +2135,8 @@ patchFile(indexPath, (html) => html
   .replace('[["orange","Orange","#C1502D"],["green","Green Apple","#4E8A3A"],["watermelon","Watermelon","#DA3B4B"]', '[["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"]')
   .replace('[["orange","#C1502D"],["green","#4E8A3A"],["watermelon","#DA3B4B"]', '[["green","#0FA968"],["orange","#C1502D"],["watermelon","#DA3B4B"]')
 
-  /* 121. "Current order" status-ring strip (reference banner). Insert a
-     full-width strip as the first child of the Sell grid (ksh-reg-grid),
-     mapping the live kitchen orders `b` (same source the Orders/KDS view
-     filters) into horizontal cards: table, item count, running total, and a
-     progress ring via the existing __ksRing/__ksProg/__kstatus helpers.
-     Clicking a card jumps to the Orders view (s("orders")). Hidden when there
-     are no live orders. Idempotent: inserting the strip between `children:[`
-     and the col1 rail breaks the contiguous find so a re-bake can't match. */
-  .replace(
-    'children:[h.jsx("div",{className:"hidden lg:block ksh-col1"',
-    'children:[(function(){try{var _lo=(Ti||[]).filter(function(rj){return rj&&(rj.table||rj.label)&&Array.isArray(rj.lines);});return _lo.length?h.jsxs("div",{style:{gridColumn:"1 / -1"},className:`rounded-2xl p-3 mb-1 ${_.panel}`,children:[h.jsx("div",{className:`text-xs font-semibold uppercase tracking-wide px-1 mb-2 ${_.faint}`,children:"Current order"}),h.jsx("div",{className:"flex gap-2 overflow-x-auto pb-1",children:_lo.map(function(rj){var st=rj.status||(rj.parked?"ready":"preparing"),qy=(rj.lines||[]).reduce(function(a,l){return a+(l.qty||1);},0),tt=(rj.lines||[]).reduce(function(a,l){return a+Un(l);},0);return h.jsxs("button",{onClick:function(){rj.parked?$w(rj.id):ea(rj.id);},className:`flex items-center gap-2.5 rounded-xl px-3 py-2 shrink-0 ${_.chip}`,style:{minWidth:"176px"},children:[h.jsxs("div",{className:"min-w-0 text-left flex-1",children:[h.jsx("div",{className:"text-xs font-bold truncate",children:rj.table||rj.label||"Order"}),h.jsx("div",{className:`text-[11px] truncate ${_.sub}`,children:(rj.parked?"Parked · ":"")+qy+" item"+(qy===1?"":"s")+(tt?" · "+ue(tt):"")})]}),h.jsx("div",{className:"shrink-0",dangerouslySetInnerHTML:{__html:window.__ksRing(window.__ksProg(st),window.__kstatus(st).fg,38)}})]},rj.id);})})]}):null;}catch(_e){return null;}})(),h.jsx("div",{className:"hidden lg:block ksh-col1"'
-  )
+  /* 121. (Removed) The "Current order" status-ring strip was reverted per
+     request — the Sell view and order panel return to the original design. */
 
   /* 122. Move the main nav from the bottom bar into a top-centre pill (matches
      the reference: nav lives in the header row, not a bottom tab bar). Retarget
@@ -2161,6 +2151,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.84"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.85"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
