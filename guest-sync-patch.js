@@ -482,6 +482,14 @@ const outletSwitchJs =
   "window.__ksSwitchStore=function(storeId){var ob=[];try{ob=JSON.parse(localStorage.getItem('kashikeyo-outbox'))||[]}catch(e){}if(ob.length){alert('Some sales haven\\u2019t synced yet \\u2014 wait for the synced state, then switch outlet.');return;}var cfg={};try{cfg=JSON.parse(localStorage.getItem('kashikeyo-cloud'))||{}}catch(e){}if(!cfg.token){alert('Sign in to the cloud first to switch outlets.');return;}fetch('/api/select-store',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.token},body:JSON.stringify({storeId:storeId})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d}})}).then(function(x){if(!x.ok||!x.d.token){alert((x.d&&x.d.error)||'Couldn\\u2019t switch outlet');return;}cfg.token=x.d.token;cfg.storeId=x.d.storeId||storeId;try{localStorage.setItem('kashikeyo-cloud',JSON.stringify(cfg));localStorage.setItem('kashikeyo-cursor','0')}catch(e){}location.reload()}).catch(function(){alert('Couldn\\u2019t switch outlet \\u2014 check your connection.')})};" +
   "window.__ksOutletMenu=function(anchor){var ex=document.getElementById('ksOutletPop');if(ex){ex.remove();return;}var cfg={};try{cfg=JSON.parse(localStorage.getItem('kashikeyo-cloud'))||{}}catch(e){}if(!cfg.token)return;fetch('/api/stores',{headers:{'Authorization':'Bearer '+cfg.token}}).then(function(r){return r.json()}).then(function(d){var stores=(d.stores||[]).filter(function(s){return s.active!==false});if(stores.length<2)return;var cur=cfg.storeId||'main';var pop=document.createElement('div');pop.id='ksOutletPop';pop.setAttribute('style','position:fixed;z-index:99999;background:#fff;color:#26221C;border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.22);padding:6px;min-width:210px;max-width:290px;font-family:-apple-system,system-ui,sans-serif');pop.innerHTML='<div style=\"font-size:11px;font-weight:700;color:#8A8378;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px 4px\">Switch outlet</div>'+stores.map(function(s){var on=s.id===cur;return '<button data-sid=\"'+String(s.id).replace(/\"/g,'&quot;')+'\" style=\"display:flex;width:100%;align-items:center;gap:8px;text-align:left;border:none;background:'+(on?'#F4F1EB':'transparent')+';padding:9px 10px;border-radius:9px;font-size:14px;cursor:pointer;color:inherit\">'+(on?'\\u25CF':'\\u25CB')+' <span style=\"flex:1\">'+String(s.name||s.id).replace(/</g,'&lt;')+'</span></button>'}).join('');document.body.appendChild(pop);var r=anchor.getBoundingClientRect();pop.style.top=(r.bottom+6)+'px';pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-pop.offsetWidth-8))+'px';pop.querySelectorAll('[data-sid]').forEach(function(b){b.onclick=function(){var sid=b.getAttribute('data-sid');pop.remove();if(sid!==cur)window.__ksSwitchStore(sid)}});setTimeout(function(){document.addEventListener('pointerdown',function hh(e){if(!pop.contains(e.target)){pop.remove();document.removeEventListener('pointerdown',hh,true)}},true)},0)}).catch(function(){})};";
 
+/* Per-outlet operating prefs the till reads from its own outlet. __ksStore reads
+   the current store id from the cloud token (set at login / by the switcher);
+   __ksOutletPref(ce, name) looks that outlet up in the synced settings.outletPrefs
+   and returns the boolean. Used for float sign-out and own-tables-only. */
+const outletPrefJs =
+  "window.__ksStore=function(){try{var c=JSON.parse(localStorage.getItem('kashikeyo-cloud')||'{}');if(c.storeId)return c.storeId;if(c.token){var p=JSON.parse(atob(c.token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));return p.s||'main';}}catch(e){}return 'main';};" +
+  "window.__ksOutletPref=function(ce,name){try{var m=(ce&&ce.outletPrefs)||{};var s=m[window.__ksStore()]||{};return !!s[name];}catch(e){return false;}};";
+
 patchFile(indexPath, (html) => {
   html = injectScript(html, "offline-bridge.js");
   html = injectCss(html, lovableCss, "ksh-lovable");
@@ -499,6 +507,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-catsort", catSortJs);
   html = injectInline(html, "ksh-catnav", catNavJs);
   html = injectInline(html, "ksh-outlet", outletSwitchJs);
+  html = injectInline(html, "ksh-outletpref", outletPrefJs);
   html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
@@ -1535,6 +1544,50 @@ patchFile(indexPath, (html) => html
     'children:["waiter","cashier","kitchen","manager","owner"].map(f=>h.jsx("button",{onClick:()=>ra({...ui,role:f})'
   )
 
+  /* Expose the current staff (Ne), settings (ce) and the lock fn (jI) as window
+     globals at their definitions, so the outlet-behaviour patches below can read
+     them from ANY render scope (the bills rail and the ticket template don't have
+     Ne/ce in scope). A window.* access is never a ReferenceError, so those
+     patches degrade to a no-op instead of throwing. */
+  .replace(',Ne=g.find(f=>f.id===r)||null', ',Ne=window.__ksMe=g.find(f=>f.id===r)||null')
+  .replace('jI=()=>{n(null),Ss(!1),Yf(null),Es("")}', 'jI=window.__ksLock=()=>{n(null),Ss(!1),Yf(null),Es("")}')
+  .replace(
+    'text-base font-bold tracking-tight",style:{maxWidth:"48vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},children:ce.storeName}',
+    'text-base font-bold tracking-tight",style:{maxWidth:"48vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},children:(window.__ksCE=ce,ce.storeName)}'
+  )
+
+  /* 117. Float mode — auto sign-out to the PIN lock after each completed sale when
+     the current outlet has floatLogout on (owner setting). Both settle paths end
+     by closing the payment modal with Pi({open:!1,...}); after that, if the pref
+     is on, defer the lock so the receipt/toast shows first. Reads window globals
+     only. Negative-lookahead ⇒ idempotent on re-bake. */
+  .replace(
+    /Pi\(\{open:!1,payments:\[\],amt:""\}\)(?!,window\.__ksOutletPref)/g,
+    'Pi({open:!1,payments:[],amt:""}),window.__ksOutletPref&&window.__ksOutletPref(window.__ksCE,"floatLogout")&&window.__ksLock&&setTimeout(window.__ksLock,650)'
+  )
+
+  /* 118. Stamp the operator onto a new open ticket/tab so own-tables-only can
+     filter by owner. Untagged legacy tickets stay visible to everyone.
+     Idempotent: the bare ticket template (…deliveryNote:""}) is gone. */
+  .replace(
+    '{id:ct(),label:"#"+t,lines:[],customerId:null,parked:!1,table:null,covers:1,otype:"takeaway",deliveryNote:""}',
+    '{id:ct(),label:"#"+t,lines:[],customerId:null,parked:!1,table:null,covers:1,otype:"takeaway",deliveryNote:"",userId:window.__ksMe&&window.__ksMe.id,userName:window.__ksMe&&window.__ksMe.name}'
+  )
+
+  /* 119. Own-tables-only — a waiter sees only their own open tickets in the bills
+     rail when the outlet pref is on. Fail-safe: only filters for a waiter with the
+     pref on; everyone else and untagged tickets are unaffected, and any missing
+     global just means no filter (never throws). Two rail sites (compact + wide).
+     Idempotent: the bare `Ti.map(<v>=>` find is gone from each replacement. */
+  .replace(
+    'Ti.map(f=>h.jsxs("button",{onClick:()=>f.parked?$w(f.id):ea(f.id)',
+    '((window.__ksOutletPref&&window.__ksOutletPref(window.__ksCE,"ownTablesOnly")&&window.__ksMe&&window.__ksMe.role==="waiter")?Ti.filter(f=>!f.userId||f.userId===window.__ksMe.id):Ti).map(f=>h.jsxs("button",{onClick:()=>f.parked?$w(f.id):ea(f.id)'
+  )
+  .replace(
+    'Ti.map(rj=>h.jsxs("button",{onClick:()=>rj.parked?$w(rj.id):ea(rj.id)',
+    '((window.__ksOutletPref&&window.__ksOutletPref(window.__ksCE,"ownTablesOnly")&&window.__ksMe&&window.__ksMe.role==="waiter")?Ti.filter(rj=>!rj.userId||rj.userId===window.__ksMe.id):Ti).map(rj=>h.jsxs("button",{onClick:()=>rj.parked?$w(rj.id):ea(rj.id)'
+  )
+
   /* 109. Purchasing is operational stock work, so gate Purchase Orders on
      "inventory" (was "reports"). This lets cashiers raise POs / receive supplier
      bills via #108 WITHOUT exposing sales reports & the dashboard (still gated on
@@ -2057,6 +2110,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.75"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.76"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

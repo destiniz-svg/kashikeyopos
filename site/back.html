@@ -1090,15 +1090,23 @@
      same menu; each till pulls its own store-scoped orders. Switching which
      outlet a till sells for is done on the till (tap the store name). */
   function openOutlets() {
-    function draw(stores, def) {
+    function draw(stores, def, prefs) {
+      prefs = prefs || {};
       var rows = stores.map(function (s) {
-        return '<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;background:var(--panel2)">' +
+        var pr = prefs[s.id] || {};
+        var toggle = function (key, label, on) {
+          return '<button class="ghost tiny" data-pref="' + esc(s.id) + '" data-key="' + key + '" data-on="' + (on ? "1" : "0") + '" style="' + (on ? "background:var(--primary);color:#fff;border-color:var(--primary)" : "") + '" title="' +
+            (key === "floatLogout" ? "Auto sign-out to the PIN lock after each sale (shared-terminal float mode)" : "Waiters see only their own open tables") + '">' + (on ? "✓ " : "") + label + "</button>";
+        };
+        return '<div style="padding:9px 11px;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;background:var(--panel2)">' +
+          '<div style="display:flex;align-items:center;gap:8px">' +
           '<div style="flex:1;min-width:0"><div style="font-weight:600">' + esc(s.name) +
           (s.id === def ? ' <span class="badge dim">Main</span>' : "") +
           (s.active ? "" : ' <span class="badge" style="background:#FBEAE4;color:#8A3A22">Closed</span>') + "</div>" +
           '<div class="hint" style="margin:2px 0 0">' + esc(s.code) + (s.address ? " · " + esc(s.address) : "") + "</div></div>" +
           '<button class="ghost tiny" data-edit="' + esc(s.id) + '">Edit</button>' +
-          '<button class="ghost tiny" data-active="' + esc(s.id) + '" data-on="' + (s.active ? "1" : "0") + '">' + (s.active ? "Close" : "Open") + "</button>" +
+          '<button class="ghost tiny" data-active="' + esc(s.id) + '" data-on="' + (s.active ? "1" : "0") + '">' + (s.active ? "Close" : "Open") + "</button></div>" +
+          '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' + toggle("floatLogout", "Auto sign-out after sale", pr.floatLogout) + toggle("ownTablesOnly", "Waiters see own tables only", pr.ownTablesOnly) + "</div>" +
           "</div>";
       }).join("");
       el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:520px;max-height:88vh;overflow:auto">' +
@@ -1128,6 +1136,14 @@
             .then(load).catch(function (e) { b.disabled = false; toast(e.message || "Couldn't update"); });
         };
       });
+      el("modalHost").querySelectorAll("[data-pref]").forEach(function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          var body = {}; body[b.dataset.key] = b.dataset.on !== "1";
+          api("/stores/" + encodeURIComponent(b.dataset.pref) + "/prefs", { method: "POST", body: JSON.stringify(body) })
+            .then(load).catch(function (e) { b.disabled = false; toast(e.message || "Couldn't update"); });
+        };
+      });
       el("outCancel").onclick = function () { el("modalHost").innerHTML = ""; };
       el("outClear").onclick = function () {
         el("outId").value = ""; el("outName").value = ""; el("outAddr").value = "";
@@ -1143,7 +1159,7 @@
           .catch(function (e) { sv.disabled = false; toast(e.message || "Couldn't save"); });
       };
     }
-    function load() { api("/stores").then(function (r) { draw(r.stores || [], r.defaultStoreId); }).catch(function (e) { toast(e.message || "Couldn't load outlets"); }); }
+    function load() { api("/stores").then(function (r) { draw(r.stores || [], r.defaultStoreId, r.prefs || {}); }).catch(function (e) { toast(e.message || "Couldn't load outlets"); }); }
     load();
   }
 

@@ -570,9 +570,43 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      it. */
   const storeSlug = (s) => String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
   router.get("/stores", authAny, wrap(async (req, res) => {
-    const r = await withOrg(req.orgId, (client) => client.query(
-      "SELECT id, code, name, address, active FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.orgId]));
-    res.json({ stores: r.rows, defaultStoreId: "main" });
+    const out = await withOrg(req.orgId, async (client) => {
+      const r = await client.query(
+        "SELECT id, code, name, address, active FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.orgId]);
+      const st = await client.query(
+        "SELECT data->'outletPrefs' AS p FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [req.orgId]);
+      return { stores: r.rows, prefs: (st.rows[0] && st.rows[0].p) || {} };
+    });
+    res.json({ stores: out.stores, prefs: out.prefs, defaultStoreId: "main" });
+  }));
+
+  /* Per-outlet operating preferences (owner-set): floatLogout = auto sign-out to
+     the PIN lock after each completed sale (shared-terminal "float" mode);
+     ownTablesOnly = waiters see only their own open tables/tickets. Stored on the
+     shared settings entity keyed by store id (settings.outletPrefs[storeId]); the
+     till reads its own outlet's prefs from the synced settings. */
+  router.post("/stores/:id/prefs", authAny, wrap(async (req, res) => {
+    const sid = String(req.params.id || "").slice(0, 32);
+    const body = req.body || {};
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];
+      const data = Object.assign({}, (row && row.data) || {});
+      const prefs = Object.assign({}, data.outletPrefs || {});
+      const cur = Object.assign({}, prefs[sid] || {});
+      if (body.floatLogout !== undefined) cur.floatLogout = !!body.floatLogout;
+      if (body.ownTablesOnly !== undefined) cur.ownTablesOnly = !!body.ownTablesOnly;
+      // drop all-false entries to keep the map tidy
+      if (!cur.floatLogout && !cur.ownTablesOnly) delete prefs[sid]; else prefs[sid] = cur;
+      data.outletPrefs = prefs;
+      const up = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         RETURNING rowver`, [req.orgId, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : null;
+    });
+    if (poke && rowver) poke(req.orgId, rowver);
+    res.json({ ok: true });
   }));
   router.post("/stores", authAny, wrap(async (req, res) => {
     const body = req.body || {};

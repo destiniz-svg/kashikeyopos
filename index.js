@@ -920,7 +920,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
                    before it learned it (same protective intent as product meta). */
                 ? " || CASE WHEN NOT (excluded.data ? 'catOrder')  AND entities.data ? 'catOrder'  THEN jsonb_build_object('catOrder',  entities.data->'catOrder')  ELSE '{}'::jsonb END" +
                   " || CASE WHEN NOT (excluded.data ? 'catGroups') AND entities.data ? 'catGroups' THEN jsonb_build_object('catGroups', entities.data->'catGroups') ELSE '{}'::jsonb END" +
-                  " || CASE WHEN NOT (excluded.data ? 'defaultsUntracked') AND entities.data ? 'defaultsUntracked' THEN jsonb_build_object('defaultsUntracked', entities.data->'defaultsUntracked') ELSE '{}'::jsonb END"
+                  " || CASE WHEN NOT (excluded.data ? 'defaultsUntracked') AND entities.data ? 'defaultsUntracked' THEN jsonb_build_object('defaultsUntracked', entities.data->'defaultsUntracked') ELSE '{}'::jsonb END" +
+                  " || CASE WHEN NOT (excluded.data ? 'outletPrefs') AND entities.data ? 'outletPrefs' THEN jsonb_build_object('outletPrefs', entities.data->'outletPrefs') ELSE '{}'::jsonb END"
                 : "";
         const r = await client.query(
           `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
