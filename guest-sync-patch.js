@@ -472,6 +472,16 @@ function injectInline(html, marker, js) {
    the orange "Add to cart" (ksh-primary) is untouched. */
 const isheetCss = ".ksh-isheet{background:#211c19;color:#f5f1ea;box-shadow:0 -8px 40px rgba(0,0,0,.45)}.ksh-isheet .ksh-panel2{background:rgba(255,255,255,.09)}.ksh-isheet .ksh-sub{color:rgba(245,241,234,.74)}.ksh-isheet .ksh-faint{color:rgba(245,241,234,.5)}";
 
+/* Outlet switcher for the till header. Fully self-contained (no React internals):
+   reads the till's cloud token from localStorage, lists the org's outlets, and
+   on pick re-issues the token for that store via /api/select-store, resets the
+   sync cursor and reloads so the till re-pulls that outlet's store-scoped data.
+   Guarded: refuses to switch while unsynced sales sit in the outbox (so nothing
+   is pushed to the wrong outlet), and only shows when there are 2+ open outlets. */
+const outletSwitchJs =
+  "window.__ksSwitchStore=function(storeId){var ob=[];try{ob=JSON.parse(localStorage.getItem('kashikeyo-outbox'))||[]}catch(e){}if(ob.length){alert('Some sales haven\\u2019t synced yet \\u2014 wait for the synced state, then switch outlet.');return;}var cfg={};try{cfg=JSON.parse(localStorage.getItem('kashikeyo-cloud'))||{}}catch(e){}if(!cfg.token){alert('Sign in to the cloud first to switch outlets.');return;}fetch('/api/select-store',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.token},body:JSON.stringify({storeId:storeId})}).then(function(r){return r.json().then(function(d){return{ok:r.ok,d:d}})}).then(function(x){if(!x.ok||!x.d.token){alert((x.d&&x.d.error)||'Couldn\\u2019t switch outlet');return;}cfg.token=x.d.token;cfg.storeId=x.d.storeId||storeId;try{localStorage.setItem('kashikeyo-cloud',JSON.stringify(cfg));localStorage.setItem('kashikeyo-cursor','0')}catch(e){}location.reload()}).catch(function(){alert('Couldn\\u2019t switch outlet \\u2014 check your connection.')})};" +
+  "window.__ksOutletMenu=function(anchor){var ex=document.getElementById('ksOutletPop');if(ex){ex.remove();return;}var cfg={};try{cfg=JSON.parse(localStorage.getItem('kashikeyo-cloud'))||{}}catch(e){}if(!cfg.token)return;fetch('/api/stores',{headers:{'Authorization':'Bearer '+cfg.token}}).then(function(r){return r.json()}).then(function(d){var stores=(d.stores||[]).filter(function(s){return s.active!==false});if(stores.length<2)return;var cur=cfg.storeId||'main';var pop=document.createElement('div');pop.id='ksOutletPop';pop.setAttribute('style','position:fixed;z-index:99999;background:#fff;color:#26221C;border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.22);padding:6px;min-width:210px;max-width:290px;font-family:-apple-system,system-ui,sans-serif');pop.innerHTML='<div style=\"font-size:11px;font-weight:700;color:#8A8378;text-transform:uppercase;letter-spacing:.05em;padding:8px 10px 4px\">Switch outlet</div>'+stores.map(function(s){var on=s.id===cur;return '<button data-sid=\"'+String(s.id).replace(/\"/g,'&quot;')+'\" style=\"display:flex;width:100%;align-items:center;gap:8px;text-align:left;border:none;background:'+(on?'#F4F1EB':'transparent')+';padding:9px 10px;border-radius:9px;font-size:14px;cursor:pointer;color:inherit\">'+(on?'\\u25CF':'\\u25CB')+' <span style=\"flex:1\">'+String(s.name||s.id).replace(/</g,'&lt;')+'</span></button>'}).join('');document.body.appendChild(pop);var r=anchor.getBoundingClientRect();pop.style.top=(r.bottom+6)+'px';pop.style.left=Math.max(8,Math.min(r.left,window.innerWidth-pop.offsetWidth-8))+'px';pop.querySelectorAll('[data-sid]').forEach(function(b){b.onclick=function(){var sid=b.getAttribute('data-sid');pop.remove();if(sid!==cur)window.__ksSwitchStore(sid)}});setTimeout(function(){document.addEventListener('pointerdown',function hh(e){if(!pop.contains(e.target)){pop.remove();document.removeEventListener('pointerdown',hh,true)}},true)},0)}).catch(function(){})};";
+
 patchFile(indexPath, (html) => {
   html = injectScript(html, "offline-bridge.js");
   html = injectCss(html, lovableCss, "ksh-lovable");
@@ -488,6 +498,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-greet", greetJs);
   html = injectInline(html, "ksh-catsort", catSortJs);
   html = injectInline(html, "ksh-catnav", catNavJs);
+  html = injectInline(html, "ksh-outlet", outletSwitchJs);
   html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
@@ -1521,6 +1532,15 @@ patchFile(indexPath, (html) => html
     'br("credit")&&h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Auto-discount on bills (%) — owner only"}'
   )
 
+  /* 114. Make the till header store name a tap target to switch outlet. Opens the
+     injected outlet switcher (__ksOutletMenu); it only shows a menu when there
+     are 2+ open outlets, and switching is guarded on an empty outbox. Idempotent:
+     the bare header store-name div (no onClick) is gone from the replacement. */
+  .replace(
+    'h.jsx("div",{className:"text-lg font-black mt-1",children:ce.storeName})',
+    'h.jsx("div",{className:"text-lg font-black mt-1",style:{cursor:"pointer"},title:"Switch outlet",onClick:e=>window.__ksOutletMenu&&window.__ksOutletMenu(e.currentTarget),children:ce.storeName})'
+  )
+
   /* 112. Hide "hidden" items from the till Sell grid. An item flagged hidden in
      the back office (Menu settings) stays in the catalogue (for history/refunds)
      but drops off the Sell tiles. Idempotent: the bare `Sw=c.filter(f=>(window`
@@ -1995,6 +2015,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.71"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.72"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

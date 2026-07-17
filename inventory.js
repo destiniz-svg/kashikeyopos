@@ -562,6 +562,47 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, count: rowver.count, qty: clear ? null : qty });
   }));
 
+  /* ── Outlets (stores) ───────────────────────────────────────────────────
+     Manage the org's outlets from the back office. Every outlet automatically
+     shares the org-level menu, categories and customers (they're seeded/held as
+     global), so a new outlet opens with the same menu — the till just pulls its
+     own store-scoped orders. Cookie-auth (authAny) so the owner console reaches
+     it. */
+  const storeSlug = (s) => String(s || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+  router.get("/stores", authAny, wrap(async (req, res) => {
+    const r = await withOrg(req.orgId, (client) => client.query(
+      "SELECT id, code, name, address, active FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.orgId]));
+    res.json({ stores: r.rows, defaultStoreId: "main" });
+  }));
+  router.post("/stores", authAny, wrap(async (req, res) => {
+    const body = req.body || {};
+    const name = String(body.name || "").trim().slice(0, 60);
+    if (!name) return res.status(400).json({ error: "outlet name required" });
+    const id = storeSlug(body.id || name) || ("store-" + Date.now().toString(36));
+    const code = (String(body.code || id).toUpperCase().replace(/[^A-Z0-9]+/g, "-").slice(0, 16)) || "STORE";
+    const address = String(body.address || "").slice(0, 200);
+    const r = await withOrg(req.orgId, (client) => client.query(
+      `INSERT INTO stores (org_id, id, code, name, address) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (org_id, id) DO UPDATE SET code=excluded.code, name=excluded.name, address=excluded.address, active=true
+       RETURNING id, code, name, address, active`,
+      [req.orgId, id, code, name, address]));
+    res.json({ store: r.rows[0] });
+  }));
+  router.post("/stores/:id/active", authAny, wrap(async (req, res) => {
+    const active = !!(req.body && req.body.active);
+    const out = await withOrg(req.orgId, async (client) => {
+      if (!active) {
+        const n = (await client.query("SELECT count(*)::int AS c FROM stores WHERE org_id=$1 AND active=true AND id<>$2", [req.orgId, req.params.id])).rows[0].c;
+        if (n < 1) return { guard: true };
+      }
+      const r = await client.query("UPDATE stores SET active=$3 WHERE org_id=$1 AND id=$2 RETURNING id, active", [req.orgId, req.params.id, active]);
+      return { store: r.rows[0] };
+    });
+    if (out.guard) return res.status(400).json({ error: "keep at least one outlet open" });
+    if (!out.store) return res.status(404).json({ error: "outlet not found" });
+    res.json({ ok: true, store: out.store });
+  }));
+
   /* ── Menu import / export (Excel) ───────────────────────────────────────
      Download a template or the live menu as .xlsx, edit in any spreadsheet
      app, and re-import to bulk create/update items. Import matches rows to

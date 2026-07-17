@@ -1015,6 +1015,7 @@
       '<button class="ghost tiny" id="mEmbed" title="Download every web photo and store it compressed for offline use">⤓ Embed photos</button>' +
       '<button class="ghost tiny" id="mCatOrder" title="Set up main categories and sub categories for the till and guest menu">☰ Menu layout</button>' +
       '<button class="ghost tiny" id="mRestock" title="Set stock for every item at once, or make them all always-available">📦 Restock all</button>' +
+      '<button class="ghost tiny" id="mOutlets" title="Add and manage outlets — every outlet shares this menu">🏪 Outlets</button>' +
       '</div>' +
       '<input type="file" id="mImportFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" /></div>' +
       '<div class="panel prodlist" id="plist">' + (list || '<div class="empty">No menu items match.</div>') + "</div></div>" +
@@ -1066,6 +1067,7 @@
     };
     el("mCatOrder").onclick = openMenuLayout;
     el("mRestock").onclick = openRestock;
+    el("mOutlets").onclick = openOutlets;
     el("plist").querySelectorAll("[data-p]").forEach(function (d) {
       d.onclick = function () { S.selProduct = d.dataset.p; S.recipe = null; renderRecipes(); loadRecipe(); };
     });
@@ -1081,6 +1083,68 @@
     (S.catOrder || []).forEach(function (c) { if (have[c] && !seen[c]) { seen[c] = true; out.push(c); } });
     Object.keys(have).sort().forEach(function (c) { if (!seen[c]) { seen[c] = true; out.push(c); } });
     return out;
+  }
+
+  /* Add & manage outlets. Every outlet shares this org's menu, categories and
+     customers automatically (they're global), so a new outlet opens with the
+     same menu; each till pulls its own store-scoped orders. Switching which
+     outlet a till sells for is done on the till (tap the store name). */
+  function openOutlets() {
+    function draw(stores, def) {
+      var rows = stores.map(function (s) {
+        return '<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border:1px solid var(--border);border-radius:12px;margin-bottom:7px;background:var(--panel2)">' +
+          '<div style="flex:1;min-width:0"><div style="font-weight:600">' + esc(s.name) +
+          (s.id === def ? ' <span class="badge dim">Main</span>' : "") +
+          (s.active ? "" : ' <span class="badge" style="background:#FBEAE4;color:#8A3A22">Closed</span>') + "</div>" +
+          '<div class="hint" style="margin:2px 0 0">' + esc(s.code) + (s.address ? " · " + esc(s.address) : "") + "</div></div>" +
+          '<button class="ghost tiny" data-edit="' + esc(s.id) + '">Edit</button>' +
+          '<button class="ghost tiny" data-active="' + esc(s.id) + '" data-on="' + (s.active ? "1" : "0") + '">' + (s.active ? "Close" : "Open") + "</button>" +
+          "</div>";
+      }).join("");
+      el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:520px;max-height:88vh;overflow:auto">' +
+        '<h3 style="margin:0 0 4px">Outlets</h3>' +
+        '<p class="sub" style="margin:0 0 12px">Every outlet automatically shares this menu, categories and customers. To switch which outlet a till is selling for, tap the store name at the top of the till.</p>' +
+        '<div id="outList">' + (rows || '<div class="empty">No outlets yet.</div>') + "</div>" +
+        '<div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">' +
+        '<div style="font-weight:600;margin-bottom:6px" id="outFormTitle">Add an outlet</div>' +
+        '<input type="hidden" id="outId" />' +
+        '<input id="outName" placeholder="Outlet name — e.g. Hulhumale Branch" style="width:100%;margin-bottom:8px" />' +
+        '<input id="outAddr" placeholder="Address (optional)" style="width:100%;margin-bottom:10px" />' +
+        '<div style="display:flex;justify-content:space-between;gap:8px">' +
+        '<button class="ghost" id="outCancel">Close</button>' +
+        '<div style="display:flex;gap:8px"><button class="ghost" id="outClear" style="display:none">+ New</button><button class="primary" id="outSave">Add outlet</button></div></div>' +
+        "</div></div></div>";
+      el("modalHost").querySelectorAll("[data-edit]").forEach(function (b) {
+        b.onclick = function () {
+          var s = stores.filter(function (x) { return x.id === b.dataset.edit; })[0]; if (!s) return;
+          el("outId").value = s.id; el("outName").value = s.name; el("outAddr").value = s.address || "";
+          el("outFormTitle").textContent = "Edit outlet"; el("outSave").textContent = "Save changes"; el("outClear").style.display = "";
+        };
+      });
+      el("modalHost").querySelectorAll("[data-active]").forEach(function (b) {
+        b.onclick = function () {
+          b.disabled = true;
+          api("/stores/" + encodeURIComponent(b.dataset.active) + "/active", { method: "POST", body: JSON.stringify({ active: b.dataset.on !== "1" }) })
+            .then(load).catch(function (e) { b.disabled = false; toast(e.message || "Couldn't update"); });
+        };
+      });
+      el("outCancel").onclick = function () { el("modalHost").innerHTML = ""; };
+      el("outClear").onclick = function () {
+        el("outId").value = ""; el("outName").value = ""; el("outAddr").value = "";
+        el("outFormTitle").textContent = "Add an outlet"; el("outSave").textContent = "Add outlet"; el("outClear").style.display = "none";
+      };
+      el("outSave").onclick = function () {
+        var name = el("outName").value.trim(); if (!name) return toast("Outlet name required");
+        var body = { name: name, address: el("outAddr").value.trim() };
+        var editing = !!el("outId").value; if (editing) body.id = el("outId").value;
+        var sv = el("outSave"); sv.disabled = true;
+        api("/stores", { method: "POST", body: JSON.stringify(body) })
+          .then(function () { toast(editing ? "Outlet updated" : "Outlet added — it shares this menu"); load(); })
+          .catch(function (e) { sv.disabled = false; toast(e.message || "Couldn't save"); });
+      };
+    }
+    function load() { api("/stores").then(function (r) { draw(r.stores || [], r.defaultStoreId); }).catch(function (e) { toast(e.message || "Couldn't load outlets"); }); }
+    load();
   }
 
   /* Bulk restock every menu item to a quantity, or make them all
