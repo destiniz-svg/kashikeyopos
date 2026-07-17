@@ -2177,9 +2177,32 @@ patchFile(indexPath, (html) => html
     'Ne.name.split(" ")[0]]})]})]}),h.jsxs("div",{className:"max-w-6xl mx-auto px-4 pt-4',
     'Ne.name.split(" ")[0]]})]})]}),h.jsxs("div",{className:"ksh-navpad max-w-6xl mx-auto px-4 pt-4'
   )
+
+  /* 125. Returns v1: restock-vs-waste disposition + refund-to-account. Extend
+     the existing partial-line refund (tI). Each refund line is tagged disp
+     restock|waste (window.__ksRetWaste); waste lines skip the till stock
+     restore here AND are skipped by inventory.js processSales, so a used item
+     does not come back. window.__ksRetAcct (only with a customer) credits the
+     whole refund to their account instead of the original tender. Toggles are
+     reset after submit. Both off = the original behaviour exactly. Idempotent:
+     the find opens with `const f=en.lines.filter`; the replacement uses f0. */
+  .replace(
+    'tI=()=>{const f=en.lines.filter((I,j)=>v1.includes(j));if(!f.length)return Q("Select lines to refund","warn");const A=$n(f);ja.current+=0,rn.current+=1,y(I=>[...I.map(j=>j.id===en.id?{...j,refunded:!0}:j),{id:ct(),no:Mi("CRN"),t:Date.now(),lines:f,subtotal:-A.subtotal,gst:-A.gst,total:-A.total,payments:[{method:"Refund·"+en.payments[0].method,amount:-A.total}],customerId:en.customerId,type:"refund",refunded:!1,change:0,userName:Ne.name,userId:Ne.id,shiftId:De?De.id:null}]),d(I=>I.map(j=>{const F=f.find(W=>W.pid===j.id);return F&&j.stock!=null?{...j,stock:j.stock+F.qty}:j})),na({stock:f.map(I=>({id:I.pid,d:I.qty}))});const N=en.payments.filter(I=>I.method==="Credit").reduce((I,j)=>I+j.amount,0);N>0&&en.customerId&&(v(I=>I.map(j=>j.id===en.customerId?{...j,balance:Math.max(0,(j.balance||0)-Math.min(N,A.total))}:j)),na({cust:[{id:en.customerId,pts:0,bal:-Math.min(N,A.total)}]})),mu(null),m1([]),Q(`Credit note issued · ${ue(A.total)} refunded, stock restored`)}',
+    'tI=()=>{const f0=en.lines.filter((I,j)=>v1.includes(j));if(!f0.length)return Q("Select lines to refund","warn");var _wst=!!window.__ksRetWaste,_acct=!!window.__ksRetAcct&&!!en.customerId;const f=f0.map(function(I){return{...I,disp:_wst?"waste":"restock"};});const A=$n(f);ja.current+=0,rn.current+=1,y(I=>[...I.map(j=>j.id===en.id?{...j,refunded:!0}:j),{id:ct(),no:Mi("CRN"),t:Date.now(),lines:f,subtotal:-A.subtotal,gst:-A.gst,total:-A.total,payments:[{method:_acct?"To account":"Refund·"+en.payments[0].method,amount:-A.total}],customerId:en.customerId,type:"refund",refunded:!1,change:0,userName:Ne.name,userId:Ne.id,shiftId:De?De.id:null}]),_wst||(d(I=>I.map(j=>{const F=f.find(W=>W.pid===j.id);return F&&j.stock!=null?{...j,stock:j.stock+F.qty}:j})),na({stock:f.map(I=>({id:I.pid,d:I.qty}))}));if(_acct){v(I=>I.map(j=>j.id===en.customerId?{...j,balance:Math.max(0,(j.balance||0)-A.total)}:j)),na({cust:[{id:en.customerId,pts:0,bal:-A.total}]})}else{const N=en.payments.filter(I=>I.method==="Credit").reduce((I,j)=>I+j.amount,0);N>0&&en.customerId&&(v(I=>I.map(j=>j.id===en.customerId?{...j,balance:Math.max(0,(j.balance||0)-Math.min(N,A.total))}:j)),na({cust:[{id:en.customerId,pts:0,bal:-Math.min(N,A.total)}]}))}try{window.__ksRetWaste=!1;window.__ksRetAcct=!1}catch(e){}mu(null),m1([]),Q(`Credit note · ${ue(A.total)} `+(_wst?"refunded, items marked wasted":"refunded, stock restored"))}'
+  )
+
+  /* 126. Return-modal controls: a Restock/Waste toggle and (with a customer) a
+     Refund-to-account toggle, inserted above the Refund button. They flip the
+     window flags read by tI (patch 125), updating their own label/style via the
+     DOM so no React state is needed. Idempotent: inserting between the lines map
+     and the Refund button breaks the contiguous find. */
+  .replace(
+    'Y(Un(f))})]},A)}),h.jsxs("button",{onClick:tI,',
+    'Y(Un(f))})]},A)}),h.jsxs("div",{style:{display:"flex",gap:"6px",marginTop:"10px"},children:[h.jsx("button",{type:"button",onClick:function(e){var w=!window.__ksRetWaste;window.__ksRetWaste=w;e.currentTarget.textContent=w?"🗑 Items wasted":"♻ Restock items";e.currentTarget.style.color=w?"#d9534f":"";},className:`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border ${_.border}`,children:window.__ksRetWaste?"🗑 Items wasted":"♻ Restock items"}),en.customerId?h.jsx("button",{type:"button",onClick:function(e){var a=!window.__ksRetAcct;window.__ksRetAcct=a;e.currentTarget.style.outline=a?"2px solid var(--k-primary)":"";e.currentTarget.style.color=a?"var(--k-primary)":"";},className:`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border ${_.border}`,children:"↩ Refund to account"}):null]}),h.jsxs("button",{onClick:tI,'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.89"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.90"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

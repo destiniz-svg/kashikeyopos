@@ -175,6 +175,10 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
           if (!rec.rowCount) return; // no recipes → product-level stock (the till's own sd()) is the tracking layer
           const perIngredient = new Map();
           for (const line of sale.lines) {
+            // Returns: a line the cashier marked as wasted (opened/used, e.g. a
+            // drunk coffee) does not come back into stock — the original sale's
+            // deduction stands. Only restock-disposition lines are restored.
+            if (isRefund && line.disp === "waste") continue;
             const sold = num(line.qty, 1);
             for (const rl of rec.rows.filter((r) => r.product_id === String(line.pid))) {
               const prev = perIngredient.get(rl.ingredient_id) || 0;
