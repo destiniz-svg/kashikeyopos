@@ -2234,9 +2234,24 @@ patchFile(indexPath, (html) => html
     'children:[h.jsx("div",{className:"text-xs font-semibold truncate",children:rj.table?rj.table:rj.otype==="delivery"?"🛵 "+rj.label:rj.label}),h.jsx("div",{className:"text-xs opacity-60 truncate",children:rj.parked?"Parked":rj.label})]',
     'children:[h.jsxs("div",{className:"text-xs font-semibold truncate",children:[rj.table?rj.table:rj.otype==="delivery"?"🛵 Delivery":rj.otype==="takeaway"?"🥡 Takeaway":"🍽 Dine-in",rj.label?" · "+rj.label:""]}),(function(){var _c=rj.customerId?(p||[]).find(function(c){return c.id===rj.customerId;}):null;var _nm=_c?_c.name:(rj.customerName||"Walk-in customer");var _g=(rj.otype!=="delivery"&&rj.covers)?rj.covers+" guest"+(rj.covers>1?"s":""):"";return h.jsx("div",{className:"text-xs opacity-60 truncate",children:_nm+(_g?" · "+_g:"")});})(),rj.parked?h.jsx("div",{className:"text-xs opacity-60 truncate",style:{fontSize:"10px",marginTop:"2px"},children:"⏸ Parked"}):null]'
   )
+
+  /* 130. Bill tabs adapt to device width. The order-panel bill tabs sat in an
+     overflow-x-auto row, so on narrow tablets extra bills scrolled off-screen
+     and each tab showed only table·order#. Wrap the row (flex-wrap) so every
+     open bill is visible at any width, and enrich each tab with the customer
+     first name (or Walk-in) + guest count. Idempotent: the finds carry the
+     overflow-x-auto class / the bare table·label body the replacements drop. */
+  .replace(
+    'className:"flex items-center gap-2 overflow-x-auto pb-2",children:[((window.__ksOutletPref',
+    'className:"flex items-center gap-2 flex-wrap pb-2",children:[((window.__ksOutletPref'
+  )
+  .replace(
+    'f.table?f.table+" · "+f.label:f.otype==="delivery"?"🛵 "+f.label:f.label',
+    '(f.table?f.table:f.otype==="delivery"?"🛵":f.otype==="takeaway"?"🥡":"🍽")+" "+f.label+(function(){var _c=f.customerId?(p||[]).find(function(c){return c.id===f.customerId;}):null;var _n=_c?_c.name.split(" ")[0]:(f.customerName?f.customerName.split(" ")[0]:"Walk-in");var _g=(f.otype!=="delivery"&&f.covers)?" · "+f.covers+"p":"";return " · "+_n+_g;})()'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.93"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.94"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
