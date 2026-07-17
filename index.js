@@ -270,6 +270,49 @@ const isVisibleInStore = (data, storeId) => {
    second, stale copy instead of updating it in place. */
 const publicId = (row) => String(row.data && row.data.id ? row.data.id : row.id).split(":").pop();
 
+/* ── Server-side money integrity (audit FIN-01) ──────────────────────────────
+   A settled sale is authored on the till, which is offline-first, so we must
+   NEVER reject a completed sale at sync (that would lose money the cashier has
+   already taken). Instead we independently re-check its arithmetic at ingestion
+   and, on any inconsistency, stamp data.serverAudit so the record is accepted
+   but flagged for manager review. The checks are false-positive-resistant:
+   they reconcile the sale against ITS OWN declared components (no dependency on
+   server settings) plus a catalogue price-floor and the server GST rate.
+     lineTotal = round(price * qty * (1 - discPct/100))     (mirrors the till's Un)
+     total     = subtotal - billDisc + gst + svcCharge      (mirrors the till's $n) */
+const saleLineTotal = (l) => Math.round((Number(l && l.price) || 0) * (Number(l && l.qty) || 0) * (1 - (Number(l && l.discPct) || 0) / 100));
+function auditSaleMoney(sale, ctx) {
+  if (!sale || sale.foc) return null;                       // free-of-charge is legitimately 0
+  if (sale.type && sale.type !== "sale") return null;       // refunds derive from their original; validated by linkage
+  const lines = Array.isArray(sale.lines) ? sale.lines : [];
+  if (!lines.length) return null;
+  const num = (v) => Number(v) || 0;
+  const fee = num(sale.fee), billDisc = num(sale.billDisc), gst = num(sale.gst), svc = num(sale.svcCharge);
+  const subtotal = num(sale.subtotal), total = num(sale.total);
+  const tol = (base) => Math.max(5, Math.round(Math.abs(base) * 0.01)); // 1% or 0.05 MVR, absorbs rounding
+  const reasons = [];
+  const linesSum = lines.reduce((a, l) => a + saleLineTotal(l), 0) + fee;
+  if (Math.abs(linesSum - subtotal) > tol(linesSum)) reasons.push(`subtotal ${subtotal} != lines ${linesSum}`);
+  const compTotal = subtotal - billDisc + gst + svc;
+  if (Math.abs(compTotal - total) > tol(compTotal)) reasons.push(`total ${total} != components ${compTotal}`);
+  if (ctx && ctx.gstBp) {
+    const billDiscPct = num(sale.billDiscPct);
+    const taxable = lines.reduce((a, l) => (l && l.taxable === false ? a : a + saleLineTotal(l)), 0) + fee;
+    const expGst = Math.round(Math.round(taxable * (1 - billDiscPct / 100)) * ctx.gstBp / 1e4);
+    if (Math.abs(expGst - gst) > Math.max(5, Math.round(expGst * 0.02))) reasons.push(`gst ${gst} != rate-expected ${expGst}`);
+  }
+  if (ctx && ctx.prices) {
+    for (const l of lines) {
+      const prod = ctx.prices.get(String(l && l.pid || ""));
+      if (prod && !prod.open && prod.price > 0 && (Number(l.price) || 0) < prod.price - 1) {
+        reasons.push(`line ${l.pid} price ${l.price} below catalogue ${prod.price}`);
+      }
+    }
+  }
+  if (!reasons.length) return null;
+  return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
+}
+
 const hubs = new Map();
 const poke = (orgId, rowver) => {
   const set = hubs.get(orgId);
@@ -872,6 +915,20 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(req.org.o)]);
+    /* Money-integrity context (FIN-01): the catalogue prices + GST rate this org
+       is authoritative for, fetched once per sync only when the batch actually
+       carries a sale, so ordinary syncs pay nothing. */
+    let moneyCtx = null;
+    if (ops.some((o) => (o.puts || []).some((p) => p.kind === "sales"))) {
+      const [setRes, prodRes] = await Promise.all([
+        client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [req.org.o]),
+        client.query("SELECT data->>'id' AS id, data->>'price' AS price, data->>'openPrice' AS op FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.org.o]),
+      ]);
+      const st = setRes.rows[0] ? setRes.rows[0].data : {};
+      const prices = new Map();
+      for (const r of prodRes.rows) prices.set(String(r.id), { price: Number(r.price) || 0, open: r.op === "true" });
+      moneyCtx = { gstBp: Number(st.gstBp) || 0, svcBp: Number(st.svcChargeBp) || 0, prices };
+    }
     for (const op of ops) {
       const storeId = opStore(req, op);
       await client.query("INSERT INTO stores (org_id, id, code, name) VALUES ($1,$2,$3,$4) ON CONFLICT (org_id, id) DO NOTHING", [req.org.o, storeId, storeId.toUpperCase().slice(0, 16), storeId === DEFAULT_STORE_ID ? "Main Store" : storeId]);
@@ -884,6 +941,14 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         const data = { ...(p.data || {}) };
         data.id = String(data.id || p.id);
         if (!shared) data.storeId = cleanStoreId(p.storeId || data.storeId || storeId);
+        /* FIN-01: re-check the sale's money against the catalogue + GST rate and
+           flag (never reject) any inconsistency, so a tampered or mis-priced
+           sale is accepted-but-quarantined for manager review rather than
+           silently trusted. */
+        if (p.kind === "sales" && data.lines) {
+          const money = auditSaleMoney(data, moneyCtx);
+          if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); }
+        }
         const preserve = p.kind === "products"
           /* The till bundle is prebuilt and doesn't know about the back-office-
              managed menu meta (allergens, add-ons, spice levels, guest-note
@@ -949,15 +1014,31 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
       }
       for (const c of dz.cust || []) {
+        /* FIN-02: the balance still moves (money owed is real and the sale is
+           already done — offline devices must never be silently rejected), but
+           when the new balance breaks the customer's credit limit we stamp a
+           server-side over-limit flag for manager review. This is the backstop
+           the client-only limit check can't provide when two offline terminals
+           each spend the "remaining" credit against a stale balance. */
         const r = await client.query(
           `UPDATE entities SET
              data = data
                || jsonb_build_object('points', COALESCE((data->>'points')::numeric, 0) + $3)
-               || jsonb_build_object('balance', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4)),
+               || jsonb_build_object('balance', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4))
+               || CASE WHEN COALESCE((data->>'creditLimit')::numeric, 0) > 0
+                         AND GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4) > COALESCE((data->>'creditLimit')::numeric, 0)
+                       THEN jsonb_build_object('creditOverLimit', true,
+                              'creditOverBy', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4) - COALESCE((data->>'creditLimit')::numeric, 0),
+                              'creditOverAt', $5::bigint)
+                       ELSE jsonb_build_object('creditOverLimit', false) END,
              rowver = nextval('entities_rowver_seq'), updated_at = now()
-           WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver`,
-          [req.org.o, String(c.id), Number(c.pts) || 0, Number(c.bal) || 0]);
-        for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
+           WHERE org_id=$1 AND kind='customers' AND id=$2
+           RETURNING rowver, (data->>'creditOverLimit')='true' AS over, data->>'name' AS name, data->>'creditOverBy' AS overby`,
+          [req.org.o, String(c.id), Number(c.pts) || 0, Number(c.bal) || 0, Date.now()]);
+        for (const row of r.rows) {
+          rowver = Math.max(rowver, Number(row.rowver));
+          if (row.over) recordError("credit over-limit " + (row.name || c.id), new Error(`over by ${row.overby} laari`));
+        }
       }
       for (const d of op.dels || []) {
         const r = await client.query(
