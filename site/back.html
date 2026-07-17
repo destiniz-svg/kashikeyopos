@@ -10,9 +10,9 @@
      (light + dark) the till uses, following the till's own choice via the
      synced settings entity (ktheme/ktdark), with a local override picker. */
   :root {
-    --app: #FBFAF7; --panel: #FFFFFF; --panel2: #F4F1EB; --border: #E3DED4; --text: #26221C;
-    --sub: #8A8378; --faint: #B8B0A3; --primary: #C7431D; --primary-hov: #A33417;
-    --input: #FFFFFF; --btn: #F4F1EB; --btn-hov: #E8E1D2; --header: rgba(255,255,255,.92);
+    --app: #E7F1EA; --panel: #FFFFFF; --panel2: #E2F1E9; --border: #DAE7E0; --text: #16221C;
+    --sub: #68786F; --faint: #9AA79F; --primary: #0FA968; --primary-hov: #0B8A54;
+    --input: #FFFFFF; --btn: #E2F1E9; --btn-hov: #D4E8DE; --header: rgba(240,247,243,.92);
     --ok: #15803D; --ok-bg: #DCFCE7; --warn: #B91C1C; --warn-bg: #FEE2E2;
     --amber: #B45309; --amber-bg: #FEF3C7;
   }
@@ -342,7 +342,7 @@
     wiz: null, // { session, groups:[{location,lines}], step, entries:{ingredientId:{qty,unitName,reason}}, result }
     // deliveries
     inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [], pos: [],
-    theme: { name: "orange", dark: false, override: false },
+    theme: { name: "green", dark: false, override: false },
     catOrder: [], catGroups: [],
   };
   try {
@@ -355,8 +355,8 @@
   var THEMES = {
     orange: { l: { bg:"#FBFAF7",text:"#26221C",sub:"#8A8378",faint:"#B8B0A3",pri:"#C7431D",prih:"#A33417",panel:"#FFFFFF",panel2:"#F4F1EB",border:"#E3DED4",input:"#FFFFFF",btn:"#F4F1EB",btnh:"#E8E1D2",nav:"rgba(255,255,255,.92)" },
               d: { bg:"#1B1713",text:"#ECE5DA",sub:"#A79E90",faint:"#7C7365",pri:"#E0794F",prih:"#E88A62",panel:"#26211B",panel2:"#2F2922",border:"#3A322A",input:"#221D17",btn:"#2F2922",btnh:"#3A322A",nav:"rgba(33,28,22,.92)" } },
-    green: { l: { bg:"#EEF4E8",text:"#1E2A18",sub:"#6E7A64",faint:"#A6B29A",pri:"#4E8A3A",prih:"#457C33",panel:"rgba(255,255,255,.86)",panel2:"rgba(228,238,219,.72)",border:"#DBE6CF",input:"#FFFFFF",btn:"#E4EEDA",btnh:"#D6E4C8",nav:"rgba(238,244,232,.92)" },
-             d: { bg:"#131C0F",text:"#E4EFDD",sub:"#93A085",faint:"#6B7660",pri:"#7FBF5E",prih:"#8ECB6E",panel:"rgba(30,42,24,.72)",panel2:"rgba(38,52,30,.6)",border:"#2C3A22",input:"#1C2716",btn:"#2C3A22",btnh:"#38492A",nav:"rgba(18,26,12,.85)" } },
+    green: { l: { bg:"#E7F1EA",text:"#16221C",sub:"#68786F",faint:"#9AA79F",pri:"#0FA968",prih:"#0B8A54",panel:"rgba(255,255,255,.86)",panel2:"rgba(226,241,236,.72)",border:"#DAE7E0",input:"#FFFFFF",btn:"#E2F1E9",btnh:"#D4E8DE",nav:"rgba(240,247,243,.92)" },
+             d: { bg:"#0F1613",text:"#EAF2ED",sub:"#93A199",faint:"#6B7660",pri:"#1FC47E",prih:"#37D08F",panel:"rgba(26,36,31,.72)",panel2:"rgba(34,46,38,.6)",border:"#2A3A30",input:"#18211D",btn:"#2A3A30",btnh:"#35493C",nav:"rgba(15,22,19,.85)" } },
     watermelon: { l: { bg:"#FCECEC",text:"#2A1618",sub:"#8A6E70",faint:"#C4A6A8",pri:"#DA3B4B",prih:"#C43140",panel:"rgba(255,255,255,.86)",panel2:"rgba(250,224,224,.72)",border:"#F0D6D6",input:"#FFFFFF",btn:"#FAE2E2",btnh:"#F2D2D2",nav:"rgba(252,236,236,.92)" },
                   d: { bg:"#1F1113",text:"#F1E1E2",sub:"#B58C8E",faint:"#7A5A5C",pri:"#F05563",prih:"#F26E7A",panel:"rgba(46,26,28,.72)",panel2:"rgba(58,34,36,.6)",border:"#3E2427",input:"#2A1618",btn:"#3E2427",btnh:"#4E3034",nav:"rgba(28,16,18,.85)" } },
     mango: { l: { bg:"#FBF3E0",text:"#2A2410",sub:"#8A7C58",faint:"#C4B688",pri:"#E19A12",prih:"#C9880C",panel:"rgba(255,255,255,.86)",panel2:"rgba(248,238,214,.72)",border:"#EEE2C4",input:"#FFFFFF",btn:"#F6ECD2",btnh:"#EEE0BE",nav:"rgba(251,243,224,.92)" },
@@ -364,7 +364,7 @@
     strawberry: { l: { bg:"#FDECF1",text:"#2A1620",sub:"#8A6E78",faint:"#C4A6B2",pri:"#D8437A",prih:"#C43A6E",panel:"rgba(255,255,255,.86)",panel2:"rgba(250,224,234,.72)",border:"#F0D6E0",input:"#FFFFFF",btn:"#FAE2EC",btnh:"#F2D2E0",nav:"rgba(253,236,241,.92)" },
                   d: { bg:"#1F1118",text:"#F1E1E8",sub:"#B58CA0",faint:"#7A5A68",pri:"#F06C9B",prih:"#F282AC",panel:"rgba(46,26,34,.72)",panel2:"rgba(58,34,44,.6)",border:"#3E2432",input:"#2A1620",btn:"#3E2432",btnh:"#4E3040",nav:"rgba(28,16,22,.85)" } },
   };
-  var SWATCH = { orange:"#C7431D", green:"#4E8A3A", watermelon:"#DA3B4B", mango:"#E19A12", strawberry:"#D8437A" };
+  var SWATCH = { green:"#0FA968", orange:"#C7431D", watermelon:"#DA3B4B", mango:"#E19A12", strawberry:"#D8437A" };
 
   function applyTheme() {
     var t = THEMES[S.theme.name] || THEMES.orange, c = t[S.theme.dark ? "d" : "l"], r = document.documentElement.style;
@@ -431,7 +431,7 @@
     ]).then(function (r) {
       S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
-      if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "orange"; S.theme.dark = !!r[1].theme.dark; }
+      if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "green"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
       renderAlerts(r[4]);
     });

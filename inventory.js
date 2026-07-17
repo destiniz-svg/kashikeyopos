@@ -389,7 +389,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         storeName: sd.storeName || "",
         /* till writes its chosen theme into settings (see guest-sync-patch
            #30/31) so the back office can follow the same palette */
-        theme: { name: sd.ktheme || "orange", dark: sd.ktdark === true },
+        theme: { name: sd.ktheme || "green", dark: sd.ktdark === true },
         /* owner-defined menu category order (applied on the till + guest menu);
            empty means "no custom order — fall back to insertion/default" */
         catOrder: Array.isArray(sd.catOrder) ? sd.catOrder : [],

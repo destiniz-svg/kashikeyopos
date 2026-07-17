@@ -145,16 +145,16 @@ const THEMES = {
          modal:"#26211B", btn:"#2F2922", btnText:"#E7DECF", btnHover:"#3A322A", accentBd:"rgba(224,121,79,.5)",
          axis:"#7C7365", bar:"#E0794F", grid:"#3A322A", tip:"#221D17" } },
   green: {
-    l: { bg:"#EEF4E8", text:"#1E2A18", sub:"#6E7A64", faint:"#A6B29A", primary:"#4E8A3A", primaryHover:"#457C33", accent:"#4E8A3A",
-         panel:"rgba(255,255,255,.86)", panel2:"rgba(228,238,219,.72)", border:"#DBE6CF", input:"#FFFFFF", inputBorder:"#DBE6CF", ph:"#A6B29A",
-         chip:"rgba(240,246,233,.85)", chipText:"#3C4A32", nav:"rgba(238,244,232,.72)", navOff:"#93A085",
-         modal:"rgba(255,255,255,.82)", btn:"#E4EEDA", btnText:"#3C4A32", btnHover:"#D6E4C8", accentBd:"rgba(78,138,58,.4)",
-         axis:"#A6B29A", bar:"#4E8A3A", grid:"#E1EAD6", tip:"#FFFFFF" },
-    d: { bg:"#131C0F", text:"#E4EFDD", sub:"#93A085", faint:"#6B7660", primary:"#7FBF5E", primaryHover:"#8ECB6E", accent:"#7FBF5E",
-         panel:"rgba(30,42,24,.72)", panel2:"rgba(38,52,30,.6)", border:"#2C3A22", input:"#1C2716", inputBorder:"#2C3A22", ph:"#6B7660",
-         chip:"rgba(38,52,30,.62)", chipText:"#CDDAC0", nav:"rgba(18,26,12,.72)", navOff:"#6B7660",
-         modal:"rgba(28,40,22,.82)", btn:"#2C3A22", btnText:"#DDE9D2", btnHover:"#38492A", accentBd:"rgba(127,191,94,.5)",
-         axis:"#6B7660", bar:"#7FBF5E", grid:"#2C3A22", tip:"#1C2716" } },
+    l: { bg:"#E7F1EA", text:"#16221C", sub:"#68786F", faint:"#9AA79F", primary:"#0FA968", primaryHover:"#0B8A54", accent:"#0FA968",
+         panel:"rgba(255,255,255,.72)", panel2:"rgba(226,241,236,.72)", border:"#DAE7E0", input:"#FFFFFF", inputBorder:"#DAE7E0", ph:"#9AA79F",
+         chip:"rgba(240,247,243,.85)", chipText:"#3C4A42", nav:"rgba(240,247,243,.72)", navOff:"#8B9992",
+         modal:"rgba(255,255,255,.80)", btn:"#E2F1E9", btnText:"#3C4A42", btnHover:"#D4E8DE", accentBd:"rgba(15,169,104,.4)",
+         axis:"#9AA79F", bar:"#0FA968", grid:"#E1EEE6", tip:"#FFFFFF" },
+    d: { bg:"#0F1613", text:"#EAF2ED", sub:"#93A199", faint:"#6B7660", primary:"#1FC47E", primaryHover:"#37D08F", accent:"#1FC47E",
+         panel:"rgba(26,36,31,.72)", panel2:"rgba(34,46,38,.6)", border:"#2A3A30", input:"#18211D", inputBorder:"#2A3A30", ph:"#6B7660",
+         chip:"rgba(34,46,38,.62)", chipText:"#CFE0D4", nav:"rgba(15,22,19,.72)", navOff:"#6B7660",
+         modal:"rgba(24,34,29,.82)", btn:"#2A3A30", btnText:"#DDE9D2", btnHover:"#35493C", accentBd:"rgba(31,196,126,.5)",
+         axis:"#6B7660", bar:"#1FC47E", grid:"#2A3A30", tip:"#18211D" } },
   watermelon: {
     l: { bg:"#FCECEC", text:"#2A1618", sub:"#8A6E70", faint:"#C4A6A8", primary:"#DA3B4B", primaryHover:"#C43140", accent:"#4E9A54",
          panel:"rgba(255,255,255,.86)", panel2:"rgba(250,224,224,.72)", border:"#F0D6D6", input:"#FFFFFF", inputBorder:"#F0D6D6", ph:"#C4A6A8",
@@ -205,7 +205,7 @@ function varBlock(sel, c) {
   return `${sel}{--k-appbg:${appGrad(c)};--k-text:${c.text};--k-sub:${c.sub};--k-faint:${c.faint};--k-primary:${c.primary};--k-primary-h:${c.primaryHover};--k-accent:${c.accent};--k-panel:${c.panel};--k-panel2:${c.panel2};--k-border:${c.border};--k-input:${c.input};--k-input-border:${c.inputBorder};--k-ph:${c.ph};--k-chip:${c.chip};--k-chip-text:${c.chipText};--k-nav:${c.nav};--k-navoff:${c.navOff};--k-modal:${c.modal};--k-btn:${c.btn};--k-btn-text:${c.btnText};--k-btn-h:${c.btnHover};--k-accentbd:${c.accentBd}}`;
 }
 const themeVarsCss = (
-  varBlock(":root", THEMES.orange.l) +
+  varBlock(":root", THEMES.green.l) +
   Object.keys(THEMES).map((t) => varBlock(`.kt-${t}-l`, THEMES[t].l) + varBlock(`.kt-${t}-d`, THEMES[t].d)).join("")
 );
 const themeUtilCss = `
@@ -730,18 +730,18 @@ patchFile(indexPath, (html) => {
   // theme state: KshLovable(bool) -> KshTheme(name); default to a light theme
   .replace(
     '[i,a]=R.useState(!0),[KshLovable,KshSetLovable]=R.useState(!1),[o,s]=R.useState("sell")',
-    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("orange"),[o,s]=R.useState("sell")'
+    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("green"),[o,s]=R.useState("sell")'
   )
   // palette: read from window.__kpal(theme,dark); classic dark/light stays as fallback
   .replace(`const _=KshLovable?${lovablePalette}:`, 'const _=window.__kpal?window.__kpal(KshTheme,i):')
   // persist + restore the chosen theme; default restore to light + orange
   .replace('dark:i,lovable:KshLovable,units:T', 'dark:i,ktheme:KshTheme,units:T')
-  .replace('a(f.dark!==!1),KshSetLovable(f.lovable===!0),rn.current=f.seq||1041', 'a(f.dark===!0),KshSetTheme(f.ktheme||"orange"),rn.current=f.seq||1041')
+  .replace('a(f.dark!==!1),KshSetLovable(f.lovable===!0),rn.current=f.seq||1041', 'a(f.dark===!0),KshSetTheme(f.ktheme||"green"),rn.current=f.seq||1041')
   .replace('350))},[c,p,m,b,g,C,E,ce,d1,Ti,h1,i,KshLovable]),R.useEffect', '350))},[c,p,m,b,g,C,E,ce,d1,Ti,h1,i,KshTheme]),R.useEffect')
   // settings UI: replace the single Lovable toggle with a 5-swatch theme picker
   .replace(
     'h.jsxs("button",{onClick:()=>KshSetLovable(v=>!v),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[h.jsx("span",{className:"w-4 h-4 rounded-full inline-block flex-shrink-0",style:{background:"linear-gradient(135deg,#C1502D 50%,#F3ECE1 50%)",border:"1px solid rgba(0,0,0,.15)"}}),h.jsx("span",{className:"flex-1 text-left",children:KshLovable?"Switch to classic theme":"Switch to Lovable theme"})]}),',
-    'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:`text-xs mb-1.5 px-1 ${_.sub}`,children:"Theme"}),h.jsx("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"8px"},children:[["orange","Orange","#C1502D"],["green","Green Apple","#4E8A3A"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]].map(([tn,tl,col])=>h.jsx("button",{onClick:()=>KshSetTheme(tn),title:tl,style:{height:"38px",borderRadius:"12px",background:col,cursor:"pointer",border:KshTheme===tn?"2px solid #fff":"2px solid transparent",boxShadow:KshTheme===tn?"0 0 0 2px "+col:"inset 0 0 0 1px rgba(0,0,0,.12)",transform:KshTheme===tn?"scale(1.06)":"none",transition:"transform .12s"}},tn))})]}),'
+    'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:`text-xs mb-1.5 px-1 ${_.sub}`,children:"Theme"}),h.jsx("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"8px"},children:[["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]].map(([tn,tl,col])=>h.jsx("button",{onClick:()=>KshSetTheme(tn),title:tl,style:{height:"38px",borderRadius:"12px",background:col,cursor:"pointer",border:KshTheme===tn?"2px solid #fff":"2px solid transparent",boxShadow:KshTheme===tn?"0 0 0 2px "+col:"inset 0 0 0 1px rgba(0,0,0,.12)",transform:KshTheme===tn?"scale(1.06)":"none",transition:"transform .12s"}},tn))})]}),'
   )
   /* Guest/customer profile links were broken: LT() returned
      origin+pathname = "https://kashikeyopos.com/app", so shared links became
@@ -790,8 +790,8 @@ patchFile(indexPath, (html) => html
 
   /* 4. Add KshBillDisc state next to KshTheme */
   .replace(
-    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("orange"),[o,s]=R.useState("sell")',
-    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("orange"),[KshBillDisc,KshSetBillDisc]=R.useState(0),[o,s]=R.useState("sell")'
+    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("green"),[o,s]=R.useState("sell")',
+    '[i,a]=R.useState(!1),[KshTheme,KshSetTheme]=R.useState("green"),[KshBillDisc,KshSetBillDisc]=R.useState(0),[o,s]=R.useState("sell")'
   )
 
   /* 5. cr computation: pass effective bill discount (manual or customer auto-discount) */
@@ -2121,9 +2121,20 @@ patchFile(indexPath, (html) => html
     'const kt=I&&I.settings;kt&&kt.ktheme&&KshSetTheme(kt.ktheme),kt&&kt.ktdark!==void 0&&a(kt.ktdark===!0)',
     'const kt=I&&I.settings;var _gt=null,_gd=null;try{_gt=localStorage.getItem("ksh-gtheme");_gd=localStorage.getItem("ksh-gdark")}catch(e){}var _th=_gt||(kt&&kt.ktheme);_th&&KshSetTheme(_th);if(_gd!=null)a(_gd==="1");else if(kt&&kt.ktdark!==void 0)a(kt.ktdark===!0)'
   )
+
+  /* 120. Default theme → green (the new house identity). The committed bundle
+     is already fully patched (the clean-bundle theme patches above no-op on it),
+     so these target the current committed strings: the initial theme state, the
+     settings-entity restore fallback, and both theme-swatch pickers (green moved
+     first + recoloured to the emerald token). Idempotent: each find carries the
+     old "orange"/"Green Apple"/"#4E8A3A" that the replacement no longer contains. */
+  .replace('[KshTheme,KshSetTheme]=R.useState("orange")', '[KshTheme,KshSetTheme]=R.useState("green")')
+  .replace('KshSetTheme(f.ktheme||"orange")', 'KshSetTheme(f.ktheme||"green")')
+  .replace('[["orange","Orange","#C1502D"],["green","Green Apple","#4E8A3A"],["watermelon","Watermelon","#DA3B4B"]', '[["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"]')
+  .replace('[["orange","#C1502D"],["green","#4E8A3A"],["watermelon","#DA3B4B"]', '[["green","#0FA968"],["orange","#C1502D"],["watermelon","#DA3B4B"]')
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.78"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.79"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
