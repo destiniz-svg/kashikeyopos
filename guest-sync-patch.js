@@ -2289,9 +2289,28 @@ patchFile(indexPath, (html) => html
     'y(j=>[...j,I]),Pi({open:!1,payments:[],amt:""})',
     'y(j=>[...j,I]),_e.srcOrderId&&x(j=>j.map(F=>F.id===_e.srcOrderId?{...F,status:"completed",call:!1,saleId:I.id,settledAtTill:!0}:F)),Pi({open:!1,payments:[],amt:""})'
   )
+
+  /* 134. Settle an "opened at counter" order from the register, never twice.
+     "Modify at counter" (#131) turns a portal/QR order into a live register
+     tab while the order also stays in the Orders queue. Settling the register
+     tab (JT) closes the tab and completes the order — clean. But settling the
+     order from the Orders tab (B1, "settle from Orders") completed the order
+     and posted the payment WITHOUT closing the register tab, so the bill was
+     left orphaned in Open Bills ("added to account, but the bill stays"); worse,
+     B1 charges the order's ORIGINAL items, silently dropping anything added or
+     returned at the counter. Guard B1: if the order is open at the counter and
+     its register tab is still live, jump to that tab and let the cashier settle
+     it there (the tab holds the true, modified lines) instead of settling a
+     stale copy. If the tab was already closed, fall through to normal B1.
+     Idempotent: the find splices the guard between the shift check and the
+     line-normalisation, so the contiguous find string is gone after one bake. */
+  .replace(
+    ',"warn");const Ki=(f.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1})',
+    ',"warn");if(f.atTill&&f.srcTab){var _ob=Ti.find(function(b){return b.id===f.srcTab});if(_ob)return ea(_ob.id),s("sell"),As(null),Q("This order is open at the counter — review & settle it from the register")}const Ki=(f.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1})'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.97"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.98"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
