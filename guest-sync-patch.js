@@ -2200,9 +2200,19 @@ patchFile(indexPath, (html) => html
     'Y(Un(f))})]},A)}),h.jsxs("button",{onClick:tI,',
     'Y(Un(f))})]},A)}),h.jsxs("div",{style:{display:"flex",gap:"6px",marginTop:"10px"},children:[h.jsx("button",{type:"button",onClick:function(e){var w=!window.__ksRetWaste;window.__ksRetWaste=w;e.currentTarget.textContent=w?"🗑 Items wasted":"♻ Restock items";e.currentTarget.style.color=w?"#d9534f":"";},className:`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border ${_.border}`,children:window.__ksRetWaste?"🗑 Items wasted":"♻ Restock items"}),en.customerId?h.jsx("button",{type:"button",onClick:function(e){var a=!window.__ksRetAcct;window.__ksRetAcct=a;e.currentTarget.style.outline=a?"2px solid var(--k-primary)":"";e.currentTarget.style.color=a?"var(--k-primary)":"";},className:`flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border ${_.border}`,children:"↩ Refund to account"}):null]}),h.jsxs("button",{onClick:tI,'
   )
+
+  /* 127. Orders badge: don't count void orders. Ns (the active-orders set behind
+     the Orders-tab notification number and the active counts) filtered out only
+     "completed"; voided/wasted/cancelled/refunded orders still inflated the
+     badge. Exclude those dead statuses too. Idempotent: the find carries the
+     bare !=="completed" test the replacement no longer has. */
+  .replace(
+    ',Ns=b.filter(f=>f.status!=="completed")',
+    ',Ns=b.filter(f=>!["completed","wasted","cancelled","refunded","void","voided"].includes(f.status))'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.90"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.91"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
