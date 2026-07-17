@@ -2249,9 +2249,49 @@ patchFile(indexPath, (html) => html
     'f.table?f.table+" · "+f.label:f.otype==="delivery"?"🛵 "+f.label:f.label',
     'f.table?f.table:(f.label||"").split(" · ")[0]'
   )
+
+  /* 131. Modify a portal/QR order at the counter. A guest order (from the
+     web portal or the QR kiosk) used to be a frozen ticket: the cashier could
+     only advance its kitchen status, settle it exactly as placed, or write it
+     off. There was no way to add items the guest asks for after ordering, nor
+     to take items back (e.g. an unused bottle of water) before payment.
+
+     This adds a "Modify at counter" button on each open order card that opens
+     the order as a live register tab — carrying its lines, table, customer,
+     type, covers, and a srcOrderId link — and jumps to the Sell screen. From
+     there the whole register is available: add tiles (order more), remove
+     lines (return, since stock only deducts at settle so an un-charged line is
+     simply never sold), Park the tab, and settle. Tapping again on an already-
+     opened order re-focuses its tab instead of duplicating it. Idempotent: the
+     find carries the bare status button the replacement prefixes a new button
+     onto (the replacement's own status-button copy is unchanged, so re-running
+     finds nothing new to prefix). */
+  .replace(
+    '.join(" · ")}),!["completed","wasted"].includes(f.status)&&h.jsx("button",{onClick:()=>{if(Ne&&Ne.role==="kitchen"&&f.status!=="new"&&f.status!=="preparing")return;Vw(f)}',
+    '.join(" · ")}),!["completed","wasted"].includes(f.status)&&!(Ne&&Ne.role==="kitchen")&&h.jsx("button",{onClick:()=>{if(f.atTill&&f.srcTab){ea(f.srcTab),s("sell");return}var _bl={id:ct(),label:f.no||"#",lines:(f.items||[]).map(function(it){return{pid:it.pid,name:it.name,emoji:it.emoji,price:it.price,cost:it.cost,unit:it.unit||"pcs",vendor:!!it.vendor,qty:it.qty,discPct:0,taxable:it.taxable!==false,note:it.note}}),customerId:f.customerId||null,customerName:f.customerName||null,parked:!1,table:f.table||null,covers:f.covers||1,otype:f.otype||"takeaway",deliveryNote:f.note||"",userId:window.__ksMe&&window.__ksMe.id,userName:window.__ksMe&&window.__ksMe.name,srcOrderId:f.id,prepaid:!!f.paidOnline};Ii(function(A){return[...A,_bl]}),ea(_bl.id),x(function(j){return j.map(function(F){return F.id===f.id?{...F,atTill:!0,srcTab:_bl.id}:F})}),s("sell"),Q(f.no+" opened at counter — add or return items, then settle")},className:`mt-3 w-full rounded-xl py-2 text-sm font-semibold ${_.btn}`,children:f.atTill?"↗ Continue at counter":"✎ Modify at counter (add / return)"}),!["completed","wasted"].includes(f.status)&&h.jsx("button",{onClick:()=>{if(Ne&&Ne.role==="kitchen"&&f.status!=="new"&&f.status!=="preparing")return;Vw(f)}'
+  )
+
+  /* 132. Link the settled register sale back to its source order. When a tab
+     opened via #131 is settled, stamp the sale with srcOrderId so the two are
+     joined for reporting/returns. Idempotent: the find lacks srcOrderId; once
+     inserted the exact contiguous find no longer exists. */
+  .replace(
+    'payments:f,customerId:_e.customerId,type:"sale",refunded:!1',
+    'payments:f,customerId:_e.customerId,type:"sale",srcOrderId:_e.srcOrderId||null,refunded:!1'
+  )
+
+  /* 133. On settle, mark the source order completed so it leaves the kitchen
+     queue and can't be settled twice. Runs only when the tab carries a
+     srcOrderId. Idempotent: the replacement inserts logic between y(...) and
+     Pi(...), so the original contiguous find string is gone after the first
+     bake. */
+  .replace(
+    'y(j=>[...j,I]),Pi({open:!1,payments:[],amt:""})',
+    'y(j=>[...j,I]),_e.srcOrderId&&x(j=>j.map(F=>F.id===_e.srcOrderId?{...F,status:"completed",call:!1,saleId:I.id,settledAtTill:!0}:F)),Pi({open:!1,payments:[],amt:""})'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.96"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.97"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
