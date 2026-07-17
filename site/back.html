@@ -81,6 +81,12 @@
   .badge.ok { background: var(--ok-bg); color: var(--ok); }
   .badge.amber { background: var(--amber-bg); color: var(--amber); }
   .badge.dim { background: var(--panel2); color: var(--sub); }
+  .badge.flag { background: var(--warn-bg); color: var(--warn); }
+  .tab-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--warn); color: #fff; font-size: 11px; font-weight: 700; text-align: center; vertical-align: middle; }
+  .flag-card { border-left: 3px solid var(--warn); }
+  .flag-reasons { margin: 6px 0 0; padding-left: 18px; color: var(--warn); font-size: 13px; }
+  .flag-reasons li { margin: 2px 0; }
+  .num-bad { color: var(--warn); font-weight: 700; }
 
   .empty { padding: 18px; font-size: 13px; color: var(--sub); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -386,11 +392,12 @@
     });
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
-  var TABS = [["overview", "Overview"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"]];
+  var TABS = [["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"]];
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
     overview: ["Inventory overview", "What came in, what's running low, and what needs your attention today."],
+    review: ["Review flags", "Sales the till couldn't reconcile and customers over their credit limit — check each one, then mark it reviewed. The money is never changed; this is a checklist, not an edit."],
     assistant: ["Assistant", "What to reorder, what to watch, and answers to your questions — learned from your own stock history."],
     ingredients: ["Ingredients & stock items", "Everything you buy, store and count — how much is left and what it costs."],
     recipes: ["Menu & recipes", "Link each menu item to the ingredients it uses, so stock is deducted automatically when it sells."],
@@ -428,9 +435,11 @@
   function loadAll() {
     return Promise.all([
       api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"), api("/pos"),
+      api("/flags").catch(function () { return { sales: [], credit: [] }; }),
     ]).then(function (r) {
       S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
+      S.flags = { sales: (r[7] && r[7].sales) || [], credit: (r[7] && r[7].credit) || [] };
       if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "green"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
       renderAlerts(r[4]);
@@ -450,8 +459,11 @@
 
   /* ── tabs ────────────────────────────────────────────────────────── */
   function renderTabs() {
+    var flagN = S.flags ? (S.flags.sales.length + S.flags.credit.length) : 0;
     el("tabs").innerHTML = TABS.map(function (t) {
-      return '<button data-t="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + t[1] + "</button>";
+      var label = esc(t[1]);
+      if (t[0] === "review" && flagN) label += ' <span class="tab-count">' + flagN + "</span>";
+      return '<button data-t="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + label + "</button>";
     }).join("");
     el("tabs").querySelectorAll("button").forEach(function (b) {
       b.onclick = function () { S.tab = b.dataset.t; render(); };
@@ -461,6 +473,7 @@
   function render() {
     renderTabs();
     if (S.tab === "overview") renderOverview();
+    else if (S.tab === "review") renderReview();
     else if (S.tab === "assistant") renderAssistant();
     else if (S.tab === "recipes") renderRecipes();
     else if (S.tab === "audit") renderAudit();
@@ -477,6 +490,93 @@
     }
   }
   function go(tab) { S.tab = tab; render(); window.scrollTo(0, 0); }
+
+  /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────
+     Two lists a manager checks after service: sales the sync endpoint couldn't
+     reconcile (a total/price/tax mismatch) and customers pushed past their
+     credit limit. "Reviewed" only clears the flag — it never edits the money. */
+  function when(t) {
+    if (!t) return "";
+    return new Date(Number(t)).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+  function ackFlag(kind, id, btn) {
+    btn.disabled = true; btn.textContent = "Saving…";
+    api("/flags/" + kind + "/" + encodeURIComponent(id) + "/ack", { method: "POST", body: JSON.stringify({ by: "back office" }) })
+      .then(function () {
+        if (kind === "sale") S.flags.sales = S.flags.sales.filter(function (s) { return s.id !== id; });
+        else S.flags.credit = S.flags.credit.filter(function (c) { return c.id !== id; });
+        toast("Marked reviewed");
+        render();
+      })
+      .catch(function (e) { btn.disabled = false; btn.textContent = "Mark reviewed"; toast(e.message || "couldn't save"); });
+  }
+  function renderReview() {
+    var f = S.flags || { sales: [], credit: [] };
+    var cur = esc(S.currency);
+    var h = "";
+
+    if (!f.sales.length && !f.credit.length) {
+      h += '<div class="card" style="text-align:center;padding:34px 18px">' +
+        '<div style="font-size:26px">✓</div>' +
+        '<h2 style="margin:8px 0 4px">Nothing to review</h2>' +
+        '<p class="sub" style="margin:0">Every synced sale reconciled and no customer is over their credit limit.</p></div>';
+      el("main").innerHTML = h;
+      return;
+    }
+
+    /* ── Flagged sales ── */
+    h += '<section><h2>Sales to check <span class="badge flag">' + f.sales.length + "</span></h2>";
+    if (!f.sales.length) {
+      h += '<p class="sub">No sales flagged.</p>';
+    } else {
+      h += '<p class="sub" style="margin-top:0">These sales were accepted so nothing was lost, but the total the till sent doesn\'t match what the items add up to. Check each against the receipt, then mark it reviewed.</p>';
+      f.sales.forEach(function (s) {
+        var items = s.lines.map(function (l) { return qty3(l.qty) + "× " + esc(l.name); }).join(" · ");
+        var pays = s.payments.map(function (p) { return esc(p.method) + " " + cur + " " + Y(p.amount); }).join(", ");
+        h += '<div class="card flag-card" style="margin-bottom:10px">' +
+          '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline">' +
+            '<div><b>' + esc(s.no || "Sale") + "</b>" + (s.userName ? ' <span class="badge dim">' + esc(s.userName) + "</span>" : "") +
+              '<div class="sub" style="font-size:12px">' + esc(when(s.at || s.t)) + (items ? " · " + items : "") + "</div></div>" +
+            '<button class="ghost" data-ack-sale="' + esc(s.id) + '">Mark reviewed</button>' +
+          "</div>" +
+          '<div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:8px;font-size:13px">' +
+            '<div><span class="sub">Till total</span><br><span class="num-bad mono">' + cur + " " + Y(s.claimedTotal) + "</span></div>" +
+            '<div><span class="sub">Should be</span><br><span class="mono">' + cur + " " + Y(s.computedTotal) + "</span></div>" +
+            (pays ? '<div><span class="sub">Taken as</span><br>' + pays + "</div>" : "") +
+          "</div>" +
+          '<ul class="flag-reasons">' + s.reasons.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>" +
+        "</div>";
+      });
+    }
+    h += "</section>";
+
+    /* ── Over-limit customers ── */
+    h += '<section style="margin-top:22px"><h2>Over credit limit <span class="badge flag">' + f.credit.length + "</span></h2>";
+    if (!f.credit.length) {
+      h += '<p class="sub">No customer is over their limit.</p>';
+    } else {
+      h += '<p class="sub" style="margin-top:0">These customers owe more than their approved credit limit — often because two tills sold on credit before syncing. Follow up, then mark it reviewed.</p>' +
+        '<div class="tbl-wrap"><table><thead><tr><th>Customer</th><th class="mono">Owes</th><th class="mono">Limit</th><th class="mono">Over by</th><th>Flagged</th><th></th></tr></thead><tbody>' +
+        f.credit.map(function (c) {
+          return "<tr><td><b>" + esc(c.name) + "</b></td>" +
+            '<td class="mono num-bad">' + cur + " " + Y(c.balance) + "</td>" +
+            '<td class="mono">' + cur + " " + Y(c.creditLimit) + "</td>" +
+            '<td class="mono num-bad">' + cur + " " + Y(c.overBy) + "</td>" +
+            "<td>" + esc(when(c.at)) + "</td>" +
+            '<td><button class="ghost" data-ack-credit="' + esc(c.id) + '">Mark reviewed</button></td></tr>';
+        }).join("") +
+        "</tbody></table></div>";
+    }
+    h += "</section>";
+
+    el("main").innerHTML = h;
+    el("main").querySelectorAll("[data-ack-sale]").forEach(function (b) {
+      b.onclick = function () { ackFlag("sale", b.getAttribute("data-ack-sale"), b); };
+    });
+    el("main").querySelectorAll("[data-ack-credit]").forEach(function (b) {
+      b.onclick = function () { ackFlag("credit", b.getAttribute("data-ack-credit"), b); };
+    });
+  }
 
   /* ── Assistant tab (§18–19) ──────────────────────────────────────────
      Reorder + watch lists learned from the ledger (always on), plus a

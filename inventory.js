@@ -1523,6 +1523,69 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     }) });
   }));
 
+  /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
+     Surfaces the two server-side integrity flags for a manager: sales the sync
+     endpoint stamped with data.serverAudit (a total/price/tax mismatch) and
+     customers whose balance broke their credit limit (data.creditOverLimit).
+     Acknowledging a flag records who cleared it and when, and drops it off the
+     list without touching the money — the record itself is never altered. */
+  router.get("/flags", authAny, wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (client) => {
+      const sales = await client.query(
+        `SELECT id, data FROM entities
+         WHERE org_id=$1 AND kind='sales' AND deleted=false
+           AND data->'serverAudit'->>'flagged'='true'
+           AND COALESCE(data->'serverAudit'->>'ack','') <> 'true'
+         ORDER BY (data->'serverAudit'->>'at')::numeric DESC NULLS LAST LIMIT 200`, [req.orgId]);
+      const credit = await client.query(
+        `SELECT id, data FROM entities
+         WHERE org_id=$1 AND kind='customers' AND deleted=false
+           AND data->>'creditOverLimit'='true'
+         ORDER BY (data->>'creditOverAt')::numeric DESC NULLS LAST LIMIT 200`, [req.orgId]);
+      return { sales: sales.rows, credit: credit.rows };
+    });
+    res.json({
+      sales: out.sales.map((x) => {
+        const d = x.data || {}, a = d.serverAudit || {};
+        return { id: String(d.id || x.id), no: d.no || "", t: num(d.t), total: num(d.total),
+          claimedTotal: num(a.claimedTotal), computedTotal: num(a.computedTotal),
+          reasons: Array.isArray(a.reasons) ? a.reasons : [], at: num(a.at),
+          userName: d.userName || "", storeId: d.storeId || "",
+          payments: (d.payments || []).map((p) => ({ method: p.method, amount: num(p.amount) })),
+          lines: (d.lines || []).map((l) => ({ name: l.name || l.pid || "item", qty: num(l.qty, 1), price: num(l.price) })) };
+      }),
+      credit: out.credit.map((x) => {
+        const d = x.data || {};
+        return { id: String(d.id || x.id), name: d.name || "Customer", balance: num(d.balance),
+          creditLimit: num(d.creditLimit), overBy: num(d.creditOverBy), at: num(d.creditOverAt) };
+      }),
+    });
+  }));
+
+  /* Acknowledge one flag. kind = 'sale' stamps serverAudit.ack; kind = 'credit'
+     clears the customer's over-limit flag (the balance stays as-is). */
+  router.post("/flags/:kind/:id/ack", authAny, wrap(async (req, res) => {
+    const who = String((req.body && req.body.by) || "back office").slice(0, 60);
+    const kind = req.params.kind === "credit" ? "credit" : "sale";
+    const r = await withOrg(req.orgId, (client) => kind === "sale"
+      ? client.query(
+          `UPDATE entities SET
+             data = data || jsonb_build_object('serverAudit',
+                      COALESCE(data->'serverAudit','{}'::jsonb) || jsonb_build_object('ack', true, 'ackBy', $3::text, 'ackAt', $4::numeric)),
+             rowver = nextval('entities_rowver_seq'), updated_at = now()
+           WHERE org_id=$1 AND kind='sales' AND id=$2 AND data->'serverAudit'->>'flagged'='true'
+           RETURNING rowver`, [req.orgId, req.params.id, who, Date.now()])
+      : client.query(
+          `UPDATE entities SET
+             data = data || jsonb_build_object('creditOverLimit', false, 'creditAckBy', $3::text, 'creditAckAt', $4::numeric),
+             rowver = nextval('entities_rowver_seq'), updated_at = now()
+           WHERE org_id=$1 AND kind='customers' AND id=$2 AND data->>'creditOverLimit'='true'
+           RETURNING rowver`, [req.orgId, req.params.id, who, Date.now()]));
+    if (!r.rowCount) return res.status(404).json({ error: "flag not found or already cleared" });
+    if (poke) poke(req.orgId, Number(r.rows[0].rowver));
+    res.json({ ok: true });
+  }));
+
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {
     const { lines, invoiceNo } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });
