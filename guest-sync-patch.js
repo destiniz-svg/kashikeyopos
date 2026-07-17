@@ -2222,9 +2222,21 @@ patchFile(indexPath, (html) => html
     'style:{height:"78vh"},children:Jw}',
     'style:{height:"calc(100vh - 100px)"},children:Jw}'
   )
+
+  /* 129. Open Bills rail: richer per-bill detail. Was just table (or label) +
+     "Parked/label". Now shows: line 1 = table (or Dine-in/Takeaway/Delivery) ·
+     order number (rj.label); line 2 = customer name resolved from rj.customerId
+     via the customers array p (falls back to rj.customerName, else "Walk-in
+     customer") · guest count (rj.covers, dine-in/takeaway); line 3 = a Parked
+     badge. Idempotent: the find carries the old two-div body the replacement
+     no longer contains. */
+  .replace(
+    'children:[h.jsx("div",{className:"text-xs font-semibold truncate",children:rj.table?rj.table:rj.otype==="delivery"?"🛵 "+rj.label:rj.label}),h.jsx("div",{className:"text-xs opacity-60 truncate",children:rj.parked?"Parked":rj.label})]',
+    'children:[h.jsxs("div",{className:"text-xs font-semibold truncate",children:[rj.table?rj.table:rj.otype==="delivery"?"🛵 Delivery":rj.otype==="takeaway"?"🥡 Takeaway":"🍽 Dine-in",rj.label?" · "+rj.label:""]}),(function(){var _c=rj.customerId?(p||[]).find(function(c){return c.id===rj.customerId;}):null;var _nm=_c?_c.name:(rj.customerName||"Walk-in customer");var _g=(rj.otype!=="delivery"&&rj.covers)?rj.covers+" guest"+(rj.covers>1?"s":""):"";return h.jsx("div",{className:"text-xs opacity-60 truncate",children:_nm+(_g?" · "+_g:"")});})(),rj.parked?h.jsx("div",{className:"text-xs opacity-60 truncate",style:{fontSize:"10px",marginTop:"2px"},children:"⏸ Parked"}):null]'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.92"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.93"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
