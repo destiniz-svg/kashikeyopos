@@ -240,6 +240,8 @@ const themeUtilCss = `
 .ksh-hexspin path:nth-child(1){animation-delay:0s}.ksh-hexspin path:nth-child(2){animation-delay:.19s}.ksh-hexspin path:nth-child(3){animation-delay:.38s}.ksh-hexspin path:nth-child(4){animation-delay:.57s}.ksh-hexspin path:nth-child(5){animation-delay:.76s}.ksh-hexspin path:nth-child(6){animation-delay:.95s}
 .ksh-hexbg path{fill:none;stroke:var(--k-primary);stroke-width:1.4;opacity:.28}
 @media (prefers-reduced-motion:reduce){.ksh-hexspin path{animation:none;opacity:.6}}
+.ksh-topnav{width:auto}
+@media (max-width:719px){.ksh-topnav{width:calc(100vw - 16px)}}
 `.replace(/\n/g, "");
 
 /* Design system §3 typography. Self-hosted (web/dist/fonts) variable woff2 —
@@ -2146,11 +2148,11 @@ patchFile(indexPath, (html) => html
      no longer contains. */
   .replace(
     'h.jsx("div",{className:`no-print fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur ${_.nav}`,children:h.jsx("div",{className:"max-w-6xl mx-auto flex",children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},className:`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs ${o===f?_.navOn:_.navOff}`',
-    'h.jsx("div",{className:`no-print backdrop-blur ${_.nav}`,style:{position:"fixed",top:"9px",left:"50%",transform:"translateX(-50%)",zIndex:40,borderRadius:"999px",border:"1px solid var(--k-border)",boxShadow:"0 6px 20px rgba(16,40,28,.14)",maxWidth:"calc(100vw - 24px)"},children:h.jsx("div",{className:"flex items-center overflow-x-auto",style:{gap:"4px",padding:"5px 6px"},children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},style:{display:"flex",flexDirection:"row",alignItems:"center",gap:"7px",padding:"8px 14px",borderRadius:"999px",fontSize:"13.5px",fontWeight:500,whiteSpace:"nowrap"},className:`transition ${o===f?_.primary:_.navOff}`'
+    'h.jsx("div",{className:`no-print backdrop-blur ksh-topnav ${_.nav}`,style:{position:"fixed",top:"9px",left:"50%",transform:"translateX(-50%)",zIndex:40,borderRadius:"22px",border:"1px solid var(--k-border)",boxShadow:"0 6px 20px rgba(16,40,28,.14)",maxWidth:"calc(100vw - 16px)"},children:h.jsx("div",{className:"flex items-center",style:{gap:"4px",padding:"5px 6px",flexWrap:"wrap",justifyContent:"center"},children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},style:{display:"flex",flexDirection:"row",alignItems:"center",gap:"7px",padding:"8px 14px",borderRadius:"999px",fontSize:"13.5px",fontWeight:500,whiteSpace:"nowrap"},className:`transition ${o===f?_.primary:_.navOff}`'
   )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.85"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.86"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
