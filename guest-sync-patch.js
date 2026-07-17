@@ -241,7 +241,7 @@ const themeUtilCss = `
 .ksh-hexbg path{fill:none;stroke:var(--k-primary);stroke-width:1.4;opacity:.28}
 @media (prefers-reduced-motion:reduce){.ksh-hexspin path{animation:none;opacity:.6}}
 .ksh-topnav{width:auto}
-@media (max-width:719px){.ksh-topnav{width:calc(100vw - 16px)}}
+@media (max-width:719px){.ksh-topnav{width:calc(100vw - 16px);top:60px !important}.ksh-navpad{padding-top:122px !important}}
 .ksh-custsel summary{list-style:none}
 .ksh-custsel summary::-webkit-details-marker{display:none}
 .ksh-custsel[open]>summary{border-color:var(--k-primary)}
@@ -2153,7 +2153,7 @@ patchFile(indexPath, (html) => html
      no longer contains. */
   .replace(
     'h.jsx("div",{className:`no-print fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur ${_.nav}`,children:h.jsx("div",{className:"max-w-6xl mx-auto flex",children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},className:`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs ${o===f?_.navOn:_.navOff}`,children:[h.jsxs("span",{className:"relative",children:[h.jsx(N,{size:19}),f==="orders"&&Ns.length+Zi.length>0&&h.jsx("span",{className:`absolute -top-1.5 -right-2.5 h-4 px-1 rounded-full ${Zi.length?"bg-amber-500":"bg-cyan-500"} text-slate-950 text-xs font-bold flex items-center justify-center`,children:Ns.length+Zi.length})]}),A]},f))})})',
-    'h.jsx("div",{className:`no-print backdrop-blur ksh-topnav ${_.nav}`,style:{position:"fixed",top:"9px",left:"50%",transform:"translateX(-50%)",zIndex:40,borderRadius:"22px",border:"1px solid var(--k-border)",boxShadow:"0 6px 20px rgba(16,40,28,.14)",maxWidth:"calc(100vw - 16px)"},children:h.jsxs("div",{className:"flex items-center",style:{gap:"4px",padding:"5px 6px",flexWrap:"wrap",justifyContent:"center"},children:[w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},style:{display:"flex",flexDirection:"row",alignItems:"center",gap:"7px",padding:"8px 14px",borderRadius:"999px",fontSize:"13.5px",fontWeight:500,whiteSpace:"nowrap"},className:`transition ${o===f?_.primary:_.navOff}`,children:[h.jsxs("span",{className:"relative",style:{display:"inline-flex"},children:[h.jsx(N,{size:18}),f==="orders"&&Ns.length+Zi.length>0&&h.jsx("span",{className:`absolute -top-1.5 -right-2.5 h-4 px-1 rounded-full ${Zi.length?"bg-amber-500":"bg-cyan-500"} text-slate-950 text-xs font-bold flex items-center justify-center`,children:Ns.length+Zi.length})]}),A]},f)),h.jsxs("button",{onClick:()=>Ss(!0),title:"Account, lock & sign out","aria-label":"Account and sign out",style:{display:"flex",flexDirection:"row",alignItems:"center",gap:"7px",padding:"6px 12px 6px 6px",borderRadius:"999px",fontSize:"13px",fontWeight:600,whiteSpace:"nowrap"},className:_.chip,children:[h.jsx("span",{className:_.primary,style:{width:"26px",height:"26px",borderRadius:"999px",display:"grid",placeItems:"center",fontWeight:800,fontSize:"12px",flexShrink:0},children:(((window.__ksMe||{}).name||"?").charAt(0)||"?").toUpperCase()}),h.jsx("span",{children:(window.__ksMe||{}).name||"Account"})]})]})})'
+    'h.jsx("div",{className:`no-print backdrop-blur ksh-topnav ${_.nav}`,style:{position:"fixed",top:"9px",left:"50%",transform:"translateX(-50%)",zIndex:40,borderRadius:"22px",border:"1px solid var(--k-border)",boxShadow:"0 6px 20px rgba(16,40,28,.14)",maxWidth:"calc(100vw - 16px)"},children:h.jsx("div",{className:"flex items-center",style:{gap:"4px",padding:"5px 6px",flexWrap:"wrap",justifyContent:"center"},children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},style:{display:"flex",flexDirection:"row",alignItems:"center",gap:"7px",padding:"8px 14px",borderRadius:"999px",fontSize:"13.5px",fontWeight:500,whiteSpace:"nowrap"},className:`transition ${o===f?_.primary:_.navOff}`,children:[h.jsxs("span",{className:"relative",style:{display:"inline-flex"},children:[h.jsx(N,{size:18}),f==="orders"&&Ns.length+Zi.length>0&&h.jsx("span",{className:`absolute -top-1.5 -right-2.5 h-4 px-1 rounded-full ${Zi.length?"bg-amber-500":"bg-cyan-500"} text-slate-950 text-xs font-bold flex items-center justify-center`,children:Ns.length+Zi.length})]}),A]},f))})})'
   )
 
   /* 123. Themed customer dropdown for the Settle modal. The native <select>
@@ -2166,9 +2166,20 @@ patchFile(indexPath, (html) => html
     'h.jsxs("select",{value:Rn.customerId||"",onChange:f=>As({...Rn,customerId:f.target.value||null,customerName:(p.find(A=>A.id===f.target.value)||{}).name||Rn.customerName}),className:`w-full rounded-xl px-3 py-2.5 mb-2 text-sm outline-none ${_.input}`,children:[h.jsx("option",{value:"",children:"No customer (cash sale)"}),p.map(f=>h.jsxs("option",{value:f.id,children:[f.name,(f.balance||0)>0?` — owes ${Y(f.balance)}`:""]},f.id))]})',
     'h.jsxs("details",{className:"ksh-custsel",style:{position:"relative",marginBottom:"8px"},children:[h.jsxs("summary",{className:`rounded-xl px-3 py-2.5 text-sm ${_.input}`,style:{listStyle:"none",display:"flex",alignItems:"center",justifyContent:"space-between",gap:"8px",cursor:"pointer"},children:[h.jsx("span",{style:{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},children:(function(){var c=Rn.customerId?p.find(function(W){return W.id===Rn.customerId;}):null;return c?(c.name+((c.balance||0)>0?" · owes "+Y(c.balance):"")):"No customer (cash sale)";})()}),h.jsx("span",{style:{fontSize:"12px",opacity:.5,flexShrink:0},children:"⌄"})]}),h.jsxs("div",{className:`ksh-custsel-list ${_.modal}`,style:{position:"absolute",left:0,right:0,marginTop:"6px",borderRadius:"14px",zIndex:60,maxHeight:"300px",overflowY:"auto",padding:"6px",boxShadow:"0 14px 36px rgba(16,40,28,.24)"},children:[h.jsxs("button",{type:"button",onClick:function(e){As({...Rn,customerId:null});var d=e.currentTarget.closest("details");if(d)d.open=!1;},className:`w-full text-left rounded-lg px-3 py-2.5 text-sm flex items-center justify-between ${Rn.customerId?"":_.chip}`,children:[h.jsx("span",{children:"No customer (cash sale)"}),Rn.customerId?null:h.jsx("span",{className:_.accent,children:"✓"})]}),p.map(function(f){var sel=Rn.customerId===f.id;return h.jsxs("button",{type:"button",onClick:function(e){As({...Rn,customerId:f.id,customerName:f.name});var d=e.currentTarget.closest("details");if(d)d.open=!1;},className:`w-full text-left rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-2 ${sel?_.chip:""}`,children:[h.jsxs("span",{style:{display:"flex",flexDirection:"column",minWidth:0},children:[h.jsx("span",{style:{fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},children:f.name}),(f.balance||0)>0?h.jsxs("span",{className:_.sub,style:{fontSize:"11px"},children:["owes ",Y(f.balance)]}):null]}),sel?h.jsx("span",{className:_.accent,style:{flexShrink:0},children:"✓"}):null]},f.id);})]})]})'
   )
+
+  /* 124. Mobile: drop the top nav below the header so the store name stays
+     visible, and pad the main content so it clears the lowered nav. Tag the
+     content wrapper that immediately follows the header with .ksh-navpad (the
+     media query gives it padding-top on phones; desktop keeps its pt-4). The
+     nav itself is pushed to top:60px under 720px via .ksh-topnav. Idempotent:
+     the find carries the bare wrapper class the replacement no longer has. */
+  .replace(
+    'Ne.name.split(" ")[0]]})]})]}),h.jsxs("div",{className:"max-w-6xl mx-auto px-4 pt-4',
+    'Ne.name.split(" ")[0]]})]})]}),h.jsxs("div",{className:"ksh-navpad max-w-6xl mx-auto px-4 pt-4'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.88"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.89"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
