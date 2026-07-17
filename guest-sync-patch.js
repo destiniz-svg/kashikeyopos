@@ -2147,9 +2147,20 @@ patchFile(indexPath, (html) => html
     'children:[h.jsx("div",{className:"hidden lg:block ksh-col1"',
     'children:[(function(){try{var _lo=(Ti||[]).filter(function(rj){return rj&&(rj.table||rj.label)&&Array.isArray(rj.lines);});return _lo.length?h.jsxs("div",{style:{gridColumn:"1 / -1"},className:`rounded-2xl p-3 mb-1 ${_.panel}`,children:[h.jsx("div",{className:`text-xs font-semibold uppercase tracking-wide px-1 mb-2 ${_.faint}`,children:"Current order"}),h.jsx("div",{className:"flex gap-2 overflow-x-auto pb-1",children:_lo.map(function(rj){var st=rj.status||(rj.parked?"ready":"preparing"),qy=(rj.lines||[]).reduce(function(a,l){return a+(l.qty||1);},0),tt=(rj.lines||[]).reduce(function(a,l){return a+Un(l);},0);return h.jsxs("button",{onClick:function(){rj.parked?$w(rj.id):ea(rj.id);},className:`flex items-center gap-2.5 rounded-xl px-3 py-2 shrink-0 ${_.chip}`,style:{minWidth:"176px"},children:[h.jsxs("div",{className:"min-w-0 text-left flex-1",children:[h.jsx("div",{className:"text-xs font-bold truncate",children:rj.table||rj.label||"Order"}),h.jsx("div",{className:`text-[11px] truncate ${_.sub}`,children:(rj.parked?"Parked · ":"")+qy+" item"+(qy===1?"":"s")+(tt?" · "+ue(tt):"")})]}),h.jsx("div",{className:"shrink-0",dangerouslySetInnerHTML:{__html:window.__ksRing(window.__ksProg(st),window.__kstatus(st).fg,38)}})]},rj.id);})})]}):null;}catch(_e){return null;}})(),h.jsx("div",{className:"hidden lg:block ksh-col1"'
   )
+
+  /* 122. Move the main nav from the bottom bar into a top-centre pill (matches
+     the reference: nav lives in the header row, not a bottom tab bar). Retarget
+     the bottom-bar container to a floating rounded pill at top-centre, lay the
+     items horizontally (icon + label), and give the active tab a filled primary
+     pill. Idempotent: the find carries "fixed bottom-0 …" which the replacement
+     no longer contains. */
+  .replace(
+    'h.jsx("div",{className:`no-print fixed bottom-0 inset-x-0 z-30 border-t backdrop-blur ${_.nav}`,children:h.jsx("div",{className:"max-w-6xl mx-auto flex",children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},className:`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-xs ${o===f?_.navOn:_.navOff}`',
+    'h.jsx("div",{className:`no-print backdrop-blur ${_.nav}`,style:{position:"fixed",top:"9px",left:"50%",transform:"translateX(-50%)",zIndex:40,borderRadius:"999px",border:"1px solid var(--k-border)",boxShadow:"0 6px 20px rgba(16,40,28,.14)",maxWidth:"calc(100vw - 24px)"},children:h.jsx("div",{className:"flex items-center overflow-x-auto",style:{gap:"4px",padding:"5px 6px"},children:w6.map(([f,A,N])=>h.jsxs("button",{onClick:()=>{s(f),ws(""),pu(!1),f==="admin"&&u("menu")},style:{display:"flex",flexDirection:"row",alignItems:"center",gap:"7px",padding:"8px 14px",borderRadius:"999px",fontSize:"13.5px",fontWeight:500,whiteSpace:"nowrap"},className:`transition ${o===f?_.primary:_.navOff}`'
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.83"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.84"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
