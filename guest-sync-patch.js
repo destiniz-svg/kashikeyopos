@@ -1532,13 +1532,22 @@ patchFile(indexPath, (html) => html
     'br("credit")&&h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Auto-discount on bills (%) — owner only"}'
   )
 
-  /* 114. Make the till header store name a tap target to switch outlet. Opens the
-     injected outlet switcher (__ksOutletMenu); it only shows a menu when there
-     are 2+ open outlets, and switching is guarded on an empty outbox. Idempotent:
-     the bare header store-name div (no onClick) is gone from the replacement. */
+  /* 114. Owner-only outlet switcher, on the account chip ("<role> · <store>" line
+     under the staff name — a visible, owner-scoped spot, unlike the earlier
+     receipt store-name which was print-only). For an owner it becomes a tap
+     target (underlined + a ⇄ hint) that opens the injected switcher
+     (__ksOutletMenu) — which itself only shows a menu with 2+ open outlets and
+     guards on an empty outbox. Non-owners see the plain line. `Ne` is the current
+     staff (Ne.role) and is already in this expression, so the gate can't throw.
+     (114a first reverts the mis-placed receipt-store-name switcher from the prior
+     build.) Idempotent: each find carries text absent from its replacement. */
   .replace(
-    'h.jsx("div",{className:"text-lg font-black mt-1",children:ce.storeName})',
-    'h.jsx("div",{className:"text-lg font-black mt-1",style:{cursor:"pointer"},title:"Switch outlet",onClick:e=>window.__ksOutletMenu&&window.__ksOutletMenu(e.currentTarget),children:ce.storeName})'
+    'h.jsx("div",{className:"text-lg font-black mt-1",style:{cursor:"pointer"},title:"Switch outlet",onClick:e=>window.__ksOutletMenu&&window.__ksOutletMenu(e.currentTarget),children:ce.storeName})',
+    'h.jsx("div",{className:"text-lg font-black mt-1",children:ce.storeName})'
+  )
+  .replace(
+    'h.jsxs("div",{className:`text-xs capitalize ${_.faint}`,children:[Ne.role," · ",ce.storeName]})',
+    'h.jsxs("div",{className:`text-xs capitalize ${_.faint}`,style:Ne.role==="owner"?{cursor:"pointer",textDecoration:"underline"}:{},title:Ne.role==="owner"?"Switch outlet":"",onClick:e=>{if(Ne.role==="owner")window.__ksOutletMenu&&window.__ksOutletMenu(e.currentTarget)},children:[Ne.role," · ",ce.storeName,Ne.role==="owner"?" ⇄":""]})'
   )
 
   /* 112. Hide "hidden" items from the till Sell grid. An item flagged hidden in
@@ -2015,6 +2024,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.72"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.73"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
