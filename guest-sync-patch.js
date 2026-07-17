@@ -1491,6 +1491,18 @@ patchFile(indexPath, (html) => html
     'objectFit:"contain",background:"#F4F1EB"'
   )
 
+  /* 115. Show the store name in the till header. The header put the store name in
+     a chip marked `hidden sm:inline`, so on a phone it was hidden and only the
+     "KashikeyoPOS" brand showed. Make the store name the header title (the logo
+     keeps the brand), truncating long names, and move the location into the
+     desktop-only chip so it isn't duplicated. Idempotent: the "Kashikeyo"+"POS"
+     brand text + the `[ce.storeName," · ",ce.location]` chip are gone from the
+     replacement. */
+  .replace(
+    'h.jsxs("div",{className:"text-base font-bold tracking-tight",children:["Kashikeyo",h.jsx("span",{className:_.accent,children:"POS"})]}),h.jsxs("span",{className:`hidden sm:inline text-xs px-2 py-1 rounded-full ${_.chip}`,children:[ce.storeName," · ",ce.location]})',
+    'h.jsx("div",{className:"text-base font-bold tracking-tight",style:{maxWidth:"48vw",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"},children:ce.storeName}),ce.location?h.jsx("span",{className:`hidden sm:inline text-xs px-2 py-1 rounded-full ${_.chip}`,children:ce.location}):null'
+  )
+
   /* 108. Let cashiers receive stock, restock and purchase. Cashiers only had
      ["sell","orders","customers"]; add "inventory" so they can open Kitchen
      Supplies (receive stock, stocktake, par levels) and — with #109 — Purchase
@@ -2024,6 +2036,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.73"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.74"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
