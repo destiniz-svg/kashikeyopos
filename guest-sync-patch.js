@@ -2247,11 +2247,11 @@ patchFile(indexPath, (html) => html
   )
   .replace(
     'f.table?f.table+" · "+f.label:f.otype==="delivery"?"🛵 "+f.label:f.label',
-    '(f.table?f.table:f.otype==="delivery"?"🛵":f.otype==="takeaway"?"🥡":"🍽")+" "+f.label+(function(){var _c=f.customerId?(p||[]).find(function(c){return c.id===f.customerId;}):null;var _n=_c?_c.name.split(" ")[0]:(f.customerName?f.customerName.split(" ")[0]:"Walk-in");var _g=(f.otype!=="delivery"&&f.covers)?" · "+f.covers+"p":"";return " · "+_n+_g;})()'
+    'f.table?f.table:(f.label||"").split(" · ")[0]'
   )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.95"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.96"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
