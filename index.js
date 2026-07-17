@@ -905,6 +905,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
             " || CASE WHEN entities.data ? 'spiceLevels' THEN jsonb_build_object('spiceLevels', entities.data->'spiceLevels') ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'comments'    THEN jsonb_build_object('comments',    entities.data->'comments')    ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'noKitchen'   THEN jsonb_build_object('noKitchen',   entities.data->'noKitchen')   ELSE '{}'::jsonb END" +
+            " || CASE WHEN entities.data ? 'hidden'      THEN jsonb_build_object('hidden',      entities.data->'hidden')      ELSE '{}'::jsonb END" +
             " || CASE WHEN COALESCE(excluded.data->>'img','')='' AND entities.data ? 'img' THEN jsonb_build_object('img', entities.data->'img') ELSE '{}'::jsonb END"
           : p.kind === "customers"
             ? " || jsonb_build_object('points', COALESCE(entities.data->'points', excluded.data->'points', '0'::jsonb), 'balance', COALESCE(entities.data->'balance', excluded.data->'balance', '0'::jsonb))"
@@ -1052,7 +1053,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
        engine) rather than silently vanishing; untracked items (no numeric
        stock) always show; only plain stock-tracked items counted down to zero
        are hidden. */
-    products: products.filter((p) => hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", desc: p.desc || "", allergens: p.allergens || "", addons: Array.isArray(p.addons) ? p.addons : [], spiceLevels: Array.isArray(p.spiceLevels) ? p.spiceLevels : [], comments: !!p.comments, noKitchen: !!p.noKitchen, stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
+    products: products.filter((p) => !p.hidden && (hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0)).map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, cat: p.cat, price: p.price, unit: p.unit, img: p.img || "", desc: p.desc || "", allergens: p.allergens || "", addons: Array.isArray(p.addons) ? p.addons : [], spiceLevels: Array.isArray(p.spiceLevels) ? p.spiceLevels : [], comments: !!p.comments, noKitchen: !!p.noKitchen, stock: p.stock, storeId: p.storeId || "global", soldOut: p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0), soldOutReason: p.soldOutReason || null })),
     cust });
 }));
 

@@ -1354,6 +1354,7 @@
       '<input id="pSpice" value="' + esc((p.spiceLevels || []).join(", ")) + '" placeholder="e.g. Non-spicy, Spicy   ·   or   Mild, Medium, Hot" style="width:100%;margin:4px 0 10px" />' +
       '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:8px 0;font-size:13.5px;cursor:pointer"><input type="checkbox" id="pComments" ' + (p.comments ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Allow a special-instructions note from the guest</label>' +
       '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:8px 0;font-size:13.5px;cursor:pointer"><input type="checkbox" id="pNoKitchen" ' + (p.noKitchen ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Not a kitchen item — skip the kitchen display &amp; KOT <span class="hint" style="margin:0">(hedhikaa, cakes, packaged goods…)</span></label>' +
+      '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:8px 0;font-size:13.5px;cursor:pointer"><input type="checkbox" id="pHidden" ' + (p.hidden ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Hide from menu — keep the item but take it off the till Sell screen &amp; guest menu <span class="hint" style="margin:0">(seasonal / temporarily off)</span></label>' +
       '<div style="display:flex;gap:8px;margin-top:10px"><button class="primary tiny" id="pMetaSave" type="button">Save details</button></div></div>' +
       '<div class="pad" style="border-top:1px solid var(--border)"><button class="ghost" id="rStock">📦 Also track as stock — use it in other recipes</button>' +
       '<div class="hint" style="margin-top:6px">For an item you both sell and cook with (a house sauce, cold brew). It becomes a stock item you make in batches and can add to other recipes.</div></div>';
@@ -1366,13 +1367,13 @@
       }).filter(function (a) { return a.name; });
       var allergens = el("pAllerg").value.trim();
       var spiceLevels = el("pSpice").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
-      var comments = el("pComments").checked, noKitchen = el("pNoKitchen").checked;
+      var comments = el("pComments").checked, noKitchen = el("pNoKitchen").checked, hidden = el("pHidden").checked;
       var cat = (el("pSubcat") && el("pSubcat").value || "").trim();
-      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ cat: cat, allergens: allergens, addons: addons, spiceLevels: spiceLevels, comments: comments, noKitchen: noKitchen }) })
+      api("/products/" + encodeURIComponent(S.selProduct) + "/meta", { method: "PUT", body: JSON.stringify({ cat: cat, allergens: allergens, addons: addons, spiceLevels: spiceLevels, comments: comments, noKitchen: noKitchen, hidden: hidden }) })
         .then(function () {
           if (cat) p.cat = cat;
           p.allergens = allergens; p.addons = addons.map(function (a) { return { name: a.name, price: Math.round(a.price * 100) }; });
-          p.spiceLevels = spiceLevels; p.comments = comments; p.noKitchen = noKitchen;
+          p.spiceLevels = spiceLevels; p.comments = comments; p.noKitchen = noKitchen; p.hidden = hidden;
           toast("Item details saved — live on the guest menu");
         })
         .catch(function (e) { toast(e.message || "Couldn't save"); });

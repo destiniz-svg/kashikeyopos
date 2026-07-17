@@ -1480,6 +1480,56 @@ patchFile(indexPath, (html) => html
     'objectFit:"contain",background:"#F4F1EB"'
   )
 
+  /* 108. Let cashiers receive stock, restock and purchase. Cashiers only had
+     ["sell","orders","customers"]; add "inventory" so they can open Kitchen
+     Supplies (receive stock, stocktake, par levels) and — with #109 — Purchase
+     Orders. Price editing (the "products" cap) and sales reports stay owner/
+     manager-only. Idempotent: the bare cashier caps array is gone from the
+     replacement. */
+  .replace(
+    'iae={cashier:["sell","orders","customers"],kitchen:["orders"],',
+    'iae={cashier:["sell","orders","customers","inventory"],kitchen:["orders"],'
+  )
+
+  /* 109. Purchasing is operational stock work, so gate Purchase Orders on
+     "inventory" (was "reports"). This lets cashiers raise POs / receive supplier
+     bills via #108 WITHOUT exposing sales reports & the dashboard (still gated on
+     "reports"). Managers/owners keep it (they have "inventory" too). Idempotent:
+     the `...supplier bills",br("reports")]` find is gone from the replacement. */
+  .replace(
+    '["po","Purchase Orders",mv,"raise POs, receive supplier bills",br("reports")]',
+    '["po","Purchase Orders",mv,"raise POs, receive supplier bills",br("inventory")]'
+  )
+
+  /* 110. Credit limit is an owner-only customer field. The New/Edit-customer form
+     showed the credit-limit input to everyone (incl. cashiers); wrap it in
+     br("credit") — a capability only the owner has (owner role short-circuits;
+     no other role lists it) — so cashiers can add/edit customers but not set a
+     credit limit. Editing a customer keeps the loaded value (it stays in the form
+     state Xt), so a cashier save never wipes an owner-set limit. Idempotent: the
+     bare `${_.input}...Credit limit (` find is gone from the replacement. */
+  .replace(
+    '${_.input}`}),h.jsxs("div",{children:[h.jsxs("div",{className:`text-xs mb-1 ${_.sub}`,children:["Credit limit (",ce.currency',
+    '${_.input}`}),br("credit")&&h.jsxs("div",{children:[h.jsxs("div",{className:`text-xs mb-1 ${_.sub}`,children:["Credit limit (",ce.currency'
+  )
+
+  /* 111. Same owner-only gate for the per-customer auto-discount (was br("refund"),
+     which managers also have). Owner-only via br("credit"). Idempotent: the
+     `br("refund")...Auto-discount on bills (%) — admin only` find is gone. */
+  .replace(
+    'br("refund")&&h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Auto-discount on bills (%) — admin only"}',
+    'br("credit")&&h.jsxs("div",{children:[h.jsx("div",{className:`text-xs mb-1 ${_.sub}`,children:"Auto-discount on bills (%) — owner only"}'
+  )
+
+  /* 112. Hide "hidden" items from the till Sell grid. An item flagged hidden in
+     the back office (Menu settings) stays in the catalogue (for history/refunds)
+     but drops off the Sell tiles. Idempotent: the bare `Sw=c.filter(f=>(window`
+     find is gone from the replacement. */
+  .replace(
+    'Sw=c.filter(f=>(window.__ksCatMatch',
+    'Sw=c.filter(f=>!f.hidden&&(window.__ksCatMatch'
+  )
+
   /* 93. Show stock-untracked items on the guest menu. The guest category grid
      filtered products with `ze.stock>0`, which hid every item whose stock is
      left blank/untracked (the opt-in-stock default, patch #76) — so a menu of
@@ -1492,6 +1542,15 @@ patchFile(indexPath, (html) => html
   .replace(
     'const ke=N.filter(ze=>ze.cat===ne&&ze.stock>0);',
     'const ke=N.filter(ze=>ze.cat===ne&&(ze.stock==null||ze.stock>0));'
+  )
+
+  /* 113. Also drop "hidden" items from the guest menu grid (belt-and-braces — the
+     guest boot already omits them server-side). Placed after #93 so it matches
+     that patch's output on both committed and clean-bundle bakes. Idempotent: the
+     `ze.cat===ne&&(ze.stock==null` find is gone from the replacement. */
+  .replace(
+    'const ke=N.filter(ze=>ze.cat===ne&&(ze.stock==null||ze.stock>0));',
+    'const ke=N.filter(ze=>ze.cat===ne&&!ze.hidden&&(ze.stock==null||ze.stock>0));'
   )
 
   /* 90. Keep the Orders-board elapsed-time subtitle on one line. The status
@@ -1936,6 +1995,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.70"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.71"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
