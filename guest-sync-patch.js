@@ -349,6 +349,16 @@ const availJs = "window.__ksOut=function(f){if(!f)return false;if(f.soldOut===tr
 const ringJs = "window.__ksProg=function(s){s=String(s||'').toLowerCase();var M={new:12,pending:12,preparing:55,cooking:55,ready:88,served:88,delivered:100,completed:100,settled:100,paid:100,closed:100,done:100};return M[s]!=null?M[s]:12;};"
   + "window.__ksRing=function(pct,color,size){pct=Math.max(0,Math.min(100,Number(pct)||0));var r=15.5,c=2*Math.PI*r,off=c*(1-pct/100),s=size||40,col=color||'#C1502D';var mid=pct>=100?'<path d=\"M14.5 20.4l3.6 3.6 7-7.6\" fill=\"none\" stroke=\"'+col+'\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>':'<text x=\"20\" y=\"20\" text-anchor=\"middle\" dominant-baseline=\"central\" font-size=\"11\" font-weight=\"700\" fill=\"'+col+'\">'+Math.round(pct)+'</text>';return '<svg width=\"'+s+'\" height=\"'+s+'\" viewBox=\"0 0 40 40\" style=\"display:block\"><circle cx=\"20\" cy=\"20\" r=\"'+r+'\" fill=\"none\" stroke=\"var(--k-border)\" stroke-width=\"3.5\"/><circle cx=\"20\" cy=\"20\" r=\"'+r+'\" fill=\"none\" stroke=\"'+col+'\" stroke-width=\"3.5\" stroke-linecap=\"round\" stroke-dasharray=\"'+c.toFixed(2)+'\" stroke-dashoffset=\"'+off.toFixed(2)+'\" transform=\"rotate(-90 20 20)\"/>'+mid+'</svg>';};";
 
+/* Draggable floating panel controller for the "Current order" strip. The strip
+   renders position:fixed; grabbing its header calls __ksCoDrag which moves the
+   panel with the pointer (direct DOM writes — React doesn't re-render mid-drag)
+   and persists the final {left,top} to window.__ksCoPos + localStorage so the
+   position survives re-renders and reloads. Restored on load. All wrapped so a
+   failure can never break the host view. */
+const coDragJs =
+  "try{var _cp=localStorage.getItem('ksh-copos');if(_cp)window.__ksCoPos=JSON.parse(_cp);}catch(_e){}" +
+  "window.__ksCoDrag=function(e){try{var panel=e.currentTarget&&e.currentTarget.closest('[data-ks-co]');if(!panel)return;e.preventDefault();var r=panel.getBoundingClientRect(),sx=e.clientX,sy=e.clientY,ox=r.left,oy=r.top,w=r.width,hh=r.height;panel.style.left=ox+'px';panel.style.top=oy+'px';panel.style.right='auto';panel.style.transform='none';panel.style.margin='0';function mv(ev){var nx=ox+(ev.clientX-sx),ny=oy+(ev.clientY-sy);nx=Math.max(6,Math.min(window.innerWidth-w-6,nx));ny=Math.max(6,Math.min(window.innerHeight-hh-6,ny));panel.style.left=nx+'px';panel.style.top=ny+'px';window.__ksCoPos={left:nx,top:ny};}function up(){document.removeEventListener('pointermove',mv,!0);document.removeEventListener('pointerup',up,!0);try{localStorage.setItem('ksh-copos',JSON.stringify(window.__ksCoPos));}catch(_e){}}document.addEventListener('pointermove',mv,!0);document.addEventListener('pointerup',up,!0);}catch(_e){}};";
+
 /* Rotating guest welcome (§4.3). A café gets the same faces every day, so the
    QR menu greets with a different friendly line each visit. Picked once per page
    load (memoised) and never the same as the previous visit (last index kept in
@@ -518,6 +528,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-hex", hexJs);
   html = injectInline(html, "ksh-avail", availJs);
   html = injectInline(html, "ksh-ring", ringJs);
+  html = injectInline(html, "ksh-codrag", coDragJs);
   html = injectInline(html, "ksh-greet", greetJs);
   html = injectInline(html, "ksh-catsort", catSortJs);
   html = injectInline(html, "ksh-catnav", catNavJs);
@@ -2145,11 +2156,11 @@ patchFile(indexPath, (html) => html
      and the col1 rail breaks the contiguous find so a re-bake can't match. */
   .replace(
     'children:[h.jsx("div",{className:"hidden lg:block ksh-col1"',
-    'children:[(function(){try{var _lo=(Ti||[]).filter(function(rj){return rj&&(rj.table||rj.label)&&Array.isArray(rj.lines);});return _lo.length?h.jsxs("div",{style:{gridColumn:"1 / -1"},className:`rounded-2xl p-3 mb-1 ${_.panel}`,children:[h.jsx("div",{className:`text-xs font-semibold uppercase tracking-wide px-1 mb-2 ${_.faint}`,children:"Current order"}),h.jsx("div",{className:"flex gap-2 overflow-x-auto pb-1",children:_lo.map(function(rj){var st=rj.status||(rj.parked?"ready":"preparing"),qy=(rj.lines||[]).reduce(function(a,l){return a+(l.qty||1);},0),tt=(rj.lines||[]).reduce(function(a,l){return a+Un(l);},0);return h.jsxs("button",{onClick:function(){rj.parked?$w(rj.id):ea(rj.id);},className:`flex items-center gap-2.5 rounded-xl px-3 py-2 shrink-0 ${_.chip}`,style:{minWidth:"176px"},children:[h.jsxs("div",{className:"min-w-0 text-left flex-1",children:[h.jsx("div",{className:"text-xs font-bold truncate",children:rj.table||rj.label||"Order"}),h.jsx("div",{className:`text-[11px] truncate ${_.sub}`,children:(rj.parked?"Parked · ":"")+qy+" item"+(qy===1?"":"s")+(tt?" · "+ue(tt):"")})]}),h.jsx("div",{className:"shrink-0",dangerouslySetInnerHTML:{__html:window.__ksRing(window.__ksProg(st),window.__kstatus(st).fg,38)}})]},rj.id);})})]}):null;}catch(_e){return null;}})(),h.jsx("div",{className:"hidden lg:block ksh-col1"'
+    'children:[(function(){try{var _lo=(Ti||[]).filter(function(rj){return rj&&(rj.table||rj.label)&&Array.isArray(rj.lines);});return _lo.length?h.jsxs("div",{"data-ks-co":"1",style:{position:"fixed",zIndex:55,width:"min(720px,calc(100vw - 40px))",left:(window.__ksCoPos?window.__ksCoPos.left+"px":"50%"),top:(window.__ksCoPos?window.__ksCoPos.top+"px":"70px"),transform:(window.__ksCoPos?"none":"translateX(-50%)"),boxShadow:"0 16px 40px rgba(16,40,28,.22)"},className:`rounded-2xl p-3 ${_.panel}`,children:[h.jsxs("div",{onPointerDown:window.__ksCoDrag,style:{cursor:"move",touchAction:"none",userSelect:"none",display:"flex",alignItems:"center",gap:"6px"},className:`text-xs font-semibold uppercase tracking-wide px-1 mb-2 ${_.faint}`,children:[h.jsx("span",{style:{fontSize:"13px",lineHeight:1,opacity:.55},children:"⠿"}),"Current order",h.jsx("span",{style:{marginLeft:"auto",fontSize:"10px",fontWeight:600,opacity:.5},children:"drag"})]}),h.jsx("div",{className:"flex gap-2 overflow-x-auto pb-1",children:_lo.map(function(rj){var st=rj.status||(rj.parked?"ready":"preparing"),qy=(rj.lines||[]).reduce(function(a,l){return a+(l.qty||1);},0),tt=(rj.lines||[]).reduce(function(a,l){return a+Un(l);},0);return h.jsxs("button",{onClick:function(){rj.parked?$w(rj.id):ea(rj.id);},className:`flex items-center gap-2.5 rounded-xl px-3 py-2 shrink-0 ${_.chip}`,style:{minWidth:"176px"},children:[h.jsxs("div",{className:"min-w-0 text-left flex-1",children:[h.jsx("div",{className:"text-xs font-bold truncate",children:rj.table||rj.label||"Order"}),h.jsx("div",{className:`text-[11px] truncate ${_.sub}`,children:(rj.parked?"Parked · ":"")+qy+" item"+(qy===1?"":"s")+(tt?" · "+ue(tt):"")})]}),h.jsx("div",{className:"shrink-0",dangerouslySetInnerHTML:{__html:window.__ksRing(window.__ksProg(st),window.__kstatus(st).fg,38)}})]},rj.id);})})]}):null;}catch(_e){return null;}})(),h.jsx("div",{className:"hidden lg:block ksh-col1"'
   )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.81"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.82"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
