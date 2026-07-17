@@ -2232,7 +2232,7 @@ patchFile(indexPath, (html) => html
      no longer contains. */
   .replace(
     'children:[h.jsx("div",{className:"text-xs font-semibold truncate",children:rj.table?rj.table:rj.otype==="delivery"?"🛵 "+rj.label:rj.label}),h.jsx("div",{className:"text-xs opacity-60 truncate",children:rj.parked?"Parked":rj.label})]',
-    'children:[h.jsxs("div",{className:"text-xs font-semibold truncate",children:[rj.table?rj.table:rj.otype==="delivery"?"🛵 Delivery":rj.otype==="takeaway"?"🥡 Takeaway":"🍽 Dine-in",rj.label?" · "+rj.label:""]}),(function(){var _c=rj.customerId?(p||[]).find(function(c){return c.id===rj.customerId;}):null;var _nm=_c?_c.name:(rj.customerName||"Walk-in customer");var _g=(rj.otype!=="delivery"&&rj.covers)?rj.covers+" guest"+(rj.covers>1?"s":""):"";return h.jsx("div",{className:"text-xs opacity-60 truncate",children:_nm+(_g?" · "+_g:"")});})(),rj.parked?h.jsx("div",{className:"text-xs opacity-60 truncate",style:{fontSize:"10px",marginTop:"2px"},children:"⏸ Parked"}):null]'
+    'children:[h.jsxs("div",{className:"text-xs font-semibold",style:{lineHeight:1.3,wordBreak:"break-word"},children:[rj.table?rj.table:rj.otype==="delivery"?"🛵 Delivery":rj.otype==="takeaway"?"🥡 Takeaway":"🍽 Dine-in",rj.label?" · "+rj.label:""]}),(function(){var _c=rj.customerId?(p||[]).find(function(c){return c.id===rj.customerId;}):null;var _nm=_c?_c.name:(rj.customerName||"Walk-in customer");var _g=(rj.otype!=="delivery"&&rj.covers)?rj.covers+" guest"+(rj.covers>1?"s":""):"";return h.jsx("div",{className:"text-xs opacity-60",style:{lineHeight:1.3,wordBreak:"break-word",marginTop:"1px"},children:_nm+(_g?" · "+_g:"")});})(),rj.parked?h.jsx("div",{className:"text-xs opacity-60",style:{fontSize:"10px",marginTop:"2px"},children:"⏸ Parked"}):null]'
   )
 
   /* 130. Bill tabs adapt to device width. The order-panel bill tabs sat in an
@@ -2252,6 +2252,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.94"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.95"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
