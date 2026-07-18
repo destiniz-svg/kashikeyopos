@@ -47,8 +47,8 @@ These are built into the app and matter during a restore:
 
 | Target | Value | Notes |
 | --- | --- | --- |
-| **RPO** (max data loss) | **`TODO(owner)`** — recommend ≤ 24 h with daily backups, ≤ 5 min if PITR is enabled | Data committed to the DB after the last backup point is lost from the server. See §5 for how the offline outbox reduces real-world loss. |
-| **RTO** (max downtime) | **`TODO(owner)`** — recommend ≤ 1 h | Time to stand up a healthy DB + app and confirm §4 verification passes. |
+| **RPO** (max data loss) | **≤ 24 h** (nightly Layer-B dump; drops to ≤ 5 min if Railway PITR is enabled) | Adopted 18 Jul 2026. Data committed after the last backup point is lost from the server. See §5 for how the offline outbox reduces real-world loss. `TODO(owner): wire the nightly dump schedule (§3) to make this real.` |
+| **RTO** (max downtime) | **≤ 1 h** (measured drill: **< 5 min** end-to-end at 60k-sale scale, excl. infra provisioning) | Adopted 18 Jul 2026, backed by drill #1 below: dump 1.1 s, restore 2.9 s, boot + full verification ≈ 2 min on an 88 MB / 62,728-entity dataset. Railway provisioning/deploy adds minutes, not hours. |
 | **Max offline backlog** | One full trading day per till | Tills keep unsynced sales in `localStorage`; beyond ~500 queued ops the oldest are trimmed on persist (`rd()` slices to the last 500). Sync tills at least daily. |
 
 ---
@@ -228,6 +228,26 @@ Schedule: **`TODO(owner)` — recommend quarterly.** Owner: `TODO(owner)`.
 
 A drill that restores cleanly and passes §4 + `npm test` is your evidence that
 the RPO/RTO targets in §2 are real.
+
+### Drill history
+
+**Drill #1 — 18 Jul 2026 (sandbox, production-scale dataset) — PASS**
+
+| Item | Result |
+| --- | --- |
+| Dataset | 88 MB · 10 orgs · **62,728 entities (61,800 sales)** · 61,808 ops · 801 stock moves |
+| Dump (`pg_dump` custom, §3 Layer B) | **1.1 s** → 8.3 MB file · taken 20:04:09 UTC |
+| Restore (`pg_restore` into fresh DB, §5a) | **2.9 s**, exit 0 |
+| Boot against restore | `schema ready` + `connected as restricted role kashikeyo_app` (self-heal proven — dump carried no roles/grants) |
+| §4 checks | health `ok:true,db:true` · row counts **exactly match source** · RLS + FORCE `t` on all tenant tables · `kashikeyo_app` re-created · stock ledger reconciles to cache 2/2 |
+| Application proof | **Login to a restored org with its original password succeeded** (SECRET unchanged → sessions survive), its sales pull cleanly |
+| `npm test` on the restored DB | **36/36 green** |
+| End-to-end drill time | **< 5 min** including verification |
+
+Scope note: this drill validates the dump→restore→verify procedure and the
+app's restorability at scale. It does **not** exercise Railway's managed-backup
+layer or network — run the same procedure once against the **staging** DB via
+`docs/restore-drill.md` to close that last gap, and re-drill quarterly.
 
 ---
 
