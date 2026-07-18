@@ -217,6 +217,17 @@ describe("guest orders & counter-modify", () => {
   test("a dine-in order with no table is rejected", async () => {
     assert.equal((await order({ items: [{ pid: "g-tea", qty: 1 }], gtype: "dinein" })).status, 400);
   });
+  test("an order of only unknown (off-menu) items is rejected", async () => {
+    assert.equal((await order({ items: [{ pid: "does-not-exist", qty: 1, name: "Hack", price: 0 }], gtype: "pickup" })).status, 400);
+  });
+  test("a mixed cart keeps only catalogue items, priced from the server", async () => {
+    const r = await order({ items: [{ pid: "g-tea", qty: 1, price: 1 }, { pid: "off-menu", qty: 5, name: "Free", price: 0 }], gtype: "pickup" });
+    assert.equal(r.status, 200);
+    const lines = r.json.order.items;
+    assert.equal(lines.length, 1, "the off-menu item is dropped");
+    assert.equal(lines[0].pid, "g-tea");
+    assert.equal(lines[0].price, 3000, "server catalogue price wins over the client's price");
+  });
   test("a sold-out item (recipe at zero stock) is refused with 409", async () => {
     // an ingredient with no stock + a product that needs it → 0 servings available
     await H.invPost(o.token, "/ingredients", { id: "g-bean", name: "Beans", baseUnit: "g", location: "Dry" });

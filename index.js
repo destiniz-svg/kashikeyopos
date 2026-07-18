@@ -1206,8 +1206,12 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
   const lines = items.map((ci) => {
     const pid = String(ci.pid || ci.id || ci.productId || "");
     const p = products.find((x) => String(x.id) === pid);
-    const src = p || ci;
-    if (!src || (!pid && !src.name)) return null;
+    /* Guests may only order catalogue items: drop any pid that isn't on this
+       store's menu so a tampered cart can't inject an off-menu (or free) custom
+       line. Identity, price, tax and cost always come from the server product,
+       never from the client. */
+    if (!p) return null;
+    const src = p;
     /* Add-ons the guest chose: match each against the product's own defined
        add-ons and take the SERVER price, so a tampered cart can't set its own
        prices. Their cost rolls into the line price; their names ride on the
