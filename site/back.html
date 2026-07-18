@@ -31,10 +31,15 @@
   .theme-ctl .sw.on { border-color: var(--text); transform: scale(1.12); }
   .theme-ctl .dk { background: var(--btn); border-radius: 999px; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
   .till-link {
-    display: inline-flex; align-items: center; gap: 7px; background: var(--primary); color: #fff !important;
+    /* a11y: same dark-text-on-tint pattern as the active tab (white-on-primary
+       fails AA on the green/mango palettes) */
+    display: inline-flex; align-items: center; gap: 7px;
+    background: color-mix(in srgb, var(--primary) 16%, var(--panel));
+    border: 1.5px solid color-mix(in srgb, var(--primary) 55%, transparent);
+    color: var(--text) !important;
     padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; text-decoration: none !important;
   }
-  .till-link:hover { background: var(--primary-hov); }
+  .till-link:hover { background: color-mix(in srgb, var(--primary) 26%, var(--panel)); }
   .bar { max-width: 1180px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .logo { display: flex; align-items: center; gap: 10px; }
   .logo-img { display: block; height: 28px; width: auto; }
@@ -294,8 +299,11 @@
   }
   .tabs button:hover { color: var(--text); border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
   .tabs button.on {
-    color: #fff; border-bottom: none; border-color: transparent;
-    background: var(--primary);
+    /* a11y: themed dark-text-on-tint instead of white-on-primary — white fails
+       AA on the green/mango primaries; this passes ≥8.7:1 in all ten variants */
+    color: var(--text); border-bottom: none;
+    border-color: color-mix(in srgb, var(--primary) 55%, transparent);
+    background: color-mix(in srgb, var(--primary) 16%, var(--panel));
     box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 38%, transparent);
   }
 

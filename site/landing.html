@@ -9,8 +9,11 @@
 <style>
   :root {
     --app: #FBFAF7; --panel: #FFFFFF; --panel2: #F4F1EB; --border: #E3DED4; --text: #26221C;
-    --sub: #8A8378; --faint: #B8B0A3; --primary: #C7431D; --primary-hov: #A33417;
-    --btn: #F4F1EB; --btn-hov: #E8E1D2; --gold: #E8B24A; --leaf: #6B7A42;
+    /* a11y (WCAG AA): sub/leaf/primary darkened to clear 4.5:1 as text on the
+       white/cream surfaces (hue preserved); primary also stays ≥5:1 under
+       white button text. */
+    --sub: #726C63; --faint: #B8B0A3; --primary: #BD401C; --primary-hov: #A33417;
+    --btn: #F4F1EB; --btn-hov: #E8E1D2; --gold: #E8B24A; --leaf: #63713D;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; overflow-x: hidden; }
@@ -210,7 +213,7 @@
   /* Multi-branch: HQ + stores with pulsing dots and rails */
   .fv-branch { display: grid; grid-template-rows: auto 1fr; gap: 8px; padding: 14px; }
   .fv-branch .hub { display: flex; align-items: center; justify-content: space-between; border-radius: 12px; background: var(--primary); color: #fff; padding: 8px 11px; }
-  .fv-branch .hub strong { font-size: 12px; } .fv-branch .hub span { font-size: 9px; color: rgba(255,255,255,.8); }
+  .fv-branch .hub strong { font-size: 12px; } .fv-branch .hub span { font-size: 9px; color: rgba(255,255,255,.95); }
   .fv-branch .stores { display: grid; gap: 6px; }
   .fv-branch .store { position: relative; display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 7px 9px; }
   .fv-branch .store strong { font-size: 11px; } .fv-branch .store small { display: block; color: var(--sub); font-size: 9px; }
@@ -357,7 +360,7 @@
      till's actual palette values via --tm-* variables. */
   .tillmock {
     --tm-bg: #F3ECE1; --tm-panel: #FFFFFF; --tm-border: #E8DFCF; --tm-text: #2A241E;
-    --tm-sub: #8A8074; --tm-accent: #C1502D; --tm-chip: #FBF7EF;
+    --tm-sub: #71695F; --tm-accent: #C1502D; --tm-chip: #FBF7EF;
     border-radius: 16px; overflow: hidden; border: 1px solid var(--tm-border);
     background: var(--tm-bg); color: var(--tm-text); box-shadow: 0 16px 44px rgba(42,36,30,.14);
     transition: background .35s, color .35s, border-color .35s; font-size: 12px;
@@ -386,7 +389,7 @@
     background: var(--primary); color: #fff; border-radius: 22px; padding: 54px 40px; text-align: center;
   }
   .cta-band h2 { color: #fff; }
-  .cta-band p { color: rgba(255,255,255,.85); margin: 0 0 26px; font-size: 16px; }
+  .cta-band p { color: rgba(255,255,255,.95); margin: 0 0 26px; font-size: 16px; }
   .cta-band .btn-ghost { background: #fff; color: var(--primary); }
   .cta-band .btn-ghost:hover { background: #F3ECE1; }
 
@@ -530,7 +533,7 @@
             <div class="mock-item"><span>1× Mango Juice</span><b>MVR 45</b></div>
           </div>
           <div class="mock-order">
-            <span class="tag" style="background:#8A8074">PREPARING</span>
+            <span class="tag" style="background:#71695F">PREPARING</span>
             <div class="mock-item"><span>Pickup · 1× Short Eats Set</span><b>MVR 90</b></div>
           </div>
         </div>
@@ -871,8 +874,8 @@
   (function () {
     /* the till's actual five fruit palettes, light + dark */
     var themes = {
-      orange:     { l: { bg:"#FFFFFF", border:"#E8DFCF", text:"#2A241E", sub:"#8A8074", accent:"#C1502D" }, d: { bg:"#241A14", border:"#3A3025", text:"#EDE6DA", sub:"#A79E8F", accent:"#E0794F" } },
-      green:      { l: { bg:"#FFFFFF", border:"#DBE6CF", text:"#1E2A18", sub:"#6E7A64", accent:"#4E8A3A" }, d: { bg:"#131C0F", border:"#2C3A22", text:"#E4EFDD", sub:"#93A085", accent:"#7FBF5E" } },
+      orange:     { l: { bg:"#FFFFFF", border:"#E8DFCF", text:"#2A241E", sub:"#71695F", accent:"#C1502D" }, d: { bg:"#241A14", border:"#3A3025", text:"#EDE6DA", sub:"#A79E8F", accent:"#E0794F" } },
+      green:      { l: { bg:"#FFFFFF", border:"#DBE6CF", text:"#1E2A18", sub:"#66715D", accent:"#4A8337" }, d: { bg:"#131C0F", border:"#2C3A22", text:"#E4EFDD", sub:"#93A085", accent:"#7FBF5E" } },
       watermelon: { l: { bg:"#FFFFFF", border:"#F0D6D6", text:"#2A1618", sub:"#8A6E70", accent:"#DA3B4B" }, d: { bg:"#1F1113", border:"#3E2427", text:"#F1E1E2", sub:"#B58C8E", accent:"#F05563" } },
       mango:      { l: { bg:"#FFFFFF", border:"#EEE2C4", text:"#2A2410", sub:"#8A7C58", accent:"#E19A12" }, d: { bg:"#1F1B0E", border:"#3E3620", text:"#F0E9D2", sub:"#B5A578", accent:"#F2B733" } },
       strawberry: { l: { bg:"#FFFFFF", border:"#F0D6E0", text:"#2A1620", sub:"#8A6E78", accent:"#D8437A" }, d: { bg:"#1F1118", border:"#3E2432", text:"#F1E1E8", sub:"#B58CA0", accent:"#F06C9B" } },
