@@ -77,11 +77,30 @@ in the `TODO(owner)` values (RPO/RTO, backup schedule, on-call). **A backup you
 have never restored is not a backup.**
 
 ### 3.2 Load-test on production infrastructure
-Local throughput was excellent (171 ops/s, p95 9 ms), but not on Railway. Drive
-a realistic mix (see the audit's §8 workload) at 100 → 250 → 500 → 1000 tx/hr,
-plus a 24 h soak, watching p95/p99, error rate, DB connections, and memory. Tune
-the Postgres pool + instance size to your peak. Confirm zero duplicate/lost
-sales (the idempotent op-log + `npm test` already protect this logic).
+Local throughput was excellent (171 ops/s, p95 9 ms), but not on Railway. A
+ready-to-run harness ships in the repo — **`scripts/loadtest.mjs`** (zero deps,
+drives the real `/api/ops` sale path with valid audit-passing sales, reports
+p50/p95/p99, throughput and an error breakdown per stage). By default it
+**registers its own throwaway store**, so run it against **staging** first:
+
+```
+# realistic ramp (each stage 5 min); watch Railway CPU/mem/DB-connections live
+node scripts/loadtest.mjs --url https://kashikeyopos-staging.up.railway.app \
+     --stages 100,250,500,1000 --stage-secs 300
+
+# find the ceiling (50 concurrent workers, fire as fast as possible)
+node scripts/loadtest.mjs --url <staging> --stress 50 --stress-secs 120
+
+# 24 h soak at your expected peak
+node scripts/loadtest.mjs --url <staging> --rate 400 --soak-hours 24
+```
+
+Targets: **p95 ≤ 500 ms and error rate ≤ 0.5 %** at your peak (the script prints
+an OK/WATCH/FAIL verdict per stage). Tune the Postgres pool + instance size to
+your peak. Confirm zero duplicate/lost sales (the idempotent op-log + `npm test`
+already protect this logic). The script prints the throwaway store's slug —
+delete it from `/dev` (or leave it; it's isolated) when done. Point it at
+production only deliberately, with `--token` of a disposable store.
 
 ### 3.3 Accessibility pass
 Run axe/Lighthouse over `/back`, `/app`, and `/p/:slug`; fix contrast, focus
