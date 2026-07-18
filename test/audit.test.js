@@ -33,6 +33,19 @@ describe("auth & tenancy", () => {
     const own = (bPull.json.entities || []).some((e) => JSON.stringify(e.data).includes("ORGB-SECRET"));
     assert.equal(own, true, "org B must see its own customer");
   });
+
+  test("registration rejects a password below the minimum length (§3.5)", async () => {
+    const short = await H.req("POST", "/api/register", {
+      body: { email: H.uniqEmail("pwshort"), password: "abc123", storeName: "Weak", currency: "MVR", pin: "1234" },
+    });
+    assert.equal(short.status, 400, "a <8-char password must be rejected");
+    // a compliant password still registers fine
+    const okReg = await H.req("POST", "/api/register", {
+      body: { email: H.uniqEmail("pwok"), password: "longenough1", storeName: "OK", currency: "MVR", pin: "1234" },
+    });
+    assert.equal(okReg.status, 200, "an ≥8-char password registers");
+    assert.ok(okReg.json && okReg.json.token, "register returns a token");
+  });
 });
 
 /* ── Sync idempotency ────────────────────────────────────────────────── */

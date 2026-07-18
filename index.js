@@ -13,6 +13,7 @@ const { DEFAULT_MENU, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
 
 const PORT = process.env.PORT || 4000;
 const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
+const MIN_PASSWORD_LEN = Number(process.env.MIN_PASSWORD_LEN) || 8; // store-owner password floor (audit §3.5)
 const DEFAULT_STORE_ID = "main";
 
 /* "Sign in with Google/Apple" both hand back a signed OIDC ID token rather
@@ -832,6 +833,7 @@ app.post("/auth/apple/callback", express.urlencoded({ extended: false }), wrap(a
 app.post("/api/register", wrap(async (req, res) => {
   const { email, password, storeName, ownerName, phone, pin, currency } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
+  if (String(password).length < MIN_PASSWORD_LEN) return res.status(400).json({ error: `password must be at least ${MIN_PASSWORD_LEN} characters` });
   const base = slugify(storeName || email.split("@")[0]);
   const slug = await withSystem((client) => uniqueSlug(client, base));
   const id = uid();
