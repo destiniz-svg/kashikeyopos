@@ -220,6 +220,55 @@ const withSystem = (fn) => withScope(
 })();
 
 const app = express();
+/* Behind Railway's proxy the real client IP rides X-Forwarded-For; trust one
+   hop so req.ip is the client (needed by the login throttle below), not the
+   proxy. Locally, with no proxy, this falls back to the socket address. */
+app.set("trust proxy", 1);
+
+/* ── Security headers (audit SEC-01) ─────────────────────────────────────────
+   The app had no CSP, framing, or MIME hardening. The script/connect/frame
+   allow-lists are the exact third parties the app loads: Google + Apple sign-in
+   SDKs and the till's tesseract.js OCR fallback. Inline scripts/styles still
+   need 'unsafe-inline' because the till is a prebuilt minified bundle with many
+   inline blocks; the remaining directives (frame-ancestors, object-src, base-uri,
+   a locked-down connect-src) still meaningfully shrink the attack surface. */
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com https://appleid.cdn-apple.com https://cdn.jsdelivr.net",
+  "connect-src 'self' https://accounts.google.com https://appleid.apple.com",
+  "frame-src 'self' https://accounts.google.com https://appleid.apple.com",
+  "form-action 'self' https://appleid.apple.com",
+  "frame-ancestors 'none'",
+].join("; ");
+app.use((req, res, next) => {
+  res.set("Content-Security-Policy", CSP);
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("X-Frame-Options", "DENY");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (process.env.NODE_ENV === "production") res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
+/* ── Login throttle (audit SEC-02) ───────────────────────────────────────────
+   In-memory, single-instance (same trade-off as the SSE hub). Counts FAILED
+   attempts per client IP and per account; after RL_MAX failures inside the
+   window the key is blocked for RL_BLOCK. A successful login clears the
+   counters, so honest users are never throttled. Per-account keying (not just
+   IP, which is proxy-spoofable) is what actually protects a specific login. */
+const loginFails = new Map();
+const RL_WINDOW = 15 * 60 * 1000, RL_MAX = 8, RL_BLOCK = 15 * 60 * 1000;
+setInterval(() => { const now = Date.now(); for (const [k, v] of loginFails) if (now > v.until && now > v.reset) loginFails.delete(k); }, 5 * 60 * 1000).unref();
+const rlKeys = (req, email) => ["ip:" + (req.ip || "?")].concat(email ? ["acct:" + String(email).toLowerCase()] : []);
+const rlBlockedFor = (keys) => keys.reduce((mx, k) => { const e = loginFails.get(k); const now = Date.now(); return e && e.until > now ? Math.max(mx, Math.ceil((e.until - now) / 1000)) : mx; }, 0);
+const rlFail = (keys) => { const now = Date.now(); for (const k of keys) { let e = loginFails.get(k); if (!e || now > e.reset) e = { n: 0, reset: now + RL_WINDOW, until: 0 }; e.n++; if (e.n >= RL_MAX) e.until = now + RL_BLOCK; loginFails.set(k, e); } };
+const rlClear = (keys) => { for (const k of keys) loginFails.delete(k); };
+const rlDeny = (res, secs) => { res.set("Retry-After", String(secs)); return res.status(429).json({ error: `Too many attempts — try again in ${Math.max(1, Math.ceil(secs / 60))} min.` }); };
+
 app.use(express.json({ limit: "25mb" }));
 /* CORS is only for the cross-origin surface: the sync API and the public
    guest endpoints. A paired till PWA can be served from a different origin
@@ -723,9 +772,13 @@ app.post("/api/register", wrap(async (req, res) => {
 
 app.post("/api/login", wrap(async (req, res) => {
   const { email, password, storeId } = req.body || {};
+  const keys = rlKeys(req, email);
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
   const org = await withSystem(async (client) =>
     (await client.query("SELECT * FROM orgs WHERE email=$1", [(email || "").toLowerCase()])).rows[0]);
-  if (!org || !bcrypt.compareSync(password || "", org.pass_hash)) return res.status(401).json({ error: "wrong email or password" });
+  if (!org || !bcrypt.compareSync(password || "", org.pass_hash)) { rlFail(keys); return res.status(401).json({ error: "wrong email or password" }); }
+  rlClear(keys);
   if (org.status && org.status !== "active") return res.status(403).json({ error: "this workspace is " + org.status + " - contact support" });
   await ensureDefaultStore(org.id, org.store_name);
   const selectedStore = cleanStoreId(storeId || DEFAULT_STORE_ID);
@@ -807,9 +860,13 @@ app.post("/api/logout", (req, res) => {
 
 app.post("/api/dev/login", wrap(async (req, res) => {
   const { email, password } = req.body || {};
+  const keys = rlKeys(req, "dev:" + (email || ""));
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
   const r = await pool.query("SELECT * FROM platform_admins WHERE email=$1", [(email || "").toLowerCase()]);
   const admin = r.rows[0];
-  if (!admin || !bcrypt.compareSync(password || "", admin.pass_hash)) return res.status(401).json({ error: "wrong email or password" });
+  if (!admin || !bcrypt.compareSync(password || "", admin.pass_hash)) { rlFail(keys); return res.status(401).json({ error: "wrong email or password" }); }
+  rlClear(keys);
   setDevCookie(res, signAdmin(admin.id));
   res.json({ ok: true, admin: { id: admin.id, email: admin.email, name: admin.name } });
 }));
