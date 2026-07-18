@@ -171,16 +171,44 @@ const withSystem = (fn) => withScope(
   fn
 );
 
+const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init across instances
 (async () => {
+  /* Serialise the whole boot init across instances (ARCH-01): two nodes booting
+     against one database used to race on catalog updates ("tuple concurrently
+     updated") in schema apply, role/grant DDL and the seed steps. A session
+     advisory lock held on a dedicated connection makes the second node wait
+     until the first finishes; everything here is idempotent, so its run is a
+     no-op. The lock auto-releases if a node dies mid-boot (no deadlock). */
+  const bootClient = await bootPool.connect();
+  const schemaSql = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
   try {
-    await bootPool.query(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
+    /* The advisory lock serialises concurrent boots; the retry is the belt to
+       its braces — idempotent DDL that still collides on a catalog tuple ("tuple
+       concurrently updated" / deadlock) is simply retried, so a node never fails
+       to boot because a sibling booted at the same instant. */
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await bootClient.query("SELECT pg_advisory_lock($1)", [BOOT_LOCK]);
+        try { await bootPool.query(schemaSql); await ensureAppRole(); }
+        finally { await bootClient.query("SELECT pg_advisory_unlock($1)", [BOOT_LOCK]).catch(() => {}); }
+        break;
+      } catch (e) {
+        if (attempt < 6 && /concurrently updated|deadlock detected/i.test(String((e && e.message) || ""))) {
+          await new Promise((r) => setTimeout(r, 250 * attempt));
+          continue;
+        }
+        throw e;
+      }
+    }
     console.log("schema ready");
-    await ensureAppRole();
     pool = new Pool(appPoolConfig());
     pool.on("error", (e) => console.error("app pool error:", errDetail(e)));
     console.log(`connected as restricted role ${APP_DB_ROLE} for request handling`);
-    await mergeForkedStoreRows();
-    await ensurePlatformAdmin();
+    /* Seed/merge steps are best-effort (like the backfills below): a concurrency
+       hiccup when two nodes boot together must not abort the whole boot before
+       the SSE listener starts. */
+    try { await mergeForkedStoreRows(); } catch (e) { console.warn("store-merge skipped:", e.message); }
+    try { await ensurePlatformAdmin(); } catch (e) { console.warn("platform-admin seed skipped:", e.message); }
     /* Backfill: existing settings entities that pre-date multi-currency get
        currency:"MVR" and usdRate:1542 if those keys are absent. */
     try {
@@ -220,6 +248,11 @@ const withSystem = (fn) => withScope(
       if (touched) console.log(`default menu applied/refreshed for ${touched} of ${orgs.length} outlet(s)`);
     } catch (e) { console.warn("default-menu backfill skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); }
+  finally { bootClient.release(); }
+  /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,
+     and independent of it, so a node still relays pokes even if a backfill hiccups. */
+  if (!pool) { pool = new Pool(appPoolConfig()); pool.on("error", (e) => console.error("app pool error:", errDetail(e))); }
+  startPokeListener();
 })();
 
 const app = express();
@@ -378,12 +411,43 @@ function auditSaleMoney(sale, ctx) {
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
 }
 
+/* Real-time fan-out (audit ARCH-01). SSE subscribers are held per-org in this
+   in-memory Map, so a poke on one instance only reaches its own clients. To stay
+   correct when the app is horizontally scaled, poke() delivers locally AND
+   broadcasts over Postgres LISTEN/NOTIFY; every instance's listener relays the
+   notification to its local subscribers. Each node tags its own broadcasts with
+   INSTANCE_ID so it doesn't double-deliver the ones it already sent locally.
+   Single-instance behaviour is unchanged (local delivery is immediate). */
+const INSTANCE_ID = crypto.randomUUID();
+const POKE_CHANNEL = "kashikeyo_poke";
 const hubs = new Map();
-const poke = (orgId, rowver) => {
+const localPoke = (orgId, rowver) => {
   const set = hubs.get(orgId);
   if (!set) return;
   for (const res of set) { try { res.write(`data: ${JSON.stringify({ rowver })}\n\n`); } catch {} }
 };
+const poke = (orgId, rowver) => {
+  localPoke(orgId, rowver);
+  /* Best-effort cross-instance broadcast; if the DB round-trip fails, local
+     clients were already served and remote ones fall back to /api/pull. */
+  pool.query("SELECT pg_notify($1,$2)", [POKE_CHANNEL, JSON.stringify({ o: String(orgId), r: Number(rowver), i: INSTANCE_ID })]).catch(() => {});
+};
+/* Dedicated long-lived LISTEN connection; relays other instances' pokes to our
+   local subscribers, and self-heals on connection drop. */
+async function startPokeListener() {
+  const { Client } = require("pg");
+  const c = new Client(appPoolConfig());
+  c.on("notification", (msg) => {
+    if (msg.channel !== POKE_CHANNEL || !msg.payload) return;
+    try { const p = JSON.parse(msg.payload); if (p.i !== INSTANCE_ID) localPoke(p.o, Number(p.r)); } catch {}
+  });
+  c.on("error", (e) => { recordError("poke listener", e); try { c.end(); } catch {} setTimeout(startPokeListener, 2000); });
+  try {
+    await c.connect();
+    await c.query(`LISTEN ${POKE_CHANNEL}`);
+    console.log("poke listener connected (LISTEN/NOTIFY cross-instance fan-out)");
+  } catch (e) { console.warn("poke listener connect failed, retrying:", e.message); recordError("poke listener connect", e); setTimeout(startPokeListener, 2000); }
+}
 
 /* Small in-memory ring buffer the developer panel's health view reads from -
    resets on restart, which is fine for "what's gone wrong recently", not
