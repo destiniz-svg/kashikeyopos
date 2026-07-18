@@ -95,6 +95,9 @@ async function ensureAppRole() {
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines TO ${APP_DB_ROLE}`);
+  /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
+     deleted even by the app role (FIN-03). */
+  await bootPool.query(`GRANT SELECT, INSERT ON activity_log TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APP_DB_ROLE}`);
 }
 
@@ -168,16 +171,44 @@ const withSystem = (fn) => withScope(
   fn
 );
 
+const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init across instances
 (async () => {
+  /* Serialise the whole boot init across instances (ARCH-01): two nodes booting
+     against one database used to race on catalog updates ("tuple concurrently
+     updated") in schema apply, role/grant DDL and the seed steps. A session
+     advisory lock held on a dedicated connection makes the second node wait
+     until the first finishes; everything here is idempotent, so its run is a
+     no-op. The lock auto-releases if a node dies mid-boot (no deadlock). */
+  const bootClient = await bootPool.connect();
+  const schemaSql = fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8");
   try {
-    await bootPool.query(fs.readFileSync(path.join(__dirname, "schema.sql"), "utf8"));
+    /* The advisory lock serialises concurrent boots; the retry is the belt to
+       its braces — idempotent DDL that still collides on a catalog tuple ("tuple
+       concurrently updated" / deadlock) is simply retried, so a node never fails
+       to boot because a sibling booted at the same instant. */
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await bootClient.query("SELECT pg_advisory_lock($1)", [BOOT_LOCK]);
+        try { await bootPool.query(schemaSql); await ensureAppRole(); }
+        finally { await bootClient.query("SELECT pg_advisory_unlock($1)", [BOOT_LOCK]).catch(() => {}); }
+        break;
+      } catch (e) {
+        if (attempt < 6 && /concurrently updated|deadlock detected/i.test(String((e && e.message) || ""))) {
+          await new Promise((r) => setTimeout(r, 250 * attempt));
+          continue;
+        }
+        throw e;
+      }
+    }
     console.log("schema ready");
-    await ensureAppRole();
     pool = new Pool(appPoolConfig());
     pool.on("error", (e) => console.error("app pool error:", errDetail(e)));
     console.log(`connected as restricted role ${APP_DB_ROLE} for request handling`);
-    await mergeForkedStoreRows();
-    await ensurePlatformAdmin();
+    /* Seed/merge steps are best-effort (like the backfills below): a concurrency
+       hiccup when two nodes boot together must not abort the whole boot before
+       the SSE listener starts. */
+    try { await mergeForkedStoreRows(); } catch (e) { console.warn("store-merge skipped:", e.message); }
+    try { await ensurePlatformAdmin(); } catch (e) { console.warn("platform-admin seed skipped:", e.message); }
     /* Backfill: existing settings entities that pre-date multi-currency get
        currency:"MVR" and usdRate:1542 if those keys are absent. */
     try {
@@ -217,10 +248,77 @@ const withSystem = (fn) => withScope(
       if (touched) console.log(`default menu applied/refreshed for ${touched} of ${orgs.length} outlet(s)`);
     } catch (e) { console.warn("default-menu backfill skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); }
+  finally { bootClient.release(); }
+  /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,
+     and independent of it, so a node still relays pokes even if a backfill hiccups. */
+  if (!pool) { pool = new Pool(appPoolConfig()); pool.on("error", (e) => console.error("app pool error:", errDetail(e))); }
+  startPokeListener();
 })();
 
 const app = express();
-app.use(express.json({ limit: "25mb" }));
+/* Behind Railway's proxy the real client IP rides X-Forwarded-For; trust one
+   hop so req.ip is the client (needed by the login throttle below), not the
+   proxy. Locally, with no proxy, this falls back to the socket address. */
+app.set("trust proxy", 1);
+
+/* ── Security headers (audit SEC-01) ─────────────────────────────────────────
+   The app had no CSP, framing, or MIME hardening. The script/connect/frame
+   allow-lists are the exact third parties the app loads: Google + Apple sign-in
+   SDKs and the till's tesseract.js OCR fallback. Inline scripts/styles still
+   need 'unsafe-inline' because the till is a prebuilt minified bundle with many
+   inline blocks; the remaining directives (frame-ancestors, object-src, base-uri,
+   a locked-down connect-src) still meaningfully shrink the attack surface. */
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com https://appleid.cdn-apple.com https://cdn.jsdelivr.net",
+  "connect-src 'self' https://accounts.google.com https://appleid.apple.com",
+  "frame-src 'self' https://accounts.google.com https://appleid.apple.com",
+  "form-action 'self' https://appleid.apple.com",
+  "frame-ancestors 'none'",
+].join("; ");
+app.use((req, res, next) => {
+  res.set("Content-Security-Policy", CSP);
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("X-Frame-Options", "DENY");
+  res.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (process.env.NODE_ENV === "production") res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
+/* ── Login throttle (audit SEC-02) ───────────────────────────────────────────
+   In-memory, single-instance (same trade-off as the SSE hub). Counts FAILED
+   attempts per client IP and per account; after RL_MAX failures inside the
+   window the key is blocked for RL_BLOCK. A successful login clears the
+   counters, so honest users are never throttled. Per-account keying (not just
+   IP, which is proxy-spoofable) is what actually protects a specific login. */
+const loginFails = new Map();
+const RL_WINDOW = 15 * 60 * 1000, RL_MAX = 8, RL_BLOCK = 15 * 60 * 1000;
+setInterval(() => { const now = Date.now(); for (const [k, v] of loginFails) if (now > v.until && now > v.reset) loginFails.delete(k); }, 5 * 60 * 1000).unref();
+const rlKeys = (req, email) => ["ip:" + (req.ip || "?")].concat(email ? ["acct:" + String(email).toLowerCase()] : []);
+const rlBlockedFor = (keys) => keys.reduce((mx, k) => { const e = loginFails.get(k); const now = Date.now(); return e && e.until > now ? Math.max(mx, Math.ceil((e.until - now) / 1000)) : mx; }, 0);
+const rlFail = (keys) => { const now = Date.now(); for (const k of keys) { let e = loginFails.get(k); if (!e || now > e.reset) e = { n: 0, reset: now + RL_WINDOW, until: 0 }; e.n++; if (e.n >= RL_MAX) e.until = now + RL_BLOCK; loginFails.set(k, e); } };
+const rlClear = (keys) => { for (const k of keys) loginFails.delete(k); };
+const rlDeny = (res, secs) => { res.set("Retry-After", String(secs)); return res.status(429).json({ error: `Too many attempts — try again in ${Math.max(1, Math.ceil(secs / 60))} min.` }); };
+
+/* Correlation ID (audit OPS-02): every request gets a short id, echoed on the
+   response and threaded into error logs + the audit trail, so an incident can be
+   traced from a support report to the exact request. */
+app.use((req, res, next) => {
+  req.id = String(req.headers["x-request-id"] || crypto.randomBytes(6).toString("hex")).slice(0, 32);
+  res.set("X-Request-Id", req.id);
+  next();
+});
+/* Body-size limits (audit API-02): OCR ships a base64 photo and needs room; the
+   sync and everything else are capped tightly to shrink the abuse surface. The
+   per-path OCR parser runs first for its route, so the tight global one skips
+   it (Express marks the body parsed). */
+app.use("/api/inv/ocr", express.json({ limit: "25mb" }));
+app.use(express.json({ limit: "4mb" }));
 /* CORS is only for the cross-origin surface: the sync API and the public
    guest endpoints. A paired till PWA can be served from a different origin
    than the cloud it syncs to, and both authenticate with a Bearer token
@@ -270,12 +368,86 @@ const isVisibleInStore = (data, storeId) => {
    second, stale copy instead of updating it in place. */
 const publicId = (row) => String(row.data && row.data.id ? row.data.id : row.id).split(":").pop();
 
+/* ── Server-side money integrity (audit FIN-01) ──────────────────────────────
+   A settled sale is authored on the till, which is offline-first, so we must
+   NEVER reject a completed sale at sync (that would lose money the cashier has
+   already taken). Instead we independently re-check its arithmetic at ingestion
+   and, on any inconsistency, stamp data.serverAudit so the record is accepted
+   but flagged for manager review. The checks are false-positive-resistant:
+   they reconcile the sale against ITS OWN declared components (no dependency on
+   server settings) plus a catalogue price-floor and the server GST rate.
+     lineTotal = round(price * qty * (1 - discPct/100))     (mirrors the till's Un)
+     total     = subtotal - billDisc + gst + svcCharge      (mirrors the till's $n) */
+const saleLineTotal = (l) => Math.round((Number(l && l.price) || 0) * (Number(l && l.qty) || 0) * (1 - (Number(l && l.discPct) || 0) / 100));
+function auditSaleMoney(sale, ctx) {
+  if (!sale || sale.foc) return null;                       // free-of-charge is legitimately 0
+  if (sale.type && sale.type !== "sale") return null;       // refunds derive from their original; validated by linkage
+  const lines = Array.isArray(sale.lines) ? sale.lines : [];
+  if (!lines.length) return null;
+  const num = (v) => Number(v) || 0;
+  const fee = num(sale.fee), billDisc = num(sale.billDisc), gst = num(sale.gst), svc = num(sale.svcCharge);
+  const subtotal = num(sale.subtotal), total = num(sale.total);
+  const tol = (base) => Math.max(5, Math.round(Math.abs(base) * 0.01)); // 1% or 0.05 MVR, absorbs rounding
+  const reasons = [];
+  const linesSum = lines.reduce((a, l) => a + saleLineTotal(l), 0) + fee;
+  if (Math.abs(linesSum - subtotal) > tol(linesSum)) reasons.push(`subtotal ${subtotal} != lines ${linesSum}`);
+  const compTotal = subtotal - billDisc + gst + svc;
+  if (Math.abs(compTotal - total) > tol(compTotal)) reasons.push(`total ${total} != components ${compTotal}`);
+  if (ctx && ctx.gstBp) {
+    const billDiscPct = num(sale.billDiscPct);
+    const taxable = lines.reduce((a, l) => (l && l.taxable === false ? a : a + saleLineTotal(l)), 0) + fee;
+    const expGst = Math.round(Math.round(taxable * (1 - billDiscPct / 100)) * ctx.gstBp / 1e4);
+    if (Math.abs(expGst - gst) > Math.max(5, Math.round(expGst * 0.02))) reasons.push(`gst ${gst} != rate-expected ${expGst}`);
+  }
+  if (ctx && ctx.prices) {
+    for (const l of lines) {
+      const prod = ctx.prices.get(String(l && l.pid || ""));
+      if (prod && !prod.open && prod.price > 0 && (Number(l.price) || 0) < prod.price - 1) {
+        reasons.push(`line ${l.pid} price ${l.price} below catalogue ${prod.price}`);
+      }
+    }
+  }
+  if (!reasons.length) return null;
+  return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
+}
+
+/* Real-time fan-out (audit ARCH-01). SSE subscribers are held per-org in this
+   in-memory Map, so a poke on one instance only reaches its own clients. To stay
+   correct when the app is horizontally scaled, poke() delivers locally AND
+   broadcasts over Postgres LISTEN/NOTIFY; every instance's listener relays the
+   notification to its local subscribers. Each node tags its own broadcasts with
+   INSTANCE_ID so it doesn't double-deliver the ones it already sent locally.
+   Single-instance behaviour is unchanged (local delivery is immediate). */
+const INSTANCE_ID = crypto.randomUUID();
+const POKE_CHANNEL = "kashikeyo_poke";
 const hubs = new Map();
-const poke = (orgId, rowver) => {
+const localPoke = (orgId, rowver) => {
   const set = hubs.get(orgId);
   if (!set) return;
   for (const res of set) { try { res.write(`data: ${JSON.stringify({ rowver })}\n\n`); } catch {} }
 };
+const poke = (orgId, rowver) => {
+  localPoke(orgId, rowver);
+  /* Best-effort cross-instance broadcast; if the DB round-trip fails, local
+     clients were already served and remote ones fall back to /api/pull. */
+  pool.query("SELECT pg_notify($1,$2)", [POKE_CHANNEL, JSON.stringify({ o: String(orgId), r: Number(rowver), i: INSTANCE_ID })]).catch(() => {});
+};
+/* Dedicated long-lived LISTEN connection; relays other instances' pokes to our
+   local subscribers, and self-heals on connection drop. */
+async function startPokeListener() {
+  const { Client } = require("pg");
+  const c = new Client(appPoolConfig());
+  c.on("notification", (msg) => {
+    if (msg.channel !== POKE_CHANNEL || !msg.payload) return;
+    try { const p = JSON.parse(msg.payload); if (p.i !== INSTANCE_ID) localPoke(p.o, Number(p.r)); } catch {}
+  });
+  c.on("error", (e) => { recordError("poke listener", e); try { c.end(); } catch {} setTimeout(startPokeListener, 2000); });
+  try {
+    await c.connect();
+    await c.query(`LISTEN ${POKE_CHANNEL}`);
+    console.log("poke listener connected (LISTEN/NOTIFY cross-instance fan-out)");
+  } catch (e) { console.warn("poke listener connect failed, retrying:", e.message); recordError("poke listener connect", e); setTimeout(startPokeListener, 2000); }
+}
 
 /* Small in-memory ring buffer the developer panel's health view reads from -
    resets on restart, which is fine for "what's gone wrong recently", not
@@ -286,6 +458,17 @@ const recordError = (where, e) => {
   recentErrors.unshift({ t: Date.now(), where, message: errDetail(e) });
   if (recentErrors.length > 50) recentErrors.length = 50;
 };
+
+/* Append-only audit trail (FIN-03). Best-effort and non-fatal: an audit write
+   must never fail a business operation. Runs inside the caller's org scope. */
+async function logActivity(orgId, { actor = "system", action, ref = "", requestId = "", detail = {} }) {
+  if (!orgId || !action) return;
+  try {
+    await withOrg(orgId, (client) => client.query(
+      "INSERT INTO activity_log (org_id, actor, action, ref, request_id, detail) VALUES ($1,$2,$3,$4,$5,$6)",
+      [String(orgId), String(actor).slice(0, 80), String(action).slice(0, 60), String(ref).slice(0, 80), String(requestId).slice(0, 32), JSON.stringify(detail || {})]));
+  } catch (e) { recordError("activity_log " + action, e); }
+}
 
 const sign = (orgId, register, storeId = DEFAULT_STORE_ID) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId) }, SECRET, { expiresIn: "365d" });
 const auth = (req, res, next) => {
@@ -368,7 +551,7 @@ const devAuth = (req, res, next) => {
 /* Inventory & Pricing (recipes, stock checks, procurement) lives in its own
    module — it plugs into the same withOrg/RLS scope and into /api/ops below,
    where settled sales trigger the real-time ingredient deductions. */
-const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke });
+const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke, logActivity });
 app.use("/api/inv", inventory.router);
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
@@ -680,9 +863,13 @@ app.post("/api/register", wrap(async (req, res) => {
 
 app.post("/api/login", wrap(async (req, res) => {
   const { email, password, storeId } = req.body || {};
+  const keys = rlKeys(req, email);
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
   const org = await withSystem(async (client) =>
     (await client.query("SELECT * FROM orgs WHERE email=$1", [(email || "").toLowerCase()])).rows[0]);
-  if (!org || !bcrypt.compareSync(password || "", org.pass_hash)) return res.status(401).json({ error: "wrong email or password" });
+  if (!org || !bcrypt.compareSync(password || "", org.pass_hash)) { rlFail(keys); return res.status(401).json({ error: "wrong email or password" }); }
+  rlClear(keys);
   if (org.status && org.status !== "active") return res.status(403).json({ error: "this workspace is " + org.status + " - contact support" });
   await ensureDefaultStore(org.id, org.store_name);
   const selectedStore = cleanStoreId(storeId || DEFAULT_STORE_ID);
@@ -764,9 +951,13 @@ app.post("/api/logout", (req, res) => {
 
 app.post("/api/dev/login", wrap(async (req, res) => {
   const { email, password } = req.body || {};
+  const keys = rlKeys(req, "dev:" + (email || ""));
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
   const r = await pool.query("SELECT * FROM platform_admins WHERE email=$1", [(email || "").toLowerCase()]);
   const admin = r.rows[0];
-  if (!admin || !bcrypt.compareSync(password || "", admin.pass_hash)) return res.status(401).json({ error: "wrong email or password" });
+  if (!admin || !bcrypt.compareSync(password || "", admin.pass_hash)) { rlFail(keys); return res.status(401).json({ error: "wrong email or password" }); }
+  rlClear(keys);
   setDevCookie(res, signAdmin(admin.id));
   res.json({ ok: true, admin: { id: admin.id, email: admin.email, name: admin.name } });
 }));
@@ -866,12 +1057,37 @@ app.post("/api/select-store", auth, wrap(async (req, res) => {
 
 app.post("/api/ops", auth, wrap(async (req, res) => {
   const ops = (req.body && req.body.ops) || [];
+  /* Request validation (audit API-01): reject grossly malformed or oversized
+     batches up front rather than trusting the shape downstream. Individual
+     missing fields are still tolerated (offline clients vary), but the outer
+     shape and sizes are enforced. */
+  if (!Array.isArray(ops)) return res.status(400).json({ error: "ops must be an array" });
+  if (ops.length > 1000) return res.status(413).json({ error: "too many ops in one request (max 1000)" });
+  for (const op of ops) {
+    if (op && Array.isArray(op.puts) && op.puts.length > 2000) return res.status(413).json({ error: "too many puts in one op (max 2000)" });
+    if (op && Array.isArray(op.dels) && op.dels.length > 2000) return res.status(413).json({ error: "too many dels in one op (max 2000)" });
+  }
   const client = await pool.connect();
   let rowver = 0;
   const settledSales = [];
+  const auditEvents = []; // written to activity_log after a successful commit (FIN-03)
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(req.org.o)]);
+    /* Money-integrity context (FIN-01): the catalogue prices + GST rate this org
+       is authoritative for, fetched once per sync only when the batch actually
+       carries a sale, so ordinary syncs pay nothing. */
+    let moneyCtx = null;
+    if (ops.some((o) => (o.puts || []).some((p) => p.kind === "sales"))) {
+      const [setRes, prodRes] = await Promise.all([
+        client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [req.org.o]),
+        client.query("SELECT data->>'id' AS id, data->>'price' AS price, data->>'openPrice' AS op FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.org.o]),
+      ]);
+      const st = setRes.rows[0] ? setRes.rows[0].data : {};
+      const prices = new Map();
+      for (const r of prodRes.rows) prices.set(String(r.id), { price: Number(r.price) || 0, open: r.op === "true" });
+      moneyCtx = { gstBp: Number(st.gstBp) || 0, svcBp: Number(st.svcChargeBp) || 0, prices };
+    }
     for (const op of ops) {
       const storeId = opStore(req, op);
       await client.query("INSERT INTO stores (org_id, id, code, name) VALUES ($1,$2,$3,$4) ON CONFLICT (org_id, id) DO NOTHING", [req.org.o, storeId, storeId.toUpperCase().slice(0, 16), storeId === DEFAULT_STORE_ID ? "Main Store" : storeId]);
@@ -884,6 +1100,15 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         const data = { ...(p.data || {}) };
         data.id = String(data.id || p.id);
         if (!shared) data.storeId = cleanStoreId(p.storeId || data.storeId || storeId);
+        /* FIN-01: re-check the sale's money against the catalogue + GST rate and
+           flag (never reject) any inconsistency, so a tampered or mis-priced
+           sale is accepted-but-quarantined for manager review rather than
+           silently trusted. */
+        if (p.kind === "sales" && data.lines) {
+          const money = auditSaleMoney(data, moneyCtx);
+          if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); auditEvents.push({ actor: data.userName || "", action: "sale.flagged", ref: data.no || data.id, detail: { claimedTotal: money.claimedTotal, computedTotal: money.computedTotal, reasons: money.reasons } }); }
+          if (p.kind === "sales" && data.type === "refund") auditEvents.push({ actor: data.userName || "", action: "sale.refund", ref: data.no || data.id, detail: { total: data.total, customerId: data.customerId || null } });
+        }
         const preserve = p.kind === "products"
           /* The till bundle is prebuilt and doesn't know about the back-office-
              managed menu meta (allergens, add-ons, spice levels, guest-note
@@ -949,15 +1174,31 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
       }
       for (const c of dz.cust || []) {
+        /* FIN-02: the balance still moves (money owed is real and the sale is
+           already done — offline devices must never be silently rejected), but
+           when the new balance breaks the customer's credit limit we stamp a
+           server-side over-limit flag for manager review. This is the backstop
+           the client-only limit check can't provide when two offline terminals
+           each spend the "remaining" credit against a stale balance. */
         const r = await client.query(
           `UPDATE entities SET
              data = data
                || jsonb_build_object('points', COALESCE((data->>'points')::numeric, 0) + $3)
-               || jsonb_build_object('balance', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4)),
+               || jsonb_build_object('balance', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4))
+               || CASE WHEN COALESCE((data->>'creditLimit')::numeric, 0) > 0
+                         AND GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4) > COALESCE((data->>'creditLimit')::numeric, 0)
+                       THEN jsonb_build_object('creditOverLimit', true,
+                              'creditOverBy', GREATEST(0, COALESCE((data->>'balance')::numeric, 0) + $4) - COALESCE((data->>'creditLimit')::numeric, 0),
+                              'creditOverAt', $5::bigint)
+                       ELSE jsonb_build_object('creditOverLimit', false) END,
              rowver = nextval('entities_rowver_seq'), updated_at = now()
-           WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver`,
-          [req.org.o, String(c.id), Number(c.pts) || 0, Number(c.bal) || 0]);
-        for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
+           WHERE org_id=$1 AND kind='customers' AND id=$2
+           RETURNING rowver, (data->>'creditOverLimit')='true' AS over, data->>'name' AS name, data->>'creditOverBy' AS overby`,
+          [req.org.o, String(c.id), Number(c.pts) || 0, Number(c.bal) || 0, Date.now()]);
+        for (const row of r.rows) {
+          rowver = Math.max(rowver, Number(row.rowver));
+          if (row.over) { recordError("credit over-limit " + (row.name || c.id), new Error(`over by ${row.overby} laari`)); auditEvents.push({ action: "credit.over_limit", ref: String(c.id), detail: { name: row.name || "", overBy: Number(row.overby) || 0 } }); }
+        }
       }
       for (const d of op.dels || []) {
         const r = await client.query(
@@ -970,7 +1211,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   } catch (e) {
     await client.query("ROLLBACK");
     client.release();
-    return res.status(500).json({ error: "ops failed: " + errDetail(e) });
+    recordError("ops[" + req.id + "]", e);
+    return res.status(500).json({ error: "ops failed: " + errDetail(e), requestId: req.id });
   }
   client.release();
   if (rowver) poke(req.org.o, rowver);
@@ -980,6 +1222,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
      deduction idempotent, so a crash between commit and here at worst skips
      a deduction the next audit reconciles — it can never double-deduct. */
   if (settledSales.length) inventory.processSales(req.org.o, settledSales);
+  /* Persist the sensitive events observed above (post-commit, non-fatal). */
+  for (const ev of auditEvents) logActivity(req.org.o, { ...ev, requestId: req.id });
   res.json({ ok: true, rowver });
 }));
 
@@ -1068,8 +1312,12 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
   const lines = items.map((ci) => {
     const pid = String(ci.pid || ci.id || ci.productId || "");
     const p = products.find((x) => String(x.id) === pid);
-    const src = p || ci;
-    if (!src || (!pid && !src.name)) return null;
+    /* Guests may only order catalogue items: drop any pid that isn't on this
+       store's menu so a tampered cart can't inject an off-menu (or free) custom
+       line. Identity, price, tax and cost always come from the server product,
+       never from the client. */
+    if (!p) return null;
+    const src = p;
     /* Add-ons the guest chose: match each against the product's own defined
        add-ons and take the SERVER price, so a tampered cart can't set its own
        prices. Their cost rolls into the line price; their names ride on the
