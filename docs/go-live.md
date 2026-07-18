@@ -118,11 +118,12 @@ fixable; the till is a prebuilt bundle — patch what you can via
 `guest-sync-patch.js`, and note any residuals.
 
 ### 3.4 Payments decision
-There is **no payment gateway** — card/QR/transfer are recorded labels, cash-safe
-but manually reconciled (no cardholder data enters the app, so PCI scope is
-minimal). Either (a) accept manual reconciliation and train staff to use the new
-`ledger-export` + end-of-day reports, or (b) integrate a provider with idempotent
-initiation + signed webhooks. Decide before launch.
+See the full brief: **`docs/payments-decision.md`**. In short — there is **no
+payment gateway**; card/QR/transfer are recorded labels, cash-safe, with no
+cardholder data in the app (PCI scope minimal). **Recommended: launch on manual
+reconciliation** (Option A) using the daily `ledger-export` + audit-trail routine
+in the brief; consider integrating a gateway (Option B) only later if non-cash
+volume justifies it. Pick an option, record it, and this gate is satisfied.
 
 ### 3.5 Authentication policy
 PINs are a low-entropy **convenience** gate, not a security boundary — keep truly
