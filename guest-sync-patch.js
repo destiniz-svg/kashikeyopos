@@ -2359,9 +2359,19 @@ patchFile(indexPath, (html) => html
     ",rd(),hu(!0),ki.current.length&&Su()}catch{hu(!1)}",
     ",rd(),hu(!0),window.__ksSyncOk=Date.now(),ki.current.length&&Su()}catch{hu(!1),window.__ksSyncErr=Date.now()}"
   )
+
+  /* 136. Guard the "reset to demo" wipe against data loss (audit UX-02). The
+     reset clears local storage + state; if it runs while sales sit unsynced in
+     the outbox, those sales are gone. Refuse (hard-confirm) when the durable
+     outbox is non-empty. Idempotent: the find's bare `{try{` body is broken up
+     by the injected guard, so it can't match a second time. */
+  .replace(
+    "EI=async()=>{try{_1&&await window.storage.delete(Yv)}catch{}",
+    "EI=async()=>{var _pob=[];try{_pob=JSON.parse(localStorage.getItem('kashikeyo-outbox'))||[]}catch(e){}if(_pob.length&&!confirm(_pob.length+' sale(s) have NOT synced to the cloud yet and will be permanently LOST if you reset now. Reset anyway?'))return;try{_1&&await window.storage.delete(Yv)}catch{}"
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.99"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.100"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

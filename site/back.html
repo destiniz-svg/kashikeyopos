@@ -576,6 +576,25 @@
     el("main").querySelectorAll("[data-ack-credit]").forEach(function (b) {
       b.onclick = function () { ackFlag("credit", b.getAttribute("data-ack-credit"), b); };
     });
+    // Lazy-load the append-only audit trail (FIN-03) beneath the flags.
+    var trail = document.createElement("section");
+    trail.style.marginTop = "22px";
+    trail.innerHTML = '<h2>Audit trail</h2><p class="sub" style="margin-top:0">A tamper-evident record of sensitive events — money flags, over-limit credit, reviews, refunds.</p><div id="trail" class="sub">Loading…</div>';
+    el("main").appendChild(trail);
+    api("/activity?limit=100").then(function (r) {
+      var a = r.activity || [];
+      var LBL = { "sale.flagged": "Money flag", "credit.over_limit": "Over credit limit", "flag.ack": "Marked reviewed", "sale.refund": "Refund" };
+      el("trail").innerHTML = a.length
+        ? '<div class="tbl-wrap"><table><thead><tr><th>When</th><th>Event</th><th>Ref</th><th>By</th><th>Detail</th></tr></thead><tbody>' +
+          a.map(function (x) {
+            var d = x.detail || {};
+            var det = x.action === "sale.flagged" ? (esc(S.currency) + " " + Y(d.claimedTotal) + " → " + Y(d.computedTotal))
+              : x.action === "credit.over_limit" ? ("over by " + esc(S.currency) + " " + Y(d.overBy))
+              : x.action === "sale.refund" ? (esc(S.currency) + " " + Y(d.total)) : "";
+            return "<tr><td>" + esc(when(new Date(x.at).getTime())) + "</td><td><b>" + esc(LBL[x.action] || x.action) + "</b></td><td>" + esc(x.ref || "") + "</td><td>" + esc(x.actor || "system") + "</td><td class=\"sub\">" + det + "</td></tr>";
+          }).join("") + "</tbody></table></div>"
+        : '<p class="sub">No events recorded yet.</p>';
+    }).catch(function () { el("trail").innerHTML = '<p class="sub">Couldn’t load the audit trail.</p>'; });
   }
 
   /* ── Assistant tab (§18–19) ──────────────────────────────────────────
