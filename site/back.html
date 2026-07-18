@@ -66,6 +66,22 @@
   }
   input:focus, select:focus { border-color: var(--primary); }
   input.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+
+  /* a11y: a visible keyboard-focus ring (mouse/touch users unaffected — the base
+     outline:none above only bites for pointer focus; :focus-visible restores it
+     for keyboard). */
+  a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+  textarea:focus-visible, [tabindex]:focus-visible {
+    outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px;
+  }
+  .tabs button:focus-visible { outline-offset: -2px; }
+  .theme-ctl .sw:focus-visible { outline-offset: 3px; }
+  /* skip link — off-screen until focused */
+  .skip { position: absolute; left: 8px; top: -60px; z-index: 100; background: var(--primary);
+    color: #fff; padding: 9px 16px; border-radius: 9px; font-size: 13px; font-weight: 600;
+    text-decoration: none; transition: top .15s; }
+  .skip:focus { top: 8px; }
+  #main:focus { outline: none; }
   label { display: block; font-size: 12.5px; color: var(--sub); margin: 12px 0 5px; }
 
   table { width: 100%; border-collapse: collapse; }
@@ -321,18 +337,20 @@
 </head>
 <body>
 
+<a href="#main" class="skip">Skip to content</a>
+
 <header>
   <div class="bar">
     <div class="logo"><img class="logo-img" src="/logo-mark.png" alt="KashikeyoPOS" /><div class="logo-text">Back office</div></div>
     <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a class="till-link" href="/app">🧾 Open the till</a><button class="ghost" id="signOut" title="Sign out" style="padding:8px 12px;border-radius:999px">Sign out</button></div>
   </div>
-  <nav class="tabs" id="tabs"></nav>
+  <nav class="tabs" id="tabs" aria-label="Back office sections"></nav>
 </header>
 
-<div id="alerts"></div>
-<main id="main"><div class="empty">Loading…</div></main>
+<div id="alerts" role="region" aria-label="Stock &amp; review alerts" aria-live="polite"></div>
+<main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
 <div id="modalHost"></div>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <script>
 (function () {
@@ -383,8 +401,8 @@
   }
   function renderThemeCtl() {
     var h = Object.keys(SWATCH).map(function (n) {
-      return '<button class="sw ' + (S.theme.name === n ? "on" : "") + '" title="' + n + '" style="background:' + SWATCH[n] + '" data-th="' + n + '"></button>';
-    }).join("") + '<button class="dk" id="dkTgl" title="Light / dark">' + (S.theme.dark ? "☀️" : "🌙") + "</button>";
+      return '<button class="sw ' + (S.theme.name === n ? "on" : "") + '" title="' + n + '" aria-label="' + n.charAt(0).toUpperCase() + n.slice(1) + ' theme" aria-pressed="' + (S.theme.name === n) + '" style="background:' + SWATCH[n] + '" data-th="' + n + '"></button>';
+    }).join("") + '<button class="dk" id="dkTgl" title="Light / dark" aria-label="' + (S.theme.dark ? "Switch to light mode" : "Switch to dark mode") + '" aria-pressed="' + S.theme.dark + '">' + (S.theme.dark ? "☀️" : "🌙") + "</button>";
     var host = el("themeCtl");
     host.innerHTML = h;
     host.querySelectorAll("[data-th]").forEach(function (b) {
@@ -412,6 +430,104 @@
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function qty3(n) { var v = Number(n || 0); return (Math.round(v * 1000) / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 }); }
   function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2600); }
+
+  /* ── accessibility controller ────────────────────────────────────────
+     The screens are built by innerHTML in ~40 places, so rather than label
+     every icon button and placeholder-only input by hand we enhance the DOM
+     after each render, and give every modal proper dialog semantics + focus
+     management centrally. */
+  var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  var _fldSeq = 0;
+  function a11yEnhance(root) {
+    if (!root || !root.querySelectorAll) return;
+    // icon-only buttons (the ✕ removers etc.) get an accessible name
+    root.querySelectorAll("button").forEach(function (b) {
+      if (b.getAttribute("aria-label")) return;
+      var txt = (b.textContent || "").replace(/\s+/g, " ").trim();
+      if (txt === "" || txt === "✕" || txt === "×" || txt === "🗑️") {
+        b.setAttribute("aria-label", b.getAttribute("title") || "Remove");
+      }
+    });
+    // hook up bare <label>Text</label> elements (no for=, not wrapping) to the
+    // next form control that follows them, so the visible label is programmatic
+    root.querySelectorAll("label:not([for])").forEach(function (lab) {
+      if (lab.querySelector("input,select,textarea")) return; // wrapping label — already fine
+      var ctl = null, n = lab.nextElementSibling;
+      while (n && !ctl) {
+        if (/^(INPUT|SELECT|TEXTAREA)$/.test(n.tagName)) ctl = n;
+        else if (n.querySelector) ctl = n.querySelector("input,select,textarea");
+        n = n.nextElementSibling;
+      }
+      if (ctl && !ctl.getAttribute("aria-label") && !ctl.getAttribute("aria-labelledby")) {
+        if (!ctl.id) ctl.id = "fld" + (_fldSeq++);
+        lab.setAttribute("for", ctl.id);
+      }
+    });
+    // any input still without an accessible name falls back to its placeholder
+    root.querySelectorAll("input,select,textarea").forEach(function (inp) {
+      if (inp.getAttribute("aria-label") || inp.getAttribute("aria-labelledby")) return;
+      if (inp.id && root.querySelector('label[for="' + inp.id + '"]')) return;
+      if (inp.closest && inp.closest("label")) return;
+      var ph = inp.getAttribute("placeholder");
+      if (ph) inp.setAttribute("aria-label", ph);
+    });
+  }
+
+  var _modalOpen = false, _restoreFocus = null;
+  function handleModalA11y() {
+    var host = el("modalHost");
+    var modal = host ? host.querySelector(".modal") : null;
+    if (modal) {
+      if (modal.getAttribute("role") !== "dialog") {
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        if (!modal.hasAttribute("tabindex")) modal.setAttribute("tabindex", "-1");
+        var h = modal.querySelector("h3");
+        if (h) { if (!h.id) h.id = "modalTitle"; modal.setAttribute("aria-labelledby", h.id); }
+      }
+      a11yEnhance(modal);
+      if (!_modalOpen) { _modalOpen = true; _restoreFocus = document.activeElement; }
+      // only pull focus in if it isn't already inside (the modal's own draw()
+      // routines re-focus their primary field on redraw — don't fight them)
+      if (!modal.contains(document.activeElement)) {
+        var f = modal.querySelector(FOCUSABLE);
+        (f || modal).focus();
+      }
+    } else if (_modalOpen) {
+      _modalOpen = false;
+      if (_restoreFocus && _restoreFocus.focus) { try { _restoreFocus.focus(); } catch (e) {} }
+      _restoreFocus = null;
+    }
+  }
+
+  var _a11yScheduled = false;
+  function a11yScan() {
+    a11yEnhance(document.body);
+    handleModalA11y();
+  }
+  new MutationObserver(function () {
+    if (_a11yScheduled) return;
+    _a11yScheduled = true;
+    requestAnimationFrame(function () { _a11yScheduled = false; a11yScan(); });
+  }).observe(document.body, { childList: true, subtree: true });
+
+  document.addEventListener("keydown", function (e) {
+    if (!_modalOpen) return;
+    if (e.key === "Escape") { el("modalHost").innerHTML = ""; return; }
+    if (e.key === "Tab") {
+      var modal = el("modalHost").querySelector(".modal");
+      if (!modal) return;
+      var f = Array.prototype.filter.call(modal.querySelectorAll(FOCUSABLE), function (n) { return n.offsetParent !== null || n === modal; });
+      if (!f.length) return;
+      var first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
+  // click on the dimmed backdrop closes any modal (covers the few that don't wire it)
+  document.getElementById("modalHost").addEventListener("mousedown", function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains("overlay")) el("modalHost").innerHTML = "";
+  });
 
   function api(path, opts) {
     return fetch("/api/inv" + path, Object.assign({ headers: { "Content-Type": "application/json" } }, opts)).then(function (r) {
@@ -463,7 +579,9 @@
     el("tabs").innerHTML = TABS.map(function (t) {
       var label = esc(t[1]);
       if (t[0] === "review" && flagN) label += ' <span class="tab-count">' + flagN + "</span>";
-      return '<button data-t="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + label + "</button>";
+      var cur = S.tab === t[0] ? ' aria-current="page"' : "";
+      var al = (t[0] === "review" && flagN) ? ' aria-label="Review, ' + flagN + ' flagged"' : "";
+      return '<button data-t="' + t[0] + '"' + cur + al + ' class="' + (S.tab === t[0] ? "on" : "") + '">' + label + "</button>";
     }).join("");
     el("tabs").querySelectorAll("button").forEach(function (b) {
       b.onclick = function () { S.tab = b.dataset.t; render(); };
@@ -1034,7 +1152,7 @@
         "<label>Pack sizes — how it arrives from suppliers</label>" +
         '<div id="mUnits">' + units.map(function (u, i) {
           return '<div class="row2" style="margin-bottom:8px"><input data-un="' + i + '" value="' + esc(u.name) + '" placeholder="e.g. Case" />' +
-            '<div style="display:flex;gap:8px;align-items:center"><input data-uf="' + i + '" class="num" inputmode="decimal" value="' + String(u.factor) + '" style="flex:1" /><span class="hint" style="margin:0;white-space:nowrap">' + (ing ? esc(ing.base_unit) : "base units") + ' each</span><button class="tiny ghost" data-ux="' + i + '">✕</button></div></div>';
+            '<div style="display:flex;gap:8px;align-items:center"><input data-uf="' + i + '" class="num" inputmode="decimal" aria-label="Base units per pack" value="' + String(u.factor) + '" style="flex:1" /><span class="hint" style="margin:0;white-space:nowrap">' + (ing ? esc(ing.base_unit) : "base units") + ' each</span><button class="tiny ghost" data-ux="' + i + '">✕</button></div></div>';
         }).join("") + "</div>" +
         '<button class="tiny ghost" id="mAddU">+ Add a pack size</button>' +
         '<div class="sell-role"><label class="sell-toggle"><input type="checkbox" id="mSell"' + (sell.on ? " checked" : "") + " /> <span><b>Also sell this directly</b><br><span class=\"hint\" style=\"margin:0\">A resale item you sell as-is — it appears on the till and each sale takes one off this stock.</span></span></label>" +
