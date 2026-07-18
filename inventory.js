@@ -12,7 +12,8 @@
    comes in. Money: NUMERIC laari (the platform's integer sub-unit); unit
    costs carry 6 decimals because cost per gram is a fraction of a laari. */
 
-module.exports = function createInventory({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth, poke }) {
+module.exports = function createInventory({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth, poke, logActivity }) {
+  const noteActivity = typeof logActivity === "function" ? logActivity : async () => {};
   const express = require("express");
   const router = express.Router();
 
@@ -1583,7 +1584,57 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
            RETURNING rowver`, [req.orgId, req.params.id, who, Date.now()]));
     if (!r.rowCount) return res.status(404).json({ error: "flag not found or already cleared" });
     if (poke) poke(req.orgId, Number(r.rows[0].rowver));
+    await noteActivity(req.orgId, { actor: who, action: "flag.ack", ref: req.params.id, requestId: req.id, detail: { kind } });
     res.json({ ok: true });
+  }));
+
+  /* Read the append-only audit trail (FIN-03) for the Review / compliance view. */
+  router.get("/activity", authAny, wrap(async (req, res) => {
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+    const r = await withOrg(req.orgId, (client) => client.query(
+      `SELECT at, actor, action, ref, request_id, detail FROM activity_log
+       WHERE org_id=$1 ORDER BY at DESC LIMIT $2`, [req.orgId, limit]));
+    res.json({ activity: r.rows.map((x) => ({
+      at: x.at, actor: x.actor, action: x.action, ref: x.ref, requestId: x.request_id, detail: x.detail || {},
+    })) });
+  }));
+
+  /* Accounting / GL export (audit FIN-04). Turns the till's sales, refunds and
+     payments over a date range into journal-style totals an accountant can post
+     or reconcile: revenue, GST liability, service charge, tips, each tender, AR
+     movement (credit sales), and COGS from the immutable stock ledger. Read-only
+     and derived — it never mutates anything. Money is laari (÷100 to display). */
+  router.get("/ledger-export", authAny, wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const from = Number(req.query.from) || 0;
+    const to = Number(req.query.to) || Date.now();
+    const rows = await withOrg(req.orgId, (client) => client.query(
+      `SELECT data FROM entities
+       WHERE org_id=$1 AND kind='sales' AND deleted=false
+         AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
+         AND (data->>'t')::numeric BETWEEN $3 AND $4`, [req.orgId, storeId, from, to]));
+    const cogs = await withOrg(req.orgId, (client) => client.query(
+      `SELECT COALESCE(-SUM(qty*unit_cost),0) AS cogs FROM stock_moves
+       WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to]));
+    const j = { grossSales: 0, discounts: 0, gst: 0, serviceCharge: 0, tips: 0, refunds: 0, foc: 0, netSales: 0, tenders: {}, accountsReceivable: 0, cogs: Math.round(Number(cogs.rows[0].cogs) || 0), saleCount: 0, refundCount: 0 };
+    for (const row of rows.rows) {
+      const d = row.data || {};
+      const isRefund = d.type === "refund";
+      const total = num(d.total), sub = num(d.subtotal), gst = num(d.gst), svc = num(d.svcCharge), disc = num(d.billDisc);
+      if (d.foc) { j.foc += num(d.focValue); continue; }
+      if (isRefund) { j.refunds += Math.abs(total); j.refundCount++; }
+      else { j.grossSales += sub; j.discounts += disc; j.gst += gst; j.serviceCharge += svc; j.saleCount++; }
+      for (const p of (d.payments || [])) {
+        const m = String(p.method || "Other");
+        j.tenders[m] = (j.tenders[m] || 0) + num(p.amount);
+        if (/tip/i.test(m)) j.tips += num(p.amount);
+        if (/credit/i.test(m) && !isRefund) j.accountsReceivable += num(p.amount);
+      }
+    }
+    j.netSales = j.grossSales - j.discounts;
+    j.grossProfit = j.netSales - j.cogs;
+    res.json({ from, to, storeId: storeId || "all", currency: "laari", journal: j,
+      note: "All amounts in laari (MVR×100). AR = credit-tender sales; tenders map to their clearing accounts." });
   }));
 
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {

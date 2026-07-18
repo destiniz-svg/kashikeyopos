@@ -293,6 +293,53 @@ describe("multi-store scoping", () => {
   });
 });
 
+/* ── Operational hardening (API-01/02, FIN-03/04, OPS-02) ─────────────── */
+describe("operational hardening", () => {
+  test("OPS-02: every response carries a correlation id", async () => {
+    assert.ok((await H.req("GET", "/api/health")).headers.get("x-request-id"));
+  });
+
+  test("API-01: malformed or oversized ops batches are rejected", async () => {
+    const o = await H.registerOrg({ tag: "apival" });
+    assert.equal((await H.req("POST", "/api/ops", { token: o.token, body: { ops: "nope" } })).status, 400);
+    const big = Array.from({ length: 1001 }, (_, i) => ({ opId: "x" + i, puts: [] }));
+    assert.equal((await H.req("POST", "/api/ops", { token: o.token, body: { ops: big } })).status, 413);
+  });
+
+  test("FIN-03: sensitive events are written to the append-only audit log", async () => {
+    const o = await H.registerOrg({ tag: "audit" });
+    await H.ops(o.token, [{ opId: "ap", puts: [{ kind: "products", id: "ab", data: { id: "ab", name: "B", price: 9500 } }] }]);
+    await H.ops(o.token, [{ opId: "as", puts: [{ kind: "sales", id: "a-sale", data: { id: "a-sale", no: "INV-A", type: "sale", lines: [{ pid: "ab", qty: 1, price: 9500, taxable: true }], subtotal: 9500, gst: 760, total: 3 } }] }]);
+    await H.ops(o.token, [{ opId: "ac", puts: [{ kind: "customers", id: "a-cust", data: { id: "a-cust", name: "Over", balance: 0, creditLimit: 5000 } }] }]);
+    await H.ops(o.token, [{ opId: "acd", puts: [], deltas: { cust: [{ id: "a-cust", pts: 0, bal: 9000 }] } }]);
+    // logActivity is fired post-commit (async), so poll until the events land.
+    const acts = await H.until(async () => {
+      const a = (await H.invGet(o.token, "/activity")).json.activity || [];
+      return a.some((x) => x.action === "sale.flagged") && a.some((x) => x.action === "credit.over_limit") ? a : null;
+    });
+    assert.ok(acts.some((x) => x.action === "sale.flagged"), "money flag logged");
+    assert.ok(acts.some((x) => x.action === "credit.over_limit"), "over-limit logged");
+    await H.invPost(o.token, "/flags/sale/a-sale/ack", { by: "tester" });
+    const acts2 = await H.until(async () => {
+      const a = (await H.invGet(o.token, "/activity")).json.activity || [];
+      return a.some((x) => x.action === "flag.ack") ? a : null;
+    });
+    assert.ok(acts2.some((x) => x.action === "flag.ack"), "ack logged");
+  });
+
+  test("FIN-04: GL export reconciles sales into journal totals", async () => {
+    const o = await H.registerOrg({ tag: "gl" });
+    await H.ops(o.token, [{ opId: "gp", puts: [{ kind: "products", id: "gb", data: { id: "gb", name: "B", price: 10000 } }] }]);
+    await H.ops(o.token, [{ opId: "gs", puts: [{ kind: "sales", id: "g-sale", data: { id: "g-sale", no: "INV-G", type: "sale", t: Date.now(), lines: [{ pid: "gb", qty: 1, price: 10000, taxable: true }], subtotal: 10000, billDisc: 0, gst: 800, svcCharge: 0, total: 10800, payments: [{ method: "Cash", amount: 10800 }] } }] }]);
+    const g = (await H.invGet(o.token, "/ledger-export")).json.journal;
+    assert.equal(g.grossSales, 10000);
+    assert.equal(g.gst, 800);
+    assert.equal(g.netSales, 10000);
+    assert.equal(g.tenders.Cash, 10800);
+    assert.equal(g.saleCount, 1);
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 describe("security", () => {
   test("SEC-01: security headers are present", async () => {

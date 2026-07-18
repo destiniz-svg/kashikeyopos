@@ -95,6 +95,9 @@ async function ensureAppRole() {
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines TO ${APP_DB_ROLE}`);
+  /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
+     deleted even by the app role (FIN-03). */
+  await bootPool.query(`GRANT SELECT, INSERT ON activity_log TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${APP_DB_ROLE}`);
 }
 
@@ -269,7 +272,20 @@ const rlFail = (keys) => { const now = Date.now(); for (const k of keys) { let e
 const rlClear = (keys) => { for (const k of keys) loginFails.delete(k); };
 const rlDeny = (res, secs) => { res.set("Retry-After", String(secs)); return res.status(429).json({ error: `Too many attempts — try again in ${Math.max(1, Math.ceil(secs / 60))} min.` }); };
 
-app.use(express.json({ limit: "25mb" }));
+/* Correlation ID (audit OPS-02): every request gets a short id, echoed on the
+   response and threaded into error logs + the audit trail, so an incident can be
+   traced from a support report to the exact request. */
+app.use((req, res, next) => {
+  req.id = String(req.headers["x-request-id"] || crypto.randomBytes(6).toString("hex")).slice(0, 32);
+  res.set("X-Request-Id", req.id);
+  next();
+});
+/* Body-size limits (audit API-02): OCR ships a base64 photo and needs room; the
+   sync and everything else are capped tightly to shrink the abuse surface. The
+   per-path OCR parser runs first for its route, so the tight global one skips
+   it (Express marks the body parsed). */
+app.use("/api/inv/ocr", express.json({ limit: "25mb" }));
+app.use(express.json({ limit: "4mb" }));
 /* CORS is only for the cross-origin surface: the sync API and the public
    guest endpoints. A paired till PWA can be served from a different origin
    than the cloud it syncs to, and both authenticate with a Bearer token
@@ -379,6 +395,17 @@ const recordError = (where, e) => {
   if (recentErrors.length > 50) recentErrors.length = 50;
 };
 
+/* Append-only audit trail (FIN-03). Best-effort and non-fatal: an audit write
+   must never fail a business operation. Runs inside the caller's org scope. */
+async function logActivity(orgId, { actor = "system", action, ref = "", requestId = "", detail = {} }) {
+  if (!orgId || !action) return;
+  try {
+    await withOrg(orgId, (client) => client.query(
+      "INSERT INTO activity_log (org_id, actor, action, ref, request_id, detail) VALUES ($1,$2,$3,$4,$5,$6)",
+      [String(orgId), String(actor).slice(0, 80), String(action).slice(0, 60), String(ref).slice(0, 80), String(requestId).slice(0, 32), JSON.stringify(detail || {})]));
+  } catch (e) { recordError("activity_log " + action, e); }
+}
+
 const sign = (orgId, register, storeId = DEFAULT_STORE_ID) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId) }, SECRET, { expiresIn: "365d" });
 const auth = (req, res, next) => {
   const h = req.headers.authorization || "";
@@ -460,7 +487,7 @@ const devAuth = (req, res, next) => {
 /* Inventory & Pricing (recipes, stock checks, procurement) lives in its own
    module — it plugs into the same withOrg/RLS scope and into /api/ops below,
    where settled sales trigger the real-time ingredient deductions. */
-const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke });
+const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke, logActivity });
 app.use("/api/inv", inventory.router);
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
@@ -966,9 +993,20 @@ app.post("/api/select-store", auth, wrap(async (req, res) => {
 
 app.post("/api/ops", auth, wrap(async (req, res) => {
   const ops = (req.body && req.body.ops) || [];
+  /* Request validation (audit API-01): reject grossly malformed or oversized
+     batches up front rather than trusting the shape downstream. Individual
+     missing fields are still tolerated (offline clients vary), but the outer
+     shape and sizes are enforced. */
+  if (!Array.isArray(ops)) return res.status(400).json({ error: "ops must be an array" });
+  if (ops.length > 1000) return res.status(413).json({ error: "too many ops in one request (max 1000)" });
+  for (const op of ops) {
+    if (op && Array.isArray(op.puts) && op.puts.length > 2000) return res.status(413).json({ error: "too many puts in one op (max 2000)" });
+    if (op && Array.isArray(op.dels) && op.dels.length > 2000) return res.status(413).json({ error: "too many dels in one op (max 2000)" });
+  }
   const client = await pool.connect();
   let rowver = 0;
   const settledSales = [];
+  const auditEvents = []; // written to activity_log after a successful commit (FIN-03)
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(req.org.o)]);
@@ -1004,7 +1042,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
            silently trusted. */
         if (p.kind === "sales" && data.lines) {
           const money = auditSaleMoney(data, moneyCtx);
-          if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); }
+          if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); auditEvents.push({ actor: data.userName || "", action: "sale.flagged", ref: data.no || data.id, detail: { claimedTotal: money.claimedTotal, computedTotal: money.computedTotal, reasons: money.reasons } }); }
+          if (p.kind === "sales" && data.type === "refund") auditEvents.push({ actor: data.userName || "", action: "sale.refund", ref: data.no || data.id, detail: { total: data.total, customerId: data.customerId || null } });
         }
         const preserve = p.kind === "products"
           /* The till bundle is prebuilt and doesn't know about the back-office-
@@ -1094,7 +1133,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
           [req.org.o, String(c.id), Number(c.pts) || 0, Number(c.bal) || 0, Date.now()]);
         for (const row of r.rows) {
           rowver = Math.max(rowver, Number(row.rowver));
-          if (row.over) recordError("credit over-limit " + (row.name || c.id), new Error(`over by ${row.overby} laari`));
+          if (row.over) { recordError("credit over-limit " + (row.name || c.id), new Error(`over by ${row.overby} laari`)); auditEvents.push({ action: "credit.over_limit", ref: String(c.id), detail: { name: row.name || "", overBy: Number(row.overby) || 0 } }); }
         }
       }
       for (const d of op.dels || []) {
@@ -1108,7 +1147,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   } catch (e) {
     await client.query("ROLLBACK");
     client.release();
-    return res.status(500).json({ error: "ops failed: " + errDetail(e) });
+    recordError("ops[" + req.id + "]", e);
+    return res.status(500).json({ error: "ops failed: " + errDetail(e), requestId: req.id });
   }
   client.release();
   if (rowver) poke(req.org.o, rowver);
@@ -1118,6 +1158,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
      deduction idempotent, so a crash between commit and here at worst skips
      a deduction the next audit reconciles — it can never double-deduct. */
   if (settledSales.length) inventory.processSales(req.org.o, settledSales);
+  /* Persist the sensitive events observed above (post-commit, non-fatal). */
+  for (const ev of auditEvents) logActivity(req.org.o, { ...ev, requestId: req.id });
   res.json({ ok: true, rowver });
 }));
 
