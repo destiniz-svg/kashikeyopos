@@ -512,6 +512,41 @@ const outletPrefJs =
 const idleLockJs =
   "(function(){var last=Date.now();function bump(){last=Date.now();}['pointerdown','keydown','touchstart','wheel','click'].forEach(function(ev){try{document.addEventListener(ev,bump,true);}catch(e){}});setInterval(function(){try{var s=Number(window.__ksOutletPrefVal&&window.__ksOutletPrefVal(window.__ksCE,'idleLockSec'))||0;if(s>0&&window.__ksMe&&window.__ksLock&&(Date.now()-last)>=s*1000){last=Date.now();window.__ksLock();}}catch(e){}},2000);})();";
 
+/* Sync-status tray (audit SYNC-01). An always-visible pill (bottom-left) that
+   tells the cashier, at a glance, whether their sales have reached the cloud —
+   the one thing that used to be invisible during offline checkout. It reads the
+   durable outbox (kashikeyo-outbox, which survives a restart) for the pending
+   count and navigator.onLine for connectivity, and window.__ksSync* (patch #135)
+   to force a retry and to distinguish "saving" from "stuck". States:
+     • Synced        — nothing pending, all sales are on the cloud
+     • Saving N…     — online, draining the queue
+     • Offline · N saved here — offline, N sales held safely on the device
+     • N not synced  — online but pushes are failing; opens a retry tray
+   Fully self-contained vanilla JS (no React surgery), themed via --k-* vars with
+   fixed semantic status colours. */
+const syncTrayJs =
+  "(function(){if(window.__ksSyncTray)return;window.__ksSyncTray=1;var OB='kashikeyo-outbox';" +
+  "function pend(){try{return (JSON.parse(localStorage.getItem(OB))||[]).length}catch(e){return 0}}" +
+  "function flush(){try{window.__ksSync&&window.__ksSync.flush&&window.__ksSync.flush()}catch(e){}}" +
+  "var PAL={ok:{bg:'#E7F1EA',fg:'#0F7A4E',bd:'#BFE0CD',dot:'#12A65B'},saving:{bg:'#E7EEF6',fg:'#1F5FB0',bd:'#C6D8EE',dot:'#2A7BE0'},offline:{bg:'#FBF0DC',fg:'#8A5A00',bd:'#EBD59C',dot:'#D08A00'},stuck:{bg:'#FBE7E4',fg:'#B23018',bd:'#F0C4BB',dot:'#D23A1E'}};" +
+  "function state(){var n=pend();if(!n)return['ok',0];if(!navigator.onLine)return['offline',n];var ok=window.__ksSyncOk||0,er=window.__ksSyncErr||0;if(er>ok&&Date.now()-er<120000)return['stuck',n];return['saving',n]}" +
+  "function lab(s,n){return s==='ok'?'\\u25CF Synced':s==='saving'?'\\u21BB Saving '+n+'\\u2026':s==='offline'?'\\u26A0 Offline \\u00B7 '+n+' saved here':'\\u26A0 '+n+' not synced'}" +
+  "var box=document.createElement('div');box.id='ksSyncTray';box.setAttribute('role','status');box.setAttribute('aria-live','polite');box.setAttribute('style','position:fixed;left:12px;bottom:12px;z-index:70;font-family:-apple-system,system-ui,sans-serif');" +
+  "var panel=document.createElement('div');panel.style.display='none';var pill=document.createElement('button');pill.type='button';box.appendChild(panel);box.appendChild(pill);" +
+  "var st=document.createElement('style');st.textContent='@keyframes kspulse{0%,100%{opacity:1}50%{opacity:.3}}';" +
+  "var open=false;pill.onclick=function(){open=!open;draw()};" +
+  "function hasCloud(){try{return !!(JSON.parse(localStorage.getItem('kashikeyo-cloud')||'{}').token)}catch(e){return false}}" +
+  "function draw(){if(!hasCloud()&&!pend()){box.style.display='none';return}box.style.display='block';var r=state(),s=r[0],n=r[1],c=PAL[s];" +
+  "pill.setAttribute('style','display:flex;align-items:center;gap:7px;border:1px solid '+c.bd+';background:'+c.bg+';color:'+c.fg+';font-size:12.5px;font-weight:700;padding:7px 12px;border-radius:999px;cursor:pointer;box-shadow:0 4px 14px rgba(16,40,28,.16);white-space:nowrap');" +
+  "pill.innerHTML='<span style=\"width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:'+c.dot+';'+((s==='saving'||s==='stuck')?'animation:kspulse 1.1s ease-in-out infinite':'')+'\"></span>'+lab(s,n);" +
+  "if(!open){panel.style.display='none';return;}" +
+  "var msg=s==='ok'?'All your sales are saved to the cloud.':s==='saving'?'Saving your latest sales to the cloud\\u2026':s==='offline'?(n+' sale'+(n>1?'s are':' is')+' saved safely on this device and will sync automatically when you\\u2019re back online. Nothing is lost.'):'Couldn\\u2019t reach the cloud. Your '+n+' sale'+(n>1?'s are':' is')+' saved on this device \\u2014 tap Try again, or they\\u2019ll sync on their own once the connection returns.';" +
+  "panel.setAttribute('style','display:block;margin-bottom:8px;width:252px;background:var(--k-modal,#fff);color:var(--k-text,#211c17);border:1px solid '+c.bd+';border-radius:14px;box-shadow:0 16px 44px rgba(16,40,28,.24);padding:14px 15px;font-size:13px;line-height:1.5');" +
+  "panel.innerHTML='<div style=\"font-weight:800;color:'+c.fg+';margin-bottom:4px\">'+lab(s,n)+'</div><div style=\"color:var(--k-sub,#68786f)\">'+msg+'</div>'+(s==='stuck'?'<button id=\"ksSyncRetry\" style=\"margin-top:11px;width:100%;border:none;background:var(--k-primary,#0FA968);color:#fff;font-weight:700;font-size:13px;padding:9px;border-radius:10px;cursor:pointer\">Try again now</button>':'');" +
+  "var rb=document.getElementById('ksSyncRetry');if(rb)rb.onclick=function(){flush();setTimeout(draw,400)};}" +
+  "function boot(){if(!document.body){return setTimeout(boot,200)}document.head.appendChild(st);document.body.appendChild(box);setInterval(draw,1500);window.addEventListener('online',function(){flush();draw()});window.addEventListener('offline',draw);draw()}boot();" +
+  "})();";
+
 patchFile(indexPath, (html) => {
   html = injectScript(html, "offline-bridge.js");
   html = injectCss(html, lovableCss, "ksh-lovable");
@@ -533,6 +568,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-idlelock", idleLockJs);
   html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
+  html = injectInline(html, "ksh-synctray", syncTrayJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -2308,9 +2344,24 @@ patchFile(indexPath, (html) => html
     ',"warn");const Ki=(f.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1})',
     ',"warn");if(f.atTill&&f.srcTab){var _ob=Ti.find(function(b){return b.id===f.srcTab});if(_ob)return ea(_ob.id),s("sell"),As(null),Q("This order is open at the counter — review & settle it from the register")}const Ki=(f.items||[]).map(W=>W.taxable!==void 0?W:{...W,taxable:((c.find(he=>String(he.id)===String(W.pid))||{}).taxable)!==!1})'
   )
+
+  /* 135. Expose the sync engine's push to the status tray (audit SYNC-01). The
+     outbound queue drains via Su(); the injected tray (below) needs to (a) force
+     a retry and (b) know when a push last succeeded/failed so it can tell an
+     offline cashier their sale is safely queued vs stuck. We stamp
+     window.__ksSync.flush + __ksSyncOk/__ksSyncErr without touching the queue
+     logic. Idempotent: each find carries the bare Su body the replacement wraps. */
+  .replace(
+    "Su=async()=>{if(!(!Ie",
+    "Su=async()=>{window.__ksSync=window.__ksSync||{flush:Su};if(!(!Ie"
+  )
+  .replace(
+    ",rd(),hu(!0),ki.current.length&&Su()}catch{hu(!1)}",
+    ",rd(),hu(!0),window.__ksSyncOk=Date.now(),ki.current.length&&Su()}catch{hu(!1),window.__ksSyncErr=Date.now()}"
+  )
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.98"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.99"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
