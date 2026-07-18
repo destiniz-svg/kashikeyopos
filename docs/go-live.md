@@ -76,9 +76,16 @@ throwaway database, boot a temporary app against it, and run the §4 checklist
 in the `TODO(owner)` values (RPO/RTO, backup schedule, on-call). **A backup you
 have never restored is not a backup.**
 
-### 3.2 Load-test on production infrastructure
-Local throughput was excellent (171 ops/s, p95 9 ms), but not on Railway. A
-ready-to-run harness ships in the repo — **`scripts/loadtest.mjs`** (zero deps,
+### 3.2 Load-test on production infrastructure  ·  *throughput verified — soak pending*
+**Status (18 Jul):** the ramp was run on staging (Railway). Result: **0 errors**
+through **100 → 1000 tx/hr** (10× the realistic peak), server memory flat at
+**~40 MB**, CPU peaking **< 1 vCPU**, warm-connection p95 **~294 ms**, and the
+credit-limit path (FIN-02) fired correctly under load. Throughput is verified.
+**Remaining:** the **24 h soak** (memory-leak check) — run it and confirm memory
+returns to baseline; and confirm **staging's instance size matches production**
+(Railway → service → Settings → Resources) so the numbers transfer 1:1.
+
+The harness ships in the repo — **`scripts/loadtest.mjs`** (zero deps,
 drives the real `/api/ops` sale path with valid audit-passing sales, reports
 p50/p95/p99, throughput and an error breakdown per stage). By default it
 **registers its own throwaway store**, so run it against **staging** first:
@@ -157,7 +164,7 @@ Launch when all are true:
 - [ ] Env vars set; `SECRET` backed up; `NODE_ENV=production`
 - [ ] Health check green in production
 - [ ] **Restore drill run and passed** (§3.1)
-- [ ] Load test meets your peak with headroom (§3.2)
+- [x] Load test — throughput verified (0 err to 10× peak); [ ] 24 h soak pending (§3.2)
 - [ ] Accessibility pass done or residuals accepted (§3.3)
 - [ ] Payments approach decided + staff trained (§3.4)
 - [ ] Auth policy set (§3.5)
