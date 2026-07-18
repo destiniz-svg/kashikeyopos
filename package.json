@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "start": "node favicon-patch.js && node guest-sync-patch.js"
+    "start": "node favicon-patch.js && node guest-sync-patch.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
