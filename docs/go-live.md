@@ -126,10 +126,15 @@ in the brief; consider integrating a gateway (Option B) only later if non-cash
 volume justifies it. Pick an option, record it, and this gate is satisfied.
 
 ### 3.5 Authentication policy
-PINs are a low-entropy **convenience** gate, not a security boundary — keep truly
-sensitive actions (voids, refunds, price edits, reports) behind the server-verified
-password/role, and consider MFA for owner/platform-admin accounts. Set a minimum
-password policy for store owners.
+See the full brief: **`docs/auth-policy.md`** (with a fill-in checklist). In short:
+the real boundaries (store + platform-admin logins) are bcrypt + rate-limited and
+solid; the till **PIN is convenience, not security**, so keep sensitive actions
+(voids, refunds, price edits, reports) behind the manager password. Decisions to
+record: a **minimum password length** (recommend ≥ 8 — a ~5-line change if you want
+it enforced), the sensitive-action policy, platform-admin hardening, session/
+device-loss posture (sessions are 365 d, no per-device revocation), and whether to
+add **MFA** (recommend for `/dev` first). Foundations are in place; this gate is
+policy + a couple of optional builds.
 
 ### 3.6 Multi-instance note
 If you scale beyond one instance: SSE now fans out via LISTEN/NOTIFY and boot is
