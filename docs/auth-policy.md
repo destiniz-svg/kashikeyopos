@@ -38,17 +38,20 @@ accounts that guard real money, set a minimum. **Recommendation: require ≥ 8
 characters** (block the obvious "1"/"pin"-style passwords). This is a ~5-line
 backend change I can make on request — say the word and it's done on `staging`.
 
-### 2. What counts as a "sensitive action"
-Decide which till actions require the **owner/manager password**, not just the
-PIN: typically **voids, refunds, price/discount overrides, and viewing reports/
-totals**. Today the PIN gates the till UI but the sync token is store-scoped, so
-per-role server enforcement of these is a **convention, not enforced server-side**.
-- **Now (free):** set the policy — managers keep the password; don't share it;
-  don't hand the owner login to floor staff.
-- **Later (build):** if you want the server to *reject* a refund/void unless it
-  carries a manager credential, that's a focused piece of work (per-role tokens +
-  server checks). Worth it only if staff turnover / shrinkage risk is real. Ask
-  and I'll scope it.
+### 2. What counts as a "sensitive action"  ·  *refunds now server-enforced*
+**Shipped (SEC-03):** refunds are now gated on the **server-verified store
+password**, not the PIN. The till prompts for the password when a refund syncs
+while online and exchanges it (`POST /api/elevate`, bcrypt-verified, login-
+throttled, 15-min token) for a server-side `managerApproved` stamp. A refund
+without approval — offline, skipped prompt, or a tampered client (client-supplied
+approval is stripped; only the server's own stamp counts) — **still syncs** (money
+data is never rejected) but lands **flagged in the /back Review tab**. Verified
+end-to-end (approve / cached / skip / plain-sale paths) + 4 regression tests.
+
+Still policy for the rest: price/discount overrides and reports remain PIN-gated
+UI conventions — managers keep the password; don't hand the owner login to floor
+staff. Extending hard server enforcement to those is a further build; ask and
+I'll scope it.
 
 ### 3. Platform-admin (`/dev`) hardening
 It's cross-tenant, so it's the crown jewel. **Now:** give it a **strong, unique**

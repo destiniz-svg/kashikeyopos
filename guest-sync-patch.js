@@ -524,6 +524,51 @@ const idleLockJs =
      • N not synced  — online but pushes are failing; opens a retry tray
    Fully self-contained vanilla JS (no React surgery), themed via --k-* vars with
    fixed semantic status colours. */
+/* SEC-03 — manager approval for refunds. A fetch interceptor that watches the
+   till's own /api/ops pushes: when a push carries a refund and the device is
+   online, it asks once for the store password, exchanges it via POST
+   /api/elevate for a short-lived elevation token (cached ~14 min), and attaches
+   it as X-Elevation so the server stamps the refund managerApproved. Skipping
+   (or being offline) never blocks the sync — the refund still syncs and the
+   server flags it into the /back Review tab instead. */
+const elevateJs =
+  "(function(){if(window.__ksElev)return;window.__ksElev=1;var OF=window.fetch.bind(window);" +
+  "function needsAppr(b){if(typeof b!=='string'||b.indexOf('refund')<0)return false;try{var j=JSON.parse(b);return (j.ops||[]).some(function(o){return (o.puts||[]).some(function(p){return p&&p.kind==='sales'&&p.data&&p.data.type==='refund'&&!p.data.managerApproved})})}catch(e){return false}}" +
+  "function cached(){try{var e=JSON.parse(sessionStorage.getItem('ksh-elev')||'null');if(e&&e.exp>Date.now())return e.t}catch(e){}return null}" +
+  "function authOf(init){try{var h=init&&init.headers;if(h){if(typeof h.get==='function')return h.get('Authorization')||h.get('authorization');if(h.Authorization)return h.Authorization;if(h.authorization)return h.authorization}}catch(e){}try{var c=JSON.parse(localStorage.getItem('kashikeyo-cloud')||'null');if(c&&c.token)return 'Bearer '+c.token}catch(e){}return null}" +
+  "function setHdr(init,t){var h=init.headers||(init.headers={});if(typeof h.set==='function')h.set('X-Elevation',t);else h['X-Elevation']=t}" +
+  "var asking=null;" +
+  "function ask(auth){if(asking)return asking;asking=new Promise(function(done){" +
+  "var w=document.createElement('div');w.id='ksElevAsk';w.style.cssText='position:fixed;inset:0;z-index:99998;background:rgba(20,16,12,.5);display:flex;align-items:center;justify-content:center;padding:16px';" +
+  "var c=document.createElement('div');c.setAttribute('role','dialog');c.setAttribute('aria-modal','true');c.setAttribute('aria-label','Manager approval');c.style.cssText='background:#fff;color:#26221C;border-radius:14px;max-width:340px;width:100%;padding:20px;font-family:-apple-system,system-ui,sans-serif;box-shadow:0 18px 50px rgba(0,0,0,.3)';" +
+  "var h=document.createElement('div');h.textContent='Manager approval';h.style.cssText='font-weight:700;font-size:16px;margin-bottom:6px';" +
+  "var s=document.createElement('div');s.textContent='A refund needs the store password. Skipping sends it to the Review tab instead.';s.style.cssText='font-size:12.5px;color:#68635A;line-height:1.45;margin-bottom:12px';" +
+  "var inp=document.createElement('input');inp.type='password';inp.setAttribute('aria-label','Store password');inp.placeholder='Store password';inp.style.cssText='width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #DDD6CC;border-radius:9px;font-size:16px;outline:none';" +
+  "var msg=document.createElement('div');msg.setAttribute('role','alert');msg.style.cssText='color:#B23018;font-size:12.5px;min-height:16px;margin-top:6px';" +
+  "var row=document.createElement('div');row.style.cssText='display:flex;gap:8px;margin-top:12px';" +
+  "var skip=document.createElement('button');skip.type='button';skip.textContent='Skip: send for review';skip.style.cssText='flex:1;padding:10px;border:none;border-radius:9px;background:#F0EBE2;color:#26221C;font-weight:600;cursor:pointer';" +
+  "var ok=document.createElement('button');ok.type='button';ok.textContent='Approve';ok.style.cssText='flex:1;padding:10px;border:none;border-radius:9px;background:#C7431D;color:#fff;font-weight:700;cursor:pointer';" +
+  "row.appendChild(skip);row.appendChild(ok);c.appendChild(h);c.appendChild(s);c.appendChild(inp);c.appendChild(msg);c.appendChild(row);w.appendChild(c);document.body.appendChild(w);" +
+  "function fin(t){try{w.remove()}catch(e){}asking=null;done(t)}" +
+  "function go(){if(!auth)return fin(null);ok.disabled=true;" +
+  "OF('/api/elevate',{method:'POST',headers:{'Content-Type':'application/json',Authorization:auth},body:JSON.stringify({password:inp.value})})" +
+  ".then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j}})})" +
+  ".then(function(x){ok.disabled=false;if(x.ok&&x.j&&x.j.elevation){try{sessionStorage.setItem('ksh-elev',JSON.stringify({t:x.j.elevation,exp:Date.now()+840000}))}catch(e){}fin(x.j.elevation)}else{msg.textContent=(x.j&&x.j.error)||'Wrong password';inp.value='';inp.focus()}})" +
+  ".catch(function(){ok.disabled=false;fin(null)})}" +
+  "skip.onclick=function(){fin(null)};ok.onclick=go;" +
+  "inp.onkeydown=function(e){if(e.key==='Enter')go();if(e.key==='Escape')fin(null)};" +
+  "setTimeout(function(){try{inp.focus()}catch(e){}},60)});return asking}" +
+  "window.fetch=function(input,init){" +
+  "try{var u=typeof input==='string'?input:((input&&input.url)||'');" +
+  "var m=((init&&init.method)||(input&&input.method)||'GET');" +
+  "if(u.indexOf('/api/ops')>-1&&/post/i.test(m)&&navigator.onLine&&init&&needsAppr(init.body)){" +
+  "var t=cached();if(t){setHdr(init,t);return OF(input,init)}" +
+  "var a=authOf(init);" +
+  "if(a)return ask(a).then(function(tok){if(tok)setHdr(init,tok);return OF(input,init)})}" +
+  "}catch(e){}" +
+  "return OF(input,init)};" +
+  "})();";
+
 const syncTrayJs =
   "(function(){if(window.__ksSyncTray)return;window.__ksSyncTray=1;var OB='kashikeyo-outbox';" +
   "function pend(){try{return (JSON.parse(localStorage.getItem(OB))||[]).length}catch(e){return 0}}" +
@@ -569,6 +614,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-catdnd", catDragJs);
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectInline(html, "ksh-synctray", syncTrayJs);
+  html = injectInline(html, "ksh-elevate", elevateJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -2372,6 +2418,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.100"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.101"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

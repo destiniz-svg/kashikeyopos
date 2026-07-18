@@ -895,6 +895,26 @@ app.post("/api/login", wrap(async (req, res) => {
    the cookie's org (new register, same as a fresh login) so "Open the
    till" works from any signed-in device; the caller stores it in
    localStorage before navigating. */
+/* SEC-03: exchange the store password for a short-lived (15 min) manager-
+   elevation token. The till PIN is a shift selector, not a security boundary —
+   manager-authorised actions (refunds) prove themselves with the server-
+   verified store password instead. Throttled like login so a stolen device
+   token can't brute-force the password. */
+app.post("/api/elevate", auth, wrap(async (req, res) => {
+  const keys = rlKeys(req, "elev:" + req.org.o);
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
+  const org = await withSystem(async (client) =>
+    (await client.query("SELECT pass_hash FROM orgs WHERE id=$1", [req.org.o])).rows[0]);
+  if (!org || !bcrypt.compareSync((req.body && req.body.password) || "", org.pass_hash)) {
+    rlFail(keys);
+    return res.status(401).json({ error: "wrong password" });
+  }
+  rlClear(keys);
+  await logActivity(req.org.o, { actor: "manager", action: "elevate.grant", ref: req.org.r || "", requestId: req.id, detail: {} });
+  res.json({ elevation: jwt.sign({ o: req.org.o, e: true }, SECRET, { expiresIn: "15m" }), ttlSec: 900 });
+}));
+
 app.post("/api/pair", wrap(async (req, res) => {
   const orgId = await resolveAppSession(req);
   if (!orgId) return res.status(401).json({ error: "sign in required" });
@@ -1069,6 +1089,13 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
     if (op && Array.isArray(op.puts) && op.puts.length > 2000) return res.status(413).json({ error: "too many puts in one op (max 2000)" });
     if (op && Array.isArray(op.dels) && op.dels.length > 2000) return res.status(413).json({ error: "too many dels in one op (max 2000)" });
   }
+  /* SEC-03: a valid short-lived elevation token (store password verified via
+     POST /api/elevate) marks this batch as manager-authorised; refund puts
+     below use it. An invalid/expired token is simply ignored — the refund
+     still syncs, just flagged for review. */
+  let elevated = false;
+  const elevTok = req.get("X-Elevation");
+  if (elevTok) { try { const e = jwt.verify(elevTok, SECRET); elevated = e.e === true && e.o === req.org.o; } catch { /* not elevated */ } }
   const client = await pool.connect();
   let rowver = 0;
   const settledSales = [];
@@ -1109,7 +1136,30 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         if (p.kind === "sales" && data.lines) {
           const money = auditSaleMoney(data, moneyCtx);
           if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); auditEvents.push({ actor: data.userName || "", action: "sale.flagged", ref: data.no || data.id, detail: { claimedTotal: money.claimedTotal, computedTotal: money.computedTotal, reasons: money.reasons } }); }
-          if (p.kind === "sales" && data.type === "refund") auditEvents.push({ actor: data.userName || "", action: "sale.refund", ref: data.no || data.id, detail: { total: data.total, customerId: data.customerId || null } });
+        }
+        /* SEC-03: refunds are manager-authorised money movements. Client-supplied
+           approval is never trusted; the server carries forward its OWN earlier
+           stamp, or grants a fresh one when the batch is elevated. Without
+           approval the refund still syncs — money data from a till is never
+           rejected (offline-safe) — but is flagged into the Review tab. */
+        if (p.kind === "sales" && data.type === "refund") {
+          delete data.managerApproved;
+          const prev = await client.query(
+            "SELECT data->'managerApproved' AS ma FROM entities WHERE org_id=$1 AND kind='sales' AND id=$2 AND deleted=false", [req.org.o, data.id]);
+          if (prev.rowCount && prev.rows[0].ma) data.managerApproved = prev.rows[0].ma;
+          else if (elevated) data.managerApproved = { method: "password", at: Date.now() };
+          if (data.managerApproved) {
+            /* a stale needs-approval flag from an earlier unapproved push clears once approved */
+            if (data.serverAudit && Array.isArray(data.serverAudit.reasons)) {
+              const left = data.serverAudit.reasons.filter((r) => r !== "refund without manager approval");
+              if (!left.length) delete data.serverAudit; else data.serverAudit.reasons = left;
+            }
+          } else {
+            const sa = (data.serverAudit && data.serverAudit.flagged) ? data.serverAudit : { flagged: true, at: Date.now(), claimedTotal: Number(data.total) || 0, computedTotal: Number(data.total) || 0, reasons: [] };
+            if (!(sa.reasons || []).includes("refund without manager approval")) sa.reasons = (sa.reasons || []).concat("refund without manager approval");
+            data.serverAudit = sa;
+          }
+          auditEvents.push({ actor: data.userName || "", action: "sale.refund", ref: data.no || data.id, detail: { total: data.total, customerId: data.customerId || null, approved: !!data.managerApproved } });
         }
         const preserve = p.kind === "products"
           /* The till bundle is prebuilt and doesn't know about the back-office-

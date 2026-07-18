@@ -128,8 +128,10 @@ volume justifies it. Pick an option, record it, and this gate is satisfied.
 ### 3.5 Authentication policy
 See the full brief: **`docs/auth-policy.md`** (with a fill-in checklist). In short:
 the real boundaries (store + platform-admin logins) are bcrypt + rate-limited and
-solid; the till **PIN is convenience, not security**, so keep sensitive actions
-(voids, refunds, price edits, reports) behind the manager password. Decisions to
+solid; the till **PIN is convenience, not security**. **Refunds are now server-enforced**
+— the till asks for the store password and the server stamps `managerApproved`
+(unapproved refunds sync but are flagged into Review). Keep the remaining
+sensitive actions (price edits, reports) behind the manager password. Decisions to
 record: a **minimum password length** (recommend ≥ 8 — a ~5-line change if you want
 it enforced), the sensitive-action policy, platform-admin hardening, session/
 device-loss posture (sessions are 365 d, no per-device revocation), and whether to

@@ -54,8 +54,8 @@ function stopServer() {
 }
 
 /* ── HTTP helpers ─────────────────────────────────────────────────────── */
-async function req(method, path, { body, token, cookie } = {}) {
-  const headers = { "Content-Type": "application/json" };
+async function req(method, path, { body, token, cookie, headers: extra } = {}) {
+  const headers = { "Content-Type": "application/json", ...(extra || {}) };
   if (token) headers.Authorization = "Bearer " + token;
   if (cookie) headers.Cookie = cookie;
   const r = await fetch(BASE + path, {

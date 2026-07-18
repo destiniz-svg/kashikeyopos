@@ -353,6 +353,58 @@ describe("operational hardening", () => {
   });
 });
 
+/* ── Manager elevation for refunds (SEC-03) ──────────────────────────────
+   Note: the wrong-password case adds one shared-IP throttle failure, but the
+   suite ends with a SUCCESSFUL elevation, which clears the IP counter — so
+   the security suite below still starts from a clean throttle state. */
+describe("manager elevation (SEC-03)", () => {
+  let o;
+  before(async () => { o = await H.registerOrg({ tag: "elev" }); });
+
+  test("an unapproved refund syncs but is flagged for review; forged approval is stripped", async () => {
+    await H.ops(o.token, [{ opId: "el-r1", puts: [{ kind: "sales", id: "el-ref1", data: {
+      id: "el-ref1", no: "INV-EL1", type: "refund", lines: [{ pid: "x", qty: 1 }], total: 1000,
+      managerApproved: { forged: true },   // client-supplied approval must never be trusted
+    } }] }]);
+    const pull = await H.pull(o.token, 0);
+    const ref = (pull.json.entities || []).find((e) => e.kind === "sales" && e.data && e.data.no === "INV-EL1");
+    assert.ok(ref, "refund synced (never rejected)");
+    assert.ok(!ref.data.managerApproved, "forged client approval stripped");
+    assert.ok(ref.data.serverAudit && ref.data.serverAudit.flagged, "flagged for review");
+    assert.ok(ref.data.serverAudit.reasons.join(" ").includes("manager approval"), "reason names the missing approval");
+    const flags = await H.invGet(o.token, "/flags");
+    assert.ok((flags.json.sales || []).some((s) => s.no === "INV-EL1" || s.id === "el-ref1"), "surfaces in the Review feed");
+  });
+
+  test("the wrong password does not elevate", async () => {
+    const r = await H.req("POST", "/api/elevate", { token: o.token, body: { password: "not-the-password" } });
+    assert.equal(r.status, 401);
+  });
+
+  test("an elevated refund is stamped managerApproved and not flagged", async () => {
+    const e = await H.req("POST", "/api/elevate", { token: o.token, body: { password: o.password } });
+    assert.equal(e.status, 200, "correct store password elevates");
+    assert.ok(e.json && e.json.elevation, "elevation token returned");
+    await H.req("POST", "/api/ops", { token: o.token, headers: { "X-Elevation": e.json.elevation },
+      body: { ops: [{ opId: "el-r2", puts: [{ kind: "sales", id: "el-ref2", data: {
+        id: "el-ref2", no: "INV-EL2", type: "refund", lines: [{ pid: "x", qty: 1 }], total: 500 } }] }] } });
+    const pull = await H.pull(o.token, 0);
+    const ref = (pull.json.entities || []).find((x) => x.kind === "sales" && x.data && x.data.no === "INV-EL2");
+    assert.ok(ref.data.managerApproved, "server stamped the approval");
+    assert.equal(ref.data.managerApproved.method, "password");
+    assert.ok(!ref.data.serverAudit, "approved refund is not flagged");
+  });
+
+  test("approval survives an unelevated re-push of the same refund", async () => {
+    await H.ops(o.token, [{ opId: "el-r3", puts: [{ kind: "sales", id: "el-ref2", data: {
+      id: "el-ref2", no: "INV-EL2", type: "refund", lines: [{ pid: "x", qty: 1 }], total: 500 } }] }]);
+    const pull = await H.pull(o.token, 0);
+    const ref = (pull.json.entities || []).find((x) => x.kind === "sales" && x.data && x.data.no === "INV-EL2");
+    assert.ok(ref.data.managerApproved, "server-side approval carried forward");
+    assert.ok(!ref.data.serverAudit, "still unflagged after re-push");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 describe("security", () => {
   test("SEC-01: security headers are present", async () => {
