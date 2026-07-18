@@ -175,8 +175,21 @@ function report(label, m, secs) {
   return { n, errPct, p95: round(pctl(m.sale, 95)), p99: round(pctl(m.sale, 99)) };
 }
 
+// incremental pull — advances a shared cursor like a real till client, so each
+// pull returns only NEW rows instead of re-downloading the whole dataset
+let cursor = 0;
+async function doPull() {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(URL + "/api/pull?since=" + cursor, { headers: { Authorization: "Bearer " + TOKEN } });
+    const ms = performance.now() - t0;
+    const j = await r.json().catch(() => null);
+    if (j && typeof j.rowver === "number") cursor = Math.max(cursor, j.rowver);
+    return { ok: r.ok, status: r.status, ms };
+  } catch (e) { return { ok: false, status: 0, ms: performance.now() - t0, err: String(e.message || e) }; }
+}
+
 // ── rate (open-loop) stage ──────────────────────────────────────────────────
-let sinceCursor = 0;
 async function runStage(rate, secs) {
   const m = newM();
   const interval = 3600000 / rate; // ms between sale launches
@@ -193,11 +206,11 @@ async function runStage(rate, secs) {
       if (inflight >= CAP) return; // backpressure
       launched++;
       inflight++;
-      const doPull = Math.random() < PULL_RATIO;
+      const wantPull = Math.random() < PULL_RATIO;
       const tx = nextTx();
       const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [tx.op] } });
       record(m, "sale", r); if (tx.credit) m.credit++;
-      if (doPull) { const pr = await http("GET", "/api/pull?since=" + sinceCursor, { token: TOKEN }); record(m, "pull", pr); }
+      if (wantPull) record(m, "pull", await doPull());
       inflight--;
     }, interval);
     // resolve once time is up and everything drains
@@ -221,7 +234,7 @@ async function runStress(conc, secs) {
       const tx = nextTx();
       const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [tx.op] } });
       record(m, "sale", r); if (tx.credit) m.credit++;
-      if (Math.random() < PULL_RATIO) record(m, "pull", await http("GET", "/api/pull?since=0", { token: TOKEN }));
+      if (Math.random() < PULL_RATIO) record(m, "pull", await doPull());
     }
   }
   await Promise.all(Array.from({ length: conc }, worker));
