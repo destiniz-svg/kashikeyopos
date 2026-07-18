@@ -30,7 +30,9 @@
  *   --stress C            closed-loop mode: C concurrent workers, fire as fast as possible
  *   --stress-secs N       stress duration (default 60)
  *   --pull-ratio P        do a /api/pull after roughly every 1/P sales (default 0.15)
+ *   --credit-ratio P      fraction of sales charged to a customer's credit (default 0.2)
  *   --products N          seed N products (default 12)
+ *   --customers N         seed N credit customers (default 6)
  *   --concurrency-cap M   max in-flight requests in rate mode (default 200)
  */
 
@@ -47,7 +49,9 @@ if (!URL) { console.error("ERROR: --url <base> is required"); process.exit(2); }
 const STAGES = (args.rate ? [Number(args.rate)] : String(args.stages || "100,250,500,1000").split(",").map(Number));
 const STAGE_SECS = args.rate ? Math.round((Number(args["soak-hours"] || 0) * 3600) || Number(args["stage-secs"] || 120)) : Number(args["stage-secs"] || 120);
 const PULL_RATIO = Number(args["pull-ratio"] || 0.15);
+const CREDIT_RATIO = Number(args["credit-ratio"] || 0.2);
 const N_PRODUCTS = Number(args.products || 12);
+const N_CUSTOMERS = Number(args.customers || 6);
 const CAP = Number(args["concurrency-cap"] || 200);
 const STRESS = args.stress ? Number(args.stress) : 0;
 const STRESS_SECS = Number(args["stress-secs"] || 60);
@@ -79,6 +83,7 @@ const round = (n) => Math.round(n * 10) / 10;
 // ── setup: store + products ───────────────────────────────────────────────
 let TOKEN = args.token && args.token !== true ? args.token : null;
 let PRODUCTS = [];
+let CUSTOMERS = [];
 async function setup() {
   if (!TOKEN) {
     const email = `loadtest-${Date.now()}-${crypto.randomBytes(3).toString("hex")}@test.mv`;
@@ -93,7 +98,7 @@ async function setup() {
   } else {
     console.log("using supplied --token");
   }
-  // seed products via ops
+  // seed products + credit customers via ops
   const puts = [];
   for (let i = 0; i < N_PRODUCTS; i++) {
     const id = "lt-p" + i;
@@ -101,13 +106,23 @@ async function setup() {
     PRODUCTS.push({ id, price });
     puts.push({ kind: "products", id, data: { id, name: "LoadTest Item " + i, price } });
   }
+  for (let i = 0; i < N_CUSTOMERS; i++) {
+    const id = "lt-c" + i;
+    // mixed limits: some small (breach quickly → exercises over-limit flagging),
+    // some large, one unlimited (0) — a realistic spread
+    const creditLimit = i % 3 === 0 ? 0 : (i % 3 === 1 ? 30000 : 200000);
+    CUSTOMERS.push({ id, creditLimit });
+    puts.push({ kind: "customers", id, data: { id, name: "LoadTest Customer " + i, balance: 0, creditLimit } });
+  }
   const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [{ opId: "lt-seed-" + crypto.randomUUID(), puts }] } });
-  if (!r.ok) { console.error("seeding products failed:", r.status); process.exit(1); }
-  console.log(`seeded ${N_PRODUCTS} products\n`);
+  if (!r.ok) { console.error("seeding failed:", r.status); process.exit(1); }
+  console.log(`seeded ${N_PRODUCTS} products + ${N_CUSTOMERS} credit customers\n`);
 }
 
-// build one internally-consistent (audit-passing) sale op
-function saleOp() {
+// build one internally-consistent (audit-passing) sale op. If `cust` is given it's
+// a CREDIT sale: paid on the customer's account + a balance delta of the total,
+// which the server checks against the credit limit (FIN-02).
+function saleOp(cust) {
   const n = 1 + Math.floor(Math.random() * 4);
   const lines = [];
   let subtotal = 0;
@@ -120,15 +135,28 @@ function saleOp() {
   const gst = Math.round(subtotal * GST_RATE);
   const total = subtotal + gst;
   const id = "lt-s-" + crypto.randomUUID();
-  return { opId: "lt-op-" + crypto.randomUUID(), puts: [{ kind: "sales", id, data: {
+  const data = {
     id, no: "INV-LT-" + id.slice(-6), type: "sale", lines,
     subtotal, billDisc: 0, billDiscPct: 0, gst, svcCharge: 0, fee: 0, total,
-    payments: [{ method: "Cash", amount: total }],
-  } }] };
+    payments: [{ method: cust ? "Credit" : "Cash", amount: total }],
+  };
+  const op = { opId: "lt-op-" + crypto.randomUUID(), puts: [{ kind: "sales", id, data }] };
+  if (cust) {
+    data.custId = cust.id;
+    op.deltas = { cust: [{ id: cust.id, pts: 0, bal: total }] }; // balance += total
+  }
+  return op;
+}
+
+// pick the next transaction: cash, or a credit sale to a random customer
+function nextTx() {
+  const useCredit = CUSTOMERS.length && Math.random() < CREDIT_RATIO;
+  const cust = useCredit ? CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)] : null;
+  return { op: saleOp(cust), credit: !!cust };
 }
 
 // ── metrics ────────────────────────────────────────────────────────────────
-function newM() { return { sale: [], pull: [], ok: 0, err: 0, status: {} }; }
+function newM() { return { sale: [], pull: [], ok: 0, err: 0, status: {}, credit: 0 }; }
 function record(m, kind, r) {
   m[kind].push(r.ms);
   if (r.ok) m.ok++; else { m.err++; m.status[r.status] = (m.status[r.status] || 0) + 1; }
@@ -141,6 +169,7 @@ function report(label, m, secs) {
   console.log(`  requests ${n}   sales ${m.sale.length}   pulls ${m.pull.length}   over ${round(secs)}s`);
   console.log(`  throughput ${round(n / secs)} req/s   (${round(m.sale.length / secs * 3600)} sales/hr achieved)`);
   console.log(`  errors ${m.err} (${errPct}%)${Object.keys(m.status).length ? "  " + JSON.stringify(m.status) : ""}`);
+  if (m.sale.length) console.log(`  mix  ${m.sale.length - m.credit} cash / ${m.credit} credit sales`);
   if (m.sale.length) console.log(`  sale  latency ms  p50 ${round(pctl(m.sale, 50))}  p95 ${round(pctl(m.sale, 95))}  p99 ${round(pctl(m.sale, 99))}  max ${round(Math.max(...m.sale))}`);
   if (m.pull.length) console.log(`  pull  latency ms  p50 ${round(pctl(m.pull, 50))}  p95 ${round(pctl(m.pull, 95))}  p99 ${round(pctl(m.pull, 99))}`);
   return { n, errPct, p95: round(pctl(m.sale, 95)), p99: round(pctl(m.sale, 99)) };
@@ -165,8 +194,9 @@ async function runStage(rate, secs) {
       launched++;
       inflight++;
       const doPull = Math.random() < PULL_RATIO;
-      const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [saleOp()] } });
-      record(m, "sale", r);
+      const tx = nextTx();
+      const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [tx.op] } });
+      record(m, "sale", r); if (tx.credit) m.credit++;
       if (doPull) { const pr = await http("GET", "/api/pull?since=" + sinceCursor, { token: TOKEN }); record(m, "pull", pr); }
       inflight--;
     }, interval);
@@ -188,8 +218,9 @@ async function runStress(conc, secs) {
   const tick = setInterval(() => process.stdout.write(`\r  stress x${conc} … ${m.sale.length} sales, ${m.err} errs   `), 1000);
   async function worker() {
     while (performance.now() < end) {
-      const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [saleOp()] } });
-      record(m, "sale", r);
+      const tx = nextTx();
+      const r = await http("POST", "/api/ops", { token: TOKEN, body: { ops: [tx.op] } });
+      record(m, "sale", r); if (tx.credit) m.credit++;
       if (Math.random() < PULL_RATIO) record(m, "pull", await http("GET", "/api/pull?since=0", { token: TOKEN }));
     }
   }
@@ -218,6 +249,10 @@ async function runStress(conc, secs) {
       summary.push(["stage " + rate + "/hr", res]);
     }
   }
+
+  // confirm the credit path actually fired: over-limit customers get flagged (FIN-02)
+  const flags = await fetch(URL + "/api/inv/flags", { headers: { Authorization: "Bearer " + TOKEN } }).then((r) => r.json()).catch(() => null);
+  if (flags) console.log(`\ncredit path check → over-limit customers flagged: ${(flags.credit || []).length}   money-flagged sales: ${(flags.sales || []).length}`);
 
   console.log("\n════════ SUMMARY ════════");
   for (const [label, s] of summary) {
