@@ -120,14 +120,27 @@ that raises stock + re-averages cost + books an expense entity), `audits`
   optional `OCR_MODEL`. Also: `DATABASE_URL`/PG*, `JWT_SECRET`,
   `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`, `PLATFORM_ADMIN_*`.
 
-## Deploy (this session's flow)
+## Deploy (staging → production flow)
 
-Work on branch `claude/user-profile-integration-5kzazt`. Then:
+**Two Railway environments.** `staging` branch → the **test** environment (its
+own Postgres); `main` branch → **production** (the live DB + real domain). All
+feature/bug work lands on `staging` FIRST, is verified on the staging URL, and is
+only promoted to `main` once confirmed. **Never push straight to `main`** — it is
+live. Railway auto-deploys each environment when its tracked branch changes.
+
+Default target for new work is `staging` (branch from it: `git checkout staging &&
+git pull && git checkout -b <feature>`; small changes may commit on `staging`
+directly). Then:
 ```
 git add … && git commit
 git push -u origin <branch>            # retry 2/4/8/16s on network fail
-git checkout main && git merge --ff-only <branch> && git push origin main
-git checkout <branch>
+git checkout staging && git merge --ff-only <branch> && git push origin staging
+```
+Deploys to **test** for verification. After you confirm on staging, **promote to
+production** (do this only when the change is signed off):
+```
+git checkout main && git merge --ff-only staging && git push origin main
+git checkout staging
 ```
 Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` +
 `Claude-Session: …`. Don't put the model id in commits/PRs.
