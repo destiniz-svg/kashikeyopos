@@ -69,14 +69,15 @@ your environment or a business decision.
 
 Do these before broad rollout. Each is the last mile the sandbox couldn't finish.
 
-### 3.1 Verify a database restore  ·  *blocks the DR gate*
-Follow the turnkey walkthrough **`docs/restore-drill.md`** — a copy-paste, ~40-min
-drill you run entirely in a GitHub Codespace against the **staging** DB (zero risk
-to prod): dump staging, restore into a throwaway DB, run `npm test` + a data
-spot-check against it, and record dump age + restore duration (validates RPO/RTO).
-Then fill the `TODO(owner)` values in `docs/disaster-recovery.md` (RPO/RTO from
-the numbers you measured, backup schedule, on-call). **A backup you have never
-restored is not a backup.**
+### 3.1 Verify a database restore  ·  *drill #1 PASSED — one confirmation left*
+**Drill #1 executed 18 Jul** against a production-scale dataset (62,728 entities /
+61,800 sales): dump 1.1 s, restore 2.9 s, schema + restricted role self-healed on
+boot, all §4 checks passed, a restored org's original login worked, `npm test`
+36/36 green on the restore — **end-to-end < 5 min** (full record:
+`disaster-recovery.md` §7). **RPO ≤ 24 h and RTO ≤ 1 h are now adopted** in §2.
+Remaining: run the same procedure once against the **staging** DB via
+`docs/restore-drill.md` (validates the Railway backup layer + network path), and
+**wire the nightly dump schedule** (§3) so the RPO is real.
 
 ### 3.2 Load-test on production infrastructure  ·  *throughput verified — soak pending*
 **Status (18 Jul):** the ramp was run on staging (Railway). Result: **0 errors**
