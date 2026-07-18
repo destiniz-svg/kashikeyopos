@@ -569,6 +569,48 @@ const elevateJs =
   "return OF(input,init)};" +
   "})();";
 
+/* Payments decision A+ — reference capture. When the till pushes a single live
+   sale paid by Card/QR/Transfer, ask (quickly, skippably) for the terminal
+   approval code / transfer reference and attach it as payments[].ref, which
+   ledger-export's tenderDetail then lists for end-of-day reconciliation.
+   Never blocks: Skip/Escape/25 s timeout all send the sale unchanged, and bulk
+   pushes (offline backlog reconnect) are left alone entirely. */
+const payRefJs =
+  "(function(){if(window.__ksPayRef)return;window.__ksPayRef=1;var OF=window.fetch.bind(window);" +
+  "var NC=/^(Card|QR|Transfer)$/i;" +
+  "function needsRef(b){if(typeof b!=='string'||!(b.indexOf('Card')>-1||b.indexOf('QR')>-1||b.indexOf('Transfer')>-1))return null;" +
+  "try{var j=JSON.parse(b);var hits=[];(j.ops||[]).forEach(function(o){(o.puts||[]).forEach(function(p){" +
+  "if(p&&p.kind==='sales'&&p.data&&p.data.type==='sale'&&(p.data.payments||[]).some(function(pm){return NC.test(pm.method||'')&&!pm.ref}))hits.push(p)})});" +
+  "return hits.length===1?{body:j,put:hits[0]}:null}catch(e){return null}}" +
+  "var asking=null;" +
+  "function ask(put){if(asking)return asking;asking=new Promise(function(done){" +
+  "var pm=(put.data.payments||[]).filter(function(x){return NC.test(x.method||'')&&!x.ref})[0]||{};" +
+  "var w=document.createElement('div');w.id='ksPayRef';w.style.cssText='position:fixed;inset:0;z-index:99997;background:rgba(20,16,12,.45);display:flex;align-items:center;justify-content:center;padding:16px';" +
+  "var c=document.createElement('div');c.setAttribute('role','dialog');c.setAttribute('aria-modal','true');c.setAttribute('aria-label','Payment reference');c.style.cssText='background:#fff;color:#26221C;border-radius:14px;max-width:340px;width:100%;padding:18px;font-family:-apple-system,system-ui,sans-serif;box-shadow:0 18px 50px rgba(0,0,0,.3)';" +
+  "var h=document.createElement('div');h.textContent='Payment reference';h.style.cssText='font-weight:700;font-size:15px;margin-bottom:4px';" +
+  "var s=document.createElement('div');s.textContent=(pm.method||'Card')+' MVR '+((Number(pm.amount)||0)/100).toFixed(2)+' - approval code or transfer reference (optional).';s.style.cssText='font-size:12.5px;color:#68635A;line-height:1.4;margin-bottom:10px';" +
+  "var inp=document.createElement('input');inp.setAttribute('aria-label','Payment reference');inp.placeholder='e.g. 048291 (Enter to save, Esc to skip)';inp.maxLength=40;inp.style.cssText='width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid #DDD6CC;border-radius:9px;font-size:16px;outline:none';" +
+  "var row=document.createElement('div');row.style.cssText='display:flex;gap:8px;margin-top:12px';" +
+  "var skip=document.createElement('button');skip.type='button';skip.textContent='Skip';skip.style.cssText='flex:1;padding:9px;border:none;border-radius:9px;background:#F0EBE2;color:#26221C;font-weight:600;cursor:pointer';" +
+  "var ok=document.createElement('button');ok.type='button';ok.textContent='Save';ok.style.cssText='flex:1;padding:9px;border:none;border-radius:9px;background:#C7431D;color:#fff;font-weight:700;cursor:pointer';" +
+  "row.appendChild(skip);row.appendChild(ok);c.appendChild(h);c.appendChild(s);c.appendChild(inp);c.appendChild(row);w.appendChild(c);document.body.appendChild(w);" +
+  "var tmr=setTimeout(function(){fin('')},25000);" +
+  "function fin(v){clearTimeout(tmr);try{w.remove()}catch(e){}asking=null;done(v||'')}" +
+  "skip.onclick=function(){fin('')};ok.onclick=function(){fin(inp.value.trim())};" +
+  "inp.onkeydown=function(e){if(e.key==='Enter')fin(inp.value.trim());if(e.key==='Escape')fin('')};" +
+  "setTimeout(function(){try{inp.focus()}catch(e){}},60)});return asking}" +
+  "window.fetch=function(input,init){" +
+  "try{var u=typeof input==='string'?input:((input&&input.url)||'');" +
+  "var m=((init&&init.method)||(input&&input.method)||'GET');" +
+  "if(u.indexOf('/api/ops')>-1&&/post/i.test(m)&&navigator.onLine&&init){" +
+  "var hit=needsRef(init.body);" +
+  "if(hit)return ask(hit.put).then(function(ref){" +
+  "if(ref){try{(hit.put.data.payments||[]).forEach(function(pm){if(NC.test(pm.method||'')&&!pm.ref)pm.ref=ref.slice(0,40)});init.body=JSON.stringify(hit.body)}catch(e){}}" +
+  "return OF(input,init)})}" +
+  "}catch(e){}" +
+  "return OF(input,init)};" +
+  "})();";
+
 const syncTrayJs =
   "(function(){if(window.__ksSyncTray)return;window.__ksSyncTray=1;var OB='kashikeyo-outbox';" +
   "function pend(){try{return (JSON.parse(localStorage.getItem(OB))||[]).length}catch(e){return 0}}" +
@@ -615,6 +657,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-dismiss", dismissCallsJs);
   html = injectInline(html, "ksh-synctray", syncTrayJs);
   html = injectInline(html, "ksh-elevate", elevateJs);
+  html = injectInline(html, "ksh-payref", payRefJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -2418,6 +2461,6 @@ patchFile(indexPath, (html) => html
 );
 
 /* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.101"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.102"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

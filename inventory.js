@@ -1617,6 +1617,11 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       `SELECT COALESCE(-SUM(qty*unit_cost),0) AS cogs FROM stock_moves
        WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to]));
     const j = { grossSales: 0, discounts: 0, gst: 0, serviceCharge: 0, tips: 0, refunds: 0, foc: 0, netSales: 0, tenders: {}, accountsReceivable: 0, cogs: Math.round(Number(cogs.rows[0].cogs) || 0), saleCount: 0, refundCount: 0 };
+    /* Payments-decision A+: per-line detail for the external non-cash tenders
+       (Card/QR/Transfer), each with the reference the cashier captured at the
+       till, so end-of-day reconciliation is a line-by-line tick-off against the
+       card terminal batch and the bank feed. */
+    const tenderDetail = [];
     for (const row of rows.rows) {
       const d = row.data || {};
       const isRefund = d.type === "refund";
@@ -1629,12 +1634,18 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         j.tenders[m] = (j.tenders[m] || 0) + num(p.amount);
         if (/tip/i.test(m)) j.tips += num(p.amount);
         if (/credit/i.test(m) && !isRefund) j.accountsReceivable += num(p.amount);
+        if (/^(card|qr|transfer)$/i.test(m)) tenderDetail.push({
+          saleNo: d.no || d.id, at: num(d.t), method: m, amount: num(p.amount),
+          ref: p.ref ? String(p.ref).slice(0, 40) : "", refund: isRefund,
+        });
       }
     }
+    tenderDetail.sort((a, b) => a.at - b.at);
     j.netSales = j.grossSales - j.discounts;
     j.grossProfit = j.netSales - j.cogs;
     res.json({ from, to, storeId: storeId || "all", currency: "laari", journal: j,
-      note: "All amounts in laari (MVR×100). AR = credit-tender sales; tenders map to their clearing accounts." });
+      tenderDetail, tenderRefsMissing: tenderDetail.filter((t) => !t.ref).length,
+      note: "All amounts in laari (MVR×100). AR = credit-tender sales; tenders map to their clearing accounts. tenderDetail lists each Card/QR/Transfer payment with the reference captured at the till." });
   }));
 
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {

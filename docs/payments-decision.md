@@ -116,14 +116,18 @@ it just to launch.
 terminal/app. Record the decision and move on — this gate is then satisfied for
 go-live.
 
-Pick one and note it in your ops log:
+**DECISION RECORDED — 18 Jul 2026: Option A+ (manual reconciliation + reference
+capture), chosen by the owner.** The till now prompts for the card approval /
+transfer reference on Card/QR/Transfer sales (skippable, never blocks the sale),
+and `GET /api/inv/ledger-export` includes a `tenderDetail` listing — every
+non-cash payment in the range with its sale number, method, amount and reference —
+so the daily reconciliation is a line-by-line tick-off against the terminal batch
+and bank feed. Revisit Option B (gateway) only if non-cash volume outgrows this.
 
-- [ ] **A — Manual reconciliation** (recommended). Action: train staff on the
-      daily routine above; no code change.
-- [ ] **A+ — Manual + reference capture.** Action: schedule the small till-bundle
-      change to capture card/transfer references.
-- [ ] **B — Integrate a gateway.** Action: confirm provider + fees with your bank,
-      then scope the initiation/webhook/reconciliation build as a project (post-launch).
+- [ ] ~~**A — Manual reconciliation**~~
+- [x] **A+ — Manual + reference capture** — shipped; train staff on the daily
+      routine above.
+- [ ] **B — Integrate a gateway** — deferred; re-evaluate post-launch on volume.
 
 Whichever you choose, **cash handling is unaffected and safe today.** The only
 thing not to do is take non-cash payments and *not* reconcile them daily.

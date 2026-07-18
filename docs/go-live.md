@@ -118,13 +118,14 @@ order, labels, and touch-target sizes. `/back` is hand-written HTML and fully
 fixable; the till is a prebuilt bundle — patch what you can via
 `guest-sync-patch.js`, and note any residuals.
 
-### 3.4 Payments decision
-See the full brief: **`docs/payments-decision.md`**. In short — there is **no
-payment gateway**; card/QR/transfer are recorded labels, cash-safe, with no
-cardholder data in the app (PCI scope minimal). **Recommended: launch on manual
-reconciliation** (Option A) using the daily `ledger-export` + audit-trail routine
-in the brief; consider integrating a gateway (Option B) only later if non-cash
-volume justifies it. Pick an option, record it, and this gate is satisfied.
+### 3.4 Payments decision  ·  *DECIDED — Option A+ (18 Jul)*
+**Recorded: manual reconciliation + reference capture** (`docs/payments-decision.md`).
+The till prompts for the card approval / transfer reference on Card/QR/Transfer
+sales (skippable, never blocks a sale), and `ledger-export` now returns a
+`tenderDetail` line-by-line listing (sale no, method, amount, reference) for
+tick-off against the terminal batch + bank feed. Remaining action: **train staff
+on the daily reconciliation routine** in the brief. Gateway integration (Option B)
+deferred — revisit on volume.
 
 ### 3.5 Authentication policy
 See the full brief: **`docs/auth-policy.md`** (with a fill-in checklist). In short:

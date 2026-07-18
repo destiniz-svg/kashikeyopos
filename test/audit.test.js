@@ -351,6 +351,21 @@ describe("operational hardening", () => {
     assert.equal(g.tenders.Cash, 10800);
     assert.equal(g.saleCount, 1);
   });
+
+  test("payments A+: ledger-export lists non-cash tenders with their references", async () => {
+    const o2 = await H.registerOrg({ tag: "tender" });
+    const mk = (id, method, ref) => ({ opId: "td-" + id, puts: [{ kind: "sales", id, data: {
+      id, no: "INV-" + id, t: Date.now(), type: "sale", lines: [{ pid: "x", qty: 1, price: 5000 }],
+      subtotal: 5000, gst: 0, total: 5000,
+      payments: [{ method, amount: 5000, ...(ref ? { ref } : {}) }] } }] });
+    await H.ops(o2.token, [mk("td1", "Card", "APPR-048291"), mk("td2", "Transfer", null), mk("td3", "Cash", null)]);
+    const r = (await H.invGet(o2.token, "/ledger-export")).json;
+    assert.equal(r.tenderDetail.length, 2, "only Card/QR/Transfer listed (Cash excluded)");
+    const card = r.tenderDetail.find((t) => t.method === "Card");
+    assert.equal(card.ref, "APPR-048291", "captured reference surfaces");
+    assert.equal(card.saleNo, "INV-td1");
+    assert.equal(r.tenderRefsMissing, 1, "the Transfer without a ref is counted as missing");
+  });
 });
 
 /* ── Manager elevation for refunds (SEC-03) ──────────────────────────────
