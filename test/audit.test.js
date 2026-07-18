@@ -191,6 +191,97 @@ describe("stock ledger", () => {
   });
 });
 
+/* ── Guest / QR orders + counter-modify linkage ──────────────────────── */
+describe("guest orders & counter-modify", () => {
+  let o;
+  before(async () => {
+    o = await H.registerOrg({ tag: "guest" });
+    await H.ops(o.token, [{ opId: "gp", puts: [{ kind: "products", id: "g-tea", data: { id: "g-tea", name: "Tea", price: 3000 } }] }]);
+  });
+  const order = (body) => H.req("POST", `/p/${o.slug}/order`, { body });
+
+  test("a QR order is created and syncs to the till as an order entity", async () => {
+    const r = await order({ items: [{ pid: "g-tea", qty: 2 }], gtype: "pickup" });
+    assert.equal(r.status, 200);
+    assert.ok(r.json.order && r.json.order.no, "returns an order number");
+    assert.equal(r.json.order.source, "qr");
+    const id = r.json.order.id;
+    const orders = ((await H.pull(o.token, 0)).json.entities || []).filter((e) => e.kind === "orders" && e.id === id);
+    assert.equal(orders.length, 1, "the order is pullable by the till");
+    assert.equal(orders[0].data.status !== "completed", true, "starts open, not settled");
+  });
+
+  test("an empty cart is rejected", async () => {
+    assert.equal((await order({ items: [], gtype: "pickup" })).status, 400);
+  });
+  test("a dine-in order with no table is rejected", async () => {
+    assert.equal((await order({ items: [{ pid: "g-tea", qty: 1 }], gtype: "dinein" })).status, 400);
+  });
+  test("a sold-out item (recipe at zero stock) is refused with 409", async () => {
+    // an ingredient with no stock + a product that needs it → 0 servings available
+    await H.invPost(o.token, "/ingredients", { id: "g-bean", name: "Beans", baseUnit: "g", location: "Dry" });
+    await H.ops(o.token, [{ opId: "gc", puts: [{ kind: "products", id: "g-coffee", data: { id: "g-coffee", name: "Coffee", price: 4000 } }] }]);
+    await H.invPut(o.token, "/recipes/g-coffee", { lines: [{ ingredientId: "g-bean", qty: 10 }] });
+    assert.equal((await order({ items: [{ pid: "g-coffee", qty: 1 }], gtype: "pickup" })).status, 409);
+  });
+  test("an unknown workspace 404s", async () => {
+    assert.equal((await H.req("POST", "/p/no-such-slug-xyz/order", { body: { items: [{ pid: "g-tea", qty: 1 }], gtype: "pickup" } })).status, 404);
+  });
+
+  test("settling a modified order links the sale (srcOrderId) and completes the order", async () => {
+    // Guest places an order…
+    const placed = await order({ items: [{ pid: "g-tea", qty: 1 }], gtype: "pickup" });
+    const orderId = placed.json.order.id;
+    // …the till opens it at the counter, adds a second tea, and settles: it pushes
+    // a sale stamped with srcOrderId and marks the source order completed (what
+    // patches #132/#133 do client-side). The server must round-trip both, and its
+    // money check must still run on the counter-modified sale.
+    await H.ops(o.token, [
+      { opId: "cm-sale", puts: [{ kind: "sales", id: "cm-sale", data: { id: "cm-sale", no: "INV-CM", type: "sale", srcOrderId: orderId,
+        lines: [{ pid: "g-tea", qty: 2, price: 3000, taxable: true }], subtotal: 6000, gst: 480, total: 6480, payments: [{ method: "Cash", amount: 6480 }] } }] },
+      { opId: "cm-ord", puts: [{ kind: "orders", id: orderId, data: { id: orderId, status: "completed", saleId: "cm-sale", settledAtTill: true } }] },
+    ]);
+    const ents = (await H.pull(o.token, 0)).json.entities || [];
+    const sale = ents.find((e) => e.kind === "sales" && e.id === "cm-sale");
+    const ord = ents.find((e) => e.kind === "orders" && e.id === orderId);
+    assert.equal(sale.data.srcOrderId, orderId, "sale is linked to the source order");
+    assert.equal(ord.data.status, "completed", "source order is completed");
+    // honest counter-modified sale must NOT be flagged
+    const flagged = (((await H.invGet(o.token, "/flags")).json || {}).sales || []).some((s) => s.id === "cm-sale");
+    assert.equal(flagged, false);
+  });
+});
+
+/* ── Multi-store scoping ─────────────────────────────────────────────── */
+describe("multi-store scoping", () => {
+  let o;
+  before(async () => {
+    o = await H.registerOrg({ tag: "store" }); // default store: "main"
+    // A product in each of two stores + a global (shared-kind) customer.
+    await H.ops(o.token, [{ opId: "s-main", puts: [{ kind: "products", id: "p-main", data: { id: "p-main", name: "Main Item", price: 100, storeId: "main" } }] }]);
+    await H.ops(o.token, [{ opId: "s-b2", puts: [{ kind: "products", id: "p-b2", data: { id: "p-b2", name: "Branch Item", price: 200, storeId: "branch2" } }] }]);
+    await H.ops(o.token, [{ opId: "s-cust", puts: [{ kind: "customers", id: "shared-cust", data: { id: "shared-cust", name: "Shared" } }] }]);
+  });
+  const idsFor = async (store) => {
+    const q = store ? `/api/pull?since=0&storeId=${store}` : "/api/pull?since=0";
+    return ((await H.req("GET", q, { token: o.token })).json.entities || []).map((e) => e.kind + ":" + e.id);
+  };
+
+  test("a store-scoped product is visible only from its own store", async () => {
+    const main = await idsFor("main");
+    const b2 = await idsFor("branch2");
+    assert.ok(main.includes("products:p-main"), "main store sees its product");
+    assert.ok(!main.includes("products:p-b2"), "main store does NOT see branch2's product");
+    assert.ok(b2.includes("products:p-b2"), "branch2 sees its product");
+    assert.ok(!b2.includes("products:p-main"), "branch2 does NOT see main's product");
+  });
+
+  test("shared-kind entities (customers) are global to every store", async () => {
+    assert.ok((await idsFor("main")).includes("customers:shared-cust"), "customer visible from main");
+    assert.ok((await idsFor("branch2")).includes("customers:shared-cust"), "same customer visible from branch2");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 describe("security", () => {
   test("SEC-01: security headers are present", async () => {
