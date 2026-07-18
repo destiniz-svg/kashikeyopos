@@ -1394,6 +1394,22 @@ app.get("/api/health", wrap(async (req, res) => {
   catch (e) { res.status(500).json({ ok: false, service: "kashikeyo-cloud", db: false, dbEnv, error: errDetail(e) }); }
 }));
 
+app.get("/version", (req, res) => {
+  const g = process.env; // Railway injects RAILWAY_* at build/deploy time
+  const commit = g.RAILWAY_GIT_COMMIT_SHA || g.GIT_COMMIT_SHA || "";
+  res.json({
+    service: "kashikeyo-cloud",
+    environment: g.RAILWAY_ENVIRONMENT_NAME || g.RAILWAY_ENVIRONMENT || (g.NODE_ENV === "production" ? "production" : "development"),
+    branch: g.RAILWAY_GIT_BRANCH || "",
+    commit,
+    commitShort: commit ? commit.slice(0, 7) : "",
+    commitMessage: g.RAILWAY_GIT_COMMIT_MESSAGE || "",
+    deployedAt: g.RAILWAY_DEPLOYMENT_CREATED_AT || "",
+    startedAt: new Date(bootedAt).toISOString(),
+    uptimeSec: Math.round((Date.now() - bootedAt) / 1000),
+  });
+});
+
 app.get("/", wrap(async (req, res, next) => {
   if ((req.query.c || req.query.t) && !req.query.s) {
     const r = await withSystem((client) => client.query("SELECT slug FROM orgs"));
