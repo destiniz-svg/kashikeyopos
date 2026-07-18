@@ -70,11 +70,13 @@ your environment or a business decision.
 Do these before broad rollout. Each is the last mile the sandbox couldn't finish.
 
 ### 3.1 Verify a database restore  ·  *blocks the DR gate*
-Follow **`docs/disaster-recovery.md` §7**: take a `pg_dump`, restore it into a
-throwaway database, boot a temporary app against it, and run the §4 checklist
-**plus** `npm test`. Record dump age + restore duration (validates RPO/RTO). Fill
-in the `TODO(owner)` values (RPO/RTO, backup schedule, on-call). **A backup you
-have never restored is not a backup.**
+Follow the turnkey walkthrough **`docs/restore-drill.md`** — a copy-paste, ~40-min
+drill you run entirely in a GitHub Codespace against the **staging** DB (zero risk
+to prod): dump staging, restore into a throwaway DB, run `npm test` + a data
+spot-check against it, and record dump age + restore duration (validates RPO/RTO).
+Then fill the `TODO(owner)` values in `docs/disaster-recovery.md` (RPO/RTO from
+the numbers you measured, backup schedule, on-call). **A backup you have never
+restored is not a backup.**
 
 ### 3.2 Load-test on production infrastructure  ·  *throughput verified — soak pending*
 **Status (18 Jul):** the ramp was run on staging (Railway). Result: **0 errors**
