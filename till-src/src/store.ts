@@ -36,6 +36,13 @@ class Store {
   async start() {
     window.addEventListener("online", () => { this.online = true; this.emit(); this.drain(); });
     window.addEventListener("offline", () => { this.online = false; this.emit(); });
+    /* The entity cache is in-memory and starts empty every load, so the first
+       pull MUST be a full one from 0 — the persisted cursor only makes sense
+       once the cache is hydrated (and may have been left high by a previous
+       bundle on this device, which would otherwise return "nothing new" and
+       leave the till with no staff/products). Reset for the initial hydrate;
+       later SSE-nudged pulls stay incremental from the advanced cursor. */
+    this.cursor = 0;
     await this.pullAll();
     this.ready = true; this.emit();
     this.connectSSE();

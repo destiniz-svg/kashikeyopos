@@ -93,7 +93,7 @@ function PinGate({ onSignIn }: { onSignIn: (u: any) => void }) {
               <b style={{ flex: 1, fontWeight: 700 }}>{u.name}</b><small style={{ color: "var(--ink3)" }}>{u.role}</small>
             </button>
           ))}
-          {users.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", fontSize: 13 }}>No staff synced yet.</div>}
+          {users.length === 0 && <button onClick={() => { store.cursor = 0; store.pullAll(); }} style={{ ...C.card, padding: "12px 16px", color: "var(--ink2)", fontSize: 13, fontWeight: 600 }}>No staff synced yet — tap to retry sync</button>}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, animation: err ? "shake .4s" : undefined }}>
