@@ -29,9 +29,19 @@ export async function pull(since: number): Promise<PullResp> {
   if (!r.ok) throw new Error("pull " + r.status);
   return r.json();
 }
-export async function pushOps(ops: any[]): Promise<any> {
-  const r = await fetch("/api/ops", { method: "POST", headers: headers(), body: JSON.stringify({ ops }) });
+export async function pushOps(ops: any[], elevation?: string): Promise<any> {
+  const h: Record<string, string> = headers();
+  if (elevation) h["X-Elevation"] = elevation;
+  const r = await fetch("/api/ops", { method: "POST", headers: h, body: JSON.stringify({ ops }) });
   if (!r.ok) throw new Error("ops " + r.status);
   return r.json();
 }
 export const eventsUrl = () => `/api/events?token=${encodeURIComponent(token())}`;
+
+/* SEC-03: verify the store password server-side for a short-lived elevation
+   token that authorises a refund (sent as X-Elevation on the refund op). */
+export async function elevate(password: string): Promise<string> {
+  const r = await fetch("/api/elevate", { method: "POST", headers: headers(), body: JSON.stringify({ password }) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "wrong password");
+  return (await r.json()).elevation;
+}

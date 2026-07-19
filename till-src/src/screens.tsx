@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { useStore } from "./store";
+import { store, useStore } from "./store";
+import { elevate, uid } from "./api";
 import { money, money0, startOfDay, dayKey, tintFor } from "./util";
 
 /* Reskinned versions of OUR existing Orders / Dashboard / Reports / Admin
@@ -36,6 +37,7 @@ function Bars({ vals, h = 210 }: { vals: number[]; h?: number }) {
 export function Dashboard() {
   const st = useStore();
   const [mode, setMode] = useState<"line" | "bars">("line");
+  const [refundSale, setRefundSale] = useState<any>(null);
   const sales = st.byKind("sales").map((e) => e.data);
   const today0 = startOfDay();
   const today = sales.filter((d) => d.t >= today0 && isSale(d));
@@ -133,8 +135,47 @@ export function Dashboard() {
             <b className="num" style={{ fontSize: 13, width: 92 }}>{d.no}</b>
             <span style={{ flex: 1, color: "var(--ink2)", fontSize: 12.5 }}>{fmtTime(d.t)} · {d.userName || "—"} · {(d.payments || [])[0]?.method || "—"}</span>
             <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{money(d.total || 0)}</span>
+            <button onClick={() => setRefundSale(d)} title="Refund this sale" style={{ color: "var(--ink3)", marginInlineStart: 6, fontSize: 15, padding: "2px 6px", borderRadius: 8 }}>↩</button>
           </div>
         )) : <div style={X.empty}>No sales yet today.</div>}
+      </div>
+      {refundSale && <RefundModal sale={refundSale} onClose={() => setRefundSale(null)} />}
+    </div>
+  );
+}
+
+/* Refund a sale — SEC-03: requires the store password (server-verified via
+   /api/elevate); the elevation token rides on the refund op as X-Elevation so
+   the server stamps it manager-approved (never rejected — offline-safe). */
+function RefundModal({ sale, onClose }: { sale: any; onClose: () => void }) {
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const doRefund = async () => {
+    setBusy(true); setErr("");
+    try {
+      const elev = await elevate(pw);
+      const refund = {
+        id: uid(), no: "REF-" + (sale.no || sale.id), t: Date.now(), type: "refund", originalId: sale.id,
+        storeId: sale.storeId || "main", shiftId: sale.shiftId || null, userName: "manager", customerId: sale.customerId || null,
+        lines: sale.lines, subtotal: sale.subtotal, gst: sale.gst, total: sale.total, billDisc: sale.billDisc || 0,
+        payments: [{ method: (sale.payments || [])[0]?.method || "Cash", amount: sale.total }], refunded: true, managerApproved: { method: "password", at: Date.now() },
+      };
+      store.commit([{ kind: "sales", id: refund.id, data: refund }], elev);
+      // mark original as refunded so it drops out of live tallies
+      store.commit([{ kind: "sales", id: sale.id, data: { ...sale, refunded: true } }]);
+      onClose();
+    } catch (e: any) { setErr(e.message || "wrong password"); setBusy(false); }
+  };
+  return (
+    <div style={X.overlay} onClick={onClose}>
+      <div style={X.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, fontSize: 17 }}>Refund {sale.no}</div>
+        <div style={{ color: "var(--ink2)", fontSize: 13, margin: "4px 0 14px" }}>{money(sale.total)} · {(sale.lines || []).reduce((a: number, l: any) => a + l.qty, 0)} items. A manager must approve.</div>
+        <label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>STORE / MANAGER PASSWORD</label>
+        <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && pw) doRefund(); }} style={{ ...X.input, width: "100%", marginTop: 6 }} />
+        {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700, marginTop: 8 }}>{err}</div>}
+        <button disabled={!pw || busy} onClick={doRefund} style={{ ...X.refundBtn, opacity: (!pw || busy) ? .5 : 1 }}>{busy ? "Verifying…" : "Approve & refund"}</button>
       </div>
     </div>
   );
@@ -324,4 +365,8 @@ const X: Record<string, React.CSSProperties> = {
   segOn: { background: "var(--green)", color: "#fff" },
   tag: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999 },
   empty: { color: "var(--ink3)", fontSize: 13, padding: "14px 2px" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40, animation: "fade .2s" },
+  modal: { width: "min(420px,94vw)", background: "var(--bg)", borderRadius: 22, padding: 22, boxShadow: "var(--shadow)", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" },
+  input: { padding: "11px 13px", borderRadius: 11, border: "1px solid var(--line)", background: "var(--sur)", color: "var(--ink)", fontSize: 14, outline: "none" },
+  refundBtn: { width: "100%", marginTop: 16, borderRadius: 13, padding: "12px", background: "var(--red)", color: "#fff", fontWeight: 800, fontSize: 15 },
 };

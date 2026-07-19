@@ -97,7 +97,9 @@ function PinGate({ onSignIn }: { onSignIn: (u: any) => void }) {
 }
 
 /* ── main shell + register ─────────────────────────────────────────────────── */
-type Line = { pid: string; qty: number };
+type Mod = { name: string; price: number };
+type Line = { key: string; pid: string; qty: number; mods: Mod[] };
+const hasMods = (p: any) => !!((p.addons && p.addons.length) || (p.spiceLevels && p.spiceLevels.length));
 
 function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () => void }) {
   const st = useStore();
@@ -131,18 +133,26 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const subInGroup = (cat: string) => group === "all" || (groups.find((g) => g.name === group)?.subs || []).includes(cat);
   const items = products.filter((p) => subInGroup(p.cat) && (!query || (p.name || "").toLowerCase().includes(query.toLowerCase())));
 
-  const bump = (pid: string, d: number) => setCart((c) => {
-    const i = c.findIndex((l) => l.pid === pid);
-    if (i < 0) return d > 0 ? c.concat([{ pid, qty: 1 }]) : c;
+  const [modProd, setModProd] = useState<any>(null);
+  const prodById = (pid: string) => products.find((p) => p.id === pid);
+  const lineUnit = (l: Line) => (prodById(l.pid)?.price || 0) + l.mods.reduce((a, m) => a + (m.price || 0), 0);
+
+  const addLine = (p: any, mods: Mod[]) => {
+    const key = p.id + "|" + mods.map((m) => m.name).sort().join(",");
+    setCart((c) => { const i = c.findIndex((l) => l.key === key); if (i >= 0) { const n = c.slice(); n[i] = { ...n[i], qty: n[i].qty + 1 }; return n; } return c.concat([{ key, pid: p.id, qty: 1, mods }]); });
+  };
+  const tapProduct = (p: any) => { if (hasMods(p)) setModProd(p); else addLine(p, []); };
+  const bump = (key: string, d: number) => setCart((c) => {
+    const i = c.findIndex((l) => l.key === key); if (i < 0) return c;
     const n = c.slice(); const q = n[i].qty + d;
     if (q <= 0) n.splice(i, 1); else n[i] = { ...n[i], qty: q };
     return n;
   });
-  const qtyOf = (pid: string) => cart.find((l) => l.pid === pid)?.qty || 0;
-  const prodById = (pid: string) => products.find((p) => p.id === pid);
+  const dropOne = (pid: string) => setCart((c) => { for (let i = c.length - 1; i >= 0; i--) if (c[i].pid === pid) { const n = c.slice(); if (n[i].qty <= 1) n.splice(i, 1); else n[i] = { ...n[i], qty: n[i].qty - 1 }; return n; } return c; });
+  const qtyOf = (pid: string) => cart.filter((l) => l.pid === pid).reduce((a, l) => a + l.qty, 0);
 
   const totals = useMemo(() => {
-    const subtotal = cart.reduce((a, l) => a + (prodById(l.pid)?.price || 0) * l.qty, 0);
+    const subtotal = cart.reduce((a, l) => a + lineUnit(l) * l.qty, 0);
     const d = Math.min(Math.max(0, disc), subtotal);
     const taxable = subtotal - d;
     const gst = Math.round(taxable * gstBp / 10000);
@@ -165,7 +175,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const sale = {
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
       userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype,
-      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, discPct: 0, taxable: p?.taxable !== false }; }),
+      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods, discPct: 0, taxable: p?.taxable !== false }; }),
       subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, svcCharge: 0,
       payments, change, refunded: false,
     };
@@ -248,15 +258,16 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                   {items.map((p, i) => {
                     const q = qtyOf(p.id); const t = tintFor(p.cat);
                     return (
-                      <div key={p.id} style={{ ...C.tile, borderColor: q > 0 ? "var(--coral)" : "var(--line)", animation: `rise .3s ${Math.min(i * 12, 220)}ms both` }}>
+                      <div key={p.id} onClick={() => tapProduct(p)} style={{ ...C.tile, cursor: "pointer", borderColor: q > 0 ? "var(--coral)" : "var(--line)", animation: `rise .3s ${Math.min(i * 12, 220)}ms both` }}>
                         {bestIds.has(p.id) && <span style={C.best}>★ Best seller</span>}
                         <span style={{ ...C.glyph, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
                         <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 9, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>
                           <span className="num" style={{ fontSize: 13, fontWeight: 800 }}>{(p.price / 100).toFixed(2)}<small style={{ fontSize: 10.5, color: "var(--ink3)", fontWeight: 600, marginLeft: 3 }}>{p.unit || "pcs"}</small></span>
                           {q > 0 ? (
-                            <span style={C.stepper}><button style={C.stepBtn} onClick={() => bump(p.id, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={C.stepBtn} onClick={() => bump(p.id, 1)}>+</button></span>
-                          ) : <button style={C.plus} onClick={() => bump(p.id, 1)}>+</button>}
+                            <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button style={C.stepBtn} onClick={() => dropOne(p.id)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
+                          ) : <button style={C.plus} onClick={(e) => { e.stopPropagation(); tapProduct(p); }}>+</button>}
+                          {hasMods(p) && q === 0 && <span style={{ position: "absolute", top: 8, insetInlineStart: 8, width: 7, height: 7, borderRadius: 99, background: "var(--amber)" }} />}
                         </div>
                       </div>
                     );
@@ -284,13 +295,13 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 {cart.length === 0 ? (
                   <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10 }}><div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>Scan or tap a product to start</div></div>
                 ) : cart.map((l) => {
-                  const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat);
+                  const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat); const u = lineUnit(l);
                   return (
-                    <div key={l.pid} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
+                    <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
                       <span style={{ ...C.glyph, width: 34, height: 34, fontSize: 16, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{money(p.price)} each</small></div>
-                      <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.pid, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.pid, 1)}>+</button></span>
-                      <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(p.price * l.qty)}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{l.mods.length ? l.mods.map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
+                      <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
+                      <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
                     </div>
                   );
                 })}
@@ -318,6 +329,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           </div>
         ) : nav === "orders" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "reports" ? <Reports /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
       </div>
+      {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
@@ -417,7 +429,9 @@ function StatusPill() {
 function PaySheet({ total, currency, hasCustomer, custName, onClose, onDone }: { total: number; currency: string; hasCustomer: boolean; custName?: string; onClose: () => void; onDone: (p: { method: string; amount: number }[], change: number) => void }) {
   const [method, setMethod] = useState<string>("Cash");
   const [tender, setTender] = useState<number>(0);
+  const [guests, setGuests] = useState(1);
   const isTab = method === "Credit";
+  const perGuest = Math.ceil(total / guests / 100) * 100;
   const change = method === "Cash" ? Math.max(0, tender - total) : 0;
   const quick = [total, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000].filter((v, i, a) => a.indexOf(v) === i);
   const ok = (method !== "Cash" || tender >= total) && (!isTab || hasCustomer);
@@ -425,7 +439,12 @@ function PaySheet({ total, currency, hasCustomer, custName, onClose, onDone }: {
     <div style={C.overlay} onClick={onClose}>
       <div style={{ ...C.sheet, width: "min(460px,94vw)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700, letterSpacing: ".05em" }}>TOTAL DUE</div>
-        <div className="num" style={{ fontSize: 34, fontWeight: 800, margin: "2px 0 16px" }}>{money(total)}</div>
+        <div className="num" style={{ fontSize: 34, fontWeight: 800, margin: "2px 0 14px" }}>{money(total)}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span style={{ color: "var(--ink2)", fontSize: 12.5, fontWeight: 700 }}>Split</span>
+          {[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setGuests(n)} style={{ ...C.chip, padding: "6px 13px", ...(guests === n ? C.chipOn : {}) }}>{n}</button>)}
+          {guests > 1 && <span className="num" style={{ marginInlineStart: "auto", color: "var(--coral)", fontWeight: 800, fontSize: 13 }}>{money(perGuest)}/guest</span>}
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
           {METHODS.map((m) => <button key={m} onClick={() => setMethod(m)} style={{ ...C.method, ...(method === m ? C.methodOn : {}) }}>{m}</button>)}
           <button onClick={() => hasCustomer && setMethod("Credit")} disabled={!hasCustomer} title={hasCustomer ? "Charge to customer tab" : "Attach a customer first"} style={{ ...C.method, ...(isTab ? C.methodOn : {}), opacity: hasCustomer ? 1 : .45 }}>On tab</button>
@@ -442,7 +461,49 @@ function PaySheet({ total, currency, hasCustomer, custName, onClose, onDone }: {
             </div>
           </div>
         )}
-        <button disabled={!ok} onClick={() => onDone([{ method, amount: total }], change)} style={{ ...C.charge, width: "100%", marginTop: 18, opacity: ok ? 1 : .5 }}>Confirm payment</button>
+        <button disabled={!ok} onClick={() => {
+          const payments = guests > 1
+            ? Array.from({ length: guests }, (_, i) => ({ method, amount: i === guests - 1 ? total - perGuest * (guests - 1) : perGuest }))
+            : [{ method, amount: total }];
+          onDone(payments, change);
+        }} style={{ ...C.charge, width: "100%", marginTop: 18, opacity: ok ? 1 : .5 }}>Confirm payment</button>
+      </div>
+    </div>
+  );
+}
+
+function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () => void; onAdd: (mods: Mod[]) => void }) {
+  const addons: any[] = product.addons || [];
+  const spice: any[] = (product.spiceLevels || []).map((s: any) => typeof s === "string" ? { name: s, price: 0 } : { name: s.name, price: s.price || 0 });
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [spiceSel, setSpiceSel] = useState<string>("");
+  const mods: Mod[] = [
+    ...addons.filter((a) => picked[a.name]).map((a) => ({ name: a.name, price: a.price || 0 })),
+    ...(spiceSel ? [{ name: spiceSel, price: (spice.find((s) => s.name === spiceSel)?.price) || 0 }] : []),
+  ];
+  const unit = (product.price || 0) + mods.reduce((a, m) => a + m.price, 0);
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(440px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+          <span style={{ ...C.glyph, background: tintFor(product.cat)[0], color: tintFor(product.cat)[1] }}>{product.emoji || (product.name || "?")[0]}</span>
+          <div><div style={{ fontWeight: 800, fontSize: 16 }}>{product.name}</div><div className="num" style={{ color: "var(--ink2)", fontSize: 13 }}>{money(product.price || 0)}</div></div>
+        </div>
+        {addons.length > 0 && <div style={{ color: "var(--ink3)", fontSize: 11, fontWeight: 700, letterSpacing: ".04em", margin: "4px 0 6px" }}>ADD-ONS</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {addons.map((a) => { const on = !!picked[a.name]; return (
+            <button key={a.name} onClick={() => setPicked({ ...picked, [a.name]: !on })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 13, border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur)" }}>
+              <span style={{ width: 18, height: 18, borderRadius: 6, border: "2px solid " + (on ? "var(--coral)" : "var(--ink3)"), display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--coral)", fontSize: 12 }}>{on ? "✓" : ""}</span>
+              <span style={{ flex: 1, textAlign: "start", fontWeight: 600, fontSize: 13.5 }}>{a.name}</span>
+              {a.price > 0 && <span className="num" style={{ color: "var(--ink2)", fontSize: 12.5 }}>+{money(a.price).replace("MVR ", "")}</span>}
+            </button>
+          ); })}
+        </div>
+        {spice.length > 0 && <div style={{ color: "var(--ink3)", fontSize: 11, fontWeight: 700, letterSpacing: ".04em", margin: "12px 0 6px" }}>SPICE LEVEL</div>}
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {spice.map((s) => <button key={s.name} onClick={() => setSpiceSel(spiceSel === s.name ? "" : s.name)} style={{ ...C.chip, ...(spiceSel === s.name ? C.methodOn : {}) }}>{s.name}</button>)}
+        </div>
+        <button onClick={() => onAdd(mods)} style={{ ...C.charge, width: "100%", marginTop: 18 }}>Add · {money(unit)}</button>
       </div>
     </div>
   );

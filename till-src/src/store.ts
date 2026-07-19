@@ -12,7 +12,7 @@ import { pull, pushOps, eventsUrl, uid, type Entity } from "./api";
 const K_CURSOR = "kashikeyo-cursor";
 const K_OUTBOX = "kashikeyo-outbox";
 
-type Op = { opId: string; puts?: { kind: string; id: string; data: any }[]; dels?: { kind: string; id: string }[] };
+type Op = { opId: string; puts?: { kind: string; id: string; data: any }[]; dels?: { kind: string; id: string }[]; elev?: string };
 
 class Store {
   ents = new Map<string, Entity>();
@@ -68,10 +68,11 @@ class Store {
 
   private persistOutbox() { localStorage.setItem(K_OUTBOX, JSON.stringify(this.outbox)); }
 
-  /* Optimistically apply puts locally, queue the op, and try to drain. */
-  commit(puts: { kind: string; id: string; data: any }[]) {
+  /* Optimistically apply puts locally, queue the op, and try to drain. An
+     optional elevation token rides with the op (X-Elevation) for refunds. */
+  commit(puts: { kind: string; id: string; data: any }[], elev?: string) {
     puts.forEach((p) => this.ents.set(p.kind + "|" + p.id, { kind: p.kind, id: p.id, data: p.data }));
-    this.outbox.push({ opId: uid(), puts });
+    this.outbox.push({ opId: uid(), puts, ...(elev ? { elev } : {}) });
     this.persistOutbox();
     this.emit();
     this.drain();
@@ -91,7 +92,7 @@ class Store {
     this.syncing = true; this.emit();
     try {
       while (this.outbox.length) {
-        await pushOps([this.outbox[0]]);   // idempotent on opId
+        await pushOps([this.outbox[0]], this.outbox[0].elev);   // idempotent on opId; X-Elevation for refunds
         this.outbox.shift();
         this.persistOutbox();
         this.emit();
