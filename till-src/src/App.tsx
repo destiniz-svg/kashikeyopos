@@ -21,6 +21,14 @@ function guestParams() {
 
 const money = (laari: number) => "MVR " + (Math.round(laari) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/* Viewport width for responsive layout (inline styles can't use media queries).
+   phone < 760, tablet 760–1100, desktop ≥ 1100. */
+function useVW() {
+  const [vw, setVw] = useState(() => (typeof window !== "undefined" ? window.innerWidth : 1280));
+  useEffect(() => { const on = () => setVw(window.innerWidth); window.addEventListener("resize", on); return () => window.removeEventListener("resize", on); }, []);
+  return vw;
+}
+
 const TINTS: [string, string][] = [
   ["var(--ambersoft)", "var(--amber)"], ["var(--greensoft)", "var(--green)"], ["var(--coralsoft)", "var(--coral)"],
   ["var(--bluesoft, rgba(47,107,224,.14))", "var(--blue)"], ["var(--redsoft)", "var(--red)"], ["var(--sur2)", "var(--ink2)"],
@@ -145,6 +153,10 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [custPick, setCustPick] = useState(false);
   const [table, setTable] = useState("");
   const [tablePick, setTablePick] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const vw = useVW();
+  const mob = vw < 760;
+  const tab = vw >= 760 && vw < 1100;
   const parked = st.byKind("parked").map((e) => e.data).sort((a, b) => (a.t || 0) - (b.t || 0));
 
   const shifts = st.byKind("shifts").map((e) => e.data);
@@ -228,39 +240,99 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     store.del([{ kind: "parked", id: bill.id }]);
   };
 
+  const cartInner = (
+    <>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "12px 14px 8px" }}>
+                <span style={C.billtab}>#1</span><span style={{ ...C.billtab, ...C.billAdd }}>＋</span>
+                <div style={{ flex: 1 }} /><span style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700 }}>{count} items</span>
+                {mob && <button onClick={() => setCartOpen(false)} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>}
+              </div>
+              <div style={{ display: "flex", gap: 6, padding: "2px 14px 10px" }}>
+                {([["dinein", "🍽️ Dine-in"], ["takeaway", "🥡 Takeaway"], ["delivery", "🛵 Delivery"]] as const).map(([k, l]) => (
+                  <button key={k} onClick={() => setOtype(k)} style={{ ...C.oseg, ...(otype === k ? C.osegOn : {}) }}>{l}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
+                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
+                <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table · optional"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
+              </div>
+              <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
+                {cart.length === 0 ? (
+                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10, padding: "30px 0" }}><div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>Scan or tap a product to start</div></div>
+                ) : cart.map((l) => {
+                  const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat); const u = lineUnit(l);
+                  return (
+                    <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
+                      <span style={{ ...C.glyph, width: 34, height: 34, fontSize: 16, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
+                      <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
+                      <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
+                <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>
+                {totals.disc > 0 ? (
+                  <div style={C.trow}><span>Discount{discPct ? " (" + discPct + "%)" : ""}</span><span><span className="num" style={{ color: "var(--coral)" }}>−{money(totals.disc)}</span> <button onClick={() => { setDisc(0); setDiscPct(0); }} style={{ color: "var(--ink3)", marginInlineStart: 6 }}>✕</button></span></div>
+                ) : discOpen ? (
+                  <div style={{ margin: "6px 0" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                      {[5, 10, 15, 20].map((pct) => (
+                        <button key={pct} onClick={() => { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); setDiscOpen(false); }} style={C.discChip}>{pct}%</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input autoFocus type="number" inputMode="decimal" placeholder="Custom (MVR)" onKeyDown={(e) => { if (e.key === "Enter") { setDiscPct(0); setDisc(Math.round(Number((e.target as HTMLInputElement).value) * 100) || 0); setDiscOpen(false); } if (e.key === "Escape") setDiscOpen(false); }} style={C.input} />
+                      <button style={C.chipSm} onMouseDown={(e) => { const inp = (e.currentTarget.previousSibling as HTMLInputElement); setDiscPct(0); setDisc(Math.round(Number(inp.value) * 100) || 0); setDiscOpen(false); }}>Apply</button>
+                      <button style={{ ...C.discChip, color: "var(--ink2)" }} onClick={() => setDiscOpen(false)}>✕</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setDiscOpen(true)} style={{ ...C.disc, cursor: "pointer" }}>＋ Bill disc</button>
+                )}
+                <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Split bill" onClick={() => openShift ? setPay(true) : setShiftModal(true)}>✂️</button><button style={C.act} title="Clear" onClick={resetBill}>🗑️</button>
+                  <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>Charge {money(totals.total)}</button>
+                </div>
+              </div>
+    </>
+  );
+
   return (
     <div style={{ display: "flex", height: "100%" }}>
-      <aside style={C.rail} className="glass">
-        <div style={C.kchip}>K</div>
-        <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", color: "var(--ink3)", marginBottom: 8 }}>KASHIKEYO</div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 3, width: "100%" }}>
+      <aside style={mob ? C.railM : C.rail} className="glass">
+        {!mob && <><div style={C.kchip}>K</div><div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", color: "var(--ink3)", marginBottom: 8 }}>KASHIKEYO</div></>}
+        <nav style={{ display: "flex", flexDirection: mob ? "row" : "column", gap: mob ? 2 : 3, width: "100%", justifyContent: mob ? "space-around" : undefined }}>
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setNav(n.id)} style={{ ...C.railBtn, ...(nav === n.id ? C.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
-              <svg viewBox="0 0 24 24" width={21} height={21} dangerouslySetInnerHTML={{ __html: n.icon }} /><span style={{ fontSize: 10, fontWeight: 700 }}>{n.label}</span>
+            <button key={n.id} onClick={() => setNav(n.id)} style={{ ...(mob ? C.railBtnM : C.railBtn), ...(nav === n.id ? C.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
+              <svg viewBox="0 0 24 24" width={mob ? 20 : 21} height={mob ? 20 : 21} dangerouslySetInnerHTML={{ __html: n.icon }} /><span style={{ fontSize: mob ? 9 : 10, fontWeight: 700 }}>{n.label}</span>
             </button>
           ))}
         </nav>
       </aside>
 
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <header style={C.header}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16 }}>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: mob ? 60 : 0 }}>
+        <header style={{ ...C.header, padding: mob ? "0 12px" : "0 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: mob ? 14 : 16, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {settings.storeName || "Kashikeyo Café"} <span style={{ color: "var(--ink3)", fontSize: 12 }}>▾</span>
           </div>
           <div style={{ flex: 1 }} />
-          <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>
-          <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
-            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{openShift ? "Shift open" : "No shift"}
+          {!mob && <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>}
+          <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: mob ? "6px 9px" : "6px 13px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
+            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? "Shift open" : "No shift")}
           </button>
-          <StatusPill />
-          <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: "5px 12px 5px 5px", cursor: "pointer" }} title="Sign out">
-            <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{user.name}
+          {!mob && <StatusPill />}
+          <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: mob ? "4px" : "5px 12px 5px 5px", cursor: "pointer" }} title="Sign out">
+            <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{!mob && user.name}
           </button>
         </header>
 
         {nav === "sell" ? (
-          <div style={C.body}>
-            <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 11 }}>
+          <div style={{ ...C.body, gap: mob ? 0 : 14 }}>
+            <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 11, paddingBottom: mob && count > 0 ? 66 : 0 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", color: "var(--ink3)", whiteSpace: "nowrap" }}>OPEN BILLS</span>
                 <span style={{ ...C.obill, ...C.obillOn }}>🥡 {otype === "dinein" ? "Dine-in" : otype === "delivery" ? "Delivery" : "Takeaway"} · #{parked.length + 1} <small style={{ color: "var(--coral)", opacity: .8 }}>{cust?.name || "Walk-in"}</small></span>
@@ -309,63 +381,21 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             </section>
 
-            <aside style={C.cart} className="glass">
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "12px 14px 8px" }}>
-                <span style={C.billtab}>#1</span><span style={{ ...C.billtab, ...C.billAdd }}>＋</span>
-                <div style={{ flex: 1 }} /><span style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700 }}>{count} items</span>
+            {!mob && (
+              <aside style={{ ...C.cart, ...(tab ? { width: 300, flex: "0 0 300px" } : {}) }} className="glass">{cartInner}</aside>
+            )}
+            {mob && count > 0 && !cartOpen && (
+              <button onClick={() => setCartOpen(true)} style={C.orderPillM}>
+                <span style={{ background: "rgba(255,255,255,.25)", borderRadius: 99, padding: "2px 10px", fontWeight: 800 }}>{count}</span>
+                <span style={{ flex: 1, textAlign: "start", marginInlineStart: 10 }}>View order</span>
+                <span className="num" style={{ fontWeight: 800 }}>{money(totals.total)}</span>
+              </button>
+            )}
+            {mob && cartOpen && (
+              <div style={C.cartSheetWrap} onClick={() => setCartOpen(false)}>
+                <div style={C.cartSheetM} className="glass" onClick={(e) => e.stopPropagation()}>{cartInner}</div>
               </div>
-              <div style={{ display: "flex", gap: 6, padding: "2px 14px 10px" }}>
-                {([["dinein", "🍽️ Dine-in"], ["takeaway", "🥡 Takeaway"], ["delivery", "🛵 Delivery"]] as const).map(([k, l]) => (
-                  <button key={k} onClick={() => setOtype(k)} style={{ ...C.oseg, ...(otype === k ? C.osegOn : {}) }}>{l}</button>
-                ))}
-              </div>
-              <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
-                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
-                <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table · optional"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
-              </div>
-              <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)" }}>
-                {cart.length === 0 ? (
-                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10 }}><div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>Scan or tap a product to start</div></div>
-                ) : cart.map((l) => {
-                  const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat); const u = lineUnit(l);
-                  return (
-                    <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
-                      <span style={{ ...C.glyph, width: 34, height: 34, fontSize: 16, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
-                      <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
-                      <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
-                <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>
-                {totals.disc > 0 ? (
-                  <div style={C.trow}><span>Discount{discPct ? " (" + discPct + "%)" : ""}</span><span><span className="num" style={{ color: "var(--coral)" }}>−{money(totals.disc)}</span> <button onClick={() => { setDisc(0); setDiscPct(0); }} style={{ color: "var(--ink3)", marginInlineStart: 6 }}>✕</button></span></div>
-                ) : discOpen ? (
-                  <div style={{ margin: "6px 0" }}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-                      {[5, 10, 15, 20].map((pct) => (
-                        <button key={pct} onClick={() => { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); setDiscOpen(false); }} style={C.discChip}>{pct}%</button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input autoFocus type="number" inputMode="decimal" placeholder="Custom (MVR)" onKeyDown={(e) => { if (e.key === "Enter") { setDiscPct(0); setDisc(Math.round(Number((e.target as HTMLInputElement).value) * 100) || 0); setDiscOpen(false); } if (e.key === "Escape") setDiscOpen(false); }} style={C.input} />
-                      <button style={C.chipSm} onMouseDown={(e) => { const inp = (e.currentTarget.previousSibling as HTMLInputElement); setDiscPct(0); setDisc(Math.round(Number(inp.value) * 100) || 0); setDiscOpen(false); }}>Apply</button>
-                      <button style={{ ...C.discChip, color: "var(--ink2)" }} onClick={() => setDiscOpen(false)}>✕</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button onClick={() => setDiscOpen(true)} style={{ ...C.disc, cursor: "pointer" }}>＋ Bill disc</button>
-                )}
-                <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Split bill" onClick={() => openShift ? setPay(true) : setShiftModal(true)}>✂️</button><button style={C.act} title="Clear" onClick={resetBill}>🗑️</button>
-                  <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => openShift ? setPay(true) : setShiftModal(true)}>Charge {money(totals.total)}</button>
-                </div>
-              </div>
-            </aside>
+            )}
           </div>
         ) : nav === "orders" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "reports" ? <Reports /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
       </div>
@@ -617,6 +647,11 @@ function nextInvoiceNo(sales: any[]): string {
 
 const C: Record<string, React.CSSProperties> = {
   rail: { width: 92, flex: "0 0 92px", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 8px", gap: 4, background: "var(--sur)", borderRight: "1px solid var(--line)" },
+  railM: { position: "fixed", bottom: 0, left: 0, right: 0, height: 58, zIndex: 30, display: "flex", alignItems: "center", padding: "0 4px", background: "var(--sur)", borderTop: "1px solid var(--line)" },
+  railBtnM: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 2px", borderRadius: 12, color: "var(--ink2)", minWidth: 0 },
+  orderPillM: { position: "fixed", left: 12, right: 12, bottom: 66, zIndex: 25, display: "flex", alignItems: "center", padding: "13px 16px", borderRadius: 15, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 22px -6px rgba(225,85,45,.55)" },
+  cartSheetWrap: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "flex-end", zIndex: 40, animation: "fade .2s" },
+  cartSheetM: { width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", background: "var(--sur)", borderRadius: "20px 20px 0 0", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", overflow: "hidden" },
   kchip: { width: 40, height: 40, borderRadius: 13, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20, boxShadow: "0 6px 16px rgba(225,85,45,.34)" },
   railBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 4px", borderRadius: 13, color: "var(--ink2)" },
   railOn: { background: "var(--coralsoft)", color: "var(--coral)" },

@@ -79,7 +79,7 @@ export function Dashboard() {
         <div style={{ color: "var(--ink2)", fontSize: 13, fontWeight: 600 }}>{new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</div>
         <button style={X.pill}>⚙︎ Customize</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginBottom: 14 }}>
         <Kpi k="NET SALES TODAY" v={money(net)} big />
         <Kpi k="TRANSACTIONS" v={String(txns)} big />
         <Kpi k="AVG BASKET" v={money(avg)} big />
@@ -103,7 +103,7 @@ export function Dashboard() {
           <span className="num" style={{ color: "var(--green)", fontWeight: 800, fontSize: 13 }}>{money0(trend7[trend7.length - 1] || 0)}</span>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 14, marginBottom: 14 }}>
         <div style={{ ...X.card, padding: 18 }}>
           <b style={{ fontSize: 15 }}>Top items today</b>
           <div style={{ marginTop: 10 }}>
@@ -247,7 +247,7 @@ function Report({ title, sub, onPdf, children }: any) {
   );
 }
 function Grid({ rows }: { rows: [string, string][] }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+  return <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
     {rows.map(([k, v]) => <div key={k} style={{ background: "var(--sur2)", borderRadius: 12, padding: "11px 13px" }}><div style={{ color: "var(--ink3)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</div><div className="num" style={{ fontWeight: 800, fontSize: 17, marginTop: 3 }}>{v}</div></div>)}
   </div>;
 }
