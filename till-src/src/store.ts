@@ -12,7 +12,7 @@ import { pull, pushOps, eventsUrl, uid, type Entity } from "./api";
 const K_CURSOR = "kashikeyo-cursor";
 const K_OUTBOX = "kashikeyo-outbox";
 
-type Op = { opId: string; puts: { kind: string; id: string; data: any }[] };
+type Op = { opId: string; puts?: { kind: string; id: string; data: any }[]; dels?: { kind: string; id: string }[] };
 
 class Store {
   ents = new Map<string, Entity>();
@@ -72,6 +72,15 @@ class Store {
   commit(puts: { kind: string; id: string; data: any }[]) {
     puts.forEach((p) => this.ents.set(p.kind + "|" + p.id, { kind: p.kind, id: p.id, data: p.data }));
     this.outbox.push({ opId: uid(), puts });
+    this.persistOutbox();
+    this.emit();
+    this.drain();
+  }
+
+  /* Soft-delete entities (op.dels → server sets deleted=true, re-pull removes). */
+  del(items: { kind: string; id: string }[]) {
+    items.forEach((i) => this.ents.delete(i.kind + "|" + i.id));
+    this.outbox.push({ opId: uid(), dels: items });
     this.persistOutbox();
     this.emit();
     this.drain();

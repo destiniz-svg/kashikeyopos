@@ -117,6 +117,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [shiftModal, setShiftModal] = useState(false);
   const [zModal, setZModal] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
+  const [cust, setCust] = useState<any>(null);
+  const [custPick, setCustPick] = useState(false);
+  const parked = st.byKind("parked").map((e) => e.data).sort((a, b) => (a.t || 0) - (b.t || 0));
 
   const shifts = st.byKind("shifts").map((e) => e.data);
   const openShift = shifts.find((s) => !s.closedAt) || null;
@@ -161,14 +164,26 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const no = nextInvoiceNo(st.byKind("sales").map((e) => e.data));
     const sale = {
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
-      userName: user.name, customerId: null, otype,
+      userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype,
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, discPct: 0, taxable: p?.taxable !== false }; }),
       subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, svcCharge: 0,
       payments, change, refunded: false,
     };
     store.commit([{ kind: "sales", id: sale.id, data: sale }]);
     setReceipt({ sale, change, settings });
-    setCart([]); setDisc(0); setPay(false);
+    setCart([]); setDisc(0); setPay(false); setCust(null);
+  };
+
+  const park = () => {
+    if (!cart.length) return;
+    const bill = { id: uid(), t: Date.now(), otype, lines: cart, disc, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main" };
+    store.commit([{ kind: "parked", id: bill.id, data: bill }]);
+    setCart([]); setDisc(0); setCust(null);
+  };
+  const resume = (bill: any) => {
+    setCart(bill.lines || []); setDisc(bill.disc || 0); setOtype(bill.otype || "takeaway");
+    setCust(bill.customerId ? { id: bill.customerId, name: bill.custName } : null);
+    store.del([{ kind: "parked", id: bill.id }]);
   };
 
   return (
@@ -206,8 +221,13 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
             <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 11 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", color: "var(--ink3)", whiteSpace: "nowrap" }}>OPEN BILLS</span>
-                <span style={{ ...C.obill, ...C.obillOn }}>🥡 {otype === "dinein" ? "Dine-in" : otype === "delivery" ? "Delivery" : "Takeaway"} · #1 <small style={{ color: "var(--coral)", opacity: .8 }}>Walk-in</small></span>
-                <span style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</span>
+                <span style={{ ...C.obill, ...C.obillOn }}>🥡 {otype === "dinein" ? "Dine-in" : otype === "delivery" ? "Delivery" : "Takeaway"} · #{parked.length + 1} <small style={{ color: "var(--coral)", opacity: .8 }}>{cust?.name || "Walk-in"}</small></span>
+                {parked.map((b, i) => (
+                  <button key={b.id} onClick={() => resume(b)} style={C.obill} title="Resume this bill">
+                    ⏸ Held · #{i + 1} <small style={{ color: "var(--ink2)" }}>{(b.lines || []).reduce((a: number, l: any) => a + l.qty, 0)} items</small>
+                  </button>
+                ))}
+                <button onClick={() => { setCart([]); setDisc(0); setCust(null); }} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</button>
               </div>
               {!openShift && (
                 <button onClick={() => setShiftModal(true)} style={C.shiftBar}>🕓 No shift open — tap to open one before taking payments</button>
@@ -257,7 +277,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
-                <div style={C.custBtn}>👤 Add customer</div><div style={C.custBtn}>🍴 Table · optional</div>
+                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
+                <div style={C.custBtn}>🍴 Table · optional</div>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)" }}>
                 {cart.length === 0 ? (
@@ -289,7 +310,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button style={C.act} title="Park">⏸</button><button style={C.act} title="Split">✂️</button><button style={C.act} title="Clear" onClick={() => { setCart([]); setDisc(0); }}>🗑️</button>
+                  <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={C.act} title="Split">✂️</button><button style={C.act} title="Clear" onClick={() => { setCart([]); setDisc(0); setCust(null); }}>🗑️</button>
                   <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => openShift ? setPay(true) : setShiftModal(true)}>Charge {money(totals.total)}</button>
                 </div>
               </div>
@@ -297,7 +318,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           </div>
         ) : nav === "orders" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "reports" ? <Reports /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
       </div>
-      {pay && <PaySheet total={totals.total} currency={currency} onClose={() => setPay(false)} onDone={onCharged} />}
+      {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
+      {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
@@ -392,20 +414,23 @@ function StatusPill() {
   return <span style={{ ...C.pill, color: c }}><i style={{ ...C.dot, background: c, animation: s === "saving" ? "pulse 1s infinite" : s === "synced" ? "pulse 2.4s infinite" : undefined }} />{label}</span>;
 }
 
-function PaySheet({ total, currency, onClose, onDone }: { total: number; currency: string; onClose: () => void; onDone: (p: { method: string; amount: number }[], change: number) => void }) {
+function PaySheet({ total, currency, hasCustomer, custName, onClose, onDone }: { total: number; currency: string; hasCustomer: boolean; custName?: string; onClose: () => void; onDone: (p: { method: string; amount: number }[], change: number) => void }) {
   const [method, setMethod] = useState<string>("Cash");
   const [tender, setTender] = useState<number>(0);
+  const isTab = method === "Credit";
   const change = method === "Cash" ? Math.max(0, tender - total) : 0;
   const quick = [total, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000].filter((v, i, a) => a.indexOf(v) === i);
-  const ok = method !== "Cash" || tender >= total;
+  const ok = (method !== "Cash" || tender >= total) && (!isTab || hasCustomer);
   return (
     <div style={C.overlay} onClick={onClose}>
       <div style={{ ...C.sheet, width: "min(460px,94vw)" }} onClick={(e) => e.stopPropagation()}>
         <div style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700, letterSpacing: ".05em" }}>TOTAL DUE</div>
         <div className="num" style={{ fontSize: 34, fontWeight: 800, margin: "2px 0 16px" }}>{money(total)}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
           {METHODS.map((m) => <button key={m} onClick={() => setMethod(m)} style={{ ...C.method, ...(method === m ? C.methodOn : {}) }}>{m}</button>)}
+          <button onClick={() => hasCustomer && setMethod("Credit")} disabled={!hasCustomer} title={hasCustomer ? "Charge to customer tab" : "Attach a customer first"} style={{ ...C.method, ...(isTab ? C.methodOn : {}), opacity: hasCustomer ? 1 : .45 }}>On tab</button>
         </div>
+        {isTab && <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink2)" }}>Charged to <b style={{ color: "var(--ink)" }}>{custName}</b>’s tab — posts to receivables.</div>}
         {method === "Cash" && (
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -418,6 +443,28 @@ function PaySheet({ total, currency, onClose, onDone }: { total: number; currenc
           </div>
         )}
         <button disabled={!ok} onClick={() => onDone([{ method, amount: total }], change)} style={{ ...C.charge, width: "100%", marginTop: 18, opacity: ok ? 1 : .5 }}>Confirm payment</button>
+      </div>
+    </div>
+  );
+}
+
+function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPick: (c: any) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const list = customers.filter((c) => !q || (c.name || "").toLowerCase().includes(q.toLowerCase()) || (c.phone || "").includes(q));
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(440px,94vw)", maxHeight: "80vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 10 }}>Charge to customer</div>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or phone…" style={{ ...C.input, width: "100%" }} />
+        <div style={{ overflowY: "auto", marginTop: 10 }}>
+          {list.length ? list.map((c) => (
+            <button key={c.id} onClick={() => onPick(c)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 8px", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
+              <span style={{ ...C.avatar, background: "var(--coral)" }}>{(c.name || "?")[0].toUpperCase()}</span>
+              <span style={{ flex: 1 }}><b style={{ display: "block", fontSize: 14 }}>{c.name}</b><small style={{ color: "var(--ink3)" }}>{c.phone || ""}</small></span>
+              {Number(c.balance || 0) > 0 && <span className="num" style={{ color: "var(--amber)", fontWeight: 700, fontSize: 12 }}>{money(Number(c.balance))}</span>}
+            </button>
+          )) : <div style={{ color: "var(--ink3)", fontSize: 13, padding: 16, textAlign: "center" }}>No customers found.</div>}
+        </div>
       </div>
     </div>
   );
