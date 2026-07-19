@@ -135,6 +135,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [otype, setOtype] = useState<"dinein" | "takeaway" | "delivery">("takeaway");
   const [cart, setCart] = useState<Line[]>([]);
   const [disc, setDisc] = useState(0);
+  const [discPct, setDiscPct] = useState(0);
   const [discOpen, setDiscOpen] = useState(false);
   const [pay, setPay] = useState(false);
   const [shiftModal, setShiftModal] = useState(false);
@@ -142,6 +143,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [receipt, setReceipt] = useState<any>(null);
   const [cust, setCust] = useState<any>(null);
   const [custPick, setCustPick] = useState(false);
+  const [table, setTable] = useState("");
+  const [tablePick, setTablePick] = useState(false);
   const parked = st.byKind("parked").map((e) => e.data).sort((a, b) => (a.t || 0) - (b.t || 0));
 
   const shifts = st.byKind("shifts").map((e) => e.data);
@@ -195,21 +198,23 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const no = nextInvoiceNo(st.byKind("sales").map((e) => e.data));
     const sale = {
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
-      userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype,
+      userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype, table: table || null,
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods || [], discPct: 0, taxable: p?.taxable !== false }; }),
-      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, svcCharge: 0,
+      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, billDiscPct: discPct, svcCharge: 0,
       payments, change, refunded: false,
     };
     store.commit([{ kind: "sales", id: sale.id, data: sale }]);
     setReceipt({ sale, change, settings });
-    setCart([]); setDisc(0); setPay(false); setCust(null);
+    resetBill(); setPay(false);
   };
+
+  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); };
 
   const park = () => {
     if (!cart.length) return;
-    const bill = { id: uid(), t: Date.now(), otype, lines: cart, disc, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main" };
+    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main" };
     store.commit([{ kind: "parked", id: bill.id, data: bill }]);
-    setCart([]); setDisc(0); setCust(null);
+    resetBill();
   };
   const resume = (bill: any) => {
     /* Normalise lines defensively — a bill parked by an earlier build may lack
@@ -218,7 +223,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       const mods: Mod[] = Array.isArray(l.mods) ? l.mods : (Array.isArray(l.addons) ? l.addons : []);
       return { pid: l.pid, qty: Number(l.qty) || 1, mods, key: l.key || (l.pid + "|" + mods.map((m) => m.name).sort().join(",")) };
     });
-    setCart(norm); setDisc(bill.disc || 0); setOtype(bill.otype || "takeaway");
+    setCart(norm); setDisc(bill.disc || 0); setDiscPct(bill.discPct || 0); setOtype(bill.otype || "takeaway"); setTable(bill.table || "");
     setCust(bill.customerId ? { id: bill.customerId, name: bill.custName } : null);
     store.del([{ kind: "parked", id: bill.id }]);
   };
@@ -264,7 +269,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                     ⏸ Held · #{i + 1} <small style={{ color: "var(--ink2)" }}>{(b.lines || []).reduce((a: number, l: any) => a + l.qty, 0)} items</small>
                   </button>
                 ))}
-                <button onClick={() => { setCart([]); setDisc(0); setCust(null); }} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</button>
+                <button onClick={resetBill} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</button>
               </div>
               {!openShift && (
                 <button onClick={() => setShiftModal(true)} style={C.shiftBar}>🕓 No shift open — tap to open one before taking payments</button>
@@ -316,7 +321,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
               <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
                 <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
-                <div style={C.custBtn}>🍴 Table · optional</div>
+                <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table · optional"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)" }}>
                 {cart.length === 0 ? (
@@ -336,11 +341,19 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
                 <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>
                 {totals.disc > 0 ? (
-                  <div style={C.trow}><span>Discount</span><span><span className="num" style={{ color: "var(--coral)" }}>−{money(totals.disc)}</span> <button onClick={() => setDisc(0)} style={{ color: "var(--ink3)", marginInlineStart: 6 }}>✕</button></span></div>
+                  <div style={C.trow}><span>Discount{discPct ? " (" + discPct + "%)" : ""}</span><span><span className="num" style={{ color: "var(--coral)" }}>−{money(totals.disc)}</span> <button onClick={() => { setDisc(0); setDiscPct(0); }} style={{ color: "var(--ink3)", marginInlineStart: 6 }}>✕</button></span></div>
                 ) : discOpen ? (
-                  <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
-                    <input autoFocus type="number" inputMode="decimal" placeholder="Discount (MVR)" onKeyDown={(e) => { if (e.key === "Enter") { setDisc(Math.round(Number((e.target as HTMLInputElement).value) * 100) || 0); setDiscOpen(false); } if (e.key === "Escape") setDiscOpen(false); }} style={C.input} />
-                    <button style={C.chipSm} onMouseDown={(e) => { const inp = (e.currentTarget.previousSibling as HTMLInputElement); setDisc(Math.round(Number(inp.value) * 100) || 0); setDiscOpen(false); }}>Apply</button>
+                  <div style={{ margin: "6px 0" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
+                      {[5, 10, 15, 20].map((pct) => (
+                        <button key={pct} onClick={() => { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); setDiscOpen(false); }} style={C.discChip}>{pct}%</button>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input autoFocus type="number" inputMode="decimal" placeholder="Custom (MVR)" onKeyDown={(e) => { if (e.key === "Enter") { setDiscPct(0); setDisc(Math.round(Number((e.target as HTMLInputElement).value) * 100) || 0); setDiscOpen(false); } if (e.key === "Escape") setDiscOpen(false); }} style={C.input} />
+                      <button style={C.chipSm} onMouseDown={(e) => { const inp = (e.currentTarget.previousSibling as HTMLInputElement); setDiscPct(0); setDisc(Math.round(Number(inp.value) * 100) || 0); setDiscOpen(false); }}>Apply</button>
+                      <button style={{ ...C.discChip, color: "var(--ink2)" }} onClick={() => setDiscOpen(false)}>✕</button>
+                    </div>
                   </div>
                 ) : (
                   <button onClick={() => setDiscOpen(true)} style={{ ...C.disc, cursor: "pointer" }}>＋ Bill disc</button>
@@ -348,7 +361,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={C.act} title="Split">✂️</button><button style={C.act} title="Clear" onClick={() => { setCart([]); setDisc(0); setCust(null); }}>🗑️</button>
+                  <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Split bill" onClick={() => openShift ? setPay(true) : setShiftModal(true)}>✂️</button><button style={C.act} title="Clear" onClick={resetBill}>🗑️</button>
                   <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => openShift ? setPay(true) : setShiftModal(true)}>Charge {money(totals.total)}</button>
                 </div>
               </div>
@@ -359,6 +372,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
+      {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
@@ -536,6 +550,23 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
   );
 }
 
+function TablePicker({ tables, onPick, onClose }: { tables: any[]; onPick: (name: string) => void; onClose: () => void }) {
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 12 }}>Choose a table</div>
+        {tables.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(84px,1fr))", gap: 8 }}>
+            {tables.map((t) => (
+              <button key={t.id || t.name} onClick={() => onPick(t.name)} style={{ ...C.card, padding: "16px 8px", textAlign: "center", fontWeight: 800, fontSize: 15 }}>{t.name}</button>
+            ))}
+          </div>
+        ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16 }}>No tables set up — add them in the back office.</div>}
+      </div>
+    </div>
+  );
+}
+
 function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPick: (c: any) => void; onClose: () => void }) {
   const [q, setQ] = useState("");
   const list = customers.filter((c) => !q || (c.name || "").toLowerCase().includes(q.toLowerCase()) || (c.phone || "").includes(q));
@@ -626,5 +657,6 @@ const C: Record<string, React.CSSProperties> = {
   shiftBar: { width: "100%", textAlign: "start", borderRadius: 14, padding: "11px 16px", background: "var(--ambersoft)", border: "1px solid color-mix(in srgb,var(--amber) 32%,transparent)", color: "var(--amber)", fontWeight: 700, fontSize: 13, cursor: "pointer" },
   input: { padding: "11px 13px", borderRadius: 11, border: "1px solid var(--line)", background: "var(--sur)", color: "var(--ink)", fontSize: 14, outline: "none", flex: 1 },
   chipSm: { padding: "8px 14px", borderRadius: 11, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 13 },
+  discChip: { padding: "7px 13px", borderRadius: 999, background: "var(--sur2)", border: "1px solid var(--line)", fontWeight: 700, fontSize: 12.5, color: "var(--ink)" },
   receipt: { background: "#fff", color: "#111", borderRadius: 14, padding: 18, fontFamily: "ui-monospace,Menlo,monospace", boxShadow: "var(--shadow)" },
 };

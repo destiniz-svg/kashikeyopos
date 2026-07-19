@@ -293,15 +293,36 @@ export function Orders() {
     </div>
   );
 }
+const ORDER_FLOW = ["new", "preparing", "ready", "delivered", "done"];
+const STATUS_LABEL: Record<string, string> = { new: "New", preparing: "Preparing", ready: "Ready", delivered: "Delivered", done: "Done", wasted: "Wasted" };
+function setStatus(o: any, to: string) {
+  store.commit([{ kind: "orders", id: o.id, data: { ...o, status: to, updatedAt: Date.now() } }]);
+}
 function Ticket({ o }: { o: any }) {
-  const age = Math.max(0, Math.round((Date.now() - (o.t || Date.now())) / 60000));
+  const created = o.createdAt || o.t || Date.now();
+  const age = Math.max(0, Math.round((Date.now() - created) / 60000));
   const tint = age < 5 ? "var(--green)" : age < 10 ? "var(--amber)" : "var(--red)";
+  const status = (o.status || "new").toLowerCase();
+  const step = Math.max(0, ORDER_FLOW.indexOf(status));
+  const next = ORDER_FLOW[step + 1];
+  const src = o.source === "qr" ? (o.table ? "QR · " + o.table : "QR") : o.table ? o.table : "POS";
   return (
     <div style={{ ...X.card, padding: 0, overflow: "hidden", animation: "rise .25s both" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", background: "color-mix(in srgb," + tint + " 14%,transparent)", color: tint, fontWeight: 800, fontSize: 13 }}>
-        <span>#{o.no || o.id}</span><span className="num">{age}:00</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "color-mix(in srgb," + tint + " 14%,transparent)", color: tint, fontWeight: 800, fontSize: 13 }}>
+        <span>#{o.no || o.id} <span style={{ opacity: .7, fontWeight: 700 }}>· {src}</span></span><span className="num">{age}:00</span>
       </div>
-      <div style={{ padding: 12 }}>{(o.lines || o.items || []).map((l: any, i: number) => <div key={i} style={{ fontSize: 13, padding: "3px 0" }}>{l.qty || l.q}× {l.name || l.n}</div>)}</div>
+      {/* status progress bar */}
+      <div style={{ display: "flex", gap: 3, padding: "8px 12px 0" }}>
+        {ORDER_FLOW.map((s, i) => <div key={s} title={STATUS_LABEL[s]} style={{ flex: 1, height: 5, borderRadius: 99, background: status === "wasted" ? "var(--red)" : i <= step ? "var(--green)" : "var(--sur2)" }} />)}
+      </div>
+      <div style={{ padding: "6px 12px 4px", fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: status === "wasted" ? "var(--red)" : "var(--green)" }}>{STATUS_LABEL[status] || status}</div>
+      <div style={{ padding: "2px 12px 10px" }}>{(o.items || o.lines || []).map((l: any, i: number) => <div key={i} style={{ fontSize: 13, padding: "3px 0" }}>{l.qty || l.q}× {l.name || l.n}</div>)}</div>
+      {status !== "done" && status !== "wasted" && (
+        <div style={{ display: "flex", gap: 6, padding: "0 12px 12px" }}>
+          {next && <button onClick={() => setStatus(o, next)} style={{ flex: 1, borderRadius: 10, padding: "9px", background: "var(--coral)", color: "var(--coralink)", fontWeight: 800, fontSize: 12.5 }}>{next === "done" ? "Bump ✓" : STATUS_LABEL[next] + " →"}</button>}
+          <button onClick={() => setStatus(o, "done")} title="Bump / complete" style={{ borderRadius: 10, padding: "9px 12px", background: "var(--sur2)", color: "var(--ink)", fontWeight: 800, fontSize: 12.5 }}>✓</button>
+        </div>
+      )}
     </div>
   );
 }
