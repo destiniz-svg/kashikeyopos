@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "start": "node favicon-patch.js && node guest-sync-patch.js",
+    "start": "node index.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

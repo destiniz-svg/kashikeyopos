@@ -16,32 +16,42 @@ image). CommonJS, lean deps (express, pg, jsonwebtoken, bcryptjs, jose,
 
 ## The three UIs
 
-1. **Till** (`/app`) — a **prebuilt, minified Vite+React SPA** baked into
-   `web/dist/index.html`. **You cannot edit its source.** It's PIN-gated and
+1. **Till** (`/app`) — an **editable Vite + React + TS app** whose source lives
+   in **`till-src/`**; it builds to a single self-contained
+   `web/dist/index.html` (via `vite-plugin-singlefile`). PIN-gated and
    offline-first (syncs via `/api/ops` push + `/api/pull` + SSE `/api/events`).
+   The same bundle also renders the **guest QR portal** when the URL carries
+   `?s=<slug>` (see `till-src/src/guest.tsx`).
 2. **Back office** (`/back` → `site/back.html`) — plain hand-written HTML/JS,
-   **fully editable, server-served** (no bake, no SW bump). This is where all
-   the inventory/back-office work lives.
-3. **Guest/QR portal** (`/p/:slug`) — served from the same baked bundle.
+   **fully editable, server-served** (no build). Inventory/back-office work
+   lives here; the till's Admin tab deep-links into it.
+3. **Guest/QR portal** (`/p/:slug` or `/?s=slug&t=table`) — served from the
+   same built bundle, guest view (no token).
 
-### Patching the till bundle (critical)
+### Building the till (critical)
 
-The React SPA is modified by **string `.replace()` patches** in
-`guest-sync-patch.js` (numbered patches, currently up to ~#75). Also patches
-`web/dist/sw.js` service-worker cache version.
+The till is compiled from source, not string-patched (the old
+`guest-sync-patch.js` / `favicon-patch.js` bake is **retired** — those files
+targeted the previous minified bundle and are no longer in the boot path).
 
-- Bake with `PATCH_ONLY=1 node guest-sync-patch.js`. Bake **from the committed
-  `web/dist/index.html`, not a clean bundle** (there's a non-idempotent patch
-  ordering dependency).
-- **Idempotency rule:** each patch's find-string must NOT appear in its
-  replacement, so re-baking is a no-op. Verify: re-run the bake, `git diff`
-  should be empty.
-- **Bump the SW version** (`kashikeyo-2.9.NN` in `guest-sync-patch.js`) whenever
-  you change the bundle, so installed PWAs pick up the build.
-- Purged Tailwind: only classes already in the bundle exist. Missing ones
-  (`lg:grid-cols-6`, `min-h-0`, `max-w-3xl`, etc.) must be custom-injected CSS
-  or inline styles.
-- `/back`-only changes need **no bake and no SW bump** (server-served,
+- Edit under `till-src/src/` (App.tsx = shell + register + PIN/shift/pay/
+  receipt/refund; screens.tsx = Orders/Dashboard/Reports/Admin; guest.tsx =
+  QR portal; store.ts + api.ts = the offline-first sync engine; tokens.css =
+  design tokens + self-hosted fonts).
+- Build: `cd till-src && npm install && npm run build`, then copy
+  `till-src/dist/index.html` → `web/dist/index.html` and commit it (the deploy
+  image runs **no build** — `npm start` is just `node index.js`).
+- **Bump the SW version** in `web/dist/sw.js` (`kashikeyo-3.0.N`) whenever you
+  change the bundle, so installed PWAs pick up the build. The till registers
+  `/sw.js` itself (see `till-src/index.html`).
+- The build is self-contained (React + CSS inlined; fonts referenced at
+  `/fonts/*` and shipped in `web/dist/fonts`). No purged-Tailwind constraint —
+  it's normal React with inline styles + `tokens.css`.
+- The sync contract it speaks (unchanged): token from
+  `localStorage["kashikeyo-cloud"]`, `GET /api/pull?since=` →
+  `{rowver, entities, more}`, `POST /api/ops {ops:[{opId,puts,dels}]}`,
+  `X-Elevation` header for SEC-03 refunds, SSE `/api/events`.
+- `/back`-only changes need no build and no SW bump (server-served,
   network-first).
 
 ## Data model

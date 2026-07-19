@@ -44,8 +44,12 @@ export function App() {
 
 function Till() {
   const st = useStore();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUserState] = useState<any>(null);
   const [now, setNow] = useState(() => new Date());
+  /* Keep the signed-in operator across reloads within the tab (PIN is a fast
+     shift selector, not a security boundary — the app session is the cookie). */
+  const setUser = (u: any) => { setUserState(u); try { if (u) sessionStorage.setItem("ksh-op", JSON.stringify(u)); else sessionStorage.removeItem("ksh-op"); } catch { /* private mode */ } };
+  useEffect(() => { try { const u = JSON.parse(sessionStorage.getItem("ksh-op") || "null"); if (u) setUserState(u); } catch { /* ignore */ } }, []);
 
   useEffect(() => { store.start(); }, []);
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(id); }, []);
