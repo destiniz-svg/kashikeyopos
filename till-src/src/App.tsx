@@ -2,6 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import { store, useStore } from "./store";
 import { hashPin, uid } from "./api";
 import { Dashboard, Reports, Orders, Admin } from "./screens";
+import { GuestPortal } from "./guest";
+
+/* A printed table QR points at "/?s=slug&t=table[&c=cust]" — same bundle, guest
+   view. If those params are present we render the public guest portal instead
+   of the PIN-gated till. */
+function guestParams() {
+  const q = new URLSearchParams(location.search);
+  const slug = q.get("s") || (location.pathname.match(/^\/p\/([^/]+)/)?.[1] || "");
+  if (!slug) return null;
+  return { slug, table: q.get("t") || "", custId: q.get("c") || "", storeId: q.get("st") || q.get("store") || q.get("storeId") || "" };
+}
 
 /* Reskin-only rebuild of OUR existing till — same features + real sync, in the
    prototype look. No prototype-only additions. Money is laari (÷100 to show);
@@ -26,6 +37,12 @@ const NAV = [
 const METHODS = ["Cash", "Card", "Transfer", "QR"] as const;
 
 export function App() {
+  const guest = useMemo(guestParams, []);
+  if (guest) return <GuestPortal {...guest} />;
+  return <Till />;
+}
+
+function Till() {
   const st = useStore();
   const [user, setUser] = useState<any>(null);
   const [now, setNow] = useState(() => new Date());
