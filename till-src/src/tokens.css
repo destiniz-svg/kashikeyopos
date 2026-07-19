@@ -1,0 +1,43 @@
+@font-face { font-family: 'Instrument Sans'; src: url('/fonts/instrument-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+@font-face { font-family: 'Bricolage Grotesque'; src: url('/fonts/bricolage-1.woff2') format('woff2'); font-weight: 500 800; font-display: swap; }
+
+:root{
+  --bg:#E9EDEF;--sur:rgba(255,255,255,.60);--sur2:rgba(96,100,112,.10);
+  --ink:#1B1A17;--ink2:#6C7075;--ink3:#A7ABB0;--line:rgba(120,122,132,.18);
+  --coral:#E1552D;--coralink:#FFF6EF;--coralsoft:rgba(225,85,45,.14);
+  --green:#1F9D57;--greensoft:rgba(31,157,87,.14);--amber:#B67A12;--ambersoft:rgba(198,135,26,.16);
+  --red:#D33F28;--redsoft:rgba(211,63,40,.14);--blue:#2F6BE0;
+  --shadow:0 1px 1px rgba(30,35,45,.04),0 14px 34px -16px rgba(30,40,60,.26);
+  --num:'Bricolage Grotesque','Instrument Sans',system-ui,sans-serif;
+}
+html[data-dark]{
+  --bg:#141110;--sur:rgba(34,28,21,.60);--sur2:rgba(255,255,255,.06);
+  --ink:#F3EBDA;--ink2:#9A8D76;--ink3:#6B6252;--line:rgba(255,255,255,.09);
+  --coral:#F06438;--coralink:#2A130A;--coralsoft:#41261A;
+  --green:#66B08B;--greensoft:#24352B;--amber:#DCA83E;--ambersoft:#3A2F17;--red:#E06A52;--redsoft:#3D211B;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html,body,#root{height:100%}
+body{
+  margin:0;
+  background:
+    radial-gradient(1100px 600px at 8% -5%,rgba(225,85,45,.10),transparent 60%),
+    radial-gradient(1000px 700px at 105% 12%,rgba(47,107,224,.10),transparent 55%),
+    radial-gradient(900px 820px at 50% 112%,rgba(31,157,87,.08),transparent 55%),
+    linear-gradient(160deg,#EEF2F4,#E4EAEE);
+  color:var(--ink);font-family:'Instrument Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;
+}
+html[data-dark] body{background:radial-gradient(1100px 600px at 8% -5%,rgba(240,100,56,.12),transparent 60%),radial-gradient(1000px 700px at 105% 12%,rgba(60,110,220,.10),transparent 55%),linear-gradient(160deg,#16130F,#0E0C09)}
+.glass{-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
+.num{font-family:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+button{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}
+input{font-family:inherit}
+svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}::-webkit-scrollbar-track{background:transparent}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes pop{0%{transform:scale(.8);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes sheet{from{opacity:0;transform:translateY(40px) scale(.97)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important}}
