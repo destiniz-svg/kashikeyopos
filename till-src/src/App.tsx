@@ -1,46 +1,19 @@
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { store, useStore } from "./store";
+import { hashPin, uid } from "./api";
 
-/* Reskin-only rebuild of OUR existing register — same features, prototype look.
-   No prototype-only additions (no GST sector toggle, Dhivehi/RTL, KDS/QR/Outlets,
-   service charge, or MIRA numbering). Prices are GST-inclusive; GST 8% is the
-   portion within the price and Total == Subtotal, matching the current till. */
+/* Reskin-only rebuild of OUR existing till — same features + real sync, in the
+   prototype look. No prototype-only additions. Money is laari (÷100 to show);
+   GST is added on top of the subtotal (gstBp from settings), matching the
+   existing till and the server's money audit. */
 
-const GST_RATE = 0.08;
-const money = (n: number) => "MVR " + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (laari: number) => "MVR " + (Math.round(laari) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type Cat = "all" | "main" | "coffee" | "drinks" | "bakery" | "grocery" | "hedhikaa";
-type Prod = { id: string; name: string; price: number; cat: Exclude<Cat, "all">; glyph: string; tint: keyof typeof TINT; best?: boolean; stock?: number };
-
-const TINT = {
-  coffee: ["var(--ambersoft)", "var(--amber)"],
-  main: ["var(--greensoft)", "var(--green)"],
-  drinks: ["var(--bluesoft, rgba(47,107,224,.14))", "var(--blue)"],
-  bakery: ["var(--coralsoft)", "var(--coral)"],
-  grocery: ["var(--sur2)", "var(--ink2)"],
-  sweet: ["var(--redsoft)", "var(--red)"],
-} as const;
-
-const CATS: { id: Cat; label: string; glyph: string }[] = [
-  { id: "all", label: "All", glyph: "🍽️" }, { id: "main", label: "Main Dishes", glyph: "🍛" },
-  { id: "coffee", label: "Coffee", glyph: "☕" }, { id: "drinks", label: "Drinks", glyph: "🥤" },
-  { id: "bakery", label: "Bakery", glyph: "🥐" }, { id: "grocery", label: "Grocery", glyph: "🛒" },
-  { id: "hedhikaa", label: "Hedhikaa", glyph: "🍢" },
+const TINTS: [string, string][] = [
+  ["var(--ambersoft)", "var(--amber)"], ["var(--greensoft)", "var(--green)"], ["var(--coralsoft)", "var(--coral)"],
+  ["var(--bluesoft, rgba(47,107,224,.14))", "var(--blue)"], ["var(--redsoft)", "var(--red)"], ["var(--sur2)", "var(--ink2)"],
 ];
-
-const PRODUCTS: Prod[] = [
-  { id: "espresso", name: "Espresso", price: 35, cat: "coffee", glyph: "E", tint: "coffee", best: true },
-  { id: "flatwhite", name: "Flat White", price: 45, cat: "coffee", glyph: "F", tint: "coffee" },
-  { id: "icedlatte", name: "Iced Latte", price: 50, cat: "coffee", glyph: "I", tint: "coffee", best: true },
-  { id: "hotchoc", name: "Hot Chocolate", price: 45, cat: "coffee", glyph: "H", tint: "coffee" },
-  { id: "croissant", name: "Almond Croissant", price: 40, cat: "bakery", glyph: "A", tint: "bakery" },
-  { id: "muffin", name: "Blueberry Muffin", price: 35, cat: "bakery", glyph: "B", tint: "bakery", best: true },
-  { id: "tunasand", name: "Tuna Sandwich", price: 45, cat: "bakery", glyph: "T", tint: "bakery", stock: 12 },
-  { id: "choccake", name: "Chocolate Cake", price: 60, cat: "bakery", glyph: "C", tint: "sweet" },
-  { id: "water", name: "Water 500ml", price: 15, cat: "grocery", glyph: "W", tint: "grocery", best: true },
-  { id: "orange", name: "Orange Juice", price: 40, cat: "drinks", glyph: "O", tint: "drinks", best: true },
-  { id: "kurumba", name: "Kurumba", price: 30, cat: "drinks", glyph: "K", tint: "drinks" },
-  { id: "cola", name: "Cola Can", price: 25, cat: "grocery", glyph: "C", tint: "grocery" },
-];
+const tintFor = (cat: string) => { let h = 0; for (const c of cat || "") h = (h * 31 + c.charCodeAt(0)) >>> 0; return TINTS[h % TINTS.length]; };
 
 const NAV = [
   { id: "sell", label: "Sell", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
@@ -49,178 +22,315 @@ const NAV = [
   { id: "reports", label: "Reports", icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>' },
   { id: "admin", label: "Admin", icon: '<circle cx="12" cy="12" r="3"/><path d="M19 13a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 0 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 2 13a2 2 0 0 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 8.7 4 2 2 0 0 1 12 4a1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 20 11z"/>' },
 ];
+const METHODS = ["Cash", "Card", "Transfer", "QR"] as const;
 
 export function App() {
-  const [nav, setNav] = useState("sell");
-  const [cat, setCat] = useState<Cat>("all");
-  const [query, setQuery] = useState("");
-  const [otype, setOtype] = useState<"dinein" | "takeaway" | "delivery">("takeaway");
-  const [cart, setCart] = useState<Record<string, number>>({ espresso: 2, icedlatte: 1 });
+  const st = useStore();
+  const [user, setUser] = useState<any>(null);
   const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => { store.start(); }, []);
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(id); }, []);
 
-  const bump = (id: string, d: number) => setCart((c) => {
-    const q = (c[id] || 0) + d; const n = { ...c };
-    if (q <= 0) delete n[id]; else n[id] = q; return n;
-  });
-  const items = PRODUCTS.filter((p) => (cat === "all" || p.cat === cat) && (!query || p.name.toLowerCase().includes(query.toLowerCase())));
-  const lines = Object.keys(cart).filter((k) => cart[k] > 0).map((id) => ({ p: PRODUCTS.find((x) => x.id === id)!, q: cart[id] }));
-  const sub = lines.reduce((a, l) => a + l.p.price * l.q, 0);
-  const gst = sub - sub / (1 + GST_RATE);
-  const count = lines.reduce((a, l) => a + l.q, 0);
+  if (!st.ready) return <Splash />;
+  if (!user) return <PinGate onSignIn={setUser} />;
+  return <Shell user={user} now={now} onSignOut={() => setUser(null)} />;
+}
+
+function Splash() {
+  return <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink2)" }}>
+    <div style={{ textAlign: "center" }}><div style={{ ...C.kchip, margin: "0 auto 12px" }}>K</div>Loading…</div>
+  </div>;
+}
+
+/* ── PIN gate (our staff/PIN model, reskinned) ─────────────────────────────── */
+function PinGate({ onSignIn }: { onSignIn: (u: any) => void }) {
+  const st = useStore();
+  const users = st.byKind("users").map((e) => e.data);
+  const [sel, setSel] = useState<any>(users.length === 1 ? users[0] : null);
+  const [pin, setPin] = useState("");
+  const [err, setErr] = useState(false);
+  const submit = (p: string) => {
+    if (!sel) return;
+    if (hashPin(p) === String(sel.pin)) onSignIn(sel);
+    else { setErr(true); setPin(""); setTimeout(() => setErr(false), 500); }
+  };
+  const press = (d: string) => { const p = (pin + d).slice(0, 6); setPin(p); if (p.length === 4 && sel) submit(p); };
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ ...C.kchip, width: 52, height: 52, fontSize: 26, borderRadius: 16, margin: "0 auto 12px" }}>K</div>
+        <div style={{ fontWeight: 800, fontSize: 20 }}>KashikeyoPOS</div>
+        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 3 }}>Sign in with your PIN</div>
+      </div>
+      {!sel ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 320 }}>
+          {users.map((u) => (
+            <button key={u.id} onClick={() => setSel(u)} style={{ ...C.card, display: "flex", alignItems: "center", gap: 12, padding: 14, textAlign: "left" }}>
+              <span style={{ ...C.avatar, background: "var(--green)" }}>{(u.name || "?")[0].toUpperCase()}</span>
+              <b style={{ flex: 1, fontWeight: 700 }}>{u.name}</b><small style={{ color: "var(--ink3)" }}>{u.role}</small>
+            </button>
+          ))}
+          {users.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", fontSize: 13 }}>No staff synced yet.</div>}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, animation: err ? "shake .4s" : undefined }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ ...C.avatar, background: "var(--green)" }}>{(sel.name || "?")[0].toUpperCase()}</span>
+            <b>{sel.name}</b>{users.length > 1 && <button onClick={() => { setSel(null); setPin(""); }} style={{ color: "var(--coral)", fontSize: 12, fontWeight: 700 }}>change</button>}
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>{[0, 1, 2, 3].map((i) => (
+            <span key={i} style={{ width: 14, height: 14, borderRadius: 99, background: i < pin.length ? "var(--coral)" : "var(--sur2)", border: "1px solid var(--line)" }} />
+          ))}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,64px)", gap: 10 }}>
+            {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((d, i) => d === "" ? <span key={i} /> : (
+              <button key={i} onClick={() => d === "⌫" ? setPin(pin.slice(0, -1)) : press(d)} style={C.key}>{d}</button>
+            ))}
+          </div>
+          {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700 }}>Wrong PIN</div>}
+        </div>
+      )}
+      <style>{"@keyframes shake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(5px)}50%{transform:translateX(-5px)}}"}</style>
+    </div>
+  );
+}
+
+/* ── main shell + register ─────────────────────────────────────────────────── */
+type Line = { pid: string; qty: number };
+
+function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () => void }) {
+  const st = useStore();
+  const settings = st.byKind("settings")[0]?.data || {};
+  const gstBp = Number(settings.gstBp ?? 800);
+  const currency = settings.currency || "MVR";
+  const groups: { name: string; subs: string[] }[] = settings.catGroups || [];
+
+  const [nav, setNav] = useState("sell");
+  const [group, setGroup] = useState<string>("all");
+  const [query, setQuery] = useState("");
+  const [otype, setOtype] = useState<"dinein" | "takeaway" | "delivery">("takeaway");
+  const [cart, setCart] = useState<Line[]>([]);
+  const [pay, setPay] = useState(false);
+
+  const products = st.byKind("products").map((e) => e.data).filter((p) => p && !p.archived);
+  const bestIds = useBestSellers();
   const clock = now.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + ", " + now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+  const subInGroup = (cat: string) => group === "all" || (groups.find((g) => g.name === group)?.subs || []).includes(cat);
+  const items = products.filter((p) => subInGroup(p.cat) && (!query || (p.name || "").toLowerCase().includes(query.toLowerCase())));
+
+  const bump = (pid: string, d: number) => setCart((c) => {
+    const i = c.findIndex((l) => l.pid === pid);
+    if (i < 0) return d > 0 ? c.concat([{ pid, qty: 1 }]) : c;
+    const n = c.slice(); const q = n[i].qty + d;
+    if (q <= 0) n.splice(i, 1); else n[i] = { ...n[i], qty: q };
+    return n;
+  });
+  const qtyOf = (pid: string) => cart.find((l) => l.pid === pid)?.qty || 0;
+  const prodById = (pid: string) => products.find((p) => p.id === pid);
+
+  const totals = useMemo(() => {
+    const subtotal = cart.reduce((a, l) => a + (prodById(l.pid)?.price || 0) * l.qty, 0);
+    const gst = Math.round(subtotal * gstBp / 10000);
+    return { subtotal, gst, total: subtotal + gst };
+  }, [cart, products, gstBp]);
+  const count = cart.reduce((a, l) => a + l.qty, 0);
+
+  const onCharged = (payments: { method: string; amount: number }[], change: number) => {
+    const no = nextInvoiceNo(st.byKind("sales").map((e) => e.data));
+    const sale = {
+      id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: null,
+      userName: user.name, customerId: null, otype,
+      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, discPct: 0, taxable: p?.taxable !== false }; }),
+      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: 0, svcCharge: 0,
+      payments, change, refunded: false,
+    };
+    store.commit([{ kind: "sales", id: sale.id, data: sale }]);
+    setCart([]); setPay(false);
+  };
 
   return (
     <div style={{ display: "flex", height: "100%" }}>
-      {/* left icon rail — OUR nav only */}
-      <aside style={S.rail} className="glass">
-        <div style={S.kchip}>K</div>
+      <aside style={C.rail} className="glass">
+        <div style={C.kchip}>K</div>
         <div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", color: "var(--ink3)", marginBottom: 8 }}>KASHIKEYO</div>
         <nav style={{ display: "flex", flexDirection: "column", gap: 3, width: "100%" }}>
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setNav(n.id)} style={{ ...S.railBtn, ...(nav === n.id ? S.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
-              <svg viewBox="0 0 24 24" width={21} height={21} dangerouslySetInnerHTML={{ __html: n.icon }} />
-              <span style={{ fontSize: 10, fontWeight: 700 }}>{n.label}</span>
+            <button key={n.id} onClick={() => setNav(n.id)} style={{ ...C.railBtn, ...(nav === n.id ? C.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
+              <svg viewBox="0 0 24 24" width={21} height={21} dangerouslySetInnerHTML={{ __html: n.icon }} /><span style={{ fontSize: 10, fontWeight: 700 }}>{n.label}</span>
             </button>
           ))}
         </nav>
       </aside>
 
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {/* header */}
-        <header style={S.header}>
+        <header style={C.header}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 16 }}>
-            Kashikeyo Café <span style={{ color: "var(--ink2)", fontWeight: 600, fontSize: 13 }}>· Malé</span>
-            <span style={{ color: "var(--ink3)", fontSize: 12 }}>▾</span>
+            {settings.storeName || "Kashikeyo Café"} <span style={{ color: "var(--ink3)", fontSize: 12 }}>▾</span>
           </div>
-          <span style={{ ...S.pill, color: "var(--amber)" }}><i style={{ ...S.dot, background: "var(--amber)" }} />No shift</span>
           <div style={{ flex: 1 }} />
           <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>
-          <span style={{ ...S.pill, color: "var(--green)" }}><i style={{ ...S.dot, background: "var(--green)", animation: "pulse 2s infinite" }} />Online</span>
-          <span style={{ ...S.pill, gap: 8, padding: "5px 12px 5px 5px" }}><span style={S.avatar}>r</span>Owner</span>
+          <StatusPill />
+          <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: "5px 12px 5px 5px", cursor: "pointer" }} title="Sign out">
+            <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{user.name}
+          </button>
         </header>
 
         {nav === "sell" ? (
-          <div style={S.body}>
+          <div style={C.body}>
             <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 11 }}>
-              {/* open bills — our feature, kept */}
               <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto" }}>
                 <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", color: "var(--ink3)", whiteSpace: "nowrap" }}>OPEN BILLS</span>
-                <span style={{ ...S.obill, ...S.obillOn }}>🥡 Takeaway · #1 <small style={{ color: "var(--coral)", opacity: .8 }}>Walk-in · 1</small></span>
-                <span style={S.obill}>🍽️ Dine-in · #2 <small style={{ color: "var(--ink2)" }}>Table 4 · 2</small></span>
-                <span style={{ ...S.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</span>
+                <span style={{ ...C.obill, ...C.obillOn }}>🥡 {otype === "dinein" ? "Dine-in" : otype === "delivery" ? "Delivery" : "Takeaway"} · #1 <small style={{ color: "var(--coral)", opacity: .8 }}>Walk-in</small></span>
+                <span style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</span>
               </div>
-              <div style={S.shift}>🕓 No shift open — tap to open one before taking payments</div>
               <div style={{ display: "flex", gap: 10 }}>
-                <div style={S.search}>
+                <div style={C.search}>
                   <svg viewBox="0 0 24 24" width={17} height={17} style={{ color: "var(--ink3)" }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search or type barcode… (Enter adds)"
-                    style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search or type barcode…" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
                 </div>
-                <button style={S.scan}>📷 Scan</button>
+                <button style={C.scan}>📷 Scan</button>
               </div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
-                {CATS.map((c) => (
-                  <button key={c.id} onClick={() => setCat(c.id)} style={{ ...S.chip, ...(cat === c.id ? S.chipOn : {}) }}>{c.glyph} {c.label}</button>
-                ))}
-                <button style={S.chip}>⋯ More</button>
+                <button onClick={() => setGroup("all")} style={{ ...C.chip, ...(group === "all" ? C.chipOn : {}) }}>All</button>
+                {groups.map((g) => <button key={g.name} onClick={() => setGroup(g.name)} style={{ ...C.chip, ...(group === g.name ? C.chipOn : {}) }}>{g.name}</button>)}
               </div>
               <div style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
-                <div style={S.grid}>
+                <div style={C.grid}>
                   {items.map((p, i) => {
-                    const q = cart[p.id] || 0; const t = TINT[p.tint];
+                    const q = qtyOf(p.id); const t = tintFor(p.cat);
                     return (
-                      <div key={p.id} style={{ ...S.tile, borderColor: q > 0 ? "var(--coral)" : "var(--line)", animation: `rise .3s ${Math.min(i * 16, 240)}ms both` }}>
-                        {p.best && <span style={S.best}>★ Best seller</span>}
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span style={{ ...S.glyph, background: t[0], color: t[1] }}>{p.glyph}</span>
-                        </div>
-                        <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 9, lineHeight: 1.2 }}>{p.name}</div>
+                      <div key={p.id} style={{ ...C.tile, borderColor: q > 0 ? "var(--coral)" : "var(--line)", animation: `rise .3s ${Math.min(i * 12, 220)}ms both` }}>
+                        {bestIds.has(p.id) && <span style={C.best}>★ Best seller</span>}
+                        <span style={{ ...C.glyph, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
+                        <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 9, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>
-                          <span className="num" style={{ fontSize: 13, fontWeight: 800 }}>{p.price.toFixed(2)}
-                            <small style={{ fontSize: 10.5, color: "var(--ink3)", fontWeight: 600, marginLeft: 3 }}>{p.stock ? p.stock + " pcs" : "pcs"}</small></span>
+                          <span className="num" style={{ fontSize: 13, fontWeight: 800 }}>{(p.price / 100).toFixed(2)}<small style={{ fontSize: 10.5, color: "var(--ink3)", fontWeight: 600, marginLeft: 3 }}>{p.unit || "pcs"}</small></span>
                           {q > 0 ? (
-                            <span style={S.stepper}>
-                              <button style={S.stepBtn} onClick={() => bump(p.id, -1)}>−</button>
-                              <span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span>
-                              <button style={S.stepBtn} onClick={() => bump(p.id, 1)}>+</button>
-                            </span>
-                          ) : <button style={S.plus} onClick={() => bump(p.id, 1)}>+</button>}
+                            <span style={C.stepper}><button style={C.stepBtn} onClick={() => bump(p.id, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={C.stepBtn} onClick={() => bump(p.id, 1)}>+</button></span>
+                          ) : <button style={C.plus} onClick={() => bump(p.id, 1)}>+</button>}
                         </div>
                       </div>
                     );
                   })}
+                  {items.length === 0 && <div style={{ color: "var(--ink3)", fontSize: 13, padding: 20 }}>No products in this category.</div>}
                 </div>
               </div>
             </section>
 
-            {/* cart */}
-            <aside style={S.cart} className="glass">
+            <aside style={C.cart} className="glass">
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "12px 14px 8px" }}>
-                <span style={S.billtab}>#1</span><span style={{ ...S.billtab, ...S.billAdd }}>＋</span>
+                <span style={C.billtab}>#1</span><span style={{ ...C.billtab, ...C.billAdd }}>＋</span>
                 <div style={{ flex: 1 }} /><span style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700 }}>{count} items</span>
               </div>
               <div style={{ display: "flex", gap: 6, padding: "2px 14px 10px" }}>
                 {([["dinein", "🍽️ Dine-in"], ["takeaway", "🥡 Takeaway"], ["delivery", "🛵 Delivery"]] as const).map(([k, l]) => (
-                  <button key={k} onClick={() => setOtype(k)} style={{ ...S.oseg, ...(otype === k ? S.osegOn : {}) }}>{l}</button>
+                  <button key={k} onClick={() => setOtype(k)} style={{ ...C.oseg, ...(otype === k ? C.osegOn : {}) }}>{l}</button>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
-                <div style={S.custBtn}>👤 Add customer</div><div style={S.custBtn}>🍴 Table · optional</div>
+                <div style={C.custBtn}>👤 Add customer</div><div style={C.custBtn}>🍴 Table · optional</div>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)" }}>
-                {lines.length === 0 ? (
-                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10 }}>
-                    <div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>Scan or tap a product to start</div>
-                  </div>
-                ) : lines.map((l) => {
-                  const t = TINT[l.p.tint];
+                {cart.length === 0 ? (
+                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10 }}><div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>Scan or tap a product to start</div></div>
+                ) : cart.map((l) => {
+                  const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat);
                   return (
-                    <div key={l.p.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
-                      <span style={{ ...S.glyph, width: 34, height: 34, fontSize: 13, background: t[0], color: t[1] }}>{l.p.glyph}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <b style={{ fontSize: 13, fontWeight: 700, display: "block" }}>{l.p.name}</b>
-                        <small style={{ fontSize: 11, color: "var(--ink2)" }}>{money(l.p.price)} each</small>
-                      </div>
-                      <span style={{ ...S.stepper, background: "var(--sur2)" }}>
-                        <button style={S.stepBtn} onClick={() => bump(l.p.id, -1)}>−</button>
-                        <span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.q}</span>
-                        <button style={S.stepBtn} onClick={() => bump(l.p.id, 1)}>+</button>
-                      </span>
-                      <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(l.p.price * l.q)}</span>
+                    <div key={l.pid} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
+                      <span style={{ ...C.glyph, width: 34, height: 34, fontSize: 16, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{money(p.price)} each</small></div>
+                      <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.pid, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.pid, 1)}>+</button></span>
+                      <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(p.price * l.qty)}</span>
                     </div>
                   );
                 })}
               </div>
               <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
-                <div style={S.trow}><span>Subtotal</span><span className="num">{money(sub)}</span></div>
-                <div style={S.disc}>＋ Bill disc</div>
-                <div style={S.trow}><span>GST 8%</span><span className="num">{money(gst)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}>
-                  <span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(sub)}</span>
-                </div>
+                <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>
+                <div style={C.disc}>＋ Bill disc</div>
+                <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button style={S.act} title="Park">⏸</button><button style={S.act} title="Split">✂️</button><button style={S.act} title="Clear" onClick={() => setCart({})}>🗑️</button>
-                  <button style={{ ...S.charge, opacity: count ? 1 : .5 }} disabled={!count}>Charge {money(sub)}</button>
+                  <button style={C.act} title="Park">⏸</button><button style={C.act} title="Split">✂️</button><button style={C.act} title="Clear" onClick={() => setCart([])}>🗑️</button>
+                  <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => setPay(true)}>Charge {money(totals.total)}</button>
                 </div>
               </div>
             </aside>
           </div>
-        ) : (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--ink2)" }}>
-            <div style={{ width: 60, height: 60, borderRadius: 18, background: "var(--sur)", boxShadow: "var(--shadow)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral)" }} dangerouslySetInnerHTML={{ __html: NAV.find((n) => n.id === nav)!.icon }} />
+        ) : <Placeholder nav={nav} />}
+      </div>
+      {pay && <PaySheet total={totals.total} currency={currency} onClose={() => setPay(false)} onDone={onCharged} />}
+    </div>
+  );
+}
+
+function StatusPill() {
+  const st = useStore();
+  const s = st.status(); const n = st.pending();
+  const map = { synced: ["var(--green)", "Synced"], saving: ["var(--amber)", n ? `Saving ${n}…` : "Saving…"], offline: ["var(--red)", n ? `Offline · ${n} saved here` : "Offline"] } as const;
+  const [c, label] = map[s];
+  return <span style={{ ...C.pill, color: c }}><i style={{ ...C.dot, background: c, animation: s === "saving" ? "pulse 1s infinite" : s === "synced" ? "pulse 2.4s infinite" : undefined }} />{label}</span>;
+}
+
+function PaySheet({ total, currency, onClose, onDone }: { total: number; currency: string; onClose: () => void; onDone: (p: { method: string; amount: number }[], change: number) => void }) {
+  const [method, setMethod] = useState<string>("Cash");
+  const [tender, setTender] = useState<number>(0);
+  const change = method === "Cash" ? Math.max(0, tender - total) : 0;
+  const quick = [total, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000].filter((v, i, a) => a.indexOf(v) === i);
+  const ok = method !== "Cash" || tender >= total;
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(460px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700, letterSpacing: ".05em" }}>TOTAL DUE</div>
+        <div className="num" style={{ fontSize: 34, fontWeight: 800, margin: "2px 0 16px" }}>{money(total)}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+          {METHODS.map((m) => <button key={m} onClick={() => setMethod(m)} style={{ ...C.method, ...(method === m ? C.methodOn : {}) }}>{m}</button>)}
+        </div>
+        {method === "Cash" && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {quick.map((v) => <button key={v} onClick={() => setTender(v)} style={{ ...C.chip, ...(tender === v ? C.chipOn : {}) }}>{v === total ? "Exact" : money(v)}</button>)}
             </div>
-            <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{NAV.find((n) => n.id === nav)!.label}</div>
-            <div style={{ fontSize: 13 }}>This existing screen is reskinned in a later stage.</div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 14 }}>
+              <span style={{ color: "var(--ink2)", fontWeight: 600 }}>Change due</span>
+              <span className="num" style={{ fontWeight: 800, color: "var(--green)" }}>{money(change)}</span>
+            </div>
           </div>
         )}
+        <button disabled={!ok} onClick={() => onDone([{ method, amount: total }], change)} style={{ ...C.charge, width: "100%", marginTop: 18, opacity: ok ? 1 : .5 }}>Confirm payment</button>
       </div>
     </div>
   );
 }
 
-const S: Record<string, React.CSSProperties> = {
+function Placeholder({ nav }: { nav: string }) {
+  const n = NAV.find((x) => x.id === nav)!;
+  return <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--ink2)" }}>
+    <div style={{ width: 60, height: 60, borderRadius: 18, background: "var(--sur)", boxShadow: "var(--shadow)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral)" }} dangerouslySetInnerHTML={{ __html: n.icon }} />
+    </div>
+    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{n.label}</div>
+    <div style={{ fontSize: 13 }}>This existing screen is reskinned in a later stage.</div>
+  </div>;
+}
+
+function useBestSellers(): Set<string> {
+  const st = useStore();
+  return useMemo(() => {
+    const tally: Record<string, number> = {};
+    st.byKind("sales").forEach((e) => (e.data.lines || []).forEach((l: any) => { tally[l.pid] = (tally[l.pid] || 0) + (l.qty || 0); }));
+    return new Set(Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([id]) => id));
+  }, [st.ents.size]);
+}
+
+function nextInvoiceNo(sales: any[]): string {
+  let max = 0;
+  for (const s of sales) { const m = /(\d+)\s*$/.exec(String(s.no || "")); if (m) max = Math.max(max, Number(m[1])); }
+  return "INV-" + String(max + 1).padStart(5, "0");
+}
+
+const C: Record<string, React.CSSProperties> = {
   rail: { width: 92, flex: "0 0 92px", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 8px", gap: 4, background: "var(--sur)", borderRight: "1px solid var(--line)" },
   kchip: { width: 40, height: 40, borderRadius: 13, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20, boxShadow: "0 6px 16px rgba(225,85,45,.34)" },
   railBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 4px", borderRadius: 13, color: "var(--ink2)" },
@@ -229,17 +339,18 @@ const S: Record<string, React.CSSProperties> = {
   pill: { border: "1px solid var(--line)", background: "var(--sur2)", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" },
   dot: { width: 7, height: 7, borderRadius: 99, display: "inline-block" },
   avatar: { width: 30, height: 30, borderRadius: 99, background: "var(--green)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 },
+  card: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, boxShadow: "var(--shadow)" },
+  key: { height: 60, borderRadius: 15, background: "var(--sur)", border: "1px solid var(--line)", fontSize: 22, fontWeight: 700, fontFamily: "var(--num)" },
   body: { flex: 1, minHeight: 0, display: "flex", gap: 14, padding: "0 16px 16px" },
   obill: { whiteSpace: "nowrap", border: "1px solid var(--line)", background: "var(--sur)", borderRadius: 12, padding: "8px 13px", fontSize: 12.5, fontWeight: 700 },
   obillOn: { borderColor: "var(--coral)", background: "var(--coralsoft)", color: "var(--coral)" },
-  shift: { borderRadius: 14, padding: "11px 16px", background: "var(--ambersoft)", border: "1px solid color-mix(in srgb,var(--amber) 32%,transparent)", color: "var(--amber)", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", gap: 9 },
   search: { flex: 1, display: "flex", alignItems: "center", gap: 10, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 14px", height: 46 },
   scan: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 16px", fontWeight: 700, fontSize: 13.5 },
   chip: { whiteSpace: "nowrap", padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
   chipOn: { background: "var(--ink)", color: "var(--bg)", borderColor: "var(--ink)" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 11 },
   tile: { position: "relative", display: "flex", flexDirection: "column", padding: 13, borderRadius: 16, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "left" },
-  glyph: { width: 38, height: 38, borderRadius: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15 },
+  glyph: { width: 38, height: 38, borderRadius: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 },
   best: { position: "absolute", top: 8, right: 8, background: "var(--green)", color: "#fff", fontSize: 9.5, fontWeight: 800, padding: "3px 7px", borderRadius: 999 },
   stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "2px 4px" },
   stepBtn: { width: 24, height: 24, borderRadius: 99, background: "var(--sur)", fontSize: 15, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
@@ -254,4 +365,8 @@ const S: Record<string, React.CSSProperties> = {
   disc: { display: "inline-block", margin: "4px 0", fontSize: 11.5, fontWeight: 700, color: "var(--coral)", background: "var(--coralsoft)", borderRadius: 999, padding: "4px 10px" },
   act: { width: 46, height: 46, borderRadius: 13, background: "var(--sur2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink2)", fontSize: 16 },
   charge: { flex: 1, borderRadius: 13, background: "var(--coral)", color: "var(--coralink)", fontWeight: 800, fontSize: 15, boxShadow: "0 8px 20px -6px rgba(225,85,45,.5)" },
+  overlay: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40, animation: "fade .2s" },
+  sheet: { background: "var(--bg)", borderRadius: 22, padding: 22, boxShadow: "var(--shadow)", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" },
+  method: { padding: "12px 6px", borderRadius: 12, background: "var(--sur)", border: "1px solid var(--line)", fontWeight: 700, fontSize: 13 },
+  methodOn: { background: "var(--coralsoft)", borderColor: "var(--coral)", color: "var(--coral)" },
 };
