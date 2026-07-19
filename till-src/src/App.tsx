@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { store, useStore } from "./store";
 import { hashPin, uid } from "./api";
+import { Dashboard, Reports, Orders, Admin } from "./screens";
 
 /* Reskin-only rebuild of OUR existing till — same features + real sync, in the
    prototype look. No prototype-only additions. Money is laari (÷100 to show);
@@ -258,7 +259,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             </aside>
           </div>
-        ) : <Placeholder nav={nav} />}
+        ) : nav === "orders" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "reports" ? <Reports /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
       </div>
       {pay && <PaySheet total={totals.total} currency={currency} onClose={() => setPay(false)} onDone={onCharged} />}
     </div>
