@@ -114,7 +114,7 @@ class Store {
     if (this.syncing || this.outbox.length) return "saving";
     return "synced";
   }
-  pending() { return this.outbox.reduce((a, o) => a + o.puts.length, 0); }
+  pending() { return this.outbox.reduce((a, o) => a + (o.puts?.length || 0) + (o.dels?.length || 0), 0); }
 }
 
 function safeParse<T>(s: string | null, fb: T): T { try { return s ? JSON.parse(s) : fb; } catch { return fb; } }

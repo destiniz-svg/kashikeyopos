@@ -156,7 +156,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
 
   const [modProd, setModProd] = useState<any>(null);
   const prodById = (pid: string) => products.find((p) => p.id === pid);
-  const lineUnit = (l: Line) => (prodById(l.pid)?.price || 0) + l.mods.reduce((a, m) => a + (m.price || 0), 0);
+  const lineUnit = (l: Line) => (prodById(l.pid)?.price || 0) + (l.mods || []).reduce((a, m) => a + (m.price || 0), 0);
 
   const addLine = (p: any, mods: Mod[]) => {
     const key = p.id + "|" + mods.map((m) => m.name).sort().join(",");
@@ -196,7 +196,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const sale = {
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
       userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype,
-      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods, discPct: 0, taxable: p?.taxable !== false }; }),
+      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods || [], discPct: 0, taxable: p?.taxable !== false }; }),
       subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, svcCharge: 0,
       payments, change, refunded: false,
     };
@@ -212,7 +212,13 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     setCart([]); setDisc(0); setCust(null);
   };
   const resume = (bill: any) => {
-    setCart(bill.lines || []); setDisc(bill.disc || 0); setOtype(bill.otype || "takeaway");
+    /* Normalise lines defensively — a bill parked by an earlier build may lack
+       key/mods, which would crash lineUnit / the cart render on resume. */
+    const norm: Line[] = (bill.lines || []).map((l: any) => {
+      const mods: Mod[] = Array.isArray(l.mods) ? l.mods : (Array.isArray(l.addons) ? l.addons : []);
+      return { pid: l.pid, qty: Number(l.qty) || 1, mods, key: l.key || (l.pid + "|" + mods.map((m) => m.name).sort().join(",")) };
+    });
+    setCart(norm); setDisc(bill.disc || 0); setOtype(bill.otype || "takeaway");
     setCust(bill.customerId ? { id: bill.customerId, name: bill.custName } : null);
     store.del([{ kind: "parked", id: bill.id }]);
   };
@@ -320,7 +326,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                   return (
                     <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
                       <span style={{ ...C.glyph, width: 34, height: 34, fontSize: 16, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{l.mods.length ? l.mods.map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
+                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
                       <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
                       <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
                     </div>
