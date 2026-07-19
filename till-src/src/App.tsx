@@ -111,7 +111,15 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [query, setQuery] = useState("");
   const [otype, setOtype] = useState<"dinein" | "takeaway" | "delivery">("takeaway");
   const [cart, setCart] = useState<Line[]>([]);
+  const [disc, setDisc] = useState(0);
+  const [discOpen, setDiscOpen] = useState(false);
   const [pay, setPay] = useState(false);
+  const [shiftModal, setShiftModal] = useState(false);
+  const [zModal, setZModal] = useState(false);
+  const [receipt, setReceipt] = useState<any>(null);
+
+  const shifts = st.byKind("shifts").map((e) => e.data);
+  const openShift = shifts.find((s) => !s.closedAt) || null;
 
   const products = st.byKind("products").map((e) => e.data).filter((p) => p && !p.archived);
   const bestIds = useBestSellers();
@@ -132,22 +140,35 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
 
   const totals = useMemo(() => {
     const subtotal = cart.reduce((a, l) => a + (prodById(l.pid)?.price || 0) * l.qty, 0);
-    const gst = Math.round(subtotal * gstBp / 10000);
-    return { subtotal, gst, total: subtotal + gst };
-  }, [cart, products, gstBp]);
+    const d = Math.min(Math.max(0, disc), subtotal);
+    const taxable = subtotal - d;
+    const gst = Math.round(taxable * gstBp / 10000);
+    return { subtotal, disc: d, gst, total: taxable + gst };
+  }, [cart, products, gstBp, disc]);
   const count = cart.reduce((a, l) => a + l.qty, 0);
+
+  const openShiftNow = (float: number) => {
+    const s = { id: uid(), openedAt: Date.now(), openingFloat: float, userName: user.name, storeId: settings.storeId || "main", closedAt: null };
+    store.commit([{ kind: "shifts", id: s.id, data: s }]); setShiftModal(false);
+  };
+  const closeShiftNow = (counted: number, expected: number) => {
+    if (!openShift) return;
+    store.commit([{ kind: "shifts", id: openShift.id, data: { ...openShift, closedAt: Date.now(), countedCash: counted, expectedCash: expected } }]);
+    setZModal(false);
+  };
 
   const onCharged = (payments: { method: string; amount: number }[], change: number) => {
     const no = nextInvoiceNo(st.byKind("sales").map((e) => e.data));
     const sale = {
-      id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: null,
+      id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
       userName: user.name, customerId: null, otype,
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, discPct: 0, taxable: p?.taxable !== false }; }),
-      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: 0, svcCharge: 0,
+      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, svcCharge: 0,
       payments, change, refunded: false,
     };
     store.commit([{ kind: "sales", id: sale.id, data: sale }]);
-    setCart([]); setPay(false);
+    setReceipt({ sale, change, settings });
+    setCart([]); setDisc(0); setPay(false);
   };
 
   return (
@@ -171,6 +192,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           </div>
           <div style={{ flex: 1 }} />
           <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>
+          <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
+            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{openShift ? "Shift open" : "No shift"}
+          </button>
           <StatusPill />
           <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: "5px 12px 5px 5px", cursor: "pointer" }} title="Sign out">
             <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{user.name}
@@ -185,6 +209,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <span style={{ ...C.obill, ...C.obillOn }}>🥡 {otype === "dinein" ? "Dine-in" : otype === "delivery" ? "Delivery" : "Takeaway"} · #1 <small style={{ color: "var(--coral)", opacity: .8 }}>Walk-in</small></span>
                 <span style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</span>
               </div>
+              {!openShift && (
+                <button onClick={() => setShiftModal(true)} style={C.shiftBar}>🕓 No shift open — tap to open one before taking payments</button>
+              )}
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={C.search}>
                   <svg viewBox="0 0 24 24" width={17} height={17} style={{ color: "var(--ink3)" }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
@@ -249,12 +276,21 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
               <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
                 <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>
-                <div style={C.disc}>＋ Bill disc</div>
+                {totals.disc > 0 ? (
+                  <div style={C.trow}><span>Discount</span><span><span className="num" style={{ color: "var(--coral)" }}>−{money(totals.disc)}</span> <button onClick={() => setDisc(0)} style={{ color: "var(--ink3)", marginInlineStart: 6 }}>✕</button></span></div>
+                ) : discOpen ? (
+                  <div style={{ display: "flex", gap: 6, margin: "6px 0" }}>
+                    <input autoFocus type="number" inputMode="decimal" placeholder="Discount (MVR)" onKeyDown={(e) => { if (e.key === "Enter") { setDisc(Math.round(Number((e.target as HTMLInputElement).value) * 100) || 0); setDiscOpen(false); } if (e.key === "Escape") setDiscOpen(false); }} style={C.input} />
+                    <button style={C.chipSm} onMouseDown={(e) => { const inp = (e.currentTarget.previousSibling as HTMLInputElement); setDisc(Math.round(Number(inp.value) * 100) || 0); setDiscOpen(false); }}>Apply</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setDiscOpen(true)} style={{ ...C.disc, cursor: "pointer" }}>＋ Bill disc</button>
+                )}
                 <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button style={C.act} title="Park">⏸</button><button style={C.act} title="Split">✂️</button><button style={C.act} title="Clear" onClick={() => setCart([])}>🗑️</button>
-                  <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => setPay(true)}>Charge {money(totals.total)}</button>
+                  <button style={C.act} title="Park">⏸</button><button style={C.act} title="Split">✂️</button><button style={C.act} title="Clear" onClick={() => { setCart([]); setDisc(0); }}>🗑️</button>
+                  <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => openShift ? setPay(true) : setShiftModal(true)}>Charge {money(totals.total)}</button>
                 </div>
               </div>
             </aside>
@@ -262,9 +298,91 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
         ) : nav === "orders" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "reports" ? <Reports /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
       </div>
       {pay && <PaySheet total={totals.total} currency={currency} onClose={() => setPay(false)} onDone={onCharged} />}
+      {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
+      {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
+      {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
     </div>
   );
 }
+
+/* ── shift open / close (Z-report) + receipt ───────────────────────────────── */
+function ShiftModal({ onClose, onOpen }: { onClose: () => void; onOpen: (float: number) => void }) {
+  const [v, setV] = useState("");
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 4 }}>Open shift</div>
+        <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 14 }}>Count the cash in the drawer to start the shift.</div>
+        <label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>OPENING FLOAT (MVR)</label>
+        <input autoFocus type="number" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder="0.00" style={{ ...C.input, width: "100%", marginTop: 6 }} />
+        <button onClick={() => onOpen(Math.round(Number(v) * 100) || 0)} style={{ ...C.charge, width: "100%", marginTop: 16 }}>Open shift</button>
+      </div>
+    </div>
+  );
+}
+function ZModal({ shift, sales, onClose, onCloseShift }: { shift: any; sales: any[]; onClose: () => void; onCloseShift: (counted: number, expected: number) => void }) {
+  const cashSales = sales.filter((s) => s.shiftId === shift.id).reduce((a, s) => a + (s.payments || []).filter((p: any) => /cash/i.test(p.method)).reduce((x: number, p: any) => x + (p.amount || 0), 0), 0);
+  const expected = (shift.openingFloat || 0) + cashSales;
+  const [v, setV] = useState("");
+  const counted = Math.round(Number(v) * 100) || 0;
+  const variance = counted - expected;
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(440px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 12 }}>Close shift · Z-report</div>
+        <Row2 k="Opening float" v={money(shift.openingFloat || 0)} />
+        <Row2 k="Cash sales" v={money(cashSales)} />
+        <Row2 k="Expected in drawer" v={money(expected)} bold />
+        <label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700, display: "block", marginTop: 12 }}>COUNTED CASH (MVR)</label>
+        <input autoFocus type="number" inputMode="decimal" value={v} onChange={(e) => setV(e.target.value)} placeholder="0.00" style={{ ...C.input, width: "100%", marginTop: 6 }} />
+        {v !== "" && <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 800, color: Math.abs(variance) < 50 ? "var(--green)" : "var(--red)" }}><span>Variance</span><span className="num">{variance >= 0 ? "+" : "−"}{money(Math.abs(variance))}</span></div>}
+        <button onClick={() => onCloseShift(counted, expected)} style={{ ...C.charge, width: "100%", marginTop: 16 }}>Close day & post journal</button>
+      </div>
+    </div>
+  );
+}
+const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 13.5, fontWeight: bold ? 800 : 600, color: bold ? "var(--ink)" : "var(--ink2)" }}><span>{k}</span><span className="num">{v}</span></div>
+);
+
+function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: () => void }) {
+  const { sale, change, settings } = data;
+  const method = (sale.payments || [])[0]?.method || "—";
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "min(360px,94vw)", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div id="ksh-receipt" style={C.receipt}>
+          <div style={{ textAlign: "center", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>{settings.storeName || "Kashikeyo Café"}</div>
+            <div style={{ fontSize: 11, color: "#555" }}>{settings.address || "Malé, Maldives"}</div>
+            {settings.tin && <div style={{ fontSize: 11, color: "#555" }}>TIN {settings.tin}</div>}
+            <div style={{ display: "inline-block", marginTop: 6, fontSize: 10, fontWeight: 800, letterSpacing: ".1em", border: "1px solid #999", borderRadius: 4, padding: "2px 8px" }}>RECEIPT</div>
+          </div>
+          <div style={{ fontSize: 11, color: "#555", display: "flex", justifyContent: "space-between" }}><span>{sale.no}</span><span>{new Date(sale.t).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
+          <div style={{ borderTop: "1px dashed #bbb", borderBottom: "1px dashed #bbb", margin: "8px 0", padding: "8px 0" }}>
+            {(sale.lines || []).map((l: any, i: number) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0" }}><span>{l.qty}× {l.name}</span><span className="num">{money((l.price || 0) * l.qty)}</span></div>
+            ))}
+          </div>
+          <RRow k="Subtotal" v={money(sale.subtotal)} />
+          {sale.billDisc > 0 && <RRow k="Discount" v={"−" + money(sale.billDisc)} />}
+          <RRow k={`GST ${gstBp / 100}%`} v={money(sale.gst)} />
+          <RRow k="Total" v={money(sale.total)} bold />
+          <RRow k={method} v={money(sale.total)} />
+          {change > 0 && <RRow k="Change" v={money(change)} />}
+          <div style={{ textAlign: "center", fontSize: 11, color: "#555", marginTop: 10 }}>Prices include GST · Thank you<br />ޝުކުރިއްޔާ</div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => window.print()} style={{ ...C.charge, flex: 1 }}>🖨 Print</button>
+          <button onClick={onClose} style={{ ...C.act, flex: 1, width: "auto", background: "var(--sur)", border: "1px solid var(--line)", color: "var(--ink)", fontWeight: 700 }}>New sale</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+const RRow = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", fontSize: bold ? 14 : 12, fontWeight: bold ? 800 : 500, padding: "2px 0", color: "#111" }}><span>{k}</span><span className="num">{v}</span></div>
+);
 
 function StatusPill() {
   const st = useStore();
@@ -370,4 +488,8 @@ const C: Record<string, React.CSSProperties> = {
   sheet: { background: "var(--bg)", borderRadius: 22, padding: 22, boxShadow: "var(--shadow)", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" },
   method: { padding: "12px 6px", borderRadius: 12, background: "var(--sur)", border: "1px solid var(--line)", fontWeight: 700, fontSize: 13 },
   methodOn: { background: "var(--coralsoft)", borderColor: "var(--coral)", color: "var(--coral)" },
+  shiftBar: { width: "100%", textAlign: "start", borderRadius: 14, padding: "11px 16px", background: "var(--ambersoft)", border: "1px solid color-mix(in srgb,var(--amber) 32%,transparent)", color: "var(--amber)", fontWeight: 700, fontSize: 13, cursor: "pointer" },
+  input: { padding: "11px 13px", borderRadius: 11, border: "1px solid var(--line)", background: "var(--sur)", color: "var(--ink)", fontSize: 14, outline: "none", flex: 1 },
+  chipSm: { padding: "8px 14px", borderRadius: 11, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 13 },
+  receipt: { background: "#fff", color: "#111", borderRadius: 14, padding: 18, fontFamily: "ui-monospace,Menlo,monospace", boxShadow: "var(--shadow)" },
 };

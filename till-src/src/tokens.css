@@ -41,3 +41,9 @@ svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-l
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes sheet{from{opacity:0;transform:translateY(40px) scale(.97)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important}}
+@media print{
+  body{overflow:visible;background:#fff}
+  body *{visibility:hidden}
+  #ksh-receipt, #ksh-receipt *{visibility:visible}
+  #ksh-receipt{position:absolute;left:0;top:0;width:100%;box-shadow:none}
+}
