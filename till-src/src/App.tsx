@@ -402,7 +402,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
-      {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
+      {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} current={table} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClear={() => { setTable(""); setOtype("takeaway"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
@@ -580,18 +580,39 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
   );
 }
 
-function TablePicker({ tables, onPick, onClose }: { tables: any[]; onPick: (name: string) => void; onClose: () => void }) {
+function TablePicker({ tables, current, onPick, onClear, onClose }: { tables: any[]; current?: string; onPick: (name: string) => void; onClear: () => void; onClose: () => void }) {
   return (
     <div style={C.overlay} onClick={onClose}>
       <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 12 }}>Choose a table</div>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Choose a table</div>
+            <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>Seats this order as Dine-in</div>
+          </div>
+          <button onClick={onClose} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>
+        </div>
         {tables.length ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(84px,1fr))", gap: 8 }}>
-            {tables.map((t) => (
-              <button key={t.id || t.name} onClick={() => onPick(t.name)} style={{ ...C.card, padding: "16px 8px", textAlign: "center", fontWeight: 800, fontSize: 15 }}>{t.name}</button>
-            ))}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(88px,1fr))", gap: 10 }}>
+            {tables.map((t) => {
+              const on = current === t.name;
+              return (
+                <button key={t.id || t.name} onClick={() => onPick(t.name)} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+                  padding: "16px 8px", borderRadius: 15, fontWeight: 800, fontSize: 16,
+                  border: "1.5px solid " + (on ? "var(--coral)" : "var(--line)"),
+                  background: on ? "var(--coralsoft)" : "var(--sur)",
+                  color: on ? "var(--coral)" : "var(--ink)", boxShadow: "var(--shadow)",
+                }}>
+                  <span style={{ fontSize: 18, opacity: on ? 1 : .55 }}>🍴</span>
+                  {t.name}
+                </button>
+              );
+            })}
           </div>
         ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16 }}>No tables set up — add them in the back office.</div>}
+        {current && (
+          <button onClick={onClear} style={{ ...C.custBtn, width: "100%", marginTop: 14, justifyContent: "center", color: "var(--ink2)" }}>Clear table · back to Takeaway</button>
+        )}
       </div>
     </div>
   );
