@@ -266,17 +266,19 @@ function Ticket({ o }: { o: any }) {
 }
 
 /* ── Admin (module launcher grid) ──────────────────────────────────────────── */
+/* Management lives in the back office (/back). Business-data cards deep-link
+   there; Cloud Sync + Data & Backup stay in-till since they're device-local. */
 const ADMIN = [
   ["🧾", "Products & Inventory", "catalog, prices, stock levels", "/back"],
   ["👤", "Customers", "CRM & loyalty points", "/back"],
-  ["🔑", "Users & PINs", "staff accounts for shifts", ""],
-  ["🍴", "Tables", "dine-in & QR ordering layout", ""],
-  ["🛵", "Delivery Zones", "islands, fees & ETAs", ""],
+  ["🔑", "Users & PINs", "staff accounts for shifts", "/back"],
+  ["🍴", "Tables", "dine-in & QR ordering layout", "/back"],
+  ["🛵", "Delivery Zones", "islands, fees & ETAs", "/back"],
   ["🗑️", "Wastage Log", "spoilage, spillage, expiry", "/back"],
   ["🧮", "Expenses", "bills, paid-outs, scan with OCR", "/back"],
   ["📦", "Purchase Orders", "raise POs, receive supplier bills", "/back"],
   ["🥫", "Kitchen Supplies", "bulk stock · par levels · stocktake", "/back"],
-  ["⚙︎", "Store Settings", "name, GST, currency, receipt", ""],
+  ["⚙︎", "Store Settings", "name, GST, currency, receipt", "/back"],
   ["☁️", "Cloud Sync", "connected", ""],
   ["💾", "Data & Backup", "export, restore, reset", ""],
 ];
@@ -298,7 +300,7 @@ export function Admin() {
             : <div key={title} style={{ ...X.card, ...X.tap, padding: 16 }}>{inner}</div>;
         })}
       </div>
-      <div style={{ color: "var(--ink3)", fontSize: 12, marginTop: 14 }}>Cards marked with the back-office arrow open the full management view. Others manage in place.</div>
+      <div style={{ color: "var(--ink3)", fontSize: 12, marginTop: 14 }}>Management opens in the back office. Cloud Sync and Data &amp; Backup are handled on this device.</div>
     </div>
   );
 }
