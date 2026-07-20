@@ -994,29 +994,27 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
   ];
   const unit = (product.price || 0) + mods.reduce((a, m) => a + m.price, 0);
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(440px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-          <span style={{ ...C.glyph, background: tintFor(product.cat)[0], color: tintFor(product.cat)[1] }}>{product.emoji || (product.name || "?")[0]}</span>
-          <div><div style={{ fontWeight: 800, fontSize: 16 }}>{product.name}</div><div className="num" style={{ color: "var(--ink2)", fontSize: 13 }}>{money(product.price || 0)}</div></div>
-        </div>
-        {addons.length > 0 && <div style={{ color: "var(--ink3)", fontSize: 11, fontWeight: 700, letterSpacing: ".04em", margin: "4px 0 6px" }}>ADD-ONS</div>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {addons.map((a) => { const on = !!picked[a.name]; return (
-            <button key={a.name} onClick={() => setPicked({ ...picked, [a.name]: !on })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 13, border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur)" }}>
-              <span style={{ width: 18, height: 18, borderRadius: 6, border: "2px solid " + (on ? "var(--coral)" : "var(--ink3)"), display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--coral-text)", fontSize: 12 }}>{on ? "✓" : ""}</span>
-              <span style={{ flex: 1, textAlign: "start", fontWeight: 600, fontSize: 13.5 }}>{a.name}</span>
-              {a.price > 0 && <span className="num" style={{ color: "var(--ink2)", fontSize: 12.5 }}>+{money(a.price).replace("MVR ", "")}</span>}
-            </button>
-          ); })}
-        </div>
-        {spice.length > 0 && <div style={{ color: "var(--ink3)", fontSize: 11, fontWeight: 700, letterSpacing: ".04em", margin: "12px 0 6px" }}>SPICE LEVEL</div>}
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {spice.map((s) => <button key={s.name} onClick={() => setSpiceSel(spiceSel === s.name ? "" : s.name)} style={{ ...C.chip, ...(spiceSel === s.name ? C.methodOn : {}) }}>{s.name}</button>)}
-        </div>
-        <button onClick={() => onAdd(mods)} style={{ ...C.charge, width: "100%", marginTop: 18 }}>Add · {money(unit)}</button>
+    <Modal title={product.name || "Item"} onClose={onClose}
+      footer={<button onClick={() => onAdd(mods)} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)" }}>Add · {money(unit)}</button>}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <span style={{ ...C.glyph, background: tintFor(product.cat)[0], color: tintFor(product.cat)[1] }}>{product.emoji || (product.name || "?")[0]}</span>
+        <div className="num" style={{ color: "var(--ink2)", fontSize: 14, fontWeight: 700 }}>{money(product.price || 0)}</div>
       </div>
-    </div>
+      {addons.length > 0 && <div style={{ color: "var(--ink2)", fontSize: 11, fontWeight: 800, letterSpacing: ".04em", margin: "4px 0 6px" }}>ADD-ONS</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {addons.map((a) => { const on = !!picked[a.name]; return (
+          <button key={a.name} role="checkbox" aria-checked={on} onClick={() => setPicked({ ...picked, [a.name]: !on })} style={{ display: "flex", alignItems: "center", gap: 12, minHeight: "var(--tap)", padding: "10px 14px", borderRadius: 13, border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur)" }}>
+            <span style={{ width: 20, height: 20, borderRadius: 6, border: "2px solid " + (on ? "var(--coral)" : "var(--ink3)"), display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--coral-text)", fontSize: 12 }}>{on ? "✓" : ""}</span>
+            <span style={{ flex: 1, textAlign: "start", fontWeight: 600, fontSize: 13.5 }}>{a.name}</span>
+            {a.price > 0 && <span className="num" style={{ color: "var(--ink2)", fontSize: 12.5 }}>+{money(a.price).replace("MVR ", "")}</span>}
+          </button>
+        ); })}
+      </div>
+      {spice.length > 0 && <div style={{ color: "var(--ink2)", fontSize: 11, fontWeight: 800, letterSpacing: ".04em", margin: "12px 0 6px" }}>SPICE LEVEL</div>}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {spice.map((s) => <button key={s.name} aria-pressed={spiceSel === s.name} onClick={() => setSpiceSel(spiceSel === s.name ? "" : s.name)} style={{ ...C.chip, ...(spiceSel === s.name ? C.methodOn : {}) }}>{s.name}</button>)}
+      </div>
+    </Modal>
   );
 }
 
@@ -1025,12 +1023,9 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
    order-type row here — that lives on the cart, so this stays focused. */
 function DeliveryDetails({ zones, current, note, setNote, custName, onPick, onClear, onAttachCustomer, onClose }: { zones: any[]; current?: any; note: string; setNote: (v: string) => void; custName?: string; onPick: (z: any) => void; onClear: () => void; onAttachCustomer: () => void; onClose: () => void }) {
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(470px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <div style={{ fontWeight: 800, fontSize: 18, flex: 1 }}>Delivery details</div>
-          <button onClick={onClose} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>
-        </div>
+    <Modal title="Delivery details" onClose={onClose} width={470}
+      footer={<button onClick={onClose} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)" }}>Done</button>}>
+      <>
         {!custName
           ? <button onClick={onAttachCustomer} style={{ display: "block", width: "100%", textAlign: "start", background: "var(--coralsoft)", color: "var(--coral-text)", fontWeight: 700, fontSize: 13.5, borderRadius: 13, padding: "13px 15px", cursor: "pointer", marginBottom: 14 }}>Attach a customer for this delivery →</button>
           : <div style={{ fontSize: 13, color: "var(--ink2)", marginBottom: 14 }}>Delivering to <b style={{ color: "var(--ink)" }}>{custName}</b></div>}
@@ -1049,22 +1044,15 @@ function DeliveryDetails({ zones, current, note, setNote, custName, onPick, onCl
           </div>
         ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16, background: "var(--sur2)", borderRadius: 13 }}>No delivery zones yet — add them in the back office.</div>}
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Delivery note — address, landmark, rider…" style={{ ...C.input, width: "100%", marginTop: 14 }} />
-        <button onClick={onClose} style={{ ...C.charge, width: "100%", marginTop: 14, padding: 14 }}>Done</button>
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 function TablePicker({ tables, current, onPick, onClear, onClose }: { tables: any[]; current?: string; onPick: (name: string) => void; onClear: () => void; onClose: () => void }) {
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 18 }}>Choose a table</div>
-            <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>Seats this order as Dine-in</div>
-          </div>
-          <button onClick={onClose} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>
-        </div>
+    <Modal title="Choose a table" onClose={onClose} width={420}>
+      <>
+        <div style={{ fontSize: 12.5, color: "var(--ink2)", margin: "-6px 0 12px" }}>Seats this order as Dine-in</div>
         {tables.length ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(88px,1fr))", gap: 10 }}>
             {tables.map((t) => {
@@ -1085,10 +1073,10 @@ function TablePicker({ tables, current, onPick, onClear, onClose }: { tables: an
           </div>
         ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16 }}>No tables set up — add them in the back office.</div>}
         {current && (
-          <button onClick={onClear} style={{ ...C.custBtn, width: "100%", marginTop: 14, justifyContent: "center", color: "var(--ink2)" }}>Clear table · back to Takeaway</button>
+          <button onClick={onClear} style={{ ...C.custBtn, width: "100%", minHeight: "var(--tap)", marginTop: 14, justifyContent: "center", color: "var(--ink2)" }}>Clear table · back to Takeaway</button>
         )}
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 
@@ -1106,21 +1094,17 @@ function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPi
     onPick(c);
   };
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(440px,94vw)", maxHeight: "80vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <div style={{ fontWeight: 800, fontSize: 17, flex: 1 }}>{adding ? "New customer" : "Charge to customer"}</div>
-          {!adding && <button onClick={startAdd} style={{ ...C.chipSm, cursor: "pointer" }}>＋ New</button>}
-        </div>
+    <Modal title={adding ? "New customer" : "Customer"} onClose={onClose} width={440}>
+      <>
         {adding ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div><label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>NAME</label>
+            <div><label style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700 }}>NAME</label>
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Customer name" style={{ ...C.input, width: "100%", marginTop: 5 }} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) create(); }} /></div>
-            <div><label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>PHONE <span style={{ fontWeight: 400 }}>(optional)</span></label>
+            <div><label style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700 }}>PHONE <span style={{ fontWeight: 400 }}>(optional)</span></label>
               <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="7XX XXXX" style={{ ...C.input, width: "100%", marginTop: 5 }} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) create(); }} /></div>
             <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <button onClick={() => setAdding(false)} style={{ ...C.custBtn, justifyContent: "center", cursor: "pointer" }}>Cancel</button>
-              <button onClick={create} disabled={!name.trim()} style={{ ...C.charge, flex: 1, opacity: name.trim() ? 1 : .5 }}>Add customer</button>
+              <button onClick={() => setAdding(false)} style={{ ...C.custBtn, minHeight: "var(--tap)", justifyContent: "center", cursor: "pointer" }}>Cancel</button>
+              <button onClick={create} disabled={!name.trim()} style={{ ...C.charge, flex: 1, minHeight: "var(--tap)", opacity: name.trim() ? 1 : .5 }}>Add customer</button>
             </div>
           </div>
         ) : (
@@ -1141,8 +1125,8 @@ function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPi
             </div>
           </>
         )}
-      </div>
-    </div>
+      </>
+    </Modal>
   );
 }
 
@@ -1198,7 +1182,7 @@ const C: Record<string, React.CSSProperties> = {
   obillOn: { borderColor: "var(--coral)", background: "var(--coralsoft)", color: "var(--coral-text)" },
   search: { flex: 1, display: "flex", alignItems: "center", gap: 10, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 14px", height: 46 },
   scan: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 16px", fontWeight: 700, fontSize: 13.5 },
-  chip: { whiteSpace: "nowrap", padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
+  chip: { whiteSpace: "nowrap", minHeight: 44, display: "inline-flex", alignItems: "center", padding: "0 16px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
   chipOn: { background: "var(--ink)", color: "var(--bg)", borderColor: "var(--ink)" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(158px,1fr))", gap: 12 },
   tile: { position: "relative", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "left", overflow: "hidden" },

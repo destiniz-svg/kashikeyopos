@@ -140,7 +140,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
           <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 800 }}><span style={{ color: "#F6B01E" }}>★</span> <span className="num">{dm.rating || "4.7"}</span> <span style={{ color: "var(--ink3)", fontWeight: 600 }} className="num">({dm.rn || "120"})</span></span>
             <div style={{ flex: 1 }} />
-            <span className="num" style={{ fontWeight: 800, fontSize: 17, color: "var(--coral)" }}>{money(dm.price)}</span>
+            <span className="num" style={{ fontWeight: 800, fontSize: 17, color: "var(--coral-text)" }}>{money(dm.price)}</span>
           </div>
           {dm.desc && <div style={{ color: "var(--ink2)", fontSize: 13.5, lineHeight: 1.5, marginTop: 12 }}>{T(dm.desc)}</div>}
           {dmAddons.length > 0 && (
@@ -149,7 +149,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
               <div style={{ border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden" }}>
                 {dmAddons.map((a, i) => { const q = addSel[a.name] || 0; return (
                   <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderTop: i ? "1px solid var(--line)" : "none" }}>
-                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{a.name} {Number(a.price) ? <span style={{ color: "var(--coral)", fontWeight: 700 }} className="num">(+{money(a.price).replace("MVR ", "")})</span> : <span style={{ color: "var(--green)", fontWeight: 700 }}>({T("Free")})</span>}</span>
+                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{a.name} {Number(a.price) ? <span style={{ color: "var(--coral-text)", fontWeight: 700 }} className="num">(+{money(a.price).replace("MVR ", "")})</span> : <span style={{ color: "var(--green)", fontWeight: 700 }}>({T("Free")})</span>}</span>
                     {q > 0 ? <span style={G.stepper}><button style={G.stepBtn} onClick={() => addonDec(a.name)}>−</button><span className="num" style={{ minWidth: 16, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={G.stepBtn} onClick={() => addonInc(a.name)}>+</button></span>
                       : <button style={G.add} onClick={() => addonInc(a.name)}>+</button>}
                   </div>
@@ -189,7 +189,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>{l.name}</div>
                 {(l.addons.length || l.note) ? <div style={{ color: "var(--ink3)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[...l.addons.map((a) => (a.qty > 1 ? a.qty + "× " : "") + a.name), l.note].filter(Boolean).join(", ")}</div> : null}
-                <div className="num" style={{ color: "var(--coral)", fontWeight: 800, fontSize: 12.5, marginTop: 2 }}>{money(l.lineTot)}</div>
+                <div className="num" style={{ color: "var(--coral-text)", fontWeight: 800, fontSize: 12.5, marginTop: 2 }}>{money(l.lineTot)}</div>
               </div>
               <span style={G.stepper}><button style={G.stepBtn} onClick={() => lineDec(l.lid)}>−</button><span className="num" style={{ minWidth: 16, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={G.stepBtn} onClick={() => lineInc(l.lid)}>+</button></span>
             </div>
@@ -206,14 +206,14 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
               <Row k={T("Subtotal")} v={money(sub)} />
               <Row k={`${T("Tax & Service")} (${gstBp / 100}%)`} v={money(tax)} />
               {promo && <Row k={T("Promo Code (5%)")} v={"− " + money(promoOff)} accent />}
-              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 16, marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}><span>{T("Total Payment")}</span><span className="num" style={{ color: "var(--coral)" }}>{money(total)}</span></div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 16, marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}><span>{T("Total Payment")}</span><span className="num" style={{ color: "var(--coral-text)" }}>{money(total)}</span></div>
             </div>
           </>}
           {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10, textAlign: "center" }}>{err}</div>}
         </div>
         {cartL.length > 0 && (
           <div style={{ ...G.footer, gap: 10 }}>
-            <button disabled={busy} onClick={() => place(true)} style={{ ...G.ghost, flex: 1, borderColor: "var(--coral)", color: "var(--coral)", background: "var(--sur)", border: "1.5px solid var(--coral)" }}>{T("Order & Pay Now")}</button>
+            <button disabled={busy} onClick={() => place(true)} style={{ ...G.ghost, flex: 1, borderColor: "var(--coral)", color: "var(--coral-text)", background: "var(--sur)", border: "1.5px solid var(--coral)" }}>{T("Order & Pay Now")}</button>
             <button disabled={busy} onClick={() => place(false)} style={{ ...G.primary, flex: 1, opacity: busy ? .6 : 1 }}>{busy ? "…" : T("Order Now")}</button>
           </div>
         )}
@@ -230,7 +230,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
             <div style={{ flex: 1 }}>
               <div style={{ color: "var(--ink3)", fontSize: 13 }}>{T("Welcome to")}</div>
               <div style={{ fontWeight: 800, fontSize: 21, lineHeight: 1.15 }}>{settings.storeName || T("Menu")}</div>
-              <div style={{ color: "var(--coral)", fontSize: 13, fontWeight: 700, marginTop: 3 }}>🏷 {tableLbl}</div>
+              <div style={{ color: "var(--coral-text)", fontSize: 13, fontWeight: 700, marginTop: 3 }}>🏷 {tableLbl}</div>
             </div>
             <button onClick={toggleLang} style={G.langBtn} aria-label="Language">{lang === "en" ? "ދިވެހި" : "EN"}</button>
             <button onClick={callWaiter} style={G.callBtn}>{called ? "✓" : "🔔"}</button>
@@ -266,7 +266,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
                     {p.desc && <div style={G.tdesc}>{T(p.desc)}</div>}
                     <div style={{ flex: 1 }} />
                     <div style={G.tfoot}>
-                      <span className="num" style={{ fontSize: 13.5, fontWeight: 800, color: "var(--coral)" }}>{money(p.price)}</span>
+                      <span className="num" style={{ fontSize: 13.5, fontWeight: 800, color: "var(--coral-text)" }}>{money(p.price)}</span>
                       {!so && <button style={G.add} onClick={(e) => { e.stopPropagation(); openItem(p.id); }}>+</button>}
                     </div>
                   </div>
@@ -296,12 +296,12 @@ const G: Record<string, React.CSSProperties> = {
   phone: { width: "min(480px,100%)", height: "100%", display: "flex", flexDirection: "column", background: "var(--sur)", position: "relative", overflow: "hidden" },
   head: { display: "flex", alignItems: "center", padding: "16px 14px 12px", borderBottom: "1px solid var(--line)" },
   chip: { width: 40, height: 40, borderRadius: 12, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 },
-  callBtn: { width: 42, height: 42, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral)", fontSize: 18, flex: "0 0 42px" },
+  callBtn: { width: 42, height: 42, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral-text)", fontSize: 18, flex: "0 0 42px" },
   langBtn: { height: 42, minWidth: 42, padding: "0 12px", borderRadius: 99, background: "var(--sur2)", border: "1px solid var(--line)", color: "var(--ink2)", fontSize: 13, fontWeight: 800, marginInlineEnd: 8, flex: "0 0 auto" },
   back: { width: 38, height: 38, borderRadius: 99, background: "var(--sur2)", color: "var(--ink)", fontSize: 22, fontWeight: 800, display: "grid", placeItems: "center", flex: "0 0 38px", lineHeight: 1 },
-  tablePill: { fontSize: 12.5, fontWeight: 700, color: "var(--coral)", whiteSpace: "nowrap" },
+  tablePill: { fontSize: 12.5, fontWeight: 700, color: "var(--coral-text)", whiteSpace: "nowrap" },
   search: { display: "flex", alignItems: "center", gap: 9, background: "var(--sur2)", border: "1px solid var(--line)", borderRadius: 13, padding: "0 14px", height: 44, marginTop: 12 },
-  catChip: { display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", padding: "6px 13px 6px 6px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
+  catChip: { display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap", minHeight: 44, padding: "6px 13px 6px 6px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
   catOn: { background: "var(--coral)", color: "var(--coralink)", borderColor: "var(--coral)" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 11 },
   tile: { position: "relative", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "start", overflow: "hidden" },
@@ -314,9 +314,9 @@ const G: Record<string, React.CSSProperties> = {
   tfoot: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 },
   sect: { fontWeight: 800, fontSize: 14, margin: "18px 0 8px" },
   fab: { position: "absolute", top: 14, insetInlineStart: 14, width: 38, height: 38, borderRadius: 99, background: "rgba(255,255,255,.92)", color: "#1B1A17", fontSize: 22, fontWeight: 800, display: "grid", placeItems: "center", lineHeight: 1, boxShadow: "0 2px 8px rgba(0,0,0,.18)" },
-  add: { width: 30, height: 30, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", fontSize: 18, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "0 0 30px" },
-  stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "3px 5px" },
-  stepBtn: { width: 26, height: 26, borderRadius: 99, background: "var(--sur)", color: "var(--coral)", fontSize: 16, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
+  add: { width: 36, height: 36, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", fontSize: 18, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "0 0 36px" },
+  stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "3px 5px", minHeight: 38 },
+  stepBtn: { width: 32, height: 32, borderRadius: 99, background: "var(--sur)", color: "var(--coral-text)", fontSize: 16, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
   input: { width: "100%", padding: "12px 14px", borderRadius: 12, border: "1px solid var(--line)", background: "var(--sur2)", color: "var(--ink)", fontSize: 14, outline: "none" },
   footer: { display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderTop: "1px solid var(--line)", background: "var(--sur)" },
   cartBar: { position: "absolute", left: 14, right: 14, bottom: 16, display: "flex", alignItems: "center", padding: "13px 16px", borderRadius: 15, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 22px -6px rgba(225,85,45,.55)" },

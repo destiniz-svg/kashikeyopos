@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { store, useStore } from "./store";
 import { elevate, token, uid } from "./api";
 import { money, money0, startOfDay, dayKey, tintFor } from "./util";
+import { Modal } from "./ui";
 
 /* Reskinned versions of OUR existing Orders / Dashboard / Reports / Admin
    screens, wired to the synced entities (sales, tables, customers, …). Same
@@ -168,16 +169,13 @@ function RefundModal({ sale, onClose }: { sale: any; onClose: () => void }) {
     } catch (e: any) { setErr(e.message || "wrong password"); setBusy(false); }
   };
   return (
-    <div style={X.overlay} onClick={onClose}>
-      <div style={X.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={{ fontWeight: 800, fontSize: 17 }}>Refund {sale.no}</div>
-        <div style={{ color: "var(--ink2)", fontSize: 13, margin: "4px 0 14px" }}>{money(sale.total)} · {(sale.lines || []).reduce((a: number, l: any) => a + l.qty, 0)} items. A manager must approve.</div>
-        <label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>STORE / MANAGER PASSWORD</label>
-        <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && pw) doRefund(); }} style={{ ...X.input, width: "100%", marginTop: 6 }} />
-        {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700, marginTop: 8 }}>{err}</div>}
-        <button disabled={!pw || busy} onClick={doRefund} style={{ ...X.refundBtn, opacity: (!pw || busy) ? .5 : 1 }}>{busy ? "Verifying…" : "Approve & refund"}</button>
-      </div>
-    </div>
+    <Modal title={"Refund " + (sale.no || "")} onClose={onClose}>
+      <div style={{ color: "var(--ink2)", fontSize: 13, margin: "-4px 0 14px" }}>{money(sale.total)} · {(sale.lines || []).reduce((a: number, l: any) => a + l.qty, 0)} items. A manager must approve.</div>
+      <label style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700 }}>STORE / MANAGER PASSWORD</label>
+      <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && pw) doRefund(); }} style={{ ...X.input, width: "100%", marginTop: 6 }} />
+      {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700, marginTop: 8 }}>{err}</div>}
+      <button disabled={!pw || busy} onClick={doRefund} style={{ ...X.refundBtn, minHeight: "var(--tap-lg)", opacity: (!pw || busy) ? .5 : 1 }}>{busy ? "Verifying…" : "Approve & refund"}</button>
+    </Modal>
   );
 }
 
@@ -353,7 +351,7 @@ export function Admin() {
         {ADMIN.map(([icon, title, sub, href]) => {
           const inner = (
             <>
-              <div style={{ width: 42, height: 42, borderRadius: 12, background: "var(--coralsoft)", color: "var(--coral)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div>
+              <div style={{ width: 42, height: 42, borderRadius: 12, background: "var(--coralsoft)", color: "var(--coral-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>{icon}</div>
               <div style={{ marginTop: 10 }}><b style={{ fontSize: 14.5 }}>{title}</b><div style={{ color: "var(--ink3)", fontSize: 12, marginTop: 2 }}>{title === "Cloud Sync" ? "connected · " + slug : sub}</div></div>
             </>
           );
@@ -412,7 +410,7 @@ export function Delivery() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   {b.deliveryNote && <span style={{ fontSize: 11.5, color: "var(--ink3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {b.deliveryNote}</span>}
                   <div style={{ flex: 1 }} />
-                  <button onClick={() => advance(b)} style={{ ...X.pill, cursor: "pointer", color: "var(--coral)", borderColor: "var(--coral)" }}>{s >= 2 ? "Complete ✓" : "Advance →"}</button>
+                  <button onClick={() => advance(b)} style={{ ...X.pill, cursor: "pointer", color: "var(--coral-text)", borderColor: "var(--coral)" }}>{s >= 2 ? "Complete ✓" : "Advance →"}</button>
                 </div>
               </div>
             );
@@ -422,7 +420,7 @@ export function Delivery() {
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", marginBottom: 4 }}>DELIVERY ZONES · BY ISLAND</div>
           {zones.length ? zones.map((z: any) => (
             <div key={z.id || z.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 4px", borderBottom: "1px solid var(--line)" }}>
-              <span style={{ color: "var(--coral)", fontSize: 15 }}>📍</span>
+              <span style={{ color: "var(--coral-text)", fontSize: 15 }}>📍</span>
               <b style={{ flex: 1, fontSize: 13.5 }}>{z.name}</b>
               {z.eta && <span style={{ fontSize: 12, color: "var(--ink3)" }}>{z.eta}</span>}
               <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 62, textAlign: "right", color: Number(z.fee) ? "var(--ink)" : "var(--green)" }}>{Number(z.fee) ? money(z.fee) : "Free"}</span>
@@ -469,7 +467,7 @@ export function QrOrders() {
                 <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "9px 11px" }}>
                   <span style={{ width: 30, height: 30, borderRadius: 9, background: bg, color: fg, display: "grid", placeItems: "center", fontSize: 15 }}>{p.emoji || (p.name || "?")[0]}</span>
                   <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 12.5, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small className="num" style={{ color: "var(--ink3)", fontSize: 11 }}>{money(p.price || 0)}</small></div>
-                  <span style={{ width: 24, height: 24, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral)", display: "grid", placeItems: "center", fontWeight: 800 }}>+</span>
+                  <span style={{ width: 24, height: 24, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral-text)", display: "grid", placeItems: "center", fontWeight: 800 }}>+</span>
                 </div>
               ); })}
             </div>
@@ -483,7 +481,7 @@ export function QrOrders() {
           <div style={{ ...X.card, padding: 16, marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", flex: 1 }}>INCOMING QR ORDERS</div>
-              {incoming.length > 0 && <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral)" }}>{incoming.length}</span>}
+              {incoming.length > 0 && <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral-text)" }}>{incoming.length}</span>}
             </div>
             {incoming.length ? incoming.map((o: any) => {
               const isNew = String(o.status || "new").toLowerCase() === "new";
@@ -493,7 +491,7 @@ export function QrOrders() {
                   <b style={{ fontSize: 13 }}>#{o.no || o.id}</b>
                   <span style={{ fontSize: 11.5, color: "var(--ink3)", fontWeight: 700 }}>QR{o.table ? " · " + o.table : ""}</span>
                   <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, color: "var(--ink2)", textAlign: "end" }}>{itemsLine(o) || "—"}</span>
-                  <button onClick={() => setStatus(o, isNew ? "preparing" : "ready")} style={{ ...X.pill, cursor: "pointer", color: "var(--coral)", borderColor: "var(--coral)" }}>{isNew ? "Accept →" : "Ready →"}</button>
+                  <button onClick={() => setStatus(o, isNew ? "preparing" : "ready")} style={{ ...X.pill, cursor: "pointer", color: "var(--coral-text)", borderColor: "var(--coral)" }}>{isNew ? "Accept →" : "Ready →"}</button>
                 </div>
               );
             }) : <div style={{ ...X.empty, textAlign: "center", padding: "30px 16px" }}>No incoming QR orders. Guests' orders appear here the moment they tap Place order.</div>}
@@ -544,7 +542,7 @@ export function Outlets() {
             return (
               <div key={o.id} style={{ ...X.card, padding: 16 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
-                  <div style={{ color: "var(--coral)", fontWeight: 800, fontSize: 12, letterSpacing: ".03em", textTransform: "uppercase", flex: 1 }}>Outlet</div>
+                  <div style={{ color: "var(--coral-text)", fontWeight: 800, fontSize: 12, letterSpacing: ".03em", textTransform: "uppercase", flex: 1 }}>Outlet</div>
                   <span style={{ ...X.tag, background: bg, color: fg }}>{busy ? "Busy" : open ? "Open" : "Closed"}</span>
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 15 }}>{o.name}</div>
@@ -593,7 +591,7 @@ export function Setup() {
       <button onClick={() => (window.location.href = "/back")} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "start", background: "var(--coralsoft)", border: "1px solid color-mix(in srgb,var(--coral) 30%,transparent)", borderRadius: 16, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
         <span style={{ width: 40, height: 40, borderRadius: 12, background: "var(--coral)", color: "var(--coralink)", display: "grid", placeItems: "center", fontSize: 19 }}>✦</span>
         <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--ink)" }}>Import menu with AI</div><div style={{ fontSize: 12.5, color: "var(--ink2)" }}>Snap your printed menu — items and prices added in seconds</div></div>
-        <span style={{ color: "var(--coral)", fontWeight: 800, fontSize: 13 }}>Try it →</span>
+        <span style={{ color: "var(--coral-text)", fontWeight: 800, fontSize: 13 }}>Try it →</span>
       </button>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14, alignItems: "start" }}>
         <div style={{ ...X.card, padding: 18 }}>
@@ -609,7 +607,7 @@ export function Setup() {
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", borderRadius: 12, background: "var(--sur2)", marginBottom: 8 }}>
               <span style={{ width: 22, height: 22, borderRadius: 99, background: ok ? "var(--green)" : "transparent", border: ok ? "none" : "2px solid var(--ink3)", color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800, flex: "0 0 22px" }}>{ok ? "✓" : ""}</span>
               <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: ok ? "var(--ink3)" : "var(--ink)", textDecoration: ok ? "line-through" : "none" }}>{label}</span>
-              {!ok && action && <button onClick={action} style={{ color: "var(--coral)", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{cta}</button>}
+              {!ok && action && <button onClick={action} style={{ color: "var(--coral-text)", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{cta}</button>}
             </div>
           ))}
         </div>
@@ -644,7 +642,7 @@ export function Tabs() {
         <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Open tabs</div>
         <div style={{ flex: 1 }} />
         <span className="num" style={X.pill}>Outstanding · {money(total)}</span>
-        <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral)" }}>{custs.length}</span>
+        <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral-text)" }}>{custs.length}</span>
       </div>
       <div style={{ ...X.card, overflow: "hidden" }}>
         {custs.length ? custs.map((c: any, i: number) => {
@@ -671,11 +669,11 @@ const X: Record<string, React.CSSProperties> = {
   scroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 18px 40px" },
   card: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 16, boxShadow: "var(--shadow)" },
   tap: { cursor: "pointer" },
-  pill: { border: "1px solid var(--line)", background: "var(--sur)", borderRadius: 999, padding: "7px 13px", fontSize: 12.5, fontWeight: 700, color: "var(--ink2)" },
-  chip: { whiteSpace: "nowrap", padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
+  pill: { border: "1px solid var(--line)", background: "var(--sur)", borderRadius: 999, minHeight: 40, padding: "7px 13px", fontSize: 12.5, fontWeight: 700, color: "var(--ink2)" },
+  chip: { whiteSpace: "nowrap", minHeight: 44, padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
   chipOn: { background: "var(--coral)", color: "var(--coralink)", borderColor: "var(--coral)" },
   seg: { display: "inline-flex", gap: 2, background: "var(--sur2)", borderRadius: 999, padding: 3 },
-  segBtn: { padding: "5px 13px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, color: "var(--ink2)" },
+  segBtn: { minHeight: 36, padding: "5px 13px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, color: "var(--ink2)" },
   segOn: { background: "var(--green)", color: "#fff" },
   tag: { fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999 },
   empty: { color: "var(--ink3)", fontSize: 13, padding: "14px 2px" },
