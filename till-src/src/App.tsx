@@ -40,21 +40,22 @@ const tintFor = (cat: string) => { let h = 0; for (const c of cat || "") h = (h 
    nav). `to` deep-links a module that lives in the back-office cockpit (/back);
    `soon` marks screens still being built (Placeholder). Register/Kitchen/
    Dashboard/Analytics map onto our existing screens. */
+/* Front-of-house tabs only (prototype register spec §2): Register · Floor ·
+   Kitchen · QR Orders · Delivery · Tabs · Day End. Dashboard is kept for a
+   shift-lead's at-a-glance day view. Everything else managerial (Analytics,
+   Outlets, Inventory, Expenses, Staff, Configurations/Setup) lives in the
+   master cockpit at /back — one tap away via the profile menu's Admin panel.
+   Those screen components stay in the codebase (render switch below), just off
+   the cashier's nav. */
 const NAV = [
   { id: "sell", label: "Register", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
   { id: "floor", label: "Floor", icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
   { id: "kitchen", label: "Kitchen", icon: '<path d="M6 3v7a3 3 0 0 0 6 0V3M9 3v18M18 3c-1.5 1-2 3-2 6s.5 4 2 5v7"/>' },
   { id: "qr", label: "QR Orders", icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v7M17 20h4"/>' },
-  { id: "outlets", label: "Outlets", icon: '<path d="M3 21V9l9-6 9 6v12M9 21v-6h6v6"/>' },
   { id: "delivery", label: "Delivery", icon: '<path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>' },
-  { id: "dashboard", label: "Dashboard", icon: '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>' },
-  { id: "analytics", label: "Analytics", icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>' },
-  { id: "inventory", label: "Inventory", to: "/back", icon: '<path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/>' },
-  { id: "expenses", label: "Expenses", to: "/back", icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>' },
   { id: "tabs", label: "Tabs", icon: '<path d="M3 6a2 2 0 0 1 2-2h9l4 4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 12h6M8 16h4"/>' },
   { id: "dayend", label: "Day End", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
-  { id: "staff", label: "Staff", to: "/back", icon: '<circle cx="9" cy="8" r="3"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0-1-5.8M22 21a6 6 0 0 0-6-6"/>' },
-  { id: "setup", label: "Setup", icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 0 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 4.6 13a2 2 0 0 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 11 4a2 2 0 0 1 2 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 19.4 11z"/>' },
+  { id: "dashboard", label: "Dashboard", icon: '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>' },
 ] as { id: string; label: string; icon: string; to?: string; soon?: boolean }[];
 const METHODS = ["Cash", "Card", "BML Gateway", "Transfer", "QR"] as const;
 
