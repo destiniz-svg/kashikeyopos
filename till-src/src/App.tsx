@@ -183,6 +183,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     st.commit([{ kind: "settings", id: cur?.id || "settings", data }]);
   };
   const parked = st.byKind("parked").map((e) => e.data).sort((a, b) => (a.t || 0) - (b.t || 0));
+  const orders = st.byKind("orders").map((e) => e.data);
+  const orderNo = "#" + String(st.byKind("sales").length + parked.length + 1).padStart(4, "0");
 
   const shifts = st.byKind("shifts").map((e) => e.data);
   const openShift = shifts.find((s) => !s.closedAt) || null;
@@ -257,6 +259,21 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     store.commit([{ kind: "parked", id: bill.id, data: bill }]);
     resetBill();
   };
+  /* Send to KOT — fire the current cart to the kitchen as an order ticket and
+     keep it as an open bill (linked by orderId) so the rail can surface its live
+     kitchen status, then clear the register for the next ticket. */
+  const sendKOT = () => {
+    if (!cart.length) return;
+    const oid = uid();
+    const order = {
+      id: oid, no: orderNo, t: Date.now(), createdAt: Date.now(), source: "pos", status: "new",
+      otype, table: table || null, customerName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main",
+      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, emoji: p?.emoji, mods: l.mods || [] }; }),
+    };
+    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main", orderId: oid, no: orderNo };
+    store.commit([{ kind: "orders", id: oid, data: order }, { kind: "parked", id: bill.id, data: bill }]);
+    resetBill();
+  };
   const resume = (bill: any) => {
     /* Normalise lines defensively — a bill parked by an earlier build may lack
        key/mods, which would crash lineUnit / the cart render on resume. */
@@ -269,21 +286,81 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     store.del([{ kind: "parked", id: bill.id }]);
   };
 
+  /* Left rail — the open bills (held + KOT-fired). The card in progress shows
+     first (highlighted); tapping a parked bill resumes it into the register. A
+     linked kitchen order lends its live status (In kitchen / Ready). */
+  const kotStatusOf = (b: any): [string, string] => {
+    if (b.orderId) {
+      const o = orders.find((x) => x.id === b.orderId);
+      const s = (o?.status || "new").toLowerCase();
+      if (s === "ready") return ["Ready", "var(--green)"];
+      if (s === "delivered" || s === "done") return ["Served", "var(--ink3)"];
+      return ["In kitchen", "var(--amber)"];
+    }
+    return ["Open", "var(--ink3)"];
+  };
+  const otypeLabelOf = (t: string) => t === "dinein" ? "Dine-In" : t === "delivery" ? "Delivery" : "Takeaway";
+  const billsRailInner = (
+    <div style={C.railWrap} className="glass">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 14px 8px" }}>
+        <div style={{ fontSize: 13, fontWeight: 800, flex: 1 }}>🧾 Open Bills</div>
+        <span style={{ fontSize: 11, fontWeight: 800, background: "var(--sur2)", color: "var(--ink2)", borderRadius: 999, padding: "2px 9px" }} className="num">{parked.length + (count ? 1 : 0)}</span>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "2px 10px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+        {count > 0 && (
+          <div style={{ ...C.railCard, borderColor: "var(--coral)", background: "var(--coralsoft)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <b style={{ fontSize: 13, flex: 1 }}>{otypeLabelOf(otype)} · <span className="num">{orderNo}</span></b>
+            </div>
+            <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2 }}>{cust?.name || "Walk-in"}{otype === "dinein" && table ? " · T" + table : ""}</div>
+            <div style={{ marginTop: 7 }}><span style={{ ...C.stag, color: "var(--coral)", background: "var(--sur)" }}>● In progress</span></div>
+          </div>
+        )}
+        {parked.slice().reverse().map((b) => {
+          const [label, col] = kotStatusOf(b);
+          const items = (b.lines || []).reduce((a: number, l: any) => a + (l.qty || 0), 0);
+          const mins = Math.max(0, Math.floor((Date.now() - (b.t || Date.now())) / 60000));
+          return (
+            <button key={b.id} onClick={() => resume(b)} style={C.railCard} title="Resume this bill">
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <b style={{ fontSize: 13, flex: 1, textAlign: "start" }}>{otypeLabelOf(b.otype)} · <span className="num">{b.no || ("#" + items)}</span></b>
+                <span onClick={(e) => { e.stopPropagation(); store.del([{ kind: "parked", id: b.id }]); }} style={{ color: "var(--ink3)", fontSize: 13 }}>✕</span>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2, textAlign: "start" }}>{b.custName || "Walk-in"}{b.otype === "dinein" && b.table ? " · T" + b.table : ""}</div>
+              <div style={{ display: "flex", alignItems: "center", marginTop: 7 }}>
+                <span style={{ ...C.stag, color: col, background: "var(--sur2)" }}>● {label}</span>
+                <div style={{ flex: 1 }} />
+                <span className="num" style={{ fontSize: 10.5, color: "var(--ink3)" }}>{mins}m</span>
+              </div>
+            </button>
+          );
+        })}
+        {parked.length === 0 && count === 0 && (
+          <div style={{ color: "var(--ink3)", fontSize: 12, textAlign: "center", padding: "26px 12px" }}>No open bills. Held and kitchen-fired orders show up here.</div>
+        )}
+      </div>
+      <button onClick={resetBill} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)", margin: "0 10px 10px", textAlign: "center" }}>＋ New bill</button>
+    </div>
+  );
+
   const cartInner = (
     <>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "12px 14px 8px" }}>
-                <span style={C.billtab}>#1</span><span style={{ ...C.billtab, ...C.billAdd }}>＋</span>
-                <div style={{ flex: 1 }} /><span style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700 }}>{count} items</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px 10px" }}>
+                <div style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Order <span className="num" style={{ color: "var(--ink3)", fontWeight: 700, marginInlineStart: 2 }}>{orderNo}</span></div>
+                <button onClick={park} disabled={!count} style={{ ...C.pill, cursor: "pointer", opacity: count ? 1 : .5 }} title="Hold this bill">Hold</button>
+                <button onClick={resetBill} style={{ ...C.pill, cursor: "pointer" }} title="Clear the register">Clear</button>
                 {mob && <button onClick={() => setCartOpen(false)} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>}
               </div>
-              <div style={{ display: "flex", gap: 6, padding: "2px 14px 10px" }}>
-                {([["dinein", "🍽️ Dine-in"], ["takeaway", "🥡 Takeaway"], ["delivery", "🛵 Delivery"]] as const).map(([k, l]) => (
-                  <button key={k} onClick={() => pickOtype(k)} style={{ ...C.oseg, ...(otype === k ? C.osegOn : {}) }}>{l}</button>
-                ))}
+              <div style={{ padding: "0 14px 10px" }}>
+                <div style={{ display: "flex", gap: 3, background: "var(--sur2)", borderRadius: 12, padding: 3 }}>
+                  {([["dinein", "Dine-In"], ["takeaway", "Takeaway"], ["delivery", "Delivery"]] as const).map(([k, l]) => (
+                    <button key={k} onClick={() => pickOtype(k)} style={{ flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: "pointer", ...(otype === k ? { background: "var(--sur)", color: "var(--coral)", boxShadow: "0 1px 3px rgba(30,35,45,.12)" } : { color: "var(--ink2)" }) }}>{l}</button>
+                  ))}
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
-                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
-                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 14px 10px" }}>
+                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, display: "flex", alignItems: "center", ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 <span style={{ flex: 1, textAlign: "start", marginInlineStart: 6 }}>{cust ? cust.name : "Add customer"}</span>{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }}>✕</span>}</button>
+                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, display: "flex", alignItems: "center", ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🖥 <span style={{ flex: 1, textAlign: "start", marginInlineStart: 6 }}>{table ? "Table " + table : "Select table"}</span><span style={{ opacity: .6 }}>▾</span></button>}
                 {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, textAlign: "start", lineHeight: 1.25, ...(zone || deliveryNote ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 <b style={{ fontWeight: 700 }}>Delivery details</b><br /><small style={{ opacity: .8 }}>{zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : "zone · address"}</small></button>}
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
@@ -293,7 +370,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                   const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat); const u = lineUnit(l);
                   return (
                     <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
-                      <span style={{ ...C.glyph, width: 34, height: 34, fontSize: 16, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
+                      <span style={{ width: 32, height: 32, borderRadius: 999, background: t[0], color: t[1], display: "grid", placeItems: "center", fontWeight: 800, fontSize: 13, flex: "0 0 32px" }}>{(p.name || "?")[0].toUpperCase()}</span>
                       <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
                       <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
                       <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
@@ -316,9 +393,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <div style={C.trow}><span style={{ whiteSpace: "nowrap" }}>GST {sector === "tourism" ? "TGST 17%" : "GGST 8%"}</span><span className="num">{money(totals.gst)}</span></div>
                 {totals.fee > 0 && <div style={C.trow}><span>Delivery{zone?.name ? " · " + zone.name : ""}</span><span className="num">{money(totals.fee)}</span></div>}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>Total</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Split bill" onClick={() => openShift ? setPay(true) : setShiftModal(true)}>✂️</button><button style={C.act} title="Clear" onClick={resetBill}>🗑️</button>
-                  <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>Charge {money(totals.total)}</button>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button style={{ ...C.kot, opacity: count ? 1 : .5 }} disabled={!count} title="Fire this order to the kitchen" onClick={sendKOT}>Send to KOT</button>
+                  <button style={{ ...C.charge, opacity: count ? 1 : .5, padding: 14 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>Charge</button>
                 </div>
               </div>
     </>
@@ -465,18 +542,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
         </nav>
 
         {nav === "sell" ? (
-          <div style={{ ...C.body, gap: mob ? 0 : 14 }}>
+          <div style={{ ...C.body, gap: mob ? 0 : 12 }}>
+            {!mob && parked.length > 0 && billsRailInner}
             <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 11, paddingBottom: mob && count > 0 ? 66 : 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, overflowX: "auto" }}>
-                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".09em", color: "var(--ink3)", whiteSpace: "nowrap" }}>OPEN BILLS</span>
-                <span style={{ ...C.obill, ...C.obillOn }}>🥡 {otype === "dinein" ? "Dine-in" : otype === "delivery" ? "Delivery" : "Takeaway"} · #{parked.length + 1} <small style={{ color: "var(--coral)", opacity: .8 }}>{cust?.name || "Walk-in"}</small></span>
-                {parked.map((b, i) => (
-                  <button key={b.id} onClick={() => resume(b)} style={C.obill} title="Resume this bill">
-                    ⏸ Held · #{i + 1} <small style={{ color: "var(--ink2)" }}>{(b.lines || []).reduce((a: number, l: any) => a + l.qty, 0)} items</small>
-                  </button>
-                ))}
-                <button onClick={resetBill} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)" }}>＋ New bill</button>
-              </div>
               {!openShift && (
                 <button onClick={() => setShiftModal(true)} style={C.shiftBar}>🕓 No shift open — tap to open one before taking payments</button>
               )}
@@ -497,15 +565,24 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                     const q = qtyOf(p.id); const t = tintFor(p.cat);
                     return (
                       <div key={p.id} onClick={() => tapProduct(p)} style={{ ...C.tile, cursor: "pointer", borderColor: q > 0 ? "var(--coral)" : "var(--line)", animation: `rise .3s ${Math.min(i * 12, 220)}ms both` }}>
-                        {bestIds.has(p.id) && <span style={C.best}>★ Best seller</span>}
-                        <span style={{ ...C.glyph, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
-                        <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 9, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 7 }}>
-                          <span className="num" style={{ fontSize: 13, fontWeight: 800 }}>{(p.price / 100).toFixed(2)}<small style={{ fontSize: 10.5, color: "var(--ink3)", fontWeight: 600, marginLeft: 3 }}>{p.unit || "pcs"}</small></span>
-                          {q > 0 ? (
-                            <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button style={C.stepBtn} onClick={() => dropOne(p.id)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
-                          ) : <button style={C.plus} onClick={(e) => { e.stopPropagation(); tapProduct(p); }}>+</button>}
-                          {hasMods(p) && q === 0 && <span style={{ position: "absolute", top: 8, insetInlineStart: 8, width: 7, height: 7, borderRadius: 99, background: "var(--amber)" }} />}
+                        <div style={{ ...C.plate, background: `radial-gradient(120% 115% at 50% 8%, ${t[0]}, var(--sur2))` }}>
+                          {p.img
+                            ? <img src={p.img} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            : <span style={{ fontSize: 42, lineHeight: 1 }}>{p.emoji || "🍽️"}</span>}
+                          {bestIds.has(p.id) && <span style={C.best}>★ Best</span>}
+                          {hasMods(p) && <span style={{ position: "absolute", bottom: 7, insetInlineStart: 8, fontSize: 9.5, fontWeight: 800, background: "rgba(20,18,15,.55)", color: "#fff", borderRadius: 999, padding: "2px 8px", backdropFilter: "blur(2px)" }}>options</span>}
+                          {q > 0 && <span style={{ position: "absolute", top: 7, insetInlineStart: 8, minWidth: 20, height: 20, borderRadius: 999, background: "var(--coral)", color: "var(--coralink)", fontSize: 11.5, fontWeight: 800, display: "grid", placeItems: "center", padding: "0 6px" }} className="num">{q}</span>}
+                        </div>
+                        <div style={C.tbody}>
+                          <div style={C.tname}>{p.name}</div>
+                          {p.desc && <div style={C.tdesc}>{p.desc}</div>}
+                          <div style={{ flex: 1 }} />
+                          <div style={C.tfoot}>
+                            <span className="num" style={{ fontSize: 14, fontWeight: 800 }}><small style={{ fontSize: 9.5, color: "var(--ink3)", fontWeight: 700, marginInlineEnd: 3 }}>MVR</small>{(p.price / 100).toFixed(2)}</span>
+                            {q > 0
+                              ? <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button style={C.stepBtn} onClick={() => dropOne(p.id)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
+                              : <button style={C.plus} onClick={(e) => { e.stopPropagation(); tapProduct(p); }}>+</button>}
+                          </div>
                         </div>
                       </div>
                     );
@@ -926,10 +1003,19 @@ const C: Record<string, React.CSSProperties> = {
   scan: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 16px", fontWeight: 700, fontSize: 13.5 },
   chip: { whiteSpace: "nowrap", padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
   chipOn: { background: "var(--ink)", color: "var(--bg)", borderColor: "var(--ink)" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 11 },
-  tile: { position: "relative", display: "flex", flexDirection: "column", padding: 13, borderRadius: 16, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "left" },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(158px,1fr))", gap: 12 },
+  tile: { position: "relative", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "left", overflow: "hidden" },
+  plate: { position: "relative", aspectRatio: "16 / 11", display: "grid", placeItems: "center", overflow: "hidden" },
+  tbody: { padding: "10px 12px 12px", display: "flex", flexDirection: "column", flex: 1 },
+  tname: { fontWeight: 700, fontSize: 13.5, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tdesc: { fontSize: 11, color: "var(--ink2)", lineHeight: 1.32, marginTop: 3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 29 },
+  tfoot: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 },
   glyph: { width: 38, height: 38, borderRadius: 11, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 },
-  best: { position: "absolute", top: 8, right: 8, background: "var(--green)", color: "#fff", fontSize: 9.5, fontWeight: 800, padding: "3px 7px", borderRadius: 999 },
+  best: { position: "absolute", top: 7, right: 8, background: "var(--green)", color: "#fff", fontSize: 9.5, fontWeight: 800, padding: "3px 8px", borderRadius: 999, boxShadow: "0 2px 6px rgba(0,0,0,.18)" },
+  railWrap: { width: 224, flex: "0 0 224px", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", overflow: "hidden" },
+  railCard: { display: "block", width: "100%", border: "1.5px solid var(--line)", background: "var(--sur2)", borderRadius: 14, padding: "10px 12px", cursor: "pointer" },
+  stag: { fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 4 },
+  kot: { flex: 1, borderRadius: 13, padding: 14, background: "var(--sur)", border: "1.5px solid var(--line)", color: "var(--ink)", fontWeight: 800, fontSize: 14 },
   stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "2px 4px" },
   stepBtn: { width: 24, height: 24, borderRadius: 99, background: "var(--sur)", fontSize: 15, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
   plus: { width: 26, height: 26, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700 },
