@@ -9,7 +9,7 @@ const crypto = require("crypto");
 const path = require("path");
 const fs = require("fs");
 const { createRemoteJWKSet, jwtVerify } = require("jose");
-const { DEFAULT_MENU, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
+const { DEFAULT_MENU, DEFAULT_MENU_IDS, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
 
 const PORT = process.env.PORT || 4000;
 const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
@@ -577,6 +577,31 @@ async function ensureDefaultMenu(orgId) {
   if (!DEFAULT_MENU.length) return 0;
   const maxRowver = await withOrg(orgId, async (client) => {
     let mx = 0;
+    /* One-time menu replacement (per org): the starter menu was replaced with
+       the Kashikeyo prototype menu (new ids + four categories). Retire any
+       previously-seeded starter products that are NOT in the new set, and force
+       the category tree onto settings — both guarded by a flag so it runs once
+       and never fights an owner's later edits. New products are (re)seeded by
+       the loop below. */
+    const migrated = await client.query(
+      "SELECT 1 FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false AND (data ? 'menuKashikeyoV1')", [orgId]);
+    if (!migrated.rowCount) {
+      const del = await client.query(
+        `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         WHERE org_id=$1 AND kind='products' AND deleted=false AND id <> ALL($2::text[])
+         RETURNING rowver`,
+        [orgId, DEFAULT_MENU_IDS]);
+      for (const row of del.rows) mx = Math.max(mx, Number(row.rowver));
+      const setCats = await client.query(
+        `UPDATE entities
+           SET data = jsonb_set(jsonb_set(data, '{catGroups}', $2::jsonb, true), '{catOrder}', $3::jsonb, true)
+                        || jsonb_build_object('menuKashikeyoV1', true),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+         WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false
+         RETURNING rowver`,
+        [orgId, JSON.stringify(CAT_GROUPS), JSON.stringify(CAT_ORDER)]);
+      for (const row of setCats.rows) mx = Math.max(mx, Number(row.rowver));
+    }
     /* Seed / refresh the starter menu.
        - New item -> inserted in full.
        - Live item an outlet has edited -> only the photo is refreshed, so their
