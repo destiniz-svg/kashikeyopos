@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { store, useStore } from "./store";
-import { elevate, uid } from "./api";
+import { elevate, token, uid } from "./api";
 import { money, money0, startOfDay, dayKey, tintFor } from "./util";
 
 /* Reskinned versions of OUR existing Orders / Dashboard / Reports / Admin
@@ -501,6 +501,126 @@ export function QrOrders() {
             <div style={{ flex: 1, fontSize: 12.5, color: "var(--green)", fontWeight: 600, lineHeight: 1.45 }}>Print one QR per table. Orders are tagged with source and table, and roll into the Z-report automatically.
               {slug && <div style={{ marginTop: 8 }}><button onClick={() => window.open("/?s=" + encodeURIComponent(slug), "_blank")} style={{ ...X.pill, cursor: "pointer", background: "var(--sur)", color: "var(--green)", borderColor: "var(--green)" }}>Open live guest view ↗</button></div>}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Outlets (prototype: multi-outlet consolidated view) ────────────────────
+   Cross-store today totals come from the server (/api/inv/outlets, token-auth),
+   since the till only syncs its own store's entities. */
+export function Outlets() {
+  const [data, setData] = useState<any[] | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    fetch("/api/inv/outlets", { headers: { Authorization: "Bearer " + token() } })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("failed")))
+      .then((j) => setData(j.outlets || [])).catch(() => setErr("Could not load outlets."));
+  }, []);
+  const outlets = data || [];
+  const totalRev = outlets.reduce((a, o) => a + (o.rev || 0), 0);
+  const totalOrders = outlets.reduce((a, o) => a + (o.orders || 0), 0);
+  const maxRev = Math.max(1, ...outlets.map((o) => o.rev || 0));
+  return (
+    <div style={X.scroll}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Multi-outlet</div>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: "var(--ink3)" }}>All locations · today</span>
+      </div>
+      <div style={{ background: "var(--ink)", color: "var(--bg)", borderRadius: 18, padding: "18px 22px", display: "flex", gap: 44, marginBottom: 16, flexWrap: "wrap" }}>
+        <div><div style={{ fontSize: 11.5, opacity: .7, fontWeight: 700 }}>Consolidated · Sales</div><div className="num" style={{ fontSize: 26, fontWeight: 800 }}>{money(totalRev)}</div></div>
+        <div><div style={{ fontSize: 11.5, opacity: .7, fontWeight: 700 }}>Orders</div><div className="num" style={{ fontSize: 26, fontWeight: 800 }}>{totalOrders}</div></div>
+      </div>
+      {data === null && !err ? <div style={X.empty}>Loading outlets…</div> : err ? <div style={X.empty}>{err}</div> : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14 }}>
+          {outlets.map((o) => {
+            const open = o.active !== false; const busy = open && o.staff > 0;
+            const [bg, fg] = busy ? ["var(--ambersoft)", "var(--amber)"] : open ? ["var(--greensoft)", "var(--green)"] : ["var(--sur2)", "var(--ink3)"];
+            return (
+              <div key={o.id} style={{ ...X.card, padding: 16 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 6 }}>
+                  <div style={{ color: "var(--coral)", fontWeight: 800, fontSize: 12, letterSpacing: ".03em", textTransform: "uppercase", flex: 1 }}>Outlet</div>
+                  <span style={{ ...X.tag, background: bg, color: fg }}>{busy ? "Busy" : open ? "Open" : "Closed"}</span>
+                </div>
+                <div style={{ fontWeight: 800, fontSize: 15 }}>{o.name}</div>
+                <div style={{ fontSize: 12, color: "var(--ink3)", marginBottom: 12 }}>{o.staff ? o.staff + " on shift" : "No open shift"}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}><span style={{ fontSize: 12, color: "var(--ink2)" }}>Sales</span><span className="num" style={{ fontWeight: 800, fontSize: 14 }}>{money(o.rev || 0)}</span></div>
+                <div style={{ height: 6, borderRadius: 99, background: "var(--sur2)", margin: "8px 0", overflow: "hidden" }}><div style={{ width: Math.round((o.rev || 0) / maxRev * 100) + "%", height: "100%", background: "var(--coral)" }} /></div>
+                <div style={{ fontSize: 12, color: "var(--ink3)" }} className="num">{o.orders || 0} Orders</div>
+              </div>
+            );
+          })}
+          {outlets.length === 0 && <div style={X.empty}>No outlets yet — add them in the back office.</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Setup (prototype: onboarding checklist + store details) ─────────────────── */
+export function Setup() {
+  const st = useStore();
+  const cur = st.byKind("settings")[0] as any;
+  const settings = cur?.data || {};
+  const nProducts = st.byKind("products").length;
+  const nSales = st.byKind("sales").length;
+  const [name, setName] = useState(settings.storeName || "");
+  const [tin, setTin] = useState(settings.tin || "");
+  const [printer, setPrinter] = useState(() => { try { return localStorage.getItem("kashikeyo-printer") === "1"; } catch { return false; } });
+  const [saved, setSaved] = useState(false);
+  const save = () => {
+    store.commit([{ kind: "settings", id: cur?.id || "settings", data: { ...(cur?.data || {}), storeName: name.trim() || settings.storeName, tin: tin.trim() } }]);
+    setSaved(true); setTimeout(() => setSaved(false), 1800);
+  };
+  const togglePrinter = () => { const v = !printer; setPrinter(v); try { localStorage.setItem("kashikeyo-printer", v ? "1" : "0"); } catch { } };
+  const steps: [string, boolean, null | (() => void), string][] = [
+    ["Create your account", true, null, ""],
+    ["Sample menu loaded — try a sale", nProducts > 0, null, ""],
+    ["GST & TIN configured", !!(settings.gstBp && (tin || settings.tin)), null, ""],
+    ["Pair receipt printer", printer, togglePrinter, printer ? "Paired ✓" : "Pair now →"],
+    ["Ring up your first live sale", nSales > 0, null, ""],
+  ];
+  const done = steps.filter((s) => s[1]).length;
+  const pct = done / steps.length;
+  const R = 26, C = 2 * Math.PI * R;
+  return (
+    <div style={X.scroll}>
+      <button onClick={() => (window.location.href = "/back")} style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "start", background: "var(--coralsoft)", border: "1px solid color-mix(in srgb,var(--coral) 30%,transparent)", borderRadius: 16, padding: "14px 16px", marginBottom: 16, cursor: "pointer" }}>
+        <span style={{ width: 40, height: 40, borderRadius: 12, background: "var(--coral)", color: "var(--coralink)", display: "grid", placeItems: "center", fontSize: 19 }}>✦</span>
+        <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 14.5, color: "var(--ink)" }}>Import menu with AI</div><div style={{ fontSize: 12.5, color: "var(--ink2)" }}>Snap your printed menu — items and prices added in seconds</div></div>
+        <span style={{ color: "var(--coral)", fontWeight: 800, fontSize: 13 }}>Try it →</span>
+      </button>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14, alignItems: "start" }}>
+        <div style={{ ...X.card, padding: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+            <svg width={64} height={64} viewBox="0 0 64 64">
+              <circle cx="32" cy="32" r={R} fill="none" stroke="var(--sur2)" strokeWidth="7" />
+              <circle cx="32" cy="32" r={R} fill="none" stroke="var(--green)" strokeWidth="7" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct)} transform="rotate(-90 32 32)" />
+              <text x="32" y="37" textAnchor="middle" fontSize="15" fontWeight="800" fill="var(--ink)" className="num">{done}/{steps.length}</text>
+            </svg>
+            <div><div style={{ fontWeight: 800, fontSize: 16 }}>Getting started</div><div style={{ fontSize: 12.5, color: "var(--ink3)" }}>{done === steps.length ? "All set — you're live." : "A few steps to go."}</div></div>
+          </div>
+          {steps.map(([label, ok, action, cta], i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", borderRadius: 12, background: "var(--sur2)", marginBottom: 8 }}>
+              <span style={{ width: 22, height: 22, borderRadius: 99, background: ok ? "var(--green)" : "transparent", border: ok ? "none" : "2px solid var(--ink3)", color: "#fff", display: "grid", placeItems: "center", fontSize: 12, fontWeight: 800, flex: "0 0 22px" }}>{ok ? "✓" : ""}</span>
+              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: ok ? "var(--ink3)" : "var(--ink)", textDecoration: ok ? "line-through" : "none" }}>{label}</span>
+              {!ok && action && <button onClick={action} style={{ color: "var(--coral)", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{cta}</button>}
+            </div>
+          ))}
+        </div>
+        <div style={{ ...X.card, padding: 18 }}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 12 }}>Store details</div>
+          <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink3)" }}>STORE NAME</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} style={{ ...X.input, width: "100%", marginTop: 5 }} />
+          <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink3)", display: "block", marginTop: 12 }}>TIN (MIRA)</label>
+          <input value={tin} onChange={(e) => setTin(e.target.value)} placeholder="1080527GST001" style={{ ...X.input, width: "100%", marginTop: 5 }} />
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button onClick={() => (window.location.href = "/back")} style={{ ...X.pill, cursor: "pointer" }}>More settings →</button>
+            <div style={{ flex: 1 }} />
+            <button onClick={save} style={{ borderRadius: 12, padding: "11px 20px", background: "var(--coral)", color: "var(--coralink)", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>{saved ? "Saved ✓" : "Save"}</button>
           </div>
         </div>
       </div>
