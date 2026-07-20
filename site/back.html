@@ -340,22 +340,135 @@
     .btnrow { gap: 8px; }
     .tabs button { padding: 8px 13px; }
   }
+
+  /* ── Admin cockpit shell (spec §1–2) ─────────────────────────────────── */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar {
+    width: 234px; flex: 0 0 234px; background: var(--panel); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow: hidden; z-index: 40;
+  }
+  .side-brand { display: flex; align-items: center; gap: 9px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .side-brand .k { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--primary), var(--pill)); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .side-brand .nm { font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
+  .side-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-left: auto; box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+  .side-nav { flex: 1; overflow-y: auto; padding: 10px 10px 16px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px; border-radius: 10px; font-size: 13.5px; font-weight: 600; color: var(--sub); background: none; cursor: pointer; text-align: left; }
+  .nav-item:hover { background: var(--btn); }
+  .nav-item.on { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
+  .nav-item .ic { width: 18px; text-align: center; font-size: 14px; }
+  .nav-item .cr { margin-left: auto; font-size: 10px; opacity: .6; transition: transform .18s; }
+  .nav-item .cr.open { transform: rotate(90deg); }
+  .nav-sub { overflow: hidden; }
+  .nav-sub button { display: block; width: 100%; text-align: left; padding: 7px 11px 7px 39px; border-radius: 9px; font-size: 12.8px; font-weight: 600; color: var(--faint); background: none; cursor: pointer; }
+  .nav-sub button:hover { background: var(--btn); color: var(--text); }
+  .nav-sub button.on { color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, transparent); }
+  .side-foot { border-top: 1px solid var(--border); padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .side-foot .who { display: flex; align-items: center; gap: 9px; font-size: 12px; color: var(--sub); }
+  .side-foot .av { width: 28px; height: 28px; border-radius: 50%; background: var(--pill); color: var(--on-pill); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .chead { position: sticky; top: 0; z-index: 20; background: var(--header); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); padding: 14px 26px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .chead .htitle h1 { font-size: 20px; margin: 0; font-weight: 800; letter-spacing: -.01em; }
+  .chead .htitle p { margin: 2px 0 0; font-size: 12.5px; color: var(--sub); }
+  .chead .hright { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ok); background: var(--ok-bg); padding: 5px 11px; border-radius: 999px; }
+  .live-pill .pd { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: pulse 1.6s infinite; }
+  .outlet-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--sub); background: var(--btn); padding: 6px 12px; border-radius: 999px; }
+  .ranges { display: flex; gap: 4px; background: var(--btn); padding: 3px; border-radius: 999px; }
+  .ranges button { padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--sub); background: none; }
+  .ranges button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .ranges button.on.year { background: var(--pill); color: var(--on-pill); }
+  .hamb { display: none; background: var(--btn); border-radius: 9px; width: 38px; height: 38px; font-size: 17px; }
+  .scrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 39; }
+
+  /* ── Dashboard (spec §3.1) ───────────────────────────────────────────── */
+  .dash { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+  .dash .full { grid-column: 1 / -1; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 18px; }
+  .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: center; }
+  .hero .lab { font-size: 12px; color: var(--sub); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .hero .big { font-size: 38px; font-weight: 800; letter-spacing: -.02em; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .hero .delta { font-size: 12.5px; font-weight: 700; }
+  .up { color: var(--ok); } .down { color: var(--warn); }
+  .hero .subs { display: flex; gap: 22px; margin-top: 14px; }
+  .hero .subs .k { font-size: 11px; color: var(--sub); text-transform: uppercase; letter-spacing: .04em; }
+  .hero .subs .v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .k { font-size: 11px; color: var(--sub); text-transform: uppercase; letter-spacing: .04em; }
+  .stat .v { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .feed { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
+  .feed .r { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .feed .r:last-child { border-bottom: none; }
+  .chan-chip { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--panel2); color: var(--sub); }
+  .peakbars { display: flex; align-items: flex-end; gap: 3px; height: 66px; }
+  .peakbars i { flex: 1; background: var(--primary); border-radius: 3px 3px 0 0; min-height: 2px; opacity: .35; }
+  .seg { display: inline-flex; gap: 3px; background: var(--btn); padding: 3px; border-radius: 999px; margin-bottom: 12px; }
+  .seg button { padding: 6px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 600; color: var(--sub); background: none; }
+  .seg button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  .catbar { display: grid; grid-template-columns: 120px 1fr auto; gap: 10px; align-items: center; padding: 7px 0; font-size: 13px; }
+  .catbar .track { height: 8px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+  .catbar .fill { height: 100%; background: var(--primary); border-radius: 999px; }
+  .needs .r { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .needs .r:last-child { border-bottom: none; }
+  .needs .r .cta { margin-left: auto; }
+  .pc-bars { display: flex; flex-direction: column; gap: 9px; margin-top: 8px; }
+  .pc-bars .row .lab { display: flex; justify-content: space-between; font-size: 12px; color: var(--sub); margin-bottom: 3px; }
+  .pc-bars .track { height: 8px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
+  .muted { color: var(--sub); }
+  .count-up { font-variant-numeric: tabular-nums; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes drawln { to { stroke-dashoffset: 0; } }
+  .drawpath { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: drawln 1s ease forwards; }
+
+  /* Tablet / mobile: sidebar → slide-in drawer (spec §2) */
+  @media (max-width: 1023px) {
+    .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); transition: transform .28s ease; box-shadow: 0 0 40px rgba(0,0,0,.2); }
+    .shell.navopen .sidebar { transform: translateX(0); }
+    .shell.navopen .scrim { display: block; }
+    .hamb { display: flex; align-items: center; justify-content: center; }
+    .dash { grid-template-columns: 1fr; }
+    .hero { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .chead { padding: 12px 16px; }
+    main { padding: 16px 14px 80px; }
+    .hero .big { font-size: 30px; }
+    .stat2 { grid-template-columns: 1fr; }
+    .ranges { overflow-x: auto; }
+  }
 </style>
 </head>
 <body>
 
 <a href="#main" class="skip">Skip to content</a>
 
-<header>
-  <div class="bar">
-    <div class="logo"><img class="logo-img" src="/logo-mark.png" alt="KashikeyoPOS" /><div class="logo-text">Back office</div></div>
-    <div style="display:flex;align-items:center;gap:14px"><div class="theme-ctl" id="themeCtl"></div><a class="till-link" href="/app">🧾 Open the till</a><button class="ghost" id="signOut" title="Sign out" style="padding:8px 12px;border-radius:999px">Sign out</button></div>
+<div class="shell" id="shell">
+  <div class="scrim" id="scrim"></div>
+  <aside class="sidebar" id="sidebar">
+    <div class="side-brand"><span class="k">K</span><span class="nm">Kashikeyo</span><span class="dot" title="Cloud connected" aria-label="Cloud connected"></span></div>
+    <nav class="side-nav" id="nav" aria-label="Admin sections"></nav>
+    <div class="side-foot">
+      <div class="who"><span class="av" id="admAvatar">A</span><span><b id="admName">Master Admin</b><br><span style="font-size:11px">v2.0.0</span></span></div>
+      <a class="till-link" href="/app" style="justify-content:center">🧾 Open register app</a>
+      <button class="ghost" id="signOut" title="Sign out">Sign out</button>
+    </div>
+  </aside>
+  <div class="content">
+    <div class="chead">
+      <button class="hamb" id="hamb" aria-label="Open menu">☰</button>
+      <div class="htitle" id="htitle"><h1>Loading…</h1><p></p></div>
+      <div class="hright" id="hright">
+        <span class="outlet-pill" id="outletPill">🏬 Kashikeyo · Malé</span>
+        <div class="ranges" id="ranges" role="group" aria-label="Time range"></div>
+        <div class="theme-ctl" id="themeCtl"></div>
+      </div>
+    </div>
+    <div id="alerts" role="region" aria-label="Stock &amp; review alerts" aria-live="polite"></div>
+    <main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
   </div>
-  <nav class="tabs" id="tabs" aria-label="Back office sections"></nav>
-</header>
-
-<div id="alerts" role="region" aria-label="Stock &amp; review alerts" aria-live="polite"></div>
-<main id="main" tabindex="-1"><div class="empty">Loading…</div></main>
+</div>
 <div id="modalHost"></div>
 <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -365,7 +478,8 @@
 
   /* ── state + helpers ─────────────────────────────────────────────── */
   var S = {
-    tab: "overview", currency: "MVR",
+    tab: "dash", currency: "MVR",
+    range: "today", navOpen: false, navExp: {}, summary: null, sumLoading: false, dashTab: 0,
     ingredients: [], products: [], suppliers: [], audits: [],
     // recipes tab
     prodFilter: "", selProduct: null, recipe: null,
@@ -418,7 +532,45 @@
     });
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
-  var TABS = [["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"]];
+  /* Cockpit nav (spec §1). Leaf modules carry a view id in `v`; parents carry
+     `kids` [viewId,label]. Existing inventory/procurement/compliance screens are
+     folded under the new IA so nothing regresses; modules still being built
+     (Phase 2+) render a placeholder. */
+  var NAV = [
+    { id: "dash", label: "Dashboard", ic: "📊", v: "dash" },
+    { id: "sales", label: "Sales", ic: "🧾", kids: [["sales", "Register"], ["sales_qr", "QR Orders"], ["sales_del", "Delivery"]] },
+    { id: "outlets", label: "Outlets", ic: "🏬", v: "outlets" },
+    { id: "kitchen", label: "Kitchen Display", ic: "🍳", v: "kitchen" },
+    { id: "inventory", label: "Inventory", ic: "📦", kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["audit", "Stock Check"]] },
+    { id: "proc", label: "Procurement", ic: "🚚", kids: [["deliveries", "Deliveries & bills"], ["suppliers", "Suppliers"]] },
+    { id: "recv", label: "Receivables", ic: "💳", v: "recv" },
+    { id: "reports", label: "Reports", ic: "📈", kids: [["review", "Review flags"], ["assistant", "Assistant"]] },
+    { id: "staff", label: "Staff & Roles", ic: "👥", v: "staff" },
+    { id: "config", label: "Configurations", ic: "⚙️", v: "config" },
+    { id: "sysadmin", label: "System Admin", ic: "🛠️", v: "sysadmin" },
+  ];
+  /* view id → [title, subtitle] for the content header (spec §3 table). */
+  var TITLES = {
+    dash: [null, null], // greeting built live
+    sales: ["Sales", "Every order across register, QR & delivery."],
+    sales_qr: ["Sales", "Every order across register, QR & delivery."],
+    sales_del: ["Sales", "Every order across register, QR & delivery."],
+    outlets: ["Outlets", "Live performance across your locations."],
+    kitchen: ["Kitchen Display", "Open tickets by station."],
+    recv: ["Receivables", "Open customer tabs & aging."],
+    staff: ["Staff & Roles", "Team, shifts & permissions."],
+    config: ["Configurations", "Outlet, tax, receipt & payments."],
+    sysadmin: ["System Admin", "Users, audit log & integrations."],
+  };
+  var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
+  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1 };
+  /* views not yet built → tasteful placeholder + which phase ships them */
+  var SOON = { sales: 2, sales_qr: 2, sales_del: 2, outlets: 6, kitchen: 6, recv: 4, staff: 6, config: 5, sysadmin: 7 };
+  /* which nav module a view id belongs to (for active-highlight + range chips) */
+  var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
+    sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", audit: "inventory",
+    deliveries: "proc", suppliers: "proc", review: "reports", assistant: "reports" };
+  var TABS = [];   // legacy — retained so any stray reference stays defined
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
@@ -581,41 +733,207 @@
     el("alerts").innerHTML = h;
   }
 
-  /* ── tabs ────────────────────────────────────────────────────────── */
-  function renderTabs() {
+  /* ── cockpit nav + header (spec §1) ──────────────────────────────────── */
+  function navOpenState(n, activeMod) { return (n.id in S.navExp) ? S.navExp[n.id] : activeMod; }
+  function renderNav() {
     var flagN = S.flags ? (S.flags.sales.length + S.flags.credit.length) : 0;
-    el("tabs").innerHTML = TABS.map(function (t) {
-      var label = esc(t[1]);
-      if (t[0] === "review" && flagN) label += ' <span class="tab-count">' + flagN + "</span>";
-      var cur = S.tab === t[0] ? ' aria-current="page"' : "";
-      var al = (t[0] === "review" && flagN) ? ' aria-label="Review, ' + flagN + ' flagged"' : "";
-      return '<button data-t="' + t[0] + '"' + cur + al + ' class="' + (S.tab === t[0] ? "on" : "") + '">' + label + "</button>";
+    var mod = VIEW_MOD[S.tab] || S.tab;
+    el("nav").innerHTML = NAV.map(function (n) {
+      var activeMod = mod === n.id;
+      if (n.kids) {
+        var open = navOpenState(n, activeMod);
+        var sub = open ? '<div class="nav-sub">' + n.kids.map(function (k) {
+          var badge = (k[0] === "review" && flagN) ? ' <span class="tab-count">' + flagN + "</span>" : "";
+          return '<button data-v="' + k[0] + '" class="' + (S.tab === k[0] ? "on" : "") + '">' + esc(k[1]) + badge + "</button>";
+        }).join("") + "</div>" : "";
+        return '<button class="nav-item ' + (activeMod ? "on" : "") + '" data-mod="' + n.id + '" aria-expanded="' + open + '"><span class="ic">' + n.ic + "</span>" + esc(n.label) + '<span class="cr ' + (open ? "open" : "") + '">▶</span></button>' + sub;
+      }
+      return '<button class="nav-item ' + (activeMod ? "on" : "") + '" data-v="' + n.v + '"' + (activeMod ? ' aria-current="page"' : "") + '><span class="ic">' + n.ic + "</span>" + esc(n.label) + "</button>";
     }).join("");
-    el("tabs").querySelectorAll("button").forEach(function (b) {
-      b.onclick = function () { S.tab = b.dataset.t; render(); };
+    el("nav").querySelectorAll("[data-v]").forEach(function (b) { b.onclick = function () { go(b.dataset.v); }; });
+    el("nav").querySelectorAll("[data-mod]").forEach(function (b) {
+      b.onclick = function () {
+        var n = NAV.filter(function (x) { return x.id === b.dataset.mod; })[0];
+        var activeMod = (VIEW_MOD[S.tab] === n.id);
+        var open = navOpenState(n, activeMod);
+        if (open && activeMod) { S.navExp[n.id] = false; renderNav(); }        // collapse, stay put
+        else { S.navExp[n.id] = true; go(n.kids[0][0]); }                       // open + jump to first sub
+      };
     });
+  }
+  function renderHeader() {
+    var v = S.tab, t;
+    if (v === "dash") {
+      var h = new Date().getHours(), g = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+      var sub = S.summary ? (fmtMoney(S.summary.rev) + " " + S.summary.word + " · " + S.summary.d[0] + " vs previous " + S.summary.word.replace(/^this /, "")) : "Your business at a glance.";
+      t = [g + ", Admin", sub];
+    } else t = TITLES[v] || TAB_HELP[v] || [v, ""];
+    el("htitle").innerHTML = "<h1>" + esc(t[0]) + "</h1><p>" + esc(t[1] || "") + "</p>";
+    renderRanges();
+  }
+  function renderRanges() {
+    var mod = VIEW_MOD[S.tab] || S.tab, host = el("ranges");
+    if (!RANGE_ON[mod]) { host.style.display = "none"; host.innerHTML = ""; return; }
+    host.style.display = "";
+    host.innerHTML = RANGE_LIST.map(function (r) {
+      return '<button data-r="' + r[0] + '" class="' + (S.range === r[0] ? "on" : "") + (r[0] === "year" ? " year" : "") + '">' + r[1] + "</button>";
+    }).join("");
+    host.querySelectorAll("button").forEach(function (b) {
+      b.onclick = function () { S.range = b.dataset.r; renderRanges(); if (VIEW_MOD[S.tab] === "dash") loadSummary(); };
+    });
+  }
+  function fmtMoney(laari, whole) {
+    var n = Number(laari || 0) / 100;
+    return S.currency + " " + n.toLocaleString("en-US", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
   }
 
   function render() {
-    renderTabs();
-    if (S.tab === "overview") renderOverview();
-    else if (S.tab === "review") renderReview();
-    else if (S.tab === "assistant") renderAssistant();
-    else if (S.tab === "recipes") renderRecipes();
-    else if (S.tab === "audit") renderAudit();
-    else if (S.tab === "deliveries") renderDeliveries();
-    else if (S.tab === "ingredients") renderIngredients();
-    else if (S.tab === "suppliers") renderSuppliers();
-    /* Prepend the guided intro to whatever the tab rendered (overview builds
-       its own, so skip it there). */
-    if (TAB_HELP[S.tab] && S.tab !== "overview") {
-      var lead = document.createElement("div");
-      lead.className = "lead";
-      lead.innerHTML = '<h1>' + esc(TAB_HELP[S.tab][0]) + '</h1><p>' + esc(TAB_HELP[S.tab][1]) + '</p>';
-      var m = el("main"); m.insertBefore(lead, m.firstChild);
-    }
+    renderNav(); renderHeader();
+    var v = S.tab;
+    if (v === "dash") renderDashboard();
+    else if (v === "overview") renderOverview();
+    else if (v === "review") renderReview();
+    else if (v === "assistant") renderAssistant();
+    else if (v === "recipes") renderRecipes();
+    else if (v === "audit") renderAudit();
+    else if (v === "deliveries") renderDeliveries();
+    else if (v === "ingredients") renderIngredients();
+    else if (v === "suppliers") renderSuppliers();
+    else renderPlaceholder(v);
   }
-  function go(tab) { S.tab = tab; render(); window.scrollTo(0, 0); }
+  function go(tab) { S.tab = tab; S.navOpen = false; syncShell(); render(); window.scrollTo(0, 0); if (tab === "dash") loadSummary(); }
+  function syncShell() { el("shell").classList.toggle("navopen", S.navOpen); }
+
+  function renderPlaceholder(v) {
+    var mod = VIEW_MOD[v] || v, ph = SOON[v] || SOON[mod] || "";
+    var nav = NAV.filter(function (n) { return n.id === mod; })[0];
+    var title = (TITLES[v] && TITLES[v][0]) || (nav && nav.label) || v;
+    el("main").innerHTML = '<div class="card" style="text-align:center;padding:52px 24px">'
+      + '<div style="font-size:34px">🚧</div>'
+      + '<h3 style="margin:12px 0 4px">' + esc(title) + " is coming next</h3>"
+      + '<p class="muted" style="max-width:440px;margin:0 auto">Part of the cockpit build'
+      + (ph ? (" — scheduled for <b>Phase " + ph + "</b>") : "")
+      + ". The shell, navigation and Dashboard are live now; the remaining modules fill in from here.</p></div>";
+  }
+
+  /* ── Dashboard (spec §3.1) ────────────────────────────────────────────── */
+  function loadSummary() {
+    S.sumLoading = true; if (S.tab === "dash") renderDashboard();
+    api("/summary?range=" + encodeURIComponent(S.range)).then(function (j) {
+      S.summary = j; S.sumLoading = false;
+      if (S.tab === "dash") { renderHeader(); renderDashboard(); }
+    }).catch(function () { S.sumLoading = false; if (S.tab === "dash") renderDashboard(); });
+  }
+  /* SVG line/area path across vals in a w×h box (spec §4 path()/spk()). */
+  function chartPath(vals, w, h, mode) {
+    vals = (vals && vals.length) ? vals : [0];
+    var max = Math.max.apply(null, vals.concat([1])), n = vals.length, pad = 5;
+    function X(i) { return n <= 1 ? w / 2 : (i / (n - 1)) * w; }
+    function Yc(v) { return h - pad - (v / max) * (h - pad * 2); }
+    var d = "";
+    for (var i = 0; i < n; i++) d += (i ? " L" : "M") + X(i).toFixed(1) + " " + Yc(vals[i]).toFixed(1);
+    if (mode === "area") d += " L" + w + " " + h + " L0 " + h + " Z";
+    return d;
+  }
+  function svgChart(vals, w, h, cls) {
+    return '<svg viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none" style="width:100%;height:100%;display:block" aria-hidden="true">'
+      + '<path d="' + chartPath(vals, w, h, "area") + '" fill="color-mix(in srgb, var(--primary) 14%, transparent)" stroke="none"></path>'
+      + '<path d="' + chartPath(vals, w, h, "line") + '" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" class="' + (cls || "") + '"></path></svg>';
+  }
+  function countUp(node, to) {
+    var start = 0, t0 = performance.now(), dur = 700;
+    function step(now) {
+      var p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3), v = start + (to - start) * e;
+      node.textContent = fmtMoney(v);
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  function renderDashboard() {
+    var m = el("main");
+    if (!S.summary) { m.innerHTML = '<div class="empty">' + (S.sumLoading ? "Crunching the numbers…" : "No sales data yet.") + "</div>"; return; }
+    var s = S.summary;
+    var dcls = function (str) { return /−|^-/.test(str) ? "down" : "up"; };
+    // low-stock / flag signals for Needs Attention
+    var lowStock = (S.ingredients || []).filter(function (i) { return i.min_stock && Number(i.current_stock) < Number(i.min_stock); }).slice(0, 4);
+    var flagN = S.flags ? (S.flags.sales.length + S.flags.credit.length) : 0;
+    var needs = [];
+    lowStock.forEach(function (i) { needs.push(["📦", esc(i.name) + " is low (" + qty3(i.current_stock) + " " + esc(i.base_unit) + ")", "ingredients", "Restock"]); });
+    if (flagN) needs.push(["⚠️", flagN + " sale" + (flagN > 1 ? "s" : "") + " need review", "review", "Review"]);
+    if (!needs.length) needs.push(["✅", "Nothing needs attention right now.", null, ""]);
+
+    var peakMax = Math.max.apply(null, s.peak.concat([1]));
+    var payTotal = (s.pay.cash + s.pay.card + s.pay.transfer + s.pay.tab) || 1;
+    var payRow = function (k, v) { return '<div class="catbar"><span>' + k + '</span><span class="track"><span class="fill" style="width:' + Math.round(v / payTotal * 100) + '%"></span></span><span class="mono">' + fmtMoney(v) + "</span></div>"; };
+    var chanTot = (s.chan.reg + s.chan.qr + s.chan.delivery) || 1;
+    var goalPct = Math.min(100, Math.round(s.rev / ((s.prevRev || s.rev || 1) * 1.1) * 100)); // goal = +10% on previous
+    var ringC = 2 * Math.PI * 34, ringOff = ringC * (1 - goalPct / 100);
+
+    m.innerHTML =
+      '<div class="dash">'
+      // hero
+      + '<div class="card hero">'
+        + '<div><div class="lab">Net revenue · ' + esc(s.word) + '</div>'
+          + '<div class="big count-up" id="heroRev">' + fmtMoney(s.rev) + "</div>"
+          + '<div class="delta ' + dcls(s.d[0]) + '">' + esc(s.d[0]) + " vs previous</div>"
+          + '<div class="subs"><div><div class="k">Gross profit</div><div class="v">' + fmtMoney(s.gpVal) + ' <span class="muted" style="font-size:12px">' + s.gpPct + "%</span></div></div>"
+          + '<div><div class="k">Items sold</div><div class="v">' + s.items.toLocaleString("en-US") + "</div></div></div></div>"
+        + '<div class="ring-wrap"><svg width="92" height="92" viewBox="0 0 92 92"><circle cx="46" cy="46" r="34" fill="none" stroke="var(--panel2)" stroke-width="9"></circle>'
+          + '<circle cx="46" cy="46" r="34" fill="none" stroke="var(--primary)" stroke-width="9" stroke-linecap="round" stroke-dasharray="' + ringC.toFixed(1) + '" stroke-dashoffset="' + ringOff.toFixed(1) + '" transform="rotate(-90 46 46)"></circle>'
+          + '<text x="46" y="50" text-anchor="middle" font-size="18" font-weight="800" fill="var(--text)">' + goalPct + "%</text></svg>"
+          + '<div class="muted" style="font-size:11px">of goal</div>'
+          + '<div style="width:100%;height:44px">' + svgChart(s.rc, 600, 60, "drawpath") + "</div></div>"
+      + "</div>"
+      // right column
+      + '<div style="display:flex;flex-direction:column;gap:14px">'
+        + '<div class="stat2"><div class="card stat"><div class="k">Orders</div><div class="v">' + s.orders + '</div><div class="delta ' + dcls(s.d[1]) + '" style="font-size:11px">' + esc(s.d[1]) + "</div></div>"
+        + '<div class="card stat"><div class="k">Avg order</div><div class="v">' + fmtMoney(s.aov) + '</div><div class="delta ' + dcls(s.d[3]) + '" style="font-size:11px">' + esc(s.d[3]) + "</div></div></div>"
+        + '<div class="card"><h2>Payments</h2>' + payRow("Cash", s.pay.cash) + payRow("Card · BML", s.pay.card) + payRow("Transfer", s.pay.transfer) + payRow("On tab", s.pay.tab) + "</div>"
+      + "</div>"
+      // peak hours
+      + '<div class="card full"><h2>Peak hours · ' + esc(s.word) + '</h2><div class="peakbars">'
+        + s.peak.map(function (v, h) { return '<i title="' + ((h % 12) || 12) + (h < 12 ? "am" : "pm") + ': ' + fmtMoney(v) + '" style="height:' + Math.max(4, Math.round(v / peakMax * 100)) + "%;opacity:" + (0.35 + 0.65 * (v / peakMax)).toFixed(2) + '"></i>'; }).join("")
+        + '</div><div class="muted" style="font-size:11.5px;margin-top:6px">' + (s.hasSales ? ("Busiest " + esc(s.peakLabel) + " · " + fmtMoney(s.peakAmt)) : "No sales in this range yet") + "</div></div>"
+      // trend panel
+      + '<div class="card full"><div class="seg" id="dashSeg">'
+        + ["Trend", "By Category", "By Channel"].map(function (l, i) { return '<button data-i="' + i + '" class="' + (S.dashTab === i ? "on" : "") + '">' + l + "</button>"; }).join("")
+        + '</div><div id="dashPanel"></div></div>'
+      // needs attention + prime cost
+      + '<div class="card"><h2>Needs attention</h2><div class="needs">'
+        + needs.map(function (r) { return '<div class="r"><span>' + r[0] + "</span><span>" + r[1] + "</span>" + (r[2] ? '<button class="ghost tiny cta" data-go="' + r[2] + '">' + r[3] + "</button>" : "") + "</div>"; }).join("")
+        + "</div></div>"
+      + '<div class="card"><h2>Prime cost health</h2>'
+        + '<div class="big" style="font-size:26px">' + (100 - s.gpPct).toFixed(0) + '%<span class="muted" style="font-size:13px;font-weight:600"> food cost</span></div>'
+        + '<div class="pc-bars"><div class="row"><div class="lab"><span>Food cost</span><span>' + (100 - s.gpPct).toFixed(0) + '%</span></div><div class="track"><span class="fill" style="display:block;height:100%;background:var(--primary);width:' + Math.min(100, 100 - s.gpPct) + '%"></span></div></div>'
+        + '<div class="row"><div class="lab"><span>Gross margin</span><span>' + s.gpPct + '%</span></div><div class="track"><span class="fill" style="display:block;height:100%;background:var(--ok);width:' + Math.min(100, s.gpPct) + '%"></span></div></div></div>'
+        + '<p class="muted" style="font-size:11.5px;margin:10px 0 0">Labour & other opex land here once payroll and expenses feed in (Phase 4–5).</p></div>'
+      + "</div>";
+
+    // count-up animation on the hero number
+    var hero = el("heroRev"); if (hero) countUp(hero, s.rev);
+    // trend panel sub-tabs
+    function drawPanel() {
+      var p = el("dashPanel"), tab = S.dashTab;
+      if (tab === 0) {
+        p.innerHTML = '<div style="height:180px">' + svgChart(s.rc, 1000, 290, "drawpath") + "</div>"
+          + '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--sub);margin-top:6px">' + (s.xl || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + "</div>";
+      } else if (tab === 1) {
+        p.innerHTML = s.cat.length ? s.cat.map(function (c) {
+          return '<div class="catbar"><span>' + esc(c.cat) + '</span><span class="track"><span class="fill" style="width:' + c.pct + '%"></span></span><span class="mono">' + fmtMoney(c.amt) + " · " + c.pct + "%</span></div>";
+        }).join("") : '<div class="empty">No category sales in this range.</div>';
+      } else {
+        var chans = [["Register", s.chan.reg], ["QR Orders", s.chan.qr], ["Delivery", s.chan.delivery]];
+        p.innerHTML = chans.map(function (c) {
+          return '<div class="catbar"><span>' + c[0] + '</span><span class="track"><span class="fill" style="width:' + Math.round(c[1] / chanTot * 100) + '%"></span></span><span class="mono">' + fmtMoney(c[1]) + " · " + Math.round(c[1] / chanTot * 100) + "%</span></div>";
+        }).join("");
+      }
+    }
+    drawPanel();
+    el("dashSeg").querySelectorAll("button").forEach(function (b) {
+      b.onclick = function () { S.dashTab = +b.dataset.i; el("dashSeg").querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); }); drawPanel(); };
+    });
+    m.querySelectorAll("[data-go]").forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
+  }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────
      Two lists a manager checks after service: sales the sync endpoint couldn't
@@ -1752,7 +2070,7 @@
           S.recipe.lines = r.lines; S.recipe.cost = r.cost;
           var p2 = S.products.find(function (x) { return x.id === S.selProduct; });
           if (p2) p2.recipeLines = r.lines.length;
-          toast("Recipe saved — margin " + t.pct + "%"); drawRecipeEditor(); renderTabs();
+          toast("Recipe saved — margin " + t.pct + "%"); drawRecipeEditor(); renderNav();
         }).catch(function (e) { toast(e.message); });
     };
     el("rStock").onclick = function () { promoteModal(p); };
@@ -2175,9 +2493,13 @@
     location.href = "/login";
   });
 
+  /* ── shell interactions (mobile drawer) ──────────────────────────── */
+  el("hamb").addEventListener("click", function () { S.navOpen = !S.navOpen; syncShell(); });
+  el("scrim").addEventListener("click", function () { S.navOpen = false; syncShell(); });
+
   /* ── boot + background refresh ───────────────────────────────────── */
   applyTheme();
-  loadAll().then(render).catch(function (e) {
+  loadAll().then(function () { render(); if (S.tab === "dash") loadSummary(); }).catch(function (e) {
     el("main").innerHTML = '<div class="empty">Couldn’t load the back office: ' + esc(e.message) + "</div>";
   });
 

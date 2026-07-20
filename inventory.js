@@ -1524,6 +1524,106 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     }) });
   }));
 
+  /* ── Admin cockpit: sales summary (spec §3.1 / §4) ───────────────────────
+     Server-authoritative aggregation over kind='sales' entities for the admin
+     Dashboard/Reports. The client only displays these figures — money and GST
+     are computed here. Ranges are calendar windows in Maldives local time
+     (UTC+5) so "today"/"this month" line up with the shop's day. Returns the
+     selected range plus its immediately-preceding equal window for deltas. */
+  router.get("/summary", authAny, wrap(async (req, res) => {
+    const RANGES = { today: "today", yest: "yesterday", week: "this week", month: "this month", quarter: "this quarter", year: "this year" };
+    const range = RANGES[req.query.range] ? String(req.query.range) : "today";
+    const MVT = 5 * 3600 * 1000;                 // Maldives is UTC+5, no DST
+    const now = Date.now();
+    const localMidnight = (ms) => { const d = new Date(ms + MVT); d.setUTCHours(0, 0, 0, 0); return d.getTime() - MVT; };
+    const addDays = (ms, n) => ms + n * 86400000;
+    const t0 = localMidnight(now);
+    // window [from,to) for the selected range + bucketing plan for the chart
+    let from, to = now, buckets, labelOf, granularity;
+    if (range === "today") { from = t0; buckets = 24; granularity = "hour"; }
+    else if (range === "yest") { from = addDays(t0, -1); to = t0; buckets = 24; granularity = "hour"; }
+    else if (range === "week") { from = addDays(t0, -6); buckets = 7; granularity = "day"; }
+    else if (range === "month") { const d = new Date(t0 + MVT); const s = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - MVT; from = s; buckets = Math.max(1, Math.round((to - from) / 86400000) + 1); granularity = "day"; }
+    else if (range === "quarter") { const d = new Date(t0 + MVT); const qs = Math.floor(d.getUTCMonth() / 3) * 3; const s = Date.UTC(d.getUTCFullYear(), qs, 1) - MVT; from = s; buckets = 13; granularity = "week"; }
+    else { const d = new Date(t0 + MVT); const s = Date.UTC(d.getUTCFullYear(), 0, 1) - MVT; from = s; buckets = 12; granularity = "month"; }
+    const span = to - from;
+    const prevFrom = from - span, prevTo = from;
+
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    // map a timestamp to a bucket index within [from,to); -1 if outside
+    function bucketOf(ms) {
+      if (ms < from || ms >= to) return -1;
+      if (granularity === "hour") return new Date(ms + MVT).getUTCHours();
+      if (granularity === "day") return Math.floor((ms - from) / 86400000);
+      if (granularity === "week") return Math.min(buckets - 1, Math.floor((ms - from) / (7 * 86400000)));
+      return new Date(ms + MVT).getUTCMonth() - new Date(from + MVT).getUTCMonth();
+    }
+    function labels() {
+      if (granularity === "hour") return ["12a", "6a", "12p", "6p", "11p"];
+      if (granularity === "day") {
+        const out = []; const step = Math.max(1, Math.ceil(buckets / 6));
+        if (buckets <= 7) { for (let i = 0; i < buckets; i++) out.push(DOW[new Date(from + i * 86400000 + MVT).getUTCDay()]); return out; }
+        for (let i = 0; i < buckets; i += step) out.push(String(new Date(from + i * 86400000 + MVT).getUTCDate())); return out;
+      }
+      if (granularity === "week") { const out = []; for (let i = 0; i < buckets; i += 4) out.push(MONTHS[new Date(from + i * 7 * 86400000 + MVT).getUTCMonth()]); return out; }
+      if (granularity === "month") return MONTHS.slice(new Date(from + MVT).getUTCMonth());
+      return [];
+    }
+
+    const rows = await withOrg(req.orgId, async (client) => {
+      const sales = await client.query(
+        `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+           AND COALESCE((data->>'t')::numeric, 0) >= $2`, [req.orgId, prevFrom]);
+      const prods = await client.query(
+        `SELECT id, data->>'cat' AS cat, data->>'name' AS name FROM entities
+          WHERE org_id=$1 AND kind='products' AND deleted=false`, [req.orgId]);
+      return { sales: sales.rows.map((r) => r.data || {}), prods: prods.rows };
+    });
+    const catOf = {}; rows.prods.forEach((p) => { catOf[p.id] = p.cat || "Other"; });
+    const normT = (d) => { let t = num(d.t); if (t > 0 && t < 1e12) t *= 1000; return t; };
+    const payClass = (m) => { m = String(m || "").toLowerCase(); if (/cash/.test(m)) return "cash"; if (/card|bml|visa|master/.test(m)) return "card"; if (/transf|bank/.test(m)) return "transfer"; if (/tab|credit|account/.test(m)) return "tab"; return "card"; };
+    const chanOf = (d) => { if (d.channel === "qr" || d.qr || d.via === "guest") return "qr"; if (d.otype === "delivery") return "delivery"; return "reg"; };
+
+    function agg(lo, hi) {
+      const A = { rev: 0, gross: 0, orders: 0, items: 0, gp: 0, disc: 0, gst: 0, refunds: 0, svc: 0,
+        pay: { cash: 0, card: 0, transfer: 0, tab: 0 }, chan: { reg: 0, qr: 0, delivery: 0 }, cat: {}, rc: new Array(buckets).fill(0), peak: new Array(24).fill(0) };
+      for (const d of rows.sales) {
+        const t = normT(d); if (t < lo || t >= hi) continue;
+        const total = num(d.total);
+        if (d.refunded) { A.refunds += total; continue; }
+        A.gross += total; A.rev += total; A.orders += 1; A.disc += num(d.billDisc); A.gst += num(d.gst); A.svc += num(d.svcCharge);
+        (d.lines || []).forEach((l) => { const q = num(l.qty, 1); A.items += q; A.gp += (num(l.price) - num(l.cost)) * q; const c = catOf[l.pid] || "Other"; A.cat[c] = (A.cat[c] || 0) + num(l.price) * q; });
+        (d.payments || []).forEach((p) => { A.pay[payClass(p.method)] += num(p.amount); });
+        A.chan[chanOf(d)] += total;
+        if (lo === from) { const b = bucketOf(t); if (b >= 0 && b < buckets) A.rc[b] += total; A.peak[new Date(t + MVT).getUTCHours()] += total; }
+      }
+      return A;
+    }
+    const cur = agg(from, to), prev = agg(prevFrom, prevTo);
+    const pct = (a, b) => { if (!b) return a ? 100 : 0; return ((a - b) / b) * 100; };
+    const sign = (v) => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "%";
+    const aov = cur.orders ? cur.rev / cur.orders : 0, paov = prev.orders ? prev.rev / prev.orders : 0;
+    const peakHour = cur.peak.indexOf(Math.max.apply(null, cur.peak));
+    const hourLabel = (h) => (h % 12 || 12) + (h < 12 ? "am" : "pm");
+    const cats = Object.keys(cur.cat).map((c) => ({ cat: c, amt: cur.cat[c] })).sort((a, b) => b.amt - a.amt).slice(0, 6);
+    const catTotal = cats.reduce((a, c) => a + c.amt, 0) || 1;
+
+    res.json({
+      range, word: RANGES[range],
+      rev: cur.rev, gross: cur.gross, orders: cur.orders, items: cur.items,
+      gpVal: cur.gp, gpPct: cur.rev ? +(cur.gp / cur.rev * 100).toFixed(1) : 0,
+      aov, basket: cur.orders ? cur.items / cur.orders : 0,
+      disc: cur.disc, gst: cur.gst, svc: cur.svc, refunds: cur.refunds, net: cur.gross - cur.disc - cur.refunds,
+      d: [sign(pct(cur.rev, prev.rev)), sign(pct(cur.orders, prev.orders)), sign(pct(cur.gp, prev.gp)), sign(pct(aov, paov))],
+      prevRev: prev.rev,
+      rc: cur.rc, xl: labels(), peak: cur.peak,
+      peakHour, peakLabel: hourLabel(peakHour), peakAmt: cur.peak[peakHour] || 0, hasSales: cur.peak.some((x) => x),
+      pay: cur.pay, chan: cur.chan,
+      cat: cats.map((c) => ({ cat: c.cat, amt: c.amt, pct: Math.round(c.amt / catTotal * 100) })),
+    });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and
