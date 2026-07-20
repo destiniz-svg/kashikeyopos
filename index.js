@@ -630,6 +630,8 @@ async function ensureDefaultMenu(orgId) {
               OR (entities.data->>'tag') IS DISTINCT FROM (EXCLUDED.data->>'tag')
               OR (entities.data->>'rating') IS DISTINCT FROM (EXCLUDED.data->>'rating')
               OR (entities.data->>'desc') IS DISTINCT FROM (EXCLUDED.data->>'desc')
+              OR (entities.data->>'dv') IS DISTINCT FROM (EXCLUDED.data->>'dv')
+              OR (entities.data->>'rn') IS DISTINCT FROM (EXCLUDED.data->>'rn')
          RETURNING rowver`,
         [orgId, item.id, JSON.stringify(item)]);
       if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
