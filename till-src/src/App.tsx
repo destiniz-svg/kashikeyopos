@@ -55,7 +55,7 @@ const NAV = [
   { id: "staff", label: "Staff", to: "/back", icon: '<circle cx="9" cy="8" r="3"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0-1-5.8M22 21a6 6 0 0 0-6-6"/>' },
   { id: "setup", label: "Setup", icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 0 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 4.6 13a2 2 0 0 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 11 4a2 2 0 0 1 2 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 19.4 11z"/>' },
 ] as { id: string; label: string; icon: string; to?: string; soon?: boolean }[];
-const METHODS = ["Cash", "Card", "Transfer", "QR"] as const;
+const METHODS = ["Cash", "Card", "BML Gateway", "Transfer", "QR"] as const;
 
 export function App() {
   const guest = useMemo(guestParams, []);
@@ -397,6 +397,35 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     </div>
   );
 
+  /* ── Day End (prototype §Day End) ─────────────────────────────────────── */
+  const deScope = (() => {
+    const all = st.byKind("sales").map((e: any) => e.data);
+    const s = openShift ? all.filter((x: any) => x.shiftId === openShift.id && !x.refunded) : all.filter((x: any) => new Date(x.t).toDateString() === new Date().toDateString() && !x.refunded);
+    const byMethod: Record<string, number> = {};
+    s.forEach((x: any) => (x.payments || []).forEach((p: any) => { byMethod[p.method] = (byMethod[p.method] || 0) + (p.amount || 0); }));
+    return { list: s, byMethod, gross: s.reduce((a: number, x: any) => a + (x.total || 0), 0), gst: s.reduce((a: number, x: any) => a + (x.gst || 0), 0), svc: s.reduce((a: number, x: any) => a + (x.svcCharge || 0), 0), orders: s.length };
+  })();
+  const deCard = { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow)" };
+  const dayEndInner = (
+    <div style={{ flex: 1, overflowY: "auto", padding: mob ? "14px 12px" : "18px 22px" }}>
+      <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Day End</div>
+      <div style={{ color: "var(--ink2)", fontSize: 12.5, margin: "2px 0 16px" }}>{openShift ? "Current shift · opened " + new Date(openShift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "No open shift — showing today’s sales"}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 12, marginBottom: 14 }}>
+        {([["Gross sales", money(deScope.gross)], ["Orders", String(deScope.orders)], ["GST collected", money(deScope.gst)], ["Service charge", money(deScope.svc)]] as [string, string][]).map(([k, v]) => (
+          <div key={k} style={deCard}><div style={{ fontSize: 11, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</div><div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>{v}</div></div>
+        ))}
+      </div>
+      <div style={{ ...deCard, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Payment breakdown</div>
+        {[...METHODS, "Credit"].map((m) => (deScope.byMethod[m] ? (
+          <div key={m} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid var(--line)", fontSize: 13.5 }}><span>{m === "Credit" ? "On tab" : m}</span><span className="num" style={{ fontWeight: 700 }}>{money(deScope.byMethod[m])}</span></div>
+        ) : null))}
+        {!Object.keys(deScope.byMethod).length && <div style={{ color: "var(--ink3)", fontSize: 13, padding: "6px 0" }}>No sales yet.</div>}
+      </div>
+      <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.charge, width: mob ? "100%" : "auto", padding: "12px 22px" }}>{openShift ? "Count drawer & close day →" : "Open a shift to start the day"}</button>
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
         <header style={{ ...C.header, padding: mob ? "0 10px" : "0 16px" }}>
@@ -499,7 +528,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             )}
           </div>
-        ) : nav === "floor" ? floorInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : <Placeholder nav={nav} />}
+        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : <Placeholder nav={nav} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
@@ -554,6 +583,9 @@ const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
 function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: () => void }) {
   const { sale, change, settings } = data;
   const method = (sale.payments || [])[0]?.method || "—";
+  const docNo = "MLE-R1-" + new Date(sale.t).toISOString().slice(0, 10).replace(/-/g, "") + "-" + String(sale.no || "").replace(/\D/g, "").padStart(4, "0");
+  const otypeLabel = sale.otype === "dinein" ? ("Dine-in" + (sale.table ? " · Table " + sale.table : "")) : sale.otype === "delivery" ? "Delivery" : "Takeaway";
+  const excl = Math.max(0, (sale.subtotal || 0) - (sale.billDisc || 0));
   return (
     <div style={C.overlay} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(360px,94vw)", display: "flex", flexDirection: "column", gap: 10 }}>
@@ -564,7 +596,8 @@ function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: 
             {settings.tin && <div style={{ fontSize: 11, color: "#555" }}>TIN {settings.tin}</div>}
             <div style={{ display: "inline-block", marginTop: 6, fontSize: 10, fontWeight: 800, letterSpacing: ".1em", border: "1px solid #999", borderRadius: 4, padding: "2px 8px" }}>RECEIPT</div>
           </div>
-          <div style={{ fontSize: 11, color: "#555", display: "flex", justifyContent: "space-between" }}><span>{sale.no}</span><span>{new Date(sale.t).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
+          <div style={{ fontSize: 10.5, color: "#555", display: "flex", justifyContent: "space-between", marginBottom: 2 }}><span>{docNo}</span><span>{new Date(sale.t).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></div>
+          <div style={{ fontSize: 11, color: "#333", fontWeight: 700, textAlign: "center", marginBottom: 4 }}>{otypeLabel}</div>
           <div style={{ borderTop: "1px dashed #bbb", borderBottom: "1px dashed #bbb", margin: "8px 0", padding: "8px 0" }}>
             {(sale.lines || []).map((l: any, i: number) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "2px 0" }}><span>{l.qty}× {l.name}</span><span className="num">{money((l.price || 0) * l.qty)}</span></div>
@@ -572,11 +605,13 @@ function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: 
           </div>
           <RRow k="Subtotal" v={money(sale.subtotal)} />
           {sale.billDisc > 0 && <RRow k="Discount" v={"−" + money(sale.billDisc)} />}
+          <RRow k="Value excl. GST" v={money(excl)} />
+          {sale.svcCharge > 0 && <RRow k="Service charge" v={money(sale.svcCharge)} />}
           <RRow k={`GST ${gstBp / 100}%`} v={money(sale.gst)} />
           <RRow k="Total" v={money(sale.total)} bold />
           <RRow k={method} v={money(sale.total)} />
           {change > 0 && <RRow k="Change" v={money(change)} />}
-          <div style={{ textAlign: "center", fontSize: 11, color: "#555", marginTop: 10 }}>Prices include GST · Thank you<br />ޝުކުރިއްޔާ</div>
+          <div style={{ textAlign: "center", fontSize: 11, color: "#555", marginTop: 10 }}>Prices are GST-inclusive · Thank you<br />ޝުކުރިއްޔާ</div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => window.print()} style={{ ...C.charge, flex: 1 }}>🖨 Print</button>
@@ -617,8 +652,8 @@ function PaySheet({ total, currency, hasCustomer, custName, onClose, onDone }: {
           {[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setGuests(n)} style={{ ...C.chip, padding: "6px 13px", ...(guests === n ? C.chipOn : {}) }}>{n}</button>)}
           {guests > 1 && <span className="num" style={{ marginInlineStart: "auto", color: "var(--coral)", fontWeight: 800, fontSize: 13 }}>{money(perGuest)}/guest</span>}
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 8 }}>
-          {METHODS.map((m) => <button key={m} onClick={() => setMethod(m)} style={{ ...C.method, ...(method === m ? C.methodOn : {}) }}>{m}</button>)}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+          {METHODS.map((m) => <button key={m} onClick={() => { setMethod(m); if (m !== "Cash") setTender(total); }} style={{ ...C.method, ...(method === m ? C.methodOn : {}) }}>{m}</button>)}
           <button onClick={() => hasCustomer && setMethod("Credit")} disabled={!hasCustomer} title={hasCustomer ? "Charge to customer tab" : "Attach a customer first"} style={{ ...C.method, ...(isTab ? C.methodOn : {}), opacity: hasCustomer ? 1 : .45 }}>On tab</button>
         </div>
         {isTab && <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink2)" }}>Charged to <b style={{ color: "var(--ink)" }}>{custName}</b>’s tab — posts to receivables.</div>}
