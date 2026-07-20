@@ -167,6 +167,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [tablePick, setTablePick] = useState(false);
   const [zone, setZone] = useState<any>(null);
   const [zonePick, setZonePick] = useState(false);
+  const [deliveryNote, setDeliveryNote] = useState("");
   /* Order-type drives which fields show: Dine-In → customer + table;
      Takeaway → customer only; Delivery → customer + delivery location. */
   const pickOtype = (k: "dinein" | "takeaway" | "delivery") => { setOtype(k); if (k !== "dinein") setTable(""); if (k !== "delivery") setZone(null); };
@@ -238,7 +239,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const sale = {
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
       userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype, table: table || null,
-      zone: otype === "delivery" && zone ? zone.name : null, fee: totals.fee,
+      zone: otype === "delivery" && zone ? zone.name : null, fee: totals.fee, deliveryNote: otype === "delivery" ? deliveryNote.trim() : "",
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods || [], discPct: 0, taxable: p?.taxable !== false }; }),
       subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, billDiscPct: discPct, svcCharge: totals.svc,
       payments, change, refunded: false,
@@ -248,7 +249,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     resetBill(); setPay(false);
   };
 
-  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); };
+  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); setDeliveryNote(""); };
 
   const park = () => {
     if (!cart.length) return;
@@ -283,7 +284,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
                 <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
                 {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>}
-                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, ...(zone ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 {zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : "Delivery location"}{zone && <span onClick={(e) => { e.stopPropagation(); setZone(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>}
+                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, textAlign: "start", lineHeight: 1.25, ...(zone || deliveryNote ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 <b style={{ fontWeight: 700 }}>Delivery details</b><br /><small style={{ opacity: .8 }}>{zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : "zone · address"}</small></button>}
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
                 {cart.length === 0 ? (
@@ -535,7 +536,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
       {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} current={table} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClear={() => { setTable(""); setOtype("takeaway"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
-      {zonePick && <ZonePicker zones={st.byKind("zones").map((e) => e.data)} current={zone} onPick={(z) => { setZone(z); setZonePick(false); }} onClear={() => { setZone(null); setZonePick(false); }} onClose={() => setZonePick(false)} />}
+      {zonePick && <DeliveryDetails zones={st.byKind("zones").map((e) => e.data)} current={zone} note={deliveryNote} setNote={setDeliveryNote} custName={cust?.name} onPick={(z) => setZone(z)} onClear={() => setZone(null)} onAttachCustomer={() => { setZonePick(false); setCustPick(true); }} onClose={() => setZonePick(false)} />}
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
@@ -745,34 +746,36 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
   );
 }
 
-/* Delivery-location picker — islands/zones with fee + ETA, carried over from
-   our previous build (zones live in the back office). Shown only for Delivery. */
-function ZonePicker({ zones, current, onPick, onClear, onClose }: { zones: any[]; current?: any; onPick: (z: any) => void; onClear: () => void; onClose: () => void }) {
+/* Delivery details — the delivery-only step: attach a customer, pick the
+   island/zone (fee + ETA added automatically) and jot a delivery note. No
+   order-type row here — that lives on the cart, so this stays focused. */
+function DeliveryDetails({ zones, current, note, setNote, custName, onPick, onClear, onAttachCustomer, onClose }: { zones: any[]; current?: any; note: string; setNote: (v: string) => void; custName?: string; onPick: (z: any) => void; onClear: () => void; onAttachCustomer: () => void; onClose: () => void }) {
   return (
     <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 18 }}>Delivery location</div>
-            <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>Island / zone · fee &amp; ETA</div>
-          </div>
+      <div style={{ ...C.sheet, width: "min(470px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{ fontWeight: 800, fontSize: 18, flex: 1 }}>Delivery details</div>
           <button onClick={onClose} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>
         </div>
+        {!custName
+          ? <button onClick={onAttachCustomer} style={{ display: "block", width: "100%", textAlign: "start", background: "var(--coralsoft)", color: "var(--coral)", fontWeight: 700, fontSize: 13.5, borderRadius: 13, padding: "13px 15px", cursor: "pointer", marginBottom: 14 }}>Attach a customer for this delivery →</button>
+          : <div style={{ fontSize: 13, color: "var(--ink2)", marginBottom: 14 }}>Delivering to <b style={{ color: "var(--ink)" }}>{custName}</b></div>}
+        <div style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700, marginBottom: 8 }}>Delivery zone — fee &amp; ETA added automatically</div>
         {zones.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
             {zones.map((z) => {
               const on = current && current.name === z.name;
               return (
-                <button key={z.id || z.name} onClick={() => onPick(z)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", borderRadius: 13, border: "1.5px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur)", textAlign: "start", cursor: "pointer" }}>
-                  <span style={{ fontSize: 18 }}>🛵</span>
-                  <span style={{ flex: 1 }}><b style={{ display: "block", fontSize: 14, color: on ? "var(--coral)" : "var(--ink)" }}>{z.name}</b>{z.eta && <small style={{ color: "var(--ink3)" }}>{z.eta}</small>}</span>
-                  <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{Number(z.fee) ? money(z.fee) : "Free"}</span>
+                <button key={z.id || z.name} onClick={() => on ? onClear() : onPick(z)} style={{ textAlign: "start", padding: "11px 13px", borderRadius: 13, border: "1.5px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur2)", cursor: "pointer" }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: on ? "var(--coral)" : "var(--ink)" }}>{z.name}{Number(z.fee) ? <span className="num"> · {money(z.fee)}</span> : <span style={{ color: "var(--green)" }}> · Free</span>}</div>
+                  {z.eta && <div style={{ fontSize: 11, color: "var(--ink3)", marginTop: 2 }}>{z.eta}</div>}
                 </button>
               );
             })}
           </div>
-        ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16 }}>No delivery zones yet — add them in the back office.</div>}
-        {current && <button onClick={onClear} style={{ ...C.custBtn, width: "100%", marginTop: 14, justifyContent: "center", color: "var(--ink2)" }}>Clear location</button>}
+        ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16, background: "var(--sur2)", borderRadius: 13 }}>No delivery zones yet — add them in the back office.</div>}
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Delivery note — address, landmark, rider…" style={{ ...C.input, width: "100%", marginTop: 14 }} />
+        <button onClick={onClose} style={{ ...C.charge, width: "100%", marginTop: 14, padding: 14 }}>Done</button>
       </div>
     </div>
   );
