@@ -41,7 +41,9 @@
   h1, h2, h3, .bigstat .n { font-family: 'Bricolage Grotesque', 'Instrument Sans', sans-serif; }
   /* Keyboard a11y: visible ring on every focusable; mouse/touch stays clean. */
   :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
-  a { color: var(--primary); text-decoration: none; }
+  /* Links use the darker primary step — the base primary is a fill color and
+     sits just under 4.5:1 as small text on the sand canvas. */
+  a { color: var(--primary-hov); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
   header { position: sticky; top: 0; z-index: 5; background: var(--header); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
@@ -114,6 +116,9 @@
   th, td { text-align: left; padding: 9px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
   th { color: var(--sub); font-weight: 600; background: var(--panel2); white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
+  /* Scannability: whisper zebra + row hover (data-dense but breathable). */
+  tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--panel2) 45%, transparent); }
+  tbody tr:hover td { background: color-mix(in srgb, var(--primary) 6%, transparent); }
   td.mono, th.mono { font-family: 'Bricolage Grotesque', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
   .tbl-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); -webkit-overflow-scrolling: touch; }
   /* Keep a readable min-width so columns never crush on phones — the wrap
@@ -381,7 +386,8 @@
   .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px; border-radius: 10px; font-size: 13.5px; font-weight: 600; color: var(--sub); background: none; cursor: pointer; text-align: left; }
   .nav-item:hover { background: var(--btn); }
   .nav-item.on { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
-  .nav-item .ic { width: 18px; text-align: center; font-size: 14px; }
+  .nav-item .ic { width: 18px; display: inline-flex; align-items: center; justify-content: center; }
+  .nav-item .ic svg { display: block; }
   .nav-item .cr { margin-left: auto; font-size: 10px; opacity: .6; transition: transform .18s; }
   .nav-item .cr.open { transform: rotate(90deg); }
   .nav-sub { overflow: hidden; }
@@ -541,7 +547,7 @@
     <nav class="side-nav" id="nav" aria-label="Admin sections"></nav>
     <div class="side-foot">
       <div class="who"><span class="av" id="admAvatar">A</span><span><b id="admName">Master Admin</b><br><span style="font-size:11px">v2.0.0</span></span></div>
-      <a class="till-link" href="/app" style="justify-content:center">🧾 Open register app</a>
+      <a class="till-link" href="/app" style="justify-content:center"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/></svg> Open register app</a>
       <button class="ghost" id="signOut" title="Sign out">Sign out</button>
     </div>
   </aside>
@@ -551,7 +557,7 @@
       <div class="htitle" id="htitle"><h1>Loading…</h1><p></p></div>
       <div class="hright" id="hright">
         <span class="live-pill" id="livePill" style="display:none"><span class="pd"></span>Live · register</span>
-        <span class="outlet-pill" id="outletPill">🏬 Kashikeyo · Malé</span>
+        <span class="outlet-pill" id="outletPill"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none"><path d="M3 21V9l9-6 9 6v12M9 21v-6h6v6"/></svg> <span id="outletPillTxt">Kashikeyo · Malé</span></span>
         <div class="ranges" id="ranges" role="group" aria-label="Time range"></div>
         <div class="theme-ctl" id="themeCtl"></div>
         <div class="profile" id="profile">
@@ -641,18 +647,21 @@
      `kids` [viewId,label]. Existing inventory/procurement/compliance screens are
      folded under the new IA so nothing regresses; modules still being built
      (Phase 2+) render a placeholder. */
+  /* DS 1.0: sidebar icons use the till's stroke-icon language (24-grid,
+     1.9px stroke, currentColor) instead of emoji, so both apps read as one. */
+  function nicon(paths) { return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + paths + "</svg>"; }
   var NAV = [
-    { id: "dash", label: "Dashboard", ic: "📊", v: "dash" },
-    { id: "sales", label: "Sales", ic: "🧾", kids: [["sales", "Register"], ["sales_qr", "QR Orders"], ["sales_del", "Delivery"]] },
-    { id: "outlets", label: "Outlets", ic: "🏬", v: "outlets" },
-    { id: "kitchen", label: "Kitchen Display", ic: "🍳", v: "kitchen" },
-    { id: "inventory", label: "Inventory", ic: "📦", kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["wastage", "Wastage"], ["audit", "Stock Check"]] },
-    { id: "proc", label: "Procurement", ic: "🚚", kids: [["proc_exp", "Expenses"], ["proc_bills", "Vendor bills"], ["proc_po", "Purchase orders"], ["deliveries", "Record delivery"], ["suppliers", "Suppliers"]] },
-    { id: "recv", label: "Receivables", ic: "💳", v: "recv" },
-    { id: "reports", label: "Reports", ic: "📈", kids: [["reports_an", "Analytics"], ["reports_z", "Z-Report"], ["reports_gst", "GST return"], ["review", "Review flags"], ["assistant", "Assistant"]] },
-    { id: "staff", label: "Staff & Roles", ic: "👥", v: "staff" },
-    { id: "config", label: "Configurations", ic: "⚙️", v: "config" },
-    { id: "sysadmin", label: "System Admin", ic: "🛠️", v: "sysadmin" },
+    { id: "dash", label: "Dashboard", ic: nicon('<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>'), v: "dash" },
+    { id: "sales", label: "Sales", ic: nicon('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>'), kids: [["sales", "Register"], ["sales_qr", "QR Orders"], ["sales_del", "Delivery"]] },
+    { id: "outlets", label: "Outlets", ic: nicon('<path d="M3 21V9l9-6 9 6v12M9 21v-6h6v6"/>'), v: "outlets" },
+    { id: "kitchen", label: "Kitchen Display", ic: nicon('<path d="M6 3v7a3 3 0 0 0 6 0V3M9 3v18M18 3c-1.5 1-2 3-2 6s.5 4 2 5v7"/>'), v: "kitchen" },
+    { id: "inventory", label: "Inventory", ic: nicon('<path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/>'), kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["wastage", "Wastage"], ["audit", "Stock Check"]] },
+    { id: "proc", label: "Procurement", ic: nicon('<path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>'), kids: [["proc_exp", "Expenses"], ["proc_bills", "Vendor bills"], ["proc_po", "Purchase orders"], ["deliveries", "Record delivery"], ["suppliers", "Suppliers"]] },
+    { id: "recv", label: "Receivables", ic: nicon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>'), v: "recv" },
+    { id: "reports", label: "Reports", ic: nicon('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'), kids: [["reports_an", "Analytics"], ["reports_z", "Z-Report"], ["reports_gst", "GST return"], ["review", "Review flags"], ["assistant", "Assistant"]] },
+    { id: "staff", label: "Staff & Roles", ic: nicon('<circle cx="9" cy="8" r="3"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0-1-5.8M22 21a6 6 0 0 0-6-6"/>'), v: "staff" },
+    { id: "config", label: "Configurations", ic: nicon('<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'), v: "config" },
+    { id: "sysadmin", label: "System Admin", ic: nicon('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'), v: "sysadmin" },
   ];
   /* view id → [title, subtitle] for the content header (spec §3 table). */
   var TITLES = {
@@ -831,6 +840,8 @@
       S.flags = { sales: (r[7] && r[7].sales) || [], credit: (r[7] && r[7].credit) || [] };
       if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "orange"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
+      /* header outlet pill shows the real store, not the prototype's demo name */
+      if (r[1].storeName && el("outletPillTxt")) el("outletPillTxt").textContent = r[1].storeName;
       renderAlerts(r[4]);
     });
   }
