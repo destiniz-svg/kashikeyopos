@@ -127,6 +127,25 @@ const DV: Record<string, string> = {
   "Creamy coconut rice pudding — a Maldivian classic.": "ކާށިކިރާއި ބަތުން ތައްޔާރުކުރި ދިވެހި ބޮނޑިބަތް.",
   "Sweet baked coconut cake.": "ފޮނި ފިހުނު ކާށި ބޯކިބާ.",
   "Sago pearls in sweet coconut milk.": "ފޮނި ކާށިކިރުގައި ސާގު ބޮނޑިބަތް.",
+  // menu item taglines (tag)
+  "Poppable & moreish": "އަނގަޔަށް ފަސޭހަ",
+  "Crispy tea-time favourite": "ސައި ގަޑިއަށް އެންމެ ހިޔާރު",
+  "Crunchy bites": "މުރަނަ ބައިޓް",
+  "Spicy fish cake": "ހަވާދުލީ މަސް ބޯކިބާ",
+  "Stuffed & warm": "އެތެރެ ފުރި ހޫނުކޮށް",
+  "Golden & crisp": "ރަން އަދި މުރަނަ",
+  "Island classic · freshly shredded": "ރަށު ސަގާފީ · ތާޒާ",
+  "Comfort in a bowl": "އަރާމު ތަށްޓެއް",
+  "Slow-cooked · deeply spiced": "މަޑުމަޑުން ކެއްކި · ހަވާދު ގަދަ",
+  "Wok-tossed & smoky": "ދުމުގެ ރަހަ ހުރި",
+  "Strong & sweet": "ގަދަ އަދި ފޮނި",
+  "Warm & milky": "ހޫނު އަދި ކިރު",
+  "Freshly brewed": "ތާޒާކޮށް ތައްޔާރުކުރި",
+  "Cool & tangy": "ފިނި އަދި ހުތް",
+  "Straight from the island": "ސީދާ ރަށުން",
+  "Sweet island finish": "ފޮނި ރަށުގެ ނިމުން",
+  "Sweet & dense": "ފޮނި އަދި ބޯ",
+  "Silky pudding": "އޮމާން ޕުޑިން",
 };
 
 export function t(en: string, lang: Lang): string {

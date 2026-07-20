@@ -136,7 +136,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
             <div style={{ fontWeight: 800, fontSize: 19, flex: 1 }}>{nm(dm)}</div>
             <span style={{ color: "var(--green)", fontSize: 17 }}>✓</span>
           </div>
-          {dm.tag && <div style={{ color: "var(--ink3)", fontSize: 12.5, marginTop: 2 }}>{dm.tag}</div>}
+          {dm.tag && <div style={{ color: "var(--ink3)", fontSize: 12.5, marginTop: 2 }}>{T(dm.tag)}</div>}
           <div style={{ display: "flex", alignItems: "center", marginTop: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 800 }}><span style={{ color: "#F6B01E" }}>★</span> <span className="num">{dm.rating || "4.7"}</span> <span style={{ color: "var(--ink3)", fontWeight: 600 }} className="num">({dm.rn || "120"})</span></span>
             <div style={{ flex: 1 }} />

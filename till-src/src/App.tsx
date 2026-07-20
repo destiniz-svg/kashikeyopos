@@ -596,7 +596,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                           {q > 0 && <span style={{ position: "absolute", top: 7, insetInlineStart: 8, minWidth: 20, height: 20, borderRadius: 999, background: "var(--coral)", color: "var(--coralink)", fontSize: 11.5, fontWeight: 800, display: "grid", placeItems: "center", padding: "0 6px" }} className="num">{q}</span>}
                         </div>
                         <div style={C.tbody}>
-                          {p.tag && <div style={C.ttag}>{p.tag}</div>}
+                          {p.tag && <div style={C.ttag}>{T(p.tag)}</div>}
                           <div style={C.tname}>{nm(p)}</div>
                           {p.desc && <div style={C.tdesc}>{T(p.desc)}</div>}
                           <div style={{ flex: 1 }} />
