@@ -1304,8 +1304,16 @@
       return "<div class='card'><div style='display:flex;align-items:center;gap:8px'><b style='font-size:15px'>" + esc(o.name) + "</b><span class='badge " + (o.active ? "ok" : "dim") + "'>" + (o.active ? "Open" : "Closed") + "</span></div>"
         + "<div style='display:flex;gap:20px;margin:12px 0 10px'>" + col("Today", fmtMoney(o.rev)) + col("Orders", o.orders) + col("On shift", o.staff) + "</div>"
         + "<div style='height:40px'>" + svgChart(o.rc, 600, 60, "") + "</div>"
-        + "<div style='margin-top:8px;height:8px;border-radius:999px;background:var(--panel2);overflow:hidden'><span style='display:block;height:100%;background:var(--primary);width:" + Math.round(o.orders / maxO * 100) + "%'></span></div>"
-        + "<div class='muted' style='font-size:11px;margin-top:4px'>Today’s activity</div></div>";
+        + (function () {
+            var occ = Math.max(0, Math.min(100, Math.round(o.occ || 0)));
+            var occCol = occ >= 80 ? "var(--warn)" : occ >= 40 ? "var(--amber)" : "var(--ok)";
+            var seatLbl = o.seats ? (o.occupied || 0) + " / " + o.seats + " tables" : "No tables set up";
+            return "<div style='display:flex;justify-content:space-between;align-items:baseline;margin-top:8px'>"
+              + "<div class='muted' style='font-size:11px;text-transform:uppercase;letter-spacing:.04em'>Occupancy</div>"
+              + "<div style='font-size:11px;color:var(--sub)'>" + seatLbl + "</div></div>"
+              + "<div style='margin-top:4px;height:8px;border-radius:999px;background:var(--panel2);overflow:hidden'><span style='display:block;height:100%;background:" + occCol + ";width:" + occ + "%'></span></div>";
+          })()
+        + "</div>";
     }).join("") + "</div>";
   }
 

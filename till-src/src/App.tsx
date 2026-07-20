@@ -3,6 +3,7 @@ import { store, useStore } from "./store";
 import { hashPin, uid } from "./api";
 import { Dashboard, Reports, Orders, Delivery, Tabs, QrOrders, Outlets, Setup } from "./screens";
 import { GuestPortal } from "./guest";
+import { t } from "./i18n";
 
 /* A printed table QR points at "/?s=slug&t=table[&c=cust]" — same bundle, guest
    view. If those params are present we render the public guest portal instead
@@ -173,6 +174,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const pickOtype = (k: "dinein" | "takeaway" | "delivery") => { setOtype(k); if (k !== "dinein") setTable(""); if (k !== "delivery") setZone(null); };
   const [cartOpen, setCartOpen] = useState(false);
   const [lang, setLang] = useState<"en" | "dv">(() => (typeof document !== "undefined" && document.documentElement.dir === "rtl") ? "dv" : "en");
+  const T = (s: string) => t(s, lang);
   const vw = useVW();
   const mob = vw < 760;
   const tab = vw >= 760 && vw < 1100;
@@ -194,9 +196,22 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const clock = now.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + ", " + now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
   const subInGroup = (cat: string) => group === "all" || (groups.find((g) => g.name === group)?.subs || []).includes(cat);
-  const items = products.filter((p) => subInGroup(p.cat) && (!query || (p.name || "").toLowerCase().includes(query.toLowerCase())));
+  const codeOf = (p: any) => String(p.barcode || p.sku || p.code || "").toLowerCase();
+  const items = products.filter((p) => subInGroup(p.cat) && (!query || (p.name || "").toLowerCase().includes(query.toLowerCase()) || (codeOf(p) && codeOf(p).includes(query.toLowerCase()))));
 
   const [modProd, setModProd] = useState<any>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  /* Resolve a scanned/typed code to a product: exact barcode/sku/id, else the
+     sole name/code match currently on screen. */
+  const findByCode = (raw: string): any => {
+    const c = raw.trim().toLowerCase();
+    if (!c) return null;
+    const exact = products.find((p) => codeOf(p) === c || String(p.id).toLowerCase() === c);
+    if (exact) return exact;
+    const hits = items.filter((p) => (p.name || "").toLowerCase().includes(c) || (codeOf(p) && codeOf(p).includes(c)));
+    return hits.length === 1 ? hits[0] : null;
+  };
   const prodById = (pid: string) => products.find((p) => p.id === pid);
   const lineUnit = (l: Line) => (prodById(l.pid)?.price || 0) + (l.mods || []).reduce((a, m) => a + (m.price || 0), 0);
 
@@ -347,8 +362,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     <>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px 10px" }}>
                 <div style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Order <span className="num" style={{ color: "var(--ink3)", fontWeight: 700, marginInlineStart: 2 }}>{orderNo}</span></div>
-                <button onClick={park} disabled={!count} style={{ ...C.pill, cursor: "pointer", opacity: count ? 1 : .5 }} title="Hold this bill">Hold</button>
-                <button onClick={resetBill} style={{ ...C.pill, cursor: "pointer" }} title="Clear the register">Clear</button>
+                <button onClick={park} disabled={!count} style={{ ...C.pill, cursor: "pointer", opacity: count ? 1 : .5 }} title="Hold this bill">{T("Hold")}</button>
+                <button onClick={resetBill} style={{ ...C.pill, cursor: "pointer" }} title="Clear the register">{T("Clear")}</button>
                 {mob && <button onClick={() => setCartOpen(false)} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>}
               </div>
               <div style={{ padding: "0 14px 10px" }}>
@@ -365,7 +380,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
                 {cart.length === 0 ? (
-                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10, padding: "30px 0" }}><div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>Scan or tap a product to start</div></div>
+                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--ink3)", gap: 10, padding: "30px 0" }}><div style={{ fontSize: 30 }}>🛒</div><div style={{ fontSize: 13 }}>{T("Scan or tap a product to start")}</div></div>
                 ) : cart.map((l) => {
                   const p = prodById(l.pid); if (!p) return null; const t = tintFor(p.cat); const u = lineUnit(l);
                   return (
@@ -394,8 +409,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 {totals.fee > 0 && <div style={C.trow}><span>Delivery{zone?.name ? " · " + zone.name : ""}</span><span className="num">{money(totals.fee)}</span></div>}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>Total</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button style={{ ...C.kot, opacity: count ? 1 : .5 }} disabled={!count} title="Fire this order to the kitchen" onClick={sendKOT}>Send to KOT</button>
-                  <button style={{ ...C.charge, opacity: count ? 1 : .5, padding: 14 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>Charge</button>
+                  <button style={{ ...C.kot, opacity: count ? 1 : .5 }} disabled={!count} title="Fire this order to the kitchen" onClick={sendKOT}>{T("Send to KOT")}</button>
+                  <button style={{ ...C.charge, opacity: count ? 1 : .5, padding: 14 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>{T("Charge")}</button>
                 </div>
               </div>
     </>
@@ -529,9 +544,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           {NAV.map((n) => {
             const on = nav === n.id;
             return (
-              <button key={n.id} onClick={() => { if (n.to) { window.location.href = n.to; return; } setNav(n.id); }} style={{ ...C.npill, ...(on ? C.npillOn : {}) }} aria-current={on ? "page" : undefined} title={n.label}>
+              <button key={n.id} onClick={() => { if (n.to) { window.location.href = n.to; return; } setNav(n.id); }} style={{ ...C.npill, ...(on ? C.npillOn : {}) }} aria-current={on ? "page" : undefined} title={T(n.label)}>
                 <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: n.icon }} />
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{n.label}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{T(n.label)}</span>
               </button>
             );
           })}
@@ -547,9 +562,14 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={C.search}>
                   <svg viewBox="0 0 24 24" width={17} height={17} style={{ color: "var(--ink3)" }}><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search or type barcode…" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
+                  <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { const p = findByCode(query); if (p) { tapProduct(p); setQuery(""); } } }}
+                    placeholder={T("Search or type barcode…")} style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
                 </div>
-                <button style={C.scan}>📷 Scan</button>
+                <button style={C.scan} onClick={() => {
+                  if (typeof (window as any).BarcodeDetector === "function") { setScanOpen(true); }
+                  else { searchRef.current?.focus(); }
+                }}>📷 {T("Scan")}</button>
               </div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
                 <button onClick={() => setGroup("all")} style={{ ...C.chip, ...(group === "all" ? C.chipOn : {}) }}>All</button>
@@ -607,6 +627,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
             )}
           </div>
         ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "delivery" ? <Delivery /> : nav === "tabs" ? <Tabs /> : nav === "qr" ? <QrOrders /> : nav === "outlets" ? <Outlets /> : nav === "setup" ? <Setup /> : <Placeholder nav={nav} />}
+      {scanOpen && <ScanModal onClose={() => setScanOpen(false)} onDetect={(code) => { const p = findByCode(code); if (p) { setScanOpen(false); tapProduct(p); } }} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
@@ -615,6 +636,48 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
+    </div>
+  );
+}
+
+/* ── camera barcode scanner (uses the native BarcodeDetector) ───────────────
+   Opens the rear camera, polls frames for a barcode, and reports the first
+   code it reads. Falls back to a clear message if the camera can't start. */
+function ScanModal({ onClose, onDetect }: { onClose: () => void; onDetect: (code: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let stream: MediaStream | null = null, raf = 0, stopped = false, det: any = null;
+    try { det = new (window as any).BarcodeDetector(); } catch { setErr("This device can't scan barcodes with the camera."); return; }
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+        const v = videoRef.current!; v.srcObject = stream; await v.play();
+        const tick = async () => {
+          if (stopped) return;
+          try { const codes = await det.detect(v); if (codes && codes[0] && codes[0].rawValue) { onDetect(String(codes[0].rawValue)); return; } } catch { /* frame not ready */ }
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      } catch { setErr("Couldn't open the camera. Check the browser's camera permission."); }
+    })();
+    return () => { stopped = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); };
+  }, [onDetect]);
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(440px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>Scan a barcode</div>
+          <button onClick={onClose} style={{ ...C.scan, padding: "6px 12px" }}>Close</button>
+        </div>
+        {err
+          ? <div style={{ color: "var(--ink2)", fontSize: 13, padding: "18px 4px" }}>{err} You can still type the code into the search box.</div>
+          : <><div style={{ borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "4 / 3" }}>
+              <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            </div>
+            <div style={{ color: "var(--ink3)", fontSize: 12.5, marginTop: 10, textAlign: "center" }}>Point the camera at the product barcode.</div></>}
+      </div>
     </div>
   );
 }
@@ -740,10 +803,10 @@ function ProfileMenu({ user, mob, lang, onToggleLang, onSignOut }: { user: any; 
             </div>
           </div>
           <div style={{ height: 1, background: "var(--line)", margin: "2px 6px 4px" }} />
-          <Item icon="🌐" label="Language" sub={lang === "en" ? "English" : "ދިވެހި"} onClick={onToggleLang} />
-          <Item icon="⚙︎" label="Admin panel" sub="Back office & reports" onClick={() => (window.location.href = "/back")} />
+          <Item icon="🌐" label={t("Language", lang)} sub={lang === "en" ? "English" : "ދިވެހި"} onClick={onToggleLang} />
+          <Item icon="⚙︎" label={t("Admin panel", lang)} sub="Back office & reports" onClick={() => (window.location.href = "/back")} />
           <div style={{ height: 1, background: "var(--line)", margin: "4px 6px" }} />
-          <Item icon="⎋" label="Sign out" onClick={onSignOut} danger />
+          <Item icon="⎋" label={t("Sign out", lang)} onClick={onSignOut} danger />
         </div>
       )}
     </div>

@@ -328,7 +328,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      rowver to poke (0 when nothing changed). */
   async function syncResaleProduct(client, orgId, ingId, seed) {
     const ing = (await client.query(
-      "SELECT id, name, sellable, sell_price, product_id, base_unit FROM ingredients WHERE org_id=$1 AND id=$2",
+      "SELECT id, name, sellable, sell_price, product_id, base_unit, sku FROM ingredients WHERE org_id=$1 AND id=$2",
       [orgId, ingId])).rows[0];
     if (!ing) return 0;
     let rowver = 0;
@@ -341,6 +341,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         id: pid, name: ing.name, price: Number(ing.sell_price),
         emoji: prev.emoji || (seed && seed.emoji) || "🥤",
         cat: prev.cat || (seed && seed.cat) || "Resale", unit: "pcs",
+        barcode: prev.barcode || ing.sku || "",
         srcRef: "resale:" + ingId,
       });
       const up = await client.query(
@@ -1793,13 +1794,20 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       const stores = (await client.query("SELECT id, name, active FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.orgId])).rows;
       const sales = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,0)>=$2", [req.orgId, t0])).rows.map((r) => r.data || {});
       const shifts = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND (data->>'closedAt') IS NULL", [req.orgId])).rows.map((r) => r.data || {});
-      return { stores, sales, shifts };
+      const tables = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='tables' AND deleted=false", [req.orgId])).rows.map((r) => r.data || {});
+      const parked = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='parked' AND deleted=false", [req.orgId])).rows.map((r) => r.data || {});
+      return { stores, sales, shifts, tables, parked };
     });
     const byStore = {};
-    const ensure = (sid, name, active) => { if (!byStore[sid]) byStore[sid] = { id: sid, name: name || (sid === "main" ? "Main outlet" : sid), active: active !== false, rev: 0, orders: 0, staff: 0, rc: new Array(24).fill(0) }; return byStore[sid]; };
+    const ensure = (sid, name, active) => { if (!byStore[sid]) byStore[sid] = { id: sid, name: name || (sid === "main" ? "Main outlet" : sid), active: active !== false, rev: 0, orders: 0, staff: 0, seats: 0, occupied: 0, rc: new Array(24).fill(0) }; return byStore[sid]; };
     data.stores.forEach((s) => ensure(s.id, s.name, s.active));
     data.sales.forEach((d) => { if (d.refunded) return; const t = normT(d); if (t < t0) return; const b = ensure(d.storeId || "main"); b.rev += num(d.total); b.orders += 1; b.rc[new Date(t + MVT).getUTCHours()] += num(d.total); });
     data.shifts.forEach((sh) => { ensure(sh.storeId || "main").staff += 1; });
+    // Occupancy: seated (dine-in) tables currently on an open bill ÷ tables defined for the outlet.
+    data.tables.forEach((tb) => { ensure(tb.storeId || "main").seats += 1; });
+    const seen = {}; // one occupied count per store+table, so two bills on one table don't double-count
+    data.parked.forEach((p) => { const tbl = p.table; if (!tbl) return; const sid = p.storeId || "main"; const key = sid + "|" + tbl; if (seen[key]) return; seen[key] = 1; ensure(sid).occupied += 1; });
+    Object.keys(byStore).forEach((k) => { const b = byStore[k]; b.occ = b.seats ? Math.min(100, Math.round(b.occupied / b.seats * 100)) : 0; });
     res.json({ outlets: Object.keys(byStore).map((k) => byStore[k]) });
   }));
 

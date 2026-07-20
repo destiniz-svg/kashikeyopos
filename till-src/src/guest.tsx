@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { money } from "./util";
 import { tintFor } from "./util";
+import { t, Lang } from "./i18n";
 
 /* Guest QR portal — the same bundle serves this when the URL carries ?s=<slug>
    (a printed table QR points at "/?s=slug&t=table"). Public: no PIN/token. It
@@ -33,6 +34,14 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
   const [placed, setPlaced] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [called, setCalled] = useState(false);
+  const [lang, setLang] = useState<Lang>(() => (typeof localStorage !== "undefined" && localStorage.getItem("kashikeyo-guest-lang") === "dv") ? "dv" : "en");
+  const T = (s: string) => t(s, lang);
+  const nm = (p: any) => (lang === "dv" && p && p.dv) ? p.dv : (p ? p.name : "");
+  useEffect(() => {
+    if (typeof document !== "undefined") document.documentElement.dir = lang === "dv" ? "rtl" : "ltr";
+    try { localStorage.setItem("kashikeyo-guest-lang", lang); } catch { /* ignore */ }
+  }, [lang]);
+  const toggleLang = () => setLang((l) => (l === "en" ? "dv" : "en"));
 
   const qp = (k: string, v: string) => v ? `${k}=${encodeURIComponent(v)}` : "";
   const bootUrl = `/p/${encodeURIComponent(slug)}/boot?` + [qp("st", storeId), qp("t", table), qp("c", custId)].filter(Boolean).join("&");
@@ -63,7 +72,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
     if (!dm) return;
     const chosen: Add[] = dmAddons.filter((a) => (addSel[a.name] || 0) > 0).map((a) => ({ name: a.name, price: Number(a.price) || 0, qty: addSel[a.name] }));
     const addUnit = chosen.reduce((x, a) => x + a.qty * a.price, 0);
-    const line: Line = { lid: "q" + Date.now(), id: dm.id, name: dm.name, qty, addons: chosen, note: note.trim(), lineTot: dm.price * qty + addUnit };
+    const line: Line = { lid: "q" + Date.now(), id: dm.id, name: nm(dm), qty, addons: chosen, note: note.trim(), lineTot: dm.price * qty + addUnit };
     setCartL((c) => [line, ...c]); setView("summary"); setSel(null);
   };
 
@@ -76,7 +85,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
   const promoOff = promo ? Math.round(sub * 0.05) : 0;
   const total = sub + tax - promoOff;
   const count = cartL.reduce((a, l) => a + l.qty, 0);
-  const applyPromo = () => { if (promoInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").startsWith(PROMO_CODE)) { setPromo(true); setErr(""); } else setErr("That promo code isn't valid."); };
+  const applyPromo = () => { if (promoInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").startsWith(PROMO_CODE)) { setPromo(true); setErr(""); } else setErr(t("That promo code isn't valid.", lang)); };
 
   const place = (payOnline: boolean) => {
     if (!cartL.length) return;
@@ -96,21 +105,21 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
   };
 
   if (err && !boot) return <Center><div style={{ fontSize: 30 }}>🍽️</div><div style={{ fontWeight: 700, marginTop: 8 }}>{err}</div></Center>;
-  if (!boot) return <Center><div style={G.chip}>K</div><div style={{ color: "var(--ink2)", marginTop: 10 }}>Loading menu…</div></Center>;
+  if (!boot) return <Center><div style={G.chip}>K</div><div style={{ color: "var(--ink2)", marginTop: 10 }}>{T("Loading menu…")}</div></Center>;
 
   if (placed) return (
     <div style={G.wrap}><div style={G.phone}>
       <Center>
         <div style={{ width: 64, height: 64, borderRadius: 99, background: "var(--greensoft)", color: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>✓</div>
-        <div style={{ fontWeight: 800, fontSize: 20, marginTop: 12 }}>{placed.paid ? "Paid & ordered" : "Order placed"}</div>
-        <div style={{ color: "var(--ink2)", fontSize: 14, marginTop: 4 }}>{placed.no} · sent to the kitchen{table ? " · " + table : ""}</div>
-        <button onClick={() => setPlaced(null)} style={{ ...G.primary, marginTop: 20, width: "auto", padding: "12px 22px" }}>Order more</button>
-        {table && <button onClick={callWaiter} style={{ ...G.ghost, marginTop: 10 }}>{called ? "Waiter on the way ✓" : "🔔 Call waiter"}</button>}
+        <div style={{ fontWeight: 800, fontSize: 20, marginTop: 12 }}>{placed.paid ? T("Paid & ordered") : T("Order placed")}</div>
+        <div style={{ color: "var(--ink2)", fontSize: 14, marginTop: 4 }}>{placed.no} · {T("sent to the kitchen")}{table ? " · " + table : ""}</div>
+        <button onClick={() => setPlaced(null)} style={{ ...G.primary, marginTop: 20, width: "auto", padding: "12px 22px" }}>{T("Order more")}</button>
+        {table && <button onClick={callWaiter} style={{ ...G.ghost, marginTop: 10 }}>{called ? T("Waiter on the way") + " ✓" : "🔔 " + T("Call waiter")}</button>}
       </Center>
     </div></div>
   );
 
-  const tableLbl = table ? "Table " + table : "Order & pickup";
+  const tableLbl = table ? T("Table") + " " + table : T("Order & pickup");
 
   /* ── ITEM DETAIL ─────────────────────────────────────────────────────────── */
   if (view === "item" && dm) {
@@ -124,7 +133,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px 96px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-            <div style={{ fontWeight: 800, fontSize: 19, flex: 1 }}>{dm.name}</div>
+            <div style={{ fontWeight: 800, fontSize: 19, flex: 1 }}>{nm(dm)}</div>
             <span style={{ color: "var(--green)", fontSize: 17 }}>✓</span>
           </div>
           {dm.tag && <div style={{ color: "var(--ink3)", fontSize: 12.5, marginTop: 2 }}>{dm.tag}</div>}
@@ -136,11 +145,11 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
           {dm.desc && <div style={{ color: "var(--ink2)", fontSize: 13.5, lineHeight: 1.5, marginTop: 12 }}>{dm.desc}</div>}
           {dmAddons.length > 0 && (
             <>
-              <div style={G.sect}>Add Ons</div>
+              <div style={G.sect}>{T("Add Ons")}</div>
               <div style={{ border: "1px solid var(--line)", borderRadius: 14, overflow: "hidden" }}>
                 {dmAddons.map((a, i) => { const q = addSel[a.name] || 0; return (
                   <div key={a.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderTop: i ? "1px solid var(--line)" : "none" }}>
-                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{a.name} {Number(a.price) ? <span style={{ color: "var(--coral)", fontWeight: 700 }} className="num">(+{money(a.price).replace("MVR ", "")})</span> : <span style={{ color: "var(--green)", fontWeight: 700 }}>(Free)</span>}</span>
+                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{a.name} {Number(a.price) ? <span style={{ color: "var(--coral)", fontWeight: 700 }} className="num">(+{money(a.price).replace("MVR ", "")})</span> : <span style={{ color: "var(--green)", fontWeight: 700 }}>({T("Free")})</span>}</span>
                     {q > 0 ? <span style={G.stepper}><button style={G.stepBtn} onClick={() => addonDec(a.name)}>−</button><span className="num" style={{ minWidth: 16, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={G.stepBtn} onClick={() => addonInc(a.name)}>+</button></span>
                       : <button style={G.add} onClick={() => addonInc(a.name)}>+</button>}
                   </div>
@@ -148,16 +157,16 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
               </div>
             </>
           )}
-          <div style={G.sect}>Notes</div>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. no chili, extra spicy…" dir="auto" style={G.input} />
+          <div style={G.sect}>{T("Notes")}</div>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={T("e.g. no chili, extra spicy…")} dir="auto" style={G.input} />
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
-            <span style={{ fontSize: 12.5, color: "var(--ink3)", fontWeight: 700 }}>Qty</span>
+            <span style={{ fontSize: 12.5, color: "var(--ink3)", fontWeight: 700 }}>{T("Qty")}</span>
             <span style={G.stepper}><button style={G.stepBtn} onClick={() => setQty((v) => Math.max(1, v - 1))}>−</button><span className="num" style={{ minWidth: 18, textAlign: "center", fontWeight: 800 }}>{qty}</span><button style={G.stepBtn} onClick={() => setQty((v) => v + 1)}>+</button></span>
           </div>
         </div>
         <div style={G.footer}>
-          <div><div style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700 }}>Total</div><div className="num" style={{ fontWeight: 800, fontSize: 17 }}>{money(detailTotal)}</div></div>
-          <button onClick={addToOrder} style={{ ...G.primary, flex: 1 }}>Add to order</button>
+          <div><div style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700 }}>{T("Total")}</div><div className="num" style={{ fontWeight: 800, fontSize: 17 }}>{money(detailTotal)}</div></div>
+          <button onClick={addToOrder} style={{ ...G.primary, flex: 1 }}>{T("Add to order")}</button>
         </div>
       </div></div>
     );
@@ -169,11 +178,11 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
       <div style={G.wrap}><div style={G.phone}>
         <header style={{ ...G.head, gap: 10 }}>
           <button onClick={() => setView("menu")} style={G.back}>‹</button>
-          <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 17 }}>Your Order Summary</div></div>
+          <div style={{ flex: 1 }}><div style={{ fontWeight: 800, fontSize: 17 }}>{T("Your Order Summary")}</div></div>
           <span style={{ ...G.tablePill }}>🏷 {tableLbl}</span>
         </header>
         <div style={{ flex: 1, overflowY: "auto", padding: "10px 16px 96px" }}>
-          {cartL.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", padding: 40 }}>Your order is empty.</div>}
+          {cartL.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", padding: 40 }}>{T("Your order is empty.")}</div>}
           {cartL.map((l) => { const p = prodById(l.id); const tt = tintFor(p?.cat || l.name); return (
             <div key={l.lid} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 0", borderBottom: "1px solid var(--line)" }}>
               <span style={{ width: 46, height: 46, borderRadius: 12, overflow: "hidden", background: tt[0], color: tt[1], display: "grid", placeItems: "center", fontSize: 20, flex: "0 0 46px" }}>{p?.img ? <img src={p.img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (p?.emoji || "🍽️")}</span>
@@ -186,26 +195,26 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
             </div>
           ); })}
           {cartL.length > 0 && <>
-            <div style={G.sect}>Have a Promo Code?</div>
+            <div style={G.sect}>{T("Have a Promo Code?")}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid " + (promo ? "var(--green)" : "var(--line)"), borderRadius: 12, padding: "4px 4px 4px 14px" }}>
               <input value={promoInput} onChange={(e) => setPromoInput(e.target.value)} placeholder={PROMO_CODE + "5%"} disabled={promo} style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14, fontWeight: 700 }} />
-              <button onClick={applyPromo} disabled={promo} style={{ ...G.primary, width: "auto", padding: "9px 16px", opacity: promo ? .5 : 1 }}>{promo ? "Applied" : "Enter"}</button>
+              <button onClick={applyPromo} disabled={promo} style={{ ...G.primary, width: "auto", padding: "9px 16px", opacity: promo ? .5 : 1 }}>{promo ? T("Applied") : T("Enter")}</button>
             </div>
-            {promo && <div style={{ color: "var(--green)", fontSize: 12.5, fontWeight: 700, marginTop: 8 }}>✓ Promo applied · {PROMO_CODE}5% — 5% off</div>}
-            <div style={G.sect}>Payment Summary</div>
+            {promo && <div style={{ color: "var(--green)", fontSize: 12.5, fontWeight: 700, marginTop: 8 }}>✓ {PROMO_CODE}5% — 5% off</div>}
+            <div style={G.sect}>{T("Payment Summary")}</div>
             <div style={{ background: "var(--sur2)", borderRadius: 14, padding: "12px 15px" }}>
-              <Row k="Subtotal" v={money(sub)} />
-              <Row k={`Tax & Service (${gstBp / 100}%)`} v={money(tax)} />
-              {promo && <Row k="Promo Code (5%)" v={"− " + money(promoOff)} accent />}
-              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 16, marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}><span>Total Payment</span><span className="num" style={{ color: "var(--coral)" }}>{money(total)}</span></div>
+              <Row k={T("Subtotal")} v={money(sub)} />
+              <Row k={`${T("Tax & Service")} (${gstBp / 100}%)`} v={money(tax)} />
+              {promo && <Row k={T("Promo Code (5%)")} v={"− " + money(promoOff)} accent />}
+              <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: 16, marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}><span>{T("Total Payment")}</span><span className="num" style={{ color: "var(--coral)" }}>{money(total)}</span></div>
             </div>
           </>}
           {err && <div style={{ color: "var(--red)", fontSize: 13, marginTop: 10, textAlign: "center" }}>{err}</div>}
         </div>
         {cartL.length > 0 && (
           <div style={{ ...G.footer, gap: 10 }}>
-            <button disabled={busy} onClick={() => place(true)} style={{ ...G.ghost, flex: 1, borderColor: "var(--coral)", color: "var(--coral)", background: "var(--sur)", border: "1.5px solid var(--coral)" }}>Order &amp; Pay Now</button>
-            <button disabled={busy} onClick={() => place(false)} style={{ ...G.primary, flex: 1, opacity: busy ? .6 : 1 }}>{busy ? "…" : "Order Now"}</button>
+            <button disabled={busy} onClick={() => place(true)} style={{ ...G.ghost, flex: 1, borderColor: "var(--coral)", color: "var(--coral)", background: "var(--sur)", border: "1.5px solid var(--coral)" }}>{T("Order & Pay Now")}</button>
+            <button disabled={busy} onClick={() => place(false)} style={{ ...G.primary, flex: 1, opacity: busy ? .6 : 1 }}>{busy ? "…" : T("Order Now")}</button>
           </div>
         )}
       </div></div>
@@ -219,20 +228,21 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
         <header style={{ padding: "18px 16px 10px" }}>
           <div style={{ display: "flex", alignItems: "flex-start" }}>
             <div style={{ flex: 1 }}>
-              <div style={{ color: "var(--ink3)", fontSize: 13 }}>Welcome to</div>
-              <div style={{ fontWeight: 800, fontSize: 21, lineHeight: 1.15 }}>{settings.storeName || "Menu"}</div>
+              <div style={{ color: "var(--ink3)", fontSize: 13 }}>{T("Welcome to")}</div>
+              <div style={{ fontWeight: 800, fontSize: 21, lineHeight: 1.15 }}>{settings.storeName || T("Menu")}</div>
               <div style={{ color: "var(--coral)", fontSize: 13, fontWeight: 700, marginTop: 3 }}>🏷 {tableLbl}</div>
             </div>
+            <button onClick={toggleLang} style={G.langBtn} aria-label="Language">{lang === "en" ? "ދިވެހި" : "EN"}</button>
             <button onClick={callWaiter} style={G.callBtn}>{called ? "✓" : "🔔"}</button>
           </div>
           <div style={G.search}>
             <span style={{ color: "var(--ink3)" }}>🔍</span>
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search for a dish…" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={T("Search for a dish…")} style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
           </div>
         </header>
-        <div style={{ fontWeight: 800, fontSize: 14, padding: "6px 16px 8px" }}>Categories</div>
+        <div style={{ fontWeight: 800, fontSize: 14, padding: "6px 16px 8px" }}>{T("Categories")}</div>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "0 16px 8px" }}>
-          <button onClick={() => setCat("all")} style={{ ...G.catChip, ...(cat === "all" ? G.catOn : {}) }}>All</button>
+          <button onClick={() => setCat("all")} style={{ ...G.catChip, ...(cat === "all" ? G.catOn : {}) }}>{T("All")}</button>
           {groups.map((g) => { const ic = chipIcon(g); return (
             <button key={g.name} onClick={() => setCat(g.name)} style={{ ...G.catChip, ...(cat === g.name ? G.catOn : {}) }}>
               <span style={{ width: 22, height: 22, borderRadius: 99, overflow: "hidden", background: "var(--sur)", display: "grid", placeItems: "center", fontSize: 12 }}>{ic?.img ? <img src={ic.img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (ic?.emoji || "🍽️")}</span>
@@ -249,10 +259,10 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
                     {p.img ? <img src={p.img} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span style={{ fontSize: 40 }}>{p.emoji || "🍽️"}</span>}
                     {p.rating && !so && <span style={G.rate}><span style={{ color: "#FFC94D" }}>★</span><span className="num">{p.rating}</span></span>}
                     {inCart > 0 && <span style={G.qbadge} className="num">{inCart}</span>}
-                    {so && <div style={{ position: "absolute", inset: 0, background: "rgba(20,18,15,.45)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 800, fontSize: 13 }}>Sold out</div>}
+                    {so && <div style={{ position: "absolute", inset: 0, background: "rgba(20,18,15,.45)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 800, fontSize: 13 }}>{T("Sold out")}</div>}
                   </div>
                   <div style={G.tbody}>
-                    <div style={G.tname}>{p.name}</div>
+                    <div style={G.tname}>{nm(p)}</div>
                     {p.desc && <div style={G.tdesc}>{p.desc}</div>}
                     <div style={{ flex: 1 }} />
                     <div style={G.tfoot}>
@@ -264,12 +274,12 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
               );
             })}
           </div>
-          {items.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", padding: 30 }}>No items in this category.</div>}
+          {items.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", padding: 30 }}>{T("No items in this category.")}</div>}
         </div>
         {count > 0 && (
           <button onClick={() => setView("summary")} style={G.cartBar}>
             <span style={{ background: "rgba(255,255,255,.25)", borderRadius: 99, padding: "2px 10px", fontWeight: 800 }}>{count}</span>
-            <span style={{ flex: 1, textAlign: "start", marginInlineStart: 10 }}>Your Order</span>
+            <span style={{ flex: 1, textAlign: "start", marginInlineStart: 10 }}>{T("Your Order")}</span>
             <span className="num" style={{ fontWeight: 800 }}>{money(sub)}</span>
           </button>
         )}
@@ -287,6 +297,7 @@ const G: Record<string, React.CSSProperties> = {
   head: { display: "flex", alignItems: "center", padding: "16px 14px 12px", borderBottom: "1px solid var(--line)" },
   chip: { width: 40, height: 40, borderRadius: 12, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18 },
   callBtn: { width: 42, height: 42, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral)", fontSize: 18, flex: "0 0 42px" },
+  langBtn: { height: 42, minWidth: 42, padding: "0 12px", borderRadius: 99, background: "var(--sur2)", border: "1px solid var(--line)", color: "var(--ink2)", fontSize: 13, fontWeight: 800, marginInlineEnd: 8, flex: "0 0 auto" },
   back: { width: 38, height: 38, borderRadius: 99, background: "var(--sur2)", color: "var(--ink)", fontSize: 22, fontWeight: 800, display: "grid", placeItems: "center", flex: "0 0 38px", lineHeight: 1 },
   tablePill: { fontSize: 12.5, fontWeight: 700, color: "var(--coral)", whiteSpace: "nowrap" },
   search: { display: "flex", alignItems: "center", gap: 9, background: "var(--sur2)", border: "1px solid var(--line)", borderRadius: 13, padding: "0 14px", height: 44, marginTop: 12 },
