@@ -321,6 +321,82 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     </>
   );
 
+  /* ── Floor / table map (prototype §Floor) ─────────────────────────────── */
+  const tableNames: string[] = (() => {
+    const t = st.byKind("tables").map((e: any) => e.data?.name).filter(Boolean);
+    return t.length ? t : Array.from({ length: 12 }, (_, i) => "T" + (i + 1));
+  })();
+  const heldDine = parked.filter((b: any) => b.otype === "dinein" && b.table);
+  const heldOther = parked.filter((b: any) => b.otype !== "dinein" || !b.table);
+  const billFor = (name: string): any =>
+    heldDine.find((b: any) => b.table === name) ||
+    (otype === "dinein" && table === name && cart.length ? { id: "__active", lines: cart, t: Date.now(), active: true } : null);
+  const billSub = (b: any) => (b.lines || []).reduce((a: number, l: any) => { const p = prodById(l.pid); return a + (p ? lineUnit(l) * l.qty : 0); }, 0);
+  const billItems = (b: any) => (b.lines || []).reduce((a: number, l: any) => a + (l.qty || 0), 0);
+  const occN = tableNames.filter((n) => billFor(n)).length;
+  const openVal = tableNames.reduce((a, n) => { const b = billFor(n); return a + (b ? billSub(b) : 0); }, 0);
+  const seatOrRecall = (name: string) => {
+    const b = billFor(name);
+    if (b && !b.active) resume(b);
+    else if (!b) { setOtype("dinein"); setTable(name); }
+    setNav("sell");
+  };
+  const floorInner = (
+    <div style={{ flex: 1, overflowY: "auto", padding: mob ? "14px 12px" : "18px 22px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+        <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Floor</div>
+        <span style={{ fontSize: 11, fontWeight: 800, background: "var(--coralsoft)", color: "var(--coral)", borderRadius: 999, padding: "4px 10px" }}>{occN} occupied</span>
+        <span style={{ fontSize: 11, fontWeight: 800, background: "var(--sur2)", color: "var(--ink2)", borderRadius: 999, padding: "4px 10px" }}>{tableNames.length - occN} free</span>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: "var(--ink2)" }}>Open value <b className="num" style={{ color: "var(--ink)", fontSize: 15 }}>{money(openVal)}</b></span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 12 }}>
+        {tableNames.map((n) => {
+          const b = billFor(n), occ = !!b;
+          const mins = occ && b.t ? Math.max(0, Math.floor((Date.now() - b.t) / 60000)) : 0;
+          return (
+            <button key={n} onClick={() => seatOrRecall(n)} style={{
+              ...C.tile, cursor: "pointer", textAlign: "start", minHeight: 104, display: "flex", flexDirection: "column", gap: 4,
+              borderColor: occ ? "var(--coral)" : "var(--line)", background: occ ? "var(--coralsoft)" : "var(--sur)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <b style={{ fontSize: 16 }}>{n}</b>
+                {occ && !b.active && <span style={{ fontSize: 10, fontWeight: 800, color: "var(--amber)" }}>● held</span>}
+              </div>
+              {occ ? (
+                <>
+                  <div style={{ fontSize: 12.5, color: "var(--ink2)" }}>{billItems(b)} items · <span className="num">{money(billSub(b))}</span></div>
+                  <div style={{ flex: 1 }} />
+                  <div style={{ fontSize: 11, color: "var(--ink3)" }}>{b.active ? "on the counter" : mins + "m ago · tap to recall"}</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ flex: 1 }} />
+                  <div style={{ fontSize: 12, color: "var(--ink3)" }}>Free · tap to seat</div>
+                </>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {heldOther.length > 0 && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "var(--ink3)", margin: "20px 0 8px" }}>OTHER OPEN ORDERS</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {heldOther.map((b: any) => (
+              <button key={b.id} onClick={() => { resume(b); setNav("sell"); }} style={{ ...C.tile, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
+                <span style={{ fontSize: 11, fontWeight: 800, color: b.otype === "delivery" ? "var(--green)" : "var(--amber)" }}>{b.otype === "delivery" ? "🛵 Delivery" : "🥡 Takeaway"}</span>
+                <span style={{ fontSize: 12.5, color: "var(--ink2)" }}>{billItems(b)} items{b.custName ? " · " + b.custName : ""}</span>
+                <div style={{ flex: 1 }} />
+                <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{money(billSub(b))}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
         <header style={{ ...C.header, padding: mob ? "0 10px" : "0 16px" }}>
@@ -423,7 +499,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             )}
           </div>
-        ) : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : <Placeholder nav={nav} />}
+        ) : nav === "floor" ? floorInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : <Placeholder nav={nav} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
