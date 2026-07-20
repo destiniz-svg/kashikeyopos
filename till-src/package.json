@@ -4,8 +4,13 @@
   "version": "2.0.0",
   "type": "module",
   "description": "KashikeyoPOS till — editable React source, reskin of the existing register (no new features), built to a single-file web/dist bundle.",
-  "scripts": { "build": "vite build", "dev": "vite" },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
   "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.3.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

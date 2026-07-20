@@ -1,14 +1,38 @@
 @font-face { font-family: 'Instrument Sans'; src: url('/fonts/instrument-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
 @font-face { font-family: 'Bricolage Grotesque'; src: url('/fonts/bricolage-1.woff2') format('woff2'); font-weight: 500 800; font-display: swap; }
 
+/* ── Kashikeyo DS 1.0 ─────────────────────────────────────────────────────────
+   One token sheet for every surface. The legacy variable names (--ink2, --sur,
+   --coralsoft, …) are kept as the public API so existing screens restyle
+   without edits; their VALUES are retuned to clear WCAG AA:
+     text ladder  --ink 16:1 · --ink2 ≥7:1 · --ink3 ≥4.5:1 (all AA on --bg)
+     coral as TYPE must use --coral-text (AA); --coral is a FILL (+ --coralink)
+   New tokens (spacing/radius/touch/motion/focus) power the shared primitives
+   in ui.tsx and all Phase-2 refactors. */
 :root{
-  --bg:#E9EDEF;--sur:rgba(255,255,255,.60);--sur2:rgba(96,100,112,.10);
-  --ink:#1B1A17;--ink2:#6C7075;--ink3:#A7ABB0;--line:rgba(120,122,132,.18);
-  --coral:#E1552D;--coralink:#FFF6EF;--coralsoft:rgba(225,85,45,.14);
-  --green:#1F9D57;--greensoft:rgba(31,157,87,.14);--amber:#B67A12;--ambersoft:rgba(198,135,26,.16);
-  --red:#D33F28;--redsoft:rgba(211,63,40,.14);--blue:#2F6BE0;
-  --shadow:0 1px 1px rgba(30,35,45,.04),0 14px 34px -16px rgba(30,40,60,.26);
+  /* canvas + surfaces */
+  --bg:#EEF0F2;--sur:rgba(255,255,255,.72);--sur2:rgba(96,100,112,.09);
+  --line:rgba(96,100,112,.20);
+  /* text ladder (AA on --bg): primary / secondary / tertiary */
+  --ink:#1B1A17;--ink2:#4C525A;--ink3:#666C75;
+  /* brand: coral is a fill; --coral-text is the AA-safe type variant */
+  --coral:#E1552D;--coralink:#FFF6EF;--coralsoft:rgba(225,85,45,.13);
+  --coral-text:#B23E1B;
+  /* semantic: fills + soft pairs (text-on-soft uses the strong color) */
+  --green:#177E4B;--greensoft:rgba(23,126,75,.13);
+  --amber:#9A6208;--ambersoft:rgba(154,98,8,.14);
+  --red:#C13A26;--redsoft:rgba(193,58,38,.12);
+  --blue:#2F6BE0;--bluesoft:rgba(47,107,224,.12);
+  /* elevation (3 levels: border-only cards use none) */
+  --shadow:0 1px 1px rgba(30,35,45,.04),0 14px 34px -16px rgba(30,40,60,.24);
+  --shadow-float:0 4px 10px rgba(30,35,45,.08),0 24px 54px -18px rgba(30,40,60,.32);
+  /* type */
   --num:'Bricolage Grotesque','Instrument Sans',system-ui,sans-serif;
+  /* spacing (4-pt) · radius · touch · motion */
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s8:32px;
+  --r-s:10px;--r-m:14px;--r-l:18px;--r-xl:24px;
+  --tap:44px;--tap-lg:56px;
+  --dur-1:.15s;--dur-2:.25s;--ease:cubic-bezier(.2,.7,.3,1);
   /* Safe-area insets — 0 on devices without a notch/home-bar. The server stamps
      data-os and forces viewport-fit=cover on iOS so these resolve under the
      island/home indicator; Android gesture nav also reports real insets. */
@@ -19,36 +43,43 @@
    and inset content in JS via the vars above. Tablet/desktop have no insets. */
 html[data-device=desktop]{--sat:0px;--sab:0px;--sal:0px;--sar:0px}
 html[data-dark]{
-  --bg:#141110;--sur:rgba(34,28,21,.60);--sur2:rgba(255,255,255,.06);
-  --ink:#F3EBDA;--ink2:#9A8D76;--ink3:#6B6252;--line:rgba(255,255,255,.09);
+  --bg:#131110;--sur:rgba(36,30,24,.66);--sur2:rgba(255,255,255,.06);
+  --line:rgba(255,255,255,.10);
+  --ink:#F3EBDA;--ink2:#ABA08A;--ink3:#8D8471;
   --coral:#F06438;--coralink:#2A130A;--coralsoft:#41261A;
-  --green:#66B08B;--greensoft:#24352B;--amber:#DCA83E;--ambersoft:#3A2F17;--red:#E06A52;--redsoft:#3D211B;
+  --coral-text:#FF8A5C;
+  --green:#66B08B;--greensoft:#24352B;--amber:#DCA83E;--ambersoft:#3A2F17;
+  --red:#E06A52;--redsoft:#3D211B;--blue:#7FA7F0;--bluesoft:rgba(127,167,240,.14);
   --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.6);
+  --shadow-float:0 4px 12px rgba(0,0,0,.4),0 26px 60px -18px rgba(0,0,0,.7);
 }
 *{box-sizing:border-box}
 html,body,#root{height:100%}
 body{
   margin:0;
+  /* canvas: one warm + one cool whisper over a near-flat wash (was 4 layers) */
   background:
-    radial-gradient(1100px 600px at 8% -5%,rgba(225,85,45,.10),transparent 60%),
-    radial-gradient(1000px 700px at 105% 12%,rgba(47,107,224,.10),transparent 55%),
-    radial-gradient(900px 820px at 50% 112%,rgba(31,157,87,.08),transparent 55%),
-    linear-gradient(160deg,#EEF2F4,#E4EAEE);
+    radial-gradient(1100px 620px at 8% -5%,rgba(225,85,45,.07),transparent 60%),
+    radial-gradient(1000px 700px at 105% 12%,rgba(47,107,224,.06),transparent 55%),
+    linear-gradient(160deg,#F0F2F4,#E8EDF0);
   color:var(--ink);font-family:'Instrument Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;
 }
-html[data-dark] body{background:radial-gradient(1100px 600px at 8% -5%,rgba(240,100,56,.12),transparent 60%),radial-gradient(1000px 700px at 105% 12%,rgba(60,110,220,.10),transparent 55%),linear-gradient(160deg,#16130F,#0E0C09)}
+html[data-dark] body{background:radial-gradient(1100px 600px at 8% -5%,rgba(240,100,56,.10),transparent 60%),radial-gradient(1000px 700px at 105% 12%,rgba(60,110,220,.08),transparent 55%),linear-gradient(160deg,#16130F,#0E0C09)}
 .glass{-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
 .num{font-family:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 button{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}
 input{font-family:inherit}
 svg{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+/* Keyboard a11y: a visible ring on every focusable, mouse/touch stays clean. */
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}::-webkit-scrollbar-track{background:transparent}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes pop{0%{transform:scale(.8);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 @keyframes sheet{from{opacity:0;transform:translateY(40px) scale(.97)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important}}
+@keyframes toastin{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
 @media print{
   body{overflow:visible;background:#fff}
   body *{visibility:hidden}

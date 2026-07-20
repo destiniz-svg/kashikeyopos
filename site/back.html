@@ -6,6 +6,10 @@
 <title>Back office — KashikeyoPOS</title>
 <link rel="icon" href="/logo-mark.png" />
 <style>
+  /* Kashikeyo DS 1.0 — the admin adopts the till's brand typefaces so both
+     halves of the product read as one family (self-hosted, same /fonts). */
+  @font-face { font-family: 'Instrument Sans'; src: url('/fonts/instrument-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; }
+  @font-face { font-family: 'Bricolage Grotesque'; src: url('/fonts/bricolage-1.woff2') format('woff2'); font-weight: 500 800; font-display: swap; }
   /* Palette vars are set by applyTheme() below — the same five fruit themes
      (light + dark) the till uses, following the till's own choice via the
      synced settings entity (ktheme/ktdark), with a local override picker. */
@@ -13,7 +17,10 @@
     /* Kashikeyo admin palette — coral over warm sand, glassy white cards
        (matches the KashikeyoAdmin prototype tokens; same language as the till). */
     --app: #F3EADB; --panel: rgba(255,255,255,.62); --panel2: rgba(255,255,255,.42); --border: rgba(130,100,60,.16); --text: #2E2418;
-    --sub: #8A7B65; --faint: #B7A892; --primary: #C1492A; --primary-hov: #A33417;
+    /* --sub retuned #8A7B65 → #6E5F48: ≥4.5:1 on the sand canvas (WCAG AA) —
+       it is the working sublabel color of every table, so it must be legible.
+       --faint stays decorative-only (never body copy). */
+    --sub: #6E5F48; --faint: #B7A892; --primary: #C1492A; --primary-hov: #A33417;
     --pill: #C1492A; --on-pill: #FFFFFF;
     --input: #FFFFFF; --btn: rgba(255,255,255,.5); --btn-hov: rgba(255,255,255,.72); --header: rgba(243,234,219,.85);
     --ok: #3E8E59; --ok-bg: rgba(62,142,89,.14); --warn: #C13A26; --warn-bg: rgba(193,58,38,.13);
@@ -27,9 +34,13 @@
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--app); color: var(--text); min-height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
     transition: background .25s, color .25s;
   }
+  h1, h2, h3, .bigstat .n { font-family: 'Bricolage Grotesque', 'Instrument Sans', sans-serif; }
+  /* Keyboard a11y: visible ring on every focusable; mouse/touch stays clean. */
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 4px; }
   a { color: var(--primary); text-decoration: none; }
   a:hover { text-decoration: underline; }
 
@@ -80,7 +91,7 @@
     background: var(--input); color: var(--text); font-size: 14px; outline: none;
   }
   input:focus, select:focus { border-color: var(--primary); }
-  input.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; }
+  input.num { font-family: 'Bricolage Grotesque', ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; text-align: right; }
 
   /* a11y: a visible keyboard-focus ring (mouse/touch users unaffected — the base
      outline:none above only bites for pointer focus; :focus-visible restores it
@@ -103,7 +114,7 @@
   th, td { text-align: left; padding: 9px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
   th { color: var(--sub); font-weight: 600; background: var(--panel2); white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
-  td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; white-space: nowrap; }
+  td.mono, th.mono { font-family: 'Bricolage Grotesque', ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
   .tbl-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); -webkit-overflow-scrolling: touch; }
   /* Keep a readable min-width so columns never crush on phones — the wrap
      scrolls horizontally instead (spec §2). Fills 100% on wider screens. */
@@ -201,17 +212,17 @@
   .prodlist .p:hover { background: var(--panel2); }
   .prodlist .p.on { background: var(--panel2); box-shadow: inset 3px 0 0 var(--primary); }
   .prodlist .p .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .prodlist .p .pr { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--sub); }
+  .prodlist .p .pr { font-family: 'Bricolage Grotesque', ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; font-size: 12px; color: var(--sub); }
   .margin-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; border-top: 1px solid var(--border); padding: 14px 18px; }
   .margin-bar .m .l { font-size: 11px; color: var(--sub); }
-  .margin-bar .m .v { font-size: 17px; font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+  .margin-bar .m .v { font-size: 17px; font-weight: 700; font-family: 'Bricolage Grotesque', ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
   .m.good .v { color: var(--ok); } .m.mid .v { color: var(--amber); } .m.bad .v { color: var(--warn); }
 
   /* stock check wizard */
   .steps { display: flex; gap: 6px; margin: 0 0 16px; }
   .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }
   .steps i.on { background: var(--primary); }
-  .diff { font-size: 11.5px; font-weight: 700; font-family: ui-monospace, Menlo, monospace; }
+  .diff { font-size: 11.5px; font-weight: 700; font-family: 'Bricolage Grotesque', ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
   .diff.zero { color: var(--faint); } .diff.up { color: var(--ok); } .diff.down { color: var(--warn); }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .chips button { padding: 5px 11px; font-size: 12px; border-radius: 999px; background: var(--btn); }
@@ -226,7 +237,7 @@
   .sell-toggle { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; cursor: pointer; }
   .sell-toggle input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--primary); }
   .bigstat { text-align: center; padding: 26px 18px; }
-  .bigstat .n { font-size: 30px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; }
+  .bigstat .n { font-size: 30px; font-weight: 800; font-family: 'Bricolage Grotesque', ui-monospace, Menlo, monospace; font-variant-numeric: tabular-nums; }
   .bigstat .l { font-size: 13px; color: var(--sub); margin-top: 4px; }
 
   .toast { position: fixed; left: 50%; bottom: calc(26px + var(--sab)); transform: translateX(-50%); z-index: 40; background: var(--text); color: var(--app); padding: 10px 18px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
@@ -592,7 +603,7 @@
   /* The till's five fruit palettes, light + dark — same values as the till
      bundle so both screens read as one product. */
   var THEMES = {
-    orange: { l: { bg:"#F3EADB",pill:"#C1492A",onPill:"#FFFFFF",text:"#2E2418",sub:"#8A7B65",faint:"#B7A892",pri:"#C1492A",prih:"#A33417",panel:"rgba(255,255,255,.62)",panel2:"rgba(255,255,255,.42)",border:"rgba(130,100,60,.16)",input:"#FFFFFF",btn:"rgba(255,255,255,.5)",btnh:"rgba(255,255,255,.72)",nav:"rgba(243,234,219,.85)" },
+    orange: { l: { bg:"#F3EADB",pill:"#C1492A",onPill:"#FFFFFF",text:"#2E2418",sub:"#6E5F48",faint:"#B7A892",pri:"#C1492A",prih:"#A33417",panel:"rgba(255,255,255,.62)",panel2:"rgba(255,255,255,.42)",border:"rgba(130,100,60,.16)",input:"#FFFFFF",btn:"rgba(255,255,255,.5)",btnh:"rgba(255,255,255,.72)",nav:"rgba(243,234,219,.85)" },
               d: { bg:"#1B1713",pill:"#E0794F",onPill:"#1B1713",text:"#ECE5DA",sub:"#A79E90",faint:"#989186",pri:"#E0794F",prih:"#E88A62",panel:"#26211B",panel2:"#2F2922",border:"#3A322A",input:"#221D17",btn:"#2F2922",btnh:"#3A322A",nav:"rgba(33,28,22,.92)" } },
     green: { l: { bg:"#E7F1EA",pill:"#0C8653",onPill:"#FFFFFF",text:"#16221C",sub:"#57645D",faint:"#646D68",pri:"#0FA968",prih:"#0B8A54",panel:"rgba(255,255,255,.86)",panel2:"rgba(226,241,236,.72)",border:"#DAE7E0",input:"#FFFFFF",btn:"#E2F1E9",btnh:"#D4E8DE",nav:"rgba(240,247,243,.92)" },
              d: { bg:"#0F1613",pill:"#1FC47E",onPill:"#0F1613",text:"#EAF2ED",sub:"#93A199",faint:"#848D7A",pri:"#1FC47E",prih:"#37D08F",panel:"rgba(26,36,31,.72)",panel2:"rgba(34,46,38,.6)",border:"#2A3A30",input:"#18211D",btn:"#2A3A30",btnh:"#35493C",nav:"rgba(15,22,19,.85)" } },
