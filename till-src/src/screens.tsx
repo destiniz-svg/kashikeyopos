@@ -434,6 +434,80 @@ export function Delivery() {
   );
 }
 
+/* ── QR Orders (prototype: same portal as the customer/guest app) ───────────
+   The guest portal (guest.tsx, served at /?s=<slug>&t=<table>) posts to
+   /p/:slug/order, which drops an `orders` entity tagged source:"qr" + table +
+   otype. Those sync straight to the till — this screen is the incoming-orders
+   view over exactly that stream, with a phone preview of what guests see. */
+export function QrOrders() {
+  const st = useStore();
+  const settings = st.byKind("settings").map((e) => e.data)[0] || {};
+  const storeName = settings.storeName || "Kashikeyo Café";
+  const products = st.byKind("products").map((e) => e.data).filter((p: any) => p && !p.archived).slice(0, 6);
+  const slug = (() => { try { return JSON.parse(localStorage.getItem("kashikeyo-cloud") || "{}").slug || ""; } catch { return ""; } })();
+  const incoming = st.byKind("orders").map((e) => e.data)
+    .filter((o: any) => o.source === "qr" && !["done", "delivered", "wasted"].includes(String(o.status || "new").toLowerCase()))
+    .sort((a: any, b: any) => (a.createdAt || a.t || 0) - (b.createdAt || b.t || 0));
+  const itemsLine = (o: any) => (o.items || o.lines || []).map((l: any) => (l.qty || l.q) + "× " + (l.name || l.n)).join(", ");
+  return (
+    <div style={X.scroll}>
+      <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>QR Orders</div>
+      <div style={{ color: "var(--ink3)", fontSize: 13, margin: "3px 0 16px", maxWidth: 560 }}>Guests scan a table QR, order from their phone, and tickets land straight on the kitchen display — no re-keyed tablets. It's the same menu and portal your customers use.</div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,300px) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
+        {/* Phone preview of the guest portal */}
+        <div style={{ background: "#1B1A17", borderRadius: 30, padding: 10, boxShadow: "var(--shadow)", justifySelf: "center", width: "100%", maxWidth: 300 }}>
+          <div style={{ background: "var(--bg)", borderRadius: 22, overflow: "hidden", display: "flex", flexDirection: "column", height: 500 }}>
+            <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ width: 46, height: 5, borderRadius: 99, background: "var(--sur2)", margin: "0 auto 12px" }} />
+              <div style={{ fontWeight: 800, fontSize: 15 }}>{storeName}</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink3)" }}>Table 4 · Scan · order · pay</div>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+              {products.map((p: any) => { const [bg, fg] = tintFor(p.cat || p.name); return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "9px 11px" }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 9, background: bg, color: fg, display: "grid", placeItems: "center", fontSize: 15 }}>{p.emoji || (p.name || "?")[0]}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 12.5, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small className="num" style={{ color: "var(--ink3)", fontSize: 11 }}>{money(p.price || 0)}</small></div>
+                  <span style={{ width: 24, height: 24, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral)", display: "grid", placeItems: "center", fontWeight: 800 }}>+</span>
+                </div>
+              ); })}
+            </div>
+            <div style={{ padding: 12, borderTop: "1px solid var(--line)" }}>
+              <div style={{ background: "var(--coral)", color: "var(--coralink)", borderRadius: 13, padding: "12px", textAlign: "center", fontWeight: 800, fontSize: 13.5, opacity: .9 }}>Place order</div>
+            </div>
+          </div>
+        </div>
+        {/* Incoming orders + info */}
+        <div>
+          <div style={{ ...X.card, padding: 16, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", flex: 1 }}>INCOMING QR ORDERS</div>
+              {incoming.length > 0 && <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral)" }}>{incoming.length}</span>}
+            </div>
+            {incoming.length ? incoming.map((o: any) => {
+              const isNew = String(o.status || "new").toLowerCase() === "new";
+              return (
+                <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 13, background: "var(--sur2)", marginBottom: 8, flexWrap: "wrap" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 99, background: isNew ? "var(--coral)" : "var(--green)", animation: isNew ? "pulse 1.4s infinite" : undefined }} />
+                  <b style={{ fontSize: 13 }}>#{o.no || o.id}</b>
+                  <span style={{ fontSize: 11.5, color: "var(--ink3)", fontWeight: 700 }}>QR{o.table ? " · " + o.table : ""}</span>
+                  <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, color: "var(--ink2)", textAlign: "end" }}>{itemsLine(o) || "—"}</span>
+                  <button onClick={() => setStatus(o, isNew ? "preparing" : "ready")} style={{ ...X.pill, cursor: "pointer", color: "var(--coral)", borderColor: "var(--coral)" }}>{isNew ? "Accept →" : "Ready →"}</button>
+                </div>
+              );
+            }) : <div style={{ ...X.empty, textAlign: "center", padding: "30px 16px" }}>No incoming QR orders. Guests' orders appear here the moment they tap Place order.</div>}
+          </div>
+          <div style={{ background: "var(--greensoft)", borderRadius: 14, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+            <span style={{ fontSize: 18 }}>▦</span>
+            <div style={{ flex: 1, fontSize: 12.5, color: "var(--green)", fontWeight: 600, lineHeight: 1.45 }}>Print one QR per table. Orders are tagged with source and table, and roll into the Z-report automatically.
+              {slug && <div style={{ marginTop: 8 }}><button onClick={() => window.open("/?s=" + encodeURIComponent(slug), "_blank")} style={{ ...X.pill, cursor: "pointer", background: "var(--sur)", color: "var(--green)", borderColor: "var(--green)" }}>Open live guest view ↗</button></div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Open tabs (prototype: customer credit / on-account) ────────────────────── */
 export function Tabs() {
   const st = useStore();

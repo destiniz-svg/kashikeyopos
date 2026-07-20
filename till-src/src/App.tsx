@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
 import { hashPin, uid } from "./api";
-import { Dashboard, Reports, Orders, Delivery, Tabs } from "./screens";
+import { Dashboard, Reports, Orders, Delivery, Tabs, QrOrders } from "./screens";
 import { GuestPortal } from "./guest";
 
 /* A printed table QR points at "/?s=slug&t=table[&c=cust]" — same bundle, guest
@@ -606,7 +606,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             )}
           </div>
-        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "delivery" ? <Delivery /> : nav === "tabs" ? <Tabs /> : <Placeholder nav={nav} />}
+        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "delivery" ? <Delivery /> : nav === "tabs" ? <Tabs /> : nav === "qr" ? <QrOrders /> : <Placeholder nav={nav} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
