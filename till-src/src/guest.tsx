@@ -87,23 +87,35 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
           <button onClick={() => setCat("all")} style={{ ...G.catChip, ...(cat === "all" ? G.catOn : {}) }}>All</button>
           {groups.map((g) => <button key={g.name} onClick={() => setCat(g.name)} style={{ ...G.catChip, ...(cat === g.name ? G.catOn : {}) }}>{g.name}</button>)}
         </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: "4px 14px 90px" }}>
-          {items.map((p) => {
-            const q = cart[p.id] || 0; const t = tintFor(p.cat); const so = p.soldOut;
-            return (
-              <div key={p.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line)", opacity: so ? .5 : 1 }}>
-                <span style={{ ...G.glyph, background: t[0], color: t[1] }}>{p.emoji || (p.name || "?")[0]}</span>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
-                  {p.desc && <div style={{ color: "var(--ink3)", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.desc}</div>}
-                  <div className="num" style={{ fontWeight: 800, fontSize: 13, marginTop: 3 }}>{money(p.price)}{so && <span style={{ color: "var(--red)", marginInlineStart: 8, fontSize: 11, fontWeight: 700 }}>Sold out</span>}</div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "6px 14px 90px" }}>
+          <div style={G.grid}>
+            {items.map((p) => {
+              const q = cart[p.id] || 0; const t = tintFor(p.cat); const so = p.soldOut;
+              return (
+                <div key={p.id} style={{ ...G.tile, opacity: so ? .65 : 1, borderColor: q > 0 ? "var(--coral)" : "var(--line)" }}>
+                  <div style={{ ...G.plate, background: `radial-gradient(120% 115% at 50% 8%, ${t[0]}, var(--sur2))` }}>
+                    {p.img
+                      ? <img src={p.img} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      : <span style={{ fontSize: 40, lineHeight: 1 }}>{p.emoji || "🍽️"}</span>}
+                    {p.rating && !so && <span style={G.rate}><span style={{ color: "#FFC94D" }}>★</span><span className="num">{p.rating}</span></span>}
+                    {so && <div style={{ position: "absolute", inset: 0, background: "rgba(20,18,15,.45)", display: "grid", placeItems: "center", color: "#fff", fontWeight: 800, fontSize: 13 }}>Sold out</div>}
+                  </div>
+                  <div style={G.tbody}>
+                    {p.tag && <div style={G.ttag}>{p.tag}</div>}
+                    <div style={G.tname}>{p.name}</div>
+                    {p.desc && <div style={G.tdesc}>{p.desc}</div>}
+                    <div style={{ flex: 1 }} />
+                    <div style={G.tfoot}>
+                      <span className="num" style={{ fontSize: 13.5, fontWeight: 800 }}><small style={{ fontSize: 9, color: "var(--ink3)", fontWeight: 700, marginInlineEnd: 3 }}>MVR</small>{(p.price / 100).toFixed(2)}</span>
+                      {so ? null : q > 0
+                        ? <span style={G.stepper}><button style={G.stepBtn} onClick={() => bump(p.id, -1)}>−</button><span className="num" style={{ minWidth: 14, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={G.stepBtn} onClick={() => bump(p.id, 1)}>+</button></span>
+                        : <button style={G.add} onClick={() => bump(p.id, 1)}>+</button>}
+                    </div>
+                  </div>
                 </div>
-                {so ? null : q > 0 ? (
-                  <span style={G.stepper}><button style={G.stepBtn} onClick={() => bump(p.id, -1)}>−</button><span className="num" style={{ minWidth: 16, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={G.stepBtn} onClick={() => bump(p.id, 1)}>+</button></span>
-                ) : <button style={G.add} onClick={() => bump(p.id, 1)}>+</button>}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
           {items.length === 0 && <div style={{ color: "var(--ink3)", textAlign: "center", padding: 30 }}>No items in this category.</div>}
         </div>
         {count > 0 && (
@@ -152,9 +164,20 @@ const G: Record<string, React.CSSProperties> = {
   catChip: { whiteSpace: "nowrap", padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur2)", border: "1px solid var(--line)" },
   catOn: { background: "var(--ink)", color: "var(--bg)", borderColor: "var(--ink)" },
   glyph: { width: 44, height: 44, borderRadius: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20, flex: "0 0 44px" },
-  add: { width: 32, height: 32, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", fontSize: 19, fontWeight: 700 },
-  stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "3px 5px" },
-  stepBtn: { width: 26, height: 26, borderRadius: 99, background: "var(--sur)", fontSize: 16, fontWeight: 700 },
+  add: { width: 28, height: 28, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", fontSize: 18, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center" },
+  stepper: { display: "inline-flex", alignItems: "center", gap: 3, background: "var(--coralsoft)", borderRadius: 999, padding: "2px 4px" },
+  stepBtn: { width: 23, height: 23, borderRadius: 99, background: "var(--sur)", fontSize: 15, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
+  /* Plated menu tiles — same design as the register (photo plate + tag + name +
+     desc + rating + price/add), laid out as a responsive grid on the phone. */
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 11 },
+  tile: { position: "relative", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "start", overflow: "hidden" },
+  plate: { position: "relative", aspectRatio: "16 / 11", display: "grid", placeItems: "center", overflow: "hidden" },
+  rate: { position: "absolute", bottom: 7, insetInlineEnd: 8, fontSize: 10, fontWeight: 800, background: "rgba(20,18,15,.55)", color: "#fff", borderRadius: 999, padding: "2px 8px", backdropFilter: "blur(2px)", display: "inline-flex", alignItems: "center", gap: 3 },
+  tbody: { padding: "10px 12px 12px", display: "flex", flexDirection: "column", flex: 1 },
+  ttag: { fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em", textTransform: "uppercase", color: "var(--coral)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tname: { fontWeight: 700, fontSize: 13.5, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  tdesc: { fontSize: 11, color: "var(--ink2)", lineHeight: 1.32, marginTop: 3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 29 },
+  tfoot: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 },
   cartBar: { position: "absolute", left: 14, right: 14, bottom: 16, display: "flex", alignItems: "center", padding: "13px 16px", borderRadius: 15, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 22px -6px rgba(225,85,45,.55)" },
   sheetWrap: { position: "absolute", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "flex-end", animation: "fade .2s" },
   sheet: { width: "100%", background: "var(--bg)", borderRadius: "22px 22px 0 0", padding: 20, animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" },
