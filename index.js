@@ -604,8 +604,9 @@ async function ensureDefaultMenu(orgId) {
     }
     /* Seed / refresh the starter menu.
        - New item -> inserted in full.
-       - Live item an outlet has edited -> only the photo is refreshed, so their
-         price / add-ons / allergens / availability / category edits are kept.
+       - Live item an outlet has edited -> only the descriptive block (photo,
+         description, tag, rating, review count, Dhivehi name) is refreshed, so
+         their price / add-ons / availability / category edits are kept.
        - A default item that had been retired (deleted) is restored in full,
          re-categorised to the current tree. */
     for (const item of DEFAULT_MENU) {
@@ -615,11 +616,20 @@ async function ensureDefaultMenu(orgId) {
          ON CONFLICT (org_id, kind, id) DO UPDATE
            SET data = CASE WHEN entities.deleted
                             THEN EXCLUDED.data
-                            ELSE entities.data || jsonb_build_object('img', EXCLUDED.data->'img') END,
+                            ELSE entities.data || jsonb_build_object(
+                                   'img', EXCLUDED.data->'img',
+                                   'desc', EXCLUDED.data->'desc',
+                                   'tag', EXCLUDED.data->'tag',
+                                   'rating', EXCLUDED.data->'rating',
+                                   'rn', EXCLUDED.data->'rn',
+                                   'dv', EXCLUDED.data->'dv') END,
                deleted = false,
                rowver = nextval('entities_rowver_seq'), updated_at = now()
            WHERE entities.deleted = true
               OR (entities.data->>'img') IS DISTINCT FROM (EXCLUDED.data->>'img')
+              OR (entities.data->>'tag') IS DISTINCT FROM (EXCLUDED.data->>'tag')
+              OR (entities.data->>'rating') IS DISTINCT FROM (EXCLUDED.data->>'rating')
+              OR (entities.data->>'desc') IS DISTINCT FROM (EXCLUDED.data->>'desc')
          RETURNING rowver`,
         [orgId, item.id, JSON.stringify(item)]);
       if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));

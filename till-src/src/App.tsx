@@ -570,10 +570,12 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                             ? <img src={p.img} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                             : <span style={{ fontSize: 42, lineHeight: 1 }}>{p.emoji || "🍽️"}</span>}
                           {bestIds.has(p.id) && <span style={C.best}>★ Best</span>}
+                          {p.rating && <span style={{ position: "absolute", bottom: 7, insetInlineEnd: 8, fontSize: 10, fontWeight: 800, background: "rgba(20,18,15,.55)", color: "#fff", borderRadius: 999, padding: "2px 8px", backdropFilter: "blur(2px)", display: "inline-flex", alignItems: "center", gap: 3 }}><span style={{ color: "#FFC94D" }}>★</span><span className="num">{p.rating}</span>{p.rn ? <span style={{ opacity: .7, fontWeight: 700 }} className="num">({p.rn})</span> : null}</span>}
                           {hasMods(p) && <span style={{ position: "absolute", bottom: 7, insetInlineStart: 8, fontSize: 9.5, fontWeight: 800, background: "rgba(20,18,15,.55)", color: "#fff", borderRadius: 999, padding: "2px 8px", backdropFilter: "blur(2px)" }}>options</span>}
                           {q > 0 && <span style={{ position: "absolute", top: 7, insetInlineStart: 8, minWidth: 20, height: 20, borderRadius: 999, background: "var(--coral)", color: "var(--coralink)", fontSize: 11.5, fontWeight: 800, display: "grid", placeItems: "center", padding: "0 6px" }} className="num">{q}</span>}
                         </div>
                         <div style={C.tbody}>
+                          {p.tag && <div style={C.ttag}>{p.tag}</div>}
                           <div style={C.tname}>{p.name}</div>
                           {p.desc && <div style={C.tdesc}>{p.desc}</div>}
                           <div style={{ flex: 1 }} />
@@ -1007,6 +1009,7 @@ const C: Record<string, React.CSSProperties> = {
   tile: { position: "relative", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "left", overflow: "hidden" },
   plate: { position: "relative", aspectRatio: "16 / 11", display: "grid", placeItems: "center", overflow: "hidden" },
   tbody: { padding: "10px 12px 12px", display: "flex", flexDirection: "column", flex: 1 },
+  ttag: { fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em", textTransform: "uppercase", color: "var(--coral)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   tname: { fontWeight: 700, fontSize: 13.5, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   tdesc: { fontSize: 11, color: "var(--ink2)", lineHeight: 1.32, marginTop: 3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 29 },
   tfoot: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 },

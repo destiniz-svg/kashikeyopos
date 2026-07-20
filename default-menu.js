@@ -48,29 +48,30 @@ const CAT_GROUPS = [
 const CAT_ORDER = CAT_GROUPS.reduce((a, g) => a.concat(g.subs), []);
 
 // id, English name, Dhivehi name, category, price (MVR), emoji,
-// image (relative to scripts/), add-ons [{name, price MVR}], description.
+// image (relative to scripts/), add-ons [{name, price MVR}], description,
+// rating (0–5), rating count, menu tag/blurb.
 const ITEMS = [
-  ["gulha", "Gulha", "ގުޅަ", "hedhikaa", 5, "🟤", "kashikeyo-menu/gulha.webp", [], "Deep-fried dough balls stuffed with spiced smoked tuna & coconut."],
-  ["bajiya", "Bajiya", "ބަޖިޔާ", "hedhikaa", 5, "🥟", "kashikeyo-menu/bajiya.webp", [], "Golden pastry parcels filled with tuna, onion & coconut."],
-  ["kavaabu", "Kavaabu", "ކަވާބު", "hedhikaa", 7, "🧆", "kashikeyo-menu/kavaabu.webp", [], "Spiced tuna & lentil fritters, fried golden."],
-  ["kboakibaa", "Kulhi Boakibaa", "ކުޅިބޯކިބާ", "hedhikaa", 10, "🍥", "kashikeyo-menu/kboakibaa.webp", [], "Baked spicy tuna & rice cake."],
-  ["masroshi", "Masroshi", "މަސްރޮށި", "hedhikaa", 8, "🌯", "kashikeyo-menu/masroshi.webp", [], "Flatbread filled with spiced smoked tuna."],
-  ["cutlets", "Cutlets", "ކަޓްލަސް", "hedhikaa", 6, "🥔", "kashikeyo-menu/cutlets.webp", [], "Breaded tuna & potato cutlets."],
-  ["mashuni", "Mas Huni & Roshi", "މަސްހުނި ރޮށި", "mains", 30, "🥗", "kashikeyo-menu/mashuni.webp", [{ name: "Extra roshi", price: 5 }, { name: "Githeyo mirus", price: 2 }], "Smoked tuna shredded with grated coconut, chili, onion & lime, served with warm roshi."],
-  ["garudhiya", "Garudhiya Set", "ގަރުދިޔަ", "mains", 45, "🍲", "kashikeyo-menu/garudhiya.webp", [{ name: "Extra rice", price: 5 }, { name: "Lime & mirus", price: 0 }], "Clear Maldivian tuna broth with steamed rice, lime, chili & onion on the side."],
-  ["riha", "Kukulhu Riha", "ކުކުޅު ރިހަ", "mains", 55, "🍛", "kashikeyo-menu/riha.webp", [], "Tender Maldivian chicken curry simmered in island spices & coconut milk."],
-  ["friedrice", "Fried Rice", "ފްރައިޑް ރައިސް", "mains", 50, "🍚", "kashikeyo-menu/friedrice.webp", [], "Fragrant fried rice with egg, vegetables and a hit of island spice."],
-  ["kalhusai", "Kalhu Sai", "ކަޅުސައި", "drinks", 8, "🍵", "kashikeyo-menu/kalhusai.webp", [{ name: "Less sugar", price: 0 }, { name: "Extra strong", price: 0 }], "Traditional Maldivian black tea."],
-  ["kirusai", "Kiru Sai", "ކިރުސައި", "drinks", 12, "🥛", "kashikeyo-menu/kirusai.webp", [], "Classic milk tea, island style."],
-  ["coffee", "Coffee", "ކޮފީ", "drinks", 30, "☕", "kashikeyo-menu/coffee.webp", [{ name: "Iced", price: 5 }, { name: "Extra shot", price: 8 }], "Locally roasted coffee, served hot or over ice."],
-  ["passion", "Passion Juice", "ޕެޝަން ޖޫސް", "drinks", 35, "🧃", "kashikeyo-menu/passion.webp", [], "Chilled fresh passionfruit juice, lightly sweetened."],
-  ["kurumba", "Kurumba", "ކުރުނބާ", "drinks", 40, "🥥", "kashikeyo-menu/kurumba.webp", [], "Fresh young coconut water, served chilled."],
-  ["bondibai", "Bondibai", "ބޮނޑިބައި", "sweets", 20, "🍮", "kashikeyo-menu/bondibai.webp", [], "Creamy coconut rice pudding — a Maldivian classic."],
-  ["fonibkb", "Foni Boakibaa", "ފޮނިބޯކިބާ", "sweets", 15, "🍰", "kashikeyo-menu/fonibkb.webp", [], "Sweet baked coconut cake."],
-  ["saagu", "Saagu Bondibai", "ސާގު ބޮނޑިބައި", "sweets", 22, "🍧", "kashikeyo-menu/saagu.webp", [], "Sago pearls in sweet coconut milk."],
+  ["gulha", "Gulha", "ގުޅަ", "hedhikaa", 5, "🟤", "kashikeyo-menu/gulha.webp", [], "Deep-fried dough balls stuffed with spiced smoked tuna & coconut.", 4.8, 256, "Poppable & moreish"],
+  ["bajiya", "Bajiya", "ބަޖިޔާ", "hedhikaa", 5, "🥟", "kashikeyo-menu/bajiya.webp", [], "Golden pastry parcels filled with tuna, onion & coconut.", 4.7, 231, "Crispy tea-time favourite"],
+  ["kavaabu", "Kavaabu", "ކަވާބު", "hedhikaa", 7, "🧆", "kashikeyo-menu/kavaabu.webp", [], "Spiced tuna & lentil fritters, fried golden.", 4.7, 160, "Crunchy bites"],
+  ["kboakibaa", "Kulhi Boakibaa", "ކުޅިބޯކިބާ", "hedhikaa", 10, "🍥", "kashikeyo-menu/kboakibaa.webp", [], "Baked spicy tuna & rice cake.", 4.7, 130, "Spicy fish cake"],
+  ["masroshi", "Masroshi", "މަސްރޮށި", "hedhikaa", 8, "🌯", "kashikeyo-menu/masroshi.webp", [], "Flatbread filled with spiced smoked tuna.", 4.7, 175, "Stuffed & warm"],
+  ["cutlets", "Cutlets", "ކަޓްލަސް", "hedhikaa", 6, "🥔", "kashikeyo-menu/cutlets.webp", [], "Breaded tuna & potato cutlets.", 4.6, 110, "Golden & crisp"],
+  ["mashuni", "Mas Huni & Roshi", "މަސްހުނި ރޮށި", "mains", 30, "🥗", "kashikeyo-menu/mashuni.webp", [{ name: "Extra roshi", price: 5 }, { name: "Githeyo mirus", price: 2 }], "Smoked tuna shredded with grated coconut, chili, onion & lime, served with warm roshi.", 4.8, 312, "Island classic · freshly shredded"],
+  ["garudhiya", "Garudhiya Set", "ގަރުދިޔަ", "mains", 45, "🍲", "kashikeyo-menu/garudhiya.webp", [{ name: "Extra rice", price: 5 }, { name: "Lime & mirus", price: 0 }], "Clear Maldivian tuna broth with steamed rice, lime, chili & onion on the side.", 4.7, 208, "Comfort in a bowl"],
+  ["riha", "Kukulhu Riha", "ކުކުޅު ރިހަ", "mains", 55, "🍛", "kashikeyo-menu/riha.webp", [], "Tender Maldivian chicken curry simmered in island spices & coconut milk.", 4.9, 344, "Slow-cooked · deeply spiced"],
+  ["friedrice", "Fried Rice", "ފްރައިޑް ރައިސް", "mains", 50, "🍚", "kashikeyo-menu/friedrice.webp", [], "Fragrant fried rice with egg, vegetables and a hit of island spice.", 4.6, 190, "Wok-tossed & smoky"],
+  ["kalhusai", "Kalhu Sai", "ކަޅުސައި", "drinks", 8, "🍵", "kashikeyo-menu/kalhusai.webp", [{ name: "Less sugar", price: 0 }, { name: "Extra strong", price: 0 }], "Traditional Maldivian black tea.", 4.6, 188, "Strong & sweet"],
+  ["kirusai", "Kiru Sai", "ކިރުސައި", "drinks", 12, "🥛", "kashikeyo-menu/kirusai.webp", [], "Classic milk tea, island style.", 4.6, 120, "Warm & milky"],
+  ["coffee", "Coffee", "ކޮފީ", "drinks", 30, "☕", "kashikeyo-menu/coffee.webp", [{ name: "Iced", price: 5 }, { name: "Extra shot", price: 8 }], "Locally roasted coffee, served hot or over ice.", 4.8, 410, "Freshly brewed"],
+  ["passion", "Passion Juice", "ޕެޝަން ޖޫސް", "drinks", 35, "🧃", "kashikeyo-menu/passion.webp", [], "Chilled fresh passionfruit juice, lightly sweetened.", 4.7, 172, "Cool & tangy"],
+  ["kurumba", "Kurumba", "ކުރުނބާ", "drinks", 40, "🥥", "kashikeyo-menu/kurumba.webp", [], "Fresh young coconut water, served chilled.", 4.8, 95, "Straight from the island"],
+  ["bondibai", "Bondibai", "ބޮނޑިބައި", "sweets", 20, "🍮", "kashikeyo-menu/bondibai.webp", [], "Creamy coconut rice pudding — a Maldivian classic.", 4.9, 140, "Sweet island finish"],
+  ["fonibkb", "Foni Boakibaa", "ފޮނިބޯކިބާ", "sweets", 15, "🍰", "kashikeyo-menu/fonibkb.webp", [], "Sweet baked coconut cake.", 4.8, 88, "Sweet & dense"],
+  ["saagu", "Saagu Bondibai", "ސާގު ބޮނޑިބައި", "sweets", 22, "🍧", "kashikeyo-menu/saagu.webp", [], "Sago pearls in sweet coconut milk.", 4.8, 76, "Silky pudding"],
 ];
 
-const DEFAULT_MENU = ITEMS.map(([id, name, dv, cat, mvr, emoji, file, addons, desc]) => {
+const DEFAULT_MENU = ITEMS.map(([id, name, dv, cat, mvr, emoji, file, addons, desc, rating, rn, tag]) => {
   const item = {
     id, name, dv, cat, emoji,
     unit: "pcs",
@@ -80,6 +81,9 @@ const DEFAULT_MENU = ITEMS.map(([id, name, dv, cat, mvr, emoji, file, addons, de
     img: imgDataUri(file),
   };
   if (desc) item.desc = desc;
+  if (rating) item.rating = rating;
+  if (rn) item.rn = rn;
+  if (tag) item.tag = tag;
   if (addons && addons.length) item.addons = addons.map((a) => ({ name: a.name, price: Math.round(Number(a.price || 0) * 100) }));
   return item;
 });
