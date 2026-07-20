@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
-import { hashPin, uid } from "./api";
+import { elevate, hashPin, uid } from "./api";
 import { Dashboard, Reports, Orders, Delivery, Tabs, QrOrders, Outlets, Setup } from "./screens";
 import { GuestPortal } from "./guest";
 import { t } from "./i18n";
@@ -186,6 +186,14 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [registerNo, setRegisterNo] = useState<number>(() => { try { return Math.max(1, Number(localStorage.getItem("kashikeyo-register-no")) || 1); } catch { return 1; } });
   const saveRegisterNo = (n: number) => { const v = Math.max(1, Math.floor(Number(n)) || 1); setRegisterNo(v); try { localStorage.setItem("kashikeyo-register-no", String(v)); } catch { /* ignore */ } };
   const [regModal, setRegModal] = useState(false);
+  /* Module-5 flows: void-after-KOT (reason, no PIN), staff-discount approval
+     (manager password on EVERY register chip; back-office/product pricing is
+     untouched), and drawer paid-outs (expense tied to the open shift). */
+  const [resumedOrderId, setResumedOrderId] = useState<string | null>(null);
+  const [voidReq, setVoidReq] = useState<{ key: string; pid: string; name: string } | null>(null);
+  const [discReq, setDiscReq] = useState<number | null>(null);
+  const [discAuth, setDiscAuth] = useState<any>(null);
+  const [paidOutModal, setPaidOutModal] = useState(false);
   const T = (s: string) => t(s, lang);
   const nm = (p: any) => (lang === "dv" && p && p.dv) ? p.dv : (p ? (p.name || "") : "");
   const vw = useVW();
@@ -283,6 +291,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       zone: otype === "delivery" && zone ? zone.name : null, fee: totals.fee, deliveryNote: otype === "delivery" ? deliveryNote.trim() : "",
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods || [], discPct: 0, taxable: p?.taxable !== false }; }),
       subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, billDiscPct: discPct, svcCharge: totals.svc,
+      /* every staff discount carries its manager approval (who/when/how) */
+      discountAuth: totals.disc > 0 ? (discAuth || null) : null,
       payments, change, refunded: false,
     };
     store.commit([{ kind: "sales", id: sale.id, data: sale }]);
@@ -290,11 +300,45 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     resetBill(); setPay(false);
   };
 
-  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); setDeliveryNote(""); };
+  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); setDeliveryNote(""); setResumedOrderId(null); setDiscAuth(null); };
+  /* Reducing a line on a bill already fired to the kitchen goes through the
+     void-reason flow; pre-KOT edits stay instant. */
+  const requestDec = (key: string, pid: string, name: string) => {
+    if (resumedOrderId) setVoidReq({ key, pid, name });
+    else bump(key, -1);
+  };
+  const dropOneGuard = (p: any) => {
+    if (!resumedOrderId) { dropOne(p.id); return; }
+    for (let i = cart.length - 1; i >= 0; i--) if (cart[i].pid === p.id) { setVoidReq({ key: cart[i].key, pid: p.id, name: p.name || "item" }); return; }
+  };
+  const confirmVoid = (reason: string) => {
+    if (!voidReq) return;
+    bump(voidReq.key, -1);
+    /* record the void on the fired order so the kitchen + Z-report see it */
+    const o = orders.find((x) => x.id === resumedOrderId);
+    if (o) {
+      let took = false;
+      const lines = (o.lines || []).map((l: any) => { if (!took && l.pid === voidReq.pid && (l.qty || 0) > 0) { took = true; return { ...l, qty: l.qty - 1 }; } return l; }).filter((l: any) => (l.qty || 0) > 0);
+      const voids = [...(o.voids || []), { pid: voidReq.pid, name: voidReq.name, qty: 1, reason, at: Date.now(), by: user.name }];
+      store.commit([{ kind: "orders", id: o.id, data: { ...o, lines, voids } }]);
+    }
+    toast("Removed " + voidReq.name + " · " + reason);
+    setVoidReq(null);
+  };
+  /* Drawer paid-out: requires an open shift (it must land on a Z-report). */
+  const openPaidOut = () => { if (!openShift) { toast("Open a shift first"); setShiftModal(true); return; } setPaidOutModal(true); };
+  const recordPaidOut = (amount: number, reason: string, note: string) => {
+    if (!openShift) return;
+    const e = { id: uid(), t: Date.now(), type: "paidout", amount, reason, note, shiftId: openShift.id, storeId: settings.storeId || "main", userName: user.name };
+    store.commit([{ kind: "expenses", id: e.id, data: e }]);
+    toast("Paid out " + money(amount) + " · " + reason);
+    setPaidOutModal(false);
+  };
+  const shiftPaidOut = openShift ? st.byKind("expenses").map((e) => e.data).filter((e: any) => e.shiftId === openShift.id).reduce((a: number, e: any) => a + (e.amount || 0), 0) : 0;
 
   const park = () => {
     if (!cart.length) return;
-    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main" };
+    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, discAuth: discAuth || undefined, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main", orderId: resumedOrderId || undefined };
     store.commit([{ kind: "parked", id: bill.id, data: bill }]);
     resetBill();
   };
@@ -309,7 +353,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       otype, table: table || null, customerName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main",
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, emoji: p?.emoji, mods: l.mods || [] }; }),
     };
-    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main", orderId: oid, no: orderNo };
+    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, discAuth: discAuth || undefined, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main", orderId: oid, no: orderNo };
     store.commit([{ kind: "orders", id: oid, data: order }, { kind: "parked", id: bill.id, data: bill }]);
     resetBill();
   };
@@ -322,6 +366,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     });
     setCart(norm); setDisc(bill.disc || 0); setDiscPct(bill.discPct || 0); setOtype(bill.otype || "takeaway"); setTable(bill.table || "");
     setCust(bill.customerId ? { id: bill.customerId, name: bill.custName } : null);
+    setResumedOrderId(bill.orderId || null); setDiscAuth(bill.discAuth || null);
     store.del([{ kind: "parked", id: bill.id }]);
   };
 
@@ -418,7 +463,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                     <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
                       <span style={{ width: 32, height: 32, borderRadius: 999, background: t[0], color: t[1], display: "grid", placeItems: "center", fontWeight: 800, fontSize: 13, flex: "0 0 32px" }}>{(p.name || "?")[0].toUpperCase()}</span>
                       <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nm(p)}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " " + T("each")}</small></div>
-                      <Stepper value={l.qty} onDec={() => bump(l.key, -1)} onInc={() => bump(l.key, 1)} decLabel="Remove one" incLabel="Add one" />
+                      <Stepper value={l.qty} onDec={() => requestDec(l.key, l.pid, prodById(l.pid)?.name || "item")} onInc={() => bump(l.key, 1)} decLabel="Remove one" incLabel="Add one" />
                       <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
                     </div>
                   );
@@ -429,7 +474,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                   <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em", color: "var(--ink2)", marginInlineEnd: 2 }}>{T("DISCOUNT")}</span>
                   {[0, 5, 10, 15, 20].map((pct) => {
                     const on = pct === 0 ? !totals.disc : discPct === pct;
-                    return <button key={pct} onClick={() => { if (pct === 0) { setDisc(0); setDiscPct(0); } else { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); } }} style={{ border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), borderRadius: 99, padding: "4px 11px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: on ? "var(--coralsoft)" : "transparent", color: on ? "var(--coral)" : "var(--ink2)" }}>{pct === 0 ? T("None") : pct + "%"}</button>;
+                    return <button key={pct} onClick={() => { if (pct === 0) { setDisc(0); setDiscPct(0); setDiscAuth(null); } else { setDiscReq(pct); } }} style={{ border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), borderRadius: 99, padding: "4px 11px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: on ? "var(--coralsoft)" : "transparent", color: on ? "var(--coral)" : "var(--ink2)" }}>{pct === 0 ? T("None") : pct + "%"}</button>;
                   })}
                 </div>
                 {totals.disc > 0 && <div style={C.trow}><span>{T("Subtotal")}</span><span className="num">{money(totals.subtotal)}</span></div>}
@@ -541,6 +586,13 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           <div key={k} style={deCard}><div style={{ fontSize: 11, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</div><div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>{v}</div></div>
         ))}
       </div>
+      <div style={{ ...deCard, display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: "var(--ink2)", textTransform: "uppercase", letterSpacing: ".04em" }}>Paid out this shift</div>
+          <div className="num" style={{ fontSize: 22, fontWeight: 800, marginTop: 2 }}>{money(shiftPaidOut)}</div>
+        </div>
+        <button onClick={openPaidOut} style={{ ...C.kot, flex: "0 0 auto", minHeight: "var(--tap)", padding: "0 18px" }}>💸 Record paid-out</button>
+      </div>
       <div style={{ ...deCard, marginBottom: 14 }}>
         <div style={{ fontWeight: 800, fontSize: 13, marginBottom: 8 }}>Payment breakdown</div>
         {[...METHODS, "Credit"].map((m) => (deScope.byMethod[m] ? (
@@ -565,7 +617,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: "6px 11px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
             <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? T("Shift open") : T("Open shift"))}
           </button>
-          <ProfileMenu user={user} mob={mob} lang={lang} registerNo={registerNo} onEditRegister={() => setRegModal(true)} onToggleLang={toggleLang} onSignOut={onSignOut} />
+          <ProfileMenu user={user} mob={mob} lang={lang} registerNo={registerNo} onEditRegister={() => setRegModal(true)} onPaidOut={openPaidOut} onToggleLang={toggleLang} onSignOut={onSignOut} />
         </header>
 
         <nav style={mob ? C.navrowM : C.navrow} className="glass">
@@ -643,7 +695,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                           <div style={C.tfoot}>
                             <span className="num" style={{ fontSize: 14, fontWeight: 800 }}><small style={{ fontSize: 9.5, color: "var(--ink3)", fontWeight: 700, marginInlineEnd: 3 }}>MVR</small>{(p.price / 100).toFixed(2)}</span>
                             {q > 0
-                              ? <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button aria-label="Remove one" style={C.stepBtn} onClick={() => dropOne(p.id)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button aria-label="Add one" style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
+                              ? <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button aria-label="Remove one" style={C.stepBtn} onClick={() => dropOneGuard(p)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button aria-label="Add one" style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
                               : <button aria-label={"Add " + (p.name || "item")} style={C.plus} onClick={(e) => { e.stopPropagation(); tapProduct(p); }}>+</button>}
                           </div>
                         </div>
@@ -682,6 +734,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} expenses={st.byKind("expenses").map((e) => e.data)} shifts={shifts} T={T} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
       {regModal && <RegisterModal current={registerNo} T={T} onSave={(n) => { saveRegisterNo(n); setRegModal(false); }} onClose={() => setRegModal(false)} />}
+      {voidReq && <VoidModal name={voidReq.name} onConfirm={confirmVoid} onClose={() => setVoidReq(null)} />}
+      {discReq != null && <DiscountApproveModal pct={discReq} onApproved={() => { setDiscPct(discReq); setDisc(Math.round(totals.subtotal * discReq / 100)); setDiscAuth({ pct: discReq, method: "password", at: Date.now(), cashier: user.name }); setDiscReq(null); toast(discReq + "% discount approved"); }} onClose={() => setDiscReq(null)} />}
+      {paidOutModal && <PaidOutModal onSave={recordPaidOut} onClose={() => setPaidOutModal(false)} />}
     </div>
   );
 }
@@ -790,6 +845,63 @@ const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
   <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, fontWeight: bold ? 800 : 600, color: bold ? "var(--ink)" : "var(--ink2)" }}><span>{k}</span><span className="num">{v}</span></div>
 );
 
+/* Void a kitchen-fired item — quick reason, no PIN; recorded on the order so
+   the kitchen and the Z-report both see what left the ticket and why. */
+function VoidModal({ name, onConfirm, onClose }: { name: string; onConfirm: (reason: string) => void; onClose: () => void }) {
+  const REASONS = ["Guest changed mind", "Kitchen error", "Out of stock", "Other"];
+  const [sel, setSel] = useState(REASONS[0]);
+  return (
+    <Modal title="Remove sent item" onClose={onClose} width={420}>
+      <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}><b>{name}</b> was already sent to the kitchen. Pick a reason — it’s recorded on the order.</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {REASONS.map((r) => (
+          <button key={r} aria-pressed={sel === r} onClick={() => setSel(r)} style={{ display: "flex", alignItems: "center", gap: 10, minHeight: "var(--tap)", padding: "0 14px", borderRadius: 13, border: "1.5px solid " + (sel === r ? "var(--coral)" : "var(--line)"), background: sel === r ? "var(--coralsoft)" : "var(--sur)", fontWeight: 700, fontSize: 13.5, color: sel === r ? "var(--coral-text)" : "var(--ink)" }}>{r}</button>
+        ))}
+      </div>
+      <button onClick={() => onConfirm(sel)} style={{ width: "100%", minHeight: "var(--tap-lg)", marginTop: 14, borderRadius: 13, background: "var(--red)", color: "#fff", fontWeight: 800, fontSize: 15 }}>Remove item</button>
+    </Modal>
+  );
+}
+
+/* Manager approval for a staff discount — password verified server-side
+   (same elevation as refunds); the approval is logged on the sale. */
+function DiscountApproveModal({ pct, onApproved, onClose }: { pct: number; onApproved: () => void; onClose: () => void }) {
+  const [pw, setPw] = useState(""); const [busy, setBusy] = useState(false); const [err, setErr] = useState("");
+  const go = async () => {
+    setBusy(true); setErr("");
+    try { await elevate(pw); onApproved(); }
+    catch (e: any) { setErr(e.message || "Wrong password"); setBusy(false); }
+  };
+  return (
+    <Modal title={"Apply " + pct + "% discount"} onClose={onClose} width={420}>
+      <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>Staff discounts need manager approval — the approval is logged on the sale. Standing customer prices from the back office aren’t affected.</div>
+      <label style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700 }}>STORE / MANAGER PASSWORD</label>
+      <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && pw) go(); }} style={{ ...C.input, width: "100%", marginTop: 6 }} />
+      {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700, marginTop: 8 }}>{err}</div>}
+      <button disabled={!pw || busy} onClick={go} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)", marginTop: 14, opacity: (!pw || busy) ? .5 : 1 }}>{busy ? "Verifying…" : "Approve discount"}</button>
+    </Modal>
+  );
+}
+
+/* Drawer paid-out — cash out mid-shift, booked as an expense on the open
+   shift so the Z-report's expected-in-drawer stays honest. */
+function PaidOutModal({ onSave, onClose }: { onSave: (amount: number, reason: string, note: string) => void; onClose: () => void }) {
+  const REASONS = ["Supplies", "Delivery", "Staff meal", "Other"];
+  const [v, setV] = useState(""); const [reason, setReason] = useState(REASONS[0]); const [note, setNote] = useState("");
+  const amt = Math.round(Number(v) * 100) || 0;
+  return (
+    <Modal title="Paid out" onClose={onClose} width={420}>
+      <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 12, lineHeight: 1.5 }}>Cash taken from the drawer — booked to this shift and deducted from the expected drawer count.</div>
+      <MoneyField value={v} onChange={setV} placeholder="0.00" autoFocus />
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "12px 0" }}>
+        {REASONS.map((r) => <button key={r} aria-pressed={reason === r} onClick={() => setReason(r)} style={{ minHeight: 40, padding: "0 14px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, border: "1px solid " + (reason === r ? "var(--coral)" : "var(--line)"), background: reason === r ? "var(--coralsoft)" : "var(--sur)", color: reason === r ? "var(--coral-text)" : "var(--ink2)" }}>{r}</button>)}
+      </div>
+      <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note — what was it for? (optional)" style={{ ...C.input, width: "100%" }} />
+      <button disabled={amt <= 0} onClick={() => onSave(amt, reason, note.trim())} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)", marginTop: 14, opacity: amt > 0 ? 1 : .5 }}>Record paid-out</button>
+    </Modal>
+  );
+}
+
 /* Per-device register number — stored locally so each till device carries its
    own; drives Z-report numbers and receipt doc numbers. */
 function RegisterModal({ current, T, onSave, onClose }: { current: number; T: Tr; onSave: (n: number) => void; onClose: () => void }) {
@@ -856,7 +968,7 @@ const RRow = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
 /* Header profile switcher — one menu off the avatar that carries who you are
    (name + role), the language switch, the jump to the admin cockpit, and sign
    out. Mirrored in the back office so both apps switch from the same place. */
-function ProfileMenu({ user, mob, lang, registerNo, onEditRegister, onToggleLang, onSignOut }: { user: any; mob: boolean; lang: "en" | "dv"; registerNo: number; onEditRegister: () => void; onToggleLang: () => void; onSignOut: () => void }) {
+function ProfileMenu({ user, mob, lang, registerNo, onEditRegister, onPaidOut, onToggleLang, onSignOut }: { user: any; mob: boolean; lang: "en" | "dv"; registerNo: number; onEditRegister: () => void; onPaidOut: () => void; onToggleLang: () => void; onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -889,6 +1001,7 @@ function ProfileMenu({ user, mob, lang, registerNo, onEditRegister, onToggleLang
           </div>
           <div style={{ height: 1, background: "var(--line)", margin: "2px 6px 4px" }} />
           <Item icon="🖥" label={t("Register number", lang)} sub={"This device · R" + registerNo} onClick={onEditRegister} />
+          <Item icon="💸" label="Paid out" sub="Cash out of the drawer" onClick={onPaidOut} />
           <Item icon="🌐" label={t("Language", lang)} sub={lang === "en" ? "English" : "ދިވެހި"} onClick={onToggleLang} />
           <Item icon="⚙︎" label={t("Admin panel", lang)} sub="Back office & reports" onClick={() => (window.location.href = "/back")} />
           <div style={{ height: 1, background: "var(--line)", margin: "4px 6px" }} />
