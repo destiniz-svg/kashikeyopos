@@ -174,7 +174,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const sector: "general" | "tourism" = gstBp >= 1600 ? "tourism" : "general";
   const toggleLang = () => { const n = lang === "en" ? "dv" : "en"; setLang(n); if (typeof document !== "undefined") document.documentElement.dir = n === "dv" ? "rtl" : "ltr"; };
   const toggleSector = () => {
-    const cur = st.byKind("settings")[0]; const data = { ...(cur?.data || {}), gstBp: sector === "tourism" ? 800 : 1600 };
+    const cur = st.byKind("settings")[0]; const data = { ...(cur?.data || {}), gstBp: sector === "tourism" ? 800 : 1700 };
     st.commit([{ kind: "settings", id: cur?.id || "settings", data }]);
   };
   const parked = st.byKind("parked").map((e) => e.data).sort((a, b) => (a.t || 0) - (b.t || 0));
@@ -434,7 +434,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
             {settings.storeName || "Kashikeyo Café"} <span style={{ color: "var(--ink3)", fontSize: 11 }}>▾</span>
           </div>
           <button onClick={toggleSector} style={{ ...C.pill, cursor: "pointer", color: "var(--ink)", padding: "6px 11px" }} title="Switch GST sector">
-            <i style={{ ...C.dot, background: sector === "tourism" ? "var(--blue)" : "var(--green)" }} />{mob ? "" : (sector === "tourism" ? "Tourism 16%" : "General 8%")}
+            <i style={{ ...C.dot, background: sector === "tourism" ? "var(--blue)" : "var(--green)" }} />{mob ? "" : (sector === "tourism" ? "Tourism · TGST 17%" : "General · GGST 8%")}
           </button>
           <div style={{ flex: 1 }} />
           {!mob && <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>}
@@ -633,47 +633,72 @@ function StatusPill() {
   return <span style={{ ...C.pill, color: c }}><i style={{ ...C.dot, background: c, animation: s === "saving" ? "pulse 1s infinite" : s === "synced" ? "pulse 2.4s infinite" : undefined }} />{label}</span>;
 }
 
-function PaySheet({ total, currency, hasCustomer, custName, onClose, onDone }: { total: number; currency: string; hasCustomer: boolean; custName?: string; onClose: () => void; onDone: (p: { method: string; amount: number }[], change: number) => void }) {
+/* Payment drawer — matched to the KashikeyoPOS prototype: a right-side slide-in
+   drawer with a centered Total-due, split squares, a 2-column tender-card grid,
+   cash-received chips and a green change-due card. On tab + QR carry over from
+   our build (prototype tenders are Cash/Card/BML/Transfer/On tab). */
+const PAY_ICON: Record<string, string> = { Cash: "💵", Card: "💳", "BML Gateway": "🏦", Transfer: "🔁", QR: "▦", Credit: "🧾" };
+function PaySheet({ total, hasCustomer, custName, onClose, onDone }: { total: number; currency: string; hasCustomer: boolean; custName?: string; onClose: () => void; onDone: (p: { method: string; amount: number }[], change: number) => void }) {
   const [method, setMethod] = useState<string>("Cash");
   const [tender, setTender] = useState<number>(0);
   const [guests, setGuests] = useState(1);
-  const isTab = method === "Credit";
+  const isTab = method === "Credit", cashSel = method === "Cash";
   const perGuest = Math.ceil(total / guests / 100) * 100;
-  const change = method === "Cash" ? Math.max(0, tender - total) : 0;
-  const quick = [total, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000].filter((v, i, a) => a.indexOf(v) === i);
-  const ok = (method !== "Cash" || tender >= total) && (!isTab || hasCustomer);
+  const change = cashSel ? Math.max(0, tender - total) : 0;
+  const tenders = [total, Math.ceil(total / 5000) * 5000, Math.ceil(total / 10000) * 10000, Math.ceil(total / 50000) * 50000].filter((v, i, a) => a.indexOf(v) === i);
+  const ok = (!cashSel || tender >= total) && (!isTab || hasCustomer);
+  const METH: [string, string][] = [["Cash", "Cash"], ["Card", "Card"], ["BML Gateway", "BML Gateway"], ["Transfer", "Transfer"], ["QR", "QR"], ["Credit", "On tab"]];
+  const confirm = () => onDone(
+    guests > 1 ? Array.from({ length: guests }, (_, i) => ({ method, amount: i === guests - 1 ? total - perGuest * (guests - 1) : perGuest })) : [{ method, amount: total }],
+    change);
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(460px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ color: "var(--ink2)", fontSize: 12, fontWeight: 700, letterSpacing: ".05em" }}>TOTAL DUE</div>
-        <div className="num" style={{ fontSize: 34, fontWeight: 800, margin: "2px 0 14px" }}>{money(total)}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-          <span style={{ color: "var(--ink2)", fontSize: 12.5, fontWeight: 700 }}>Split</span>
-          {[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setGuests(n)} style={{ ...C.chip, padding: "6px 13px", ...(guests === n ? C.chipOn : {}) }}>{n}</button>)}
-          {guests > 1 && <span className="num" style={{ marginInlineStart: "auto", color: "var(--coral)", fontWeight: 800, fontSize: 13 }}>{money(perGuest)}/guest</span>}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
-          {METHODS.map((m) => <button key={m} onClick={() => { setMethod(m); if (m !== "Cash") setTender(total); }} style={{ ...C.method, ...(method === m ? C.methodOn : {}) }}>{m}</button>)}
-          <button onClick={() => hasCustomer && setMethod("Credit")} disabled={!hasCustomer} title={hasCustomer ? "Charge to customer tab" : "Attach a customer first"} style={{ ...C.method, ...(isTab ? C.methodOn : {}), opacity: hasCustomer ? 1 : .45 }}>On tab</button>
-        </div>
-        {isTab && <div style={{ marginTop: 12, fontSize: 13, color: "var(--ink2)" }}>Charged to <b style={{ color: "var(--ink)" }}>{custName}</b>’s tab — posts to receivables.</div>}
-        {method === "Cash" && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {quick.map((v) => <button key={v} onClick={() => setTender(v)} style={{ ...C.chip, ...(tender === v ? C.chipOn : {}) }}>{v === total ? "Exact" : money(v)}</button>)}
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 14 }}>
-              <span style={{ color: "var(--ink2)", fontWeight: 600 }}>Change due</span>
-              <span className="num" style={{ fontWeight: 800, color: "var(--green)" }}>{money(change)}</span>
-            </div>
+    <div style={{ ...C.overlay, justifyContent: "flex-end", alignItems: "stretch" }} onClick={onClose}>
+      <div className="glass" onClick={(e) => e.stopPropagation()} style={{ width: "min(430px,96vw)", height: "100%", background: "var(--sur)", borderInlineStart: "1px solid var(--line)", display: "flex", flexDirection: "column", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" }}>
+        <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--line)" }}>
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>Payment</div><div style={{ flex: 1 }} />
+            <button onClick={onClose} style={{ ...C.act, width: 30, height: 30, fontSize: 15 }}>✕</button>
           </div>
-        )}
-        <button disabled={!ok} onClick={() => {
-          const payments = guests > 1
-            ? Array.from({ length: guests }, (_, i) => ({ method, amount: i === guests - 1 ? total - perGuest * (guests - 1) : perGuest }))
-            : [{ method, amount: total }];
-          onDone(payments, change);
-        }} style={{ ...C.charge, width: "100%", marginTop: 18, opacity: ok ? 1 : .5 }}>Confirm payment</button>
+          <div style={{ textAlign: "center", padding: "14px 0 6px" }}>
+            <div style={{ fontSize: 12, color: "var(--ink2)", fontWeight: 700 }}>Total due</div>
+            <div className="num" style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-.01em" }}>{money(total)}</div>
+            {guests > 1 && <div style={{ fontSize: 12.5, color: "var(--coral)", fontWeight: 800, marginTop: 2, animation: "pop .25s" }}>{money(perGuest)} per guest</div>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
+            <span style={{ fontSize: 11.5, color: "var(--ink2)", fontWeight: 700 }}>Split</span>
+            {[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setGuests(n)} style={{ width: 34, height: 34, borderRadius: 11, border: "1px solid var(--line)", fontSize: 13, fontWeight: 800, cursor: "pointer", ...(guests === n ? { background: "var(--coral)", color: "var(--coralink)", borderColor: "var(--coral)" } : { background: "var(--sur2)", color: "var(--ink2)" }) }}>{n}</button>)}
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9 }}>
+            {METH.map(([m, label]) => {
+              const on = method === m, disabled = m === "Credit" && !hasCustomer;
+              return (
+                <button key={m} disabled={disabled} title={disabled ? "Attach a customer first" : label} onClick={() => { setMethod(m); if (m !== "Cash") setTender(total); }}
+                  style={{ border: "1.5px solid " + (on ? "var(--coral)" : "var(--line)"), borderRadius: 15, padding: "15px 12px", cursor: disabled ? "default" : "pointer", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 7, background: on ? "var(--coralsoft)" : "var(--sur2)", color: "var(--ink)", opacity: disabled ? .45 : 1 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 10, background: "var(--sur)", display: "grid", placeItems: "center", fontSize: 15 }}>{PAY_ICON[m]}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800 }}>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {isTab && <div style={{ marginTop: 14, fontSize: 13, color: "var(--ink2)" }}>Charged to <b style={{ color: "var(--ink)" }}>{custName}</b>’s tab — posts to receivables.</div>}
+          {cashSel && (
+            <div style={{ marginTop: 16, animation: "rise .25s" }}>
+              <div style={{ fontSize: 11.5, color: "var(--ink2)", fontWeight: 700, marginBottom: 8 }}>Cash received</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {tenders.map((v) => <button key={v} onClick={() => setTender(v)} className="num" style={{ border: "1px solid " + (tender === v ? "var(--coral)" : "var(--line)"), borderRadius: 12, padding: "10px 15px", fontSize: 13, fontWeight: 800, cursor: "pointer", background: tender === v ? "var(--coralsoft)" : "var(--sur2)", color: tender === v ? "var(--coral)" : "var(--ink)" }}>{v === total ? "Exact" : money(v)}</button>)}
+              </div>
+              {change > 0 && <div style={{ marginTop: 14, background: "var(--greensoft)", borderRadius: 14, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", animation: "pop .25s" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--green)" }}>Change due</span>
+                <span className="num" style={{ fontFamily: "var(--num)", fontSize: 20, fontWeight: 800, color: "var(--green)" }}>{money(change)}</span>
+              </div>}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: "14px 22px", borderTop: "1px solid var(--line)" }}>
+          <button disabled={!ok} onClick={confirm} style={{ ...C.charge, width: "100%", padding: 14, opacity: ok ? 1 : .5 }}>Confirm payment</button>
+        </div>
       </div>
     </div>
   );
