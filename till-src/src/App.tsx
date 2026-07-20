@@ -4,6 +4,7 @@ import { hashPin, uid } from "./api";
 import { Dashboard, Reports, Orders, Delivery, Tabs, QrOrders, Outlets, Setup } from "./screens";
 import { GuestPortal } from "./guest";
 import { t } from "./i18n";
+import { IconBtn, Modal, Stepper, useToast } from "./ui";
 
 /* A printed table QR points at "/?s=slug&t=table[&c=cust]" — same bundle, guest
    view. If those params are present we render the public guest portal instead
@@ -122,7 +123,7 @@ function PinGate({ onSignIn }: { onSignIn: (u: any) => void }) {
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, animation: err ? "shake .4s" : undefined }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ ...C.avatar, background: "var(--green)" }}>{(sel.name || "?")[0].toUpperCase()}</span>
-            <b>{sel.name}</b>{users.length > 1 && <button onClick={() => { setSel(null); setPin(""); }} style={{ color: "var(--coral)", fontSize: 12, fontWeight: 700 }}>change</button>}
+            <b>{sel.name}</b>{users.length > 1 && <button onClick={() => { setSel(null); setPin(""); }} style={{ color: "var(--coral-text)", fontSize: 12, fontWeight: 700 }}>Switch</button>}
           </div>
           <div style={{ display: "flex", gap: 12 }}>{[0, 1, 2, 3].map((i) => (
             <span key={i} style={{ width: 14, height: 14, borderRadius: 99, background: i < pin.length ? "var(--coral)" : "var(--sur2)", border: "1px solid var(--line)" }} />
@@ -190,6 +191,11 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const vw = useVW();
   const mob = vw < 760;
   const tab = vw >= 760 && vw < 1100;
+  /* Open Bills placement (prototype §1): full rail at >=1120 — rendered even
+     when empty so holding the first bill never reflows the menu mid-service;
+     below 1120 held bills surface as a horizontal strip above the search bar. */
+  const showRail = vw >= 1120;
+  const toast = useToast();
   const sector: "general" | "tourism" = gstBp >= 1600 ? "tourism" : "general";
   const toggleLang = () => setLang((l) => (l === "en" ? "dv" : "en"));
   /* GST sector (general/tourism) is configured in the back office at store
@@ -333,6 +339,12 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     return [T("Open"), "var(--ink3)"];
   };
   const otypeLabelOf = (t: string) => t === "dinein" ? T("Dine-In") : t === "delivery" ? T("Delivery") : T("Takeaway");
+  /* Deleting a held bill is recoverable, not confirmable — an Undo toast keeps
+     service fast while closing the old silent-destroy trap. */
+  const delBill = (b: any) => {
+    store.del([{ kind: "parked", id: b.id }]);
+    toast(T("Bill deleted") + (b.no ? " · " + b.no : ""), { label: T("Undo"), fn: () => store.commit([{ kind: "parked", id: b.id, data: b }]) });
+  };
   const billsRailInner = (
     <div style={C.railWrap} className="glass">
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 14px 8px" }}>
@@ -346,7 +358,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               <b style={{ fontSize: 13, flex: 1 }}>{otypeLabelOf(otype)} · <span className="num">{orderNo}</span></b>
             </div>
             <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2 }}>{cust?.name || T("Walk-in")}{otype === "dinein" && table ? " · T" + table : ""}</div>
-            <div style={{ marginTop: 7 }}><span style={{ ...C.stag, color: "var(--coral)", background: "var(--sur)" }}>● {T("In progress")}</span></div>
+            <div style={{ marginTop: 7 }}><span style={{ ...C.stag, color: "var(--coral-text)", background: "var(--sur)" }}>● {T("In progress")}</span></div>
           </div>
         )}
         {parked.slice().reverse().map((b) => {
@@ -354,10 +366,11 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           const items = (b.lines || []).reduce((a: number, l: any) => a + (l.qty || 0), 0);
           const mins = Math.max(0, Math.floor((Date.now() - (b.t || Date.now())) / 60000));
           return (
-            <button key={b.id} onClick={() => resume(b)} style={C.railCard} title="Resume this bill">
+            <div key={b.id} role="button" tabIndex={0} onClick={() => resume(b)} onKeyDown={(e) => { if (e.key === "Enter") resume(b); }} style={{ ...C.railCard }} title="Resume this bill">
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <b style={{ fontSize: 13, flex: 1, textAlign: "start" }}>{otypeLabelOf(b.otype)} · <span className="num">{b.no || ("#" + items)}</span></b>
-                <span onClick={(e) => { e.stopPropagation(); store.del([{ kind: "parked", id: b.id }]); }} style={{ color: "var(--ink3)", fontSize: 13 }}>✕</span>
+                <IconBtn label={T("Delete bill")} size={36} tone="danger" style={{ background: "transparent", fontSize: 13 }}
+                  onClick={(e) => { e.stopPropagation(); delBill(b); }}>✕</IconBtn>
               </div>
               <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2, textAlign: "start" }}>{b.custName || T("Walk-in")}{b.otype === "dinein" && b.table ? " · T" + b.table : ""}</div>
               <div style={{ display: "flex", alignItems: "center", marginTop: 7 }}>
@@ -365,7 +378,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <div style={{ flex: 1 }} />
                 <span className="num" style={{ fontSize: 10.5, color: "var(--ink3)" }}>{mins}m</span>
               </div>
-            </button>
+            </div>
           );
         })}
         {parked.length === 0 && count === 0 && (
@@ -387,14 +400,14 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               <div style={{ padding: "0 14px 10px" }}>
                 <div style={{ display: "flex", gap: 3, background: "var(--sur2)", borderRadius: 12, padding: 3 }}>
                   {([["dinein", "Dine-In"], ["takeaway", "Takeaway"], ["delivery", "Delivery"]] as const).map(([k, l]) => (
-                    <button key={k} onClick={() => pickOtype(k)} style={{ flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: "pointer", ...(otype === k ? { background: "var(--sur)", color: "var(--coral)", boxShadow: "0 1px 3px rgba(30,35,45,.12)" } : { color: "var(--ink2)" }) }}>{T(l)}</button>
+                    <button key={k} onClick={() => pickOtype(k)} style={{ flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: "pointer", ...(otype === k ? { background: "var(--sur)", color: "var(--coral-text)", boxShadow: "0 1px 3px rgba(30,35,45,.12)" } : { color: "var(--ink2)" }) }}>{T(l)}</button>
                   ))}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 8, padding: "0 14px 10px", alignItems: "stretch" }}>
-                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, flex: 1, minWidth: 0, display: "flex", alignItems: "center", ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 <span style={{ flex: 1, minWidth: 0, textAlign: "start", marginInlineStart: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cust ? cust.name : T("Add customer")}</span>{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }}>✕</span>}</button>
-                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, flex: 1, minWidth: 0, display: "flex", alignItems: "center", ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🖥 <span style={{ flex: 1, minWidth: 0, textAlign: "start", marginInlineStart: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{table ? T("Table") + " " + table : T("Select table")}</span><span style={{ opacity: .6 }}>▾</span></button>}
-                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, flex: 1, minWidth: 0, textAlign: "start", lineHeight: 1.25, overflow: "hidden", ...(zone || deliveryNote ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 <b style={{ fontWeight: 700 }}>{T("Delivery details")}</b><br /><small style={{ opacity: .8, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : T("zone · address")}</small></button>}
+                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, flex: 1, minWidth: 0, display: "flex", alignItems: "center", ...(cust ? { background: "var(--coralsoft)", color: "var(--coral-text)" } : {}) }}>👤 <span style={{ flex: 1, minWidth: 0, textAlign: "start", marginInlineStart: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cust ? cust.name : T("Add customer")}</span>{cust && <span role="button" aria-label="Remove customer" onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ padding: "12px 10px", margin: "-12px -10px", display: "inline-flex" }}>✕</span>}</button>
+                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, flex: 1, minWidth: 0, display: "flex", alignItems: "center", ...(table ? { background: "var(--coralsoft)", color: "var(--coral-text)" } : {}) }}>🖥 <span style={{ flex: 1, minWidth: 0, textAlign: "start", marginInlineStart: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{table ? T("Table") + " " + table : T("Select table")}</span><span style={{ opacity: .6 }}>▾</span></button>}
+                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, flex: 1, minWidth: 0, textAlign: "start", lineHeight: 1.25, overflow: "hidden", ...(zone || deliveryNote ? { background: "var(--coralsoft)", color: "var(--coral-text)" } : {}) }}>🛵 <b style={{ fontWeight: 700 }}>{T("Delivery details")}</b><br /><small style={{ opacity: .8, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : T("zone · address")}</small></button>}
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
                 {cart.length === 0 ? (
@@ -405,7 +418,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                     <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
                       <span style={{ width: 32, height: 32, borderRadius: 999, background: t[0], color: t[1], display: "grid", placeItems: "center", fontWeight: 800, fontSize: 13, flex: "0 0 32px" }}>{(p.name || "?")[0].toUpperCase()}</span>
                       <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nm(p)}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " " + T("each")}</small></div>
-                      <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
+                      <Stepper value={l.qty} onDec={() => bump(l.key, -1)} onInc={() => bump(l.key, 1)} decLabel="Remove one" incLabel="Add one" />
                       <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
                     </div>
                   );
@@ -420,14 +433,14 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                   })}
                 </div>
                 {totals.disc > 0 && <div style={C.trow}><span>{T("Subtotal")}</span><span className="num">{money(totals.subtotal)}</span></div>}
-                {totals.disc > 0 && <div style={{ ...C.trow, color: "var(--coral)" }}><span>{T("Discount")} {discPct ? discPct + "%" : ""}</span><span className="num">−{money(totals.disc)}</span></div>}
-                <div style={C.trow}><span>{T("Value excl. GST")}</span><span className="num">{money(totals.excl)}</span></div>
+                {totals.disc > 0 && <div style={{ ...C.trow, color: "var(--coral-text)" }}><span>{T("Discount")} {discPct ? discPct + "%" : ""}</span><span className="num">−{money(totals.disc)}</span></div>}
+                <div style={C.trow}><span>{T("Before GST")}</span><span className="num">{money(totals.excl)}</span></div>
                 {totals.svc > 0 && <div style={C.trow}><span>{T("Service charge")} {svcBp / 100}%</span><span className="num">{money(totals.svc)}</span></div>}
                 <div style={C.trow}><span style={{ whiteSpace: "nowrap" }}>{T("GST")} {sector === "tourism" ? "TGST 17%" : "GGST 8%"}</span><span className="num">{money(totals.gst)}</span></div>
                 {totals.fee > 0 && <div style={C.trow}><span>{T("Delivery")}{zone?.name ? " · " + zone.name : ""}</span><span className="num">{money(totals.fee)}</span></div>}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>{T("Total")}</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button style={{ ...C.kot, opacity: count ? 1 : .5 }} disabled={!count} title="Fire this order to the kitchen" onClick={sendKOT}>{T("Send to KOT")}</button>
+                  <button style={{ ...C.kot, opacity: count ? 1 : .5 }} disabled={!count} title="Fire this order to the kitchen" onClick={sendKOT}>{T("Send to kitchen")}</button>
                   <button style={{ ...C.charge, opacity: count ? 1 : .5, padding: 14 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>{T("Charge")}</button>
                 </div>
               </div>
@@ -458,7 +471,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     <div style={{ flex: 1, overflowY: "auto", padding: mob ? "14px 12px" : "18px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
         <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Floor</div>
-        <span style={{ fontSize: 11, fontWeight: 800, background: "var(--coralsoft)", color: "var(--coral)", borderRadius: 999, padding: "4px 10px" }}>{occN} occupied</span>
+        <span style={{ fontSize: 11, fontWeight: 800, background: "var(--coralsoft)", color: "var(--coral-text)", borderRadius: 999, padding: "4px 10px" }}>{occN} occupied</span>
         <span style={{ fontSize: 11, fontWeight: 800, background: "var(--sur2)", color: "var(--ink2)", borderRadius: 999, padding: "4px 10px" }}>{tableNames.length - occN} free</span>
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: "var(--ink2)" }}>Open value <b className="num" style={{ color: "var(--ink)", fontSize: 15 }}>{money(openVal)}</b></span>
@@ -550,7 +563,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           {!mob && <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>}
           {!mob && <StatusPill />}
           <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: "6px 11px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
-            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? "Shift" : "No shift")}
+            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? T("Shift open") : T("Open shift"))}
           </button>
           <ProfileMenu user={user} mob={mob} lang={lang} registerNo={registerNo} onEditRegister={() => setRegModal(true)} onToggleLang={toggleLang} onSignOut={onSignOut} />
         </header>
@@ -569,10 +582,27 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
 
         {nav === "sell" ? (
           <div style={{ ...C.body, gap: mob ? 0 : 12 }}>
-            {!mob && parked.length > 0 && billsRailInner}
+            {showRail && billsRailInner}
             <section style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 11, paddingBottom: mob && count > 0 ? 66 : 0 }}>
               {!openShift && (
                 <button onClick={() => setShiftModal(true)} style={C.shiftBar}>🕓 No shift open — tap to open one before taking payments</button>
+              )}
+              {!showRail && parked.length > 0 && (
+                /* Compact held-bills strip (tablet/mobile) — the rail's little
+                   sibling: tap a pill to resume that bill into the register. */
+                <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2, flex: "0 0 auto" }}>
+                  {parked.slice().reverse().map((b) => {
+                    const [label, col] = kotStatusOf(b);
+                    return (
+                      <button key={b.id} onClick={() => resume(b)} style={{ ...C.obill, minHeight: 44, display: "inline-flex", alignItems: "center", gap: 7, flex: "0 0 auto" }}>
+                        <i style={{ ...C.dot, background: col }} />
+                        <span className="num">{b.no || "•"}</span>
+                        <span style={{ color: "var(--ink2)", fontWeight: 600 }}>{otypeLabelOf(b.otype)}{b.otype === "dinein" && b.table ? " · T" + b.table : ""}</span>
+                        <span style={{ color: col, fontSize: 10.5, fontWeight: 800 }}>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               )}
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={C.search}>
@@ -613,8 +643,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                           <div style={C.tfoot}>
                             <span className="num" style={{ fontSize: 14, fontWeight: 800 }}><small style={{ fontSize: 9.5, color: "var(--ink3)", fontWeight: 700, marginInlineEnd: 3 }}>MVR</small>{(p.price / 100).toFixed(2)}</span>
                             {q > 0
-                              ? <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button style={C.stepBtn} onClick={() => dropOne(p.id)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
-                              : <button style={C.plus} onClick={(e) => { e.stopPropagation(); tapProduct(p); }}>+</button>}
+                              ? <span style={C.stepper} onClick={(e) => e.stopPropagation()}><button aria-label="Remove one" style={C.stepBtn} onClick={() => dropOne(p.id)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{q}</span><button aria-label="Add one" style={C.stepBtn} onClick={() => tapProduct(p)}>+</button></span>
+                              : <button aria-label={"Add " + (p.name || "item")} style={C.plus} onClick={(e) => { e.stopPropagation(); tapProduct(p); }}>+</button>}
                           </div>
                         </div>
                       </div>
@@ -648,10 +678,10 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
       {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} current={table} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClear={() => { setTable(""); setOtype("takeaway"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
       {zonePick && <DeliveryDetails zones={st.byKind("zones").map((e) => e.data)} current={zone} note={deliveryNote} setNote={setDeliveryNote} custName={cust?.name} onPick={(z) => setZone(z)} onClear={() => setZone(null)} onAttachCustomer={() => { setZonePick(false); setCustPick(true); }} onClose={() => setZonePick(false)} />}
-      {shiftModal && <ShiftModal user={user} shifts={shifts} onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
-      {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} expenses={st.byKind("expenses").map((e) => e.data)} shifts={shifts} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
+      {shiftModal && <ShiftModal user={user} shifts={shifts} T={T} onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
+      {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} expenses={st.byKind("expenses").map((e) => e.data)} shifts={shifts} T={T} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
-      {regModal && <RegisterModal current={registerNo} onSave={(n) => { saveRegisterNo(n); setRegModal(false); }} onClose={() => setRegModal(false)} />}
+      {regModal && <RegisterModal current={registerNo} T={T} onSave={(n) => { saveRegisterNo(n); setRegModal(false); }} onClose={() => setRegModal(false)} />}
     </div>
   );
 }
@@ -681,31 +711,19 @@ function ScanModal({ onClose, onDetect }: { onClose: () => void; onDetect: (code
     return () => { stopped = true; cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); };
   }, [onDetect]);
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(440px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-          <div style={{ fontWeight: 800, fontSize: 18 }}>Scan a barcode</div>
-          <button onClick={onClose} style={{ ...C.scan, padding: "6px 12px" }}>Close</button>
-        </div>
-        {err
-          ? <div style={{ color: "var(--ink2)", fontSize: 13, padding: "18px 4px" }}>{err} You can still type the code into the search box.</div>
-          : <><div style={{ borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "4 / 3" }}>
-              <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-            </div>
-            <div style={{ color: "var(--ink3)", fontSize: 12.5, marginTop: 10, textAlign: "center" }}>Point the camera at the product barcode.</div></>}
-      </div>
-    </div>
+    <Modal title="Scan a barcode" onClose={onClose}>
+      {err
+        ? <div style={{ color: "var(--ink2)", fontSize: 13, padding: "18px 4px" }}>{err} You can still type the code into the search box.</div>
+        : <><div style={{ borderRadius: 14, overflow: "hidden", background: "#000", aspectRatio: "4 / 3" }}>
+            <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          </div>
+          <div style={{ color: "var(--ink2)", fontSize: 12.5, marginTop: 10, textAlign: "center" }}>Point the camera at the product barcode.</div></>}
+    </Modal>
   );
 }
 
 /* ── shift open / close (Z-report) + receipt ───────────────────────────────── */
-/* Modal header with a title and a close (✕). */
-const ShiftHead = ({ title, onClose }: { title: string; onClose: () => void }) => (
-  <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
-    <div style={{ flex: 1, fontWeight: 800, fontSize: 19 }}>{title}</div>
-    <button onClick={onClose} aria-label="Close" style={{ width: 30, height: 30, borderRadius: 99, background: "var(--sur2)", color: "var(--ink2)", fontSize: 15, cursor: "pointer", display: "grid", placeItems: "center", lineHeight: 1 }}>✕</button>
-  </div>
-);
+type Tr = (s: string) => string;
 /* MVR-prefixed money input, matching the drawer-count field in the design. */
 const MoneyField = ({ value, onChange, placeholder, autoFocus }: { value: string; onChange: (v: string) => void; placeholder: string; autoFocus?: boolean }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "0 14px", height: 54 }}>
@@ -715,14 +733,14 @@ const MoneyField = ({ value, onChange, placeholder, autoFocus }: { value: string
   </div>
 );
 /* Recent Z-reports — the last few closed shifts with their over/short. */
-function RecentZ({ shifts }: { shifts: any[] }) {
+function RecentZ({ shifts, T }: { shifts: any[]; T: Tr }) {
   const closed = shifts.filter((s) => s.closedAt).sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0)).slice(0, 3);
   if (!closed.length) return null;
   const asc = shifts.filter((x) => x.closedAt).sort((a, b) => (a.closedAt || 0) - (b.closedAt || 0));
   const zLabel = (s: any) => s.zNo || ("Z-R1-" + String(asc.indexOf(s) + 1).padStart(5, "0"));
   return (
     <div style={{ marginTop: 16, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 800, color: "var(--ink3)", marginBottom: 8 }}>Recent Z-reports</div>
+      <div style={{ fontSize: 12, fontWeight: 800, color: "var(--ink3)", marginBottom: 8 }}>{T("Recent Z-reports")}</div>
       {closed.map((s) => { const os = (s.countedCash || 0) - (s.expectedCash || 0); return (
         <div key={s.id} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "3px 0", fontSize: 12.5, color: "var(--ink3)" }}>
           <span>{zLabel(s)} · {s.userName || "—"}</span>
@@ -732,21 +750,18 @@ function RecentZ({ shifts }: { shifts: any[] }) {
     </div>
   );
 }
-function ShiftModal({ user, shifts, onClose, onOpen }: { user: any; shifts: any[]; onClose: () => void; onOpen: (float: number) => void }) {
+function ShiftModal({ user, shifts, T, onClose, onOpen }: { user: any; shifts: any[]; T: Tr; onClose: () => void; onOpen: (float: number) => void }) {
   const [v, setV] = useState("");
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(440px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <ShiftHead title="Open shift" onClose={onClose} />
-        <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>Count the opening float. Sales you take will be stamped to this shift under <b>{user.name}</b>.</div>
-        <MoneyField value={v} onChange={setV} placeholder="1000.00" autoFocus />
-        <button onClick={() => onOpen(Math.round(Number(v) * 100) || 0)} style={{ ...C.charge, width: "100%", marginTop: 14 }}>Open shift</button>
-        <RecentZ shifts={shifts} />
-      </div>
-    </div>
+    <Modal title={T("Open shift")} onClose={onClose}>
+      <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>Count the opening float. Sales you take will be stamped to this shift under <b>{user.name}</b>.</div>
+      <MoneyField value={v} onChange={setV} placeholder="1000.00" autoFocus />
+      <button onClick={() => onOpen(Math.round(Number(v) * 100) || 0)} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)", marginTop: 14 }}>{T("Open shift")}</button>
+      <RecentZ shifts={shifts} T={T} />
+    </Modal>
   );
 }
-function ZModal({ shift, sales, expenses, shifts, onClose, onCloseShift }: { shift: any; sales: any[]; expenses: any[]; shifts: any[]; onClose: () => void; onCloseShift: (counted: number, expected: number) => void }) {
+function ZModal({ shift, sales, expenses, shifts, T, onClose, onCloseShift }: { shift: any; sales: any[]; expenses: any[]; shifts: any[]; T: Tr; onClose: () => void; onCloseShift: (counted: number, expected: number) => void }) {
   const mine = sales.filter((s) => s.shiftId === shift.id && !s.refunded);
   const salesTotal = mine.reduce((a, s) => a + (s.total || 0), 0);
   const cashSales = mine.reduce((a, s) => a + (s.payments || []).filter((p: any) => /cash/i.test(p.method)).reduce((x: number, p: any) => x + (p.amount || 0), 0), 0);
@@ -757,21 +772,18 @@ function ZModal({ shift, sales, expenses, shifts, onClose, onCloseShift }: { shi
   const variance = counted - expected;
   const openTime = shift.openedAt ? new Date(shift.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(460px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <ShiftHead title="Close shift" onClose={onClose} />
-        <Row2 k="Opened by" v={(shift.userName || "—") + " · " + openTime} />
-        <Row2 k="Opening float" v={money(shift.openingFloat || 0)} />
-        <Row2 k="Sales this shift" v={money(salesTotal)} />
-        <Row2 k="Paid out (expenses)" v={money(paidOut)} bold />
-        <Row2 k="Expected in drawer" v={"MVR " + money(expected).replace("MVR ", "")} bold />
-        <div style={{ color: "var(--ink2)", fontSize: 13, margin: "14px 0 8px" }}>Blind count — enter the cash actually in the drawer:</div>
-        <MoneyField value={v} onChange={setV} placeholder="Counted cash…" autoFocus />
-        {v !== "" && <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 800, color: Math.abs(variance) < 50 ? "var(--green)" : "var(--red)" }}><span>Variance</span><span className="num">{variance >= 0 ? "+" : "−"}{money(Math.abs(variance))}</span></div>}
-        <button onClick={() => onCloseShift(counted, expected)} style={{ ...C.charge, width: "100%", marginTop: 14 }}>Close shift (Z-report)</button>
-        <RecentZ shifts={shifts} />
-      </div>
-    </div>
+    <Modal title={T("Close shift")} onClose={onClose} width={460}>
+      <Row2 k={T("Opened by")} v={(shift.userName || "—") + " · " + openTime} />
+      <Row2 k={T("Opening float")} v={money(shift.openingFloat || 0)} />
+      <Row2 k={T("Sales this shift")} v={money(salesTotal)} />
+      <Row2 k={T("Paid out (expenses)")} v={money(paidOut)} bold />
+      <Row2 k={T("Expected in drawer")} v={"MVR " + money(expected).replace("MVR ", "")} bold />
+      <div style={{ color: "var(--ink2)", fontSize: 13, margin: "14px 0 8px" }}>Blind count — enter the cash actually in the drawer:</div>
+      <MoneyField value={v} onChange={setV} placeholder="Counted cash…" autoFocus />
+      {v !== "" && <div style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontWeight: 800, color: Math.abs(variance) < 50 ? "var(--green)" : "var(--red)" }}><span>{T("Variance")}</span><span className="num">{variance >= 0 ? "+" : "−"}{money(Math.abs(variance))}</span></div>}
+      <button onClick={() => onCloseShift(counted, expected)} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)", marginTop: 14 }}>{T("Close shift")} (Z)</button>
+      <RecentZ shifts={shifts} T={T} />
+    </Modal>
   );
 }
 const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
@@ -780,22 +792,19 @@ const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
 
 /* Per-device register number — stored locally so each till device carries its
    own; drives Z-report numbers and receipt doc numbers. */
-function RegisterModal({ current, onSave, onClose }: { current: number; onSave: (n: number) => void; onClose: () => void }) {
+function RegisterModal({ current, T, onSave, onClose }: { current: number; T: Tr; onSave: (n: number) => void; onClose: () => void }) {
   const [v, setV] = useState(String(current));
   const n = Math.max(1, Math.floor(Number(v)) || 1);
   return (
-    <div style={C.overlay} onClick={onClose}>
-      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
-        <ShiftHead title="Register number" onClose={onClose} />
-        <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>This number identifies <b>this device</b>. It appears on receipts (R{n}) and Z-reports (Z-R{n}-…). Give each till in the store a different number so their reports don’t collide.</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "0 14px", height: 54 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink3)" }}>R</span>
-          <input autoFocus type="number" inputMode="numeric" min={1} value={v} onChange={(e) => setV(e.target.value)} placeholder="1"
-            className="num" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 22, fontWeight: 800, minWidth: 0 }} />
-        </div>
-        <button onClick={() => onSave(n)} style={{ ...C.charge, width: "100%", marginTop: 14 }}>Save register number</button>
+    <Modal title={T("Register number")} onClose={onClose} width={420}>
+      <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>This number identifies <b>this device</b>. It appears on receipts (R{n}) and Z-reports (Z-R{n}-…). Give each till in the store a different number so their reports don’t collide.</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "0 14px", height: 54 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink3)" }}>R</span>
+        <input autoFocus type="number" inputMode="numeric" min={1} value={v} onChange={(e) => setV(e.target.value)} placeholder="1"
+          className="num" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 22, fontWeight: 800, minWidth: 0 }} />
       </div>
-    </div>
+      <button onClick={() => onSave(n)} style={{ ...C.charge, width: "100%", minHeight: "var(--tap-lg)", marginTop: 14 }}>Save register number</button>
+    </Modal>
   );
 }
 function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: () => void }) {
@@ -875,7 +884,7 @@ function ProfileMenu({ user, mob, lang, registerNo, onEditRegister, onToggleLang
             <span style={{ ...C.avatar, width: 38, height: 38, fontSize: 15 }}>{(user.name || "?")[0].toUpperCase()}</span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontWeight: 800, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>
-              <div style={{ fontSize: 11.5, color: "var(--coral)", fontWeight: 700 }}>{role}</div>
+              <div style={{ fontSize: 11.5, color: "var(--coral-text)", fontWeight: 700 }}>{role}</div>
             </div>
           </div>
           <div style={{ height: 1, background: "var(--line)", margin: "2px 6px 4px" }} />
@@ -916,22 +925,27 @@ function PaySheet({ total, hasCustomer, custName, onClose, onDone }: { total: nu
   const confirm = () => onDone(
     guests > 1 ? Array.from({ length: guests }, (_, i) => ({ method, amount: i === guests - 1 ? total - perGuest * (guests - 1) : perGuest })) : [{ method, amount: total }],
     change);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div style={{ ...C.overlay, justifyContent: "flex-end", alignItems: "stretch" }} onClick={onClose}>
       <div className="glass" onClick={(e) => e.stopPropagation()} style={{ width: "min(430px,96vw)", height: "100%", background: "var(--sur)", borderInlineStart: "1px solid var(--line)", display: "flex", flexDirection: "column", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", paddingTop: "var(--sat,0px)", paddingBottom: "var(--sab,0px)" }}>
         <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>Payment</div><div style={{ flex: 1 }} />
-            <button onClick={onClose} style={{ ...C.act, width: 30, height: 30, fontSize: 15 }}>✕</button>
+            <IconBtn label="Close" onClick={onClose}>✕</IconBtn>
           </div>
           <div style={{ textAlign: "center", padding: "14px 0 6px" }}>
             <div style={{ fontSize: 12, color: "var(--ink2)", fontWeight: 700 }}>Total due</div>
             <div className="num" style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-.01em" }}>{money(total)}</div>
-            {guests > 1 && <div style={{ fontSize: 12.5, color: "var(--coral)", fontWeight: 800, marginTop: 2, animation: "pop .25s" }}>{money(perGuest)} per guest</div>}
+            {guests > 1 && <div style={{ fontSize: 12.5, color: "var(--coral-text)", fontWeight: 800, marginTop: 2, animation: "pop .25s" }}>{money(perGuest)} per guest</div>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "center" }}>
             <span style={{ fontSize: 11.5, color: "var(--ink2)", fontWeight: 700 }}>Split</span>
-            {[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setGuests(n)} style={{ width: 34, height: 34, borderRadius: 11, border: "1px solid var(--line)", fontSize: 13, fontWeight: 800, cursor: "pointer", ...(guests === n ? { background: "var(--coral)", color: "var(--coralink)", borderColor: "var(--coral)" } : { background: "var(--sur2)", color: "var(--ink2)" }) }}>{n}</button>)}
+            {[1, 2, 3, 4].map((n) => <button key={n} onClick={() => setGuests(n)} aria-label={n === 1 ? "No split" : "Split between " + n + " guests"} style={{ width: 44, height: 44, borderRadius: 12, border: "1px solid var(--line)", fontSize: 14, fontWeight: 800, cursor: "pointer", ...(guests === n ? { background: "var(--coral)", color: "var(--coralink)", borderColor: "var(--coral)" } : { background: "var(--sur2)", color: "var(--ink2)" }) }}>{n}</button>)}
           </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "16px 22px" }}>
@@ -952,7 +966,7 @@ function PaySheet({ total, hasCustomer, custName, onClose, onDone }: { total: nu
             <div style={{ marginTop: 16, animation: "rise .25s" }}>
               <div style={{ fontSize: 11.5, color: "var(--ink2)", fontWeight: 700, marginBottom: 8 }}>Cash received</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {tenders.map((v) => <button key={v} onClick={() => setTender(v)} className="num" style={{ border: "1px solid " + (tender === v ? "var(--coral)" : "var(--line)"), borderRadius: 12, padding: "10px 15px", fontSize: 13, fontWeight: 800, cursor: "pointer", background: tender === v ? "var(--coralsoft)" : "var(--sur2)", color: tender === v ? "var(--coral)" : "var(--ink)" }}>{v === total ? "Exact" : money(v)}</button>)}
+                {tenders.map((v) => <button key={v} onClick={() => setTender(v)} className="num" style={{ border: "1px solid " + (tender === v ? "var(--coral)" : "var(--line)"), borderRadius: 12, minHeight: "var(--tap)", padding: "0 15px", fontSize: 13, fontWeight: 800, cursor: "pointer", background: tender === v ? "var(--coralsoft)" : "var(--sur2)", color: tender === v ? "var(--coral-text)" : "var(--ink)" }}>{v === total ? "Exact" : money(v)}</button>)}
               </div>
               {change > 0 && <div style={{ marginTop: 14, background: "var(--greensoft)", borderRadius: 14, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", animation: "pop .25s" }}>
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--green)" }}>Change due</span>
@@ -990,7 +1004,7 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {addons.map((a) => { const on = !!picked[a.name]; return (
             <button key={a.name} onClick={() => setPicked({ ...picked, [a.name]: !on })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 13, border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur)" }}>
-              <span style={{ width: 18, height: 18, borderRadius: 6, border: "2px solid " + (on ? "var(--coral)" : "var(--ink3)"), display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--coral)", fontSize: 12 }}>{on ? "✓" : ""}</span>
+              <span style={{ width: 18, height: 18, borderRadius: 6, border: "2px solid " + (on ? "var(--coral)" : "var(--ink3)"), display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--coral-text)", fontSize: 12 }}>{on ? "✓" : ""}</span>
               <span style={{ flex: 1, textAlign: "start", fontWeight: 600, fontSize: 13.5 }}>{a.name}</span>
               {a.price > 0 && <span className="num" style={{ color: "var(--ink2)", fontSize: 12.5 }}>+{money(a.price).replace("MVR ", "")}</span>}
             </button>
@@ -1018,7 +1032,7 @@ function DeliveryDetails({ zones, current, note, setNote, custName, onPick, onCl
           <button onClick={onClose} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>
         </div>
         {!custName
-          ? <button onClick={onAttachCustomer} style={{ display: "block", width: "100%", textAlign: "start", background: "var(--coralsoft)", color: "var(--coral)", fontWeight: 700, fontSize: 13.5, borderRadius: 13, padding: "13px 15px", cursor: "pointer", marginBottom: 14 }}>Attach a customer for this delivery →</button>
+          ? <button onClick={onAttachCustomer} style={{ display: "block", width: "100%", textAlign: "start", background: "var(--coralsoft)", color: "var(--coral-text)", fontWeight: 700, fontSize: 13.5, borderRadius: 13, padding: "13px 15px", cursor: "pointer", marginBottom: 14 }}>Attach a customer for this delivery →</button>
           : <div style={{ fontSize: 13, color: "var(--ink2)", marginBottom: 14 }}>Delivering to <b style={{ color: "var(--ink)" }}>{custName}</b></div>}
         <div style={{ fontSize: 11, color: "var(--ink3)", fontWeight: 700, marginBottom: 8 }}>Delivery zone — fee &amp; ETA added automatically</div>
         {zones.length ? (
@@ -1120,8 +1134,8 @@ function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPi
                   {Number(c.balance || 0) > 0 && <span className="num" style={{ color: "var(--amber)", fontWeight: 700, fontSize: 12 }}>{money(Number(c.balance))}</span>}
                 </button>
               ))}
-              <button onClick={startAdd} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 8px", textAlign: "left", cursor: "pointer", color: "var(--coral)", fontWeight: 700 }}>
-                <span style={{ ...C.avatar, background: "var(--coralsoft)", color: "var(--coral)" }}>＋</span>
+              <button onClick={startAdd} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 8px", textAlign: "left", cursor: "pointer", color: "var(--coral-text)", fontWeight: 700 }}>
+                <span style={{ ...C.avatar, background: "var(--coralsoft)", color: "var(--coral-text)" }}>＋</span>
                 <span>Add {q.trim() ? "“" + q.trim() + "”" : "a new customer"}</span>
               </button>
             </div>
@@ -1136,7 +1150,7 @@ function Placeholder({ nav }: { nav: string }) {
   const n = NAV.find((x) => x.id === nav)!;
   return <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--ink2)" }}>
     <div style={{ width: 60, height: 60, borderRadius: 18, background: "var(--sur)", boxShadow: "var(--shadow)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral)" }} dangerouslySetInnerHTML={{ __html: n.icon }} />
+      <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral-text)" }} dangerouslySetInnerHTML={{ __html: n.icon }} />
     </div>
     <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{n.label}</div>
     <div style={{ fontSize: 13 }}>This existing screen is reskinned in a later stage.</div>
@@ -1170,9 +1184,9 @@ const C: Record<string, React.CSSProperties> = {
   navrow: { display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
   navrowM: { display: "flex", alignItems: "center", gap: 5, padding: "7px 10px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
   npill: { display: "flex", alignItems: "center", gap: 8, padding: "8px 15px", borderRadius: 999, color: "var(--ink2)", background: "transparent", whiteSpace: "nowrap", cursor: "pointer", flex: "0 0 auto" },
-  npillOn: { background: "var(--coralsoft)", color: "var(--coral)", animation: "pop .25s" },
+  npillOn: { background: "var(--coralsoft)", color: "var(--coral-text)", animation: "pop .25s" },
   railBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 4px", borderRadius: 13, color: "var(--ink2)" },
-  railOn: { background: "var(--coralsoft)", color: "var(--coral)" },
+  railOn: { background: "var(--coralsoft)", color: "var(--coral-text)" },
   header: { height: 58, flex: "0 0 58px", display: "flex", alignItems: "center", gap: 12, padding: "0 18px" },
   pill: { border: "1px solid var(--line)", background: "var(--sur2)", borderRadius: 999, padding: "6px 13px", fontSize: 12, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" },
   dot: { width: 7, height: 7, borderRadius: 99, display: "inline-block" },
@@ -1181,7 +1195,7 @@ const C: Record<string, React.CSSProperties> = {
   key: { height: 60, borderRadius: 15, background: "var(--sur)", border: "1px solid var(--line)", fontSize: 22, fontWeight: 700, fontFamily: "var(--num)" },
   body: { flex: 1, minHeight: 0, display: "flex", gap: 14, padding: "0 16px 16px" },
   obill: { whiteSpace: "nowrap", border: "1px solid var(--line)", background: "var(--sur)", borderRadius: 12, padding: "8px 13px", fontSize: 12.5, fontWeight: 700 },
-  obillOn: { borderColor: "var(--coral)", background: "var(--coralsoft)", color: "var(--coral)" },
+  obillOn: { borderColor: "var(--coral)", background: "var(--coralsoft)", color: "var(--coral-text)" },
   search: { flex: 1, display: "flex", alignItems: "center", gap: 10, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 14px", height: 46 },
   scan: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 14, padding: "0 16px", fontWeight: 700, fontSize: 13.5 },
   chip: { whiteSpace: "nowrap", padding: "8px 15px", borderRadius: 999, fontSize: 13, fontWeight: 700, color: "var(--ink2)", background: "var(--sur)", border: "1px solid var(--line)" },
@@ -1190,7 +1204,7 @@ const C: Record<string, React.CSSProperties> = {
   tile: { position: "relative", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", textAlign: "left", overflow: "hidden" },
   plate: { position: "relative", aspectRatio: "16 / 11", display: "grid", placeItems: "center", overflow: "hidden" },
   tbody: { padding: "10px 12px 12px", display: "flex", flexDirection: "column", flex: 1 },
-  ttag: { fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em", textTransform: "uppercase", color: "var(--coral)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  ttag: { fontSize: 10.5, fontWeight: 800, letterSpacing: ".03em", textTransform: "uppercase", color: "var(--coral-text)", marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   tname: { fontWeight: 700, fontSize: 13.5, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   tdesc: { fontSize: 11, color: "var(--ink2)", lineHeight: 1.32, marginTop: 3, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: 29 },
   tfoot: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 9 },
@@ -1200,9 +1214,12 @@ const C: Record<string, React.CSSProperties> = {
   railCard: { display: "block", width: "100%", border: "1.5px solid var(--line)", background: "var(--sur2)", borderRadius: 14, padding: "10px 12px", cursor: "pointer" },
   stag: { fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "3px 9px", display: "inline-flex", alignItems: "center", gap: 4 },
   kot: { flex: 1, borderRadius: 13, padding: 14, background: "var(--sur)", border: "1.5px solid var(--line)", color: "var(--ink)", fontWeight: 800, fontSize: 14 },
-  stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "2px 4px" },
-  stepBtn: { width: 24, height: 24, borderRadius: 99, background: "var(--sur)", fontSize: 15, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
-  plus: { width: 26, height: 26, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 700 },
+  /* On-tile stepper: 32px visible keys (tile width can't fit the full 40px
+     cart stepper) — still a third larger than the old 24px; the cart uses the
+     shared 44px Stepper. Tile add "+" is 36px (was 26). */
+  stepper: { display: "inline-flex", alignItems: "center", gap: 4, background: "var(--coralsoft)", borderRadius: 999, padding: "2px 3px", minHeight: 38 },
+  stepBtn: { width: 32, height: 32, borderRadius: 99, background: "var(--sur)", fontSize: 17, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
+  plus: { width: 36, height: 36, borderRadius: 99, background: "var(--coral)", color: "var(--coralink)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700 },
   cart: { width: 352, flex: "0 0 352px", display: "flex", flexDirection: "column", borderRadius: 18, background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "var(--shadow)", overflow: "hidden" },
   billtab: { width: 34, height: 30, borderRadius: 9, background: "var(--coral)", color: "var(--coralink)", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center" },
   billAdd: { background: "var(--sur2)", color: "var(--ink2)" },
@@ -1210,13 +1227,13 @@ const C: Record<string, React.CSSProperties> = {
   osegOn: { background: "var(--coral)", color: "var(--coralink)" },
   custBtn: { flex: 1, background: "var(--sur2)", borderRadius: 11, padding: "10px 12px", fontSize: 12.5, color: "var(--ink2)", fontWeight: 600 },
   trow: { display: "flex", justifyContent: "space-between", fontSize: 12.5, color: "var(--ink2)", fontWeight: 600, padding: "3px 0" },
-  disc: { display: "inline-block", margin: "4px 0", fontSize: 11.5, fontWeight: 700, color: "var(--coral)", background: "var(--coralsoft)", borderRadius: 999, padding: "4px 10px" },
+  disc: { display: "inline-block", margin: "4px 0", fontSize: 11.5, fontWeight: 700, color: "var(--coral-text)", background: "var(--coralsoft)", borderRadius: 999, padding: "4px 10px" },
   act: { width: 46, height: 46, borderRadius: 13, background: "var(--sur2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink2)", fontSize: 16 },
   charge: { flex: 1, borderRadius: 13, background: "var(--coral)", color: "var(--coralink)", fontWeight: 800, fontSize: 15, boxShadow: "0 8px 20px -6px rgba(225,85,45,.5)" },
   overlay: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40, animation: "fade .2s" },
   sheet: { background: "var(--bg)", borderRadius: 22, padding: 22, boxShadow: "var(--shadow)", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" },
   method: { padding: "12px 6px", borderRadius: 12, background: "var(--sur)", border: "1px solid var(--line)", fontWeight: 700, fontSize: 13 },
-  methodOn: { background: "var(--coralsoft)", borderColor: "var(--coral)", color: "var(--coral)" },
+  methodOn: { background: "var(--coralsoft)", borderColor: "var(--coral)", color: "var(--coral-text)" },
   shiftBar: { width: "100%", textAlign: "start", borderRadius: 14, padding: "11px 16px", background: "var(--ambersoft)", border: "1px solid color-mix(in srgb,var(--amber) 32%,transparent)", color: "var(--amber)", fontWeight: 700, fontSize: 13, cursor: "pointer" },
   input: { padding: "11px 13px", borderRadius: 11, border: "1px solid var(--line)", background: "var(--sur)", color: "var(--ink)", fontSize: 14, outline: "none", flex: 1 },
   chipSm: { padding: "8px 14px", borderRadius: 11, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 13 },
