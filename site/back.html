@@ -378,6 +378,23 @@
   .chead .htitle h1 { font-size: 20px; margin: 0; font-weight: 800; letter-spacing: -.01em; }
   .chead .htitle p { margin: 2px 0 0; font-size: 12.5px; color: var(--sub); }
   .chead .hright { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  /* Header profile switcher — mirrors the register's avatar menu. */
+  .profile { position: relative; }
+  .profile-btn { display: flex; align-items: center; gap: 8px; padding: 5px 11px 5px 5px; border: 1px solid var(--border); background: var(--btn); border-radius: 999px; cursor: pointer; font-weight: 700; font-size: 12.5px; color: var(--text); }
+  .profile-btn .av, .pm-head .av { border-radius: 50%; background: var(--pill); color: var(--on-pill); display: flex; align-items: center; justify-content: center; font-weight: 800; }
+  .profile-btn .av { width: 28px; height: 28px; font-size: 12px; }
+  .profile-btn .cr { color: var(--faint); font-size: 11px; }
+  .profile-menu { position: absolute; inset-inline-end: 0; top: calc(100% + 8px); width: 244px; background: var(--panel); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 14px 36px -12px rgba(0,0,0,.32); padding: 6px; z-index: 60; }
+  .profile-menu[hidden] { display: none; }
+  .pm-head { display: flex; align-items: center; gap: 11px; padding: 10px 12px 12px; }
+  .pm-head .av { width: 38px; height: 38px; font-size: 15px; }
+  .pm-head b { font-size: 14px; display: block; }
+  .pm-head span { font-size: 11.5px; color: var(--primary); font-weight: 700; }
+  .pm-sep { height: 1px; background: var(--border); margin: 2px 6px 4px; }
+  .pm-item { display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 12px; border-radius: 11px; text-align: start; cursor: pointer; background: none; border: none; color: var(--text); font-size: 13px; font-weight: 700; text-decoration: none; }
+  .pm-item small { margin-inline-start: auto; color: var(--faint); font-weight: 600; font-size: 11px; }
+  .pm-item:hover { background: var(--btn); }
+  .pm-item.danger { color: var(--warn); }
   .live-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ok); background: var(--ok-bg); padding: 5px 11px; border-radius: 999px; }
   .live-pill .pd { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: pulse 1.6s infinite; }
   .outlet-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--sub); background: var(--btn); padding: 6px 12px; border-radius: 999px; }
@@ -502,6 +519,19 @@
         <span class="outlet-pill" id="outletPill">🏬 Kashikeyo · Malé</span>
         <div class="ranges" id="ranges" role="group" aria-label="Time range"></div>
         <div class="theme-ctl" id="themeCtl"></div>
+        <div class="profile" id="profile">
+          <button class="profile-btn" id="profileBtn" aria-haspopup="menu" aria-expanded="false" title="Profile &amp; settings">
+            <span class="av" id="hdrAvatar">A</span><span class="pn" id="hdrName">Admin</span><span class="cr">▾</span>
+          </button>
+          <div class="profile-menu" id="profileMenu" role="menu" hidden>
+            <div class="pm-head"><span class="av" id="pmAvatar">A</span><div><b id="pmName">Master Admin</b><span id="pmRole">Owner</span></div></div>
+            <div class="pm-sep"></div>
+            <button class="pm-item" id="pmLang" role="menuitem">🌐 <span>Language</span><small id="pmLangVal">English</small></button>
+            <a class="pm-item" href="/app" role="menuitem">🧾 <span>Register app</span><small>Point of sale</small></a>
+            <div class="pm-sep"></div>
+            <button class="pm-item danger" id="pmSignOut" role="menuitem">⎋ <span>Sign out</span></button>
+          </div>
+        </div>
       </div>
     </div>
     <div id="alerts" role="region" aria-label="Stock &amp; review alerts" aria-live="polite"></div>
@@ -2895,11 +2925,38 @@
     }).catch(go);
   });
 
-  el("signOut").addEventListener("click", function () {
+  function doSignOut() {
     fetch("/api/logout", { method: "POST", keepalive: true }).catch(function () {});
     try { localStorage.removeItem("kashikeyo-cloud"); } catch (err) {}
     location.href = "/login";
-  });
+  }
+  el("signOut").addEventListener("click", doSignOut);
+
+  /* Header profile switcher — identity, language, jump to the register app, and
+     sign out, all from one menu (mirrors the register's avatar menu). */
+  (function () {
+    var btn = el("profileBtn"), menu = el("profileMenu"), wrap = el("profile");
+    function close() { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var opening = menu.hidden; menu.hidden = !opening; btn.setAttribute("aria-expanded", String(opening));
+    });
+    document.addEventListener("click", function (e) { if (!menu.hidden && !wrap.contains(e.target)) close(); });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+    function setLang(dv) {
+      document.documentElement.dir = dv ? "rtl" : "ltr";
+      el("pmLangVal").textContent = dv ? "ދިވެހި" : "English";
+      try { localStorage.setItem("kback-lang", dv ? "dv" : "en"); } catch (err) {}
+    }
+    el("pmLang").addEventListener("click", function () { setLang(document.documentElement.dir !== "rtl"); });
+    el("pmSignOut").addEventListener("click", doSignOut);
+    // restore saved language + mirror the admin identity into the menu
+    try { if (localStorage.getItem("kback-lang") === "dv") setLang(true); } catch (err) {}
+    var nm = (el("admName") && el("admName").textContent) || "Admin";
+    el("pmName").textContent = nm; el("hdrName").textContent = nm.split(" ")[0] || "Admin";
+    var ini = (nm[0] || "A").toUpperCase();
+    el("hdrAvatar").textContent = ini; el("pmAvatar").textContent = ini;
+  })();
 
   /* ── shell interactions (mobile drawer) ──────────────────────────── */
   el("hamb").addEventListener("click", function () { S.navOpen = !S.navOpen; syncShell(); });

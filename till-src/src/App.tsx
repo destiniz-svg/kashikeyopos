@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
 import { hashPin, uid } from "./api";
 import { Dashboard, Reports, Orders } from "./screens";
@@ -519,14 +519,10 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           <div style={{ flex: 1 }} />
           {!mob && <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>}
           {!mob && <StatusPill />}
-          <button onClick={toggleLang} style={{ ...C.pill, cursor: "pointer", padding: "6px 11px", fontWeight: 800 }} title="Language">{lang === "en" ? "ދިވެހި" : "EN"}</button>
-          <button onClick={() => (window.location.href = "/back")} style={{ ...C.pill, cursor: "pointer", padding: mob ? "6px 9px" : "6px 12px" }} title="Admin cockpit">⚙︎{mob ? "" : " Admin"}</button>
           <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: "6px 11px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
             <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? "Shift" : "No shift")}
           </button>
-          <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: mob ? "4px" : "5px 11px 5px 5px", cursor: "pointer" }} title="Sign out">
-            <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{!mob && user.name}
-          </button>
+          <ProfileMenu user={user} mob={mob} lang={lang} onToggleLang={toggleLang} onSignOut={onSignOut} />
         </header>
 
         <nav style={mob ? C.navrowM : C.navrow} className="glass">
@@ -708,6 +704,51 @@ function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: 
 const RRow = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
   <div style={{ display: "flex", justifyContent: "space-between", fontSize: bold ? 14 : 12, fontWeight: bold ? 800 : 500, padding: "2px 0", color: "#111" }}><span>{k}</span><span className="num">{v}</span></div>
 );
+
+/* Header profile switcher — one menu off the avatar that carries who you are
+   (name + role), the language switch, the jump to the admin cockpit, and sign
+   out. Mirrored in the back office so both apps switch from the same place. */
+function ProfileMenu({ user, mob, lang, onToggleLang, onSignOut }: { user: any; mob: boolean; lang: "en" | "dv"; onToggleLang: () => void; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const role = user.role || "Cashier";
+  const Item = ({ icon, label, sub, onClick, danger }: { icon: string; label: string; sub?: string; onClick: () => void; danger?: boolean }) => (
+    <button onClick={() => { setOpen(false); onClick(); }} style={{ display: "flex", alignItems: "center", gap: 11, width: "100%", padding: "10px 12px", borderRadius: 11, textAlign: "start", cursor: "pointer", color: danger ? "var(--red)" : "var(--ink)" }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--sur2)")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+      <span style={{ width: 20, textAlign: "center", fontSize: 15 }}>{icon}</span>
+      <span style={{ flex: 1 }}><span style={{ fontSize: 13, fontWeight: 700, display: "block" }}>{label}</span>{sub && <span style={{ fontSize: 11, color: "var(--ink3)" }}>{sub}</span>}</span>
+    </button>
+  );
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen((v) => !v)} style={{ ...C.pill, gap: 8, padding: mob ? "4px" : "5px 11px 5px 5px", cursor: "pointer" }} title="Profile & settings" aria-haspopup="menu" aria-expanded={open}>
+        <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{!mob && user.name}{!mob && <span style={{ color: "var(--ink3)", fontSize: 11 }}>▾</span>}
+      </button>
+      {open && (
+        <div role="menu" className="glass" style={{ position: "absolute", insetInlineEnd: 0, top: "calc(100% + 8px)", width: 232, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 16, boxShadow: "var(--shadow)", padding: 6, zIndex: 60, animation: "rise .18s both" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 12px 12px" }}>
+            <span style={{ ...C.avatar, width: 38, height: 38, fontSize: 15 }}>{(user.name || "?")[0].toUpperCase()}</span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>
+              <div style={{ fontSize: 11.5, color: "var(--coral)", fontWeight: 700 }}>{role}</div>
+            </div>
+          </div>
+          <div style={{ height: 1, background: "var(--line)", margin: "2px 6px 4px" }} />
+          <Item icon="🌐" label="Language" sub={lang === "en" ? "English" : "ދިވެހި"} onClick={onToggleLang} />
+          <Item icon="⚙︎" label="Admin panel" sub="Back office & reports" onClick={() => (window.location.href = "/back")} />
+          <div style={{ height: 1, background: "var(--line)", margin: "4px 6px" }} />
+          <Item icon="⎋" label="Sign out" onClick={onSignOut} danger />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatusPill() {
   const st = useStore();
