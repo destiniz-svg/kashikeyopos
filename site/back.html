@@ -10,12 +10,14 @@
      (light + dark) the till uses, following the till's own choice via the
      synced settings entity (ktheme/ktdark), with a local override picker. */
   :root {
-    --app: #E7F1EA; --panel: #FFFFFF; --panel2: #E2F1E9; --border: #DAE7E0; --text: #16221C;
-    --sub: #57645D; --faint: #646D68; --primary: #0FA968; --primary-hov: #0B8A54;
-    --pill: #0C8653; --on-pill: #FFFFFF;
-    --input: #FFFFFF; --btn: #E2F1E9; --btn-hov: #D4E8DE; --header: rgba(240,247,243,.92);
-    --ok: #15803D; --ok-bg: #DCFCE7; --warn: #B91C1C; --warn-bg: #FEE2E2;
-    --amber: #B45309; --amber-bg: #FEF3C7;
+    /* Kashikeyo admin palette — coral over warm sand, glassy white cards
+       (matches the KashikeyoAdmin prototype tokens; same language as the till). */
+    --app: #F3EADB; --panel: rgba(255,255,255,.62); --panel2: rgba(255,255,255,.42); --border: rgba(130,100,60,.16); --text: #2E2418;
+    --sub: #8A7B65; --faint: #B7A892; --primary: #C1492A; --primary-hov: #A33417;
+    --pill: #C1492A; --on-pill: #FFFFFF;
+    --input: #FFFFFF; --btn: rgba(255,255,255,.5); --btn-hov: rgba(255,255,255,.72); --header: rgba(243,234,219,.85);
+    --ok: #3E8E59; --ok-bg: rgba(62,142,89,.14); --warn: #C13A26; --warn-bg: rgba(193,58,38,.13);
+    --amber: #B07714; --amber-bg: rgba(176,119,20,.16);
     /* Safe-area insets — 0 without a notch/home-bar. The server stamps data-os
        and forces viewport-fit=cover on iOS so these resolve under the island. */
     --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
@@ -357,7 +359,7 @@
   .side-brand { display: flex; align-items: center; gap: 9px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
   .side-brand .k { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--primary), var(--pill)); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; font-size: 16px; }
   .side-brand .nm { font-weight: 800; font-size: 15px; letter-spacing: -.01em; }
-  .side-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-left: auto; box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+  .side-brand .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); margin-left: auto; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
   .side-nav { flex: 1; overflow-y: auto; padding: 10px 10px 16px; }
   .nav-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 11px; border-radius: 10px; font-size: 13.5px; font-weight: 600; color: var(--sub); background: none; cursor: pointer; text-align: left; }
   .nav-item:hover { background: var(--btn); }
@@ -557,7 +559,7 @@
     wiz: null, // { session, groups:[{location,lines}], step, entries:{ingredientId:{qty,unitName,reason}}, result }
     // deliveries
     inv: { supplierId: "", invoiceNo: "", lines: [] }, invoices: [], pos: [],
-    theme: { name: "green", dark: false, override: false },
+    theme: { name: "orange", dark: false, override: false },
     catOrder: [], catGroups: [],
   };
   try {
@@ -568,7 +570,7 @@
   /* The till's five fruit palettes, light + dark — same values as the till
      bundle so both screens read as one product. */
   var THEMES = {
-    orange: { l: { bg:"#FBFAF7",pill:"#C7431D",onPill:"#FFFFFF",text:"#26221C",sub:"#68635A",faint:"#716C64",pri:"#C7431D",prih:"#A33417",panel:"#FFFFFF",panel2:"#F4F1EB",border:"#E3DED4",input:"#FFFFFF",btn:"#F4F1EB",btnh:"#E8E1D2",nav:"rgba(255,255,255,.92)" },
+    orange: { l: { bg:"#F3EADB",pill:"#C1492A",onPill:"#FFFFFF",text:"#2E2418",sub:"#8A7B65",faint:"#B7A892",pri:"#C1492A",prih:"#A33417",panel:"rgba(255,255,255,.62)",panel2:"rgba(255,255,255,.42)",border:"rgba(130,100,60,.16)",input:"#FFFFFF",btn:"rgba(255,255,255,.5)",btnh:"rgba(255,255,255,.72)",nav:"rgba(243,234,219,.85)" },
               d: { bg:"#1B1713",pill:"#E0794F",onPill:"#1B1713",text:"#ECE5DA",sub:"#A79E90",faint:"#989186",pri:"#E0794F",prih:"#E88A62",panel:"#26211B",panel2:"#2F2922",border:"#3A322A",input:"#221D17",btn:"#2F2922",btnh:"#3A322A",nav:"rgba(33,28,22,.92)" } },
     green: { l: { bg:"#E7F1EA",pill:"#0C8653",onPill:"#FFFFFF",text:"#16221C",sub:"#57645D",faint:"#646D68",pri:"#0FA968",prih:"#0B8A54",panel:"rgba(255,255,255,.86)",panel2:"rgba(226,241,236,.72)",border:"#DAE7E0",input:"#FFFFFF",btn:"#E2F1E9",btnh:"#D4E8DE",nav:"rgba(240,247,243,.92)" },
              d: { bg:"#0F1613",pill:"#1FC47E",onPill:"#0F1613",text:"#EAF2ED",sub:"#93A199",faint:"#848D7A",pri:"#1FC47E",prih:"#37D08F",panel:"rgba(26,36,31,.72)",panel2:"rgba(34,46,38,.6)",border:"#2A3A30",input:"#18211D",btn:"#2A3A30",btnh:"#35493C",nav:"rgba(15,22,19,.85)" } },
@@ -579,7 +581,7 @@
     strawberry: { l: { bg:"#FDECF1",pill:"#CD4074",onPill:"#FFFFFF",text:"#2A1620",sub:"#6F5961",faint:"#75636A",pri:"#D8437A",prih:"#C43A6E",panel:"rgba(255,255,255,.86)",panel2:"rgba(250,224,234,.72)",border:"#F0D6E0",input:"#FFFFFF",btn:"#FAE2EC",btnh:"#F2D2E0",nav:"rgba(253,236,241,.92)" },
                   d: { bg:"#1F1118",pill:"#F06C9B",onPill:"#1F1118",text:"#F1E1E8",sub:"#B58CA0",faint:"#9B838D",pri:"#F06C9B",prih:"#F282AC",panel:"rgba(46,26,34,.72)",panel2:"rgba(58,34,44,.6)",border:"#3E2432",input:"#2A1620",btn:"#3E2432",btnh:"#4E3040",nav:"rgba(28,16,22,.85)" } },
   };
-  var SWATCH = { green:"#0FA968", orange:"#C7431D", watermelon:"#DA3B4B", mango:"#E19A12", strawberry:"#D8437A" };
+  var SWATCH = { orange:"#C1492A", green:"#0FA968", watermelon:"#DA3B4B", mango:"#E19A12", strawberry:"#D8437A" };
 
   function applyTheme() {
     var t = THEMES[S.theme.name] || THEMES.orange, c = t[S.theme.dark ? "d" : "l"], r = document.documentElement.style;
@@ -794,7 +796,7 @@
       S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
       S.flags = { sales: (r[7] && r[7].sales) || [], credit: (r[7] && r[7].credit) || [] };
-      if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "green"; S.theme.dark = !!r[1].theme.dark; }
+      if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "orange"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
       renderAlerts(r[4]);
     });
