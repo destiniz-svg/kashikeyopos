@@ -405,7 +405,7 @@
   .ranges button.on { background: var(--panel); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
   .ranges button.on.year { background: var(--pill); color: var(--on-pill); }
   .hamb { display: none; background: var(--btn); border-radius: 9px; width: 38px; height: 38px; font-size: 17px; }
-  .scrim { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 39; }
+  .scrim { display: none; position: fixed; inset: 0; background: rgba(30,20,8,.5); z-index: 39; backdrop-filter: blur(1px); }
 
   /* ── Dashboard (spec §3.1) ───────────────────────────────────────────── */
   .dash { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
@@ -465,7 +465,10 @@
 
   /* Tablet / mobile: sidebar → slide-in drawer (spec §2) */
   @media (max-width: 1023px) {
-    .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); transition: transform .28s ease; box-shadow: 0 0 40px rgba(0,0,0,.2); }
+    /* As an overlay drawer the sidebar must be OPAQUE — the glassy --panel is
+       see-through, so the page behind bled through and the menu was unreadable. */
+    .sidebar { position: fixed; left: 0; top: 0; transform: translateX(-100%); transition: transform .28s ease; box-shadow: 0 0 40px rgba(0,0,0,.28); background: var(--app); border-right: 1px solid var(--border); }
+    .sidebar .side-nav .nav-item, .sidebar .side-brand, .sidebar .side-foot { background: transparent; }
     .shell.navopen .sidebar { transform: translateX(0); }
     .shell.navopen .scrim { display: block; }
     .hamb { display: flex; align-items: center; justify-content: center; }
