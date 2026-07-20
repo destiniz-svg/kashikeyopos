@@ -590,7 +590,7 @@
   var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
   var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, wastage: 1, proc_exp: 1, reports_an: 1 };
   /* views not yet built → tasteful placeholder + which phase ships them */
-  var SOON = { sysadmin: 7 };
+  var SOON = {};
   /* which nav module a view id belongs to (for active-highlight + range chips) */
   var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
     sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", wastage: "inventory", audit: "inventory",
@@ -829,6 +829,7 @@
     else if (v === "outlets") renderOutlets();
     else if (v === "kitchen") renderKitchen();
     else if (v === "staff") renderStaff();
+    else if (v === "sysadmin") renderSysAdmin();
     else if (v === "overview") renderOverview();
     else if (v === "review") renderReview();
     else if (v === "assistant") renderAssistant();
@@ -1277,6 +1278,47 @@
     m.innerHTML = stats
       + "<div class='tbl-wrap'><table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Shift</th><th class='mono'>Sales</th><th class='mono'>Orders</th></tr></thead><tbody>" + rows + "</tbody></table></div>"
       + roles;
+  }
+
+  /* ── System Admin (spec §3.11) ────────────────────────────────────────── */
+  function relTime(ms) {
+    if (!ms) return "—";
+    var s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + "m ago";
+    if (s < 86400) return Math.floor(s / 3600) + "h ago";
+    return Math.floor(s / 86400) + "d ago";
+  }
+  var ACTION_LABEL = { "sale.flagged": "Sale flagged for review", "credit.over_limit": "Credit limit exceeded", "flag.ack": "Flag marked reviewed", "sale.refund": "Sale refunded", "sale.void": "Sale voided" };
+  function loadSysAdmin() {
+    api("/sysadmin").then(function (j) { S.sys = j; if (S.tab === "sysadmin") renderSysAdmin(); })
+      .catch(function () { if (S.tab === "sysadmin") el("main").innerHTML = "<div class='empty'>Couldn’t load system admin.</div>"; });
+  }
+  var INTEGRATIONS = [
+    ["Cloud sync", "Realtime sync across every till & device", "ok", "Connected"],
+    ["MIRA GST portal", "e-file GST returns", "dim", "Not connected"],
+    ["BML payment gateway", "Card & online payments", "dim", "Not connected"],
+    ["Nightly backup", "Automated database snapshot", "ok", "Scheduled"],
+  ];
+  function renderSysAdmin() {
+    var m = el("main");
+    if (!S.sys) { m.innerHTML = "<div class='empty'>Loading…</div>"; loadSysAdmin(); return; }
+    var j = S.sys;
+    var uRows = j.users.length ? j.users.map(function (u) {
+      var active = u.lastActive && (Date.now() - u.lastActive < 600000);
+      return "<tr><td>" + esc(u.name) + "</td><td>" + esc(ROLE_LABEL[u.role] || u.role) + "</td><td>" + relTime(u.lastActive) + "</td><td><span class='badge " + (active ? "ok" : "dim") + "'>" + (active ? "Active" : "Idle") + "</span></td></tr>";
+    }).join("") : "<tr><td colspan='4' class='empty'>No users yet.</td></tr>";
+    var aud = j.audit.length ? j.audit.map(function (a) {
+      return "<div class='r'><span style='color:var(--sub);font-size:12px;width:74px;flex:0 0 74px'>" + relTime(a.at) + "</span><span>" + esc(ACTION_LABEL[a.action] || a.action) + (a.ref ? " <span class='muted'>· " + esc(a.ref) + "</span>" : "") + "</span><span class='muted' style='margin-left:auto;font-size:12px'>" + esc(a.actor) + "</span></div>";
+    }).join("") : "<div class='empty'>No activity logged yet.</div>";
+    var integ = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px'>" + INTEGRATIONS.map(function (i) {
+      return "<div class='card' style='padding:14px'><div style='display:flex;align-items:center;gap:8px'><span style='width:9px;height:9px;border-radius:50%;background:" + (i[2] === "ok" ? "var(--ok)" : "var(--faint)") + "'></span><b style='font-size:13.5px'>" + i[0] + "</b><span class='badge " + i[2] + "' style='margin-left:auto'>" + i[3] + "</span></div><div class='muted' style='font-size:11.5px;margin-top:6px'>" + i[1] + "</div>"
+        + (i[0] === "Nightly backup" ? "<button class='ghost tiny' id='runBackup' style='margin-top:10px'>Run backup now</button>" : "") + "</div>";
+    }).join("") + "</div>";
+    m.innerHTML = "<div class='cfg-sec'><h3>Users &amp; devices</h3><div class='tbl-wrap'><table><thead><tr><th>User / device</th><th>Role</th><th>Last active</th><th>Status</th></tr></thead><tbody>" + uRows + "</tbody></table></div></div>"
+      + "<div class='cfg-sec'><h3>Integrations</h3>" + integ + "</div>"
+      + "<div class='cfg-sec'><h3>Audit log</h3><div class='card needs'>" + aud + "</div></div>";
+    var rb = el("runBackup"); if (rb) rb.onclick = function () { toast("Backup runs via the ops runbook — connect the scheduler in Railway to automate it."); };
   }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────

@@ -1840,6 +1840,22 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ team: staff.length, onShift: staff.filter((s) => s.onShift).length, topName: (top && top.rev) ? top.name : "—", staff, roles });
   }));
 
+  /* Admin cockpit: system admin (spec §3.11). Users/devices with last-active
+     (entity updated_at) + the append-only audit trail (activity_log). */
+  router.get("/sysadmin", authAny, wrap(async (req, res) => {
+    const data = await withOrg(req.orgId, async (client) => {
+      const users = (await client.query(
+        "SELECT data, EXTRACT(EPOCH FROM updated_at)*1000 AS upd FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false ORDER BY updated_at DESC", [req.orgId])).rows;
+      const audit = (await client.query(
+        "SELECT EXTRACT(EPOCH FROM at)*1000 AS at, actor, action, ref FROM activity_log WHERE org_id=$1 ORDER BY at DESC LIMIT 40", [req.orgId])).rows;
+      return { users, audit };
+    });
+    res.json({
+      users: data.users.map((r) => { const d = r.data || {}; return { id: String(d.id || ""), name: d.name || "User", role: d.role || "cashier", lastActive: Math.round(Number(r.upd) || 0) }; }),
+      audit: data.audit.map((a) => ({ at: Math.round(Number(a.at) || 0), actor: a.actor || "system", action: a.action || "", ref: a.ref || "" })),
+    });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and
