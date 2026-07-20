@@ -486,6 +486,11 @@
     .ranges { overflow-x: auto; flex: 1 1 auto; min-width: 0; }
     .theme-ctl .sw { display: none; }
     .outlet-pill { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* search must be free to shrink once the toolbar stacks, or it forces
+       the page wider than the phone. */
+    .toolbar input[type=search] { min-width: 0; width: 100%; }
+    /* margin bars stack to a single column on the narrowest phones. */
+    .margin-bar { grid-template-columns: 1fr 1fr; }
   }
 </style>
 </head>
@@ -1062,7 +1067,7 @@
     var seg = '<div class="seg" id="salesSeg">' + SALES_TABS.map(function (t) {
       return '<button data-v="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + t[1] + "</button>";
     }).join("") + "</div>";
-    var stats = '<div class="stat2" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">'
+    var stats = '<div class="stat2" style="grid-template-columns:repeat(auto-fit,minmax(148px,1fr));margin-bottom:14px">'
       + '<div class="card stat"><div class="k">Orders</div><div class="v">' + st.orders + "</div></div>"
       + '<div class="card stat"><div class="k">Revenue</div><div class="v">' + fmtMoney(st.rev) + "</div></div>"
       + '<div class="card stat"><div class="k">Avg order</div><div class="v">' + fmtMoney(st.aov) + "</div></div></div>";
@@ -1162,7 +1167,7 @@
     var m = el("main");
     if (!S.recv) { m.innerHTML = '<div class="empty">' + (S.recvLoading ? "Loading receivables…" : "") + "</div>"; if (!S.recvLoading) loadReceivables(); return; }
     var j = S.recv;
-    var stats = '<div class="stat2" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">'
+    var stats = '<div class="stat2" style="grid-template-columns:repeat(auto-fit,minmax(148px,1fr));margin-bottom:14px">'
       + '<div class="card stat"><div class="k">Outstanding</div><div class="v">' + fmtMoney(j.outstanding) + "</div></div>"
       + '<div class="card stat"><div class="k">Overdue</div><div class="v ' + (j.overdue ? "num-bad" : "") + '">' + j.overdue + "</div></div>"
       + '<div class="card stat"><div class="k">Customers</div><div class="v">' + j.customers + "</div></div></div>";
@@ -1327,7 +1332,7 @@
     var m = el("main");
     if (!S.staffData) { m.innerHTML = "<div class='empty'>Loading staff…</div>"; loadStaff(); return; }
     var j = S.staffData;
-    var stats = "<div class='stat2' style='grid-template-columns:repeat(3,1fr);margin-bottom:14px'>"
+    var stats = "<div class='stat2' style='grid-template-columns:repeat(auto-fit,minmax(148px,1fr));margin-bottom:14px'>"
       + "<div class='card stat'><div class='k'>Team</div><div class='v'>" + j.team + "</div></div>"
       + "<div class='card stat'><div class='k'>On shift</div><div class='v'>" + j.onShift + "</div></div>"
       + "<div class='card stat'><div class='k'>Top today</div><div class='v' style='font-size:18px'>" + esc(j.topName) + "</div></div></div>";
@@ -1879,7 +1884,7 @@
       var received = 0, used = 0;
       moves.forEach(function (m) { if (m.qty > 0) received += m.qty; else used += -m.qty; });
       var nowStock = (r.ingredient && r.ingredient.currentStock) != null ? r.ingredient.currentStock : bal;
-      var chips = '<div class="cards" style="grid-template-columns:repeat(3,1fr);margin:0 0 14px">' +
+      var chips = '<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(148px,1fr));margin:0 0 14px">' +
         '<div class="card good"><div class="k">Received in total</div><div class="v mono">' + qty3(received) + " <small>" + u + "</small></div></div>" +
         '<div class="card"><div class="k">Used / removed</div><div class="v mono">' + qty3(used) + " <small>" + u + "</small></div></div>" +
         '<div class="card"><div class="k">In stock now</div><div class="v mono">' + qty3(nowStock) + " <small>" + u + "</small></div></div>" +
