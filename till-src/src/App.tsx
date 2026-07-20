@@ -165,6 +165,11 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [custPick, setCustPick] = useState(false);
   const [table, setTable] = useState("");
   const [tablePick, setTablePick] = useState(false);
+  const [zone, setZone] = useState<any>(null);
+  const [zonePick, setZonePick] = useState(false);
+  /* Order-type drives which fields show: Dine-In → customer + table;
+     Takeaway → customer only; Delivery → customer + delivery location. */
+  const pickOtype = (k: "dinein" | "takeaway" | "delivery") => { setOtype(k); if (k !== "dinein") setTable(""); if (k !== "delivery") setZone(null); };
   const [cartOpen, setCartOpen] = useState(false);
   const [lang, setLang] = useState<"en" | "dv">(() => (typeof document !== "undefined" && document.documentElement.dir === "rtl") ? "dv" : "en");
   const vw = useVW();
@@ -213,8 +218,9 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const excl = subtotal - d;
     const svc = otype === "dinein" ? Math.round(excl * svcBp / 10000) : 0;   // service charge is dine-in only (prototype)
     const gst = Math.round((excl + svc) * gstBp / 10000);
-    return { subtotal, disc: d, excl, svc, gst, total: excl + svc + gst };
-  }, [cart, products, gstBp, svcBp, otype, disc]);
+    const fee = otype === "delivery" && zone ? Number(zone.fee || 0) : 0;    // delivery fee (pass-through, no GST)
+    return { subtotal, disc: d, excl, svc, gst, fee, total: excl + svc + gst + fee };
+  }, [cart, products, gstBp, svcBp, otype, disc, zone]);
   const count = cart.reduce((a, l) => a + l.qty, 0);
 
   const openShiftNow = (float: number) => {
@@ -232,6 +238,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const sale = {
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
       userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype, table: table || null,
+      zone: otype === "delivery" && zone ? zone.name : null, fee: totals.fee,
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods || [], discPct: 0, taxable: p?.taxable !== false }; }),
       subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, billDiscPct: discPct, svcCharge: totals.svc,
       payments, change, refunded: false,
@@ -241,7 +248,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     resetBill(); setPay(false);
   };
 
-  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); };
+  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); };
 
   const park = () => {
     if (!cart.length) return;
@@ -270,12 +277,13 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
               <div style={{ display: "flex", gap: 6, padding: "2px 14px 10px" }}>
                 {([["dinein", "🍽️ Dine-in"], ["takeaway", "🥡 Takeaway"], ["delivery", "🛵 Delivery"]] as const).map(([k, l]) => (
-                  <button key={k} onClick={() => setOtype(k)} style={{ ...C.oseg, ...(otype === k ? C.osegOn : {}) }}>{l}</button>
+                  <button key={k} onClick={() => pickOtype(k)} style={{ ...C.oseg, ...(otype === k ? C.osegOn : {}) }}>{l}</button>
                 ))}
               </div>
               <div style={{ display: "flex", gap: 8, padding: "0 14px 10px" }}>
                 <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 {cust ? cust.name : "Add customer"}{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
-                <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table · optional"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>
+                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🍴 {table ? "Table " + table : "Table"}{table && <span onClick={(e) => { e.stopPropagation(); setTable(""); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>}
+                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, ...(zone ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 {zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : "Delivery location"}{zone && <span onClick={(e) => { e.stopPropagation(); setZone(null); }} style={{ marginInlineStart: 6 }}>✕</span>}</button>}
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
                 {cart.length === 0 ? (
@@ -305,6 +313,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <div style={C.trow}><span>Value excl. GST</span><span className="num">{money(totals.excl)}</span></div>
                 {totals.svc > 0 && <div style={C.trow}><span>Service charge {svcBp / 100}%</span><span className="num">{money(totals.svc)}</span></div>}
                 <div style={C.trow}><span style={{ whiteSpace: "nowrap" }}>GST {sector === "tourism" ? "TGST 17%" : "GGST 8%"}</span><span className="num">{money(totals.gst)}</span></div>
+                {totals.fee > 0 && <div style={C.trow}><span>Delivery{zone?.name ? " · " + zone.name : ""}</span><span className="num">{money(totals.fee)}</span></div>}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>Total</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Split bill" onClick={() => openShift ? setPay(true) : setShiftModal(true)}>✂️</button><button style={C.act} title="Clear" onClick={resetBill}>🗑️</button>
@@ -526,6 +535,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
       {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} current={table} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClear={() => { setTable(""); setOtype("takeaway"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
+      {zonePick && <ZonePicker zones={st.byKind("zones").map((e) => e.data)} current={zone} onPick={(z) => { setZone(z); setZonePick(false); }} onClear={() => { setZone(null); setZonePick(false); }} onClose={() => setZonePick(false)} />}
       {shiftModal && <ShiftModal onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
@@ -601,6 +611,7 @@ function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: 
           <RRow k="Value excl. GST" v={money(excl)} />
           {sale.svcCharge > 0 && <RRow k="Service charge" v={money(sale.svcCharge)} />}
           <RRow k={`GST ${gstBp / 100}%`} v={money(sale.gst)} />
+          {sale.fee > 0 && <RRow k={"Delivery" + (sale.zone ? " · " + sale.zone : "")} v={money(sale.fee)} />}
           <RRow k="Total" v={money(sale.total)} bold />
           <RRow k={method} v={money(sale.total)} />
           {change > 0 && <RRow k="Change" v={money(change)} />}
@@ -734,6 +745,38 @@ function ModifierModal({ product, onClose, onAdd }: { product: any; onClose: () 
   );
 }
 
+/* Delivery-location picker — islands/zones with fee + ETA, carried over from
+   our previous build (zones live in the back office). Shown only for Delivery. */
+function ZonePicker({ zones, current, onPick, onClear, onClose }: { zones: any[]; current?: any; onPick: (z: any) => void; onClear: () => void; onClose: () => void }) {
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 800, fontSize: 18 }}>Delivery location</div>
+            <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>Island / zone · fee &amp; ETA</div>
+          </div>
+          <button onClick={onClose} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>
+        </div>
+        {zones.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {zones.map((z) => {
+              const on = current && current.name === z.name;
+              return (
+                <button key={z.id || z.name} onClick={() => onPick(z)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 14px", borderRadius: 13, border: "1.5px solid " + (on ? "var(--coral)" : "var(--line)"), background: on ? "var(--coralsoft)" : "var(--sur)", textAlign: "start", cursor: "pointer" }}>
+                  <span style={{ fontSize: 18 }}>🛵</span>
+                  <span style={{ flex: 1 }}><b style={{ display: "block", fontSize: 14, color: on ? "var(--coral)" : "var(--ink)" }}>{z.name}</b>{z.eta && <small style={{ color: "var(--ink3)" }}>{z.eta}</small>}</span>
+                  <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{Number(z.fee) ? money(z.fee) : "Free"}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : <div style={{ color: "var(--ink3)", fontSize: 13, textAlign: "center", padding: 16 }}>No delivery zones yet — add them in the back office.</div>}
+        {current && <button onClick={onClear} style={{ ...C.custBtn, width: "100%", marginTop: 14, justifyContent: "center", color: "var(--ink2)" }}>Clear location</button>}
+      </div>
+    </div>
+  );
+}
 function TablePicker({ tables, current, onPick, onClear, onClose }: { tables: any[]; current?: string; onPick: (name: string) => void; onClear: () => void; onClose: () => void }) {
   return (
     <div style={C.overlay} onClick={onClose}>
