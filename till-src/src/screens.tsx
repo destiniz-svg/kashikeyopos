@@ -441,6 +441,8 @@ export function Delivery() {
    view over exactly that stream, with a phone preview of what guests see. */
 export function QrOrders() {
   const st = useStore();
+  const [narrow, setNarrow] = useState(typeof window !== "undefined" && window.innerWidth < 760);
+  useEffect(() => { const on = () => setNarrow(window.innerWidth < 760); window.addEventListener("resize", on); return () => window.removeEventListener("resize", on); }, []);
   const settings = st.byKind("settings").map((e) => e.data)[0] || {};
   const storeName = settings.storeName || "Kashikeyo Café";
   const products = st.byKind("products").map((e) => e.data).filter((p: any) => p && !p.archived).slice(0, 6);
@@ -453,7 +455,7 @@ export function QrOrders() {
     <div style={X.scroll}>
       <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>QR Orders</div>
       <div style={{ color: "var(--ink3)", fontSize: 13, margin: "3px 0 16px", maxWidth: 560 }}>Guests scan a table QR, order from their phone, and tickets land straight on the kitchen display — no re-keyed tablets. It's the same menu and portal your customers use.</div>
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,300px) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0,300px) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
         {/* Phone preview of the guest portal */}
         <div style={{ background: "#1B1A17", borderRadius: 30, padding: 10, boxShadow: "var(--shadow)", justifySelf: "center", width: "100%", maxWidth: 300 }}>
           <div style={{ background: "var(--bg)", borderRadius: 22, overflow: "hidden", display: "flex", flexDirection: "column", height: 500 }}>
