@@ -101,6 +101,7 @@
   .badge.ok { background: var(--ok-bg); color: var(--ok); }
   .badge.amber { background: var(--amber-bg); color: var(--amber); }
   .badge.dim { background: var(--panel2); color: var(--sub); }
+  .badge.info { background: rgba(47,107,224,.15); color: #2f6be0; }
   .badge.flag { background: var(--warn-bg); color: var(--warn); }
   .tab-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 999px; background: var(--warn); color: #fff; font-size: 11px; font-weight: 700; text-align: center; vertical-align: middle; }
   .flag-card { border-left: 3px solid var(--warn); }
@@ -542,7 +543,7 @@
     { id: "outlets", label: "Outlets", ic: "🏬", v: "outlets" },
     { id: "kitchen", label: "Kitchen Display", ic: "🍳", v: "kitchen" },
     { id: "inventory", label: "Inventory", ic: "📦", kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["wastage", "Wastage"], ["audit", "Stock Check"]] },
-    { id: "proc", label: "Procurement", ic: "🚚", kids: [["deliveries", "Deliveries & bills"], ["suppliers", "Suppliers"]] },
+    { id: "proc", label: "Procurement", ic: "🚚", kids: [["proc_exp", "Expenses"], ["proc_bills", "Vendor bills"], ["proc_po", "Purchase orders"], ["deliveries", "Record delivery"], ["suppliers", "Suppliers"]] },
     { id: "recv", label: "Receivables", ic: "💳", v: "recv" },
     { id: "reports", label: "Reports", ic: "📈", kids: [["review", "Review flags"], ["assistant", "Assistant"]] },
     { id: "staff", label: "Staff & Roles", ic: "👥", v: "staff" },
@@ -562,15 +563,18 @@
     config: ["Configurations", "Outlet, tax, receipt & payments."],
     sysadmin: ["System Admin", "Users, audit log & integrations."],
     wastage: ["Wastage", "What was thrown out or written off, and what it cost."],
+    proc_exp: ["Procurement", "Expenses, vendor bills & purchase orders."],
+    proc_bills: ["Procurement", "Expenses, vendor bills & purchase orders."],
+    proc_po: ["Procurement", "Expenses, vendor bills & purchase orders."],
   };
   var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
-  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1, wastage: 1 };
+  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1, wastage: 1, proc_exp: 1 };
   /* views not yet built → tasteful placeholder + which phase ships them */
-  var SOON = { outlets: 6, kitchen: 6, recv: 4, staff: 6, config: 5, sysadmin: 7 };
+  var SOON = { outlets: 6, kitchen: 6, staff: 6, config: 5, sysadmin: 7 };
   /* which nav module a view id belongs to (for active-highlight + range chips) */
   var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
     sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", wastage: "inventory", audit: "inventory",
-    deliveries: "proc", suppliers: "proc", review: "reports", assistant: "reports" };
+    deliveries: "proc", suppliers: "proc", proc_exp: "proc", proc_bills: "proc", proc_po: "proc", review: "reports", assistant: "reports" };
   var TABS = [];   // legacy — retained so any stray reference stays defined
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
@@ -780,7 +784,7 @@
       return '<button data-r="' + r[0] + '" class="' + (S.range === r[0] ? "on" : "") + (r[0] === "year" ? " year" : "") + '">' + r[1] + "</button>";
     }).join("");
     host.querySelectorAll("button").forEach(function (b) {
-      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); else if (S.tab === "wastage") loadWastage(); };
+      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); else if (S.tab === "wastage") loadWastage(); else if (S.tab === "proc_exp") loadExpenses(); };
     });
   }
   function fmtMoney(laari, whole) {
@@ -793,6 +797,10 @@
     var v = S.tab;
     if (v === "dash") renderDashboard();
     else if (VIEW_MOD[v] === "sales") renderSales();
+    else if (v === "proc_exp") renderExpenses();
+    else if (v === "proc_bills") renderVendorBills();
+    else if (v === "proc_po") renderPurchaseOrders();
+    else if (v === "recv") renderReceivables();
     else if (v === "overview") renderOverview();
     else if (v === "review") renderReview();
     else if (v === "assistant") renderAssistant();
@@ -1002,6 +1010,80 @@
       + '<div class="tbl-wrap"><table><thead><tr><th>When</th><th>Item</th><th class="mono">Qty</th><th>Reason</th><th class="mono">Cost</th></tr></thead><tbody>'
       + rows + "</tbody></table></div>"
       + '<p class="muted" style="font-size:11.5px;margin-top:12px">Record new wastage from <b>Inventory ▸ Stock levels</b> → an item’s <b>Adjust</b> button.</p>';
+  }
+
+  /* ── Procurement (spec §3.6) ──────────────────────────────────────────── */
+  var PAY_LABEL = { cash: "Cash", card: "Card · BML", transfer: "Transfer", bank: "Bank", other: "Bank / Other" };
+  function methodLabel(m) { var k = String(m || "").toLowerCase(); return PAY_LABEL[k] || (m ? (m.charAt(0).toUpperCase() + m.slice(1)) : "Other"); }
+  function loadExpenses() {
+    S.expLoading = true; if (S.tab === "proc_exp") renderExpenses();
+    api("/expenses?range=" + encodeURIComponent(S.range)).then(function (j) {
+      j._key = S.range; S.expenses = j; S.expLoading = false; if (S.tab === "proc_exp") renderExpenses();
+    }).catch(function () { S.expLoading = false; if (S.tab === "proc_exp") renderExpenses(); });
+  }
+  function renderExpenses() {
+    var m = el("main");
+    if (!S.expenses || S.expenses._key !== S.range) { m.innerHTML = '<div class="empty">' + (S.expLoading ? "Loading expenses…" : "") + "</div>"; if (!S.expLoading) loadExpenses(); return; }
+    var j = S.expenses;
+    var stats = '<div class="stat2" style="margin-bottom:14px"><div class="card stat"><div class="k">Total spend</div><div class="v">' + fmtMoney(j.total) + "</div></div>"
+      + '<div class="card stat"><div class="k">Entries</div><div class="v">' + j.count + "</div></div></div>";
+    var rows = j.expenses.length ? j.expenses.map(function (e) {
+      return "<tr><td>" + esc(whenStr(e.t)) + '</td><td><span class="badge dim">' + esc(e.cat) + "</span></td><td>" + esc(e.supplier || "—") + "</td><td>" + esc(methodLabel(e.method)) + '</td><td class="mono">' + fmtMoney(e.amount) + "</td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty">No expenses in this range.</td></tr>';
+    m.innerHTML = seg_proc("proc_exp") + stats
+      + '<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Category</th><th>Vendor</th><th>Method</th><th class="mono">Amount</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    wireProcSeg();
+  }
+  function renderVendorBills() {
+    var m = el("main"), bills = S.invoices || [];
+    var rows = bills.length ? bills.map(function (b) {
+      return "<tr><td>" + esc(b.supplier || "—") + '</td><td class="mono">' + esc(b.invoice_no || "—") + '</td><td class="mono">' + fmtMoney(b.total) + "</td><td>On receipt</td><td><span class=\"badge ok\">Paid</span></td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty">No vendor bills yet. Record a delivery to book one.</td></tr>';
+    m.innerHTML = seg_proc("proc_bills")
+      + '<div class="tbl-wrap"><table><thead><tr><th>Vendor</th><th class="mono">Invoice</th><th class="mono">Amount</th><th>Due</th><th>Status</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
+      + '<p class="muted" style="font-size:11.5px;margin-top:12px">Received deliveries are booked as paid. Record a new one from <b>Procurement ▸ Record delivery</b>.</p>';
+    wireProcSeg();
+  }
+  function renderPurchaseOrders() {
+    var m = el("main"), pos = S.pos || [];
+    var rows = pos.length ? pos.map(function (p) {
+      var n = (p.items || []).length;
+      return "<tr><td class=\"mono\">" + esc(p.no || "—") + "</td><td>" + esc(p.supplier || "—") + "</td><td class=\"mono\">" + n + "</td><td class=\"mono\">" + fmtMoney(p.total) + "</td><td><span class=\"badge info\">Sent</span></td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty">No open purchase orders.</td></tr>';
+    m.innerHTML = seg_proc("proc_po")
+      + '<div class="tbl-wrap"><table><thead><tr><th class="mono">PO#</th><th>Vendor</th><th class="mono">Items</th><th class="mono">Total</th><th>Status</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    wireProcSeg();
+  }
+  var PROC_TABS = [["proc_exp", "Expenses"], ["proc_bills", "Vendor bills"], ["proc_po", "Purchase orders"]];
+  function seg_proc(cur) {
+    return '<div class="seg" id="procSeg">' + PROC_TABS.map(function (t) { return '<button data-v="' + t[0] + '" class="' + (cur === t[0] ? "on" : "") + '">' + t[1] + "</button>"; }).join("") + "</div>";
+  }
+  function wireProcSeg() { var s = el("procSeg"); if (s) s.querySelectorAll("button").forEach(function (b) { b.onclick = function () { go(b.dataset.v); }; }); }
+
+  /* ── Receivables (spec §3.7) ──────────────────────────────────────────── */
+  function loadReceivables() {
+    S.recvLoading = true; if (S.tab === "recv") renderReceivables();
+    api("/receivables").then(function (j) { S.recv = j; S.recvLoading = false; if (S.tab === "recv") renderReceivables(); })
+      .catch(function () { S.recvLoading = false; if (S.tab === "recv") renderReceivables(); });
+  }
+  var RECV_STATUS = { overdue: ["Overdue", "low"], due: ["Due soon", "amber"], current: ["Current", "ok"] };
+  function renderReceivables() {
+    var m = el("main");
+    if (!S.recv) { m.innerHTML = '<div class="empty">' + (S.recvLoading ? "Loading receivables…" : "") + "</div>"; if (!S.recvLoading) loadReceivables(); return; }
+    var j = S.recv;
+    var stats = '<div class="stat2" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">'
+      + '<div class="card stat"><div class="k">Outstanding</div><div class="v">' + fmtMoney(j.outstanding) + "</div></div>"
+      + '<div class="card stat"><div class="k">Overdue</div><div class="v ' + (j.overdue ? "num-bad" : "") + '">' + j.overdue + "</div></div>"
+      + '<div class="card stat"><div class="k">Customers</div><div class="v">' + j.customers + "</div></div></div>";
+    var rows = j.rows.length ? j.rows.map(function (c) {
+      var s = RECV_STATUS[c.status] || RECV_STATUS.current;
+      return "<tr><td>" + esc(c.name) + "</td><td>" + esc(c.phone || "—") + '</td><td class="mono">' + fmtMoney(c.balance)
+        + "</td><td>" + (c.ageDays ? (c.ageDays + "d") : "—") + '</td><td><span class="badge ' + s[1] + '">' + s[0] + "</span></td>"
+        + '<td><button class="ghost tiny" data-remind="' + esc(c.id) + '">Remind</button></td></tr>';
+    }).join("") : '<tr><td colspan="6" class="empty">No open balances — everyone’s square.</td></tr>';
+    m.innerHTML = stats
+      + '<div class="tbl-wrap"><table><thead><tr><th>Customer</th><th>Contact</th><th class="mono">Balance</th><th>Aging</th><th>Status</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    m.querySelectorAll("[data-remind]").forEach(function (b) { b.onclick = function () { toast("Reminder noted — SMS/link reminders arrive with the messaging integration."); }; });
   }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────

@@ -1698,6 +1698,56 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ range, total: list.reduce((a, x) => a + x.cost, 0), count: list.length, wastage: list });
   }));
 
+  /* Admin cockpit: expenses ledger (spec §3.6). Range-scoped 'expenses' entities
+     (booked by the till's expense capture and by back-office deliveries). */
+  router.get("/expenses", authAny, wrap(async (req, res) => {
+    const RANGES = { today: 1, yest: 1, week: 1, month: 1, quarter: 1, year: 1 };
+    const range = RANGES[req.query.range] ? String(req.query.range) : "month";
+    const MVT = 5 * 3600 * 1000, now = Date.now();
+    const localMidnight = (ms) => { const d = new Date(ms + MVT); d.setUTCHours(0, 0, 0, 0); return d.getTime() - MVT; };
+    const t0 = localMidnight(now);
+    let from, to = now;
+    if (range === "today") from = t0;
+    else if (range === "yest") { from = t0 - 86400000; to = t0; }
+    else if (range === "week") from = t0 - 6 * 86400000;
+    else if (range === "month") { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - MVT; }
+    else if (range === "quarter") { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1) - MVT; }
+    else { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), 0, 1) - MVT; }
+    const normT = (d) => { let t = num(d.t); if (t > 0 && t < 1e12) t *= 1000; return t; };
+    const rows = await withOrg(req.orgId, (c) => c.query(
+      `SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false
+         AND COALESCE((data->>'t')::numeric, 0) >= $2
+       ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 400`, [req.orgId, from]));
+    const list = [];
+    for (const r of rows.rows) {
+      const d = r.data || {}, t = normT(d);
+      if (t < from || t >= to) continue;
+      list.push({ t, cat: d.cat || "Other", supplier: d.supplier || "", method: d.paidFrom || "other", amount: num(d.amount), note: d.note || "" });
+    }
+    res.json({ range, total: list.reduce((a, x) => a + x.amount, 0), count: list.length, expenses: list });
+  }));
+
+  /* Admin cockpit: receivables (spec §3.7). Customers carrying an open balance,
+     with aging from when the balance last moved and a status band. Read-only. */
+  router.get("/receivables", authAny, wrap(async (req, res) => {
+    const rows = await withOrg(req.orgId, (c) => c.query(
+      `SELECT id, data, EXTRACT(EPOCH FROM updated_at)*1000 AS upd FROM entities
+        WHERE org_id=$1 AND kind='customers' AND deleted=false
+          AND COALESCE((data->>'balance')::numeric, 0) > 0
+        ORDER BY (data->>'balance')::numeric DESC LIMIT 300`, [req.orgId]));
+    const now = Date.now();
+    const list = rows.rows.map((r) => {
+      const d = r.data || {}, bal = num(d.balance), limit = num(d.creditLimit);
+      const over = !!d.creditOverLimit || (limit > 0 && bal > limit);
+      const since = num(d.creditOverAt) || Math.round(Number(r.upd) || 0);
+      const ageDays = since ? Math.max(0, Math.floor((now - since) / 86400000)) : 0;
+      const status = over ? "overdue" : (limit > 0 && bal >= limit * 0.8 ? "due" : "current");
+      return { id: String(d.id || r.id), name: d.name || "Customer", phone: d.phone || "",
+        balance: bal, creditLimit: limit, over, overBy: num(d.creditOverBy), ageDays, status };
+    });
+    res.json({ outstanding: list.reduce((a, x) => a + x.balance, 0), overdue: list.filter((x) => x.status === "overdue").length, customers: list.length, rows: list });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and
