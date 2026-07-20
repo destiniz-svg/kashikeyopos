@@ -541,7 +541,7 @@
     { id: "sales", label: "Sales", ic: "🧾", kids: [["sales", "Register"], ["sales_qr", "QR Orders"], ["sales_del", "Delivery"]] },
     { id: "outlets", label: "Outlets", ic: "🏬", v: "outlets" },
     { id: "kitchen", label: "Kitchen Display", ic: "🍳", v: "kitchen" },
-    { id: "inventory", label: "Inventory", ic: "📦", kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["audit", "Stock Check"]] },
+    { id: "inventory", label: "Inventory", ic: "📦", kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["wastage", "Wastage"], ["audit", "Stock Check"]] },
     { id: "proc", label: "Procurement", ic: "🚚", kids: [["deliveries", "Deliveries & bills"], ["suppliers", "Suppliers"]] },
     { id: "recv", label: "Receivables", ic: "💳", v: "recv" },
     { id: "reports", label: "Reports", ic: "📈", kids: [["review", "Review flags"], ["assistant", "Assistant"]] },
@@ -561,14 +561,15 @@
     staff: ["Staff & Roles", "Team, shifts & permissions."],
     config: ["Configurations", "Outlet, tax, receipt & payments."],
     sysadmin: ["System Admin", "Users, audit log & integrations."],
+    wastage: ["Wastage", "What was thrown out or written off, and what it cost."],
   };
   var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
-  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1 };
+  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1, wastage: 1 };
   /* views not yet built → tasteful placeholder + which phase ships them */
   var SOON = { outlets: 6, kitchen: 6, recv: 4, staff: 6, config: 5, sysadmin: 7 };
   /* which nav module a view id belongs to (for active-highlight + range chips) */
   var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
-    sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", audit: "inventory",
+    sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", wastage: "inventory", audit: "inventory",
     deliveries: "proc", suppliers: "proc", review: "reports", assistant: "reports" };
   var TABS = [];   // legacy — retained so any stray reference stays defined
   /* Guided IA (§3): a plain-language title + one sentence on what each section
@@ -773,13 +774,13 @@
   }
   function renderRanges() {
     var mod = VIEW_MOD[S.tab] || S.tab, host = el("ranges");
-    if (!RANGE_ON[mod]) { host.style.display = "none"; host.innerHTML = ""; return; }
+    if (!(RANGE_ON[S.tab] || RANGE_ON[mod])) { host.style.display = "none"; host.innerHTML = ""; return; }
     host.style.display = "";
     host.innerHTML = RANGE_LIST.map(function (r) {
       return '<button data-r="' + r[0] + '" class="' + (S.range === r[0] ? "on" : "") + (r[0] === "year" ? " year" : "") + '">' + r[1] + "</button>";
     }).join("");
     host.querySelectorAll("button").forEach(function (b) {
-      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); };
+      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); else if (S.tab === "wastage") loadWastage(); };
     });
   }
   function fmtMoney(laari, whole) {
@@ -797,6 +798,7 @@
     else if (v === "assistant") renderAssistant();
     else if (v === "recipes") renderRecipes();
     else if (v === "audit") renderAudit();
+    else if (v === "wastage") renderWastage();
     else if (v === "deliveries") renderDeliveries();
     else if (v === "ingredients") renderIngredients();
     else if (v === "suppliers") renderSuppliers();
@@ -975,6 +977,31 @@
       + '<div class="tbl-wrap"><table><thead><tr><th class="mono">#</th><th>Channel</th><th>Time</th><th class="mono">Items</th><th>Staff</th><th class="mono">Total</th><th>Status</th></tr></thead><tbody>'
       + rowsHtml + "</tbody></table></div>";
     el("salesSeg").querySelectorAll("button").forEach(function (b) { b.onclick = function () { go(b.dataset.v); }; });
+  }
+
+  /* ── Wastage ledger (spec §3.5) ───────────────────────────────────────── */
+  function loadWastage() {
+    S.wasteLoading = true; if (S.tab === "wastage") renderWastage();
+    api("/wastage?range=" + encodeURIComponent(S.range)).then(function (j) {
+      j._key = S.range; S.wastage = j; S.wasteLoading = false; if (S.tab === "wastage") renderWastage();
+    }).catch(function () { S.wasteLoading = false; if (S.tab === "wastage") renderWastage(); });
+  }
+  function whenStr(t) { try { var d = new Date(t); return d.toLocaleDateString([], { day: "2-digit", month: "short" }) + " " + hhmm(t); } catch (e) { return ""; } }
+  function renderWastage() {
+    var m = el("main");
+    if (!S.wastage || S.wastage._key !== S.range) { m.innerHTML = '<div class="empty">' + (S.wasteLoading ? "Loading wastage…" : "") + "</div>"; if (!S.wasteLoading) loadWastage(); return; }
+    var j = S.wastage;
+    var stats = '<div class="stat2" style="margin-bottom:14px">'
+      + '<div class="card stat"><div class="k">Wasted value</div><div class="v num-bad">' + fmtMoney(j.total) + "</div></div>"
+      + '<div class="card stat"><div class="k">Entries</div><div class="v">' + j.count + "</div></div></div>";
+    var rows = j.wastage.length ? j.wastage.map(function (w) {
+      return "<tr><td>" + esc(whenStr(w.at)) + "</td><td>" + esc(w.name) + "</td><td class=\"mono\">" + qty3(w.qty) + " " + esc(w.unit)
+        + "</td><td><span class=\"badge dim\">" + esc(w.reason) + "</span></td><td class=\"mono num-bad\">" + fmtMoney(w.cost) + "</td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty">No wastage recorded in this range — nice.</td></tr>';
+    m.innerHTML = stats
+      + '<div class="tbl-wrap"><table><thead><tr><th>When</th><th>Item</th><th class="mono">Qty</th><th>Reason</th><th class="mono">Cost</th></tr></thead><tbody>'
+      + rows + "</tbody></table></div>"
+      + '<p class="muted" style="font-size:11.5px;margin-top:12px">Record new wastage from <b>Inventory ▸ Stock levels</b> → an item’s <b>Adjust</b> button.</p>';
   }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────

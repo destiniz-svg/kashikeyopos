@@ -1665,6 +1665,39 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ range, channel, stats: { orders, rev, aov: orders ? rev / orders : 0 }, orders: list.slice(0, 300) });
   }));
 
+  /* Admin cockpit: wastage ledger (spec §3.5). Range-scoped waste moves from the
+     immutable stock ledger, joined to ingredient names. Cost = |qty| × unit_cost
+     (laari). Read-only — recording wastage stays the per-item Adjust flow. */
+  router.get("/wastage", authAny, wrap(async (req, res) => {
+    const RANGES = { today: 1, yest: 1, week: 1, month: 1, quarter: 1, year: 1 };
+    const range = RANGES[req.query.range] ? String(req.query.range) : "month";
+    const MVT = 5 * 3600 * 1000, now = Date.now();
+    const localMidnight = (ms) => { const d = new Date(ms + MVT); d.setUTCHours(0, 0, 0, 0); return d.getTime() - MVT; };
+    const t0 = localMidnight(now);
+    let from, to = now;
+    if (range === "today") from = t0;
+    else if (range === "yest") { from = t0 - 86400000; to = t0; }
+    else if (range === "week") from = t0 - 6 * 86400000;
+    else if (range === "month") { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - MVT; }
+    else if (range === "quarter") { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1) - MVT; }
+    else { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), 0, 1) - MVT; }
+
+    const rows = await withOrg(req.orgId, (c) => c.query(
+      `SELECT EXTRACT(EPOCH FROM m.created_at)*1000 AS at, m.qty, m.unit_cost, m.note, m.location,
+              i.name, i.base_unit
+         FROM stock_moves m LEFT JOIN ingredients i ON i.org_id = m.org_id AND i.id = m.ingredient_id
+        WHERE m.org_id=$1 AND m.kind='waste'
+          AND EXTRACT(EPOCH FROM m.created_at)*1000 >= $2 AND EXTRACT(EPOCH FROM m.created_at)*1000 < $3
+        ORDER BY m.created_at DESC LIMIT 500`, [req.orgId, from, to]));
+    const list = rows.rows.map((r) => {
+      const qty = Math.abs(Number(r.qty) || 0);
+      const reason = String(r.note || "").replace(/^wastage:\s*/i, "").trim() || "Wastage";
+      return { at: Math.round(Number(r.at) || 0), name: r.name || "(removed item)", qty,
+        unit: r.base_unit || "", location: r.location || "", reason, cost: Math.round(qty * (Number(r.unit_cost) || 0)) };
+    });
+    res.json({ range, total: list.reduce((a, x) => a + x.cost, 0), count: list.length, wastage: list });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and
