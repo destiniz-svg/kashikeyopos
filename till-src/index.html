@@ -13,6 +13,21 @@
   <div id="root"></div>
   <script type="module" src="/src/main.tsx"></script>
   <script>
+    /* Reconcile the server-stamped data-device to the live viewport width so
+       CSS stays width-accurate on desktop resize / tablet rotation. The server
+       sets the first-paint value from the User-Agent (no flash); data-os is
+       left as the server set it since OS never changes at runtime. */
+    (function () {
+      var el = document.documentElement;
+      function sync() {
+        var w = Math.min(window.innerWidth || 0, window.outerWidth || Infinity) || window.innerWidth;
+        var d = w < 640 ? "phone" : w < 1024 ? "tablet" : "desktop";
+        if (el.getAttribute("data-device") !== d) el.setAttribute("data-device", d);
+      }
+      if (!el.getAttribute("data-device")) sync();
+      window.addEventListener("resize", sync, { passive: true });
+      window.addEventListener("orientationchange", sync, { passive: true });
+    })();
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); });
     }

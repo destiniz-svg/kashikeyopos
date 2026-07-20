@@ -1475,6 +1475,52 @@ app.get("/", wrap(async (req, res, next) => {
   next();
 }));
 
+/* Server-side multi-device adaptation.
+   The till/guest bundle and back office are static HTML shells served to every
+   device. We classify the requesting device from the User-Agent and stamp
+   data-device / data-os onto the <html> element (plus viewport-fit=cover on
+   iOS) before sending, so the applied UI (delivery modal, cart, admin cockpit)
+   renders the right layout on first paint with no client-side flash. The client
+   still reconciles data-device to the live viewport width on resize/rotation. */
+function deviceHint(ua) {
+  const s = String(ua || "").toLowerCase();
+  const os = /iphone|ipad|ipod/.test(s) || (/macintosh/.test(s) && /mobile/.test(s)) ? "ios"
+    : /android/.test(s) ? "android"
+    : /windows phone/.test(s) ? "windows" : "other";
+  let device;
+  if (/ipad|tablet|playbook|silk|(android(?!.*mobile))/.test(s)) device = "tablet";
+  else if (/mobi|iphone|ipod|android.*mobile|windows phone|blackberry|iemobile|opera mini/.test(s)) device = "phone";
+  else device = "desktop";
+  return { device, os };
+}
+const _htmlCache = new Map();
+function serveAdaptiveHtml(filePath, req, res) {
+  try {
+    let ent = _htmlCache.get(filePath);
+    const st = fs.statSync(filePath);
+    if (!ent || ent.mtimeMs !== st.mtimeMs) {
+      ent = { html: fs.readFileSync(filePath, "utf8"), mtimeMs: st.mtimeMs };
+      _htmlCache.set(filePath, ent);
+    }
+    const { device, os } = deviceHint(req.headers["user-agent"]);
+    let html = ent.html.replace(/<html\b([^>]*)>/i, (m, attrs) => {
+      const cleaned = attrs.replace(/\s+data-(device|os)="[^"]*"/gi, "");
+      return `<html${cleaned} data-device="${device}" data-os="${os}">`;
+    });
+    /* iOS needs viewport-fit=cover so safe-area insets are honoured under the
+       notch/home bar; add it if the shell's viewport meta lacks it. */
+    if (os === "ios") {
+      html = html.replace(/(<meta\s+name=["']viewport["']\s+content=["'])([^"']*?)(["'])/i,
+        (m, a, content, c) => /viewport-fit/.test(content) ? m : `${a}${content},viewport-fit=cover${c}`);
+    }
+    res.set("Vary", "User-Agent");
+    res.set("Cache-Control", "no-cache");
+    res.type("html").send(html);
+  } catch (e) {
+    res.sendFile(filePath);
+  }
+}
+
 const siteDir = path.join(__dirname, "site");
 app.use(express.static(siteDir, { index: false }));
 app.get("/login", redirectIfAppSession, (req, res) => res.sendFile(path.join(siteDir, "login.html")));
@@ -1482,7 +1528,7 @@ app.get("/signup", redirectIfAppSession, (req, res) => res.sendFile(path.join(si
 app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 /* Back office: recipes, stock checks, deliveries — owner/manager work that
    doesn't belong on the till. Same session cookie as /app. */
-app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir, "back.html")));
+app.get("/back", requireAppSession, (req, res) => serveAdaptiveHtml(path.join(siteDir, "back.html"), req, res));
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
    meaningful while the org is un-onboarded; afterwards it's just /app. */
 app.get("/welcome", (req, res) => {
@@ -1502,7 +1548,7 @@ for (const p of ["docs", "api", "status", "privacy", "terms"]) {
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
   const noCacheShell = { setHeaders: (res, file) => { if (file.endsWith(".html") || file.endsWith("sw.js")) res.set("Cache-Control", "no-cache"); } };
-  const sendTill = (req, res) => res.sendFile(path.join(webDir, "index.html"), { headers: { "Cache-Control": "no-cache" } });
+  const sendTill = (req, res) => serveAdaptiveHtml(path.join(webDir, "index.html"), req, res);
 
   /* Already-printed guest QR codes and shared links point at bare "/" with
      ?s=slug&t=table / &c=custId (see the SPA's own client-side urlMode

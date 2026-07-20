@@ -9,7 +9,15 @@
   --red:#D33F28;--redsoft:rgba(211,63,40,.14);--blue:#2F6BE0;
   --shadow:0 1px 1px rgba(30,35,45,.04),0 14px 34px -16px rgba(30,40,60,.26);
   --num:'Bricolage Grotesque','Instrument Sans',system-ui,sans-serif;
+  /* Safe-area insets — 0 on devices without a notch/home-bar. The server stamps
+     data-os and forces viewport-fit=cover on iOS so these resolve under the
+     island/home indicator; Android gesture nav also reports real insets. */
+  --sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px);--sar:env(safe-area-inset-right,0px);
 }
+/* Phone chrome runs edge-to-edge, so let the device paint into the inset area
+   and inset content in JS via the vars above. Tablet/desktop have no insets. */
+html[data-device=desktop]{--sat:0px;--sab:0px;--sal:0px;--sar:0px}
 html[data-dark]{
   --bg:#141110;--sur:rgba(34,28,21,.60);--sur2:rgba(255,255,255,.06);
   --ink:#F3EBDA;--ink2:#9A8D76;--ink3:#6B6252;--line:rgba(255,255,255,.09);

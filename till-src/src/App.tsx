@@ -430,7 +430,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0, paddingTop: "var(--sat,0px)", paddingInline: "var(--sal,0px) var(--sar,0px)" }}>
         <header style={{ ...C.header, padding: mob ? "0 10px" : "0 16px" }}>
           <div style={C.kchipSm}>K</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800, fontSize: mob ? 13 : 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -658,7 +658,7 @@ function PaySheet({ total, hasCustomer, custName, onClose, onDone }: { total: nu
     change);
   return (
     <div style={{ ...C.overlay, justifyContent: "flex-end", alignItems: "stretch" }} onClick={onClose}>
-      <div className="glass" onClick={(e) => e.stopPropagation()} style={{ width: "min(430px,96vw)", height: "100%", background: "var(--sur)", borderInlineStart: "1px solid var(--line)", display: "flex", flexDirection: "column", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)" }}>
+      <div className="glass" onClick={(e) => e.stopPropagation()} style={{ width: "min(430px,96vw)", height: "100%", background: "var(--sur)", borderInlineStart: "1px solid var(--line)", display: "flex", flexDirection: "column", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", paddingTop: "var(--sat,0px)", paddingBottom: "var(--sab,0px)" }}>
         <div style={{ padding: "16px 22px", borderBottom: "1px solid var(--line)" }}>
           <div style={{ display: "flex", alignItems: "center" }}>
             <div style={{ fontWeight: 800, fontSize: 16 }}>Payment</div><div style={{ flex: 1 }} />
@@ -902,9 +902,9 @@ const C: Record<string, React.CSSProperties> = {
   rail: { width: 92, flex: "0 0 92px", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", padding: "14px 8px", gap: 4, background: "var(--sur)", borderRight: "1px solid var(--line)" },
   railM: { position: "fixed", bottom: 0, left: 0, right: 0, height: 58, zIndex: 30, display: "flex", alignItems: "center", padding: "0 4px", background: "var(--sur)", borderTop: "1px solid var(--line)" },
   railBtnM: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "8px 2px", borderRadius: 12, color: "var(--ink2)", minWidth: 0 },
-  orderPillM: { position: "fixed", left: 12, right: 12, bottom: 66, zIndex: 25, display: "flex", alignItems: "center", padding: "13px 16px", borderRadius: 15, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 22px -6px rgba(225,85,45,.55)" },
+  orderPillM: { position: "fixed", left: 12, right: 12, bottom: "calc(14px + var(--sab,0px))", zIndex: 25, display: "flex", alignItems: "center", padding: "13px 16px", borderRadius: 15, background: "var(--coral)", color: "var(--coralink)", fontWeight: 700, fontSize: 15, boxShadow: "0 8px 22px -6px rgba(225,85,45,.55)" },
   cartSheetWrap: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "flex-end", zIndex: 40, animation: "fade .2s" },
-  cartSheetM: { width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", background: "var(--sur)", borderRadius: "20px 20px 0 0", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", overflow: "hidden" },
+  cartSheetM: { width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", background: "var(--sur)", borderRadius: "20px 20px 0 0", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", overflow: "hidden", paddingBottom: "var(--sab,0px)" },
   kchip: { width: 40, height: 40, borderRadius: 13, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20, boxShadow: "0 6px 16px rgba(225,85,45,.34)" },
   kchipSm: { width: 30, height: 30, borderRadius: 9, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flex: "0 0 30px" },
   navrow: { display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
