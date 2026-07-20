@@ -473,11 +473,16 @@
     .hero { grid-template-columns: 1fr; }
   }
   @media (max-width: 640px) {
-    .chead { padding: 12px 16px; }
+    .chead { padding: calc(12px + var(--sat)) 16px 12px; gap: 10px; }
+    .chead .hright { gap: 8px; width: 100%; }
     main { padding: 16px 14px 80px; }
     .hero .big { font-size: 30px; }
     .stat2 { grid-template-columns: 1fr; }
-    .ranges { overflow-x: auto; }
+    /* Phone header: keep it light — the multi-swatch theme picker collapses to
+       just the dark toggle, ranges scroll horizontally, the outlet pill trims. */
+    .ranges { overflow-x: auto; flex: 1 1 auto; min-width: 0; }
+    .theme-ctl .sw { display: none; }
+    .outlet-pill { max-width: 42vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 </style>
 </head>
