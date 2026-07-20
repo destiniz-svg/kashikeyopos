@@ -1783,6 +1783,63 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true });
   }));
 
+  /* Admin cockpit: per-outlet live snapshot (spec §3.3). Today's revenue/orders
+     per store + open-shift headcount, from real sales/shifts entities. */
+  router.get("/outlets", authAny, wrap(async (req, res) => {
+    const MVT = 5 * 3600 * 1000, now = Date.now();
+    const t0 = (() => { const d = new Date(now + MVT); d.setUTCHours(0, 0, 0, 0); return d.getTime() - MVT; })();
+    const normT = (d) => { let t = num(d.t); if (t > 0 && t < 1e12) t *= 1000; return t; };
+    const data = await withOrg(req.orgId, async (client) => {
+      const stores = (await client.query("SELECT id, name, active FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.orgId])).rows;
+      const sales = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,0)>=$2", [req.orgId, t0])).rows.map((r) => r.data || {});
+      const shifts = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND (data->>'closedAt') IS NULL", [req.orgId])).rows.map((r) => r.data || {});
+      return { stores, sales, shifts };
+    });
+    const byStore = {};
+    const ensure = (sid, name, active) => { if (!byStore[sid]) byStore[sid] = { id: sid, name: name || (sid === "main" ? "Main outlet" : sid), active: active !== false, rev: 0, orders: 0, staff: 0, rc: new Array(24).fill(0) }; return byStore[sid]; };
+    data.stores.forEach((s) => ensure(s.id, s.name, s.active));
+    data.sales.forEach((d) => { if (d.refunded) return; const t = normT(d); if (t < t0) return; const b = ensure(d.storeId || "main"); b.rev += num(d.total); b.orders += 1; b.rc[new Date(t + MVT).getUTCHours()] += num(d.total); });
+    data.shifts.forEach((sh) => { ensure(sh.storeId || "main").staff += 1; });
+    res.json({ outlets: Object.keys(byStore).map((k) => byStore[k]) });
+  }));
+
+  /* Admin cockpit: live kitchen tickets (spec §3.4). Open orders (new/preparing/
+     ready) from the shared 'orders' stream the till + guest portal write. */
+  router.get("/kitchen", authAny, wrap(async (req, res) => {
+    const rows = await withOrg(req.orgId, (c) => c.query(
+      `SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false
+         AND COALESCE(data->>'status','new') IN ('new','preparing','ready')
+       ORDER BY (data->>'createdAt')::numeric ASC NULLS LAST LIMIT 60`, [req.orgId]));
+    const list = rows.rows.map((r) => {
+      const d = r.data || {};
+      return { id: String(d.id || ""), no: d.no || "", status: d.status || "new",
+        table: d.table || "", source: d.source || "pos", otype: d.otype || "",
+        at: num(d.createdAt) || num(d.updatedAt) || num(d.t),
+        items: (d.items || d.lines || []).map((it) => ({ name: it.name || it.desc || "item", qty: num(it.qty, 1) })) };
+    });
+    res.json({ tickets: list });
+  }));
+
+  /* Admin cockpit: staff & roles (spec §3.9). Users with on-shift state and
+     today's sales/orders attributed by cashier name, plus the role catalogue. */
+  router.get("/staff", authAny, wrap(async (req, res) => {
+    const MVT = 5 * 3600 * 1000, now = Date.now();
+    const t0 = (() => { const d = new Date(now + MVT); d.setUTCHours(0, 0, 0, 0); return d.getTime() - MVT; })();
+    const normT = (d) => { let t = num(d.t); if (t > 0 && t < 1e12) t *= 1000; return t; };
+    const data = await withOrg(req.orgId, async (client) => {
+      const users = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [req.orgId])).rows.map((r) => r.data || {});
+      const shifts = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false", [req.orgId])).rows.map((r) => r.data || {});
+      const sales = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,0)>=$2", [req.orgId, t0])).rows.map((r) => r.data || {});
+      return { users, shifts, sales };
+    });
+    const openByName = {}; data.shifts.forEach((sh) => { if (!sh.closedAt && sh.userName) openByName[sh.userName] = true; });
+    const perName = {}; data.sales.forEach((d) => { if (d.refunded) return; const t = normT(d); if (t < t0) return; const n = d.userName || ""; (perName[n] = perName[n] || { rev: 0, orders: 0 }); perName[n].rev += num(d.total); perName[n].orders += 1; });
+    const staff = data.users.map((u) => { const n = u.name || ""; const p = perName[n] || { rev: 0, orders: 0 }; return { id: String(u.id || ""), name: n || "Staff", role: u.role || "cashier", onShift: !!openByName[n], rev: p.rev, orders: p.orders }; });
+    const top = staff.slice().sort((a, b) => b.rev - a.rev)[0];
+    const roles = [["Master Admin", "Full access · every module", 11], ["Manager", "Reports, inventory, staff & config", 8], ["Cashier", "Register & orders", 3], ["Rider", "Delivery orders only", 1]];
+    res.json({ team: staff.length, onShift: staff.filter((s) => s.onShift).length, topName: (top && top.rev) ? top.name : "—", staff, roles });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and

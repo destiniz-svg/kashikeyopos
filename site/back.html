@@ -476,6 +476,7 @@
       <button class="hamb" id="hamb" aria-label="Open menu">☰</button>
       <div class="htitle" id="htitle"><h1>Loading…</h1><p></p></div>
       <div class="hright" id="hright">
+        <span class="live-pill" id="livePill" style="display:none"><span class="pd"></span>Live · register</span>
         <span class="outlet-pill" id="outletPill">🏬 Kashikeyo · Malé</span>
         <div class="ranges" id="ranges" role="group" aria-label="Time range"></div>
         <div class="theme-ctl" id="themeCtl"></div>
@@ -589,7 +590,7 @@
   var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
   var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, wastage: 1, proc_exp: 1, reports_an: 1 };
   /* views not yet built → tasteful placeholder + which phase ships them */
-  var SOON = { outlets: 6, kitchen: 6, staff: 6, sysadmin: 7 };
+  var SOON = { sysadmin: 7 };
   /* which nav module a view id belongs to (for active-highlight + range chips) */
   var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
     sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", wastage: "inventory", audit: "inventory",
@@ -825,6 +826,9 @@
     else if (v === "reports_z") renderZReport();
     else if (v === "reports_gst") renderGST();
     else if (v === "config") renderConfig();
+    else if (v === "outlets") renderOutlets();
+    else if (v === "kitchen") renderKitchen();
+    else if (v === "staff") renderStaff();
     else if (v === "overview") renderOverview();
     else if (v === "review") renderReview();
     else if (v === "assistant") renderAssistant();
@@ -855,7 +859,7 @@
   function loadSummary() {
     S.sumLoading = true; if (S.tab === "dash") renderDashboard();
     api("/summary?range=" + encodeURIComponent(S.range)).then(function (j) {
-      S.summary = j; S.sumLoading = false;
+      S.summary = j; S.sumLoading = false; setLive(j.orders > 0);
       if (S.tab === "dash") { renderHeader(); renderDashboard(); }
     }).catch(function () { S.sumLoading = false; if (S.tab === "dash") renderDashboard(); });
   }
@@ -1203,6 +1207,76 @@
     api("/settings", { method: "PUT", body: JSON.stringify({ gstBp: c.gstBp, svcChargeBp: c.svcChargeBp, autoKot: c.autoKot, roundTotals: c.roundTotals, taxInclusive: c.taxInclusive, autoPrint: c.autoPrint, methods: c.methods }) })
       .then(function () { toast("Settings saved — the register will pick them up."); })
       .catch(function (e) { toast("Couldn’t save: " + e.message); });
+  }
+
+  /* ── live indicator ───────────────────────────────────────────────────── */
+  function setLive(on) { var p = el("livePill"); if (p) p.style.display = on ? "" : "none"; }
+
+  /* ── Outlets (spec §3.3) ──────────────────────────────────────────────── */
+  function loadOutlets() {
+    api("/outlets").then(function (j) { S.outlets = j.outlets; if (S.tab === "outlets") renderOutlets(); })
+      .catch(function () { if (S.tab === "outlets") el("main").innerHTML = "<div class='empty'>Couldn’t load outlets.</div>"; });
+  }
+  function renderOutlets() {
+    var m = el("main");
+    if (!S.outlets) { m.innerHTML = "<div class='empty'>Loading outlets…</div>"; loadOutlets(); return; }
+    if (!S.outlets.length) { m.innerHTML = "<div class='empty'>No outlets yet.</div>"; return; }
+    var maxO = Math.max.apply(null, S.outlets.map(function (o) { return o.orders; }).concat([1]));
+    m.innerHTML = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px'>" + S.outlets.map(function (o) {
+      var col = function (k, v) { return "<div><div style='font-size:11px;color:var(--sub);text-transform:uppercase;letter-spacing:.04em'>" + k + "</div><div style='font-size:20px;font-weight:800'>" + v + "</div></div>"; };
+      return "<div class='card'><div style='display:flex;align-items:center;gap:8px'><b style='font-size:15px'>" + esc(o.name) + "</b><span class='badge " + (o.active ? "ok" : "dim") + "'>" + (o.active ? "Open" : "Closed") + "</span></div>"
+        + "<div style='display:flex;gap:20px;margin:12px 0 10px'>" + col("Today", fmtMoney(o.rev)) + col("Orders", o.orders) + col("On shift", o.staff) + "</div>"
+        + "<div style='height:40px'>" + svgChart(o.rc, 600, 60, "") + "</div>"
+        + "<div style='margin-top:8px;height:8px;border-radius:999px;background:var(--panel2);overflow:hidden'><span style='display:block;height:100%;background:var(--primary);width:" + Math.round(o.orders / maxO * 100) + "%'></span></div>"
+        + "<div class='muted' style='font-size:11px;margin-top:4px'>Today’s activity</div></div>";
+    }).join("") + "</div>";
+  }
+
+  /* ── Kitchen Display (spec §3.4) — read-only mirror of the live orders ─── */
+  var STATUS_KDS = { new: ["New", "info"], preparing: ["Preparing", "amber"], ready: ["Ready", "ok"] };
+  function loadKitchen() {
+    api("/kitchen").then(function (j) { S.kitchen = j.tickets; if (j.tickets.length) setLive(true); if (S.tab === "kitchen") renderKitchen(); })
+      .catch(function () { if (S.tab === "kitchen") el("main").innerHTML = "<div class='empty'>Couldn’t load kitchen.</div>"; });
+  }
+  function ageMin(at) { return Math.max(0, Math.floor((Date.now() - at) / 60000)); }
+  function renderKitchen() {
+    var m = el("main");
+    if (!S.kitchen) { m.innerHTML = "<div class='empty'>Loading kitchen…</div>"; loadKitchen(); return; }
+    if (!S.kitchen.length) { m.innerHTML = "<div class='card' style='text-align:center;padding:44px'><div style='font-size:32px'>🍳</div><h3 style='margin:10px 0 4px'>No open tickets</h3><p class='muted'>The kitchen is all caught up.</p></div>"; return; }
+    m.innerHTML = "<div style='display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px'>" + S.kitchen.map(function (t) {
+      var mins = ageMin(t.at), cls = mins < 5 ? "ok" : mins < 10 ? "amber" : "low";
+      var src = t.source === "qr" ? "QR" : t.otype === "delivery" ? "Delivery" : ("Dine-in" + (t.table ? " · " + esc(t.table) : ""));
+      var st = STATUS_KDS[t.status] || [t.status, "dim"];
+      return "<div class='card'><div style='display:flex;align-items:center;gap:8px;margin-bottom:8px'><b class='mono'>" + esc(t.no || "—") + "</b><span class='chan-chip'>" + src + "</span><span class='badge " + cls + "' style='margin-left:auto'>" + mins + "m</span></div>"
+        + "<div style='font-size:13px;line-height:1.7'>" + (t.items.map(function (it) { return "<div>" + it.qty + "× " + esc(it.name) + "</div>"; }).join("") || "<span class='muted'>—</span>") + "</div>"
+        + "<div style='margin-top:8px'><span class='badge " + st[1] + "'>" + st[0] + "</span></div></div>";
+    }).join("") + "</div>"
+      + "<p class='muted' style='font-size:11.5px;margin-top:12px'>Live mirror of the till’s kitchen display — tickets are bumped from the register or the till’s Kitchen view.</p>";
+  }
+
+  /* ── Staff & Roles (spec §3.9) ────────────────────────────────────────── */
+  var ROLE_LABEL = { admin: "Master Admin", owner: "Master Admin", manager: "Manager", cashier: "Cashier", waiter: "Cashier", rider: "Rider" };
+  function loadStaff() {
+    api("/staff").then(function (j) { S.staffData = j; if (S.tab === "staff") renderStaff(); })
+      .catch(function () { if (S.tab === "staff") el("main").innerHTML = "<div class='empty'>Couldn’t load staff.</div>"; });
+  }
+  function renderStaff() {
+    var m = el("main");
+    if (!S.staffData) { m.innerHTML = "<div class='empty'>Loading staff…</div>"; loadStaff(); return; }
+    var j = S.staffData;
+    var stats = "<div class='stat2' style='grid-template-columns:repeat(3,1fr);margin-bottom:14px'>"
+      + "<div class='card stat'><div class='k'>Team</div><div class='v'>" + j.team + "</div></div>"
+      + "<div class='card stat'><div class='k'>On shift</div><div class='v'>" + j.onShift + "</div></div>"
+      + "<div class='card stat'><div class='k'>Top today</div><div class='v' style='font-size:18px'>" + esc(j.topName) + "</div></div></div>";
+    var rows = j.staff.length ? j.staff.map(function (s) {
+      return "<tr><td>" + esc(s.name) + "</td><td>" + esc(ROLE_LABEL[s.role] || s.role) + "</td><td><span class='badge " + (s.onShift ? "ok" : "dim") + "'>" + (s.onShift ? "On shift" : "Off") + "</span></td><td>" + (s.onShift ? "Open" : "—") + "</td><td class='mono'>" + fmtMoney(s.rev) + "</td><td class='mono'>" + s.orders + "</td></tr>";
+    }).join("") : "<tr><td colspan='6' class='empty'>No staff synced yet.</td></tr>";
+    var roles = "<div class='card' style='margin-top:14px'><h2>Roles &amp; permissions</h2>" + j.roles.map(function (r) {
+      return "<div class='needs'><div class='r'><span><b>" + esc(r[0]) + "</b><br><small class='muted'>" + esc(r[1]) + "</small></span><span class='badge dim' style='margin-left:auto'>" + r[2] + " modules</span></div></div>";
+    }).join("") + "</div>";
+    m.innerHTML = stats
+      + "<div class='tbl-wrap'><table><thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Shift</th><th class='mono'>Sales</th><th class='mono'>Orders</th></tr></thead><tbody>" + rows + "</tbody></table></div>"
+      + roles;
   }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────
