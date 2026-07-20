@@ -58,7 +58,11 @@
   }
   .tabs button.on { color: var(--primary); border-bottom-color: var(--primary); }
 
-  main { max-width: 1180px; margin: 0 auto; padding: 22px 24px 80px; }
+  /* min-width:0 is essential: main is a flex child of .content, so its default
+     min-width:auto refuses to shrink below its widest content (a table's
+     min-width), which stretched the whole page and let stat grids show too many
+     columns. 0 lets the .tbl-wrap scroll and the grids reflow. */
+  main { max-width: 1180px; width: 100%; margin: 0 auto; padding: 22px 24px 80px; min-width: 0; }
   h2 { font-size: 14px; margin: 0 0 12px; color: var(--sub); text-transform: uppercase; letter-spacing: .05em; }
   .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; }
   .pad { padding: 18px; }
@@ -100,8 +104,10 @@
   th { color: var(--sub); font-weight: 600; background: var(--panel2); white-space: nowrap; }
   tr:last-child td { border-bottom: none; }
   td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-align: right; white-space: nowrap; }
-  .tbl-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); }
-  .tbl-wrap table { border: none; }
+  .tbl-wrap { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); background: var(--panel); -webkit-overflow-scrolling: touch; }
+  /* Keep a readable min-width so columns never crush on phones — the wrap
+     scrolls horizontally instead (spec §2). Fills 100% on wider screens. */
+  .tbl-wrap table { border: none; min-width: 560px; }
 
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
   .badge.low { background: var(--warn-bg); color: var(--warn); }
@@ -491,6 +497,9 @@
     .toolbar input[type=search] { min-width: 0; width: 100%; }
     /* margin bars stack to a single column on the narrowest phones. */
     .margin-bar { grid-template-columns: 1fr 1fr; }
+    /* smaller stat numbers so 2-up cards read on one line, not wrapped. */
+    .card .v { font-size: 22px; }
+    .card.stat { padding: 13px 14px; }
   }
 </style>
 </head>
