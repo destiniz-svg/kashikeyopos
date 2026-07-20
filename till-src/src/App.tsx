@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { store, useStore } from "./store";
 import { hashPin, uid } from "./api";
-import { Dashboard, Reports, Orders, Admin } from "./screens";
+import { Dashboard, Reports, Orders } from "./screens";
 import { GuestPortal } from "./guest";
 
 /* A printed table QR points at "/?s=slug&t=table[&c=cust]" — same bundle, guest
@@ -35,13 +35,26 @@ const TINTS: [string, string][] = [
 ];
 const tintFor = (cat: string) => { let h = 0; for (const c of cat || "") h = (h * 31 + c.charCodeAt(0)) >>> 0; return TINTS[h % TINTS.length]; };
 
+/* Front-of-house rail — the full KashikeyoPOS prototype module set (top pill
+   nav). `to` deep-links a module that lives in the back-office cockpit (/back);
+   `soon` marks screens still being built (Placeholder). Register/Kitchen/
+   Dashboard/Analytics map onto our existing screens. */
 const NAV = [
-  { id: "sell", label: "Sell", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
-  { id: "orders", label: "Orders", icon: '<path d="M4 21V7a2 2 0 0 1 2-2h9l5 5v11z"/><path d="M8 12h8M8 16h6"/>' },
+  { id: "sell", label: "Register", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
+  { id: "floor", label: "Floor", icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
+  { id: "kitchen", label: "Kitchen", icon: '<path d="M6 3v7a3 3 0 0 0 6 0V3M9 3v18M18 3c-1.5 1-2 3-2 6s.5 4 2 5v7"/>' },
+  { id: "qr", label: "QR Orders", icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v7M17 20h4"/>' },
+  { id: "outlets", label: "Outlets", icon: '<path d="M3 21V9l9-6 9 6v12M9 21v-6h6v6"/>' },
+  { id: "delivery", label: "Delivery", icon: '<path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>' },
   { id: "dashboard", label: "Dashboard", icon: '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>' },
-  { id: "reports", label: "Reports", icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>' },
-  { id: "admin", label: "Admin", icon: '<circle cx="12" cy="12" r="3"/><path d="M19 13a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 0 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 2 13a2 2 0 0 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 8.7 4 2 2 0 0 1 12 4a1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 20 11z"/>' },
-];
+  { id: "analytics", label: "Analytics", icon: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>' },
+  { id: "inventory", label: "Inventory", to: "/back", icon: '<path d="M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10"/>' },
+  { id: "expenses", label: "Expenses", to: "/back", icon: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>' },
+  { id: "tabs", label: "Tabs", icon: '<path d="M3 6a2 2 0 0 1 2-2h9l4 4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 12h6M8 16h4"/>' },
+  { id: "dayend", label: "Day End", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
+  { id: "staff", label: "Staff", to: "/back", icon: '<circle cx="9" cy="8" r="3"/><path d="M2 21a7 7 0 0 1 14 0M17 11a3 3 0 1 0-1-5.8M22 21a6 6 0 0 0-6-6"/>' },
+  { id: "setup", label: "Setup", icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.6 1.6 0 0 0 .3 1.8 2 2 0 1 1-2.8 2.8 1.6 1.6 0 0 0-2.7 1.1 2 2 0 0 1-4 0 1.6 1.6 0 0 0-2.7-1.1 2 2 0 1 1-2.8-2.8A1.6 1.6 0 0 0 4.6 13a2 2 0 0 1 0-4 1.6 1.6 0 0 0 1.1-2.7 2 2 0 1 1 2.8-2.8A1.6 1.6 0 0 0 11 4a2 2 0 0 1 2 0 1.6 1.6 0 0 0 2.7 1.1 2 2 0 1 1 2.8 2.8A1.6 1.6 0 0 0 19.4 11z"/>' },
+] as { id: string; label: string; icon: string; to?: string; soon?: boolean }[];
 const METHODS = ["Cash", "Card", "Transfer", "QR"] as const;
 
 export function App() {
@@ -154,9 +167,16 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [table, setTable] = useState("");
   const [tablePick, setTablePick] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
+  const [lang, setLang] = useState<"en" | "dv">(() => (typeof document !== "undefined" && document.documentElement.dir === "rtl") ? "dv" : "en");
   const vw = useVW();
   const mob = vw < 760;
   const tab = vw >= 760 && vw < 1100;
+  const sector: "general" | "tourism" = gstBp >= 1600 ? "tourism" : "general";
+  const toggleLang = () => { const n = lang === "en" ? "dv" : "en"; setLang(n); if (typeof document !== "undefined") document.documentElement.dir = n === "dv" ? "rtl" : "ltr"; };
+  const toggleSector = () => {
+    const cur = st.byKind("settings")[0]; const data = { ...(cur?.data || {}), gstBp: sector === "tourism" ? 800 : 1600 };
+    st.commit([{ kind: "settings", id: cur?.id || "settings", data }]);
+  };
   const parked = st.byKind("parked").map((e) => e.data).sort((a, b) => (a.t || 0) - (b.t || 0));
 
   const shifts = st.byKind("shifts").map((e) => e.data);
@@ -302,33 +322,39 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   );
 
   return (
-    <div style={{ display: "flex", height: "100%" }}>
-      <aside style={mob ? C.railM : C.rail} className="glass">
-        {!mob && <><div style={C.kchip}>K</div><div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", color: "var(--ink3)", marginBottom: 8 }}>KASHIKEYO</div></>}
-        <nav style={{ display: "flex", flexDirection: mob ? "row" : "column", gap: mob ? 2 : 3, width: "100%", justifyContent: mob ? "space-around" : undefined }}>
-          {NAV.map((n) => (
-            <button key={n.id} onClick={() => { if (n.id === "admin") { window.location.href = "/back"; return; } setNav(n.id); }} style={{ ...(mob ? C.railBtnM : C.railBtn), ...(nav === n.id ? C.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
-              <svg viewBox="0 0 24 24" width={mob ? 20 : 21} height={mob ? 20 : 21} dangerouslySetInnerHTML={{ __html: n.icon }} /><span style={{ fontSize: mob ? 9 : 10, fontWeight: 700 }}>{n.label}</span>
-            </button>
-          ))}
-        </nav>
-      </aside>
-
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingBottom: mob ? 60 : 0 }}>
-        <header style={{ ...C.header, padding: mob ? "0 12px" : "0 18px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: mob ? 14 : 16, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {settings.storeName || "Kashikeyo Café"} <span style={{ color: "var(--ink3)", fontSize: 12 }}>▾</span>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
+        <header style={{ ...C.header, padding: mob ? "0 10px" : "0 16px" }}>
+          <div style={C.kchipSm}>K</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800, fontSize: mob ? 13 : 15, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {settings.storeName || "Kashikeyo Café"} <span style={{ color: "var(--ink3)", fontSize: 11 }}>▾</span>
           </div>
+          <button onClick={toggleSector} style={{ ...C.pill, cursor: "pointer", color: "var(--ink)", padding: "6px 11px" }} title="Switch GST sector">
+            <i style={{ ...C.dot, background: sector === "tourism" ? "var(--blue)" : "var(--green)" }} />{mob ? "" : (sector === "tourism" ? "Tourism 16%" : "General 8%")}
+          </button>
           <div style={{ flex: 1 }} />
           {!mob && <span className="num" style={{ fontSize: 13, color: "var(--ink2)" }}>{clock}</span>}
-          <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: mob ? "6px 9px" : "6px 13px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
-            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? "Shift open" : "No shift")}
-          </button>
           {!mob && <StatusPill />}
-          <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: mob ? "4px" : "5px 12px 5px 5px", cursor: "pointer" }} title="Sign out">
+          <button onClick={toggleLang} style={{ ...C.pill, cursor: "pointer", padding: "6px 11px", fontWeight: 800 }} title="Language">{lang === "en" ? "ދިވެހި" : "EN"}</button>
+          <button onClick={() => (window.location.href = "/back")} style={{ ...C.pill, cursor: "pointer", padding: mob ? "6px 9px" : "6px 12px" }} title="Admin cockpit">⚙︎{mob ? "" : " Admin"}</button>
+          <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: "6px 11px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
+            <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? "Shift" : "No shift")}
+          </button>
+          <button onClick={onSignOut} style={{ ...C.pill, gap: 8, padding: mob ? "4px" : "5px 11px 5px 5px", cursor: "pointer" }} title="Sign out">
             <span style={C.avatar}>{(user.name || "?")[0].toUpperCase()}</span>{!mob && user.name}
           </button>
         </header>
+
+        <nav style={mob ? C.navrowM : C.navrow} className="glass">
+          {NAV.map((n) => {
+            const on = nav === n.id;
+            return (
+              <button key={n.id} onClick={() => { if (n.to) { window.location.href = n.to; return; } setNav(n.id); }} style={{ ...C.npill, ...(on ? C.npillOn : {}) }} aria-current={on ? "page" : undefined} title={n.label}>
+                <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: n.icon }} />
+                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{n.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
         {nav === "sell" ? (
           <div style={{ ...C.body, gap: mob ? 0 : 14 }}>
@@ -397,8 +423,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             )}
           </div>
-        ) : nav === "orders" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "reports" ? <Reports /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
-      </div>
+        ) : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : <Placeholder nav={nav} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
@@ -674,6 +699,11 @@ const C: Record<string, React.CSSProperties> = {
   cartSheetWrap: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "flex-end", zIndex: 40, animation: "fade .2s" },
   cartSheetM: { width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", background: "var(--sur)", borderRadius: "20px 20px 0 0", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", overflow: "hidden" },
   kchip: { width: 40, height: 40, borderRadius: 13, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20, boxShadow: "0 6px 16px rgba(225,85,45,.34)" },
+  kchipSm: { width: 30, height: 30, borderRadius: 9, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flex: "0 0 30px" },
+  navrow: { display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
+  navrowM: { display: "flex", alignItems: "center", gap: 5, padding: "7px 10px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
+  npill: { display: "flex", alignItems: "center", gap: 8, padding: "8px 15px", borderRadius: 999, color: "var(--ink2)", background: "transparent", whiteSpace: "nowrap", cursor: "pointer", flex: "0 0 auto" },
+  npillOn: { background: "var(--coralsoft)", color: "var(--coral)", animation: "pop .25s" },
   railBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 4px", borderRadius: 13, color: "var(--ink2)" },
   railOn: { background: "var(--coralsoft)", color: "var(--coral)" },
   header: { height: 58, flex: "0 0 58px", display: "flex", alignItems: "center", gap: 12, padding: "0 18px" },
