@@ -374,6 +374,103 @@ function Kpi({ k, v }: { k: string; v: string; big?: boolean }) {
   </div>;
 }
 
+/* ── Delivery board (prototype: Online ordering & delivery) ────────────────── */
+const DELIV_STEPS = ["Preparing", "On the way", "Delivered"];
+export function Delivery() {
+  const st = useStore();
+  const zones = st.byKind("zones").map((e) => e.data);
+  const parked = st.byKind("parked").map((e) => e.data).filter((b: any) => b.otype === "delivery").sort((a: any, b: any) => (a.t || 0) - (b.t || 0));
+  const products = st.byKind("products").map((e) => e.data);
+  const nameOf = (pid: string) => products.find((p: any) => p.id === pid)?.name || "Item";
+  const advance = (b: any) => {
+    const next = (b.delivStatus || 0) + 1;
+    if (next > 2) { store.del([{ kind: "parked", id: b.id }]); return; }
+    store.commit([{ kind: "parked", id: b.id, data: { ...b, delivStatus: next } }]);
+  };
+  const pillCol = (s: number): [string, string] => s >= 2 ? ["var(--greensoft)", "var(--green)"] : s === 1 ? ["var(--coralsoft)", "var(--coral)"] : ["var(--ambersoft)", "var(--amber)"];
+  return (
+    <div style={X.scroll}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Online ordering &amp; delivery</div>
+        <span style={{ ...X.tag, background: "var(--greensoft)", color: "var(--green)" }}>● Web store live</span>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14, alignItems: "start" }}>
+        <div style={{ ...X.card, padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", marginBottom: 10 }}>LIVE DELIVERIES</div>
+          {parked.length ? parked.map((b: any) => {
+            const s = b.delivStatus || 0; const [bg, fg] = pillCol(s);
+            const items = (b.lines || []).map((l: any) => l.qty + "× " + nameOf(l.pid)).join(" · ");
+            return (
+              <div key={b.id} style={{ border: "1px solid var(--line)", borderRadius: 14, padding: 13, marginBottom: 10, background: "var(--sur2)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <b style={{ fontSize: 13.5 }}>{b.no || "Delivery"}</b>
+                  <span style={{ fontSize: 12, color: "var(--ink2)" }}>{(b.custName || "Walk-in") + (b.zone ? " · " + b.zone : "")}</span>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ ...X.tag, background: bg, color: fg }}>{DELIV_STEPS[Math.min(s, 2)]}</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--ink2)", margin: "7px 0 10px" }}>{items || "—"}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {b.deliveryNote && <span style={{ fontSize: 11.5, color: "var(--ink3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {b.deliveryNote}</span>}
+                  <div style={{ flex: 1 }} />
+                  <button onClick={() => advance(b)} style={{ ...X.pill, cursor: "pointer", color: "var(--coral)", borderColor: "var(--coral)" }}>{s >= 2 ? "Complete ✓" : "Advance →"}</button>
+                </div>
+              </div>
+            );
+          }) : <div style={X.empty}>No live deliveries right now. Delivery orders from the register appear here.</div>}
+        </div>
+        <div style={{ ...X.card, padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", marginBottom: 4 }}>DELIVERY ZONES · BY ISLAND</div>
+          {zones.length ? zones.map((z: any) => (
+            <div key={z.id || z.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 4px", borderBottom: "1px solid var(--line)" }}>
+              <span style={{ color: "var(--coral)", fontSize: 15 }}>📍</span>
+              <b style={{ flex: 1, fontSize: 13.5 }}>{z.name}</b>
+              {z.eta && <span style={{ fontSize: 12, color: "var(--ink3)" }}>{z.eta}</span>}
+              <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 62, textAlign: "right", color: Number(z.fee) ? "var(--ink)" : "var(--green)" }}>{Number(z.fee) ? money(z.fee) : "Free"}</span>
+            </div>
+          )) : <div style={X.empty}>No delivery zones yet — add them in the back office.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Open tabs (prototype: customer credit / on-account) ────────────────────── */
+export function Tabs() {
+  const st = useStore();
+  const custs = st.byKind("customers").map((e) => e.data).filter((c: any) => Number(c.balance || 0) > 0).sort((a: any, b: any) => Number(b.balance) - Number(a.balance));
+  const total = custs.reduce((a: number, c: any) => a + Number(c.balance || 0), 0);
+  const settle = (c: any) => store.commit([{ kind: "customers", id: c.id, data: { ...c, balance: 0, tabSince: null } }]);
+  const daysOf = (c: any) => { const t = c.tabSince || c.updatedAt || c.createdAt; return t ? Math.max(0, Math.floor((Date.now() - t) / 86400000)) : null; };
+  const initials = (n: string) => (n || "?").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+  return (
+    <div style={X.scroll}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Open tabs</div>
+        <div style={{ flex: 1 }} />
+        <span className="num" style={X.pill}>Outstanding · {money(total)}</span>
+        <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral)" }}>{custs.length}</span>
+      </div>
+      <div style={{ ...X.card, overflow: "hidden" }}>
+        {custs.length ? custs.map((c: any, i: number) => {
+          const d = daysOf(c); const overdue = d != null && d >= 30; const [bg, fg] = tintFor(c.name || "?");
+          return (
+            <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 16px", borderBottom: i < custs.length - 1 ? "1px solid var(--line)" : "none" }}>
+              <span style={{ width: 38, height: 38, borderRadius: 999, background: bg, color: fg, display: "grid", placeItems: "center", fontWeight: 800, fontSize: 13, flex: "0 0 38px" }}>{initials(c.name)}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b style={{ fontSize: 14, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name || "Walk-in"}</b>
+                <small style={{ color: "var(--ink3)" }}>{d != null ? "on tab for " + d + "d" : "on tab"}{c.phone ? " · " + c.phone : ""}</small>
+              </div>
+              {d != null && <span style={{ ...X.tag, background: overdue ? "var(--redsoft)" : d >= 10 ? "var(--ambersoft)" : "var(--greensoft)", color: overdue ? "var(--red)" : d >= 10 ? "var(--amber)" : "var(--green)" }}>{overdue ? "overdue 30d+" : d + "d"}</span>}
+              <span className="num" style={{ fontWeight: 800, fontSize: 14, minWidth: 92, textAlign: "right" }}>{money(Number(c.balance))}</span>
+              <button onClick={() => settle(c)} style={{ ...X.pill, cursor: "pointer", color: "var(--green)", borderColor: "var(--green)" }}>Settle</button>
+            </div>
+          );
+        }) : <div style={{ ...X.empty, textAlign: "center", padding: "40px 20px" }}>All tabs settled — no open customer credit.</div>}
+      </div>
+    </div>
+  );
+}
+
 const X: Record<string, React.CSSProperties> = {
   scroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 18px 40px" },
   card: { background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 16, boxShadow: "var(--shadow)" },
