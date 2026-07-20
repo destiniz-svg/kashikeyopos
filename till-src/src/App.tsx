@@ -578,7 +578,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
                 <button onClick={() => setGroup("all")} style={{ ...C.chip, ...(group === "all" ? C.chipOn : {}) }}>{T("All")}</button>
-                {groups.map((g) => <button key={g.name} onClick={() => setGroup(g.name)} style={{ ...C.chip, ...(group === g.name ? C.chipOn : {}) }}>{g.name}</button>)}
+                {groups.map((g) => <button key={g.name} onClick={() => setGroup(g.name)} style={{ ...C.chip, ...(group === g.name ? C.chipOn : {}) }}>{T(g.name)}</button>)}
               </div>
               <div style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
                 <div style={C.grid}>
@@ -598,7 +598,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                         <div style={C.tbody}>
                           {p.tag && <div style={C.ttag}>{p.tag}</div>}
                           <div style={C.tname}>{nm(p)}</div>
-                          {p.desc && <div style={C.tdesc}>{p.desc}</div>}
+                          {p.desc && <div style={C.tdesc}>{T(p.desc)}</div>}
                           <div style={{ flex: 1 }} />
                           <div style={C.tfoot}>
                             <span className="num" style={{ fontSize: 14, fontWeight: 800 }}><small style={{ fontSize: 9.5, color: "var(--ink3)", fontWeight: 700, marginInlineEnd: 3 }}>MVR</small>{(p.price / 100).toFixed(2)}</span>

@@ -142,7 +142,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
             <div style={{ flex: 1 }} />
             <span className="num" style={{ fontWeight: 800, fontSize: 17, color: "var(--coral)" }}>{money(dm.price)}</span>
           </div>
-          {dm.desc && <div style={{ color: "var(--ink2)", fontSize: 13.5, lineHeight: 1.5, marginTop: 12 }}>{dm.desc}</div>}
+          {dm.desc && <div style={{ color: "var(--ink2)", fontSize: 13.5, lineHeight: 1.5, marginTop: 12 }}>{T(dm.desc)}</div>}
           {dmAddons.length > 0 && (
             <>
               <div style={G.sect}>{T("Add Ons")}</div>
@@ -246,7 +246,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
           {groups.map((g) => { const ic = chipIcon(g); return (
             <button key={g.name} onClick={() => setCat(g.name)} style={{ ...G.catChip, ...(cat === g.name ? G.catOn : {}) }}>
               <span style={{ width: 22, height: 22, borderRadius: 99, overflow: "hidden", background: "var(--sur)", display: "grid", placeItems: "center", fontSize: 12 }}>{ic?.img ? <img src={ic.img} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : (ic?.emoji || "🍽️")}</span>
-              {g.name}
+              {T(g.name)}
             </button>
           ); })}
         </div>
@@ -263,7 +263,7 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
                   </div>
                   <div style={G.tbody}>
                     <div style={G.tname}>{nm(p)}</div>
-                    {p.desc && <div style={G.tdesc}>{p.desc}</div>}
+                    {p.desc && <div style={G.tdesc}>{T(p.desc)}</div>}
                     <div style={{ flex: 1 }} />
                     <div style={G.tfoot}>
                       <span className="num" style={{ fontSize: 13.5, fontWeight: 800, color: "var(--coral)" }}>{money(p.price)}</span>

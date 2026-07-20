@@ -102,6 +102,31 @@ const DV: Record<string, string> = {
   "GST": "ޖީއެސްޓީ",
   // register — menu
   "No products yet": "އަދި ޕްރޮޑަކްޓެއް ނެތް",
+  "Tabs": "ޓެބުތައް",
+  // menu categories
+  "Hedhikaa": "ހެދިކާ",
+  "Mains": "މައިގަނޑު ކާނާ",
+  "Drinks": "ބުއިންތައް",
+  "Sweets": "ފޮނި ކާނާ",
+  // menu item descriptions
+  "Deep-fried dough balls stuffed with spiced smoked tuna & coconut.": "ހަވާދުލީ ވަޅޯމަހާއި ކާށި އަޅައި ތެލުލި ފުށްބޯޅަ.",
+  "Golden pastry parcels filled with tuna, onion & coconut.": "މަސް، ފިޔާ އަދި ކާށި އަޅައި ތެލުލި ރަން ޕޭސްޓްރީ.",
+  "Spiced tuna & lentil fritters, fried golden.": "ހަވާދުލީ މަހާއި ބްރޯ ފްރިޓަރ، ރަން ކުލައަށް ތެލުލާފައި.",
+  "Baked spicy tuna & rice cake.": "ހަވާދުލީ މަހާއި ބަތުން ފިހުނު ބޯކިބާ.",
+  "Flatbread filled with spiced smoked tuna.": "ހަވާދުލީ ވަޅޯމަސް އަޅައި ފިހުނު ރޮށި.",
+  "Breaded tuna & potato cutlets.": "މަހާއި އަލުވި އަޅައި ފުށްހާކާ ތެލުލި ކަޓްލެޓް.",
+  "Smoked tuna shredded with grated coconut, chili, onion & lime, served with warm roshi.": "ވަޅޯމަހާއި ހުނި، މިރުސް، ފިޔާ އަދި ލުނބޯ އެއްކޮށް، ހޫނު ރޮށްޓާއެކު.",
+  "Clear Maldivian tuna broth with steamed rice, lime, chili & onion on the side.": "ސާފު ދިވެހި ގަރުދިޔަ، ބަތާއި ލުނބޯ، މިރުސް އަދި ފިޔައާއެކު.",
+  "Tender Maldivian chicken curry simmered in island spices & coconut milk.": "ދިވެހި ހަވާދާއި ކާށިކިރުގައި ކެއްކި ކުކުޅު ރިހަ.",
+  "Fragrant fried rice with egg, vegetables and a hit of island spice.": "ބިހާއި ތަރުކާރީ އަދި ދިވެހި ހަވާދާއެކު ތެލުލި ބަތް.",
+  "Traditional Maldivian black tea.": "ދިވެހި ސަގާފީ ކަޅު ސައި.",
+  "Classic milk tea, island style.": "ދިވެހި ގޮތަށް ތައްޔާރުކުރި ކިރު ސައި.",
+  "Locally roasted coffee, served hot or over ice.": "ލޯކަލްކޮށް ރޯސްޓްކުރި ކޮފީ، ހޫނުކޮށް ނުވަތަ އައިސްއާއެކު.",
+  "Chilled fresh passionfruit juice, lightly sweetened.": "ފިނިކުރި ފްރެޝް ޕެޝަން ފުރުޓް ޖޫސް.",
+  "Fresh young coconut water, served chilled.": "ފިނިކުރި ފެން ކުރުނބާ.",
+  "Creamy coconut rice pudding — a Maldivian classic.": "ކާށިކިރާއި ބަތުން ތައްޔާރުކުރި ދިވެހި ބޮނޑިބަތް.",
+  "Sweet baked coconut cake.": "ފޮނި ފިހުނު ކާށި ބޯކިބާ.",
+  "Sago pearls in sweet coconut milk.": "ފޮނި ކާށިކިރުގައި ސާގު ބޮނޑިބަތް.",
 };
 
 export function t(en: string, lang: Lang): string {
