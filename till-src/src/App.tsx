@@ -532,7 +532,10 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <b style={{ fontSize: 16 }}>{n}</b>
-                {occ && !b.active && <span style={{ fontSize: 10, fontWeight: 800, color: "var(--amber)" }}>● held</span>}
+                {occ && !b.active && (b.orderId
+                  /* the tile carries the live kitchen state (spec §3 floor) */
+                  ? (() => { const [lbl, col] = kotStatusOf(b); return <span style={{ fontSize: 10, fontWeight: 800, color: col }}>● {lbl}</span>; })()
+                  : <span style={{ fontSize: 10, fontWeight: 800, color: "var(--amber)" }}>● held</span>)}
               </div>
               {occ ? (
                 <>

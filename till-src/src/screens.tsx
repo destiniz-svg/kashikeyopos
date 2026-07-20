@@ -250,34 +250,23 @@ function Grid({ rows }: { rows: [string, string][] }) {
   </div>;
 }
 
-/* ── Orders (tables + kitchen display) ─────────────────────────────────────── */
+/* ── Kitchen (pure KDS) ────────────────────────────────────────────────────────
+   Ticket board only — the old "Tables & QR ordering" card here was redundant
+   with Floor (the dedicated table map) and misleading: it colored tables from
+   a t.occupied flag nothing ever set, so every table always read "free".
+   Floor owns tables; this screen owns tickets. */
 const KDS_COLS = ["Active", "New", "Preparing", "Ready", "Delivered", "Done", "Wasted", "All"];
 export function Orders() {
   const st = useStore();
-  const [kds, setKds] = useState(false);
   const [col, setCol] = useState("Active");
-  const tables = st.byKind("tables").map((e) => e.data);
   const orders = st.byKind("orders").map((e) => e.data);
   const count = (c: string) => c === "All" ? orders.length : orders.filter((o) => (o.status || "New").toLowerCase() === c.toLowerCase() || (c === "Active" && !["done", "delivered", "wasted"].includes((o.status || "new").toLowerCase()))).length;
   const shown = col === "All" ? orders : orders.filter((o) => (o.status || "New").toLowerCase() === col.toLowerCase() || (col === "Active" && !["done", "delivered", "wasted"].includes((o.status || "new").toLowerCase())));
 
   return (
     <div style={X.scroll}>
-      <div style={{ ...X.card, padding: 18, marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <b style={{ fontSize: 15 }}>▦ Tables & QR ordering</b>
-          <button onClick={() => setKds(!kds)} style={{ ...X.pill, ...(kds ? { background: "var(--coral)", color: "var(--coralink)", borderColor: "var(--coral)" } : {}) }}>🍳 Kitchen display</button>
-        </div>
-        <div style={{ color: "var(--ink3)", fontSize: 12.5, marginBottom: 12 }}>Guests scan the table QR to browse, order, pay, and call a waiter. Occupied tables glow — tap any table to open the guest view.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))", gap: 10 }}>
-          {(tables.length ? tables : [1, 2, 3, 4, 5, 6].map((n) => ({ id: "T" + n, name: "T" + n }))).map((t: any) => (
-            <div key={t.id} style={{ ...X.card, padding: "16px 14px", textAlign: "center", background: t.occupied ? "var(--coralsoft)" : "var(--greensoft)", borderColor: t.occupied ? "var(--coral)" : "transparent" }}>
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{t.name || t.id}</div><div style={{ color: t.occupied ? "var(--coral)" : "var(--green)", fontSize: 12, fontWeight: 600 }}>{t.occupied ? "occupied" : "free"}</div>
-            </div>
-          ))}
-          <div style={{ ...X.card, padding: "16px 14px", textAlign: "center", borderStyle: "dashed", color: "var(--ink3)" }}><div style={{ fontSize: 18 }}>＋</div><div style={{ fontSize: 12, fontWeight: 600 }}>Edit</div></div>
-        </div>
-      </div>
+      <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Kitchen</div>
+      <div style={{ color: "var(--ink2)", fontSize: 12.5, margin: "2px 0 14px" }}>Open tickets from the register, QR and delivery — bump each one as it moves. Tables live on the Floor tab.</div>
       <div style={{ display: "flex", gap: 7, marginBottom: 12, overflowX: "auto" }}>
         {KDS_COLS.map((c) => <button key={c} onClick={() => setCol(c)} style={{ ...X.chip, ...(col === c ? X.chipOn : {}) }}>{c} <span style={{ opacity: .6 }}>{count(c)}</span></button>)}
       </div>
@@ -285,7 +274,7 @@ export function Orders() {
         {shown.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(235px,1fr))", gap: 12, padding: 14 }}>
           {shown.map((o, i) => <Ticket key={o.id || i} o={o} />)}
         </div> : <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--ink3)" }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>⬡</div>No orders here yet — open a guest view above and place one.
+          <div style={{ fontSize: 30, marginBottom: 8 }}>🍳</div>No tickets here — orders land the moment the register or a guest fires one.
         </div>}
       </div>
     </div>
