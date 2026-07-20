@@ -74,6 +74,34 @@ const DV: Record<string, string> = {
   "Sign out": "ސައިން އައުޓް",
   "Admin panel": "އެޑްމިން ޕެނަލް",
   "Scan or tap a product to start": "ފެށުމަށް ޕްރޮޑަކްޓެއް ސްކޭން ނުވަތަ ޖައްސަވާ",
+  // register — open bills rail
+  "Open Bills": "ހުޅުވިފައިވާ ބިލުތައް",
+  "New bill": "އައު ބިލު",
+  "No open bills. Held and kitchen-fired orders show up here.": "ހުޅުވިފައިވާ ބިލެއް ނެތް. ހިފަހައްޓާފައި އަދި ބަދިގެއަށް ފޮނުވާފައިވާ އޯޑަރުތައް މިތާ ފެންނާނެ.",
+  "In progress": "ކުރިއަށްދަނީ",
+  "In kitchen": "ބަދިގޭގައި",
+  "Ready": "ތައްޔާރު",
+  "Served": "ދީފި",
+  "Open": "ހުޅުވިފައި",
+  "Walk-in": "ވޯކް-އިން",
+  // register — order type
+  "Dine-In": "ކައިގެން",
+  "Takeaway": "ޓޭކްއަވޭ",
+  // register — bill canvas
+  "Order": "އޯޑަރު",
+  "Add customer": "ކަސްޓަމަރ އިތުރުކުރޭ",
+  "Select table": "މޭޒު ހޮވާ",
+  "Delivery details": "ޑެލިވަރީ ތަފްޞީލު",
+  "zone · address": "ސަރަހައްދު · އެޑްރެސް",
+  "each": "ފީސްއަކަށް",
+  "DISCOUNT": "ޑިސްކައުންޓް",
+  "None": "ނެތް",
+  "Discount": "ޑިސްކައުންޓް",
+  "Value excl. GST": "ޖީއެސްޓީ ނުލައި އަގު",
+  "Service charge": "ސާވިސް ޗާޖު",
+  "GST": "ޖީއެސްޓީ",
+  // register — menu
+  "No products yet": "އަދި ޕްރޮޑަކްޓެއް ނެތް",
 };
 
 export function t(en: string, lang: Lang): string {

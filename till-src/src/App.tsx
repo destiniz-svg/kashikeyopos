@@ -173,13 +173,18 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
      Takeaway → customer only; Delivery → customer + delivery location. */
   const pickOtype = (k: "dinein" | "takeaway" | "delivery") => { setOtype(k); if (k !== "dinein") setTable(""); if (k !== "delivery") setZone(null); };
   const [cartOpen, setCartOpen] = useState(false);
-  const [lang, setLang] = useState<"en" | "dv">(() => (typeof document !== "undefined" && document.documentElement.dir === "rtl") ? "dv" : "en");
+  const [lang, setLang] = useState<"en" | "dv">(() => {
+    try { const v = localStorage.getItem("kashikeyo-lang"); if (v === "dv" || v === "en") return v; } catch { /* ignore */ }
+    return (typeof document !== "undefined" && document.documentElement.dir === "rtl") ? "dv" : "en";
+  });
+  useEffect(() => { if (typeof document !== "undefined") document.documentElement.dir = lang === "dv" ? "rtl" : "ltr"; try { localStorage.setItem("kashikeyo-lang", lang); } catch { /* ignore */ } }, [lang]);
   const T = (s: string) => t(s, lang);
+  const nm = (p: any) => (lang === "dv" && p && p.dv) ? p.dv : (p ? (p.name || "") : "");
   const vw = useVW();
   const mob = vw < 760;
   const tab = vw >= 760 && vw < 1100;
   const sector: "general" | "tourism" = gstBp >= 1600 ? "tourism" : "general";
-  const toggleLang = () => { const n = lang === "en" ? "dv" : "en"; setLang(n); if (typeof document !== "undefined") document.documentElement.dir = n === "dv" ? "rtl" : "ltr"; };
+  const toggleLang = () => setLang((l) => (l === "en" ? "dv" : "en"));
   const toggleSector = () => {
     const cur = st.byKind("settings")[0]; const data = { ...(cur?.data || {}), gstBp: sector === "tourism" ? 800 : 1700 };
     st.commit([{ kind: "settings", id: cur?.id || "settings", data }]);
@@ -308,17 +313,17 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     if (b.orderId) {
       const o = orders.find((x) => x.id === b.orderId);
       const s = (o?.status || "new").toLowerCase();
-      if (s === "ready") return ["Ready", "var(--green)"];
-      if (s === "delivered" || s === "done") return ["Served", "var(--ink3)"];
-      return ["In kitchen", "var(--amber)"];
+      if (s === "ready") return [T("Ready"), "var(--green)"];
+      if (s === "delivered" || s === "done") return [T("Served"), "var(--ink3)"];
+      return [T("In kitchen"), "var(--amber)"];
     }
-    return ["Open", "var(--ink3)"];
+    return [T("Open"), "var(--ink3)"];
   };
-  const otypeLabelOf = (t: string) => t === "dinein" ? "Dine-In" : t === "delivery" ? "Delivery" : "Takeaway";
+  const otypeLabelOf = (t: string) => t === "dinein" ? T("Dine-In") : t === "delivery" ? T("Delivery") : T("Takeaway");
   const billsRailInner = (
     <div style={C.railWrap} className="glass">
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 14px 8px" }}>
-        <div style={{ fontSize: 13, fontWeight: 800, flex: 1 }}>🧾 Open Bills</div>
+        <div style={{ fontSize: 13, fontWeight: 800, flex: 1 }}>🧾 {T("Open Bills")}</div>
         <span style={{ fontSize: 11, fontWeight: 800, background: "var(--sur2)", color: "var(--ink2)", borderRadius: 999, padding: "2px 9px" }} className="num">{parked.length + (count ? 1 : 0)}</span>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "2px 10px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -327,8 +332,8 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <b style={{ fontSize: 13, flex: 1 }}>{otypeLabelOf(otype)} · <span className="num">{orderNo}</span></b>
             </div>
-            <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2 }}>{cust?.name || "Walk-in"}{otype === "dinein" && table ? " · T" + table : ""}</div>
-            <div style={{ marginTop: 7 }}><span style={{ ...C.stag, color: "var(--coral)", background: "var(--sur)" }}>● In progress</span></div>
+            <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2 }}>{cust?.name || T("Walk-in")}{otype === "dinein" && table ? " · T" + table : ""}</div>
+            <div style={{ marginTop: 7 }}><span style={{ ...C.stag, color: "var(--coral)", background: "var(--sur)" }}>● {T("In progress")}</span></div>
           </div>
         )}
         {parked.slice().reverse().map((b) => {
@@ -341,7 +346,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 <b style={{ fontSize: 13, flex: 1, textAlign: "start" }}>{otypeLabelOf(b.otype)} · <span className="num">{b.no || ("#" + items)}</span></b>
                 <span onClick={(e) => { e.stopPropagation(); store.del([{ kind: "parked", id: b.id }]); }} style={{ color: "var(--ink3)", fontSize: 13 }}>✕</span>
               </div>
-              <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2, textAlign: "start" }}>{b.custName || "Walk-in"}{b.otype === "dinein" && b.table ? " · T" + b.table : ""}</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 2, textAlign: "start" }}>{b.custName || T("Walk-in")}{b.otype === "dinein" && b.table ? " · T" + b.table : ""}</div>
               <div style={{ display: "flex", alignItems: "center", marginTop: 7 }}>
                 <span style={{ ...C.stag, color: col, background: "var(--sur2)" }}>● {label}</span>
                 <div style={{ flex: 1 }} />
@@ -351,17 +356,17 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           );
         })}
         {parked.length === 0 && count === 0 && (
-          <div style={{ color: "var(--ink3)", fontSize: 12, textAlign: "center", padding: "26px 12px" }}>No open bills. Held and kitchen-fired orders show up here.</div>
+          <div style={{ color: "var(--ink3)", fontSize: 12, textAlign: "center", padding: "26px 12px" }}>{T("No open bills. Held and kitchen-fired orders show up here.")}</div>
         )}
       </div>
-      <button onClick={resetBill} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)", margin: "0 10px 10px", textAlign: "center" }}>＋ New bill</button>
+      <button onClick={resetBill} style={{ ...C.obill, borderStyle: "dashed", color: "var(--ink2)", margin: "0 10px 10px", textAlign: "center" }}>＋ {T("New bill")}</button>
     </div>
   );
 
   const cartInner = (
     <>
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "13px 16px 10px" }}>
-                <div style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Order <span className="num" style={{ color: "var(--ink3)", fontWeight: 700, marginInlineStart: 2 }}>{orderNo}</span></div>
+                <div style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>{T("Order")} <span className="num" style={{ color: "var(--ink3)", fontWeight: 700, marginInlineStart: 2 }}>{orderNo}</span></div>
                 <button onClick={park} disabled={!count} style={{ ...C.pill, cursor: "pointer", opacity: count ? 1 : .5 }} title="Hold this bill">{T("Hold")}</button>
                 <button onClick={resetBill} style={{ ...C.pill, cursor: "pointer" }} title="Clear the register">{T("Clear")}</button>
                 {mob && <button onClick={() => setCartOpen(false)} style={{ ...C.act, width: 34, height: 34, fontSize: 14 }}>✕</button>}
@@ -369,14 +374,14 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               <div style={{ padding: "0 14px 10px" }}>
                 <div style={{ display: "flex", gap: 3, background: "var(--sur2)", borderRadius: 12, padding: 3 }}>
                   {([["dinein", "Dine-In"], ["takeaway", "Takeaway"], ["delivery", "Delivery"]] as const).map(([k, l]) => (
-                    <button key={k} onClick={() => pickOtype(k)} style={{ flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: "pointer", ...(otype === k ? { background: "var(--sur)", color: "var(--coral)", boxShadow: "0 1px 3px rgba(30,35,45,.12)" } : { color: "var(--ink2)" }) }}>{l}</button>
+                    <button key={k} onClick={() => pickOtype(k)} style={{ flex: 1, padding: "8px 6px", borderRadius: 9, fontSize: 12.5, fontWeight: 800, cursor: "pointer", ...(otype === k ? { background: "var(--sur)", color: "var(--coral)", boxShadow: "0 1px 3px rgba(30,35,45,.12)" } : { color: "var(--ink2)" }) }}>{T(l)}</button>
                   ))}
                 </div>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 14px 10px" }}>
-                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, display: "flex", alignItems: "center", ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 <span style={{ flex: 1, textAlign: "start", marginInlineStart: 6 }}>{cust ? cust.name : "Add customer"}</span>{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }}>✕</span>}</button>
-                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, display: "flex", alignItems: "center", ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🖥 <span style={{ flex: 1, textAlign: "start", marginInlineStart: 6 }}>{table ? "Table " + table : "Select table"}</span><span style={{ opacity: .6 }}>▾</span></button>}
-                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, textAlign: "start", lineHeight: 1.25, ...(zone || deliveryNote ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 <b style={{ fontWeight: 700 }}>Delivery details</b><br /><small style={{ opacity: .8 }}>{zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : "zone · address"}</small></button>}
+                <button onClick={() => setCustPick(true)} style={{ ...C.custBtn, display: "flex", alignItems: "center", ...(cust ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>👤 <span style={{ flex: 1, textAlign: "start", marginInlineStart: 6 }}>{cust ? cust.name : T("Add customer")}</span>{cust && <span onClick={(e) => { e.stopPropagation(); setCust(null); }}>✕</span>}</button>
+                {otype === "dinein" && <button onClick={() => setTablePick(true)} style={{ ...C.custBtn, display: "flex", alignItems: "center", ...(table ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🖥 <span style={{ flex: 1, textAlign: "start", marginInlineStart: 6 }}>{table ? T("Table") + " " + table : T("Select table")}</span><span style={{ opacity: .6 }}>▾</span></button>}
+                {otype === "delivery" && <button onClick={() => setZonePick(true)} style={{ ...C.custBtn, textAlign: "start", lineHeight: 1.25, ...(zone || deliveryNote ? { background: "var(--coralsoft)", color: "var(--coral)" } : {}) }}>🛵 <b style={{ fontWeight: 700 }}>{T("Delivery details")}</b><br /><small style={{ opacity: .8 }}>{zone ? zone.name + (zone.fee ? " · " + money(zone.fee) : "") : T("zone · address")}</small></button>}
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "2px 12px", borderTop: "1px solid var(--line)", minHeight: mob ? 120 : 0 }}>
                 {cart.length === 0 ? (
@@ -386,7 +391,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                   return (
                     <div key={l.key} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 4px", animation: "rise .25s both" }}>
                       <span style={{ width: 32, height: 32, borderRadius: 999, background: t[0], color: t[1], display: "grid", placeItems: "center", fontWeight: 800, fontSize: 13, flex: "0 0 32px" }}>{(p.name || "?")[0].toUpperCase()}</span>
-                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " each"}</small></div>
+                      <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 13, fontWeight: 700, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nm(p)}</b><small style={{ fontSize: 11, color: "var(--ink2)" }}>{(l.mods || []).length ? (l.mods || []).map((m) => m.name).join(" · ") : money(u) + " " + T("each")}</small></div>
                       <span style={{ ...C.stepper, background: "var(--sur2)" }}><button style={C.stepBtn} onClick={() => bump(l.key, -1)}>−</button><span className="num" style={{ minWidth: 15, textAlign: "center", fontWeight: 800 }}>{l.qty}</span><button style={C.stepBtn} onClick={() => bump(l.key, 1)}>+</button></span>
                       <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 58, textAlign: "right" }}>{money(u * l.qty)}</span>
                     </div>
@@ -395,19 +400,19 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
               <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingBottom: 10, marginBottom: 8, borderBottom: "1px dashed var(--line)" }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em", color: "var(--ink2)", marginInlineEnd: 2 }}>DISCOUNT</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em", color: "var(--ink2)", marginInlineEnd: 2 }}>{T("DISCOUNT")}</span>
                   {[0, 5, 10, 15, 20].map((pct) => {
                     const on = pct === 0 ? !totals.disc : discPct === pct;
-                    return <button key={pct} onClick={() => { if (pct === 0) { setDisc(0); setDiscPct(0); } else { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); } }} style={{ border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), borderRadius: 99, padding: "4px 11px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: on ? "var(--coralsoft)" : "transparent", color: on ? "var(--coral)" : "var(--ink2)" }}>{pct === 0 ? "None" : pct + "%"}</button>;
+                    return <button key={pct} onClick={() => { if (pct === 0) { setDisc(0); setDiscPct(0); } else { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); } }} style={{ border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), borderRadius: 99, padding: "4px 11px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: on ? "var(--coralsoft)" : "transparent", color: on ? "var(--coral)" : "var(--ink2)" }}>{pct === 0 ? T("None") : pct + "%"}</button>;
                   })}
                 </div>
-                {totals.disc > 0 && <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>}
-                {totals.disc > 0 && <div style={{ ...C.trow, color: "var(--coral)" }}><span>Discount {discPct ? discPct + "%" : ""}</span><span className="num">−{money(totals.disc)}</span></div>}
-                <div style={C.trow}><span>Value excl. GST</span><span className="num">{money(totals.excl)}</span></div>
-                {totals.svc > 0 && <div style={C.trow}><span>Service charge {svcBp / 100}%</span><span className="num">{money(totals.svc)}</span></div>}
-                <div style={C.trow}><span style={{ whiteSpace: "nowrap" }}>GST {sector === "tourism" ? "TGST 17%" : "GGST 8%"}</span><span className="num">{money(totals.gst)}</span></div>
-                {totals.fee > 0 && <div style={C.trow}><span>Delivery{zone?.name ? " · " + zone.name : ""}</span><span className="num">{money(totals.fee)}</span></div>}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>Total</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
+                {totals.disc > 0 && <div style={C.trow}><span>{T("Subtotal")}</span><span className="num">{money(totals.subtotal)}</span></div>}
+                {totals.disc > 0 && <div style={{ ...C.trow, color: "var(--coral)" }}><span>{T("Discount")} {discPct ? discPct + "%" : ""}</span><span className="num">−{money(totals.disc)}</span></div>}
+                <div style={C.trow}><span>{T("Value excl. GST")}</span><span className="num">{money(totals.excl)}</span></div>
+                {totals.svc > 0 && <div style={C.trow}><span>{T("Service charge")} {svcBp / 100}%</span><span className="num">{money(totals.svc)}</span></div>}
+                <div style={C.trow}><span style={{ whiteSpace: "nowrap" }}>{T("GST")} {sector === "tourism" ? "TGST 17%" : "GGST 8%"}</span><span className="num">{money(totals.gst)}</span></div>
+                {totals.fee > 0 && <div style={C.trow}><span>{T("Delivery")}{zone?.name ? " · " + zone.name : ""}</span><span className="num">{money(totals.fee)}</span></div>}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>{T("Total")}</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <button style={{ ...C.kot, opacity: count ? 1 : .5 }} disabled={!count} title="Fire this order to the kitchen" onClick={sendKOT}>{T("Send to KOT")}</button>
                   <button style={{ ...C.charge, opacity: count ? 1 : .5, padding: 14 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>{T("Charge")}</button>
@@ -572,7 +577,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 }}>📷 {T("Scan")}</button>
               </div>
               <div style={{ display: "flex", gap: 7, overflowX: "auto", paddingBottom: 2 }}>
-                <button onClick={() => setGroup("all")} style={{ ...C.chip, ...(group === "all" ? C.chipOn : {}) }}>All</button>
+                <button onClick={() => setGroup("all")} style={{ ...C.chip, ...(group === "all" ? C.chipOn : {}) }}>{T("All")}</button>
                 {groups.map((g) => <button key={g.name} onClick={() => setGroup(g.name)} style={{ ...C.chip, ...(group === g.name ? C.chipOn : {}) }}>{g.name}</button>)}
               </div>
               <div style={{ flex: 1, overflowY: "auto", paddingBottom: 6 }}>
@@ -592,7 +597,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                         </div>
                         <div style={C.tbody}>
                           {p.tag && <div style={C.ttag}>{p.tag}</div>}
-                          <div style={C.tname}>{p.name}</div>
+                          <div style={C.tname}>{nm(p)}</div>
                           {p.desc && <div style={C.tdesc}>{p.desc}</div>}
                           <div style={{ flex: 1 }} />
                           <div style={C.tfoot}>
