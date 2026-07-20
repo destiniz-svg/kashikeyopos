@@ -565,7 +565,7 @@
   var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
   var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1 };
   /* views not yet built → tasteful placeholder + which phase ships them */
-  var SOON = { sales: 2, sales_qr: 2, sales_del: 2, outlets: 6, kitchen: 6, recv: 4, staff: 6, config: 5, sysadmin: 7 };
+  var SOON = { outlets: 6, kitchen: 6, recv: 4, staff: 6, config: 5, sysadmin: 7 };
   /* which nav module a view id belongs to (for active-highlight + range chips) */
   var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
     sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", audit: "inventory",
@@ -779,7 +779,7 @@
       return '<button data-r="' + r[0] + '" class="' + (S.range === r[0] ? "on" : "") + (r[0] === "year" ? " year" : "") + '">' + r[1] + "</button>";
     }).join("");
     host.querySelectorAll("button").forEach(function (b) {
-      b.onclick = function () { S.range = b.dataset.r; renderRanges(); if (VIEW_MOD[S.tab] === "dash") loadSummary(); };
+      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); };
     });
   }
   function fmtMoney(laari, whole) {
@@ -791,6 +791,7 @@
     renderNav(); renderHeader();
     var v = S.tab;
     if (v === "dash") renderDashboard();
+    else if (VIEW_MOD[v] === "sales") renderSales();
     else if (v === "overview") renderOverview();
     else if (v === "review") renderReview();
     else if (v === "assistant") renderAssistant();
@@ -933,6 +934,47 @@
       b.onclick = function () { S.dashTab = +b.dataset.i; el("dashSeg").querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); }); drawPanel(); };
     });
     m.querySelectorAll("[data-go]").forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
+  }
+
+  /* ── Sales (spec §3.2) ────────────────────────────────────────────────── */
+  var SALES_TABS = [["sales", "Register"], ["sales_qr", "QR Orders"], ["sales_del", "Delivery"]];
+  function salesChannel() { return S.tab === "sales_qr" ? "qr" : S.tab === "sales_del" ? "delivery" : "reg"; }
+  function ordersKey() { return S.range + "|" + salesChannel(); }
+  function salesActive() { return VIEW_MOD[S.tab] === "sales"; }
+  function loadOrders() {
+    S.ordersLoading = true; if (salesActive()) renderSales();
+    api("/orders?range=" + encodeURIComponent(S.range) + "&channel=" + salesChannel()).then(function (j) {
+      j._key = ordersKey(); S.orders = j; S.ordersLoading = false; if (salesActive()) renderSales();
+    }).catch(function () { S.ordersLoading = false; if (salesActive()) renderSales(); });
+  }
+  var CHAN_LABEL = { reg: "POS", qr: "QR", delivery: "Delivery" };
+  function saleStatus(o) {
+    if (o.refunded) return ["Void", "low"];
+    if (o.ch === "delivery") return ["Delivered", "ok"];
+    return ["Paid", "ok"];
+  }
+  function hhmm(t) { try { return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch (e) { return ""; } }
+  function renderSales() {
+    var m = el("main");
+    if (!S.orders || S.orders._key !== ordersKey()) { m.innerHTML = '<div class="empty">' + (S.ordersLoading ? "Loading orders…" : "") + "</div>"; if (!S.ordersLoading) loadOrders(); return; }
+    var j = S.orders, st = j.stats;
+    var seg = '<div class="seg" id="salesSeg">' + SALES_TABS.map(function (t) {
+      return '<button data-v="' + t[0] + '" class="' + (S.tab === t[0] ? "on" : "") + '">' + t[1] + "</button>";
+    }).join("") + "</div>";
+    var stats = '<div class="stat2" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">'
+      + '<div class="card stat"><div class="k">Orders</div><div class="v">' + st.orders + "</div></div>"
+      + '<div class="card stat"><div class="k">Revenue</div><div class="v">' + fmtMoney(st.rev) + "</div></div>"
+      + '<div class="card stat"><div class="k">Avg order</div><div class="v">' + fmtMoney(st.aov) + "</div></div></div>";
+    var rowsHtml = j.orders.length ? j.orders.map(function (o) {
+      var s = saleStatus(o), chan = CHAN_LABEL[o.ch] + (o.table ? " · T" + esc(o.table) : "");
+      return "<tr><td class=\"mono\">#" + esc(o.no || "—") + "</td><td>" + esc(chan) + "</td><td>" + hhmm(o.t)
+        + "</td><td class=\"mono\">" + o.items + "</td><td>" + esc(o.staff || "—") + "</td><td class=\"mono\">" + fmtMoney(o.total)
+        + '</td><td><span class="badge ' + s[1] + '">' + s[0] + "</span></td></tr>";
+    }).join("") : '<tr><td colspan="7" class="empty">No orders in this range.</td></tr>';
+    m.innerHTML = seg + stats
+      + '<div class="tbl-wrap"><table><thead><tr><th class="mono">#</th><th>Channel</th><th>Time</th><th class="mono">Items</th><th>Staff</th><th class="mono">Total</th><th>Status</th></tr></thead><tbody>'
+      + rowsHtml + "</tbody></table></div>";
+    el("salesSeg").querySelectorAll("button").forEach(function (b) { b.onclick = function () { go(b.dataset.v); }; });
   }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────

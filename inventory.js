@@ -1624,6 +1624,47 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     });
   }));
 
+  /* Admin cockpit: orders list (spec §3.2). Range-scoped individual sales for
+     the Sales table + stat cards, optionally filtered by channel
+     (reg = dine-in|takeaway, qr = self-order, delivery). Same calendar-window
+     rules as /summary. Server stays the source of truth for money. */
+  router.get("/orders", authAny, wrap(async (req, res) => {
+    const RANGES = { today: 1, yest: 1, week: 1, month: 1, quarter: 1, year: 1 };
+    const CHAN = { reg: 1, qr: 1, delivery: 1 };
+    const range = RANGES[req.query.range] ? String(req.query.range) : "today";
+    const channel = CHAN[req.query.channel] ? String(req.query.channel) : "all";
+    const MVT = 5 * 3600 * 1000, now = Date.now();
+    const localMidnight = (ms) => { const d = new Date(ms + MVT); d.setUTCHours(0, 0, 0, 0); return d.getTime() - MVT; };
+    const t0 = localMidnight(now);
+    let from, to = now;
+    if (range === "today") from = t0;
+    else if (range === "yest") { from = t0 - 86400000; to = t0; }
+    else if (range === "week") from = t0 - 6 * 86400000;
+    else if (range === "month") { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - MVT; }
+    else if (range === "quarter") { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1) - MVT; }
+    else { const d = new Date(t0 + MVT); from = Date.UTC(d.getUTCFullYear(), 0, 1) - MVT; }
+
+    const rows = await withOrg(req.orgId, (c) => c.query(
+      `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+         AND COALESCE((data->>'t')::numeric, 0) >= $2
+       ORDER BY (data->>'t')::numeric DESC NULLS LAST`, [req.orgId, from]));
+    const chanOf = (d) => (d.channel === "qr" || d.qr || d.via === "guest") ? "qr" : (d.otype === "delivery" ? "delivery" : "reg");
+    const normT = (d) => { let t = num(d.t); if (t > 0 && t < 1e12) t *= 1000; return t; };
+    let orders = 0, rev = 0; const list = [];
+    for (const r of rows.rows) {
+      const d = r.data || {}, t = normT(d);
+      if (t < from || t >= to) continue;
+      const ch = chanOf(d);
+      if (channel !== "all" && ch !== channel) continue;
+      const total = num(d.total);
+      if (!d.refunded) { orders += 1; rev += total; }
+      list.push({ id: String(d.id || ""), no: d.no || "", ch, t, otype: d.otype || "",
+        items: (d.lines || []).reduce((a, l) => a + num(l.qty, 1), 0), staff: d.userName || "",
+        total, refunded: !!d.refunded, table: d.table || null });
+    }
+    res.json({ range, channel, stats: { orders, rev, aov: orders ? rev / orders : 0 }, orders: list.slice(0, 300) });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and
