@@ -157,7 +157,6 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [cart, setCart] = useState<Line[]>([]);
   const [disc, setDisc] = useState(0);
   const [discPct, setDiscPct] = useState(0);
-  const [discOpen, setDiscOpen] = useState(false);
   const [pay, setPay] = useState(false);
   const [shiftModal, setShiftModal] = useState(false);
   const [zModal, setZModal] = useState(false);
@@ -207,13 +206,15 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const dropOne = (pid: string) => setCart((c) => { for (let i = c.length - 1; i >= 0; i--) if (c[i].pid === pid) { const n = c.slice(); if (n[i].qty <= 1) n.splice(i, 1); else n[i] = { ...n[i], qty: n[i].qty - 1 }; return n; } return c; });
   const qtyOf = (pid: string) => cart.filter((l) => l.pid === pid).reduce((a, l) => a + l.qty, 0);
 
+  const svcBp = Number(settings.svcChargeBp ?? 0);
   const totals = useMemo(() => {
     const subtotal = cart.reduce((a, l) => a + lineUnit(l) * l.qty, 0);
     const d = Math.min(Math.max(0, disc), subtotal);
-    const taxable = subtotal - d;
-    const gst = Math.round(taxable * gstBp / 10000);
-    return { subtotal, disc: d, gst, total: taxable + gst };
-  }, [cart, products, gstBp, disc]);
+    const excl = subtotal - d;
+    const svc = otype === "dinein" ? Math.round(excl * svcBp / 10000) : 0;   // service charge is dine-in only (prototype)
+    const gst = Math.round((excl + svc) * gstBp / 10000);
+    return { subtotal, disc: d, excl, svc, gst, total: excl + svc + gst };
+  }, [cart, products, gstBp, svcBp, otype, disc]);
   const count = cart.reduce((a, l) => a + l.qty, 0);
 
   const openShiftNow = (float: number) => {
@@ -232,7 +233,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       id: uid(), no, t: Date.now(), type: "sale", storeId: settings.storeId || "main", shiftId: openShift?.id || null,
       userName: user.name, customerId: cust?.id || null, customerName: cust?.name || null, otype, table: table || null,
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), basePrice: p?.price, cost: p?.cost || 0, unit: p?.unit, emoji: p?.emoji, addons: l.mods || [], discPct: 0, taxable: p?.taxable !== false }; }),
-      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, billDiscPct: discPct, svcCharge: 0,
+      subtotal: totals.subtotal, gst: totals.gst, total: totals.total, billDisc: totals.disc, billDiscPct: discPct, svcCharge: totals.svc,
       payments, change, refunded: false,
     };
     store.commit([{ kind: "sales", id: sale.id, data: sale }]);
@@ -292,27 +293,19 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
                 })}
               </div>
               <div style={{ borderTop: "1px solid var(--line)", padding: "12px 16px 14px" }}>
-                <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>
-                {totals.disc > 0 ? (
-                  <div style={C.trow}><span>Discount{discPct ? " (" + discPct + "%)" : ""}</span><span><span className="num" style={{ color: "var(--coral)" }}>−{money(totals.disc)}</span> <button onClick={() => { setDisc(0); setDiscPct(0); }} style={{ color: "var(--ink3)", marginInlineStart: 6 }}>✕</button></span></div>
-                ) : discOpen ? (
-                  <div style={{ margin: "6px 0" }}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
-                      {[5, 10, 15, 20].map((pct) => (
-                        <button key={pct} onClick={() => { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); setDiscOpen(false); }} style={C.discChip}>{pct}%</button>
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input autoFocus type="number" inputMode="decimal" placeholder="Custom (MVR)" onKeyDown={(e) => { if (e.key === "Enter") { setDiscPct(0); setDisc(Math.round(Number((e.target as HTMLInputElement).value) * 100) || 0); setDiscOpen(false); } if (e.key === "Escape") setDiscOpen(false); }} style={C.input} />
-                      <button style={C.chipSm} onMouseDown={(e) => { const inp = (e.currentTarget.previousSibling as HTMLInputElement); setDiscPct(0); setDisc(Math.round(Number(inp.value) * 100) || 0); setDiscOpen(false); }}>Apply</button>
-                      <button style={{ ...C.discChip, color: "var(--ink2)" }} onClick={() => setDiscOpen(false)}>✕</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button onClick={() => setDiscOpen(true)} style={{ ...C.disc, cursor: "pointer" }}>＋ Bill disc</button>
-                )}
-                <div style={C.trow}><span>GST {gstBp / 100}%</span><span className="num">{money(totals.gst)}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", margin: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 15 }}>Total</span><span className="num" style={{ fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingBottom: 10, marginBottom: 8, borderBottom: "1px dashed var(--line)" }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em", color: "var(--ink2)", marginInlineEnd: 2 }}>DISCOUNT</span>
+                  {[0, 5, 10, 15, 20].map((pct) => {
+                    const on = pct === 0 ? !totals.disc : discPct === pct;
+                    return <button key={pct} onClick={() => { if (pct === 0) { setDisc(0); setDiscPct(0); } else { setDiscPct(pct); setDisc(Math.round(totals.subtotal * pct / 100)); } }} style={{ border: "1px solid " + (on ? "var(--coral)" : "var(--line)"), borderRadius: 99, padding: "4px 11px", fontSize: 11, fontWeight: 800, cursor: "pointer", background: on ? "var(--coralsoft)" : "transparent", color: on ? "var(--coral)" : "var(--ink2)" }}>{pct === 0 ? "None" : pct + "%"}</button>;
+                  })}
+                </div>
+                {totals.disc > 0 && <div style={C.trow}><span>Subtotal</span><span className="num">{money(totals.subtotal)}</span></div>}
+                {totals.disc > 0 && <div style={{ ...C.trow, color: "var(--coral)" }}><span>Discount {discPct ? discPct + "%" : ""}</span><span className="num">−{money(totals.disc)}</span></div>}
+                <div style={C.trow}><span>Value excl. GST</span><span className="num">{money(totals.excl)}</span></div>
+                {totals.svc > 0 && <div style={C.trow}><span>Service charge {svcBp / 100}%</span><span className="num">{money(totals.svc)}</span></div>}
+                <div style={C.trow}><span style={{ whiteSpace: "nowrap" }}>GST {sector === "tourism" ? "TGST 17%" : "GGST 8%"}</span><span className="num">{money(totals.gst)}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "8px 0 12px" }}><span style={{ fontWeight: 800, fontSize: 13 }}>Total</span><span className="num" style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 26 }}>{money(totals.total)}</span></div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Hold / park bill" onClick={park}>⏸</button><button style={{ ...C.act, opacity: count ? 1 : .5 }} disabled={!count} title="Split bill" onClick={() => openShift ? setPay(true) : setShiftModal(true)}>✂️</button><button style={C.act} title="Clear" onClick={resetBill}>🗑️</button>
                   <button style={{ ...C.charge, opacity: count ? 1 : .5 }} disabled={!count} onClick={() => { setCartOpen(false); openShift ? setPay(true) : setShiftModal(true); }}>Charge {money(totals.total)}</button>
