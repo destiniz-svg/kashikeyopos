@@ -817,21 +817,53 @@ function TablePicker({ tables, current, onPick, onClear, onClose }: { tables: an
 
 function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPick: (c: any) => void; onClose: () => void }) {
   const [q, setQ] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const list = customers.filter((c) => !q || (c.name || "").toLowerCase().includes(q.toLowerCase()) || (c.phone || "").includes(q));
+  const startAdd = () => { setName(q.replace(/^\+?\d[\d ]*$/, "").trim()); setPhone(/^\+?\d[\d ]*$/.test(q.trim()) ? q.trim() : ""); setAdding(true); };
+  const create = () => {
+    const nm = name.trim(); if (!nm) return;
+    const c = { id: uid(), name: nm, phone: phone.trim(), balance: 0, createdAt: Date.now() };
+    store.commit([{ kind: "customers", id: c.id, data: c }]);
+    onPick(c);
+  };
   return (
     <div style={C.overlay} onClick={onClose}>
       <div style={{ ...C.sheet, width: "min(440px,94vw)", maxHeight: "80vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-        <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 10 }}>Charge to customer</div>
-        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or phone…" style={{ ...C.input, width: "100%" }} />
-        <div style={{ overflowY: "auto", marginTop: 10 }}>
-          {list.length ? list.map((c) => (
-            <button key={c.id} onClick={() => onPick(c)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 8px", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
-              <span style={{ ...C.avatar, background: "var(--coral)" }}>{(c.name || "?")[0].toUpperCase()}</span>
-              <span style={{ flex: 1 }}><b style={{ display: "block", fontSize: 14 }}>{c.name}</b><small style={{ color: "var(--ink3)" }}>{c.phone || ""}</small></span>
-              {Number(c.balance || 0) > 0 && <span className="num" style={{ color: "var(--amber)", fontWeight: 700, fontSize: 12 }}>{money(Number(c.balance))}</span>}
-            </button>
-          )) : <div style={{ color: "var(--ink3)", fontSize: 13, padding: 16, textAlign: "center" }}>No customers found.</div>}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+          <div style={{ fontWeight: 800, fontSize: 17, flex: 1 }}>{adding ? "New customer" : "Charge to customer"}</div>
+          {!adding && <button onClick={startAdd} style={{ ...C.chipSm, cursor: "pointer" }}>＋ New</button>}
         </div>
+        {adding ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div><label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>NAME</label>
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Customer name" style={{ ...C.input, width: "100%", marginTop: 5 }} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) create(); }} /></div>
+            <div><label style={{ color: "var(--ink3)", fontSize: 12, fontWeight: 700 }}>PHONE <span style={{ fontWeight: 400 }}>(optional)</span></label>
+              <input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" placeholder="7XX XXXX" style={{ ...C.input, width: "100%", marginTop: 5 }} onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) create(); }} /></div>
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button onClick={() => setAdding(false)} style={{ ...C.custBtn, justifyContent: "center", cursor: "pointer" }}>Cancel</button>
+              <button onClick={create} disabled={!name.trim()} style={{ ...C.charge, flex: 1, opacity: name.trim() ? 1 : .5 }}>Add customer</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or phone…" style={{ ...C.input, width: "100%" }} />
+            <div style={{ overflowY: "auto", marginTop: 10 }}>
+              {list.map((c) => (
+                <button key={c.id} onClick={() => onPick(c)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "11px 8px", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
+                  <span style={{ ...C.avatar, background: "var(--coral)" }}>{(c.name || "?")[0].toUpperCase()}</span>
+                  <span style={{ flex: 1 }}><b style={{ display: "block", fontSize: 14 }}>{c.name}</b><small style={{ color: "var(--ink3)" }}>{c.phone || ""}</small></span>
+                  {Number(c.balance || 0) > 0 && <span className="num" style={{ color: "var(--amber)", fontWeight: 700, fontSize: 12 }}>{money(Number(c.balance))}</span>}
+                </button>
+              ))}
+              <button onClick={startAdd} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "12px 8px", textAlign: "left", cursor: "pointer", color: "var(--coral)", fontWeight: 700 }}>
+                <span style={{ ...C.avatar, background: "var(--coralsoft)", color: "var(--coral)" }}>＋</span>
+                <span>Add {q.trim() ? "“" + q.trim() + "”" : "a new customer"}</span>
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
