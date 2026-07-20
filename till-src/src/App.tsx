@@ -102,35 +102,54 @@ function PinGate({ onSignIn }: { onSignIn: (u: any) => void }) {
     else { setErr(true); setPin(""); setTimeout(() => setErr(false), 500); }
   };
   const press = (d: string) => { const p = (pin + d).slice(0, 6); setPin(p); if (p.length === 4 && sel) submit(p); };
+  /* Lock dashboard: store identity + live clock above the sign-in, adaptive to
+     the device — staff cards flow into columns on tablet/desktop, keypad keys
+     grow on big touch screens, and a hardware keyboard types the PIN. */
+  const settings = st.byKind("settings")[0]?.data || {};
+  const vw = useVW();
+  const keySize = vw >= 760 ? 76 : 64;
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    if (!sel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (/^[0-9]$/.test(e.key)) press(e.key);
+      else if (e.key === "Backspace") setPin((p) => p.slice(0, -1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel, pin]);
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+    <div style={{ height: "100%", overflowY: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, padding: "calc(24px + var(--sat,0px)) 20px calc(24px + var(--sab,0px))" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ ...C.kchip, width: 52, height: 52, fontSize: 26, borderRadius: 16, margin: "0 auto 12px" }}>K</div>
-        <div style={{ fontWeight: 800, fontSize: 20 }}>KashikeyoPOS</div>
-        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 3 }}>Sign in with your PIN</div>
+        <div style={{ fontWeight: 800, fontSize: 20 }}>{settings.storeName || "KashikeyoPOS"}</div>
+        <div className="num" style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.15, marginTop: 6 }}>{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 2 }}>{now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</div>
+        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 10 }}>{sel ? "Enter your PIN" : "Who's on the till?"}</div>
       </div>
       {!sel ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 320 }}>
+        <div style={{ display: "grid", gridTemplateColumns: users.length > 1 ? "repeat(auto-fill,minmax(230px,1fr))" : "1fr", gap: 10, width: "min(720px, 94vw)", maxWidth: users.length > 1 ? undefined : 340 }}>
           {users.map((u) => (
-            <button key={u.id} onClick={() => setSel(u)} style={{ ...C.card, display: "flex", alignItems: "center", gap: 12, padding: 14, textAlign: "left" }}>
-              <span style={{ ...C.avatar, background: "var(--green)" }}>{(u.name || "?")[0].toUpperCase()}</span>
-              <b style={{ flex: 1, fontWeight: 700 }}>{u.name}</b><small style={{ color: "var(--ink3)" }}>{u.role}</small>
+            <button key={u.id} onClick={() => setSel(u)} style={{ ...C.card, display: "flex", alignItems: "center", gap: 12, minHeight: "var(--tap-lg)", padding: "12px 14px", textAlign: "left" }}>
+              <span style={{ ...C.avatar, width: 36, height: 36, fontSize: 14, background: "var(--green)" }}>{(u.name || "?")[0].toUpperCase()}</span>
+              <b style={{ flex: 1, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</b><small style={{ color: "var(--ink2)" }}>{u.role}</small>
             </button>
           ))}
-          {users.length === 0 && <button onClick={() => { store.cursor = 0; store.pullAll(); }} style={{ ...C.card, padding: "12px 16px", color: "var(--ink2)", fontSize: 13, fontWeight: 600 }}>No staff synced yet — tap to retry sync</button>}
+          {users.length === 0 && <button onClick={() => { store.cursor = 0; store.pullAll(); }} style={{ ...C.card, padding: "14px 16px", color: "var(--ink2)", fontSize: 13, fontWeight: 600 }}>No staff synced yet — tap to retry sync</button>}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, animation: err ? "shake .4s" : undefined }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ ...C.avatar, background: "var(--green)" }}>{(sel.name || "?")[0].toUpperCase()}</span>
-            <b>{sel.name}</b>{users.length > 1 && <button onClick={() => { setSel(null); setPin(""); }} style={{ color: "var(--coral-text)", fontSize: 12, fontWeight: 700 }}>Switch</button>}
+            <b>{sel.name}</b>{users.length > 1 && <button onClick={() => { setSel(null); setPin(""); }} style={{ color: "var(--coral-text)", fontSize: 12, fontWeight: 700, minHeight: 32, padding: "0 6px" }}>Switch</button>}
           </div>
           <div style={{ display: "flex", gap: 12 }}>{[0, 1, 2, 3].map((i) => (
             <span key={i} style={{ width: 14, height: 14, borderRadius: 99, background: i < pin.length ? "var(--coral)" : "var(--sur2)", border: "1px solid var(--line)" }} />
           ))}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,64px)", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: `repeat(3,${keySize}px)`, gap: vw >= 760 ? 12 : 10 }}>
             {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((d, i) => d === "" ? <span key={i} /> : (
-              <button key={i} onClick={() => d === "⌫" ? setPin(pin.slice(0, -1)) : press(d)} style={C.key}>{d}</button>
+              <button key={i} aria-label={d === "⌫" ? "Delete digit" : d} onClick={() => d === "⌫" ? setPin(pin.slice(0, -1)) : press(d)} style={{ ...C.key, height: keySize - 4 }}>{d}</button>
             ))}
           </div>
           {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700 }}>Wrong PIN</div>}
