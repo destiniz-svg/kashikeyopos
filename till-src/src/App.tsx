@@ -252,7 +252,14 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   };
   const closeShiftNow = (counted: number, expected: number) => {
     if (!openShift) return;
-    store.commit([{ kind: "shifts", id: openShift.id, data: { ...openShift, closedAt: Date.now(), countedCash: counted, expectedCash: expected } }]);
+    /* Assign a persisted Z-report number: Z-R{register}-{seq}. The register
+       number comes from store setup (settings.registerNo, default 1); the
+       sequence is the next number after the highest already issued for this
+       store, so it's monotonic and survives deletes/re-syncs. */
+    const reg = Number(settings.registerNo) || 1;
+    const seq = shifts.reduce((mx, s) => Math.max(mx, Number(s.zSeq) || 0), 0) + 1;
+    const zNo = "Z-R" + reg + "-" + String(seq).padStart(5, "0");
+    store.commit([{ kind: "shifts", id: openShift.id, data: { ...openShift, closedAt: Date.now(), countedCash: counted, expectedCash: expected, zNo, zSeq: seq, zReg: reg } }]);
     setZModal(false);
   };
 
@@ -704,13 +711,14 @@ const MoneyField = ({ value, onChange, placeholder, autoFocus }: { value: string
 function RecentZ({ shifts }: { shifts: any[] }) {
   const closed = shifts.filter((s) => s.closedAt).sort((a, b) => (b.closedAt || 0) - (a.closedAt || 0)).slice(0, 3);
   if (!closed.length) return null;
-  const seqOf = (s: any) => { const asc = shifts.filter((x) => x.closedAt).sort((a, b) => (a.closedAt || 0) - (b.closedAt || 0)); return asc.indexOf(s) + 1; };
+  const asc = shifts.filter((x) => x.closedAt).sort((a, b) => (a.closedAt || 0) - (b.closedAt || 0));
+  const zLabel = (s: any) => s.zNo || ("Z-R1-" + String(asc.indexOf(s) + 1).padStart(5, "0"));
   return (
     <div style={{ marginTop: 16, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 800, color: "var(--ink3)", marginBottom: 8 }}>Recent Z-reports</div>
       {closed.map((s) => { const os = (s.countedCash || 0) - (s.expectedCash || 0); return (
         <div key={s.id} style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", padding: "3px 0", fontSize: 12.5, color: "var(--ink3)" }}>
-          <span>Z-{String(seqOf(s)).padStart(5, "0")} · {s.userName || "—"}</span>
+          <span>{zLabel(s)} · {s.userName || "—"}</span>
           <span className="num" style={{ color: Math.abs(os) < 50 ? "var(--ink3)" : os < 0 ? "var(--red)" : "var(--ink2)" }}>{os < 0 ? "−" : ""}{money(Math.abs(os)).replace("MVR ", "")} o/s</span>
         </div>
       ); })}
@@ -766,7 +774,7 @@ const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
 function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: () => void }) {
   const { sale, change, settings } = data;
   const method = (sale.payments || [])[0]?.method || "—";
-  const docNo = "MLE-R1-" + new Date(sale.t).toISOString().slice(0, 10).replace(/-/g, "") + "-" + String(sale.no || "").replace(/\D/g, "").padStart(4, "0");
+  const docNo = "MLE-R" + (Number(settings.registerNo) || 1) + "-" + new Date(sale.t).toISOString().slice(0, 10).replace(/-/g, "") + "-" + String(sale.no || "").replace(/\D/g, "").padStart(4, "0");
   const otypeLabel = sale.otype === "dinein" ? ("Dine-in" + (sale.table ? " · Table " + sale.table : "")) : sale.otype === "delivery" ? "Delivery" : "Takeaway";
   const excl = Math.max(0, (sale.subtotal || 0) - (sale.billDisc || 0));
   return (
