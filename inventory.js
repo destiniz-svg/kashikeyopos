@@ -1748,6 +1748,41 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ outstanding: list.reduce((a, x) => a + x.balance, 0), overdue: list.filter((x) => x.status === "overdue").length, customers: list.length, rows: list });
   }));
 
+  /* Admin cockpit: settings (spec §3.10). Read/write the shared 'settings'
+     entity that the till syncs. GST rate (gstBp) + service charge (svcChargeBp)
+     are honoured by the register today; the other flags persist for when the
+     till wires them. Every write bumps rowver + pokes so tills pick it up. */
+  router.get("/settings", authAny, wrap(async (req, res) => {
+    const row = await withOrg(req.orgId, (c) => c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [req.orgId]));
+    const d = (row.rows[0] && row.rows[0].data) || {};
+    res.json({
+      gstBp: num(d.gstBp, 800), svcChargeBp: num(d.svcChargeBp, 0),
+      autoKot: d.autoKot !== false, roundTotals: !!d.roundTotals,
+      taxInclusive: !!d.taxInclusive, autoPrint: d.autoPrint !== false,
+      methods: Object.assign({ cash: true, card: true, transfer: true, tab: true }, d.methods || {}),
+    });
+  }));
+  router.put("/settings", authAny, wrap(async (req, res) => {
+    const b = req.body || {};
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];
+      const data = Object.assign({}, (row && row.data) || {});
+      if (b.gstBp !== undefined) data.gstBp = Number(b.gstBp) === 1600 ? 1600 : 800;
+      if (b.svcChargeBp !== undefined) data.svcChargeBp = Number(b.svcChargeBp) > 0 ? 1000 : 0;
+      ["autoKot", "roundTotals", "taxInclusive", "autoPrint"].forEach((k) => { if (b[k] !== undefined) data[k] = !!b[k]; });
+      if (b.methods && typeof b.methods === "object") data.methods = Object.assign({ cash: true, card: true, transfer: true, tab: true }, data.methods || {}, b.methods);
+      const up = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now()
+         RETURNING rowver`, [req.orgId, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : 0;
+    });
+    if (poke && rowver) poke(req.orgId, rowver);
+    res.json({ ok: true });
+  }));
+
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────
      Surfaces the two server-side integrity flags for a manager: sales the sync
      endpoint stamped with data.serverAudit (a total/price/tax mismatch) and

@@ -419,6 +419,21 @@
   .pc-bars .track { height: 8px; border-radius: 999px; background: var(--panel2); overflow: hidden; }
   .muted { color: var(--sub); }
   .count-up { font-variant-numeric: tabular-nums; }
+  /* config toggles (spec §3.10) */
+  .cfg-sec { margin-top: 20px; }
+  .cfg-sec > h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--sub); margin: 0 0 4px; }
+  .cfg-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 2px; border-bottom: 1px solid var(--border); }
+  .cfg-row:last-child { border-bottom: none; }
+  .cfg-row .lab b { font-size: 13.5px; } .cfg-row .lab small { display: block; color: var(--sub); font-size: 11.5px; margin-top: 1px; }
+  .tgl { position: relative; width: 42px; height: 24px; flex: 0 0 42px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); cursor: pointer; transition: background .15s; }
+  .tgl.on { background: var(--primary); border-color: var(--primary); }
+  .tgl i { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .tgl.on i { left: 21px; }
+  .rseg { display: inline-flex; gap: 3px; background: var(--btn); padding: 3px; border-radius: 11px; }
+  .rseg button { padding: 8px 16px; border-radius: 9px; font-size: 13px; font-weight: 700; color: var(--sub); background: none; }
+  .rseg button.on { background: var(--primary); color: #fff; }
+  .zline { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .zline.strong { font-weight: 800; font-size: 16px; border-bottom: none; border-top: 2px solid var(--border); margin-top: 4px; padding-top: 12px; }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
   @keyframes drawln { to { stroke-dashoffset: 0; } }
   .drawpath { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: drawln 1s ease forwards; }
@@ -481,6 +496,7 @@
   var S = {
     tab: "dash", currency: "MVR",
     range: "today", navOpen: false, navExp: {}, summary: null, sumLoading: false, dashTab: 0,
+    repCache: {}, cfg: null,
     ingredients: [], products: [], suppliers: [], audits: [],
     // recipes tab
     prodFilter: "", selProduct: null, recipe: null,
@@ -545,7 +561,7 @@
     { id: "inventory", label: "Inventory", ic: "📦", kids: [["overview", "Overview"], ["ingredients", "Stock levels"], ["recipes", "Recipes"], ["wastage", "Wastage"], ["audit", "Stock Check"]] },
     { id: "proc", label: "Procurement", ic: "🚚", kids: [["proc_exp", "Expenses"], ["proc_bills", "Vendor bills"], ["proc_po", "Purchase orders"], ["deliveries", "Record delivery"], ["suppliers", "Suppliers"]] },
     { id: "recv", label: "Receivables", ic: "💳", v: "recv" },
-    { id: "reports", label: "Reports", ic: "📈", kids: [["review", "Review flags"], ["assistant", "Assistant"]] },
+    { id: "reports", label: "Reports", ic: "📈", kids: [["reports_an", "Analytics"], ["reports_z", "Z-Report"], ["reports_gst", "GST return"], ["review", "Review flags"], ["assistant", "Assistant"]] },
     { id: "staff", label: "Staff & Roles", ic: "👥", v: "staff" },
     { id: "config", label: "Configurations", ic: "⚙️", v: "config" },
     { id: "sysadmin", label: "System Admin", ic: "🛠️", v: "sysadmin" },
@@ -566,15 +582,19 @@
     proc_exp: ["Procurement", "Expenses, vendor bills & purchase orders."],
     proc_bills: ["Procurement", "Expenses, vendor bills & purchase orders."],
     proc_po: ["Procurement", "Expenses, vendor bills & purchase orders."],
+    reports_an: ["Reports", "Analytics, Z-report & GST filing."],
+    reports_z: ["Reports", "Analytics, Z-report & GST filing."],
+    reports_gst: ["Reports", "Analytics, Z-report & GST filing."],
   };
   var RANGE_LIST = [["today", "Today"], ["yest", "Yesterday"], ["week", "This Week"], ["month", "This Month"], ["quarter", "Quarter"], ["year", "Year"]];
-  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, reports: 1, wastage: 1, proc_exp: 1 };
+  var RANGE_ON = { dash: 1, sales: 1, sales_qr: 1, sales_del: 1, outlets: 1, wastage: 1, proc_exp: 1, reports_an: 1 };
   /* views not yet built → tasteful placeholder + which phase ships them */
-  var SOON = { outlets: 6, kitchen: 6, staff: 6, config: 5, sysadmin: 7 };
+  var SOON = { outlets: 6, kitchen: 6, staff: 6, sysadmin: 7 };
   /* which nav module a view id belongs to (for active-highlight + range chips) */
   var VIEW_MOD = { dash: "dash", outlets: "outlets", kitchen: "kitchen", recv: "recv", staff: "staff", config: "config", sysadmin: "sysadmin",
     sales: "sales", sales_qr: "sales", sales_del: "sales", overview: "inventory", ingredients: "inventory", recipes: "inventory", wastage: "inventory", audit: "inventory",
-    deliveries: "proc", suppliers: "proc", proc_exp: "proc", proc_bills: "proc", proc_po: "proc", review: "reports", assistant: "reports" };
+    deliveries: "proc", suppliers: "proc", proc_exp: "proc", proc_bills: "proc", proc_po: "proc",
+    review: "reports", assistant: "reports", reports_an: "reports", reports_z: "reports", reports_gst: "reports" };
   var TABS = [];   // legacy — retained so any stray reference stays defined
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
@@ -784,7 +804,7 @@
       return '<button data-r="' + r[0] + '" class="' + (S.range === r[0] ? "on" : "") + (r[0] === "year" ? " year" : "") + '">' + r[1] + "</button>";
     }).join("");
     host.querySelectorAll("button").forEach(function (b) {
-      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); else if (S.tab === "wastage") loadWastage(); else if (S.tab === "proc_exp") loadExpenses(); };
+      b.onclick = function () { S.range = b.dataset.r; renderRanges(); var mod = VIEW_MOD[S.tab]; if (mod === "dash") loadSummary(); else if (mod === "sales") loadOrders(); else if (S.tab === "wastage") loadWastage(); else if (S.tab === "proc_exp") loadExpenses(); else if (S.tab === "reports_an") renderAnalytics(); };
     });
   }
   function fmtMoney(laari, whole) {
@@ -801,6 +821,10 @@
     else if (v === "proc_bills") renderVendorBills();
     else if (v === "proc_po") renderPurchaseOrders();
     else if (v === "recv") renderReceivables();
+    else if (v === "reports_an") renderAnalytics();
+    else if (v === "reports_z") renderZReport();
+    else if (v === "reports_gst") renderGST();
+    else if (v === "config") renderConfig();
     else if (v === "overview") renderOverview();
     else if (v === "review") renderReview();
     else if (v === "assistant") renderAssistant();
@@ -1084,6 +1108,101 @@
     m.innerHTML = stats
       + '<div class="tbl-wrap"><table><thead><tr><th>Customer</th><th>Contact</th><th class="mono">Balance</th><th>Aging</th><th>Status</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div>";
     m.querySelectorAll("[data-remind]").forEach(function (b) { b.onclick = function () { toast("Reminder noted — SMS/link reminders arrive with the messaging integration."); }; });
+  }
+
+  /* ── Reports (spec §3.8) — all driven by the /summary aggregation ─────── */
+  function withSummary(range, view, draw) {
+    var c = S.repCache[range];
+    if (c) { draw(c); return; }
+    el("main").innerHTML = "<div class='empty'>Loading…</div>";
+    api("/summary?range=" + encodeURIComponent(range)).then(function (j) { S.repCache[range] = j; if (S.tab === view) draw(j); })
+      .catch(function () { if (S.tab === view) el("main").innerHTML = "<div class='empty'>Couldn’t load.</div>"; });
+  }
+  function zline(label, val, o) {
+    o = o || {};
+    return "<div class='zline" + (o.strong ? " strong" : "") + "'><span" + (o.neg ? " style='color:var(--warn)'" : "") + ">" + label + "</span><span class='mono'>" + (o.neg ? "−" : "") + fmtMoney(val) + "</span></div>";
+  }
+  function renderAnalytics() {
+    withSummary(S.range, "reports_an", function (s) {
+      var m = el("main");
+      m.innerHTML = "<div class='card'><h2>Revenue trend · " + esc(s.word) + "</h2><div style='height:200px'>" + svgChart(s.rc, 1000, 290, "drawpath") + "</div>"
+        + "<div style='display:flex;justify-content:space-between;font-size:11px;color:var(--sub);margin-top:6px'>" + (s.xl || []).map(function (x) { return "<span>" + esc(x) + "</span>"; }).join("") + "</div></div>"
+        + "<div class='card' style='margin-top:14px'><h2>Revenue by category</h2>"
+        + (s.cat.length ? s.cat.map(function (c) { return "<div class='catbar'><span>" + esc(c.cat) + "</span><span class='track'><span class='fill' style='width:" + c.pct + "%'></span></span><span class='mono'>" + fmtMoney(c.amt) + " · " + c.pct + "%</span></div>"; }).join("") : "<div class='empty'>No category sales in this range.</div>")
+        + "</div>";
+    });
+  }
+  function renderZReport() {
+    withSummary("today", "reports_z", function (s) {
+      el("main").innerHTML = "<div class='row2' style='align-items:start'>"
+        + "<div class='card'><h2>Z-Report · today</h2>"
+        + zline("Gross sales", s.gross) + zline("Discounts", s.disc, { neg: true }) + zline("Refunds", s.refunds, { neg: true })
+        + zline("Net sales", s.net, { strong: true })
+        + "<div style='height:12px'></div>" + zline("GST output", s.gst) + zline("Service charge", s.svc)
+        + "</div>"
+        + "<div class='card'><h2>Payment breakdown</h2>" + zline("Cash", s.pay.cash) + zline("Card · BML", s.pay.card) + zline("Transfer", s.pay.transfer) + zline("On tab", s.pay.tab) + "</div>"
+        + "</div>";
+    });
+  }
+  function renderGST() {
+    withSummary("quarter", "reports_gst", function (s) {
+      var output = s.gst, input = 0, net = output - input;
+      el("main").innerHTML = "<div class='card' style='max-width:520px'><div style='display:flex;align-items:center;gap:10px;margin-bottom:8px'><h2 style='margin:0'>GST return · this quarter</h2><span class='badge amber'>Draft</span></div>"
+        + zline("Output tax (on sales)", output) + zline("Input tax (on purchases)", input, { neg: true }) + zline("Net GST payable", net, { strong: true })
+        + "<button class='primary' id='fileMira' style='margin-top:16px;width:100%'>File with MIRA</button>"
+        + "<p class='muted' style='font-size:11.5px;margin-top:10px'>Input tax needs GST captured on purchases (arrives with vendor-bill tax fields). Output tax is server-computed from settled sales.</p></div>";
+      var f = el("fileMira"); if (f) f.onclick = function () { toast("MIRA e-filing connects via the tax-portal integration (System Admin)."); };
+    });
+  }
+
+  /* ── Configurations (spec §3.10) ──────────────────────────────────────── */
+  function loadConfig() {
+    api("/settings").then(function (j) { S.cfg = j; if (S.tab === "config") renderConfig(); })
+      .catch(function () { if (S.tab === "config") el("main").innerHTML = "<div class='empty'>Couldn’t load settings.</div>"; });
+  }
+  function renderConfig() {
+    var m = el("main");
+    if (!S.cfg) { m.innerHTML = "<div class='empty'>Loading settings…</div>"; loadConfig(); return; }
+    var c = S.cfg, svc10 = c.svcChargeBp > 0;
+    function tgl(key, on) { return "<span class='tgl" + (on ? " on" : "") + "' data-tg='" + key + "' role='switch' aria-checked='" + on + "' tabindex='0'><i></i></span>"; }
+    function row(key, on, title, sub) { return "<div class='cfg-row'><div class='lab'><b>" + title + "</b>" + (sub ? "<small>" + sub + "</small>" : "") + "</div>" + tgl(key, on) + "</div>"; }
+    m.innerHTML = "<div class='card' style='max-width:640px'>"
+      + "<div class='cfg-sec'><h3>GST rate</h3><div class='rseg' id='gstSeg'><button data-g='800' class='" + (c.gstBp !== 1600 ? "on" : "") + "'>General 8%</button><button data-g='1600' class='" + (c.gstBp === 1600 ? "on" : "") + "'>Tourism 16%</button></div></div>"
+      + "<div class='cfg-sec'><h3>Operations</h3>"
+      + row("autoKot", c.autoKot, "Auto-send orders to the kitchen", "New tickets queue at the KOT automatically.")
+      + row("roundTotals", c.roundTotals, "Round totals to the nearest MVR", "")
+      + row("svc10", svc10, "10% service charge", "Added to dine-in bills.")
+      + "</div>"
+      + "<div class='cfg-sec'><h3>Receipt &amp; tax</h3>"
+      + row("taxInclusive", c.taxInclusive, "Tax-inclusive pricing", "Menu prices already include GST.")
+      + row("autoPrint", c.autoPrint, "Auto-print receipt", "")
+      + "</div>"
+      + "<div class='cfg-sec'><h3>Payment methods</h3>"
+      + row("m_cash", c.methods.cash, "Cash", "") + row("m_card", c.methods.card, "Card / BML", "")
+      + row("m_transfer", c.methods.transfer, "Bank transfer", "") + row("m_tab", c.methods.tab, "On tab", "")
+      + "</div>"
+      + "<button class='primary' id='cfgSave' style='margin-top:18px'>Save settings</button>"
+      + "<p class='muted' style='font-size:11.5px;margin-top:8px'>GST rate and service charge publish to the register immediately.</p>"
+      + "</div>";
+    el("gstSeg").querySelectorAll("button").forEach(function (b) { b.onclick = function () { S.cfg.gstBp = Number(b.dataset.g); renderConfig(); }; });
+    m.querySelectorAll("[data-tg]").forEach(function (t) {
+      var h = function () { toggleCfg(t.dataset.tg); };
+      t.onclick = h; t.onkeydown = function (e) { if (e.key === " " || e.key === "Enter") { e.preventDefault(); h(); } };
+    });
+    el("cfgSave").onclick = saveConfig;
+  }
+  function toggleCfg(key) {
+    var c = S.cfg;
+    if (key === "svc10") c.svcChargeBp = c.svcChargeBp > 0 ? 0 : 1000;
+    else if (key.indexOf("m_") === 0) { var mk = key.slice(2); c.methods[mk] = !c.methods[mk]; }
+    else c[key] = !c[key];
+    renderConfig();
+  }
+  function saveConfig() {
+    var c = S.cfg;
+    api("/settings", { method: "PUT", body: JSON.stringify({ gstBp: c.gstBp, svcChargeBp: c.svcChargeBp, autoKot: c.autoKot, roundTotals: c.roundTotals, taxInclusive: c.taxInclusive, autoPrint: c.autoPrint, methods: c.methods }) })
+      .then(function () { toast("Settings saved — the register will pick them up."); })
+      .catch(function (e) { toast("Couldn’t save: " + e.message); });
   }
 
   /* ── Review tab: server-side money-integrity flags (audit FIN-01/02) ──────
