@@ -307,7 +307,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
         {!mob && <><div style={C.kchip}>K</div><div style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: ".12em", color: "var(--ink3)", marginBottom: 8 }}>KASHIKEYO</div></>}
         <nav style={{ display: "flex", flexDirection: mob ? "row" : "column", gap: mob ? 2 : 3, width: "100%", justifyContent: mob ? "space-around" : undefined }}>
           {NAV.map((n) => (
-            <button key={n.id} onClick={() => setNav(n.id)} style={{ ...(mob ? C.railBtnM : C.railBtn), ...(nav === n.id ? C.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
+            <button key={n.id} onClick={() => { if (n.id === "admin") { window.location.href = "/back"; return; } setNav(n.id); }} style={{ ...(mob ? C.railBtnM : C.railBtn), ...(nav === n.id ? C.railOn : {}) }} aria-current={nav === n.id ? "page" : undefined}>
               <svg viewBox="0 0 24 24" width={mob ? 20 : 21} height={mob ? 20 : 21} dangerouslySetInnerHTML={{ __html: n.icon }} /><span style={{ fontSize: mob ? 9 : 10, fontWeight: 700 }}>{n.label}</span>
             </button>
           ))}
