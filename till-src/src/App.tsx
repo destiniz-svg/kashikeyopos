@@ -179,6 +179,12 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     return (typeof document !== "undefined" && document.documentElement.dir === "rtl") ? "dv" : "en";
   });
   useEffect(() => { if (typeof document !== "undefined") document.documentElement.dir = lang === "dv" ? "rtl" : "ltr"; try { localStorage.setItem("kashikeyo-lang", lang); } catch { /* ignore */ } }, [lang]);
+  /* Register number is per-DEVICE (localStorage), not a synced setting — each
+     till device carries its own number so their Z-reports / receipts don't
+     collide. Set it on the device via the profile menu. */
+  const [registerNo, setRegisterNo] = useState<number>(() => { try { return Math.max(1, Number(localStorage.getItem("kashikeyo-register-no")) || 1); } catch { return 1; } });
+  const saveRegisterNo = (n: number) => { const v = Math.max(1, Math.floor(Number(n)) || 1); setRegisterNo(v); try { localStorage.setItem("kashikeyo-register-no", String(v)); } catch { /* ignore */ } };
+  const [regModal, setRegModal] = useState(false);
   const T = (s: string) => t(s, lang);
   const nm = (p: any) => (lang === "dv" && p && p.dv) ? p.dv : (p ? (p.name || "") : "");
   const vw = useVW();
@@ -253,11 +259,11 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const closeShiftNow = (counted: number, expected: number) => {
     if (!openShift) return;
     /* Assign a persisted Z-report number: Z-R{register}-{seq}. The register
-       number comes from store setup (settings.registerNo, default 1); the
-       sequence is the next number after the highest already issued for this
-       store, so it's monotonic and survives deletes/re-syncs. */
-    const reg = Number(settings.registerNo) || 1;
-    const seq = shifts.reduce((mx, s) => Math.max(mx, Number(s.zSeq) || 0), 0) + 1;
+       number is this device's own (localStorage); the sequence is monotonic
+       PER register (highest issued on this register + 1), so two devices in
+       the same store keep independent, non-colliding Z-report runs. */
+    const reg = registerNo;
+    const seq = shifts.filter((s) => (Number(s.zReg) || 1) === reg).reduce((mx, s) => Math.max(mx, Number(s.zSeq) || 0), 0) + 1;
     const zNo = "Z-R" + reg + "-" + String(seq).padStart(5, "0");
     store.commit([{ kind: "shifts", id: openShift.id, data: { ...openShift, closedAt: Date.now(), countedCash: counted, expectedCash: expected, zNo, zSeq: seq, zReg: reg } }]);
     setZModal(false);
@@ -274,7 +280,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       payments, change, refunded: false,
     };
     store.commit([{ kind: "sales", id: sale.id, data: sale }]);
-    setReceipt({ sale, change, settings });
+    setReceipt({ sale, change, settings, registerNo });
     resetBill(); setPay(false);
   };
 
@@ -546,7 +552,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
           <button onClick={() => openShift ? setZModal(true) : setShiftModal(true)} style={{ ...C.pill, cursor: "pointer", color: openShift ? "var(--green)" : "var(--amber)", padding: "6px 11px" }} title={openShift ? "Close shift (Z-report)" : "Open a shift"}>
             <i style={{ ...C.dot, background: openShift ? "var(--green)" : "var(--amber)" }} />{mob ? "" : (openShift ? "Shift" : "No shift")}
           </button>
-          <ProfileMenu user={user} mob={mob} lang={lang} onToggleLang={toggleLang} onSignOut={onSignOut} />
+          <ProfileMenu user={user} mob={mob} lang={lang} registerNo={registerNo} onEditRegister={() => setRegModal(true)} onToggleLang={toggleLang} onSignOut={onSignOut} />
         </header>
 
         <nav style={mob ? C.navrowM : C.navrow} className="glass">
@@ -645,6 +651,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {shiftModal && <ShiftModal user={user} shifts={shifts} onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} expenses={st.byKind("expenses").map((e) => e.data)} shifts={shifts} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
+      {regModal && <RegisterModal current={registerNo} onSave={(n) => { saveRegisterNo(n); setRegModal(false); }} onClose={() => setRegModal(false)} />}
     </div>
   );
 }
@@ -771,10 +778,30 @@ const Row2 = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
   <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 13.5, fontWeight: bold ? 800 : 600, color: bold ? "var(--ink)" : "var(--ink2)" }}><span>{k}</span><span className="num">{v}</span></div>
 );
 
+/* Per-device register number — stored locally so each till device carries its
+   own; drives Z-report numbers and receipt doc numbers. */
+function RegisterModal({ current, onSave, onClose }: { current: number; onSave: (n: number) => void; onClose: () => void }) {
+  const [v, setV] = useState(String(current));
+  const n = Math.max(1, Math.floor(Number(v)) || 1);
+  return (
+    <div style={C.overlay} onClick={onClose}>
+      <div style={{ ...C.sheet, width: "min(420px,94vw)" }} onClick={(e) => e.stopPropagation()}>
+        <ShiftHead title="Register number" onClose={onClose} />
+        <div style={{ color: "var(--ink2)", fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>This number identifies <b>this device</b>. It appears on receipts (R{n}) and Z-reports (Z-R{n}-…). Give each till in the store a different number so their reports don’t collide.</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "0 14px", height: 54 }}>
+          <span style={{ fontSize: 12.5, fontWeight: 800, color: "var(--ink3)" }}>R</span>
+          <input autoFocus type="number" inputMode="numeric" min={1} value={v} onChange={(e) => setV(e.target.value)} placeholder="1"
+            className="num" style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 22, fontWeight: 800, minWidth: 0 }} />
+        </div>
+        <button onClick={() => onSave(n)} style={{ ...C.charge, width: "100%", marginTop: 14 }}>Save register number</button>
+      </div>
+    </div>
+  );
+}
 function Receipt({ data, gstBp, onClose }: { data: any; gstBp: number; onClose: () => void }) {
-  const { sale, change, settings } = data;
+  const { sale, change, settings, registerNo } = data;
   const method = (sale.payments || [])[0]?.method || "—";
-  const docNo = "MLE-R" + (Number(settings.registerNo) || 1) + "-" + new Date(sale.t).toISOString().slice(0, 10).replace(/-/g, "") + "-" + String(sale.no || "").replace(/\D/g, "").padStart(4, "0");
+  const docNo = "MLE-R" + (Number(registerNo) || 1) + "-" + new Date(sale.t).toISOString().slice(0, 10).replace(/-/g, "") + "-" + String(sale.no || "").replace(/\D/g, "").padStart(4, "0");
   const otypeLabel = sale.otype === "dinein" ? ("Dine-in" + (sale.table ? " · Table " + sale.table : "")) : sale.otype === "delivery" ? "Delivery" : "Takeaway";
   const excl = Math.max(0, (sale.subtotal || 0) - (sale.billDisc || 0));
   return (
@@ -820,7 +847,7 @@ const RRow = ({ k, v, bold }: { k: string; v: string; bold?: boolean }) => (
 /* Header profile switcher — one menu off the avatar that carries who you are
    (name + role), the language switch, the jump to the admin cockpit, and sign
    out. Mirrored in the back office so both apps switch from the same place. */
-function ProfileMenu({ user, mob, lang, onToggleLang, onSignOut }: { user: any; mob: boolean; lang: "en" | "dv"; onToggleLang: () => void; onSignOut: () => void }) {
+function ProfileMenu({ user, mob, lang, registerNo, onEditRegister, onToggleLang, onSignOut }: { user: any; mob: boolean; lang: "en" | "dv"; registerNo: number; onEditRegister: () => void; onToggleLang: () => void; onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -852,6 +879,7 @@ function ProfileMenu({ user, mob, lang, onToggleLang, onSignOut }: { user: any; 
             </div>
           </div>
           <div style={{ height: 1, background: "var(--line)", margin: "2px 6px 4px" }} />
+          <Item icon="🖥" label={t("Register number", lang)} sub={"This device · R" + registerNo} onClick={onEditRegister} />
           <Item icon="🌐" label={t("Language", lang)} sub={lang === "en" ? "English" : "ދިވެހި"} onClick={onToggleLang} />
           <Item icon="⚙︎" label={t("Admin panel", lang)} sub="Back office & reports" onClick={() => (window.location.href = "/back")} />
           <div style={{ height: 1, background: "var(--line)", margin: "4px 6px" }} />

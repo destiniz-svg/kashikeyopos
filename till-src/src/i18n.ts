@@ -71,6 +71,7 @@ const DV: Record<string, string> = {
   "Clear": "ސާފުކުރޭ",
   "Send to KOT": "ބަދިގެއަށް ފޮނުވާ",
   "Language": "ބަސް",
+  "Register number": "ރަޖިސްޓަރ ނަންބަރު",
   "Sign out": "ސައިން އައުޓް",
   "Admin panel": "އެޑްމިން ޕެނަލް",
   "Scan or tap a product to start": "ފެށުމަށް ޕްރޮޑަކްޓެއް ސްކޭން ނުވަތަ ޖައްސަވާ",
