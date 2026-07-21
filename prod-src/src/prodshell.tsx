@@ -1,6 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
+import { uid } from "./api";
 import { resolveTheme } from "./theme";
+
+/* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount
+   and reason live on the line so the canvas + audit trail read them). */
+type Mod = { name: string; price: number };
+type Line = { key: string; pid: string; qty: number; mods: Mod[]; discPct?: number };
+
+/* Category emoji, verbatim from production's window.__ksCatEmoji. */
+const CAT_EMOJI: Record<string, string> = { All: "🍽️", "Main Dishes": "🍛", Coffee: "☕", Drinks: "🥤", Bakery: "🥐", Grocery: "🛒", Hedhikaa: "🍢", More: "⋯" };
+const catLabel = (c: string) => (CAT_EMOJI[c] ? CAT_EMOJI[c] + " " : "") + c;
+const cardPrice = (laari: number) => (Math.round(Number(laari) || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /* ── Production shell — faithful reconstruction of the deployed till chrome ───
    Header bar (logo · store name · location chip · ml-auto shift pill + account)
@@ -35,6 +46,17 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
   const openShift = shifts.find((s) => !s.closedAt) || null;
   const parked = st.byKind("parked").map((e) => e.data);
   const orders = st.byKind("orders").map((e) => e.data).filter((o: any) => !["done", "wasted"].includes(String(o.status || "new").toLowerCase()));
+
+  /* Menu + cart state (the canvas mechanics build on this next step). */
+  const products = st.byKind("products").map((e) => e.data).filter((p: any) => p && !p.archived);
+  const [cart, setCart] = useState<Line[]>([]);
+  const addLine = (p: any, mods: Mod[] = []) => {
+    const key = p.id + "|" + mods.map((m) => m.name).sort().join(",");
+    setCart((c) => { const i = c.findIndex((l) => l.key === key); if (i >= 0) { const n = c.slice(); n[i] = { ...n[i], qty: n[i].qty + 1 }; return n; } return c.concat([{ key, pid: p.id, qty: 1, mods }]); });
+  };
+  const qtyOf = (pid: string) => cart.filter((l) => l.pid === pid).reduce((a, l) => a + l.qty, 0);
+  const prodById = (pid: string) => products.find((p: any) => p.id === pid);
+  const count = cart.reduce((a, l) => a + l.qty, 0);
   const clock = now.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + ", " + now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const storeName = settings.storeName || "Kashikeyo";
   const first = (user?.name || "Staff").split(" ")[0];
@@ -81,17 +103,39 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
 
       {/* Content */}
       <div className="ksh-navpad flex-1 min-h-0 max-w-6xl w-full mx-auto px-4 pt-4">
-        {nav === "sell" ? <SellSkeleton _={_} parked={parked} openShift={openShift} /> : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
+        {nav === "sell" ? (
+          <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings}
+            cart={cart} addLine={addLine} qtyOf={qtyOf} prodById={prodById} count={count} />
+        ) : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
       </div>
     </div>
   );
 }
 
-/* Three-pane Sell frame — production's register layout. Menu grid + order-canvas
-   mechanics are filled in the next steps; the structure and theme are final. */
-function SellSkeleton({ _, parked, openShift }: { _: any; parked: any[]; openShift: any }) {
+/* Three-pane Sell frame — production's register layout. The menu grid + search
+   are production-faithful here; the order-canvas mechanics (per-line disc,
+   upsell, bill disc, svc charge, park/cut/void) land in the next step. */
+function SellScreen({ _, parked, openShift, products, settings, cart, addLine, qtyOf, prodById, count }:
+  { _: any; parked: any[]; openShift: any; products: any[]; settings: any; cart: Line[]; addLine: (p: any) => void; qtyOf: (id: string) => number; prodById: (id: string) => any; count: number }) {
+  const [query, setQuery] = useState("");
+  const [group, setGroup] = useState("All");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const groups: { name: string; subs: string[] }[] = settings.catGroups || [];
+  const cats = ["All", ...groups.map((g) => g.name)];
+  const subInGroup = (cat: string) => group === "All" || (groups.find((g) => g.name === group)?.subs || []).includes(cat);
+  const codeOf = (p: any) => String(p.barcode || p.sku || p.code || "").toLowerCase();
+  const q = query.trim().toLowerCase();
+  const items = products.filter((p) => subInGroup(p.cat) && (!q || (p.name || "").toLowerCase().includes(q) || (codeOf(p) && codeOf(p).includes(q))));
+  const isOut = (p: any) => (p.recipeAvail != null && Number(p.recipeAvail) <= 0) || (p.stock != null && Number(p.stock) <= 0) || !!p.soldOut;
+  const enterAdd = () => {
+    if (!q) return;
+    const exact = products.find((p) => codeOf(p) === q || String(p.id).toLowerCase() === q);
+    const hit = exact || (items.length === 1 ? items[0] : null);
+    if (hit && !isOut(hit)) { addLine(hit); setQuery(""); }
+  };
+
   return (
-    <div className="grid gap-3 h-full" style={{ gridTemplateColumns: "minmax(0,220px) minmax(0,1fr) minmax(0,380px)" }}>
+    <div className="grid gap-3 h-full pb-6" style={{ gridTemplateColumns: "minmax(0,220px) minmax(0,1fr) minmax(0,380px)" }}>
       {/* Open Bills rail */}
       <div className={`rounded-2xl p-3 ${_.panel}`} style={{ alignSelf: "start" }}>
         <div className="flex items-center gap-2 mb-3">
@@ -102,32 +146,78 @@ function SellSkeleton({ _, parked, openShift }: { _: any; parked: any[]; openShi
         <button className={`w-full mt-2 py-2 rounded-xl text-sm ${_.btn}`} style={{ borderStyle: "dashed" }}>+ New bill</button>
       </div>
 
-      {/* Menu pane (skeleton) */}
+      {/* Menu pane */}
       <div className="flex flex-col gap-3 min-w-0">
-        {!openShift && <div className={`rounded-xl px-4 py-3 text-sm font-medium ${_.panel}`} style={{ color: "var(--k-primary)" }}>🕓 No shift open — tap to open one before taking payments</div>}
-        <div className={`flex items-center gap-2 rounded-xl px-3 ${_.input}`} style={{ height: 46 }}>
-          <svg viewBox="0 0 24 24" width={17} height={17} style={{ opacity: .5 }} fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
-          <span className={`text-sm ${_.faint}`}>Search or type barcode… (Enter adds)</span>
+        {!openShift && <div className="w-full flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium border border-amber-500/50 text-amber-600 bg-amber-500/5">🕓 No shift open — tap to open one before taking payments</div>}
+        <div className="flex gap-2">
+          <div className={`flex items-center flex-1 rounded-xl px-3 ${_.input}`}>
+            <svg viewBox="0 0 24 24" width={16} height={16} className={_.faint} fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" /></svg>
+            <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Enter" && enterAdd()}
+              placeholder="Search or type barcode… (Enter adds)" className="flex-1 bg-transparent outline-none px-2 py-2.5 text-sm" />
+            {query && <button onClick={() => setQuery("")} className={_.faint}>✕</button>}
+          </div>
+          <button className={`flex items-center gap-1.5 rounded-xl px-3 text-sm font-medium ${_.btn}`} onClick={() => searchRef.current?.focus()}>📷 Scan</button>
         </div>
-        <div className={`flex-1 rounded-2xl grid place-items-center ${_.panel}`} style={{ minHeight: 260 }}>
-          <div className={`text-sm text-center ${_.sub}`}>Menu grid — building next (Step 3a)</div>
+
+        {/* Category chips */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar py-0.5">
+          {cats.map((c) => (
+            <button key={c} onClick={() => setGroup(c)} className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium ${group === c ? _.chipOn : _.chip}`}>{catLabel(c)}</button>
+          ))}
+        </div>
+
+        {/* Product grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+          {items.map((p) => {
+            const out = isOut(p); const inCart = qtyOf(p.id);
+            const tracked = p.stock != null; const low = tracked && Number(p.stock) <= Number(p.reorder || 0);
+            return (
+              <button key={p.id} disabled={out} onClick={() => !out && addLine(p)} className={`relative rounded-2xl p-3 text-left transition active:scale-95 ${_.tile} ${out ? "opacity-50" : ""}`}>
+                {out && <span className="absolute top-2 right-2 ksh-pill" style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: 10, padding: "2px 8px", zIndex: 2 }}>Sold out</span>}
+                {!out && p.bestSeller && <span className="absolute top-2 left-2 ksh-pill" style={{ background: "var(--k-primary)", color: "#fff", fontSize: 9, fontWeight: 600, padding: "2px 7px", zIndex: 2 }}>★ Best seller</span>}
+                {!out && inCart > 0 && <span className={`absolute top-2 right-2 w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center ${_.primary}`} style={{ zIndex: 2 }}>{inCart}</span>}
+                {p.img
+                  ? <img src={p.img} alt="" className="w-full rounded-lg mb-1.5" style={{ aspectRatio: "4/3", objectFit: "contain", background: "#F4F1EB" }} />
+                  : <div className="text-3xl mb-1.5 h-16 flex items-center">{p.emoji || (p.name || "?")[0]}</div>}
+                <div className="text-sm font-medium leading-snug h-9 overflow-hidden">{p.name}</div>
+                <div className="flex items-end justify-between mt-1">
+                  <span className="num text-sm font-semibold">{cardPrice(p.price)}</span>
+                  {tracked && <span className={`text-xs num ${low ? "text-amber-500 font-semibold" : _.faint}`}>{low && "⚠ "}{p.stock} {p.unit || "pcs"}</span>}
+                </div>
+              </button>
+            );
+          })}
+          {!items.length && <div className={`col-span-full text-center py-8 text-sm ${_.faint}`}>No products match</div>}
         </div>
       </div>
 
-      {/* Order canvas (skeleton) */}
+      {/* Order canvas — cart preview (full mechanics next step) */}
       <div className={`rounded-2xl p-4 flex flex-col ${_.panel}`} style={{ alignSelf: "start", minHeight: 420 }}>
         <div className="flex items-center gap-2 mb-3">
           <span className={`px-3 py-1 rounded-full text-sm font-semibold ${_.primary}`}>#1</span>
           <button className={`w-7 h-7 rounded-full text-sm ${_.btn}`}>+</button>
+          <span className={`ml-auto text-xs ${_.sub}`}>{count} item{count === 1 ? "" : "s"}</span>
         </div>
         <div className="grid grid-cols-3 gap-1.5 mb-3">
           {["Dine-in", "Takeaway", "Delivery"].map((t, i) => (
             <button key={t} className={`py-2 rounded-lg text-xs font-semibold ${i === 1 ? _.primary : _.btn}`}>{t}</button>
           ))}
         </div>
-        <div className={`flex-1 grid place-items-center ${_.sub}`}>
-          <div className="text-sm text-center">Order canvas — building next (Step 3b)</div>
-        </div>
+        {cart.length === 0 ? (
+          <div className={`flex-1 grid place-items-center ${_.sub}`}><div className="text-sm text-center">Scan or tap a product to start</div></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+            {cart.map((l) => { const p = prodById(l.pid); if (!p) return null; return (
+              <div key={l.key} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${_.panel2 || _.chip}`}>
+                <span className="text-xl">{p.emoji || "🍽️"}</span>
+                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{p.name}</div><div className={`text-xs num ${_.sub}`}>@ {cardPrice(p.price)}/{p.unit || "pcs"}</div></div>
+                <span className="num text-sm font-semibold">{l.qty}×</span>
+                <span className="num text-sm font-semibold">{cardPrice((Number(p.price) || 0) * l.qty)}</span>
+              </div>
+            ); })}
+            <div className={`mt-2 pt-2 border-t text-xs text-center ${_.sub}`} style={{ borderColor: "var(--k-border)" }}>Canvas mechanics — per-line disc, upsell, bill disc, svc charge — next step (3b)</div>
+          </div>
+        )}
       </div>
     </div>
   );
