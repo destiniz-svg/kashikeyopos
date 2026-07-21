@@ -3,6 +3,7 @@ import { store, useStore } from "./store";
 import { uid, elevate } from "./api";
 import { resolveTheme } from "./theme";
 import { OrdersScreen } from "./prodorders";
+import { FloorScreen } from "./prodfloor";
 
 /* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount +
    its approval live on the line so the canvas + audit trail read them). */
@@ -31,6 +32,7 @@ const DISC_PRESETS = [0, 5, 10, 15, 20];
 
 const NAV: [string, string, string][] = [
   ["sell", "Sell", '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2l2.6 12.4A2 2 0 0 0 8.5 17h9a2 2 0 0 0 2-1.6L21.5 7H6"/>'],
+  ["floor", "Floor", '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'],
   ["orders", "Orders", '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>'],
   ["dash", "Dashboard", '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>'],
   ["reports", "Reports", '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>'],
@@ -46,6 +48,10 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
   const settings = st.byKind("settings")[0]?.data || {};
   const _ = useMemo(() => resolveTheme(settings), [settings.theme]);
   const [nav, setNav] = useState("sell");
+  /* Cross-screen seat intent: the Floor tab sets this to hand a table/party
+     over to the register (seat a new party) or resume a held bill, then jumps
+     to Sell which consumes it once. */
+  const [seatIntent, setSeatIntent] = useState<any>(null);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(id); }, []);
 
@@ -101,7 +107,11 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
       {/* Content */}
       <div className="ksh-navpad flex-1 min-h-0 max-w-6xl w-full mx-auto px-4 pt-4">
         {nav === "sell" ? (
-          <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings} user={user} />
+          <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings} user={user}
+            seatIntent={seatIntent} clearSeatIntent={() => setSeatIntent(null)} />
+        ) : nav === "floor" ? (
+          <FloorScreen _={_} parked={parked} orders={st.byKind("orders").map((e) => e.data)} products={products} settings={settings}
+            onSeat={(intent: any) => { setSeatIntent(intent); setNav("sell"); }} />
         ) : nav === "orders" ? (
           <OrdersScreen _={_} />
         ) : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
@@ -116,8 +126,8 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
      manager password.
    • Discounts use Staging's mechanic — a preset-% picker gated on manager
      password approval, logged on the line/bill (discAuth). */
-function SellScreen({ _, parked, openShift, products, settings, user }:
-  { _: any; parked: any[]; openShift: any; products: any[]; settings: any; user: any }) {
+function SellScreen({ _, parked, openShift, products, settings, user, seatIntent, clearSeatIntent }:
+  { _: any; parked: any[]; openShift: any; products: any[]; settings: any; user: any; seatIntent?: any; clearSeatIntent?: () => void }) {
   const st = useStore();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All");
@@ -125,6 +135,9 @@ function SellScreen({ _, parked, openShift, products, settings, user }:
   const [cart, setCart] = useState<Line[]>([]);
   const [otype, setOtype] = useState<OType>("takeaway");
   const [table, setTable] = useState("");
+  const [guests, setGuests] = useState(1);
+  const [partyName, setPartyName] = useState("");
+  const [resumeId, setResumeId] = useState<string | null>(null);
   const [cust, setCust] = useState<any>(null);
   const [billDiscPct, setBillDiscPct] = useState(0);
   const [billDiscAuth, setBillDiscAuth] = useState<any>(null);
@@ -184,10 +197,28 @@ function SellScreen({ _, parked, openShift, products, settings, user }:
   const lastProd = lastLine ? prodById(lastLine.pid) : null;
   const suggestion = lastProd ? products.find((p: any) => !isOut(p) && p.bestSeller && !cart.some((l) => l.pid === p.id)) : null;
 
-  const clearBill = () => { setCart([]); setBillDiscPct(0); setBillDiscAuth(null); setCust(null); setTable(""); };
+  const clearBill = () => { setCart([]); setBillDiscPct(0); setBillDiscAuth(null); setCust(null); setTable(""); setGuests(1); setPartyName(""); setResumeId(null); };
+  /* Consume a seat intent handed over from the Floor tab, once. */
+  useEffect(() => {
+    if (!seatIntent) return;
+    if (seatIntent.mode === "resume" && seatIntent.bill) {
+      const b = seatIntent.bill;
+      setCart((b.lines || []).map((l: any) => ({ key: l.key || l.pid + "|", pid: l.pid, qty: Number(l.qty) || 1, mods: l.mods || [], discPct: l.discPct, discAuth: l.discAuth })));
+      setOtype(b.otype || "dinein"); setTable(b.table || ""); setGuests(Number(b.guests) || 1);
+      setPartyName(b.customerId ? "" : (b.custName || "")); setCust(b.customerId ? { id: b.customerId, name: b.custName } : null);
+      setBillDiscPct(Number(b.discPct) || 0); setBillDiscAuth(b.discAuth || null); setResumeId(b.id);
+      store.del([{ kind: "parked", id: b.id }]);
+    } else {
+      setCart([]); setBillDiscPct(0); setBillDiscAuth(null); setCust(null); setResumeId(null);
+      setOtype("dinein"); setTable(seatIntent.table || ""); setGuests(Number(seatIntent.guests) || 1); setPartyName(seatIntent.name || "");
+    }
+    clearSeatIntent?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seatIntent]);
   const park = () => {
     if (!cart.length) return;
-    const bill = { id: uid(), t: Date.now(), no: "#" + String(parked.length + 1).padStart(4, "0"), otype, table: table || null, lines: cart, discPct: billDiscPct, discAuth: billDiscAuth || undefined, customerId: cust?.id || null, custName: cust?.name || null, userName: user?.name, storeId: settings.storeId || "main" };
+    const id = resumeId || uid();
+    const bill = { id, t: Date.now(), no: "#" + String(parked.length + 1).padStart(4, "0"), otype, table: table || null, guests, lines: cart, discPct: billDiscPct, discAuth: billDiscAuth || undefined, customerId: cust?.id || null, custName: cust?.name || partyName || null, userName: user?.name, storeId: settings.storeId || "main" };
     store.commit([{ kind: "parked", id: bill.id, data: bill }]);
     clearBill();
   };
