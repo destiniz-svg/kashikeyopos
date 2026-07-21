@@ -71,12 +71,21 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
 
   return (
     <div className={`min-h-screen h-full flex flex-col font-sans ${_.app}`}>
-      {/* Sticky header bar */}
-      <div className={`no-print sticky top-0 z-30 backdrop-blur border-b px-4 py-3 flex items-center gap-3 ${_.header}`}>
-        <img src="/icon-192.png" alt="" className="w-6 h-6 object-contain" />
-        <div className="text-base font-bold tracking-tight" style={{ maxWidth: "48vw", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{storeName}</div>
-        {settings.location && <span className={`hidden sm:inline text-xs px-2 py-1 rounded-full ${_.chip}`}>{settings.location}</span>}
-        <div className="ml-auto flex items-center gap-2">
+      {/* Sticky banner — brand, account cluster and the nav pill share ONE
+         background, so the header grows to sit behind the nav even when it wraps
+         to two rows on narrow screens (production banner style, made adaptive).
+         Desktop: brand | nav (centered in the middle) | account, one row.
+         Narrow: brand + account on row 1; nav drops to its own full-width row
+         below (which may itself wrap to two lines) and the banner extends. */}
+      <div className={`no-print sticky top-0 z-40 backdrop-blur border-b px-3 sm:px-4 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 ${_.header}`}>
+        {/* Brand */}
+        <div className="order-1 flex items-center gap-2.5 min-w-0">
+          <img src="/icon-192.png" alt="" className="w-6 h-6 object-contain" />
+          <div className="text-base font-bold tracking-tight truncate" style={{ maxWidth: "min(42vw, 260px)" }}>{storeName}</div>
+          {settings.location && <span className={`hidden sm:inline text-xs px-2 py-1 rounded-full ${_.chip}`}>{settings.location}</span>}
+        </div>
+        {/* Account cluster — sits beside the brand on its row; the nav takes the middle on wide screens */}
+        <div className="order-2 lg:order-3 ml-auto flex items-center gap-2">
           <span className={`hidden md:inline text-xs num ${_.sub}`}>{clock}</span>
           <span className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium ${openShift ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${openShift ? "bg-emerald-500" : "bg-amber-500"}`} />
@@ -87,30 +96,30 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
             {first}
           </button>
         </div>
-      </div>
-
-      {/* Floating centered nav pill (production positions this fixed over the header) */}
-      <div className={`no-print backdrop-blur ksh-topnav ${_.nav}`} style={{ position: "fixed", top: "9px", left: "50%", transform: "translateX(-50%)", zIndex: 40, borderRadius: "22px", border: "1px solid var(--k-border)", boxShadow: "0 6px 20px rgba(16,40,28,.14)", maxWidth: "calc(100vw - 16px)" }}>
-        <div className="flex items-center" style={{ gap: "4px", padding: "5px 6px", flexWrap: "wrap", justifyContent: "center" }}>
-          {NAV.map(([id, label, path]) => {
-            const on = nav === id;
-            return (
-              <button key={id} onClick={() => setNav(id)} className={`transition ${on ? _.primary : _.navOff}`} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "7px", padding: "8px 14px", borderRadius: "999px", fontSize: "13.5px", fontWeight: 500, whiteSpace: "nowrap" }}>
-                <span className="relative" style={{ display: "inline-flex" }}>
-                  <Icon path={path} />
-                  {id === "orders" && orders.length > 0 && (
-                    <span className="absolute -top-1.5 -right-2.5 h-4 px-1 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">{orders.length}</span>
-                  )}
-                </span>
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Nav pill — desktop: centered in the middle (flex-1); narrow: its own
+           full-width row that can wrap to two lines inside the growing banner */}
+        <nav className="order-3 lg:order-2 w-full lg:w-auto lg:flex-1 flex justify-center min-w-0">
+          <div className={`ksh-navpill backdrop-blur ${_.nav}`} style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px", padding: "5px 6px", borderRadius: "22px", border: "1px solid var(--k-border)", boxShadow: "0 6px 20px rgba(16,40,28,.10)", maxWidth: "100%" }}>
+            {NAV.map(([id, label, path]) => {
+              const on = nav === id;
+              return (
+                <button key={id} onClick={() => setNav(id)} className={`transition ${on ? _.primary : _.navOff}`} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "7px", padding: "8px 14px", borderRadius: "999px", fontSize: "13.5px", fontWeight: 500, whiteSpace: "nowrap" }}>
+                  <span className="relative" style={{ display: "inline-flex" }}>
+                    <Icon path={path} />
+                    {id === "orders" && orders.length > 0 && (
+                      <span className="absolute -top-1.5 -right-2.5 h-4 px-1 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">{orders.length}</span>
+                    )}
+                  </span>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
 
       {/* Content */}
-      <div className="ksh-navpad flex-1 min-h-0 max-w-6xl w-full mx-auto px-4 pt-4">
+      <div className="flex-1 min-h-0 max-w-6xl w-full mx-auto px-4 pt-4">
         {nav === "sell" ? (
           <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings} user={user}
             seatIntent={seatIntent} clearSeatIntent={() => setSeatIntent(null)} />
