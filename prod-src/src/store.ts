@@ -12,7 +12,8 @@ import { pull, pushOps, eventsUrl, uid, type Entity } from "./api";
 const K_CURSOR = "kashikeyo-cursor";
 const K_OUTBOX = "kashikeyo-outbox";
 
-type Op = { opId: string; puts?: { kind: string; id: string; data: any }[]; dels?: { kind: string; id: string }[]; elev?: string };
+type Deltas = { stock?: { id: string; d: number }[]; cust?: { id: string; pts?: number; bal: number }[] };
+type Op = { opId: string; puts?: { kind: string; id: string; data: any }[]; dels?: { kind: string; id: string }[]; elev?: string; deltas?: Deltas };
 
 class Store {
   ents = new Map<string, Entity>();
@@ -76,10 +77,24 @@ class Store {
   private persistOutbox() { localStorage.setItem(K_OUTBOX, JSON.stringify(this.outbox)); }
 
   /* Optimistically apply puts locally, queue the op, and try to drain. An
-     optional elevation token rides with the op (X-Elevation) for refunds. */
-  commit(puts: { kind: string; id: string; data: any }[], elev?: string) {
+     optional elevation token rides with the op (X-Elevation) for refunds.
+     `deltas` carries server-arbitrated additive changes (stock, customer
+     balance/points) — the SERVER is authoritative (it clamps balance at 0 via
+     FIN-02); we only mirror the change locally so the UI doesn't wait on a
+     pull. This is what makes a partial payment server-verified rather than a
+     client-trusted balance overwrite. */
+  commit(puts: { kind: string; id: string; data: any }[], elev?: string, deltas?: Deltas) {
     puts.forEach((p) => this.ents.set(p.kind + "|" + p.id, { kind: p.kind, id: p.id, data: p.data }));
-    this.outbox.push({ opId: uid(), puts, ...(elev ? { elev } : {}) });
+    if (deltas?.cust) {
+      for (const d of deltas.cust) {
+        const cur = this.ents.get("customers|" + d.id);
+        if (!cur) continue;
+        const balance = Math.max(0, Number(cur.data.balance || 0) + Number(d.bal || 0));
+        const points = Number(cur.data.points || 0) + Number(d.pts || 0);
+        this.ents.set("customers|" + d.id, { ...cur, data: { ...cur.data, balance, points } });
+      }
+    }
+    this.outbox.push({ opId: uid(), puts, ...(elev ? { elev } : {}), ...(deltas ? { deltas } : {}) });
     this.persistOutbox();
     this.emit();
     this.drain();

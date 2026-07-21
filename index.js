@@ -34,7 +34,7 @@ async function verifyAppleIdToken(idToken) {
   const { payload } = await jwtVerify(idToken, appleJwks, { issuer: "https://appleid.apple.com", audience: APPLE_CLIENT_ID });
   return payload;
 }
-const SHARED_KINDS = new Set(["settings", "customers", "units", "categories", "vendors"]);
+const SHARED_KINDS = new Set(["settings", "customers", "units", "categories", "vendors", "payments"]);
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
 const hasPgEnv = !!(process.env.PGHOST || process.env.PGUSER || process.env.PGDATABASE);
 const localDatabaseUrl = process.env.NODE_ENV === "production" ? "" : "postgres://kash:kash@127.0.0.1:5432/kash";
@@ -1337,10 +1337,21 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   if (req.query.c) {
     const c = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, req.query.c));
     if (c) {
-      const orders = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
-      const completed = orders.filter((o) => finalStatuses.has(String(o.status || "").toLowerCase()));
+      const [orders, allPayments] = await Promise.all([
+        guestOrders(org.id, storeId, { customerId: c.id }, settings),
+        kindAll(org.id, "payments", storeId),
+      ]);
+      const recentOrders = orders.slice(0, 25);
+      const completed = recentOrders.filter((o) => finalStatuses.has(String(o.status || "").toLowerCase()));
       const spent = completed.reduce((a, o) => a + Number(o.total || 0), 0);
-      cust = { id: c.id, name: c.name, points: c.points || 0, balance: c.balance || 0, address: c.address || "", visits: completed.length, spent, orders };
+      /* Customer Portal sync: a customer's own credit payments (most recent
+         first) so the portal can show "you paid X on Y" alongside dues. */
+      const payments = allPayments
+        .filter((p) => idEq(p.customerId, c.id))
+        .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))
+        .slice(0, 25)
+        .map((p) => ({ id: p.id, amount: Number(p.amount) || 0, method: p.method || "Cash", at: Number(p.at) || 0 }));
+      cust = { id: c.id, name: c.name, points: c.points || 0, balance: c.balance || 0, address: c.address || "", visits: completed.length, spent, orders: recentOrders, payments };
     }
   }
   res.json({ settings, storeId, stores: stores.rows, zones,
