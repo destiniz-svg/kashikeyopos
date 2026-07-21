@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
 import { elevate, hashPin, uid } from "./api";
-import { Dashboard, Reports, Orders, Delivery, Tabs, QrOrders, Outlets, Setup } from "./screens";
+import { Dashboard, Reports, Orders, Tabs, Outlets, Setup } from "./screens";
 import { GuestPortal } from "./guest";
 import { t } from "./i18n";
 import { IconBtn, Modal, Stepper, useToast } from "./ui";
@@ -41,22 +41,19 @@ const tintFor = (cat: string) => { let h = 0; for (const c of cat || "") h = (h 
    nav). `to` deep-links a module that lives in the back-office cockpit (/back);
    `soon` marks screens still being built (Placeholder). Register/Kitchen/
    Dashboard/Analytics map onto our existing screens. */
-/* Front-of-house tabs only (prototype register spec §2): Register · Floor ·
-   Kitchen · QR Orders · Delivery · Tabs · Day End. Dashboard is kept for a
-   shift-lead's at-a-glance day view. Everything else managerial (Analytics,
-   Outlets, Inventory, Expenses, Staff, Configurations/Setup) lives in the
-   master cockpit at /back — one tap away via the profile menu's Admin panel.
-   Those screen components stay in the codebase (render switch below), just off
-   the cashier's nav. */
+/* Nav is strictly Floor / Orders / Tabs / Day End — the register/order canvas
+   ("sell") is not its own pill; it's reached by tapping a table on Floor or
+   "+ New" inside Orders. Kitchen, QR Orders and Delivery are folded into
+   Orders' three channel sub-tabs (Walking & QR Tables / Delivery / Takeaway).
+   Dashboard/Analytics/Inventory/Expenses/Staff/Config live in the master
+   cockpit at /back — one tap away via the profile menu's Admin panel. Those
+   screen components (and "sell") stay in the codebase and reachable as `nav`
+   states, just off this pill row. */
 const NAV = [
-  { id: "sell", label: "Register", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
   { id: "floor", label: "Floor", icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
-  { id: "kitchen", label: "Kitchen", icon: '<path d="M6 3v7a3 3 0 0 0 6 0V3M9 3v18M18 3c-1.5 1-2 3-2 6s.5 4 2 5v7"/>' },
-  { id: "qr", label: "QR Orders", icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v7M17 20h4"/>' },
-  { id: "delivery", label: "Delivery", icon: '<path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>' },
+  { id: "orders", label: "Orders", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
   { id: "tabs", label: "Tabs", icon: '<path d="M3 6a2 2 0 0 1 2-2h9l4 4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 12h6M8 16h4"/>' },
   { id: "dayend", label: "Day End", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
-  { id: "dashboard", label: "Dashboard", icon: '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>' },
 ] as { id: string; label: string; icon: string; to?: string; soon?: boolean }[];
 const METHODS = ["Cash", "Card", "BML Gateway", "Transfer", "QR"] as const;
 
@@ -753,7 +750,12 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             )}
           </div>
-        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "delivery" ? <Delivery /> : nav === "tabs" ? <Tabs /> : nav === "qr" ? <QrOrders /> : nav === "outlets" ? <Outlets /> : nav === "setup" ? <Setup /> : <Placeholder nav={nav} />}
+        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "orders" ? (
+          <Orders
+            onNewOrder={(ot) => { resetBill(); setOtype(ot); setNav("sell"); }}
+            onResumeBill={(b) => { resume(b); setNav("sell"); }}
+          />
+        ) : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "tabs" ? <Tabs /> : nav === "outlets" ? <Outlets /> : nav === "setup" ? <Setup /> : <Placeholder nav={nav} />}
       {scanOpen && <ScanModal onClose={() => setScanOpen(false)} onDetect={(code) => { const p = findByCode(code); if (p) { setScanOpen(false); tapProduct(p); } }} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
@@ -1274,12 +1276,12 @@ function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPi
 }
 
 function Placeholder({ nav }: { nav: string }) {
-  const n = NAV.find((x) => x.id === nav)!;
+  const n = NAV.find((x) => x.id === nav);
   return <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--ink2)" }}>
     <div style={{ width: 60, height: 60, borderRadius: 18, background: "var(--sur)", boxShadow: "var(--shadow)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral-text)" }} dangerouslySetInnerHTML={{ __html: n.icon }} />
+      {n ? <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral-text)" }} dangerouslySetInnerHTML={{ __html: n.icon }} /> : null}
     </div>
-    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{n.label}</div>
+    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{n ? n.label : nav}</div>
     <div style={{ fontSize: 13 }}>This existing screen is reskinned in a later stage.</div>
   </div>;
 }
