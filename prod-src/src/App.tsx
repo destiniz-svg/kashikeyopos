@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
 import { elevate, hashPin, uid } from "./api";
+import { ProdShell } from "./prodshell";
 import { Dashboard, Reports, Orders, Tabs, Admin } from "./screens";
 import { GuestPortal } from "./guest";
 import { t } from "./i18n";
@@ -79,7 +80,7 @@ function Till() {
 
   if (!st.ready) return <Splash />;
   if (!user) return <PinGate onSignIn={setUser} />;
-  return <Shell user={user} now={now} onSignOut={() => setUser(null)} />;
+  return <ProdShell user={user} onSignOut={() => setUser(null)} />;
 }
 
 function Splash() {
