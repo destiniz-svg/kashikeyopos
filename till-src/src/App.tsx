@@ -119,40 +119,48 @@ function PinGate({ onSignIn }: { onSignIn: (u: any) => void }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [sel, pin]);
+  /* Glass panel + full-width keypad, matched to the production login panel:
+     wordmark over the store line, a "← name" back affordance, tinted PIN dots
+     and big glassy keys that stretch the panel instead of floating loose. */
+  const panel: React.CSSProperties = { width: "min(440px, 94vw)", background: "var(--sur)", border: "1px solid var(--line)", borderRadius: "var(--r-xl)", boxShadow: "var(--shadow)", padding: "var(--s5)" };
   return (
     <div style={{ height: "100%", overflowY: "auto", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 22, padding: "calc(24px + var(--sat,0px)) 20px calc(24px + var(--sab,0px))" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ ...C.kchip, width: 52, height: 52, fontSize: 26, borderRadius: 16, margin: "0 auto 12px" }}>K</div>
-        <div style={{ fontWeight: 800, fontSize: 20 }}>{settings.storeName || "KashikeyoPOS"}</div>
-        <div className="num" style={{ fontSize: 34, fontWeight: 800, lineHeight: 1.15, marginTop: 6 }}>{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 2 }}>{now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</div>
-        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 10 }}>{sel ? "Enter your PIN" : "Who's on the till?"}</div>
+        <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 22, letterSpacing: "-.01em" }}>Kashikeyo<span style={{ color: "var(--coral-text)" }}>POS</span></div>
+        <div style={{ color: "var(--ink2)", fontSize: 13, marginTop: 3 }}>{(settings.storeName ? settings.storeName + " · " : "") + (sel ? "enter your PIN" : "who's on the till?")}</div>
+        <div className="num" style={{ fontSize: 26, fontWeight: 800, lineHeight: 1.2, marginTop: 8 }}>{now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+        <div style={{ color: "var(--ink2)", fontSize: 12.5 }}>{now.toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</div>
       </div>
       {!sel ? (
-        <div style={{ display: "grid", gridTemplateColumns: users.length > 1 ? "repeat(auto-fill,minmax(230px,1fr))" : "1fr", gap: 10, width: "min(720px, 94vw)", maxWidth: users.length > 1 ? undefined : 340 }}>
-          {users.map((u) => (
-            <button key={u.id} onClick={() => setSel(u)} style={{ ...C.card, display: "flex", alignItems: "center", gap: 12, minHeight: "var(--tap-lg)", padding: "12px 14px", textAlign: "left" }}>
-              <span style={{ ...C.avatar, width: 36, height: 36, fontSize: 14, background: "var(--green)" }}>{(u.name || "?")[0].toUpperCase()}</span>
-              <b style={{ flex: 1, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</b><small style={{ color: "var(--ink2)" }}>{u.role}</small>
-            </button>
-          ))}
-          {users.length === 0 && <button onClick={() => { store.cursor = 0; store.pullAll(); }} style={{ ...C.card, padding: "14px 16px", color: "var(--ink2)", fontSize: 13, fontWeight: 600 }}>No staff synced yet — tap to retry sync</button>}
+        <div className="glass" style={{ ...panel, width: users.length > 1 ? "min(720px, 94vw)" : "min(380px, 94vw)" }}>
+          <div style={{ display: "grid", gridTemplateColumns: users.length > 1 ? "repeat(auto-fill,minmax(230px,1fr))" : "1fr", gap: 10 }}>
+            {users.map((u) => (
+              <button key={u.id} onClick={() => setSel(u)} style={{ background: "var(--sur)", border: "1px solid var(--line)", borderRadius: "var(--r-m)", display: "flex", alignItems: "center", gap: 12, minHeight: "var(--tap-lg)", padding: "12px 14px", textAlign: "left" }}>
+                <span style={{ ...C.avatar, width: 36, height: 36, fontSize: 14, background: "var(--green)" }}>{(u.name || "?")[0].toUpperCase()}</span>
+                <b style={{ flex: 1, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.name}</b><small style={{ color: "var(--ink2)" }}>{u.role}</small>
+              </button>
+            ))}
+            {users.length === 0 && <button onClick={() => { store.cursor = 0; store.pullAll(); }} style={{ padding: "14px 16px", color: "var(--ink2)", fontSize: 13, fontWeight: 600 }}>No staff synced yet — tap to retry sync</button>}
+          </div>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, animation: err ? "shake .4s" : undefined }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ ...C.avatar, background: "var(--green)" }}>{(sel.name || "?")[0].toUpperCase()}</span>
-            <b>{sel.name}</b>{users.length > 1 && <button onClick={() => { setSel(null); setPin(""); }} style={{ color: "var(--coral-text)", fontSize: 12, fontWeight: 700, minHeight: 32, padding: "0 6px" }}>Switch</button>}
+        <div className="glass" style={{ ...panel, animation: err ? "shake .4s" : undefined }}>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 4 }}>
+            {users.length > 1
+              ? <button onClick={() => { setSel(null); setPin(""); }} style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: "var(--tap)", padding: "0 8px", margin: "0 -8px", color: "var(--ink2)", fontSize: 14, fontWeight: 700 }}>← {sel.name}</button>
+              : <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: "var(--tap)", color: "var(--ink2)", fontSize: 14, fontWeight: 700 }}>{sel.name}</span>}
           </div>
-          <div style={{ display: "flex", gap: 12 }}>{[0, 1, 2, 3].map((i) => (
-            <span key={i} style={{ width: 14, height: 14, borderRadius: 99, background: i < pin.length ? "var(--coral)" : "var(--sur2)", border: "1px solid var(--line)" }} />
+          <div style={{ display: "flex", gap: 14, justifyContent: "center", marginBottom: 18 }}>{[0, 1, 2, 3].map((i) => (
+            <span key={i} style={{ width: 14, height: 14, borderRadius: 99, background: i < pin.length ? "var(--coral)" : "var(--coralsoft)", transition: "background var(--dur-1)" }} />
           ))}</div>
-          <div style={{ display: "grid", gridTemplateColumns: `repeat(3,${keySize}px)`, gap: vw >= 760 ? 12 : 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: vw >= 760 ? 12 : 10 }}>
             {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((d, i) => d === "" ? <span key={i} /> : (
-              <button key={i} aria-label={d === "⌫" ? "Delete digit" : d} onClick={() => d === "⌫" ? setPin(pin.slice(0, -1)) : press(d)} style={{ ...C.key, height: keySize - 4 }}>{d}</button>
+              <button key={i} aria-label={d === "⌫" ? "Delete digit" : d} onClick={() => d === "⌫" ? setPin(pin.slice(0, -1)) : press(d)}
+                className="num" style={{ height: keySize, borderRadius: "var(--r-l)", background: "var(--sur)", border: "1px solid var(--line)", boxShadow: "0 1px 2px rgba(30,35,45,.08)", fontSize: 23, fontWeight: 700 }}>{d}</button>
             ))}
           </div>
-          {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700 }}>Wrong PIN</div>}
+          {err && <div style={{ color: "var(--red)", fontSize: 13, fontWeight: 700, textAlign: "center", marginTop: 12 }}>Wrong PIN</div>}
         </div>
       )}
       <style>{"@keyframes shake{10%,90%{transform:translateX(-2px)}30%,70%{transform:translateX(5px)}50%{transform:translateX(-5px)}}"}</style>
