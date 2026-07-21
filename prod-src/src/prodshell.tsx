@@ -86,8 +86,8 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
         </div>
         {/* Account cluster — sits beside the brand on its row; the nav takes the middle on wide screens */}
         <div className="order-2 lg:order-3 ml-auto flex items-center gap-2">
-          <span className={`hidden md:inline text-xs num ${_.sub}`}>{clock}</span>
-          <span className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium ${openShift ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"}`}>
+          <span className={`hidden xl:inline text-xs num ${_.sub}`}>{clock}</span>
+          <span className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium ${openShift ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-600"}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${openShift ? "bg-emerald-500" : "bg-amber-500"}`} />
             {openShift ? "Shift open" : "No shift"}
           </span>
@@ -98,14 +98,14 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
         </div>
         {/* Nav pill — desktop: centered in the middle (flex-1); narrow: its own
            full-width row that can wrap to two lines inside the growing banner */}
-        <nav className="order-3 lg:order-2 w-full lg:w-auto lg:flex-1 flex justify-center min-w-0">
-          <div className={`ksh-navpill backdrop-blur ${_.nav}`} style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "4px", padding: "5px 6px", borderRadius: "22px", border: "1px solid var(--k-border)", boxShadow: "0 6px 20px rgba(16,40,28,.10)", maxWidth: "100%" }}>
+        <nav className="order-3 lg:order-2 w-full lg:w-auto lg:flex-1 flex justify-center min-w-0 lg:px-2">
+          <div className={`ksh-navpill backdrop-blur mx-auto ${_.nav}`} style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "3px", padding: "4px 5px", borderRadius: "22px", border: "1px solid var(--k-border)", boxShadow: "0 6px 20px rgba(16,40,28,.10)", maxWidth: "100%" }}>
             {NAV.map(([id, label, path]) => {
               const on = nav === id;
               return (
-                <button key={id} onClick={() => setNav(id)} className={`transition ${on ? _.primary : _.navOff}`} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "7px", padding: "8px 14px", borderRadius: "999px", fontSize: "13.5px", fontWeight: 500, whiteSpace: "nowrap" }}>
+                <button key={id} onClick={() => setNav(id)} className={`transition ${on ? _.primary : _.navOff}`} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "6px", padding: "6px 11px", borderRadius: "999px", fontSize: "12.5px", fontWeight: 500, whiteSpace: "nowrap" }}>
                   <span className="relative" style={{ display: "inline-flex" }}>
-                    <Icon path={path} />
+                    <Icon path={path} size={16} />
                     {id === "orders" && orders.length > 0 && (
                       <span className="absolute -top-1.5 -right-2.5 h-4 px-1 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center">{orders.length}</span>
                     )}
