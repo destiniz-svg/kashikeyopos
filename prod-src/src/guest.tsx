@@ -121,6 +121,59 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
 
   const tableLbl = table ? T("Table") + " " + table : T("Order & pickup");
 
+  /* ── MY ACCOUNT (dues / payments / order history) ────────────────────────────
+     Rendered only for a recognised member link (?c=…). Reads the boot payload's
+     cust snapshot the till + Tabs tab keep in sync: balance = outstanding dues,
+     payments = collections logged against the tab, orders = recent history. */
+  const acct = boot.cust;
+  if ((view as any) === "account" && acct) {
+    const fmtDate = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    return (
+      <div style={G.wrap}><div style={G.phone}>
+        <header style={{ padding: "18px 16px 10px", display: "flex", alignItems: "center", gap: 10 }}>
+          <button onClick={() => setView("menu")} style={G.ghost}>←</button>
+          <div style={{ fontWeight: 800, fontSize: 18 }}>{acct.name || T("My account")}</div>
+        </header>
+        <div style={{ flex: 1, overflowY: "auto", padding: "6px 16px 40px" }}>
+          {/* Dues */}
+          <div style={{ borderRadius: 18, padding: 18, background: Number(acct.balance || 0) > 0 ? "var(--ambersoft)" : "var(--greensoft)", marginBottom: 14 }}>
+            <div style={{ fontSize: 13, color: "var(--ink2)" }}>{T("Outstanding balance")}</div>
+            <div className="num" style={{ fontSize: 30, fontWeight: 800, color: Number(acct.balance || 0) > 0 ? "var(--amber)" : "var(--green)" }}>{money(Number(acct.balance || 0))}</div>
+            {Number(acct.balance || 0) > 0
+              ? <div style={{ fontSize: 12.5, color: "var(--ink2)", marginTop: 4 }}>{T("Please settle with the cashier or via your usual method.")}</div>
+              : <div style={{ fontSize: 12.5, color: "var(--green)", marginTop: 4 }}>{T("All settled — nothing due. Thank you!")}</div>}
+            {acct.points != null && <div style={{ fontSize: 12.5, color: "var(--ink3)", marginTop: 8 }}>⭐ <b className="num">{acct.points}</b> {T("loyalty points")}</div>}
+          </div>
+
+          {/* Payments made */}
+          {Array.isArray(acct.payments) && acct.payments.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>{T("Payments made")}</div>
+              {acct.payments.map((p: any) => (
+                <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", borderRadius: 12, background: "var(--sur)", border: "1px solid var(--line)", marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, color: "var(--ink2)" }}>{fmtDate(p.at)} · {p.method}</span>
+                  <span className="num" style={{ fontWeight: 700, color: "var(--green)" }}>−{money(p.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Order history */}
+          <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>{T("Order history")}</div>
+          {Array.isArray(acct.orders) && acct.orders.length > 0 ? acct.orders.map((o: any) => (
+            <div key={o.id} style={{ padding: "10px 12px", borderRadius: 12, background: "var(--sur)", border: "1px solid var(--line)", marginBottom: 6 }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{o.no || "#"}</span>
+                <span className="num" style={{ fontSize: 13, fontWeight: 700 }}>{money(Number(o.total || 0))}</span>
+              </div>
+              <div style={{ fontSize: 12, color: "var(--ink3)", marginTop: 2 }}>{fmtDate(o.createdAt || o.t)} · {(o.items || o.lines || []).map((l: any) => (l.qty || l.q) + "× " + (l.name || l.n)).join(", ") || o.status}</div>
+            </div>
+          )) : <div style={{ fontSize: 13, color: "var(--ink3)", padding: "8px 0" }}>{T("No orders yet.")}</div>}
+        </div>
+      </div></div>
+    );
+  }
+
   /* ── ITEM DETAIL ─────────────────────────────────────────────────────────── */
   if (view === "item" && dm) {
     const t = tintFor(dm.cat);
@@ -235,6 +288,16 @@ export function GuestPortal({ slug, table, custId, storeId }: { slug: string; ta
             <button onClick={toggleLang} style={G.langBtn} aria-label="Language">{lang === "en" ? "ދިވެހި" : "EN"}</button>
             <button onClick={callWaiter} style={G.callBtn}>{called ? "✓" : "🔔"}</button>
           </div>
+          {acct && (
+            <button onClick={() => setView("account" as any)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", marginTop: 12, padding: "10px 14px", borderRadius: 13, background: Number(acct.balance || 0) > 0 ? "var(--ambersoft)" : "var(--greensoft)", border: "none", textAlign: "start" }}>
+              <span style={{ width: 34, height: 34, borderRadius: 99, background: "var(--sur)", display: "grid", placeItems: "center", fontSize: 15, flex: "0 0 34px" }}>👤</span>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "block", fontSize: 12, color: "var(--ink3)", fontWeight: 700 }}>{acct.name || T("My account")}</span>
+                <span className="num" style={{ display: "block", fontSize: 14, fontWeight: 800, color: Number(acct.balance || 0) > 0 ? "var(--amber)" : "var(--green)" }}>{Number(acct.balance || 0) > 0 ? money(Number(acct.balance)) + " " + T("due") : T("No dues")}</span>
+              </span>
+              <span style={{ color: "var(--ink3)", fontSize: 18 }}>›</span>
+            </button>
+          )}
           <div style={G.search}>
             <span style={{ color: "var(--ink3)" }}>🔍</span>
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={T("Search for a dish…")} style={{ flex: 1, border: "none", outline: "none", background: "transparent", color: "var(--ink)", fontSize: 14 }} />
