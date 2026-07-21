@@ -256,27 +256,99 @@ function Grid({ rows }: { rows: [string, string][] }) {
    a t.occupied flag nothing ever set, so every table always read "free".
    Floor owns tables; this screen owns tickets. */
 const KDS_COLS = ["Active", "New", "Preparing", "Ready", "Delivered", "Done", "Wasted", "All"];
-export function Orders() {
+
+/* ── Orders: every channel in one place, categorized so a busy delivery/
+   takeaway queue never buries the walk-in/QR-table tickets Floor already
+   owns. Category is a pure projection of otype — never a stored field, so
+   it can't drift out of sync with what the register/guest portal wrote. */
+type OrdCat = "walk" | "deliv" | "away";
+const ORD_CATS: { id: OrdCat; label: string; emoji: string }[] = [
+  { id: "walk", label: "Walking & QR Tables", emoji: "🍽️" },
+  { id: "deliv", label: "Delivery", emoji: "🛵" },
+  { id: "away", label: "Takeaway", emoji: "🥡" },
+];
+const catOf = (o: any): OrdCat => o.otype === "delivery" ? "deliv" : o.otype === "takeaway" ? "away" : "walk";
+export function Orders({ onNewOrder, onResumeBill }: { onNewOrder?: (ot: "takeaway" | "delivery") => void; onResumeBill?: (b: any) => void }) {
   const st = useStore();
+  const [cat, setCat] = useState<OrdCat>("walk");
   const [col, setCol] = useState("Active");
   const orders = st.byKind("orders").map((e) => e.data);
-  const count = (c: string) => c === "All" ? orders.length : orders.filter((o) => (o.status || "New").toLowerCase() === c.toLowerCase() || (c === "Active" && !["done", "delivered", "wasted"].includes((o.status || "new").toLowerCase()))).length;
-  const shown = col === "All" ? orders : orders.filter((o) => (o.status || "New").toLowerCase() === col.toLowerCase() || (col === "Active" && !["done", "delivered", "wasted"].includes((o.status || "new").toLowerCase())));
+  const parked = st.byKind("parked").map((e) => e.data);
+  const zones = st.byKind("zones").map((e) => e.data);
+  const catOrders = orders.filter((o) => catOf(o) === cat);
+  /* Held/fired bills for this category not yet fully done — resumable. A
+     fired bill's own ticket is counted via catOrders, so this only adds
+     bills that never got a kitchen ticket (still in the register) to avoid
+     double-counting one order twice in the category badge. */
+  const catHolds = parked.filter((b: any) => catOf(b) === cat && !b.orderId);
+  const count = (c: OrdCat) => orders.filter((o) => catOf(o) === c && !["done", "wasted"].includes(String(o.status || "new").toLowerCase())).length
+    + parked.filter((b: any) => catOf(b) === c && !b.orderId).length;
+  const colCount = (c: string) => c === "All" ? catOrders.length : catOrders.filter((o) => (o.status || "New").toLowerCase() === c.toLowerCase() || (c === "Active" && !["done", "delivered", "wasted"].includes((o.status || "new").toLowerCase()))).length;
+  const shown = col === "All" ? catOrders : catOrders.filter((o) => (o.status || "New").toLowerCase() === col.toLowerCase() || (col === "Active" && !["done", "delivered", "wasted"].includes((o.status || "new").toLowerCase())));
+  const billItems = (b: any) => (b.lines || []).reduce((a: number, l: any) => a + (l.qty || 0), 0);
+  const billSub = (b: any) => (b.lines || []).reduce((a: number, l: any) => a + (l.qty || 0) * (l.price || 0), 0);
+  const slug = (() => { try { return JSON.parse(localStorage.getItem("kashikeyo-cloud") || "{}").slug || ""; } catch { return ""; } })();
 
   return (
     <div style={X.scroll}>
-      <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Kitchen</div>
-      <div style={{ color: "var(--ink2)", fontSize: 12.5, margin: "2px 0 14px" }}>Open tickets from the register, QR and delivery — bump each one as it moves. Tables live on the Floor tab.</div>
-      <div style={{ display: "flex", gap: 7, marginBottom: 12, overflowX: "auto" }}>
-        {KDS_COLS.map((c) => <button key={c} onClick={() => setCol(c)} style={{ ...X.chip, ...(col === c ? X.chipOn : {}) }}>{c} <span style={{ opacity: .6 }}>{count(c)}</span></button>)}
+      <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Orders</div>
+      <div style={{ color: "var(--ink2)", fontSize: 12.5, margin: "2px 0 14px" }}>Every order across the register, QR and delivery — grouped by channel so nothing gets lost in one long list.</div>
+      <div style={{ display: "flex", gap: 7, marginBottom: 12, flexWrap: "wrap" }}>
+        {ORD_CATS.map((c) => (
+          <button key={c.id} onClick={() => { setCat(c.id); setCol("Active"); }} style={{ ...X.chip, ...(cat === c.id ? X.chipOn : {}) }}>
+            {c.emoji} {c.label} <span style={{ opacity: .6 }}>{count(c.id)}</span>
+          </button>
+        ))}
       </div>
-      <div style={{ ...X.card, padding: 0, minHeight: 260 }}>
+      {cat === "walk" ? (
+        <div style={{ background: "var(--greensoft)", borderRadius: 14, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start", marginBottom: 14 }}>
+          <span style={{ fontSize: 18 }}>▦</span>
+          <div style={{ flex: 1, fontSize: 12.5, color: "var(--green)", fontWeight: 600, lineHeight: 1.45 }}>
+            Print one QR per table — guests scan, order and pay from their phone, and it lands here tagged with the table, same as a walk-in seated at the register.
+            {slug && <div style={{ marginTop: 8 }}><button onClick={() => window.open("/?s=" + encodeURIComponent(slug), "_blank")} style={{ ...X.pill, cursor: "pointer", background: "var(--sur)", color: "var(--green)", borderColor: "var(--green)" }}>Open live guest view ↗</button></div>}
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => onNewOrder?.(cat === "deliv" ? "delivery" : "takeaway")} style={{ ...X.pill, cursor: "pointer", color: "var(--coral-text)", borderColor: "var(--coral)", marginBottom: 14 }}>+ New {cat === "deliv" ? "delivery" : "takeaway"} order</button>
+      )}
+      {catHolds.length > 0 && (
+        <>
+          <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "var(--ink3)", margin: "0 0 8px" }}>OPEN BILLS · TAP TO RESUME</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {catHolds.map((b: any) => (
+              <button key={b.id} onClick={() => onResumeBill?.(b)} style={{ ...X.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "11px 14px" }}>
+                <span style={{ fontSize: 12.5, color: "var(--ink2)" }}>{billItems(b)} items{b.custName ? " · " + b.custName : ""}</span>
+                <div style={{ flex: 1 }} />
+                <span className="num" style={{ fontWeight: 800, fontSize: 13 }}>{money(billSub(b))}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", color: "var(--ink3)", margin: "0 0 8px" }}>KITCHEN TICKETS</div>
+      <div style={{ display: "flex", gap: 7, marginBottom: 12, overflowX: "auto" }}>
+        {KDS_COLS.map((c) => <button key={c} onClick={() => setCol(c)} style={{ ...X.chip, ...(col === c ? X.chipOn : {}) }}>{c} <span style={{ opacity: .6 }}>{colCount(c)}</span></button>)}
+      </div>
+      <div style={{ ...X.card, padding: 0, minHeight: 200 }}>
         {shown.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(235px,1fr))", gap: 12, padding: 14 }}>
           {shown.map((o, i) => <Ticket key={o.id || i} o={o} />)}
         </div> : <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--ink3)" }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>🍳</div>No tickets here — orders land the moment the register or a guest fires one.
+          <div style={{ fontSize: 30, marginBottom: 8 }}>🍳</div>No {ORD_CATS.find((c) => c.id === cat)?.label.toLowerCase()} tickets right now.
         </div>}
       </div>
+      {cat === "deliv" && (
+        <div style={{ ...X.card, padding: 16, marginTop: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", marginBottom: 4 }}>DELIVERY ZONES · BY ISLAND</div>
+          {zones.length ? zones.map((z: any) => (
+            <div key={z.id || z.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 4px", borderBottom: "1px solid var(--line)" }}>
+              <span style={{ color: "var(--coral-text)", fontSize: 15 }}>📍</span>
+              <b style={{ flex: 1, fontSize: 13.5 }}>{z.name}</b>
+              {z.eta && <span style={{ fontSize: 12, color: "var(--ink3)" }}>{z.eta}</span>}
+              <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 62, textAlign: "right", color: Number(z.fee) ? "var(--ink)" : "var(--green)" }}>{Number(z.fee) ? money(z.fee) : "Free"}</span>
+            </div>
+          )) : <div style={X.empty}>No delivery zones yet — add them in the back office.</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -359,142 +431,6 @@ function Kpi({ k, v }: { k: string; v: string; big?: boolean }) {
     <div style={{ color: "var(--ink3)", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{k}</div>
     <div className="num" style={{ fontWeight: 800, fontSize: 24, marginTop: 6, color: "var(--green)" }}>{v}</div>
   </div>;
-}
-
-/* ── Delivery board (prototype: Online ordering & delivery) ────────────────── */
-const DELIV_STEPS = ["Preparing", "On the way", "Delivered"];
-export function Delivery() {
-  const st = useStore();
-  const zones = st.byKind("zones").map((e) => e.data);
-  const parked = st.byKind("parked").map((e) => e.data).filter((b: any) => b.otype === "delivery").sort((a: any, b: any) => (a.t || 0) - (b.t || 0));
-  const products = st.byKind("products").map((e) => e.data);
-  const nameOf = (pid: string) => products.find((p: any) => p.id === pid)?.name || "Item";
-  const advance = (b: any) => {
-    const next = (b.delivStatus || 0) + 1;
-    if (next > 2) { store.del([{ kind: "parked", id: b.id }]); return; }
-    store.commit([{ kind: "parked", id: b.id, data: { ...b, delivStatus: next } }]);
-  };
-  const pillCol = (s: number): [string, string] => s >= 2 ? ["var(--greensoft)", "var(--green)"] : s === 1 ? ["var(--coralsoft)", "var(--coral)"] : ["var(--ambersoft)", "var(--amber)"];
-  return (
-    <div style={X.scroll}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-        <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>Online ordering &amp; delivery</div>
-        <span style={{ ...X.tag, background: "var(--greensoft)", color: "var(--green)" }}>● Web store live</span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 14, alignItems: "start" }}>
-        <div style={{ ...X.card, padding: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", marginBottom: 10 }}>LIVE DELIVERIES</div>
-          {parked.length ? parked.map((b: any) => {
-            const s = b.delivStatus || 0; const [bg, fg] = pillCol(s);
-            const items = (b.lines || []).map((l: any) => l.qty + "× " + nameOf(l.pid)).join(" · ");
-            return (
-              <div key={b.id} style={{ border: "1px solid var(--line)", borderRadius: 14, padding: 13, marginBottom: 10, background: "var(--sur2)" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <b style={{ fontSize: 13.5 }}>{b.no || "Delivery"}</b>
-                  <span style={{ fontSize: 12, color: "var(--ink2)" }}>{(b.custName || "Walk-in") + (b.zone ? " · " + b.zone : "")}</span>
-                  <div style={{ flex: 1 }} />
-                  <span style={{ ...X.tag, background: bg, color: fg }}>{DELIV_STEPS[Math.min(s, 2)]}</span>
-                </div>
-                <div style={{ fontSize: 12.5, color: "var(--ink2)", margin: "7px 0 10px" }}>{items || "—"}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  {b.deliveryNote && <span style={{ fontSize: 11.5, color: "var(--ink3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📍 {b.deliveryNote}</span>}
-                  <div style={{ flex: 1 }} />
-                  <button onClick={() => advance(b)} style={{ ...X.pill, cursor: "pointer", color: "var(--coral-text)", borderColor: "var(--coral)" }}>{s >= 2 ? "Complete ✓" : "Advance →"}</button>
-                </div>
-              </div>
-            );
-          }) : <div style={X.empty}>No live deliveries right now. Delivery orders from the register appear here.</div>}
-        </div>
-        <div style={{ ...X.card, padding: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", marginBottom: 4 }}>DELIVERY ZONES · BY ISLAND</div>
-          {zones.length ? zones.map((z: any) => (
-            <div key={z.id || z.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 4px", borderBottom: "1px solid var(--line)" }}>
-              <span style={{ color: "var(--coral-text)", fontSize: 15 }}>📍</span>
-              <b style={{ flex: 1, fontSize: 13.5 }}>{z.name}</b>
-              {z.eta && <span style={{ fontSize: 12, color: "var(--ink3)" }}>{z.eta}</span>}
-              <span className="num" style={{ fontWeight: 800, fontSize: 13, minWidth: 62, textAlign: "right", color: Number(z.fee) ? "var(--ink)" : "var(--green)" }}>{Number(z.fee) ? money(z.fee) : "Free"}</span>
-            </div>
-          )) : <div style={X.empty}>No delivery zones yet — add them in the back office.</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── QR Orders (prototype: same portal as the customer/guest app) ───────────
-   The guest portal (guest.tsx, served at /?s=<slug>&t=<table>) posts to
-   /p/:slug/order, which drops an `orders` entity tagged source:"qr" + table +
-   otype. Those sync straight to the till — this screen is the incoming-orders
-   view over exactly that stream, with a phone preview of what guests see. */
-export function QrOrders() {
-  const st = useStore();
-  const [narrow, setNarrow] = useState(typeof window !== "undefined" && window.innerWidth < 760);
-  useEffect(() => { const on = () => setNarrow(window.innerWidth < 760); window.addEventListener("resize", on); return () => window.removeEventListener("resize", on); }, []);
-  const settings = st.byKind("settings").map((e) => e.data)[0] || {};
-  const storeName = settings.storeName || "Kashikeyo Café";
-  const products = st.byKind("products").map((e) => e.data).filter((p: any) => p && !p.archived).slice(0, 6);
-  const slug = (() => { try { return JSON.parse(localStorage.getItem("kashikeyo-cloud") || "{}").slug || ""; } catch { return ""; } })();
-  const incoming = st.byKind("orders").map((e) => e.data)
-    .filter((o: any) => o.source === "qr" && !["done", "delivered", "wasted"].includes(String(o.status || "new").toLowerCase()))
-    .sort((a: any, b: any) => (a.createdAt || a.t || 0) - (b.createdAt || b.t || 0));
-  const itemsLine = (o: any) => (o.items || o.lines || []).map((l: any) => (l.qty || l.q) + "× " + (l.name || l.n)).join(", ");
-  return (
-    <div style={X.scroll}>
-      <div style={{ fontFamily: "var(--num)", fontWeight: 800, fontSize: 19 }}>QR Orders</div>
-      <div style={{ color: "var(--ink3)", fontSize: 13, margin: "3px 0 16px", maxWidth: 560 }}>Guests scan a table QR, order from their phone, and tickets land straight on the kitchen display — no re-keyed tablets. It's the same menu and portal your customers use.</div>
-      <div style={{ display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0,300px) minmax(0,1fr)", gap: 18, alignItems: "start" }}>
-        {/* Phone preview of the guest portal */}
-        <div style={{ background: "#1B1A17", borderRadius: 30, padding: 10, boxShadow: "var(--shadow)", justifySelf: "center", width: "100%", maxWidth: 300 }}>
-          <div style={{ background: "var(--bg)", borderRadius: 22, overflow: "hidden", display: "flex", flexDirection: "column", height: 500 }}>
-            <div style={{ padding: "16px 16px 12px", borderBottom: "1px solid var(--line)" }}>
-              <div style={{ width: 46, height: 5, borderRadius: 99, background: "var(--sur2)", margin: "0 auto 12px" }} />
-              <div style={{ fontWeight: 800, fontSize: 15 }}>{storeName}</div>
-              <div style={{ fontSize: 11.5, color: "var(--ink3)" }}>Table 4 · Scan · order · pay</div>
-            </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-              {products.map((p: any) => { const [bg, fg] = tintFor(p.cat || p.name); return (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--sur)", border: "1px solid var(--line)", borderRadius: 13, padding: "9px 11px" }}>
-                  <span style={{ width: 30, height: 30, borderRadius: 9, background: bg, color: fg, display: "grid", placeItems: "center", fontSize: 15 }}>{p.emoji || (p.name || "?")[0]}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 12.5, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</b><small className="num" style={{ color: "var(--ink3)", fontSize: 11 }}>{money(p.price || 0)}</small></div>
-                  <span style={{ width: 24, height: 24, borderRadius: 99, background: "var(--coralsoft)", color: "var(--coral-text)", display: "grid", placeItems: "center", fontWeight: 800 }}>+</span>
-                </div>
-              ); })}
-            </div>
-            <div style={{ padding: 12, borderTop: "1px solid var(--line)" }}>
-              <div style={{ background: "var(--coral)", color: "var(--coralink)", borderRadius: 13, padding: "12px", textAlign: "center", fontWeight: 800, fontSize: 13.5, opacity: .9 }}>Place order</div>
-            </div>
-          </div>
-        </div>
-        {/* Incoming orders + info */}
-        <div>
-          <div style={{ ...X.card, padding: 16, marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "var(--ink3)", flex: 1 }}>INCOMING QR ORDERS</div>
-              {incoming.length > 0 && <span style={{ ...X.tag, background: "var(--coralsoft)", color: "var(--coral-text)" }}>{incoming.length}</span>}
-            </div>
-            {incoming.length ? incoming.map((o: any) => {
-              const isNew = String(o.status || "new").toLowerCase() === "new";
-              return (
-                <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px", borderRadius: 13, background: "var(--sur2)", marginBottom: 8, flexWrap: "wrap" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 99, background: isNew ? "var(--coral)" : "var(--green)", animation: isNew ? "pulse 1.4s infinite" : undefined }} />
-                  <b style={{ fontSize: 13 }}>#{o.no || o.id}</b>
-                  <span style={{ fontSize: 11.5, color: "var(--ink3)", fontWeight: 700 }}>QR{o.table ? " · " + o.table : ""}</span>
-                  <span style={{ flex: 1, minWidth: 120, fontSize: 12.5, color: "var(--ink2)", textAlign: "end" }}>{itemsLine(o) || "—"}</span>
-                  <button onClick={() => setStatus(o, isNew ? "preparing" : "ready")} style={{ ...X.pill, cursor: "pointer", color: "var(--coral-text)", borderColor: "var(--coral)" }}>{isNew ? "Accept →" : "Ready →"}</button>
-                </div>
-              );
-            }) : <div style={{ ...X.empty, textAlign: "center", padding: "30px 16px" }}>No incoming QR orders. Guests' orders appear here the moment they tap Place order.</div>}
-          </div>
-          <div style={{ background: "var(--greensoft)", borderRadius: 14, padding: "14px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <span style={{ fontSize: 18 }}>▦</span>
-            <div style={{ flex: 1, fontSize: 12.5, color: "var(--green)", fontWeight: 600, lineHeight: 1.45 }}>Print one QR per table. Orders are tagged with source and table, and roll into the Z-report automatically.
-              {slug && <div style={{ marginTop: 8 }}><button onClick={() => window.open("/?s=" + encodeURIComponent(slug), "_blank")} style={{ ...X.pill, cursor: "pointer", background: "var(--sur)", color: "var(--green)", borderColor: "var(--green)" }}>Open live guest view ↗</button></div>}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 /* ── Outlets (prototype: multi-outlet consolidated view) ────────────────────

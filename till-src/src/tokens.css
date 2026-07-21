@@ -10,16 +10,19 @@
    New tokens (spacing/radius/touch/motion/focus) power the shared primitives
    in ui.tsx and all Phase-2 refactors. */
 :root{
-  /* canvas + surfaces */
-  --bg:#EEF0F2;--sur:rgba(255,255,255,.72);--sur2:rgba(96,100,112,.09);
-  --line:rgba(96,100,112,.20);
+  /* canvas + surfaces — Production's cool mint-cream wash */
+  --bg:#EBF1EC;--sur:rgba(255,255,255,.82);--sur2:rgba(96,112,100,.09);
+  --line:rgba(96,112,100,.20);
   /* text ladder (AA on --bg): primary / secondary / tertiary */
-  --ink:#1B1A17;--ink2:#4C525A;--ink3:#666C75;
-  /* brand: coral is a fill; --coral-text is the AA-safe type variant */
-  --coral:#E1552D;--coralink:#FFF6EF;--coralsoft:rgba(225,85,45,.13);
-  --coral-text:#B23E1B;
+  --ink:#1B1A17;--ink2:#4C534E;--ink3:#666C68;
+  /* brand: Production's forest green (#0FA968, sampled from web/dist/index.html
+     on main) is now the fill; --coral* names kept as the public API so every
+     existing screen restyles for free. The coral hex (#C7431D) stays only as
+     the logo glyph accent — see kchipSm below. */
+  --coral:#0FA968;--coralink:#FFFFFF;--coralsoft:rgba(15,169,104,.13);
+  --coral-text:#0B7A4C;
   /* semantic: fills + soft pairs (text-on-soft uses the strong color) */
-  --green:#177E4B;--greensoft:rgba(23,126,75,.13);
+  --green:#0FA968;--greensoft:rgba(15,169,104,.13);
   --amber:#9A6208;--ambersoft:rgba(154,98,8,.14);
   --red:#C13A26;--redsoft:rgba(193,58,38,.12);
   --blue:#2F6BE0;--bluesoft:rgba(47,107,224,.12);
@@ -43,12 +46,12 @@
    and inset content in JS via the vars above. Tablet/desktop have no insets. */
 html[data-device=desktop]{--sat:0px;--sab:0px;--sal:0px;--sar:0px}
 html[data-dark]{
-  --bg:#131110;--sur:rgba(36,30,24,.66);--sur2:rgba(255,255,255,.06);
+  --bg:#10130F;--sur:rgba(24,32,26,.66);--sur2:rgba(255,255,255,.06);
   --line:rgba(255,255,255,.10);
-  --ink:#F3EBDA;--ink2:#ABA08A;--ink3:#8D8471;
-  --coral:#F06438;--coralink:#2A130A;--coralsoft:#41261A;
-  --coral-text:#FF8A5C;
-  --green:#66B08B;--greensoft:#24352B;--amber:#DCA83E;--ambersoft:#3A2F17;
+  --ink:#E9F3EC;--ink2:#9BAB9F;--ink3:#818E84;
+  --coral:#3FBE82;--coralink:#08210F;--coralsoft:#1B3324;
+  --coral-text:#5FD79D;
+  --green:#3FBE82;--greensoft:#1B3324;--amber:#DCA83E;--ambersoft:#3A2F17;
   --red:#E06A52;--redsoft:#3D211B;--blue:#7FA7F0;--bluesoft:rgba(127,167,240,.14);
   --shadow:0 1px 2px rgba(0,0,0,.3),0 12px 30px -14px rgba(0,0,0,.6);
   --shadow-float:0 4px 12px rgba(0,0,0,.4),0 26px 60px -18px rgba(0,0,0,.7);
@@ -57,14 +60,14 @@ html[data-dark]{
 html,body,#root{height:100%}
 body{
   margin:0;
-  /* canvas: one warm + one cool whisper over a near-flat wash (was 4 layers) */
+  /* canvas: one green + one cool whisper over a near-flat mint wash */
   background:
-    radial-gradient(1100px 620px at 8% -5%,rgba(225,85,45,.07),transparent 60%),
-    radial-gradient(1000px 700px at 105% 12%,rgba(47,107,224,.06),transparent 55%),
-    linear-gradient(160deg,#F0F2F4,#E8EDF0);
+    radial-gradient(1100px 620px at 8% -5%,rgba(15,169,104,.07),transparent 60%),
+    radial-gradient(1000px 700px at 105% 12%,rgba(47,107,224,.05),transparent 55%),
+    linear-gradient(160deg,#EEF3EF,#E6EEE7);
   color:var(--ink);font-family:'Instrument Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;
 }
-html[data-dark] body{background:radial-gradient(1100px 600px at 8% -5%,rgba(240,100,56,.10),transparent 60%),radial-gradient(1000px 700px at 105% 12%,rgba(60,110,220,.08),transparent 55%),linear-gradient(160deg,#16130F,#0E0C09)}
+html[data-dark] body{background:radial-gradient(1100px 600px at 8% -5%,rgba(63,190,130,.10),transparent 60%),radial-gradient(1000px 700px at 105% 12%,rgba(60,110,220,.08),transparent 55%),linear-gradient(160deg,#111611,#0C0F0C)}
 .glass{-webkit-backdrop-filter:blur(16px) saturate(1.4);backdrop-filter:blur(16px) saturate(1.4)}
 .num{font-family:var(--num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 button{font-family:inherit;border:none;background:none;cursor:pointer;color:inherit}

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
 import { elevate, hashPin, uid } from "./api";
-import { Dashboard, Reports, Orders, Delivery, Tabs, QrOrders, Outlets, Setup } from "./screens";
+import { Dashboard, Reports, Orders, Tabs, Admin } from "./screens";
 import { GuestPortal } from "./guest";
 import { t } from "./i18n";
 import { IconBtn, Modal, Stepper, useToast } from "./ui";
@@ -41,22 +41,21 @@ const tintFor = (cat: string) => { let h = 0; for (const c of cat || "") h = (h 
    nav). `to` deep-links a module that lives in the back-office cockpit (/back);
    `soon` marks screens still being built (Placeholder). Register/Kitchen/
    Dashboard/Analytics map onto our existing screens. */
-/* Front-of-house tabs only (prototype register spec §2): Register · Floor ·
-   Kitchen · QR Orders · Delivery · Tabs · Day End. Dashboard is kept for a
-   shift-lead's at-a-glance day view. Everything else managerial (Analytics,
-   Outlets, Inventory, Expenses, Staff, Configurations/Setup) lives in the
-   master cockpit at /back — one tap away via the profile menu's Admin panel.
-   Those screen components stay in the codebase (render switch below), just off
-   the cashier's nav. */
+/* Top nav — Production's tab set (Sell/Orders/Dashboard/Reports/Admin) kept
+   in full, merged with the tabs the operational spec requires (Floor/Tabs/
+   Day End) and Staging's channel-categorized Orders. Kitchen/QR Orders/
+   Delivery are no longer separate pills — they're the three category tabs
+   inside Orders now, so the top row never grows past what Production+spec
+   actually needs. */
 const NAV = [
-  { id: "sell", label: "Register", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
+  { id: "sell", label: "Sell", icon: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2l2.6 12.4A2 2 0 0 0 8.5 17h9a2 2 0 0 0 2-1.6L21.5 7H6"/>' },
   { id: "floor", label: "Floor", icon: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>' },
-  { id: "kitchen", label: "Kitchen", icon: '<path d="M6 3v7a3 3 0 0 0 6 0V3M9 3v18M18 3c-1.5 1-2 3-2 6s.5 4 2 5v7"/>' },
-  { id: "qr", label: "QR Orders", icon: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v7M17 20h4"/>' },
-  { id: "delivery", label: "Delivery", icon: '<path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>' },
+  { id: "orders", label: "Orders", icon: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>' },
   { id: "tabs", label: "Tabs", icon: '<path d="M3 6a2 2 0 0 1 2-2h9l4 4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 12h6M8 16h4"/>' },
   { id: "dayend", label: "Day End", icon: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>' },
   { id: "dashboard", label: "Dashboard", icon: '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>' },
+  { id: "analytics", label: "Reports", icon: '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>' },
+  { id: "admin", label: "Admin", icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>' },
 ] as { id: string; label: string; icon: string; to?: string; soon?: boolean }[];
 const METHODS = ["Cash", "Card", "BML Gateway", "Transfer", "QR"] as const;
 
@@ -753,7 +752,12 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
               </div>
             )}
           </div>
-        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "kitchen" ? <Orders /> : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "delivery" ? <Delivery /> : nav === "tabs" ? <Tabs /> : nav === "qr" ? <QrOrders /> : nav === "outlets" ? <Outlets /> : nav === "setup" ? <Setup /> : <Placeholder nav={nav} />}
+        ) : nav === "floor" ? floorInner : nav === "dayend" ? dayEndInner : nav === "orders" ? (
+          <Orders
+            onNewOrder={(ot) => { resetBill(); setOtype(ot); setNav("sell"); }}
+            onResumeBill={(b) => { resume(b); setNav("sell"); }}
+          />
+        ) : nav === "dashboard" ? <Dashboard /> : nav === "analytics" ? <Reports /> : nav === "tabs" ? <Tabs /> : nav === "admin" ? <Admin /> : <Placeholder nav={nav} />}
       {scanOpen && <ScanModal onClose={() => setScanOpen(false)} onDetect={(code) => { const p = findByCode(code); if (p) { setScanOpen(false); tapProduct(p); } }} />}
       {modProd && <ModifierModal product={modProd} onClose={() => setModProd(null)} onAdd={(mods) => { addLine(modProd, mods); setModProd(null); }} />}
       {pay && <PaySheet total={totals.total} currency={currency} hasCustomer={!!cust} custName={cust?.name} onClose={() => setPay(false)} onDone={onCharged} />}
@@ -1274,12 +1278,12 @@ function CustomerPicker({ customers, onPick, onClose }: { customers: any[]; onPi
 }
 
 function Placeholder({ nav }: { nav: string }) {
-  const n = NAV.find((x) => x.id === nav)!;
+  const n = NAV.find((x) => x.id === nav);
   return <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--ink2)" }}>
     <div style={{ width: 60, height: 60, borderRadius: 18, background: "var(--sur)", boxShadow: "var(--shadow)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral-text)" }} dangerouslySetInnerHTML={{ __html: n.icon }} />
+      {n && <svg viewBox="0 0 24 24" width={26} height={26} style={{ color: "var(--coral-text)" }} dangerouslySetInnerHTML={{ __html: n.icon }} />}
     </div>
-    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{n.label}</div>
+    <div style={{ fontWeight: 800, fontSize: 18, color: "var(--ink)" }}>{n ? n.label : nav}</div>
     <div style={{ fontSize: 13 }}>This existing screen is reskinned in a later stage.</div>
   </div>;
 }
@@ -1307,11 +1311,11 @@ const C: Record<string, React.CSSProperties> = {
   cartSheetWrap: { position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "flex-end", zIndex: 40, animation: "fade .2s" },
   cartSheetM: { width: "100%", maxHeight: "88vh", display: "flex", flexDirection: "column", background: "var(--sur)", borderRadius: "20px 20px 0 0", animation: "sheet .3s cubic-bezier(.2,.9,.3,1.1)", overflow: "hidden", paddingBottom: "var(--sab,0px)" },
   kchip: { width: 40, height: 40, borderRadius: 13, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 20, boxShadow: "0 6px 16px rgba(225,85,45,.34)" },
-  kchipSm: { width: 30, height: 30, borderRadius: 9, background: "linear-gradient(150deg,#F0743F,#E1552D)", color: "#FFF6EF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flex: "0 0 30px" },
+  kchipSm: { width: 30, height: 30, borderRadius: 9, background: "linear-gradient(150deg,#17B378,#0B7A4C)", color: "#FFFFFF", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 15, flex: "0 0 30px" },
   navrow: { display: "flex", alignItems: "center", gap: 6, padding: "8px 16px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
   navrowM: { display: "flex", alignItems: "center", gap: 5, padding: "7px 10px", overflowX: "auto", borderBottom: "1px solid var(--line)", flex: "0 0 auto" },
   npill: { display: "flex", alignItems: "center", gap: 8, padding: "8px 15px", borderRadius: 999, color: "var(--ink2)", background: "transparent", whiteSpace: "nowrap", cursor: "pointer", flex: "0 0 auto" },
-  npillOn: { background: "var(--coralsoft)", color: "var(--coral-text)", animation: "pop .25s" },
+  npillOn: { background: "var(--coral)", color: "var(--coralink)", animation: "pop .25s" },
   railBtn: { display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "10px 4px", borderRadius: 13, color: "var(--ink2)" },
   railOn: { background: "var(--coralsoft)", color: "var(--coral-text)" },
   header: { height: 58, flex: "0 0 58px", display: "flex", alignItems: "center", gap: 12, padding: "0 18px" },
