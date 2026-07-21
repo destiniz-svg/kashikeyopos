@@ -192,13 +192,6 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   const [custPick, setCustPick] = useState(false);
   const [table, setTable] = useState("");
   const [tablePick, setTablePick] = useState(false);
-  /* Multi-party Floor: a table can host 2+ separate bills at once. `guests`
-     and `partyName` are per-in-progress-bill labels (not a linked customer)
-     captured at seat time via SeatModal, carried through park/sendKOT/resume
-     just like table/otype already are. */
-  const [guests, setGuests] = useState(1);
-  const [partyName, setPartyName] = useState("");
-  const [seatModal, setSeatModal] = useState<string | null>(null);
   const [zone, setZone] = useState<any>(null);
   const [zonePick, setZonePick] = useState(false);
   const [deliveryNote, setDeliveryNote] = useState("");
@@ -331,7 +324,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     resetBill(); setPay(false);
   };
 
-  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); setDeliveryNote(""); setResumedOrderId(null); setDiscAuth(null); setGuests(1); setPartyName(""); };
+  const resetBill = () => { setCart([]); setDisc(0); setDiscPct(0); setCust(null); setTable(""); setZone(null); setDeliveryNote(""); setResumedOrderId(null); setDiscAuth(null); };
   /* Reducing a line on a bill already fired to the kitchen goes through the
      void-reason flow; pre-KOT edits stay instant. */
   const requestDec = (key: string, pid: string, name: string) => {
@@ -369,7 +362,7 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
 
   const park = () => {
     if (!cart.length) return;
-    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, discAuth: discAuth || undefined, customerId: cust?.id || null, custName: cust?.name || partyName || null, guests, userName: user.name, storeId: settings.storeId || "main", orderId: resumedOrderId || undefined };
+    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, discAuth: discAuth || undefined, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main", orderId: resumedOrderId || undefined };
     store.commit([{ kind: "parked", id: bill.id, data: bill }]);
     resetBill();
   };
@@ -381,10 +374,10 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     const oid = uid();
     const order = {
       id: oid, no: orderNo, t: Date.now(), createdAt: Date.now(), source: "pos", status: "new",
-      otype, table: table || null, customerName: cust?.name || partyName || null, userName: user.name, storeId: settings.storeId || "main",
+      otype, table: table || null, customerName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main",
       lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, emoji: p?.emoji, mods: l.mods || [] }; }),
     };
-    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, discAuth: discAuth || undefined, customerId: cust?.id || null, custName: cust?.name || partyName || null, guests, userName: user.name, storeId: settings.storeId || "main", orderId: oid, no: orderNo };
+    const bill = { id: uid(), t: Date.now(), otype, table: table || null, lines: cart, disc, discPct, discAuth: discAuth || undefined, customerId: cust?.id || null, custName: cust?.name || null, userName: user.name, storeId: settings.storeId || "main", orderId: oid, no: orderNo };
     store.commit([{ kind: "orders", id: oid, data: order }, { kind: "parked", id: bill.id, data: bill }]);
     resetBill();
   };
@@ -397,7 +390,6 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
     });
     setCart(norm); setDisc(bill.disc || 0); setDiscPct(bill.discPct || 0); setOtype(bill.otype || "takeaway"); setTable(bill.table || "");
     setCust(bill.customerId ? { id: bill.customerId, name: bill.custName } : null);
-    setGuests(Number(bill.guests) || 1); setPartyName(bill.customerId ? "" : (bill.custName || ""));
     setResumedOrderId(bill.orderId || null); setDiscAuth(bill.discAuth || null);
     store.del([{ kind: "parked", id: bill.id }]);
   };
@@ -531,30 +523,19 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
   })();
   const heldDine = parked.filter((b: any) => b.otype === "dinein" && b.table);
   const heldOther = parked.filter((b: any) => b.otype !== "dinein" || !b.table);
-  /* Multi-party: a table can carry 2+ concurrent bills (each a separate
-     parked entity sharing the same `table` name), plus the in-progress
-     "active" cart when the register is currently seated there. */
-  const billsFor = (name: string): any[] => {
-    const held = heldDine.filter((b: any) => b.table === name);
-    const active = otype === "dinein" && table === name && cart.length
-      ? [{ id: "__active", lines: cart, t: Date.now(), active: true, custName: partyName || cust?.name || null, guests }]
-      : [];
-    return [...held, ...active];
-  };
+  const billFor = (name: string): any =>
+    heldDine.find((b: any) => b.table === name) ||
+    (otype === "dinein" && table === name && cart.length ? { id: "__active", lines: cart, t: Date.now(), active: true } : null);
   const billSub = (b: any) => (b.lines || []).reduce((a: number, l: any) => { const p = prodById(l.pid); return a + (p ? lineUnit(l) * l.qty : 0); }, 0);
   const billItems = (b: any) => (b.lines || []).reduce((a: number, l: any) => a + (l.qty || 0), 0);
-  const occN = tableNames.filter((n) => billsFor(n).length > 0).length;
-  const openVal = tableNames.reduce((a, n) => a + billsFor(n).reduce((s, b) => s + billSub(b), 0), 0);
-  /* Seating always captures a guest count (SeatModal) — for the table's first
-     party and for any additional party sat alongside an existing one. */
-  const startSeat = (name: string) => setSeatModal(name);
-  const confirmSeat = (guestsN: number, name2: string) => {
-    if (!seatModal) return;
-    resetBill();
-    setOtype("dinein"); setTable(seatModal); setGuests(guestsN); setPartyName(name2);
-    setSeatModal(null); setNav("sell");
+  const occN = tableNames.filter((n) => billFor(n)).length;
+  const openVal = tableNames.reduce((a, n) => { const b = billFor(n); return a + (b ? billSub(b) : 0); }, 0);
+  const seatOrRecall = (name: string) => {
+    const b = billFor(name);
+    if (b && !b.active) resume(b);
+    else if (!b) { setOtype("dinein"); setTable(name); }
+    setNav("sell");
   };
-  const resumeBillAt = (b: any) => { if (!b.active) resume(b); setNav("sell"); };
   const floorInner = (
     <div style={{ flex: 1, overflowY: "auto", padding: mob ? "14px 12px" : "18px 22px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
@@ -564,50 +545,35 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 12, color: "var(--ink2)" }}>Open value <b className="num" style={{ color: "var(--ink)", fontSize: 15 }}>{money(openVal)}</b></span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(160px,1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 12 }}>
         {tableNames.map((n) => {
-          const bills = billsFor(n), occ = bills.length > 0;
+          const b = billFor(n), occ = !!b;
+          const mins = occ && b.t ? Math.max(0, Math.floor((Date.now() - b.t) / 60000)) : 0;
           return (
-            <div key={n} style={{
-              ...C.tile, textAlign: "start", minHeight: 104, display: "flex", flexDirection: "column", gap: 6,
+            <button key={n} onClick={() => seatOrRecall(n)} style={{
+              ...C.tile, cursor: "pointer", textAlign: "start", minHeight: 104, display: "flex", flexDirection: "column", gap: 4,
               borderColor: occ ? "var(--coral)" : "var(--line)", background: occ ? "var(--coralsoft)" : "var(--sur)",
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <b style={{ fontSize: 16 }}>{n}</b>
-                {bills.length > 1 && <span style={{ fontSize: 10, fontWeight: 800, color: "var(--coral-text)" }}>{bills.length} parties</span>}
-                <div style={{ flex: 1 }} />
-                <button onClick={() => startSeat(n)} title={occ ? "Seat another party at " + n : "Seat " + n}
-                  style={{ fontSize: 11, fontWeight: 800, color: "var(--coral-text)", background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px" }}>
-                  {occ ? "+ party" : T("Seat")}
-                </button>
+                {occ && !b.active && (b.orderId
+                  /* the tile carries the live kitchen state (spec §3 floor) */
+                  ? (() => { const [lbl, col] = kotStatusOf(b); return <span style={{ fontSize: 10, fontWeight: 800, color: col }}>● {lbl}</span>; })()
+                  : <span style={{ fontSize: 10, fontWeight: 800, color: "var(--amber)" }}>● held</span>)}
               </div>
               {occ ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {bills.map((b: any) => {
-                    const mins = b.t ? Math.max(0, Math.floor((Date.now() - b.t) / 60000)) : 0;
-                    return (
-                      <button key={b.id} onClick={() => resumeBillAt(b)} style={{ textAlign: "start", border: "1px solid var(--line)", borderRadius: 10, padding: "6px 8px", background: "var(--sur)", cursor: "pointer" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
-                            {b.custName || "Walk-in"}{b.guests > 1 ? " · " + b.guests + " guests" : ""}
-                          </span>
-                          {!b.active && (b.orderId
-                            /* the tile carries the live kitchen state (spec §3 floor) */
-                            ? (() => { const [lbl, col] = kotStatusOf(b); return <span style={{ fontSize: 9.5, fontWeight: 800, color: col, whiteSpace: "nowrap" }}>● {lbl}</span>; })()
-                            : <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--amber)", whiteSpace: "nowrap" }}>● held</span>)}
-                        </div>
-                        <div style={{ fontSize: 11, color: "var(--ink2)" }}>{billItems(b)} items · <span className="num">{money(billSub(b))}</span> · {b.active ? "on the counter" : mins + "m ago"}</div>
-                      </button>
-                    );
-                  })}
-                </div>
+                <>
+                  <div style={{ fontSize: 12.5, color: "var(--ink2)" }}>{billItems(b)} items · <span className="num">{money(billSub(b))}</span></div>
+                  <div style={{ flex: 1 }} />
+                  <div style={{ fontSize: 11, color: "var(--ink3)" }}>{b.active ? "on the counter" : mins + "m ago · tap to recall"}</div>
+                </>
               ) : (
                 <>
                   <div style={{ flex: 1 }} />
                   <div style={{ fontSize: 12, color: "var(--ink3)" }}>Free · tap to seat</div>
                 </>
               )}
-            </div>
+            </button>
           );
         })}
       </div>
@@ -796,7 +762,6 @@ function Shell({ user, now, onSignOut }: { user: any; now: Date; onSignOut: () =
       {custPick && <CustomerPicker customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
       {tablePick && <TablePicker tables={st.byKind("tables").map((e) => e.data)} current={table} onPick={(name) => { setTable(name); setOtype("dinein"); setTablePick(false); }} onClear={() => { setTable(""); setOtype("takeaway"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
       {zonePick && <DeliveryDetails zones={st.byKind("zones").map((e) => e.data)} current={zone} note={deliveryNote} setNote={setDeliveryNote} custName={cust?.name} onPick={(z) => setZone(z)} onClear={() => setZone(null)} onAttachCustomer={() => { setZonePick(false); setCustPick(true); }} onClose={() => setZonePick(false)} />}
-      {seatModal && <SeatModal tableName={seatModal} existingParties={billsFor(seatModal).length} onConfirm={confirmSeat} onClose={() => setSeatModal(null)} />}
       {shiftModal && <ShiftModal user={user} shifts={shifts} T={T} onClose={() => setShiftModal(false)} onOpen={openShiftNow} />}
       {zModal && openShift && <ZModal shift={openShift} sales={st.byKind("sales").map((e) => e.data)} expenses={st.byKind("expenses").map((e) => e.data)} shifts={shifts} T={T} onClose={() => setZModal(false)} onCloseShift={closeShiftNow} />}
       {receipt && <Receipt data={receipt} gstBp={gstBp} onClose={() => setReceipt(null)} />}
@@ -1255,30 +1220,6 @@ function TablePicker({ tables, current, onPick, onClear, onClose }: { tables: an
         {current && (
           <button onClick={onClear} style={{ ...C.custBtn, width: "100%", minHeight: "var(--tap)", marginTop: 14, justifyContent: "center", color: "var(--ink2)" }}>Clear table · back to Takeaway</button>
         )}
-      </>
-    </Modal>
-  );
-}
-
-/* Seat a party at a Floor table — captures guest count (+ optional party
-   name) up front so multi-party tables show who's who at a glance. Used both
-   for a table's first party and for seating an additional party alongside
-   one already there. */
-function SeatModal({ tableName, existingParties, onConfirm, onClose }: { tableName: string; existingParties: number; onConfirm: (guests: number, name: string) => void; onClose: () => void }) {
-  const [guests, setGuests] = useState(2);
-  const [name, setName] = useState("");
-  return (
-    <Modal title={(existingParties > 0 ? "Add a party at " : "Seat ") + tableName} onClose={onClose} width={380}>
-      <>
-        <div style={{ fontSize: 12.5, color: "var(--ink2)", margin: "-6px 0 14px" }}>
-          {existingParties > 0 ? existingParties + " part" + (existingParties === 1 ? "y" : "ies") + " already at this table — this starts a separate bill." : "New dine-in bill for this table"}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <span style={{ fontWeight: 700, fontSize: 14 }}>Guests</span>
-          <Stepper value={guests} onInc={() => setGuests((g) => Math.min(20, g + 1))} onDec={() => setGuests((g) => Math.max(1, g - 1))} />
-        </div>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Party name (optional)" style={{ ...C.input, width: "100%", marginBottom: 16 }} />
-        <button onClick={() => onConfirm(guests, name.trim())} style={{ ...C.charge, width: "100%", justifyContent: "center" }}>Seat table →</button>
       </>
     </Modal>
   );
