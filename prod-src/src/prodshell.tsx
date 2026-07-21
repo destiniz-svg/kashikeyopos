@@ -6,6 +6,7 @@ import { OrdersScreen } from "./prodorders";
 import { FloorScreen } from "./prodfloor";
 import { TabsScreen } from "./prodtabs";
 import { DayEndScreen } from "./proddayend";
+import { DashboardScreen, ReportsScreen, AdminScreen } from "./prodmgmt";
 
 /* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount +
    its approval live on the line so the canvas + audit trail read them). */
@@ -122,6 +123,12 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
           <TabsScreen _={_} user={user} settings={settings} />
         ) : nav === "dayend" ? (
           <DayEndScreen _={_} user={user} settings={settings} />
+        ) : nav === "dash" ? (
+          <DashboardScreen _={_} />
+        ) : nav === "reports" ? (
+          <ReportsScreen _={_} settings={settings} />
+        ) : nav === "admin" ? (
+          <AdminScreen _={_} />
         ) : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
       </div>
     </div>
