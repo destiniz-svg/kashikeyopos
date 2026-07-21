@@ -1,0 +1,21 @@
+{
+  "name": "kashikeyo-till-production",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "KashikeyoPOS till (production) — editable React source matching Production's exact UI/theme/layout, replacing the old minified web/dist/index.html + guest-sync-patch.js regex-patch boot chain. Built to a single-file web/dist bundle via `npm run build`.",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vite-plugin-singlefile": "^2.0.0"
+  }
+}
