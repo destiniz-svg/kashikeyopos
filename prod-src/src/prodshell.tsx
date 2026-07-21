@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
 import { uid, elevate } from "./api";
 import { resolveTheme } from "./theme";
+import { OrdersScreen } from "./prodorders";
 
 /* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount +
    its approval live on the line so the canvas + audit trail read them). */
@@ -101,6 +102,8 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
       <div className="ksh-navpad flex-1 min-h-0 max-w-6xl w-full mx-auto px-4 pt-4">
         {nav === "sell" ? (
           <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings} user={user} />
+        ) : nav === "orders" ? (
+          <OrdersScreen _={_} />
         ) : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
       </div>
     </div>
