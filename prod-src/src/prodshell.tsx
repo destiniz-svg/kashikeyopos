@@ -1,17 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { store, useStore } from "./store";
-import { uid } from "./api";
+import { uid, elevate } from "./api";
 import { resolveTheme } from "./theme";
 
-/* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount
-   and reason live on the line so the canvas + audit trail read them). */
+/* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount +
+   its approval live on the line so the canvas + audit trail read them). */
 type Mod = { name: string; price: number };
-type Line = { key: string; pid: string; qty: number; mods: Mod[]; discPct?: number };
+type Line = { key: string; pid: string; qty: number; mods: Mod[]; discPct?: number; discAuth?: any };
+type OType = "dinein" | "takeaway" | "delivery";
 
 /* Category emoji, verbatim from production's window.__ksCatEmoji. */
 const CAT_EMOJI: Record<string, string> = { All: "🍽️", "Main Dishes": "🍛", Coffee: "☕", Drinks: "🥤", Bakery: "🥐", Grocery: "🛒", Hedhikaa: "🍢", More: "⋯" };
 const catLabel = (c: string) => (CAT_EMOJI[c] ? CAT_EMOJI[c] + " " : "") + c;
 const cardPrice = (laari: number) => (Math.round(Number(laari) || 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const money = (laari: number) => "MVR " + cardPrice(laari);
+/* Staging's void reasons (item modifications) — no manager password. */
+const VOID_REASONS = ["Guest changed mind", "Kitchen error", "Out of stock", "Other"];
+/* Staging's discount presets. */
+const DISC_PRESETS = [0, 5, 10, 15, 20];
 
 /* ── Production shell — faithful reconstruction of the deployed till chrome ───
    Header bar (logo · store name · location chip · ml-auto shift pill + account)
@@ -46,17 +52,7 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
   const openShift = shifts.find((s) => !s.closedAt) || null;
   const parked = st.byKind("parked").map((e) => e.data);
   const orders = st.byKind("orders").map((e) => e.data).filter((o: any) => !["done", "wasted"].includes(String(o.status || "new").toLowerCase()));
-
-  /* Menu + cart state (the canvas mechanics build on this next step). */
   const products = st.byKind("products").map((e) => e.data).filter((p: any) => p && !p.archived);
-  const [cart, setCart] = useState<Line[]>([]);
-  const addLine = (p: any, mods: Mod[] = []) => {
-    const key = p.id + "|" + mods.map((m) => m.name).sort().join(",");
-    setCart((c) => { const i = c.findIndex((l) => l.key === key); if (i >= 0) { const n = c.slice(); n[i] = { ...n[i], qty: n[i].qty + 1 }; return n; } return c.concat([{ key, pid: p.id, qty: 1, mods }]); });
-  };
-  const qtyOf = (pid: string) => cart.filter((l) => l.pid === pid).reduce((a, l) => a + l.qty, 0);
-  const prodById = (pid: string) => products.find((p: any) => p.id === pid);
-  const count = cart.reduce((a, l) => a + l.qty, 0);
   const clock = now.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }) + ", " + now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const storeName = settings.storeName || "Kashikeyo";
   const first = (user?.name || "Staff").split(" ")[0];
@@ -104,22 +100,36 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
       {/* Content */}
       <div className="ksh-navpad flex-1 min-h-0 max-w-6xl w-full mx-auto px-4 pt-4">
         {nav === "sell" ? (
-          <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings}
-            cart={cart} addLine={addLine} qtyOf={qtyOf} prodById={prodById} count={count} />
+          <SellScreen _={_} parked={parked} openShift={openShift} products={products} settings={settings} user={user} />
         ) : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
       </div>
     </div>
   );
 }
 
-/* Three-pane Sell frame — production's register layout. The menu grid + search
-   are production-faithful here; the order-canvas mechanics (per-line disc,
-   upsell, bill disc, svc charge, park/cut/void) land in the next step. */
-function SellScreen({ _, parked, openShift, products, settings, cart, addLine, qtyOf, prodById, count }:
-  { _: any; parked: any[]; openShift: any; products: any[]; settings: any; cart: Line[]; addLine: (p: any) => void; qtyOf: (id: string) => number; prodById: (id: string) => any; count: number }) {
+/* Three-pane Sell frame — production's register layout, rebuilt faithfully with
+   two deliberate feature changes per the merge spec:
+   • Item modifications (removing a line) require a REASON (Staging), not a
+     manager password.
+   • Discounts use Staging's mechanic — a preset-% picker gated on manager
+     password approval, logged on the line/bill (discAuth). */
+function SellScreen({ _, parked, openShift, products, settings, user }:
+  { _: any; parked: any[]; openShift: any; products: any[]; settings: any; user: any }) {
+  const st = useStore();
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState("All");
   const searchRef = useRef<HTMLInputElement>(null);
+  const [cart, setCart] = useState<Line[]>([]);
+  const [otype, setOtype] = useState<OType>("takeaway");
+  const [table, setTable] = useState("");
+  const [cust, setCust] = useState<any>(null);
+  const [billDiscPct, setBillDiscPct] = useState(0);
+  const [billDiscAuth, setBillDiscAuth] = useState<any>(null);
+  const [discReq, setDiscReq] = useState<{ scope: "bill" | "line"; idx?: number } | null>(null);
+  const [voidReq, setVoidReq] = useState<{ idx: number; name: string } | null>(null);
+  const [custPick, setCustPick] = useState(false);
+  const [tablePick, setTablePick] = useState(false);
+
   const groups: { name: string; subs: string[] }[] = settings.catGroups || [];
   const cats = ["All", ...groups.map((g) => g.name)];
   const subInGroup = (cat: string) => group === "All" || (groups.find((g) => g.name === group)?.subs || []).includes(cat);
@@ -127,11 +137,65 @@ function SellScreen({ _, parked, openShift, products, settings, cart, addLine, q
   const q = query.trim().toLowerCase();
   const items = products.filter((p) => subInGroup(p.cat) && (!q || (p.name || "").toLowerCase().includes(q) || (codeOf(p) && codeOf(p).includes(q))));
   const isOut = (p: any) => (p.recipeAvail != null && Number(p.recipeAvail) <= 0) || (p.stock != null && Number(p.stock) <= 0) || !!p.soldOut;
+  const prodById = (pid: string) => products.find((p: any) => p.id === pid);
+  const qtyOf = (pid: string) => cart.filter((l) => l.pid === pid).reduce((a, l) => a + l.qty, 0);
+
+  const addLine = (p: any) => {
+    const key = p.id + "|";
+    setCart((c) => { const i = c.findIndex((l) => l.key === key); if (i >= 0) { const n = c.slice(); n[i] = { ...n[i], qty: n[i].qty + 1 }; return n; } return c.concat([{ key, pid: p.id, qty: 1, mods: [] }]); });
+  };
   const enterAdd = () => {
     if (!q) return;
     const exact = products.find((p) => codeOf(p) === q || String(p.id).toLowerCase() === q);
     const hit = exact || (items.length === 1 ? items[0] : null);
     if (hit && !isOut(hit)) { addLine(hit); setQuery(""); }
+  };
+  const bump = (idx: number, d: number) => {
+    setCart((c) => { const n = c.slice(); const nq = n[idx].qty + d; if (nq <= 0) { const nm = n.slice(); nm.splice(idx, 1); return nm; } n[idx] = { ...n[idx], qty: nq }; return n; });
+  };
+  const requestDec = (idx: number) => { if (cart[idx].qty <= 1) { const p = prodById(cart[idx].pid); setVoidReq({ idx, name: p?.name || "item" }); } else bump(idx, -1); };
+  const requestRemove = (idx: number) => { const p = prodById(cart[idx].pid); setVoidReq({ idx, name: p?.name || "item" }); };
+  const confirmVoid = (reason: string) => { if (!voidReq) return; setCart((c) => c.filter((_l, i) => i !== voidReq.idx)); setVoidReq(null); void reason; };
+  const applyDisc = (pct: number, auth: any) => {
+    if (!discReq) return;
+    if (discReq.scope === "bill") { setBillDiscPct(pct); setBillDiscAuth(pct ? auth : null); }
+    else { const i = discReq.idx!; setCart((c) => { const n = c.slice(); n[i] = { ...n[i], discPct: pct || undefined, discAuth: pct ? auth : undefined }; return n; }); }
+    setDiscReq(null);
+  };
+
+  const lineUnit = (l: Line) => (Number(prodById(l.pid)?.price) || 0) + (l.mods || []).reduce((a, m) => a + (m.price || 0), 0);
+  const lineTotal = (l: Line) => Math.round(lineUnit(l) * l.qty * (1 - (l.discPct || 0) / 100));
+  const subtotal = cart.reduce((a, l) => a + lineTotal(l), 0);
+  const billDisc = Math.round(subtotal * billDiscPct / 100);
+  const afterDisc = subtotal - billDisc;
+  const svcBp = Number(settings.svcChargeBp || 0);
+  const gstBp = Number(settings.gstBp || 800);
+  const svc = Math.round(afterDisc * svcBp / 10000);
+  const gst = Math.round(afterDisc * gstBp / 10000);
+  const total = afterDisc + gst + svc;
+  const count = cart.reduce((a, l) => a + l.qty, 0);
+
+  /* Upsell — "Often added with X": suggest a best-seller not already on the
+     bill, keyed off the last line added (production's paired-item nudge). */
+  const lastLine = cart[cart.length - 1];
+  const lastProd = lastLine ? prodById(lastLine.pid) : null;
+  const suggestion = lastProd ? products.find((p: any) => !isOut(p) && p.bestSeller && !cart.some((l) => l.pid === p.id)) : null;
+
+  const clearBill = () => { setCart([]); setBillDiscPct(0); setBillDiscAuth(null); setCust(null); setTable(""); };
+  const park = () => {
+    if (!cart.length) return;
+    const bill = { id: uid(), t: Date.now(), no: "#" + String(parked.length + 1).padStart(4, "0"), otype, table: table || null, lines: cart, discPct: billDiscPct, discAuth: billDiscAuth || undefined, customerId: cust?.id || null, custName: cust?.name || null, userName: user?.name, storeId: settings.storeId || "main" };
+    store.commit([{ kind: "parked", id: bill.id, data: bill }]);
+    clearBill();
+  };
+  const charge = () => {
+    if (!cart.length) return;
+    const sale = { id: uid(), no: "INV-" + String((st.byKind("sales").length) + 1).padStart(5, "0"), t: Date.now(), type: "sale", otype, table: table || null,
+      userName: user?.name, customerId: cust?.id || null, customerName: cust?.name || null, storeId: settings.storeId || "main", shiftId: openShift?.id || null,
+      lines: cart.map((l) => { const p = prodById(l.pid); return { pid: l.pid, qty: l.qty, name: p?.name, price: lineUnit(l), discPct: l.discPct || 0, discountAuth: l.discAuth || null, emoji: p?.emoji }; }),
+      subtotal, billDisc, billDiscPct, discountAuth: billDiscAuth || null, gst, svcCharge: svc, total, payments: [{ method: "Cash", amount: total }], change: 0, refunded: false };
+    store.commit([{ kind: "sales", id: sale.id, data: sale }]);
+    clearBill();
   };
 
   return (
@@ -143,7 +207,7 @@ function SellScreen({ _, parked, openShift, products, settings, cart, addLine, q
           <span className={`ml-auto text-xs px-2 py-0.5 rounded-full ${_.chip}`}>{parked.length}</span>
         </div>
         {parked.length === 0 && <div className={`text-xs text-center py-6 ${_.sub}`}>No open bills. Held and kitchen-fired orders show up here.</div>}
-        <button className={`w-full mt-2 py-2 rounded-xl text-sm ${_.btn}`} style={{ borderStyle: "dashed" }}>+ New bill</button>
+        <button onClick={clearBill} className={`w-full mt-2 py-2 rounded-xl text-sm ${_.btn}`} style={{ borderStyle: "dashed" }}>+ New bill</button>
       </div>
 
       {/* Menu pane */}
@@ -191,36 +255,197 @@ function SellScreen({ _, parked, openShift, products, settings, cart, addLine, q
         </div>
       </div>
 
-      {/* Order canvas — cart preview (full mechanics next step) */}
-      <div className={`rounded-2xl p-4 flex flex-col ${_.panel}`} style={{ alignSelf: "start", minHeight: 420 }}>
+      {/* Order canvas */}
+      <div className={`rounded-2xl p-4 flex flex-col ${_.panel}`} style={{ alignSelf: "start", maxHeight: "calc(100vh - 120px)" }}>
+        {/* Multi-bill tabs */}
         <div className="flex items-center gap-2 mb-3">
           <span className={`px-3 py-1 rounded-full text-sm font-semibold ${_.primary}`}>#1</span>
-          <button className={`w-7 h-7 rounded-full text-sm ${_.btn}`}>+</button>
+          <button onClick={park} title="Hold this bill & start a new one" className={`w-7 h-7 rounded-full text-sm ${_.btn}`}>+</button>
           <span className={`ml-auto text-xs ${_.sub}`}>{count} item{count === 1 ? "" : "s"}</span>
         </div>
-        <div className="grid grid-cols-3 gap-1.5 mb-3">
-          {["Dine-in", "Takeaway", "Delivery"].map((t, i) => (
-            <button key={t} className={`py-2 rounded-lg text-xs font-semibold ${i === 1 ? _.primary : _.btn}`}>{t}</button>
+        {/* Order-type toggle */}
+        <div className="grid grid-cols-3 gap-1.5 mb-2">
+          {(["dinein", "takeaway", "delivery"] as OType[]).map((t) => (
+            <button key={t} onClick={() => { setOtype(t); if (t !== "dinein") setTable(""); }} className={`py-2 rounded-lg text-xs font-semibold ${otype === t ? _.primary : _.btn}`}>{t === "dinein" ? "Dine-in" : t === "takeaway" ? "Takeaway" : "Delivery"}</button>
           ))}
         </div>
+        {/* Customer + table */}
+        <div className="grid grid-cols-2 gap-2 mb-2">
+          <button onClick={() => setCustPick(true)} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm min-w-0 ${_.panel2}`}>
+            <span>👤</span>
+            {cust ? <span className="flex-1 text-left min-w-0"><span className="font-medium block truncate">{cust.name}</span><span className={`block text-xs ${_.sub}`}>{(cust.balance || 0) > 0 ? "owes " + money(cust.balance) : (cust.points || 0) + " pts"}</span></span>
+                  : <span className={`flex-1 text-left ${_.sub}`}>Add customer</span>}
+          </button>
+          <button onClick={() => otype === "dinein" ? setTablePick(true) : setOtype("dinein")} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm min-w-0 ${table ? _.chipOn : _.panel2}`}>
+            <span>{otype === "delivery" ? "🛵" : "🍽️"}</span>
+            <span className="flex-1 text-left min-w-0"><span className="font-medium block truncate">{otype === "delivery" ? "Delivery" : table ? "Table " + table : "Table"}</span><span className={`block text-xs ${_.sub}`}>{otype === "delivery" ? "" : "optional"}</span></span>
+          </button>
+        </div>
+
         {cart.length === 0 ? (
-          <div className={`flex-1 grid place-items-center ${_.sub}`}><div className="text-sm text-center">Scan or tap a product to start</div></div>
+          <div className={`flex-1 grid place-items-center ${_.sub}`} style={{ minHeight: 180 }}><div className="text-sm text-center">🛒<br />Scan or tap a product to start</div></div>
         ) : (
-          <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-            {cart.map((l) => { const p = prodById(l.pid); if (!p) return null; return (
-              <div key={l.key} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${_.panel2 || _.chip}`}>
-                <span className="text-xl">{p.emoji || "🍽️"}</span>
-                <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{p.name}</div><div className={`text-xs num ${_.sub}`}>@ {cardPrice(p.price)}/{p.unit || "pcs"}</div></div>
-                <span className="num text-sm font-semibold">{l.qty}×</span>
-                <span className="num text-sm font-semibold">{cardPrice((Number(p.price) || 0) * l.qty)}</span>
+          <>
+            {/* Cart lines */}
+            <div className="flex-1 overflow-y-auto -mx-1 px-1" style={{ minHeight: 80 }}>
+              {cart.map((l, idx) => { const p = prodById(l.pid); if (!p) return null; return (
+                <div key={l.key} className={`py-2.5 border-b border-dashed ${_.border}`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{p.emoji || "🍽️"}</span>
+                    <span className="flex-1 text-sm font-medium leading-tight">{p.name}</span>
+                    <span className="num text-sm">{cardPrice(lineTotal(l))}</span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 pl-7">
+                    <div className={`flex items-center rounded-lg ${_.panel2}`}>
+                      <button onClick={() => requestDec(idx)} className="px-2 py-1">−</button>
+                      <span className="w-7 text-center text-sm num">{l.qty}</span>
+                      <button onClick={() => bump(idx, 1)} className="px-2 py-1">+</button>
+                    </div>
+                    <span className={`text-xs ${_.faint}`}>@ {cardPrice(lineUnit(l))}/{p.unit || "pcs"}</span>
+                    <button onClick={() => setDiscReq({ scope: "line", idx })} className={`flex items-center gap-0.5 text-xs px-2 py-1 rounded-lg ${l.discPct ? "bg-amber-500/15 text-amber-500" : _.chip}`}>{l.discPct ? "-" + l.discPct + "%" : "% disc"}</button>
+                    <button onClick={() => requestRemove(idx)} className={`ml-auto p-1 ${_.faint}`} style={{ lineHeight: 1 }} title="Remove item">✕</button>
+                  </div>
+                </div>
+              ); })}
+              {/* Upsell */}
+              {suggestion && lastProd && (
+                <button onClick={() => addLine(suggestion)} className={`mt-3 w-full flex items-center gap-2 text-xs rounded-xl px-3 py-2.5 border border-dashed ${_.accentBd} ${_.accent}`}>
+                  <span>✨</span> Often added with {lastProd.name}:
+                  <span className="font-medium">{suggestion.name}</span>
+                  <span className="ml-auto num">+{cardPrice(suggestion.price)}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Totals */}
+            <div className={`pt-3 mt-2 border-t ${_.border}`}>
+              <div className={`flex justify-between text-xs ${_.sub}`}><span>Subtotal</span><span className="num">{cardPrice(subtotal)}</span></div>
+              <button onClick={() => setDiscReq({ scope: "bill" })} className={`flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs mt-1 ${billDiscPct > 0 ? "bg-amber-500/15 text-amber-500" : _.chip}`}>{billDiscPct > 0 ? "Bill disc " + billDiscPct + "%" : "+ Bill disc"}</button>
+              {billDiscPct > 0 && <div className={`flex justify-between text-xs mt-1 ${_.sub}`}><span>Discount {billDiscPct}%</span><span className="num text-amber-500">-{cardPrice(billDisc)}</span></div>}
+              <div className={`flex justify-between text-xs mt-1 ${_.sub}`}><span>GST {gstBp / 100}%</span><span className="num">{cardPrice(gst)}</span></div>
+              {svcBp > 0 && <div className={`flex justify-between text-xs mt-1 ${_.sub}`}><span>Svc charge {svcBp / 100}%</span><span className="num">{cardPrice(svc)}</span></div>}
+              <div className="flex justify-between items-baseline mt-2">
+                <span className="text-sm font-semibold">Total</span>
+                <span className="ksh-display num text-xl font-bold">{money(total)}</span>
               </div>
-            ); })}
-            <div className={`mt-2 pt-2 border-t text-xs text-center ${_.sub}`} style={{ borderColor: "var(--k-border)" }}>Canvas mechanics — per-line disc, upsell, bill disc, svc charge — next step (3b)</div>
-          </div>
+              {otype !== "takeaway" && cart.length > 0 && (
+                <button onClick={park} className={`w-full flex items-center justify-center gap-2 rounded-xl py-2.5 mt-3 text-sm font-medium border border-dashed ${_.accentBd} ${_.accent}`}>🔥 Send to kitchen (KOT) — settle from Orders</button>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button onClick={park} className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-3 text-sm ${_.btn}`}>⏸ Park</button>
+                <button title="Split bill" className={`flex items-center justify-center rounded-xl px-3 py-3 ${_.btn}`}>✂️</button>
+                <button onClick={clearBill} title="Clear bill" className={`flex items-center justify-center rounded-xl px-3 py-3 ${_.btn}`}>🗑</button>
+                <button onClick={charge} className={`flex-1 rounded-xl py-4 font-semibold text-sm ${_.primary} active:scale-95 transition`} style={{ minHeight: 56 }}>Charge {money(total)}</button>
+              </div>
+            </div>
+          </>
         )}
       </div>
+
+      {voidReq && <ReasonModal _={_} name={voidReq.name} onConfirm={confirmVoid} onClose={() => setVoidReq(null)} />}
+      {discReq && <DiscountModal _={_} scope={discReq.scope} current={discReq.scope === "bill" ? billDiscPct : (cart[discReq.idx!]?.discPct || 0)} user={user} onApply={applyDisc} onClose={() => setDiscReq(null)} />}
+      {custPick && <CustomerModal _={_} customers={st.byKind("customers").map((e) => e.data)} onPick={(c) => { setCust(c); setCustPick(false); }} onClose={() => setCustPick(false)} />}
+      {tablePick && <TableModal _={_} tables={(st.byKind("tables").map((e: any) => e.data?.name).filter(Boolean).length ? st.byKind("tables").map((e: any) => e.data.name) : Array.from({ length: 12 }, (_x, i) => "T" + (i + 1)))} onPick={(t) => { setTable(t); setOtype("dinein"); setTablePick(false); }} onClose={() => setTablePick(false)} />}
     </div>
   );
+}
+
+/* ── Item-modification reason (Staging) — replaces production's manager
+   password on removing/reducing a fired line. ─────────────────────────────── */
+function ReasonModal({ _, name, onConfirm, onClose }: { _: any; name: string; onConfirm: (r: string) => void; onClose: () => void }) {
+  const [sel, setSel] = useState(VOID_REASONS[0]);
+  const [other, setOther] = useState("");
+  return (
+    <Overlay onClose={onClose}>
+      <div className={`w-[min(400px,94vw)] rounded-2xl p-5 ${_.modal}`} onClick={(e) => e.stopPropagation()}>
+        <div className="text-lg font-bold mb-1">Remove item</div>
+        <div className={`text-sm mb-4 ${_.sub}`}><b>{name}</b> — pick a reason for the change (recorded on the order).</div>
+        <div className="flex flex-col gap-2">
+          {VOID_REASONS.map((r) => (
+            <button key={r} onClick={() => setSel(r)} className={`text-left px-3 py-2.5 rounded-xl text-sm font-medium ${sel === r ? _.chipOn : _.btn}`}>{r}</button>
+          ))}
+        </div>
+        {sel === "Other" && <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Reason…" className={`w-full mt-2 rounded-xl px-3 py-2.5 text-sm ${_.input}`} />}
+        <button onClick={() => onConfirm(sel === "Other" ? (other.trim() || "Other") : sel)} className={`w-full mt-4 rounded-xl py-3 font-semibold text-sm text-white`} style={{ background: "#C13A26" }}>Remove item</button>
+      </div>
+    </Overlay>
+  );
+}
+
+/* ── Discount (Staging) — preset % gated on manager password approval, logged
+   as discAuth on the line/bill. ───────────────────────────────────────────── */
+function DiscountModal({ _, scope, current, user, onApply, onClose }: { _: any; scope: "bill" | "line"; current: number; user: any; onApply: (pct: number, auth: any) => void; onClose: () => void }) {
+  const [pct, setPct] = useState(current || 0);
+  const [pw, setPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const go = async () => {
+    if (pct === 0) { onApply(0, null); return; }         // clearing needs no approval
+    if (!pw) { setErr("Manager password required"); return; }
+    setBusy(true); setErr("");
+    try { await elevate(pw); onApply(pct, { pct, method: "password", at: Date.now(), by: user?.name || "" }); }
+    catch (e: any) { setErr(e.message || "Wrong password"); setBusy(false); }
+  };
+  return (
+    <Overlay onClose={onClose}>
+      <div className={`w-[min(400px,94vw)] rounded-2xl p-5 ${_.modal}`} onClick={(e) => e.stopPropagation()}>
+        <div className="text-lg font-bold mb-1">{scope === "bill" ? "Bill discount" : "Line discount"}</div>
+        <div className={`text-sm mb-4 ${_.sub}`}>Staff discounts need manager approval — the approval is logged on the sale.</div>
+        <div className="flex gap-2 flex-wrap mb-4">
+          {DISC_PRESETS.map((d) => (
+            <button key={d} onClick={() => setPct(d)} className={`px-3 py-2 rounded-full text-sm font-semibold ${pct === d ? _.primary : _.chip}`}>{d === 0 ? "None" : d + "%"}</button>
+          ))}
+        </div>
+        {pct > 0 && <>
+          <label className={`text-xs font-semibold ${_.sub}`}>STORE / MANAGER PASSWORD</label>
+          <input autoFocus type="password" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && pw && go()} className={`w-full mt-1 rounded-xl px-3 py-2.5 text-sm ${_.input}`} />
+        </>}
+        {err && <div className="text-xs mt-2 font-semibold" style={{ color: "#C13A26" }}>{err}</div>}
+        <button disabled={busy} onClick={go} className={`w-full mt-4 rounded-xl py-3 font-semibold text-sm ${_.primary}`} style={{ opacity: busy ? .6 : 1 }}>{busy ? "Verifying…" : pct === 0 ? "Remove discount" : "Approve " + pct + "% discount"}</button>
+      </div>
+    </Overlay>
+  );
+}
+
+function CustomerModal({ _, customers, onPick, onClose }: { _: any; customers: any[]; onPick: (c: any) => void; onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const list = customers.filter((c) => !q || (c.name || "").toLowerCase().includes(q.toLowerCase()) || (c.phone || "").includes(q));
+  return (
+    <Overlay onClose={onClose}>
+      <div className={`w-[min(420px,94vw)] rounded-2xl p-5 ${_.modal}`} onClick={(e) => e.stopPropagation()}>
+        <div className="text-lg font-bold mb-3">Add customer</div>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name or phone…" className={`w-full rounded-xl px-3 py-2.5 text-sm mb-3 ${_.input}`} />
+        <div className="flex flex-col gap-1.5 max-h-72 overflow-y-auto">
+          {list.map((c) => (
+            <button key={c.id} onClick={() => onPick(c)} className={`flex items-center gap-2 text-left px-3 py-2.5 rounded-xl text-sm ${_.btn}`}>
+              <span className="flex-1"><b>{c.name || "Walk-in"}</b>{c.phone ? " · " + c.phone : ""}</span>
+              {(c.balance || 0) > 0 && <span className="text-xs num text-amber-500">{money(c.balance)}</span>}
+            </button>
+          ))}
+          {!list.length && <div className={`text-sm text-center py-6 ${_.sub}`}>No customers match.</div>}
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function TableModal({ _, tables, onPick, onClose }: { _: any; tables: string[]; onPick: (t: string) => void; onClose: () => void }) {
+  return (
+    <Overlay onClose={onClose}>
+      <div className={`w-[min(420px,94vw)] rounded-2xl p-5 ${_.modal}`} onClick={(e) => e.stopPropagation()}>
+        <div className="text-lg font-bold mb-3">Choose a table</div>
+        <div className="grid grid-cols-4 gap-2">
+          {tables.map((t) => (
+            <button key={t} onClick={() => onPick(t)} className={`py-4 rounded-xl text-sm font-semibold ${_.btn}`}>{t}</button>
+          ))}
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+function Overlay({ children, onClose }: { children: any; onClose: () => void }) {
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(20,18,15,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }}>{children}</div>;
 }
 
 function TabStub({ _, label }: { _: any; label: string }) {
