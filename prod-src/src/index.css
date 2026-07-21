@@ -78,8 +78,13 @@ body{margin:0;font-family:'DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe
 .ksh-hexbg path{fill:none;stroke:var(--k-primary);stroke-width:1.4;opacity:.28}
 .ksh-hexspin path{animation:none;opacity:.6}
 .ksh-topnav{width:auto}
-.ksh-topnav{width:calc(100vw - 16px);top:60px !important}
-.ksh-navpad{padding-top:122px !important}
+/* Narrow screens: nav drops below the header full-width (production @media). On
+   desktop the nav stays the floating centered pill in the header row (top:9px,
+   set inline). */
+@media (max-width:719px){
+  .ksh-topnav{width:calc(100vw - 16px);top:60px !important}
+  .ksh-navpad{padding-top:122px !important}
+}
 .ksh-custsel summary{list-style:none}
 .ksh-custsel summary::-webkit-details-marker{display:none}
 .ksh-custsel[open]>summary{border-color:var(--k-primary)}
