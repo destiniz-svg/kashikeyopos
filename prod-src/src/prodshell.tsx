@@ -5,6 +5,7 @@ import { resolveTheme } from "./theme";
 import { OrdersScreen } from "./prodorders";
 import { FloorScreen } from "./prodfloor";
 import { TabsScreen } from "./prodtabs";
+import { DayEndScreen } from "./proddayend";
 
 /* Cart line — matches the Step-1 model (pid + qty + mods; per-line discount +
    its approval live on the line so the canvas + audit trail read them). */
@@ -36,6 +37,7 @@ const NAV: [string, string, string][] = [
   ["floor", "Floor", '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>'],
   ["orders", "Orders", '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 14h3"/>'],
   ["tabs", "Tabs", '<path d="M3 6a2 2 0 0 1 2-2h9l4 4v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 12h6M8 16h4"/>'],
+  ["dayend", "Day End", '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
   ["dash", "Dashboard", '<path d="M3 13h8V3H3zM13 21h8v-6h-8zM13 11h8V3h-8zM3 21h8v-6H3z"/>'],
   ["reports", "Reports", '<path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/>'],
   ["admin", "Admin", '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>'],
@@ -118,6 +120,8 @@ export function ProdShell({ user, onSignOut }: { user: any; onSignOut: () => voi
           <OrdersScreen _={_} />
         ) : nav === "tabs" ? (
           <TabsScreen _={_} user={user} settings={settings} />
+        ) : nav === "dayend" ? (
+          <DayEndScreen _={_} user={user} settings={settings} />
         ) : <TabStub _={_} label={NAV.find((n) => n[0] === nav)?.[1] || nav} />}
       </div>
     </div>
