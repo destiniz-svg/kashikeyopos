@@ -121,7 +121,21 @@
       <div class="error" id="err"></div>
       <button id="submit" type="submit">Sign in</button>
     </form>
-    <div class="foot">New here? <a href="/signup">Create your store</a></div>
+    <div class="foot" id="ownerFoot">
+      <a href="#" id="toStaff">Staff sign-in with PIN</a> &middot; New here? <a href="/signup">Create your store</a>
+    </div>
+
+    <form id="staffForm" style="display:none">
+      <label for="storeSlug">Store</label>
+      <input id="storeSlug" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="your-store" required />
+      <label for="staffPin">Your PIN</label>
+      <input id="staffPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4-digit PIN" required />
+      <div class="error" id="staffErr"></div>
+      <button id="staffSubmit" type="submit">Open back office</button>
+    </form>
+    <div class="foot" id="staffFoot" style="display:none">
+      <a href="#" id="toOwner">&larr; Owner sign-in</a>
+    </div>
   </div>
   <script src="/oauth.js"></script>
   <script>
@@ -161,6 +175,50 @@
           err.style.display = "block";
           btn.disabled = false;
           btn.textContent = "Sign in";
+        }
+      });
+
+      /* Staff sign-in: store slug + till PIN -> back office (managers/admins).
+         Reuses the existing till PIN; the server enforces role from here on. */
+      var staffForm = document.getElementById("staffForm");
+      var ownerFoot = document.getElementById("ownerFoot");
+      var staffFoot = document.getElementById("staffFoot");
+      var staffErr = document.getElementById("staffErr");
+      var staffBtn = document.getElementById("staffSubmit");
+      var h1 = document.querySelector("h1"), sub = document.querySelector("p.sub");
+      try {
+        var qs = new URLSearchParams(location.search);
+        var st = qs.get("store") || localStorage.getItem("kback-store");
+        if (st) document.getElementById("storeSlug").value = st;
+      } catch (e) {}
+      function showStaff(on) {
+        form.style.display = on ? "none" : "";
+        ownerFoot.style.display = on ? "none" : "";
+        staffForm.style.display = on ? "" : "none";
+        staffFoot.style.display = on ? "" : "none";
+        h1.textContent = on ? "Staff sign-in" : "Sign in";
+        sub.textContent = on ? "Managers and admins — enter your store and till PIN." : "Welcome back — sign in to your workspace.";
+      }
+      document.getElementById("toStaff").addEventListener("click", function (e) { e.preventDefault(); showStaff(true); });
+      document.getElementById("toOwner").addEventListener("click", function (e) { e.preventDefault(); showStaff(false); });
+      staffForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        staffErr.style.display = "none";
+        staffBtn.disabled = true; staffBtn.textContent = "Signing in…";
+        try {
+          var slug = document.getElementById("storeSlug").value.trim().toLowerCase();
+          var res = await fetch("/api/back/login", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug: slug, pin: document.getElementById("staffPin").value }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Sign in failed");
+          try { localStorage.setItem("kback-store", slug); } catch (e3) {}
+          location.href = "/back";
+        } catch (e2) {
+          staffErr.textContent = e2.message || "Something went wrong — please try again";
+          staffErr.style.display = "block";
+          staffBtn.disabled = false; staffBtn.textContent = "Open back office";
         }
       });
     })();

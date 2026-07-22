@@ -21,10 +21,28 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      bearer JWT. Accept either, and expose req.orgId either way. */
   const authAny = (req, res, next) => {
     resolveAppSession(req).then((orgId) => {
-      if (orgId) { req.orgId = orgId; return next(); }
-      bearerAuth(req, res, () => { req.orgId = req.org.o; next(); });
+      if (orgId) { req.orgId = orgId; return next(); }        // cookie sets req.appRole in resolveAppSession
+      bearerAuth(req, res, () => { req.orgId = req.org.o; req.appRole = req.appRole || "owner"; next(); });
     }).catch(next);
   };
+
+  /* Server-side RBAC (roles-audit gap 4). Back-office sessions carry a role;
+     bearer (till) callers are treated as owner (the till gates itself and never
+     hits these config endpoints). Only manager/admin/owner can hold a back
+     session at all, so the meaningful server gate is the admin-tier one: staff
+     & settings writes, the owner dashboard, and the plain-English agent require
+     admin+ — a manager's session literally cannot reach them, not just have the
+     tab hidden. */
+  const ROLE_RANK = { owner: 3, admin: 2, manager: 1 };
+  const rankOf = (r) => ROLE_RANK[r] || (r ? 0 : 3); // unknown/absent role = legacy owner cookie
+  const requireRole = (min) => (req, res, next) =>
+    rankOf(req.appRole) >= min ? next() : res.status(403).json({ error: "This needs an admin or the owner." });
+
+  /* Who am I — lets /back gate its tabs to the signed-in role (owner/admin see
+     all; manager gets operational tabs, not the Owner dashboard or Settings). */
+  router.get("/me", authAny, wrap(async (req, res) => {
+    res.json({ role: req.appRole || "owner", staff: req.appStaff || null });
+  }));
 
   const num = (v, d = 0) => { const n = Number(v); return isNaN(n) ? d : n; };
   const round3 = (v) => Math.round(v * 1000) / 1000;
@@ -1960,7 +1978,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      deterministic read with no AI key. */
   const pct = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0));
 
-  router.get("/owner", authAny, wrap(async (req, res) => {
+  router.get("/owner", authAny, requireRole(2), wrap(async (req, res) => {
     const storeId = req.query.storeId ? String(req.query.storeId) : null;
     const to = Number(req.query.to) || Date.now();
     const from = Number(req.query.from) || (to - 7 * 864e5);
@@ -2112,7 +2130,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     });
   }
 
-  router.post("/agent/interpret", authAny, wrap(async (req, res) => {
+  router.post("/agent/interpret", authAny, requireRole(2), wrap(async (req, res) => {
     const client = anthropicClient();
     if (!client) return res.json({ ok: true, configured: false, message: "Plain-English commands aren't set up yet. Add an ANTHROPIC_API_KEY to switch them on." });
     const message = String((req.body && req.body.message) || "").trim().slice(0, 400);
@@ -2177,7 +2195,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, configured: true, needsConfirm: true, op: op.op, changes: op.changes, summary: parsed.summary || "" });
   }));
 
-  router.post("/agent/execute", authAny, wrap(async (req, res) => {
+  router.post("/agent/execute", authAny, requireRole(2), wrap(async (req, res) => {
     const body = req.body || {};
     const op = String(body.op || "");
     const changes = Array.isArray(body.changes) ? body.changes : [];
@@ -2239,7 +2257,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     } });
   }));
 
-  router.put("/settings", authAny, wrap(async (req, res) => {
+  router.put("/settings", authAny, requireRole(2), wrap(async (req, res) => {
     const b = req.body || {};
     const rowver = await withOrg(req.orgId, async (client) => {
       const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];

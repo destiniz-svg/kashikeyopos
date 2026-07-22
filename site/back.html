@@ -365,7 +365,7 @@
 
   /* ── state + helpers ─────────────────────────────────────────────── */
   var S = {
-    tab: "owner", currency: "MVR",
+    tab: "owner", currency: "MVR", role: "owner",
     ingredients: [], products: [], suppliers: [], audits: [],
     // recipes tab
     prodFilter: "", selProduct: null, recipe: null,
@@ -419,6 +419,13 @@
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
   var TABS = [["owner", "Owner"], ["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"], ["customers", "Customers"], ["reports", "Reports"], ["config", "Settings"]];
+  /* RBAC (roles-audit gaps 3-4): tabs that expose owner-level surfaces need
+     admin rank (2); the rest are manager+ (1). The server enforces the same on
+     /api/inv (owner dashboard, settings write, agent = admin+), so hiding a tab
+     is convenience, not the security boundary. */
+  var TAB_MIN = { owner: 2, config: 2 };
+  function roleRank(r) { return { owner: 3, admin: 2, manager: 1 }[r] || (r ? 0 : 3); }
+  function visibleTabs() { var rk = roleRank(S.role); return TABS.filter(function (t) { return rk >= (TAB_MIN[t[0]] || 1); }); }
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
@@ -594,7 +601,7 @@
   /* ── tabs ────────────────────────────────────────────────────────── */
   function renderTabs() {
     var flagN = S.flags ? (S.flags.sales.length + S.flags.credit.length) : 0;
-    el("tabs").innerHTML = TABS.map(function (t) {
+    el("tabs").innerHTML = visibleTabs().map(function (t) {
       var label = esc(t[1]);
       if (t[0] === "review" && flagN) label += ' <span class="tab-count">' + flagN + "</span>";
       var cur = S.tab === t[0] ? ' aria-current="page"' : "";
@@ -2609,7 +2616,17 @@
 
   /* ── boot + background refresh ───────────────────────────────────── */
   applyTheme();
-  loadAll().then(render).catch(function (e) {
+  /* Learn the signed-in role first so the nav renders only the tabs this role
+     may use (owner/admin: everything; manager: no Owner dashboard or Settings).
+     If the current tab isn't allowed for the role, fall to the first that is. */
+  api("/me").then(function (m) {
+    S.role = (m && m.role) || "owner";
+    S.staff = (m && m.staff) || null;
+    var allowed = visibleTabs().map(function (t) { return t[0]; });
+    if (allowed.indexOf(S.tab) < 0 && allowed.length) S.tab = allowed[0];
+  }).catch(function () {}).then(function () {
+    return loadAll().then(render);
+  }).catch(function (e) {
     el("main").innerHTML = '<div class="empty">Couldn’t load the back office: ' + esc(e.message) + "</div>";
   });
 

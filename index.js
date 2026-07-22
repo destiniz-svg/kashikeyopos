@@ -499,7 +499,13 @@ async function logActivity(orgId, { actor = "system", action, ref = "", requestI
   } catch (e) { recordError("activity_log " + action, e); }
 }
 
-const sign = (orgId, register, storeId = DEFAULT_STORE_ID) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId) }, SECRET, { expiresIn: "365d" });
+const sign = (orgId, register, storeId = DEFAULT_STORE_ID, extra = {}) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId), ...extra }, SECRET, { expiresIn: "365d" });
+/* Till PIN hash — djb2, byte-identical to the till bundle's Xo() so a staff
+   member's existing PIN validates the same on the server. Per SEC-03 the PIN is
+   not a hard security boundary (it's a shift selector), so back-office PIN login
+   is rate-limited like password login to keep a 4-digit space impractical to
+   brute-force. */
+const pinHash = (pin) => { let e = 5381; for (const ch of String(pin)) e = (e * 33 ^ ch.charCodeAt(0)) >>> 0; return String(e); };
 const auth = (req, res, next) => {
   const h = req.headers.authorization || "";
   const tok = h.startsWith("Bearer ") ? h.slice(7) : req.query.token;
@@ -540,6 +546,12 @@ async function resolveAppSession(req) {
   /* Side-channel for requireAppSession so it can steer un-onboarded orgs to
      /welcome without a second lookup; API callers simply ignore it. */
   req.kOnboarded = r.rows[0].onboarded !== false;
+  /* Role-carrying sessions (RBAC gaps 3-4): a staff PIN login stamps role +
+     staff into the cookie; the owner/email login carries none, which we treat
+     as full "owner" access for backward compatibility. Surfaced on req so the
+     /api/inv role gate and back.html can enforce/branch on it. */
+  req.appRole = payload.role || "owner";
+  req.appStaff = payload.staff || null;
   return payload.o;
 }
 const requireAppSession = (req, res, next) => {
@@ -913,6 +925,36 @@ app.post("/api/login", wrap(async (req, res) => {
   const result = { token, slug: org.slug, register, storeId: selectedStore };
   if (seededPin) result.pin = seededPin;
   res.json(result);
+}));
+
+/* Back-office staff sign-in by store + till PIN (RBAC gaps 3-4). Reuses the
+   existing staff `users` entities and their PINs — no new credential. Only
+   manager/admin/owner may hold a back-office session; waiter/cashier/kitchen are
+   turned away to the till. The session carries the role so /api/inv can enforce
+   server-side (not just hide tabs). Throttled like password login; the error is
+   deliberately identical for a bad store or a bad PIN so neither can be probed. */
+app.post("/api/back/login", wrap(async (req, res) => {
+  const { slug, pin } = req.body || {};
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+  const keys = rlKeys(req, "back:" + cleanSlug);
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
+  const bad = () => { rlFail(keys); return res.status(401).json({ error: "Unknown store or PIN." }); };
+  const org = await orgBySlug(cleanSlug);
+  if (!org) return bad();
+  if (org.status && org.status !== "active") return res.status(403).json({ error: "This workspace is " + org.status + " — contact support." });
+  const want = pinHash(String(pin || ""));
+  const users = await withOrg(org.id, (client) =>
+    client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [org.id]));
+  const me = users.rows.map((r) => r.data).find((u) => u && String(u.pin) === want);
+  if (!me) return bad();
+  const RANK = { owner: 3, admin: 2, manager: 1 };
+  if (!RANK[me.role]) { rlFail(keys); return res.status(403).json({ error: "The back office is for managers and above — use the till app for your role." }); }
+  rlClear(keys);
+  await ensureDefaultStore(org.id, org.store_name);
+  const storeId = cleanStoreId(me.storeId || DEFAULT_STORE_ID);
+  setAppCookie(res, sign(org.id, "BACK", storeId, { role: me.role, staff: { id: me.id, name: me.name } }));
+  res.json({ ok: true, role: me.role, name: me.name, slug: org.slug });
 }));
 
 /* A browser can hold a valid app-session cookie without ever having gone
