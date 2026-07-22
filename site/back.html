@@ -418,7 +418,7 @@
     });
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
-  var TABS = [["owner", "Owner"], ["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"], ["reports", "Reports"]];
+  var TABS = [["owner", "Owner"], ["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"], ["customers", "Customers"], ["reports", "Reports"], ["config", "Settings"]];
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
@@ -432,6 +432,8 @@
     deliveries: ["Deliveries & purchases", "Record goods as they arrive to add stock and keep ingredient costs accurate."],
     suppliers: ["Suppliers", "Who you buy from — used on deliveries and purchase orders."],
     reports: ["Reports", "Profit, GST and cash — worked out for you from your sales, costs and expenses. No bookkeeping needed."],
+    customers: ["Customers", "Everyone you serve — who owes you, their loyalty points, and their history."],
+    config: ["Settings", "Your store details, tax and service charge — saved here and used on the till and receipts."],
   };
   var REASONS = ["Spoilage", "Staff meal", "Waste", "Count error", "Other"];
   var LOCATIONS = ["Fridge", "Freezer", "Dry", "Bar", "Other"];
@@ -615,6 +617,8 @@
     else if (S.tab === "deliveries") renderDeliveries();
     else if (S.tab === "ingredients") renderIngredients();
     else if (S.tab === "suppliers") renderSuppliers();
+    else if (S.tab === "customers") renderCustomers();
+    else if (S.tab === "config") renderConfig();
     else if (S.tab === "reports") renderReports();
     /* Prepend the guided intro to whatever the tab rendered (overview builds
        its own, so skip it there). */
@@ -2291,6 +2295,78 @@
         } else { out.innerHTML = ""; }
       })
       .catch(function (e) { out.innerHTML = '<div class="sub" style="margin-top:10px;color:var(--warn)">' + esc(e.message || "Couldn't run that") + "</div>"; });
+  }
+
+  /* ── Customers tab (P8) ─────────────────────────────────────────────────── */
+  function renderCustomers() {
+    el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Customers</h2></div><div id="custBody"><div class="empty">Loading…</div></div>';
+    api("/customers").then(function (r) {
+      var q = (S.custFilter || "").toLowerCase();
+      var list = (r.customers || []).filter(function (c) { return !q || c.name.toLowerCase().includes(q) || (c.phone || "").includes(q); });
+      var rows = list.map(function (c) {
+        return '<tr data-c="' + esc(c.id) + '" style="cursor:pointer"><td>' + esc(c.name || "—") + "</td><td>" + esc(c.phone || "—") + '</td><td class="mono"' + (c.balance > 0 ? ' style="color:var(--warn);font-weight:700"' : "") + ">" + (c.balance > 0 ? r.currency + " " + Y(c.balance) : "—") + '</td><td class="mono">' + (c.points || 0) + "</td></tr>";
+      }).join("");
+      el("custBody").innerHTML =
+        '<div class="cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:14px">' +
+        '<div class="panel pad"><div class="hint">Customers</div><div class="mono" style="font-size:20px;font-weight:800">' + (r.customers || []).length + "</div></div>" +
+        '<div class="panel pad"><div class="hint">Owe you</div><div class="mono" style="font-size:20px;font-weight:800">' + r.owing + "</div></div>" +
+        '<div class="panel pad"><div class="hint">Total owed</div><div class="mono" style="font-size:20px;font-weight:800">' + r.currency + " " + Y(r.owed) + "</div></div></div>" +
+        '<input type="search" id="custSearch" placeholder="Search name or phone…" value="' + esc(S.custFilter || "") + '" style="width:100%;margin-bottom:12px" />' +
+        '<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th class="mono">Balance</th><th class="mono">Points</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="4" class="empty">No customers match.</td></tr>') + "</tbody></table></div>";
+      var ss = el("custSearch");
+      ss.oninput = function () { S.custFilter = ss.value; renderCustomers(); ss = el("custSearch"); ss.focus(); ss.setSelectionRange(ss.value.length, ss.value.length); };
+      el("custBody").querySelectorAll("[data-c]").forEach(function (tr) { tr.onclick = function () { openCustomer(tr.dataset.c, r.currency); }; });
+    }).catch(function (e) { el("custBody").innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; });
+  }
+  function openCustomer(id, currency) {
+    el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:520px"><div class="empty">Loading…</div></div></div>';
+    api("/customers/" + encodeURIComponent(id)).then(function (r) {
+      var c = r.customer, cur = currency || "MVR";
+      var pays = (c.payments || []).map(function (p) { return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span class="sub">' + new Date(p.at).toLocaleDateString() + " · " + esc(p.method) + '</span><span class="mono" style="color:var(--ok)">− ' + cur + " " + Y(p.amount) + "</span></div>"; }).join("") || '<p class="hint">No payments recorded.</p>';
+      var ords = (c.orders || []).map(function (o) { return '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0"><span>' + esc(o.no || "order") + " · " + o.items + ' item' + (o.items === 1 ? "" : "s") + '</span><span class="mono">' + cur + " " + Y(o.total) + "</span></div>"; }).join("") || '<p class="hint">No orders yet.</p>';
+      el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:520px">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">' + esc(c.name || "Customer") + "</h3><button class=\"tiny ghost\" id=\"custClose\">✕</button></div>" +
+        '<div class="sub" style="margin:2px 0 12px">' + esc(c.phone || "") + (c.address ? " · " + esc(c.address) : "") + "</div>" +
+        '<div style="display:flex;gap:12px;margin-bottom:12px">' +
+        '<div class="panel pad" style="flex:1"><div class="hint">Balance owed</div><div class="mono" style="font-size:18px;font-weight:800' + (c.balance > 0 ? ";color:var(--warn)" : "") + '">' + (c.balance > 0 ? cur + " " + Y(c.balance) : "Settled") + "</div></div>" +
+        '<div class="panel pad" style="flex:1"><div class="hint">Loyalty points</div><div class="mono" style="font-size:18px;font-weight:800">' + (c.points || 0) + "</div></div></div>" +
+        '<div style="font-weight:700;margin:6px 0 2px">Payments</div>' + pays +
+        '<div style="font-weight:700;margin:12px 0 2px">Recent orders</div>' + ords +
+        "</div></div>";
+      el("custClose").onclick = function () { el("modalHost").innerHTML = ""; };
+    }).catch(function (e) { el("modalHost").innerHTML = ""; toast(e.message || "Couldn't load customer"); });
+  }
+
+  /* ── Settings tab (P8) ──────────────────────────────────────────────────── */
+  function renderConfig() {
+    el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Settings</h2></div><div id="cfgBody"><div class="empty">Loading…</div></div>';
+    api("/settings").then(function (r) {
+      var s = r.settings;
+      el("cfgBody").innerHTML =
+        '<div class="panel pad" style="max-width:640px">' +
+        '<h3 style="margin:0 0 10px">Store profile</h3>' +
+        '<div class="row2"><div><label>Store name</label><input id="cfgName" value="' + esc(s.storeName) + '" style="width:100%" /></div>' +
+        '<div><label>Currency</label><input id="cfgCur" value="' + esc(s.currency) + '" style="width:100%" /></div></div>' +
+        '<div class="row2" style="margin-top:8px"><div><label>Tax ID (TIN)</label><input id="cfgTin" value="' + esc(s.tin) + '" style="width:100%" /></div>' +
+        '<div><label>Address</label><input id="cfgAddr" value="' + esc(s.address) + '" style="width:100%" /></div></div>' +
+        '<label style="margin-top:8px;display:block">Receipt footer</label><input id="cfgFooter" value="' + esc(s.receiptFooter) + '" style="width:100%" />' +
+        '<h3 style="margin:18px 0 10px">Tax &amp; charges</h3>' +
+        '<label>GST sector</label><div class="chips" style="margin:4px 0 12px">' +
+        '<button class="chip' + (s.gstBp === 800 ? " on" : "") + '" data-gst="800">General · 8%</button>' +
+        '<button class="chip' + (s.gstBp === 1600 ? " on" : "") + '" data-gst="1600">Tourism · 16%</button></div>' +
+        '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:4px 0;font-size:14px;cursor:pointer"><input type="checkbox" id="cfgSvc" ' + (s.svcChargeBp > 0 ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Add a 10% service charge on dine-in</label>' +
+        '<div style="margin-top:10px"><label>Loyalty — laari of spend per 1 point (0 = off)</label><input id="cfgLoyalty" type="number" min="0" value="' + (s.loyaltyBp || 0) + '" style="width:180px" /></div>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="primary" id="cfgSave">Save settings</button></div>' +
+        '<p class="hint" style="margin-top:8px">Saved changes flow to the till and receipts automatically.</p></div>';
+      var gst = s.gstBp === 1600 ? 1600 : 800;
+      el("cfgBody").querySelectorAll("[data-gst]").forEach(function (b) { b.onclick = function () { gst = Number(b.dataset.gst); el("cfgBody").querySelectorAll("[data-gst]").forEach(function (x) { x.classList.toggle("on", Number(x.dataset.gst) === gst); }); }; });
+      el("cfgSave").onclick = function () {
+        var body = { storeName: el("cfgName").value.trim(), currency: el("cfgCur").value.trim() || "MVR", tin: el("cfgTin").value.trim(), address: el("cfgAddr").value.trim(), receiptFooter: el("cfgFooter").value.trim(), gstBp: gst, svcChargeBp: el("cfgSvc").checked ? 1000 : 0, loyaltyBp: Math.max(0, Math.round(Number(el("cfgLoyalty").value) || 0)) };
+        el("cfgSave").disabled = true;
+        api("/settings", { method: "PUT", body: JSON.stringify(body) }).then(function () { toast("Settings saved — the till will update"); S.currency = body.currency; el("cfgSave").disabled = false; }).catch(function (e) { el("cfgSave").disabled = false; toast(e.message || "Couldn't save"); });
+      };
+    }).catch(function (e) { el("cfgBody").innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; });
   }
 
   function supplierModal(sup, after) {

@@ -2202,6 +2202,65 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, applied: result.done.length, done: result.done });
   }));
 
+  /* ── Manager cockpit (P8): customers + store configuration ──────────────
+     Read/manage what previously only lived on the till or /dev. */
+  router.get("/customers", authAny, wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (client) => {
+      const cs = (await client.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [req.orgId])).rows;
+      const sd = (await client.query("SELECT data->>'currency' AS cur FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [req.orgId])).rows[0];
+      return { cs, currency: (sd && sd.cur) || "MVR" };
+    });
+    const customers = out.cs.map((r) => { const d = r.data || {}; return { id: String(d.id || r.id), name: d.name || "", phone: d.phone || "", balance: num(d.balance), points: num(d.points), address: d.address || "" }; })
+      .sort((a, b) => (b.balance - a.balance) || a.name.localeCompare(b.name));
+    res.json({ ok: true, currency: out.currency, customers, owing: customers.filter((c) => c.balance > 0).length, owed: customers.reduce((a, c) => a + Math.max(0, c.balance), 0) });
+  }));
+
+  router.get("/customers/:id", authAny, wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (client) => {
+      const c = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='customers' AND id=$2 AND deleted=false", [req.orgId, req.params.id])).rows[0];
+      if (!c) return null;
+      const filt = (rows, key) => rows.map((r) => r.data || {}).filter((x) => String(x[key]) === String(req.params.id));
+      const pays = filt((await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='payments' AND deleted=false", [req.orgId])).rows, "customerId")
+        .sort((a, b) => num(b.at) - num(a.at)).slice(0, 25).map((p) => ({ amount: num(p.amount), method: p.method || "Cash", at: num(p.at) }));
+      const orders = filt((await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false", [req.orgId])).rows, "customerId")
+        .sort((a, b) => num(b.createdAt || b.t) - num(a.createdAt || a.t)).slice(0, 25).map((o) => ({ no: o.no || "", total: num(o.total), at: num(o.createdAt || o.t), items: (o.items || o.lines || []).length, status: o.status || "" }));
+      const d = c.data || {};
+      return { id: String(req.params.id), name: d.name || "", phone: d.phone || "", balance: num(d.balance), points: num(d.points), address: d.address || "", payments: pays, orders };
+    });
+    if (!out) return res.status(404).json({ error: "customer not found" });
+    res.json({ ok: true, customer: out });
+  }));
+
+  router.get("/settings", authAny, wrap(async (req, res) => {
+    const sd = await withOrg(req.orgId, async (client) => { const r = await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [req.orgId]); return r.rowCount ? r.rows[0].data : {}; });
+    res.json({ ok: true, settings: {
+      storeName: sd.storeName || "", currency: sd.currency || "MVR", tin: sd.tin || "", address: sd.address || "",
+      receiptFooter: sd.receiptFooter || "", gstBp: num(sd.gstBp, 800), svcChargeBp: num(sd.svcChargeBp, 0), loyaltyBp: num(sd.loyaltyBp, 0),
+    } });
+  }));
+
+  router.put("/settings", authAny, wrap(async (req, res) => {
+    const b = req.body || {};
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];
+      const data = Object.assign({}, row ? row.data || {} : {});
+      if (typeof b.storeName === "string") data.storeName = b.storeName.slice(0, 80);
+      if (typeof b.currency === "string" && b.currency) data.currency = b.currency.slice(0, 8);
+      if (typeof b.tin === "string") data.tin = b.tin.slice(0, 40);
+      if (typeof b.address === "string") data.address = b.address.slice(0, 200);
+      if (typeof b.receiptFooter === "string") data.receiptFooter = b.receiptFooter.slice(0, 200);
+      if (b.gstBp != null) data.gstBp = [800, 1600].includes(Number(b.gstBp)) ? Number(b.gstBp) : 800;   // GGST 8% / TGST 16%
+      if (b.svcChargeBp != null) data.svcChargeBp = Math.max(0, Math.min(2000, Math.round(Number(b.svcChargeBp) || 0)));
+      if (b.loyaltyBp != null) data.loyaltyBp = Math.max(0, Math.round(Number(b.loyaltyBp) || 0));
+      let rv;
+      if (row) rv = Number((await client.query("UPDATE entities SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id='settings' RETURNING rowver", [req.orgId, JSON.stringify(data)])).rows[0].rowver);
+      else rv = Number((await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) RETURNING rowver", [req.orgId, JSON.stringify(data)])).rows[0].rowver);
+      return rv;
+    });
+    if (poke && rowver) poke(req.orgId, rowver);
+    res.json({ ok: true, rowver });
+  }));
+
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {
     const { lines, invoiceNo } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });

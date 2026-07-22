@@ -71,8 +71,13 @@ staging check, then promote to `main` only on explicit owner sign-off.
   signature + nested withOrg) that also silently affected P2/P4 logging.
   Verified: execute persists (soldOut survives reprice) + writes activity_log;
   UI confirm-diff renders; 37/37 tests.
-- [ ] **P8 — Manager cockpit gaps.** Customers, Staff & roles + auth codes,
-  store-profile + tax/method config, sales history — on /back tabs.
+- [~] **P8 — Manager cockpit gaps.** Customers + Settings DONE. `/customers`
+  (list + owing/owed) + `/customers/:id` (balance, points, payments, orders);
+  `/settings` GET/PUT (store profile, GST sector 8/16%, 10% service charge,
+  loyalty, TIN, receipt footer) → settings entity + poke so the till follows.
+  /back "Customers" (list + detail modal) and "Settings" (profile + tax form)
+  tabs. Verified. DEFERRED: Staff & roles (needs the till PIN/auth model
+  designed first — a separate decision).
 - [ ] **P9 — Guided onboarding.** Maldivian defaults (MVR, GGST 8%, Dhivehi,
   island/atoll), AI-seeded starter menu, few-click resumable checklist.
 - [ ] **P10 — Convenience & hardening.** Less-typing sweep, a11y (axe/Lighthouse
