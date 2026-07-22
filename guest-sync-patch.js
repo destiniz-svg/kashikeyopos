@@ -717,6 +717,31 @@ patchFile(indexPath, (html) => {
     'children:f.name}),h.jsxs("div",{className:"flex items-end justify-between mt-1"',
     'children:f.name}),f.dv?h.jsx("div",{className:"ksh-tiledv text-xs leading-tight overflow-hidden",style:{direction:"rtl",opacity:.6,marginTop:"-1px",marginBottom:"1px",maxHeight:"1.1rem"},children:f.dv}):null,(f.tags&&f.tags.length)?h.jsx("div",{style:{display:"flex",flexWrap:"wrap",gap:"3px",margin:"2px 0 1px"},children:f.tags.slice(0,3).map(function(kt,ki){return h.jsx("span",{style:{fontSize:"8px",fontWeight:"600",padding:"1px 5px",borderRadius:"999px",background:"var(--k-panel2,#F4F1EB)",color:"var(--k-sub,#8A8074)",whiteSpace:"nowrap"},children:kt},ki)})}):null,h.jsxs("div",{className:"flex items-end justify-between mt-1"'
   )
+  /* RBAC gap-close (roles audit): add an "admin" supervisor tier between manager
+     and owner. It carries every manager permission plus two new tokens — "staff"
+     (manage Users & PINs) and "settings" (Store Settings) — while Cloud Sync and
+     Data & Backup stay owner-only (destructive/account-level). Gaps closed:
+     (1) there was no admin role; (2) managers couldn't onboard staff. The card
+     gates move from role checks to br() tokens so owner (br wildcard) still
+     passes and the change is idempotent. */
+  .replace(
+    '"shifts.view","foc"],owner:["*"]}',
+    '"shifts.view","foc"],admin:["sell","orders","customers","refund","dashboard","reports","inventory","products","tables","shifts.view","foc","staff","settings"],owner:["*"]}'
+  )
+  .replace(
+    '"Users & PINs",bk,"staff accounts for shifts",Ne.role==="owner"]',
+    '"Users & PINs",bk,"staff accounts for shifts",br("staff")]'
+  )
+  .replace(
+    '"Store Settings",wk,"name, GST, currency, receipt",Ne.role==="owner"]',
+    '"Store Settings",wk,"name, GST, currency, receipt",br("settings")]'
+  )
+  /* Prevent privilege escalation: only an owner may appoint admin/owner roles;
+     an admin managing staff can assign operational roles only. */
+  .replace(
+    '["waiter","cashier","kitchen","manager","owner"].map(f=>',
+    '(Ne.role==="owner"?["waiter","cashier","kitchen","manager","admin","owner"]:["waiter","cashier","kitchen","manager"]).map(f=>'
+  )
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
      The catalogue form defaulted a new product's stock to "0", so patch #73's
      sold-out gate (__ksOut: stock<=0 ⇒ unavailable) fired on every product a
@@ -2521,6 +2546,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.3"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.4"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
