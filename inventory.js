@@ -1877,6 +1877,80 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       note: "All amounts in laari (MVR×100). AR = credit-tender sales; tenders map to their clearing accounts. tenderDetail lists each Card/QR/Transfer payment with the reference captured at the till." });
   }));
 
+  /* ── Automated accounting (P5) ──────────────────────────────────────────
+     The books are DERIVED from source (sales entities, expense entities,
+     stock_moves) at read time — same source-of-truth, offline-safe philosophy
+     as the rest of the app, so there is no separate posted journal to keep in
+     sync. Perpetual COGS (recipe cost of what sold) means inventory purchases
+     are NOT also expensed — they sit in stock until consumed — so the P&L never
+     double-counts. All amounts laari. */
+  router.get("/accounting", authAny, wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const from = Number(req.query.from) || 0;
+    const to = Number(req.query.to) || Date.now();
+    const src = await withOrg(req.orgId, async (client) => {
+      const sales = (await client.query(
+        `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+           AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
+           AND (data->>'t')::numeric BETWEEN $3 AND $4`, [req.orgId, storeId, from, to])).rows;
+      const exps = (await client.query(
+        `SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false
+           AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
+           AND (data->>'t')::numeric BETWEEN $3 AND $4`, [req.orgId, storeId, from, to])).rows;
+      const cogs = (await client.query(
+        `SELECT COALESCE(-SUM(qty*unit_cost),0) AS c FROM stock_moves
+           WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to])).rows[0];
+      const waste = (await client.query(
+        `SELECT COALESCE(-SUM(qty*unit_cost),0) AS w FROM stock_moves
+           WHERE org_id=$1 AND kind='waste' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to])).rows[0];
+      return { sales, exps, cogs: Math.round(Number(cogs.c) || 0), wastage: Math.round(Number(waste.w) || 0) };
+    });
+
+    let grossSales = 0, discounts = 0, gst = 0, svc = 0, refunds = 0, foc = 0, ar = 0, saleCount = 0;
+    const tenders = {};
+    for (const row of src.sales) {
+      const d = row.data || {}; const isRefund = d.type === "refund";
+      if (d.foc) { foc += num(d.focValue); continue; }
+      if (isRefund) { refunds += Math.abs(num(d.total)); }
+      else { grossSales += num(d.subtotal); discounts += num(d.billDisc); gst += num(d.gst); svc += num(d.svcCharge); saleCount++; }
+      for (const p of (d.payments || [])) {
+        const m = String(p.method || "Other");
+        tenders[m] = (tenders[m] || 0) + num(p.amount);
+        if (/credit/i.test(m) && !isRefund) ar += num(p.amount);
+      }
+    }
+    const netSales = grossSales - discounts - refunds;
+
+    /* Split expenses: inventory purchases are already captured via perpetual
+       COGS, so they're excluded from operating expense; everything else is real
+       opex (rent, wages, utilities, paid-outs…). */
+    let purchases = 0, opex = 0, paidOut = 0;
+    const opexByCat = {};
+    for (const row of src.exps) {
+      const d = row.data || {}; const amt = num(d.amount); const cat = String(d.cat || "Other"); const type = String(d.type || "");
+      if (/purchase/i.test(cat)) { purchases += amt; continue; }
+      opex += amt;
+      if (type === "paidout") paidOut += amt;
+      const key = type === "paidout" ? (d.reason || "Paid out") : cat;
+      opexByCat[key] = (opexByCat[key] || 0) + amt;
+    }
+
+    const grossProfit = netSales - src.cogs;
+    const netProfit = grossProfit - src.wastage - opex;
+    const cashSales = tenders.Cash || 0;
+
+    res.json({
+      ok: true, from, to, storeId: storeId || "all", currency: "laari",
+      pnl: { revenue: netSales, grossSales, discounts, refunds, serviceCharge: svc, cogs: src.cogs, grossProfit,
+        grossMarginPct: netSales > 0 ? Math.round((grossProfit / netSales) * 100) : 0,
+        wastage: src.wastage, opex, opexByCat, purchases, netProfit,
+        netMarginPct: netSales > 0 ? Math.round((netProfit / netSales) * 100) : 0, saleCount },
+      gstReturn: { outputTax: gst, inputTax: 0, netPayable: gst,
+        note: "Input tax on purchases isn't itemised in the app; enter it manually if you claim it." },
+      cash: { tenders, cashSales, paidOut, drawerNet: cashSales - paidOut, accountsReceivable: ar, focValue: foc },
+    });
+  }));
+
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {
     const { lines, invoiceNo } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });
