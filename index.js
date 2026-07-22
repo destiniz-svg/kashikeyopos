@@ -1553,6 +1553,15 @@ app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 /* Back office: recipes, stock checks, deliveries — owner/manager work that
    doesn't belong on the till. Same session cookie as /app. */
 app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir, "back.html")));
+/* /app2 — the next-gen front-end (prototype design on this same backend), built
+   from web2/ (Vite+React) into web2/dist. Coexists with the baked till at /app;
+   session-gated the same way. Static assets first, SPA fallback to index.html. */
+const web2Dir = path.join(__dirname, "web2", "dist");
+if (fs.existsSync(web2Dir)) {
+  app.get(/^\/app2(\/.*)?$/, requireAppSession, (req, res, next) => next());
+  app.use("/app2", express.static(web2Dir, { index: false }));
+  app.get(/^\/app2(\/.*)?$/, (req, res) => res.sendFile(path.join(web2Dir, "index.html")));
+}
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
    meaningful while the org is un-onboarded; afterwards it's just /app. */
 app.get("/welcome", (req, res) => {
