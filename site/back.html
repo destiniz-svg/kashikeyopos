@@ -2198,8 +2198,15 @@
     if (!S.ownRange) S.ownRange = "7d";
     var ranges = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"]];
     var chips = ranges.map(function (x) { return '<button class="chip' + (S.ownRange === x[0] ? " on" : "") + '" data-or="' + x[0] + '">' + esc(x[1]) + "</button>"; }).join(" ");
-    el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Owner dashboard</h2><div class="chips">' + chips + "</div></div><div id=\"ownBody\"><div class=\"empty\">Reading your business…</div></div>";
+    el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Owner dashboard</h2><div class="chips">' + chips + "</div></div>" +
+      '<div class="panel pad" style="margin-bottom:14px"><div style="display:flex;gap:8px;align-items:center">' +
+      '<span style="font-size:17px">💬</span>' +
+      '<input id="agInput" placeholder="Tell me what to do — e.g. “86 the espresso”, “raise coffee 10%”, “what sold best?”" style="flex:1" />' +
+      '<button class="primary" id="agRun">Run</button></div><div id="agOut"></div></div>' +
+      '<div id="ownBody"><div class="empty">Reading your business…</div></div>';
     el("main").querySelectorAll("[data-or]").forEach(function (b) { b.onclick = function () { S.ownRange = b.dataset.or; renderOwner(); }; });
+    el("agRun").onclick = runAgent;
+    el("agInput").onkeydown = function (e) { if (e.key === "Enter") runAgent(); };
     var now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0);
     var bnd = S.ownRange === "today" ? { from: d0.getTime(), to: now } : S.ownRange === "30d" ? { from: now - 30 * 864e5, to: now } : { from: now - 7 * 864e5, to: now };
     api("/owner?from=" + bnd.from + "&to=" + bnd.to)
@@ -2253,6 +2260,37 @@
       : "";
 
     el("ownBody").innerHTML = hero + read + '<div style="margin-top:14px">' + alerts + "</div>" + quad + stores;
+  }
+
+  /* Agentic command bar — interpret → confirm-diff → execute. */
+  function runAgent() {
+    var inp = el("agInput"); if (!inp) return;
+    var message = inp.value.trim(); if (!message) return;
+    var out = el("agOut");
+    out.innerHTML = '<div class="hint" style="margin-top:10px">Thinking…</div>';
+    api("/agent/interpret", { method: "POST", body: JSON.stringify({ message: message }) })
+      .then(function (r) {
+        if (r.configured === false) { out.innerHTML = '<div class="sub" style="margin-top:10px;color:var(--warn)">' + esc(r.message || "Not set up yet.") + "</div>"; return; }
+        if (r.needsConfirm) {
+          var rows = (r.changes || []).map(function (c) {
+            var val = c.field === "price" ? (repMoney(c.from) + " → " + repMoney(c.to)) : (c.field === "soldOut" ? (c.to ? "mark sold out" : "restore") : (c.to ? "hide" : "show"));
+            return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:1px solid var(--panel2)"><span>' + esc(c.name || c.id) + '</span><span class="mono">' + val + "</span></div>";
+          }).join("");
+          out.innerHTML = '<div style="margin-top:12px;border:1px solid var(--panel2);border-radius:12px;padding:12px">' +
+            '<div style="font-weight:700;margin-bottom:2px">' + esc(r.summary || "Confirm this change?") + "</div>" + rows +
+            '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px"><button class="ghost" id="agCancel">Cancel</button><button class="primary" id="agGo">Confirm</button></div></div>';
+          el("agCancel").onclick = function () { out.innerHTML = ""; };
+          el("agGo").onclick = function () {
+            el("agGo").disabled = true;
+            api("/agent/execute", { method: "POST", body: JSON.stringify({ op: r.op, changes: r.changes }) })
+              .then(function (rr) { out.innerHTML = ""; el("agInput").value = ""; toast("Done — " + (rr.applied || 0) + " item" + ((rr.applied || 0) === 1 ? "" : "s") + " updated"); renderOwner(); })
+              .catch(function (e) { el("agGo").disabled = false; toast(e.message || "Couldn't apply"); });
+          };
+        } else if (r.answer) {
+          out.innerHTML = '<div style="margin-top:10px;line-height:1.5">' + esc(r.answer) + "</div>";
+        } else { out.innerHTML = ""; }
+      })
+      .catch(function (e) { out.innerHTML = '<div class="sub" style="margin-top:10px;color:var(--warn)">' + esc(e.message || "Couldn't run that") + "</div>"; });
   }
 
   function supplierModal(sup, after) {

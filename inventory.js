@@ -1418,7 +1418,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       return up.rows[0] ? Number(up.rows[0].rowver) : null;
     });
     if (rowver == null) return res.status(500).json({ error: "Couldn't save the item — try again." });
-    await noteActivity(req.orgId, "menu.ai_apply", { id, name });
+    await noteActivity(req.orgId, { action: "menu.ai_apply", ref: id, detail: { name } });
     if (poke) poke(req.orgId, rowver);
     res.json({ ok: true, id, rowver });
   }));
@@ -1746,9 +1746,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         rowver = up.rows[0] ? Number(up.rows[0].rowver) : rowver;
         out.push({ id, no, supplier: data.supplier, items: items.length, total });
       }
-      if (out.length) await noteActivity(req.orgId, "po.auto_create", { count: out.length });
       return { out, rowver };
     });
+    if (result.out.length) await noteActivity(req.orgId, { action: "po.auto_create", detail: { count: result.out.length } });
     if (result.rowver && poke) poke(req.orgId, result.rowver);
     res.json({ ok: true, created: result.out });
   }));
@@ -2060,6 +2060,146 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       quadrant: { star: quadrants.star, plowhorse: quadrants.plowhorse, puzzle: quadrants.puzzle, dog: quadrants.dog, avgUnits: Math.round(avgUnits), popLine: Math.round(popLine) },
       alerts, priceAlerts, stores, topItems: sold.slice().sort((a, b) => b.units - a.units).slice(0, 6),
     });
+  }));
+
+  /* ── Agentic control (P7): run the shop in plain English ─────────────────
+     Two-phase and guarded. /agent/interpret asks Claude (structured output) to
+     turn a message into ONE concrete action against THIS store's own catalogue;
+     the server resolves it to explicit targets and returns a confirm-diff — it
+     never lets the model write. /agent/execute re-validates and applies through
+     the normal product-entity path, audit-logged and poked. Read-only "report"
+     requests answer immediately. Degrades gracefully with no ANTHROPIC_API_KEY. */
+  const AGENT_SCHEMA = {
+    type: "object", additionalProperties: false,
+    properties: {
+      action: { type: "string", enum: ["eightysix", "hide", "reprice", "report", "answer", "unknown"], description: "The single best action for the request" },
+      productId: { type: "string", description: "Target menu item id from the catalogue, or empty" },
+      category: { type: "string", description: "For a category-wide reprice, the category name from the catalogue, or empty" },
+      pct: { type: "number", description: "Percent price change (e.g. 10 or -5) when repricing by percentage, else 0" },
+      price: { type: "number", description: "Absolute new price in whole rufiyaa (MVR) for a single item, else 0" },
+      sold: { type: "boolean", description: "For eightysix: true = mark sold out, false = restore" },
+      hidden: { type: "boolean", description: "For hide: true = hide from menu, false = show" },
+      reportKind: { type: "string", enum: ["revenue", "profit", "bestseller", "reorder", "summary", "none"], description: "Which report, for a read-only question" },
+      summary: { type: "string", description: "One short sentence describing exactly what you will do, for the owner to confirm" },
+    },
+    required: ["action", "productId", "category", "pct", "price", "sold", "hidden", "reportKind", "summary"],
+  };
+
+  async function agentReport(orgId, kind) {
+    const ins = await computeInsights(orgId);
+    const cur = ins.currency;
+    const m = (l) => cur + " " + (Math.round(l) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const now = Date.now(), from = now - 7 * 864e5;
+    if (kind === "reorder") {
+      if (!ins.reorder.length) return "Nothing needs reordering — every item has enough cover.";
+      return "To reorder (about a week's cover): " + ins.reorder.slice(0, 8).map((r) => `${r.name} (${r.suggestQty} ${r.suggestUnit})`).join(", ") + ".";
+    }
+    return withOrg(orgId, async (client) => {
+      const acct = await computeAccounting(client, orgId, from, now, null);
+      const P = acct.pnl;
+      if (kind === "bestseller") {
+        const sales = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND (data->>'t')::numeric > $2", [orgId, from])).rows;
+        const prods = (await client.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+        const nameBy = new Map(prods.map((r) => [String(r.id), (r.data || {}).name || "item"]));
+        const units = new Map();
+        for (const r of sales) { const d = r.data || {}; if (d.type === "refund" || d.foc) continue; for (const l of (d.lines || [])) { const pid = String(l.pid || ""); if (pid) units.set(pid, (units.get(pid) || 0) + num(l.qty, 1)); } }
+        const top = [...units.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+        if (!top.length) return "No sales in the last 7 days yet.";
+        return "Best sellers (last 7 days): " + top.map((t) => `${nameBy.get(t[0]) || "item"} (${t[1]})`).join(", ") + ".";
+      }
+      if (kind === "profit") return `Last 7 days: gross profit ${m(P.grossProfit)} (${P.grossMarginPct}% margin), net ${P.netProfit >= 0 ? m(P.netProfit) : "−" + m(-P.netProfit)} after expenses.`;
+      return `Last 7 days: ${m(P.revenue)} in sales (net of GST) from ${P.saleCount} order${P.saleCount === 1 ? "" : "s"}, gross margin ${P.grossMarginPct}%.`;
+    });
+  }
+
+  router.post("/agent/interpret", authAny, wrap(async (req, res) => {
+    const client = anthropicClient();
+    if (!client) return res.json({ ok: true, configured: false, message: "Plain-English commands aren't set up yet. Add an ANTHROPIC_API_KEY to switch them on." });
+    const message = String((req.body && req.body.message) || "").trim().slice(0, 400);
+    if (!message) return res.status(400).json({ error: "Type a command." });
+
+    const cat = await withOrg(req.orgId, async (dbc) => {
+      const prods = (await dbc.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false ORDER BY updated_at DESC LIMIT 200", [req.orgId])).rows.map((r) => Object.assign({ id: r.id }, r.data));
+      return prods;
+    });
+    const catalogue = cat.map((p) => `${p.id} | ${p.name} | ${p.cat || "-"} | MVR ${(num(p.price) / 100).toFixed(2)}${p.soldOut ? " | SOLD OUT" : ""}${p.hidden ? " | HIDDEN" : ""}`).join("\n") || "(no items)";
+    const cats = Array.from(new Set(cat.map((p) => p.cat).filter(Boolean)));
+
+    let parsed;
+    try {
+      const model = process.env.OCR_MODEL || "claude-opus-4-8";
+      const msg = await client.messages.create({
+        model, max_tokens: 1200, thinking: { type: "adaptive" },
+        system:
+          "You turn a café owner's plain-English (or Dhivehi) instruction into ONE structured action against their own menu. " +
+          "Use exact ids from the catalogue. 'eightysix' / '86' = mark sold out (sold:true); 'restore'/'back on' = sold:false. " +
+          "'hide'/'show' toggles menu visibility. 'reprice' either sets one item's absolute price (productId + price in whole MVR) or changes a whole category by percent (category + pct). " +
+          "For questions about sales/profit/best-sellers/what-to-reorder, use action 'report' with the right reportKind. " +
+          "If nothing fits, action 'unknown'. Always fill summary with exactly what you will do.\n\n" +
+          "Categories: " + (cats.join(", ") || "(none)") + "\nMenu (id | name | category | price):\n" + catalogue,
+        output_config: { format: { type: "json_schema", schema: AGENT_SCHEMA } },
+        messages: [{ role: "user", content: [{ type: "text", text: message }] }],
+      });
+      if (msg.stop_reason === "refusal") throw Object.assign(new Error("That request was declined."), { status: 422 });
+      parsed = JSON.parse((msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join(""));
+    } catch (e) {
+      recordError("agent interpret", e);
+      return res.status(e.status === 422 ? 422 : 502).json({ error: e.status === 422 ? e.message : "Couldn't understand that just now — try rephrasing." });
+    }
+
+    const byId = new Map(cat.map((p) => [String(p.id), p]));
+    const a = parsed.action;
+    if (a === "report") return res.json({ ok: true, configured: true, answer: await agentReport(req.orgId, parsed.reportKind || "summary") });
+    if (a === "answer" || a === "unknown") return res.json({ ok: true, configured: true, answer: parsed.summary || "I can 86/restore an item, hide/show it, change prices, or answer questions about sales — try one of those." });
+
+    /* Resolve to explicit, validated targets → the confirm-diff. */
+    let op = null;
+    if (a === "eightysix" || a === "hide") {
+      const p = byId.get(String(parsed.productId));
+      if (!p) return res.json({ ok: true, configured: true, answer: "I couldn't tell which item you meant — name it exactly as on the menu." });
+      const field = a === "eightysix" ? "soldOut" : "hidden";
+      const to = a === "eightysix" ? !!parsed.sold : !!parsed.hidden;
+      op = { op: a, changes: [{ id: p.id, name: p.name, field, to }] };
+    } else if (a === "reprice") {
+      let targets = [];
+      if (parsed.category) targets = cat.filter((p) => String(p.cat || "").toLowerCase() === String(parsed.category).toLowerCase());
+      else if (parsed.productId && byId.get(String(parsed.productId))) targets = [byId.get(String(parsed.productId))];
+      if (!targets.length) return res.json({ ok: true, configured: true, answer: "I couldn't find that item or category to reprice." });
+      const changes = targets.map((p) => {
+        const from = num(p.price);
+        const to = parsed.category ? Math.max(0, Math.round(from * (1 + num(parsed.pct) / 100))) : Math.max(0, Math.round(num(parsed.price) * 100));
+        return { id: p.id, name: p.name, field: "price", from, to };
+      }).filter((c) => c.to !== c.from);
+      if (!changes.length) return res.json({ ok: true, configured: true, answer: "That wouldn't change any prices." });
+      op = { op: "reprice", changes };
+    }
+    if (!op) return res.json({ ok: true, configured: true, answer: parsed.summary || "I'm not sure how to do that yet." });
+    res.json({ ok: true, configured: true, needsConfirm: true, op: op.op, changes: op.changes, summary: parsed.summary || "" });
+  }));
+
+  router.post("/agent/execute", authAny, wrap(async (req, res) => {
+    const body = req.body || {};
+    const op = String(body.op || "");
+    const changes = Array.isArray(body.changes) ? body.changes : [];
+    if (!["eightysix", "hide", "reprice"].includes(op) || !changes.length) return res.status(400).json({ error: "nothing to do" });
+    const result = await withOrg(req.orgId, async (client) => {
+      let rowver = 0; const done = [];
+      for (const c of changes) {
+        const id = String(c.id || ""); if (!id) continue;
+        const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, id])).rows[0];
+        if (!row) continue;
+        const data = Object.assign({}, row.data || {});
+        if (op === "reprice") { data.price = Math.max(0, Math.round(num(c.to))); }
+        else if (op === "eightysix") { if (c.to) data.soldOut = true; else delete data.soldOut; }
+        else if (op === "hide") { if (c.to) data.hidden = true; else delete data.hidden; }
+        const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, id, JSON.stringify(data)]);
+        if (up.rows[0]) { rowver = Number(up.rows[0].rowver); done.push({ id, name: data.name }); }
+      }
+      return { rowver, done };
+    });
+    if (result.done.length) await noteActivity(req.orgId, { action: "agent." + op, detail: { count: result.done.length, items: result.done.map((d) => d.name) } });
+    if (result.rowver && poke) poke(req.orgId, result.rowver);
+    res.json({ ok: true, applied: result.done.length, done: result.done });
   }));
 
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {

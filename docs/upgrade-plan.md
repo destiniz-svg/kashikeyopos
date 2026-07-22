@@ -62,9 +62,15 @@ staging check, then promote to `main` only on explicit owner sign-off.
   (reorder+expiry+margin+tabs); per-outlet revenue; deterministic guided read
   (AI-key-free). New /back "Owner" tab = default landing: KPI hero, read banner,
   attention list, quadrant grid, outlet cards. Verified end-to-end; 37/37 tests.
-- [ ] **P7 — Agentic control.** Guarded natural-language action layer over
-  existing endpoints (86/price/hide, wastage, PO approve, reports); idempotent,
-  RLS-scoped, confirm-diff, audit-logged. Command bar in Owner Panel + /back.
+- [x] **P7 — Agentic control.** DONE. Two-phase + guarded: `/agent/interpret`
+  (Claude structured output → ONE concrete action against this store's own
+  catalogue; server resolves to explicit targets — never lets the model write)
+  → confirm-diff → `/agent/execute` (86/restore, hide/show, reprice single or by
+  category-%; RLS-scoped, audit-logged; reports answer read-only). Command bar on
+  the Owner dashboard. Graceful degrade w/o key. Fixed an audit-log bug (wrong
+  signature + nested withOrg) that also silently affected P2/P4 logging.
+  Verified: execute persists (soldOut survives reprice) + writes activity_log;
+  UI confirm-diff renders; 37/37 tests.
 - [ ] **P8 — Manager cockpit gaps.** Customers, Staff & roles + auth codes,
   store-profile + tax/method config, sales history — on /back tabs.
 - [ ] **P9 — Guided onboarding.** Maldivian defaults (MVR, GGST 8%, Dhivehi,
