@@ -694,6 +694,17 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-errtrap", errTrapJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
+  /* Resilience: the bill-total helper $n reduces an order's line array, but an
+     order/ticket synced from another app line (or a partial/legacy record) can
+     lack .items/.lines entirely — f is then undefined and f.reduce throws,
+     blanking the whole register (observed on staging: orders written by the
+     3.0.x build have no .items). Coerce a non-array to [] so a malformed order
+     counts as 0 instead of crashing the till. Idempotent: the injected guard
+     breaks the find-string so a re-bake can't match twice. */
+  .replace(
+    "$n=(f,A=0,KshBD=0)=>{const I=f.reduce",
+    "$n=(f,A=0,KshBD=0)=>{f=Array.isArray(f)?f:[];const I=f.reduce"
+  )
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
      The catalogue form defaulted a new product's stock to "0", so patch #73's
      sold-out gate (__ksOut: stock<=0 ⇒ unavailable) fired on every product a
@@ -2498,6 +2509,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.1"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.2"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

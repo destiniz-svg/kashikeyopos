@@ -365,3 +365,31 @@ DROP POLICY IF EXISTS tenant_isolation ON ingredient_lots;
 CREATE POLICY tenant_isolation ON ingredient_lots
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
+-- Repair legacy order/sale records that lack their line arrays. Tickets written
+-- by an earlier app line (staging's 3.0.x build) stored no `items` array; the
+-- current till reduces/maps order.items and sale.lines/payments unconditionally
+-- across ~20 render sites, so one missing array threw (f.reduce/.map of
+-- undefined) and blanked the whole register. Coerce the missing field to [] at
+-- the source so every consumer (till pull, cache re-sync, back office, guest)
+-- sees a well-formed record; the rowver bump re-syncs the fix to connected
+-- clients. Idempotent and cheap on steady state: only rows still missing a
+-- proper array match (a normal order already has items[], a normal sale already
+-- has lines[]+payments[]), so after the first boot this updates nothing. The
+-- `|| '{}'` no-op branches preserve any field that is already an array.
+UPDATE entities
+   SET data   = data || '{"items":[]}'::jsonb,
+       rowver = nextval('entities_rowver_seq'),
+       updated_at = now()
+ WHERE kind = 'orders'
+   AND jsonb_typeof(data->'items') IS DISTINCT FROM 'array';
+
+UPDATE entities
+   SET data = data
+       || CASE WHEN jsonb_typeof(data->'lines')    IS DISTINCT FROM 'array' THEN '{"lines":[]}'::jsonb    ELSE '{}'::jsonb END
+       || CASE WHEN jsonb_typeof(data->'payments') IS DISTINCT FROM 'array' THEN '{"payments":[]}'::jsonb ELSE '{}'::jsonb END,
+       rowver = nextval('entities_rowver_seq'),
+       updated_at = now()
+ WHERE kind = 'sales'
+   AND (jsonb_typeof(data->'lines') IS DISTINCT FROM 'array'
+        OR jsonb_typeof(data->'payments') IS DISTINCT FROM 'array');
