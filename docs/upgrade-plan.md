@@ -29,9 +29,13 @@ staging check, then promote to `main` only on explicit owner sign-off.
   description + tag chips + Dhivehi on the baked till/guest tiles needs a
   `guest-sync-patch.js` bundle patch (fragile minified surgery) — held for a
   supervised pass / decision on approach.
-- [ ] **P2 — AI Menu Builder (flagship).** Name + one line → full item (EN+dv
-  copy, tags, add-ons, allergens, price hint, AI image); one-tap apply; NL modify.
-  Reuse `@anthropic-ai/sdk` OCR/assistant path; graceful degrade w/o key.
+- [x] **P2 — AI Menu Builder (flagship).** DONE. `/menu/generate` +
+  `/menu/apply` (inventory.js) + "✨ Create with AI" modal in /back → Menu &
+  Recipes. Name + one line → full bilingual item (EN+dv copy, tags, add-ons,
+  allergens, price band, flat SVG image); preview → one-tap apply; NL "Modify".
+  Graceful degrade w/o key. /back = no bake/SW bump. Verified: apply round-trips
+  to boot/pull; UI modal + preview render, zero console errors. Live Claude call
+  needs ANTHROPIC_API_KEY (owner sets in Railway) — same as OCR/assistant.
 - [ ] **P3 — Expiry & shelf-life.** `ingredient_lots`, use-by on delivery, FEFO
   depletion, tiered spoilage alerts.
 - [ ] **P4 — Automated stock + Auto-PO.** Velocity reorder points from
