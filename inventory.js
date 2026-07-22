@@ -1265,6 +1265,160 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, configured: true, answer: answer || "I don't have enough data to answer that yet." });
   }));
 
+  /* ── AI Menu Builder (P2) ────────────────────────────────────────────────
+     Owner types an item name + one line of what it is; Claude returns a whole
+     menu item — bilingual name/description, tags, add-ons, allergens, a price
+     band and a flat SVG illustration — which the UI previews and applies in one
+     tap. Reuses the same lazy anthropicClient() + graceful-degrade contract as
+     OCR/assistant, and writes through the normal products-entity + poke path so
+     the till and QR menu pick it up live. Money stays in laari; the model works
+     in whole rufiyaa and we convert on apply. */
+  const MENU_ITEM_SCHEMA = {
+    type: "object", additionalProperties: false,
+    properties: {
+      en: { type: "string", description: "The item's name in English, tidy Title Case" },
+      dv: { type: "string", description: "The name in Dhivehi (Thaana script), or empty string if unsure" },
+      desc: { type: "string", description: "One short appetising English description, at most ~90 characters, no price" },
+      descDv: { type: "string", description: "The same short description in Dhivehi (Thaana), or empty string if unsure" },
+      cat: { type: "string", description: "The single best-fitting category, chosen from the provided category list when one fits, otherwise a sensible new one" },
+      emoji: { type: "string", description: "One emoji that best represents the item" },
+      tags: { type: "array", items: { type: "string" }, description: "2–5 short lowercase tags (e.g. spicy, vegetarian, breakfast, popular)" },
+      allergens: { type: "string", description: "Comma-separated common allergens likely present (e.g. 'fish, dairy'), or empty string" },
+      addons: {
+        type: "array",
+        items: {
+          type: "object", additionalProperties: false,
+          properties: { name: { type: "string" }, price: { type: "number", description: "Suggested add-on price in whole rufiyaa (MVR), 0 if free" } },
+          required: ["name", "price"],
+        },
+        description: "0–6 optional add-ons that suit this item",
+      },
+      spiceLevels: { type: "array", items: { type: "string" }, description: "Spice options if relevant (e.g. ['Non-spicy','Spicy']), else empty array" },
+      priceLow: { type: "number", description: "Suggested selling price, low end, in whole rufiyaa (MVR)" },
+      priceHigh: { type: "number", description: "Suggested selling price, high end, in whole rufiyaa (MVR)" },
+      svg: { type: "string", description: "A self-contained flat vector illustration of the item as SVG markup with viewBox='0 0 120 120'. Simple flat shapes and fills only. No <script>, no external URLs, no <image>, no text." },
+    },
+    required: ["en", "dv", "desc", "descDv", "cat", "emoji", "tags", "allergens", "addons", "spiceLevels", "priceLow", "priceHigh", "svg"],
+  };
+
+  /* Keep only safe, self-contained SVG — the illustration is rendered inline, so
+     strip anything scriptable or that reaches the network before we store it. */
+  function sanitizeSvg(s) {
+    let svg = String(s || "").trim();
+    if (!svg || !/^<svg[\s>]/i.test(svg) || svg.length > 20000) return "";
+    if (/<\s*(script|foreignObject|image|iframe|use)\b/i.test(svg)) return "";
+    if (/\bon[a-z]+\s*=/i.test(svg)) return "";           // inline event handlers
+    if (/(href|url)\s*[=(]\s*['"]?\s*(https?:|\/\/|data:(?!image\/svg))/i.test(svg)) return "";
+    return svg;
+  }
+  const svgDataUri = (svg) => svg ? "data:image/svg+xml;utf8," + encodeURIComponent(svg) : "";
+
+  router.post("/menu/generate", authAny, wrap(async (req, res) => {
+    const client = anthropicClient();
+    if (!client) {
+      return res.json({ ok: true, configured: false, message: "The AI menu builder isn't set up yet. Add an ANTHROPIC_API_KEY to turn it on — you can still add items by hand." });
+    }
+    const name = String((req.body && req.body.name) || "").trim().slice(0, 120);
+    const hint = String((req.body && req.body.hint) || "").trim().slice(0, 400);
+    const instruction = String((req.body && req.body.instruction) || "").trim().slice(0, 400);
+    const base = req.body && typeof req.body.base === "object" ? req.body.base : null;
+    if (!name && !base) return res.status(400).json({ error: "Give the item a name (and a line on what it is)." });
+
+    /* Ground the model in this store's own menu so categories, style and price
+       level stay consistent. */
+    const ctx = await withOrg(req.orgId, async (dbc) => {
+      const s = (await dbc.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [req.orgId])).rows[0];
+      const prods = (await dbc.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false ORDER BY updated_at DESC LIMIT 40", [req.orgId])).rows.map((r) => r.data || {});
+      return { settings: s ? s.data || {} : {}, prods };
+    });
+    const cats = Array.from(new Set(ctx.prods.map((p) => p.cat).filter(Boolean)));
+    const samples = ctx.prods.slice(0, 12).map((p) => `${p.name}${p.cat ? " ("+p.cat+")" : ""} — MVR ${(num(p.price)/100).toFixed(2)}`);
+    const sector = (ctx.settings.gstBp === 1600 || String(req.body && req.body.sector) === "tourism") ? "tourism (16% TGST)" : "general (8% GGST)";
+
+    let parsed;
+    try {
+      const model = process.env.OCR_MODEL || "claude-opus-4-8";
+      const userText = base
+        ? "Here is the current menu item as JSON:\n" + JSON.stringify(base) + "\n\nApply this change and return the full updated item: " + (instruction || "improve it")
+        : "Create a menu item.\nName: " + name + (hint ? "\nWhat it is: " + hint : "") + (instruction ? "\nExtra instruction: " + instruction : "");
+      const msg = await client.messages.create({
+        model, max_tokens: 3000, thinking: { type: "adaptive" },
+        system:
+          "You are a menu writer for a Maldivian café/restaurant. Create one appetising, accurate menu item from the owner's input. " +
+          "Write natural Dhivehi (Thaana script) for dv/descDv when you can; use an empty string only if genuinely unsure — never transliterate into Latin letters. " +
+          "Prices are in Maldivian rufiyaa (MVR), whole numbers, realistic for a local café and consistent with the sample menu. Tax sector: " + sector + " (prices are tax-inclusive). " +
+          "Prefer an existing category when one fits. Keep the description under ~90 characters and free of the price. " +
+          "For svg, draw a simple, flat, friendly illustration of the item (viewBox 0 0 120 120, flat shapes and fills only — no text, no script, no external references).\n\n" +
+          "Existing categories: " + (cats.join(", ") || "(none yet)") + "\n" +
+          "Sample menu:\n" + (samples.join("\n") || "(no items yet)"),
+        output_config: { format: { type: "json_schema", schema: MENU_ITEM_SCHEMA } },
+        messages: [{ role: "user", content: [{ type: "text", text: userText }] }],
+      });
+      if (msg.stop_reason === "refusal") throw Object.assign(new Error("The menu builder declined that request."), { status: 422 });
+      const txt = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("");
+      parsed = JSON.parse(txt);
+    } catch (e) {
+      recordError("menu generate", e);
+      return res.status(e.status === 422 ? 422 : 502).json({ error: e.status === 422 ? e.message : "The menu builder couldn't respond just now — try again in a moment, or add the item by hand." });
+    }
+
+    const svg = sanitizeSvg(parsed.svg);
+    const draft = {
+      en: String(parsed.en || name || "").slice(0, 120),
+      dv: String(parsed.dv || "").slice(0, 120),
+      desc: String(parsed.desc || "").slice(0, 160),
+      descDv: String(parsed.descDv || "").slice(0, 200),
+      cat: String(parsed.cat || (cats[0] || "Menu")).slice(0, 40),
+      emoji: String(parsed.emoji || "🍽️").slice(0, 8),
+      tags: (Array.isArray(parsed.tags) ? parsed.tags : []).map((t) => String(t || "").trim().toLowerCase().slice(0, 24)).filter(Boolean).slice(0, 6),
+      allergens: String(parsed.allergens || "").slice(0, 200),
+      addons: cleanAddons(parsed.addons),          // rufiyaa → laari, capped
+      spiceLevels: cleanSpice(parsed.spiceLevels),
+      priceLow: Math.max(0, Math.round(num(parsed.priceLow))),
+      priceHigh: Math.max(0, Math.round(num(parsed.priceHigh))),
+      svg, img: svgDataUri(svg),
+    };
+    res.json({ ok: true, configured: true, draft });
+  }));
+
+  router.post("/menu/apply", authAny, wrap(async (req, res) => {
+    const d = (req.body && req.body.draft) || {};
+    const name = String(d.en || d.name || "").trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: "The item needs a name." });
+    const price = Math.max(0, Math.round(num(d.price) * 100));   // rufiyaa (display) → laari
+    const id = String(d.id || "").trim() || ("ai_" + uid());
+    const storeId = String(d.storeId || "main").slice(0, 40);
+
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const prev = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2", [req.orgId, id])).rows[0];
+      const data = Object.assign({}, prev ? prev.data || {} : {}, {
+        id, name, price, storeId,
+        cat: String(d.cat || "Menu").slice(0, 40),
+        emoji: String(d.emoji || "🍽️").slice(0, 8),
+        unit: "pcs",
+      });
+      if (d.dv !== undefined) { const v = String(d.dv || "").slice(0, 120).trim(); if (v) data.dv = v; else delete data.dv; }
+      if (d.desc !== undefined) { const v = String(d.desc || "").slice(0, 160).trim(); if (v) data.desc = v; else delete data.desc; }
+      if (d.descDv !== undefined) { const v = String(d.descDv || "").slice(0, 200).trim(); if (v) data.descDv = v; else delete data.descDv; }
+      if (d.tags !== undefined) { const t = (Array.isArray(d.tags) ? d.tags : []).map((x) => String(x || "").trim().toLowerCase().slice(0, 24)).filter(Boolean).slice(0, 6); if (t.length) data.tags = t; else delete data.tags; }
+      if (d.allergens !== undefined) { const v = String(d.allergens || "").slice(0, 200).trim(); if (v) data.allergens = v; else delete data.allergens; }
+      if (d.addons !== undefined) { const a = cleanAddons(d.addons); if (a.length) data.addons = a; else delete data.addons; }
+      if (d.spiceLevels !== undefined) { const s = cleanSpice(d.spiceLevels); if (s.length) data.spiceLevels = s; else delete data.spiceLevels; }
+      if (d.img !== undefined) { const v = String(d.img || ""); if (v && v.length <= 200000) data.img = v; else if (!v) delete data.img; }
+      const up = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data, deleted) VALUES ($1,'products',$2,$3,false)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data = excluded.data, deleted = false,
+           rowver = nextval('entities_rowver_seq'), updated_at = now()
+         RETURNING rowver`,
+        [req.orgId, id, JSON.stringify(data)]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : null;
+    });
+    if (rowver == null) return res.status(500).json({ error: "Couldn't save the item — try again." });
+    await noteActivity(req.orgId, "menu.ai_apply", { id, name });
+    if (poke) poke(req.orgId, rowver);
+    res.json({ ok: true, id, rowver });
+  }));
+
   /* ── Recipes + live margin preview ──────────────────────────────────────
      The margin figures come straight from the same avg_cost the deduction
      and audit math use, so the number the owner sees while building a
