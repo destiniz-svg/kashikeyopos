@@ -703,6 +703,16 @@ patchFile(indexPath, (html) => {
     'children:f.name}),h.jsxs("div",{className:"flex items-end justify-between mt-1"',
     'children:f.name}),f.dv?h.jsx("div",{className:"ksh-tiledv text-xs leading-tight overflow-hidden",style:{direction:"rtl",opacity:.6,marginTop:"-1px",marginBottom:"1px",maxHeight:"1.1rem"},children:f.dv}):null,(f.tags&&f.tags.length)?h.jsx("div",{style:{display:"flex",flexWrap:"wrap",gap:"3px",margin:"2px 0 1px"},children:f.tags.slice(0,3).map(function(kt,ki){return h.jsx("span",{style:{fontSize:"8px",fontWeight:"600",padding:"1px 5px",borderRadius:"999px",background:"var(--k-panel2,#F4F1EB)",color:"var(--k-sub,#8A8074)",whiteSpace:"nowrap"},children:kt},ki)})}):null,h.jsxs("div",{className:"flex items-end justify-between mt-1"'
   )
+  /* P1 delta (prototype parity): a short description on the register tile,
+     clamped to two lines and muted — reads like a menu, not a barcode list. The
+     `desc` already rides pull; only shows for items that carry it, so nothing
+     changes for description-less menus. Sits between the name and the Dhivehi
+     line. Idempotent: the anchor (name div immediately followed by the dv node)
+     no longer occurs once the desc node is inserted between them. */
+  .replace(
+    '}),f.dv?h.jsx("div",{className:"ksh-tiledv',
+    '}),f.desc?h.jsx("div",{className:"ksh-tiledesc",style:{fontSize:"11px",lineHeight:"1.25",color:"var(--k-sub,#8A8074)",marginTop:"1px",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:"2",WebkitBoxOrient:"vertical"},children:f.desc}):null,f.dv?h.jsx("div",{className:"ksh-tiledv'
+  )
   /* RBAC gap-close (roles audit): add an "admin" supervisor tier between manager
      and owner. It carries every manager permission plus two new tokens — "staff"
      (manage Users & PINs) and "settings" (Store Settings) — while Cloud Sync and
@@ -2539,6 +2549,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.5"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.6"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
