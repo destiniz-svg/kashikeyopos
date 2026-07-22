@@ -1052,6 +1052,67 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     return _anthropic;
   }
 
+  /* Provider-agnostic AI — a Google AI Studio (Gemini) key works too, not only
+     Anthropic. Gemini is reached over its REST API with the runtime's native
+     fetch (no new dependency), behind a tiny shim that mimics the single call
+     shape all four AI endpoints use — messages.create(...) → { content:
+     [{type:"text",text}], stop_reason } — so nothing downstream changes. Env:
+     GEMINI_API_KEY (or GOOGLE_API_KEY), optional GEMINI_MODEL, optional
+     AI_PROVIDER to force one when both keys are present. */
+  const GEMINI_ENDPOINT = process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/models/";
+  function geminiSchema(s) { // JSON-Schema → Gemini responseSchema (OpenAPI subset: no additionalProperties, upper-case types)
+    if (!s || typeof s !== "object") return s;
+    if (Array.isArray(s)) return s.map(geminiSchema);
+    const o = {};
+    for (const k of Object.keys(s)) {
+      if (k === "additionalProperties") continue;
+      if (k === "type" && typeof s[k] === "string") { o[k] = s[k].toUpperCase(); continue; }
+      o[k] = geminiSchema(s[k]);
+    }
+    return o;
+  }
+  function geminiClient() {
+    const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    if (!key) return null;
+    const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+    const toParts = (content) => typeof content === "string"
+      ? [{ text: content }]
+      : (content || []).map((b) => b.type === "image"
+        ? { inlineData: { mimeType: b.source.media_type, data: b.source.data } }
+        : { text: b.text || "" });
+    return {
+      messages: {
+        create: async (p) => {
+          const schema = p.output_config && p.output_config.format && p.output_config.format.schema;
+          const generationConfig = { maxOutputTokens: p.max_tokens || 2048 };
+          if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = geminiSchema(schema); }
+          const body = {
+            contents: (p.messages || []).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: toParts(m.content) })),
+            generationConfig,
+          };
+          if (p.system) body.systemInstruction = { parts: [{ text: p.system }] };
+          const r = await fetch(GEMINI_ENDPOINT + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key), {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+          });
+          if (!r.ok) throw new Error("Gemini " + r.status + ": " + (await r.text().catch(() => "")).slice(0, 300));
+          const j = await r.json();
+          const cand = (j.candidates || [])[0] || {};
+          const text = (((cand.content || {}).parts) || []).map((x) => x.text || "").join("");
+          const refused = cand.finishReason === "SAFETY" || cand.finishReason === "PROHIBITED_CONTENT" || !!(j.promptFeedback && j.promptFeedback.blockReason);
+          return { content: [{ type: "text", text }], stop_reason: refused ? "refusal" : (cand.finishReason || "stop") };
+        },
+      },
+    };
+  }
+  /* The one entry point the endpoints call. Prefers whichever key is set; both
+     graceful-degrade to null (the "not set up yet" message) when neither is. */
+  function aiClient() {
+    const pref = (process.env.AI_PROVIDER || "").toLowerCase();
+    if (pref === "gemini") return geminiClient() || anthropicClient();
+    if (pref === "anthropic") return anthropicClient() || geminiClient();
+    return anthropicClient() || geminiClient();
+  }
+
   const OCR_SCHEMA = {
     type: "object", additionalProperties: false,
     properties: {
@@ -1077,9 +1138,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   };
 
   router.post("/ocr", authAny, wrap(async (req, res) => {
-    const client = anthropicClient();
+    const client = aiClient();
     if (!client) {
-      return res.json({ ok: true, configured: false, message: "Scanning isn't set up yet. Add an ANTHROPIC_API_KEY to turn it on — or enter this delivery by hand below." });
+      return res.json({ ok: true, configured: false, message: "Scanning isn't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to turn it on — or enter this delivery by hand below." });
     }
     let { image, mediaType } = req.body || {};
     if (!image) return res.status(400).json({ error: "no image" });
@@ -1240,10 +1301,10 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      assistant can only talk about what's actually true right now. Degrades to
      a plain message when no key is configured (the insights above still work). */
   router.post("/assistant", authAny, wrap(async (req, res) => {
-    const client = anthropicClient();
+    const client = aiClient();
     const question = String((req.body && req.body.question) || "").trim().slice(0, 500);
     if (!question) return res.status(400).json({ error: "ask a question first" });
-    if (!client) return res.json({ ok: true, configured: false, answer: "The assistant isn't set up yet. Add an ANTHROPIC_API_KEY to switch it on — the reorder and watch lists below work without it." });
+    if (!client) return res.json({ ok: true, configured: false, answer: "The assistant isn't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to switch it on — the reorder and watch lists below work without it." });
 
     const ins = await computeInsights(req.orgId);
     const recent = await withOrg(req.orgId, (dbc) => dbc.query(
@@ -1332,9 +1393,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   const svgDataUri = (svg) => svg ? "data:image/svg+xml;utf8," + encodeURIComponent(svg) : "";
 
   router.post("/menu/generate", authAny, wrap(async (req, res) => {
-    const client = anthropicClient();
+    const client = aiClient();
     if (!client) {
-      return res.json({ ok: true, configured: false, message: "The AI menu builder isn't set up yet. Add an ANTHROPIC_API_KEY to turn it on — you can still add items by hand." });
+      return res.json({ ok: true, configured: false, message: "The AI menu builder isn't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to turn it on — you can still add items by hand." });
     }
     const name = String((req.body && req.body.name) || "").trim().slice(0, 120);
     const hint = String((req.body && req.body.hint) || "").trim().slice(0, 400);
@@ -2131,8 +2192,8 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   }
 
   router.post("/agent/interpret", authAny, requireRole(2), wrap(async (req, res) => {
-    const client = anthropicClient();
-    if (!client) return res.json({ ok: true, configured: false, message: "Plain-English commands aren't set up yet. Add an ANTHROPIC_API_KEY to switch them on." });
+    const client = aiClient();
+    if (!client) return res.json({ ok: true, configured: false, message: "Plain-English commands aren't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to switch them on." });
     const message = String((req.body && req.body.message) || "").trim().slice(0, 400);
     if (!message) return res.status(400).json({ error: "Type a command." });
 
