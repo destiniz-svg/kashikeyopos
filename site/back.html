@@ -1254,6 +1254,7 @@
       '<div><div class="toolbar" style="margin-bottom:12px;display:flex;flex-direction:column;gap:9px;align-items:stretch">' +
       '<input type="search" id="pSearch" placeholder="Search the menu…" value="' + esc(S.prodFilter) + '" style="width:100%" />' +
       '<div class="btnrow">' +
+      '<button class="primary tiny" id="mAI" title="Type a name and one line — AI builds the whole item, bilingual, with a picture">✨ Create with AI</button>' +
       '<button class="ghost tiny" id="mTemplate" title="Download a blank Excel template to fill in">⬇ Template</button>' +
       '<button class="ghost tiny" id="mExport" title="Download the current menu as Excel">⬇ Export</button>' +
       '<button class="primary tiny" id="mImport" title="Upload a filled Excel to bulk add / update items">⬆ Import Excel</button>' +
@@ -1310,6 +1311,7 @@
       }
       next();
     };
+    el("mAI").onclick = openMenuAI;
     el("mCatOrder").onclick = openMenuLayout;
     el("mRestock").onclick = openRestock;
     el("mOutlets").onclick = openOutlets;
@@ -1453,6 +1455,99 @@
         .then(render)
         .catch(function (e) { sv.disabled = false; toast(e.message || "Couldn't restock"); });
     };
+  }
+
+  /* ── AI Menu Builder (P2) — type a name + one line, review, add ─────────
+     Talks to /menu/generate + /menu/apply; degrades gracefully with no key. */
+  function openMenuAI() {
+    var st = { step: "input", name: "", hint: "", draft: null, price: "", modify: "", busy: false, msg: "" };
+    function tile(d) {
+      var box = "width:120px;height:120px;border-radius:14px;overflow:hidden;border:1px solid var(--panel2);background:var(--panel2)";
+      if (d.img) return '<div style="' + box + '"><img src="' + esc(d.img) + '" alt="" style="width:100%;height:100%;object-fit:contain"/></div>';
+      return '<div style="' + box + ';display:grid;place-items:center;font-size:46px">' + esc(d.emoji || "🍽") + "</div>";
+    }
+    function draw() {
+      var d = st.draft, body;
+      if (st.step !== "preview" || !d) {
+        body =
+          '<h3 style="margin:0 0 4px">✨ Create a menu item with AI</h3>' +
+          '<p class="sub" style="margin:0 0 14px">Type the name and one line on what it is. AI writes the English + Dhivehi copy, tags, add-ons, allergens, a price and a picture — you just review and add.</p>' +
+          '<label class="hint" style="display:block;margin-bottom:4px">Item name</label>' +
+          '<input id="aiName" placeholder="e.g. Mas Huni" value="' + esc(st.name) + '" style="width:100%;margin-bottom:10px" />' +
+          '<label class="hint" style="display:block;margin-bottom:4px">What is it? (one line, optional)</label>' +
+          '<input id="aiHint" placeholder="e.g. shredded tuna, coconut &amp; onion breakfast with roshi" value="' + esc(st.hint) + '" style="width:100%;margin-bottom:14px" />' +
+          (st.msg ? '<p class="sub" style="color:var(--warn);margin:0 0 10px">' + esc(st.msg) + "</p>" : "") +
+          '<div style="display:flex;justify-content:flex-end;gap:8px">' +
+          '<button class="ghost" id="aiCancel">Cancel</button>' +
+          '<button class="primary" id="aiGen"' + (st.busy ? " disabled" : "") + ">" + (st.busy ? "Creating…" : "✨ Generate") + "</button></div>";
+      } else {
+        var tags = (d.tags || []).map(function (t) { return '<span class="chip">' + esc(t) + "</span>"; }).join(" ");
+        var ad = (d.addons || []).map(function (a) { return '<div style="display:flex;justify-content:space-between;font-size:13px"><span>' + esc(a.name) + "</span><span>" + (Number(a.price) ? "MVR " + a.price : "Free") + "</span></div>"; }).join("");
+        body =
+          '<h3 style="margin:0 0 10px">Review &amp; add</h3>' +
+          '<div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">' +
+          '<div style="flex:0 0 120px">' + tile(d) + "</div>" +
+          '<div style="flex:1;min-width:210px">' +
+          '<div style="font-weight:700;font-size:16px">' + esc(d.en) + (d.dv ? ' <span dir="rtl" style="font-weight:600;color:var(--sub)">' + esc(d.dv) + "</span>" : "") + "</div>" +
+          (d.desc ? '<div class="sub" style="margin-top:2px">' + esc(d.desc) + "</div>" : "") +
+          (d.descDv ? '<div class="sub" dir="rtl" style="margin-top:2px">' + esc(d.descDv) + "</div>" : "") +
+          (tags ? '<div class="chips" style="margin-top:8px">' + tags + "</div>" : "") +
+          (d.allergens ? '<div class="sub" style="margin-top:8px">⚠️ ' + esc(d.allergens) + "</div>" : "") +
+          (ad ? '<div style="margin-top:8px"><div class="hint" style="margin-bottom:3px">Add-ons</div>' + ad + "</div>" : "") +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:12px">' +
+          '<label class="hint" style="min-width:64px">Category</label><input id="aiCat" value="' + esc(d.cat || "") + '" style="flex:1" /></div>' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-top:8px">' +
+          '<label class="hint" style="min-width:64px">Price MVR</label><input id="aiPrice" type="number" min="0" inputmode="decimal" value="' + esc(st.price) + '" style="width:120px" />' +
+          (d.priceLow || d.priceHigh ? '<span class="sub">suggested ' + (Number(d.priceLow) || 0) + "–" + (Number(d.priceHigh) || 0) + "</span>" : "") +
+          "</div></div></div>" +
+          '<div style="display:flex;gap:8px;margin-top:14px;align-items:center">' +
+          '<input id="aiMod" placeholder="Modify: e.g. make it a set · add a vegan option · a bit cheaper" value="' + esc(st.modify) + '" style="flex:1" />' +
+          '<button class="ghost tiny" id="aiRe"' + (st.busy ? " disabled" : "") + ">" + (st.busy ? "…" : "↻ Apply change") + "</button></div>" +
+          '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:14px">' +
+          '<button class="ghost" id="aiBack">← Start over</button>' +
+          '<button class="primary" id="aiAdd"' + (st.busy ? " disabled" : "") + ">＋ Add to menu</button></div>";
+      }
+      el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:560px">' + body + "</div></div>";
+      wire();
+    }
+    function wire() {
+      if (el("aiCancel")) el("aiCancel").onclick = function () { el("modalHost").innerHTML = ""; };
+      if (el("aiName")) el("aiName").oninput = function () { st.name = el("aiName").value; };
+      if (el("aiHint")) el("aiHint").oninput = function () { st.hint = el("aiHint").value; };
+      if (el("aiGen")) el("aiGen").onclick = function () { st.name = el("aiName").value.trim(); st.hint = el("aiHint").value.trim(); if (!st.name) return toast("Give the item a name"); generate(null, ""); };
+      if (el("aiBack")) el("aiBack").onclick = function () { st.step = "input"; st.draft = null; st.msg = ""; draw(); };
+      if (el("aiCat")) el("aiCat").oninput = function () { if (st.draft) st.draft.cat = el("aiCat").value; };
+      if (el("aiPrice")) el("aiPrice").oninput = function () { st.price = el("aiPrice").value; };
+      if (el("aiMod")) el("aiMod").oninput = function () { st.modify = el("aiMod").value; };
+      if (el("aiRe")) el("aiRe").onclick = function () { var ins = el("aiMod").value.trim(); if (!ins) return toast("Type what to change"); generate(st.draft, ins); };
+      if (el("aiAdd")) el("aiAdd").onclick = apply;
+    }
+    function generate(base, instruction) {
+      st.busy = true; st.msg = ""; draw();
+      var payload = base ? { base: base, instruction: instruction } : { name: st.name, hint: st.hint };
+      api("/menu/generate", { method: "POST", body: JSON.stringify(payload) })
+        .then(function (r) {
+          st.busy = false;
+          if (r.configured === false) { st.step = "input"; st.msg = r.message || "The AI menu builder isn't set up yet."; return draw(); }
+          st.draft = r.draft; st.step = "preview"; st.modify = "";
+          var lo = Number(r.draft.priceLow) || 0, hi = Number(r.draft.priceHigh) || 0;
+          st.price = String(hi ? Math.round((lo + hi) / 2) : (lo || ""));
+          draw();
+        })
+        .catch(function (e) { st.busy = false; toast(e.message || "Couldn't generate — try again"); draw(); });
+    }
+    function apply() {
+      var d = st.draft; if (!d) return;
+      var price = Number(el("aiPrice") ? el("aiPrice").value : st.price) || 0;
+      if (el("aiCat")) d.cat = el("aiCat").value;
+      st.busy = true; draw();
+      api("/menu/apply", { method: "POST", body: JSON.stringify({ draft: Object.assign({}, d, { price: price }) }) })
+        .then(function () { el("modalHost").innerHTML = ""; toast("Added “" + d.en + "” to the menu"); return loadAll(); })
+        .then(render)
+        .catch(function (e) { st.busy = false; toast(e.message || "Couldn't add the item"); draw(); });
+    }
+    draw();
+    if (el("aiName")) el("aiName").focus();
   }
 
   /* Two-level menu layout editor. Main categories (top nav row on the till and

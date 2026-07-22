@@ -1372,7 +1372,11 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       emoji: String(parsed.emoji || "🍽️").slice(0, 8),
       tags: (Array.isArray(parsed.tags) ? parsed.tags : []).map((t) => String(t || "").trim().toLowerCase().slice(0, 24)).filter(Boolean).slice(0, 6),
       allergens: String(parsed.allergens || "").slice(0, 200),
-      addons: cleanAddons(parsed.addons),          // rufiyaa → laari, capped
+      // keep add-on prices in whole rufiyaa (display units) through the preview;
+      // /menu/apply's cleanAddons converts to laari once, matching the item price flow
+      addons: (Array.isArray(parsed.addons) ? parsed.addons : [])
+        .map((a) => ({ name: String((a && a.name) || "").trim().slice(0, 40), price: Math.max(0, Math.round(num(a && a.price))) }))
+        .filter((a) => a.name).slice(0, 8),
       spiceLevels: cleanSpice(parsed.spiceLevels),
       priceLow: Math.max(0, Math.round(num(parsed.priceLow))),
       priceHigh: Math.max(0, Math.round(num(parsed.priceHigh))),
