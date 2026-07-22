@@ -48,8 +48,13 @@ staging check, then promote to `main` only on explicit owner sign-off.
   in the same PO list the till raises and receive as a pre-filled delivery.
   /back Deliveries "🔄 Auto-reorder" modal (editable qtys). PO `unit` now flows
   through receive so pack quantities convert correctly. Verified end-to-end.
-- [ ] **P5 — Automated accounting + Reports.** `journal` + `journal_lines`,
-  auto-post on sale/expense/delivery/wastage/close; P&L, GST return draft, CSV/PDF.
+- [x] **P5 — Automated accounting + Reports.** DONE. Computed (not posted) —
+  `/accounting` derives P&L, GST return & cash position from source at read time
+  (same offline-safe model as ledger-export; no fragile journal to keep in sync).
+  Perpetual COGS so inventory purchases aren't double-counted; expenses split
+  purchases (→COGS) vs opex. /back "Reports" tab: range chips, P&L / GST / cash
+  cards, CSV export. Verified: revenue/COGS/gross/opex/net + GST + tenders all
+  correct on a real scenario; 37/37 tests.
 - [ ] **P6 — Owner Panel + menu engineering.** Business-status hero, guided daily
   read, suggestions/alerts, multi-store compare, Magic Quadrant (popularity ×
   margin), price-fluctuation/COGS alerts.

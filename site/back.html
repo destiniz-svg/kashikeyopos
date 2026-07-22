@@ -418,7 +418,7 @@
     });
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
-  var TABS = [["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"]];
+  var TABS = [["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"], ["reports", "Reports"]];
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
@@ -430,6 +430,7 @@
     audit: ["Stock check", "Count what's physically on your shelves; the system works out the difference for you."],
     deliveries: ["Deliveries & purchases", "Record goods as they arrive to add stock and keep ingredient costs accurate."],
     suppliers: ["Suppliers", "Who you buy from — used on deliveries and purchase orders."],
+    reports: ["Reports", "Profit, GST and cash — worked out for you from your sales, costs and expenses. No bookkeeping needed."],
   };
   var REASONS = ["Spoilage", "Staff meal", "Waste", "Count error", "Other"];
   var LOCATIONS = ["Fridge", "Freezer", "Dry", "Bar", "Other"];
@@ -612,6 +613,7 @@
     else if (S.tab === "deliveries") renderDeliveries();
     else if (S.tab === "ingredients") renderIngredients();
     else if (S.tab === "suppliers") renderSuppliers();
+    else if (S.tab === "reports") renderReports();
     /* Prepend the guided intro to whatever the tab rendered (overview builds
        its own, so skip it there). */
     if (TAB_HELP[S.tab] && S.tab !== "overview") {
@@ -2122,6 +2124,71 @@
     el("main").querySelectorAll("[data-se]").forEach(function (b) {
       b.onclick = function () { supplierModal(S.suppliers.find(function (s) { return s.id === b.dataset.se; }), renderSuppliers); };
     });
+  }
+
+  /* ── Reports tab (P5) — computed P&L, GST return & cash, no bookkeeping ── */
+  function repMoney(l) { return S.currency + " " + Y(l); }
+  function renderReports() {
+    if (!S.repRange) S.repRange = "7d";
+    var ranges = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"], ["all", "All time"]];
+    var chips = ranges.map(function (x) { return '<button class="chip' + (S.repRange === x[0] ? " on" : "") + '" data-rr="' + x[0] + '">' + esc(x[1]) + "</button>"; }).join(" ");
+    el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Reports</h2><div class="chips">' + chips + "</div></div>" +
+      '<div id="repBody"><div class="empty">Working out your numbers…</div></div>';
+    el("main").querySelectorAll("[data-rr]").forEach(function (b) { b.onclick = function () { S.repRange = b.dataset.rr; renderReports(); }; });
+    var now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    var bnd = S.repRange === "today" ? { from: d0.getTime(), to: now } :
+      S.repRange === "7d" ? { from: now - 7 * 864e5, to: now } :
+      S.repRange === "30d" ? { from: now - 30 * 864e5, to: now } : { from: 0, to: now };
+    api("/accounting?from=" + bnd.from + "&to=" + bnd.to)
+      .then(function (r) { drawReports(r); })
+      .catch(function (e) { if (el("repBody")) el("repBody").innerHTML = '<div class="empty">' + esc(e.message || "Couldn't load reports") + "</div>"; });
+  }
+  function repLine(label, val, o) {
+    o = o || {};
+    return '<div style="display:flex;justify-content:space-between;padding:' + (o.big ? "9px 0" : "5px 0") + ";" +
+      (o.top ? "border-top:1px solid var(--panel2);margin-top:4px;" : "") + (o.strong ? "font-weight:700;" : "") + '">' +
+      '<span' + (o.sub ? ' class="sub"' : "") + ">" + label + "</span>" +
+      '<span class="mono"' + (o.color ? ' style="color:' + o.color + '"' : "") + ">" + val + "</span></div>";
+  }
+  function drawReports(r) {
+    var p = r.pnl, g = r.gstReturn, c = r.cash;
+    var opexKeys = Object.keys(p.opexByCat || {});
+    var opexRows = opexKeys.map(function (k) { return repLine(esc(k), "− " + repMoney(p.opexByCat[k]), { sub: true }); }).join("");
+    var pnl = '<div class="panel pad"><h3 style="margin:0 0 8px">Profit &amp; loss</h3>' +
+      repLine("Revenue (net of GST)", repMoney(p.revenue)) +
+      (p.discounts ? repLine("Discounts given", "− " + repMoney(p.discounts), { sub: true }) : "") +
+      (p.refunds ? repLine("Refunds", "− " + repMoney(p.refunds), { sub: true }) : "") +
+      repLine("Cost of goods sold", "− " + repMoney(p.cogs), { sub: true }) +
+      repLine("Gross profit (" + p.grossMarginPct + "%)", repMoney(p.grossProfit), { top: true, strong: true }) +
+      (p.wastage ? repLine("Wastage", "− " + repMoney(p.wastage), { sub: true }) : "") +
+      (opexRows ? '<div class="hint" style="margin-top:6px">Operating expenses</div>' + opexRows : repLine("Operating expenses", "− " + repMoney(p.opex), { sub: true })) +
+      repLine("Net profit (" + p.netMarginPct + "%)", repMoney(p.netProfit), { top: true, strong: true, big: true, color: (p.netProfit >= 0 ? "var(--ok)" : "var(--warn)") }) +
+      "</div>";
+    var gst = '<div class="panel pad"><h3 style="margin:0 0 8px">GST return (draft)</h3>' +
+      repLine("Output tax (on sales)", repMoney(g.outputTax)) +
+      repLine("Input tax (on purchases)", "− " + repMoney(g.inputTax), { sub: true }) +
+      repLine("Net GST payable", repMoney(g.netPayable), { top: true, strong: true }) +
+      '<p class="hint" style="margin-top:8px">' + esc(g.note || "") + "</p></div>";
+    var tenderKeys = Object.keys(c.tenders || {});
+    var tenderRows = tenderKeys.length ? tenderKeys.map(function (k) { return repLine(esc(k), repMoney(c.tenders[k]), { sub: true }); }).join("") : '<p class="hint">No takings in this period.</p>';
+    var cash = '<div class="panel pad"><h3 style="margin:0 0 8px">Cash &amp; takings</h3>' + tenderRows +
+      repLine("Cash in drawer (net of paid-outs)", repMoney(c.drawerNet), { top: true, strong: true }) +
+      (c.accountsReceivable ? repLine("Owed to you (on tab)", repMoney(c.accountsReceivable), { sub: true }) : "") + "</div>";
+    el("repBody").innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;align-items:start">' + pnl + gst + cash + "</div>" +
+      '<div style="margin-top:14px"><button class="ghost" id="repCsv">⬇ Download as CSV</button></div>';
+    el("repCsv").onclick = function () { downloadReportCsv(r); };
+  }
+  function downloadReportCsv(r) {
+    var p = r.pnl, g = r.gstReturn, c = r.cash, rows = [["Section", "Line", "Amount (" + S.currency + ")"]];
+    function amt(l) { return (Number(l || 0) / 100).toFixed(2); }
+    rows.push(["P&L", "Revenue (net)", amt(p.revenue)], ["P&L", "Cost of goods sold", amt(p.cogs)], ["P&L", "Gross profit", amt(p.grossProfit)], ["P&L", "Wastage", amt(p.wastage)], ["P&L", "Operating expenses", amt(p.opex)]);
+    Object.keys(p.opexByCat || {}).forEach(function (k) { rows.push(["Operating expense", k, amt(p.opexByCat[k])]); });
+    rows.push(["P&L", "Net profit", amt(p.netProfit)], ["GST", "Output tax", amt(g.outputTax)], ["GST", "Input tax", amt(g.inputTax)], ["GST", "Net payable", amt(g.netPayable)]);
+    Object.keys(c.tenders || {}).forEach(function (k) { rows.push(["Takings", k, amt(c.tenders[k])]); });
+    rows.push(["Cash", "Drawer net", amt(c.drawerNet)], ["Cash", "Owed on tab", amt(c.accountsReceivable)]);
+    var csv = rows.map(function (row) { return row.map(function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; }).join(","); }).join("\n");
+    var a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv); a.download = "kashikeyo-report.csv"; document.body.appendChild(a); a.click(); a.remove();
   }
 
   function supplierModal(sup, after) {
