@@ -43,6 +43,24 @@ const poolConfig = connectionString ? { connectionString } : {};
 if (connectionString && !/localhost|127\.0\.0\.1/.test(connectionString)) poolConfig.ssl = { rejectUnauthorized: false };
 if (process.env.NODE_ENV === "production" && !databaseUrl && !hasPgEnv) console.warn("No Postgres variables found. Attach DATABASE_URL.");
 
+/* Connection pooling (P0 / cost + uptime). A transaction-mode pooler (Railway
+   PgBouncer) lets one small instance multiplex many clients cheaply, and it is
+   safe for request handling here BECAUSE every tenant query runs inside
+   withScope()'s BEGIN…COMMIT with set_config(...,true) (transaction-local), so
+   RLS + the org scope pin to a single backend for the whole transaction.
+   Two things must NOT cross a transaction pooler, because it reassigns the
+   server backend between statements: (1) the boot advisory lock (session-held
+   across schema apply) and (2) the LISTEN/NOTIFY poke listener (a long-lived
+   registration). Those use a DIRECT connection. Set DATABASE_URL to the pooled
+   endpoint and DIRECT_DATABASE_URL to the direct :5432 endpoint; when the direct
+   URL is unset we fall back to DATABASE_URL (correct for local/dev and any
+   non-pooled deployment, so nothing changes until a pooler is actually added). */
+const directUrl = process.env.DIRECT_DATABASE_URL || process.env.DIRECT_URL || process.env.PGBOUNCER_DIRECT_URL || "";
+const directConnectionString = directUrl || connectionString;
+const directPoolConfig = directConnectionString ? { connectionString: directConnectionString } : (hasPgEnv ? {} : poolConfig);
+if (directConnectionString && !/localhost|127\.0\.0\.1/.test(directConnectionString)) directPoolConfig.ssl = { rejectUnauthorized: false };
+const APP_POOL_MAX = Number(process.env.PG_POOL_MAX) > 0 ? Number(process.env.PG_POOL_MAX) : undefined;
+
 /* Row Level Security only has teeth if the role running app queries is
    NOT the table owner and NOT a superuser — both bypass RLS regardless of
    policies (superusers unconditionally; owners unless FORCE is set, and
@@ -52,20 +70,25 @@ if (process.env.NODE_ENV === "production" && !databaseUrl && !hasPgEnv) console.
    pool — used for every request — connects as a separate, restricted
    kashikeyo_app role with only DML rights, so the tenant_isolation
    policies in schema.sql are actually enforced by Postgres itself. */
-const bootPool = new Pool(poolConfig);
+const bootPool = new Pool(directPoolConfig); // boot/migrations + the session advisory lock — always DIRECT (never through a transaction pooler)
 const APP_DB_ROLE = "kashikeyo_app";
 const appRolePassword = crypto.createHash("sha256").update(`${SECRET}:kashikeyo_app_role`).digest("hex");
 
-function appPoolConfig() {
-  if (connectionString) {
+/* Restricted app-role config over a given connection string (or PG* env).
+   base = the pooled request endpoint by default; pass the direct endpoint for
+   the LISTEN client. `max` (PG_POOL_MAX) caps the app pool so many app replicas
+   behind a pooler don't each open a large fan of server connections. */
+function appPoolConfigFrom(baseConnStr) {
+  if (baseConnStr) {
     try {
-      const u = new URL(connectionString);
+      const u = new URL(baseConnStr);
       u.username = APP_DB_ROLE;
       u.password = appRolePassword;
       const cfg = { connectionString: u.toString() };
-      if (!/localhost|127\.0\.0\.1/.test(connectionString)) cfg.ssl = { rejectUnauthorized: false };
+      if (!/localhost|127\.0\.0\.1/.test(baseConnStr)) cfg.ssl = { rejectUnauthorized: false };
+      if (APP_POOL_MAX) cfg.max = APP_POOL_MAX;
       return cfg;
-    } catch { /* fall through to poolConfig below */ }
+    } catch { /* fall through to PG* env / poolConfig below */ }
   }
   if (hasPgEnv) {
     const cfg = {
@@ -73,10 +96,15 @@ function appPoolConfig() {
       database: process.env.PGDATABASE, user: APP_DB_ROLE, password: appRolePassword,
     };
     if (!/localhost|127\.0\.0\.1/.test(String(process.env.PGHOST || ""))) cfg.ssl = { rejectUnauthorized: false };
+    if (APP_POOL_MAX) cfg.max = APP_POOL_MAX;
     return cfg;
   }
   return poolConfig;
 }
+// request pool → pooled endpoint (DATABASE_URL); safe through a transaction pooler
+function appPoolConfig() { return appPoolConfigFrom(connectionString); }
+// LISTEN client → DIRECT endpoint; a long-lived registration must not cross a pooler
+function appDirectPoolConfig() { return appPoolConfigFrom(directConnectionString); }
 let pool = bootPool; // until ensureAppRole() below swaps in the restricted-role pool
 
 async function ensureAppRole() {
@@ -437,7 +465,7 @@ const poke = (orgId, rowver) => {
    local subscribers, and self-heals on connection drop. */
 async function startPokeListener() {
   const { Client } = require("pg");
-  const c = new Client(appPoolConfig());
+  const c = new Client(appDirectPoolConfig());
   c.on("notification", (msg) => {
     if (msg.channel !== POKE_CHANNEL || !msg.payload) return;
     try { const p = JSON.parse(msg.payload); if (p.i !== INSTANCE_ID) localPoke(p.o, Number(p.r)); } catch {}
