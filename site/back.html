@@ -2395,12 +2395,12 @@
         '<h3 style="margin:18px 0 10px">Tax &amp; charges</h3>' +
         '<label>GST sector</label><div class="chips" style="margin:4px 0 12px">' +
         '<button class="chip' + (s.gstBp === 800 ? " on" : "") + '" data-gst="800">General · 8%</button>' +
-        '<button class="chip' + (s.gstBp === 1600 ? " on" : "") + '" data-gst="1600">Tourism · 16%</button></div>' +
+        '<button class="chip' + (s.gstBp >= 1600 ? " on" : "") + '" data-gst="1700">Tourism · 17%</button></div>' +
         '<label class="ao-toggle" style="display:flex;align-items:center;gap:9px;margin:4px 0;font-size:14px;cursor:pointer"><input type="checkbox" id="cfgSvc" ' + (s.svcChargeBp > 0 ? "checked" : "") + ' style="width:16px;height:16px;accent-color:var(--primary)" /> Add a 10% service charge on dine-in</label>' +
         '<div style="margin-top:10px"><label>Loyalty — laari of spend per 1 point (0 = off)</label><input id="cfgLoyalty" type="number" min="0" value="' + (s.loyaltyBp || 0) + '" style="width:180px" /></div>' +
         '<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="primary" id="cfgSave">Save settings</button></div>' +
         '<p class="hint" style="margin-top:8px">Saved changes flow to the till and receipts automatically.</p></div>';
-      var gst = s.gstBp === 1600 ? 1600 : 800;
+      var gst = s.gstBp >= 1600 ? 1700 : 800;   // any tourism rate (legacy 1600 or 1700) normalises to TGST 17%
       el("cfgBody").querySelectorAll("[data-gst]").forEach(function (b) { b.onclick = function () { gst = Number(b.dataset.gst); el("cfgBody").querySelectorAll("[data-gst]").forEach(function (x) { x.classList.toggle("on", Number(x.dataset.gst) === gst); }); }; });
       el("cfgSave").onclick = function () {
         var body = { storeName: el("cfgName").value.trim(), currency: el("cfgCur").value.trim() || "MVR", tin: el("cfgTin").value.trim(), address: el("cfgAddr").value.trim(), receiptFooter: el("cfgFooter").value.trim(), gstBp: gst, svcChargeBp: el("cfgSvc").checked ? 1000 : 0, loyaltyBp: Math.max(0, Math.round(Number(el("cfgLoyalty").value) || 0)) };

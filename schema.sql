@@ -393,3 +393,14 @@ UPDATE entities
  WHERE kind = 'sales'
    AND (jsonb_typeof(data->'lines') IS DISTINCT FROM 'array'
         OR jsonb_typeof(data->'payments') IS DISTINCT FROM 'array');
+
+-- MIRA raised TGST from 16% to 17% (eff. 2025). Any tourism-sector store still
+-- stored at gstBp=1600 is now under-charging tax; normalise to 1700. General
+-- (GGST 8% = 800) stores are untouched. Idempotent (only 1600 rows match); the
+-- rowver bump re-syncs the corrected rate to the till + receipts.
+UPDATE entities
+   SET data   = jsonb_set(data, '{gstBp}', '1700'::jsonb),
+       rowver = nextval('entities_rowver_seq'),
+       updated_at = now()
+ WHERE kind = 'settings'
+   AND (data->>'gstBp') = '1600';

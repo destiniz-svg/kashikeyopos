@@ -1412,7 +1412,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     });
     const cats = Array.from(new Set(ctx.prods.map((p) => p.cat).filter(Boolean)));
     const samples = ctx.prods.slice(0, 12).map((p) => `${p.name}${p.cat ? " ("+p.cat+")" : ""} — MVR ${(num(p.price)/100).toFixed(2)}`);
-    const sector = (ctx.settings.gstBp === 1600 || String(req.body && req.body.sector) === "tourism") ? "tourism (16% TGST)" : "general (8% GGST)";
+    const sector = (Number(ctx.settings.gstBp) >= 1600 || String(req.body && req.body.sector) === "tourism") ? "tourism (17% TGST)" : "general (8% GGST)";
 
     let parsed;
     try {
@@ -2328,7 +2328,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       if (typeof b.tin === "string") data.tin = b.tin.slice(0, 40);
       if (typeof b.address === "string") data.address = b.address.slice(0, 200);
       if (typeof b.receiptFooter === "string") data.receiptFooter = b.receiptFooter.slice(0, 200);
-      if (b.gstBp != null) data.gstBp = [800, 1600].includes(Number(b.gstBp)) ? Number(b.gstBp) : 800;   // GGST 8% / TGST 16%
+      if (b.gstBp != null) data.gstBp = Number(b.gstBp) === 800 ? 800 : 1700;   // GGST 8% / TGST 17% (MIRA; legacy 1600 normalises up)
       if (b.svcChargeBp != null) data.svcChargeBp = Math.max(0, Math.min(2000, Math.round(Number(b.svcChargeBp) || 0)));
       if (b.loyaltyBp != null) data.loyaltyBp = Math.max(0, Math.round(Number(b.loyaltyBp) || 0));
       let rv;
