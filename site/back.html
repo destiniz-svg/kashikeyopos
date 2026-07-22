@@ -365,7 +365,7 @@
 
   /* ── state + helpers ─────────────────────────────────────────────── */
   var S = {
-    tab: "overview", currency: "MVR",
+    tab: "owner", currency: "MVR",
     ingredients: [], products: [], suppliers: [], audits: [],
     // recipes tab
     prodFilter: "", selProduct: null, recipe: null,
@@ -418,10 +418,11 @@
     });
     el("dkTgl").onclick = function () { S.theme.dark = !S.theme.dark; S.theme.override = true; localStorage.setItem("kback-theme", JSON.stringify(S.theme)); applyTheme(); };
   }
-  var TABS = [["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"], ["reports", "Reports"]];
+  var TABS = [["owner", "Owner"], ["overview", "Overview"], ["review", "Review"], ["assistant", "Assistant"], ["ingredients", "Ingredients"], ["recipes", "Menu & Recipes"], ["audit", "Stock Check"], ["deliveries", "Deliveries"], ["suppliers", "Suppliers"], ["reports", "Reports"]];
   /* Guided IA (§3): a plain-language title + one sentence on what each section
      is for, shown above the tab so nobody has to guess what it does. */
   var TAB_HELP = {
+    owner: ["Owner dashboard", "How your business is doing — sales, profit, what's selling, and what to act on today."],
     overview: ["Inventory overview", "What came in, what's running low, and what needs your attention today."],
     review: ["Review flags", "Sales the till couldn't reconcile and customers over their credit limit — check each one, then mark it reviewed. The money is never changed; this is a checklist, not an edit."],
     assistant: ["Assistant", "What to reorder, what to watch, and answers to your questions — learned from your own stock history."],
@@ -605,7 +606,8 @@
 
   function render() {
     renderTabs();
-    if (S.tab === "overview") renderOverview();
+    if (S.tab === "owner") renderOwner();
+    else if (S.tab === "overview") renderOverview();
     else if (S.tab === "review") renderReview();
     else if (S.tab === "assistant") renderAssistant();
     else if (S.tab === "recipes") renderRecipes();
@@ -2189,6 +2191,68 @@
     rows.push(["Cash", "Drawer net", amt(c.drawerNet)], ["Cash", "Owed on tab", amt(c.accountsReceivable)]);
     var csv = rows.map(function (row) { return row.map(function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; }).join(","); }).join("\n");
     var a = document.createElement("a"); a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv); a.download = "kashikeyo-report.csv"; document.body.appendChild(a); a.click(); a.remove();
+  }
+
+  /* ── Owner dashboard (P6) — how's my business, in one screen ───────────── */
+  function renderOwner() {
+    if (!S.ownRange) S.ownRange = "7d";
+    var ranges = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"]];
+    var chips = ranges.map(function (x) { return '<button class="chip' + (S.ownRange === x[0] ? " on" : "") + '" data-or="' + x[0] + '">' + esc(x[1]) + "</button>"; }).join(" ");
+    el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Owner dashboard</h2><div class="chips">' + chips + "</div></div><div id=\"ownBody\"><div class=\"empty\">Reading your business…</div></div>";
+    el("main").querySelectorAll("[data-or]").forEach(function (b) { b.onclick = function () { S.ownRange = b.dataset.or; renderOwner(); }; });
+    var now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    var bnd = S.ownRange === "today" ? { from: d0.getTime(), to: now } : S.ownRange === "30d" ? { from: now - 30 * 864e5, to: now } : { from: now - 7 * 864e5, to: now };
+    api("/owner?from=" + bnd.from + "&to=" + bnd.to)
+      .then(function (r) { drawOwner(r); })
+      .catch(function (e) { if (el("ownBody")) el("ownBody").innerHTML = '<div class="empty">' + esc(e.message || "Couldn't load") + "</div>"; });
+  }
+  function ownDelta(d) {
+    if (d == null) return "";
+    var up = d >= 0;
+    return '<span class="mono" style="font-size:12px;color:' + (up ? "var(--ok)" : "var(--warn)") + '">' + (up ? "▲ " : "▼ ") + Math.abs(d) + "%</span>";
+  }
+  function ownKpi(label, value, sub) {
+    return '<div class="panel pad" style="min-width:0"><div class="hint">' + label + "</div>" +
+      '<div class="mono" style="font-size:21px;font-weight:800;margin-top:3px;line-height:1.1">' + value + "</div>" +
+      (sub ? '<div style="margin-top:3px">' + sub + "</div>" : "") + "</div>";
+  }
+  function drawOwner(r) {
+    var k = r.kpis, q = r.quadrant;
+    var hero = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">' +
+      ownKpi("Revenue (net)", repMoney(k.revenue), ownDelta(k.revenueDelta) + ' <span class="sub" style="font-size:11px">vs prev</span>') +
+      ownKpi("Gross profit", repMoney(k.grossProfit), '<span class="sub" style="font-size:12px">' + k.grossMarginPct + "% margin</span>") +
+      ownKpi("Net profit", '<span style="color:' + (k.netProfit >= 0 ? "var(--ok)" : "var(--warn)") + '">' + repMoney(k.netProfit) + "</span>", '<span class="sub" style="font-size:12px">' + k.netMarginPct + "% margin</span>") +
+      ownKpi("Orders", k.orders, ownDelta(k.ordersDelta) + ' <span class="sub" style="font-size:11px">avg ' + repMoney(k.avgOrder) + "</span>") +
+      ownKpi("Food cost", k.foodCostPct + "%", '<span class="sub" style="font-size:12px">of revenue</span>') +
+      ownKpi("Cash in drawer", repMoney(k.cashDrawer), k.receivables ? '<span class="sub" style="font-size:12px">' + repMoney(k.receivables) + " on tab</span>" : "") +
+      "</div>";
+    var read = r.read ? '<div class="panel pad" style="margin-top:14px;border-left:3px solid var(--primary)"><div class="hint">Today\'s read</div><div style="margin-top:4px;line-height:1.55">' + esc(r.read) + "</div></div>" : "";
+
+    var sevColor = { bad: "#C13A26", warn: "var(--warn)", info: "var(--sub)" };
+    var alertRows = (r.alerts || []).map(function (a) {
+      return '<div style="display:flex;gap:9px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--panel2)"><span style="color:' + (sevColor[a.severity] || "var(--sub)") + ';font-weight:800">•</span><span style="line-height:1.45">' + esc(a.text) + "</span></div>";
+    }).join("") || '<p class="hint">Nothing needs your attention right now. 👍</p>';
+    var alerts = '<div class="panel pad"><h3 style="margin:0 0 4px">Needs your attention</h3>' + alertRows + "</div>";
+
+    function quadCell(key, title, tone, hint) {
+      var items = (q[key] || []).slice().sort(function (a, b) { return b.units - a.units; });
+      var chipsH = items.length ? items.map(function (m) { return '<span class="chip" title="' + esc(m.name) + '">' + esc(m.name) + " · " + m.units + "× · " + m.marginPct + "%</span>"; }).join(" ") : '<span class="hint">—</span>';
+      return '<div class="panel pad" style="min-width:0"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="color:' + tone + '">' + title + "</b><span class=\"hint\">" + items.length + "</span></div>" +
+        '<div class="hint" style="margin:2px 0 8px">' + hint + '</div><div class="chips">' + chipsH + "</div></div>";
+    }
+    var quad = '<h3 style="margin:18px 0 8px">Menu performance <span class="hint" style="font-weight:400">— popularity × profit</span></h3>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+      quadCell("star", "⭐ Stars", "var(--ok)", "Popular & profitable — feature these") +
+      quadCell("plowhorse", "🐎 Plowhorses", "var(--warn)", "Popular but thin margin — re-cost or nudge price") +
+      quadCell("puzzle", "🧩 Puzzles", "var(--primary)", "Profitable but overlooked — reposition/promote") +
+      quadCell("dog", "🐢 Dogs", "#C13A26", "Neither — rework or drop") + "</div>";
+
+    var stores = (r.stores && r.stores.length > 1)
+      ? '<h3 style="margin:18px 0 8px">By outlet</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">' +
+        r.stores.map(function (s) { return '<div class="panel pad"><div class="hint">' + esc(s.name) + '</div><div class="mono" style="font-size:18px;font-weight:800;margin-top:2px">' + repMoney(s.revenue) + "</div></div>"; }).join("") + "</div>"
+      : "";
+
+    el("ownBody").innerHTML = hero + read + '<div style="margin-top:14px">' + alerts + "</div>" + quad + stores;
   }
 
   function supplierModal(sup, after) {

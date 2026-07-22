@@ -2027,7 +2027,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     quadrants.plowhorse.slice(0, 4).forEach((m) => alerts.push({ kind: "menu", severity: "info", text: `${m.name} is popular but low-margin (${m.marginPct}%) — re-cost it or nudge the price`, action: "menu" }));
     priceAlerts.slice(0, 4).forEach((p) => alerts.push({ kind: "cost", severity: "warn", text: `${p.name} cost is up ${p.up}% — your margins on it are shrinking`, action: "cost" }));
     const fmtMvr = (l) => "MVR " + (Math.round(l) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (core.owing.length) { const owed = core.owing.reduce((a, c) => a + num(c.balance), 0); alerts.push({ kind: "tab", severity: "info", text: `${core.owing.length} customer${core.owing.length === 1 ? "" : "s"} owe ${fmtMvr(owed)} on tab`, action: "tab" }); }
+    if (core.owing.length) { const owed = core.owing.reduce((a, c) => a + num(c.balance), 0); alerts.push({ kind: "tab", severity: "info", text: `${core.owing.length} customer${core.owing.length === 1 ? " owes" : "s owe"} ${fmtMvr(owed)} on tab`, action: "tab" }); }
 
     /* Per-outlet revenue (net) in the window. */
     const stores = core.stores.map((s) => ({ id: s.id, name: s.name, revenue: core.acct.storeRev[s.id] || 0 }));

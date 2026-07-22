@@ -55,9 +55,13 @@ staging check, then promote to `main` only on explicit owner sign-off.
   purchases (→COGS) vs opex. /back "Reports" tab: range chips, P&L / GST / cash
   cards, CSV export. Verified: revenue/COGS/gross/opex/net + GST + tenders all
   correct on a real scenario; 37/37 tests.
-- [ ] **P6 — Owner Panel + menu engineering.** Business-status hero, guided daily
-  read, suggestions/alerts, multi-store compare, Magic Quadrant (popularity ×
-  margin), price-fluctuation/COGS alerts.
+- [x] **P6 — Owner Panel + menu engineering.** DONE. `/owner`: KPIs vs previous
+  period (revenue Δ, gross/net margin, orders, avg, food-cost %, cash, AR);
+  Magic Quadrant (Kasavana-Smith popularity × contribution margin → stars/
+  plowhorses/puzzles/dogs); price-fluctuation alerts; merged actionable alerts
+  (reorder+expiry+margin+tabs); per-outlet revenue; deterministic guided read
+  (AI-key-free). New /back "Owner" tab = default landing: KPI hero, read banner,
+  attention list, quadrant grid, outlet cards. Verified end-to-end; 37/37 tests.
 - [ ] **P7 — Agentic control.** Guarded natural-language action layer over
   existing endpoints (86/price/hide, wastage, PO approve, reports); idempotent,
   RLS-scoped, confirm-diff, audit-logged. Command bar in Owner Panel + /back.
