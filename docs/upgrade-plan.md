@@ -36,8 +36,11 @@ staging check, then promote to `main` only on explicit owner sign-off.
   Graceful degrade w/o key. /back = no bake/SW bump. Verified: apply round-trips
   to boot/pull; UI modal + preview render, zero console errors. Live Claude call
   needs ANTHROPIC_API_KEY (owner sets in Railway) — same as OCR/assistant.
-- [ ] **P3 — Expiry & shelf-life.** `ingredient_lots`, use-by on delivery, FEFO
-  depletion, tiered spoilage alerts.
+- [x] **P3 — Expiry & shelf-life.** DONE. `ingredient_lots` (RLS, granted);
+  use-by date per delivery line → lot; `/expiring` allocates current_stock
+  across lots FEFO at read time (never touches the sale path) with tiered
+  expired/today/soon/week/later; /back Deliveries "Use-by" column + expiry chips
+  in the alert bar. Verified: FEFO depletion + UI, 37/37 tests.
 - [ ] **P4 — Automated stock + Auto-PO.** Velocity reorder points from
   `stock_moves`; draft POs per supplier; PO → pre-filled delivery.
 - [ ] **P5 — Automated accounting + Reports.** `journal` + `journal_lines`,
