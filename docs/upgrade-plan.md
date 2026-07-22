@@ -24,8 +24,11 @@ staging check, then promote to `main` only on explicit owner sign-off.
 - [x] **P0 — Foundation: cost/uptime + pooler-safety.** Direct vs pooled
   connections (`DIRECT_DATABASE_URL`), `PG_POOL_MAX`, bootPool + LISTEN on direct,
   RLS confirmed transaction-pooler-safe. Docs: `docs/scaling-and-pooling.md`.
-- [ ] **P1 — Bilingual menu model.** Add `dv` + `tags[]` to products; till + QR
-  render short description + tag chips, EN/ދިވެހި.
+- [~] **P1 — Bilingual menu model.** DATA DONE: `dv`, `descDv`, `tags[]` flow
+  through guest boot + till pull (verified). RENDER PENDING: showing short
+  description + tag chips + Dhivehi on the baked till/guest tiles needs a
+  `guest-sync-patch.js` bundle patch (fragile minified surgery) — held for a
+  supervised pass / decision on approach.
 - [ ] **P2 — AI Menu Builder (flagship).** Name + one line → full item (EN+dv
   copy, tags, add-ons, allergens, price hint, AI image); one-tap apply; NL modify.
   Reuse `@anthropic-ai/sdk` OCR/assistant path; graceful degrade w/o key.
