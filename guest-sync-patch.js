@@ -569,23 +569,6 @@ const elevateJs =
   "return OF(input,init)};" +
   "})();";
 
-/* TEMPORARY diagnostic (remove once the staging blank-screen is fixed). Traps
-   uncaught errors, promise rejections and React's console.error and paints the
-   message + stack into a fixed banner, so a crash on a device without DevTools
-   (a phone) is still visible in a screenshot. Idempotent; guarded by a flag. */
-const errTrapJs =
-  "(function(){if(window.__ksErrTrap)return;window.__ksErrTrap=1;" +
-  "function box(){var d=document.getElementById('ksErrTrap');if(d)return d;" +
-  "d=document.createElement('div');d.id='ksErrTrap';" +
-  "d.style.cssText='position:fixed;left:0;right:0;top:0;z-index:2147483647;max-height:60vh;overflow:auto;background:#2A0E0E;color:#FFD9D9;font:12px/1.45 ui-monospace,Menlo,monospace;padding:12px 14px;white-space:pre-wrap;word-break:break-word;box-shadow:0 6px 24px rgba(0,0,0,.4)';" +
-  "var x=document.createElement('button');x.textContent='\\u00D7';x.setAttribute('aria-label','Dismiss');x.style.cssText='position:absolute;top:6px;right:10px;background:transparent;border:0;color:#FFD9D9;font-size:20px;line-height:1';x.onclick=function(){d.remove()};" +
-  "d.appendChild(x);document.body.appendChild(d);return d}" +
-  "function add(t){try{var d=box();var p=document.createElement('div');p.textContent=t;p.style.marginRight='18px';d.appendChild(p)}catch(e){}}" +
-  "window.addEventListener('error',function(e){add('ERR: '+(e.message||e.error&&e.error.message||'?')+'\\n'+((e.error&&e.error.stack)||(e.filename+':'+e.lineno+':'+e.colno)))});" +
-  "window.addEventListener('unhandledrejection',function(e){var r=e.reason;add('REJECT: '+((r&&r.message)||r)+'\\n'+((r&&r.stack)||''))});" +
-  "var CE=console.error.bind(console);console.error=function(){try{var a=[].slice.call(arguments).map(function(x){return x&&x.stack?x.stack:(typeof x==='object'?JSON.stringify(x):String(x))}).join(' ');if(/error|invalid|undefined is not|cannot read|is not a function|Minified React/i.test(a))add('console.error: '+a.slice(0,600))}catch(e){}return CE.apply(null,arguments)};" +
-  "})()";
-
 /* Service-worker update safety. The SW uses skipWaiting + clients.claim, so a
    fresh deploy's worker seizes control of an already-open page mid-session. If
    the new build ships different hashed chunks than the one the open page was
@@ -691,9 +674,12 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-elevate", elevateJs);
   html = injectInline(html, "ksh-payref", payRefJs);
   html = injectInline(html, "ksh-swreload", swReloadJs);
-  html = injectInline(html, "ksh-errtrap", errTrapJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
+  /* Remove the temporary staging error-trap overlay from prior bakes (its job
+     is done — the blank-register root cause is fixed at the data layer). No-op
+     once it's gone, so re-baking stays idempotent. */
+  .replace(/<script>\/\*ksh-errtrap\*\/[\s\S]*?<\/script>/g, "")
   /* Resilience: the bill-total helper $n reduces an order's line array, but an
      order/ticket synced from another app line (or a partial/legacy record) can
      lack .items/.lines entirely — f is then undefined and f.reduce throws,
@@ -741,6 +727,13 @@ patchFile(indexPath, (html) => {
   .replace(
     '["waiter","cashier","kitchen","manager","owner"].map(f=>',
     '(Ne.role==="owner"?["waiter","cashier","kitchen","manager","admin","owner"]:["waiter","cashier","kitchen","manager"]).map(f=>'
+  )
+  /* Protect owner accounts: only an owner may edit or delete an owner-role user,
+     so an admin managing staff can't demote or remove the owner (completes the
+     no-escalation guarantee — the picker already blocks creating owners). */
+  .replace(
+    'h.jsx("button",{onClick:()=>ra({id:f.id,name:f.name,role:f.role,pin:""}),className:`p-1.5 rounded-lg ${_.btn}`,children:h.jsx(Fu,{size:13})}),z1(f.id,()=>dI(f.id))',
+    '(f.role!=="owner"||Ne.role==="owner")?h.jsx("button",{onClick:()=>ra({id:f.id,name:f.name,role:f.role,pin:""}),className:`p-1.5 rounded-lg ${_.btn}`,children:h.jsx(Fu,{size:13})}):null,(f.role!=="owner"||Ne.role==="owner")?z1(f.id,()=>dI(f.id)):null'
   )
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
      The catalogue form defaulted a new product's stock to "0", so patch #73's
@@ -2546,6 +2539,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.4"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.5"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
