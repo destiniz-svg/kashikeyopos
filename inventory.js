@@ -2261,6 +2261,35 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, rowver });
   }));
 
+  /* ── Guided onboarding (P9): a resumable first-run checklist ─────────────
+     Steps auto-complete from real data — nothing to tick by hand — so a new
+     owner can see exactly what's left to start selling. Dismissible; the
+     Maldivian defaults (MVR + GGST 8%) are already set at registration. */
+  router.get("/onboarding", authAny, wrap(async (req, res) => {
+    const d = await withOrg(req.orgId, async (client) => {
+      const sd = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [req.orgId])).rows[0];
+      const prod = (await client.query("SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.orgId])).rows[0].n;
+      const ing = (await client.query("SELECT count(*)::int AS n FROM ingredients WHERE org_id=$1 AND active", [req.orgId])).rows[0].n;
+      const sale = (await client.query("SELECT 1 FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false LIMIT 1", [req.orgId])).rowCount;
+      const s = sd ? sd.data || {} : {};
+      return { storeName: s.storeName || "", dismissed: !!s.onboardingDismissed, prod, ing, sale };
+    });
+    const steps = { profile: !!d.storeName, menu: d.prod > 0, ingredients: d.ing > 0, firstSale: d.sale > 0 };
+    const doneCount = Object.values(steps).filter(Boolean).length;
+    res.json({ ok: true, steps, doneCount, total: 4, complete: doneCount === 4, dismissed: d.dismissed, storeName: d.storeName });
+  }));
+
+  router.post("/onboarding/dismiss", authAny, wrap(async (req, res) => {
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false FOR UPDATE", [req.orgId])).rows[0];
+      const data = Object.assign({}, row ? row.data || {} : {}, { onboardingDismissed: true });
+      if (row) return Number((await client.query("UPDATE entities SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id='settings' RETURNING rowver", [req.orgId, JSON.stringify(data)])).rows[0].rowver);
+      return Number((await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) RETURNING rowver", [req.orgId, JSON.stringify(data)])).rows[0].rowver);
+    });
+    if (poke && rowver) poke(req.orgId, rowver);
+    res.json({ ok: true });
+  }));
+
   router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {
     const { lines, invoiceNo } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });

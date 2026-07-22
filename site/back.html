@@ -2203,6 +2203,7 @@
     var ranges = [["today", "Today"], ["7d", "7 days"], ["30d", "30 days"]];
     var chips = ranges.map(function (x) { return '<button class="chip' + (S.ownRange === x[0] ? " on" : "") + '" data-or="' + x[0] + '">' + esc(x[1]) + "</button>"; }).join(" ");
     el("main").innerHTML = '<div class="toolbar"><h2 style="margin:0">Owner dashboard</h2><div class="chips">' + chips + "</div></div>" +
+      '<div id="obBanner"></div>' +
       '<div class="panel pad" style="margin-bottom:14px"><div style="display:flex;gap:8px;align-items:center">' +
       '<span style="font-size:17px">💬</span>' +
       '<input id="agInput" placeholder="Tell me what to do — e.g. “86 the espresso”, “raise coffee 10%”, “what sold best?”" style="flex:1" />' +
@@ -2211,6 +2212,7 @@
     el("main").querySelectorAll("[data-or]").forEach(function (b) { b.onclick = function () { S.ownRange = b.dataset.or; renderOwner(); }; });
     el("agRun").onclick = runAgent;
     el("agInput").onkeydown = function (e) { if (e.key === "Enter") runAgent(); };
+    loadOnboarding();
     var now = Date.now(), d0 = new Date(); d0.setHours(0, 0, 0, 0);
     var bnd = S.ownRange === "today" ? { from: d0.getTime(), to: now } : S.ownRange === "30d" ? { from: now - 30 * 864e5, to: now } : { from: now - 7 * 864e5, to: now };
     api("/owner?from=" + bnd.from + "&to=" + bnd.to)
@@ -2264,6 +2266,33 @@
       : "";
 
     el("ownBody").innerHTML = hero + read + '<div style="margin-top:14px">' + alerts + "</div>" + quad + stores;
+  }
+
+  /* Guided onboarding checklist (P9) — auto-completes from real data. */
+  function loadOnboarding() {
+    var host = el("obBanner"); if (!host) return;
+    api("/onboarding").then(function (r) {
+      if (r.complete || r.dismissed) { host.innerHTML = ""; return; }
+      var defs = [
+        ["profile", "Set up your store", "Name, tax sector and receipt details", "config", null],
+        ["menu", "Build your menu", "Add items — try “✨ Create with AI”", "recipes", null],
+        ["ingredients", "Add your ingredients", "So stock and costs track themselves", "ingredients", null],
+        ["firstSale", "Take your first sale", "Open the till and ring one up", null, "/app"],
+      ];
+      var rows = defs.map(function (d) {
+        var done = !!r.steps[d[0]];
+        var action = done ? '<span class="sub" style="font-size:12px">Done</span>'
+          : (d[4] ? '<a href="' + d[4] + '" class="chip">Open the till</a>' : '<button class="chip" data-go="' + d[3] + '">Do it →</button>');
+        return '<div style="display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--panel2)">' +
+          '<span style="width:22px;height:22px;border-radius:99px;flex:0 0 22px;display:grid;place-items:center;font-size:13px;font-weight:800;background:' + (done ? "var(--ok)" : "var(--panel2)") + ';color:' + (done ? "#fff" : "var(--sub)") + '">' + (done ? "✓" : "") + "</span>" +
+          '<span style="flex:1"><b style="' + (done ? "text-decoration:line-through;opacity:.6" : "") + '">' + esc(d[1]) + '</b><div class="hint">' + esc(d[2]) + "</div></span>" + action + "</div>";
+      }).join("");
+      host.innerHTML = '<div class="panel pad" style="margin-bottom:14px;border-left:3px solid var(--primary)">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline"><h3 style="margin:0">Getting started</h3>' +
+        '<span class="sub">' + r.doneCount + " of " + r.total + ' done · <a href="#" id="obSkip">skip</a></span></div>' + rows + "</div>";
+      host.querySelectorAll("[data-go]").forEach(function (b) { b.onclick = function () { go(b.dataset.go); }; });
+      if (el("obSkip")) el("obSkip").onclick = function (e) { e.preventDefault(); api("/onboarding/dismiss", { method: "POST" }).then(function () { el("obBanner").innerHTML = ""; toast("Setup hidden — you can finish anytime from the tabs"); }); };
+    }).catch(function () { host.innerHTML = ""; });
   }
 
   /* Agentic command bar — interpret → confirm-diff → execute. */

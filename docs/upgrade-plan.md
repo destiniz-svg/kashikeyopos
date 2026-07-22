@@ -78,8 +78,15 @@ staging check, then promote to `main` only on explicit owner sign-off.
   /back "Customers" (list + detail modal) and "Settings" (profile + tax form)
   tabs. Verified. DEFERRED: Staff & roles (needs the till PIN/auth model
   designed first — a separate decision).
-- [ ] **P9 — Guided onboarding.** Maldivian defaults (MVR, GGST 8%, Dhivehi,
-  island/atoll), AI-seeded starter menu, few-click resumable checklist.
+- [x] **P9 — Guided onboarding.** DONE. `/onboarding` computes a resumable
+  first-run checklist from live data (profile / menu / ingredients / first sale
+  → done N of 4, dismissible); `/onboarding/dismiss` persists the skip on the
+  settings entity. /back Owner tab shows a "Getting started" card at the top:
+  per-step ✓/todo, plain-language hints, "Do it →" deep-links (`go(tab)`),
+  "Open the till", and "skip". Maldivian defaults (MVR, GGST 8%) already seed on
+  register; starter-menu seeding rides the P2 AI Menu Builder. Verified:
+  fresh store returns 2/4 → checklist renders, deep-links + skip work, zero
+  console errors; 37/37 tests.
 - [ ] **P10 — Convenience & hardening.** Less-typing sweep, a11y (axe/Lighthouse
   on /back, /app, /p/:slug), 24 h soak, full regression, promote.
 
