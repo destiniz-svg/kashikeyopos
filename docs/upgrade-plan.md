@@ -24,11 +24,14 @@ staging check, then promote to `main` only on explicit owner sign-off.
 - [x] **P0 — Foundation: cost/uptime + pooler-safety.** Direct vs pooled
   connections (`DIRECT_DATABASE_URL`), `PG_POOL_MAX`, bootPool + LISTEN on direct,
   RLS confirmed transaction-pooler-safe. Docs: `docs/scaling-and-pooling.md`.
-- [~] **P1 — Bilingual menu model.** DATA DONE: `dv`, `descDv`, `tags[]` flow
-  through guest boot + till pull (verified). RENDER PENDING: showing short
-  description + tag chips + Dhivehi on the baked till/guest tiles needs a
-  `guest-sync-patch.js` bundle patch (fragile minified surgery) — held for a
-  supervised pass / decision on approach.
+- [x] **P1 — Bilingual menu model.** DONE. DATA: `dv`, `descDv`, `tags[]` flow
+  through guest boot + till pull. RENDER: a `guest-sync-patch.js` tile patch now
+  paints the Dhivehi name (RTL) + up to three tag chips between the English name
+  and the price on the register menu tiles; AI images (`f.img`) already rendered.
+  Only shows for items that carry the fields, so English-only menus are
+  unchanged; tile alignment preserved (name div + price row untouched).
+  Idempotent bake, SW bumped. Verified on the harness: Dhivehi + chips render,
+  zero console errors.
 - [x] **P2 — AI Menu Builder (flagship).** DONE. `/menu/generate` +
   `/menu/apply` (inventory.js) + "✨ Create with AI" modal in /back → Menu &
   Recipes. Name + one line → full bilingual item (EN+dv copy, tags, add-ons,

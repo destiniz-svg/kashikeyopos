@@ -705,6 +705,18 @@ patchFile(indexPath, (html) => {
     "$n=(f,A=0,KshBD=0)=>{const I=f.reduce",
     "$n=(f,A=0,KshBD=0)=>{f=Array.isArray(f)?f:[];const I=f.reduce"
   )
+  /* P1 till render: surface the bilingual menu model on the register tiles. The
+     data (dv = Dhivehi name, tags[]) already rides pull; the AI images (f.img)
+     already render. This injects the Dhivehi line + up to three tag chips
+     between the English name and the price row, leaving both untouched so tile
+     alignment holds. Only shows for items that carry the fields, so English-only
+     menus look exactly as before. Idempotent: the find (name div immediately
+     followed by the price row) no longer occurs once the dv/tags nodes sit
+     between them. */
+  .replace(
+    'children:f.name}),h.jsxs("div",{className:"flex items-end justify-between mt-1"',
+    'children:f.name}),f.dv?h.jsx("div",{className:"ksh-tiledv text-xs leading-tight overflow-hidden",style:{direction:"rtl",opacity:.6,marginTop:"-1px",marginBottom:"1px",maxHeight:"1.1rem"},children:f.dv}):null,(f.tags&&f.tags.length)?h.jsx("div",{style:{display:"flex",flexWrap:"wrap",gap:"3px",margin:"2px 0 1px"},children:f.tags.slice(0,3).map(function(kt,ki){return h.jsx("span",{style:{fontSize:"8px",fontWeight:"600",padding:"1px 5px",borderRadius:"999px",background:"var(--k-panel2,#F4F1EB)",color:"var(--k-sub,#8A8074)",whiteSpace:"nowrap"},children:kt},ki)})}):null,h.jsxs("div",{className:"flex items-end justify-between mt-1"'
+  )
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
      The catalogue form defaulted a new product's stock to "0", so patch #73's
      sold-out gate (__ksOut: stock<=0 ⇒ unavailable) fired on every product a
@@ -2509,6 +2521,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.2"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.3"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
