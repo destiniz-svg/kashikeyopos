@@ -1884,35 +1884,30 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
      sync. Perpetual COGS (recipe cost of what sold) means inventory purchases
      are NOT also expensed — they sit in stock until consumed — so the P&L never
      double-counts. All amounts laari. */
-  router.get("/accounting", authAny, wrap(async (req, res) => {
-    const storeId = req.query.storeId ? String(req.query.storeId) : null;
-    const from = Number(req.query.from) || 0;
-    const to = Number(req.query.to) || Date.now();
-    const src = await withOrg(req.orgId, async (client) => {
-      const sales = (await client.query(
-        `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
-           AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
-           AND (data->>'t')::numeric BETWEEN $3 AND $4`, [req.orgId, storeId, from, to])).rows;
-      const exps = (await client.query(
-        `SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false
-           AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
-           AND (data->>'t')::numeric BETWEEN $3 AND $4`, [req.orgId, storeId, from, to])).rows;
-      const cogs = (await client.query(
-        `SELECT COALESCE(-SUM(qty*unit_cost),0) AS c FROM stock_moves
-           WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to])).rows[0];
-      const waste = (await client.query(
-        `SELECT COALESCE(-SUM(qty*unit_cost),0) AS w FROM stock_moves
-           WHERE org_id=$1 AND kind='waste' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to])).rows[0];
-      return { sales, exps, cogs: Math.round(Number(cogs.c) || 0), wastage: Math.round(Number(waste.w) || 0) };
-    });
+  async function computeAccounting(client, orgId, from, to, storeId) {
+    const sales = (await client.query(
+      `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+         AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
+         AND (data->>'t')::numeric BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
+    const exps = (await client.query(
+      `SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false
+         AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
+         AND (data->>'t')::numeric BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
+    const cogsR = (await client.query(
+      `SELECT COALESCE(-SUM(qty*unit_cost),0) AS c FROM stock_moves
+         WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [orgId, from, to])).rows[0];
+    const wasteR = (await client.query(
+      `SELECT COALESCE(-SUM(qty*unit_cost),0) AS w FROM stock_moves
+         WHERE org_id=$1 AND kind='waste' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [orgId, from, to])).rows[0];
+    const cogs = Math.round(Number(cogsR.c) || 0), wastage = Math.round(Number(wasteR.w) || 0);
 
     let grossSales = 0, discounts = 0, gst = 0, svc = 0, refunds = 0, foc = 0, ar = 0, saleCount = 0;
-    const tenders = {};
-    for (const row of src.sales) {
-      const d = row.data || {}; const isRefund = d.type === "refund";
+    const tenders = {}, storeRev = {};
+    for (const row of sales) {
+      const d = row.data || {}; const isRefund = d.type === "refund"; const sid = String(d.storeId || "global");
       if (d.foc) { foc += num(d.focValue); continue; }
       if (isRefund) { refunds += Math.abs(num(d.total)); }
-      else { grossSales += num(d.subtotal); discounts += num(d.billDisc); gst += num(d.gst); svc += num(d.svcCharge); saleCount++; }
+      else { grossSales += num(d.subtotal); discounts += num(d.billDisc); gst += num(d.gst); svc += num(d.svcCharge); saleCount++; storeRev[sid] = (storeRev[sid] || 0) + (num(d.subtotal) - num(d.billDisc)); }
       for (const p of (d.payments || [])) {
         const m = String(p.method || "Other");
         tenders[m] = (tenders[m] || 0) + num(p.amount);
@@ -1921,12 +1916,9 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     }
     const netSales = grossSales - discounts - refunds;
 
-    /* Split expenses: inventory purchases are already captured via perpetual
-       COGS, so they're excluded from operating expense; everything else is real
-       opex (rent, wages, utilities, paid-outs…). */
     let purchases = 0, opex = 0, paidOut = 0;
     const opexByCat = {};
-    for (const row of src.exps) {
+    for (const row of exps) {
       const d = row.data || {}; const amt = num(d.amount); const cat = String(d.cat || "Other"); const type = String(d.type || "");
       if (/purchase/i.test(cat)) { purchases += amt; continue; }
       opex += amt;
@@ -1934,20 +1926,139 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       const key = type === "paidout" ? (d.reason || "Paid out") : cat;
       opexByCat[key] = (opexByCat[key] || 0) + amt;
     }
-
-    const grossProfit = netSales - src.cogs;
-    const netProfit = grossProfit - src.wastage - opex;
+    const grossProfit = netSales - cogs;
+    const netProfit = grossProfit - wastage - opex;
     const cashSales = tenders.Cash || 0;
-
-    res.json({
-      ok: true, from, to, storeId: storeId || "all", currency: "laari",
-      pnl: { revenue: netSales, grossSales, discounts, refunds, serviceCharge: svc, cogs: src.cogs, grossProfit,
+    return {
+      from, to, storeId: storeId || "all", currency: "laari",
+      pnl: { revenue: netSales, grossSales, discounts, refunds, serviceCharge: svc, cogs, grossProfit,
         grossMarginPct: netSales > 0 ? Math.round((grossProfit / netSales) * 100) : 0,
-        wastage: src.wastage, opex, opexByCat, purchases, netProfit,
+        foodCostPct: netSales > 0 ? Math.round((cogs / netSales) * 100) : 0,
+        wastage, opex, opexByCat, purchases, netProfit,
         netMarginPct: netSales > 0 ? Math.round((netProfit / netSales) * 100) : 0, saleCount },
       gstReturn: { outputTax: gst, inputTax: 0, netPayable: gst,
         note: "Input tax on purchases isn't itemised in the app; enter it manually if you claim it." },
       cash: { tenders, cashSales, paidOut, drawerNet: cashSales - paidOut, accountsReceivable: ar, focValue: foc },
+      storeRev,
+    };
+  }
+
+  router.get("/accounting", authAny, wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const from = Number(req.query.from) || 0;
+    const to = Number(req.query.to) || Date.now();
+    const out = await withOrg(req.orgId, (client) => computeAccounting(client, req.orgId, from, to, storeId));
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
+  /* ── Owner Panel (P6): one screen that answers "how's my business?" ──────
+     KPIs with vs-previous deltas, the menu-engineering "Magic Quadrant"
+     (popularity × contribution margin → Stars/Plowhorses/Puzzles/Dogs, the
+     Kasavana-Smith model), price-fluctuation alerts, a merged actionable-alert
+     list (reorder + expiring + margin + tabs), per-outlet revenue, and a
+     plain-language guided read. All derived from source; degrades to a
+     deterministic read with no AI key. */
+  const pct = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : (cur > 0 ? 100 : 0));
+
+  router.get("/owner", authAny, wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const to = Number(req.query.to) || Date.now();
+    const from = Number(req.query.from) || (to - 7 * 864e5);
+    const span = Math.max(1, to - from);
+    const ins = await computeInsights(req.orgId);
+    const core = await withOrg(req.orgId, async (client) => {
+      const acct = await computeAccounting(client, req.orgId, from, to, storeId);
+      const prev = await computeAccounting(client, req.orgId, from - span, from, storeId);
+      const expiring = await expiringLots(client, req.orgId, 7);
+      const products = (await client.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.orgId])).rows.map((r) => Object.assign({ id: r.id }, r.data));
+      const plate = (await client.query(
+        `SELECT rl.product_id AS pid, COALESCE(SUM(rl.qty*i.avg_cost),0) AS cost, COUNT(*) AS n
+         FROM recipe_lines rl JOIN ingredients i ON i.org_id=rl.org_id AND i.id=rl.ingredient_id
+         WHERE rl.org_id=$1 GROUP BY rl.product_id`, [req.orgId])).rows;
+      const plateBy = new Map(plate.map((r) => [String(r.pid), { cost: Number(r.cost), n: Number(r.n) }]));
+      const salesRows = (await client.query(
+        `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+           AND (data->>'t')::numeric BETWEEN $2 AND $3`, [req.orgId, from, to])).rows;
+      const stores = (await client.query("SELECT id, name FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [req.orgId])).rows;
+      const owing = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false AND (data->>'balance')::numeric > 0", [req.orgId])).rows.map((r) => r.data);
+      const priceRows = (await client.query(
+        `SELECT sm.ingredient_id AS iid, i.name, sm.unit_cost AS uc, sm.created_at
+         FROM stock_moves sm JOIN ingredients i ON i.org_id=sm.org_id AND i.id=sm.ingredient_id
+         WHERE sm.org_id=$1 AND sm.kind='purchase' ORDER BY sm.ingredient_id, sm.created_at`, [req.orgId])).rows;
+      return { acct, prev, expiring, products, plateBy, salesRows, stores, owing, priceRows };
+    });
+
+    /* Units sold in the window, per product. */
+    const unitsBy = new Map();
+    for (const r of core.salesRows) { const d = r.data || {}; if (d.type === "refund" || d.foc) continue; for (const l of (d.lines || [])) { const pid = String(l.pid || ""); if (pid) unitsBy.set(pid, (unitsBy.get(pid) || 0) + num(l.qty, 1)); } }
+
+    /* Menu engineering — contribution margin × popularity. */
+    const menu = core.products.filter((p) => !p.archived && p.price != null).map((p) => {
+      const plate = core.plateBy.get(String(p.id));
+      const price = num(p.price), plateCost = plate ? plate.cost : 0;
+      const cm = price - plateCost;
+      return { id: p.id, name: p.name, units: unitsBy.get(String(p.id)) || 0, price, plateCost: Math.round(plateCost), cm: Math.round(cm), marginPct: price > 0 ? Math.round((cm / price) * 100) : 0, hasRecipe: !!plate };
+    });
+    const sold = menu.filter((m) => m.units > 0);
+    const avgUnits = sold.length ? sold.reduce((a, m) => a + m.units, 0) / sold.length : 0;
+    const avgCm = sold.length ? sold.reduce((a, m) => a + m.cm, 0) / sold.length : 0;
+    const popLine = 0.7 * avgUnits;
+    sold.forEach((m) => { const hiPop = m.units >= popLine, hiCm = m.cm >= avgCm; m.quadrant = hiPop && hiCm ? "star" : hiPop ? "plowhorse" : hiCm ? "puzzle" : "dog"; });
+    const quadrants = { star: [], plowhorse: [], puzzle: [], dog: [] };
+    sold.forEach((m) => quadrants[m.quadrant].push(m));
+
+    /* Price fluctuation — latest purchase cost vs the average before it. */
+    const priceByIng = new Map();
+    for (const r of core.priceRows) { if (!priceByIng.has(r.iid)) priceByIng.set(r.iid, { name: r.name, costs: [] }); priceByIng.get(r.iid).costs.push(Number(r.uc)); }
+    const priceAlerts = [];
+    for (const [, v] of priceByIng) {
+      if (v.costs.length < 2) continue;
+      const latest = v.costs[v.costs.length - 1];
+      const prior = v.costs.slice(0, -1).reduce((a, c) => a + c, 0) / (v.costs.length - 1);
+      if (prior > 0 && (latest - prior) / prior >= 0.10) priceAlerts.push({ name: v.name, up: Math.round(((latest - prior) / prior) * 100) });
+    }
+    priceAlerts.sort((a, b) => b.up - a.up);
+
+    /* Merged alerts, most-actionable first. */
+    const alerts = [];
+    (ins.reorder || []).slice(0, 6).forEach((r) => alerts.push({ kind: "reorder", severity: "warn", text: `Reorder ${r.name} — about ${r.daysCover}d cover left`, action: "reorder" }));
+    (core.expiring || []).slice(0, 6).forEach((e) => alerts.push({ kind: "expiry", severity: e.tier === "expired" ? "bad" : "warn", text: `${e.tier === "expired" ? "Expired" : "Expiring in " + e.daysLeft + "d"}: ${e.name} (${qtyStr(e.qty, e.baseUnit)})`, action: "expiry" }));
+    quadrants.dog.slice(0, 4).forEach((m) => alerts.push({ kind: "menu", severity: "info", text: `${m.name} barely sells and earns little — consider dropping or reworking it`, action: "menu" }));
+    quadrants.plowhorse.slice(0, 4).forEach((m) => alerts.push({ kind: "menu", severity: "info", text: `${m.name} is popular but low-margin (${m.marginPct}%) — re-cost it or nudge the price`, action: "menu" }));
+    priceAlerts.slice(0, 4).forEach((p) => alerts.push({ kind: "cost", severity: "warn", text: `${p.name} cost is up ${p.up}% — your margins on it are shrinking`, action: "cost" }));
+    const fmtMvr = (l) => "MVR " + (Math.round(l) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (core.owing.length) { const owed = core.owing.reduce((a, c) => a + num(c.balance), 0); alerts.push({ kind: "tab", severity: "info", text: `${core.owing.length} customer${core.owing.length === 1 ? "" : "s"} owe ${fmtMvr(owed)} on tab`, action: "tab" }); }
+
+    /* Per-outlet revenue (net) in the window. */
+    const stores = core.stores.map((s) => ({ id: s.id, name: s.name, revenue: core.acct.storeRev[s.id] || 0 }));
+
+    /* KPIs + deltas. */
+    const P = core.acct.pnl, PV = core.prev.pnl;
+    const kpis = {
+      revenue: P.revenue, revenueDelta: pct(P.revenue, PV.revenue),
+      grossProfit: P.grossProfit, grossMarginPct: P.grossMarginPct,
+      netProfit: P.netProfit, netMarginPct: P.netMarginPct,
+      orders: P.saleCount, ordersDelta: pct(P.saleCount, PV.saleCount),
+      avgOrder: P.saleCount > 0 ? Math.round(P.revenue / P.saleCount) : 0,
+      foodCostPct: P.foodCostPct, cashDrawer: core.acct.cash.drawerNet, receivables: core.acct.cash.accountsReceivable,
+    };
+
+    /* Deterministic guided read (plain language). */
+    const money2 = (l) => (core.acct.currency === "laari" ? "MVR " : "") + (Math.round(l) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const best = sold.slice().sort((a, b) => b.units - a.units)[0];
+    const readBits = [];
+    readBits.push(`You took ${money2(P.revenue)} (net of GST) with ${P.saleCount} order${P.saleCount === 1 ? "" : "s"}` + (PV.revenue > 0 ? `, ${kpis.revenueDelta >= 0 ? "up" : "down"} ${Math.abs(kpis.revenueDelta)}% on the previous period.` : "."));
+    readBits.push(`Gross margin is ${P.grossMarginPct}% and food cost ${P.foodCostPct}%${P.netProfit >= 0 ? `, leaving ${money2(P.netProfit)} profit.` : `, and after expenses you're ${money2(-P.netProfit)} down.`}`);
+    if (best) readBits.push(`Best seller: ${best.name} (${best.units} sold).`);
+    if (quadrants.plowhorse.length) readBits.push(`${quadrants.plowhorse[0].name} sells well but earns little — worth re-costing.`);
+    if (ins.reorder && ins.reorder.length) readBits.push(`${ins.reorder.length} item${ins.reorder.length === 1 ? " needs" : "s need"} reordering.`);
+    if (core.expiring.length) readBits.push(`${core.expiring.length} item${core.expiring.length === 1 ? "" : "s"} expiring within a week.`);
+
+    res.json({
+      ok: true, from, to, currency: "laari", storeId: storeId || "all",
+      kpis, read: readBits.join(" "),
+      quadrant: { star: quadrants.star, plowhorse: quadrants.plowhorse, puzzle: quadrants.puzzle, dog: quadrants.dog, avgUnits: Math.round(avgUnits), popLine: Math.round(popLine) },
+      alerts, priceAlerts, stores, topItems: sold.slice().sort((a, b) => b.units - a.units).slice(0, 6),
     });
   }));
 
