@@ -713,6 +713,15 @@ patchFile(indexPath, (html) => {
     '}),f.dv?h.jsx("div",{className:"ksh-tiledv',
     '}),f.desc?h.jsx("div",{className:"ksh-tiledesc",style:{fontSize:"11px",lineHeight:"1.25",color:"var(--k-sub,#8A8074)",marginTop:"1px",overflow:"hidden",display:"-webkit-box",WebkitLineClamp:"2",WebkitBoxOrient:"vertical"},children:f.desc}):null,f.dv?h.jsx("div",{className:"ksh-tiledv'
   )
+  /* Register polish 2/~10 (prototype parity): replace the single cycling
+     "+ Bill disc" button with direct discount chips (None/5/10/15/20/25%) — one
+     tap to the exact rate instead of tapping repeatedly. Same KshSetBillDisc
+     setter, same manager-gate (br("refund")), same money math — UI only.
+     Idempotent: the cycling closure the find matches is gone after the swap. */
+  .replace(
+    'br("refund")&&h.jsx("button",{onClick:()=>KshSetBillDisc(f=>{const j=[0,5,10,15,20,25];return j[(j.indexOf(f)+1)%j.length]}),className:`flex items-center gap-1.5 rounded-xl px-3 py-1 text-xs mt-1 ${KshBD>0?"bg-amber-500/15 text-amber-500":_.chip}`,children:KshBD>0?"Bill disc "+KshBD+"%":"+ Bill disc"})',
+    'br("refund")&&h.jsx("div",{className:"flex flex-wrap gap-1 mt-1 items-center",children:[["None",0],["5%",5],["10%",10],["15%",15],["20%",20],["25%",25]].map(function(kd){return h.jsx("button",{onClick:()=>KshSetBillDisc(()=>kd[1]),className:`rounded-lg px-2 py-1 text-xs ${KshBD===kd[1]?"bg-amber-500/15 text-amber-500 font-semibold":_.chip}`,children:kd[0]},kd[1])})})'
+  )
   /* RBAC gap-close (roles audit): add an "admin" supervisor tier between manager
      and owner. It carries every manager permission plus two new tokens — "staff"
      (manage Users & PINs) and "settings" (Store Settings) — while Cloud Sync and
@@ -2549,6 +2558,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.6"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.7"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");

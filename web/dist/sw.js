@@ -1,6 +1,6 @@
 /* NexusPOS service worker — offline-first shell caching.
    Bump VERSION on releases to force clients onto the new build. */
-const VERSION = 'kashikeyo-3.1.6';
+const VERSION = 'kashikeyo-3.1.7';
 const SHELL = ['./', './manifest.webmanifest', './offline-bridge.js'];
 
 self.addEventListener('install', (e) => {
