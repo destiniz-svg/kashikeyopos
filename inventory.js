@@ -1684,9 +1684,73 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
        ORDER BY (data->>'t')::numeric DESC LIMIT 50`, [req.orgId]));
     res.json({ pos: r.rows.map((x) => {
       const d = x.data || {};
-      return { id: String(d.id || x.id), no: d.no || "", supplier: d.supplier || "", total: num(d.total), t: num(d.t), note: d.note || "",
-        items: (d.items || []).map((it) => ({ desc: it.desc || "", qty: num(it.qty, 1), cost: num(it.cost) })) };
+      return { id: String(d.id || x.id), no: d.no || "", supplier: d.supplier || "", total: num(d.total), t: num(d.t), note: d.note || "", source: d.source || "",
+        items: (d.items || []).map((it) => ({ desc: it.desc || "", qty: num(it.qty, 1), unit: it.unit || "", cost: num(it.cost) })) };
     }) });
+  }));
+
+  /* ── Auto-reorder → draft purchase orders (P4) ──────────────────────────
+     Turn the velocity-based reorder list (computeInsights) into ready-to-send
+     POs, grouped by each ingredient's usual supplier (learned from its own
+     purchase history — no data entry). The owner reviews and approves; approved
+     drafts become `pords` entities, so they land in the same PO list that the
+     till raises and can be received here as a pre-filled delivery. */
+  async function usualSupplierMap(client, orgId) {
+    const r = await client.query(
+      `SELECT DISTINCT ON (pil.ingredient_id) pil.ingredient_id AS iid, pi.supplier_id AS sid, s.name AS sname
+       FROM purchase_invoice_lines pil
+       JOIN purchase_invoices pi ON pi.org_id = pil.org_id AND pi.id = pil.invoice_id
+       LEFT JOIN suppliers s ON s.org_id = pi.org_id AND s.id = pi.supplier_id
+       WHERE pil.org_id=$1
+       ORDER BY pil.ingredient_id, pi.received_at DESC`, [orgId]);
+    const m = new Map();
+    r.rows.forEach((x) => m.set(x.iid, { supplierId: x.sid || "", supplier: x.sname || "" }));
+    return m;
+  }
+
+  router.get("/reorder/draft", authAny, wrap(async (req, res) => {
+    const out = await computeInsights(req.orgId);
+    const supMap = await withOrg(req.orgId, (c) => usualSupplierMap(c, req.orgId));
+    const groups = new Map();
+    out.reorder.forEach((it) => {
+      const sup = supMap.get(it.id) || { supplierId: "", supplier: "" };
+      const key = sup.supplierId || "_none";
+      if (!groups.has(key)) groups.set(key, { supplierId: sup.supplierId || "", supplier: sup.supplier || "Unassigned", items: [], total: 0 });
+      const g = groups.get(key);
+      const perUnit = it.suggestQty > 0 ? Math.round(it.suggestCost / it.suggestQty) : it.suggestCost;
+      g.items.push({ ingredientId: it.id, desc: it.name, qty: it.suggestQty, unit: it.suggestUnit, cost: perUnit, daysCover: it.daysCover, lineCost: it.suggestCost });
+      g.total += it.suggestCost;
+    });
+    const drafts = Array.from(groups.values()).sort((a, b) => (a.supplier > b.supplier ? 1 : -1));
+    res.json({ ok: true, currency: out.currency, count: out.reorder.length, drafts });
+  }));
+
+  router.post("/reorder/approve", authAny, wrap(async (req, res) => {
+    const drafts = Array.isArray(req.body && req.body.drafts) ? req.body.drafts : [];
+    if (!drafts.length) return res.status(400).json({ error: "nothing to order" });
+    const result = await withOrg(req.orgId, async (client) => {
+      const out = []; let rowver = 0;
+      for (const d of drafts) {
+        const items = (d.items || [])
+          .map((it) => ({ desc: String(it.desc || "").slice(0, 120), qty: num(it.qty, 0), unit: String(it.unit || "").slice(0, 30), cost: Math.max(0, Math.round(num(it.cost))) }))
+          .filter((it) => it.desc && it.qty > 0);
+        if (!items.length) continue;
+        const total = items.reduce((a, it) => a + it.cost * it.qty, 0);
+        const id = uid(), no = "PO-" + id.slice(0, 6).toUpperCase();
+        const data = { id, no, supplier: String(d.supplier || ""), supplierId: String(d.supplierId || ""), status: "open", t: Date.now(), source: "auto", note: "Auto-generated from stock cover", items, total };
+        const up = await client.query(
+          `INSERT INTO entities (org_id, kind, id, data, deleted) VALUES ($1,'pords',$2,$3,false)
+           ON CONFLICT (org_id, kind, id) DO UPDATE SET data = excluded.data, deleted = false,
+             rowver = nextval('entities_rowver_seq'), updated_at = now()
+           RETURNING rowver`, [req.orgId, id, JSON.stringify(data)]);
+        rowver = up.rows[0] ? Number(up.rows[0].rowver) : rowver;
+        out.push({ id, no, supplier: data.supplier, items: items.length, total });
+      }
+      if (out.length) await noteActivity(req.orgId, "po.auto_create", { count: out.length });
+      return { out, rowver };
+    });
+    if (result.rowver && poke) poke(req.orgId, result.rowver);
+    res.json({ ok: true, created: result.out });
   }));
 
   /* ── Compliance review (audit FIN-01/02) ─────────────────────────────────

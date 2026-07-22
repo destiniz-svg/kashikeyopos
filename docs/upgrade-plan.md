@@ -41,8 +41,13 @@ staging check, then promote to `main` only on explicit owner sign-off.
   across lots FEFO at read time (never touches the sale path) with tiered
   expired/today/soon/week/later; /back Deliveries "Use-by" column + expiry chips
   in the alert bar. Verified: FEFO depletion + UI, 37/37 tests.
-- [ ] **P4 — Automated stock + Auto-PO.** Velocity reorder points from
-  `stock_moves`; draft POs per supplier; PO → pre-filled delivery.
+- [x] **P4 — Automated stock + Auto-PO.** DONE. `/reorder/draft` turns the
+  velocity reorder list (computeInsights) into draft POs grouped by each
+  ingredient's usual supplier (learned from purchase history — no data entry);
+  `/reorder/approve` writes them as `pords` entities (source:auto) so they land
+  in the same PO list the till raises and receive as a pre-filled delivery.
+  /back Deliveries "🔄 Auto-reorder" modal (editable qtys). PO `unit` now flows
+  through receive so pack quantities convert correctly. Verified end-to-end.
 - [ ] **P5 — Automated accounting + Reports.** `journal` + `journal_lines`,
   auto-post on sale/expense/delivery/wastage/close; P&L, GST return draft, CSV/PDF.
 - [ ] **P6 — Owner Panel + menu engineering.** Business-status hero, guided daily

@@ -1556,6 +1556,53 @@
     if (el("aiName")) el("aiName").focus();
   }
 
+  /* ── Auto-reorder (P4) — draft POs from stock cover, grouped by supplier ── */
+  function openAutoReorder() {
+    el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:600px"><h3>🔄 Auto-reorder</h3><p class="sub">Checking how fast each ingredient is used…</p></div></div>';
+    api("/reorder/draft").then(function (r) {
+      var drafts = r.drafts || [];
+      if (!drafts.length) {
+        el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:520px"><h3>🔄 Auto-reorder</h3><p class="sub" style="margin:10px 0 0">Nothing needs reordering right now — every ingredient has enough cover. 👍</p><div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="primary" id="arClose">OK</button></div></div></div>';
+        el("arClose").onclick = function () { el("modalHost").innerHTML = ""; };
+        return;
+      }
+      var st = drafts.map(function (g) { return { supplier: g.supplier, supplierId: g.supplierId, items: g.items.map(function (it) { return { ingredientId: it.ingredientId, desc: it.desc, qty: it.qty, unit: it.unit, cost: it.cost, daysCover: it.daysCover }; }) }; });
+      function draw() {
+        var body = '<h3 style="margin:0 0 4px">🔄 Auto-reorder</h3>' +
+          '<p class="sub" style="margin:0 0 12px">Suggested from how fast each item sells. Adjust quantities if you like, then create the purchase orders — they land in your PO list to receive on arrival.</p>';
+        st.forEach(function (g, gi) {
+          var rows = g.items.map(function (it, ii) {
+            return "<tr><td>" + esc(it.desc) + (it.daysCover != null ? '<div class="hint">' + it.daysCover + "d cover left</div>" : "") + "</td>" +
+              '<td class="mono" style="white-space:nowrap"><input class="num" data-ai="' + gi + "_" + ii + '" inputmode="decimal" value="' + esc(it.qty) + '" style="width:64px" /> ' + esc(it.unit) + "</td>" +
+              '<td class="mono" style="text-align:right">' + S.currency + " " + Y(it.cost * it.qty) + "</td></tr>";
+          }).join("");
+          var gTotal = g.items.reduce(function (a, it) { return a + it.cost * it.qty; }, 0);
+          body += '<div style="border:1px solid var(--panel2);border-radius:12px;padding:12px;margin-bottom:10px">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><b>' + esc(g.supplier) + "</b><span class=\"sub\">" + g.items.length + " item" + (g.items.length === 1 ? "" : "s") + " · " + S.currency + " " + Y(gTotal) + "</span></div>" +
+            '<table style="width:100%"><tbody>' + rows + "</tbody></table></div>";
+        });
+        body += '<div style="display:flex;justify-content:space-between;gap:8px;margin-top:8px"><button class="ghost" id="arCancel">Cancel</button>' +
+          '<button class="primary" id="arGo">Create ' + st.length + " purchase order" + (st.length === 1 ? "" : "s") + "</button></div>";
+        el("modalHost").innerHTML = '<div class="overlay" id="ov"><div class="modal" style="max-width:600px">' + body + "</div></div>";
+        el("arCancel").onclick = function () { el("modalHost").innerHTML = ""; };
+        el("modalHost").querySelectorAll("[data-ai]").forEach(function (inp) {
+          inp.oninput = function () { var p = inp.dataset.ai.split("_"); st[Number(p[0])].items[Number(p[1])].qty = parseFloat(inp.value) || 0; };
+          inp.onchange = draw;
+        });
+        el("arGo").onclick = function () {
+          var payload = { drafts: st.map(function (g) { return { supplier: g.supplier, supplierId: g.supplierId, items: g.items.filter(function (it) { return it.qty > 0; }) }; }).filter(function (g) { return g.items.length; }) };
+          if (!payload.drafts.length) return toast("Set at least one quantity");
+          el("arGo").disabled = true;
+          api("/reorder/approve", { method: "POST", body: JSON.stringify(payload) })
+            .then(function (rr) { el("modalHost").innerHTML = ""; var n = (rr.created || []).length; toast("Created " + n + " purchase order" + (n === 1 ? "" : "s") + " — receive them below when they arrive"); return loadAll(); })
+            .then(render)
+            .catch(function (e) { el("arGo").disabled = false; toast(e.message || "Couldn't create the purchase orders"); });
+        };
+      }
+      draw();
+    }).catch(function (e) { el("modalHost").innerHTML = ""; toast(e.message || "Couldn't check reorder just now"); });
+  }
+
   /* Two-level menu layout editor. Main categories (top nav row on the till and
      guest menu) each hold an ordered list of sub categories; products carry the
      sub category (`cat`). Owners can add / rename / delete / reorder mains,
@@ -1967,7 +2014,8 @@
       (poCards ? '<section><h2>Purchase orders from the till</h2><div class="panel">' + poCards + "</div>" +
         '<p class="hint">Raised at the till, waiting for delivery. Receiving here does everything in one tap: stock in, costs re-averaged, and the bill booked to the till\u2019s Expenses.</p></section>' : "") +
       '<section><div class="toolbar"><h2 style="margin:0">What arrived?</h2>' +
-      '<div><input type="file" id="dScanFile" accept="image/*" capture="environment" style="display:none" />' +
+      '<div style="display:flex;gap:8px"><input type="file" id="dScanFile" accept="image/*" capture="environment" style="display:none" />' +
+      '<button class="primary" id="dAutoPo" title="Draft purchase orders for what’s running low, grouped by supplier">🔄 Auto-reorder</button>' +
       '<button class="ghost" id="dScan">📷 Scan a delivery note</button></div></div>' +
       '<div class="panel pad">' +
       '<div class="row2"><div><label>Supplier</label>' +
@@ -1993,7 +2041,7 @@
           lines: po.items.map(function (it) {
             var match = S.ingredients.find(function (x) { return x.name.toLowerCase() === (it.desc || "").toLowerCase(); }) ||
                         S.ingredients.find(function (x) { return (it.desc || "").toLowerCase().includes(x.name.toLowerCase()) || x.name.toLowerCase().includes((it.desc || "").toLowerCase()); });
-            return { ingredientId: match ? match.id : "", desc: it.desc, qty: String(it.qty || 1), unitName: "", cost: it.cost ? ((it.cost * (it.qty || 1)) / 100).toFixed(2) : "" };
+            return { ingredientId: match ? match.id : "", desc: it.desc, qty: String(it.qty || 1), unitName: it.unit || "", cost: it.cost ? ((it.cost * (it.qty || 1)) / 100).toFixed(2) : "" };
           }) };
         renderDeliveries();
         toast(po.no + " loaded — check each line, then Add to stock");
@@ -2039,6 +2087,7 @@
     el("main").querySelectorAll("[data-dq]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.dq)].qty = i.value; }; i.onchange = renderDeliveries; });
     el("main").querySelectorAll("[data-dc]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.dc)].cost = i.value; }; i.onchange = renderDeliveries; });
     el("main").querySelectorAll("[data-du]").forEach(function (s) { s.onchange = function () { S.inv.lines[Number(s.dataset.du)].unitName = s.value; renderDeliveries(); }; });
+    if (el("dAutoPo")) el("dAutoPo").onclick = openAutoReorder;
     el("main").querySelectorAll("[data-de]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.de)].expiry = i.value; }; });
     el("main").querySelectorAll("[data-dx]").forEach(function (b) { b.onclick = function () { S.inv.lines.splice(Number(b.dataset.dx), 1); renderDeliveries(); }; });
     el("dPost").onclick = function () {
