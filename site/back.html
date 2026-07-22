@@ -604,6 +604,11 @@
     el("tabs").querySelectorAll("button").forEach(function (b) {
       b.onclick = function () { S.tab = b.dataset.t; render(); };
     });
+    // Keep the active tab in view when the 12-tab bar overflows (tablet/mobile).
+    var onBtn = el("tabs").querySelector("button.on");
+    if (onBtn && onBtn.scrollIntoView) {
+      try { onBtn.scrollIntoView({ inline: "nearest", block: "nearest" }); } catch (e) { onBtn.scrollIntoView(); }
+    }
   }
 
   function render() {
@@ -2034,7 +2039,7 @@
       '<div><label>Invoice number (optional)</label><input id="dNo" value="' + esc(S.inv.invoiceNo) + '" style="width:100%" /></div></div>' +
       '<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Ingredient</th><th class="mono">Qty</th><th>Unit</th><th class="mono">Cost (' + esc(S.currency) + ')</th><th class="mono">Adds to stock</th><th>Use-by</th><th></th></tr></thead><tbody>' +
       (lines || '<tr><td colspan="7" class="empty">No lines yet.</td></tr>') + "</tbody></table></div>" +
-      '<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><select id="dAdd" style="flex:1"><option value="">+ Add a delivery line…</option>' + addOpts + "</select>" +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><select id="dAdd" aria-label="Add a delivery line" style="flex:1"><option value="">+ Add a delivery line…</option>' + addOpts + "</select>" +
       '<button class="primary" id="dPost"' + (S.inv.lines.length ? "" : " disabled") + ">Add to stock</button></div>" +
       '<p class="hint">Posting updates stock instantly, re-averages each ingredient\u2019s cost, and books the bill to the till\u2019s Expenses — enter it once, it lands everywhere.</p>' +
       "</div></section>" +

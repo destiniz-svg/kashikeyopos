@@ -87,8 +87,17 @@ staging check, then promote to `main` only on explicit owner sign-off.
   register; starter-menu seeding rides the P2 AI Menu Builder. Verified:
   fresh store returns 2/4 → checklist renders, deep-links + skip work, zero
   console errors; 37/37 tests.
-- [ ] **P10 — Convenience & hardening.** Less-typing sweep, a11y (axe/Lighthouse
-  on /back, /app, /p/:slug), 24 h soak, full regression, promote.
+- [~] **P10 — Convenience & hardening.** CODE DONE. a11y sweep across all 12
+  /back tabs: DOM audit found the surface already strong (role=dialog + focus
+  trap + Escape + focus-restore + auto-label via `a11yEnhance`/MutationObserver,
+  modals autofocus their primary field — less-typing already covered); fixed the
+  two gaps — `aria-label` on the delivery-line `<select>` and active-tab
+  scroll-into-view so the 12-tab bar never hides the current section on
+  tablet/mobile (verified: last tab visible + no page jump at 1280/1024/768/
+  390 px). Full regression: 37/37 tests green, zero console errors walking every
+  tab. REMAINING (owner/deploy-gated, not code): 24 h soak on the test env,
+  axe/Lighthouse on the baked till `/app` + guest `/p/:slug` (those need a
+  browser run against a deployed build), and promote to `main` on sign-off.
 
 ## Market notes (Lightspeed / AgenticPOS)
 - Magic Menu Quadrant + live food-cost/price-fluctuation alerts → P6.
