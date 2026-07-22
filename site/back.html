@@ -560,10 +560,12 @@
     return Promise.all([
       api("/ingredients"), api("/products"), api("/suppliers"), api("/audits"), api("/alerts"), api("/invoices"), api("/pos"),
       api("/flags").catch(function () { return { sales: [], credit: [] }; }),
+      api("/expiring").catch(function () { return { items: [] }; }),
     ]).then(function (r) {
       S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
       S.flags = { sales: (r[7] && r[7].sales) || [], credit: (r[7] && r[7].credit) || [] };
+      S.expiring = (r[8] && r[8].items) || [];
       if (!S.theme.override && r[1].theme) { S.theme.name = r[1].theme.name || "green"; S.theme.dark = !!r[1].theme.dark; }
       applyTheme();
       renderAlerts(r[4]);
@@ -572,6 +574,10 @@
 
   function renderAlerts(a) {
     var h = "";
+    (S.expiring || []).forEach(function (e) {
+      var lbl = e.tier === "expired" ? "⚠️ Expired" : (e.daysLeft <= 0 ? "⏱ Expires today" : "⏱ Expires in " + e.daysLeft + "d");
+      h += '<span class="chip low">' + lbl + ": " + esc(e.name) + " · " + qty3(e.qty) + " " + esc(e.baseUnit) + "</span>";
+    });
     (a.lowStock || []).forEach(function (i) {
       h += '<span class="chip low">Low: ' + esc(i.name) + " — " + qty3(i.current_stock) + " " + esc(i.base_unit) + " left</span>";
     });
@@ -1931,6 +1937,7 @@
           "<td>—</td>" +
           '<td class="mono"><input class="num" data-dc="' + i + '" inputmode="decimal" value="' + esc(l.cost) + '" placeholder="0.00" style="width:100px" /></td>' +
           '<td class="mono">—</td>' +
+          '<td><input type="date" data-de="' + i + '" value="' + esc(l.expiry || "") + '" style="width:150px" title="Use-by date (optional)" /></td>' +
           '<td style="width:40px"><button class="tiny ghost" data-dx="' + i + '">✕</button></td></tr>';
       }
       var unitOpts = '<option value="">' + esc(ing.base_unit) + "</option>" + (ing.units || []).map(function (u) {
@@ -1943,6 +1950,7 @@
         '<td><select data-du="' + i + '">' + unitOpts + "</select></td>" +
         '<td class="mono"><input class="num" data-dc="' + i + '" inputmode="decimal" value="' + esc(l.cost) + '" placeholder="0.00" style="width:100px" /></td>' +
         '<td class="mono">' + qty3(baseQty) + " " + esc(ing.base_unit) + '<div class="hint">' + per + " /" + esc(ing.base_unit) + "</div></td>" +
+        '<td><input type="date" data-de="' + i + '" value="' + esc(l.expiry || "") + '" style="width:150px" title="Use-by date (optional)" /></td>' +
         '<td style="width:40px"><button class="tiny ghost" data-dx="' + i + '">✕</button></td></tr>';
     }).join("");
     var addOpts = S.ingredients.map(function (i) { return '<option value="' + i.id + '">' + esc(i.name) + "</option>"; }).join("");
@@ -1968,8 +1976,8 @@
         : '<div style="display:flex;gap:8px"><select id="dSup" style="flex:1"><option value="">— pick a supplier —</option>' + supOpts + '</select><button class="ghost" id="dNewSup">+ New</button></div>') +
       "</div>" +
       '<div><label>Invoice number (optional)</label><input id="dNo" value="' + esc(S.inv.invoiceNo) + '" style="width:100%" /></div></div>' +
-      '<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Ingredient</th><th class="mono">Qty</th><th>Unit</th><th class="mono">Cost (' + esc(S.currency) + ')</th><th class="mono">Adds to stock</th><th></th></tr></thead><tbody>' +
-      (lines || '<tr><td colspan="6" class="empty">No lines yet.</td></tr>') + "</tbody></table></div>" +
+      '<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>Ingredient</th><th class="mono">Qty</th><th>Unit</th><th class="mono">Cost (' + esc(S.currency) + ')</th><th class="mono">Adds to stock</th><th>Use-by</th><th></th></tr></thead><tbody>' +
+      (lines || '<tr><td colspan="7" class="empty">No lines yet.</td></tr>') + "</tbody></table></div>" +
       '<div style="display:flex;gap:8px;align-items:center;margin-top:12px"><select id="dAdd" style="flex:1"><option value="">+ Add a delivery line…</option>' + addOpts + "</select>" +
       '<button class="primary" id="dPost"' + (S.inv.lines.length ? "" : " disabled") + ">Add to stock</button></div>" +
       '<p class="hint">Posting updates stock instantly, re-averages each ingredient\u2019s cost, and books the bill to the till\u2019s Expenses — enter it once, it lands everywhere.</p>' +
@@ -2031,11 +2039,12 @@
     el("main").querySelectorAll("[data-dq]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.dq)].qty = i.value; }; i.onchange = renderDeliveries; });
     el("main").querySelectorAll("[data-dc]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.dc)].cost = i.value; }; i.onchange = renderDeliveries; });
     el("main").querySelectorAll("[data-du]").forEach(function (s) { s.onchange = function () { S.inv.lines[Number(s.dataset.du)].unitName = s.value; renderDeliveries(); }; });
+    el("main").querySelectorAll("[data-de]").forEach(function (i) { i.oninput = function () { S.inv.lines[Number(i.dataset.de)].expiry = i.value; }; });
     el("main").querySelectorAll("[data-dx]").forEach(function (b) { b.onclick = function () { S.inv.lines.splice(Number(b.dataset.dx), 1); renderDeliveries(); }; });
     el("dPost").onclick = function () {
       var unmapped = S.inv.lines.filter(function (l) { return !l.ingredientId; }).length;
       if (unmapped) return toast("Match or remove " + unmapped + " PO line" + (unmapped === 1 ? "" : "s") + " first");
-      var lines = S.inv.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: parseFloat(l.qty) || 0, unitName: l.unitName, cost: Math.round((parseFloat(l.cost) || 0) * 100) }; })
+      var lines = S.inv.lines.map(function (l) { return { ingredientId: l.ingredientId, qty: parseFloat(l.qty) || 0, unitName: l.unitName, cost: Math.round((parseFloat(l.cost) || 0) * 100), expiry: l.expiry || "" }; })
         .filter(function (l) { return l.qty > 0; });
       if (!lines.length) return toast("Enter quantities first");
       el("dPost").disabled = true;
