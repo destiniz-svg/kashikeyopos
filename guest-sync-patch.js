@@ -569,6 +569,21 @@ const elevateJs =
   "return OF(input,init)};" +
   "})();";
 
+/* Service-worker update safety. The SW uses skipWaiting + clients.claim, so a
+   fresh deploy's worker seizes control of an already-open page mid-session. If
+   the new build ships different hashed chunks than the one the open page was
+   loaded from (e.g. a whole-bundle swap between release lines), the running app
+   then requests chunks the new worker's cache doesn't hold and the server no
+   longer serves — a blank screen. Fix: when the controller changes on a page
+   that ALREADY had a controller (a real update, not first install), reload once
+   so the page re-fetches the new shell + chunks. Guarded against reload loops
+   (done flag) and against first-install churn (had flag). */
+const swReloadJs =
+  "(function(){if(!('serviceWorker'in navigator)||window.__ksSwReload)return;window.__ksSwReload=1;" +
+  "var had=!!navigator.serviceWorker.controller,done=false;" +
+  "navigator.serviceWorker.addEventListener('controllerchange',function(){" +
+  "if(!had||done)return;done=true;try{location.reload()}catch(e){}});})()";
+
 /* Payments decision A+ — reference capture. When the till pushes a single live
    sale paid by Card/QR/Transfer, ask (quickly, skippably) for the terminal
    approval code / transfer reference and attach it as payments[].ref, which
@@ -658,6 +673,7 @@ patchFile(indexPath, (html) => {
   html = injectInline(html, "ksh-synctray", syncTrayJs);
   html = injectInline(html, "ksh-elevate", elevateJs);
   html = injectInline(html, "ksh-payref", payRefJs);
+  html = injectInline(html, "ksh-swreload", swReloadJs);
   html = injectCss(html, '.ksch-tab{transition:background .15s,color .15s;color:var(--k-sub,#8A8074)}.ksch-tab[data-on="1"]{background:var(--k-primary,#C1502D);color:#fff}');
   return html
   /* 76. Stock tracking is opt-in per product (fixes "Sold out after one sale").
@@ -2460,7 +2476,10 @@ patchFile(indexPath, (html) => html
   )
 );
 
-/* Force every installed PWA onto the current build. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-2\.[0-9]\.\d+/g, "kashikeyo-2.9.102"));
+/* Force every installed PWA onto the current build. Match ANY prior version
+   (not just the 2.9.x line) and move strictly forward — staging previously ran
+   the 3.0.x release line, so a 2.9.x number would sort *below* what clients
+   have installed. 3.1.0 supersedes every version shipped to date. */
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.0"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
