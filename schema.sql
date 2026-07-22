@@ -339,3 +339,29 @@ DROP POLICY IF EXISTS tenant_isolation ON activity_log;
 CREATE POLICY tenant_isolation ON activity_log
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
+-- Expiry / shelf-life lots (P3). A lightweight lot ledger: each delivery line
+-- with a use-by date records a lot (received base-unit qty + expiry). We do NOT
+-- decrement lots on the hot sale path (that stays the audited stock_moves +
+-- current_stock cache); instead the "what's expiring" view allocates the cached
+-- current_stock across lots FEFO at read time (earliest-expiry consumed first,
+-- so remaining stock sits in the latest lots) — flagging slow-moving stock about
+-- to spoil without touching the offline-critical deduction path.
+CREATE TABLE IF NOT EXISTS ingredient_lots (
+  org_id        TEXT NOT NULL,
+  id            TEXT NOT NULL,
+  ingredient_id TEXT NOT NULL,
+  store_id      TEXT NOT NULL DEFAULT 'main',
+  expiry        DATE,
+  qty           NUMERIC(14,3) NOT NULL DEFAULT 0,   -- received base units
+  received_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ref           TEXT NOT NULL DEFAULT '',           -- invoice:<invId>:<lineId>
+  PRIMARY KEY (org_id, id)
+);
+CREATE INDEX IF NOT EXISTS ingredient_lots_ing ON ingredient_lots (org_id, ingredient_id, expiry);
+ALTER TABLE ingredient_lots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ingredient_lots FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON ingredient_lots;
+CREATE POLICY tenant_isolation ON ingredient_lots
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');

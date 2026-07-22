@@ -1622,6 +1622,13 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       await client.query(
         "INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, ref) VALUES ($1,$2,$3,'purchase',$4,$5,$6)",
         [orgId, uid(), l.ingredientId, baseQty, unitCost, `invoice:${invId}:${lineId}`]);
+      /* Expiry lot (P3): only when a use-by date is given. Records the received
+         base-unit qty + expiry; consumption is allocated FEFO at read time. */
+      if (l.expiry && /^\d{4}-\d{2}-\d{2}$/.test(String(l.expiry))) {
+        await client.query(
+          "INSERT INTO ingredient_lots (org_id, id, ingredient_id, store_id, expiry, qty, ref) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+          [orgId, uid(), l.ingredientId, String(l.storeId || "main"), String(l.expiry), baseQty, `invoice:${invId}:${lineId}`]);
+      }
       await client.query(
         "UPDATE ingredients SET current_stock = current_stock + $3, avg_cost = $4, updated_at = now() WHERE org_id=$1 AND id=$2",
         [orgId, l.ingredientId, baseQty, newAvg]);
@@ -1840,6 +1847,50 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
        FROM purchase_invoices pi LEFT JOIN suppliers s ON s.org_id = pi.org_id AND s.id = pi.supplier_id
        WHERE pi.org_id=$1 ORDER BY pi.received_at DESC LIMIT 100`, [req.orgId]));
     res.json({ invoices: r.rows.map((x) => ({ ...x, total: Number(x.total) })) });
+  }));
+
+  /* ── Expiry / shelf-life (P3) ───────────────────────────────────────────
+     Allocate each ingredient's cached current_stock across its lots FEFO
+     (earliest-expiry consumed first → remaining stock sits in the latest lots),
+     then flag any lot that still holds stock and is within `withinDays` of its
+     use-by (or already past). Read-only over the lot ledger; never touches the
+     sale-deduction path. */
+  async function expiringLots(client, orgId, withinDays) {
+    const r = await client.query(
+      `SELECT il.ingredient_id, i.name, i.base_unit, i.current_stock,
+              json_agg(json_build_object('expiry', to_char(il.expiry,'YYYY-MM-DD'), 'qty', il.qty) ORDER BY il.expiry) AS lots
+       FROM ingredient_lots il
+       JOIN ingredients i ON i.org_id = il.org_id AND i.id = il.ingredient_id AND i.active
+       WHERE il.org_id=$1 AND il.expiry IS NOT NULL
+       GROUP BY il.ingredient_id, i.name, i.base_unit, i.current_stock`, [orgId]);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const out = [];
+    for (const row of r.rows) {
+      const lots = (row.lots || []).slice().sort((a, b) => (a.expiry < b.expiry ? -1 : a.expiry > b.expiry ? 1 : 0));
+      const totalRecv = lots.reduce((s, l) => s + Number(l.qty), 0);
+      let consumed = Math.max(0, totalRecv - Math.max(0, Number(row.current_stock)));
+      for (const l of lots) {                       // FEFO: earliest lots depleted first
+        const q = Number(l.qty);
+        const eaten = Math.min(consumed, q); consumed -= eaten;
+        const remaining = q - eaten;
+        if (remaining <= 0.0005) continue;
+        const days = Math.round((new Date(l.expiry + "T00:00:00") - today) / 86400000);
+        if (days > withinDays) continue;
+        out.push({
+          ingredientId: row.ingredient_id, name: row.name, baseUnit: row.base_unit,
+          expiry: l.expiry, qty: round3(remaining), daysLeft: days,
+          tier: days < 0 ? "expired" : days === 0 ? "today" : days <= 3 ? "soon" : days <= 7 ? "week" : "later",
+        });
+      }
+    }
+    out.sort((a, b) => a.daysLeft - b.daysLeft);
+    return out;
+  }
+
+  router.get("/expiring", authAny, wrap(async (req, res) => {
+    const within = Math.min(60, Math.max(1, num(req.query.within) || 14));
+    const items = await withOrg(req.orgId, (client) => expiringLots(client, req.orgId, within));
+    res.json({ ok: true, within, count: items.length, items });
   }));
 
   /* ── Periodic audit ("stock check") ─────────────────────────────────────

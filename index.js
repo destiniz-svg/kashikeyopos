@@ -123,7 +123,7 @@ async function ensureAppRole() {
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
-    audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines TO ${APP_DB_ROLE}`);
+    audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
      deleted even by the app role (FIN-03). */
   await bootPool.query(`GRANT SELECT, INSERT ON activity_log TO ${APP_DB_ROLE}`);
