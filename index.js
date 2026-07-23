@@ -1553,14 +1553,67 @@ app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 /* Back office: recipes, stock checks, deliveries — owner/manager work that
    doesn't belong on the till. Same session cookie as /app. */
 app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir, "back.html")));
-/* /app2 — the next-gen front-end (prototype design on this same backend), built
-   from web2/ (Vite+React) into web2/dist. Coexists with the baked till at /app;
-   session-gated the same way. Static assets first, SPA fallback to index.html. */
-const web2Dir = path.join(__dirname, "web2", "dist");
-if (fs.existsSync(web2Dir)) {
-  app.get(/^\/app2(\/.*)?$/, requireAppSession, (req, res, next) => next());
-  app.use("/app2", express.static(web2Dir, { index: false }));
-  app.get(/^\/app2(\/.*)?$/, (req, res) => res.sendFile(path.join(web2Dir, "index.html")));
+/* /app2 — the prototype's EXACT front-end (its own markup, styles, effects and
+   register logic, unchanged) served on this backend, with our real menu injected
+   into its `window.__ksMenu` seam. Coexists with the baked till at /app; session-
+   gated. Real data + persistence + AI/back-panel wiring land progressively; the
+   design stays 1:1 with the prototype. */
+const protoFile = path.join(__dirname, "web2", "proto", "index.html");
+let _protoHtml = null;
+const catSlug = (c) => {
+  const s = String(c || "").toLowerCase();
+  if (/coffee|tea|\bdrink|juice|water|cola|kurumba|\bsai\b|beverage|soda|shake|smoothie/.test(s)) return "drinks";
+  if (/dessert|cake|sweet|ice.?cream|pudding|foni|bondi/.test(s)) return "sweets";
+  if (/snack|bakery|hedhika|croissant|muffin|gulha|bajiya|roshi|cutlet|samosa|pastr/.test(s)) return "hedhikaa";
+  return "mains";
+};
+if (fs.existsSync(protoFile)) {
+  // React/ReactDOM (and any other static assets) the prototype loads, served
+  // from our own origin — see the __ksVendor note below. Mounted before the
+  // catch-all so /app2/vendor/* isn't swallowed by the HTML handler.
+  app.use("/app2/vendor", express.static(path.join(__dirname, "web2", "proto", "vendor"), {
+    maxAge: "1y", immutable: true,
+  }));
+  // The prototype standalone reconstructs its internal assets as blob: scripts
+  // and (via __ksVendor) pulls React from our own origin, so it needs a CSP that
+  // permits blob: scripts. Scoped to /app2 only — the global CSP (locked-down
+  // script-src) still governs every other route.
+  const APP2_CSP = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+    "connect-src 'self' blob: data:",
+    "frame-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'",
+  ].join("; ");
+  // Same-origin replacements for the prototype's unpkg React/ReactDOM CDN refs.
+  const APP2_VENDOR = {
+    "https://unpkg.com/react@18.3.1/umd/react.production.min.js": "/app2/vendor/react.production.min.js",
+    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": "/app2/vendor/react-dom.production.min.js",
+  };
+  app.get(/^\/app2(\/.*)?$/, requireAppSession, async (req, res) => {
+    if (!_protoHtml || process.env.NODE_ENV !== "production") _protoHtml = fs.readFileSync(protoFile, "utf8");
+    let menu = [];
+    try {
+      const orgId = await resolveAppSession(req);
+      const rows = await withOrg(orgId, (c) => c.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]));
+      menu = rows.rows
+        .map((r) => ({ id: r.id, ...(r.data || {}) }))
+        .filter((p) => p.name && !p.hidden)
+        .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "" }));
+    } catch (e) { recordError("app2 menu inject", e); }
+    const inject = `\n<script>window.__ksMenu=${JSON.stringify(menu).replace(/</g, "\\u003c")};` +
+      `window.__ksVendor=${JSON.stringify(APP2_VENDOR).replace(/</g, "\\u003c")};</script>\n`;
+    const html = _protoHtml.replace(/<head([^>]*)>/i, (m) => m + inject);
+    res.set("Content-Security-Policy", APP2_CSP);
+    res.set("Content-Type", "text/html; charset=utf-8").send(html);
+  });
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
    meaningful while the org is un-onboarded; afterwards it's just /app. */
