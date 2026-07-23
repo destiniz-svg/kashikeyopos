@@ -41,7 +41,12 @@ input{font-family:inherit}
 @keyframes pop{0%{transform:scale(.8);opacity:0}70%{transform:scale(1.05)}100%{transform:scale(1);opacity:1}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-@keyframes sheet{from{opacity:0;transform:translateY(40px) scale(.97)}to{opacity:1;transform:none}}
+/* Use the independent translate/scale properties (not `transform`) so a modal
+   centred with its own `transform:translate(-50%,-50%)` keeps that centring
+   through the animation. Animating `transform` here clobbered the centring, so
+   pop-ups flew in from the lower-right and snapped to centre — the "flawed"
+   open. Grid/flow/drawer cards (no centring transform) look identical. */
+@keyframes sheet{from{opacity:0;translate:0 40px;scale:.97}to{opacity:1;translate:0 0;scale:1}}
 @keyframes drawcheck{to{stroke-dashoffset:0}}
 @keyframes toastin{from{transform:translateY(24px) scale(.94);opacity:0}to{transform:none;opacity:1}}
 @keyframes barup{from{transform:scaleY(0)}to{transform:scaleY(1)}}

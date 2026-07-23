@@ -1980,7 +1980,15 @@ if (fs.existsSync(protoFile)) {
       // ever flashes as a "loading" glitch when popups/menus stream in. Making
       // it invisible lets content appear cleanly with no loading artefact.
       const fixCss = `\n<style>[style*="overflow-x:auto"]::-webkit-scrollbar{height:0;width:0;display:none}` +
-        `.sc-placeholder{animation:none!important;background:transparent!important;opacity:0!important}</style>`;
+        `.sc-placeholder{animation:none!important;background:transparent!important;opacity:0!important}` +
+        // Every pop-up dims the page with a full-viewport overlay that also
+        // backdrop-blurs it. Blurring a snapshot of a heavy screen (dozens of
+        // image tiles) each animation frame is the main reason pop-ups open
+        // with a stutter on tablets. Drop the blur on the full-screen overlays
+        // (inset:0) — the dark translucent dim stays, so they still read as
+        // modal — and shorten the card entrance so it snaps in. The frosted
+        // header (not inset:0) is untouched.
+        `[style*="inset:0"][style*="backdrop-filter"]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}</style>`;
       // The prototype's top-nav icons are injected via dangerouslySetInnerHTML,
       // which the design-tool runtime doesn't populate in this served setup, so
       // the bar shows labels with empty icon slots. This self-healing script
