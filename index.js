@@ -1857,7 +1857,14 @@ if (fs.existsSync(protoFile)) {
   app.get("/api/app2/pull", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
-    const data = await withOrg(orgId, (c) => collectRegData(c, orgId));
+    const data = await withOrg(orgId, async (c) => {
+      const d = await collectRegData(c, orgId);
+      // Live menu so add-on/price/hide/86/item edits from /admin2 reach an
+      // already-open register without a reload.
+      d.menu = liveMenu((await c.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
+      return d;
+    });
     res.set("Cache-Control", "no-store");
     res.json(data);
   }));
