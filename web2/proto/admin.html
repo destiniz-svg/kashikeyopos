@@ -106,9 +106,9 @@ button[disabled],button:disabled{cursor:not-allowed}
           <svg width="12" height="12" viewBox="0 0 12 12" style="color:var(--coral)"><path d="M2 10V4l4-2.5L10 4v6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg>{{ outlet }}
         </span>
         <sc-if value="{{ showRanges }}" hint-placeholder-val="{{ true }}">
-        <div style="display:flex;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:3px;gap:2px">
+        <div style="display:flex;background:var(--card);border:1px solid var(--line2);border-radius:12px;padding:3px;gap:2px;overflow-x:auto;max-width:100%;scrollbar-width:none">
           <sc-for list="{{ ranges }}" as="rg" hint-placeholder-count="6">
-            <button onClick="{{ rg.tap }}" style="border:0;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;background:{{ rg.bg }};color:{{ rg.co }}" style-active="transform:scale(.95)">{{ rg.label }}</button>
+            <button onClick="{{ rg.tap }}" style="border:0;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;background:{{ rg.bg }};color:{{ rg.co }};white-space:nowrap;flex:0 0 auto" style-active="transform:scale(.95)">{{ rg.label }}</button>
           </sc-for>
         </div>
         </sc-if>
@@ -321,7 +321,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div></sc-if>
 
       <sc-if value="{{ isSales }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;animation:fade .25s">
-        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content">
+        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
           <sc-for list="{{ salesSubTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <div style="display:grid;grid-template-columns:{{ triCols }};gap:14px">
@@ -411,7 +411,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div></sc-if>
 
       <sc-if value="{{ isInv }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;animation:fade .25s">
-        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content">
+        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
           <sc-for list="{{ invSubTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <sc-if value="{{ invStockView }}" hint-placeholder-val="{{ true }}">
@@ -469,7 +469,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div></sc-if>
 
       <sc-if value="{{ isProc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;animation:fade .25s">
-        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content">
+        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
           <sc-for list="{{ procSubTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <sc-if value="{{ procExpView }}" hint-placeholder-val="{{ true }}">
@@ -678,7 +678,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div></sc-if>
 
       <sc-if value="{{ isReports }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;animation:fade .25s">
-        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content">
+        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
           <sc-for list="{{ repSubTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -880,7 +880,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div></sc-if>
 
       <sc-if value="{{ isNotif }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;animation:fade .25s;max-width:840px">
-        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%">
+        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
           <sc-for list="{{ notifSubTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <sc-if value="{{ nAlertsView }}" hint-placeholder-val="{{ true }}">
@@ -922,7 +922,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div></sc-if>
 
       <sc-if value="{{ isMenu }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px;animation:fade .25s;max-width:900px">
-        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%">
+        <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
           <sc-for list="{{ menuSubTabs }}" as="t" hint-placeholder-count="3"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <sc-if value="{{ mnItemsView }}" hint-placeholder-val="{{ true }}">
@@ -1011,7 +1011,7 @@ button[disabled],button:disabled{cursor:not-allowed}
         </div>
         <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
           <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2);margin-bottom:12px">GST RATE</div>
-          <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content">
+          <div style="display:flex;background:var(--bg);border-radius:11px;padding:3px;gap:2px;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none">
             <sc-for list="{{ taxOpts }}" as="t" hint-placeholder-count="2"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
           </div>
         </div>

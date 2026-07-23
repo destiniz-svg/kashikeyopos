@@ -1740,7 +1740,11 @@ if (fs.existsSync(protoFile)) {
       const pushSaleJs = token
         ? `window.__ksToken=${JSON.stringify(token)};window.__ksPushSale=function(sale){try{fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify({ops:[{opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]}]})}).catch(function(){});}catch(e){}};`
         : "";
-      const inject = `\n<base href="${base}/">\n<script>` +
+      // Corrective CSS: hide the scrollbar on horizontally-scrollable pill/tab
+      // rows (they scroll instead of clipping on narrow screens) — Firefox uses
+      // the inline scrollbar-width:none, this covers Chrome/Safari/WebKit.
+      const fixCss = `\n<style>[style*="overflow-x:auto"]::-webkit-scrollbar{height:0;width:0;display:none}</style>`;
+      const inject = `\n<base href="${base}/">${fixCss}\n<script>` +
         (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
         `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
