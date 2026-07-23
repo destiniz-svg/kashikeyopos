@@ -1620,7 +1620,11 @@ if (fs.existsSync(protoFile)) {
   const liveMenu = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name && !p.hidden)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p) }));
+    // No `img` here: product photos ride once in window.__resources (art-<id>),
+    // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
+    // tripled the payload (this + menuAll + __resources) and made the cockpit
+    // slow to load; the tiles never read this field.
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p) }));
   // Sold-out is real when the owner flagged it, an ingredient-driven recipe has
   // no servings left (recipeAvail<=0), or a stock-tracked item hit zero — the
   // same rule the guest boot mapper uses, so the register tile + admin menu
@@ -1631,7 +1635,7 @@ if (fs.existsSync(protoFile)) {
   const liveMenuAll = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
@@ -1759,6 +1763,7 @@ if (fs.existsSync(protoFile)) {
     };
     app.get(new RegExp("^" + base.replace(/[/]/g, "\\$&") + "(\\/.*)?$"), requireAppSession, async (req, res) => {
       let menu = []; const adminData = {}; const regData = {}; let token = null;
+      const menuImg = {}; // art-<id> → product photo, only for photo-rendering surfaces
       const isRegister = file === "index.html";
       if (withMenu || withAdmin) {
         try {
@@ -1769,8 +1774,14 @@ if (fs.existsSync(protoFile)) {
           if (withMenu) token = sign(orgId, "R1");
           await withOrg(orgId, async (c) => {
             if (withMenu) {
-              menu = liveMenu((await c.query(
-                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
+              const prodRows = (await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+              menu = liveMenu(prodRows);
+              // Product photos go into window.__resources (art-<id>) ONCE, and
+              // only for surfaces that actually render tiles (the register/guest,
+              // not the admin cockpit, which shows no product photos). This is the
+              // single copy the tiles' assetUrl(id) reads.
+              if (!withAdmin) for (const r of prodRows) { const im = r.data && r.data.img; if (im) menuImg["art-" + (r.id)] = im; }
             }
             if (isRegister) Object.assign(regData, await collectRegData(c, orgId));
             if (withAdmin) {
@@ -1951,8 +1962,7 @@ if (fs.existsSync(protoFile)) {
       // prototype's assetUrl(id) = __resources['art-'+id] image lookup, so we
       // map each real product's image onto its tile; items without an image
       // fall back to the prototype's glyph tiles.
-      const resources = Object.assign({}, vendor);
-      for (const p of menu) if (p.img) resources["art-" + p.id] = p.img;
+      const resources = Object.assign({}, vendor, menuImg);
       // <base href="base/"> so the template's relative ./support.js, artwork/*
       // and fonts/* resolve under the route even though the page URL has no
       // trailing slash. Injected right after <head> so it governs every later ref.
