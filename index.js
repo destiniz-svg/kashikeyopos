@@ -1917,7 +1917,7 @@ if (fs.existsSync(protoFile)) {
               const roleLabel = (r) => r === "owner" ? "Master Admin" : r ? (r.charAt(0).toUpperCase() + r.slice(1)) : "Cashier";
               adminData.staffTeam = userRows.map((u) => {
                 const ag = staffAgg.get((u.name || "").trim()) || { rev: 0, orders: 0 };
-                return { n: u.name || "—", role: roleLabel(u.role), sales: Math.round(ag.rev), orders: ag.orders };
+                return { id: u.id, n: u.name || "—", role: roleLabel(u.role), roleKey: (u.role || "").toLowerCase(), owner: u.role === "owner", sales: Math.round(ag.rev), orders: ag.orders };
               });
               adminData.sysUsers = userRows.map((u) => ({ n: u.email || u.name || "—", role: roleLabel(u.role) }));
               // Activity feeds (Staff > Activity, Auth codes; Notifications > alerts;
@@ -2147,6 +2147,66 @@ if (fs.existsSync(protoFile)) {
       if (!r.ok || !j.ok) return res.json({ ok: false, configured: true, message: (j && j.description) || "Telegram rejected the message. Check the chat id." });
       return res.json({ ok: true, configured: true, message: "Test message sent." });
     } catch (e) { recordError("telegram test", e); return res.json({ ok: false, configured: true, message: "Couldn't reach Telegram. Try again." }); }
+  }));
+  // ── Staff & Roles: real user management ──────────────────────────────────
+  // The cockpit is already gated to owner/admin/manager (via /login or
+  // /api/back/login), so a valid app session may manage team members. This
+  // creates/updates a real `users` entity — the same record the till PIN login
+  // and back-office login read — so a member added here can actually sign in,
+  // and their role is the control (owner/admin/manager reach the back office;
+  // cashier/waiter/kitchen are till-only). The owner role is never assignable
+  // here (there is exactly one owner, seeded at registration).
+  const ASSIGNABLE_ROLES = new Set(["manager", "cashier", "waiter", "kitchen"]);
+  app.post("/api/app2/staff", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const b = req.body || {};
+    const name = String(b.name || "").trim().slice(0, 80);
+    const role = String(b.role || "").toLowerCase();
+    const pin = String(b.pin || "").trim();
+    if (!name) return res.status(400).json({ error: "name is required" });
+    if (!ASSIGNABLE_ROLES.has(role)) return res.status(400).json({ error: "pick a role: manager, cashier, waiter or kitchen" });
+    if (pin && !/^\d{4}$/.test(pin)) return res.status(400).json({ error: "PIN must be 4 digits" });
+    const out = await withOrg(orgId, async (c) => {
+      const id = String(b.id || "").trim();
+      let existing = null;
+      if (id) existing = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND id=$2 AND deleted=false", [orgId, id])).rows[0];
+      if (existing && existing.data && existing.data.role === "owner") throw Object.assign(new Error("the owner account can't be edited here"), { status: 400 });
+      // A PIN must be unique within the org so login can't be ambiguous.
+      if (pin) {
+        const want = hashTillPin(pin);
+        const clash = (await c.query("SELECT id FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'pin'=$2", [orgId, want])).rows[0];
+        if (clash && clash.id !== id) throw Object.assign(new Error("that PIN is already used by another member"), { status: 409 });
+      }
+      if (existing) {
+        const data = Object.assign({}, existing.data, { name, role });
+        if (pin) data.pin = hashTillPin(pin);
+        const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='users' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+        return { rowver: Number(r.rows[0].rowver), id, created: false };
+      }
+      if (!pin) throw Object.assign(new Error("set a 4-digit PIN for the new member"), { status: 400 });
+      const nid = uid();
+      const data = { id: nid, name, role, pin: hashTillPin(pin) };
+      const r = await c.query("INSERT INTO entities (org_id, kind, id, data, rowver) VALUES ($1,'users',$2,$3,nextval('entities_rowver_seq')) RETURNING rowver", [orgId, nid, JSON.stringify(data)]);
+      return { rowver: Number(r.rows[0].rowver), id: nid, created: true };
+    });
+    poke(orgId, out.rowver);
+    res.json({ ok: true, id: out.id, created: out.created });
+  }));
+  app.post("/api/app2/staff/:id/delete", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const id = String(req.params.id || "");
+    const out = await withOrg(orgId, async (c) => {
+      const cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND id=$2 AND deleted=false", [orgId, id])).rows[0];
+      if (!cur) return null;
+      if (cur.data && cur.data.role === "owner") throw Object.assign(new Error("the owner account can't be removed"), { status: 400 });
+      const r = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='users' AND id=$2 RETURNING rowver", [orgId, id]);
+      return { rowver: Number(r.rows[0].rowver) };
+    });
+    if (out == null) return res.status(404).json({ error: "member not found" });
+    poke(orgId, out.rowver);
+    res.json({ ok: true });
   }));
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
