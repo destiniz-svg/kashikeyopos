@@ -1642,10 +1642,10 @@ if (fs.existsSync(protoFile)) {
       const d = r.data || {}; const pts = Number(d.points) || 0;
       const agg = byCust[String(d.id || r.id)] || { n: 0, s: 0 };
       return {
-        n: d.name || "", ph: d.phone || "",
+        id: String(d.id || r.id), n: d.name || "", ph: d.phone || "",
         tier: pts >= 500 ? "Gold" : pts >= 200 ? "Silver" : "Bronze",
         visits: agg.n, spend: Math.round(agg.s / 100),
-        joined: "", allergy: "—", diet: "—", note: "",
+        joined: "", allergy: d.allergy || "—", diet: d.diet || "—", note: d.note || "",
       };
     }).filter((c) => c.n);
   };
@@ -1813,11 +1813,11 @@ if (fs.existsSync(protoFile)) {
               }));
               // Receivables: customers carrying an outstanding balance.
               const dfmt = (t) => t ? new Date(Number(t)).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—";
-              adminData.recv = custRows.map((r) => r.data || {}).filter((d) => (Number(d.balance) || 0) > 0)
+              adminData.recv = custRows.map((r) => Object.assign({ _id: String((r.data && r.data.id) || r.id) }, r.data || {})).filter((d) => (Number(d.balance) || 0) > 0)
                 .sort((a, b) => (Number(b.balance) || 0) - (Number(a.balance) || 0))
                 .map((d) => {
                   const bal = Math.round((Number(d.balance) || 0) / 100);
-                  return { n: d.name || "", c: d.phone || "Account", bal, age: "—", last: dfmt(d.lastOrderAt), stk: bal >= 1000 ? "bad" : bal >= 300 ? "warn" : "ok" };
+                  return { id: d._id, n: d.name || "", c: d.phone || "Account", bal, age: "—", last: dfmt(d.lastOrderAt), stk: bal >= 1000 ? "bad" : bal >= 300 ? "warn" : "ok" };
                 });
               // Procurement > Expenses from the real expense ledger.
               const expRows = (await c.query(
@@ -1931,6 +1931,59 @@ if (fs.existsSync(protoFile)) {
     if (rowver == null) return res.status(404).json({ error: "order not found" });
     poke(orgId, rowver);
     res.json({ ok: true });
+  }));
+  // Customer profile upsert (name/phone/tier/notes) — never touches balance or
+  // points (server-authoritative). Cookie-authed; used by the /admin2 editor.
+  app.post("/api/app2/customer", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const b = req.body || {};
+    const name = String(b.name || "").trim().slice(0, 80);
+    if (!name) return res.status(400).json({ error: "name required" });
+    const fields = { name, phone: String(b.phone || "").trim().slice(0, 30) };
+    if (b.tier !== undefined) fields.tier = String(b.tier).slice(0, 20);
+    if (b.allergy !== undefined) fields.allergy = String(b.allergy).slice(0, 120);
+    if (b.diet !== undefined) fields.diet = String(b.diet).slice(0, 120);
+    if (b.note !== undefined) fields.note = String(b.note).slice(0, 300);
+    let id = String(b.id || "").trim();
+    const out = await withOrg(orgId, async (c) => {
+      if (id) {
+        const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='customers' AND id=$2 AND deleted=false", [orgId, id]);
+        if (cur.rowCount) {
+          const data = Object.assign({}, cur.rows[0].data || {}, fields);
+          const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+          return { id, rowver: Number(r.rows[0].rowver) };
+        }
+      }
+      if (!id) id = "c_" + Math.random().toString(36).slice(2, 9);
+      const data = Object.assign({ id, points: 0, balance: 0 }, fields);
+      const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'customers',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      return { id, rowver: Number(r.rows[0].rowver) };
+    });
+    poke(orgId, out.rowver);
+    res.json({ ok: true, id: out.id });
+  }));
+  // Settle a receivable: reduce the customer's outstanding balance by an amount
+  // (laari), clamped at zero, and stamp the settlement.
+  app.post("/api/app2/customer/:id/settle", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const id = String(req.params.id || "");
+    const amount = Math.max(0, Math.round(Number((req.body || {}).amount) || 0));
+    if (!(amount > 0)) return res.status(400).json({ error: "enter an amount" });
+    const out = await withOrg(orgId, async (c) => {
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='customers' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cur.rowCount) return null;
+      const data = Object.assign({}, cur.rows[0].data || {});
+      const before = Number(data.balance) || 0;
+      data.balance = Math.max(0, before - amount);
+      data.lastSettledAt = Date.now();
+      const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      return { rowver: Number(r.rows[0].rowver), balance: data.balance };
+    });
+    if (out == null) return res.status(404).json({ error: "customer not found" });
+    poke(orgId, out.rowver);
+    res.json({ ok: true, balance: out.balance });
   }));
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
