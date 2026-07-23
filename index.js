@@ -1677,6 +1677,24 @@ if (fs.existsSync(protoFile)) {
                 n: i.name, oh: Number(i.current_stock) || 0, unit: i.base_unit || "",
                 par: Number(i.min_stock) || 0, cost: Math.round((Number(i.avg_cost) || 0) / 100),
               }));
+              // Dashboard: today's headline KPIs + recent orders from real sales.
+              const saleRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 200", [orgId]))
+                .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
+              const qtyOf = (s) => (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0);
+              const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+              const today = saleRows.filter((s) => (Number(s.at) || 0) >= startOfDay.getTime());
+              const rev = today.reduce((a, s) => a + (Number(s.total) || 0), 0) / 100;
+              const orders = today.length;
+              const items = today.reduce((a, s) => a + qtyOf(s), 0);
+              adminData.dash = { rev: Math.round(rev * 100) / 100, orders, items, aov: orders ? Math.round(rev / orders * 100) / 100 : 0 };
+              adminData.orders = saleRows.slice(0, 12).map((s) => ({
+                no: String(s.no || "").replace(/^.*-/, "") || String(s.id || "").slice(-4),
+                ch: s.orderType === "dine" ? ("Dine-in · T" + (s.tableNo || "")) : s.orderType === "delivery" ? "Delivery" : "Takeaway",
+                chK: s.orderType === "delivery" ? "deliv" : "reg",
+                time: new Date(Number(s.at) || Date.now()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+                items: qtyOf(s), staff: "", total: Math.round((Number(s.total) || 0) / 100), st: "Paid",
+              }));
             }
           });
         } catch (e) { recordError(base + " data inject", e); }

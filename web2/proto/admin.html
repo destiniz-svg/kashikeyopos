@@ -1205,6 +1205,7 @@ class Component extends DCLogic {
       year:{word:'year',rev:1924610.00,orders:22140,gpVal:660140.00,gpPct:'34.3%',aov:86.93,d:['+18.4%','+16.1%','+3.9%','+2.2%'],items:87200,basket:'3.9',
         rc:[90,110,140,120,100,160,210,180,150,240,300,260,180,150,130,190,250,220,170,150,280,340,300,210,170,140,200,260,230,190,320,380],xl:['Jan','Mar','May','Jul','Sep','Nov'],peakN:'Dec & Ramadan spikes'}
     };
+    if(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.dash){try{Object.assign(this.DATA.today,window.__ksAdmin.dash);}catch(e){}}
     this.MENU=(typeof window!=='undefined'&&window.__ksMenu&&window.__ksMenu.length)?window.__ksMenu:[
       {id:'gulha',cat:'hedhikaa',en:'Gulha',dv:'ގުޅަ',price:5},{id:'bajiya',cat:'hedhikaa',en:'Bajiya',dv:'ބަޖިޔާ',price:5},{id:'kavaabu',cat:'hedhikaa',en:'Kavaabu',dv:'ކަވާބު',price:7},{id:'kboakibaa',cat:'hedhikaa',en:'Kulhi Boakibaa',dv:'ކުޅިބޯކިބާ',price:10},{id:'masroshi',cat:'hedhikaa',en:'Masroshi',dv:'މަސްރޮށި',price:8},{id:'cutlets',cat:'hedhikaa',en:'Cutlets',dv:'ކަޓްލަސް',price:6},
       {id:'mashuni',cat:'mains',en:'Mas Huni & Roshi',dv:'މަސްހުނި ރޮށި',price:30},{id:'garudhiya',cat:'mains',en:'Garudhiya Set',dv:'ގަރުދިޔަ',price:45},{id:'riha',cat:'mains',en:'Kukulhu Riha',dv:'ކުކުޅު ރިހަ',price:55},{id:'friedrice',cat:'mains',en:'Fried Rice',dv:'ފްރައިޑް ރައިސް',price:50},
@@ -1352,7 +1353,7 @@ class Component extends DCLogic {
     const mkSubs=(m,arr)=>arr.map((l,i)=>{const on=(s.sub[m]||0)===i;return {label:l,tap:()=>me.setState({sub:Object.assign({},s.sub,{[m]:i})}),bg:on?'var(--card)':'transparent',co:on?'var(--ink)':'var(--ink2)',sh:on?'var(--shadow)':'none'};});
     const ss=s.sub.sales||0,si=s.sub.inventory||0,sp=s.sub.proc||0,sr=s.sub.reports||0;
     // ---- SALES ----
-    let allOrders=[
+    let allOrders=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.orders&&window.__ksAdmin.orders.length)?window.__ksAdmin.orders:[
       {no:'0231',ch:'Dine-in · T3',chK:'reg',time:'19:42',items:6,staff:'Ahmed',total:214,st:'Paid',stk:'ok'},
       {no:'0230',ch:'QR · T4',chK:'qr',time:'19:38',items:3,staff:'Self',total:96,st:'Paid',stk:'ok'},
       {no:'0229',ch:'Delivery',chK:'deliv',time:'19:31',items:8,staff:'Imran',total:410,st:'Out for delivery',stk:'info'},
