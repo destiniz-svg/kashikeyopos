@@ -2198,7 +2198,7 @@ class Component extends DCLogic {
     };
     const occDine=s.held.filter(h=>h.orderType==='dine'&&h.tableNo).length;
     const otDef=[['tracking','otTracking',s.held.length],['kitchen','otKitchen',s.tickets.length],['delivery','otDelivery',s.deliv.length],['tables','otTables',occDine],['history','otHistory',0]];
-    const ordTabs=otDef.map(d=>{const on=s.ordTab===d[0];return {label:me.t(d[1]),icon:{__html:otIcon[d[0]]},tap:()=>me.setState({ordTab:d[0]}),bg:on?'var(--sur)':'transparent',co:on?'var(--coral)':'var(--ink2)',sh:on?'var(--shadow)':'none',hasN:d[2]>0,n:String(d[2]),nbg:on?'var(--coralsoft)':'var(--sur2)',nco:on?'var(--coral)':'var(--ink2)'};});
+    const ordTabs=otDef.map(d=>{const on=s.ordTab===d[0];return {label:me.t(d[1]),icon:{__html:otIcon[d[0]]},tap:()=>me.setState({ordTab:d[0]}),bg:on?'var(--sur)':'transparent',co:on?'var(--coral)':'var(--ink2)',sh:on?'var(--shadow)':'none',hasN:d[2]>0,n:String(d[2]),nbg:'var(--coral)',nco:'var(--coralink)'};});
     const chMap={dine:['var(--coralsoft)','var(--coral)'],takeaway:['var(--ambersoft)','var(--amber)'],delivery:['var(--greensoft)','var(--green)']};
     const hq=(s.histQuery||'').trim().toLowerCase();
     const hsk=s.histSort||'no',hsd=s.histDir||-1;
