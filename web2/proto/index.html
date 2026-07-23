@@ -1500,7 +1500,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 </div>
 </div>
 <sc-if value="{{ tableMenuOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ toggleTableMenu }}" style="position:fixed;inset:0;z-index:80;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+  <div onClick="{{ toggleTableMenu }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
     <div onClick="{{ stop }}" style="width:min(420px,100%);background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px 20px 22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <svg width="18" height="18" viewBox="0 0 15 15" style="color:var(--ink)"><rect x="2" y="3" width="11" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"></rect><line x1="4.5" y1="9.5" x2="4.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></line><line x1="10.5" y1="9.5" x2="10.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></line></svg>
@@ -1516,7 +1516,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ custPickOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeCustPick }}" style="position:fixed;inset:0;z-index:82;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+  <div onClick="{{ closeCustPick }}" style="position:fixed;inset:0;z-index:142;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
     <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(400px,100%);background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:18px 18px 20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink);flex:1">{{ L.pickCustTitle }}</span>
@@ -1535,8 +1535,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ deliveryOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeDelivery }}" style="position:fixed;inset:0;z-index:82;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
-    <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(440px,100%);background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
+  <div onClick="{{ closeDelivery }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+    <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(440px,100%);max-height:calc(100dvh - 48px);overflow-y:auto;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;color:var(--ink);flex:1">{{ L.orderType }}</span>
         <button onClick="{{ closeDelivery }}" style="width:30px;height:30px;flex:none;border:0;border-radius:9px;background:var(--sur2);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.9)">×</button>
@@ -1560,7 +1560,7 @@ button[disabled],button:disabled{cursor:not-allowed}
         </sc-for>
       </div>
       <input value="{{ delModNote }}" onInput="{{ delNoteInput }}" placeholder="{{ L.delNotePh }}" style="width:100%;box-sizing:border-box;border:1px solid var(--line);background:var(--sur);color:var(--ink);border-radius:14px;padding:13px 15px;font-size:13px;font-weight:600;font-family:inherit;margin-bottom:14px" />
-      <button onClick="{{ delModDone }}" style="width:100%;border:0;border-radius:15px;padding:15px;background:var(--green);color:#fff;font-family:'Bricolage Grotesque';font-size:15px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">{{ doneBtnLbl }}</button>
+      <button onClick="{{ delModDone }}" style="width:100%;border:0;border-radius:15px;padding:15px;background:var(--coral);color:var(--coralink);font-family:'Bricolage Grotesque';font-size:15px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">{{ doneBtnLbl }}</button>
     </div>
   </div>
 </sc-if>
@@ -2236,11 +2236,11 @@ class Component extends DCLogic {
         const custSub=dc?(me.t('owesLbl')+' '+me.fm(dc.bal)):me.t('custBtn');
         const firstName=dc?((s.lang==='dv'?dc.dv:dc.name).split(' ')[0]):'';
         const delDetSub=zoneSet?(zname+' · '+me.fm(z.fee)):me.t('setDelDetails');
-        const delModTypes=[['dine','dineIn','<svg width=16 height=16 viewBox="0 0 18 18" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round><path d="M4.5 3v5M4.5 8v7M6.5 3v5a2 2 0 0 1-2 2M12 3c-1.4 0-2 1.6-2 3.6s.6 3.4 2 3.4v5"/></svg>'],['takeaway','takeaway','<svg width=16 height=16 viewBox="0 0 18 18" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round stroke-linejoin=round><path d="M4 6.5h10l-1 8.5H5ZM6.5 6.5a2.5 2.5 0 0 1 5 0"/></svg>'],['delivery','deliveryType','<svg width=17 height=17 viewBox="0 0 18 18" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round stroke-linejoin=round><circle cx="4.3" cy="13" r="2.4"/><circle cx="13.7" cy="13" r="2.4"/><path d="M6.7 13h4.4l-2-6h2.4M8 7l-.7-2h-2"/></svg>']].map(o=>({label:me.t(o[1]),icon:{__html:o[2]},tap:()=>me.setState({orderType:o[0],deliveryOpen:o[0]==='delivery'?s.deliveryOpen:false}),bg:s.orderType===o[0]?'var(--green)':'var(--sur2)',co:s.orderType===o[0]?'#fff':'var(--ink2)',bc:s.orderType===o[0]?'var(--green)':'var(--line)'}));
+        const delModTypes=[['dine','dineIn','<svg width=16 height=16 viewBox="0 0 18 18" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round><path d="M4.5 3v5M4.5 8v7M6.5 3v5a2 2 0 0 1-2 2M12 3c-1.4 0-2 1.6-2 3.6s.6 3.4 2 3.4v5"/></svg>'],['takeaway','takeaway','<svg width=16 height=16 viewBox="0 0 18 18" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round stroke-linejoin=round><path d="M4 6.5h10l-1 8.5H5ZM6.5 6.5a2.5 2.5 0 0 1 5 0"/></svg>'],['delivery','deliveryType','<svg width=17 height=17 viewBox="0 0 18 18" fill=none stroke=currentColor stroke-width=1.5 stroke-linecap=round stroke-linejoin=round><circle cx="4.3" cy="13" r="2.4"/><circle cx="13.7" cy="13" r="2.4"/><path d="M6.7 13h4.4l-2-6h2.4M8 7l-.7-2h-2"/></svg>']].map(o=>({label:me.t(o[1]),icon:{__html:o[2]},tap:()=>me.setState({orderType:o[0],deliveryOpen:o[0]==='delivery'?s.deliveryOpen:false}),bg:s.orderType===o[0]?'var(--coral)':'var(--sur2)',co:s.orderType===o[0]?'var(--coralink)':'var(--ink2)',bc:s.orderType===o[0]?'var(--coral)':'var(--line)'}));
         const delModZones=me.DZONES.map((zz,i)=>{const on=zi===i;return {title:(s.lang==='dv'?zz.dv:zz.name)+' · '+zz.fee.toFixed(2),eta:zz.eta,tap:()=>me.setState({deliveryZoneIx:i}),bg:on?'var(--coralsoft)':'var(--sur2)',bc:on?'var(--coral)':'var(--line)',co:on?'var(--coral)':'var(--ink)',etaC:on?'var(--coral)':'var(--ink2)'};});
         return {
           delCustName:custName,delCustSub:custSub,delCustSubC:dc?'var(--coral)':'var(--ink2)',delCustBg:custSet?'var(--coralsoft)':'var(--sur)',delCustBc:custSet?'var(--coral)':'var(--line)',
-          delDetSub,delDetBg:zoneSet?'var(--green)':'var(--sur)',delDetBc:zoneSet?'var(--green)':'var(--line)',delDetFg:zoneSet?'#fff':'var(--ink2)',delDetIcBg:zoneSet?'rgba(255,255,255,.2)':'var(--sur2)',
+          delDetSub,delDetBg:zoneSet?'var(--coral)':'var(--sur)',delDetBc:zoneSet?'var(--coral)':'var(--line)',delDetFg:zoneSet?'var(--coralink)':'var(--ink2)',delDetIcBg:zoneSet?'rgba(255,255,255,.2)':'var(--sur2)',
           openCustPick:()=>me.setState({custPickOpen:true}),closeCustPick:()=>me.setState({custPickOpen:false}),custPickOpen:s.custPickOpen,
           delCustomers:s.recv.map(c=>({name:s.lang==='dv'?c.dv:c.name,init:c.name.split(' ').map(w=>w[0]).join('').slice(0,2),addr:c.addr||me.t('noAddrLbl'),balF:me.t('owesLbl')+' '+me.fm(c.bal),tap:()=>me.setState({deliveryCust:c.id,custPickOpen:false}),bg:s.deliveryCust===c.id?'var(--coralsoft)':'var(--sur)',bc:s.deliveryCust===c.id?'var(--coral)':'var(--line)'})),
           openDelivery:()=>me.setState({deliveryOpen:true}),closeDelivery:()=>me.setState({deliveryOpen:false}),deliveryOpen:s.deliveryOpen,
@@ -2349,7 +2349,7 @@ class Component extends DCLogic {
       clockDisp:'none',
       cartPanelStyle,
       cartBackdropOn:mob&&s.cartSheet,closeCartSheet:()=>me.setState({cartSheet:false}),
-      cartFabOn:mob&&s.cart.length>0&&!s.cartSheet&&s.scr==='register',
+      cartFabOn:mob&&s.cart.length>0&&!s.cartSheet&&s.scr==='register'&&!s.deliveryOpen&&!s.custPickOpen&&!s.tableMenuOpen&&!s.payOpen&&!s.receiptOpen&&!s.aiOpen&&!s.mod&&!s.heldMenuOpen&&s.discOpen==null&&s.voidOpen==null&&s.rmOpen==null,
       openCartSheet:()=>me.setState({cartSheet:true}),
       invDesk:!mob,invMob:mob,
       invSideMax:mob?'none':'360px',
