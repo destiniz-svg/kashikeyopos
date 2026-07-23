@@ -1616,6 +1616,12 @@ if (fs.existsSync(protoFile)) {
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name && !p.hidden)
     .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller }));
+  // Full catalogue for the admin Menu manager — includes hidden items and
+  // carries the hidden/soldOut flags so the admin can show/restore them.
+  const liveMenuAll = (rows) => rows
+    .map((r) => ({ id: r.id, ...(r.data || {}) }))
+    .filter((p) => p.name)
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", hidden: !!p.hidden, soldOut: !!p.soldOut }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
@@ -1729,6 +1735,8 @@ if (fs.existsSync(protoFile)) {
               const orderRows = (await c.query(
                 "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false", [orgId])).rows;
               adminData.custData = liveCustData(custRows, orderRows);
+              adminData.menuAll = liveMenuAll((await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
               // Inventory stock levels from the real ingredients ledger.
               const ingRows = (await c.query(
                 "SELECT name, current_stock, base_unit, min_stock, avg_cost FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;

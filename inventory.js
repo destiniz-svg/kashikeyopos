@@ -543,6 +543,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     const comments = body.comments !== undefined ? !!body.comments : undefined;
     const noKitchen = body.noKitchen !== undefined ? !!body.noKitchen : undefined;
     const hidden = body.hidden !== undefined ? !!body.hidden : undefined;
+    const soldOut = body.soldOut !== undefined ? !!body.soldOut : undefined;
     const rowver = await withOrg(req.orgId, async (client) => {
       const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid])).rows[0];
       if (!row) return null;
@@ -554,6 +555,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       if (comments !== undefined) { if (comments) data.comments = true; else delete data.comments; }
       if (noKitchen !== undefined) { if (noKitchen) data.noKitchen = true; else delete data.noKitchen; }
       if (hidden !== undefined) { if (hidden) data.hidden = true; else delete data.hidden; }
+      if (soldOut !== undefined) { if (soldOut) data.soldOut = true; else delete data.soldOut; }
       const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, pid, JSON.stringify(data)]);
       return up.rows[0] ? Number(up.rows[0].rowver) : null;
     });
