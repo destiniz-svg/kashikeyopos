@@ -1925,6 +1925,16 @@ if (fs.existsSync(protoFile)) {
                   k: /flag|over_limit|declin/.test(a.action || "") ? "bad" : "ok" }));
               adminData.alerts = actRows.slice(0, 6).map((a) => ({ a: prettyAct(a), time: hhmm(a.at),
                 k: /flag|over_limit|declin|void/.test(a.action || "") ? "warn" : /refund/.test(a.action || "") ? "info" : "reg" }));
+              // System Admin > Integrations: real state where we can detect it.
+              const aiOn = !!(process.env.ANTHROPIC_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+              const notifCfg = (setData.adminCfg && setData.adminCfg.channels) || {};
+              adminData.integrations = [
+                { name: "Cloud sync", detail: "Connected", on: true },
+                { name: "AI features", detail: aiOn ? "Connected" : "Not configured", on: aiOn },
+                { name: "MIRA GST portal", detail: "Not connected", on: false },
+                { name: "BML payment gateway", detail: (setData.adminCfg && setData.adminCfg.bmlMerchant) ? "Connected" : "Not connected", on: !!(setData.adminCfg && setData.adminCfg.bmlMerchant) },
+                { name: "Telegram alerts", detail: notifCfg.telegramChatId ? "Connected" : "Not connected", on: !!notifCfg.telegramChatId },
+              ];
             }
           });
         } catch (e) { recordError(base + " data inject", e); }
@@ -2107,6 +2117,28 @@ if (fs.existsSync(protoFile)) {
     });
     poke(orgId, out.rowver);
     res.json({ ok: true, adminCfg: out.adminCfg });
+  }));
+  // Telegram alert test-send. Mirrors the AI features' graceful-degrade
+  // contract: with no TELEGRAM_BOT_TOKEN in the environment it reports
+  // configured:false (the cockpit shows "not set up yet"); once the token is
+  // added it sends a real message to the chat id the owner connected, so the
+  // notifications channel works without any further code change.
+  app.post("/api/app2/notify/test", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = String((req.body && req.body.chatId) || "").trim();
+    if (!token) return res.json({ ok: true, configured: false, message: "Telegram alerts aren't set up yet. Add TELEGRAM_BOT_TOKEN to switch them on." });
+    if (!chatId) return res.status(400).json({ error: "enter a chat id or @channel" });
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: "✅ KashikeyoPOS test alert — notifications are connected." }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) return res.json({ ok: false, configured: true, message: (j && j.description) || "Telegram rejected the message. Check the chat id." });
+      return res.json({ ok: true, configured: true, message: "Test message sent." });
+    } catch (e) { recordError("telegram test", e); return res.json({ ok: false, configured: true, message: "Couldn't reach Telegram. Try again." }); }
   }));
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
