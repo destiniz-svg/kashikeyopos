@@ -425,13 +425,25 @@ function auditSaleMoney(sale, ctx) {
   if (ctx && ctx.gstBp) {
     const billDiscPct = num(sale.billDiscPct);
     const taxable = lines.reduce((a, l) => (l && l.taxable === false ? a : a + saleLineTotal(l)), 0) + fee;
-    const expGst = Math.round(Math.round(taxable * (1 - billDiscPct / 100)) * ctx.gstBp / 1e4);
-    if (Math.abs(expGst - gst) > Math.max(5, Math.round(expGst * 0.02))) reasons.push(`gst ${gst} != rate-expected ${expGst}`);
+    const rate = (t) => Math.round(Math.round(t * (1 - billDiscPct / 100)) * ctx.gstBp / 1e4);
+    // Service charge is itself taxable under Maldives GGST/TGST, so a till that
+    // taxes (goods + service) is as valid as one that taxes goods only. Accept
+    // gst that matches either base; only a mismatch against both is flagged.
+    const expGst = rate(taxable), expWithSvc = rate(taxable + svc);
+    const gstTol = (e) => Math.max(5, Math.round(e * 0.02));
+    if (Math.abs(expGst - gst) > gstTol(expGst) && Math.abs(expWithSvc - gst) > gstTol(expWithSvc)) {
+      reasons.push(`gst ${gst} != rate-expected ${expGst}`);
+    }
   }
   if (ctx && ctx.prices) {
+    // A tax-inclusive till books line prices net of GST (catalogue ÷ (1+rate)),
+    // so the legitimate floor is the tax-exclusive equivalent of the catalogue
+    // price, not the catalogue price itself. Genuine underpricing below that
+    // floor is still flagged.
+    const floorOf = (p) => ctx.gstBp ? Math.round(p / (1 + ctx.gstBp / 1e4)) : p;
     for (const l of lines) {
       const prod = ctx.prices.get(String(l && l.pid || ""));
-      if (prod && !prod.open && prod.price > 0 && (Number(l.price) || 0) < prod.price - 1) {
+      if (prod && !prod.open && prod.price > 0 && (Number(l.price) || 0) < floorOf(prod.price) - 1) {
         reasons.push(`line ${l.pid} price ${l.price} below catalogue ${prod.price}`);
       }
     }
@@ -1639,10 +1651,14 @@ if (fs.existsSync(protoFile)) {
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": base + "/vendor/react-dom.production.min.js",
     };
     app.get(new RegExp("^" + base.replace(/[/]/g, "\\$&") + "(\\/.*)?$"), requireAppSession, async (req, res) => {
-      let menu = []; const adminData = {};
+      let menu = []; const adminData = {}; let token = null;
       if (withMenu || withAdmin) {
         try {
           const orgId = await resolveAppSession(req);
+          // A short-lived-enough ops bearer token so the register can persist
+          // completed sales to /api/ops from the browser (same credential the
+          // baked till uses). Only minted for the register route.
+          if (withMenu) token = sign(orgId, "R1");
           await withOrg(orgId, async (c) => {
             if (withMenu) {
               menu = liveMenu((await c.query(
@@ -1674,8 +1690,14 @@ if (fs.existsSync(protoFile)) {
       // <base href="base/"> so the template's relative ./support.js, artwork/*
       // and fonts/* resolve under the route even though the page URL has no
       // trailing slash. Injected right after <head> so it governs every later ref.
+      // __ksPushSale persists a completed sale to /api/ops with the ops bearer
+      // token; fire-and-forget so the register's own offline-first UX is never
+      // blocked (a failed push just leaves the sale in the till's local log).
+      const pushSaleJs = token
+        ? `window.__ksToken=${JSON.stringify(token)};window.__ksPushSale=function(sale){try{fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify({ops:[{opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]}]})}).catch(function(){});}catch(e){}};`
+        : "";
       const inject = `\n<base href="${base}/">\n<script>` +
-        (withMenu ? `window.__ksMenu=${enc(menu)};` : "") +
+        (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
         `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
