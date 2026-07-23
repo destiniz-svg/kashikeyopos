@@ -1620,13 +1620,18 @@ if (fs.existsSync(protoFile)) {
   const liveMenu = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name && !p.hidden)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: !!p.soldOut }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p) }));
+  // Sold-out is real when the owner flagged it, an ingredient-driven recipe has
+  // no servings left (recipeAvail<=0), or a stock-tracked item hit zero — the
+  // same rule the guest boot mapper uses, so the register tile + admin menu
+  // reflect live depletion, not just a manually-set flag.
+  const derivedSoldOut = (p) => !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0));
   // Full catalogue for the admin Menu manager — includes hidden items and
   // carries the hidden/soldOut flags so the admin can show/restore them.
   const liveMenuAll = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", hidden: !!p.hidden, soldOut: !!p.soldOut, custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
@@ -1784,9 +1789,14 @@ if (fs.existsSync(protoFile)) {
                 par: Number(i.min_stock) || 0, cost: Math.round((Number(i.avg_cost) || 0) / 100),
               }));
               // Dashboard: today's headline KPIs + recent orders from real sales.
-              const saleRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 200", [orgId]))
-                .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
+              // One wide fetch of recent sales (incl. refunds) feeds the dashboard,
+              // reports, top-staff, refunds and split lists. 200 rows silently
+              // capped a busy day's totals (a 1000-cover day showed only the last
+              // 200 orders); 3000 covers a full day of even a high-volume outlet.
+              const rawSaleRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 3000", [orgId]))
+                .rows.map((r) => r.data || {});
+              const saleRows = rawSaleRows.filter((s) => !s.type || s.type === "sale");
               const qtyOf = (s) => (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0);
               const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
               const today = saleRows.filter((s) => (Number(s.at) || 0) >= startOfDay.getTime());
@@ -1874,9 +1884,7 @@ if (fs.existsSync(protoFile)) {
               adminData.payMix = (adminData.reports && adminData.reports.today && adminData.reports.today.payMix) || { cash: 0, card: 0, transfer: 0, tab: 0 };
               // ── Tier 1: sub-lists derived from real sales / users / activity_log ──
               const hhmm = (t) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-              const allSaleRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 200", [orgId]))
-                .rows.map((r) => r.data || {});
+              const allSaleRows = rawSaleRows;
               // Reports > Performance: top staff by real sales (sales carry userName).
               const staffAgg = new Map();
               for (const s of saleRows) {
