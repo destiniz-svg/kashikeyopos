@@ -1676,6 +1676,25 @@ if (fs.existsSync(protoFile)) {
     .map((o) => ({ no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", zone: o.zone || "Malé",
       items: (o.items || []).map((li) => (Number(li.qty || li.q) || 1) + "× " + (li.name || li.n || "")).join(" · "),
       rider: "—", st: String(o.status) === "ready" ? 1 : 0 }));
+  // Collect the register read-path payload (window.__ksReg) for an org. Shared
+  // by the page inject (serveProto) and the live-refresh poll (/api/app2/pull).
+  const collectRegData = async (c, orgId) => {
+    const out = {};
+    const setRow = (await c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
+    out.storeP = liveStoreP(setRow ? setRow.data : {});
+    out.recv = liveRegRecv((await c.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows);
+    out.salesLog = liveSalesLog((await c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
+      .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale"));
+    const ordRows = (await c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY (data->>'createdAt')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
+      .rows.map((r) => r.data || {});
+    out.tickets = liveTickets(ordRows);
+    out.deliv = liveDeliv(ordRows);
+    return out;
+  };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
   // redirect:false so `base` and `base/` reach the dynamic handler while
   // support.js / artwork / fonts / vendor are served statically. `withMenu`
@@ -1703,23 +1722,7 @@ if (fs.existsSync(protoFile)) {
               menu = liveMenu((await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
             }
-            if (isRegister) {
-              const setRow = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
-              regData.storeP = liveStoreP(setRow ? setRow.data : {});
-              const regCustRows = (await c.query(
-                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
-              regData.recv = liveRegRecv(regCustRows);
-              const regSaleRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
-                .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
-              regData.salesLog = liveSalesLog(regSaleRows);
-              const regOrdRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY (data->>'createdAt')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
-                .rows.map((r) => r.data || {});
-              regData.tickets = liveTickets(regOrdRows);
-              regData.deliv = liveDeliv(regOrdRows);
-            }
+            if (isRegister) Object.assign(regData, await collectRegData(c, orgId));
             if (withAdmin) {
               const custRows = (await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
@@ -1835,6 +1838,16 @@ if (fs.existsSync(protoFile)) {
   if (fs.existsSync(path.join(protoDir, "admin.html"))) {
     serveProto({ base: "/admin2", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit
   }
+  // Live refresh for the register: the same window.__ksReg payload as a JSON
+  // poll, so /app2's Kitchen/Delivery/History reflect new orders without a full
+  // reload. Cookie-authed (same session as the page); no ops token needed.
+  app.get("/api/app2/pull", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const data = await withOrg(orgId, (c) => collectRegData(c, orgId));
+    res.set("Cache-Control", "no-store");
+    res.json(data);
+  }));
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
    meaningful while the org is un-onboarded; afterwards it's just /app. */
