@@ -1568,30 +1568,33 @@ const catSlug = (c) => {
   return "mains";
 };
 if (fs.existsSync(protoFile)) {
-  // React/ReactDOM (and any other static assets) the prototype loads, served
-  // from our own origin — see the __ksVendor note below. Mounted before the
-  // catch-all so /app2/vendor/* isn't swallowed by the HTML handler.
-  app.use("/app2/vendor", express.static(path.join(__dirname, "web2", "proto", "vendor"), {
-    maxAge: "1y", immutable: true,
-  }));
-  // The prototype standalone reconstructs its internal assets as blob: scripts
-  // and (via __ksVendor) pulls React from our own origin, so it needs a CSP that
-  // permits blob: scripts. Scoped to /app2 only — the global CSP (locked-down
-  // script-src) still governs every other route.
+  const protoDir = path.join(__dirname, "web2", "proto");
+  // The prototype ships as its design-tool source: an .dc.html template that
+  // loads ./support.js (its runtime), pulls artwork/*.png + fonts/*.ttf, and
+  // fetches React from unpkg (overridable via window.__resources). We serve all
+  // of those from /app2/* and vendor React from our own origin, so the design
+  // renders 1:1 with no third-party runtime dependency. index:false so /app2
+  // and /app2/ fall through to the dynamic handler (which injects the menu),
+  // while support.js / artwork / fonts / vendor are served statically.
+  app.use("/app2", express.static(protoDir, { index: false, redirect: false, maxAge: "1h" }));
+  // support.js reconstructs assets as blob: scripts, compiles its logic class
+  // with new Function, and loads Google Fonts; this CSP permits exactly that,
+  // scoped to /app2 only — the strict global CSP still governs every other route.
   const APP2_CSP = [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
     "img-src 'self' data: blob: https:",
-    "font-src 'self' data:",
-    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
     "connect-src 'self' blob: data:",
     "frame-src 'self' blob:",
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",
   ].join("; ");
-  // Same-origin replacements for the prototype's unpkg React/ReactDOM CDN refs.
+  // Same-origin replacements for the prototype's unpkg React/ReactDOM CDN refs,
+  // consumed by support.js's cdnScriptFor(window.__resources[url]) hook.
   const APP2_VENDOR = {
     "https://unpkg.com/react@18.3.1/umd/react.production.min.js": "/app2/vendor/react.production.min.js",
     "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": "/app2/vendor/react-dom.production.min.js",
@@ -1608,8 +1611,18 @@ if (fs.existsSync(protoFile)) {
         .filter((p) => p.name && !p.hidden)
         .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "" }));
     } catch (e) { recordError("app2 menu inject", e); }
-    const inject = `\n<script>window.__ksMenu=${JSON.stringify(menu).replace(/</g, "\\u003c")};` +
-      `window.__ksVendor=${JSON.stringify(APP2_VENDOR).replace(/</g, "\\u003c")};</script>\n`;
+    // window.__resources drives both React vendoring (cdnScriptFor) and the
+    // prototype's assetUrl(id) = __resources['art-'+id] image lookup, so we map
+    // each real product's image onto its tile; items without an image fall back
+    // to the prototype's glyph tiles.
+    const resources = Object.assign({}, APP2_VENDOR);
+    for (const p of menu) if (p.img) resources["art-" + p.id] = p.img;
+    const enc = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
+    // <base href="/app2/"> so the template's relative ./support.js, artwork/*
+    // and fonts/* resolve under /app2/ even though the page URL has no trailing
+    // slash. Injected right after <head> so it governs every later relative ref.
+    const inject = `\n<base href="/app2/">\n<script>window.__ksMenu=${enc(menu)};` +
+      `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
     const html = _protoHtml.replace(/<head([^>]*)>/i, (m) => m + inject);
     res.set("Content-Security-Policy", APP2_CSP);
     res.set("Content-Type", "text/html; charset=utf-8").send(html);
