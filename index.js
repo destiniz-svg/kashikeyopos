@@ -1559,7 +1559,6 @@ app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir
    gated. Real data + persistence + AI/back-panel wiring land progressively; the
    design stays 1:1 with the prototype. */
 const protoFile = path.join(__dirname, "web2", "proto", "index.html");
-let _protoHtml = null;
 const catSlug = (c) => {
   const s = String(c || "").toLowerCase();
   if (/coffee|tea|\bdrink|juice|water|cola|kurumba|\bsai\b|beverage|soda|shake|smoothie/.test(s)) return "drinks";
@@ -1569,18 +1568,17 @@ const catSlug = (c) => {
 };
 if (fs.existsSync(protoFile)) {
   const protoDir = path.join(__dirname, "web2", "proto");
-  // The prototype ships as its design-tool source: an .dc.html template that
+  const protoCache = {};
+  // The prototypes ship as their design-tool source: an .dc.html template that
   // loads ./support.js (its runtime), pulls artwork/*.png + fonts/*.ttf, and
-  // fetches React from unpkg (overridable via window.__resources). We serve all
-  // of those from /app2/* and vendor React from our own origin, so the design
-  // renders 1:1 with no third-party runtime dependency. index:false so /app2
-  // and /app2/ fall through to the dynamic handler (which injects the menu),
-  // while support.js / artwork / fonts / vendor are served statically.
-  app.use("/app2", express.static(protoDir, { index: false, redirect: false, maxAge: "1h" }));
-  // support.js reconstructs assets as blob: scripts, compiles its logic class
-  // with new Function, and loads Google Fonts; this CSP permits exactly that,
-  // scoped to /app2 only — the strict global CSP still governs every other route.
-  const APP2_CSP = [
+  // (via support.js) fetches React from unpkg, overridable through
+  // window.__resources. We serve all of those from the route's own path and
+  // vendor React from our own origin, so each design renders 1:1 with no
+  // third-party runtime dependency. support.js reconstructs assets as blob:
+  // scripts, compiles its logic class with new Function, and loads Google
+  // Fonts; the CSP permits exactly that, scoped to these routes only — the
+  // strict global CSP still governs every other route.
+  const PROTO_CSP = [
     "default-src 'self'",
     "base-uri 'self'",
     "object-src 'none'",
@@ -1593,40 +1591,59 @@ if (fs.existsSync(protoFile)) {
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",
   ].join("; ");
-  // Same-origin replacements for the prototype's unpkg React/ReactDOM CDN refs,
-  // consumed by support.js's cdnScriptFor(window.__resources[url]) hook.
-  const APP2_VENDOR = {
-    "https://unpkg.com/react@18.3.1/umd/react.production.min.js": "/app2/vendor/react.production.min.js",
-    "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": "/app2/vendor/react-dom.production.min.js",
+  const enc = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
+  const readProto = (file) => {
+    if (!protoCache[file] || process.env.NODE_ENV !== "production") {
+      protoCache[file] = fs.readFileSync(path.join(protoDir, file), "utf8");
+    }
+    return protoCache[file];
   };
-  app.get(/^\/app2(\/.*)?$/, requireAppSession, async (req, res) => {
-    if (!_protoHtml || process.env.NODE_ENV !== "production") _protoHtml = fs.readFileSync(protoFile, "utf8");
-    let menu = [];
-    try {
-      const orgId = await resolveAppSession(req);
-      const rows = await withOrg(orgId, (c) => c.query(
-        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]));
-      menu = rows.rows
-        .map((r) => ({ id: r.id, ...(r.data || {}) }))
-        .filter((p) => p.name && !p.hidden)
-        .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "" }));
-    } catch (e) { recordError("app2 menu inject", e); }
-    // window.__resources drives both React vendoring (cdnScriptFor) and the
-    // prototype's assetUrl(id) = __resources['art-'+id] image lookup, so we map
-    // each real product's image onto its tile; items without an image fall back
-    // to the prototype's glyph tiles.
-    const resources = Object.assign({}, APP2_VENDOR);
-    for (const p of menu) if (p.img) resources["art-" + p.id] = p.img;
-    const enc = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
-    // <base href="/app2/"> so the template's relative ./support.js, artwork/*
-    // and fonts/* resolve under /app2/ even though the page URL has no trailing
-    // slash. Injected right after <head> so it governs every later relative ref.
-    const inject = `\n<base href="/app2/">\n<script>window.__ksMenu=${enc(menu)};` +
-      `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
-    const html = _protoHtml.replace(/<head([^>]*)>/i, (m) => m + inject);
-    res.set("Content-Security-Policy", APP2_CSP);
-    res.set("Content-Type", "text/html; charset=utf-8").send(html);
-  });
+  // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
+  // redirect:false so `base` and `base/` reach the dynamic handler while
+  // support.js / artwork / fonts / vendor are served statically. `withMenu`
+  // injects the live product catalogue + per-item images into window.__ksMenu
+  // and assetUrl (the register); the admin cockpit renders its own demo data
+  // for now (real data wiring lands section by section next).
+  const serveProto = ({ base, file, withMenu }) => {
+    app.use(base, express.static(protoDir, { index: false, redirect: false, maxAge: "1h" }));
+    const vendor = {
+      "https://unpkg.com/react@18.3.1/umd/react.production.min.js": base + "/vendor/react.production.min.js",
+      "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": base + "/vendor/react-dom.production.min.js",
+    };
+    app.get(new RegExp("^" + base.replace(/[/]/g, "\\$&") + "(\\/.*)?$"), requireAppSession, async (req, res) => {
+      let menu = [];
+      if (withMenu) {
+        try {
+          const orgId = await resolveAppSession(req);
+          const rows = await withOrg(orgId, (c) => c.query(
+            "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]));
+          menu = rows.rows
+            .map((r) => ({ id: r.id, ...(r.data || {}) }))
+            .filter((p) => p.name && !p.hidden)
+            .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "" }));
+        } catch (e) { recordError(base + " menu inject", e); }
+      }
+      // window.__resources drives both React vendoring (cdnScriptFor) and the
+      // prototype's assetUrl(id) = __resources['art-'+id] image lookup, so we
+      // map each real product's image onto its tile; items without an image
+      // fall back to the prototype's glyph tiles.
+      const resources = Object.assign({}, vendor);
+      for (const p of menu) if (p.img) resources["art-" + p.id] = p.img;
+      // <base href="base/"> so the template's relative ./support.js, artwork/*
+      // and fonts/* resolve under the route even though the page URL has no
+      // trailing slash. Injected right after <head> so it governs every later ref.
+      const inject = `\n<base href="${base}/">\n<script>` +
+        (withMenu ? `window.__ksMenu=${enc(menu)};` : "") +
+        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
+      const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
+      res.set("Content-Security-Policy", PROTO_CSP);
+      res.set("Content-Type", "text/html; charset=utf-8").send(html);
+    });
+  };
+  serveProto({ base: "/app2", file: "index.html", withMenu: true });   // Register / till
+  if (fs.existsSync(path.join(protoDir, "admin.html"))) {
+    serveProto({ base: "/admin2", file: "admin.html", withMenu: false }); // Back-office cockpit
+  }
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
    meaningful while the org is un-onboarded; afterwards it's just /app. */
