@@ -1850,9 +1850,21 @@ if (fs.existsSync(protoFile)) {
                 "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
               const setData = setRow ? (setRow.data || {}) : {};
               adminData.cfg = setData.adminCfg || {};
+              const storeName = setData.storeName || setData.name || "";
               adminData.store = {
-                name: setData.storeName || setData.name || "", currency: setData.currency || "MVR",
+                name: storeName, currency: setData.currency || "MVR",
                 gst: Number(setData.gst != null ? setData.gst : setData.gstRate) || 0, svc: Number(setData.svcCharge) || 0,
+              };
+              // Store slug (for real per-table QR deep-links) + effective SEO
+              // (persisted overrides, else sensible defaults from the store name).
+              try {
+                const org = (await c.query("SELECT slug FROM orgs WHERE id=$1", [orgId])).rows[0];
+                adminData.slug = org ? org.slug : "";
+              } catch (e) { adminData.slug = ""; }
+              const seoCfg = (setData.adminCfg && setData.adminCfg.seo) || {};
+              adminData.seo = {
+                title: seoCfg.title || ((storeName || "Kashikeyo") + " · Order online"),
+                desc: seoCfg.desc || ("Order from " + (storeName || "our store") + " — fresh, fast, local."),
               };
               // Outlets from the real stores table (multi-store).
               const storeRows = (await c.query(
@@ -2118,15 +2130,59 @@ if (fs.existsSync(webDir)) {
   const noCacheShell = { setHeaders: (res, file) => { if (file.endsWith(".html") || file.endsWith("sw.js")) res.set("Cache-Control", "no-cache"); } };
   const sendTill = (req, res) => res.sendFile(path.join(webDir, "index.html"), { headers: { "Cache-Control": "no-cache" } });
 
+  /* Guest-portal SEO: the portal is the baked bundle, so per-store meta is
+     injected server-side into its <head> when a QR/link opens it (?s=slug).
+     Owners set the title/description in /admin2 › Online Store › SEO; absent
+     that, sensible defaults derive from the store name. Search engines and
+     link-unfurlers read these tags without the SPA having to hydrate. */
+  const seoEsc = (s) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  async function portalSeoFor(slug) {
+    const org = await orgBySlug(slug);
+    if (!org) return null;
+    const row = await withOrg(org.id, (c) => c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [org.id]));
+    const d = (row.rows[0] && row.rows[0].data) || {};
+    const seo = (d.adminCfg && d.adminCfg.seo) || {};
+    const name = d.storeName || d.name || org.name || "Kashikeyo";
+    return {
+      title: seo.title || (name + " · Order online"),
+      desc: seo.desc || ("Order from " + name + " — fresh, fast, local."),
+    };
+  }
+
   /* Already-printed guest QR codes and shared links point at bare "/" with
      ?s=slug&t=table / &c=custId (see the SPA's own client-side urlMode
      detection) - keep serving the till bundle there so they keep working.
      The till itself now lives at /app; bare "/" with none of those params
      falls through to the marketing page below. */
-  app.get("/", (req, res, next) => {
-    if (req.query.s || req.query.t || req.query.c) return sendTill(req, res);
-    next();
-  });
+  app.get("/", wrap(async (req, res, next) => {
+    if (!(req.query.s || req.query.t || req.query.c)) return next();
+    if (req.query.s) {
+      try {
+        const seo = await portalSeoFor(String(req.query.s));
+        if (seo) {
+          let html = fs.readFileSync(path.join(webDir, "index.html"), "utf8");
+          // Replace the baked title + description in place (no duplicates), then
+          // append the OG tags the bundle doesn't carry.
+          html = /<title>[\s\S]*?<\/title>/i.test(html)
+            ? html.replace(/<title>[\s\S]*?<\/title>/i, "<title>" + seoEsc(seo.title) + "</title>")
+            : html.replace(/<head([^>]*)>/i, (m) => m + "<title>" + seoEsc(seo.title) + "</title>");
+          const descTag = `<meta name="description" content="${seoEsc(seo.desc)}">`;
+          html = /<meta\s+name=["']description["'][^>]*>/i.test(html)
+            ? html.replace(/<meta\s+name=["']description["'][^>]*>/i, descTag)
+            : html.replace(/<\/head>/i, descTag + "</head>");
+          const og = `<meta property="og:title" content="${seoEsc(seo.title)}">` +
+            `<meta property="og:description" content="${seoEsc(seo.desc)}">` +
+            `<meta property="og:type" content="website">`;
+          html = html.replace(/<\/head>/i, og + "</head>");
+          res.set("Cache-Control", "no-cache");
+          res.set("Content-Type", "text/html; charset=utf-8");
+          return res.send(html);
+        }
+      } catch (e) { recordError("portal SEO inject", e); }
+    }
+    return sendTill(req, res);
+  }));
 
   app.use("/app", express.static(webDir, { ...noCacheShell, index: false }));
   app.get(/^\/app(\/.*)?$/, requireAppSession, sendTill);
