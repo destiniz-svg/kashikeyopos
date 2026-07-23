@@ -1744,10 +1744,19 @@ if (fs.existsSync(protoFile)) {
       // rows (they scroll instead of clipping on narrow screens) — Firefox uses
       // the inline scrollbar-width:none, this covers Chrome/Safari/WebKit.
       const fixCss = `\n<style>[style*="overflow-x:auto"]::-webkit-scrollbar{height:0;width:0;display:none}</style>`;
+      // The prototype's top-nav icons are injected via dangerouslySetInnerHTML,
+      // which the design-tool runtime doesn't populate in this served setup, so
+      // the bar shows labels with empty icon slots. This self-healing script
+      // fills each nav button's icon slot with the matching line icon and
+      // re-applies after every re-render (currentColor inherits the button's
+      // active/idle colour). Register only.
+      const navIconsJs = file === "index.html"
+        ? `(function(){var IC={register:'<path d="M6 7.5h12l-1.1 11.2a1.3 1.3 0 0 1-1.3 1.2H8.4a1.3 1.3 0 0 1-1.3-1.2L6 7.5Z"/><path d="M9 7.5a3 3 0 0 1 6 0"/>',orders:'<rect x="6.5" y="4.5" width="11" height="15.5" rx="2.2"/><path d="M9.5 4.5h5a1 1 0 0 1 1 1v.7a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-.7a1 1 0 0 1 1-1Z"/><path d="M9.5 11h5M9.5 14.5h5"/>',qr:'<rect x="4.5" y="4.5" width="6" height="6" rx="1"/><rect x="13.5" y="4.5" width="6" height="6" rx="1"/><rect x="4.5" y="13.5" width="6" height="6" rx="1"/><path d="M13.5 13.5h2.5v2.5M19.5 13.5v.01M13.5 19.5h.01M16.5 19.5h3v-3"/>',tabs:'<path d="M7 4.5h10v15l-2.5-1.6L12 19.5l-2.5-1.6L7 19.5V4.5Z"/><path d="M10 9h4M10 12.5h4"/>',dayend:'<path d="M18 13.2A6.4 6.4 0 0 1 9.4 6.2 6.6 6.6 0 1 0 18 13.2Z"/>'};var ORDER=['register','orders','qr','tabs','dayend'];function fill(){var nav=document.querySelector('nav');if(!nav)return;var b=nav.querySelectorAll('button');if(b.length<3||b.length>7)return;for(var i=0;i<b.length&&i<ORDER.length;i++){var w=b[i].querySelector('span');if(!w)continue;var inner=w.querySelector('span')||w;if(inner.querySelector('svg'))continue;var g=IC[ORDER[i]];if(g)inner.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+g+'</svg>';}}var raf=0;function sched(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;fill();});}function start(){fill();try{new MutationObserver(sched).observe(document.body,{childList:true,subtree:true});}catch(e){}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(start,600);});else setTimeout(start,600);})();`
+        : "";
       const inject = `\n<base href="${base}/">${fixCss}\n<script>` +
         (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
-        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
+        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});${navIconsJs}</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
       res.set("Content-Security-Policy", PROTO_CSP);
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
