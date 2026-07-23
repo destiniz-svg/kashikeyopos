@@ -544,6 +544,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     const noKitchen = body.noKitchen !== undefined ? !!body.noKitchen : undefined;
     const hidden = body.hidden !== undefined ? !!body.hidden : undefined;
     const soldOut = body.soldOut !== undefined ? !!body.soldOut : undefined;
+    const price = body.price !== undefined && Number.isFinite(Number(body.price)) ? Math.max(0, Math.round(Number(body.price))) : undefined;
     const rowver = await withOrg(req.orgId, async (client) => {
       const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, pid])).rows[0];
       if (!row) return null;
@@ -556,12 +557,55 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       if (noKitchen !== undefined) { if (noKitchen) data.noKitchen = true; else delete data.noKitchen; }
       if (hidden !== undefined) { if (hidden) data.hidden = true; else delete data.hidden; }
       if (soldOut !== undefined) { if (soldOut) data.soldOut = true; else delete data.soldOut; }
+      if (price !== undefined) data.price = price;
       const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, pid, JSON.stringify(data)]);
       return up.rows[0] ? Number(up.rows[0].rowver) : null;
     });
     if (rowver == null) return res.status(404).json({ error: "unknown menu item" });
     if (poke) poke(req.orgId, rowver);
     res.json({ ok: true, rowver });
+  }));
+
+  /* Create or update a menu item (used by the /admin2 Menu manager to add and
+     edit items). Read-modify-write preserves any other fields on an existing
+     product; a new item gets a generated id. price is laari (MVR×100). */
+  router.post("/products", authAny, wrap(async (req, res) => {
+    const body = req.body || {};
+    const name = String(body.name || body.en || "").trim().slice(0, 80);
+    const dv = String(body.dv || "").trim().slice(0, 80);
+    const cat = String(body.cat || "").trim().slice(0, 40);
+    const price = Math.max(0, Math.round(Number(body.price) || 0));
+    if (!name) return res.status(400).json({ error: "name required" });
+    let id = String(body.id || "").trim();
+    const out = await withOrg(req.orgId, async (client) => {
+      if (id) {
+        const row = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false FOR UPDATE", [req.orgId, id])).rows[0];
+        if (row) {
+          const data = Object.assign({}, row.data || {});
+          data.name = name; if (dv) data.dv = dv; else delete data.dv; if (cat) data.cat = cat; data.price = price;
+          const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, id, JSON.stringify(data)]);
+          return { id, rowver: Number(up.rows[0].rowver) };
+        }
+      }
+      if (!id) id = "c_" + Math.random().toString(36).slice(2, 9);
+      const data = { id, name, price, cat: cat || "General" }; if (dv) data.dv = dv;
+      const ins = await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [req.orgId, id, JSON.stringify(data)]);
+      return { id, rowver: Number(ins.rows[0].rowver) };
+    });
+    if (poke) poke(req.orgId, out.rowver);
+    res.json({ ok: true, id: out.id, rowver: out.rowver });
+  }));
+
+  /* Soft-delete a menu item. */
+  router.post("/products/:id/delete", authAny, wrap(async (req, res) => {
+    const id = req.params.id;
+    const rowver = await withOrg(req.orgId, async (client) => {
+      const up = await client.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver", [req.orgId, id]);
+      return up.rows[0] ? Number(up.rows[0].rowver) : null;
+    });
+    if (rowver == null) return res.status(404).json({ error: "unknown menu item" });
+    if (poke) poke(req.orgId, rowver);
+    res.json({ ok: true });
   }));
 
   /* Bulk restock: set every menu item's stock to a quantity, or clear it so the
