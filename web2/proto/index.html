@@ -2325,7 +2325,7 @@ class Component extends DCLogic {
     const s=this.state,me=this,mob=s.vw<760,tab=s.vw<1100;
     const cartPanelStyle=mob?(s.cartSheet?{position:'fixed',left:0,right:0,bottom:0,height:'74vh',zIndex:130,background:'var(--sur)',borderRadius:'22px 22px 0 0',display:'flex',flexDirection:'column',boxShadow:'var(--shadow)',animation:'sheet .3s cubic-bezier(.2,.9,.3,1)'}:{display:'none'}):{width:tab?300:340,flex:'none',display:'flex',flexDirection:'column',background:'var(--sur)',borderInlineStart:'1px solid var(--line)'};
     return {
-      rootStyle:Object.assign({display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',paddingBottom:mob?'calc(58px + env(safe-area-inset-bottom))':0},me.accentVars()),
+      rootStyle:Object.assign({display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden',paddingBottom:mob?'calc(58px + env(safe-area-inset-bottom))':0},me.accentVars()),
       ...(()=>{const H=x=>({__html:x});const cmap={green:'#2E8B57',terracotta:'#C1492A',red:'#C13A26',amber:'#D7A24A',pink:'#E86BA0'};
         const moon='<svg width="18" height="18" viewBox="0 0 18 18"><path d="M15 11A7 7 0 0 1 7 3 7 7 0 1 0 15 11z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
         const contrast='<svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 2.6a6.4 6.4 0 0 1 0 12.8z" fill="currentColor"/></svg>';
