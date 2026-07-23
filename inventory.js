@@ -1799,6 +1799,27 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     res.json({ ok: true, id: out.id, total: out.total, lines: out.lines });
   }));
 
+  /* Book a standalone expense (rent, wages, gas, a paid vendor bill) — a plain
+     'expenses' entity, no stock movement. amount is laari (MVR×100). */
+  router.post("/expenses", authAny, wrap(async (req, res) => {
+    const b = req.body || {};
+    const amount = Math.max(0, Math.round(num(b.amount)));
+    const cat = String(b.cat || "General").trim().slice(0, 40) || "General";
+    const supplier = String(b.supplier || b.vendor || "").trim().slice(0, 80);
+    const pf = String(b.paidFrom || "").toLowerCase();
+    const paidFrom = ["cash", "card", "transfer", "other"].indexOf(pf) >= 0 ? pf : "other";
+    if (!(amount > 0)) return res.status(400).json({ error: "enter an amount" });
+    if (!supplier) return res.status(400).json({ error: "who was paid?" });
+    const id = uid();
+    const data = { id, no: "EXP-" + id.slice(0, 6).toUpperCase(), t: Date.now(), cat, supplier, amount,
+      note: String(b.note || "").slice(0, 120) || (cat + " · back office"), paidFrom, userName: "Back office", shiftId: null, img: "", srcRef: "manual:" + id };
+    const rowver = await withOrg(req.orgId, (client) => client.query(
+      "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'expenses',$2,$3) RETURNING rowver",
+      [req.orgId, id, JSON.stringify(data)]).then((r) => Number(r.rows[0].rowver)));
+    if (poke) poke(req.orgId, rowver);
+    res.json({ ok: true, id });
+  }));
+
   /* ── Bridge 2: purchase orders raised at the till ───────────────────────
      POs live as "pords" entities in the till's own sync stream. The back
      office lists the open ones and can receive one as a pre-filled delivery:
