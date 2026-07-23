@@ -1620,7 +1620,7 @@ if (fs.existsSync(protoFile)) {
   const liveMenu = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name && !p.hidden)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: !!p.soldOut }));
   // Full catalogue for the admin Menu manager — includes hidden items and
   // carries the hidden/soldOut flags so the admin can show/restore them.
   const liveMenuAll = (rows) => rows
@@ -1744,9 +1744,9 @@ if (fs.existsSync(protoFile)) {
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
               // Inventory stock levels from the real ingredients ledger.
               const ingRows = (await c.query(
-                "SELECT name, current_stock, base_unit, min_stock, avg_cost FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+                "SELECT id, name, current_stock, base_unit, min_stock, avg_cost FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
               adminData.stock = ingRows.map((i) => ({
-                n: i.name, oh: Number(i.current_stock) || 0, unit: i.base_unit || "",
+                id: i.id, n: i.name, oh: Number(i.current_stock) || 0, unit: i.base_unit || "",
                 par: Number(i.min_stock) || 0, cost: Math.round((Number(i.avg_cost) || 0) / 100),
               }));
               // Dashboard: today's headline KPIs + recent orders from real sales.
