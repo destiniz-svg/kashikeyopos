@@ -1687,6 +1687,40 @@ if (fs.existsSync(protoFile)) {
     .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", zone: o.zone || "Malé",
       items: (o.items || []).map((li) => (Number(li.qty || li.q) || 1) + "× " + (li.name || li.n || "")).join(" · "),
       rider: "—", st: String(o.status) === "ready" ? 1 : 0 }));
+  // Per-range real analytics for the admin dashboard + Reports, computed from
+  // real sales (+ expenses for a rough COGS). Overlaid onto the prototype's
+  // DATA[range] so the stat cards, trend chart, GST, payment mix and top items
+  // reflect production figures.
+  const liveReports = (saleRows, expRows) => {
+    const now = Date.now(), day = 86400000;
+    const sod = new Date(); sod.setHours(0, 0, 0, 0); const st = sod.getTime();
+    const specs = { today: [st, now, 24, 3600000, st], yest: [st - day, st, 24, 3600000, st - day],
+      week: [now - 7 * day, now, 7, day, now - 7 * day], month: [now - 30 * day, now, 30, day, now - 30 * day],
+      quarter: [now - 90 * day, now, 13, 7 * day, now - 90 * day], year: [now - 365 * day, now, 12, 30 * day, now - 365 * day] };
+    const qtyOf = (s) => (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0);
+    const out = {};
+    for (const k in specs) {
+      const [since, until, nb, bk, bs] = specs[k];
+      const rows = saleRows.filter((s) => { const t = Number(s.at) || 0; return t >= since && t < until; });
+      const rev = Math.round(rows.reduce((a, s) => a + (Number(s.total) || 0), 0)) / 100;
+      const orders = rows.length, items = rows.reduce((a, s) => a + qtyOf(s), 0);
+      const gst = Math.round(rows.reduce((a, s) => a + (Number(s.gst) || 0), 0)) / 100;
+      const rc = new Array(nb).fill(0);
+      for (const s of rows) { let i = Math.floor(((Number(s.at) || since) - bs) / bk); if (i < 0) i = 0; if (i >= nb) i = nb - 1; rc[i] += (Number(s.total) || 0) / 100; }
+      const pm = { cash: 0, card: 0, transfer: 0, tab: 0 };
+      for (const s of rows) for (const p of (s.payments || [])) { const m = String(p.method || "").toLowerCase(), a = (Number(p.amount) || 0) / 100; if (m === "cash") pm.cash += a; else if (m === "card") pm.card += a; else if (m === "tab" || m === "credit") pm.tab += a; else pm.transfer += a; }
+      const byItem = {};
+      for (const s of rows) for (const l of (s.lines || [])) { const n = l.name || l.pid; if (!n) continue; const g = byItem[n] || (byItem[n] = { qty: 0, rev: 0 }); g.qty += Number(l.qty) || 0; g.rev += ((Number(l.price) || 0) * (Number(l.qty) || 0)) / 100; }
+      const topItems = Object.keys(byItem).map((n) => ({ n, qty: byItem[n].qty, rev: Math.round(byItem[n].rev) })).sort((a, b) => b.qty - a.qty).slice(0, 6);
+      const purchases = expRows.filter((e) => { const t = Number(e.t) || 0; return t >= since && t < until && e.cat === "Purchases"; }).reduce((a, e) => a + (Number(e.amount) || 0), 0) / 100;
+      const gpVal = Math.max(0, rev - purchases);
+      out[k] = { rev, orders, items, aov: orders ? Math.round(rev / orders * 100) / 100 : 0,
+        gpVal: Math.round(gpVal), gpPct: rev ? ((gpVal / rev * 100).toFixed(1) + "%") : "0%",
+        basket: orders ? (items / orders).toFixed(1) : "0", rc: rc.map((x) => Math.round(x)),
+        gst, payMix: { cash: Math.round(pm.cash), card: Math.round(pm.card), transfer: Math.round(pm.transfer), tab: Math.round(pm.tab) }, topItems };
+    }
+    return out;
+  };
   // Collect the register read-path payload (window.__ksReg) for an org. Shared
   // by the page inject (serveProto) and the live-refresh poll (/api/app2/pull).
   const collectRegData = async (c, orgId) => {
@@ -1793,6 +1827,7 @@ if (fs.existsSync(protoFile)) {
                 m: e.paidFrom === "cash" ? "Cash" : e.paidFrom === "card" ? "Card" : "Transfer",
                 amt: Math.round((Number(e.amount) || 0) / 100), ap: "Approved",
               }));
+              adminData.reports = liveReports(saleRows, expRows);
             }
           });
         } catch (e) { recordError(base + " data inject", e); }

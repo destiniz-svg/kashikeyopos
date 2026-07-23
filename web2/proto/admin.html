@@ -1213,6 +1213,7 @@ class Component extends DCLogic {
         rc:[90,110,140,120,100,160,210,180,150,240,300,260,180,150,130,190,250,220,170,150,280,340,300,210,170,140,200,260,230,190,320,380],xl:['Jan','Mar','May','Jul','Sep','Nov'],peakN:'Dec & Ramadan spikes'}
     };
     if(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.dash){try{Object.assign(this.DATA.today,window.__ksAdmin.dash);}catch(e){}}
+    if(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.reports){try{var _R=window.__ksAdmin.reports;for(var _rk in _R){if(this.DATA[_rk])Object.assign(this.DATA[_rk],_R[_rk]);}}catch(e){}}
     this.MENU=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.menuAll&&window.__ksAdmin.menuAll.length)?window.__ksAdmin.menuAll:(typeof window!=='undefined'&&window.__ksMenu&&window.__ksMenu.length)?window.__ksMenu:[
       {id:'gulha',cat:'hedhikaa',en:'Gulha',dv:'ގުޅަ',price:5},{id:'bajiya',cat:'hedhikaa',en:'Bajiya',dv:'ބަޖިޔާ',price:5},{id:'kavaabu',cat:'hedhikaa',en:'Kavaabu',dv:'ކަވާބު',price:7},{id:'kboakibaa',cat:'hedhikaa',en:'Kulhi Boakibaa',dv:'ކުޅިބޯކިބާ',price:10},{id:'masroshi',cat:'hedhikaa',en:'Masroshi',dv:'މަސްރޮށި',price:8},{id:'cutlets',cat:'hedhikaa',en:'Cutlets',dv:'ކަޓްލަސް',price:6},
       {id:'mashuni',cat:'mains',en:'Mas Huni & Roshi',dv:'މަސްހުނި ރޮށި',price:30},{id:'garudhiya',cat:'mains',en:'Garudhiya Set',dv:'ގަރުދިޔަ',price:45},{id:'riha',cat:'mains',en:'Kukulhu Riha',dv:'ކުކުޅު ރިހަ',price:55},{id:'friedrice',cat:'mains',en:'Fried Rice',dv:'ފްރައިޑް ރައިސް',price:50},
@@ -1364,7 +1365,7 @@ class Component extends DCLogic {
     for(let i=1;i<n;i++){const cx=(x(i-1)+x(i))/2;d+=' C'+cx.toFixed(1)+' '+y(vals[i-1]).toFixed(1)+' '+cx.toFixed(1)+' '+y(vals[i]).toFixed(1)+' '+x(i).toFixed(1)+' '+y(vals[i]).toFixed(1);}
     if(mode==='area')d+=' L'+W+' '+H+' L0 '+H+' Z';return d;}
   modVals(){
-    const s=this.state,me=this,H=x=>({__html:x}),f=n=>me.fm(n,0);
+    const s=this.state,me=this,H=x=>({__html:x}),f=n=>me.fm(n,0),g=this.DATA[s.range]||this.DATA.today;
     const P={ok:['var(--greensoft)','var(--green)'],warn:['var(--ambersoft)','var(--amber)'],bad:['var(--redsoft)','var(--red)'],info:['var(--bluesoft)','var(--blue)'],mut:['var(--bg)','var(--ink2)']};
     const pill=(t,k)=>{const c=P[k]||P.mut;return {st:t,stBg:c[0],stC:c[1]};};
     const A=s.active;
@@ -1555,13 +1556,14 @@ class Component extends DCLogic {
     const brandSwatches=[['Primary','#C1492A'],['Blade green','#1FA65C'],['Ink','#2E2418'],['Sand','#F3EADB']].map(b=>({label:b[0],hex:b[1]}));
     const seoChecks=[['Meta title','Set · 58 chars'],['Meta description','Set · 148 chars'],['Open Graph image','1200×630 uploaded'],['Structured data','Restaurant JSON-LD'],['XML sitemap','Auto-generated'],['Mobile-friendly','Responsive · passes']].map(r=>({label:r[0],val:r[1]}));
     // ---- REPORTS: Z & GST ----
-    const zr=[['Gross sales',f(7480)],['Discounts','− '+f(320)],['Refunds','− '+f(120)],['Net sales',f(7040)],['GST output (8%)',f(563)],['Service charge',f(704)]].map((r,i)=>({k:r[0],v:r[1],big:i===3}));
-    const zrPay=[['Cash',f(3120)],['Card / BML',f(2860)],['Bank transfer',f(760)],['On tab',f(300)]].map(r=>({k:r[0],v:r[1]}));
-    const gstRows=[['Output tax · sales',f(563),false],['Input tax · purchases','− '+f(214),false],['Net GST payable',f(349),true]].map(r=>({k:r[0],v:r[1],big:r[2]}));
+    const _pm=g.payMix||{cash:0,card:0,transfer:0,tab:0};
+    const zr=[['Gross sales',f(g.rev)],['Net sales',f(g.rev)],['GST output',f(g.gst||0)],['Orders',me.fi(g.orders)]].map((r,i)=>({k:r[0],v:r[1],big:i===1}));
+    const zrPay=[['Cash',f(_pm.cash)],['Card / BML',f(_pm.card)],['Bank transfer',f(_pm.transfer)],['On tab',f(_pm.tab)]].map(r=>({k:r[0],v:r[1]}));
+    const gstRows=[['Output tax · sales',f(g.gst||0),false],['Input tax · purchases','− '+f(0),false],['Net GST payable',f(g.gst||0),true]].map(r=>({k:r[0],v:r[1],big:r[2]}));
     const perfCards=[
       {title:'TOP OUTLETS',rows:[['Kashikeyo · Malé',6820,100,'var(--coral)'],['Kashikeyo · Hulhumalé',4210,62,'var(--coral)'],['Kashikeyo · Villimalé',1980,29,'var(--amber)']]},
       {title:'TOP STAFF · SALES',rows:[['Mariyam Didi',3120,100,'var(--green)'],['Ahmed Rasheed',2480,79,'var(--green)'],['Aminath Shifa',1760,56,'var(--green)']]},
-      {title:'TOP PRODUCTS · REVENUE',rows:[['Mas Huni & Roshi',2140,100,'var(--blue)'],['Garudhiya Set',1680,78,'var(--blue)'],['Kukulhu Riha',1290,60,'var(--blue)'],['Gulha · 6pc',940,44,'var(--blue)']]}
+      {title:'TOP PRODUCTS · REVENUE',rows:((g.topItems&&g.topItems.length)?g.topItems.map(t=>[t.n,t.rev]):[['Mas Huni & Roshi',2140],['Garudhiya Set',1680],['Kukulhu Riha',1290],['Gulha · 6pc',940]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--blue)']).slice(0,4)}
     ].map(c=>({title:c.title,rows:c.rows.map((r,i)=>({rank:'#'+(i+1),n:r[0],v:me.fm(r[1]),w:r[2]+'%',c:r[3]}))}));
     const custStats=[{label:'TOTAL CUSTOMERS',v:'1,284'},{label:'REPEAT RATE',v:'58%'},{label:'AVG LIFETIME VALUE',v:me.fm(1840)},{label:'NEW · THIS MONTH',v:'96'}];
     const custTop=[
@@ -1801,7 +1803,7 @@ class Component extends DCLogic {
     const catBars=cats.map(c=>({name:c[0],c:c[1],pct:c[2]+'%',w:c[2]+'%',amt:me.fm(g.rev*c[2]/100,0)}));
     const types=[['Dine-in','var(--coral)',44],['Takeaway','var(--green)',26],['Delivery','var(--blue)',19],['QR self-order','var(--amber)',11]];
     let acc=0;const segs=types.map(t=>{const a=acc;acc+=t[2];return t[1]+' '+a+'% '+acc+'%';});
-    const pmax=Math.max.apply(null,g.rc);
+    const pmax=Math.max.apply(null,g.rc)||1;
     const peak=g.rc.map((v,i)=>{const r=v/pmax;const c=r>0.82?'var(--coral)':r>0.55?'var(--amber)':'var(--line2)';return {h:Math.max(6,Math.round(r*100))+'%',c,d:(i*0.02).toFixed(2)+'s',lbl:i%3===0?String((8+i)%24||24):''};});
     const attn=[
       {icon:ic.box,bg:'var(--redsoft)',c:'var(--red)',title:'Onion below par',sub:'4 / 12 kg — reorder today',cta:'Reorder'},
