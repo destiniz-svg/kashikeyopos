@@ -1638,6 +1638,44 @@ if (fs.existsSync(protoFile)) {
       };
     }).filter((c) => c.n);
   };
+  // Register read-path (window.__ksReg): map real entities onto the register's
+  // own state shapes so its store identity, customers, sales History and live
+  // Kitchen/Delivery queues reflect production data instead of seeds.
+  const hhmm = (t) => new Date(Number(t) || Date.now()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const chLabel = (s) => s.orderType === "dine" ? ("POS · T" + (s.tableNo || "")) : s.orderType === "delivery" ? "Delivery" : "Takeaway";
+  const chKind = (s) => s.orderType === "dine" ? "dine" : s.orderType === "delivery" ? "deliv" : "reg";
+  const payLabel = (s) => {
+    const p = (Array.isArray(s.payments) && s.payments[0]) || {};
+    const m = String(p.method || s.method || "cash").toLowerCase();
+    return m === "cash" ? "Cash" : m === "card" ? "Card" : (m === "tab" || m === "credit") ? "On tab"
+      : (m === "transfer" || m === "bml") ? "BML transfer" : (p.method || "Cash");
+  };
+  const liveStoreP = (settings) => ({ name: (settings && settings.storeName) || "Kashikeyo", currency: (settings && settings.currency) || "MVR" });
+  const liveSalesLog = (saleRows) => saleRows.map((s) => ({
+    no: String(s.no || "").replace(/^.*-/, "") || String(s.id || "").slice(-4),
+    ch: chLabel(s), chK: chKind(s), otype: s.orderType || "takeaway",
+    time: hhmm(s.at), items: (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0),
+    total: Math.round(Number(s.total) || 0) / 100, cust: s.customerName || "Walk-in", method: payLabel(s),
+  }));
+  const liveRegRecv = (custRows) => custRows.map((r) => {
+    const d = r.data || {}; const bal = Math.round((Number(d.balance) || 0) / 100);
+    const days = d.lastOrderAt ? Math.max(0, Math.round((Date.now() - Number(d.lastOrderAt)) / 86400000)) : 0;
+    return { id: r.id, name: d.name || "", dv: d.dv || d.name || "", bal, days, addr: d.address || d.addr || "",
+      pts: Math.round(Number(d.points) || 0), visits: Number(d.visits) || 0, spend: Math.round((Number(d.spend) || 0) / 100),
+      memberNo: d.memberNo || d.code || "", usuals: Array.isArray(d.usuals) ? d.usuals : [] };
+  });
+  const liveTickets = (ordRows) => ordRows
+    .filter((o) => !finalStatuses.has(String(o.status || "new")) && String(o.status) !== "ready" && !o.noKitchen)
+    .slice(0, 12)
+    .map((o) => ({ no: String(o.no || "").replace(/^ORD-/, ""), at: Number(o.createdAt) || Date.now(),
+      src: o.source === "qr" ? ("QR" + (o.table && o.table !== "Pickup" && o.table !== "Delivery" ? " · " + o.table : "")) : "POS",
+      station: "hot", items: (o.items || []).map((li) => ({ q: Number(li.qty || li.q) || 1, n: li.name || li.n || "" })) }));
+  const liveDeliv = (ordRows) => ordRows
+    .filter((o) => o.otype === "delivery" && !finalStatuses.has(String(o.status || "new")))
+    .slice(0, 12)
+    .map((o) => ({ no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", zone: o.zone || "Malé",
+      items: (o.items || []).map((li) => (Number(li.qty || li.q) || 1) + "× " + (li.name || li.n || "")).join(" · "),
+      rider: "—", st: String(o.status) === "ready" ? 1 : 0 }));
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
   // redirect:false so `base` and `base/` reach the dynamic handler while
   // support.js / artwork / fonts / vendor are served statically. `withMenu`
@@ -1651,7 +1689,8 @@ if (fs.existsSync(protoFile)) {
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": base + "/vendor/react-dom.production.min.js",
     };
     app.get(new RegExp("^" + base.replace(/[/]/g, "\\$&") + "(\\/.*)?$"), requireAppSession, async (req, res) => {
-      let menu = []; const adminData = {}; let token = null;
+      let menu = []; const adminData = {}; const regData = {}; let token = null;
+      const isRegister = file === "index.html";
       if (withMenu || withAdmin) {
         try {
           const orgId = await resolveAppSession(req);
@@ -1663,6 +1702,23 @@ if (fs.existsSync(protoFile)) {
             if (withMenu) {
               menu = liveMenu((await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
+            }
+            if (isRegister) {
+              const setRow = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
+              regData.storeP = liveStoreP(setRow ? setRow.data : {});
+              const regCustRows = (await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
+              regData.recv = liveRegRecv(regCustRows);
+              const regSaleRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
+                .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
+              regData.salesLog = liveSalesLog(regSaleRows);
+              const regOrdRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY (data->>'createdAt')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
+                .rows.map((r) => r.data || {});
+              regData.tickets = liveTickets(regOrdRows);
+              regData.deliv = liveDeliv(regOrdRows);
             }
             if (withAdmin) {
               const custRows = (await c.query(
@@ -1766,6 +1822,7 @@ if (fs.existsSync(protoFile)) {
         : "";
       const inject = `\n<base href="${base}/">${fixCss}\n<script>` +
         (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
+        (isRegister ? `window.__ksReg=${enc(regData)};` : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
         `window.__resources=Object.assign(window.__resources||{},${enc(resources)});${navIconsJs}${ordTabIconsJs}${adminIconsJs}</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
