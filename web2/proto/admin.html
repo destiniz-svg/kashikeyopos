@@ -1583,7 +1583,7 @@ class Component extends DCLogic {
     const gstRows=[['Output tax · sales',f(g.gst||0),false],['Input tax · purchases','− '+f(0),false],['Net GST payable',f(g.gst||0),true]].map(r=>({k:r[0],v:r[1],big:r[2]}));
     const perfCards=[
       {title:'TOP OUTLETS',rows:[['Kashikeyo · Malé',6820,100,'var(--coral)'],['Kashikeyo · Hulhumalé',4210,62,'var(--coral)'],['Kashikeyo · Villimalé',1980,29,'var(--amber)']]},
-      {title:'TOP STAFF · SALES',rows:[['Mariyam Didi',3120,100,'var(--green)'],['Ahmed Rasheed',2480,79,'var(--green)'],['Aminath Shifa',1760,56,'var(--green)']]},
+      {title:'TOP STAFF · SALES',rows:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.topStaff&&window.__ksAdmin.topStaff.length)?window.__ksAdmin.topStaff.map(t=>[t.n,t.rev]):[['Mariyam Didi',3120],['Ahmed Rasheed',2480],['Aminath Shifa',1760]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--green)']).slice(0,4)},
       {title:'TOP PRODUCTS · REVENUE',rows:((g.topItems&&g.topItems.length)?g.topItems.map(t=>[t.n,t.rev]):[['Mas Huni & Roshi',2140],['Garudhiya Set',1680],['Kukulhu Riha',1290],['Gulha · 6pc',940]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--blue)']).slice(0,4)}
     ].map(c=>({title:c.title,rows:c.rows.map((r,i)=>({rank:'#'+(i+1),n:r[0],v:me.fm(r[1]),w:r[2]+'%',c:r[3]}))}));
     const _cd=custData||[];const _nowM=new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'});
@@ -1598,9 +1598,11 @@ class Component extends DCLogic {
     const custDayparts=[['Morning',28,'var(--amber)'],['Afternoon',22,'var(--blue)'],['Evening',38,'var(--coral)'],['Late night',12,'var(--ink3)']].map(d=>({label:d[0],pct:d[1]+'%',w:d[1]+'%',c:d[2]}));
     const custPrefs=[['Short eats',34],['Rice & curry',26],['Hot drinks',18],['Cold drinks',12],['Sweets',10]].map(p=>({n:p[0],pct:p[1]+'%'}));
     // ---- STAFF ----
-    const staffRows=s.staff.map(r=>Object.assign({n:r.n,role:r.role,shift:r.shift,salesF:r.sales?f(r.sales):'—',orders:String(r.orders)},pill(r.stt,r.stk)));
+    const _realStaff=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.staffTeam&&window.__ksAdmin.staffTeam.length)?window.__ksAdmin.staffTeam.map(u=>({n:u.n,role:u.role,shift:'—',sales:u.sales,orders:u.orders,stt:'Active',stk:'ok'})):null;
+    const staffSrc=_realStaff?_realStaff.concat(s.cfgStaffAdd||[]):s.staff;
+    const staffRows=staffSrc.map(r=>Object.assign({n:r.n,role:r.role,shift:r.shift||'—',salesF:r.sales?f(r.sales):'—',orders:String(r.orders||0)},pill(r.stt||'Off',r.stk||'mut')));
     const staffRoles=[['Master Admin','Full system access',9],['Manager','Ops, reports & staff',6],['Cashier','Register & KDS',3],['Rider','Delivery app only',1]].map(r=>({name:r[0],desc:r[1],perms:r[2]+' modules'}));
-    const staffStats=[{label:'Team',v:String(s.staff.length)},{label:'On shift',v:String(s.staff.filter(x=>x.stt==='On shift').length)},{label:'Sessions',v:String(s.sessions.length)}];
+    const staffStats=[{label:'Team',v:String(staffSrc.length)},{label:'On shift',v:String(staffSrc.filter(x=>x.stt==='On shift'||x.stt==='Active').length)},{label:'Sessions',v:String(s.sessions.length)}];
     const sst=s.sub.staff||0;
     const roleAccess=[
       {name:'Admin',i:'A',perms:'9 / 9',sees:'Everything — full system access, settings & staff.',bg:'var(--coralsoft)',c:'var(--coral)'},
@@ -1616,7 +1618,7 @@ class Component extends DCLogic {
       {role:'Cashier',p:[1,0,1,0,0,0,0,0]},{role:'Kitchen',p:[0,0,0,0,0,1,0,0]}
     ].map(r=>({role:r.role,cells:r.p.map(v=>({__html:v?chkY:chkN}))}));
     const sessions=s.sessions.map((r,i)=>Object.assign({},r,{signout:()=>me.signOutSession(i)}));
-    const teamActivity=[
+    const teamActivity=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.activity&&window.__ksAdmin.activity.length)?window.__ksAdmin.activity.map(x=>({t:x.t,u:x.u,a:x.a,dotC:/refund|void|over/.test(x.a)?'var(--amber)':/day|start|purchase/.test(x.a)?'var(--green)':'var(--blue)'})):[
       {t:'19:40',u:'Ahmed',a:'Voided order #0224',dotC:'var(--amber)'},
       {t:'18:30',u:'Sana',a:'Applied 15% discount · #0221',dotC:'var(--blue)'},
       {t:'17:05',u:'Mariyam',a:'Updated price · Kalhu Sai',dotC:'var(--blue)'},
@@ -1629,11 +1631,11 @@ class Component extends DCLogic {
       {k:'refund',n:'Refund',need:'Manager PIN',def:true},{k:'drawer',n:'Open drawer · no sale',need:'Manager PIN',def:true},
       {k:'override',n:'Price override',need:'Admin PIN',def:false}
     ].map(a=>{const on=s.authOff[a.k]!=null?!s.authOff[a.k]:a.def;return {n:a.n,need:a.need,trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(16px)':'translateX(0)',tap:()=>{const authOff=Object.assign({},s.authOff,{[a.k]:on});me.setState({authOff});me.saveCfg({authOff});}};});
-    const recentAuth=[
+    const recentAuth=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.authLog&&window.__ksAdmin.authLog.length)?window.__ksAdmin.authLog:[
       {t:'19:40',a:'Void · #0224',by:'Approved by Mariyam (Manager)',st:'Approved',k:'ok'},
       {t:'18:30',a:'20% discount · #0221',by:'Approved by Mariyam (Manager)',st:'Approved',k:'ok'},
       {t:'15:10',a:'Refund · #0198',by:'Cashier request',st:'Declined',k:'bad'}
-    ].map(r=>{const c=P[r.k];return {t:r.t,a:r.a,by:r.by,st:r.st,stBg:c[0],stC:c[1]};});
+    ]).map(r=>{const c=P[r.k];return {t:r.t,a:r.a,by:r.by,st:r.st,stBg:c[0],stC:c[1]};});
     // ---- CONFIG ----
     const cfgSecs=[
       {title:'Operations',rows:[['autoKot','Auto-send to KOT','Fire tickets on order confirm'],['rounding','Round totals to MVR','Nearest whole rufiyaa'],['svc10','10% service charge','Dine-in only']]},
@@ -1642,10 +1644,10 @@ class Component extends DCLogic {
     ].map(sec=>({title:sec.title,rows:sec.rows.map(r=>{const on=!!s.cfg[r[0]];return {label:r[1],desc:r[2],hasDesc:!!r[2],trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(15px)':'translateX(0)',tap:()=>{const cfg=Object.assign({},s.cfg,{[r[0]]:!on});me.setState({cfg});me.saveCfg({cfg});}};})}));
     const taxOpts=[['ggst','General GST · 8%'],['tgst','Tourism GST · 16%']].map(o=>{const on=s.taxRate===o[0];return {label:o[1],bg:on?'var(--coral)':'transparent',co:on?'#fff':'var(--ink2)',tap:()=>{me.setState({taxRate:o[0]});me.saveCfg({taxRate:o[0]});}};});
     // ---- SYSTEM ADMIN ----
-    const sysUsers=[
+    const sysUsers=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.sysUsers&&window.__ksAdmin.sysUsers.length)?window.__ksAdmin.sysUsers.map(u=>({n:u.n,role:u.role,last:'—',stk:'ok'})):[
       {n:'admin@kashikeyo.mv',role:'Master Admin',last:'Active now',stk:'ok'},{n:'mariyam@kashikeyo.mv',role:'Manager',last:'2 h ago',stk:'ok'},
       {n:'ahmed@kashikeyo.mv',role:'Cashier',last:'12 min ago',stk:'ok'},{n:'POS Till 2',role:'Device',last:'5 min ago',stk:'ok'}
-    ].map(r=>Object.assign({n:r.n,role:r.role,last:r.last},pill('Active','ok')));
+    ]).map(r=>Object.assign({n:r.n,role:r.role,last:r.last},pill('Active','ok')));
     const sysAudit=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.audit&&window.__ksAdmin.audit.length)?window.__ksAdmin.audit:[
       {t:'19:40',a:'Voided order #0224',u:'Ahmed'},{t:'18:30',a:'Applied 15% discount · #0221',u:'Sana'},
       {t:'17:05',a:'Updated price · Kalhu Sai',u:'Mariyam'},{t:'16:12',a:'Created PO-058',u:'Mariyam'},{t:'09:02',a:'Day started · drawer '+f(1500),u:'Ahmed'}
@@ -1676,15 +1678,15 @@ class Component extends DCLogic {
     ].map(b=>{const c=P[b.k];return {n:b.n,desc:b.desc,status:b.status,stBg:c[0],stC:c[1],edit:()=>me.toast('Editing '+b.n)};});
     const splitByMethod=[{m:'Cash',amt:400,dotC:'var(--green)'},{m:'Card · BML',amt:540,dotC:'var(--coral)'}].map(p=>({m:p.m,amtF:me.fm(p.amt),dotC:p.dotC}));
     const splitByGuest=[['1','Guest 1'],['2','Guest 2'],['3','Guest 3']].map(g=>({i:g[0],n:g[1],amtF:me.fm(313.33)}));
-    const recentSplits=[
+    const recentSplits=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.splits&&window.__ksAdmin.splits.length)?window.__ksAdmin.splits:[
       {ref:'#0043',total:534,parts:'Cash 300 · Card 234',n:2},
       {ref:'#0039',total:1200,parts:'3 guests × 400',n:3}
-    ].map(r=>({ref:r.ref,totalF:me.fm(r.total),parts:r.parts,n:String(r.n)}));
-    const refundRows=[
+    ]).map(r=>({ref:r.ref,totalF:me.fm(r.total),parts:r.parts,n:String(r.n)}));
+    const refundRows=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.refunds&&window.__ksAdmin.refunds.length)?window.__ksAdmin.refunds:[
       {ref:'#0041',amt:96,reason:'Wrong item served',staff:'Mariyam',st:'Approved',k:'ok',when:'Today 13:10'},
       {ref:'#0037',amt:250,reason:'Customer cancelled order',staff:'Ahmed',st:'Approved',k:'ok',when:'Today 11:42'},
       {ref:'#0031',amt:60,reason:'Quality complaint',staff:'Mariyam',st:'Pending',k:'warn',when:'Yest 20:15'}
-    ].map(r=>{const c=P[r.k];return {ref:r.ref,amtF:me.fm(r.amt),reason:r.reason,staff:r.staff,when:r.when,st:r.st,stBg:c[0],stC:c[1]};});
+    ]).map(r=>{const c=P[r.k];return {ref:r.ref,amtF:me.fm(r.amt),reason:r.reason,staff:r.staff,when:r.when,st:r.st,stBg:c[0],stC:c[1]};});
     const gwStats=[{label:'SETTLING TODAY',v:me.fm(3720)},{label:'NEXT SETTLEMENT',v:'20 Oct'},{label:'GATEWAY FEE · MTD',v:me.fm(1284)}];
     const settlements=[
       {date:'18 Oct',gross:8420,fee:126,net:8294,st:'Settled',k:'ok'},
@@ -1715,7 +1717,7 @@ class Component extends DCLogic {
     const notif=s.sub.notif||0;
     const kc={reg:'var(--coral)',warn:'var(--amber)',ok:'var(--green)',bad:'#e0564f',info:'var(--blue)'};
     const alertRules=[['a_order','New orders','Every order across register, QR & delivery',true],['a_stock','Low stock','When an item drops below its reorder point',true],['a_pay','Payments','Settlements, refunds & failed charges',true],['a_auth','Authorization','Void, discount & manager-PIN requests',true]].map(r=>Object.assign({event:r[1],desc:r[2]},mkTog(nOn(r[0],r[3]),r[0])));
-    const recentAlerts=[['reg','New order #0231 · MVR 214','19:42'],['ok','Payment settled · #0230','19:38'],['warn','Low stock · Chicken breast 2kg','18:20'],['info','Auth · Void #0224 approved','18:30']].map(r=>({t:r[1],time:r[2],dot:kc[r[0]]}));
+    const recentAlerts=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.alerts&&window.__ksAdmin.alerts.length)?window.__ksAdmin.alerts.map(x=>({t:x.a,time:x.time,dot:kc[x.k]||kc.reg})):[['reg','New order #0231 · MVR 214','19:42'],['ok','Payment settled · #0230','19:38'],['warn','Low stock · Chicken breast 2kg','18:20'],['info','Auth · Void #0224 approved','18:30']].map(r=>({t:r[1],time:r[2],dot:kc[r[0]]}));
     const chanRows=[['Kashikeyo · Malé','@kashikeyo_male',6,'Connected','ok'],['Kashikeyo · Hulhumalé','@kashikeyo_hulhu',4,'Connected','ok'],['Kashikeyo · Villimalé','Not linked',0,'Connect','mut']].map(r=>{const c=P[r[4]];return{outlet:r[0],chan:r[1],members:r[2]?r[2]+' members':'—',st:r[3],stBg:c[0],stC:c[1],linked:r[4]==='ok',linkLabel:r[4]==='ok'?'Test':'Connect',tap:()=>me.toast(r[4]==='ok'?'Test message sent · '+r[1]:'Link Telegram channel · '+r[0])};});
     const twofaOn=nOn('f_on',true);
     const twofaOps=[['f_void','Voids','Manager',true],['f_refund','Refunds over MVR 200','Admin',true],['f_disc','Discounts over 20%','Manager',true],['f_dayend','Day-end close','Manager',false]].map(r=>Object.assign({op:r[1],by:r[2]},mkTog(nOn(r[0],r[3]),r[0])));

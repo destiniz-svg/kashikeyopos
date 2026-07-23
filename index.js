@@ -1860,15 +1860,59 @@ if (fs.existsSync(protoFile)) {
               adminData.outlets = storeRows.map((o) => ({ id: o.id, n: o.name, code: o.code, addr: o.address || "", active: !!o.active }));
               // Payment-method volumes from today's real sales (payMix on reports).
               adminData.payMix = (adminData.reports && adminData.reports.today && adminData.reports.today.payMix) || { cash: 0, card: 0, transfer: 0, tab: 0 };
-              // System Admin > audit log from the real activity_log table.
-              try {
-                const auditRows = (await c.query(
-                  "SELECT at, actor, action, ref FROM activity_log WHERE org_id=$1 ORDER BY at DESC LIMIT 12", [orgId])).rows;
-                adminData.audit = auditRows.map((a) => ({
-                  t: new Date(a.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-                  a: (a.action || "").replace(/[._]/g, " ") + (a.ref ? " · " + a.ref : ""), u: a.actor || "system",
+              // ── Tier 1: sub-lists derived from real sales / users / activity_log ──
+              const hhmm = (t) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+              const allSaleRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 200", [orgId]))
+                .rows.map((r) => r.data || {});
+              // Reports > Performance: top staff by real sales (sales carry userName).
+              const staffAgg = new Map();
+              for (const s of saleRows) {
+                const who = (s.userName || "").trim(); if (!who) continue;
+                const cur = staffAgg.get(who) || { rev: 0, orders: 0 };
+                cur.rev += (Number(s.total) || 0) / 100; cur.orders += 1; staffAgg.set(who, cur);
+              }
+              adminData.topStaff = Array.from(staffAgg.entries())
+                .map(([n, v]) => ({ n, rev: Math.round(v.rev), orders: v.orders }))
+                .sort((a, b) => b.rev - a.rev).slice(0, 5);
+              // Payments > Refunds: real refund-type sales.
+              adminData.refunds = allSaleRows.filter((s) => s.type === "refund")
+                .slice(0, 12).map((s) => ({
+                  ref: "#" + (String(s.no || s.id || "").replace(/^.*-/, "")), amt: Math.round((Number(s.total) || 0) / 100),
+                  reason: s.reason || s.refundReason || "Refund", staff: s.userName || "—",
+                  st: s.managerApproved ? "Approved" : "Pending", k: s.managerApproved ? "ok" : "warn",
+                  when: s.at ? hhmm(s.at) : "—",
                 }));
-              } catch (e) { /* activity_log optional */ }
+              // Payments > Split bills: sales settled with more than one payment.
+              adminData.splits = allSaleRows.filter((s) => (s.payments || []).length > 1)
+                .slice(0, 8).map((s) => ({
+                  ref: "#" + (String(s.no || s.id || "").replace(/^.*-/, "")), total: Math.round((Number(s.total) || 0) / 100),
+                  parts: (s.payments || []).map((p) => (p.method || "pay") + " " + Math.round((Number(p.amount) || 0) / 100)).join(" · "),
+                  n: (s.payments || []).length,
+                }));
+              // Staff + System Admin: real users entities.
+              const userRows = (await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false ORDER BY updated_at", [orgId]))
+                .rows.map((r) => r.data || {});
+              const roleLabel = (r) => r === "owner" ? "Master Admin" : r ? (r.charAt(0).toUpperCase() + r.slice(1)) : "Cashier";
+              adminData.staffTeam = userRows.map((u) => {
+                const ag = staffAgg.get((u.name || "").trim()) || { rev: 0, orders: 0 };
+                return { n: u.name || "—", role: roleLabel(u.role), sales: Math.round(ag.rev), orders: ag.orders };
+              });
+              adminData.sysUsers = userRows.map((u) => ({ n: u.email || u.name || "—", role: roleLabel(u.role) }));
+              // Activity feeds (Staff > Activity, Auth codes; Notifications > alerts;
+              // System Admin > audit) all from the real activity_log.
+              const actRows = (await c.query(
+                "SELECT at, actor, action, ref, detail FROM activity_log WHERE org_id=$1 ORDER BY at DESC LIMIT 40", [orgId])).rows;
+              const prettyAct = (a) => (a.action || "").replace(/[._]/g, " ") + (a.ref ? " · " + a.ref : "");
+              adminData.audit = actRows.slice(0, 12).map((a) => ({ t: hhmm(a.at), a: prettyAct(a), u: a.actor || "system" }));
+              adminData.activity = actRows.slice(0, 8).map((a) => ({ t: hhmm(a.at), u: a.actor || "system", a: prettyAct(a) }));
+              adminData.authLog = actRows.filter((a) => /refund|void|elevate|discount|over_limit/.test(a.action || ""))
+                .slice(0, 6).map((a) => ({ t: hhmm(a.at), a: prettyAct(a), by: a.actor ? ("by " + a.actor) : "system",
+                  st: /flag|over_limit|declin/.test(a.action || "") ? "Flagged" : "Approved",
+                  k: /flag|over_limit|declin/.test(a.action || "") ? "bad" : "ok" }));
+              adminData.alerts = actRows.slice(0, 6).map((a) => ({ a: prettyAct(a), time: hhmm(a.at),
+                k: /flag|over_limit|declin|void/.test(a.action || "") ? "warn" : /refund/.test(a.action || "") ? "info" : "reg" }));
             }
           });
         } catch (e) { recordError(base + " data inject", e); }
