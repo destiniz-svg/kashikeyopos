@@ -1612,16 +1612,21 @@ if (fs.existsSync(protoFile)) {
   };
   // Map an org's live catalogue into the prototype's MENU shape ({id,cat,en,dv,
   // price,img}). Shared by the register (tiles) and the admin Menu section.
+  // Map a product's stored add-ons ({name, price-in-laari}) into the till/guest
+  // modifier-modal shape ({id, en, price-in-MVR}) the prototype expects.
+  const liveMods = (addons) => (Array.isArray(addons) ? addons : [])
+    .map((a, i) => ({ id: "a" + i, en: String((a && a.name) || ""), price: (Number(a && a.price) || 0) / 100 }))
+    .filter((a) => a.en);
   const liveMenu = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name && !p.hidden)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons) }));
   // Full catalogue for the admin Menu manager — includes hidden items and
   // carries the hidden/soldOut flags so the admin can show/restore them.
   const liveMenuAll = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", hidden: !!p.hidden, soldOut: !!p.soldOut, custom: /^c_/.test(String(p.id)) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", hidden: !!p.hidden, soldOut: !!p.soldOut, custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
