@@ -1598,30 +1598,65 @@ if (fs.existsSync(protoFile)) {
     }
     return protoCache[file];
   };
+  // Map an org's live catalogue into the prototype's MENU shape ({id,cat,en,dv,
+  // price,img}). Shared by the register (tiles) and the admin Menu section.
+  const liveMenu = (rows) => rows
+    .map((r) => ({ id: r.id, ...(r.data || {}) }))
+    .filter((p) => p.name && !p.hidden)
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "" }));
+  // Map live customer entities (+ order aggregation) into the admin cockpit's
+  // custData shape. tier is derived from loyalty points; visits/spend come from
+  // the customer's real orders.
+  const liveCustData = (custRows, orderRows) => {
+    const byCust = {};
+    for (const r of orderRows) {
+      const o = r.data || {}; const cid = String(o.customerId || o.custId || "");
+      if (!cid) continue;
+      const g = byCust[cid] || (byCust[cid] = { n: 0, s: 0 });
+      g.n += 1; g.s += Number(o.total) || 0;
+    }
+    return custRows.map((r) => {
+      const d = r.data || {}; const pts = Number(d.points) || 0;
+      const agg = byCust[String(d.id || r.id)] || { n: 0, s: 0 };
+      return {
+        n: d.name || "", ph: d.phone || "",
+        tier: pts >= 500 ? "Gold" : pts >= 200 ? "Silver" : "Bronze",
+        visits: agg.n, spend: Math.round(agg.s / 100),
+        joined: "", allergy: "—", diet: "—", note: "",
+      };
+    }).filter((c) => c.n);
+  };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
   // redirect:false so `base` and `base/` reach the dynamic handler while
   // support.js / artwork / fonts / vendor are served statically. `withMenu`
-  // injects the live product catalogue + per-item images into window.__ksMenu
-  // and assetUrl (the register); the admin cockpit renders its own demo data
-  // for now (real data wiring lands section by section next).
-  const serveProto = ({ base, file, withMenu }) => {
+  // injects the live catalogue into window.__ksMenu (register tiles + admin Menu
+  // section); `withAdmin` injects real customers into window.__ksAdmin. Sections
+  // without injected data fall back to the prototype's own demo data.
+  const serveProto = ({ base, file, withMenu, withAdmin }) => {
     app.use(base, express.static(protoDir, { index: false, redirect: false, maxAge: "1h" }));
     const vendor = {
       "https://unpkg.com/react@18.3.1/umd/react.production.min.js": base + "/vendor/react.production.min.js",
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": base + "/vendor/react-dom.production.min.js",
     };
     app.get(new RegExp("^" + base.replace(/[/]/g, "\\$&") + "(\\/.*)?$"), requireAppSession, async (req, res) => {
-      let menu = [];
-      if (withMenu) {
+      let menu = []; const adminData = {};
+      if (withMenu || withAdmin) {
         try {
           const orgId = await resolveAppSession(req);
-          const rows = await withOrg(orgId, (c) => c.query(
-            "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]));
-          menu = rows.rows
-            .map((r) => ({ id: r.id, ...(r.data || {}) }))
-            .filter((p) => p.name && !p.hidden)
-            .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, img: p.img || "", desc: p.desc || "" }));
-        } catch (e) { recordError(base + " menu inject", e); }
+          await withOrg(orgId, async (c) => {
+            if (withMenu) {
+              menu = liveMenu((await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
+            }
+            if (withAdmin) {
+              const custRows = (await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
+              const orderRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false", [orgId])).rows;
+              adminData.custData = liveCustData(custRows, orderRows);
+            }
+          });
+        } catch (e) { recordError(base + " data inject", e); }
       }
       // window.__resources drives both React vendoring (cdnScriptFor) and the
       // prototype's assetUrl(id) = __resources['art-'+id] image lookup, so we
@@ -1634,6 +1669,7 @@ if (fs.existsSync(protoFile)) {
       // trailing slash. Injected right after <head> so it governs every later ref.
       const inject = `\n<base href="${base}/">\n<script>` +
         (withMenu ? `window.__ksMenu=${enc(menu)};` : "") +
+        (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
         `window.__resources=Object.assign(window.__resources||{},${enc(resources)});</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
       res.set("Content-Security-Policy", PROTO_CSP);
@@ -1642,7 +1678,7 @@ if (fs.existsSync(protoFile)) {
   };
   serveProto({ base: "/app2", file: "index.html", withMenu: true });   // Register / till
   if (fs.existsSync(path.join(protoDir, "admin.html"))) {
-    serveProto({ base: "/admin2", file: "admin.html", withMenu: false }); // Back-office cockpit
+    serveProto({ base: "/admin2", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit
   }
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only

@@ -1205,7 +1205,7 @@ class Component extends DCLogic {
       year:{word:'year',rev:1924610.00,orders:22140,gpVal:660140.00,gpPct:'34.3%',aov:86.93,d:['+18.4%','+16.1%','+3.9%','+2.2%'],items:87200,basket:'3.9',
         rc:[90,110,140,120,100,160,210,180,150,240,300,260,180,150,130,190,250,220,170,150,280,340,300,210,170,140,200,260,230,190,320,380],xl:['Jan','Mar','May','Jul','Sep','Nov'],peakN:'Dec & Ramadan spikes'}
     };
-    this.MENU=[
+    this.MENU=(typeof window!=='undefined'&&window.__ksMenu&&window.__ksMenu.length)?window.__ksMenu:[
       {id:'gulha',cat:'hedhikaa',en:'Gulha',dv:'ގުޅަ',price:5},{id:'bajiya',cat:'hedhikaa',en:'Bajiya',dv:'ބަޖިޔާ',price:5},{id:'kavaabu',cat:'hedhikaa',en:'Kavaabu',dv:'ކަވާބު',price:7},{id:'kboakibaa',cat:'hedhikaa',en:'Kulhi Boakibaa',dv:'ކުޅިބޯކިބާ',price:10},{id:'masroshi',cat:'hedhikaa',en:'Masroshi',dv:'މަސްރޮށި',price:8},{id:'cutlets',cat:'hedhikaa',en:'Cutlets',dv:'ކަޓްލަސް',price:6},
       {id:'mashuni',cat:'mains',en:'Mas Huni & Roshi',dv:'މަސްހުނި ރޮށި',price:30},{id:'garudhiya',cat:'mains',en:'Garudhiya Set',dv:'ގަރުދިޔަ',price:45},{id:'riha',cat:'mains',en:'Kukulhu Riha',dv:'ކުކުޅު ރިހަ',price:55},{id:'friedrice',cat:'mains',en:'Fried Rice',dv:'ފްރައިޑް ރައިސް',price:50},
       {id:'kalhusai',cat:'drinks',en:'Kalhu Sai',dv:'ކަޅުސައި',price:8},{id:'kirusai',cat:'drinks',en:'Kiru Sai',dv:'ކިރުސައި',price:12},{id:'coffee',cat:'drinks',en:'Coffee',dv:'ކޮފީ',price:30},{id:'passion',cat:'drinks',en:'Passion Juice',dv:'ޕެޝަން ޖޫސް',price:35},{id:'kurumba',cat:'drinks',en:'Kurumba',dv:'ކުރުނބާ',price:40},
@@ -1251,7 +1251,7 @@ class Component extends DCLogic {
         {n:'Imran Hassan',role:'Rider',stt:'On shift',stk:'ok',shift:'11:00–19:00',sales:0,orders:22},{n:'Mariyam Zahir',role:'Manager',stt:'Off',stk:'mut',shift:'—',sales:0,orders:0},
         {n:'Nashid Moosa',role:'Rider',stt:'Break',stk:'warn',shift:'10:00–18:00',sales:0,orders:15}
       ],
-      custData:[
+      custData:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.custData&&window.__ksAdmin.custData.length)?window.__ksAdmin.custData:[
         {n:'Hassan Fulhu',ph:'+960 777-1122',tier:'Gold',visits:64,spend:8420,joined:'Mar 2024',allergy:'Shellfish',diet:'—',note:'Prefers window seat · no ice in drinks.'},
         {n:'Aishath Naeem',ph:'+960 991-8842',tier:'Silver',visits:52,spend:6180,joined:'Jun 2024',allergy:'Peanuts',diet:'Vegetarian Tue & Thu',note:'Mas Huni extra spicy, always.'},
         {n:'Ibrahim Shakir',ph:'+960 913-4410',tier:'Silver',visits:41,spend:4870,joined:'Aug 2024',allergy:'—',diet:'Halal (default)',note:'Corporate — invoice monthly to Dhiraagu.'},
