@@ -1695,6 +1695,16 @@ if (fs.existsSync(protoFile)) {
                 time: new Date(Number(s.at) || Date.now()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
                 items: qtyOf(s), staff: "", total: Math.round((Number(s.total) || 0) / 100), st: "Paid",
               }));
+              // Dashboard LIVE ORDERS pulse (used when no live cross-tab bridge).
+              const ago = (t) => {
+                const m = Math.max(0, Math.round((Date.now() - (Number(t) || 0)) / 60000));
+                return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60) + "h ago";
+              };
+              adminData.pulse = saleRows.slice(0, 3).map((s) => ({
+                ch: s.orderType === "delivery" ? "DELIV" : s.orderType === "dine" ? "POS" : "POS",
+                no: String(s.no || "").replace(/^.*-/, "") || String(s.id || "").slice(-4),
+                ago: ago(s.at), amt: "MVR " + Math.round((Number(s.total) || 0) / 100),
+              }));
               // Receivables: customers carrying an outstanding balance.
               const dfmt = (t) => t ? new Date(Number(t)).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—";
               adminData.recv = custRows.map((r) => r.data || {}).filter((d) => (Number(d.balance) || 0) > 0)

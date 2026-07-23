@@ -1827,7 +1827,7 @@ class Component extends DCLogic {
       ringOff:(289-289*gp/100).toFixed(1),goalPct:Math.round(gp)+'%',goalF:me.fm(goal,0),
       spkLine:me.spk(g.rc,'line'),spkArea:me.spk(g.rc,'area'),
       ordersV:(s.live&&s.range==='today')?me.fi(s.live.orders):me.fi(an.orders),ordDelta:g.d[1],ordDc:dcf(g.d[1]),aovV:me.fm(an.aov),basket:g.basket,
-      pulse:(s.live&&s.live.log&&s.live.log.length)?s.live.log.slice(0,3).map(o=>({ch:o.chK==='deliv'?'DELIV':(o.ch&&o.ch.indexOf('QR')>=0?'QR':'POS'),no:o.no,ago:o.time,amt:me.fm(o.total,0)})):[{ch:'DINE',no:'0231',ago:'2 min ago',amt:'MVR 214'},{ch:'QR·T4',no:'0230',ago:'5 min ago',amt:'MVR 96'},{ch:'DELIV',no:'0229',ago:'8 min ago',amt:'MVR 410'}],
+      pulse:(s.live&&s.live.log&&s.live.log.length)?s.live.log.slice(0,3).map(o=>({ch:o.chK==='deliv'?'DELIV':(o.ch&&o.ch.indexOf('QR')>=0?'QR':'POS'),no:o.no,ago:o.time,amt:me.fm(o.total,0)})):(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pulse&&window.__ksAdmin.pulse.length)?window.__ksAdmin.pulse:[{ch:'DINE',no:'0231',ago:'2 min ago',amt:'MVR 214'},{ch:'QR·T4',no:'0230',ago:'5 min ago',amt:'MVR 96'},{ch:'DELIV',no:'0229',ago:'8 min ago',amt:'MVR 410'}],
       peak,peakNote:g.peakN,
       tabTrend:s.tab==='trend',tabCat:s.tab==='cat',tabType:s.tab==='type',
       chartTitle:s.tab==='trend'?'Revenue & orders trend':s.tab==='cat'?'Revenue by category':'Orders by channel',
