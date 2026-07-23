@@ -77,15 +77,15 @@ button[disabled],button:disabled{cursor:not-allowed}
 </helmet>
 <div style="{{ rootStyle }}">
 <header style="{{ headerStyle }}">
-    <div style="display:flex;align-items:center;gap:8px;flex:none">
-      <div style="width:30px;height:30px;border-radius:9px;overflow:hidden;display:grid;place-items:center;box-shadow:var(--shadow);background:linear-gradient(135deg,var(--coral),#9A3418)">
+    <div style="{{ brandBoxStyle }}">
+      <div style="width:30px;height:30px;flex:none;border-radius:9px;overflow:hidden;display:grid;place-items:center;box-shadow:var(--shadow);background:linear-gradient(135deg,var(--coral),#9A3418)">
         <sc-if value="{{ hasBrandLogo }}" hint-placeholder-val="{{ false }}"><span style="display:contents">{{ brandLogoImg }}</span></sc-if>
         <sc-if value="{{ noBrandLogo }}" hint-placeholder-val="{{ true }}"><span style="color:#FFFFFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:15px">{{ brandInitial }}</span></sc-if>
       </div>
-      <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;letter-spacing:-.01em">{{ brandName }}</span>
-      <span style="font-size:11.5px;font-weight:700;color:var(--ink2);background:var(--sur2);border-radius:8px;padding:4px 10px">Malé</span>
+      <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{ brandName }}</span>
+      <span style="flex:none;font-size:11.5px;font-weight:700;color:var(--ink2);background:var(--sur2);border-radius:8px;padding:4px 10px;white-space:nowrap">Malé</span>
     </div>
-    <div style="flex:0 0 28px"></div>
+    <div style="{{ spacerStyle }}"></div>
 <nav style="{{ navStyle }}">
   <sc-for list="{{ railItems }}" as="ni" hint-placeholder-count="7">
     <button onClick="{{ ni.tap }}" style="{{ ni.btnStyle }}" style-active="transform:scale(.92)">
@@ -94,7 +94,7 @@ button[disabled],button:disabled{cursor:not-allowed}
     </button>
   </sc-for>
 </nav>
-    <div style="flex:0 0 28px"></div>
+    <div style="{{ spacerStyle }}"></div>
     <div style="font-size:12.5px;color:var(--ink2);font-weight:600;font-variant-numeric:tabular-nums;display:{{ clockDisp }}">{{ clock }}</div>
     <button onClick="{{ toggleOnline }}" style="border:0;cursor:pointer;border-radius:999px;padding:7px;display:flex;align-items:center;justify-content:center;background:{{ net.bg }};color:{{ net.c }}" style-active="transform:scale(.9)" title="{{ net.label }}">
       <span style="width:9px;height:9px;border-radius:99px;background:currentColor;animation:{{ net.anim }}"></span>
@@ -2346,7 +2346,9 @@ class Component extends DCLogic {
       bodyRowStyle:{display:'flex',flexDirection:mob?'column-reverse':'row',flex:'1 1 auto',minHeight:0,overflow:'hidden'},
       navStyle:mob?{position:'fixed',left:0,right:0,bottom:0,zIndex:115,display:'flex',flexDirection:'row',justifyContent:'space-around',alignItems:'stretch',gap:2,overflow:'hidden',padding:'6px 6px calc(6px + env(safe-area-inset-bottom))',background:'var(--sur)',WebkitBackdropFilter:'blur(20px) saturate(1.6)',backdropFilter:'blur(20px) saturate(1.6)',borderTop:'1px solid var(--line)',boxShadow:'0 -8px 24px -14px rgba(0,0,0,.35)'}:{flex:'1 1 auto',minWidth:0,display:'flex',flexDirection:'row',flexWrap:'nowrap',justifyContent:'space-around',alignItems:'center',gap:2,padding:'3px 8px',maxWidth:'none',background:'var(--sur)',border:'1px solid var(--line)',borderRadius:22,boxShadow:'var(--shadow)'},
       brandDisp:mob?'none':'flex',
-      headerStyle:{position:'relative',zIndex:100,minHeight:mob?48:60,flex:'none',display:'flex',alignItems:'center',flexWrap:mob?'wrap':'nowrap',gap:mob?6:10,padding:mob?'6px 10px':'8px 20px',marginTop:0,background:'var(--sur)',borderBottom:'1px solid var(--line)'},
+      headerStyle:{position:'relative',zIndex:100,minHeight:mob?48:60,flex:'none',display:'flex',alignItems:'center',flexWrap:'nowrap',gap:mob?6:10,padding:mob?'6px 10px':'8px 20px',marginTop:0,background:'var(--sur)',borderBottom:'1px solid var(--line)'},
+      brandBoxStyle:mob?'display:flex;align-items:center;gap:8px;flex:1 1 auto;min-width:0':'display:flex;align-items:center;gap:8px;flex:none',
+      spacerStyle:mob?'flex:0 0 0px;width:0':'flex:0 0 28px',
       clockDisp:'none',
       cartPanelStyle,
       cartBackdropOn:mob&&s.cartSheet,closeCartSheet:()=>me.setState({cartSheet:false}),
