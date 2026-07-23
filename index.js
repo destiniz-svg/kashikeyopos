@@ -1764,6 +1764,7 @@ if (fs.existsSync(protoFile)) {
         `window.__resources=Object.assign(window.__resources||{},${enc(resources)});${navIconsJs}</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
       res.set("Content-Security-Policy", PROTO_CSP);
+      res.set("Cache-Control", "no-cache");
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
   };
