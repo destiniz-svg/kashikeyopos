@@ -1667,13 +1667,13 @@ if (fs.existsSync(protoFile)) {
   const liveTickets = (ordRows) => ordRows
     .filter((o) => !finalStatuses.has(String(o.status || "new")) && String(o.status) !== "ready" && !o.noKitchen)
     .slice(0, 12)
-    .map((o) => ({ no: String(o.no || "").replace(/^ORD-/, ""), at: Number(o.createdAt) || Date.now(),
+    .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, ""), at: Number(o.createdAt) || Date.now(),
       src: o.source === "qr" ? ("QR" + (o.table && o.table !== "Pickup" && o.table !== "Delivery" ? " · " + o.table : "")) : "POS",
       station: "hot", items: (o.items || []).map((li) => ({ q: Number(li.qty || li.q) || 1, n: li.name || li.n || "" })) }));
   const liveDeliv = (ordRows) => ordRows
     .filter((o) => o.otype === "delivery" && !finalStatuses.has(String(o.status || "new")))
     .slice(0, 12)
-    .map((o) => ({ no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", zone: o.zone || "Malé",
+    .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", zone: o.zone || "Malé",
       items: (o.items || []).map((li) => (Number(li.qty || li.q) || 1) + "× " + (li.name || li.n || "")).join(" · "),
       rider: "—", st: String(o.status) === "ready" ? 1 : 0 }));
   // Collect the register read-path payload (window.__ksReg) for an org. Shared
@@ -1847,6 +1847,35 @@ if (fs.existsSync(protoFile)) {
     const data = await withOrg(orgId, (c) => collectRegData(c, orgId));
     res.set("Cache-Control", "no-store");
     res.json(data);
+  }));
+  // Register write-path: advance a live order's status (KDS bump, delivery
+  // advance). Server-side read-modify-write preserves every other order field,
+  // bumps rowver and pokes SSE so the till, back office and other /app2 polls
+  // all see it. Cookie-authed (same session as the page).
+  const ORDER_STATUSES = new Set(["new", "preparing", "ready", "completed", "cancelled"]);
+  app.post("/api/app2/order/:id/status", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const id = String(req.params.id || "");
+    const status = String((req.body || {}).status || "");
+    if (!ORDER_STATUSES.has(status)) return res.status(400).json({ error: "bad status" });
+    const rowver = await withOrg(orgId, async (c) => {
+      const cur = await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cur.rowCount) return null;
+      const data = cur.rows[0].data || {};
+      data.status = status;
+      data.updatedAt = Date.now();
+      if (status === "ready") data.readyAt = Date.now();
+      if (status === "completed") { data.completedAt = Date.now(); data.settledAt = Date.now(); }
+      const r = await c.query(
+        "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver",
+        [orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    if (rowver == null) return res.status(404).json({ error: "order not found" });
+    poke(orgId, rowver);
+    res.json({ ok: true });
   }));
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only
