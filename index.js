@@ -1654,6 +1654,13 @@ if (fs.existsSync(protoFile)) {
               const orderRows = (await c.query(
                 "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false", [orgId])).rows;
               adminData.custData = liveCustData(custRows, orderRows);
+              // Inventory stock levels from the real ingredients ledger.
+              const ingRows = (await c.query(
+                "SELECT name, current_stock, base_unit, min_stock, avg_cost FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+              adminData.stock = ingRows.map((i) => ({
+                n: i.name, oh: Number(i.current_stock) || 0, unit: i.base_unit || "",
+                par: Number(i.min_stock) || 0, cost: Math.round((Number(i.avg_cost) || 0) / 100),
+              }));
             }
           });
         } catch (e) { recordError(base + " data inject", e); }

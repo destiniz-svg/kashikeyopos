@@ -1221,7 +1221,7 @@ class Component extends DCLogic {
       an:{rev:0,orders:0,gpVal:0,aov:0,items:0},toast:null,
       open:{sales:false,inventory:false,proc:false,reports:false},active:'dash',vw:typeof window!=='undefined'?window.innerWidth:1440,
       mdl:null,
-      stock:[
+      stock:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.stock&&window.__ksAdmin.stock.length)?window.__ksAdmin.stock:[
         {n:'Skipjack tuna',oh:18,unit:'kg',par:25,cost:120},{n:'Rihaakuru',oh:6,unit:'kg',par:8,cost:140},
         {n:'Onion',oh:4,unit:'kg',par:12,cost:30},{n:'Coconut',oh:22,unit:'pcs',par:30,cost:15},
         {n:'Flour',oh:14,unit:'kg',par:20,cost:20},{n:'Curry leaves',oh:0.3,unit:'kg',par:1,cost:80},
