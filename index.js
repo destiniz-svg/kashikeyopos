@@ -1695,6 +1695,22 @@ if (fs.existsSync(protoFile)) {
                 time: new Date(Number(s.at) || Date.now()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
                 items: qtyOf(s), staff: "", total: Math.round((Number(s.total) || 0) / 100), st: "Paid",
               }));
+              // Receivables: customers carrying an outstanding balance.
+              const dfmt = (t) => t ? new Date(Number(t)).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : "—";
+              adminData.recv = custRows.map((r) => r.data || {}).filter((d) => (Number(d.balance) || 0) > 0)
+                .sort((a, b) => (Number(b.balance) || 0) - (Number(a.balance) || 0))
+                .map((d) => {
+                  const bal = Math.round((Number(d.balance) || 0) / 100);
+                  return { n: d.name || "", c: d.phone || "Account", bal, age: "—", last: dfmt(d.lastOrderAt), stk: bal >= 1000 ? "bad" : bal >= 300 ? "warn" : "ok" };
+                });
+              // Procurement > Expenses from the real expense ledger.
+              const expRows = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 40", [orgId])).rows.map((r) => r.data || {});
+              adminData.expenses = expRows.map((e) => ({
+                d: dfmt(e.t), cat: e.cat || "Purchases", v: e.supplier || e.userName || "—",
+                m: e.paidFrom === "cash" ? "Cash" : e.paidFrom === "card" ? "Card" : "Transfer",
+                amt: Math.round((Number(e.amount) || 0) / 100), ap: "Approved",
+              }));
             }
           });
         } catch (e) { recordError(base + " data inject", e); }

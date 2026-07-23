@@ -1232,7 +1232,7 @@ class Component extends DCLogic {
         {d:'Today',n:'Garudhiya (prep)',qty:2.1,unit:'kg',rs:'Expiry',cost:78},{d:'Today',n:'UHT milk',qty:3,unit:'L',rs:'Spoilage',cost:54},
         {d:'Yest',n:'Roshi',qty:12,unit:'pcs',rs:'Spillage',cost:24},{d:'Yest',n:'Salad mix',qty:1.4,unit:'kg',rs:'Expiry',cost:42}
       ],
-      expenses:[
+      expenses:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.expenses&&window.__ksAdmin.expenses.length)?window.__ksAdmin.expenses:[
         {d:'18 Oct',cat:'Produce',v:'Malé Local Market',m:'Cash',amt:1240,ap:'Approved'},{d:'18 Oct',cat:'Dairy',v:'Lily Foods',m:'Transfer',amt:860,ap:'Approved'},
         {d:'17 Oct',cat:'Gas',v:'Villa Gas',m:'Card',amt:450,ap:'Approved'},{d:'17 Oct',cat:'Packaging',v:'EcoPack MV',m:'Transfer',amt:620,ap:'Pending'},
         {d:'16 Oct',cat:'Fish',v:'Ensis Fisheries',m:'Cash',amt:2100,ap:'Pending'}
@@ -1487,7 +1487,7 @@ class Component extends DCLogic {
       {no:'PO-056',v:'Ensis Fisheries',items:4,total:5600,st:'Draft',stk:'mut'}
     ].map(r=>Object.assign({no:r.no,v:r.v,items:String(r.items),totalF:f(r.total)},pill(r.st,r.stk)));
     // ---- RECEIVABLES ----
-    const recvSrc=[
+    const recvSrc=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.recv&&window.__ksAdmin.recv.length)?window.__ksAdmin.recv:[
       {n:'Hassan Fulhu',c:'+960 777-1122',bal:560,age:'31 d',last:'12 Oct',stk:'bad'},{n:'Villa Hotels',c:'Accounts dept',bal:2400,age:'12 d',last:'16 Oct',stk:'warn'},
       {n:'Aishath Naseer',c:'+960 991-8842',bal:180,age:'6 d',last:'18 Oct',stk:'ok'},{n:'MTCC Staff',c:'Corporate',bal:1320,age:'22 d',last:'14 Oct',stk:'warn'}
     ];
