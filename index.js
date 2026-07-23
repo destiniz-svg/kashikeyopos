@@ -1828,6 +1828,47 @@ if (fs.existsSync(protoFile)) {
                 amt: Math.round((Number(e.amount) || 0) / 100), ap: "Approved",
               }));
               adminData.reports = liveReports(saleRows, expRows);
+              // Procurement > Suppliers from the real suppliers table.
+              const supRows = (await c.query(
+                "SELECT id, name, phone, email, notes FROM suppliers WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+              adminData.suppliers = supRows.map((v) => ({
+                id: v.id, n: v.name, cat: v.notes || "General", c: v.phone || v.email || "—",
+                terms: "—", out: 0, k: "ok",
+              }));
+              // Procurement > Purchase Orders from the till's pords sync stream.
+              const poRows = (await c.query(
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='pords' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 40", [orgId])).rows;
+              adminData.pos = poRows.map((x) => {
+                const d = x.data || {}; const st = d.status === "received" ? "Received" : d.status === "draft" ? "Draft" : "Open";
+                return { no: d.no || String(x.id).slice(-6), v: d.supplier || "Unassigned",
+                  items: (d.items || []).length, total: Math.round((Number(d.total) || 0) / 100),
+                  st, stk: st === "Received" ? "ok" : st === "Draft" ? "mut" : "info" };
+              });
+              // Persisted cockpit config (Configurations / Payments / Notifications
+              // / System / Store / Kitchen toggles) + the store profile it lives on.
+              const setRow = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
+              const setData = setRow ? (setRow.data || {}) : {};
+              adminData.cfg = setData.adminCfg || {};
+              adminData.store = {
+                name: setData.storeName || setData.name || "", currency: setData.currency || "MVR",
+                gst: Number(setData.gst != null ? setData.gst : setData.gstRate) || 0, svc: Number(setData.svcCharge) || 0,
+              };
+              // Outlets from the real stores table (multi-store).
+              const storeRows = (await c.query(
+                "SELECT id, code, name, address, active FROM stores WHERE org_id=$1 ORDER BY created_at", [orgId])).rows;
+              adminData.outlets = storeRows.map((o) => ({ id: o.id, n: o.name, code: o.code, addr: o.address || "", active: !!o.active }));
+              // Payment-method volumes from today's real sales (payMix on reports).
+              adminData.payMix = (adminData.reports && adminData.reports.today && adminData.reports.today.payMix) || { cash: 0, card: 0, transfer: 0, tab: 0 };
+              // System Admin > audit log from the real activity_log table.
+              try {
+                const auditRows = (await c.query(
+                  "SELECT at, actor, action, ref FROM activity_log WHERE org_id=$1 ORDER BY at DESC LIMIT 12", [orgId])).rows;
+                adminData.audit = auditRows.map((a) => ({
+                  t: new Date(a.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+                  a: (a.action || "").replace(/[._]/g, " ") + (a.ref ? " · " + a.ref : ""), u: a.actor || "system",
+                }));
+              } catch (e) { /* activity_log optional */ }
             }
           });
         } catch (e) { recordError(base + " data inject", e); }
@@ -1984,6 +2025,32 @@ if (fs.existsSync(protoFile)) {
     if (out == null) return res.status(404).json({ error: "customer not found" });
     poke(orgId, out.rowver);
     res.json({ ok: true, balance: out.balance });
+  }));
+  // Back-office cockpit config store: Configurations, Payments, Notifications,
+  // System Admin, Online Store and Kitchen-routing toggles all persist here as
+  // a single `adminCfg` blob on the settings entity, kept apart from the till's
+  // own settings keys (currency/gst/pin…). Accepts a partial patch and shallow-
+  // merges it, so each section can save just its own slice.
+  app.post("/api/app2/config", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const patch = (req.body && req.body.cfg && typeof req.body.cfg === "object") ? req.body.cfg : null;
+    if (!patch) return res.status(400).json({ error: "no config" });
+    const out = await withOrg(orgId, async (c) => {
+      const cur = (await c.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
+      const data = Object.assign({}, cur ? cur.data : {});
+      data.adminCfg = Object.assign({}, data.adminCfg || {}, patch);
+      let r;
+      if (cur) {
+        r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id=$2 RETURNING rowver", [orgId, cur.id, JSON.stringify(data)]);
+      } else {
+        r = await c.query("INSERT INTO entities (org_id, kind, id, data, rowver) VALUES ($1,'settings','settings',$2,nextval('entities_rowver_seq')) RETURNING rowver", [orgId, JSON.stringify(data)]);
+      }
+      return { rowver: Number(r.rows[0].rowver), adminCfg: data.adminCfg };
+    });
+    poke(orgId, out.rowver);
+    res.json({ ok: true, adminCfg: out.adminCfg });
   }));
 }
 /* Post-social-login onboarding: name the store, pick currency + PIN. Only

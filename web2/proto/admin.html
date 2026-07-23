@@ -633,7 +633,7 @@ button[disabled],button:disabled{cursor:not-allowed}
         <sc-if value="{{ payMethodsView }}" hint-placeholder-val="{{ true }}">
           <div style="font-size:12px;font-weight:700;color:var(--ink2)">Accept however your customers pay — cash, bank cards, transfers and digital wallets.</div>
           <div style="display:grid;grid-template-columns:{{ payCols }};gap:12px">
-            <sc-for list="{{ payMethods }}" as="m" hint-placeholder-count="6"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px"><span style="width:6px;height:34px;flex:none;border-radius:99px;background:{{ m.dotC }}"></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">{{ m.n }}</div><div style="font-size:10.5px;color:var(--ink2);font-weight:700;font-variant-numeric:tabular-nums">{{ m.volLbl }}</div></div><span style="font-size:10px;font-weight:800;border-radius:999px;padding:4px 10px;background:{{ m.stBg }};color:{{ m.stC }};white-space:nowrap">{{ m.st }}</span></div></sc-for>
+            <sc-for list="{{ payMethods }}" as="m" hint-placeholder-count="6"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 16px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px"><span style="width:6px;height:34px;flex:none;border-radius:99px;background:{{ m.dotC }}"></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">{{ m.n }}</div><div style="font-size:10.5px;color:var(--ink2);font-weight:700;font-variant-numeric:tabular-nums">{{ m.volLbl }}</div></div><button onClick="{{ m.tap }}" style="border:0;font-size:10px;font-weight:800;border-radius:999px;padding:4px 10px;background:{{ m.stBg }};color:{{ m.stC }};white-space:nowrap;cursor:pointer" style-active="transform:scale(.94)">{{ m.st }}</button></div></sc-for>
           </div>
         </sc-if>
         <sc-if value="{{ payLinksView }}" hint-placeholder-val="{{ false }}">
@@ -816,7 +816,7 @@ button[disabled],button:disabled{cursor:not-allowed}
             <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
               <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2);margin-bottom:12px">REQUIRES AUTHORIZATION</div>
               <div style="display:flex;flex-direction:column;gap:9px">
-                <sc-for list="{{ authRules }}" as="a" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:11px;padding:10px 12px;border:1px solid var(--line);border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800">{{ a.n }}</div><div style="font-size:11px;color:var(--ink2);font-weight:700">{{ a.need }}</div></div><span style="width:36px;height:20px;flex:none;border-radius:99px;background:{{ a.trackBg }};position:relative"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:99px;background:#fff;transform:{{ a.knobX }};transition:transform .18s"></span></span></div></sc-for>
+                <sc-for list="{{ authRules }}" as="a" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:11px;padding:10px 12px;border:1px solid var(--line);border-radius:12px"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800">{{ a.n }}</div><div style="font-size:11px;color:var(--ink2);font-weight:700">{{ a.need }}</div></div><button onClick="{{ a.tap }}" style="width:36px;height:20px;flex:none;border:0;border-radius:99px;background:{{ a.trackBg }};position:relative;cursor:pointer" style-active="transform:scale(.96)"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:99px;background:#fff;transform:{{ a.knobX }};transition:transform .18s"></span></button></div></sc-for>
               </div>
             </div>
             <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
@@ -1116,6 +1116,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 
       <sc-if value="{{ isSupplier }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:13px">
         <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">SUPPLIER NAME</div><input value="{{ mdlSupN }}" onInput="{{ setMdlSupN }}" placeholder="e.g. Fresh Farms MV" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div>
+        <div style="display:flex;gap:11px"><div style="flex:1"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">CONTACT</div><input value="{{ mdlSupC }}" onInput="{{ setMdlSupC }}" placeholder="Phone or email" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div><div style="flex:1"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">CATEGORY</div><input value="{{ mdlSupCat }}" onInput="{{ setMdlSupCat }}" placeholder="e.g. Seafood" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div></div>
         <button onClick="{{ doAddSupplier }}" style="border:0;border-radius:12px;padding:13px;background:var(--coralgrad);color:#fff;font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">Add supplier</button>
       </div></sc-if>
 
@@ -1232,8 +1233,9 @@ class Component extends DCLogic {
       {id:'g_roshi',name:'Roshi & rice add-ons',applies:'Mas Huni, Garudhiya',opts:[['Extra roshi',5],['Extra rice',5],['Githeyo mirus',8],['Lime & mirus',0]]},
       {id:'g_coffee',name:'Hot drink options',applies:'Coffee, Kalhu Sai',opts:[['Iced',5],['Extra shot',8],['Less sugar',0],['Extra strong',0]]}
     ];
-    this.state={dark:false,acct:false,lang:'en',who:'naseem',range:'today',tab:'trend',navOpen:false,live:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:{sales:0,inventory:0,proc:0,reports:0},cfg:{autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},taxRate:'ggst',
-      store:{name:'Kashikeyo Café',legal:'Kashikeyo Pvt Ltd',tin:'1080527GST001',greg:'GST-1080527',activity:'Café & restaurant',phone:'+960 330 1080',email:'hello@kashikeyo.mv',addr:'Majeedhee Magu, H. Fann',island:'Malé',atoll:'Kaafu, Maldives',footer:'Thank you! · ޝުކުރިއްޔާ',logo:null},
+    this.state={dark:false,acct:false,lang:'en',who:'naseem',range:'today',tab:'trend',navOpen:false,live:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:{sales:0,inventory:0,proc:0,reports:0},cfg:Object.assign({autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.cfg)||{})),taxRate:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.taxRate)||'ggst'),
+      payOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.payOff)||{}),ntog:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.ntog)||{}),authOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.authOff)||{}),cfgStaffAdd:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]),
+      store:Object.assign({name:'Kashikeyo Café',legal:'Kashikeyo Pvt Ltd',tin:'1080527GST001',greg:'GST-1080527',activity:'Café & restaurant',phone:'+960 330 1080',email:'hello@kashikeyo.mv',addr:'Majeedhee Magu, H. Fann',island:'Malé',atoll:'Kaafu, Maldives',footer:'Thank you! · ޝުކުރިއްޔާ',logo:null},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.store&&window.__ksAdmin.store.name)?{name:window.__ksAdmin.store.name}:{}),((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.store)||{})),
       an:{rev:0,orders:0,gpVal:0,aov:0,items:0},toast:null,
       open:{sales:false,inventory:false,proc:false,reports:false},active:'dash',vw:typeof window!=='undefined'?window.innerWidth:1440,
       mdl:null,
@@ -1262,11 +1264,11 @@ class Component extends DCLogic {
         {no:'TR-022',item:'UHT milk',qty:'24 L',from:'Hulhumalé',to:'Malé',st:'In transit'},
         {no:'TR-021',item:'Rice',qty:'40 kg',from:'Central Store',to:'Villimalé',st:'Received'}
       ],trSeq:25,poSeq:59,
-      staff:[
+      staff:(((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]).concat([
         {n:'Ahmed Rasheed',role:'Cashier',stt:'On shift',stk:'ok',shift:'09:00–17:00',sales:4210,orders:38},{n:'Sana Ali',role:'Cashier',stt:'On shift',stk:'ok',shift:'12:00–20:00',sales:3860,orders:31},
         {n:'Imran Hassan',role:'Rider',stt:'On shift',stk:'ok',shift:'11:00–19:00',sales:0,orders:22},{n:'Mariyam Zahir',role:'Manager',stt:'Off',stk:'mut',shift:'—',sales:0,orders:0},
         {n:'Nashid Moosa',role:'Rider',stt:'Break',stk:'warn',shift:'10:00–18:00',sales:0,orders:15}
-      ],
+      ])),
       custData:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.custData&&window.__ksAdmin.custData.length)?window.__ksAdmin.custData:[
         {n:'Hassan Fulhu',ph:'+960 777-1122',tier:'Gold',visits:64,spend:8420,joined:'Mar 2024',allergy:'Shellfish',diet:'—',note:'Prefers window seat · no ice in drinks.'},
         {n:'Aishath Naeem',ph:'+960 991-8842',tier:'Silver',visits:52,spend:6180,joined:'Jun 2024',allergy:'Peanuts',diet:'Vegetarian Tue & Thu',note:'Mas Huni extra spicy, always.'},
@@ -1309,11 +1311,13 @@ class Component extends DCLogic {
   setCount(name,v){const m=this.state.mdl;this.setState({mdl:Object.assign({},m,{counts:Object.assign({},m.counts,{[name]:v})})});}
   applyCounts(){const m=this.state.mdl;let adj=0;const stock=this.state.stock.map(x=>{const c=parseFloat(m.counts[x.n]);if(isNaN(c)||c===x.oh)return x;adj++;const nv=Math.max(0,Math.round(c*1000)/1000);if(x.id)this.adjustStock(x.id,'correct',nv,'stock check');return Object.assign({},x,{oh:nv});});this.setState({stock,mdl:null});this.toast(adj?('Stock check applied · '+adj+(adj===1?' item':' items')+' adjusted'):'Stock check complete · no variances');}
   saveTransfer(){const m=this.state.mdl;const item=(m.item||'').trim();const qty=(m.qty||'').trim();if(!item||!qty){this.setState({mdl:Object.assign({},m,{err:'Item and quantity are required'})});return;}const no='TR-'+String(this.state.trSeq).padStart(3,'0');const transfers=[{no,item,qty,from:(m.from||'Malé'),to:(m.to||'Hulhumalé'),st:'Pending'}].concat(this.state.transfers);this.setState({transfers,trSeq:this.state.trSeq+1,mdl:null});this.toast(no+' · transfer created');}
-  addStaffMember(){const m=this.state.mdl;const n=(m.sn||'').trim();if(!n){this.setState({mdl:Object.assign({},m,{err:'Name is required'})});return;}const role=m.role||'Cashier';const staff=this.state.staff.concat([{n,role,stt:'Off',stk:'mut',shift:'—',sales:0,orders:0}]);this.setState({staff,mdl:null});this.toast(n+' · added as '+role);}
+  addStaffMember(){const m=this.state.mdl;const n=(m.sn||'').trim();if(!n){this.setState({mdl:Object.assign({},m,{err:'Name is required'})});return;}const role=m.role||'Cashier';const rec={n,role,stt:'Off',stk:'mut',shift:'—',sales:0,orders:0};const staff=[rec].concat(this.state.staff);const staffAdd=[rec].concat((this.state.cfgStaffAdd||[]));this.setState({staff,cfgStaffAdd:staffAdd,mdl:null});this.toast(n+' · added as '+role);this.saveCfg({staffAdd});}
   addCustomer(){this.openMdl('custedit',{idx:-1,cn:'',cph:'',ctier:'Bronze',callergy:'',cdiet:'',cnote:'',title:'Add customer'});}
   editCustomer(idx){const c=this.state.custData[idx];if(!c)return;this.openMdl('custedit',{idx,cn:c.n,cph:c.ph,ctier:c.tier,callergy:c.allergy==='—'?'':c.allergy,cdiet:c.diet==='—'?'':c.diet,cnote:c.note,title:'Edit customer'});}
   saveCustomerApi(body){try{fetch('/api/app2/customer',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
   saveCustomer(){const m=this.state.mdl;const n=(m.cn||'').trim();if(!n){this.setState({mdl:Object.assign({},m,{err:'Name is required'})});return;}const cid=(m.idx>=0&&this.state.custData[m.idx])?this.state.custData[m.idx].id:'';const rec={n,ph:(m.cph||'').trim()||'—',tier:m.ctier||'Bronze',allergy:(m.callergy||'').trim()||'—',diet:(m.cdiet||'').trim()||'—',note:(m.cnote||'').trim()||'No notes yet.'};let custData;if(m.idx>=0){custData=this.state.custData.map((c,i)=>i===m.idx?Object.assign({},c,rec):c);}else{const joined=new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'});custData=this.state.custData.concat([Object.assign({visits:0,spend:0,joined},rec)]);}this.setState({custData,mdl:null});this.toast(n+(m.idx>=0?' · updated':' · added'));this.saveCustomerApi({id:cid,name:n,phone:(m.cph||'').trim(),tier:m.ctier||'Bronze',allergy:(m.callergy||'').trim(),diet:(m.cdiet||'').trim(),note:(m.cnote||'').trim()});}
+  saveCfg(patch){try{fetch('/api/app2/config',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({cfg:patch})}).catch(function(){});}catch(e){}}
+  saveSupplier(){const m=this.state.mdl;const n=(m.sn||'').trim();if(!n){this.setMF('err','Supplier name is required');return;}const contact=(m.sc||'').trim(),cat=(m.scat||'').trim();const supNew=[{n,c:contact||'—',cat:cat||'General',terms:'—',out:0,k:'ok'}].concat(this.state.supNew||[]);this.setState({supNew,mdl:null});this.toast(n+' · supplier added');const isEmail=/@/.test(contact);const body={name:n,phone:isEmail?'':contact,email:isEmail?contact:'',notes:cat};try{fetch('/api/inv/suppliers',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
   openSettle(r){this.openMdl('settle',{cid:r.id,cn:r.n,bal:r.bal,balF:this.fm(r.bal),amt:String(r.bal),title:'Settle balance'});}
   setSettleAmt(v){const m=this.state.mdl;this.setState({mdl:Object.assign({},m,{amt:v,err:''})});}
   doSettle(){const m=this.state.mdl;const amt=parseFloat(m.amt);if(isNaN(amt)||amt<=0){this.setState({mdl:Object.assign({},m,{err:'Enter an amount'})});return;}if(amt>m.bal+0.001){this.setState({mdl:Object.assign({},m,{err:'Amount exceeds balance'})});return;}const newBal=Math.max(0,Math.round((m.bal-amt)*100)/100);const recvOv=Object.assign({},this.state.recvOv||{},{[m.cid]:newBal});this.setState({recvOv,mdl:null});this.toast('Settled '+this.fm(amt)+' · '+m.cn);const me=this;try{fetch('/api/app2/customer/'+encodeURIComponent(m.cid)+'/settle',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({amount:Math.round(amt*100)})}).catch(function(){});}catch(e){}}
@@ -1335,7 +1339,7 @@ class Component extends DCLogic {
   applyDoc(){const d=document.documentElement;const dk=d.hasAttribute('data-dark');if(this.state.dark&&!dk)d.setAttribute('data-dark','');if(!this.state.dark&&dk)d.removeAttribute('data-dark');}
   setTheme(m){let dk=m==='dark';if(m==='auto'){dk=!!(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);}this.setState({themeMode:m,dark:dk});this.toast('Theme · '+m);}
   togCfg(k){this.setState({cfg:Object.assign({},this.state.cfg,{[k]:!this.state.cfg[k]})});}
-  togN(k,cur){const m=Object.assign({},this.state.ntog||{});m[k]=!cur;this.setState({ntog:m});}
+  togN(k,cur){const m=Object.assign({},this.state.ntog||{});m[k]=!cur;this.setState({ntog:m});this.saveCfg({ntog:m});}
   saveMeta(id,patch){if(!id||!(this.MENU||[]).find(x=>x.id===id))return;try{fetch('/api/inv/products/'+encodeURIComponent(id)+'/meta',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(patch)}).catch(function(){});}catch(e){}}
   togMenuOff(id){const m=Object.assign({},this.state.menuOff);if(m[id])delete m[id];else m[id]=true;this.setState({menuOff:m});this.saveMeta(id,{soldOut:!!m[id]});const it=this.MENU.find(x=>x.id===id);this.toast((it?it.en:'Item')+(m[id]?' · marked 86 (sold out)':' · back on menu'));}
   togMenuHidden(id){const m=Object.assign({},this.state.menuHidden);if(m[id])delete m[id];else m[id]=true;this.setState({menuHidden:m});this.saveMeta(id,{hidden:!!m[id]});const it=this.MENU.find(x=>x.id===id);this.toast((it?it.en:'Item')+(m[id]?' · hidden from menu':' · shown on menu'));}
@@ -1505,19 +1509,21 @@ class Component extends DCLogic {
     // ---- PROCUREMENT (state-backed) ----
     const procExp=s.expenses.map((r,i)=>{const k=r.ap==='Approved'?'ok':'warn';const c=P[k];return {d:r.d,cat:r.cat,v:r.v,m:r.m,amtF:f(r.amt),ap:r.ap,apBg:c[0],apC:c[1],pending:r.ap==='Pending',approve:()=>me.approveExp(i)};});
     const expPending=s.expenses.filter(e=>e.ap==='Pending').length;
-    const suppliers=[
+    const supBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.suppliers&&window.__ksAdmin.suppliers.length)?window.__ksAdmin.suppliers:[
       {n:'Ensis Fisheries',cat:'Fish & seafood',c:'+960 331-2200',terms:'Net 15',out:5600,k:'bad'},
       {n:'Lily Foods',cat:'Dairy & dry goods',c:'+960 333-8890',terms:'Net 30',out:3420,k:'warn'},
       {n:'Malé Local Market',cat:'Fresh produce',c:'Cash on pickup',terms:'COD',out:0,k:'ok'},
       {n:'EcoPack MV',cat:'Packaging',c:'+960 779-4410',terms:'Net 30',out:1240,k:'warn'},
       {n:'Villa Gas',cat:'Utilities · gas',c:'+960 330-1122',terms:'Prepaid',out:0,k:'ok'}
-    ].map(v=>{const c=P[v.k];return {n:v.n,cat:v.cat,c:v.c,terms:v.terms,outF:v.out?me.fm(v.out):'—',st:v.out?'Owing':'Clear',stBg:c[0],stC:c[1]};});
+    ];
+    const suppliers=(s.supNew||[]).concat(supBase).map(v=>{const c=P[v.k||'ok'];return {n:v.n,cat:v.cat||'General',c:v.c||'—',terms:v.terms||'—',outF:v.out?me.fm(v.out):'—',st:v.out?'Owing':'Clear',stBg:c[0],stC:c[1]};});
     const procBills=s.bills.map((r,i)=>{const stk=r.st==='Paid'?'ok':r.st==='Overdue'?'bad':'warn';return Object.assign({v:r.v,inv:r.inv,amtF:f(r.amt),due:r.due,payable:r.st!=='Paid',pay:()=>me.openMdl('paybill',{idx:i,v:r.v,inv:r.inv,amtF:f(r.amt),title:'Pay vendor bill'})},pill(r.st,stk));});
     const billsOwed=me.fm(s.bills.filter(b=>b.st!=='Paid').reduce((a,b)=>a+b.amt,0));
-    const procPos=[
+    const poBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pos&&window.__ksAdmin.pos.length)?window.__ksAdmin.pos:[
       {no:'PO-058',v:'Lily Foods',items:12,total:3420,st:'Sent',stk:'info'},{no:'PO-057',v:'Malé Local Market',items:8,total:1980,st:'Received',stk:'ok'},
       {no:'PO-056',v:'Ensis Fisheries',items:4,total:5600,st:'Draft',stk:'mut'}
-    ].map(r=>Object.assign({no:r.no,v:r.v,items:String(r.items),totalF:f(r.total)},pill(r.st,r.stk)));
+    ];
+    const procPos=poBase.map(r=>Object.assign({no:r.no,v:r.v,items:String(r.items),totalF:f(r.total)},pill(r.st,r.stk)));
     // ---- RECEIVABLES ----
     const recvBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.recv&&window.__ksAdmin.recv.length)?window.__ksAdmin.recv:[
       {id:'seed1',n:'Hassan Fulhu',c:'+960 777-1122',bal:560,age:'31 d',last:'12 Oct',stk:'bad'},{id:'seed2',n:'Villa Hotels',c:'Accounts dept',bal:2400,age:'12 d',last:'16 Oct',stk:'warn'},
@@ -1554,11 +1560,12 @@ class Component extends DCLogic {
     const custOrders=(custOrdersAll[s.custSel]||[]).map(o=>{const c=P[o.k];return {no:o.no,out:o.out,d:o.d,items:o.items,totalF:me.fm(o.total),st:o.st,stBg:c[0],stC:c[1]};});
     const custSelName=custSelData.n;const custSelSummary=custSelData.visits+' orders · '+me.fm(custSelData.spend)+' lifetime';
     const stv=s.sub.store||0;
-    const outletStores=[
+    const outletBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.outlets&&window.__ksAdmin.outlets.length)?window.__ksAdmin.outlets.map(o=>({n:o.n,url:(o.addr||o.code||o.n),pub:!!o.active,visits:0})):[
       {n:'Kashikeyo · Malé',url:'kashikeyo-male.platto.cloud',pub:true,visits:1240},
       {n:'Kashikeyo · Hulhumalé',url:'kashikeyo-hulhumale.platto.cloud',pub:true,visits:680},
       {n:'Kashikeyo · Villimalé',url:'kashikeyo-villimale.platto.cloud',pub:false,visits:0}
-    ].map(o=>({n:o.n,url:o.url,visits:o.pub?(o.visits+' visits · 7d'):'Not published',st:o.pub?'Live':'Draft',stBg:o.pub?'var(--greensoft)':'var(--bg)',stC:o.pub?'var(--green)':'var(--ink2)',open:()=>me.toast('Opening '+o.url),copy:()=>me.toast('Link copied · '+o.url)}));
+    ];
+    const outletStores=outletBase.map(o=>({n:o.n,url:o.url,visits:o.pub?(o.visits?(o.visits+' visits · 7d'):'Published'):'Not published',st:o.pub?'Live':'Draft',stBg:o.pub?'var(--greensoft)':'var(--bg)',stC:o.pub?'var(--green)':'var(--ink2)',open:()=>me.toast('Opening '+o.url),copy:()=>me.toast('Link copied · '+o.url)}));
     const qrSvg='<svg width="88" height="88" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="var(--ink)" d="M0 0h7v7H0zM2 2v3h3V2zM22 0h7v7h-7zM24 2v3h3V2zM0 22h7v7H0zM2 24v3h3v-3zM9 0h2v2H9zM13 1h2v2h-2zM17 0h2v3h-2zM9 4h3v2H9zM14 5h4v2h-4zM0 9h2v2H0zM4 9h3v2H4zM10 9h2v2h-2zM15 9h2v3h-2zM19 9h4v2h-4zM25 9h4v2h-4zM2 12h3v2H2zM7 13h3v2H7zM12 12h2v3h-2zM17 13h3v2h-3zM22 12h2v2h-2zM26 13h3v2h-3zM0 16h3v2H0zM5 16h2v2H5zM9 17h4v2H9zM15 16h2v3h-2zM20 16h3v2h-3zM25 17h3v2h-3zM9 22h2v3H9zM13 23h4v2h-4zM19 22h3v2h-3zM24 23h3v3h-3zM11 26h4v2h-4zM17 26h3v2h-3zM22 27h5v2h-5z"/></svg>';
     const qrTables=Array.from({length:8},(x,i)=>i+1).map(n=>({label:'Table '+n,qr:{__html:qrSvg},dl:()=>me.toast('QR downloaded · Table '+n)}));
     const promoRows=[
@@ -1579,11 +1586,15 @@ class Component extends DCLogic {
       {title:'TOP STAFF · SALES',rows:[['Mariyam Didi',3120,100,'var(--green)'],['Ahmed Rasheed',2480,79,'var(--green)'],['Aminath Shifa',1760,56,'var(--green)']]},
       {title:'TOP PRODUCTS · REVENUE',rows:((g.topItems&&g.topItems.length)?g.topItems.map(t=>[t.n,t.rev]):[['Mas Huni & Roshi',2140],['Garudhiya Set',1680],['Kukulhu Riha',1290],['Gulha · 6pc',940]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--blue)']).slice(0,4)}
     ].map(c=>({title:c.title,rows:c.rows.map((r,i)=>({rank:'#'+(i+1),n:r[0],v:me.fm(r[1]),w:r[2]+'%',c:r[3]}))}));
-    const custStats=[{label:'TOTAL CUSTOMERS',v:'1,284'},{label:'REPEAT RATE',v:'58%'},{label:'AVG LIFETIME VALUE',v:me.fm(1840)},{label:'NEW · THIS MONTH',v:'96'}];
-    const custTop=[
+    const _cd=custData||[];const _nowM=new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+    const _repeat=_cd.length?Math.round(_cd.filter(c=>(+c.visits||0)>1).length/_cd.length*100):0;
+    const _alv=_cd.length?Math.round(_cd.reduce((a,c)=>a+(+c.spend||0),0)/_cd.length):0;
+    const _newM=_cd.filter(c=>(c.joined||'')===_nowM).length;
+    const custStats=_cd.length?[{label:'TOTAL CUSTOMERS',v:me.fi(_cd.length)},{label:'REPEAT RATE',v:_repeat+'%'},{label:'AVG LIFETIME VALUE',v:me.fm(_alv)},{label:'NEW · THIS MONTH',v:String(_newM)}]:[{label:'TOTAL CUSTOMERS',v:'1,284'},{label:'REPEAT RATE',v:'58%'},{label:'AVG LIFETIME VALUE',v:me.fm(1840)},{label:'NEW · THIS MONTH',v:'96'}];
+    const custTop=(_cd.length?_cd.slice().sort((a,b)=>(+b.spend||0)-(+a.spend||0)).slice(0,4).map(c=>({n:c.n,orders:+c.visits||0,clv:+c.spend||0})):[
       {n:'Hassan Fulhu',orders:64,clv:8420},{n:'Aishath Naeem',orders:52,clv:6180},
       {n:'Ibrahim Shakir',orders:41,clv:4870},{n:'Mariyam Didi',orders:33,clv:3240}
-    ].map(r=>({n:r.n,orders:String(r.orders),clvF:me.fm(r.clv)}));
+    ]).map(r=>({n:r.n,orders:String(r.orders),clvF:me.fm(r.clv)}));
     const custDayparts=[['Morning',28,'var(--amber)'],['Afternoon',22,'var(--blue)'],['Evening',38,'var(--coral)'],['Late night',12,'var(--ink3)']].map(d=>({label:d[0],pct:d[1]+'%',w:d[1]+'%',c:d[2]}));
     const custPrefs=[['Short eats',34],['Rice & curry',26],['Hot drinks',18],['Cold drinks',12],['Sweets',10]].map(p=>({n:p[0],pct:p[1]+'%'}));
     // ---- STAFF ----
@@ -1614,10 +1625,10 @@ class Component extends DCLogic {
       {t:'09:02',u:'Ahmed',a:'Day started · drawer '+f(1500),dotC:'var(--green)'}
     ];
     const authRules=[
-      {n:'Void bill',need:'Manager PIN',on:true},{n:'Discount over 15%',need:'Manager PIN',on:true},
-      {n:'Refund',need:'Manager PIN',on:true},{n:'Open drawer · no sale',need:'Manager PIN',on:true},
-      {n:'Price override',need:'Admin PIN',on:false}
-    ].map(a=>({n:a.n,need:a.need,trackBg:a.on?'var(--coral)':'var(--line2)',knobX:a.on?'translateX(16px)':'translateX(0)'}));
+      {k:'void',n:'Void bill',need:'Manager PIN',def:true},{k:'disc',n:'Discount over 15%',need:'Manager PIN',def:true},
+      {k:'refund',n:'Refund',need:'Manager PIN',def:true},{k:'drawer',n:'Open drawer · no sale',need:'Manager PIN',def:true},
+      {k:'override',n:'Price override',need:'Admin PIN',def:false}
+    ].map(a=>{const on=s.authOff[a.k]!=null?!s.authOff[a.k]:a.def;return {n:a.n,need:a.need,trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(16px)':'translateX(0)',tap:()=>{const authOff=Object.assign({},s.authOff,{[a.k]:on});me.setState({authOff});me.saveCfg({authOff});}};});
     const recentAuth=[
       {t:'19:40',a:'Void · #0224',by:'Approved by Mariyam (Manager)',st:'Approved',k:'ok'},
       {t:'18:30',a:'20% discount · #0221',by:'Approved by Mariyam (Manager)',st:'Approved',k:'ok'},
@@ -1628,14 +1639,14 @@ class Component extends DCLogic {
       {title:'Operations',rows:[['autoKot','Auto-send to KOT','Fire tickets on order confirm'],['rounding','Round totals to MVR','Nearest whole rufiyaa'],['svc10','10% service charge','Dine-in only']]},
       {title:'Receipt & tax',rows:[['taxIncl','Tax-inclusive pricing','GST shown inside menu price'],['printRecpt','Auto-print receipt','On settle']]},
       {title:'Payment methods',rows:[['cash','Cash',''],['card','Card / BML gateway',''],['transfer','Bank transfer',''],['tab','On tab (store credit)','']]}
-    ].map(sec=>({title:sec.title,rows:sec.rows.map(r=>{const on=!!s.cfg[r[0]];return {label:r[1],desc:r[2],hasDesc:!!r[2],trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(15px)':'translateX(0)',tap:()=>me.setState({cfg:Object.assign({},s.cfg,{[r[0]]:!on})})};})}));
-    const taxOpts=[['ggst','General GST · 8%'],['tgst','Tourism GST · 16%']].map(o=>{const on=s.taxRate===o[0];return {label:o[1],bg:on?'var(--coral)':'transparent',co:on?'#fff':'var(--ink2)',tap:()=>me.setState({taxRate:o[0]})};});
+    ].map(sec=>({title:sec.title,rows:sec.rows.map(r=>{const on=!!s.cfg[r[0]];return {label:r[1],desc:r[2],hasDesc:!!r[2],trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(15px)':'translateX(0)',tap:()=>{const cfg=Object.assign({},s.cfg,{[r[0]]:!on});me.setState({cfg});me.saveCfg({cfg});}};})}));
+    const taxOpts=[['ggst','General GST · 8%'],['tgst','Tourism GST · 16%']].map(o=>{const on=s.taxRate===o[0];return {label:o[1],bg:on?'var(--coral)':'transparent',co:on?'#fff':'var(--ink2)',tap:()=>{me.setState({taxRate:o[0]});me.saveCfg({taxRate:o[0]});}};});
     // ---- SYSTEM ADMIN ----
     const sysUsers=[
       {n:'admin@kashikeyo.mv',role:'Master Admin',last:'Active now',stk:'ok'},{n:'mariyam@kashikeyo.mv',role:'Manager',last:'2 h ago',stk:'ok'},
       {n:'ahmed@kashikeyo.mv',role:'Cashier',last:'12 min ago',stk:'ok'},{n:'POS Till 2',role:'Device',last:'5 min ago',stk:'ok'}
     ].map(r=>Object.assign({n:r.n,role:r.role,last:r.last},pill('Active','ok')));
-    const sysAudit=[
+    const sysAudit=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.audit&&window.__ksAdmin.audit.length)?window.__ksAdmin.audit:[
       {t:'19:40',a:'Voided order #0224',u:'Ahmed'},{t:'18:30',a:'Applied 15% discount · #0221',u:'Sana'},
       {t:'17:05',a:'Updated price · Kalhu Sai',u:'Mariyam'},{t:'16:12',a:'Created PO-058',u:'Mariyam'},{t:'09:02',a:'Day started · drawer '+f(1500),u:'Ahmed'}
     ];
@@ -1643,14 +1654,15 @@ class Component extends DCLogic {
     const spy=s.sub.pay||0;
     const payCols=s.vw<640?'1fr':(s.vw<1024?'1fr 1fr':'1fr 1fr 1fr');
     const payTwoCols=s.vw<640?'1fr':'1fr 1fr';
+    const _pmx=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.payMix)||(g.payMix||{cash:0,card:0,transfer:0,tab:0});
     const payMethods=[
-      {n:'Cash',vol:3120,on:true,dotC:'var(--green)'},
-      {n:'Bank cards · Visa / Mastercard',vol:1980,on:true,dotC:'var(--coral)'},
-      {n:'BML gateway',vol:880,on:true,dotC:'var(--coral)'},
-      {n:'Bank transfer',vol:760,on:true,dotC:'var(--amber)'},
-      {n:'Digital wallets · Fahipay, m-Faisaa',vol:0,on:false,dotC:'var(--ink3)'},
-      {n:'On tab · store credit',vol:300,on:true,dotC:'var(--blue)'}
-    ].map(m=>({n:m.n,dotC:m.dotC,volLbl:m.on?('Today · '+me.fm(m.vol)):'Not enabled',st:m.on?'Enabled':'Off',stBg:m.on?'var(--greensoft)':'var(--bg)',stC:m.on?'var(--green)':'var(--ink2)'}));
+      {k:'cash',n:'Cash',vol:_pmx.cash||0,dotC:'var(--green)'},
+      {k:'card',n:'Bank cards · Visa / Mastercard',vol:_pmx.card||0,dotC:'var(--coral)'},
+      {k:'bml',n:'BML gateway',vol:0,dotC:'var(--coral)'},
+      {k:'transfer',n:'Bank transfer',vol:_pmx.transfer||0,dotC:'var(--amber)'},
+      {k:'wallet',n:'Digital wallets · Fahipay, m-Faisaa',vol:0,dotC:'var(--ink3)',defOff:true},
+      {k:'tab',n:'On tab · store credit',vol:_pmx.tab||0,dotC:'var(--blue)'}
+    ].map(m=>{const on=s.payOff[m.k]!=null?!s.payOff[m.k]:!m.defOff;return {n:m.n,dotC:on?m.dotC:'var(--ink3)',volLbl:on?('Today · '+me.fm(m.vol)):'Not enabled',st:on?'Enabled':'Off',stBg:on?'var(--greensoft)':'var(--bg)',stC:on?'var(--green)':'var(--ink2)',tap:()=>{const payOff=Object.assign({},s.payOff,{[m.k]:on});me.setState({payOff});me.saveCfg({payOff});me.toast(m.n+' · '+(on?'disabled':'enabled'));}};});
     const payLinks=[
       {ref:'PL-3391',cust:'Aishath Naeem',amt:420,st:'Paid',k:'ok',when:'Today · 10:24'},
       {ref:'PL-3390',cust:'Dhiraagu · corporate',amt:2650,st:'Pending',k:'warn',when:'Today · 09:50'},
@@ -1748,7 +1760,10 @@ class Component extends DCLogic {
       mdlBillV:s.mdl&&s.mdl.v,mdlBillInv:s.mdl&&s.mdl.inv,mdlBillAmt:s.mdl&&s.mdl.amtF,doPayBill:()=>me.payBill(s.mdl.idx),
       isSettle:s.mdl&&s.mdl.kind==='settle',mdlSettleName:s.mdl&&s.mdl.cn,mdlSettleBalF:s.mdl&&s.mdl.balF,mdlSettleAmt:(s.mdl&&s.mdl.amt)||'',setMdlSettleAmt:e=>me.setSettleAmt(e.target.value),doSettle:()=>me.doSettle(),
       mdlTrItem:(s.mdl&&s.mdl.item)||'',setMdlTrItem:e=>me.setMF('item',e.target.value),mdlTrQty:(s.mdl&&s.mdl.qty)||'',setMdlTrQty:e=>me.setMF('qty',e.target.value),mdlTrFrom:(s.mdl&&s.mdl.from)||'Malé',setMdlTrFrom:e=>me.setMF('from',e.target.value),mdlTrTo:(s.mdl&&s.mdl.to)||'Hulhumalé',setMdlTrTo:e=>me.setMF('to',e.target.value),outletOpts:['Malé','Hulhumalé','Villimalé','Central Store'],doSaveTransfer:()=>me.saveTransfer(),
-      mdlSupN:(s.mdl&&s.mdl.sn)||'',setMdlSupN:e=>me.setMF('sn',e.target.value),doAddSupplier:()=>{const m=s.mdl;if(!(m.sn||'').trim()){me.setMF('err','Supplier name is required');return;}me.closeMdl();me.toast((m.sn)+' · supplier added');},
+      mdlSupN:(s.mdl&&s.mdl.sn)||'',setMdlSupN:e=>me.setMF('sn',e.target.value),
+      mdlSupC:(s.mdl&&s.mdl.sc)||'',setMdlSupC:e=>me.setMF('sc',e.target.value),
+      mdlSupCat:(s.mdl&&s.mdl.scat)||'',setMdlSupCat:e=>me.setMF('scat',e.target.value),
+      doAddSupplier:()=>me.saveSupplier(),
       isReceive:s.mdl&&s.mdl.kind==='receive',isAddItem:s.mdl&&s.mdl.kind==='additem',isWaste:s.mdl&&s.mdl.kind==='waste',isExpense:s.mdl&&s.mdl.kind==='expense',isPayBill:s.mdl&&s.mdl.kind==='paybill',isTransfer:s.mdl&&s.mdl.kind==='transfer',isSupplier:s.mdl&&s.mdl.kind==='supplier',isRecipe:s.mdl&&s.mdl.kind==='recipe',
       recvRows,recvRowsAll,recvStats,recvCols,recvStatusOpts,recvEmpty,recvCount,recvQuery:s.recvQuery,onRecvQuery:e=>me.setRecvQuery(e.target.value),onRecvStatus:e=>me.setRecvStatus(e.target.value),clearRecvQuery:()=>me.setRecvQuery(''),
       isCust:A==='cust',custSubTabs:mkSubs('cust',['Profiles','Order History','Credit','Preferences']),cvProfilesView:(s.sub.cust||0)===0,cvOrdersView:(s.sub.cust||0)===1,cvCreditView:(s.sub.cust||0)===2,cvPrefsView:(s.sub.cust||0)===3,custProfiles,custPrefsList,custChips,custOrders,custSelName,custSelSummary,
@@ -1771,8 +1786,8 @@ class Component extends DCLogic {
       mdlRoleName:(s.mdl&&s.mdl.rn)||'',setMdlRoleName:e=>me.setMF('rn',e.target.value),doAddRole:()=>{const m=s.mdl;if(!(m.rn||'').trim()){me.setMF('err','Role name is required');return;}me.closeMdl();me.toast((m.rn)+' \u00b7 role created');},
       newRole:()=>me.openMdl('role',{title:'Create custom role'}),
       staffSubTabs:mkSubs('staff',['Team','Roles','Permissions','Sessions','Activity','Auth codes']),sfTeamView:sst===0,sfRolesView:sst===1,sfPermsView:sst===2,sfSessionsView:sst===3,sfActivityView:sst===4,sfAuthView:sst===5,roleAccess,permFeatures,permFeatN:permFeatures.length,permMatrix,sessions,teamActivity,authRules,recentAuth,newRole:()=>me.toast('New role created'),
-      cfgSecs,taxOpts,cfgSave:()=>me.toast('Settings saved'),
-      isHw:A==='hw',hwSubTabs:mkSubs('hw',['Printing','Kitchen Routing','Offline','Kiosk','Theme']),hwPrintView:hw===0,hwRouteView:hw===1,hwOffView:hw===2,hwKioskView:hw===3,hwThemeView:hw===4,printers,docRouting,routeRules,offlineStats,kioskSettings,hwThemeOpts,newRoute:()=>me.toast('New routing rule'),launchKiosk:()=>me.toast('Kiosk preview launched'),offToggle:()=>me.setState({cfg:Object.assign({},s.cfg,{offlineFirst:!offOn})}),offTrackBg:offOn?'var(--green)':'var(--line2)',offKnobX:offOn?'translateX(20px)':'translateX(0)',kioskToggle:()=>me.setState({cfg:Object.assign({},s.cfg,{kiosk:!kioskOn})}),kioskTrackBg:kioskOn?'var(--coral)':'var(--line2)',kioskKnobX:kioskOn?'translateX(20px)':'translateX(0)',kioskOpacity:kioskOn?1:0.5,
+      cfgSecs,taxOpts,cfgSave:()=>{me.saveCfg({cfg:s.cfg,taxRate:s.taxRate,store:s.store});me.toast('Settings saved');},
+      isHw:A==='hw',hwSubTabs:mkSubs('hw',['Printing','Kitchen Routing','Offline','Kiosk','Theme']),hwPrintView:hw===0,hwRouteView:hw===1,hwOffView:hw===2,hwKioskView:hw===3,hwThemeView:hw===4,printers,docRouting,routeRules,offlineStats,kioskSettings,hwThemeOpts,newRoute:()=>me.toast('New routing rule'),launchKiosk:()=>me.toast('Kiosk preview launched'),offToggle:()=>{const cfg=Object.assign({},s.cfg,{offlineFirst:!offOn});me.setState({cfg});me.saveCfg({cfg});},offTrackBg:offOn?'var(--green)':'var(--line2)',offKnobX:offOn?'translateX(20px)':'translateX(0)',kioskToggle:()=>{const cfg=Object.assign({},s.cfg,{kiosk:!kioskOn});me.setState({cfg});me.saveCfg({cfg});},kioskTrackBg:kioskOn?'var(--coral)':'var(--line2)',kioskKnobX:kioskOn?'translateX(20px)':'translateX(0)',kioskOpacity:kioskOn?1:0.5,
       isNotif:A==='notif',notifSubTabs:mkSubs('notif',['Alerts','Channels','2FA']),nAlertsView:notif===0,nChanView:notif===1,n2faView:notif===2,alertRules,recentAlerts,chanRows,twofaOps,twofaLog,twofaOn,twofaMaster,twofaMasterBg:twofaMaster.trackBg,twofaMasterKnob:twofaMaster.knobX,twofaMasterTap:twofaMaster.tap,twofaOpacity:twofaOn?1:0.5,
       isMenu:A==='menu',menuSubTabs:mkSubs('menu',['Items','Modifiers','Availability']),mnItemsView:mv===0,mnModsView:mv===1,mnAvailView:mv===2,menuGroups,menuStats,modGroups,noMods:modGroups.length===0,offItems,noOff:offItems.length===0,menuStatCols:s.vw<640?'1fr 1fr':'repeat(4,1fr)',addItem:()=>me.openAddItem(),
       menuDraftOpen:!!dr,draftTitle:dr?(dr.isNew?'New menu item':'Edit item'):'',draftEn:dr?dr.en:'',draftDv:dr?dr.dv:'',draftPrice:dr?dr.price:'',draftIsEdit:!!(dr&&!dr.isNew),draftCatPills,
