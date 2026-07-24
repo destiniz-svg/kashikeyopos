@@ -26,8 +26,9 @@ a11y inspector.
 | `/app2` | 57 nodes · 2 rules (color-contrast, **document-title**) | **15 nodes** · color-contrast only | residual = brand coral text |
 | `/back` | 1 node · color-contrast | 1 node · color-contrast | residual = theme-primary green button bg |
 
-~102 failing nodes across 5 distinct rule types → **18 nodes, one rule**, a ~82%
-reduction and **100% of the non-brand issues cleared**.
+~102 failing nodes across 5 distinct rule types → **0 nodes**. After the
+brand-colour pass below, `/admin2`, `/app2` and `/back` are **fully WCAG 2.1
+A/AA clean** in the automated scan.
 
 ## Fixes applied
 
@@ -41,19 +42,23 @@ reduction and **100% of the non-brand issues cleared**.
   - `--green` `#1FA65C` (3.14:1) → `#16814A` (~4.8:1) — semantic success text
   These are neutral/semantic colours; darkening only improves legibility.
 
-## Accepted residuals (brand-colour decisions, for the design owner)
+## Brand-colour pass — resolved (brand-aligning, not a divergence)
 
-The remaining 18 nodes are all the **brand accent used as text or button
-background**, where meeting 4.5:1 would visibly shift the brand:
+The last 18 nodes were the brand accent used as text/button-bg. Fixed by moving
+the accent to a shade that both meets AA **and** aligns with the documented
+brand (`CLAUDE.md`: Kashikeyo keyo-600 `#C7431D`) instead of the brighter drift:
 
-- **Coral `#F26A21` as text on light** (15 on `/app2`, 2 on `/admin2`) — ratio
-  3.06:1. Reaching AA as text needs ≈`#B84C15`, a noticeably deeper burnt-orange.
-  Recommended non-invasive fix: introduce a dedicated darker **`--coral-ink`**
-  token for coral text on light surfaces and leave `--coral` (buttons/fills)
-  unchanged, rather than darken the signature accent globally.
-- **Theme-primary green `#0FA968` as a button background** with white text on
-  `/back` (1 node) — same call; the theme already ships a darker `pill:#0C8653`
-  that could back the affected button.
+- **Register/admin coral `#F26A21` (3.06:1) → `#BE3E19`** — a deep terracotta
+  that clears AA on white (5.39:1), grey (4.94:1) and the coral-soft chip
+  (4.73:1). Changed at source: the `--coral` token (admin) and the register's
+  live accent palette `ACC.orange[0]`. White button ink on it is 5.39:1.
+- **Back-office theme-primary green `#0FA968` (white 3.05:1) → `#0C8653`**
+  (white 4.61:1) — the theme's own darker green, changed on the default `:root`
+  and the green theme object's `pri`.
 
-Both are one-line token choices once the owner signs off on the shade; the
-scan script above re-verifies in seconds.
+Re-scan after the change: **`/admin2` 0 · `/app2` 0 · `/back` 0** color-contrast
+nodes. The register still reads as an intentional Kashikeyo terracotta (verified
+by screenshot); the semantic success-green pill is untouched.
+
+Residual (needs a person, not a scanner): a manual **screen-reader** pass for
+announcement quality and focus-order logic on the operator surfaces.
