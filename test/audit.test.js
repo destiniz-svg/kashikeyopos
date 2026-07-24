@@ -467,6 +467,39 @@ describe("offline outbox & flaky-network sync (SYNC)", () => {
   });
 });
 
+/* ── Multi-terminal concurrency (LOAD) ────────────────────────────────────
+   Software stand-in for a multi-device rig: many concurrent "terminals" hitting
+   one org's /api/ops at once, plus the classic last-unit conflict. Proves the
+   atomic stock delta has no lost updates and sync loses/duplicates nothing under
+   contention. */
+describe("multi-terminal concurrency (LOAD)", () => {
+  test("8 terminals × 15 sales concurrently: every sale lands once, stock stays exact", async () => {
+    const o = await H.registerOrg({ tag: "multi" });
+    await H.ops(o.token, [{ opId: "mt-p", puts: [{ kind: "products", id: "mp", data: { id: "mp", name: "M", price: 1000, stock: 1000 } }] }]);
+    const TERMINALS = 8, PER = 15, total = TERMINALS * PER;
+    await Promise.all(Array.from({ length: TERMINALS }, (_, t) => (async () => {
+      for (let n = 0; n < PER; n++) {
+        assert.equal((await H.ops(o.token, [{ opId: `mt-${t}-${n}`, puts: [{ kind: "sales", id: `ms-${t}-${n}`, data: { id: `ms-${t}-${n}`, type: "sale", lines: [{ pid: "mp", qty: 1 }], total: 1000 } }], deltas: { stock: [{ id: "mp", d: -1 }] } }])).status, 200);
+      }
+    })()));
+    const ents = (await H.pull(o.token, 0)).json.entities || [];
+    assert.equal(ents.filter((e) => e.kind === "sales" && !e.deleted).length, total, "no sale lost or duplicated under concurrency");
+    assert.equal(Number(ents.find((e) => e.kind === "products" && e.id === "mp").data.stock), 1000 - total, "stock deducted exactly once per concurrent sale (no lost updates)");
+  });
+
+  test("two terminals sell the final unit at once: both recorded, stock floors at 0 (never negative)", async () => {
+    const o = await H.registerOrg({ tag: "lastunit" });
+    await H.ops(o.token, [{ opId: "lu-p", puts: [{ kind: "products", id: "lp", data: { id: "lp", name: "L", price: 1, stock: 1 } }] }]);
+    await Promise.all([
+      H.ops(o.token, [{ opId: "lu-A", puts: [{ kind: "sales", id: "lsA", data: { id: "lsA", type: "sale", lines: [{ pid: "lp", qty: 1 }], total: 1 } }], deltas: { stock: [{ id: "lp", d: -1 }] } }]),
+      H.ops(o.token, [{ opId: "lu-B", puts: [{ kind: "sales", id: "lsB", data: { id: "lsB", type: "sale", lines: [{ pid: "lp", qty: 1 }], total: 1 } }], deltas: { stock: [{ id: "lp", d: -1 }] } }]),
+    ]);
+    const ents = (await H.pull(o.token, 0)).json.entities || [];
+    assert.equal(ents.filter((e) => e.kind === "sales" && !e.deleted).length, 2, "both offline sales recorded (never silently rejected)");
+    assert.equal(Number(ents.find((e) => e.kind === "products" && e.id === "lp").data.stock), 0, "stock floors at 0, never negative");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {

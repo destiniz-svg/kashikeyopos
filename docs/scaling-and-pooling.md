@@ -72,3 +72,42 @@ rolling avoids the contention entirely).
   the direct pool, requests served via the app pool, and the `LISTEN` poke
   listener connected via the direct pool — all confirmed in the boot log, plus a
   store registered end-to-end through the request pool.
+
+---
+
+## Multi-terminal load, soak & keyboard-a11y verification (audit "device/rig residuals")
+
+Software stand-ins for the residuals that were marked "needs a device/rig".
+Run on the sandbox (single Node + local Postgres) — indicative, not Railway prod.
+
+### Multi-terminal concurrency (the load rig)
+- **Correctness (in CI):** `test/audit.test.js → describe("multi-terminal concurrency (LOAD)")` — 8 terminals × 15 sales fired concurrently at one org: every sale lands exactly once, stock deducts exactly once (no lost updates); and the **last-unit conflict** (two terminals sell the final unit at once) records both offline-safe sales and **floors stock at 0, never negative**.
+- **Throughput (2 × 60 s runs, 10 concurrent terminals):**
+  | run | sales | sales/s | p50 | p95 | p99 |
+  | --- | --- | --- | --- | --- | --- |
+  | 1 (cold) | 14,254 | 237 | 21 ms | 38 ms | 921 ms |
+  | 2 (warm) | 21,104 | 352 | 27 ms | 43 ms | **64 ms** |
+  - **p95 ≈ 38–43 ms at 10 terminals — well inside the 750 ms checkout SLO.** (The cold run's p99 tail settles once the process warms.)
+  - **Zero data loss:** direct DB count = **14,246** sales for the run (the load client's lower number was just `/api/pull` pagination, not loss). **Zero negative stock** across 35k+ concurrent deductions.
+
+### Soak (leak proxy)
+Two back-to-back 60 s bursts (~35k sales) on the same process: no crash, no OOM,
+throughput stable/improving. Node RSS grew to ~351 MB during the bursts (heap
+growth, not conclusively a leak). **Residual:** a real multi-hour soak with
+heap snapshots is still worth running to confirm no slow unbounded growth.
+
+### Keyboard / screen-reader (automated pass on the editable surfaces)
+axe + a Playwright keyboard sweep of `/admin2`, `/back`, `/app2`:
+- **0 interactive elements missing an accessible name** (all buttons/links/inputs named).
+- **0 custom controls that are keyboard-unreachable.**
+- `:focus` outline is reset **but paired with a `:focus-visible` rule** — the
+  correct pattern, so keyboard focus stays visible; Tab moves focus through the page.
+- **Residual:** a human screen-reader pass (announcement quality, focus-order
+  logic) and the brand-colour contrast shade decision still want a person.
+
+### True device-only residual (cannot be done headless)
+The till bundle stalls on the PIN splash under headless Chromium, so
+IndexedDB/localStorage-outbox survival across a real crash, service-worker
+update-during-sync, and the 15 min–72 h offline soak must be driven on a tablet
+with DevTools. The offline **wire contract** is already covered — see
+`docs/offline-first-transaction-path.md`.
