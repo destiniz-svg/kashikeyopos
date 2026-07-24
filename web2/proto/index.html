@@ -1640,8 +1640,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ payOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closePay }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:70;animation:fade .2s"></div>
-  <div style="position:fixed;z-index:71;top:0;bottom:0;inset-inline-end:0;width:420px;max-width:94vw;background:var(--sur);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:sheet .3s cubic-bezier(.2,.9,.3,1)" dir="{{ dirAttr }}">
+  <div onClick="{{ closePay }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:170;animation:fade .2s"></div>
+  <div style="position:fixed;z-index:171;top:0;bottom:0;inset-inline-end:0;width:420px;max-width:94vw;background:var(--sur);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:sheet .3s cubic-bezier(.2,.9,.3,1)" dir="{{ dirAttr }}">
     <sc-if value="{{ payDone }}" hint-placeholder-val="{{ false }}">
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fade .3s">
         <svg width="88" height="88" viewBox="0 0 88 88"><circle cx="44" cy="44" r="40" fill="none" stroke="var(--green)" stroke-width="5" stroke-dasharray="252" stroke-dashoffset="252" style="animation:drawcheck .5s ease-out forwards"></circle><polyline points="28,45 40,57 61,34" fill="none" stroke="var(--green)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="50" stroke-dashoffset="50" style="animation:drawcheck .35s .35s ease-out forwards"></polyline></svg>
@@ -1717,8 +1717,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ receiptOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeReceipt }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:80;animation:fade .2s"></div>
-  <div style="position:fixed;z-index:81;left:50%;top:50%;transform:translate(-50%,-50%);width:330px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;animation:sheet .32s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
+  <div onClick="{{ closeReceipt }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:180;animation:fade .2s"></div>
+  <div style="position:fixed;z-index:181;left:50%;top:50%;transform:translate(-50%,-50%);width:330px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;animation:sheet .32s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
     <div style="background:#FFFDF6;color:#241D11;border-radius:14px 14px 0 0;padding:22px 22px 14px;overflow-y:auto;box-shadow:var(--shadow)">
       <div style="text-align:center;border-bottom:1px dashed #C9BFa6;padding-bottom:12px">
         <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">{{ outletName }}</div>
