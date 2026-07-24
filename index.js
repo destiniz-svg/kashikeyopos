@@ -2149,6 +2149,15 @@ if (fs.existsSync(protoFile)) {
         "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
       const data = Object.assign({}, cur ? cur.data : {});
       data.adminCfg = Object.assign({}, data.adminCfg || {}, patch);
+      // Promote store identity to the top-level settings fields the register
+      // (liveStoreP) and the admin store card actually read, so a rename in the
+      // cockpit is reflected on the till instead of only living inside adminCfg.
+      if (patch.store && typeof patch.store === "object") {
+        const nm = String(patch.store.name || "").trim();
+        if (nm) data.storeName = nm.slice(0, 80);
+        const cur3 = String(patch.store.currency || "").trim();
+        if (cur3) data.currency = cur3.slice(0, 8);
+      }
       let r;
       if (cur) {
         r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id=$2 RETURNING rowver", [orgId, cur.id, JSON.stringify(data)]);
