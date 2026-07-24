@@ -642,11 +642,16 @@ async function ensureDefaultMenu(orgId) {
          ON CONFLICT (org_id, kind, id) DO UPDATE
            SET data = CASE WHEN entities.deleted
                             THEN EXCLUDED.data
-                            ELSE entities.data || jsonb_build_object('img', EXCLUDED.data->'img') END,
+                            ELSE entities.data
+                                 || jsonb_build_object('img', EXCLUDED.data->'img')
+                                 || CASE WHEN (EXCLUDED.data ? 'dv') AND COALESCE(entities.data->>'dv','')=''
+                                         THEN jsonb_build_object('dv', EXCLUDED.data->'dv') ELSE '{}'::jsonb END
+                            END,
                deleted = false,
                rowver = nextval('entities_rowver_seq'), updated_at = now()
            WHERE entities.deleted = true
               OR (entities.data->>'img') IS DISTINCT FROM (EXCLUDED.data->>'img')
+              OR ((EXCLUDED.data ? 'dv') AND COALESCE(entities.data->>'dv','')='')
          RETURNING rowver`,
         [orgId, item.id, JSON.stringify(item)]);
       if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));

@@ -141,6 +141,42 @@ const ITEMS = [
   ["ow69", "Chicken Cordon Bleu", "Chicken/Beef Dishes", 85, "🍗", "oakwood-images/ow-chicken-cordon-bleu.webp", "Gluten, Dairy, Egg", [{ name: "Plain Rice", price: 0 }, { name: "Veg Rice", price: 0 }, { name: "Garlic Rice", price: 0 }, { name: "Roshi", price: 0 }], "Breaded chicken filled with ham and cheese. Served with choice of plain/veg/garlic rice or roshi, and salad.", false],
 ];
 
+/* Dhivehi (Thaana) name for every starter item, keyed by id. Maldivian dishes
+ * use their proper Dhivehi words; international dishes use the standard Thaana
+ * transliteration that Maldivian menus already use in practice. An outlet can
+ * override any of these per-product from the back-office Menu manager. */
+const DV_NAMES = {
+  p1: "އެސްޕްރެސޯ", p2: "ފްލެޓް ވައިޓް", p3: "އައިސް ލަޓޭ", p4: "ހޮޓް ޗޮކްލެޓް",
+  p5: "އެލްމަންޑް ކްރޮސާން", p6: "ބްލޫބެރީ މަފިން", p8: "ޗޮކްލެޓް ކޭކް", p9: "ފެން 500ml",
+  p10: "އޮރެންޖު ޖޫސް", p11: "ކުރުނބާ", p12: "ކޯލާ ދަޅު", p13: "ހަނޑޫ 5kg",
+  p14: "ކައްކާ ތެޔޮ 1L", p15: "ބިސް ޓްރޭ 30", p16: "ރިހާކުރު ފުޅި", p17: "ގުޅަ",
+  p18: "ބަޖިޔާ", p19: "މަސްރޮށި",
+  ow01: "ކޮންޓިނެންޓަލް ބްރެކްފަސްޓް", ow02: "މަސްހުނި (ރޮށި/ދިސްކާއެކު)",
+  ow03: "ކުޅިމަސް (ރޮށި/ދިސްކާއެކު)", ow04: "ރިހާކުރު (ރޮށި/ދިސްކާއެކު)",
+  ow05: "މިކްސް ބްރެކްފަސްޓް (ރޮށި/ދިސްކާއެކު)", ow06: "ފްރެންޗް ފްރައިސް", ow07: "ޗީޒީ ފްރައިސް",
+  ow08: "ޕޮޕްކޯން ޗިކަން", ow09: "ޓޫނާ ނޫޑްލްސް ސޫޕް", ow10: "ޗިކަން ނޫޑްލްސް ސޫޕް",
+  ow11: "ކްރީމް އޮފް ޗިކަން ސޫޕް", ow12: "ޓޫނާ ސެންޑްވިޗް", ow13: "ޗިކަން ސެންޑްވިޗް",
+  ow14: "ކްލަބް ސެންޑްވިޗް", ow15: "ޗިކަން އެންޑް ޗިޕްސް", ow16: "ފިޝް އެންޑް ޗިޕްސް",
+  ow17: "ކްލެސިކް ޗިކަން ބާގާ", ow18: "OW ސްޕެޝަލް ބީފް ބާގާ", ow19: "ޗިކަން ރެޕް",
+  ow20: "ޗިކަން ސަބްމެރިން", ow21: "ބީފް ސަބްމެރިން", ow22: "ބޮލޮނޭޒް (ޕެނޭ/ސްޕަގެޓީ)",
+  ow23: "ކާބޮނާރާ (ޕެނޭ/ސްޕަގެޓީ)", ow24: "އޯކްވުޑް ސްޕެޝަލް ޕާސްތާ",
+  ow25: "ޗިކަން ޕާސްތާ އަގްލިއޯ އޮލިއޯ", ow26: "ވަޅޯމަސް ޕާސްތާ އަގްލިއޯ އޮލިއޯ",
+  ow27: "ގަރުދިޔަ (ބަތް/ރޮށްޓާއެކު)", ow28: "މަސް ރިހަ (ބަތް/ރޮށްޓާއެކު)",
+  ow29: "ކުކުޅު ރިހަ (ބަތް/ރޮށްޓާއެކު)", ow30: "ޗިލީ ބޯވަ (ބަތް/ރޮށްޓާއެކު)",
+  ow31: "ޓޫނާ ޕިއްޒާ", ow32: "ޗިކަން ހަވާއިއަން ޕިއްޒާ", ow33: "ސީފުޑް ޕިއްޒާ",
+  ow34: "ތަންދޫރީ ޕިއްޒާ", ow35: "ޗިކަން އަޑޯބޯ", ow36: "ބީފް ޕަރޭސް", ow37: "ބިސްޓެކް ޓަގަލޮގް",
+  ow38: "ޓޫނާ ކޮތު", ow39: "ޗިކަން ކޮތު", ow40: "ބީފް ކޮތު", ow41: "ވަޅޯމަސް ކޮތު",
+  ow42: "ސީފުޑް ކޮތު", ow43: "މިކްސް ކޮތު", ow44: "ނަސިގޮރެންގ", ow45: "ޓޫނާ ފްރައިޑް ރައިސް",
+  ow46: "ޗިކަން ފްރައިޑް ރައިސް", ow47: "ބީފް ފްރައިޑް ރައިސް", ow48: "ވަޅޯމަސް ފްރައިޑް ރައިސް",
+  ow49: "ސީފުޑް ފްރައިޑް ރައިސް", ow50: "މިކްސް ފްރައިޑް ރައިސް", ow51: "ޗިކަން ބިރިޔާނީ",
+  ow52: "ބީފް ބިރިޔާނީ", ow53: "ބާމިގޮރެންގ", ow54: "ޓޫނާ ފްރައިޑް ނޫޑްލްސް",
+  ow55: "ޗިކަން ފްރައިޑް ނޫޑްލްސް", ow56: "ބީފް ފްރައިޑް ނޫޑްލްސް", ow57: "ވަޅޯމަސް ފްރައިޑް ނޫޑްލްސް",
+  ow58: "ސީފުޑް ފްރައިޑް ނޫޑްލްސް", ow59: "މިކްސް ފްރައިޑް ނޫޑްލްސް", ow60: "ގްރިލްޑް ޗިކަން",
+  ow61: "ޑެވިލްޑް ޗިކަން", ow62: "ޗިލީ ޗިކަން", ow63: "ޗިކަން ސްޓްރޮގަނޮފް",
+  ow64: "ބީފް ޕެޕަރ ސްޓޭކް", ow65: "ޑެވިލްޑް ބީފް", ow66: "ޗިލީ ބީފް", ow67: "ބީފް ސްޓްރޮގަނޮފް",
+  ow68: "ޗިކަން އަލާ ކީވް", ow69: "ޗިކަން ކޯޑަން ބްލޫ",
+};
+
 const DEFAULT_MENU = ITEMS.map(([id, name, cat, mvr, emoji, file, allergens, addons, desc, noKitchen]) => {
   const item = {
     id, name, cat, emoji,
@@ -150,6 +186,7 @@ const DEFAULT_MENU = ITEMS.map(([id, name, cat, mvr, emoji, file, allergens, add
     taxable: true,
     img: imgDataUri(file),
   };
+  if (DV_NAMES[id]) item.dv = DV_NAMES[id];
   if (desc) item.desc = desc;
   if (allergens) item.allergens = allergens;
   if (addons && addons.length) item.addons = addons;
