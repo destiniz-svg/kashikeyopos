@@ -1647,7 +1647,7 @@ if (fs.existsSync(protoFile)) {
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p) }));
   // Sold-out is real when the owner flagged it, an ingredient-driven recipe has
   // no servings left (recipeAvail<=0), or a stock-tracked item hit zero — the
   // same rule the guest boot mapper uses, so the register tile + admin menu
@@ -1658,7 +1658,7 @@ if (fs.existsSync(protoFile)) {
   const liveMenuAll = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", desc: p.desc || "", descDv: p.descDv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), stockable: !!p.stockIngredientId, mods: liveMods(p.addons) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", desc: p.desc || "", descDv: p.descDv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), stockable: !!p.stockIngredientId, mods: liveMods(p.addons) }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
@@ -1770,6 +1770,9 @@ if (fs.existsSync(protoFile)) {
       .rows.map((r) => r.data || {});
     out.tickets = liveTickets(ordRows);
     out.deliv = liveDeliv(ordRows);
+    const sd = (setRow && setRow.data) || {};
+    out.catGroups = Array.isArray(sd.catGroups) ? sd.catGroups : [];
+    out.catOrder = Array.isArray(sd.catOrder) ? sd.catOrder : [];
     return out;
   };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
@@ -1895,6 +1898,8 @@ if (fs.existsSync(protoFile)) {
                 "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
               const setData = setRow ? (setRow.data || {}) : {};
               adminData.cfg = setData.adminCfg || {};
+              adminData.catGroups = Array.isArray(setData.catGroups) ? setData.catGroups : [];
+              adminData.catOrder = Array.isArray(setData.catOrder) ? setData.catOrder : [];
               const storeName = setData.storeName || setData.name || "";
               adminData.store = {
                 name: storeName, currency: setData.currency || "MVR",
