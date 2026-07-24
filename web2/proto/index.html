@@ -1595,6 +1595,25 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </div>
 </sc-if>
+<sc-if value="{{ tabPickOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeTabPick }}" style="position:fixed;inset:0;z-index:185;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+    <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(400px,100%);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:18px 18px 20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex:none">
+        <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink);flex:1">{{ L.pickCustomer }}</span>
+        <button onClick="{{ closeTabPick }}" style="width:30px;height:30px;flex:none;border:0;border-radius:9px;background:var(--sur2);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.9)">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;overflow-y:auto;min-height:0">
+        <sc-for list="{{ tabCustomers }}" as="tc" hint-placeholder-count="4">
+          <button onClick="{{ tc.tap }}" style="display:flex;align-items:center;gap:11px;text-align:start;border:1px solid {{ tc.bc }};background:{{ tc.bg }};color:var(--ink);border-radius:13px;padding:11px 13px;cursor:pointer" style-hover="border-color:var(--coral)" style-active="transform:scale(.98)">
+            <span style="width:34px;height:34px;flex:none;border-radius:99px;background:var(--sur2);display:grid;place-items:center;font-size:12.5px;font-weight:800;color:var(--coral)">{{ tc.init }}</span>
+            <span style="flex:1;min-width:0;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ tc.name }}</span>
+            <span style="font-size:11px;font-weight:800;color:var(--ink2);font-variant-numeric:tabular-nums;white-space:nowrap">{{ tc.balF }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</sc-if>
 <sc-if value="{{ deliveryOpen }}" hint-placeholder-val="{{ false }}">
   <div onClick="{{ closeDelivery }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
     <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(440px,100%);max-height:calc(100dvh - 48px);overflow-y:auto;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
@@ -1750,15 +1769,16 @@ button[disabled],button:disabled{cursor:not-allowed}
         <sc-if value="{{ tabSel }}" hint-placeholder-val="{{ false }}">
           <div style="margin-top:16px;animation:rise .25s">
             <div style="font-size:11.5px;color:var(--ink2);font-weight:700;margin-bottom:8px">{{ L.pickCustomer }}</div>
-            <div style="display:flex;flex-direction:column;gap:7px">
-              <sc-for list="{{ tabCustomers }}" as="tc" hint-placeholder-count="3">
-                <button onClick="{{ tc.tap }}" style="display:flex;align-items:center;gap:10px;border:1px solid;border-radius:13px;padding:10px 13px;cursor:pointer;transition:all .15s;background:{{ tc.bg }};border-color:{{ tc.bc }};color:var(--ink)" style-active="transform:scale(.97)">
-                  <span style="width:30px;height:30px;border-radius:99px;background:var(--sur2);display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--coral)">{{ tc.init }}</span>
-                  <span style="flex:1;text-align:start;font-size:13px;font-weight:700">{{ tc.name }}</span>
-                  <span style="font-size:11.5px;color:var(--ink2);font-weight:700;font-variant-numeric:tabular-nums">{{ tc.balF }}</span>
-                </button>
-              </sc-for>
-            </div>
+            <sc-if value="{{ hasTabChosen }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ openTabPick }}" style="width:100%;box-sizing:border-box;display:flex;align-items:center;gap:11px;border:1px solid var(--coral);background:var(--coralsoft);color:var(--ink);border-radius:13px;padding:11px 13px;cursor:pointer;text-align:start" style-active="transform:scale(.98)">
+                <span style="width:34px;height:34px;flex:none;border-radius:99px;background:var(--sur);display:grid;place-items:center;font-size:12.5px;font-weight:800;color:var(--coral)">{{ tabChosenInit }}</span>
+                <span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ tabChosenName }}</span><span style="display:block;font-size:11px;font-weight:600;color:var(--ink2)">{{ tabChosenBalF }}</span></span>
+                <span style="font-size:11.5px;font-weight:800;color:var(--coral);flex:none">Change</span>
+              </button>
+            </sc-if>
+            <sc-if value="{{ noTabChosen }}" hint-placeholder-val="{{ true }}">
+              <button onClick="{{ openTabPick }}" style="width:100%;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:8px;border:1px dashed var(--coral);background:var(--sur);color:var(--coral);border-radius:13px;padding:13px;cursor:pointer;font-size:13px;font-weight:800" style-active="transform:scale(.98)"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="6" r="3"/><path d="M2 15a5 5 0 0 1 10 0"/><line x1="15" y1="6" x2="15" y2="11"/><line x1="12.5" y1="8.5" x2="17.5" y2="8.5"/></svg>Choose customer</button>
+            </sc-if>
             <sc-if value="{{ tabCustSel }}" hint-placeholder-val="{{ false }}">
               <button onClick="{{ viewTabHist }}" style="margin-top:12px;display:flex;align-items:center;gap:6px;border:0;background:none;color:var(--coral);font-size:12px;font-weight:800;cursor:pointer;padding:2px 0;font-family:inherit" style-active="opacity:.6"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2.5" width="10" height="9" rx="1.6"></rect><line x1="4.3" y1="5.4" x2="9.7" y2="5.4"></line><line x1="4.3" y1="7.6" x2="8" y2="7.6"></line></svg>{{ viewTabHistLbl }} →</button>
             </sc-if>
@@ -2026,7 +2046,7 @@ class Component extends DCLogic {
         {no:'0042',ch:'Delivery',chK:'deliv',otype:'delivery',time:'18:05',items:4,total:321.50,cust:'Shameem',custDv:'ޝަމީމް',method:'Cash'},
         {no:'0041',ch:'POS · T7',chK:'dine',otype:'dine',time:'17:44',items:3,total:178.00,cust:'Walk-in',custDv:'ހިނގާ ކަސްޓަމަރު',method:'Card'}
       ],svcOn:true,
-      orderType:'dine',tableNo:1,tableMenuOpen:false,deliveryCust:null,deliveryZoneIx:null,deliveryNote:'',deliveryOpen:false,custPickOpen:false,barCollapsed:false,discountPct:0,myRole:'cashier',discOpen:null,rmOpen:null,rmReason:null,voidOpen:null,voidReason:null,kotSent:false,held:[],heldMenuOpen:false,orderStartedAt:null,billSeq:12,activeBill:null,activeId:null,
+      orderType:'dine',tableNo:1,tableMenuOpen:false,deliveryCust:null,deliveryZoneIx:null,deliveryNote:'',deliveryOpen:false,custPickOpen:false,tabPickOpen:false,barCollapsed:false,discountPct:0,myRole:'cashier',discOpen:null,rmOpen:null,rmReason:null,voidOpen:null,voidReason:null,kotSent:false,held:[],heldMenuOpen:false,orderStartedAt:null,billSeq:12,activeBill:null,activeId:null,
       tickets:(typeof window!=='undefined'&&window.__ksReg&&window.__ksReg.tickets)?window.__ksReg.tickets:[
         {no:'0044',at:now-140000,src:'POS',station:'hot',items:[{q:2,n:'Mas Huni & Roshi'},{q:1,n:'Kalhu Sai'}]},
         {no:'0045',at:now-370000,src:'QR · T4',station:'hot',items:[{q:1,n:'Kukulhu Riha'},{q:2,n:'Fried Rice'},{q:2,n:'Passion Juice'}]},
@@ -2290,7 +2310,7 @@ class Component extends DCLogic {
     const mod=s.mod;const modMods=mod?(mod.mods||[]).filter(x=>s.modSel[x.id]):[];
     const modUnit=mod?mod.price+modMods.reduce((a,x)=>a+x.price,0):0;
     const net=s.syncing?{label:me.t('syncing')+' '+s.outbox+'…',bg:'var(--ambersoft)',c:'var(--amber)',anim:'spin 1s linear infinite'}:s.online?{label:me.t('online'),bg:'var(--greensoft)',c:'var(--green)',anim:'pulse 1.6s ease-in-out infinite'}:{label:me.t('offline')+(s.outbox?' · '+s.outbox:''),bg:'var(--ambersoft)',c:'var(--amber)',anim:'pulse 1.6s infinite'};
-    const methods=[['cash','cash'],['card','card'],['bml','bml'],['transfer','transfer'],['tab','ontab']].map(([id,k])=>({label:me.t(k),tap:()=>me.setState({method:id,tender:0}),bg:s.method===id?'var(--coralsoft)':'var(--sur)',bc:s.method===id?'var(--coral)':'var(--line)',ic:s.method===id?'var(--coral)':'var(--ink2)'}));
+    const methods=[['cash','cash'],['card','card'],['bml','bml'],['transfer','transfer'],['tab','ontab']].map(([id,k])=>({label:me.t(k),tap:()=>me.setState(id==='tab'?{method:id,tender:0,tabPickOpen:true}:{method:id,tender:0}),bg:s.method===id?'var(--coralsoft)':'var(--sur)',bc:s.method===id?'var(--coral)':'var(--line)',ic:s.method===id?'var(--coral)':'var(--ink2)'}));
     const due=t.total;
     const tenders=[{v:due,label:me.t('exact')},{v:Math.ceil(due/50)*50,label:'MVR '+Math.ceil(due/50)*50},{v:Math.ceil(due/100)*100,label:'MVR '+Math.ceil(due/100)*100},{v:Math.ceil(due/500)*500,label:'MVR '+Math.ceil(due/500)*500}].filter((x,i,a)=>a.findIndex(y=>y.v===x.v)===i).map(tn=>({label:tn.label,tap:()=>me.setState({tender:tn.v}),bg:s.tender===tn.v?'var(--ink)':'var(--sur)',co:s.tender===tn.v?'var(--bg)':'var(--ink)',bc:s.tender===tn.v?'var(--ink)':'var(--line)'}));
     const canPay=s.method&&(s.method!=='cash'||s.tender>=due-0.005)&&(s.method!=='tab'||s.tabCust);
@@ -2393,7 +2413,9 @@ class Component extends DCLogic {
       splitOn:s.split>1,splitTxt:me.fm(due/s.split)+' × '+s.split+' '+me.t('perGuest'),
       methods,cashSel:s.method==='cash',tabSel:s.method==='tab',tenders,
       hasChange:s.method==='cash'&&s.tender>due+0.004,changeF:me.fm(Math.max(0,s.tender-due)),
-      tabCustomers:s.recv.map(c=>({name:s.lang==='dv'?c.dv:c.name,init:c.name.split(' ').map(w=>w[0]).join('').slice(0,2),balF:'MVR '+c.bal,tap:()=>me.setState({tabCust:c.id}),bg:s.tabCust===c.id?'var(--coralsoft)':'var(--sur)',bc:s.tabCust===c.id?'var(--coral)':'var(--line)'})),
+      tabCustomers:s.recv.map(c=>({name:s.lang==='dv'?c.dv:c.name,init:c.name.split(' ').map(w=>w[0]).join('').slice(0,2),balF:'MVR '+c.bal,tap:()=>me.setState({tabCust:c.id,tabPickOpen:false}),bg:s.tabCust===c.id?'var(--coralsoft)':'var(--sur)',bc:s.tabCust===c.id?'var(--coral)':'var(--line)'})),
+      tabPickOpen:s.tabPickOpen,openTabPick:()=>me.setState({tabPickOpen:true}),closeTabPick:()=>me.setState({tabPickOpen:false}),
+      ...(()=>{var c=s.tabCust?s.recv.find(x=>x.id===s.tabCust):null;return {hasTabChosen:!!c,noTabChosen:!c,tabChosenName:c?(s.lang==='dv'?c.dv:c.name):'',tabChosenInit:c?c.name.split(' ').map(w=>w[0]).join('').slice(0,2):'',tabChosenBalF:c?('MVR '+c.bal):''};})(),
       confirmOp:canPay?1:.45,confirmPay:()=>{if(canPay)me.finishPay();},payBtnLbl:s.method==='tab'?me.t('addToTab'):me.t('confirm'),
       payDoneTitle:s.method==='tab'?me.t('addedToTab'):me.t('paid'),
       payDoneSub:s.method==='tab'?((s.tabCust?((s.lang==='dv'?(s.recv.find(c=>c.id===s.tabCust)||{}).dv:(s.recv.find(c=>c.id===s.tabCust)||{}).name)+' · '):'')+me.fm(due)):((s.receipt?'':'')+me.fm(due)+(s.method==='cash'&&s.tender>due?' · '+me.t('change')+' '+me.fm(s.tender-due):'')),
