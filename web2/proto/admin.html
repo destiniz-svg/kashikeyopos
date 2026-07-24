@@ -79,11 +79,45 @@ button[disabled],button:disabled{cursor:not-allowed}
       </sc-for>
     </nav>
     <div style="border-top:1px solid var(--line);padding:12px">
-      <div style="display:flex;align-items:center;gap:10px;padding:6px 4px">
-        <span style="width:34px;height:34px;border-radius:99px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-size:13px;font-weight:700">{{ acctInitial }}</span>
-        <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">{{ acctName }}</div><div style="font-size:10.5px;color:var(--ink2);font-weight:600">{{ acctRoleVer }}</div></div>
+      <div style="position:relative">
+        <button onClick="{{ toggleAcct }}" style="width:100%;display:flex;align-items:center;gap:10px;border:1px solid var(--line2);background:var(--card);border-radius:12px;padding:6px 8px;cursor:pointer;color:var(--ink);text-align:start" style-hover="border-color:var(--coral)" style-active="transform:scale(.98)">
+          <span style="width:34px;height:34px;flex:none;border-radius:99px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-size:13px;font-weight:700">{{ acctInitial }}</span>
+          <span style="flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2"><span style="font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ acctName }}</span><span style="font-size:10.5px;color:var(--ink2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ acctRoleVer }}</span></span>
+          <svg width="11" height="11" viewBox="0 0 11 11" style="color:var(--ink3);flex:none;transition:transform .2s;transform:{{ acctCaret }}"><polyline points="3,4 5.5,7 8,4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
+        </button>
+        <sc-if value="{{ acctOpen }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ closeAcct }}" style="position:fixed;inset:0;z-index:120"></div>
+          <div style="position:absolute;bottom:calc(100% + 9px);left:0;right:0;z-index:130;background:var(--card);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow);padding:8px;animation:rise .16s;max-height:min(70vh,440px);overflow-y:auto">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink3);padding:6px 10px 4px">SWITCH ACCOUNT</div>
+            <sc-for list="{{ adminOpts }}" as="ad" hint-placeholder-count="3">
+              <button onClick="{{ ad.tap }}" style="width:100%;display:flex;align-items:center;gap:9px;border:0;border-radius:10px;padding:7px 9px;cursor:pointer;text-align:start;background:{{ ad.bg }};color:var(--ink)" style-hover="background:var(--bg)">
+                <span style="width:28px;height:28px;flex:none;border-radius:99px;background:{{ ad.avBg }};color:{{ ad.avCo }};display:grid;place-items:center;font-size:12px;font-weight:700">{{ ad.initial }}</span>
+                <span style="flex:1;min-width:0"><span style="display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ad.name }}</span><span style="display:block;font-size:10.5px;color:var(--ink2);font-weight:600">{{ ad.role }}</span></span>
+                <sc-if value="{{ ad.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 13 13" style="color:var(--coral);flex:none"><polyline points="2.5,6.5 5.4,9.4 10.5,3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></sc-if>
+              </button>
+            </sc-for>
+            <div style="height:1px;background:var(--line);margin:6px 6px"></div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink3);padding:4px 10px 5px">THEME</div>
+            <div style="display:flex;gap:5px;padding:0 6px 3px">
+              <sc-for list="{{ themeOpts }}" as="th" hint-placeholder-count="2">
+                <button onClick="{{ th.tap }}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid {{ th.bd }};border-radius:9px;padding:8px 4px;font-size:11.5px;font-weight:700;cursor:pointer;background:{{ th.bg }};color:{{ th.co }}" style-active="transform:scale(.96)">
+                  <span style="display:grid;place-items:center" dangerouslySetInnerHTML="{{ th.icon }}"></span>{{ th.label }}
+                </button>
+              </sc-for>
+            </div>
+            <div style="height:1px;background:var(--line);margin:6px 6px"></div>
+            <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink3);padding:4px 10px 5px">LANGUAGE</div>
+            <sc-for list="{{ langOpts }}" as="lg" hint-placeholder-count="2">
+              <button onClick="{{ lg.tap }}" style="width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:7px 9px;cursor:pointer;text-align:start;background:{{ lg.bg }};color:var(--ink)" style-hover="background:var(--bg)">
+                <span style="width:26px;flex:none;text-align:center;font-size:10px;font-weight:800;color:var(--ink2);letter-spacing:.04em">{{ lg.code }}</span>
+                <span style="flex:1;font-size:12.5px;font-weight:700">{{ lg.label }}</span>
+                <sc-if value="{{ lg.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 13 13" style="color:var(--coral);flex:none"><polyline points="2.5,6.5 5.4,9.4 10.5,3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></sc-if>
+              </button>
+            </sc-for>
+          </div>
+        </sc-if>
       </div>
-      <a href="/app2" style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:6px;border:1px solid var(--line2);border-radius:10px;padding:9px;font-size:12px;font-weight:700;color:var(--ink)" style-hover="border-color:var(--coral);color:var(--coral)">
+      <a href="/app2" style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:8px;border:1px solid var(--line2);border-radius:10px;padding:9px;font-size:12px;font-weight:700;color:var(--ink)" style-hover="border-color:var(--coral);color:var(--coral)">
         <svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="4.5" height="4.5" rx="1.2" fill="currentColor"></rect><rect x="7.5" y="2" width="4.5" height="4.5" rx="1.2" fill="currentColor" opacity=".45"></rect><rect x="2" y="7.5" width="4.5" height="4.5" rx="1.2" fill="currentColor" opacity=".45"></rect><rect x="7.5" y="7.5" width="4.5" height="4.5" rx="1.2" fill="currentColor"></rect></svg>
         Open register app
       </a>
@@ -113,47 +147,6 @@ button[disabled],button:disabled{cursor:not-allowed}
           </sc-for>
         </div>
         </sc-if>
-        <div style="position:relative">
-          <button onClick="{{ toggleAcct }}" style="display:flex;align-items:center;gap:8px;border:1px solid var(--line2);background:var(--card);border-radius:12px;padding:4px 9px 4px 5px;cursor:pointer;color:var(--ink)" style-hover="border-color:var(--coral)" style-active="transform:scale(.97)">
-            <span style="width:30px;height:30px;flex:none;border-radius:99px;background:var(--ink);color:var(--bg);display:grid;place-items:center;font-size:12.5px;font-weight:700">{{ acctInitial }}</span>
-            <span style="display:flex;flex-direction:column;align-items:flex-start;line-height:1.12;min-width:0">
-              <span style="font-size:12.5px;font-weight:700;white-space:nowrap">{{ acctName }}</span>
-              <span style="font-size:10px;color:var(--ink2);font-weight:600;white-space:nowrap">{{ acctRole }}</span>
-            </span>
-            <svg width="11" height="11" viewBox="0 0 11 11" style="color:var(--ink3);flex:none;transition:transform .2s;transform:{{ acctCaret }}"><polyline points="3,4 5.5,7 8,4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg>
-          </button>
-          <sc-if value="{{ acctOpen }}" hint-placeholder-val="{{ false }}">
-            <div onClick="{{ closeAcct }}" style="position:fixed;inset:0;z-index:120"></div>
-            <div style="position:absolute;top:calc(100% + 9px);right:0;z-index:130;width:254px;background:var(--card);border:1px solid var(--line2);border-radius:16px;box-shadow:var(--shadow);padding:8px;animation:rise .16s">
-              <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink3);padding:6px 10px 4px">SWITCH ACCOUNT</div>
-              <sc-for list="{{ adminOpts }}" as="ad" hint-placeholder-count="3">
-                <button onClick="{{ ad.tap }}" style="width:100%;display:flex;align-items:center;gap:9px;border:0;border-radius:10px;padding:7px 9px;cursor:pointer;text-align:start;background:{{ ad.bg }};color:var(--ink)" style-hover="background:var(--bg)">
-                  <span style="width:28px;height:28px;flex:none;border-radius:99px;background:{{ ad.avBg }};color:{{ ad.avCo }};display:grid;place-items:center;font-size:12px;font-weight:700">{{ ad.initial }}</span>
-                  <span style="flex:1;min-width:0"><span style="display:block;font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ad.name }}</span><span style="display:block;font-size:10.5px;color:var(--ink2);font-weight:600">{{ ad.role }}</span></span>
-                  <sc-if value="{{ ad.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 13 13" style="color:var(--coral);flex:none"><polyline points="2.5,6.5 5.4,9.4 10.5,3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></sc-if>
-                </button>
-              </sc-for>
-              <div style="height:1px;background:var(--line);margin:6px 6px"></div>
-              <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink3);padding:4px 10px 5px">THEME</div>
-              <div style="display:flex;gap:5px;padding:0 6px 3px">
-                <sc-for list="{{ themeOpts }}" as="th" hint-placeholder-count="2">
-                  <button onClick="{{ th.tap }}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid {{ th.bd }};border-radius:9px;padding:8px 4px;font-size:11.5px;font-weight:700;cursor:pointer;background:{{ th.bg }};color:{{ th.co }}" style-active="transform:scale(.96)">
-                    <span style="display:grid;place-items:center" dangerouslySetInnerHTML="{{ th.icon }}"></span>{{ th.label }}
-                  </button>
-                </sc-for>
-              </div>
-              <div style="height:1px;background:var(--line);margin:6px 6px"></div>
-              <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink3);padding:4px 10px 5px">LANGUAGE</div>
-              <sc-for list="{{ langOpts }}" as="lg" hint-placeholder-count="2">
-                <button onClick="{{ lg.tap }}" style="width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:10px;padding:7px 9px;cursor:pointer;text-align:start;background:{{ lg.bg }};color:var(--ink)" style-hover="background:var(--bg)">
-                  <span style="width:26px;flex:none;text-align:center;font-size:10px;font-weight:800;color:var(--ink2);letter-spacing:.04em">{{ lg.code }}</span>
-                  <span style="flex:1;font-size:12.5px;font-weight:700">{{ lg.label }}</span>
-                  <sc-if value="{{ lg.on }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 13 13" style="color:var(--coral);flex:none"><polyline points="2.5,6.5 5.4,9.4 10.5,3.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></sc-if>
-                </button>
-              </sc-for>
-            </div>
-          </sc-if>
-        </div>
       </div>
     </header>
     <main style="flex:1;overflow-y:auto;padding:{{ mainPad }};display:flex;flex-direction:column;gap:14px">
