@@ -576,6 +576,8 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     const cat = String(body.cat || "").trim().slice(0, 40);
     const price = Math.max(0, Math.round(Number(body.price) || 0));
     const addons = body.addons !== undefined ? cleanAddons(body.addons) : undefined;
+    const desc = body.desc !== undefined ? String(body.desc || "").slice(0, 160).trim() : undefined;
+    const descDv = body.descDv !== undefined ? String(body.descDv || "").slice(0, 200).trim() : undefined;
     if (!name) return res.status(400).json({ error: "name required" });
     let id = String(body.id || "").trim();
     const out = await withOrg(req.orgId, async (client) => {
@@ -584,6 +586,8 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
         if (row) {
           const data = Object.assign({}, row.data || {});
           data.name = name; if (dv) data.dv = dv; else delete data.dv; if (cat) data.cat = cat; data.price = price;
+          if (desc !== undefined) { if (desc) data.desc = desc; else delete data.desc; }
+          if (descDv !== undefined) { if (descDv) data.descDv = descDv; else delete data.descDv; }
           if (addons !== undefined) { if (addons.length) data.addons = addons; else delete data.addons; }
           const up = await client.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [req.orgId, id, JSON.stringify(data)]);
           return { id, rowver: Number(up.rows[0].rowver) };
@@ -591,6 +595,8 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       }
       if (!id) id = "c_" + Math.random().toString(36).slice(2, 9);
       const data = { id, name, price, cat: cat || "General" }; if (dv) data.dv = dv;
+      if (desc) data.desc = desc;
+      if (descDv) data.descDv = descDv;
       if (addons && addons.length) data.addons = addons;
       const ins = await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [req.orgId, id, JSON.stringify(data)]);
       return { id, rowver: Number(ins.rows[0].rowver) };

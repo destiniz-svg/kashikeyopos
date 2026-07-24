@@ -1658,7 +1658,7 @@ if (fs.existsSync(protoFile)) {
   const liveMenuAll = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), en: p.name, dv: p.dv || "", desc: p.desc || "", descDv: p.descDv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), mods: liveMods(p.addons) }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
