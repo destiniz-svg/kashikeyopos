@@ -249,6 +249,26 @@ app's restorability at scale. It does **not** exercise Railway's managed-backup
 layer or network — run the same procedure once against the **staging** DB via
 `docs/restore-drill.md` to close that last gap, and re-drill quarterly.
 
+**Drill #2 — 24 Jul 2026 (sandbox, post-security-hardening build) — PASS**
+
+Independent re-verification on the build carrying the JWT-secret fail-fast (SEC-1)
+and the back-office inventory gate (SEC-2), reconciling **money and stock through
+the live API**, not just row counts.
+
+| Item | Result |
+| --- | --- |
+| Dataset | 19 MB · **55 orgs · 5,207 entities (247 sales) · 326 ops · 3 stock moves**; a seeded store carried a known 200 sales / 578,400 laari |
+| Dump (`pg_dump -Fc`, §3 Layer B) | exit 0 → 19,125,992-byte file |
+| Restore (`pg_restore` into fresh `kash_restore`, §5a) | **1.15 s**, exit 0 |
+| §4 row/aggregate reconciliation | **exact match source↔restore**: orgs 55=55 · entities 5,207=5,207 · sales 247=247 · **revenue 833,153=833,153 laari** · product-stock Σ 4,601=4,601 · ops 326=326 · stock_moves 3=3 |
+| RLS after restore | `tenant_isolation` policy on **15/15** tables · **15/15** tables `FORCE`d |
+| Boot against restore | health `200` on the restored DB |
+| Application proof | **login to the seeded org succeeded**; `/api/pull` returned exactly **200 sales / 578,400 laari** — business data reconciles to the laari through the live API |
+
+Together, drills #1 and #2 make §2's RPO/RTO evidence-backed on two independent
+datasets and two code builds. Remaining gap (unchanged): exercise Railway's
+managed-backup layer + network once against **staging** per `docs/restore-drill.md`.
+
 ---
 
 ## 8. Escalation
