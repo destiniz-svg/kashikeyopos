@@ -1644,10 +1644,13 @@ class Component extends DCLogic {
   deleteProduct(id){if(!id)return;try{fetch('/api/inv/products/'+encodeURIComponent(id)+'/delete',{method:'POST',credentials:'same-origin'}).catch(function(){});}catch(e){}}
   bumpMenuPrice(id,base,d){const m=Object.assign({},this.state.menuPrice);const cur=(id in m)?m[id]:base;const nv=Math.max(0,Math.round((cur+d)*100)/100);if(nv===base)delete m[id];else m[id]=nv;this.setState({menuPrice:m});this.saveMeta(id,{price:Math.round(nv*100)});}
   pubMenu(){try{const o=JSON.stringify({off:this.state.menuOff,hidden:this.state.menuHidden,price:this.state.menuPrice,added:this.state.menuNew});if(o!==this._lastMenu){this._lastMenu=o;localStorage.setItem('kashikeyo_menu',o);}}catch(e){}}
-  openAddItem(){this.setState({menuDraft:{id:'',en:'',dv:'',desc:'',descDv:'',cat:'hedhikaa',price:'',isNew:true,mods:[]}});}
-  openEditItem(it){this.setState({menuDraft:{id:it.id,en:it.en,dv:it.dv,desc:it.desc||'',descDv:it.descDv||'',cat:it.cat,price:String(it.price),isNew:false,stockable:!!it.stockable,stkUnit:'pcs',stkPer:'1',stkBusy:false,stkErr:'',mods:(it.mods||[]).map(m=>({name:m.en||m.name||'',price:(m.price||m.price===0)?String(m.price):''}))}});}
+  openAddItem(){var defCat=this._catGroups().length?this._firstSub():'hedhikaa';this.setState({menuDraft:{id:'',en:'',dv:'',desc:'',descDv:'',cat:defCat,price:'',isNew:true,mods:[]}});}
+  openEditItem(it){this.setState({menuDraft:{id:it.id,en:it.en,dv:it.dv,desc:it.desc||'',descDv:it.descDv||'',cat:this._catGroups().length?this._subOf(it):it.cat,price:String(it.price),isNew:false,stockable:!!it.stockable,stkUnit:'pcs',stkPer:'1',stkBusy:false,stkErr:'',mods:(it.mods||[]).map(m=>({name:m.en||m.name||'',price:(m.price||m.price===0)?String(m.price):''}))}});}
   applyStockable(on){var me=this;var d=this.state.menuDraft;if(!d||!d.id)return;var unit=['g','ml','pcs'].indexOf(d.stkUnit)>=0?d.stkUnit:'pcs';var per=parseFloat(d.stkPer)||1;this.setState({menuDraft:Object.assign({},d,{stkBusy:true,stkErr:''})});fetch('/api/inv/products/'+encodeURIComponent(d.id)+'/stockable',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({on:!!on,unit:unit,perSale:per})}).then(function(r){return r.json().catch(function(){return{error:'bad'};});}).then(function(j){var cur=me.state.menuDraft;if(!cur)return;if(!j||!j.ok){me.setState({menuDraft:Object.assign({},cur,{stkBusy:false,stkErr:(j&&j.error)||'Couldn’t change stock tracking — try again.'})});return;}me.MENU=(me.MENU||[]).map(function(x){return x.id===cur.id?Object.assign({},x,{stockable:!!on}):x;});me.setState({menuDraft:Object.assign({},cur,{stockable:!!on,stkBusy:false,stkErr:''})});me.toast(on?(cur.en+' · now sold from tracked stock ✓'):(cur.en+' · stock tracking turned off'));}).catch(function(){var cur=me.state.menuDraft;if(cur)me.setState({menuDraft:Object.assign({},cur,{stkBusy:false,stkErr:'Network error — try again.'})});});}
   aiCatSlug(c){c=String(c||'').toLowerCase();if(/hedhik|short|snack|savaa|pastry|bajiy|gulha/.test(c))return 'hedhikaa';if(/drink|bever|juice|coffee|tea|\bsai\b|shake|smooth|soda|water/.test(c))return 'drinks';if(/sweet|dessert|\bfoni\b|cake|pudding|\bice\b|boakib/.test(c))return 'sweets';if(['hedhikaa','mains','drinks','sweets'].indexOf(c)>=0)return c;return 'mains';}
+  _catGroups(){try{var g=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.catGroups))?window.__ksAdmin.catGroups:[];return g.filter(function(x){return x&&x.name;});}catch(e){return [];}}
+  _subOf(it){return (it&&it.sub!=null&&it.sub!=='')?it.sub:(it?it.cat:'');}
+  _firstSub(){var g=this._catGroups();for(var i=0;i<g.length;i++){if((g[i].subs||[]).length)return g[i].subs[0];}return 'hedhikaa';}
   openAiBuilder(){this.setState({aiBuild:{stage:'input',name:'',hint:'',err:'',msg:'',draft:null,price:''}});}
   closeAiBuilder(){this.setState({aiBuild:null});}
   openImport(){this.setState({mnImport:{stage:'input',replace:false,err:'',result:null}});}
@@ -2055,23 +2058,33 @@ class Component extends DCLogic {
     const catLbl={hedhikaa:'Hedhikaa',mains:'Rice & Mains',drinks:'Drinks',sweets:'Sweets'};
     const priceOf=it=>(it.id in s.menuPrice)?s.menuPrice[it.id]:it.price;
     const allMenu=me.MENU.concat(s.menuNew||[]).filter(it=>!s.menuDeleted[it.id]).map(it=>{const e=(s.menuEdit||{})[it.id];return e?Object.assign({},it,e):it;});
-    const menuGroups=me.CATS.map(c=>{
-      const items=allMenu.filter(it=>it.cat===c[0]).map(it=>{
-        const off=!!s.menuOff[it.id],hidden=!!s.menuHidden[it.id];const pr=priceOf(it);const changed=pr!==it.price;
-        return {id:it.id,name:it.en,dv:it.dv,priceF:me.fm(pr),changed,changedBg:changed?'var(--coralsoft)':'transparent',isCustom:!!it.custom,
-          edit:()=>me.openEditItem(it),
-          dec:()=>me.bumpMenuPrice(it.id,it.price,-1),inc:()=>me.bumpMenuPrice(it.id,it.price,1),
-          off,hidden,statusLbl:off?'86 · Sold out':(hidden?'Hidden':'Available'),
-          stBg:off?'var(--redsoft)':(hidden?'var(--bg)':'var(--greensoft)'),stC:off?'var(--red)':(hidden?'var(--ink3)':'var(--green)'),
-          offLbl:off?'Restore':'86',offBg:off?'var(--greensoft)':'var(--redsoft)',offC:off?'var(--green)':'var(--red)',toggleOff:()=>me.togMenuOff(it.id),
-          hideLbl:hidden?'Show':'Hide',toggleHide:()=>me.togMenuHidden(it.id),rowOp:(off||hidden)?0.6:1};
-      });
-      return {cat:c[0],label:c[1],emoji:c[2],count:items.length+' items',items};
-    });
+    const mkMenuRow=function(it){
+      const off=!!s.menuOff[it.id],hidden=!!s.menuHidden[it.id];const pr=priceOf(it);const changed=pr!==it.price;
+      return {id:it.id,name:it.en,dv:it.dv,priceF:me.fm(pr),changed,changedBg:changed?'var(--coralsoft)':'transparent',isCustom:!!it.custom,
+        edit:()=>me.openEditItem(it),
+        dec:()=>me.bumpMenuPrice(it.id,it.price,-1),inc:()=>me.bumpMenuPrice(it.id,it.price,1),
+        off,hidden,statusLbl:off?'86 · Sold out':(hidden?'Hidden':'Available'),
+        stBg:off?'var(--redsoft)':(hidden?'var(--bg)':'var(--greensoft)'),stC:off?'var(--red)':(hidden?'var(--ink3)':'var(--green)'),
+        offLbl:off?'Restore':'86',offBg:off?'var(--greensoft)':'var(--redsoft)',offC:off?'var(--green)':'var(--red)',toggleOff:()=>me.togMenuOff(it.id),
+        hideLbl:hidden?'Show':'Hide',toggleHide:()=>me.togMenuHidden(it.id),rowOp:(off||hidden)?0.6:1};
+    };
+    const ACG=me._catGroups();
+    let menuGroups;
+    if(ACG.length){
+      const knownS={};ACG.forEach(function(g){(g.subs||[]).forEach(function(su){knownS[su]=1;});});
+      menuGroups=ACG.map(function(g){var subs=g.subs||[];var items=allMenu.filter(function(it){return subs.indexOf(me._subOf(it))>=0;}).map(mkMenuRow);return {cat:g.name,label:g.name,emoji:'🗂',count:items.length+' items',items};}).filter(function(g){return g.items.length;});
+      var otherItems=allMenu.filter(function(it){return !knownS[me._subOf(it)];}).map(mkMenuRow);
+      if(otherItems.length)menuGroups=menuGroups.concat([{cat:'__other',label:'Other',emoji:'📦',count:otherItems.length+' items',items:otherItems}]);
+    }else{
+      menuGroups=me.CATS.map(function(c){var items=allMenu.filter(function(it){return it.cat===c[0];}).map(mkMenuRow);return {cat:c[0],label:c[1],emoji:c[2],count:items.length+' items',items};});
+    }
     const menuStats=[{label:'MENU ITEMS',v:String(allMenu.length)},{label:'86 · SOLD OUT',v:String(Object.keys(s.menuOff).length)},{label:'HIDDEN',v:String(Object.keys(s.menuHidden).length)},{label:'PRICE EDITS',v:String(Object.keys(s.menuPrice).length)}];
     const modGroups=allMenu.filter(it=>it.mods&&it.mods.length).map(it=>({name:it.en,applies:it.mods.length+' add-on'+(it.mods.length>1?'s':''),opts:it.mods.map(o=>({label:o.en||o.name||'',priceF:o.price?'+ '+me.fm(o.price):'Free',free:!o.price}))}));
     const offItems=allMenu.filter(it=>s.menuOff[it.id]).map(it=>({name:it.en,cat:catLbl[it.cat],restore:()=>me.togMenuOff(it.id)}));
-    const dr=s.menuDraft;const ab=s.aiBuild;const oc=s.ocrScan;const hv=s.histView;const im=s.mnImport;const draftCatPills=me.CATS.map(c=>({label:c[1],emoji:c[2],active:dr&&dr.cat===c[0],tap:()=>me.setDraft('cat',c[0]),bg:dr&&dr.cat===c[0]?'var(--ink)':'var(--card)',co:dr&&dr.cat===c[0]?'var(--bg)':'var(--ink2)',bc:dr&&dr.cat===c[0]?'var(--ink)':'var(--line2)'}));
+    const dr=s.menuDraft;const ab=s.aiBuild;const oc=s.ocrScan;const hv=s.histView;const im=s.mnImport;
+    var flatSubs=[];ACG.forEach(function(g){(g.subs||[]).forEach(function(su){flatSubs.push(su);});});
+    if(ACG.length&&dr&&dr.cat&&flatSubs.indexOf(dr.cat)<0)flatSubs=[dr.cat].concat(flatSubs);
+    const draftCatPills=ACG.length?flatSubs.map(function(su){var on=dr&&dr.cat===su;return {label:su,emoji:'',active:on,tap:()=>me.setDraft('cat',su),bg:on?'var(--ink)':'var(--card)',co:on?'var(--bg)':'var(--ink2)',bc:on?'var(--ink)':'var(--line2)'};}):me.CATS.map(c=>({label:c[1],emoji:c[2],active:dr&&dr.cat===c[0],tap:()=>me.setDraft('cat',c[0]),bg:dr&&dr.cat===c[0]?'var(--ink)':'var(--card)',co:dr&&dr.cat===c[0]?'var(--bg)':'var(--ink2)',bc:dr&&dr.cat===c[0]?'var(--ink)':'var(--line2)'}));
     return {
       isDash:A==='dash',isSales:A==='sales',isOutlets:A==='outlets',isKitchen:A==='kitchen',isInv:A==='inventory',isProc:A==='proc',isRecv:A==='recv',isReports:A==='reports',isStaff:A==='staff',isConfig:A==='config',isSys:A==='sysadmin',
       isPay:A==='pay',paySubTabs:mkSubs('pay',['Methods','Payment Links','Billing','Split Payments','Refunds','Gateway']),payMethodsView:spy===0,payLinksView:spy===1,payBillingView:spy===2,paySplitView:spy===3,payRefundView:spy===4,payGatewayView:spy===5,payMethods,payLinks,billTemplates,splitByMethod,splitBillF:me.fm(940),splitGuests:'3',splitByGuest,recentSplits,refundRows,gwStats,settlements,payCols,payTwoCols,newLink:()=>me.toast('Payment link created'),newRefund:()=>me.toast('Refund started'),
