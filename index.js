@@ -12,7 +12,16 @@ const { createRemoteJWKSet, jwtVerify } = require("jose");
 const { DEFAULT_MENU, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
 
 const PORT = process.env.PORT || 4000;
-const SECRET = process.env.JWT_SECRET || "kashikeyo-dev-secret-change-me";
+const DEV_SECRET = "kashikeyo-dev-secret-change-me";
+const SECRET = process.env.JWT_SECRET || DEV_SECRET;
+/* SEC-1: JWT_SECRET signs every session/elevation/dev token AND derives the
+   restricted DB-role password. A production boot on the public dev fallback (or
+   a too-short secret) would let anyone forge tokens for any org, so refuse to
+   start rather than run wide open. Dev/test still use the fallback silently. */
+if (process.env.NODE_ENV === "production" && (SECRET === DEV_SECRET || SECRET.length < 16)) {
+  console.error("FATAL: JWT_SECRET must be set to a strong value (≥16 chars) in production. Refusing to boot.");
+  process.exit(1);
+}
 const MIN_PASSWORD_LEN = Number(process.env.MIN_PASSWORD_LEN) || 8; // store-owner password floor (audit §3.5)
 const DEFAULT_STORE_ID = "main";
 

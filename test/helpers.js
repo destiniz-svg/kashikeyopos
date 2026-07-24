@@ -83,9 +83,13 @@ async function registerOrg(opts = {}) {
 
 const ops = (token, opsArr) => req("POST", "/api/ops", { token, body: { ops: opsArr } });
 const pull = (token, since = 0) => req("GET", `/api/pull?since=${since}`, { token });
-const invGet = (token, p) => req("GET", "/api/inv" + p, { token });
-const invPost = (token, p, body) => req("POST", "/api/inv" + p, { token, body });
-const invPut = (token, p, body) => req("PUT", "/api/inv" + p, { token, body });
+/* Inventory auth: destructive /api/inv routes are back-office (cookie) only
+   since SEC-2, so callers may pass a bearer token string (reads) or an org
+   object / { cookie } for writes. */
+const invAuth = (a) => (typeof a === "string" ? { token: a } : a && a.cookie ? { cookie: a.cookie } : a && a.token ? { token: a.token } : {});
+const invGet = (a, p) => req("GET", "/api/inv" + p, invAuth(a));
+const invPost = (a, p, body) => req("POST", "/api/inv" + p, { ...invAuth(a), body });
+const invPut = (a, p, body) => req("PUT", "/api/inv" + p, { ...invAuth(a), body });
 
 /* Poll a predicate until true or timeout — used to wait for the post-commit
    inventory deduction (processSales runs after the /api/ops response). */

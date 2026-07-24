@@ -174,8 +174,8 @@ describe("stock ledger", () => {
   test("a recipe sale deducts stock once; refund restores it", async () => {
     const o = await H.registerOrg({ tag: "stock" });
     // ingredient with 1000 ml on hand
-    await H.invPost(o.token, "/ingredients", { id: "s-milk", name: "Milk", baseUnit: "ml", location: "Fridge" });
-    await H.invPost(o.token, "/adjust", { ingredientId: "s-milk", mode: "correct", qty: 1000 });
+    await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "s-milk", name: "Milk", baseUnit: "ml", location: "Fridge" });
+    await H.invPost({ cookie: o.cookie }, "/adjust", { ingredientId: "s-milk", mode: "correct", qty: 1000 });
     // a product that uses 200 ml per unit
     await H.ops(o.token, [{ opId: "sp", puts: [{ kind: "products", id: "s-latte", data: { id: "s-latte", name: "Latte", price: 5000 } }] }]);
     await H.invPut(o.token, "/recipes/s-latte", { lines: [{ ingredientId: "s-milk", qty: 200 }] });
@@ -243,7 +243,7 @@ describe("guest orders & counter-modify", () => {
   });
   test("a sold-out item (recipe at zero stock) is refused with 409", async () => {
     // an ingredient with no stock + a product that needs it → 0 servings available
-    await H.invPost(o.token, "/ingredients", { id: "g-bean", name: "Beans", baseUnit: "g", location: "Dry" });
+    await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "g-bean", name: "Beans", baseUnit: "g", location: "Dry" });
     await H.ops(o.token, [{ opId: "gc", puts: [{ kind: "products", id: "g-coffee", data: { id: "g-coffee", name: "Coffee", price: 4000 } }] }]);
     await H.invPut(o.token, "/recipes/g-coffee", { lines: [{ ingredientId: "g-bean", qty: 10 }] });
     assert.equal((await order({ items: [{ pid: "g-coffee", qty: 1 }], gtype: "pickup" })).status, 409);
@@ -444,5 +444,17 @@ describe("security", () => {
     const blocked = await badLogin();
     assert.equal(blocked.status, 429, "blocked after threshold");
     assert.ok(blocked.headers.get("retry-after"), "Retry-After header set");
+  });
+
+  test("SEC-2: a till bearer token cannot reach destructive inventory routes; the back-office cookie can", async () => {
+    const o = await H.registerOrg({ tag: "invauthz" });
+    // The till's bearer token must be refused on cost/stock-mutating routes…
+    assert.equal((await H.invPost(o.token, "/ingredients", { name: "Hack", baseUnit: "g" })).status, 403, "bearer create ingredient blocked");
+    assert.equal((await H.invPost(o.token, "/adjust", { ingredientId: "x", qty: -1, kind: "waste" })).status, 403, "bearer waste adjust blocked");
+    assert.equal((await H.invGet(o.token, "/owner")).status, 403, "bearer owner dashboard blocked");
+    // …while a real back-office cookie session still works, and reads/sync stay open to the till.
+    assert.equal((await H.invPost({ cookie: o.cookie }, "/ingredients", { name: "Tuna", baseUnit: "g" })).status, 200, "cookie create ingredient allowed");
+    assert.equal((await H.invGet(o.token, "/ingredients")).status, 200, "bearer read still allowed");
+    assert.equal((await H.ops(o.token, [{ opId: "az-1", puts: [{ kind: "products", id: "az-p", data: { id: "az-p", name: "X", price: 100 } }] }])).status, 200, "till sync still works");
   });
 });
