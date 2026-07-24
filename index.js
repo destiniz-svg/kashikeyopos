@@ -1817,10 +1817,11 @@ if (fs.existsSync(protoFile)) {
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
               // Inventory stock levels from the real ingredients ledger.
               const ingRows = (await c.query(
-                "SELECT id, name, current_stock, base_unit, min_stock, avg_cost FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+                "SELECT id, name, current_stock, base_unit, min_stock, avg_cost, producible FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
               adminData.stock = ingRows.map((i) => ({
                 id: i.id, n: i.name, oh: Number(i.current_stock) || 0, unit: i.base_unit || "",
                 par: Number(i.min_stock) || 0, cost: Math.round((Number(i.avg_cost) || 0) / 100),
+                prep: i.producible === true,
               }));
               // Dashboard: today's headline KPIs + recent orders from real sales.
               // One wide fetch of recent sales (incl. refunds) feeds the dashboard,
