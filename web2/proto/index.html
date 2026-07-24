@@ -1588,6 +1588,20 @@ button[disabled],button:disabled{cursor:not-allowed}
           <span style="min-width:46px;height:34px;padding:0 10px;border-radius:11px;background:var(--sur2);display:grid;place-items:center;font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;font-variant-numeric:tabular-nums">{{ modQtyDisp }}</span>
           <button onClick="{{ modInc }}" style="width:34px;height:34px;flex:none;border-radius:99px;border:0;background:var(--coral);color:var(--coralink);font-size:18px;font-weight:800;cursor:pointer;display:grid;place-items:center" style-active="transform:scale(.9)">+</button>
         </div>
+        <sc-if value="{{ modOptsInline }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="font-size:12px;font-weight:800;color:var(--coral);margin-bottom:4px">{{ L.optionsLbl }}</div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ modOpts }}" as="o" hint-placeholder-count="2">
+                <button onClick="{{ o.tap }}" style="display:flex;align-items:center;gap:10px;border:0;background:none;padding:12px 2px;cursor:pointer;border-bottom:1px solid var(--line);font-size:13px;font-weight:700;color:var(--ink);text-align:start" style-active="transform:scale(.99)">
+                  <span style="flex:1;min-width:0">{{ o.label }}</span>
+                  <span style="font-size:11.5px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums">{{ o.tag }}</span>
+                  <span style="width:20px;height:20px;flex:none;border-radius:6px;border:2px solid;display:grid;place-items:center;border-color:{{ o.boxBc }};background:{{ o.boxBg }}"><sc-if value="{{ o.sel }}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--coralink)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="animation:pop .2s"><polyline points="2,6.4 5,9 10,3.4"></polyline></svg></sc-if></span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
           <sc-for list="{{ modPad }}" as="k" hint-placeholder-count="16">
             <button onClick="{{ k.tap }}" style="height:50px;border-radius:12px;border:1px solid {{ k.bc }};background:{{ k.bg }};color:{{ k.co }};font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;cursor:pointer;display:grid;place-items:center" style-active="transform:scale(.94)">
@@ -1603,7 +1617,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           <div style="font-size:12px;font-weight:800;color:var(--coral);margin-bottom:7px">{{ L.notesLbl }}</div>
           <textarea value="{{ modNote }}" onChange="{{ setModNote }}" placeholder="{{ L.notePh }}" dir="auto" style="width:100%;min-height:66px;resize:none;border:1px solid var(--line);border-radius:12px;background:var(--sur2);color:var(--ink);font-family:inherit;font-size:12.5px;font-weight:600;padding:10px 12px;outline:none;line-height:1.4"></textarea>
         </div>
-        <sc-if value="{{ hasModOpts }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ modOptsSide }}" hint-placeholder-val="{{ false }}">
           <div>
             <div style="font-size:12px;font-weight:800;color:var(--coral);margin-bottom:4px">{{ L.optionsLbl }}</div>
             <div style="display:flex;flex-direction:column">
@@ -2286,7 +2300,7 @@ class Component extends DCLogic {
       modOpen:!!mod,closeMod:()=>me.setState({mod:null}),
       modName:mod?me.itemName(mod):'',modGl:mod?mod.en[0]:'',modTint:mod?mod.tint:'',modTc:mod?mod.tc:'',modPriceF:mod?me.fm(mod.price):'',
       modPhoto:mod?('qrph-'+mod.id):'',modSrc:mod?me.assetUrl(mod.id):'',modDesc:mod?((me.QRINFO[mod.id]||{}).desc||''):'',
-      modFlexDir:s.vw<640?'column':'row',modLeftW:s.vw<640?'auto':'296px',modQtyDisp:String(s.modQty),modNote:s.modNote,setModNote:e=>me.setState({modNote:e.target.value}),modPad:me._modPad(s),hasModOpts:!!(mod&&mod.mods&&mod.mods.length),
+      modFlexDir:s.vw<640?'column':'row',modLeftW:s.vw<640?'auto':'296px',modQtyDisp:String(s.modQty),modNote:s.modNote,setModNote:e=>me.setState({modNote:e.target.value}),modPad:me._modPad(s),hasModOpts:!!(mod&&mod.mods&&mod.mods.length),modOptsInline:!!(mod&&mod.mods&&mod.mods.length)&&s.vw<640,modOptsSide:!!(mod&&mod.mods&&mod.mods.length)&&s.vw>=640,
       modOpts:mod?(mod.mods||[]).map(o=>({label:me.itemName(o),tag:o.price?('+'+me.fm(o.price)):me.t('free'),sel:!!s.modSel[o.id],boxBc:s.modSel[o.id]?'var(--coral)':'var(--line)',boxBg:s.modSel[o.id]?'var(--coral)':'transparent',tap:()=>{const ms=Object.assign({},s.modSel);ms[o.id]=!ms[o.id];me.setState({modSel:ms});}})):[],
       modQty:s.modQty,modInc:()=>me.setState({modQty:Math.min(999,s.modQty+1),modFresh:false}),modDec:()=>me.setState({modQty:Math.max(0,s.modQty-1),modFresh:false}),
       modTotF:mod?me.fm(modUnit*Math.max(1,s.modQty)):'',modAdd:()=>{me.pushLine(mod,modMods,Math.max(1,s.modQty),s.modNote);me.setState({mod:null});},
