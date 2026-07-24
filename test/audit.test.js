@@ -420,6 +420,53 @@ describe("manager elevation (SEC-03)", () => {
   });
 });
 
+/* ── Offline outbox & flaky-network sync (SYNC) ───────────────────────────
+   The till's client queue is a durable localStorage outbox (kashikeyo-outbox)
+   flushed to /api/ops on the `online` event with stable opIds. The bundle can't
+   be driven headless here, so these exercise the exact wire contract that
+   durable outbox relies on: a retried flush (dropped ack), a full offline-shift
+   backlog flushed at reconnect, and an auth failure mid-sync. */
+describe("offline outbox & flaky-network sync (SYNC)", () => {
+  const salesOf = async (o, pred = () => true) =>
+    ((await H.pull(o.token, 0)).json.entities || []).filter((e) => e.kind === "sales" && !e.deleted && pred(e));
+  const stockOf = async (o, id) =>
+    Number((((await H.pull(o.token, 0)).json.entities || []).find((e) => e.kind === "products" && e.id === id) || { data: {} }).data.stock);
+
+  test("a retried flush (dropped ack) applies the sale + deducts stock exactly once", async () => {
+    const o = await H.registerOrg({ tag: "sync-retry" });
+    await H.ops(o.token, [{ opId: "sr-p", puts: [{ kind: "products", id: "sp", data: { id: "sp", name: "X", price: 1000, stock: 10 } }] }]);
+    const flush = [{ opId: "sr-sale", puts: [{ kind: "sales", id: "srs", data: { id: "srs", type: "sale", lines: [{ pid: "sp", qty: 1 }], total: 1000 } }], deltas: { stock: [{ id: "sp", d: -1 }] } }];
+    for (let i = 0; i < 3; i++) assert.equal((await H.ops(o.token, flush)).status, 200); // 3 identical retries
+    assert.equal((await salesOf(o)).length, 1, "one sale after 3 retries");
+    assert.equal(await stockOf(o, "sp"), 9, "stock deducted exactly once");
+  });
+
+  test("a full offline-shift backlog flushes exactly once; a duplicated flush is a no-op", async () => {
+    const o = await H.registerOrg({ tag: "sync-backlog" });
+    await H.ops(o.token, [{ opId: "bk-p", puts: [{ kind: "products", id: "bp", data: { id: "bp", name: "B", price: 500, stock: 100 } }] }]);
+    const N = 25;
+    const batch = Array.from({ length: N }, (_, i) => ({ opId: "bk-" + i, puts: [{ kind: "sales", id: "bs" + i, data: { id: "bs" + i, type: "sale", lines: [{ pid: "bp", qty: 1 }], total: 500 } }], deltas: { stock: [{ id: "bp", d: -1 }] } }));
+    assert.equal((await H.ops(o.token, batch)).status, 200); // reconnect: whole shift flushed at once
+    assert.equal((await salesOf(o)).length, N, `all ${N} offline sales landed`);
+    assert.equal(await stockOf(o, "bp"), 100 - N, "stock deducted once per sale");
+    assert.equal((await H.ops(o.token, batch)).status, 200); // duplicated flush (ack was lost)
+    assert.equal((await salesOf(o)).length, N, "re-flush adds no duplicates");
+    assert.equal(await stockOf(o, "bp"), 100 - N, "re-flush does not double-deduct");
+  });
+
+  test("an auth failure mid-sync loses nothing; the retry after re-auth applies exactly once", async () => {
+    const o = await H.registerOrg({ tag: "sync-auth" });
+    const badToken = "eyJhbGciOiJIUzI1NiJ9.eyJvIjoieCJ9.bad-signature";
+    const flush = [{ opId: "ax-1", puts: [{ kind: "sales", id: "axs", data: { id: "axs", type: "sale", lines: [{ pid: "z", qty: 1 }], total: 700 } }] }];
+    // token expired/invalid during the flush → rejected, and nothing is applied
+    assert.equal((await H.ops(badToken, flush)).status, 401);
+    assert.equal((await salesOf(o, (e) => e.id === "axs")).length, 0, "a rejected flush persists nothing");
+    // the durable outbox keeps the batch and retries it after re-auth → applies once
+    assert.equal((await H.ops(o.token, flush)).status, 200);
+    assert.equal((await salesOf(o, (e) => e.id === "axs")).length, 1, "retry after re-auth applies the queued sale exactly once");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {

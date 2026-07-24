@@ -112,3 +112,41 @@ The existing backend already supports the core shape:
 For the current deployment, test by opening the POS once online, going offline, creating a sale/order, then reconnecting. Pending writes are visible in DevTools under IndexedDB -> `kashikeyo-pos-offline-bridge` -> `queuedWrites`.
 
 For the proper long-term frontend, replace the checkout handler with `createTransaction()` and make Orders/Kitchen screens render from IndexedDB first. After that, migrate product/customer/table/settings reads to IndexedDB and use `syncManager` to keep them fresh.
+
+---
+
+## Verification — offline queue tested at the wire contract (audit SYNC / offline-15)
+
+The audit flagged "client queue NOT TESTED": the live sync engine lives in the
+prebuilt, minified till bundle (`web/dist`, served at `/app`), which cannot be
+edited from source and — per `CLAUDE.md` — does not fully boot to an interactive
+PIN pad under headless Chromium in the sandbox (it stalls on the sign-in splash).
+So the full offline→online UI cycle can't be driven here; that pass needs a real
+device with the browser a11y/Application inspector.
+
+What *was* verified, because it is the guarantee the durable outbox actually
+depends on — the till holds unsynced ops in `localStorage['kashikeyo-outbox']`
+(survives restart), shows a live status pill (Synced / Saving N / Offline · N
+saved / N not synced), and flushes to `/api/ops` on the `online` event with
+**stable opIds**, so every failure mode collapses to "re-POST the same batch":
+
+- **Retried flush (dropped ack).** The classic "did my sale save?" — the server
+  commits but the client never sees the 200 and retries. Re-POSTing the same
+  batch 3× ⇒ **one sale, stock deducted once** (op idempotency + the stock ledger's
+  `(org_id, ref, ingredient_id)` uniqueness).
+- **Full offline-shift backlog.** A 25-op batch (a shift of offline sales) flushed
+  at reconnect ⇒ all 25 land, stock deducted once each; a **duplicated flush**
+  (ack lost on the first) adds **no duplicates and no double-deduction**.
+- **Auth failure mid-sync.** An expired/invalid token during the flush ⇒ 401 with
+  **nothing applied** (the queued sale is not lost server-side either); the outbox
+  keeps the batch and the retry after re-auth applies it **exactly once**.
+
+These run in `test/audit.test.js` → `describe("offline outbox & flaky-network
+sync (SYNC)")` and are green in CI. Combined with the server-side reconciliation
+(op idempotency, immutable idempotent stock ledger, atomic race-safe deltas)
+this covers at-least-once-without-duplicates delivery end to end on the wire.
+
+Residual (needs a device, not the sandbox): the client-side persistence itself
+(IndexedDB/localStorage survival across a real crash/restart), service-worker
+update-during-sync behaviour, and the multi-hour/72h offline-duration soak. Drive
+these on a tablet with DevTools per the "Next Implementation Step" note above.
