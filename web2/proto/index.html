@@ -162,6 +162,37 @@ button[disabled],button:disabled{cursor:not-allowed}
           <button onClick="{{ acctSignOut }}" style="width:100%;background:transparent;color:var(--coral);border:1px solid var(--coralsoft);border-radius:13px;padding:12px;cursor:pointer;font-size:13px;font-weight:800" style-hover="border-color:var(--coral)">{{ L.signOut }}</button>
         </div>
   </sc-if>
+  <sc-if value="{{ shiftModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ cancelShiftModal }}" style="position:fixed;inset:0;z-index:150;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
+    <div dir="{{ dirAttr }}" style="position:fixed;z-index:160;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;max-width:92vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+      <sc-if value="{{ shiftIsOpenMode }}" hint-placeholder-val="{{ true }}">
+        <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;margin-bottom:5px">Open shift</div>
+        <div style="font-size:12.5px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:16px">Count the cash you're starting the drawer with — this opening float is used to reconcile the drawer when you close.</div>
+        <div style="font-size:11px;font-weight:800;color:var(--ink2);margin-bottom:7px">OPENING FLOAT · CASH IN DRAWER</div>
+        <input value="{{ shiftFloatVal }}" onInput="{{ setShiftFloat }}" type="number" inputmode="decimal" placeholder="0.00" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:13px;padding:13px 15px;background:var(--sur2);color:var(--ink);font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;outline:none;margin-bottom:16px" style-focus="border-color:var(--coral)">
+        <div style="display:flex;gap:10px">
+          <button onClick="{{ cancelShiftModal }}" style="flex:none;border:1px solid var(--line);border-radius:13px;padding:13px 18px;background:var(--sur);color:var(--ink2);font-size:13.5px;font-weight:800;cursor:pointer">Cancel</button>
+          <button onClick="{{ confirmOpenShift }}" style="flex:1;border:0;border-radius:13px;padding:13px;background:var(--coral);color:var(--coralink);font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">Open shift</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ shiftIsCloseMode }}" hint-placeholder-val="{{ false }}">
+        <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;margin-bottom:5px">Close shift</div>
+        <div style="font-size:12.5px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:14px">Count the cash in the drawer. We compare it to what the till expects and flag any over/short.</div>
+        <div style="background:var(--sur2);border-radius:13px;padding:13px 15px;margin-bottom:14px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700"><span style="color:var(--ink2)">Opening float</span><span style="font-variant-numeric:tabular-nums">{{ shiftOpenFloatF }}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700"><span style="color:var(--ink2)">+ Cash sales this shift</span><span style="font-variant-numeric:tabular-nums">{{ shiftCashSalesF }}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;border-top:1px dashed var(--line);padding-top:8px"><span>Expected in drawer</span><span style="font-variant-numeric:tabular-nums">{{ shiftExpectedF }}</span></div>
+        </div>
+        <div style="font-size:11px;font-weight:800;color:var(--ink2);margin-bottom:7px">COUNTED CASH · WHAT YOU COUNTED</div>
+        <input value="{{ shiftCountedVal }}" onInput="{{ setShiftCounted }}" type="number" inputmode="decimal" placeholder="0.00" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:13px;padding:13px 15px;background:var(--sur2);color:var(--ink);font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;outline:none;margin-bottom:12px" style-focus="border-color:var(--coral)">
+        <sc-if value="{{ shiftCountedEntered }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;align-items:center;border-radius:12px;padding:11px 14px;margin-bottom:14px;font-weight:800;background:var(--sur2);color:{{ shiftVarC }}"><span style="font-size:12px">{{ shiftVarLbl }}</span><span style="font-size:15px;font-variant-numeric:tabular-nums">{{ shiftVarF }}</span></div></sc-if>
+        <div style="display:flex;gap:10px">
+          <button onClick="{{ cancelShiftModal }}" style="flex:none;border:1px solid var(--line);border-radius:13px;padding:13px 18px;background:var(--sur);color:var(--ink2);font-size:13.5px;font-weight:800;cursor:pointer">Cancel</button>
+          <button onClick="{{ confirmCloseShift }}" style="flex:1;border:0;border-radius:13px;padding:13px;background:var(--coral);color:var(--coralink);font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">Close shift</button>
+        </div>
+      </sc-if>
+    </div>
+  </sc-if>
   <sc-if value="{{ discShow }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ closeDisc }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
     <div dir="{{ dirAttr }}" style="position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;max-width:92vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
@@ -1982,7 +2013,7 @@ class Component extends DCLogic {
     this.QRINFO={mashuni:{tag:'Island classic · freshly shredded',desc:'Smoked tuna shredded with grated coconut, chili, onion & lime, served with warm roshi.',rating:'4.8',rn:'312'},garudhiya:{tag:'Comfort in a bowl',desc:'Clear Maldivian tuna broth with steamed rice, lime, chili & onion on the side.',rating:'4.7',rn:'208'},riha:{tag:'Slow-cooked · deeply spiced',desc:'Tender Maldivian chicken curry simmered in island spices & coconut milk.',rating:'4.9',rn:'344'},friedrice:{tag:'Wok-tossed & smoky',desc:'Fragrant fried rice with egg, vegetables and a hit of island spice.',rating:'4.6',rn:'190'},gulha:{tag:'Poppable & moreish',desc:'Deep-fried dough balls stuffed with spiced smoked tuna & coconut.',rating:'4.8',rn:'256'},bajiya:{tag:'Crispy tea-time favourite',desc:'Golden pastry parcels filled with tuna, onion & coconut.',rating:'4.7',rn:'231'},kavaabu:{tag:'Crunchy bites',desc:'Spiced tuna & lentil fritters, fried golden.',rating:'4.7',rn:'160'},cutlets:{tag:'Golden & crisp',desc:'Breaded tuna & potato cutlets.',rating:'4.6',rn:'110'},masroshi:{tag:'Stuffed & warm',desc:'Flatbread filled with spiced smoked tuna.',rating:'4.7',rn:'175'},kboakibaa:{tag:'Spicy fish cake',desc:'Baked spicy tuna & rice cake.',rating:'4.7',rn:'130'},kalhusai:{tag:'Strong & sweet',desc:'Traditional Maldivian black tea.',rating:'4.6',rn:'188'},kirusai:{tag:'Warm & milky',desc:'Classic milk tea, island style.',rating:'4.6',rn:'120'},coffee:{tag:'Freshly brewed',desc:'Locally roasted coffee, served hot or over ice.',rating:'4.8',rn:'410'},passion:{tag:'Cool & tangy',desc:'Chilled fresh passionfruit juice, lightly sweetened.',rating:'4.7',rn:'172'},kurumba:{tag:'Straight from the island',desc:'Fresh young coconut water, served chilled.',rating:'4.8',rn:'95'},bondibai:{tag:'Sweet island finish',desc:'Creamy coconut rice pudding — a Maldivian classic.',rating:'4.9',rn:'140'},fonibkb:{tag:'Sweet & dense',desc:'Sweet baked coconut cake.',rating:'4.8',rn:'88'},saagu:{tag:'Silky pudding',desc:'Sago pearls in sweet coconut milk.',rating:'4.8',rn:'76'}};
     const now=Date.now();
     this.state={scr:(function(){try{var v=localStorage.getItem('kashikeyo_scr');return ['register','orders','qr','recv','zreport','dashboard','analytics','inventory','outlets','expenses','setup','staff'].indexOf(v)>=0?v:'register';}catch(e){return 'register';}})(),lang:(function(){try{var v=localStorage.getItem('kashikeyo_lang');return (v==='dv'||v==='en')?v:'en';}catch(e){return 'en';}})(),dark:false,white:false,acct:false,accent:'orange',storeP:(typeof window!=='undefined'&&window.__ksReg&&window.__ksReg.storeP)?window.__ksReg.storeP:null,sound:true,sector:'general',online:true,outbox:0,syncing:false,
-      shiftOpen:(function(){try{var v=localStorage.getItem('kashikeyo_shift');if(v){var o=JSON.parse(v);if(typeof o.open==='boolean')return o.open;}}catch(e){}return true;})(),shiftAt:(function(){try{var v=localStorage.getItem('kashikeyo_shift');if(v){var o=JSON.parse(v);if(o.at)return o.at;}}catch(e){}return Date.now();})(),
+      shiftOpen:(function(){try{var v=localStorage.getItem('kashikeyo_shift');if(v){var o=JSON.parse(v);if(typeof o.open==='boolean')return o.open;}}catch(e){}return true;})(),shiftAt:(function(){try{var v=localStorage.getItem('kashikeyo_shift');if(v){var o=JSON.parse(v);if(o.at)return o.at;}}catch(e){}return Date.now();})(),shiftFloat:(function(){try{var v=localStorage.getItem('kashikeyo_shift');if(v){var o=JSON.parse(v);if(typeof o.float==='number')return o.float;}}catch(e){}return 0;})(),shiftCashOpen:(function(){try{var v=localStorage.getItem('kashikeyo_shift');if(v){var o=JSON.parse(v);if(typeof o.cashOpen==='number')return o.cashOpen;}}catch(e){}return 0;})(),shiftModal:null,
       cat:'all',grp:'all',sub:'all',query:'',searchOpen:false,cart:[],mod:null,modQty:1,modSel:{},modNote:'',modFresh:true,
       payOpen:false,payDone:false,method:null,split:1,tender:0,tabCust:null,
       setlOpen:null,setlMode:'full',setlAmt:0,setlMethod:'cash',settlements:[],
@@ -2040,6 +2071,12 @@ class Component extends DCLogic {
   t(k){const l=this.T[this.state.lang];return (l&&l[k])||this.T.en[k]||k;}
   rate(){return this.state.sector==='general'?(this.props.gstGeneral??8)/100:(this.props.gstTourism??17)/100;}
   scPct(){return this.state.svcOn===false?0:(this.props.serviceChargePct??10)/100;}
+  openShiftPrompt(){this.setState({acct:false,shiftModal:{mode:'open',float:'',counted:''}});}
+  closeShiftPrompt(){this.setState({acct:false,shiftModal:{mode:'close',float:'',counted:''}});}
+  cancelShiftModal(){this.setState({shiftModal:null});}
+  setShiftField(k,v){var m=this.state.shiftModal;if(m)this.setState({shiftModal:Object.assign({},m,{[k]:v})});}
+  confirmOpenShift(){var s=this.state,m=s.shiftModal;if(!m)return;var fl=Math.max(0,parseFloat(m.float)||0);var at=Date.now();try{localStorage.setItem('kashikeyo_shift',JSON.stringify({open:true,at:at,float:fl,cashOpen:s.cash}));}catch(e){}this.setState({shiftOpen:true,shiftAt:at,shiftFloat:fl,shiftCashOpen:s.cash,shiftModal:null});this.toast('Shift opened · float '+this.fm(fl));}
+  confirmCloseShift(){var s=this.state,m=s.shiftModal;if(!m)return;var counted=Math.max(0,parseFloat(m.counted)||0);var cashSales=Math.max(0,s.cash-(s.shiftCashOpen||0));var expected=(s.shiftFloat||0)+cashSales;var vr=Math.round((counted-expected)*100)/100;try{localStorage.setItem('kashikeyo_shift',JSON.stringify({open:false,at:s.shiftAt,float:s.shiftFloat||0,cashOpen:s.shiftCashOpen||0}));}catch(e){}this.setState({shiftOpen:false,shiftModal:null});this.toast(Math.abs(vr)<0.5?'Shift closed · drawer balanced ✓':('Shift closed · '+(vr>0?'over ':'short ')+this.fm(Math.abs(vr))));}
   publish(){try{const s=this.state;const snap={sector:s.sector,sales:s.sales,orders:s.orders,gst:s.gstColl,svc:s.svcColl,cash:s.cash,card:s.card,transfer:s.transfer,tab:s.tabAmt,open:s.held.map(h=>({no:String(h.billNo).padStart(3,'0'),type:h.orderType,table:h.tableNo,count:h.count,total:h.total,status:h.status||(h.kotSent?'kitchen':'open'),at:h.startedAt||h.at})),kds:s.tickets.map(t=>({no:t.no,src:t.src,station:t.station,at:t.at,items:t.items.map(i=>i.q+'\u00d7 '+i.n)})),log:s.salesLog.slice(0,12),recv:s.recv.map(c=>({id:c.id,name:c.name,dv:c.dv,bal:c.bal,days:c.days})),settlements:s.settlements.slice(0,20).map(x=>({name:x.name,dv:x.dv,amt:x.amt,method:x.method,methodLbl:x.methodLbl,full:x.full,time:x.time,date:x.date}))};const sig=JSON.stringify(snap);if(sig!==this._pubSig){this._pubSig=sig;localStorage.setItem('kashikeyo_live',JSON.stringify(Object.assign({ts:Date.now()},snap)));}}catch(e){}}
   applyCfg(){try{const r=localStorage.getItem('kashikeyo_cfg');if(!r)return;const c=JSON.parse(r);const upd={};const sec=c.taxRate==='tgst'?'tourism':'general';if(sec!==this.state.sector)upd.sector=sec;const svcOn=c.svc10!==false;if(svcOn!==this.state.svcOn)upd.svcOn=svcOn;if(Object.keys(upd).length)this.setState(upd);}catch(e){}}
   assetUrl(id){const r=(typeof window!=='undefined')&&window.__resources;return (r&&r['art-'+id])||('artwork/'+id+'.png');}
@@ -2406,12 +2443,20 @@ class Component extends DCLogic {
           acctShiftSub:'Drawer float · '+me.fm(2000),
           shiftOpen:s.shiftOpen,shiftClosed:!s.shiftOpen,
           shiftTitle:s.shiftOpen?('Shift open · Abdulla Thinan'):'Shift closed',
-          shiftSub:s.shiftOpen?('Since '+new Date(s.shiftAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' · Drawer float '+me.fm(2000)):'Open a shift to start the till',
+          shiftSub:s.shiftOpen?('Since '+new Date(s.shiftAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' · Drawer float '+me.fm(s.shiftFloat||0)):'Open a shift to start the till',
           shiftIconC:s.shiftOpen?'var(--green)':'var(--ink3)',
           shiftBtnLabel:s.shiftOpen?'Close shift':'Open shift',
           shiftBtnBg:s.shiftOpen?'var(--sur2)':'var(--coral)',
           shiftBtnCo:s.shiftOpen?'var(--coral)':'var(--coralink)',
-          toggleShift:()=>{const open=!s.shiftOpen;const at=open?Date.now():s.shiftAt;try{localStorage.setItem('kashikeyo_shift',JSON.stringify({open:open,at:at}));}catch(e){}me.setState({shiftOpen:open,shiftAt:at});me.toast(open?'Shift opened · till ready':'Shift closed · drawer counted');},
+          toggleShift:()=>{if(s.shiftOpen)me.closeShiftPrompt();else me.openShiftPrompt();},
+          shiftModalOpen:!!s.shiftModal,shiftIsOpenMode:!!(s.shiftModal&&s.shiftModal.mode==='open'),shiftIsCloseMode:!!(s.shiftModal&&s.shiftModal.mode==='close'),
+          cancelShiftModal:()=>me.cancelShiftModal(),confirmOpenShift:()=>me.confirmOpenShift(),confirmCloseShift:()=>me.confirmCloseShift(),
+          shiftFloatVal:s.shiftModal?(s.shiftModal.float||''):'',setShiftFloat:e=>me.setShiftField('float',e.target.value),
+          shiftCountedVal:s.shiftModal?(s.shiftModal.counted||''):'',setShiftCounted:e=>me.setShiftField('counted',e.target.value),
+          shiftOpenFloatF:me.fm(s.shiftFloat||0),
+          shiftCashSalesF:me.fm(Math.max(0,s.cash-(s.shiftCashOpen||0))),
+          shiftExpectedF:me.fm((s.shiftFloat||0)+Math.max(0,s.cash-(s.shiftCashOpen||0))),
+          ...(()=>{var counted=s.shiftModal?(Math.max(0,parseFloat(s.shiftModal.counted)||0)):0;var expected=(s.shiftFloat||0)+Math.max(0,s.cash-(s.shiftCashOpen||0));var vr=Math.round((counted-expected)*100)/100;var bal=Math.abs(vr)<0.5;return {shiftVarF:(vr>0?'+':vr<0?'−':'')+me.fm(Math.abs(vr)),shiftVarC:bal?'var(--green)':'var(--coral)',shiftVarLbl:bal?'Balanced':(vr>0?'Over':'Short'),shiftCountedEntered:!!(s.shiftModal&&String(s.shiftModal.counted||'').length)};})(),
           toggleSound:()=>me.setState({sound:!s.sound}),acctSoundLabel:s.sound?'Alert sounds on':'Alert sounds off',soundBg:s.sound?'var(--coral)':'var(--ink3)',soundX:s.sound?'16px':'2px',
           acctSwitchOutlet:()=>me.toast('Switch outlet · IZC'),acctLock:()=>{me.setState({acct:false});me.toast('Screen locked — enter PIN');},acctSignOut:()=>{me.setState({acct:false});me.toast('Signed out');},
           accents:['green','terracotta','red','amber','pink'].map(k=>{const on=s.accent===k;return {color:cmap[k],bd:'transparent',sh:on?'0 0 0 2px var(--sur),0 0 0 4px '+cmap[k]:'none',tap:()=>me.setState({accent:k})};}),
