@@ -310,6 +310,13 @@ button[disabled],button:disabled{cursor:not-allowed}
             </div>
           </div>
         </sc-if>
+        <sc-if value="{{ shiftClosed }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ toggleShift }}" style="width:100%;display:flex;align-items:center;gap:11px;border:1px solid var(--coral);background:var(--coralsoft);color:var(--coral);border-radius:14px;padding:11px 14px;margin-bottom:12px;cursor:pointer;text-align:start;animation:fade .2s" style-hover="background:var(--coral);color:var(--coralink)" style-active="transform:scale(.99)">
+            <span style="flex:none;display:grid;place-items:center"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="8" width="11" height="7.5" rx="1.8"></rect><path d="M6 8V5.5a3 3 0 0 1 6 0V8" stroke-linecap="round"></path></svg></span>
+            <span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:800">Shift is closed</span><span style="display:block;font-size:11.5px;font-weight:600;opacity:.82">Tap to open the shift and start selling</span></span>
+            <span style="flex:none;font-size:12.5px;font-weight:800;white-space:nowrap">Open shift →</span>
+          </button>
+        </sc-if>
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
           <sc-if value="{{ searchClosed }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openSearch }}" title="{{ L.search }}" style="flex:none;width:36px;height:36px;border:1px solid var(--line);background:var(--sur);border-radius:11px;cursor:pointer;display:grid;place-items:center;color:var(--ink2)" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.94)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><line x1="10.6" y1="10.6" x2="14" y2="14"/></svg></button></sc-if>
           <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:7px;flex:1;min-width:150px;max-width:280px;border:1px solid var(--coral);background:var(--sur);border-radius:11px;padding:0 10px;height:36px;animation:fade .15s"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="color:var(--ink3);flex:none"><circle cx="7" cy="7" r="4.6"/><line x1="10.6" y1="10.6" x2="14" y2="14"/></svg><input autofocus="true" placeholder="{{ L.search }}" value="{{ query }}" onChange="{{ setQuery }}" onBlur="{{ closeSearchIfEmpty }}" dir="auto" style="flex:1;min-width:0;border:0;background:none;color:var(--ink);font-size:12.5px;outline:none"><button onClick="{{ clearSearch }}" style="flex:none;border:0;background:none;color:var(--ink3);font-size:15px;line-height:1;cursor:pointer;padding:2px" style-hover="color:var(--red)">×</button></div></sc-if>
@@ -2362,7 +2369,7 @@ class Component extends DCLogic {
           acctOpen:s.acct,toggleAcct:()=>me.setState({acct:!s.acct}),closeAcct:()=>me.setState({acct:false}),acctCaret:s.acct?'rotate(180deg)':'rotate(0deg)',
           acctThemeLabel:s.white?'Switch to light theme':s.dark?'Switch to white theme':'Switch to dark theme',themeIcon:H(s.white?sun:s.dark?contrast:moon),
           acctShiftSub:'Drawer float · '+me.fm(2000),
-          shiftOpen:s.shiftOpen,
+          shiftOpen:s.shiftOpen,shiftClosed:!s.shiftOpen,
           shiftTitle:s.shiftOpen?('Shift open · Abdulla Thinan'):'Shift closed',
           shiftSub:s.shiftOpen?('Since '+new Date(s.shiftAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' · Drawer float '+me.fm(2000)):'Open a shift to start the till',
           shiftIconC:s.shiftOpen?'var(--green)':'var(--ink3)',
