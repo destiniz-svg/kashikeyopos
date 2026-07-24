@@ -1570,8 +1570,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ modOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeMod }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:60;animation:fade .2s"></div>
-  <div dir="{{ dirAttr }}" style="position:fixed;z-index:61;left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-width:94vw;max-height:92vh;background:var(--sur);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;animation:sheet .28s cubic-bezier(.2,.9,.3,1.2)">
+  <div onClick="{{ closeMod }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:170;animation:fade .2s"></div>
+  <div dir="{{ dirAttr }}" style="position:fixed;z-index:171;left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-width:94vw;max-height:92vh;background:var(--sur);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;animation:sheet .28s cubic-bezier(.2,.9,.3,1.2)">
     <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:{{ modFlexDir }}">
       <div style="flex:none;width:{{ modLeftW }};padding:18px;border-inline-end:1px solid var(--line);display:flex;flex-direction:column;gap:14px">
         <div style="display:flex;gap:12px;align-items:flex-start">
