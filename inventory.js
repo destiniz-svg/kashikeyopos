@@ -12,7 +12,11 @@
    comes in. Money: NUMERIC laari (the platform's integer sub-unit); unit
    costs carry 6 decimals because cost per gram is a fraction of a laari. */
 
-module.exports = function createInventory({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth, poke, logActivity }) {
+module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recordError, resolveAppSession, bearerAuth, poke, logActivity }) {
+  /* PERF-1: post-commit work (processSales, recomputeAvailability) runs on the
+     background pool to stay off the request pool. Falls back to withOrg if the
+     host didn't supply one (older wiring / tests). */
+  const withOrgBackground = typeof withOrgBg === "function" ? withOrgBg : withOrg;
   const noteActivity = typeof logActivity === "function" ? logActivity : async () => {};
   const express = require("express");
   const router = express.Router();
@@ -196,7 +200,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       const sign = isRefund ? 1 : -1;
       const ref = (isRefund ? "refund:" : "sale:") + sale.id;
       try {
-        await withOrg(orgId, async (client) => {
+        await withOrgBackground(orgId, async (client) => {
           const pids = [...new Set(sale.lines.map((l) => String(l.pid || "")).filter(Boolean))];
           if (!pids.length) return;
           const rec = await client.query(
@@ -251,7 +255,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
   async function recomputeAvailability(orgId, ingredientIds) {
     try {
       let maxRowver = 0;
-      await withOrg(orgId, async (client) => {
+      await withOrgBackground(orgId, async (client) => {
         const prodQ = ingredientIds && ingredientIds.length
           ? await client.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1 AND ingredient_id = ANY($2)", [orgId, ingredientIds])
           : await client.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [orgId]);
@@ -298,7 +302,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     const TOP_N = 6, MIN_UNITS = 2;
     try {
       let maxRowver = 0;
-      await withOrg(orgId, async (client) => {
+      await withOrgBackground(orgId, async (client) => {
         const agg = await client.query(
           `SELECT ln->>'pid' AS pid,
                   SUM(COALESCE(NULLIF(ln->>'qty','')::numeric,1)
@@ -2017,10 +2021,18 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
        till, so end-of-day reconciliation is a line-by-line tick-off against the
        card terminal batch and the bank feed. */
     const tenderDetail = [];
+    /* FIN-1: flagged sales (server money-audit mismatch) are still counted in the
+       totals above at the till-claimed value — the money movement is real — but
+       segregated here into an explicit variance line so the report reconciles
+       against what the SERVER independently computed, instead of silently
+       trusting a mis-priced or tampered total. */
+    let flaggedCount = 0, flaggedClaimed = 0, flaggedComputed = 0; const flaggedReasons = {};
     for (const row of rows.rows) {
       const d = row.data || {};
       const isRefund = d.type === "refund";
       const total = num(d.total), sub = num(d.subtotal), gst = num(d.gst), svc = num(d.svcCharge), disc = num(d.billDisc);
+      const sa = d.serverAudit;
+      if (sa && sa.flagged) { flaggedCount++; flaggedClaimed += num(sa.claimedTotal, total); flaggedComputed += num(sa.computedTotal, total); for (const rr of (sa.reasons || [])) flaggedReasons[rr] = (flaggedReasons[rr] || 0) + 1; }
       if (d.foc) { j.foc += num(d.focValue); continue; }
       if (isRefund) { j.refunds += Math.abs(total); j.refundCount++; }
       else { j.grossSales += sub; j.discounts += disc; j.gst += gst; j.serviceCharge += svc; j.saleCount++; }
@@ -2038,9 +2050,12 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     tenderDetail.sort((a, b) => a.at - b.at);
     j.netSales = j.grossSales - j.discounts;
     j.grossProfit = j.netSales - j.cogs;
+    /* variance = what the server computed the flagged sales SHOULD total minus
+       what the till claimed. Non-zero ⇒ investigate before relying on the figures. */
+    j.flagged = { count: flaggedCount, claimedTotal: flaggedClaimed, computedTotal: flaggedComputed, variance: flaggedComputed - flaggedClaimed, reasons: flaggedReasons };
     res.json({ from, to, storeId: storeId || "all", currency: "laari", journal: j,
       tenderDetail, tenderRefsMissing: tenderDetail.filter((t) => !t.ref).length,
-      note: "All amounts in laari (MVR×100). AR = credit-tender sales; tenders map to their clearing accounts. tenderDetail lists each Card/QR/Transfer payment with the reference captured at the till." });
+      note: "All amounts in laari (MVR×100). AR = credit-tender sales; tenders map to their clearing accounts. tenderDetail lists each Card/QR/Transfer payment with the reference captured at the till. journal.flagged segregates money-audit-flagged sales: totals still include them at the claimed value, but variance = server-computed minus claimed — reconcile any non-zero variance via the Review tab before closing the books." });
   }));
 
   /* ── Automated accounting (P5) ──────────────────────────────────────────
@@ -2068,9 +2083,13 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
     const cogs = Math.round(Number(cogsR.c) || 0), wastage = Math.round(Number(wasteR.w) || 0);
 
     let grossSales = 0, discounts = 0, gst = 0, svc = 0, refunds = 0, foc = 0, ar = 0, saleCount = 0;
+    /* FIN-1: segregate money-audit-flagged sales as a variance line (see /ledger-export). */
+    let flaggedCount = 0, flaggedClaimed = 0, flaggedComputed = 0;
     const tenders = {}, storeRev = {};
     for (const row of sales) {
       const d = row.data || {}; const isRefund = d.type === "refund"; const sid = String(d.storeId || "global");
+      const sa = d.serverAudit;
+      if (sa && sa.flagged) { flaggedCount++; flaggedClaimed += num(sa.claimedTotal, num(d.total)); flaggedComputed += num(sa.computedTotal, num(d.total)); }
       if (d.foc) { foc += num(d.focValue); continue; }
       if (isRefund) { refunds += Math.abs(num(d.total)); }
       else { grossSales += num(d.subtotal); discounts += num(d.billDisc); gst += num(d.gst); svc += num(d.svcCharge); saleCount++; storeRev[sid] = (storeRev[sid] || 0) + (num(d.subtotal) - num(d.billDisc)); }
@@ -2105,6 +2124,7 @@ module.exports = function createInventory({ withOrg, uid, wrap, recordError, res
       gstReturn: { outputTax: gst, inputTax: 0, netPayable: gst,
         note: "Input tax on purchases isn't itemised in the app; enter it manually if you claim it." },
       cash: { tenders, cashSales, paidOut, drawerNet: cashSales - paidOut, accountsReceivable: ar, focValue: foc },
+      flagged: { count: flaggedCount, claimedTotal: flaggedClaimed, computedTotal: flaggedComputed, variance: flaggedComputed - flaggedClaimed },
       storeRev,
     };
   }

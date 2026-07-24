@@ -112,6 +112,9 @@ function appPoolConfigFrom(baseConnStr) {
 }
 // request pool → pooled endpoint (DATABASE_URL); safe through a transaction pooler
 function appPoolConfig() { return appPoolConfigFrom(connectionString); }
+// background pool (PERF-1) → same endpoint, small cap so post-commit inventory
+// work never starves the request pool. Override with PG_BG_POOL_MAX.
+function bgPoolConfig() { const c = appPoolConfig(); c.max = Number(process.env.PG_BG_POOL_MAX) > 0 ? Number(process.env.PG_BG_POOL_MAX) : 4; return c; }
 // LISTEN client → DIRECT endpoint; a long-lived registration must not cross a pooler
 function appDirectPoolConfig() { return appPoolConfigFrom(directConnectionString); }
 let pool = bootPool; // until ensureAppRole() below swaps in the restricted-role pool
@@ -185,8 +188,8 @@ async function mergeForkedStoreRows() {
      the developer panel). Both run in a short transaction so the GUC set
      via set_config(..., true) is transaction-local and can never leak
      across pooled connection reuse. */
-async function withScope(setup, fn) {
-  const client = await pool.connect();
+async function withScopeOn(poolRef, setup, fn) {
+  const client = await poolRef.connect();
   try {
     await client.query("BEGIN");
     await setup(client);
@@ -200,10 +203,15 @@ async function withScope(setup, fn) {
     client.release();
   }
 }
-const withOrg = (orgId, fn) => withScope(
-  (client) => client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(orgId)]),
-  fn
-);
+const withScope = (setup, fn) => withScopeOn(pool, setup, fn);
+const orgSetup = (orgId) => (client) => client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(orgId)]);
+const withOrg = (orgId, fn) => withScope(orgSetup(orgId), fn);
+/* PERF-1: post-commit inventory work (recipe deduction, availability recompute)
+   runs on a SEPARATE small pool so it never competes for a request-pool
+   connection — that contention was the p95/p99 tail under burst. Falls back to
+   the request pool until bgPool is created at boot. */
+let bgPool = null;
+const withOrgBg = (orgId, fn) => withScopeOn(bgPool || pool, orgSetup(orgId), fn);
 const withSystem = (fn) => withScope(
   (client) => client.query("SELECT set_config('app.is_superadmin','on',true), set_config('app.org_id','',true)"),
   fn
@@ -241,6 +249,8 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
     console.log("schema ready");
     pool = new Pool(appPoolConfig());
     pool.on("error", (e) => console.error("app pool error:", errDetail(e)));
+    bgPool = new Pool(bgPoolConfig());
+    bgPool.on("error", (e) => console.error("bg pool error:", errDetail(e)));
     console.log(`connected as restricted role ${APP_DB_ROLE} for request handling`);
     /* Seed/merge steps are best-effort (like the backfills below): a concurrency
        hiccup when two nodes boot together must not abort the whole boot before
@@ -290,6 +300,7 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
   /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,
      and independent of it, so a node still relays pokes even if a backfill hiccups. */
   if (!pool) { pool = new Pool(appPoolConfig()); pool.on("error", (e) => console.error("app pool error:", errDetail(e))); }
+  if (!bgPool) { bgPool = new Pool(bgPoolConfig()); bgPool.on("error", (e) => console.error("bg pool error:", errDetail(e))); }
   startPokeListener();
 })();
 
@@ -520,7 +531,12 @@ async function logActivity(orgId, { actor = "system", action, ref = "", requestI
   } catch (e) { recordError("activity_log " + action, e); }
 }
 
-const sign = (orgId, register, storeId = DEFAULT_STORE_ID, extra = {}) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId), ...extra }, SECRET, { expiresIn: "365d" });
+/* SEC-3: token lifetime is configurable and defaults to 90d (down from the old
+   365d) — a balance for an offline-first till that may sync infrequently. The
+   real teeth are the per-request revocation + org-status recheck on /api/ops
+   (see below), which invalidates tokens instantly regardless of TTL. */
+const TOKEN_TTL = process.env.TOKEN_TTL || "90d";
+const sign = (orgId, register, storeId = DEFAULT_STORE_ID, extra = {}) => jwt.sign({ o: orgId, r: register, s: cleanStoreId(storeId), ...extra }, SECRET, { expiresIn: TOKEN_TTL });
 /* Till PIN hash — djb2, byte-identical to the till bundle's Xo() so a staff
    member's existing PIN validates the same on the server. Per SEC-03 the PIN is
    not a hard security boundary (it's a shift selector), so back-office PIN login
@@ -613,7 +629,7 @@ const devAuth = (req, res, next) => {
 /* Inventory & Pricing (recipes, stock checks, procurement) lives in its own
    module — it plugs into the same withOrg/RLS scope and into /api/ops below,
    where settled sales trigger the real-time ingredient deductions. */
-const inventory = require("./inventory")({ withOrg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke, logActivity });
+const inventory = require("./inventory")({ withOrg, withOrgBg, uid, wrap, recordError, resolveAppSession, bearerAuth: auth, poke, logActivity });
 app.use("/api/inv", inventory.router);
 
 async function ensureDefaultStore(orgId, storeName = "Main Store") {
@@ -1022,6 +1038,21 @@ app.post("/api/elevate", auth, wrap(async (req, res) => {
   res.json({ elevation: jwt.sign({ o: req.org.o, e: true }, SECRET, { expiresIn: "15m" }), ttlSec: 900 });
 }));
 
+/* SEC-3: "sign out all devices" kill switch. Stamps orgs.sessions_invalid_before
+   = now(), so every token issued before this moment is refused on the money path
+   (/api/ops) — the remedy for a lost/stolen device or a departed employee.
+   Manager-authorised (needs a fresh /api/elevate token) so a stolen till token
+   can't lock the store out. The caller re-logs in afterwards to get a new token. */
+app.post("/api/revoke-devices", auth, wrap(async (req, res) => {
+  const elevTok = req.get("X-Elevation");
+  let elevated = false;
+  if (elevTok) { try { const e = jwt.verify(elevTok, SECRET); elevated = e.e === true && e.o === req.org.o; } catch { /* invalid */ } }
+  if (!elevated) return res.status(403).json({ error: "Manager approval required — verify the store password first." });
+  await withOrg(req.org.o, (client) => client.query("UPDATE orgs SET sessions_invalid_before = now() WHERE id=$1", [req.org.o]));
+  await logActivity(req.org.o, { actor: "manager", action: "sessions.revoked", ref: req.org.r || "", requestId: req.id, detail: {} });
+  res.json({ ok: true, message: "All devices signed out. Sign in again to continue." });
+}));
+
 app.post("/api/pair", wrap(async (req, res) => {
   const orgId = await resolveAppSession(req);
   if (!orgId) return res.status(401).json({ error: "sign in required" });
@@ -1210,6 +1241,22 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   try {
     await client.query("BEGIN");
     await client.query("SELECT set_config('app.org_id',$1,true), set_config('app.is_superadmin','off',true)", [String(req.org.o)]);
+    /* SEC-3: recheck the org on the money-writing path — a suspended/closed store,
+       or a token issued before a "sign out all devices" cut-off, is refused here
+       even though its long-lived JWT still verifies. Reads (pull/events) stay
+       permissive; the risk is writes (fraudulent sales/refunds). */
+    /* Floor the cut-off to whole seconds: JWT `iat` is integer seconds, so a
+       token minted in the same second as a revoke must still count as issued
+       "at" the cut-off (valid), while anything from an earlier second is killed. */
+    const orgChk = await client.query("SELECT status, FLOOR(EXTRACT(EPOCH FROM sessions_invalid_before)) AS sib FROM orgs WHERE id=$1", [req.org.o]);
+    if (!orgChk.rowCount || (orgChk.rows[0].status && orgChk.rows[0].status !== "active")) {
+      await client.query("ROLLBACK"); client.release();
+      return res.status(403).json({ error: "This store is not active — contact the owner.", requestId: req.id });
+    }
+    if (orgChk.rows[0].sib && req.org.iat && Number(req.org.iat) < Number(orgChk.rows[0].sib)) {
+      await client.query("ROLLBACK"); client.release();
+      return res.status(401).json({ error: "Session ended — please sign in again.", requestId: req.id });
+    }
     /* Money-integrity context (FIN-01): the catalogue prices + GST rate this org
        is authoritative for, fetched once per sync only when the batch actually
        carries a sale, so ordinary syncs pay nothing. */

@@ -34,6 +34,11 @@ BEGIN
 END $reg$;
 CREATE UNIQUE INDEX IF NOT EXISTS orgs_google_sub_uq ON orgs (google_sub) WHERE google_sub IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS orgs_apple_sub_uq ON orgs (apple_sub) WHERE apple_sub IS NOT NULL;
+-- SEC-3: token revocation cut-off. Setting this to now() invalidates every
+-- till/session token issued before it (a "sign out all devices" / post-compromise
+-- kill switch), checked against the JWT's iat on the money-writing /api/ops path
+-- alongside the org's active status.
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS sessions_invalid_before TIMESTAMPTZ;
 
 -- one company/workspace can operate many physical stores/branches
 CREATE TABLE IF NOT EXISTS stores (

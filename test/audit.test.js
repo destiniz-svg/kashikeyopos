@@ -421,6 +421,50 @@ describe("manager elevation (SEC-03)", () => {
 });
 
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
+
+describe("flagged-sale reporting (FIN-1)", () => {
+  test("ledger-export segregates money-audit-flagged sales into a variance line", async () => {
+    const o = await H.registerOrg({ tag: "flag" });
+    await H.ops(o.token, [{ opId: "fp", puts: [
+      { kind: "settings", id: "settings", data: { id: "settings", gstBp: 800, svcChargeBp: 0 } },
+      { kind: "products", id: "fb", data: { id: "fb", name: "Burger", price: 10000 } },
+    ] }]);
+    // an honest sale (not flagged) …
+    await H.ops(o.token, [{ opId: "fs1", puts: [{ kind: "sales", id: "fclean", data: { id: "fclean", no: "C1", type: "sale", subtotal: 10000, gst: 800, billDisc: 0, svcCharge: 0, total: 10800, lines: [{ pid: "fb", qty: 1, price: 10000 }], payments: [{ method: "cash", amount: 10800 }], gstBp: 800, t: Date.now() } }] }]);
+    // … and a tampered under-ring: honest lines/subtotal/gst but a total slashed
+    // to 100 (vs components 10800) → server flags it, and the variance surfaces.
+    await H.ops(o.token, [{ opId: "fs2", puts: [{ kind: "sales", id: "ftamper", data: { id: "ftamper", no: "T1", type: "sale", subtotal: 10000, gst: 800, billDisc: 0, svcCharge: 0, total: 100, lines: [{ pid: "fb", qty: 1, price: 10000 }], payments: [{ method: "cash", amount: 100 }], gstBp: 800, t: Date.now() } }] }]);
+    const r = await H.invGet(o.token, "/ledger-export");
+    assert.equal(r.status, 200);
+    const f = r.json.journal.flagged;
+    assert.ok(f, "journal carries a flagged block");
+    assert.equal(f.count, 1, "exactly the tampered sale is flagged");
+    assert.notEqual(f.variance, 0, "a non-zero variance is surfaced, not hidden");
+    assert.ok(f.computedTotal > f.claimedTotal, "server-computed total exceeds the claimed one for an under-ring");
+  });
+});
+
+describe("token revocation & org-status recheck (SEC-3)", () => {
+  test("revoke-devices needs manager elevation, then kills tokens issued before it; a fresh login works", async () => {
+    const o = await H.registerOrg({ tag: "revoke" });
+    assert.equal((await H.ops(o.token, [{ opId: "rv-a", puts: [{ kind: "products", id: "rp", data: { id: "rp", name: "X", price: 100 } }] }])).status, 200, "op works before revoke");
+    // unelevated revoke is refused (a stolen till token can't lock the store out)
+    assert.equal((await H.req("POST", "/api/revoke-devices", { token: o.token })).status, 403);
+    // elevate with the store password, then revoke
+    const el = await H.req("POST", "/api/elevate", { token: o.token, body: { password: o.password } });
+    assert.equal(el.status, 200); assert.ok(el.json.elevation);
+    await new Promise((r) => setTimeout(r, 1100)); // JWT iat is whole seconds — ensure the cut-off lands after it
+    assert.equal((await H.req("POST", "/api/revoke-devices", { token: o.token, headers: { "X-Elevation": el.json.elevation } })).status, 200);
+    // the original token can no longer write money …
+    assert.equal((await H.ops(o.token, [{ opId: "rv-b", puts: [{ kind: "products", id: "rp2", data: { id: "rp2", name: "Y", price: 200 } }] }])).status, 401, "revoked token rejected on /api/ops");
+    // … but a new token issued after the cut-off works again (via /api/pair off the
+    // still-valid cookie session; avoids the shared per-IP login throttle in tests).
+    const pair = await H.req("POST", "/api/pair", { cookie: o.cookie });
+    assert.equal(pair.status, 200); assert.ok(pair.json.token);
+    assert.equal((await H.ops(pair.json.token, [{ opId: "rv-c", puts: [{ kind: "products", id: "rp3", data: { id: "rp3", name: "Z", price: 300 } }] }])).status, 200, "a post-cutoff token restores access");
+  });
+});
+
 describe("security", () => {
   test("SEC-01: security headers are present", async () => {
     const r = await H.req("GET", "/api/health");
