@@ -648,6 +648,10 @@ async function ensureDefaultMenu(orgId) {
                                             AND (COALESCE(entities.data->>'dv','')=''
                                                  OR entities.data->>'dv' = entities.data->>'name')
                                          THEN jsonb_build_object('dv', EXCLUDED.data->'dv') ELSE '{}'::jsonb END
+                                 || CASE WHEN (EXCLUDED.data ? 'descDv')
+                                            AND (COALESCE(entities.data->>'descDv','')=''
+                                                 OR entities.data->>'descDv' = entities.data->>'desc')
+                                         THEN jsonb_build_object('descDv', EXCLUDED.data->'descDv') ELSE '{}'::jsonb END
                             END,
                deleted = false,
                rowver = nextval('entities_rowver_seq'), updated_at = now()
@@ -656,6 +660,9 @@ async function ensureDefaultMenu(orgId) {
               OR ((EXCLUDED.data ? 'dv')
                   AND (COALESCE(entities.data->>'dv','')=''
                        OR entities.data->>'dv' = entities.data->>'name'))
+              OR ((EXCLUDED.data ? 'descDv')
+                  AND (COALESCE(entities.data->>'descDv','')=''
+                       OR entities.data->>'descDv' = entities.data->>'desc'))
          RETURNING rowver`,
         [orgId, item.id, JSON.stringify(item)]);
       if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
@@ -1280,7 +1287,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
                wipe it. A non-empty dv in the push still wins. This is why a few
                till-touched items (e.g. an 86'd or re-priced one) reverted to
                English while the rest stayed Dhivehi. */
-            " || CASE WHEN COALESCE(excluded.data->>'dv','')='' AND entities.data ? 'dv' THEN jsonb_build_object('dv', entities.data->'dv') ELSE '{}'::jsonb END"
+            " || CASE WHEN COALESCE(excluded.data->>'dv','')='' AND entities.data ? 'dv' THEN jsonb_build_object('dv', entities.data->'dv') ELSE '{}'::jsonb END" +
+            " || CASE WHEN COALESCE(excluded.data->>'descDv','')='' AND entities.data ? 'descDv' THEN jsonb_build_object('descDv', entities.data->'descDv') ELSE '{}'::jsonb END"
           : p.kind === "customers"
             ? " || jsonb_build_object('points', COALESCE(entities.data->'points', excluded.data->'points', '0'::jsonb), 'balance', COALESCE(entities.data->'balance', excluded.data->'balance', '0'::jsonb))"
             : p.kind === "pords"
