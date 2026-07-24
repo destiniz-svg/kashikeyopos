@@ -1506,7 +1506,7 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
      "ready" to hand over / settle straight away. Mixed orders stay "new" and
      the kitchen display just hides the non-kitchen lines. */
   const allNoKitchen = lines.length > 0 && lines.every((l) => l.noKitchen);
-  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
+  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, customerDv: cust ? (cust.dv || cust.name || null) : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
   const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, order: normalizeOrder(order) });
@@ -1666,7 +1666,7 @@ if (fs.existsSync(protoFile)) {
       const d = r.data || {}; const pts = Number(d.points) || 0;
       const agg = byCust[String(d.id || r.id)] || { n: 0, s: 0 };
       return {
-        id: String(d.id || r.id), n: d.name || "", ph: d.phone || "",
+        id: String(d.id || r.id), n: d.name || "", dv: d.dv || "", ph: d.phone || "",
         tier: pts >= 500 ? "Gold" : pts >= 200 ? "Silver" : "Bronze",
         visits: agg.n, spend: Math.round(agg.s / 100),
         joined: "", allergy: d.allergy || "—", diet: d.diet || "—", note: d.note || "",
@@ -1690,7 +1690,7 @@ if (fs.existsSync(protoFile)) {
     no: String(s.no || "").replace(/^.*-/, "") || String(s.id || "").slice(-4),
     ch: chLabel(s), chK: chKind(s), otype: s.orderType || "takeaway",
     time: hhmm(s.at), items: (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0),
-    total: Math.round(Number(s.total) || 0) / 100, cust: s.customerName || "Walk-in", method: payLabel(s),
+    total: Math.round(Number(s.total) || 0) / 100, cust: s.customerName || "Walk-in", custDv: s.customerDv || s.customerName || "Walk-in", method: payLabel(s),
   }));
   const liveRegRecv = (custRows) => custRows.map((r) => {
     const d = r.data || {}; const bal = Math.round((Number(d.balance) || 0) / 100);
@@ -1708,7 +1708,7 @@ if (fs.existsSync(protoFile)) {
   const liveDeliv = (ordRows) => ordRows
     .filter((o) => o.otype === "delivery" && !finalStatuses.has(String(o.status || "new")))
     .slice(0, 12)
-    .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", zone: o.zone || "Malé",
+    .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", custDv: o.customerDv || o.customerName || "Guest", zone: o.zone || "Malé",
       items: (o.items || []).map((li) => (Number(li.qty || li.q) || 1) + "× " + (li.name || li.n || "")).join(" · "),
       rider: "—", st: String(o.status) === "ready" ? 1 : 0 }));
   // Per-range real analytics for the admin dashboard + Reports, computed from
@@ -2089,6 +2089,7 @@ if (fs.existsSync(protoFile)) {
     const name = String(b.name || "").trim().slice(0, 80);
     if (!name) return res.status(400).json({ error: "name required" });
     const fields = { name, phone: String(b.phone || "").trim().slice(0, 30) };
+    if (b.dv !== undefined) fields.dv = String(b.dv).trim().slice(0, 80);
     if (b.tier !== undefined) fields.tier = String(b.tier).slice(0, 20);
     if (b.allergy !== undefined) fields.allergy = String(b.allergy).slice(0, 120);
     if (b.diet !== undefined) fields.diet = String(b.diet).slice(0, 120);
