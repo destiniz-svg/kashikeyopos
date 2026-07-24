@@ -1270,7 +1270,13 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
             " || CASE WHEN entities.data ? 'comments'    THEN jsonb_build_object('comments',    entities.data->'comments')    ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'noKitchen'   THEN jsonb_build_object('noKitchen',   entities.data->'noKitchen')   ELSE '{}'::jsonb END" +
             " || CASE WHEN entities.data ? 'hidden'      THEN jsonb_build_object('hidden',      entities.data->'hidden')      ELSE '{}'::jsonb END" +
-            " || CASE WHEN COALESCE(excluded.data->>'img','')='' AND entities.data ? 'img' THEN jsonb_build_object('img', entities.data->'img') ELSE '{}'::jsonb END"
+            " || CASE WHEN COALESCE(excluded.data->>'img','')='' AND entities.data ? 'img' THEN jsonb_build_object('img', entities.data->'img') ELSE '{}'::jsonb END" +
+            /* Dhivehi name is server/owner-authoritative like the photo: a till
+               re-sync (whose local copy may predate the Dhivehi names) must not
+               wipe it. A non-empty dv in the push still wins. This is why a few
+               till-touched items (e.g. an 86'd or re-priced one) reverted to
+               English while the rest stayed Dhivehi. */
+            " || CASE WHEN COALESCE(excluded.data->>'dv','')='' AND entities.data ? 'dv' THEN jsonb_build_object('dv', entities.data->'dv') ELSE '{}'::jsonb END"
           : p.kind === "customers"
             ? " || jsonb_build_object('points', COALESCE(entities.data->'points', excluded.data->'points', '0'::jsonb), 'balance', COALESCE(entities.data->'balance', excluded.data->'balance', '0'::jsonb))"
             : p.kind === "pords"
