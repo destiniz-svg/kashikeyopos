@@ -558,6 +558,13 @@ button[disabled],button:disabled{cursor:not-allowed}
                       <button onClick="{{ c.tap }}" style="flex:none;display:flex;align-items:center;gap:7px;border:1px solid {{ c.bc }};background:{{ c.bg }};color:{{ c.co }};border-radius:14px;padding:5px 13px 5px 5px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .15s" style-active="transform:scale(.95)"><span style="width:26px;height:26px;flex:none;border-radius:8px;background:{{ c.iconBg }};display:grid;place-items:center;font-size:14px;line-height:1">{{ c.emoji }}</span>{{ c.label }}</button>
                     </sc-for>
                   </div>
+                  <sc-if value="{{ qrShowSub }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:7px;overflow-x:auto;margin:-8px 0 15px;padding-bottom:2px">
+                      <sc-for list="{{ qrSubChips }}" as="su" hint-placeholder-count="4">
+                        <button onClick="{{ su.tap }}" style="flex:none;border:1px solid {{ su.bc }};background:{{ su.bg }};color:{{ su.co }};border-radius:99px;padding:5px 13px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .15s" style-active="transform:scale(.95)">{{ su.label }}</button>
+                      </sc-for>
+                    </div>
+                  </sc-if>
                   <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#B7A892;margin-bottom:11px">{{ favTitle }}</div>
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                     <sc-for list="{{ qrMenuList }}" as="d" hint-placeholder-count="4">
@@ -2012,7 +2019,7 @@ class Component extends DCLogic {
       ],
       perms:{refunds:[1,1,0,0],discounts:[1,1,0,0],voids:[1,1,0,0],reports:[1,1,0,0],stock:[1,1,1,0]},
       onb:[true,true,true,false,false],wizOpen:false,wizStep:0,
-      qrCart:{},qrCust:'r1',qrView:'menu',qrCat:'mains',qrSel:null,qrQty:1,qrAdd:{},qrNote:'',qrCartL:[],qrPromo:false,anim:{s:18432,o:214,a:86.13},toast:null,tick:now,menuTick:0,vw:window.innerWidth,cartSheet:false,
+      qrCart:{},qrCust:'r1',qrView:'menu',qrCat:'mains',qrGrp:'',qrSub:'all',qrSel:null,qrQty:1,qrAdd:{},qrNote:'',qrCartL:[],qrPromo:false,anim:{s:18432,o:214,a:86.13},toast:null,tick:now,menuTick:0,vw:window.innerWidth,cartSheet:false,
       outlet:0,outletMenu:false,
       aiOpen:false,aiStage:0,aiPct:0,aiStatusIx:0,aiSel:{},
       outlets:[{name:'Kashikeyo Café',area:'Malé · Majeedhee Magu',sales:18432,orders:214,st:'open'},{name:'Kashikeyo Hulhumalé',area:'Hulhumalé · Central Park',sales:12680,orders:141,st:'open'},{name:'Kashikeyo Kitchen',area:'Malé · Cloud kitchen',sales:8940,orders:97,st:'busy'}],
@@ -2116,9 +2123,18 @@ class Component extends DCLogic {
   qrVals(){const s=this.state,me=this,INFO=this.QRINFO;
     const ALLERG={mashuni:'Fish',garudhiya:'Fish',riha:'Dairy',friedrice:'Egg, Soy',kirusai:'Dairy',coffee:'Dairy',kboakibaa:'Gluten, Egg',masroshi:'Fish, Gluten',cutlets:'Fish, Gluten',bajiya:'Gluten',kavaabu:'Fish, Gluten',gulha:'Fish, Gluten',bondibai:'Dairy, Nuts',fonibkb:'Gluten, Egg',saagu:'Dairy'};
     const cats=[['mains','Rice Lovers','🍛'],['drinks','Drinks','🥤'],['sweets','Desserts','🍮'],['hedhikaa','Snacks','🥟']];
-    const catChips=cats.map(c=>({label:c[1],emoji:c[2],iconBg:s.qrCat===c[0]?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrCat:c[0]}),bg:s.qrCat===c[0]?'var(--coral)':'#FFFFFF',co:s.qrCat===c[0]?'#FFF':'#8A7B65',bc:s.qrCat===c[0]?'var(--coral)':'#ECE2D2'}));
+    const legacyCatChips=cats.map(c=>({label:c[1],emoji:c[2],iconBg:s.qrCat===c[0]?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrCat:c[0]}),bg:s.qrCat===c[0]?'var(--coral)':'#FFFFFF',co:s.qrCat===c[0]?'#FFF':'#8A7B65',bc:s.qrCat===c[0]?'var(--coral)':'#ECE2D2'}));
+    const QCG=me._catGroups();const qUseGroups=QCG.length>0;
+    const qgrp=qUseGroups?((s.qrGrp&&QCG.some(function(g){return g.name===s.qrGrp;}))?s.qrGrp:QCG[0].name):null;
+    const qsub=s.qrSub||'all';
+    const qcurSubs=qUseGroups?((((QCG.find(function(g){return g.name===qgrp;}))||{}).subs)||[]):[];
+    const qrGrpChips=qUseGroups?QCG.map(function(g){var on=qgrp===g.name;return {label:g.name,emoji:(g.name||'?').trim().charAt(0),iconBg:on?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrGrp:g.name,qrSub:'all'}),bg:on?'var(--coral)':'#FFFFFF',co:on?'#FFF':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
+    const qrShowSub=qUseGroups&&qcurSubs.length>0;
+    const qrSubChips=qrShowSub?[{name:'all',label:me.t('cats_all')}].concat(qcurSubs.map(function(su){return {name:su,label:su};})).map(function(su){var on=qsub===su.name;return {label:su.label,tap:()=>me.setState({qrSub:su.name}),bg:on?'var(--coral)':'#FFFFFF',co:on?'#FFF':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
+    const catChips=qUseGroups?qrGrpChips:legacyCatChips;
+    const qMatch=function(m){if(!qUseGroups)return m.cat===s.qrCat;if(qsub==='all')return qcurSubs.indexOf(m.sub)>=0;return m.sub===qsub;};
     const qov=s.menuOv||{off:{},hidden:{},price:{}};const qOff=qov.off||{},qHid=qov.hidden||{},qPr=qov.price||{};
-    const menu=me.MENU.concat(qov.added||[]).filter(m=>!qHid[m.id]&&!qOff[m.id]).map(m=>{const ai=me.assetInfo(m);const ti=me.catTint(m.cat);return {disp:m.cat===s.qrCat?'flex':'none',id:m.id,name:me.itemName(m),desc:(s.lang==='dv'?(m.descDv||m.desc):m.desc)||(INFO[m.id]||{}).desc||'',allerg:me.t('allergiesLbl')+' '+(ALLERG[m.id]||'—'),hasAllerg:!!ALLERG[m.id],priceF:me.fm((m.id in qPr)?qPr[m.id]:m.price),photo:'qrph-'+m.id,src:ai.src,hasImg:ai.hasImg,noImg:!ai.hasImg,glyph:me.tileGlyph(m),tileBg:ti[0],tileTc:ti[1],open:()=>me.qrOpenItem(m.id)};});
+    const menu=me.MENU.concat(qov.added||[]).filter(m=>!qHid[m.id]&&!qOff[m.id]).map(m=>{const ai=me.assetInfo(m);const ti=me.catTint(m.cat);return {disp:qMatch(m)?'flex':'none',id:m.id,name:me.itemName(m),desc:(s.lang==='dv'?(m.descDv||m.desc):m.desc)||(INFO[m.id]||{}).desc||'',allerg:me.t('allergiesLbl')+' '+(ALLERG[m.id]||'—'),hasAllerg:!!ALLERG[m.id],priceF:me.fm((m.id in qPr)?qPr[m.id]:m.price),photo:'qrph-'+m.id,src:ai.src,hasImg:ai.hasImg,noImg:!ai.hasImg,glyph:me.tileGlyph(m),tileBg:ti[0],tileTc:ti[1],open:()=>me.qrOpenItem(m.id)};});
     const dm=s.qrSel?me.MENU.find(x=>x.id===s.qrSel):null;let detail=null;
     if(dm){const info=INFO[dm.id]||{};const addons=(dm.mods&&dm.mods.length?dm.mods:me.QRADD);let addTot=0;const addRows=addons.map(a=>{const q=s.qrAdd[a.id]||0;addTot+=q*a.price;return {label:me.itemName(a),priceF:a.price?('+'+me.fm(a.price)):me.t('free'),q,has:q>0,inc:()=>me.qrAddonInc(a.id),dec:()=>me.qrAddonDec(a.id)};});detail={name:me.itemName(dm),tag:info.tag||'',desc:info.desc||'',rating:info.rating||'4.7',ratingN:info.rn||'120',photo:'qrhero-'+dm.id,src:me.assetUrl(dm.id),qty:s.qrQty,inc:()=>me.setState({qrQty:s.qrQty+1}),dec:()=>me.setState({qrQty:Math.max(1,s.qrQty-1)}),addRows,note:s.qrNote,setNote:e=>me.setState({qrNote:e.target.value}),totalF:me.fm(dm.price*s.qrQty+addTot)};}
     const lines=s.qrCartL.map(l=>({lid:l.lid,name:l.name,sub:l.addons.length?l.addons.map(a=>a.label).join(', '):(l.note||''),hasSub:!!(l.addons.length||l.note),priceF:me.fm(l.lineTot),qty:l.qty,photo:'qrph-'+l.id,src:me.assetUrl(l.id),inc:()=>me.qrLineInc(l.lid),dec:()=>me.qrLineDec(l.lid)}));
@@ -2144,7 +2160,7 @@ class Component extends DCLogic {
       visitsLbl:me.t('visitsLbl'),spentLbl:me.t('spentLbl'),onAccountLbl:me.t('onAccountLbl'),last7Lbl:me.t('last7'),ptsUnit:me.t('ptsLbl'),
       qrOrdRows:ordRows,callWaiterLbl:me.t('callWaiter'),qrCallWaiter:()=>me.qrCallWaiter(),favTitle:me.t('favTitle'),
       qrStmtRows:meHist.map(h=>({amtF:'− '+me.fm(h.amt),method:h.methodLbl,when:h.date+' · '+h.time,tag:h.full?me.t('settledFull'):me.t('paidToward'),tagBg:h.full?'rgba(31,166,92,.13)':'rgba(215,162,74,.16)',tagC:h.full?'#1FA65C':'#B07714'})),
-      qrMenuView:s.qrView==='menu'&&s.qrTab!=='mytab',qrItemView:s.qrView==='item'&&s.qrTab!=='mytab',qrSummaryView:s.qrView==='summary'&&s.qrTab!=='mytab',qrCatChips:catChips,qrMenuList:menu,qrDetail:detail,qrLines:lines,qrCartCount:s.qrCartL.reduce((a,l)=>a+l.qty,0),qrHasLines:s.qrCartL.length>0,qrSubF:me.fm(sub),qrTaxF:me.fm(tax),qrPromoRow:s.qrPromo,qrPromoF:'− '+me.fm(promo),qrTotalF:me.fm(tot),qrApplyPromo:()=>me.qrPromoApply(),qrBackMenu:()=>me.qrBackMenu(),qrGoSummary:()=>me.qrGoSummary(),qrAddToOrder:()=>me.qrAddToOrder(),qrOrderNow:()=>me.qrOrderNow(false),qrOrderPay:()=>me.qrOrderNow(true),qrTableLbl:me.t('table')+' 4'};}
+      qrMenuView:s.qrView==='menu'&&s.qrTab!=='mytab',qrItemView:s.qrView==='item'&&s.qrTab!=='mytab',qrSummaryView:s.qrView==='summary'&&s.qrTab!=='mytab',qrCatChips:catChips,qrSubChips,qrShowSub,qrMenuList:menu,qrDetail:detail,qrLines:lines,qrCartCount:s.qrCartL.reduce((a,l)=>a+l.qty,0),qrHasLines:s.qrCartL.length>0,qrSubF:me.fm(sub),qrTaxF:me.fm(tax),qrPromoRow:s.qrPromo,qrPromoF:'− '+me.fm(promo),qrTotalF:me.fm(tot),qrApplyPromo:()=>me.qrPromoApply(),qrBackMenu:()=>me.qrBackMenu(),qrGoSummary:()=>me.qrGoSummary(),qrAddToOrder:()=>me.qrAddToOrder(),qrOrderNow:()=>me.qrOrderNow(false),qrOrderPay:()=>me.qrOrderNow(true),qrTableLbl:me.t('table')+' 4'};}
   floorVals(){const s=this.state,me=this,now=s.tick;
     const fmMin=at=>Math.max(0,Math.floor((now-at)/60000))+'m';
     const occ={};
