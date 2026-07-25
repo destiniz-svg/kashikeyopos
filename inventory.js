@@ -1445,7 +1445,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       spiceLevels: { type: "array", items: { type: "string" }, description: "Spice options if relevant (e.g. ['Non-spicy','Spicy']), else empty array" },
       priceLow: { type: "number", description: "Suggested selling price, low end, in whole rufiyaa (MVR)" },
       priceHigh: { type: "number", description: "Suggested selling price, high end, in whole rufiyaa (MVR)" },
-      svg: { type: "string", description: "A self-contained flat vector illustration of the item as SVG markup with viewBox='0 0 120 120'. Simple flat shapes and fills only. No <script>, no external URLs, no <image>, no text." },
+      svg: { type: "string", description: "A self-contained flat vector illustration of the item as SVG markup with viewBox='0 0 150 100' (landscape, matches the menu tile). Compose the dish centred and filling the frame edge to edge — no wide empty margins. Simple flat shapes and fills only. No <script>, no external URLs, no <image>, no text." },
     },
     required: ["en", "dv", "desc", "descDv", "cat", "emoji", "tags", "allergens", "addons", "spiceLevels", "priceLow", "priceHigh", "svg"],
   };
@@ -1497,7 +1497,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
           "Write natural Dhivehi (Thaana script) for dv/descDv when you can; use an empty string only if genuinely unsure — never transliterate into Latin letters. " +
           "Prices are in Maldivian rufiyaa (MVR), whole numbers, realistic for a local café and consistent with the sample menu. Tax sector: " + sector + " (prices are tax-inclusive). " +
           "Prefer an existing category when one fits. Keep the description under ~90 characters and free of the price. " +
-          "For svg, draw a simple, flat, friendly illustration of the item (viewBox 0 0 120 120, flat shapes and fills only — no text, no script, no external references).\n\n" +
+          "For svg, draw a simple, flat, friendly illustration of the item (viewBox 0 0 150 100 — landscape, matching the menu tile; compose the dish centred and filling the frame edge to edge, flat shapes and fills only — no text, no script, no external references).\n\n" +
           "Existing categories: " + (cats.join(", ") || "(none yet)") + "\n" +
           "Sample menu:\n" + (samples.join("\n") || "(no items yet)"),
         output_config: { format: { type: "json_schema", schema: MENU_ITEM_SCHEMA } },
