@@ -129,7 +129,7 @@ button[disabled],button:disabled{cursor:not-allowed}
             <span style="width:44px;height:44px;flex:none;border-radius:99px;background:var(--coral);color:var(--coralink);display:grid;place-items:center;font-size:17px;font-weight:800">A</span>
             <div style="flex:1;min-width:0;padding-top:1px">
               <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;letter-spacing:-.01em">Abdulla Thinan</div>
-              <button onClick="{{ acctSwitchOutlet }}" style="margin-top:2px;border:0;background:transparent;padding:0;cursor:pointer;color:var(--coral);font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;text-decoration:underline;text-underline-offset:2px">{{ acctRoleOutlet }} <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 4h6M6.5 2 8.5 4 6.5 6M10 8H4M5.5 6 3.5 8 5.5 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+              <div style="margin-top:2px;color:var(--coral);font-size:12px;font-weight:700">{{ acctRoleOutlet }}</div>
             </div>
             <button onClick="{{ closeAcct }}" style="width:28px;height:28px;flex:none;border:0;background:var(--sur2);border-radius:9px;cursor:pointer;display:grid;place-items:center;color:var(--ink2)" style-hover="color:var(--coral)"><svg width="12" height="12" viewBox="0 0 12 12"><line x1="2.5" y1="2.5" x2="9.5" y2="9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line><line x1="9.5" y1="2.5" x2="2.5" y2="9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line></svg></button>
           </div>
@@ -2500,10 +2500,10 @@ class Component extends DCLogic {
           shiftExpectedF:me.fm((s.shiftFloat||0)+Math.max(0,s.cash-(s.shiftCashOpen||0))),
           ...(()=>{var counted=s.shiftModal?(Math.max(0,parseFloat(s.shiftModal.counted)||0)):0;var expected=(s.shiftFloat||0)+Math.max(0,s.cash-(s.shiftCashOpen||0));var vr=Math.round((counted-expected)*100)/100;var bal=Math.abs(vr)<0.5;return {shiftVarF:(vr>0?'+':vr<0?'−':'')+me.fm(Math.abs(vr)),shiftVarC:bal?'var(--green)':'var(--coral)',shiftVarLbl:bal?'Balanced':(vr>0?'Over':'Short'),shiftCountedEntered:!!(s.shiftModal&&String(s.shiftModal.counted||'').length)};})(),
           toggleSound:()=>me.setState({sound:!s.sound}),acctSoundLabel:s.sound?'Alert sounds on':'Alert sounds off',soundBg:s.sound?'var(--coral)':'var(--ink3)',soundX:s.sound?'16px':'2px',
-          acctSwitchOutlet:()=>me.toast('Switch outlet · IZC'),acctLock:()=>{me.setState({acct:false});me.toast('Screen locked — enter PIN');},acctSignOut:()=>{me.setState({acct:false});me.toast('Signed out');},
+          acctLock:()=>{me.setState({acct:false});me.toast('Screen locked — enter PIN');},acctSignOut:()=>{me.setState({acct:false});me.toast('Signed out');},
           accents:['blue','green','terracotta','red','amber','pink'].map(k=>{const on=s.accent===k;return {color:cmap[k],bd:'transparent',sh:on?'0 0 0 2px var(--sur),0 0 0 4px '+cmap[k]:'none',tap:()=>me.setState({accent:k})};}),
           langOpts:[['en','English'],['dv','ދިވެހި']].map(l=>{const on=s.lang===l[0];return {label:l[1],on,bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',tap:()=>me.setState({lang:l[0]})};}),
-          acctRoleOutlet:me.t(s.myRole)+' · IZC',
+          acctRoleOutlet:me.t(s.myRole)+' · '+((s.storeP&&s.storeP.name)||'Kashikeyo'),
           roleOpts:['owner','manager','cashier','waiter','kitchen'].map(rk=>{const on=s.myRole===rk;return {label:me.t(rk),bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)',tap:()=>me.setState(rk==='kitchen'?{myRole:rk,acct:false,scr:'orders',ordTab:'kitchen'}:{myRole:rk})};}),
         };
       })(),
