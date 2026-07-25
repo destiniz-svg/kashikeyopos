@@ -241,6 +241,7 @@ const themeUtilCss = `
 .ksh-btn:hover{background:var(--k-btn-h)}
 .ksh-primary{background:var(--k-primary);color:#fff}
 .ksh-primary:hover{background:var(--k-primary-h)}
+.ksh-badge{background:var(--k-primary);color:#fff}
 .ksh-accent{color:var(--k-accent)}
 .ksh-accentBd{border-color:var(--k-accentbd)}
 @media(min-width:1024px){.ksh-reg-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:1rem}.ksh-col1{grid-column:span 1/span 1}}
@@ -993,6 +994,10 @@ patchFile(indexPath, (html) => {
   .split('[["green","#0FA968"],["orange","#C1502D"],["watermelon","#DA3B4B"],["mango","#E19A12"],["strawberry","#D8437A"]]').join('[["ocean","#0E6EC6"],["green","#0FA968"],["orange","#C1502D"],["watermelon","#DA3B4B"],["mango","#E19A12"],["strawberry","#D8437A"]]')
   .split('[["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]]').join('[["ocean","Ocean","#0E6EC6"],["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]]')
   .split('gridTemplateColumns:"repeat(5,1fr)"').join('gridTemplateColumns:"repeat(6,1fr)"')
+  /* Nav order-count badge followed a hard-coded cyan regardless of theme; make
+     it track the active palette's primary (waiter-call variant stays amber).
+     Idempotent: the bare cyan class no longer appears after the swap. */
+  .replace('${Zi.length?"bg-amber-500":"bg-cyan-500"} text-slate-950 text-xs font-bold', '${Zi.length?"bg-amber-500 text-slate-950":"ksh-badge"} text-xs font-bold')
   /* Guest/customer profile links were broken: LT() returned
      origin+pathname = "https://kashikeyopos.com/app", so shared links became
      /app?s=...&c=... which hits requireAppSession and redirects guests to
@@ -2580,6 +2585,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.8"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.9"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
