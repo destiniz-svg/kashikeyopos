@@ -34,6 +34,8 @@ html[data-white] [style*="var(--sur)"]{outline-color:var(--line)}
 [style*="tabular-nums"]{font-family:'Space Mono',ui-monospace,monospace;letter-spacing:-.02em}
 [style*="Bricolage Grotesque"]{font-family:'Avenir Next','Avenir',Montserrat,system-ui,sans-serif!important}
 @media (max-width:759px){header[style*="var(--sur)"]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
+/* Payment drawer: full-screen sheet on phones (was a right-anchored 94vw drawer that left an off-centre strip). Keeps the 420px side drawer on tablet/desktop. */
+@media (max-width:520px){[style*="--paydrawer"]{width:100vw!important;max-width:100vw!important;inset-inline-end:0!important;inset-inline-start:0!important}}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--green)}
 ::selection{background:var(--ink);color:#fff}
 input{font-family:inherit}
@@ -1721,7 +1723,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 </sc-if>
 <sc-if value="{{ payOpen }}" hint-placeholder-val="{{ false }}">
   <div onClick="{{ closePay }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:170;animation:fade .2s"></div>
-  <div style="position:fixed;z-index:171;top:0;bottom:0;inset-inline-end:0;width:420px;max-width:94vw;background:var(--sur);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:sheet .3s cubic-bezier(.2,.9,.3,1)" dir="{{ dirAttr }}">
+  <div style="--paydrawer:1;position:fixed;z-index:171;top:0;bottom:0;inset-inline-end:0;width:420px;max-width:94vw;background:var(--sur);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:sheet .3s cubic-bezier(.2,.9,.3,1)" dir="{{ dirAttr }}">
     <sc-if value="{{ payDone }}" hint-placeholder-val="{{ false }}">
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fade .3s">
         <svg width="88" height="88" viewBox="0 0 88 88"><circle cx="44" cy="44" r="40" fill="none" stroke="var(--green)" stroke-width="5" stroke-dasharray="252" stroke-dashoffset="252" style="animation:drawcheck .5s ease-out forwards"></circle><polyline points="28,45 40,57 61,34" fill="none" stroke="var(--green)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="50" stroke-dashoffset="50" style="animation:drawcheck .35s .35s ease-out forwards"></polyline></svg>
