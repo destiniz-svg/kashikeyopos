@@ -92,18 +92,27 @@ button[disabled],button:disabled{cursor:not-allowed}
 </helmet>
 <div style="{{ rootStyle }}">
 <sc-if value="{{ locked }}" hint-placeholder-val="{{ false }}">
-  <div style="position:fixed;inset:0;z-index:400;background:var(--kbg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;animation:fade .2s">
-    <img src="/logo-mark.png" alt="" style="width:60px;height:60px;object-fit:contain">
-    <div style="text-align:center">
-      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:21px;color:var(--ink)">{{ lockStore }}</div>
-      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-top:3px">Enter your PIN to sign in</div>
-    </div>
-    <div style="display:flex;gap:13px">
-      <sc-for list="{{ pinDots }}" as="pd" hint-placeholder-count="4"><span style="width:14px;height:14px;border-radius:99px;background:{{ pd.bg }};border:2px solid {{ pd.bd }};transition:all .12s"></span></sc-for>
-    </div>
-    <sc-if value="{{ pinErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12.5px;font-weight:800;animation:pop .3s">Wrong PIN — try again</div></sc-if>
-    <div style="display:grid;grid-template-columns:repeat(3,70px);gap:13px;margin-top:2px">
-      <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="height:62px;border-radius:16px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-family:'Bricolage Grotesque';font-size:22px;font-weight:800;cursor:pointer;opacity:{{ pk.vis }}" style-active="transform:scale(.94)">{{ pk.label }}</button></sc-for>
+  <div style="position:fixed;inset:0;z-index:400;background:var(--kbg);display:flex;align-items:center;justify-content:center;padding:22px;animation:fade .2s">
+    <div style="width:100%;max-width:352px;background:var(--sur);border:1px solid var(--line);border-radius:24px;box-shadow:0 1px 2px rgba(20,22,28,.05),0 26px 60px rgba(20,22,28,.16);-webkit-backdrop-filter:blur(22px) saturate(1.4);backdrop-filter:blur(22px) saturate(1.4);padding:30px 26px 24px;display:flex;flex-direction:column;align-items:center">
+      <span style="width:56px;height:56px;flex:none;border-radius:16px;overflow:hidden;display:grid;place-items:center;box-shadow:var(--shadow);background:linear-gradient(135deg,var(--coral),#0A4E96)">
+        <sc-if value="{{ hasBrandLogo }}" hint-placeholder-val="{{ false }}"><span style="display:contents">{{ brandLogoImg }}</span></sc-if>
+        <sc-if value="{{ noBrandLogo }}" hint-placeholder-val="{{ true }}"><span style="color:#FFFFFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:24px">{{ brandInitial }}</span></sc-if>
+      </span>
+      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:21px;color:var(--ink);text-align:center;letter-spacing:-.01em;margin-top:16px">{{ lockStore }}</div>
+      <div style="font-size:13px;color:var(--ink2);font-weight:600;margin-top:4px;text-align:center">Enter your PIN to sign in</div>
+      <div style="display:flex;gap:14px;margin-top:22px">
+        <sc-for list="{{ pinDots }}" as="pd" hint-placeholder-count="4"><span style="width:14px;height:14px;border-radius:99px;background:{{ pd.bg }};border:2px solid {{ pd.bd }};box-shadow:{{ pd.sh }};transition:all .12s"></span></sc-for>
+      </div>
+      <div style="height:22px;display:flex;align-items:center;justify-content:center">
+        <sc-if value="{{ pinErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12.5px;font-weight:800;animation:pop .3s">Wrong PIN — try again</div></sc-if>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:11px;width:100%;max-width:264px">
+        <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="height:60px;border-radius:16px;border:1px solid var(--line);background:var(--sur2);color:var(--ink);font-family:'Bricolage Grotesque';font-size:22px;font-weight:800;cursor:pointer;opacity:{{ pk.vis }};transition:transform .1s,background .12s" style-hover="background:var(--coralsoft)" style-active="transform:scale(.94)">{{ pk.label }}</button></sc-for>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:22px;opacity:.6">
+        <img src="/logo-mark.png" alt="" style="width:16px;height:16px;flex:none;object-fit:contain">
+        <span style="font-size:11px;font-weight:700;color:var(--ink3);letter-spacing:.01em">Powered by Kashikeyo<span style="color:var(--ink2)">POS</span></span>
+      </div>
     </div>
   </div>
 </sc-if>
@@ -2025,7 +2034,7 @@ class Component extends DCLogic {
           acctRoleOutlet:me.t(s.myRole)+' · '+((s.storeP&&s.storeP.name)||'Kashikeyo'),
           locked:s.locked,pinErr:s.pinErr,acctUserName:(s.curUser&&s.curUser.name)||'Owner',acctInitial:(((s.curUser&&s.curUser.name)||'O').trim().charAt(0)||'O').toUpperCase(),
           lockStore:(s.storeP&&s.storeP.name)||'KashikeyoPOS',
-          pinDots:[0,1,2,3].map(function(i){var on=i<s.pinEntry.length;return {bg:on?'var(--coral)':'transparent',bd:on?'var(--coral)':'var(--ink3)'};}),
+          pinDots:[0,1,2,3].map(function(i){var on=i<s.pinEntry.length;return {bg:on?'var(--coral)':'transparent',bd:on?'var(--coral)':'var(--ink3)',sh:on?'0 2px 8px var(--coralsoft)':'none'};}),
           pinPad:['1','2','3','4','5','6','7','8','9'].map(function(d){return {label:d,vis:'1',tap:function(){me.pinPress(d);}};}).concat([{label:'',vis:'0',tap:function(){}},{label:'0',vis:'1',tap:function(){me.pinPress('0');}},{label:'⌫',vis:'1',tap:function(){me.pinBack();}}]),
           roleOpts:['owner','manager','cashier','waiter','kitchen'].map(rk=>{const on=s.myRole===rk;return {label:me.t(rk),bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)',tap:()=>me.setState(rk==='kitchen'?{myRole:rk,acct:false,scr:'orders',ordTab:'kitchen'}:{myRole:rk})};}),
         };
