@@ -601,7 +601,7 @@ const requireAppSession = (req, res, next) => {
     .catch(() => res.redirect(302, "/login"));
 };
 const redirectIfAppSession = (req, res, next) => {
-  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app") : next()).catch(() => next());
+  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app2") : next()).catch(() => next());
 };
 
 /* Developer-panel sessions are a separate credential namespace from store
@@ -2340,7 +2340,7 @@ if (fs.existsSync(protoFile)) {
 app.get("/welcome", (req, res) => {
   resolveAppSession(req).then((orgId) => {
     if (!orgId) return res.redirect(302, "/login");
-    if (req.kOnboarded) return res.redirect(302, "/app");
+    if (req.kOnboarded) return res.redirect(302, "/app2");
     res.sendFile(path.join(siteDir, "welcome.html"));
   }).catch(() => res.redirect(302, "/login"));
 });
