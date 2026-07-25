@@ -37,7 +37,12 @@ html[data-white] [style*="var(--sur)"]{outline-color:var(--line)}
 /* Payment drawer: full-screen sheet on phones (was a right-anchored 94vw drawer that left an off-centre strip). Keeps the 420px side drawer on tablet/desktop. */
 @media (max-width:520px){[style*="--paydrawer"]{width:100vw!important;max-width:100vw!important;inset-inline-end:0!important;inset-inline-start:0!important}}
 /* Category filter rows scroll horizontally on one line (no wrap) instead of stacking into many rows on narrow screens; hide the scrollbar for a clean look. */
-[style*="--catrow"]::-webkit-scrollbar{display:none}
+[style*="--catrow"]::-webkit-scrollbar,[style*="--subrow"]::-webkit-scrollbar{display:none}
+/* On phones, give the category / sub-category chips a wider, more tappable footprint. */
+@media (max-width:520px){
+  [style*="--catrow"]>button{padding-left:20px!important;padding-right:20px!important;padding-top:8px!important;padding-bottom:8px!important;font-size:13px!important}
+  [style*="--subrow"]>button{padding-left:17px!important;padding-right:17px!important;padding-top:7px!important;padding-bottom:7px!important;font-size:12px!important}
+}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--green)}
 ::selection{background:var(--ink);color:#fff}
 input{font-family:inherit}
@@ -374,7 +379,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </sc-for></sc-if>
         </div>
         <sc-if value="{{ showSubRow }}" hint-placeholder-val="{{ false }}">
-          <div style="--catrow:1;display:flex;gap:7px;align-items:center;overflow-x:auto;scrollbar-width:none;margin:-4px 0 14px;padding-bottom:2px;animation:fade .15s">
+          <div style="--subrow:1;display:flex;gap:7px;align-items:center;overflow-x:auto;scrollbar-width:none;margin:-4px 0 14px;padding-bottom:2px;animation:fade .15s">
             <sc-for list="{{ subChips }}" as="su" hint-placeholder-count="4">
               <button onClick="{{ su.tap }}" style="flex:none;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;background:{{ su.bg }};color:{{ su.co }};border-color:{{ su.bc }}" style-active="transform:scale(.95)">{{ su.label }}</button>
             </sc-for>
