@@ -424,6 +424,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const sd = st.rowCount ? st.rows[0].data : {};
       return {
         currency: sd.currency || "MVR",
+        usdRate: num(sd.usdRate, 1542),   // MVR per USD × 100, for the back office's secondary-currency conversion
         storeName: sd.storeName || "",
         /* till writes its chosen theme into settings (see guest-sync-patch
            #30/31) so the back office can follow the same palette */
@@ -2451,6 +2452,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, settings: {
       storeName: sd.storeName || "", currency: sd.currency || "MVR", tin: sd.tin || "", address: sd.address || "",
       receiptFooter: sd.receiptFooter || "", gstBp: num(sd.gstBp, 800), svcChargeBp: num(sd.svcChargeBp, 0), loyaltyBp: num(sd.loyaltyBp, 0),
+      usdRate: num(sd.usdRate, 1542),
     } });
   }));
 
@@ -2467,6 +2469,8 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       if (b.gstBp != null) data.gstBp = Number(b.gstBp) === 800 ? 800 : 1700;   // GGST 8% / TGST 17% (MIRA; legacy 1600 normalises up)
       if (b.svcChargeBp != null) data.svcChargeBp = Math.max(0, Math.min(2000, Math.round(Number(b.svcChargeBp) || 0)));
       if (b.loyaltyBp != null) data.loyaltyBp = Math.max(0, Math.round(Number(b.loyaltyBp) || 0));
+      // Exchange rate for the secondary-currency conversion, stored as MVR-per-USD × 100.
+      if (b.usdRate != null) data.usdRate = Math.max(1, Math.min(1000000, Math.round(Number(b.usdRate) || 1542)));
       let rv;
       if (row) rv = Number((await client.query("UPDATE entities SET data=$2, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id='settings' RETURNING rowver", [req.orgId, JSON.stringify(data)])).rows[0].rowver);
       else rv = Number((await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) RETURNING rowver", [req.orgId, JSON.stringify(data)])).rows[0].rowver);

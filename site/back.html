@@ -368,7 +368,7 @@
 
   /* ── state + helpers ─────────────────────────────────────────────── */
   var S = {
-    tab: "owner", currency: "MVR", role: "owner",
+    tab: "owner", currency: "MVR", usdRate: 1542, role: "owner",
     ingredients: [], products: [], suppliers: [], audits: [],
     // recipes tab
     prodFilter: "", selProduct: null, recipe: null,
@@ -449,6 +449,18 @@
   var LOCATIONS = ["Fridge", "Freezer", "Dry", "Bar", "Other"];
 
   function Y(n) { return (Number(n || 0) / 100).toFixed(2); }             // laari → display
+  /* Secondary-currency conversion for the back panel. `l` is a laari amount in the
+     store's own currency; usdRate is MVR-per-USD × 100. MVR stores show the USD
+     equivalent, USD stores show the MVR equivalent. Returns "" when there's nothing
+     to convert (no rate). Mirrors the previous production version's receipt line. */
+  function conv(l) {
+    var rate = Number(S.usdRate || 0); if (!(rate > 0)) return "";
+    var laari = Number(l || 0);
+    if (S.currency === "USD") return "≈ MVR " + (laari * rate / 10000).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return "≈ USD " + (laari / rate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function convOther(l) { return S.currency === "USD" ? "MVR " + (Number(l || 0) * Number(S.usdRate || 1542) / 10000).toFixed(2) : "USD " + (Number(l || 0) / Number(S.usdRate || 1542)).toFixed(2); }
+  function convLine(l) { var c = conv(l); return c ? ('<div style="display:flex;justify-content:flex-end;padding:0 0 5px"><span class="sub" style="font-size:12px">' + c + "</span></div>") : ""; }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
   function qty3(n) { var v = Number(n || 0); return (Math.round(v * 1000) / 1000).toLocaleString("en-US", { maximumFractionDigits: 3 }); }
   function toast(msg) { var t = document.getElementById("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("show"); }, 2600); }
@@ -576,7 +588,7 @@
       api("/flags").catch(function () { return { sales: [], credit: [] }; }),
       api("/expiring").catch(function () { return { items: [] }; }),
     ]).then(function (r) {
-      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
+      S.ingredients = r[0].ingredients; S.currency = r[1].currency; S.usdRate = r[1].usdRate || 1542; S.products = r[1].products; S.catOrder = r[1].catOrder || []; S.catGroups = r[1].catGroups || [];
       S.suppliers = r[2].suppliers; S.audits = r[3].audits; S.invoices = r[5].invoices; S.pos = r[6].pos || [];
       S.flags = { sales: (r[7] && r[7].sales) || [], credit: (r[7] && r[7].credit) || [] };
       S.expiring = (r[8] && r[8].items) || [];
@@ -2176,7 +2188,7 @@
     var opexKeys = Object.keys(p.opexByCat || {});
     var opexRows = opexKeys.map(function (k) { return repLine(esc(k), "− " + repMoney(p.opexByCat[k]), { sub: true }); }).join("");
     var pnl = '<div class="panel pad"><h3 style="margin:0 0 8px">Profit &amp; loss</h3>' +
-      repLine("Revenue (net of GST)", repMoney(p.revenue)) +
+      repLine("Revenue (net of GST)", repMoney(p.revenue)) + convLine(p.revenue) +
       (p.discounts ? repLine("Discounts given", "− " + repMoney(p.discounts), { sub: true }) : "") +
       (p.refunds ? repLine("Refunds", "− " + repMoney(p.refunds), { sub: true }) : "") +
       repLine("Cost of goods sold", "− " + repMoney(p.cogs), { sub: true }) +
@@ -2184,6 +2196,7 @@
       (p.wastage ? repLine("Wastage", "− " + repMoney(p.wastage), { sub: true }) : "") +
       (opexRows ? '<div class="hint" style="margin-top:6px">Operating expenses</div>' + opexRows : repLine("Operating expenses", "− " + repMoney(p.opex), { sub: true })) +
       repLine("Net profit (" + p.netMarginPct + "%)", repMoney(p.netProfit), { top: true, strong: true, big: true, color: (p.netProfit >= 0 ? "var(--ok)" : "var(--warn)") }) +
+      convLine(p.netProfit) +
       "</div>";
     var gst = '<div class="panel pad"><h3 style="margin:0 0 8px">GST return (draft)</h3>' +
       repLine("Output tax (on sales)", repMoney(g.outputTax)) +
@@ -2395,6 +2408,9 @@
         '<div class="row2" style="margin-top:8px"><div><label>Tax ID (TIN)</label><input id="cfgTin" value="' + esc(s.tin) + '" style="width:100%" /></div>' +
         '<div><label>Address</label><input id="cfgAddr" value="' + esc(s.address) + '" style="width:100%" /></div></div>' +
         '<label style="margin-top:8px;display:block">Receipt footer</label><input id="cfgFooter" value="' + esc(s.receiptFooter) + '" style="width:100%" />' +
+        '<h3 style="margin:18px 0 10px">Currency conversion</h3>' +
+        '<div><label>Exchange rate (MVR per USD)</label><input id="cfgRate" type="number" min="0" step="0.01" value="' + (((s.usdRate || 1542)) / 100) + '" style="width:180px" /></div>' +
+        '<div id="cfgConvPrev" class="hint" style="margin-top:6px"></div>' +
         '<h3 style="margin:18px 0 10px">Tax &amp; charges</h3>' +
         '<label>GST sector</label><div class="chips" style="margin:4px 0 12px">' +
         '<button class="chip' + (s.gstBp === 800 ? " on" : "") + '" data-gst="800">General · 8%</button>' +
@@ -2405,10 +2421,22 @@
         '<p class="hint" style="margin-top:8px">Saved changes flow to the till and receipts automatically.</p></div>';
       var gst = s.gstBp >= 1600 ? 1700 : 800;   // any tourism rate (legacy 1600 or 1700) normalises to TGST 17%
       el("cfgBody").querySelectorAll("[data-gst]").forEach(function (b) { b.onclick = function () { gst = Number(b.dataset.gst); el("cfgBody").querySelectorAll("[data-gst]").forEach(function (x) { x.classList.toggle("on", Number(x.dataset.gst) === gst); }); }; });
+      // Live conversion preview: 100 units of the store currency in the other currency,
+      // recomputed as the rate / currency inputs change.
+      function updateConvPrev() {
+        var cur = (el("cfgCur").value.trim() || "MVR").toUpperCase();
+        var rate = parseFloat(el("cfgRate").value) || 0;
+        var prev = el("cfgConvPrev"); if (!prev) return;
+        if (!(rate > 0)) { prev.textContent = "Enter a rate to show the second-currency equivalent on reports."; return; }
+        prev.textContent = cur === "USD"
+          ? "USD 100.00 ≈ MVR " + (100 * rate).toFixed(2) + " · shown alongside your report totals."
+          : "MVR 100.00 ≈ USD " + (100 / rate).toFixed(2) + " · shown alongside your report totals.";
+      }
+      el("cfgRate").oninput = updateConvPrev; el("cfgCur").oninput = updateConvPrev; updateConvPrev();
       el("cfgSave").onclick = function () {
-        var body = { storeName: el("cfgName").value.trim(), currency: el("cfgCur").value.trim() || "MVR", tin: el("cfgTin").value.trim(), address: el("cfgAddr").value.trim(), receiptFooter: el("cfgFooter").value.trim(), gstBp: gst, svcChargeBp: el("cfgSvc").checked ? 1000 : 0, loyaltyBp: Math.max(0, Math.round(Number(el("cfgLoyalty").value) || 0)) };
+        var body = { storeName: el("cfgName").value.trim(), currency: el("cfgCur").value.trim() || "MVR", tin: el("cfgTin").value.trim(), address: el("cfgAddr").value.trim(), receiptFooter: el("cfgFooter").value.trim(), gstBp: gst, svcChargeBp: el("cfgSvc").checked ? 1000 : 0, loyaltyBp: Math.max(0, Math.round(Number(el("cfgLoyalty").value) || 0)), usdRate: Math.max(1, Math.round((parseFloat(el("cfgRate").value) || 15.42) * 100)) };
         el("cfgSave").disabled = true;
-        api("/settings", { method: "PUT", body: JSON.stringify(body) }).then(function () { toast("Settings saved — the till will update"); S.currency = body.currency; el("cfgSave").disabled = false; }).catch(function (e) { el("cfgSave").disabled = false; toast(e.message || "Couldn't save"); });
+        api("/settings", { method: "PUT", body: JSON.stringify(body) }).then(function () { toast("Settings saved — the till will update"); S.currency = body.currency; S.usdRate = body.usdRate; el("cfgSave").disabled = false; }).catch(function (e) { el("cfgSave").disabled = false; toast(e.message || "Couldn't save"); });
       };
     }).catch(function (e) { el("cfgBody").innerHTML = '<div class="empty">' + esc(e.message) + "</div>"; });
   }
