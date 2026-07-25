@@ -1388,6 +1388,16 @@ button[disabled],button:disabled{cursor:not-allowed}
           <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">DIET</div><input value="{{ mdlCdiet }}" onInput="{{ setMdlCdiet }}" placeholder="e.g. Vegetarian" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:13.5px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div>
         </div>
         <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">NOTES</div><textarea value="{{ mdlCnote }}" onInput="{{ setMdlCnote }}" placeholder="Seating, preferences, billing arrangements…" style="width:100%;min-height:66px;resize:none;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:13.5px;font-weight:600;line-height:1.5;outline:none;font-family:inherit" style-focus="border-color:var(--ink)"></textarea></div>
+        <sc-if value="{{ custHasLink }}" hint-placeholder-val="{{ false }}"><div style="border:1px solid var(--line2);border-radius:12px;padding:12px 13px;background:var(--bg)">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">PERSONAL ORDERING LINK</div>
+          <div style="font-size:11.5px;font-weight:700;color:var(--ink);word-break:break-all;line-height:1.4;margin-bottom:9px">{{ custLinkF }}</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:7px">
+            <button onClick="{{ shareProfShare }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line2);border-radius:10px;padding:8px 4px;background:var(--card);color:var(--ink);cursor:pointer;font-size:10.5px;font-weight:800" style-active="transform:scale(.95)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
+            <button onClick="{{ shareProfWA }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line2);border-radius:10px;padding:8px 4px;background:var(--card);color:var(--ink);cursor:pointer;font-size:10.5px;font-weight:800" style-active="transform:scale(.95)"><svg width="16" height="16" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-2.8.9.9-2.8-.2-.3A8 8 0 1 1 12 20zm4.4-5.6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.5.1-.7.3-.8.8-.9 1.9-.4 3.1a11 11 0 0 0 4.6 4.5c1.6.7 2.3.8 3.1.7.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1l-.4-.2z"/></svg>WhatsApp</button>
+            <button onClick="{{ shareProfCopy }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line2);border-radius:10px;padding:8px 4px;background:var(--card);color:var(--ink);cursor:pointer;font-size:10.5px;font-weight:800" style-active="transform:scale(.95)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>Copy</button>
+            <button onClick="{{ shareProfImg }}" style="display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line2);border-radius:10px;padding:8px 4px;background:var(--card);color:var(--ink);cursor:pointer;font-size:10.5px;font-weight:800" style-active="transform:scale(.95)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Image</button>
+          </div>
+        </div></sc-if>
         <button onClick="{{ doSaveCust }}" style="border:0;border-radius:12px;padding:13px;background:var(--coralgrad);color:#fff;font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">{{ custSaveLbl }}</button>
       </div></sc-if>
 
@@ -1785,7 +1795,37 @@ class Component extends DCLogic {
   saveStaffMember(){const m=this.state.mdl;const me=this;const n=(m.sn||'').trim();if(!n){this.setMF('err','Name is required');return;}const role=m.role||'cashier';const pin=(m.spin||'').trim();const isEdit=!!m.sid;if(!isEdit&&!/^\d{4}$/.test(pin)){this.setMF('err','Set a 4-digit PIN');return;}if(pin&&!/^\d{4}$/.test(pin)){this.setMF('err','PIN must be 4 digits');return;}const body={name:n,role};if(m.sid)body.id=m.sid;if(pin)body.pin=pin;try{fetch('/api/app2/staff',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).then(function(r){return r.json();}).then(function(j){if(j&&j.error){me.setState({mdl:Object.assign({},me.state.mdl,{err:j.error})});return;}me.setState({mdl:null});me.toast(n+' · '+(isEdit?'updated':'added as '+role));}).catch(function(){me.setState({mdl:null});me.toast('Saved');});}catch(e){me.setState({mdl:null});}}
   removeStaff(r){if(!r||!r.id)return;const me=this;this.toast(r.n+' · removed');try{fetch('/api/app2/staff/'+encodeURIComponent(r.id)+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin'}).catch(function(){});}catch(e){}}
   addCustomer(){this.openMdl('custedit',{idx:-1,cn:'',cdv:'',cph:'',ctier:'Bronze',callergy:'',cdiet:'',cnote:'',title:'Add customer'});}
-  editCustomer(idx){const c=this.state.custData[idx];if(!c)return;this.openMdl('custedit',{idx,cn:c.n,cdv:c.dv||'',cph:c.ph,ctier:c.tier,callergy:c.allergy==='—'?'':c.allergy,cdiet:c.diet==='—'?'':c.diet,cnote:c.note,title:'Edit customer'});}
+  editCustomer(idx){const c=this.state.custData[idx];if(!c)return;this.openMdl('custedit',{idx,cid:c.id||'',cn:c.n,cdv:c.dv||'',cph:c.ph,ctier:c.tier,cvisits:c.visits,cspend:c.spend,cbal:c.bal,callergy:c.allergy==='—'?'':c.allergy,cdiet:c.diet==='—'?'':c.diet,cnote:c.note,title:'Edit customer'});}
+  /* Personal ordering link + share, ported from the audited production's
+     customer profile. Native share → WhatsApp deep link → clipboard copy. */
+  custProfileLink(cid){const slug=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.slug)||'';const origin=(typeof location!=='undefined'&&location.origin)||'';if(!cid)return '';return origin+'/?s='+encodeURIComponent(slug||'store')+'&c='+encodeURIComponent(cid);}
+  _shareVia(via,title,text,phone){
+    if(via==='copy'){this.copyLink(text,title||'Link');return;}
+    if(via==='share'){try{if(navigator.share){navigator.share({title:title,text:text}).catch(function(){});return;}}catch(e){}this.copyLink(text,title||'Link');return;}
+    const enc=encodeURIComponent(text),digits=String(phone||'').replace(/[^0-9]/g,'');
+    const url=via==='whatsapp'?('https://wa.me/'+digits+'?text='+enc):via==='viber'?('viber://forward?text='+enc):'';
+    if(url){try{window.open(url,'_blank');}catch(e){}}
+    this.toast('Shared via '+(via==='whatsapp'?'WhatsApp':via==='viber'?'Viber':''));
+  }
+  _shareImage(title,lines,filename){
+    try{
+      var W=620,pad=44,lh=38,headH=150;var H=headH+lines.length*lh+pad+20;
+      var c=document.createElement('canvas');c.width=W;c.height=H;var x=c.getContext('2d');
+      x.fillStyle='#FBFAF7';x.fillRect(0,0,W,H);x.fillStyle='#C7431D';x.fillRect(0,0,W,9);
+      var brand=(this.state.store&&this.state.store.name)||(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.store&&window.__ksAdmin.store.name)||'Kashikeyo';
+      x.textBaseline='alphabetic';x.fillStyle='#26221C';x.font='800 32px sans-serif';x.fillText(brand,pad,72);
+      x.fillStyle='#8A8378';x.font='600 19px sans-serif';x.fillText(title,pad,104);
+      x.strokeStyle='#E3DED4';x.lineWidth=1;x.beginPath();x.moveTo(pad,headH-18);x.lineTo(W-pad,headH-18);x.stroke();
+      var y=headH+16;
+      lines.forEach(function(ln){x.fillStyle=ln.bold?'#26221C':'#4A443B';x.font=(ln.bold?'800 ':'600 ')+(ln.big?'23px':'18px')+' sans-serif';x.textAlign='left';x.fillText(String(ln.l||''),pad,y);if(ln.r!=null){x.textAlign='right';x.fillText(String(ln.r),W-pad,y);}y+=lh;});
+      x.textAlign='left';var self=this;
+      c.toBlob(function(blob){if(!blob){self.toast('Could not render image');return;}var file=new File([blob],(filename||'share')+'.png',{type:'image/png'});try{if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share){navigator.share({files:[file],title:title}).catch(function(){});return;}}catch(e){}try{var u=URL.createObjectURL(blob);var a=document.createElement('a');a.href=u;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u);},3000);self.toast('Image saved');}catch(e){self.toast('Could not render image');}},'image/png');
+    }catch(e){this.toast('Could not render image');}
+  }
+  shareProfile(via){const m=this.state.mdl;if(!m||!m.cid)return;const link=this.custProfileLink(m.cid);const brand=(this.state.store&&this.state.store.name)||'Kashikeyo';const nm=(m.cn||'').trim();
+    if(via==='image'){this._shareImage('Personal ordering link',[{l:nm,bold:true,big:true},{l:'Tier',r:m.ctier||'Bronze'},{l:'Visits',r:String(m.cvisits!=null?m.cvisits:'—')},{l:'Link:'},{l:link}],'profile-'+nm.replace(/\s+/g,'-'));return;}
+    const txt=(nm?(nm+' — '):'')+brand+'\nOrder online & view your tab:\n'+link;
+    this._shareVia(via,'Ordering link',via==='copy'?link:txt,(m.cph||''));}
   saveCustomerApi(body){try{fetch('/api/app2/customer',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
   saveCustomer(){const m=this.state.mdl;const n=(m.cn||'').trim();if(!n){this.setState({mdl:Object.assign({},m,{err:'Name is required'})});return;}const cid=(m.idx>=0&&this.state.custData[m.idx])?this.state.custData[m.idx].id:'';const rec={n,dv:(m.cdv||'').trim(),ph:(m.cph||'').trim()||'—',tier:m.ctier||'Bronze',allergy:(m.callergy||'').trim()||'—',diet:(m.cdiet||'').trim()||'—',note:(m.cnote||'').trim()||'No notes yet.'};let custData;if(m.idx>=0){custData=this.state.custData.map((c,i)=>i===m.idx?Object.assign({},c,rec):c);}else{const joined=new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'});custData=this.state.custData.concat([Object.assign({visits:0,spend:0,joined},rec)]);}this.setState({custData,mdl:null});this.toast(n+(m.idx>=0?' · updated':' · added'));this.saveCustomerApi({id:cid,name:n,dv:(m.cdv||'').trim(),phone:(m.cph||'').trim(),tier:m.ctier||'Bronze',allergy:(m.callergy||'').trim(),diet:(m.cdiet||'').trim(),note:(m.cnote||'').trim()});}
   saveCfg(patch){try{fetch('/api/app2/config',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({cfg:patch})}).catch(function(){});}catch(e){}}
@@ -2377,6 +2417,7 @@ class Component extends DCLogic {
       mdlCnote:(s.mdl&&s.mdl.cnote)||'',setMdlCnote:e=>me.setMF('cnote',e.target.value),
       custTierOpts:['Bronze','Silver','Gold'].map(t=>{const sel=(s.mdl&&s.mdl.ctier)===t;return {t,sel,tap:()=>me.setMF('ctier',t),bc:sel?'var(--coral)':'var(--line2)',bg:sel?'var(--coralsoft)':'var(--bg)',co:sel?'var(--coral)':'var(--ink2)'};}),
       doSaveCust:()=>me.saveCustomer(),custSaveLbl:(s.mdl&&s.mdl.idx>=0)?'Save changes':'Add customer',
+      custHasLink:!!(s.mdl&&s.mdl.kind==='custedit'&&s.mdl.cid),custLinkF:(s.mdl&&s.mdl.cid)?me.custProfileLink(s.mdl.cid):'',shareProfShare:()=>me.shareProfile('share'),shareProfWA:()=>me.shareProfile('whatsapp'),shareProfCopy:()=>me.shareProfile('copy'),shareProfImg:()=>me.shareProfile('image'),
       staffRoleOpts:[['manager','Manager'],['cashier','Cashier'],['waiter','Waiter'],['kitchen','Kitchen']].map(([k,r])=>{const sel=(s.mdl&&s.mdl.role)===k;return {r,sel,tap:()=>me.setMF('role',k),bc:sel?'var(--coral)':'var(--line2)',bg:sel?'var(--coralsoft)':'var(--card)',co:sel?'var(--coral)':'var(--ink2)'};}),doAddStaff:()=>me.saveStaffMember(),
       mdlStaffPin:(s.mdl&&s.mdl.spin)||'',setMdlStaffPin:e=>me.setMF('spin',e.target.value.replace(/\D/g,'').slice(0,4)),staffEditMode:!!(s.mdl&&s.mdl.sid),
       isAddStaff:s.mdl&&s.mdl.kind==='addstaff',isRole:s.mdl&&s.mdl.kind==='role',
