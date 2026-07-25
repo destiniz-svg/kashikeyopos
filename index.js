@@ -2536,8 +2536,8 @@ if (fs.existsSync(webDir)) {
         customer = { id: c.id, name: c.name || "", dv: c.dv || "", points: Number(c.points) || 0, balance: Number(c.balance) || 0,
           address: c.address || "", memberNo: c.memberNo || "", visits: completed.length,
           spent: completed.reduce((a, o) => a + Number(o.total || 0), 0),
-          orders: orders.map((o) => ({ no: o.no, total: Number(o.total || 0), status: o.status, when: o.createdAt || o.at || Date.now(),
-            table: o.table || "", items: (o.items || []).map((it) => ({ q: it.qty, n: it.name })) })) };
+          orders: orders.map((o) => ({ no: o.no, total: Number(o.total || 0) / 100, status: o.status, when: o.createdAt || o.at || Date.now(),
+            otype: o.otype || "dinein", table: o.table || "", zone: o.zone || "", items: (o.items || []).map((it) => ({ q: it.qty, n: it.name })) })) };
       }
     }
     const guest = { slug: org.slug, storeId, table: req.query.t ? String(req.query.t) : "", customer };
