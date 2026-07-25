@@ -601,7 +601,7 @@ const requireAppSession = (req, res, next) => {
     .catch(() => res.redirect(302, "/login"));
 };
 const redirectIfAppSession = (req, res, next) => {
-  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app2") : next()).catch(() => next());
+  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app") : next()).catch(() => next());
 };
 
 /* Developer-panel sessions are a separate credential namespace from store
@@ -2113,7 +2113,9 @@ if (fs.existsSync(protoFile)) {
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
   };
-  serveProto({ base: "/app2", file: "index.html", withMenu: true });   // Register / till
+  serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)
+  // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
+  app.get(/^\/app2(\/.*)?$/, (req, res) => res.redirect(301, "/app"));
   if (fs.existsSync(path.join(protoDir, "admin.html"))) {
     serveProto({ base: "/admin2", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit
   }
@@ -2340,7 +2342,7 @@ if (fs.existsSync(protoFile)) {
 app.get("/welcome", (req, res) => {
   resolveAppSession(req).then((orgId) => {
     if (!orgId) return res.redirect(302, "/login");
-    if (req.kOnboarded) return res.redirect(302, "/app2");
+    if (req.kOnboarded) return res.redirect(302, "/app");
     res.sendFile(path.join(siteDir, "welcome.html"));
   }).catch(() => res.redirect(302, "/login"));
 });
@@ -2410,8 +2412,10 @@ if (fs.existsSync(webDir)) {
     return sendTill(req, res);
   }));
 
-  app.use("/app", express.static(webDir, { ...noCacheShell, index: false }));
-  app.get(/^\/app(\/.*)?$/, requireAppSession, sendTill);
+  /* The register (new /app front-end) is served earlier via serveProto({base:"/app"}).
+     The legacy baked till bundle is retired from /app; it stays reachable only as
+     the guest portal at "/?s=slug" (sendTill above) and its root-relative assets
+     below. */
 
   /* Assets the bundle references with root-relative paths (offline-bridge.js,
      manifest, icons, sw.js) stay reachable at "/" too, for already-installed
