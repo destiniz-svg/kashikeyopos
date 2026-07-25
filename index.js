@@ -1767,6 +1767,7 @@ if (fs.existsSync(protoFile)) {
   const liveStoreP = (settings) => ({
     name: (settings && settings.storeName) || "Kashikeyo",
     currency: (settings && settings.currency) || "MVR",
+    usdRate: (settings && Number(settings.usdRate)) || 1542,
     tin: (settings && settings.tin) || "",
     address: (settings && settings.address) || "",
     footer: (settings && (settings.receiptFooter || settings.footer)) || "",
