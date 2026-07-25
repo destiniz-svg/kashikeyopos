@@ -108,7 +108,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           <sc-if value="{{ pinErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12px;font-weight:700;animation:pop .3s">Wrong PIN — try again</div></sc-if>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="border-radius:16px;padding:16px 0;font-family:'Bricolage Grotesque';font-size:18px;font-weight:600;border:1px solid var(--line);background:var(--sur);color:var(--ink);cursor:pointer;box-shadow:var(--shadow);opacity:{{ pk.vis }};display:flex;align-items:center;justify-content:center;transition:transform .1s,background .12s" style-hover="background:var(--coralsoft)" style-active="transform:scale(.95)">{{ pk.label }}</button></sc-for>
+          <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="border-radius:16px;padding:18px 0;font-family:'Bricolage Grotesque';font-size:19px;font-weight:600;border:1px solid var(--coralsoft);background:linear-gradient(180deg,var(--sur),var(--coralsoft));color:var(--ink);cursor:pointer;opacity:{{ pk.vis }};display:flex;align-items:center;justify-content:center;transition:transform .1s,filter .12s" style-hover="filter:brightness(.97)" style-active="transform:scale(.95)">{{ pk.label }}</button></sc-for>
         </div>
       </div>
     </sc-if>
