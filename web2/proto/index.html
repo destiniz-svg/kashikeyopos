@@ -2262,8 +2262,7 @@ class Component extends DCLogic {
     const feed=s.tickets.slice(0,3).map(t=>{const mm=Math.floor(Math.max(0,(s.tick-t.at)/1000)/60);return {ch:t.src.indexOf('QR')===0?'QR':t.station==='hot'?'HOT':'BAR',no:t.no,ago:(mm<1?'just now':mm+' min ago'),amt:t.items.reduce((a,i)=>a+i.q,0)+' items'};});
     const overdue=s.recv.filter(c=>c.bal>0&&c.days>=30);
     const attn=[
-      {bg:'var(--redsoft)',c:'var(--red)',title:'Low stock — Onion',sub:'4 / 12 kg · reorder today',cta:'Inventory',go:'inventory'},
-      {bg:'var(--ambersoft)',c:'var(--amber)',title:overdue.length?('Overdue · '+(s.lang==='dv'?overdue[0].dv:overdue[0].name)):'Tabs on track',sub:overdue.length?('MVR '+overdue[0].bal+' · '+overdue[0].days+' days'):'all settled',cta:'Tabs',go:'recv'},
+      {bg:'var(--ambersoft)',c:'var(--amber)',title:overdue.length?('Overdue · '+(s.lang==='dv'?overdue[0].dv:overdue[0].name)):'Tabs on track',sub:overdue.length?(me.fm(overdue[0].bal)+' · '+overdue[0].days+' days'):'all settled',cta:'Tabs',go:'recv'},
       {bg:'var(--coralsoft)',c:'var(--coral)',title:s.tickets.length+' tickets in kitchen',sub:'Oldest ticket open now',cta:'KDS',go:'kds'}
     ].map(a=>({bg:a.bg,c:a.c,title:a.title,sub:a.sub,cta:a.cta,tap:()=>me.setState(a.go==='kds'?{scr:'orders',ordTab:'kitchen'}:{scr:a.go})}));
     const prime=[['Food cost','var(--green)',31],['Labour','var(--amber)',27],['Other opex','var(--ink3)',14]].map(p=>({label:p[0],c:p[1],pct:p[2]+'%',w:p[2]+'%'}));
@@ -2273,7 +2272,7 @@ class Component extends DCLogic {
     return {
       dashVars:(s.white?white:s.dark?dark:light),
       pdGreeting:(new Date().getHours()<12?'Good morning':new Date().getHours()<18?'Good afternoon':'Good evening'),
-      pdDate:'Sat 19 Jul 2026 · Malé',
+      pdDate:(new Date()).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}),
       pdGoalPct:Math.round(gp)+'%',pdRingOff:(289-289*gp/100).toFixed(1),pdGoalF:me.fm(goal).replace('.00',''),
       pdSpkLine:me.spk(spkRaw,'line'),pdSpkArea:me.spk(spkRaw,'area'),
       pdGp:me.fm(gpVal).replace('.00',''),pdItems:items.toLocaleString(),
