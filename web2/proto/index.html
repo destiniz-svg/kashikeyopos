@@ -99,7 +99,7 @@ button[disabled],button:disabled{cursor:not-allowed}
     <div style="font-family:'Bricolage Grotesque';font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;color:var(--ink);margin-bottom:4px">Kashikeyo<span style="color:var(--coral)">POS</span></div>
     <div style="font-size:12px;color:var(--ink2);font-weight:500;margin-bottom:32px;text-align:center">{{ lockSub }}</div>
     <sc-if value="{{ lockPickMode }}" hint-placeholder-val="{{ false }}">
-      <div style="width:100%;max-width:320px">
+      <div style="width:100%;max-width:360px">
         <button onClick="{{ lockBack }}" style="background:transparent;border:0;color:var(--ink2);font-size:12px;font-weight:600;cursor:pointer;margin-bottom:16px;padding:0" style-hover="color:var(--coral)">← {{ lockPickName }}</button>
         <div style="display:flex;justify-content:center;gap:12px;margin-bottom:20px">
           <sc-for list="{{ pinDots }}" as="pd" hint-placeholder-count="4"><span style="width:14px;height:14px;border-radius:99px;background:{{ pd.bg }};transition:all .12s"></span></sc-for>
@@ -107,8 +107,8 @@ button[disabled],button:disabled{cursor:not-allowed}
         <div style="height:18px;display:flex;align-items:center;justify-content:center;margin-bottom:6px">
           <sc-if value="{{ pinErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12px;font-weight:700;animation:pop .3s">Wrong PIN — try again</div></sc-if>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="border-radius:16px;padding:18px 0;font-family:'Bricolage Grotesque';font-size:19px;font-weight:600;border:1px solid var(--coralsoft);background:linear-gradient(180deg,var(--sur),var(--coralsoft));color:var(--ink);cursor:pointer;opacity:{{ pk.vis }};display:flex;align-items:center;justify-content:center;transition:transform .1s,filter .12s" style-hover="filter:brightness(.97)" style-active="transform:scale(.95)">{{ pk.label }}</button></sc-for>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="border-radius:16px;padding:16px 0;font-family:'Bricolage Grotesque';font-size:18px;font-weight:600;border:1px solid var(--line);background:var(--coralsoft);color:var(--ink);cursor:pointer;opacity:{{ pk.vis }};display:flex;align-items:center;justify-content:center;transition:transform .1s,background .12s" style-hover="background:var(--coralsoft)" style-active="transform:scale(.95)">{{ pk.label }}</button></sc-for>
         </div>
       </div>
     </sc-if>
