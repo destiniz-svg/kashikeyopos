@@ -1995,6 +1995,8 @@ if (fs.existsSync(protoFile)) {
               const storeName = setData.storeName || setData.name || "";
               adminData.store = {
                 name: storeName, currency: setData.currency || "MVR",
+                usdRate: Number(setData.usdRate) || 1542,
+                tin: setData.tin || "", address: setData.address || "", footer: setData.receiptFooter || setData.footer || "",
                 gst: Number(setData.gst != null ? setData.gst : setData.gstRate) || 0, svc: Number(setData.svcCharge) || 0,
               };
               // Store slug (for real per-table QR deep-links) + effective SEO
@@ -2286,10 +2288,22 @@ if (fs.existsSync(protoFile)) {
       // (liveStoreP) and the admin store card actually read, so a rename in the
       // cockpit is reflected on the till instead of only living inside adminCfg.
       if (patch.store && typeof patch.store === "object") {
-        const nm = String(patch.store.name || "").trim();
+        const st = patch.store;
+        const nm = String(st.name || "").trim();
         if (nm) data.storeName = nm.slice(0, 80);
-        const cur3 = String(patch.store.currency || "").trim();
-        if (cur3) data.currency = cur3.slice(0, 8);
+        const cur3 = String(st.currency || "").trim();
+        if (cur3) data.currency = (cur3.toUpperCase() === "USD" ? "USD" : "MVR");
+        // Promote the rest of the store profile to the top-level settings fields the
+        // register (liveStoreP) + receipt + inv/settings read, so /admin's config
+        // persists identically to /back's Settings — the two are now one source.
+        if (st.tin != null) data.tin = String(st.tin).slice(0, 40);
+        if (st.addr != null) data.address = String(st.addr).slice(0, 200);
+        if (st.footer != null) data.receiptFooter = String(st.footer).slice(0, 200);
+        if (st.logo !== undefined) data.logo = st.logo || "";
+        if (st.usdRate != null && st.usdRate !== "") {
+          const r = Math.round(parseFloat(st.usdRate) * 100);
+          if (r > 0) data.usdRate = Math.min(1000000, r);
+        }
       }
       let r;
       if (cur) {
