@@ -94,30 +94,27 @@ button[disabled],button:disabled{cursor:not-allowed}
 </helmet>
 <div style="{{ rootStyle }}">
 <sc-if value="{{ locked }}" hint-placeholder-val="{{ false }}">
-  <div style="position:fixed;inset:0;z-index:400;background:radial-gradient(920px 540px at 14% -8%,var(--coralsoft),transparent 60%),radial-gradient(760px 480px at 112% 6%,var(--coralsoft),transparent 58%),var(--kbg);display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:54px 22px 40px;animation:fade .2s">
-    <div style="display:flex;align-items:center;gap:12px">
-      <img src="/logo-mark.png" alt="" style="width:46px;height:46px;flex:none;object-fit:contain">
-      <span style="width:2px;height:28px;border-radius:2px;background:linear-gradient(180deg,#B23A24,#9AAE72)"></span>
-      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:27px;letter-spacing:-.02em;line-height:1;color:var(--ink)">Kashikeyo<span style="color:var(--coral)">POS</span></div>
-    </div>
-    <div style="font-size:13.5px;color:var(--ink2);font-weight:600;margin-top:13px;text-align:center">{{ lockSub }}</div>
+  <div style="position:fixed;inset:0;z-index:400;background:radial-gradient(920px 540px at 14% -8%,var(--coralsoft),transparent 60%),radial-gradient(760px 480px at 112% 6%,var(--coralsoft),transparent 58%),var(--kbg);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow-y:auto;padding:24px;animation:fade .2s">
+    <img src="/logo-mark.png" alt="" style="width:64px;height:64px;flex:none;object-fit:contain;margin-bottom:12px">
+    <div style="font-family:'Bricolage Grotesque';font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;color:var(--ink);margin-bottom:4px">Kashikeyo<span style="color:var(--coral)">POS</span></div>
+    <div style="font-size:12px;color:var(--ink2);font-weight:500;margin-bottom:32px;text-align:center">{{ lockSub }}</div>
     <sc-if value="{{ lockPickMode }}" hint-placeholder-val="{{ false }}">
-      <div style="width:100%;max-width:330px;margin-top:26px;display:flex;flex-direction:column;align-items:center">
-        <button onClick="{{ lockBack }}" style="align-self:flex-start;background:transparent;border:0;color:var(--ink2);font-size:13.5px;font-weight:700;cursor:pointer;padding:4px 2px" style-hover="color:var(--coral)">← {{ lockPickName }}</button>
-        <div style="display:flex;gap:15px;margin:16px 0 4px">
-          <sc-for list="{{ pinDots }}" as="pd" hint-placeholder-count="4"><span style="width:14px;height:14px;border-radius:99px;background:{{ pd.bg }};border:2px solid {{ pd.bd }};box-shadow:{{ pd.sh }};transition:all .12s"></span></sc-for>
+      <div style="width:100%;max-width:320px">
+        <button onClick="{{ lockBack }}" style="background:transparent;border:0;color:var(--ink2);font-size:12px;font-weight:600;cursor:pointer;margin-bottom:16px;padding:0" style-hover="color:var(--coral)">← {{ lockPickName }}</button>
+        <div style="display:flex;justify-content:center;gap:12px;margin-bottom:20px">
+          <sc-for list="{{ pinDots }}" as="pd" hint-placeholder-count="4"><span style="width:14px;height:14px;border-radius:99px;background:{{ pd.bg }};transition:all .12s"></span></sc-for>
         </div>
-        <div style="height:22px;display:flex;align-items:center;justify-content:center">
-          <sc-if value="{{ pinErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12.5px;font-weight:800;animation:pop .3s">Wrong PIN — try again</div></sc-if>
+        <div style="height:18px;display:flex;align-items:center;justify-content:center;margin-bottom:6px">
+          <sc-if value="{{ pinErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12px;font-weight:700;animation:pop .3s">Wrong PIN — try again</div></sc-if>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;width:100%">
-          <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="11"><button onClick="{{ pk.tap }}" style="height:66px;border-radius:16px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-family:'Bricolage Grotesque';font-size:22px;font-weight:800;cursor:pointer;box-shadow:var(--shadow);transition:transform .1s,background .12s" style-hover="background:var(--coralsoft)" style-active="transform:scale(.94)">{{ pk.label }}</button></sc-for>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          <sc-for list="{{ pinPad }}" as="pk" hint-placeholder-count="12"><button onClick="{{ pk.tap }}" style="border-radius:16px;padding:16px 0;font-family:'Bricolage Grotesque';font-size:18px;font-weight:600;border:1px solid var(--line);background:var(--sur);color:var(--ink);cursor:pointer;box-shadow:var(--shadow);opacity:{{ pk.vis }};display:flex;align-items:center;justify-content:center;transition:transform .1s,background .12s" style-hover="background:var(--coralsoft)" style-active="transform:scale(.95)">{{ pk.label }}</button></sc-for>
         </div>
       </div>
     </sc-if>
     <sc-if value="{{ lockListMode }}" hint-placeholder-val="{{ true }}">
-      <div style="width:100%;max-width:392px;margin-top:26px;display:flex;flex-direction:column;gap:13px">
-        <sc-for list="{{ lockUsers }}" as="lu" hint-placeholder-count="4"><button onClick="{{ lu.tap }}" style="display:flex;align-items:center;gap:14px;width:100%;background:var(--sur);border:1px solid var(--line);border-radius:16px;padding:15px 18px;cursor:pointer;box-shadow:var(--shadow);transition:transform .1s,border-color .12s" style-hover="border-color:var(--coral)" style-active="transform:scale(.985)"><span style="width:40px;height:40px;flex:none;border-radius:99px;background:var(--coral);color:var(--coralink);display:grid;place-items:center;font-size:15px;font-weight:800">{{ lu.initial }}</span><span style="flex:1;text-align:start;font-family:'Bricolage Grotesque';font-weight:800;font-size:15.5px;color:var(--ink)">{{ lu.name }}</span><span style="flex:none;font-size:13px;color:var(--ink3);font-weight:600">{{ lu.role }}</span></button></sc-for>
+      <div style="width:100%;max-width:384px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ lockUsers }}" as="lu" hint-placeholder-count="4"><button onClick="{{ lu.tap }}" style="display:flex;align-items:center;gap:12px;width:100%;background:var(--sur);border:1px solid var(--line);border-radius:16px;padding:14px 16px;cursor:pointer;box-shadow:var(--shadow);transition:opacity .12s,transform .1s" style-hover="opacity:.9" style-active="transform:scale(.99)"><span style="width:36px;height:36px;flex:none;border-radius:99px;background:var(--coral);color:var(--coralink);display:grid;place-items:center;font-size:14px;font-weight:700">{{ lu.initial }}</span><span style="flex:1;text-align:start;font-size:14px;font-weight:500;color:var(--ink)">{{ lu.name }}</span><span style="flex:none;font-size:12px;color:var(--ink3);font-weight:500">{{ lu.role }}</span></button></sc-for>
       </div>
     </sc-if>
   </div>
@@ -2045,8 +2042,8 @@ class Component extends DCLogic {
           lockSub:((s.storeP&&s.storeP.name)||'KashikeyoPOS')+' · sign in with your PIN',
           lockPickMode:!!s.lockPick,lockListMode:!s.lockPick,lockPickName:(s.lockPick&&s.lockPick.name)||'',lockBack:()=>me.pinUnpick(),
           lockUsers:(s.users||[]).filter(function(u){return u&&u.pin;}).map(function(u){return {initial:(((u.name||'?').trim().charAt(0))||'?').toUpperCase(),name:u.name||'Staff',role:(u.role||'cashier'),tap:function(){me.pinPick(u);}};}),
-          pinDots:[0,1,2,3].map(function(i){var on=i<s.pinEntry.length;return {bg:on?'var(--coral)':'transparent',bd:on?'var(--coral)':'var(--ink3)',sh:on?'0 2px 8px var(--coralsoft)':'none'};}),
-          pinPad:['1','2','3','4','5','6','7','8','9'].map(function(d){return {label:d,vis:'1',tap:function(){me.pinPress(d);}};}).concat([{label:'⌫',vis:'1',tap:function(){me.pinBack();}},{label:'0',vis:'1',tap:function(){me.pinPress('0');}}]),
+          pinDots:[0,1,2,3].map(function(i){var on=i<s.pinEntry.length;return {bg:on?'var(--coral)':'var(--sur2)'};}),
+          pinPad:['1','2','3','4','5','6','7','8','9'].map(function(d){return {label:d,vis:'1',tap:function(){me.pinPress(d);}};}).concat([{label:'⌫',vis:'1',tap:function(){me.pinBack();}},{label:'0',vis:'1',tap:function(){me.pinPress('0');}},{label:'',vis:'0',tap:function(){}}]),
           roleOpts:['owner','manager','cashier','waiter','kitchen'].map(rk=>{const on=s.myRole===rk;return {label:me.t(rk),bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)',tap:()=>me.setState(rk==='kitchen'?{myRole:rk,acct:false,scr:'orders',ordTab:'kitchen'}:{myRole:rk})};}),
         };
       })(),
