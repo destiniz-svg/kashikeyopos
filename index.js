@@ -1836,6 +1836,12 @@ if (fs.existsSync(protoFile)) {
     const sd = (setRow && setRow.data) || {};
     out.catGroups = Array.isArray(sd.catGroups) ? sd.catGroups : [];
     out.catOrder = Array.isArray(sd.catOrder) ? sd.catOrder : [];
+    /* Staff for the register's PIN lock (name, role, djb2-hashed pin) — the
+       same client-side check the baked till uses, so /app2 can gate on a
+       per-staff PIN and carry that staff's role into its permission checks. */
+    out.users = (await c.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [orgId])).rows
+      .map((r) => ({ id: r.id, name: ((r.data && r.data.name) || "").toString().slice(0, 60) || "Staff", role: (r.data && r.data.role) || "cashier", pin: (r.data && r.data.pin) || "" }));
     return out;
   };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
