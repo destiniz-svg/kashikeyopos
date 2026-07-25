@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Register — KashikeyoPOS</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <script src="./support.js"></script>
 </head>
 <body>
@@ -92,8 +94,12 @@ button[disabled],button:disabled{cursor:not-allowed}
 </helmet>
 <div style="{{ rootStyle }}">
 <sc-if value="{{ locked }}" hint-placeholder-val="{{ false }}">
-  <div style="position:fixed;inset:0;z-index:400;background:var(--kbg);display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:54px 22px 40px;animation:fade .2s">
-    <img src="/logo.png" alt="KashikeyoPOS" style="height:44px;width:auto;object-fit:contain">
+  <div style="position:fixed;inset:0;z-index:400;background:radial-gradient(920px 540px at 14% -8%,var(--coralsoft),transparent 60%),radial-gradient(760px 480px at 112% 6%,var(--coralsoft),transparent 58%),var(--kbg);display:flex;flex-direction:column;align-items:center;overflow-y:auto;padding:54px 22px 40px;animation:fade .2s">
+    <div style="display:flex;align-items:center;gap:12px">
+      <img src="/logo-mark.png" alt="" style="width:46px;height:46px;flex:none;object-fit:contain">
+      <span style="width:2px;height:28px;border-radius:2px;background:linear-gradient(180deg,#B23A24,#9AAE72)"></span>
+      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:27px;letter-spacing:-.02em;line-height:1;color:var(--ink)">Kashikeyo<span style="color:var(--coral)">POS</span></div>
+    </div>
     <div style="font-size:13.5px;color:var(--ink2);font-weight:600;margin-top:13px;text-align:center">{{ lockSub }}</div>
     <sc-if value="{{ lockPickMode }}" hint-placeholder-val="{{ false }}">
       <div style="width:100%;max-width:330px;margin-top:26px;display:flex;flex-direction:column;align-items:center">
