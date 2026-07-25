@@ -36,6 +36,8 @@ html[data-white] [style*="var(--sur)"]{outline-color:var(--line)}
 @media (max-width:759px){header[style*="var(--sur)"]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
 /* Payment drawer: full-screen sheet on phones (was a right-anchored 94vw drawer that left an off-centre strip). Keeps the 420px side drawer on tablet/desktop. */
 @media (max-width:520px){[style*="--paydrawer"]{width:100vw!important;max-width:100vw!important;inset-inline-end:0!important;inset-inline-start:0!important}}
+/* Category filter rows scroll horizontally on one line (no wrap) instead of stacking into many rows on narrow screens; hide the scrollbar for a clean look. */
+[style*="--catrow"]::-webkit-scrollbar{display:none}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--green)}
 ::selection{background:var(--ink);color:#fff}
 input{font-family:inherit}
@@ -360,19 +362,19 @@ button[disabled],button:disabled{cursor:not-allowed}
             <span style="flex:none;font-size:12.5px;font-weight:800;white-space:nowrap">Open shift →</span>
           </button>
         </sc-if>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <div style="--catrow:1;display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;padding-bottom:2px">
           <sc-if value="{{ searchClosed }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openSearch }}" title="{{ L.search }}" style="flex:none;width:36px;height:36px;border:1px solid var(--line);background:var(--sur);border-radius:11px;cursor:pointer;display:grid;place-items:center;color:var(--ink2)" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.94)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><line x1="10.6" y1="10.6" x2="14" y2="14"/></svg></button></sc-if>
           <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:7px;flex:1;min-width:150px;max-width:280px;border:1px solid var(--coral);background:var(--sur);border-radius:11px;padding:0 10px;height:36px;animation:fade .15s"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="color:var(--ink3);flex:none"><circle cx="7" cy="7" r="4.6"/><line x1="10.6" y1="10.6" x2="14" y2="14"/></svg><input autofocus="true" placeholder="{{ L.search }}" value="{{ query }}" onChange="{{ setQuery }}" onBlur="{{ closeSearchIfEmpty }}" dir="auto" style="flex:1;min-width:0;border:0;background:none;color:var(--ink);font-size:12.5px;outline:none"><button onClick="{{ clearSearch }}" style="flex:none;border:0;background:none;color:var(--ink3);font-size:15px;line-height:1;cursor:pointer;padding:2px" style-hover="color:var(--red)">×</button></div></sc-if>
           <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}"><button onClick="{{ scanBarcode }}" title="Scan barcode" style="flex:none;display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid var(--line);background:var(--sur);border-radius:11px;cursor:pointer;color:var(--ink);font-size:12px;font-weight:700;white-space:nowrap;animation:fade .15s" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.95)"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V4a2 2 0 0 1 2-2h2M12 2h2a2 2 0 0 1 2 2v2M16 12v2a2 2 0 0 1-2 2h-2M6 16H4a2 2 0 0 1-2-2v-2"/><line x1="5" y1="9" x2="13" y2="9"/></svg>{{ L.scanLbl }}</button></sc-if>
           <sc-if value="{{ legacyCats }}" hint-placeholder-val="{{ true }}"><sc-for list="{{ cats }}" as="c" hint-placeholder-count="5">
-            <button onClick="{{ c.tap }}" style="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:14px;padding:6px 13px 6px 6px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .18s;background:{{ c.bg }};color:{{ c.co }};border-color:{{ c.bc }}" style-active="transform:scale(.94)"><span style="width:28px;height:28px;flex:none;border-radius:9px;background:{{ c.iconBg }};display:grid;place-items:center;font-size:15px;line-height:1">{{ c.emoji }}</span>{{ c.label }}</button>
+            <button onClick="{{ c.tap }}" style="flex:none;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:14px;padding:6px 13px 6px 6px;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .18s;background:{{ c.bg }};color:{{ c.co }};border-color:{{ c.bc }}" style-active="transform:scale(.94)"><span style="width:28px;height:28px;flex:none;border-radius:9px;background:{{ c.iconBg }};display:grid;place-items:center;font-size:15px;line-height:1">{{ c.emoji }}</span>{{ c.label }}</button>
           </sc-for></sc-if>
           <sc-if value="{{ useGroups }}" hint-placeholder-val="{{ false }}"><sc-for list="{{ grpChips }}" as="g" hint-placeholder-count="4">
             <button onClick="{{ g.tap }}" style="flex:none;border:1px solid var(--line);border-radius:13px;padding:7px 14px;font-size:12.5px;font-weight:800;cursor:pointer;transition:all .18s;white-space:nowrap;background:{{ g.bg }};color:{{ g.co }};border-color:{{ g.bc }}" style-active="transform:scale(.95)">{{ g.label }}</button>
           </sc-for></sc-if>
         </div>
         <sc-if value="{{ showSubRow }}" hint-placeholder-val="{{ false }}">
-          <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:-4px 0 14px;animation:fade .15s">
+          <div style="--catrow:1;display:flex;gap:7px;align-items:center;overflow-x:auto;scrollbar-width:none;margin:-4px 0 14px;padding-bottom:2px;animation:fade .15s">
             <sc-for list="{{ subChips }}" as="su" hint-placeholder-count="4">
               <button onClick="{{ su.tap }}" style="flex:none;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;background:{{ su.bg }};color:{{ su.co }};border-color:{{ su.bc }}" style-active="transform:scale(.95)">{{ su.label }}</button>
             </sc-for>
