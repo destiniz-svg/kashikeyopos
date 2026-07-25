@@ -307,7 +307,7 @@ button[disabled],button:disabled{cursor:not-allowed}
         <div style="margin-bottom:14px">
           <div style="font-size:11px;font-weight:800;color:var(--ink2);margin-bottom:6px">{{ setlLbl.amount }}</div>
           <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--coral);background:var(--sur);border-radius:12px;padding:0 13px;height:46px">
-            <span style="font-size:12px;font-weight:800;color:var(--ink3)">MVR</span>
+            <span style="font-size:12px;font-weight:800;color:var(--ink3)">{{ curLabel }}</span>
             <input inputmode="decimal" value="{{ setlAmtVal }}" onInput="{{ setlAmtOn }}" placeholder="0.00" style="flex:1;min-width:0;border:0;background:none;color:var(--ink);font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;outline:none;font-family:inherit">
           </div>
         </div>
@@ -1654,7 +1654,9 @@ class Component extends DCLogic {
   _catGroups(){try{var g=(typeof window!=='undefined'&&window.__ksReg&&window.__ksReg.catGroups);return Array.isArray(g)?g.filter(function(x){return x&&x.name;}):[];}catch(e){return [];}}
   assetInfo(m){const r=(typeof window!=='undefined')&&window.__resources;const res=r&&r['art-'+m.id];if(res)return {hasImg:true,src:res};if(m&&m._art)return {hasImg:true,src:'artwork/'+m.id+'.png'};return {hasImg:false,src:''};}
   tileGlyph(m){const n=(this.itemName(m)||m.en||'').trim();return n?n.charAt(0).toUpperCase():'•';}
-  fm(n){return 'MVR '+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  cur(){return (this.state.storeP&&this.state.storeP.currency)||'MVR';}
+  fmn(n){return Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  fm(n){return this.cur()+' '+Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
   /* Secondary-currency line for the bill/receipt: an MVR store shows the USD
      equivalent, a USD store shows the MVR equivalent. `v` is a major-unit amount
      (rufiyaa/dollars); usdRate is MVR-per-USD x100. Returns '' when there's no rate. */
@@ -1697,7 +1699,7 @@ class Component extends DCLogic {
     const dz=(s.orderType==='delivery'&&s.deliveryZoneIx!=null)?this.DZONES[s.deliveryZoneIx]:null;
     const delCustR=(s.orderType==='delivery'&&s.deliveryCust)?s.recv.find(c=>c.id===s.deliveryCust):null;
     const tabC=(s.method==='tab'&&s.tabCust)?s.recv.find(c=>c.id===s.tabCust):null;
-    const receipt={no,date:new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}),lines,exclF:this.fm(t.excl),svcF:this.fm(t.svc),hasSvc:t.svc>0.004,svcPct:Math.round(this.scPct()*100)+'%',subtotalF:this.fm(t.grossExcl),hasDiscount:t.discount>0.004,discountF:'− '+this.fm(t.discount),discountPct:s.discountPct+'%',orderTypeLbl:this.t(s.orderType==='dine'?'dineIn':s.orderType==='takeaway'?'takeaway':'deliveryType'),isDine:s.orderType==='dine',tableLbl:this.t('table')+' '+s.tableNo,gstF:this.fm(t.gst),rateLbl:Math.round(r*100)+'%',totalF:this.fm(t.total),convF:this.secondaryF(t.total),hasConv:!!this.secondaryF(t.total),method:this.t(mkeys[s.method]),queued:!s.online,docType:this.t('receipt'),isTab:!!tabC,tabName:tabC?(s.lang==='dv'?tabC.dv:tabC.name):'',tabNewBalF:tabC?('MVR '+(tabC.bal+Math.round(t.total))):'',hasDelFee:!!dz,delFeeF:dz?this.fm(dz.fee):'',delZone:dz?(s.lang==='dv'?dz.dv:dz.name):'',delTo:delCustR?((s.lang==='dv'?delCustR.dv:delCustR.name)+(delCustR.addr?' · '+delCustR.addr:'')):(dz?(s.lang==='dv'?dz.dv:dz.name):'')};
+    const receipt={no,date:new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}),lines,exclF:this.fm(t.excl),svcF:this.fm(t.svc),hasSvc:t.svc>0.004,svcPct:Math.round(this.scPct()*100)+'%',subtotalF:this.fm(t.grossExcl),hasDiscount:t.discount>0.004,discountF:'− '+this.fm(t.discount),discountPct:s.discountPct+'%',orderTypeLbl:this.t(s.orderType==='dine'?'dineIn':s.orderType==='takeaway'?'takeaway':'deliveryType'),isDine:s.orderType==='dine',tableLbl:this.t('table')+' '+s.tableNo,gstF:this.fm(t.gst),rateLbl:Math.round(r*100)+'%',totalF:this.fm(t.total),convF:this.secondaryF(t.total),hasConv:!!this.secondaryF(t.total),method:this.t(mkeys[s.method]),queued:!s.online,docType:this.t('receipt'),isTab:!!tabC,tabName:tabC?(s.lang==='dv'?tabC.dv:tabC.name):'',tabNewBalF:tabC?(this.cur()+' '+(tabC.bal+Math.round(t.total))):'',hasDelFee:!!dz,delFeeF:dz?this.fm(dz.fee):'',delZone:dz?(s.lang==='dv'?dz.dv:dz.name):'',delTo:delCustR?((s.lang==='dv'?delCustR.dv:delCustR.name)+(delCustR.addr?' · '+delCustR.addr:'')):(dz?(s.lang==='dv'?dz.dv:dz.name):'')};
     const hotCats={hedhikaa:1,mains:1};let station='drinks';for(const l of s.cart){const m=this.MENU.find(x=>x.id===l.id);if(hotCats[m.cat]){station='hot';break;}}
     const tsrc=s.orderType==='dine'?('POS · T'+s.tableNo):s.orderType==='takeaway'?this.t('takeaway'):this.t('deliveryType');
     const ticket=s.kotSent?null:{no:String(s.seq).padStart(4,'0'),at:Date.now(),src:tsrc,station,items:s.cart.map(l=>({q:l.qty,n:this.itemName(this.MENU.find(x=>x.id===l.id))}))};
@@ -1755,12 +1757,12 @@ class Component extends DCLogic {
     const meHist=(meCust&&s.stmtHist&&s.stmtHist[meCust.id])||[];
     const GOLD_AT=500;const pts=(meCust&&meCust.pts)||0;const isGold=pts>=GOLD_AT;const toNext=Math.max(0,GOLD_AT-pts);const pct=isGold?100:Math.round(pts/GOLD_AT*100);
     const tierMed=isGold?'🥇':'🥈';const tierBg=isGold?'linear-gradient(135deg,#EBD08A,#D4A94E 55%,#E7C671)':'linear-gradient(135deg,#C7CAD1,#AEB2BC 55%,#C9CDD4)';const tierBar=isGold?'#8A6A1E':'#5B5F68';
-    const prof={tier:isGold?me.t('goldMember'):me.t('silverMember'),tierNo:(meCust&&meCust.memberNo)||'C1',points:pts,toNext,nextName:'Gold',pct:pct+'%',visits:String((meCust&&meCust.visits)||0),spentF:me.fm((meCust&&meCust.spend)||0).replace('MVR ',''),onAcctF:me.fm(meBal).replace('MVR ',''),medal:tierMed,cardBg:tierBg,barFill:tierBar,isGold};
+    const prof={tier:isGold?me.t('goldMember'):me.t('silverMember'),tierNo:(meCust&&meCust.memberNo)||'C1',points:pts,toNext,nextName:'Gold',pct:pct+'%',visits:String((meCust&&meCust.visits)||0),spentF:me.fmn((meCust&&meCust.spend)||0),onAcctF:me.fmn(meBal),medal:tierMed,cardBg:tierBg,barFill:tierBar,isGold};
     const glyph={kalhusai:'🧋',coffee:'☕',bondibai:'🍮',mashuni:'🥥',kirusai:'🥛',passion:'🧃',garudhiya:'🍲'};
     const usuals=((meCust&&meCust.usuals)||['kalhusai','coffee','bondibai','mashuni']).map(id=>me.MENU.find(x=>x.id===id)).filter(Boolean).map(m=>({label:me.itemName(m),gl:glyph[m.id]||'🍽️',tap:()=>me.qrReorder(m.id)}));
     const wk=[52,30,74,32,90,60];const wmax=90;const wlabels=['W','T','F','S','S','M','T'];
     const week=wlabels.map((lb,i)=>({lbl:lb,h:i<wk.length?Math.round(wk[i]/wmax*100)+'%':'0%',on:i<wk.length}));
-    const custOrders=[{no:'ORD-R16-503',when:'Jul 20 03:00 PM · T8',totalF:me.fm(571.32).replace('MVR ',''),sum:'1× Hot Chocolate · 3× Iced Latte · 1× Flat White · 4× Tuna Sandwich',stage:meHist.length?4:1},{no:'ORD-R15-503',when:'Jul 20 09:36 AM · T2',totalF:me.fm(291.60).replace('MVR ',''),sum:'2× Hot Chocolate · 2× Iced Latte · 1× Flat White · 1× Espresso',stage:4},{no:'ORD-R15-501',when:'Jul 19 10:10 PM · T2',totalF:me.fm(189).replace('MVR ',''),sum:'1× Flat White · 1× Espresso · 1× Hot Chocolate · 1× Iced Latte',stage:2}];
+    const custOrders=[{no:'ORD-R16-503',when:'Jul 20 03:00 PM · T8',totalF:me.fmn(571.32),sum:'1× Hot Chocolate · 3× Iced Latte · 1× Flat White · 4× Tuna Sandwich',stage:meHist.length?4:1},{no:'ORD-R15-503',when:'Jul 20 09:36 AM · T2',totalF:me.fmn(291.60),sum:'2× Hot Chocolate · 2× Iced Latte · 1× Flat White · 1× Espresso',stage:4},{no:'ORD-R15-501',when:'Jul 19 10:10 PM · T2',totalF:me.fmn(189),sum:'1× Flat White · 1× Espresso · 1× Hot Chocolate · 1× Iced Latte',stage:2}];
     const STAGES=[{k:'stPlaced',c:'#E8A020'},{k:'stKitchen',c:'#E86B54'},{k:'stReady',c:'#1FA65C'},{k:'stServed',c:'#1B7A44'},{k:'stSettled',c:'#C1492A'}];
     const ordRows=custOrders.map(o=>{const cur=STAGES[o.stage];const settled=o.stage>=4;const segs=STAGES.map((st,i)=>({bg:i<=o.stage?cur.c:'#EFE6D6'}));return {no:o.no,when:o.when,totalF:o.totalF,sum:o.sum,segs,statusLbl:settled?me.t('settledTag'):me.t(cur.k),statusC:cur.c,live:!settled};});
     return {qrOnMenu:s.qrTab!=='mytab',qrOnTab:s.qrTab==='mytab',qrToMenu:()=>me.setState({qrTab:'menu'}),qrToTab:()=>me.setState({qrTab:'mytab'}),
@@ -1871,7 +1873,7 @@ class Component extends DCLogic {
     const net=s.syncing?{label:me.t('syncing')+' '+s.outbox+'…',bg:'var(--ambersoft)',c:'var(--amber)',anim:'spin 1s linear infinite'}:s.online?{label:me.t('online'),bg:'var(--greensoft)',c:'var(--green)',anim:'pulse 1.6s ease-in-out infinite'}:{label:me.t('offline')+(s.outbox?' · '+s.outbox:''),bg:'var(--ambersoft)',c:'var(--amber)',anim:'pulse 1.6s infinite'};
     const methods=[['cash','cash'],['card','card'],['bml','bml'],['transfer','transfer'],['tab','ontab']].map(([id,k])=>({label:me.t(k),tap:()=>me.setState(id==='tab'?{method:id,tender:0,tabPickOpen:true}:{method:id,tender:0}),bg:s.method===id?'var(--coralsoft)':'var(--sur)',bc:s.method===id?'var(--coral)':'var(--line)',ic:s.method===id?'var(--coral)':'var(--ink2)'}));
     const due=t.total;
-    const tenders=[{v:due,label:me.t('exact')},{v:Math.ceil(due/50)*50,label:'MVR '+Math.ceil(due/50)*50},{v:Math.ceil(due/100)*100,label:'MVR '+Math.ceil(due/100)*100},{v:Math.ceil(due/500)*500,label:'MVR '+Math.ceil(due/500)*500}].filter((x,i,a)=>a.findIndex(y=>y.v===x.v)===i).map(tn=>({label:tn.label,tap:()=>me.setState({tender:tn.v}),bg:s.tender===tn.v?'var(--ink)':'var(--sur)',co:s.tender===tn.v?'var(--bg)':'var(--ink)',bc:s.tender===tn.v?'var(--ink)':'var(--line)'}));
+    const tenders=[{v:due,label:me.t('exact')},{v:Math.ceil(due/50)*50,label:me.cur()+' '+Math.ceil(due/50)*50},{v:Math.ceil(due/100)*100,label:me.cur()+' '+Math.ceil(due/100)*100},{v:Math.ceil(due/500)*500,label:me.cur()+' '+Math.ceil(due/500)*500}].filter((x,i,a)=>a.findIndex(y=>y.v===x.v)===i).map(tn=>({label:tn.label,tap:()=>me.setState({tender:tn.v}),bg:s.tender===tn.v?'var(--ink)':'var(--sur)',co:s.tender===tn.v?'var(--bg)':'var(--ink)',bc:s.tender===tn.v?'var(--ink)':'var(--line)'}));
     const canPay=s.method&&(s.method!=='cash'||s.tender>=due-0.005)&&(s.method!=='tab'||s.tabCust);
     const rc=s.receipt||{lines:[]};
     const ticketCount=s.tickets.length;
@@ -1973,9 +1975,9 @@ class Component extends DCLogic {
       splitOn:s.split>1,splitTxt:me.fm(due/s.split)+' × '+s.split+' '+me.t('perGuest'),
       methods,cashSel:s.method==='cash',tabSel:s.method==='tab',tenders,
       hasChange:s.method==='cash'&&s.tender>due+0.004,changeF:me.fm(Math.max(0,s.tender-due)),
-      tabCustomers:s.recv.map(c=>({name:s.lang==='dv'?c.dv:c.name,init:c.name.split(' ').map(w=>w[0]).join('').slice(0,2),balF:'MVR '+c.bal,tap:()=>me.setState({tabCust:c.id,tabPickOpen:false}),bg:s.tabCust===c.id?'var(--coralsoft)':'var(--sur)',bc:s.tabCust===c.id?'var(--coral)':'var(--line)'})),
+      tabCustomers:s.recv.map(c=>({name:s.lang==='dv'?c.dv:c.name,init:c.name.split(' ').map(w=>w[0]).join('').slice(0,2),balF:me.cur()+' '+c.bal,tap:()=>me.setState({tabCust:c.id,tabPickOpen:false}),bg:s.tabCust===c.id?'var(--coralsoft)':'var(--sur)',bc:s.tabCust===c.id?'var(--coral)':'var(--line)'})),
       tabPickOpen:s.tabPickOpen,openTabPick:()=>me.setState({tabPickOpen:true}),closeTabPick:()=>me.setState({tabPickOpen:false}),
-      ...(()=>{var c=s.tabCust?s.recv.find(x=>x.id===s.tabCust):null;return {hasTabChosen:!!c,noTabChosen:!c,tabChosenName:c?(s.lang==='dv'?c.dv:c.name):'',tabChosenInit:c?c.name.split(' ').map(w=>w[0]).join('').slice(0,2):'',tabChosenBalF:c?('MVR '+c.bal):''};})(),
+      ...(()=>{var c=s.tabCust?s.recv.find(x=>x.id===s.tabCust):null;return {hasTabChosen:!!c,noTabChosen:!c,tabChosenName:c?(s.lang==='dv'?c.dv:c.name):'',tabChosenInit:c?c.name.split(' ').map(w=>w[0]).join('').slice(0,2):'',tabChosenBalF:c?(me.cur()+' '+c.bal):''};})(),
       confirmOp:canPay?1:.45,confirmPay:()=>{if(canPay)me.finishPay();},payBtnLbl:s.method==='tab'?me.t('addToTab'):me.t('confirm'),
       payDoneTitle:s.method==='tab'?me.t('addedToTab'):me.t('paid'),
       payDoneSub:s.method==='tab'?((s.tabCust?((s.lang==='dv'?(s.recv.find(c=>c.id===s.tabCust)||{}).dv:(s.recv.find(c=>c.id===s.tabCust)||{}).name)+' · '):'')+me.fm(due)):((s.receipt?'':'')+me.fm(due)+(s.method==='cash'&&s.tender>due?' · '+me.t('change')+' '+me.fm(s.tender-due):'')),
@@ -2045,7 +2047,7 @@ class Component extends DCLogic {
           langOpts:[['en','English'],['dv','ދިވެހި']].map(l=>{const on=s.lang===l[0];return {label:l[1],on,bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',tap:()=>me.setState({lang:l[0]})};}),
           acctRoleOutlet:me.t(s.myRole)+' · '+((s.storeP&&s.storeP.name)||'Kashikeyo'),
           locked:s.locked,lockShield:s.lockShield,pinErr:s.pinErr,acctUserName:(s.curUser&&s.curUser.name)||'Owner',acctInitial:(((s.curUser&&s.curUser.name)||'O').trim().charAt(0)||'O').toUpperCase(),
-          lockStore:(s.storeP&&s.storeP.name)||'KashikeyoPOS',
+          lockStore:(s.storeP&&s.storeP.name)||'KashikeyoPOS',curLabel:me.cur(),
           lockSub:((s.storeP&&s.storeP.name)||'KashikeyoPOS')+' · sign in with your PIN',
           lockPickMode:!!s.lockPick,lockListMode:!s.lockPick,lockPickName:(s.lockPick&&s.lockPick.name)||'',lockBack:()=>me.pinUnpick(),
           lockUsers:(s.users||[]).filter(function(u){return u&&u.pin;}).map(function(u){return {initial:(((u.name||'?').trim().charAt(0))||'?').toUpperCase(),name:u.name||'Staff',role:(u.role||'cashier'),tap:function(){me.pinPick(u);}};}),
@@ -2076,7 +2078,7 @@ class Component extends DCLogic {
     ['allClear','table','scanHint','placeOrder','incoming','qrNone','qrDesc','qrTip','vsLastWeek','vsYesterday','highVolume','mira','food','labour','target','trend14','catMix','gstFiling','outputTax','inputTax','netPayable','filingDue','cats_hedhikaa','cats_mains','cats_drinks','cats_sweets'].forEach(k=>{L[k]=me.t(k);});
     const kds=s.tickets.map(tk=>{const secs=Math.max(0,Math.floor((s.tick-tk.at)/1000));const mm=Math.floor(secs/60);const age=mm<5?['var(--greensoft)','var(--green)']:mm<10?['var(--ambersoft)','var(--amber)']:['var(--redsoft)','var(--red)'];return {no:tk.no,src:tk.src,timer:mm+':'+String(secs%60).padStart(2,'0'),ageBg:age[0],ageC:age[1],stationLbl:tk.station==='hot'?'HOT KITCHEN':'DRINKS & COLD',items:tk.items,bump:()=>{if(tk.oid)me.setOrderStatus(tk.oid,'ready');const linked=s.held.find(h=>h.id===tk.billId);me.setState(st=>({tickets:st.tickets.filter(x=>x!==tk),held:st.held.map(h=>h.id===tk.billId?Object.assign({},h,{status:'ready',readyAt:Date.now()}):h)}));me.toast(linked?(me.t('billReady')+' \u00b7 #'+String(linked.billNo).padStart(3,'0')+' \u2713'):(me.t('bump')+' #'+tk.no+' \u2713'));}};});
     const qrIds=(me.MENU||[]).slice(0,6).map(x=>x.id);
-    const qrItems=qrIds.map(id=>{const m=me.MENU.find(x=>x.id===id);const n=s.qrCart[id]||0;return {name:me.itemName(m),priceF:'MVR '+m.price,n,hasN:n>0,tint:m.tint,tc:m.tc,gl:m.en[0],inc:()=>{const c=Object.assign({},s.qrCart);c[id]=n+1;me.setState({qrCart:c});}};});
+    const qrItems=qrIds.map(id=>{const m=me.MENU.find(x=>x.id===id);const n=s.qrCart[id]||0;return {name:me.itemName(m),priceF:me.cur()+' '+m.price,n,hasN:n>0,tint:m.tint,tc:m.tc,gl:m.en[0],inc:()=>{const c=Object.assign({},s.qrCart);c[id]=n+1;me.setState({qrCart:c});}};});
     const qrCount=Object.values(s.qrCart).reduce((a,b)=>a+b,0);
     let qrTot=0;Object.keys(s.qrCart).forEach(id=>{qrTot+=me.MENU.find(x=>x.id===id).price*s.qrCart[id];});
     const qrFeedT=s.tickets.filter(t=>t.src.indexOf('QR')===0);
@@ -2085,7 +2087,7 @@ class Component extends DCLogic {
     const d14raw=[9.8,11.2,8.6,12.1,13.4,15.2,17.8,10.2,12.9,11.6,14.2,16.0,17.1,18.4];const dmax=Math.max.apply(null,d14raw);
     return {
       kds,kdsEmpty:s.tickets.length===0,
-      qrItems,qrOp:qrCount?1:.5,qrTotF:'MVR '+qrTot.toFixed(2),
+      qrItems,qrOp:qrCount?1:.5,qrTotF:me.cur()+' '+qrTot.toFixed(2),
       placeQr:()=>{if(!qrCount)return;const items=Object.keys(s.qrCart).map(id=>({q:s.qrCart[id],n:me.itemName(me.MENU.find(x=>x.id===id))}));me.setState({tickets:[{no:String(s.seq).padStart(4,'0'),at:Date.now(),src:'QR · T4',station:'hot',items}].concat(s.tickets),seq:s.seq+1,qrCart:{},orders:s.orders+1});me.toast(me.t('newTicket'));},
       qrFeed:qrFeedT.map(t=>({no:t.no,src:t.src,sum:t.items.map(i=>i.q+'× '+i.n).join(', ')})),qrNone:qrFeedT.length===0,
       dash:{salesF:me.fm(s.anim.s),ordersF:String(s.anim.o),avgF:me.fm(s.anim.a),gstF:me.fm(s.gstColl),rateLbl:s.sector==='general'?'GGST 8%':'TGST 17%'},
@@ -2201,7 +2203,7 @@ class Component extends DCLogic {
     const s=this.state,me=this;
     ['aiTitle','aiSub','aiCta','aiSnap','aiSnapNote','aiTapToggle','aiConfirm','aiFound','aiAdded','aiNone'].forEach(k=>{L[k]=me.t(k);});
     const found=[['Theluli Bis','hedhikaa',6],['Foni Folhi','sweets',12],['Kiru Boakibaa','sweets',18],['Dhonkeyo Kajuru','sweets',14],['Sai Bandhi','drinks',10],['Kandu Kukulhu','mains',65]];
-    const aiItems=found.map((f,i)=>{const on=s.aiSel[i]!==false;return {name:f[0],cat:me.t('cats_'+f[1]),priceF:'MVR '+f[2],on,bg:on?'var(--coralsoft)':'var(--sur)',bc:on?'var(--coral)':'var(--line)',dotBc:on?'var(--coral)':'var(--line)',dotBg:on?'var(--coral)':'transparent',tap:()=>{const sel=Object.assign({},s.aiSel);sel[i]=!on;me.setState({aiSel:sel});}};});
+    const aiItems=found.map((f,i)=>{const on=s.aiSel[i]!==false;return {name:f[0],cat:me.t('cats_'+f[1]),priceF:me.cur()+' '+f[2],on,bg:on?'var(--coralsoft)':'var(--sur)',bc:on?'var(--coral)':'var(--line)',dotBc:on?'var(--coral)':'var(--line)',dotBg:on?'var(--coral)':'transparent',tap:()=>{const sel=Object.assign({},s.aiSel);sel[i]=!on;me.setState({aiSel:sel});}};});
     const selCount=aiItems.filter(x=>x.on).length;
     return {
       aiOpen:s.aiOpen,openAi:()=>me.setState({aiOpen:true,aiStage:0,aiPct:0,aiSel:{}}),closeAi:()=>me.setState({aiOpen:false}),
