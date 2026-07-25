@@ -188,6 +188,17 @@ const THEMES = {
          chip:"rgba(58,34,44,.62)", chipText:"#E0C4D0", nav:"rgba(28,16,22,.72)", navOff:"#7A5A68",
          modal:"rgba(40,22,30,.82)", btn:"#3E2432", btnText:"#EAD6E0", btnHover:"#4E3040", accentBd:"rgba(240,108,155,.5)",
          axis:"#7A5A68", bar:"#F06C9B", grid:"#3E2432", tip:"#241620" } },
+  ocean: {
+    l: { bg:"#EAF3FC", text:"#132430", sub:"#586A78", faint:"#93A7B5", primary:"#0E6EC6", primaryHover:"#0B5AA6", accent:"#0E6EC6",
+         panel:"rgba(255,255,255,.72)", panel2:"rgba(224,236,249,.72)", border:"#D3E2F1", input:"#FFFFFF", inputBorder:"#D3E2F1", ph:"#93A7B5",
+         chip:"rgba(240,246,252,.85)", chipText:"#33465A", nav:"rgba(240,246,252,.72)", navOff:"#7B8FA0",
+         modal:"rgba(255,255,255,.80)", btn:"#E2ECF7", btnText:"#33465A", btnHover:"#D2E2F2", accentBd:"rgba(14,110,198,.4)",
+         axis:"#93A7B5", bar:"#0E6EC6", grid:"#E1EBF5", tip:"#FFFFFF" },
+    d: { bg:"#0C1620", text:"#E6EEF6", sub:"#93A7B5", faint:"#5E7180", primary:"#4AA3EE", primaryHover:"#63B2F2", accent:"#4AA3EE",
+         panel:"rgba(20,32,44,.72)", panel2:"rgba(28,42,56,.6)", border:"#26394C", input:"#131F2A", inputBorder:"#26394C", ph:"#5E7180",
+         chip:"rgba(28,42,56,.62)", chipText:"#CBD9E6", nav:"rgba(12,22,32,.72)", navOff:"#5E7180",
+         modal:"rgba(18,30,42,.82)", btn:"#26394C", btnText:"#DCE7F0", btnHover:"#314559", accentBd:"rgba(74,163,238,.5)",
+         axis:"#5E7180", bar:"#4AA3EE", grid:"#26394C", tip:"#131F2A" } },
 };
 
 function hexA(hex, a) {
@@ -205,7 +216,7 @@ function varBlock(sel, c) {
   return `${sel}{--k-appbg:${appGrad(c)};--k-text:${c.text};--k-sub:${c.sub};--k-faint:${c.faint};--k-primary:${c.primary};--k-primary-h:${c.primaryHover};--k-accent:${c.accent};--k-panel:${c.panel};--k-panel2:${c.panel2};--k-border:${c.border};--k-input:${c.input};--k-input-border:${c.inputBorder};--k-ph:${c.ph};--k-chip:${c.chip};--k-chip-text:${c.chipText};--k-nav:${c.nav};--k-navoff:${c.navOff};--k-modal:${c.modal};--k-btn:${c.btn};--k-btn-text:${c.btnText};--k-btn-h:${c.btnHover};--k-accentbd:${c.accentBd}}`;
 }
 const themeVarsCss = (
-  varBlock(":root", THEMES.green.l) +
+  varBlock(":root", THEMES.ocean.l) +
   Object.keys(THEMES).map((t) => varBlock(`.kt-${t}-l`, THEMES[t].l) + varBlock(`.kt-${t}-d`, THEMES[t].d)).join("")
 );
 const themeUtilCss = `
@@ -259,12 +270,14 @@ const UR_LATIN = "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02D
 const UR_LATIN_EXT = "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF";
 const face = (fam, wght, file, range) => `@font-face{font-family:'${fam}';font-style:normal;font-weight:${wght};font-display:swap;src:url(/fonts/${file}.woff2) format('woff2');unicode-range:${range}}`;
 const fontsCss = (
+  face("Inter", "100 900", "inter-1", UR_LATIN) + face("Inter", "100 900", "inter-0", UR_LATIN_EXT) +
   face("DM Sans", "400 700", "dmsans-1", UR_LATIN) + face("DM Sans", "400 700", "dmsans-0", UR_LATIN_EXT) +
   face("Bricolage Grotesque", "500 800", "bricolage-1", UR_LATIN) + face("Bricolage Grotesque", "500 800", "bricolage-0", UR_LATIN_EXT) +
   face("JetBrains Mono", "400 600", "jbmono-1", UR_LATIN) + face("JetBrains Mono", "400 600", "jbmono-0", UR_LATIN_EXT) +
-  `.ksh-app{font-family:'DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}` +
+  `.ksh-app{font-family:'Inter','DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}` +
   `.ksh-app .font-mono,.ksh-app code,.ksh-app kbd,.ksh-app pre{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace}` +
-  `.ksh-app h1,.ksh-app h2,.ksh-app h3,.ksh-display{font-family:'Bricolage Grotesque','DM Sans',sans-serif;letter-spacing:-0.01em}`
+  `.ksh-app h1,.ksh-app h2,.ksh-app h3,.ksh-display{font-family:'Inter','DM Sans',sans-serif;letter-spacing:-0.01em}` +
+  `.ksh-app [style*="Bricolage Grotesque"],.ksh-app [style*="DM Sans"]{font-family:'Inter','DM Sans',sans-serif!important}`
 );
 const chartObj = "{" + Object.keys(THEMES).map((t) => {
   const ch = (v) => `{axis:"${THEMES[t][v].axis}",bar:"${THEMES[t][v].bar}",grid:"${THEMES[t][v].grid}",tipBg:"${THEMES[t][v].tip}"}`;
@@ -971,6 +984,15 @@ patchFile(indexPath, (html) => {
     'h.jsxs("button",{onClick:()=>KshSetLovable(v=>!v),className:`w-full flex items-center gap-3 rounded-xl px-4 py-3 mb-2 text-sm ${_.panel2}`,children:[h.jsx("span",{className:"w-4 h-4 rounded-full inline-block flex-shrink-0",style:{background:"linear-gradient(135deg,#C1502D 50%,#F3ECE1 50%)",border:"1px solid rgba(0,0,0,.15)"}}),h.jsx("span",{className:"flex-1 text-left",children:KshLovable?"Switch to classic theme":"Switch to Lovable theme"})]}),',
     'h.jsxs("div",{className:"mb-2",children:[h.jsx("div",{className:`text-xs mb-1.5 px-1 ${_.sub}`,children:"Theme"}),h.jsx("div",{style:{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:"8px"},children:[["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]].map(([tn,tl,col])=>h.jsx("button",{onClick:()=>KshSetTheme(tn),title:tl,style:{height:"38px",borderRadius:"12px",background:col,cursor:"pointer",border:KshTheme===tn?"2px solid #fff":"2px solid transparent",boxShadow:KshTheme===tn?"0 0 0 2px "+col:"inset 0 0 0 1px rgba(0,0,0,.12)",transform:KshTheme===tn?"scale(1.06)":"none",transition:"transform .12s"}},tn))})]}),'
   )
+  /* Ocean (azure blue) theme: default it, and add it to both theme pickers
+     (the compact [tn,col] one and the labelled [tn,tl,col] settings one).
+     Idempotent: each find-string is the current 5-swatch form; the 6-swatch
+     replacements prepend Ocean, so the bare 5-swatch form no longer appears. */
+  .replace('[KshTheme,KshSetTheme]=R.useState("green")', '[KshTheme,KshSetTheme]=R.useState("ocean")')
+  .replace('f.ktheme||"green"', 'f.ktheme||"ocean"')
+  .split('[["green","#0FA968"],["orange","#C1502D"],["watermelon","#DA3B4B"],["mango","#E19A12"],["strawberry","#D8437A"]]').join('[["ocean","#0E6EC6"],["green","#0FA968"],["orange","#C1502D"],["watermelon","#DA3B4B"],["mango","#E19A12"],["strawberry","#D8437A"]]')
+  .split('[["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]]').join('[["ocean","Ocean","#0E6EC6"],["green","Green","#0FA968"],["orange","Orange","#C1502D"],["watermelon","Watermelon","#DA3B4B"],["mango","Mango","#E19A12"],["strawberry","Strawberry","#D8437A"]]')
+  .split('gridTemplateColumns:"repeat(5,1fr)"').join('gridTemplateColumns:"repeat(6,1fr)"')
   /* Guest/customer profile links were broken: LT() returned
      origin+pathname = "https://kashikeyopos.com/app", so shared links became
      /app?s=...&c=... which hits requireAppSession and redirects guests to
@@ -2558,6 +2580,6 @@ patchFile(indexPath, (html) => html
    (not just the 2.9.x line) and move strictly forward — staging previously ran
    the 3.0.x release line, so a 2.9.x number would sort *below* what clients
    have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.7"));
+patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.8"));
 
 if (!process.env.PATCH_ONLY) require("./index.js");
