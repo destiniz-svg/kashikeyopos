@@ -543,9 +543,9 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div></div></div>
         </sc-if>
         <sc-if value="{{ procPoView }}" hint-placeholder-val="{{ false }}">
-          <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden"><div style="overflow-x:auto"><div style="min-width:520px">
-            <div style="display:grid;grid-template-columns:92px 1fr 60px 104px 92px;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--ink2)"><span>PO #</span><span>VENDOR</span><span>ITEMS</span><span style="text-align:end">TOTAL</span><span>STATUS</span></div>
-            <sc-for list="{{ procPos }}" as="r" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:92px 1fr 60px 104px 92px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600;align-items:center"><span style="font-weight:800;font-variant-numeric:tabular-nums">{{ r.no }}</span><span style="font-weight:700">{{ r.v }}</span><span style="font-variant-numeric:tabular-nums">{{ r.items }}</span><span style="text-align:end;font-weight:800;font-variant-numeric:tabular-nums">{{ r.totalF }}</span><span><span style="font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:99px;background:{{ r.stBg }};color:{{ r.stC }}">{{ r.st }}</span></span></div></sc-for>
+          <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden"><div style="overflow-x:auto"><div style="min-width:580px">
+            <div style="display:grid;grid-template-columns:92px 1fr 60px 104px 140px;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--ink2)"><span>PO #</span><span>VENDOR</span><span>ITEMS</span><span style="text-align:end">TOTAL</span><span>STATUS</span></div>
+            <sc-for list="{{ procPos }}" as="r" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:92px 1fr 60px 104px 140px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600;align-items:center"><span style="font-weight:800;font-variant-numeric:tabular-nums">{{ r.no }}</span><span style="font-weight:700">{{ r.v }}</span><span style="font-variant-numeric:tabular-nums">{{ r.items }}</span><span style="text-align:end;font-weight:800;font-variant-numeric:tabular-nums">{{ r.totalF }}</span><span style="display:flex;align-items:center;gap:8px"><span style="font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:99px;background:{{ r.stBg }};color:{{ r.stC }}">{{ r.st }}</span><sc-if value="{{ r.open }}" hint-placeholder-val="{{ false }}"><button onClick="{{ r.receive }}" style="border:0;border-radius:8px;padding:5px 11px;background:var(--green);color:#fff;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap" style-active="transform:scale(.95)">Receive</button></sc-if></span></div></sc-for>
           </div></div></div>
         </sc-if>
         <sc-if value="{{ ocrOpen }}" hint-placeholder-val="{{ false }}">
@@ -1264,6 +1264,24 @@ button[disabled],button:disabled{cursor:not-allowed}
         <button onClick="{{ doReceive }}" style="border:0;border-radius:12px;padding:13px;background:var(--green);color:#fff;font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">Add to stock</button>
       </div></sc-if>
 
+      <sc-if value="{{ isReceivePo }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:12px">
+        <div style="background:var(--bg);border-radius:12px;padding:13px 15px"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">RECEIVING PURCHASE ORDER</div><div style="font-size:15px;font-weight:800;margin-top:3px">{{ mdlPoNo }} · {{ mdlPoSupplier }}</div></div>
+        <div style="font-size:11.5px;font-weight:600;color:var(--ink2);text-wrap:pretty">Match each line to an ingredient, check the quantity and cost, then receive — stock is added, each cost re-averaged, and the bill booked to Expenses in one step.</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ poLines }}" as="l" hint-placeholder-count="3"><div style="border:1px solid var(--line2);border-radius:11px;padding:10px 11px;background:var(--bg)">
+            <sc-if value="{{ l.hasDesc }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--ink3);margin-bottom:6px">FROM PO · {{ l.desc }}</div></sc-if>
+            <select onChange="{{ l.setIng }}" style="width:100%;border:1px solid var(--line2);border-radius:9px;padding:8px 9px;background:var(--card);color:var(--ink);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;outline:none;margin-bottom:7px"><option value="" selected="{{ l.none }}">Choose ingredient…</option><sc-for list="{{ l.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.n }}" selected="{{ o.sel }}">{{ o.n }}</option></sc-for></select>
+            <div style="display:flex;gap:7px">
+              <input value="{{ l.qty }}" onInput="{{ l.setQty }}" type="number" inputmode="decimal" placeholder="qty" style="flex:1;min-width:0;border:1px solid var(--line2);border-radius:9px;padding:8px 9px;background:var(--card);color:var(--ink);font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;outline:none;text-align:end">
+              <input value="{{ l.cost }}" onInput="{{ l.setCost }}" type="number" inputmode="decimal" placeholder="cost (MVR)" style="flex:1;min-width:0;border:1px solid var(--line2);border-radius:9px;padding:8px 9px;background:var(--card);color:var(--ink);font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;outline:none;text-align:end">
+            </div>
+            <sc-if value="{{ l.unmatched }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;font-weight:700;color:var(--amber);margin-top:6px">Pick an ingredient or this line is skipped</div></sc-if>
+          </div></sc-for>
+        </div>
+        <sc-if value="{{ hasPoReceiveErr }}" hint-placeholder-val="{{ false }}"><div style="background:var(--redsoft,#fbeae4);color:var(--red);border-radius:10px;padding:9px 12px;font-size:11.5px;font-weight:700">{{ poReceiveErr }}</div></sc-if>
+        <button onClick="{{ submitReceivePo }}" style="border:0;border-radius:12px;padding:13px;background:var(--green);color:#fff;font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">{{ poReceiveBtnLbl }}</button>
+      </div></sc-if>
+
       <sc-if value="{{ isAddItem }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:13px">
         <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">INGREDIENT NAME</div><input value="{{ mdlIName }}" onInput="{{ setMdlIName }}" placeholder="e.g. Basmati rice" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div>
         <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">UNIT</div><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ unitOpts }}" as="u" hint-placeholder-count="5"><button onClick="{{ u.tap }}" style="border:1px solid {{ u.bc }};border-radius:10px;padding:7px 14px;background:{{ u.bg }};color:{{ u.co }};font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)">{{ u.u }}</button></sc-for></div></div>
@@ -1685,6 +1703,43 @@ class Component extends DCLogic {
   payBill(idx){const b=this.state.bills[idx];const bills=this.state.bills.map((x,i)=>i===idx?Object.assign({},x,{st:'Paid',due:'—'}):x);const d=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short'});const expenses=[{d,cat:'Vendor bill',v:b.v,m:'Transfer',amt:b.amt,ap:'Approved'}].concat(this.state.expenses);this.setState({bills,expenses,mdl:null});this.toast(b.v+' · bill '+b.inv+' paid');this.bookExpense({cat:'Vendor bill',vendor:b.v,amount:Math.round(b.amt*100),paidFrom:'transfer',note:'Bill '+b.inv});}
   actTransfer(idx){const t=this.state.transfers[idx];const next=t.st==='Pending'?'Approved':t.st==='In transit'?'Received':t.st;const transfers=this.state.transfers.map((x,i)=>i===idx?Object.assign({},x,{st:next}):x);this.setState({transfers});this.toast(t.no+' · '+next);}
   reorderItem(name){const it=this.state.stock.find(x=>x.n===name);const need=it?Math.max(0,Math.ceil(it.par-it.oh)):0;this.openMdl('receive',{itemName:name,unit:it?it.unit:'',qty:String(need||''),title:'Reorder & receive'});}
+  /* Receive a purchase order raised at the till as a pre-filled delivery: each
+     line is auto-matched to an ingredient by name, then POST /pos/:id/receive
+     raises stock, re-averages cost, books the expense (ref po:<id>, so the
+     till's own Receive can't double-book) and flips the PO to received. */
+  openReceivePo(po){
+    if(!po||!po.id){this.toast('This PO is still syncing — try again in a moment');return;}
+    const stock=this.state.stock||[];
+    const match=function(desc){const d=(desc||'').toLowerCase();if(!d)return '';
+      const exact=stock.find(function(x){return x.id&&x.n.toLowerCase()===d;});if(exact)return exact.n;
+      const part=stock.find(function(x){return x.id&&(d.indexOf(x.n.toLowerCase())>=0||x.n.toLowerCase().indexOf(d)>=0);});return part?part.n:'';};
+    const items=Array.isArray(po.lineItems)?po.lineItems:(Array.isArray(po.items)?po.items:[]);
+    let lines=items.map(function(it){const qty=Number(it.qty)||0;const cl=Number(it.cost)||0;
+      return {desc:it.desc||'',ing:match(it.desc),qty:qty?String(qty):'',cost:cl?((cl*(qty||1))/100).toFixed(2):''};});
+    if(!lines.length)lines=[{desc:'',ing:'',qty:'',cost:''}];
+    this.openMdl('receivepo',{poId:po.id,poNo:po.no,poSupplier:po.v||po.supplier||'',poLines:lines,title:'Receive purchase order'});
+  }
+  setPoLine(i,field,val){const m=this.state.mdl;if(!m)return;const poLines=(m.poLines||[]).map(function(l,ix){return ix===i?Object.assign({},l,{[field]:val}):l;});this.setState({mdl:Object.assign({},m,{poLines,err:''})});}
+  submitReceivePo(){var me=this;const m=this.state.mdl;if(!m||!m.poId)return;const stock=this.state.stock||[];
+    const byName={};stock.forEach(function(x){if(x.id)byName[x.n]=x.id;});
+    const raw=(m.poLines||[]);
+    const unmatched=raw.filter(function(l){return (parseFloat(l.qty)||0)>0&&!byName[l.ing];}).length;
+    if(unmatched){this.setState({mdl:Object.assign({},m,{err:'Match or clear '+unmatched+' line'+(unmatched===1?'':'s')+' with a quantity but no ingredient'})});return;}
+    const lines=raw.map(function(l){return {ingredientId:byName[l.ing]||'',qty:parseFloat(l.qty)||0,cost:Math.round((parseFloat(l.cost)||0)*100),unitName:''};}).filter(function(l){return l.ingredientId&&l.qty>0;});
+    if(!lines.length){this.setState({mdl:Object.assign({},m,{err:'Enter a quantity for at least one line'})});return;}
+    (async function(){try{
+      const r=await fetch('/api/inv/pos/'+encodeURIComponent(m.poId)+'/receive',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:lines,invoiceNo:m.poNo||''})});
+      const j=await r.json().catch(function(){return {};});
+      if(!r.ok){me.setState({mdl:Object.assign({},me.state.mdl||{},{err:(j&&j.error)||'Could not receive this PO'})});return;}
+      const addById={};lines.forEach(function(l){addById[l.ingredientId]=(addById[l.ingredientId]||0)+l.qty;});
+      const ns=stock.map(function(x){return (x.id&&addById[x.id])?Object.assign({},x,{oh:Math.round((x.oh+addById[x.id])*100)/100}):x;});
+      const curPos=(me.state.pos&&me.state.pos.length)?me.state.pos:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pos)||[]);
+      const pos=curPos.map(function(p){return p.id===m.poId?Object.assign({},p,{open:false,st:'Received',stk:'ok'}):p;});
+      const cur=(me.state.store&&me.state.store.currency)||'MVR';
+      me.setState({stock:ns,pos:pos,mdl:null});
+      me.toast((m.poNo||'PO')+' received · '+cur+' '+Number((j.total||0)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' booked to expenses');
+    }catch(e){me.setState({mdl:Object.assign({},me.state.mdl||{},{err:'Network error — try again'})});}})();
+  }
   runStockCheck(){var me=this;const stock=this.state.stock||[];const counts={};stock.forEach(x=>{counts[x.n]=String(x.oh);});
     /* Open a real audit session (COGS valuation) rather than adjusting item by
        item. If one is already in progress we resume it and pre-fill any counts
@@ -1996,11 +2051,11 @@ class Component extends DCLogic {
     const suppliers=(s.supNew||[]).concat(supBase).map(v=>{const c=P[v.k||'ok'];return {n:v.n,cat:v.cat||'General',c:v.c||'—',terms:v.terms||'—',outF:v.out?me.fm(v.out):'—',st:v.out?'Owing':'Clear',stBg:c[0],stC:c[1]};});
     const procBills=s.bills.map((r,i)=>{const stk=r.st==='Paid'?'ok':r.st==='Overdue'?'bad':'warn';return Object.assign({v:r.v,inv:r.inv,amtF:f(r.amt),due:r.due,payable:r.st!=='Paid',pay:()=>me.openMdl('paybill',{idx:i,v:r.v,inv:r.inv,amtF:f(r.amt),title:'Pay vendor bill'})},pill(r.st,stk));});
     const billsOwed=me.fm(s.bills.filter(b=>b.st!=='Paid').reduce((a,b)=>a+b.amt,0));
-    const poBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pos&&window.__ksAdmin.pos.length)?window.__ksAdmin.pos:[
+    const poBase=(s.pos&&s.pos.length)?s.pos:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pos&&window.__ksAdmin.pos.length)?window.__ksAdmin.pos:[
       {no:'PO-058',v:'Lily Foods',items:12,total:3420,st:'Sent',stk:'info'},{no:'PO-057',v:'Malé Local Market',items:8,total:1980,st:'Received',stk:'ok'},
       {no:'PO-056',v:'Ensis Fisheries',items:4,total:5600,st:'Draft',stk:'mut'}
-    ];
-    const procPos=poBase.map(r=>Object.assign({no:r.no,v:r.v,items:String(r.items),totalF:f(r.total)},pill(r.st,r.stk)));
+    ]);
+    const procPos=poBase.map(r=>Object.assign({no:r.no,v:r.v,items:String(r.items),totalF:f(r.total),id:r.id||'',open:!!r.open&&!!r.id,receive:()=>me.openReceivePo(r)},pill(r.st,r.stk)));
     // ---- RECEIVABLES ----
     const recvBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.recv&&window.__ksAdmin.recv.length)?window.__ksAdmin.recv:[
       {id:'seed1',n:'Hassan Fulhu',c:'+960 777-1122',bal:560,age:'31 d',last:'12 Oct',stk:'bad'},{id:'seed2',n:'Villa Hotels',c:'Accounts dept',bal:2400,age:'12 d',last:'16 Oct',stk:'warn'},
@@ -2281,6 +2336,8 @@ class Component extends DCLogic {
       histMoves:hv?(hv.moves||[]).slice().reverse().map(function(mv){var K={purchase:['Received','var(--green)'],sale:['Sold','var(--ink2)'],refund:['Refund','var(--green)'],audit:['Stock check','var(--coral)'],manual:['Adjustment','var(--coral)'],waste:['Wastage','var(--red)'],transfer:['Transfer','var(--ink2)'],produce:['Produced','var(--green)'],prep:['Prep used','var(--ink2)']};var meta=K[mv.kind]||[mv.kind,'var(--ink2)'];var q=Number(mv.qty)||0;var sign=q>0?'+':(q<0?'−':'');var unit=hv.ing?(hv.ing.baseUnit||''):'';var qc=q>0?'var(--green)':(q<0?'var(--red)':'var(--ink2)');return {label:meta[0],color:meta[1],qtyF:sign+(Math.round(Math.abs(q)*1000)/1000)+' '+unit,qtyC:qc,costF:mv.unitCost?me.fm((Number(mv.unitCost)||0)/100):'',hasCost:!!mv.unitCost,note:mv.note||mv.ref||'',hasNote:!!(mv.note||mv.ref),loc:mv.location||'',hasLoc:!!mv.location,dateF:me.histDate(mv.at)};}):[],
       mdl:s.mdl,mdlKind:s.mdl&&s.mdl.kind,mdlTitle:s.mdl&&s.mdl.title,closeMdl:()=>me.closeMdl(),stopMdl:e=>{if(e&&e.stopPropagation)e.stopPropagation();},mdlErr:s.mdl&&s.mdl.err,
       mdlItemName:s.mdl&&s.mdl.itemName,mdlUnit:s.mdl&&s.mdl.unit,mdlQty:(s.mdl&&s.mdl.qty)||'',setMdlQty:e=>me.setMF('qty',e.target.value),mdlCost:(s.mdl&&s.mdl.cost)||'',setMdlCost:e=>me.setMF('cost',e.target.value),doReceive:()=>me.receiveStock(),
+      isReceivePo:s.mdl&&s.mdl.kind==='receivepo',mdlPoNo:(s.mdl&&s.mdl.poNo)||'',mdlPoSupplier:(s.mdl&&s.mdl.poSupplier)||'',poReceiveErr:(s.mdl&&s.mdl.kind==='receivepo'&&s.mdl.err)||'',hasPoReceiveErr:!!(s.mdl&&s.mdl.kind==='receivepo'&&s.mdl.err),poReceiveBtnLbl:'Receive into stock',submitReceivePo:()=>me.submitReceivePo(),
+      poLines:(s.mdl&&s.mdl.kind==='receivepo')?((s.mdl.poLines||[]).map(function(l,i){return {desc:l.desc||'',hasDesc:!!l.desc,qty:l.qty||'',cost:l.cost||'',none:!l.ing,unmatched:!l.ing,setIng:e=>me.setPoLine(i,'ing',e.target.value),setQty:e=>me.setPoLine(i,'qty',e.target.value),setCost:e=>me.setPoLine(i,'cost',e.target.value),opts:(s.stock||[]).filter(function(x){return x.id;}).map(function(x){return {n:x.n,sel:x.n===l.ing};})};})):[],
       mdlIName:(s.mdl&&s.mdl.iname)||'',setMdlIName:e=>me.setMF('iname',e.target.value),mdlPar:(s.mdl&&s.mdl.par)||'',setMdlPar:e=>me.setMF('par',e.target.value),mdlOh:(s.mdl&&s.mdl.oh)||'',setMdlOh:e=>me.setMF('oh',e.target.value),mdlCost:(s.mdl&&s.mdl.cost)||'',setMdlCost:e=>me.setMF('cost',e.target.value),unitOpts:['kg','L','pcs','g','box'].map(u=>{const sel=(s.mdl&&s.mdl.unit)===u;return {u,sel,tap:()=>me.setMF('unit',u),bc:sel?'var(--ink)':'var(--line2)',bg:sel?'var(--ink)':'var(--card)',co:sel?'var(--bg)':'var(--ink2)'};}),doAddItem:()=>me.addStockItem(),
       mkPrepOn:!!(s.mdl&&s.mdl.mkPrep),toggleMkPrep:()=>me.toggleMkPrep(),addMkPrepLine:()=>me.addMkPrepLine(),mkPrepTrackBg:(s.mdl&&s.mdl.mkPrep)?'var(--amber)':'var(--line2)',mkPrepKnobX:(s.mdl&&s.mdl.mkPrep)?'translateX(16px)':'translateX(0)',mkPrepBaseLbl:s.mdl?me._baseUnit(s.mdl.unit):'unit',addItemLbl:(s.mdl&&s.mdl.mkPrep)?'Add made-in-house item':'Add ingredient',
       mkPrepLines:(s.mdl&&s.mdl.mkPrep)?((s.mdl.prepLines||[]).map(function(l,i){return {qty:l.qty||'',none:!l.ing,setIng:e=>me.setMkPrepLine(i,'ing',e.target.value),setQty:e=>me.setMkPrepLine(i,'qty',e.target.value),rm:()=>me.rmMkPrepLine(i),opts:(s.stock||[]).filter(function(x){return x.id&&x.n!==(s.mdl.iname||'');}).map(function(x){return {n:x.n,sel:x.n===l.ing};})};})):[],

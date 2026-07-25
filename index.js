@@ -1982,9 +1982,13 @@ if (fs.existsSync(protoFile)) {
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='pords' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 40", [orgId])).rows;
               adminData.pos = poRows.map((x) => {
                 const d = x.data || {}; const st = d.status === "received" ? "Received" : d.status === "draft" ? "Draft" : "Open";
-                return { no: d.no || String(x.id).slice(-6), v: d.supplier || "Unassigned",
-                  items: (d.items || []).length, total: Math.round((Number(d.total) || 0) / 100),
-                  st, stk: st === "Received" ? "ok" : st === "Draft" ? "mut" : "info" };
+                const lineItems = (d.items || []).map((it) => ({
+                  desc: String(it.desc || ""), qty: Number(it.qty) || 0,
+                  unit: String(it.unit || ""), cost: Number(it.cost) || 0,
+                }));
+                return { id: String(d.id || x.id), no: d.no || String(x.id).slice(-6), v: d.supplier || "Unassigned",
+                  items: lineItems.length, lineItems, total: Math.round((Number(d.total) || 0) / 100),
+                  open: st === "Open", st, stk: st === "Received" ? "ok" : st === "Draft" ? "mut" : "info" };
               });
               // Persisted cockpit config (Configurations / Payments / Notifications
               // / System / Store / Kitchen toggles) + the store profile it lives on.
