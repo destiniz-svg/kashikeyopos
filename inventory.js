@@ -1156,6 +1156,11 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
           const schema = p.output_config && p.output_config.format && p.output_config.format.schema;
           const generationConfig = { maxOutputTokens: p.max_tokens || 2048 };
           if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = geminiSchema(schema); }
+          // gemini-2.5-flash does hidden "thinking" that shares the output-token
+          // budget; with a bounded maxOutputTokens (and JSON responseSchema) it can
+          // spend the whole budget thinking and return NO text — which then blows up
+          // JSON.parse downstream. Turn thinking off for flash (pro can't disable it).
+          if (!/2\.5-pro/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
           const body = {
             contents: (p.messages || []).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: toParts(m.content) })),
             generationConfig,
@@ -1169,6 +1174,10 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
           const cand = (j.candidates || [])[0] || {};
           const text = (((cand.content || {}).parts) || []).map((x) => x.text || "").join("");
           const refused = cand.finishReason === "SAFETY" || cand.finishReason === "PROHIBITED_CONTENT" || !!(j.promptFeedback && j.promptFeedback.blockReason);
+          // An empty non-refusal response (e.g. finishReason MAX_TOKENS with no text)
+          // must surface as an error, not a silent "" that breaks JSON.parse — and it
+          // lets aiClient fall back to the other provider.
+          if (!text && !refused) throw new Error("Gemini returned no text (finishReason " + (cand.finishReason || "unknown") + ")");
           return { content: [{ type: "text", text }], stop_reason: refused ? "refusal" : (cand.finishReason || "stop") };
         },
       },
@@ -1178,9 +1187,23 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      graceful-degrade to null (the "not set up yet" message) when neither is. */
   function aiClient() {
     const pref = (process.env.AI_PROVIDER || "").toLowerCase();
-    if (pref === "gemini") return geminiClient() || anthropicClient();
-    if (pref === "anthropic") return anthropicClient() || geminiClient();
-    return anthropicClient() || geminiClient();
+    const a = anthropicClient(), g = geminiClient();
+    // Order by preference; default tries Anthropic then Gemini.
+    const chain = (pref === "gemini" ? [g, a] : [a, g]).filter(Boolean);
+    if (!chain.length) return null;
+    if (chain.length === 1) return chain[0];
+    /* Both keys are set: try the preferred provider, but if the call itself throws
+       (bad/expired key, quota, 4xx/5xx, empty response) fall back to the other so a
+       broken key on one provider doesn't take AI down. Refusals are returned, not
+       thrown, so a genuine content refusal does NOT trigger a fallback. */
+    return {
+      messages: {
+        create: async (p) => {
+          try { return await chain[0].messages.create(p); }
+          catch (e) { recordError("ai provider failover", e); return await chain[1].messages.create(p); }
+        },
+      },
+    };
   }
 
   const OCR_SCHEMA = {
