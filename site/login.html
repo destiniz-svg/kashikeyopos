@@ -132,7 +132,7 @@
       <label for="staffPin">Your PIN</label>
       <input id="staffPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4-digit PIN" required />
       <div class="error" id="staffErr"></div>
-      <button id="staffSubmit" type="submit">Open back office</button>
+      <button id="staffSubmit" type="submit">Open admin panel</button>
     </form>
     <div class="foot" id="staffFoot" style="display:none">
       <a href="#" id="toOwner">&larr; Owner sign-in</a>
@@ -215,11 +215,11 @@
           var data = await res.json().catch(function () { return {}; });
           if (!res.ok) throw new Error(data.error || "Sign in failed");
           try { localStorage.setItem("kback-store", slug); } catch (e3) {}
-          location.href = "/back";
+          location.href = "/admin";
         } catch (e2) {
           staffErr.textContent = e2.message || "Something went wrong — please try again";
           staffErr.style.display = "block";
-          staffBtn.disabled = false; staffBtn.textContent = "Open back office";
+          staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
         }
       });
     })();

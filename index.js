@@ -1658,7 +1658,9 @@ app.get("/signup", redirectIfAppSession, (req, res) => res.sendFile(path.join(si
 app.get("/dev", (req, res) => res.sendFile(path.join(siteDir, "dev.html")));
 /* Back office: recipes, stock checks, deliveries — owner/manager work that
    doesn't belong on the till. Same session cookie as /app. */
-app.get("/back", requireAppSession, (req, res) => res.sendFile(path.join(siteDir, "back.html")));
+/* /back is retired — the back office is consolidated into the /admin cockpit.
+   Old links, bookmarks, and the manager PIN sign-in all 301 to /admin. */
+app.get(/^\/back(\/.*)?$/, (req, res) => res.redirect(301, "/admin"));
 /* /app2 — the prototype's EXACT front-end (its own markup, styles, effects and
    register logic, unchanged) served on this backend, with our real menu injected
    into its `window.__ksMenu` seam. Coexists with the baked till at /app; session-
