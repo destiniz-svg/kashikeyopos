@@ -119,6 +119,9 @@ button[disabled],button:disabled{cursor:not-allowed}
     </sc-if>
   </div>
 </sc-if>
+<sc-if value="{{ lockShield }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:399;background:transparent"></div>
+</sc-if>
 <header style="{{ headerStyle }}">
     <div style="{{ brandBoxStyle }}">
       <div style="width:30px;height:30px;flex:none;border-radius:9px;overflow:hidden;display:grid;place-items:center;box-shadow:var(--shadow);background:linear-gradient(135deg,var(--coral),#0A4E96)">
@@ -1593,7 +1596,7 @@ class Component extends DCLogic {
       orderType:'dine',tableNo:1,tableMenuOpen:false,deliveryCust:null,deliveryZoneIx:null,deliveryNote:'',deliveryOpen:false,custPickOpen:false,tabPickOpen:false,barCollapsed:false,discountPct:0,myRole:'cashier',discOpen:null,rmOpen:null,rmReason:null,voidOpen:null,voidReason:null,kotSent:false,held:[],heldMenuOpen:false,orderStartedAt:null,billSeq:12,activeBill:null,activeId:null,
       users:(typeof window!=='undefined'&&window.__ksReg&&Array.isArray(window.__ksReg.users))?window.__ksReg.users:[],
       locked:(function(){try{return !!(window.__ksReg&&window.__ksReg.users&&window.__ksReg.users.some(function(u){return u&&u.pin;}));}catch(e){return false;}})(),
-      pinEntry:'',pinErr:false,curUser:null,lockPick:null,
+      pinEntry:'',pinErr:false,curUser:null,lockPick:null,lockShield:false,
       tickets:(typeof window!=='undefined'&&window.__ksReg&&window.__ksReg.tickets)?window.__ksReg.tickets:[
         {no:'0044',at:now-140000,src:'POS',station:'hot',items:[{q:2,n:'Mas Huni & Roshi'},{q:1,n:'Kalhu Sai'}]},
         {no:'0045',at:now-370000,src:'QR · T4',station:'hot',items:[{q:1,n:'Kukulhu Riha'},{q:2,n:'Fried Rice'},{q:2,n:'Passion Juice'}]},
@@ -1781,7 +1784,7 @@ class Component extends DCLogic {
   xo(pin){var e=5381,s=String(pin);for(var i=0;i<s.length;i++)e=(e*33^s.charCodeAt(i))>>>0;return String(e);}
   pinPick(u){this.setState({lockPick:u,pinEntry:'',pinErr:false});}
   pinUnpick(){this.setState({lockPick:null,pinEntry:'',pinErr:false});}
-  pinPress(d){var s=this.state,me=this;var u=s.lockPick;if(!u)return;if(s.pinEntry.length>=4)return;var entry=s.pinEntry+String(d);if(entry.length<4){this.setState({pinEntry:entry});return;}if(u.pin&&me.xo(entry)===String(u.pin)){var st={locked:false,lockPick:null,pinEntry:'',pinErr:false,curUser:u,myRole:u.role||'cashier',acct:false};if(u.role==='kitchen'){st.scr='orders';st.ordTab='kitchen';}this.setState(st);}else{this.setState({pinEntry:'',pinErr:true});setTimeout(function(){me.setState({pinErr:false});},600);}}
+  pinPress(d){var s=this.state,me=this;var u=s.lockPick;if(!u)return;if(s.pinEntry.length>=4)return;var entry=s.pinEntry+String(d);if(entry.length<4){this.setState({pinEntry:entry});return;}if(u.pin&&me.xo(entry)===String(u.pin)){var st={locked:false,lockPick:null,pinEntry:'',pinErr:false,curUser:u,myRole:u.role||'cashier',acct:false,lockShield:true};if(u.role==='kitchen'){st.scr='orders';st.ordTab='kitchen';}this.setState(st);setTimeout(function(){me.setState({lockShield:false});},500);}else{this.setState({pinEntry:'',pinErr:true});setTimeout(function(){me.setState({pinErr:false});},600);}}
   pinBack(){this.setState({pinEntry:this.state.pinEntry.slice(0,-1),pinErr:false});}
   applyDisc(d){const s=this.state;if(s.discOpen==='bill'){this.setState({discountPct:d,discOpen:null});}else if(s.discOpen!=null){const c=s.cart.slice();if(c[s.discOpen])c[s.discOpen]=Object.assign({},c[s.discOpen],{disc:d});this.setState({cart:c,discOpen:null});}else{return;}if(d>0&&!s.perms.discounts[this.roleIdx()])this.toast(this.t('discLogged'));}
   confirmRemove(){const s=this.state,i=s.rmOpen;if(i==null)return;const l=s.cart[i];const nm=l?this.itemName(this.MENU.find(x=>x.id===l.id)):'';const c=s.cart.slice();c.splice(i,1);this.setState({cart:c,rmOpen:null});this.toast(this.t('rmTitle')+' · '+nm+' — '+this.t(s.rmReason||'rOther'));}
@@ -2037,7 +2040,7 @@ class Component extends DCLogic {
           accents:['blue','green','terracotta','red','amber','pink'].map(k=>{const on=s.accent===k;return {color:cmap[k],bd:'transparent',sh:on?'0 0 0 2px var(--sur),0 0 0 4px '+cmap[k]:'none',tap:()=>me.setState({accent:k})};}),
           langOpts:[['en','English'],['dv','ދިވެހި']].map(l=>{const on=s.lang===l[0];return {label:l[1],on,bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',tap:()=>me.setState({lang:l[0]})};}),
           acctRoleOutlet:me.t(s.myRole)+' · '+((s.storeP&&s.storeP.name)||'Kashikeyo'),
-          locked:s.locked,pinErr:s.pinErr,acctUserName:(s.curUser&&s.curUser.name)||'Owner',acctInitial:(((s.curUser&&s.curUser.name)||'O').trim().charAt(0)||'O').toUpperCase(),
+          locked:s.locked,lockShield:s.lockShield,pinErr:s.pinErr,acctUserName:(s.curUser&&s.curUser.name)||'Owner',acctInitial:(((s.curUser&&s.curUser.name)||'O').trim().charAt(0)||'O').toUpperCase(),
           lockStore:(s.storeP&&s.storeP.name)||'KashikeyoPOS',
           lockSub:((s.storeP&&s.storeP.name)||'KashikeyoPOS')+' · sign in with your PIN',
           lockPickMode:!!s.lockPick,lockListMode:!s.lockPick,lockPickName:(s.lockPick&&s.lockPick.name)||'',lockBack:()=>me.pinUnpick(),
