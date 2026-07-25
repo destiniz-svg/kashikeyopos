@@ -1851,6 +1851,19 @@ if (fs.existsSync(protoFile)) {
       .rows.map((r) => r.data || {});
     out.tickets = liveTickets(ordRows);
     out.deliv = liveDeliv(ordRows);
+    /* Live customer/QR orders for the register's Orders → tracking panel. Only
+       the still-open ones (not yet charged/settled or cancelled); each carries
+       the type, table, customer and accepted flag the register renders. */
+    out.orders = ordRows
+      .filter((o) => o && o.id && !finalStatuses.has(String(o.status || "new").toLowerCase()) && String(o.status || "") !== "cancelled")
+      .map((o) => ({
+        id: o.id, no: o.no || "", status: String(o.status || "new"), otype: o.otype || "dinein",
+        table: o.table || "", accepted: !!o.accepted, source: o.source || "qr",
+        customerId: o.customerId || null, customerName: o.customerName || "", customerDv: o.customerDv || "",
+        zone: o.zone || "", note: o.note || "", createdAt: o.createdAt || Date.now(),
+        items: (o.items || []).map((it) => ({ q: Number(it.qty) || 1, n: it.name || "Item", pid: it.pid || it.id || "", price: (Number(it.price) || 0) / 100 })),
+        total: Math.round(((o.items || []).reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 1), 0) + (Number(o.fee) || 0))) / 100,
+      }));
     const sd = (setRow && setRow.data) || {};
     out.catGroups = Array.isArray(sd.catGroups) ? sd.catGroups : [];
     out.catOrder = Array.isArray(sd.catOrder) ? sd.catOrder : [];
@@ -2212,6 +2225,31 @@ if (fs.existsSync(protoFile)) {
       data.updatedAt = Date.now();
       if (status === "ready") data.readyAt = Date.now();
       if (status === "completed") { data.completedAt = Date.now(); data.settledAt = Date.now(); }
+      const r = await c.query(
+        "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver",
+        [orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    if (rowver == null) return res.status(404).json({ error: "order not found" });
+    poke(orgId, rowver);
+    res.json({ ok: true });
+  }));
+  // Register write-path: a cashier/waiter/admin accepts a live customer order,
+  // which opens a bill for it on the till. Marks the order accepted (and, if it
+  // still has kitchen work, moves it to 'preparing' so the guest sees progress).
+  app.post("/api/app2/order/:id/accept", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const id = String(req.params.id || "");
+    const rowver = await withOrg(orgId, async (c) => {
+      const cur = await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cur.rowCount) return null;
+      const data = cur.rows[0].data || {};
+      data.accepted = true;
+      data.acceptedAt = Date.now();
+      data.updatedAt = Date.now();
+      if (String(data.status || "new") === "new" && !data.noKitchen) data.status = "preparing";
       const r = await c.query(
         "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver",
         [orgId, id, JSON.stringify(data)]);
