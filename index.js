@@ -2451,31 +2451,83 @@ if (fs.existsSync(webDir)) {
      detection) - keep serving the till bundle there so they keep working.
      The till itself now lives at /app; bare "/" with none of those params
      falls through to the marketing page below. */
+  /* Guest QR ordering portal — the current register bundle (web2/proto) run in
+     a locked-down customer mode. A customer link (?s=slug&c=custId) or a table
+     QR (?s=slug&t=table) boots the same design the till uses: real store, live
+     menu, the customer's member card + orders, and real order submission via
+     /p/:slug/order. Injected window.__ksGuest flips the SPA into guest mode
+     (no PIN, no staff chrome, QR screen only). Falls back to the legacy baked
+     bundle when the slug is unknown or the new proto isn't present. */
+  const gProtoDir = path.join(__dirname, "web2", "proto");
+  const gEnc = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
+  const gCSP = [
+    "default-src 'self'", "base-uri 'self'", "object-src 'none'",
+    "img-src 'self' data: blob: https:", "font-src 'self' data: https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:", "connect-src 'self' blob: data:",
+    "frame-src 'self' blob:", "worker-src 'self' blob:", "frame-ancestors 'none'",
+  ].join("; ");
+  const gMods = (addons) => (Array.isArray(addons) ? addons : [])
+    .map((a, i) => ({ id: "a" + i, en: String((a && a.name) || ""), price: (Number(a && a.price) || 0) / 100 })).filter((a) => a.en);
+  // Map flattened product rows (kindAll) into the register/guest MENU shape.
+  const gMenu = (prods) => prods.filter((p) => p.name && !p.hidden).map((p) => ({
+    id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100,
+    desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [],
+    mods: gMods(p.addons),
+    soldOut: !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)) }));
+  const serveGuestPortal = async (req, res) => {
+    const org = await orgBySlug(String(req.query.s || ""));
+    if (!org || !fs.existsSync(path.join(gProtoDir, "index.html"))) return sendTill(req, res);
+    const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
+    await ensureDefaultStore(org.id, org.store_name);
+    const [settingsArr, products] = await Promise.all([
+      kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId)]);
+    const recipeRows = await withOrg(org.id, (c) => c.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [org.id]));
+    const hasRecipe = new Set(recipeRows.rows.map((r) => String(r.product_id)));
+    const st = settingsArr[0] || { storeName: org.store_name, currency: "MVR", usdRate: 1542 };
+    const storeP = { name: st.storeName || org.store_name, currency: st.currency || "MVR", usdRate: Number(st.usdRate) || 1542,
+      tin: st.tin || "", address: st.address || "", footer: st.receiptFooter || st.footer || "", logo: st.logo || "" };
+    const visible = products.filter((p) => !p.hidden && (hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0));
+    const menu = gMenu(visible);
+    let customer = null;
+    if (req.query.c) {
+      const c = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, req.query.c));
+      if (c) {
+        const orders = (await guestOrders(org.id, storeId, { customerId: c.id }, st)).slice(0, 25);
+        const completed = orders.filter((o) => finalStatuses.has(String(o.status || "").toLowerCase()));
+        customer = { id: c.id, name: c.name || "", dv: c.dv || "", points: Number(c.points) || 0, balance: Number(c.balance) || 0,
+          address: c.address || "", memberNo: c.memberNo || "", visits: completed.length,
+          spent: completed.reduce((a, o) => a + Number(o.total || 0), 0),
+          orders: orders.map((o) => ({ no: o.no, total: Number(o.total || 0), status: o.status, when: o.createdAt || o.at || Date.now(),
+            table: o.table || "", items: (o.items || []).map((it) => ({ q: it.qty, n: it.name })) })) };
+      }
+    }
+    const guest = { slug: org.slug, storeId, table: req.query.t ? String(req.query.t) : "", customer };
+    let seoTitle = storeP.name + " · Order online";
+    try { const seo = await portalSeoFor(String(req.query.s)); if (seo && seo.title) seoTitle = seo.title; } catch (e) { /* default */ }
+    // Vendored React (the bundle otherwise fetches it from unpkg, which the CSP
+    // blocks) served from the public /app/vendor path, same as the register.
+    const gVendor = {
+      "https://unpkg.com/react@18.3.1/umd/react.production.min.js": "/app/vendor/react.production.min.js",
+      "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": "/app/vendor/react-dom.production.min.js",
+    };
+    const inject = `\n<base href="/app/">\n<title>${seoEsc(seoTitle)}</title>\n<script>` +
+      `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP })};window.__ksGuest=${gEnc(guest)};` +
+      `window.__resources=Object.assign(window.__resources||{},${gEnc(gVendor)});</script>\n`;
+    const html = fs.readFileSync(path.join(gProtoDir, "index.html"), "utf8")
+      .replace(/<title>[\s\S]*?<\/title>/i, "")
+      .replace(/<head([^>]*)>/i, (m) => m + inject);
+    res.set("Content-Security-Policy", gCSP);
+    res.set("Cache-Control", "no-cache");
+    res.set("Content-Type", "text/html; charset=utf-8").send(html);
+  };
+
   app.get("/", wrap(async (req, res, next) => {
     if (!(req.query.s || req.query.t || req.query.c)) return next();
+    // A slug-scoped link (customer profile or table QR) → the current guest UI.
     if (req.query.s) {
-      try {
-        const seo = await portalSeoFor(String(req.query.s));
-        if (seo) {
-          let html = fs.readFileSync(path.join(webDir, "index.html"), "utf8");
-          // Replace the baked title + description in place (no duplicates), then
-          // append the OG tags the bundle doesn't carry.
-          html = /<title>[\s\S]*?<\/title>/i.test(html)
-            ? html.replace(/<title>[\s\S]*?<\/title>/i, "<title>" + seoEsc(seo.title) + "</title>")
-            : html.replace(/<head([^>]*)>/i, (m) => m + "<title>" + seoEsc(seo.title) + "</title>");
-          const descTag = `<meta name="description" content="${seoEsc(seo.desc)}">`;
-          html = /<meta\s+name=["']description["'][^>]*>/i.test(html)
-            ? html.replace(/<meta\s+name=["']description["'][^>]*>/i, descTag)
-            : html.replace(/<\/head>/i, descTag + "</head>");
-          const og = `<meta property="og:title" content="${seoEsc(seo.title)}">` +
-            `<meta property="og:description" content="${seoEsc(seo.desc)}">` +
-            `<meta property="og:type" content="website">`;
-          html = html.replace(/<\/head>/i, og + "</head>");
-          res.set("Cache-Control", "no-cache");
-          res.set("Content-Type", "text/html; charset=utf-8");
-          return res.send(html);
-        }
-      } catch (e) { recordError("portal SEO inject", e); }
+      try { return await serveGuestPortal(req, res); }
+      catch (e) { recordError("guest portal serve", e); return sendTill(req, res); }
     }
     return sendTill(req, res);
   }));
