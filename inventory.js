@@ -1154,13 +1154,19 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       messages: {
         create: async (p) => {
           const schema = p.output_config && p.output_config.format && p.output_config.format.schema;
-          const generationConfig = { maxOutputTokens: p.max_tokens || 2048 };
+          // Thinking-capable Gemini models spend part of the output-token budget on
+          // hidden reasoning; with a small maxOutputTokens (+ JSON responseSchema)
+          // they can burn the whole budget and return NO text, which then blows up
+          // JSON.parse downstream. Two guards:
+          //  - gemini-2.5-flash reliably supports turning thinking OFF (budget 0);
+          //    do that, it's the cheapest, most predictable fix for that model.
+          //  - Any other model (2.5-pro, gemini-3-*, future previews) may not accept
+          //    thinkingBudget:0, so DON'T send it — instead give a generous output
+          //    budget so reasoning + the answer both fit.
+          const flashThinkOff = /2\.5-flash/.test(model);
+          const generationConfig = { maxOutputTokens: flashThinkOff ? (p.max_tokens || 2048) : Math.max(p.max_tokens || 2048, 8192) };
           if (schema) { generationConfig.responseMimeType = "application/json"; generationConfig.responseSchema = geminiSchema(schema); }
-          // gemini-2.5-flash does hidden "thinking" that shares the output-token
-          // budget; with a bounded maxOutputTokens (and JSON responseSchema) it can
-          // spend the whole budget thinking and return NO text — which then blows up
-          // JSON.parse downstream. Turn thinking off for flash (pro can't disable it).
-          if (!/2\.5-pro/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
+          if (flashThinkOff) generationConfig.thinkingConfig = { thinkingBudget: 0 };
           const body = {
             contents: (p.messages || []).map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: toParts(m.content) })),
             generationConfig,
