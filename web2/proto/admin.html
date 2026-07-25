@@ -18,18 +18,18 @@
 <helmet>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@100..800&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@500;700&display=swap" rel="stylesheet">
 <style>
 @font-face{font-family:'MV Randhoo';src:url('fonts/MV_A_Waheed_Bold.ttf') format('truetype');font-weight:400 800;font-display:swap;size-adjust:120%}
-:root{--bg:#F4F5F6;--card:rgba(255,255,255,.86);--ink:#1D1F22;--ink2:#696C73;--ink3:#70737A;--line:rgba(20,22,28,.10);--line2:rgba(20,22,28,.16);--coral:#C43A78;--coralsoft:rgba(196,58,120,.12);--coralgrad:linear-gradient(165deg,#D24D8A,#B0275F);--red:#C13A26;--redsoft:rgba(193,58,38,.12);--green:#16814A;--greensoft:rgba(31,166,92,.13);--amber:#D98A1C;--ambersoft:rgba(217,138,28,.14);--blue:#4E7C86;--bluesoft:rgba(78,124,134,.14);--shadow:0 1px 2px rgba(20,22,28,.06)}
-html[data-dark]{--bg:#1C160E;--card:#241C12;--ink:#F3E8D6;--ink2:#B09A7E;--ink3:#7C6B54;--line:rgba(255,240,220,.09);--line2:rgba(255,240,220,.16);--coral:#F79A4A;--coralsoft:rgba(247,154,74,.16);--coralgrad:linear-gradient(165deg,#FB8B3E,#F05E17);--redsoft:rgba(226,122,94,.15);--green:#7CBE92;--greensoft:rgba(124,190,146,.13);--amber:#D7A24A;--ambersoft:rgba(215,162,74,.13);--blue:#8FB3BE;--bluesoft:rgba(143,179,190,.13);--shadow:0 1px 2px rgba(0,0,0,.35)}
+:root{--bg:#F4F5F6;--card:rgba(255,255,255,.86);--ink:#1D1F22;--ink2:#696C73;--ink3:#70737A;--line:rgba(20,22,28,.10);--line2:rgba(20,22,28,.16);--coral:#0E6EC6;--coralsoft:rgba(15,114,204,.12);--coralgrad:linear-gradient(165deg,#2E9BEE,#0C63BE);--red:#C13A26;--redsoft:rgba(193,58,38,.12);--green:#16814A;--greensoft:rgba(31,166,92,.13);--amber:#D98A1C;--ambersoft:rgba(217,138,28,.14);--blue:#4E7C86;--bluesoft:rgba(78,124,134,.14);--shadow:0 1px 2px rgba(20,22,28,.06)}
+html[data-dark]{--bg:#1C160E;--card:#241C12;--ink:#F3E8D6;--ink2:#B09A7E;--ink3:#7C6B54;--line:rgba(255,240,220,.09);--line2:rgba(255,240,220,.16);--coral:#4AA3EE;--coralsoft:rgba(74,163,238,.16);--coralgrad:linear-gradient(165deg,#3A9BEE,#1168C4);--redsoft:rgba(226,122,94,.15);--green:#7CBE92;--greensoft:rgba(124,190,146,.13);--amber:#D7A24A;--ambersoft:rgba(215,162,74,.13);--blue:#8FB3BE;--bluesoft:rgba(143,179,190,.13);--shadow:0 1px 2px rgba(0,0,0,.35)}
 *{box-sizing:border-box}
-body{margin:0;background:linear-gradient(165deg,#FCEBF2 0%,#F7DEEA 55%,#F3D3E2 100%) fixed;color:var(--ink);font-family:'Sora','MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;letter-spacing:-.005em}
+body{margin:0;background:linear-gradient(165deg,#EAF3FC 0%,#DCEBF9 55%,#D0E4F6 100%) fixed;color:var(--ink);font-family:'Inter','MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;letter-spacing:-.005em}
 html[data-dark] body{background:#14100A}
 [style*="var(--card)"]{outline:1px solid var(--line);outline-offset:-1px}
 html[data-dark] [style*="var(--card)"]{outline-color:var(--line)}
 [style*="tabular-nums"]{font-family:'Space Mono',ui-monospace,monospace;letter-spacing:-.02em}
-[style*="Bricolage Grotesque"]{font-family:'Sora',system-ui,sans-serif!important}
+[style*="Bricolage Grotesque"]{font-family:'Inter',system-ui,sans-serif!important}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--green)}
 ::selection{background:var(--coralgrad);color:#fff}
 ::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-thumb{background:var(--line2);border-radius:99px}::-webkit-scrollbar-track{background:transparent}
@@ -57,7 +57,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </sc-if>
   <aside style="{{ asideStyle }}">
     <div style="display:flex;align-items:center;gap:10px;padding:17px 18px 15px;border-bottom:1px solid var(--line)">
-      <div style="width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--coral),#9A3418);display:grid;place-items:center;color:#FFF4EC;font-family:'Bricolage Grotesque';font-weight:800;font-size:16px">K</div>
+      <div style="width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--coral),#0A4E96);display:grid;place-items:center;color:#FFF4EC;font-family:'Bricolage Grotesque';font-weight:800;font-size:16px">K</div>
       <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;letter-spacing:-.01em">Kashikeyo</div>
       <div style="flex:1"></div>
       <div style="width:8px;height:8px;border-radius:99px;background:var(--green)" title="Cloud connected"></div>
@@ -166,7 +166,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       </sc-if>
       <div style="display:grid;grid-template-columns:{{ heroCols }};gap:14px">
         <div style="background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:var(--shadow);position:relative;overflow:hidden;animation:rise .35s both">
-          <div style="position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:linear-gradient(var(--coral),#9A3418)"></div>
+          <div style="position:absolute;inset-inline-start:0;top:0;bottom:0;width:4px;background:linear-gradient(var(--coral),#0A4E96)"></div>
           <div style="display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap">
             <div style="flex:1;min-width:180px">
               <div style="font-size:10.5px;font-weight:800;letter-spacing:.08em;color:var(--ink2)">{{ rangeLabel }} · NET REVENUE</div>
