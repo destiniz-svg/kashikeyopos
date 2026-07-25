@@ -18,21 +18,21 @@
 <helmet>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@100..800&family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;1,500&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 @font-face{font-family:'MV Randhoo';src:url('fonts/MV_A_Waheed_Bold.ttf') format('truetype');font-weight:400 800;font-display:swap;size-adjust:120%}
 :root{--bg:#FEFEFE;--sur:rgba(255,255,255,.86);--sur2:rgba(20,22,28,.045);--ink:#1D1F22;--ink2:#696C73;--ink3:#70737A;--line:rgba(20,22,28,.10);--coral:#BE3E19;--coralink:#FFFFFF;--coralsoft:rgba(242,106,33,.12);--coralgrad:linear-gradient(165deg,#D24D8A,#B0275F);--green:#16814A;--greensoft:rgba(31,166,92,.12);--amber:#D98A1C;--ambersoft:rgba(238,140,33,.14);--red:#C13A26;--redsoft:rgba(193,58,38,.11);--shadow:0 1px 2px rgba(38,41,48,.06)}
 html[data-dark]{--bg:#0F1712;--sur:#16211A;--sur2:rgba(220,255,235,.05);--ink:#E4F0E8;--ink2:#94A89C;--ink3:#647468;--line:rgba(220,255,235,.09);--coral:#57C486;--coralink:#08210F;--coralsoft:rgba(87,196,134,.15);--green:#57C486;--greensoft:rgba(87,196,134,.13);--amber:#D7A24A;--ambersoft:rgba(215,162,74,.13);--red:#E27A5E;--redsoft:rgba(226,122,94,.15);--shadow:0 1px 2px rgba(0,0,0,.35)}
 html[data-white]{--bg:#FFFFFF;--sur:#FFFFFF;--sur2:rgba(0,0,0,.045);--ink:#0A0A0A;--ink2:#565656;--ink3:#8E8E8E;--line:rgba(0,0,0,.13);--coral:#0E0E0F;--coralink:#FFFFFF;--coralsoft:rgba(0,0,0,.07);--green:#0E0E0F;--greensoft:rgba(0,0,0,.06);--amber:#4A4A4A;--ambersoft:rgba(0,0,0,.05);--red:#1A1A1A;--redsoft:rgba(0,0,0,.07);--shadow:0 1px 2px rgba(0,0,0,.07)}
 *{box-sizing:border-box}
-body{margin:0;background:linear-gradient(165deg,#FCEBF2 0%,#F7DEEA 55%,#F3D3E2 100%) fixed;color:var(--ink);font-family:'Avenir Next','Avenir',Montserrat,'MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;letter-spacing:-.005em}
+body{margin:0;background:linear-gradient(165deg,#FCEBF2 0%,#F7DEEA 55%,#F3D3E2 100%) fixed;color:var(--ink);font-family:'Sora',Montserrat,'MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;letter-spacing:-.005em}
 html[data-dark] body{background:#0B120D}
 html[data-white] body{background:linear-gradient(165deg,#FCEBF2,#F3D3E2)}
 [style*="var(--sur)"]{outline:1px solid var(--line);outline-offset:-1px}
 html[data-dark] [style*="var(--sur)"]{outline-color:var(--line)}
 html[data-white] [style*="var(--sur)"]{outline-color:var(--line)}
 [style*="tabular-nums"]{font-family:'Space Mono',ui-monospace,monospace;letter-spacing:-.02em}
-[style*="Bricolage Grotesque"]{font-family:'Avenir Next','Avenir',Montserrat,system-ui,sans-serif!important}
+[style*="Bricolage Grotesque"]{font-family:'Sora',Montserrat,system-ui,sans-serif!important}
 @media (max-width:759px){header[style*="var(--sur)"]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}}
 /* Payment drawer: full-screen sheet on phones (was a right-anchored 94vw drawer that left an off-centre strip). Keeps the 420px side drawer on tablet/desktop. */
 @media (max-width:520px){[style*="--paydrawer"]{width:100vw!important;max-width:100vw!important;inset-inline-end:0!important;inset-inline-start:0!important}}
