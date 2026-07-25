@@ -1749,7 +1749,14 @@ if (fs.existsSync(protoFile)) {
     return m === "cash" ? "Cash" : m === "card" ? "Card" : (m === "tab" || m === "credit") ? "On tab"
       : (m === "transfer" || m === "bml") ? "BML transfer" : (p.method || "Cash");
   };
-  const liveStoreP = (settings) => ({ name: (settings && settings.storeName) || "Kashikeyo", currency: (settings && settings.currency) || "MVR" });
+  const liveStoreP = (settings) => ({
+    name: (settings && settings.storeName) || "Kashikeyo",
+    currency: (settings && settings.currency) || "MVR",
+    tin: (settings && settings.tin) || "",
+    address: (settings && settings.address) || "",
+    footer: (settings && (settings.receiptFooter || settings.footer)) || "",
+    logo: (settings && settings.logo) || "",
+  });
   const liveSalesLog = (saleRows) => saleRows.map((s) => ({
     no: String(s.no || "").replace(/^.*-/, "") || String(s.id || "").slice(-4),
     ch: chLabel(s), chK: chKind(s), otype: s.orderType || "takeaway",
