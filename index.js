@@ -2140,7 +2140,9 @@ if (fs.existsSync(protoFile)) {
   // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
   app.get(/^\/app2(\/.*)?$/, (req, res) => res.redirect(301, "/app"));
   if (fs.existsSync(path.join(protoDir, "admin.html"))) {
-    serveProto({ base: "/admin2", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit
+    serveProto({ base: "/admin", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit (canonical URL)
+    // Legacy /admin2 links (old redirects, bookmarks) → the /admin URL.
+    app.get(/^\/admin2(\/.*)?$/, (req, res) => res.redirect(301, "/admin"));
   }
   /* Product tile images served as their own cacheable responses (see menuImg
      above). The register HTML references /api/img/<id>?v=<hash>; each hit decodes
