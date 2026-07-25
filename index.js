@@ -1,6 +1,7 @@
 /* KashikeyoPOS Cloud
    Multi-store, Postgres-backed sync server with offline-safe op-log, SSE pokes,
    public guest endpoints, and static PWA hosting. */
+const compression = require("compression");
 const express = require("express");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
@@ -309,6 +310,20 @@ const app = express();
    hop so req.ip is the client (needed by the login throttle below), not the
    proxy. Locally, with no proxy, this falls back to the socket address. */
 app.set("trust proxy", 1);
+/* gzip/deflate every compressible response. The register/admin HTML ships a
+   large inline shell plus injected menu + image data, and the JS bundles are
+   hundreds of KB — compression cuts the transfer ~5-8x, the biggest single
+   win for /app load time. SSE (text/event-stream on /api/events, /p/:slug/events)
+   must NOT be buffered, so skip it explicitly; compressible's type list already
+   excludes it, and honouring a Cache-Control:no-transform lets any handler opt
+   out too. */
+app.use(compression({
+  filter: (req, res) => {
+    const ct = String(res.getHeader("Content-Type") || "");
+    if (ct.includes("text/event-stream")) return false;
+    return compression.filter(req, res);
+  },
+}));
 
 /* ── Security headers (audit SEC-01) ─────────────────────────────────────────
    The app had no CSP, framing, or MIME hardening. The script/connect/frame
@@ -1876,7 +1891,14 @@ if (fs.existsSync(protoFile)) {
               // only for surfaces that actually render tiles (the register/guest,
               // not the admin cockpit, which shows no product photos). This is the
               // single copy the tiles' assetUrl(id) reads.
-              if (!withAdmin) for (const r of prodRows) { const im = r.data && r.data.img; if (im) menuImg["art-" + (r.id)] = im; }
+              // Map each product photo to its own cacheable, versioned URL instead
+              // of inlining the base64 into this (no-cache) HTML. ?v=<hash> makes the
+              // URL immutable, so the browser downloads each image once and reuses it
+              // across every later load — the register HTML drops from ~850KB to ~360KB.
+              if (!withAdmin) for (const r of prodRows) {
+                const im = r.data && r.data.img;
+                if (im) menuImg["art-" + (r.id)] = "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+              }
             }
             if (isRegister) Object.assign(regData, await collectRegData(c, orgId));
             if (withAdmin) {
@@ -2119,6 +2141,29 @@ if (fs.existsSync(protoFile)) {
   if (fs.existsSync(path.join(protoDir, "admin.html"))) {
     serveProto({ base: "/admin2", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit
   }
+  /* Product tile images served as their own cacheable responses (see menuImg
+     above). The register HTML references /api/img/<id>?v=<hash>; each hit decodes
+     the product's stored data-URI once and serves it immutable, so photos download
+     a single time and are reused on every later load instead of re-shipping ~450KB
+     of base64 in the page. Cookie-scoped to the caller's org via RLS. */
+  const DATA_URI_RE = /^data:([\w.+-]+\/[\w.+-]+)?(;base64)?,([\s\S]*)$/;
+  app.get("/api/img/:id", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).end();
+    const row = await withOrg(orgId, (c) => c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false LIMIT 1",
+      [orgId, String(req.params.id || "")]));
+    const im = row.rows[0] && row.rows[0].data && row.rows[0].data.img;
+    const m = im && String(im).match(DATA_URI_RE);
+    if (!m) return res.status(404).end();
+    const etag = '"' + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 16) + '"';
+    if (req.headers["if-none-match"] === etag) return res.status(304).end();
+    const body = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]), "utf8");
+    res.set("Content-Type", m[1] || "application/octet-stream");
+    res.set("Cache-Control", "private, max-age=31536000, immutable");
+    res.set("ETag", etag);
+    res.send(body);
+  }));
   // Live refresh for the register: the same window.__ksReg payload as a JSON
   // poll, so /app2's Kitchen/Delivery/History reflect new orders without a full
   // reload. Cookie-authed (same session as the page); no ops token needed.
