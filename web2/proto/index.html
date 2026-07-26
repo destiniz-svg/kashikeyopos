@@ -579,6 +579,7 @@ button[disabled],button:disabled{cursor:not-allowed}
               </div>
               <sc-if value="{{ qrOnTab }}" hint-placeholder-val="{{ false }}">
                 <div style="padding:12px 16px 18px;animation:fade .25s">
+                  <sc-if value="{{ qrIsMember }}" hint-placeholder-val="{{ true }}">
                   <div style="background:{{ prof.cardBg }};border-radius:22px;padding:18px 18px 16px;position:relative;overflow:hidden;box-shadow:0 10px 26px -14px rgba(0,0,0,.5)">
                     <div style="display:flex;align-items:flex-start;gap:10px">
                       <div style="width:34px;height:34px;flex:none;border-radius:99px;background:rgba(255,255,255,.55);display:grid;place-items:center;font-size:16px">{{ prof.medal }}</div>
@@ -614,6 +615,10 @@ button[disabled],button:disabled{cursor:not-allowed}
                       </sc-for>
                     </div>
                   </div>
+                  </sc-if>
+                  <sc-if value="{{ qrIsWalkIn }}" hint-placeholder-val="{{ false }}">
+                    <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:18px;padding:16px 17px;margin-bottom:2px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:#2E2418">{{ qrWalkTitle }}</div><div style="font-size:12.5px;color:#8A7B65;font-weight:600;margin-top:5px;line-height:1.5">{{ qrWalkBody }}</div></div>
+                  </sc-if>
                   <div style="display:flex;flex-direction:column;gap:11px;margin-top:12px">
                     <sc-for list="{{ qrOrdRows }}" as="o" hint-placeholder-count="3">
                       <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:18px;padding:14px 15px;box-shadow:var(--shadow)">
@@ -1555,6 +1560,8 @@ class Component extends DCLogic {
     Object.assign(T.en,{shareBtn:'Share',copyBtn:'Copy',shareImg:'Image',copied:'Copied',imgSaved:'Image saved',shareBill:'Share bill',shareDay:'Share day-end'});
     Object.assign(T.dv,{shareBtn:'ހިއްސާ',copyBtn:'ކޮޕީ',shareImg:'ފޮޓޯ',copied:'ކޮޕީ ކުރެވިއްޖެ',imgSaved:'ފޮޓޯ ރައްކާކުރެވިއްޖެ',shareBill:'ބިލް ހިއްސާކުރޭ',shareDay:'ދުވަސް ހިއްސާކުރޭ'});
     Object.assign(T.en,{guestLbl:'Guest',acceptedTag:'Accepted',billOpened:'accepted · bill opened',charge:'Charge'});
+    Object.assign(T.en,{welcomeGuest:'Welcome',guestSub:'Browse the menu & order — no account needed',guestCardTitle:'Ordering as a guest',guestCardBody:'No account is attached to this order. Your live orders appear below.'});
+    Object.assign(T.dv,{welcomeGuest:'މަރުހަބާ',guestSub:'މެނޫ ބަލާ އޯޑަރު ކުރައްވާ',guestCardTitle:'ގެސްޓެއްގެ ގޮތުގައި އޯޑަރު',guestCardBody:'މި އޯޑަރާ އެކައުންޓެއް ގުޅިފައެއް ނުވޭ. ތިޔަ އޯޑަރުތައް ތިރީގައި ފެންނާނެ.'});
     Object.assign(T.dv,{guestLbl:'ގެސްޓް',acceptedTag:'ބަލައިގަނެފި',billOpened:'ބަލައިގަނެ · ބިލް ހުޅުވިއްޖެ',charge:'ފައިސާ ނަގާ'});
     Object.assign(T.en,{ordSubtitle:'Every channel, one dashboard',otTracking:'Tracking',otKitchen:'Kitchen',otDelivery:'Delivery',otTables:'Tables',otHistory:'History',histTitle:'Order history',histAllL:'All',histSearchPh:'Search order no. or customer…',histEmpty:'No orders match your filters.',histWhen:'Time',histChannel:'Channel',histCust:'Customer',histItems:'Items',histTotal:'Total',histMethod:'Paid via',histReprint:'Receipt',ordSectionTracking:'Live order tracking',ordSectionHistory:'Completed today'});
     Object.assign(T.en,{invSubtitle:'Never run out, never overstock',ivStock:'Stock',ivRecipes:'Recipes',ivTransfers:'Transfers',ivSupply:'Supply',ivWastage:'Wastage',thresholdHint:'Alerts trigger automatically when on-hand falls below the par level — set per ingredient.',costingTitle:'Recipe costing',costPerDish:'Cost / dish',sellPriceL:'Sell price',marginL:'Margin',transfersTitle:'Stock transfers between outlets',newTransfer:'New transfer',trFrom:'From',trTo:'To',trApprove:'Approve',trReceive:'Mark received',stPending:'Pending approval',stApproved:'Approved',stTransit:'In transit',stReceived:'Received',supplyTitle:'Suggested supply list',supplyHint:'Auto-generated from stock levels and 7-day consumption.',suggestQty:'Suggested',estCostL:'Est. cost',genPO:'Generate PO',poEmpty:'All ingredients above par — nothing to reorder.',wastageTitle:'Food wastage log',logWastage:'Log wastage',wasteTodayL:'Wasted today',rSpoil:'Spoilage',rSpill:'Spillage',rExpiry:'Expiry',wasteItem:'Item',wasteQtyL:'Qty',wasteReasonL:'Reason',wasteCostL:'Cost',wasteWhenL:'When'});
@@ -1873,6 +1880,7 @@ class Component extends DCLogic {
     const sub=s.qrCartL.reduce((a,l)=>a+l.lineTot,0);const tax=sub*0.10;const promo=s.qrPromo?sub*0.05:0;const tot=sub+tax-promo;
     const meCust=s.recv.find(c=>c.id===s.qrCust)||s.recv[0];const meBal=meCust?meCust.bal:0;const meName=meCust?(s.lang==='dv'?meCust.dv:meCust.name):'';
     const meFirst=(meName||'').trim().split(' ')[0];
+    const isMember=!!meCust;const gTable=(s.guestMode&&s.guest&&s.guest.table)?s.guest.table:'';
     const meHist=(meCust&&s.stmtHist&&s.stmtHist[meCust.id])||[];
     const GOLD_AT=500;const pts=(meCust&&meCust.pts)||0;const isGold=pts>=GOLD_AT;const toNext=Math.max(0,GOLD_AT-pts);const pct=isGold?100:Math.round(pts/GOLD_AT*100);
     const tierMed=isGold?'🥇':'🥈';const tierBg=isGold?'linear-gradient(135deg,#EBD08A,#D4A94E 55%,#E7C671)':'linear-gradient(135deg,#C7CAD1,#AEB2BC 55%,#C9CDD4)';const tierBar=isGold?'#8A6A1E':'#5B5F68';
@@ -1892,7 +1900,7 @@ class Component extends DCLogic {
       qrScreenStyle:s.guestMode?'background:#FFFFFF;border-radius:0;overflow:hidden;display:flex;flex-direction:column;min-height:100%;position:relative':'background:#FFFFFF;border-radius:36px;overflow:hidden;display:flex;flex-direction:column;height:632px;position:relative',
       qrMenuTabBg:s.qrTab!=='mytab'?'var(--coral)':'#FFF',qrMenuTabC:s.qrTab!=='mytab'?'#FFF':'#8A7B65',qrTabBg:s.qrTab==='mytab'?'var(--coral)':'#FFF',qrTabC:s.qrTab==='mytab'?'#FFF':'#8A7B65',
       qrMenuLbl:me.t('menuTab'),qrMyTabLbl:me.t('ordersTab'),qrMyTabTitle:me.t('myTabTitle'),qrBalLbl:me.t('balanceLbl'),qrBalF:me.fm(meBal),qrCustName:meName,qrStmtHistTitle:me.t('stmtHistTitle'),qrNoStmt:me.t('noStmt'),qrHasStmt:meHist.length>0,qrNoStmtShow:meHist.length===0,
-      qrGreet:me.t('greetEve')+(meFirst?(', '+meFirst):'')+'! 👋',qrGreetSub:(s.lang==='dv'?(prof.isGold?'ގޯލްޑް މެމްބަރ':'ސިލްވަރ މެމްބަރ'):(prof.isGold?'Gold member':'Silver member'))+' · '+prof.points+' '+me.t('ptsLbl')+' · '+me.t('accountDue')+' '+me.fm(meBal),qrSwitchLbl:me.t('switchAcct'),qrNextCust:()=>me.qrNextCust(),qrCanSwitch:!s.guestMode,
+      qrGreet:me.t('greetEve')+(meFirst?(', '+meFirst):'')+'! 👋',qrGreetSub:isMember?((s.lang==='dv'?(prof.isGold?'ގޯލްޑް މެމްބަރ':'ސިލްވަރ މެމްބަރ'):(prof.isGold?'Gold member':'Silver member'))+' · '+prof.points+' '+me.t('ptsLbl')+' · '+me.t('accountDue')+' '+me.fm(meBal)):(me.t('guestSub')+(gTable?(' · '+me.t('table')+' '+gTable):'')),qrIsMember:isMember,qrIsWalkIn:!isMember,qrWalkTitle:me.t('guestCardTitle'),qrWalkBody:me.t('guestCardBody'),qrSwitchLbl:me.t('switchAcct'),qrNextCust:()=>me.qrNextCust(),qrCanSwitch:!s.guestMode,
       prof,profUsuals:usuals,profWeek:week,profUsualsTitle:me.t('usualsTitle'),profMemberNo:me.t('memberNo')+' '+prof.tierNo,profToNext:prof.isGold?(me.t('topTier')+' ✨'):(prof.toNext+' '+me.t('ptsToGold')+' ✨'),
       visitsLbl:me.t('visitsLbl'),spentLbl:me.t('spentLbl'),onAccountLbl:me.t('onAccountLbl'),last7Lbl:me.t('last7'),ptsUnit:me.t('ptsLbl'),
       qrOrdRows:ordRows,callWaiterLbl:me.t('callWaiter'),qrCallWaiter:()=>me.qrCallWaiter(),favTitle:me.t('favTitle'),
