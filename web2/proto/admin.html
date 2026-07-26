@@ -402,7 +402,7 @@ button[disabled],button:disabled{cursor:not-allowed}
                   <div><div style="font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--ink2)">STAFF</div><div style="font-family:'Bricolage Grotesque';font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px">{{ o.staff }}</div></div>
                 </div>
                 <div style="margin-top:12px;height:38px"><svg viewBox="0 0 600 60" preserveAspectRatio="none" style="width:100%;height:100%;overflow:visible"><path d="{{ o.spkLine }}" fill="none" stroke="var(--coral)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
-                <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span style="font-size:10.5px;font-weight:700;color:var(--ink2)">Occupancy</span><div style="flex:1;height:7px;border-radius:99px;background:var(--bg);overflow:hidden"><div style="height:100%;border-radius:99px;background:var(--green);width:{{ o.occW }}"></div></div><span style="font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums">{{ o.occ }}</span></div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:8px"><span style="font-size:10.5px;font-weight:700;color:var(--ink2)">Revenue share</span><div style="flex:1;height:7px;border-radius:99px;background:var(--bg);overflow:hidden"><div style="height:100%;border-radius:99px;background:var(--green);width:{{ o.occW }}"></div></div><span style="font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums">{{ o.occ }}</span></div>
               </div>
             </sc-for>
           </div>
@@ -415,11 +415,11 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div></div></div>
         </sc-if>
         <sc-if value="{{ ovSettingsView }}" hint-placeholder-val="{{ false }}">
-          <div style="font-size:12px;font-weight:700;color:var(--ink2)">Each outlet gets its own menu, pricing, staff, registers, and hours.</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:var(--ink2);flex:1">Each outlet has its own name, code, address & live takings. Add branches as you grow — one login manages them all.</div><button onClick="{{ addOutlet }}" style="border:1px solid var(--coral);border-radius:10px;padding:8px 14px;background:var(--coralsoft);color:var(--coral);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.96)">+ Add outlet</button></div>
           <div style="display:flex;gap:7px;flex-wrap:wrap"><sc-for list="{{ outChips }}" as="ch" hint-placeholder-count="3"><button onClick="{{ ch.tap }}" style="border:1px solid {{ ch.bc }};background:{{ ch.bg }};color:{{ ch.co }};border-radius:999px;padding:7px 15px;font-size:12px;font-weight:800;cursor:pointer;transition:all .15s" style-active="transform:scale(.95)">{{ ch.label }}</button></sc-for></div>
           <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 18px;box-shadow:var(--shadow)">
-            <div style="font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;padding:14px 0 10px;border-bottom:1px solid var(--line)">{{ outSelName }}</div>
-            <sc-for list="{{ outSettings }}" as="r" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)"><span style="width:120px;flex:none;font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--ink2)">{{ r.label }}</span><span style="flex:1;font-size:12.5px;font-weight:700">{{ r.val }}</span><button onClick="{{ outEdit }}" style="border:1px solid var(--line2);border-radius:8px;padding:5px 12px;background:var(--card);color:var(--coral);font-size:11px;font-weight:800;cursor:pointer" style-active="transform:scale(.94)">Edit</button></div></sc-for>
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 0 10px;border-bottom:1px solid var(--line)"><div style="font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;flex:1">{{ outSelName }}</div><span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:99px;background:{{ outSelSttBg }};color:{{ outSelSttC }}">{{ outSelStt }}</span><button onClick="{{ outEdit }}" style="border:1px solid var(--line2);border-radius:8px;padding:6px 13px;background:var(--card);color:var(--coral);font-size:11px;font-weight:800;cursor:pointer" style-active="transform:scale(.94)">Edit</button><button onClick="{{ outToggle }}" style="border:1px solid var(--line2);border-radius:8px;padding:6px 13px;background:var(--card);color:var(--ink2);font-size:11px;font-weight:800;cursor:pointer" style-active="transform:scale(.94)">{{ outToggleLbl }}</button></div>
+            <sc-for list="{{ outSettings }}" as="r" hint-placeholder-count="6"><div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)"><span style="width:120px;flex:none;font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--ink2)">{{ r.label }}</span><span style="flex:1;font-size:12.5px;font-weight:700">{{ r.val }}</span></div></sc-for>
           </div>
         </sc-if>
         <sc-if value="{{ ovTransfersView }}" hint-placeholder-val="{{ false }}">
@@ -1374,6 +1374,14 @@ button[disabled],button:disabled{cursor:not-allowed}
         <button onClick="{{ doSaveTransfer }}" style="border:0;border-radius:12px;padding:13px;background:var(--coralgrad);color:#fff;font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">Create transfer</button>
       </div></sc-if>
 
+      <sc-if value="{{ isOutlet }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:13px">
+        <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">OUTLET NAME</div><input value="{{ mdlOutName }}" onInput="{{ setMdlOutName }}" placeholder="e.g. Kashikeyo · Hulhumalé" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div>
+        <sc-if value="{{ mdlOutNew }}" hint-placeholder-val="{{ true }}"><div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">CODE (OPTIONAL)</div><input value="{{ mdlOutCode }}" onInput="{{ setMdlOutCode }}" placeholder="Auto-generated from name" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none;text-transform:uppercase" style-focus="border-color:var(--ink)"></div></sc-if>
+        <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">ADDRESS</div><input value="{{ mdlOutAddr }}" onInput="{{ setMdlOutAddr }}" placeholder="Area or street" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div>
+        <sc-if value="{{ hasOutErr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;font-weight:700;color:var(--red)">{{ mdlOutErr }}</div></sc-if>
+        <button onClick="{{ doSaveOutlet }}" style="border:0;border-radius:12px;padding:13px;background:var(--coralgrad);color:#fff;font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">{{ outSaveLbl }}</button>
+      </div></sc-if>
+
       <sc-if value="{{ isSupplier }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:13px">
         <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">SUPPLIER NAME</div><input value="{{ mdlSupN }}" onInput="{{ setMdlSupN }}" placeholder="e.g. Fresh Farms MV" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div>
         <div style="display:flex;gap:11px"><div style="flex:1"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">CONTACT</div><input value="{{ mdlSupC }}" onInput="{{ setMdlSupC }}" placeholder="Phone or email" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div><div style="flex:1"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">CATEGORY</div><input value="{{ mdlSupCat }}" onInput="{{ setMdlSupCat }}" placeholder="e.g. Seafood" style="width:100%;border:1px solid var(--line2);border-radius:11px;padding:10px 13px;background:var(--bg);color:var(--ink);font-size:14px;font-weight:700;outline:none" style-focus="border-color:var(--ink)"></div></div>
@@ -1815,6 +1823,11 @@ class Component extends DCLogic {
   startRefund(){this.toast('Refunds are issued at the register — open the sale and tap Refund.');}
   runBackup(){this.toast('Your data is backed up automatically on the managed cloud database.');}
   editOutlet(){this.setState({active:'config',navOpen:false});this.toast('Opening store settings');}
+  _outletSrc(){return (typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets))?window.__ksAdmin.outlets:[];}
+  addOutlet(){this.openMdl('outlet',{onew:true,oname:'',ocode:'',oaddr:'',title:'Add outlet'});}
+  openOutlet(idx){var o=this._outletSrc()[idx];if(!o){this.addOutlet();return;}this.openMdl('outlet',{onew:false,oid:o.id,oname:o.n||'',ocode:o.code||'',oaddr:o.addr||'',title:'Edit outlet'});}
+  saveOutlet(){var me=this;var m=this.state.mdl||{};var name=(m.oname||'').trim();if(!name){this.setMF('oerr','Outlet name is required');return;}var isNew=!!m.onew;var url=isNew?'/api/app2/outlets':('/api/app2/outlets/'+encodeURIComponent(m.oid));var method=isNew?'POST':'PATCH';var body=isNew?{name:name,code:(m.ocode||'').trim(),address:(m.oaddr||'').trim()}:{name:name,address:(m.oaddr||'').trim()};try{fetch(url,{method:method,headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.error){me.setMF('oerr',j.error);return;}me.setState({mdl:null});me.toast(name+' · '+(isNew?'outlet added':'updated'));setTimeout(function(){try{location.reload();}catch(e){}},650);}).catch(function(){me.setMF('oerr','Could not save outlet');});}catch(e){}}
+  toggleOutlet(){var me=this;var o=this._outletSrc()[this.state.outSel];if(!o)return;var next=!o.active;try{fetch('/api/app2/outlets/'+encodeURIComponent(o.id),{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({active:next})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.error){me.toast(j.error);return;}me.toast(o.n+' · '+(next?'activated':'deactivated'));setTimeout(function(){try{location.reload();}catch(e){}},600);}).catch(function(){});}catch(e){}}
   addCustomer(){this.openMdl('custedit',{idx:-1,cn:'',cdv:'',cph:'',ctier:'Bronze',callergy:'',cdiet:'',cnote:'',title:'Add customer'});}
   editCustomer(idx){const c=this.state.custData[idx];if(!c)return;this.openMdl('custedit',{idx,cid:c.id||'',cn:c.n,cdv:c.dv||'',cph:c.ph,ctier:c.tier,cvisits:c.visits,cspend:c.spend,cbal:c.bal,callergy:c.allergy==='—'?'':c.allergy,cdiet:c.diet==='—'?'':c.diet,cnote:c.note,title:'Edit customer'});}
   /* Personal ordering link + share, ported from the audited production's
@@ -2019,37 +2032,42 @@ class Component extends DCLogic {
     const salesStatusOpts=[{v:'all',label:'All statuses',sel:sStat==='all'}].concat(statusList.map(st=>({v:st,label:st,sel:sStat===st})));
     const salesEmpty=sf.length===0;const salesCount=sf.length+' of '+sf0.length+(sf.length===1?' order':' orders');
     // ---- OUTLETS ----
-    const outlets=[
-      {n:'Kashikeyo · Malé',area:'Majeedhee Magu',open:true,rev:6820,ord:74,staff:5,occ:78,spk:[8,12,18,30,52,74,60,44,90,120,96,70]},
-      {n:'Kashikeyo · Hulhumalé',area:'Central Park',open:true,rev:4210,ord:48,staff:4,occ:62,spk:[6,10,14,22,40,55,48,38,70,92,80,60]},
-      {n:'Kashikeyo · Villimalé',area:'Ferry Road',open:false,rev:1980,ord:23,staff:2,occ:0,spk:[4,6,9,14,20,26,22,18,30,28,20,12]}
-    ].map(o=>({name:o.n,area:o.area,stt:o.open?'Open':'Closed',stBg:o.open?'var(--greensoft)':'var(--bg)',stC:o.open?'var(--green)':'var(--ink2)',revF:f(o.rev),ord:String(o.ord),staff:String(o.staff),occ:o.occ+'%',occW:o.occ+'%',spkLine:me.spk(o.spk,'line')}));
+    // Outlets — real multi-store data injected as window.__ksAdmin.outlets, each
+    // carrying today's real revenue/orders/items/active-staff + an hourly spark.
+    const outletSrc=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets)&&window.__ksAdmin.outlets.length)?window.__ksAdmin.outlets:[{id:'main',n:(s.store&&s.store.name)||'Main outlet',code:'MAIN',addr:'',active:true,rev:0,ord:0,items:0,staff:0,spark:[]}];
     const ov=s.sub.outlets||0;
-    const outletRaw=[
-      {n:'Malé',rev:6820,ord:74,staff:5,occ:78,gp:64},
-      {n:'Hulhumalé',rev:4210,ord:48,staff:4,occ:62,gp:61},
-      {n:'Villimalé',rev:1980,ord:23,staff:2,occ:44,gp:58}
-    ];
-    const outNames=outletRaw.map(o=>o.n);
-    const conStats=[{label:'TOTAL REVENUE · TODAY',v:f(outletRaw.reduce((a,o)=>a+o.rev,0))},{label:'TOTAL ORDERS',v:String(outletRaw.reduce((a,o)=>a+o.ord,0))},{label:'OUTLETS',v:'3'},{label:'STAFF ON SHIFT',v:String(outletRaw.reduce((a,o)=>a+o.staff,0))}];
+    const _outSpk=function(a){var arr=(a&&a.length)?a:[0,0,0,0,0,0,0,0,0,0,0,0];return me.spk(arr,'line');};
+    const totRev=outletSrc.reduce((a,o)=>a+(o.rev||0),0);
+    const totOrd=outletSrc.reduce((a,o)=>a+(o.ord||0),0);
+    const totStaff=outletSrc.reduce((a,o)=>a+(o.staff||0),0);
+    const openCount=outletSrc.filter(o=>o.active).length;
+    const outlets=outletSrc.map(function(o){var share=totRev>0?Math.round((o.rev||0)/totRev*100):0;return {name:o.n,area:o.addr||o.code||'—',stt:o.active?'Open':'Closed',stBg:o.active?'var(--greensoft)':'var(--bg)',stC:o.active?'var(--green)':'var(--ink2)',revF:f(o.rev||0),ord:String(o.ord||0),staff:String(o.staff||0),occ:share+'%',occW:share+'%',spkLine:_outSpk(o.spark)};});
+    const conStats=[{label:'TOTAL REVENUE · TODAY',v:f(totRev)},{label:'TOTAL ORDERS',v:String(totOrd)},{label:'OUTLETS',v:openCount<outletSrc.length?(openCount+' / '+outletSrc.length+' open'):String(outletSrc.length)},{label:'ACTIVE STAFF · TODAY',v:String(totStaff)}];
+    const outNames=outletSrc.map(o=>o.n);
     const compareRows=[
-      {metric:'Revenue · today',vals:outletRaw.map(o=>me.fm(o.rev))},
-      {metric:'Orders',vals:outletRaw.map(o=>String(o.ord))},
-      {metric:'Avg order',vals:outletRaw.map(o=>me.fm(o.rev/o.ord))},
-      {metric:'Staff on shift',vals:outletRaw.map(o=>String(o.staff))},
-      {metric:'Occupancy',vals:outletRaw.map(o=>o.occ+'%')},
-      {metric:'Gross margin',vals:outletRaw.map(o=>o.gp+'%')}
+      {metric:'Revenue · today',vals:outletSrc.map(o=>me.fm(o.rev||0))},
+      {metric:'Orders',vals:outletSrc.map(o=>String(o.ord||0))},
+      {metric:'Avg order',vals:outletSrc.map(o=>o.ord?me.fm((o.rev||0)/o.ord):'—')},
+      {metric:'Items sold',vals:outletSrc.map(o=>String(o.items||0))},
+      {metric:'Active staff',vals:outletSrc.map(o=>String(o.staff||0))},
+      {metric:'Status',vals:outletSrc.map(o=>o.active?'Open':'Closed')}
     ];
-    const outCompareCols='1.3fr repeat('+outletRaw.length+',1fr)';
-    const outChips=outletRaw.map((o,i)=>({label:o.n,tap:()=>me.setState({outSel:i}),bg:s.outSel===i?'var(--ink)':'var(--card)',co:s.outSel===i?'var(--bg)':'var(--ink2)',bc:s.outSel===i?'var(--ink)':'var(--line2)'}));
-    const outSetDataAll=[
-      {menu:'82 items · 4 hidden',pricing:'Standard tariff',staff:'5 · Manager Mariyam',registers:'2 tills',hours:'Daily · 07:00–23:00'},
-      {menu:'78 items · 6 hidden',pricing:'Standard tariff',staff:'4 · Manager Ibrahim',registers:'1 till',hours:'Daily · 08:00–23:30'},
-      {menu:'54 items · 12 hidden',pricing:'Ferry tariff · +MVR 5 delivery',staff:'2 · Manager —',registers:'1 till',hours:'Daily · 09:00–21:00'}
+    const outCompareCols='1.3fr repeat('+Math.max(1,outletSrc.length)+',1fr)';
+    const outChips=outletSrc.map((o,i)=>({label:o.n,tap:()=>me.setState({outSel:i}),bg:s.outSel===i?'var(--ink)':'var(--card)',co:s.outSel===i?'var(--bg)':'var(--ink2)',bc:s.outSel===i?'var(--ink)':'var(--line2)'}));
+    const _selOut=outletSrc[s.outSel]||outletSrc[0];
+    const outSettings=[
+      {label:'Name',val:_selOut.n},
+      {label:'Code',val:_selOut.code||'—'},
+      {label:'Address',val:_selOut.addr||'Not set'},
+      {label:'Status',val:_selOut.active?'Active':'Inactive'},
+      {label:'Revenue · today',val:f(_selOut.rev||0)},
+      {label:'Orders · today',val:String(_selOut.ord||0)}
     ];
-    const os=outSetDataAll[s.outSel]||outSetDataAll[0];
-    const outSettings=[['Menu','menu'],['Pricing','pricing'],['Staff','staff'],['Registers','registers'],['Opening hours','hours']].map(r=>({label:r[0],val:os[r[1]]}));
-    const outSelName=outletRaw[s.outSel]?('Kashikeyo · '+outletRaw[s.outSel].n):'';
+    const outSelName=_selOut.n;
+    const outSelStt=_selOut.active?'Active':'Inactive';
+    const outSelSttBg=_selOut.active?'var(--greensoft)':'var(--bg)';
+    const outSelSttC=_selOut.active?'var(--green)':'var(--ink2)';
+    const outToggleLbl=_selOut.active?'Deactivate':'Activate';
     // ---- KITCHEN ----
     const kdsDemo=[
       {no:'0231',src:'Dine-in · T3',station:'HOT KITCHEN',timer:'2:14',items:['2× Mas Huni & Roshi','1× Garudhiya Set'],age:'ok'},
@@ -2373,12 +2391,12 @@ class Component extends DCLogic {
       isPay:A==='pay',paySubTabs:mkSubs('pay',['Methods','Payment Links','Billing','Split Payments','Refunds','Gateway']),payMethodsView:spy===0,payLinksView:spy===1,payBillingView:spy===2,paySplitView:spy===3,payRefundView:spy===4,payGatewayView:spy===5,payMethods,payLinks,billTemplates,splitByMethod,splitBillF:me.fm(940),splitGuests:'3',splitByGuest,recentSplits,refundRows,gwStats,settlements,payCols,payTwoCols,newLink:()=>me.newPayLink(),newRefund:()=>me.startRefund(),
       salesSubTabs:mkSubs('sales',['Register','QR Orders','Delivery']),salesRows,salesStats,salesCols,salesStatusOpts,salesEmpty,salesCount,salesQuery:s.salesQuery,onSalesQuery:e=>me.setSalesQuery(e.target.value),onSalesStatus:e=>me.setSalesStatus(e.target.value),clearSalesQuery:()=>me.setSalesQuery(''),
       outlets,kds,
-      outletSubTabs:mkSubs('outlets',['Overview','Compare','Settings','Transfers']),ovOverviewView:ov===0,ovCompareView:ov===1,ovSettingsView:ov===2,ovTransfersView:ov===3,conStats,outNames,compareRows,outCompareCols,outChips,outSettings,outSelName,outEdit:()=>me.editOutlet(),
+      outletSubTabs:mkSubs('outlets',['Overview','Compare','Settings','Transfers']),ovOverviewView:ov===0,ovCompareView:ov===1,ovSettingsView:ov===2,ovTransfersView:ov===3,conStats,outNames,compareRows,outCompareCols,outChips,outSettings,outSelName,outSelStt,outSelSttBg,outSelSttC,outToggleLbl,addOutlet:()=>me.addOutlet(),outEdit:()=>me.openOutlet(s.outSel),outToggle:()=>me.toggleOutlet(),
       invSubTabs:mkSubs('inventory',['Stock levels','Recipes','Wastage','Transfers','Supply','Expiring']),invStockView:si===0,invRecipeView:si===1,invWasteView:si===2,invTransferView:si===3,invSupplyView:si===4,invExpView:si===5,
       expRows:((s.expiring)||[]).map(function(x){var tc=x.tier==='expired'?'var(--red)':(x.tier==='today'||x.tier==='soon')?'var(--coral)':'var(--amber)';var lbl=x.tier==='expired'?'Expired':(x.daysLeft===0?'Today':(x.daysLeft+'d left'));return {n:x.name,qtyF:(Math.round((Number(x.qty)||0)*100)/100)+' '+(x.baseUnit||''),date:x.expiry||'—',lbl:lbl,tc:tc};}),
       expEmpty:!!(s.expLoaded&&!((s.expiring||[]).length)),expN:String(((s.expiring)||[]).length),invStock,invRecipes,invWaste,invTransfers,invSupply,supplyTotF,invStockVal,wasteTotF,recipeStats,mdlRecipeLines,mdlRecipeAddable,mdlRecipePlateF,mdlRecipeEmpty,doSaveRecipe:()=>me.saveRecipe(),
       aiQ:s.aiQ||'',setAiQ:e=>me.setAiQ(e.target.value),askAi:()=>me.askAssistant(),aiAsking:!!s.aiAsking,aiAnswer:s.aiAnswer||'',aiHasAnswer:!!s.aiAnswer,aiAsked:s.aiAsked||'',aiHasAsked:!!s.aiAsked,aiAErr:s.aiAErr||'',aiHasAErr:!!s.aiAErr,
-      lowCount:String(lowCount),outCount:String(outCount),reorderVal,runStockCheck:()=>me.runStockCheck(),auditRows,auditVarCount,auditSummary,auditVarLbl:auditVarCount?(auditVarCount+(auditVarCount===1?' variance':' variances')+' to apply'):'No variances — counts match system',applyCounts:()=>me.applyCounts(),auditErr:(am&&am.err)||'',hasAuditErr:!!(am&&am.err),isAudit:s.mdl&&s.mdl.kind==='audit',addStockItem:()=>me.openMdl('additem',{unit:'kg',title:'Add stock item'}),logWasteBtn:()=>me.openMdl('waste',{itemName:s.stock[0]&&s.stock[0].n,reason:'Expiry',title:'Log wastage'}),newTransfer:()=>me.openMdl('transfer',{from:'Malé',to:'Hulhumalé',title:'New stock transfer'}),genPO:()=>me.generatePO(),
+      lowCount:String(lowCount),outCount:String(outCount),reorderVal,runStockCheck:()=>me.runStockCheck(),auditRows,auditVarCount,auditSummary,auditVarLbl:auditVarCount?(auditVarCount+(auditVarCount===1?' variance':' variances')+' to apply'):'No variances — counts match system',applyCounts:()=>me.applyCounts(),auditErr:(am&&am.err)||'',hasAuditErr:!!(am&&am.err),isAudit:s.mdl&&s.mdl.kind==='audit',addStockItem:()=>me.openMdl('additem',{unit:'kg',title:'Add stock item'}),logWasteBtn:()=>me.openMdl('waste',{itemName:s.stock[0]&&s.stock[0].n,reason:'Expiry',title:'Log wastage'}),newTransfer:()=>me.openMdl('transfer',{from:(outletSrc[0]&&outletSrc[0].n)||'Main',to:(outletSrc[1]&&outletSrc[1].n)||(outletSrc[0]&&outletSrc[0].n)||'Main',title:'New stock transfer'}),genPO:()=>me.generatePO(),
       poDraftOpen:!!s.poDraft,poDraftLoading:!!(s.poDraft&&s.poDraft.stage==='loading'),poDraftPreview:!!(s.poDraft&&s.poDraft.stage==='preview'),poDraftEmpty:!!(s.poDraft&&s.poDraft.stage==='empty'),poDraftBusy:!!(s.poDraft&&s.poDraft.busy),poDraftBtnOp:(s.poDraft&&s.poDraft.busy)?0.6:1,poDraftBtnLbl:(s.poDraft&&s.poDraft.busy)?'Creating…':'Create purchase orders',poDraftErr:s.poDraft?(s.poDraft.err||''):'',poDraftHasErr:!!(s.poDraft&&s.poDraft.err),closePoDraft:()=>me.closePoDraft(),doApprovePo:()=>me.approvePoDraft(),poDraftSupN:String(((s.poDraft&&s.poDraft.drafts)||[]).length),
       poDraftGrandF:me.fm((function(){var t=0;((s.poDraft&&s.poDraft.drafts)||[]).forEach(function(g){(g.items||[]).forEach(function(it){t+=(Number(it.qty)||0)*(Number(it.cost)||0);});});return t/100;})()),
       poDraftGroups:((s.poDraft&&s.poDraft.drafts)||[]).map(function(g,gi){var gt=0;(g.items||[]).forEach(function(it){gt+=(Number(it.qty)||0)*(Number(it.cost)||0);});return {supplier:g.supplier,totalF:me.fm(gt/100),items:(g.items||[]).map(function(it,ii){return {desc:it.desc,qty:String(it.qty),unit:it.unit,costF:me.fm((Number(it.cost)||0)/100),lineF:me.fm(((Number(it.qty)||0)*(Number(it.cost)||0))/100),setQty:e=>me.setPoQty(gi,ii,e.target.value),rm:()=>me.rmPoLine(gi,ii)};})};}),
@@ -2415,12 +2433,13 @@ class Component extends DCLogic {
       isSeo:s.mdl&&s.mdl.kind==='seo',mdlSeoTitle:(s.mdl&&s.mdl.stitle)||'',setMdlSeoTitle:e=>me.setMF('stitle',e.target.value),mdlSeoDesc:(s.mdl&&s.mdl.sdesc)||'',setMdlSeoDesc:e=>me.setMF('sdesc',e.target.value),doSeo:()=>me.saveSeo(),
       isPromo:s.mdl&&s.mdl.kind==='promo',mdlPromoN:(s.mdl&&s.mdl.pn)||'',setMdlPromoN:e=>me.setMF('pn',e.target.value),mdlPromoCode:(s.mdl&&s.mdl.pcode)||'',setMdlPromoCode:e=>me.setMF('pcode',e.target.value),mdlPromoType:(s.mdl&&s.mdl.ptype)||'',setMdlPromoType:e=>me.setMF('ptype',e.target.value),doPromo:()=>me.savePromo(),
       isChannel:s.mdl&&s.mdl.kind==='channel',mdlChatId:(s.mdl&&s.mdl.chatId)||'',setMdlChatId:e=>me.setMF('chatId',e.target.value),doChannel:()=>me.saveChannel(),
-      mdlTrItem:(s.mdl&&s.mdl.item)||'',setMdlTrItem:e=>me.setMF('item',e.target.value),mdlTrQty:(s.mdl&&s.mdl.qty)||'',setMdlTrQty:e=>me.setMF('qty',e.target.value),mdlTrFrom:(s.mdl&&s.mdl.from)||'Malé',setMdlTrFrom:e=>me.setMF('from',e.target.value),mdlTrTo:(s.mdl&&s.mdl.to)||'Hulhumalé',setMdlTrTo:e=>me.setMF('to',e.target.value),outletOpts:['Malé','Hulhumalé','Villimalé','Central Store'],doSaveTransfer:()=>me.saveTransfer(),
+      mdlTrItem:(s.mdl&&s.mdl.item)||'',setMdlTrItem:e=>me.setMF('item',e.target.value),mdlTrQty:(s.mdl&&s.mdl.qty)||'',setMdlTrQty:e=>me.setMF('qty',e.target.value),mdlTrFrom:(s.mdl&&s.mdl.from)||(outletSrc[0]&&outletSrc[0].n)||'Main',setMdlTrFrom:e=>me.setMF('from',e.target.value),mdlTrTo:(s.mdl&&s.mdl.to)||(outletSrc[1]&&outletSrc[1].n)||(outletSrc[0]&&outletSrc[0].n)||'Main',setMdlTrTo:e=>me.setMF('to',e.target.value),outletOpts:(outletSrc.length?outletSrc.map(o=>o.n):['Main outlet']),doSaveTransfer:()=>me.saveTransfer(),
       mdlSupN:(s.mdl&&s.mdl.sn)||'',setMdlSupN:e=>me.setMF('sn',e.target.value),
       mdlSupC:(s.mdl&&s.mdl.sc)||'',setMdlSupC:e=>me.setMF('sc',e.target.value),
       mdlSupCat:(s.mdl&&s.mdl.scat)||'',setMdlSupCat:e=>me.setMF('scat',e.target.value),
       doAddSupplier:()=>me.saveSupplier(),
       isReceive:s.mdl&&s.mdl.kind==='receive',isAddItem:s.mdl&&s.mdl.kind==='additem',isWaste:s.mdl&&s.mdl.kind==='waste',isExpense:s.mdl&&s.mdl.kind==='expense',isPayBill:s.mdl&&s.mdl.kind==='paybill',isTransfer:s.mdl&&s.mdl.kind==='transfer',isSupplier:s.mdl&&s.mdl.kind==='supplier',isRecipe:s.mdl&&s.mdl.kind==='recipe',
+      isOutlet:s.mdl&&s.mdl.kind==='outlet',mdlOutNew:!!(s.mdl&&s.mdl.onew),mdlOutName:(s.mdl&&s.mdl.oname)||'',setMdlOutName:e=>me.setMF('oname',e.target.value),mdlOutCode:(s.mdl&&s.mdl.ocode)||'',setMdlOutCode:e=>me.setMF('ocode',e.target.value),mdlOutAddr:(s.mdl&&s.mdl.oaddr)||'',setMdlOutAddr:e=>me.setMF('oaddr',e.target.value),mdlOutErr:(s.mdl&&s.mdl.oerr)||'',hasOutErr:!!(s.mdl&&s.mdl.oerr),outSaveLbl:(s.mdl&&s.mdl.onew)?'Add outlet':'Save changes',doSaveOutlet:()=>me.saveOutlet(),
       recvRows,recvRowsAll,recvStats,recvCols,recvStatusOpts,recvEmpty,recvCount,recvQuery:s.recvQuery,onRecvQuery:e=>me.setRecvQuery(e.target.value),onRecvStatus:e=>me.setRecvStatus(e.target.value),clearRecvQuery:()=>me.setRecvQuery(''),
       isCust:A==='cust',custSubTabs:mkSubs('cust',['Profiles','Order History','Credit','Preferences']),cvProfilesView:(s.sub.cust||0)===0,cvOrdersView:(s.sub.cust||0)===1,cvCreditView:(s.sub.cust||0)===2,cvPrefsView:(s.sub.cust||0)===3,custProfiles,custPrefsList,custChips,custOrders,custSelName,custSelSummary,
       isStore:A==='store',storeSubTabs:mkSubs('store',['Web Store','QR Ordering','Promotions','Branding','SEO']),swWebView:stv===0,swQrView:stv===1,swPromoView:stv===2,swBrandView:stv===3,swSeoView:stv===4,outletStores,qrTables,qrCount:String(qrCount),qrLess:()=>me.setQrTables(qrCount-1),qrMore:()=>me.setQrTables(qrCount+1),qrCols:s.vw<640?'1fr 1fr':(s.vw<1024?'repeat(3,1fr)':'repeat(4,1fr)'),promoRows,brandSwatches,seoChecks,seoEdit:()=>me.openSeo(),seoTitle:_seoTitle,seoDesc:_seoDesc,seoUrl:(_qrOrigin?_qrOrigin.replace(/^https?:\/\//,''):'')+'/?s='+(_qrSlug||'store'),dlAllQr:()=>me.copyLink(qrLink(1).replace(/&t=1$/,''),'Store link'),newPromo:()=>me.openPromo(),

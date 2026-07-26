@@ -2189,10 +2189,29 @@ if (fs.existsSync(protoFile)) {
                 title: seoCfg.title || ((storeName || "Kashikeyo") + " · Order online"),
                 desc: seoCfg.desc || ("Order from " + (storeName || "our store") + " — fresh, fast, local."),
               };
-              // Outlets from the real stores table (multi-store).
+              // Outlets from the real stores table (multi-store), enriched with
+              // today's real performance per store: sales carry data.storeId, so
+              // group today's sales by store for revenue / orders / items / the
+              // set of staff who rang a sale there, plus a 12-slot hourly spark.
               const storeRows = (await c.query(
                 "SELECT id, code, name, address, active FROM stores WHERE org_id=$1 ORDER BY created_at", [orgId])).rows;
-              adminData.outlets = storeRows.map((o) => ({ id: o.id, n: o.name, code: o.code, addr: o.address || "", active: !!o.active }));
+              const perStore = new Map();
+              for (const s of today) {
+                const sid = cleanStoreId(s.storeId || DEFAULT_STORE_ID);
+                const a = perStore.get(sid) || { rev: 0, ord: 0, items: 0, staff: new Set(), spark: new Array(12).fill(0) };
+                a.rev += (Number(s.total) || 0); a.ord += 1; a.items += qtyOf(s);
+                const who = (s.userName || "").trim(); if (who) a.staff.add(who);
+                const hr = new Date(Number(s.at) || Date.now()).getHours();
+                a.spark[Math.min(11, Math.floor(hr / 2))] += (Number(s.total) || 0) / 100;
+                perStore.set(sid, a);
+              }
+              adminData.outlets = storeRows.map((o) => {
+                const a = perStore.get(cleanStoreId(o.id)) || { rev: 0, ord: 0, items: 0, staff: new Set(), spark: new Array(12).fill(0) };
+                return {
+                  id: o.id, n: o.name, code: o.code, addr: o.address || "", active: !!o.active,
+                  rev: Math.round(a.rev / 100), ord: a.ord, items: a.items, staff: a.staff.size, spark: a.spark,
+                };
+              });
               // Payment-method volumes from today's real sales (payMix on reports).
               adminData.payMix = (adminData.reports && adminData.reports.today && adminData.reports.today.payMix) || { cash: 0, card: 0, transfer: 0, tab: 0 };
               // ── Tier 1: sub-lists derived from real sales / users / activity_log ──
@@ -2737,6 +2756,56 @@ if (fs.existsSync(protoFile)) {
     if (sid === curSid) return res.status(400).json({ error: "That's this device — use Sign out instead." });
     await withOrg(orgId, (c) => c.query("UPDATE app_sessions SET revoked=true WHERE org_id=$1 AND sid=$2", [orgId, sid]));
     logActivity(orgId, { actor, action: "session.revoked", ref: sid.slice(0, 8), requestId: req.id, detail: {} });
+    res.json({ ok: true });
+  }));
+  // Outlets: CRUD on the real stores table (multi-store). Admin+. The default
+  // "main" store can be renamed but never deactivated — login, the till and the
+  // guest portal all fall back to it — and the org must always keep one active
+  // outlet. adminData.outlets (injected into /admin) is the read side.
+  app.post("/api/app2/outlets", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Adding an outlet needs an admin or the owner.")) return;
+    const b = req.body || {};
+    const name = String(b.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Outlet name is required." });
+    let code = String(b.code || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+    if (!code) code = (name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)) || ("OUT" + Date.now().toString().slice(-5));
+    const id = cleanStoreId(code.toLowerCase());
+    const address = String(b.address || "").trim();
+    try {
+      await withOrg(orgId, (c) => c.query(
+        "INSERT INTO stores (org_id, id, code, name, address) VALUES ($1,$2,$3,$4,$5)",
+        [orgId, id, code, name, address]));
+    } catch (e) {
+      if (/duplicate|unique/i.test(String(e && e.message))) return res.status(409).json({ error: "An outlet with that code already exists." });
+      recordError("outlet create", e); return res.status(500).json({ error: "Could not add outlet." });
+    }
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "outlet.created", ref: code, requestId: req.id, detail: { name } });
+    res.json({ ok: true, outlet: { id, code, name, address, active: true } });
+  }));
+  app.patch("/api/app2/outlets/:id", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Editing an outlet needs an admin or the owner.")) return;
+    const id = cleanStoreId(req.params.id);
+    const b = req.body || {};
+    const sets = []; const vals = [orgId, id]; let i = 3;
+    if (b.name != null) { const nm = String(b.name).trim(); if (!nm) return res.status(400).json({ error: "Outlet name can't be empty." }); sets.push(`name=$${i++}`); vals.push(nm); }
+    if (b.address != null) { sets.push(`address=$${i++}`); vals.push(String(b.address).trim()); }
+    if (b.active != null) {
+      const active = !!b.active;
+      if (!active && id === cleanStoreId(DEFAULT_STORE_ID)) return res.status(400).json({ error: "The main outlet can't be deactivated." });
+      if (!active) {
+        const act = await withOrg(orgId, (c) => c.query("SELECT count(*)::int AS n FROM stores WHERE org_id=$1 AND active=true", [orgId]));
+        if ((act.rows[0].n || 0) <= 1) return res.status(400).json({ error: "At least one outlet must stay active." });
+      }
+      sets.push(`active=$${i++}`); vals.push(active);
+    }
+    if (!sets.length) return res.status(400).json({ error: "Nothing to update." });
+    const r = await withOrg(orgId, (c) => c.query(`UPDATE stores SET ${sets.join(", ")} WHERE org_id=$1 AND id=$2`, vals));
+    if (!r.rowCount) return res.status(404).json({ error: "Outlet not found." });
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "outlet.updated", ref: id, requestId: req.id, detail: b });
     res.json({ ok: true });
   }));
 }
