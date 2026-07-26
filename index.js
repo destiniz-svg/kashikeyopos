@@ -2181,6 +2181,17 @@ if (fs.existsSync(protoFile)) {
                   parts: (s.payments || []).map((p) => (p.method || "pay") + " " + Math.round((Number(p.amount) || 0) / 100)).join(" · "),
                   n: (s.payments || []).length,
                 }));
+              // Reports > Z-Report: persisted cashier shift cash-ups (drawer
+              // reconciliation + variance), newest first, for manager review.
+              adminData.shifts = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND data->>'status'='closed' ORDER BY (data->>'closedAt')::numeric DESC NULLS LAST LIMIT 30", [orgId]))
+                .rows.map((r) => r.data || {}).map((d) => ({
+                  staff: d.closedBy || d.staffName || "—",
+                  open: d.openedAt ? hhmm(d.openedAt) : "—", close: d.closedAt ? hhmm(d.closedAt) : "—",
+                  float: Math.round((Number(d.float) || 0)) / 100, counted: Math.round((Number(d.counted) || 0)) / 100,
+                  expected: Math.round((Number(d.expected) || 0)) / 100, cashSales: Math.round((Number(d.cashSales) || 0)) / 100,
+                  variance: Math.round((Number(d.variance) || 0)) / 100, gross: Math.round((Number(d.grossSales) || 0)) / 100,
+                }));
               // Staff + System Admin: real users entities.
               const userRows = (await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false ORDER BY updated_at", [orgId]))
@@ -2433,6 +2444,61 @@ if (fs.existsSync(protoFile)) {
     if (out == null) return res.status(404).json({ error: "customer not found" });
     poke(orgId, out.rowver);
     res.json({ ok: true, balance: out.balance });
+  }));
+  /* Cashier shift + drawer cash-up (persisted). The till had an open/close
+     drawer flow that only lived in localStorage; persist it as a `shifts`
+     entity so managers can review cash-ups and variances in /admin. On close
+     the server itself computes the cash takings since the shift opened, the
+     expected drawer (float + cash) and the variance — the counted amount is the
+     only figure trusted from the client. Any till staff may run the drawer;
+     kitchen can't. Money is laari throughout. */
+  app.post("/api/app2/shift", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Kitchen staff don't run the drawer.")) return;
+    const b = req.body || {};
+    const action = String(b.action || "");
+    const storeId = cleanStoreId(b.storeId || (req.appStaff && req.appStaff.storeId) || DEFAULT_STORE_ID);
+    const staff = req.appStaff || {};
+    const staffName = String(b.staffName || staff.name || "").slice(0, 80);
+    if (action === "open") {
+      const float = Math.max(0, Math.round(Number(b.float) || 0));
+      const id = "sh_" + Math.random().toString(36).slice(2, 9);
+      const data = { id, storeId, staffId: staff.id || null, staffName, openedAt: Date.now(), float, status: "open" };
+      const r = await withOrg(orgId, (c) => c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'shifts',$2,$3) RETURNING rowver", [orgId, id, JSON.stringify(data)]));
+      poke(orgId, Number(r.rows[0].rowver));
+      logActivity(orgId, { actor: staffName || "cashier", action: "shift.open", ref: id, requestId: req.id, detail: { float } });
+      return res.json({ ok: true, id, openedAt: data.openedAt });
+    }
+    if (action === "close") {
+      const counted = Math.max(0, Math.round(Number(b.counted) || 0));
+      const out = await withOrg(orgId, async (c) => {
+        let cur;
+        if (b.id) cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND id=$2 AND deleted=false", [orgId, String(b.id)])).rows[0];
+        if (!cur) cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND data->>'status'='open' AND COALESCE(data->>'storeId',$2)=$2 ORDER BY (data->>'openedAt')::numeric DESC LIMIT 1", [orgId, storeId])).rows[0];
+        if (!cur) return null;
+        const data = Object.assign({}, cur.data || {});
+        const sinceOpen = Number(data.openedAt) || 0;
+        const sales = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND (data->>'at')::numeric >= $2 AND COALESCE(data->>'storeId',$3)=$3", [orgId, sinceOpen, data.storeId || storeId]))
+          .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
+        let cashSales = 0, gross = 0;
+        for (const s of sales) {
+          gross += Number(s.total) || 0;
+          const pays = (Array.isArray(s.payments) && s.payments.length) ? s.payments : [{ method: s.method || "cash", amount: Number(s.total) || 0 }];
+          for (const p of pays) if (String(p.method || "cash").toLowerCase() === "cash") cashSales += Number(p.amount) || 0;
+        }
+        const float = Number(data.float) || 0;
+        const expected = float + cashSales, variance = counted - expected;
+        Object.assign(data, { status: "closed", closedAt: Date.now(), counted, cashSales, expected, variance, grossSales: gross, closedBy: staffName || data.staffName || "" });
+        const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='shifts' AND id=$2 RETURNING rowver", [orgId, data.id, JSON.stringify(data)]);
+        return { rowver: Number(r.rows[0].rowver), data };
+      });
+      if (!out) return res.status(404).json({ error: "no open shift" });
+      poke(orgId, out.rowver);
+      logActivity(orgId, { actor: staffName || "cashier", action: "shift.close", ref: out.data.id, requestId: req.id, detail: { counted: out.data.counted, expected: out.data.expected, variance: out.data.variance } });
+      return res.json({ ok: true, shift: { id: out.data.id, counted: out.data.counted / 100, expected: out.data.expected / 100, variance: out.data.variance / 100, cashSales: out.data.cashSales / 100 } });
+    }
+    return res.status(400).json({ error: "bad action" });
   }));
   // Back-office cockpit config store: Configurations, Payments, Notifications,
   // System Admin, Online Store and Kitchen-routing toggles all persist here as

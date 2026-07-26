@@ -851,6 +851,15 @@ button[disabled],button:disabled{cursor:not-allowed}
               </div>
             </div>
           </div>
+          <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow);margin-top:14px">
+            <div style="font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;margin-bottom:4px">Cashier shift cash-ups</div>
+            <div style="font-size:11.5px;color:var(--ink2);font-weight:600;margin-bottom:14px">Drawer reconciliation per closed shift — expected = opening float + cash sales.</div>
+            <sc-if value="{{ hasShifts }}" hint-placeholder-val="{{ true }}">
+              <div style="overflow-x:auto"><div style="display:grid;grid-template-columns:1.4fr 1fr .9fr .9fr .9fr .9fr;gap:8px;min-width:560px;font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--ink2);padding-bottom:8px;border-bottom:1px solid var(--line)"><span>CASHIER</span><span>SHIFT</span><span style="text-align:end">FLOAT</span><span style="text-align:end">CASH</span><span style="text-align:end">COUNTED</span><span style="text-align:end">VARIANCE</span></div>
+              <sc-for list="{{ shiftRows }}" as="sh" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:1.4fr 1fr .9fr .9fr .9fr .9fr;gap:8px;min-width:560px;font-size:12.5px;font-weight:700;padding:9px 0;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums"><span style="font-weight:800">{{ sh.staff }}</span><span style="color:var(--ink2)">{{ sh.when }}</span><span style="text-align:end">{{ sh.floatF }}</span><span style="text-align:end">{{ sh.cashF }}</span><span style="text-align:end">{{ sh.countedF }}</span><span style="text-align:end;font-weight:800;color:{{ sh.varC }}">{{ sh.varF }}</span></div></sc-for></div>
+            </sc-if>
+            <sc-if value="{{ noShifts }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:var(--ink2);font-weight:600;padding:6px 0">No shift cash-ups recorded yet. Close a shift on the till to see it here.</div></sc-if>
+          </div>
         </sc-if>
         <sc-if value="{{ repGstView }}" hint-placeholder-val="{{ false }}">
           <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow);max-width:520px">
@@ -2159,6 +2168,8 @@ class Component extends DCLogic {
     const zr=[['Gross sales',f(g.rev)],['Net sales',f(g.rev)],['GST output',f(g.gst||0)],['Orders',me.fi(g.orders)]].map((r,i)=>({k:r[0],v:r[1],big:i===1}));
     const zrPay=[['Cash',f(_pm.cash)],['Card / BML',f(_pm.card)],['Bank transfer',f(_pm.transfer)],['On tab',f(_pm.tab)]].map(r=>({k:r[0],v:r[1]}));
     const gstRows=[['Output tax · sales',f(g.gst||0),false],['Input tax · purchases','− '+f(0),false],['Net GST payable',f(g.gst||0),true]].map(r=>({k:r[0],v:r[1],big:r[2]}));
+    const shiftData=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.shifts))?window.__ksAdmin.shifts:[];
+    const shiftRows=shiftData.map(function(d){var v=Number(d.variance)||0;return {staff:d.staff||'—',when:(d.open||'—')+'–'+(d.close||'—'),floatF:me.fm(d.float||0),cashF:me.fm(d.cashSales||0),countedF:me.fm(d.counted||0),expectedF:me.fm(d.expected||0),varF:(v>=0?'+':'−')+me.fm(Math.abs(v)),varC:Math.abs(v)<0.5?'var(--green)':'var(--red)'};});const hasShifts=shiftRows.length>0;
     const perfCards=[
       {title:'TOP OUTLETS',rows:[['Kashikeyo · Malé',6820,100,'var(--coral)'],['Kashikeyo · Hulhumalé',4210,62,'var(--coral)'],['Kashikeyo · Villimalé',1980,29,'var(--amber)']]},
       {title:'TOP STAFF · SALES',rows:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.topStaff&&window.__ksAdmin.topStaff.length)?window.__ksAdmin.topStaff.map(t=>[t.n,t.rev]):[['Mariyam Didi',3120],['Ahmed Rasheed',2480],['Aminath Shifa',1760]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--green)']).slice(0,4)},
@@ -2398,7 +2409,7 @@ class Component extends DCLogic {
       recvRows,recvRowsAll,recvStats,recvCols,recvStatusOpts,recvEmpty,recvCount,recvQuery:s.recvQuery,onRecvQuery:e=>me.setRecvQuery(e.target.value),onRecvStatus:e=>me.setRecvStatus(e.target.value),clearRecvQuery:()=>me.setRecvQuery(''),
       isCust:A==='cust',custSubTabs:mkSubs('cust',['Profiles','Order History','Credit','Preferences']),cvProfilesView:(s.sub.cust||0)===0,cvOrdersView:(s.sub.cust||0)===1,cvCreditView:(s.sub.cust||0)===2,cvPrefsView:(s.sub.cust||0)===3,custProfiles,custPrefsList,custChips,custOrders,custSelName,custSelSummary,
       isStore:A==='store',storeSubTabs:mkSubs('store',['Web Store','QR Ordering','Promotions','Branding','SEO']),swWebView:stv===0,swQrView:stv===1,swPromoView:stv===2,swBrandView:stv===3,swSeoView:stv===4,outletStores,qrTables,qrCount:String(qrCount),qrLess:()=>me.setQrTables(qrCount-1),qrMore:()=>me.setQrTables(qrCount+1),qrCols:s.vw<640?'1fr 1fr':(s.vw<1024?'repeat(3,1fr)':'repeat(4,1fr)'),promoRows,brandSwatches,seoChecks,seoEdit:()=>me.openSeo(),seoTitle:_seoTitle,seoDesc:_seoDesc,seoUrl:(_qrOrigin?_qrOrigin.replace(/^https?:\/\//,''):'')+'/?s='+(_qrSlug||'store'),dlAllQr:()=>me.copyLink(qrLink(1).replace(/&t=1$/,''),'Store link'),newPromo:()=>me.openPromo(),
-      repSubTabs:mkSubs('reports',['Analytics','Performance','Customers','Z-Report','GST return','P&L']),repAnalytics:sr===0,repPerfView:sr===1,repCustView:sr===2,repZView:sr===3,repGstView:sr===4,repPnlView:sr===5,zr,zrPay,gstRows,
+      repSubTabs:mkSubs('reports',['Analytics','Performance','Customers','Z-Report','GST return','P&L']),repAnalytics:sr===0,repPerfView:sr===1,repCustView:sr===2,repZView:sr===3,repGstView:sr===4,repPnlView:sr===5,zr,zrPay,gstRows,shiftRows,hasShifts,noShifts:!hasShifts,
       pnlReady:!!(s.pnl&&s.pnl.pnl),pnlRangeLbl:(({today:'TODAY',yest:'YESTERDAY',week:'THIS WEEK',month:'THIS MONTH',quarter:'QUARTER',year:'YEAR'})[s.range]||''),
       pnlRevF:me.fm((((s.pnl||{}).pnl||{}).revenue||0)/100),pnlCogsF:me.fm((((s.pnl||{}).pnl||{}).cogs||0)/100),pnlGrossF:me.fm((((s.pnl||{}).pnl||{}).grossProfit||0)/100),pnlGrossPct:String((((s.pnl||{}).pnl||{}).grossMarginPct||0))+'%',pnlFoodPct:String((((s.pnl||{}).pnl||{}).foodCostPct||0))+'%',
       pnlWasteF:me.fm((((s.pnl||{}).pnl||{}).wastage||0)/100),pnlOpexF:me.fm((((s.pnl||{}).pnl||{}).opex||0)/100),pnlNetF:me.fm((((s.pnl||{}).pnl||{}).netProfit||0)/100),pnlNetPct:String((((s.pnl||{}).pnl||{}).netMarginPct||0))+'%',pnlNetNeg:((((s.pnl||{}).pnl||{}).netProfit||0)<0),
