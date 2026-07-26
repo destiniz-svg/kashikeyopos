@@ -435,3 +435,27 @@ DROP POLICY IF EXISTS tenant_isolation ON app_sessions;
 CREATE POLICY tenant_isolation ON app_sessions
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
+-- ── Email OTP for signup verification ──────────────────────────────────────
+-- Global (NOT tenant-scoped): verifies an email before an org exists, so it is
+-- accessed via withSystem, not withOrg. Codes are stored hashed; one active
+-- row per (email, purpose). Cleared on success or expiry. Idempotent.
+CREATE TABLE IF NOT EXISTS otp_codes (
+  email      TEXT NOT NULL,
+  purpose    TEXT NOT NULL DEFAULT 'signup',
+  code_hash  TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts   INT NOT NULL DEFAULT 0,
+  verified   BOOLEAN NOT NULL DEFAULT false,
+  last_sent  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (email, purpose)
+);
+CREATE INDEX IF NOT EXISTS otp_codes_exp ON otp_codes (expires_at);
+
+-- Resumable onboarding: where a freshly-created org sits in the setup wizard.
+--  'welcome' = still owes store profile (name, currency, tax status)
+--  'pin'     = profile done, still owes the admin till PIN (+ optional users)
+--  'done'    = fully set up → straight to the app
+-- Existing orgs default to 'done' so they are unaffected.
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS setup_step TEXT NOT NULL DEFAULT 'done';

@@ -134,7 +134,7 @@ async function ensureAppRole() {
     END $do$;
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
-  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, otp_codes TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
@@ -858,6 +858,38 @@ function hashTillPin(pin) {
   return String(h);
 }
 
+/* ── Transactional email (signup OTP + welcome) ───────────────────────────────
+   Sent through the Resend HTTP API with native fetch — no extra dependency. Set
+   RESEND_API_KEY (+ optional EMAIL_FROM) in Railway to turn it on. Degrades like
+   the OCR/AI features: with no key it reports `configured:false`, and the signup
+   flow surfaces the code in non-production so testing isn't blocked. */
+const EMAIL_FROM = process.env.EMAIL_FROM || "KashikeyoPOS <onboarding@kashikeyopos.com>";
+const emailConfigured = () => !!process.env.RESEND_API_KEY;
+async function sendEmail({ to, subject, html, text }) {
+  if (!emailConfigured()) return { ok: false, configured: false };
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + process.env.RESEND_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, text }),
+    });
+    if (!r.ok) { recordError("sendEmail", new Error("resend " + r.status + " " + (await r.text().catch(() => "")).slice(0, 200))); return { ok: false, configured: true }; }
+    return { ok: true, configured: true };
+  } catch (e) { recordError("sendEmail", e); return { ok: false, configured: true }; }
+}
+/* One-time code helpers. Codes are stored only as a salted SHA-256 hash. */
+const otpHash = (email, code) => crypto.createHash("sha256").update(String(email).toLowerCase() + "|" + String(code) + "|" + SECRET).digest("hex");
+const genOtp = () => String(crypto.randomInt(100000, 1000000));
+const otpEmailHtml = (code) => `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:440px;margin:0 auto;padding:28px 24px;color:#221a12">
+  <div style="font-weight:800;font-size:18px;color:#C7431D;margin-bottom:14px">KashikeyoPOS</div>
+  <p style="font-size:14px;line-height:1.5;margin:0 0 14px">Use this code to verify your email and finish creating your account:</p>
+  <div style="font-size:30px;font-weight:800;letter-spacing:.28em;background:#F7F1E7;border-radius:12px;padding:16px;text-align:center;color:#221a12">${code}</div>
+  <p style="font-size:12.5px;color:#6b6459;line-height:1.5;margin:14px 0 0">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
+</div>`;
+/* Minimal signup-safe password + email validation, reused by the staged flow. */
+const validEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || "").trim());
+const passwordProblem = (p) => (String(p || "").length < 8 ? "Password must be at least 8 characters." : null);
+
 /* Without a seeded "users" entity, the till bundle falls back to its own
    hardcoded demo staff (Abdulla/Shifna/Ahmed) - every fresh signup would
    land on a PIN gate showing three fake employees that aren't theirs,
@@ -963,8 +995,8 @@ async function findOrCreateOAuthOrg({ provider, sub, email, name }) {
     /* onboarded=false: a first-time social sign-in still owes the /welcome
        step (store name, currency, PIN) before the till makes sense. */
     const ins = await client.query(
-      `INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, auth_provider, ${subCol}, registers, onboarded)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,false) RETURNING *`,
+      `INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, auth_provider, ${subCol}, registers, onboarded, setup_step)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,1,false,'welcome') RETURNING *`,
       [id, slug, cleanEmail || `${sub}@${provider}.oauth.kashikeyopos`, placeholderHash, "My Store", String(name || "").slice(0, 100), provider, sub]);
     return ins.rows[0];
   });
@@ -1064,6 +1096,152 @@ app.post("/api/register", wrap(async (req, res) => {
   const result = { token, slug, register: "R1", storeId: DEFAULT_STORE_ID };
   if (seededPin) result.pin = seededPin;
   res.json(result);
+}));
+
+/* ── Staged signup (email + password, verified by an email OTP) ───────────────
+   Step 1 /api/signup/otp emails a 6-digit code; step 2 /api/signup/verify-otp
+   checks it and creates the account with onboarded=false + setup_step='welcome'.
+   The /welcome flow then collects the store profile (name, currency, tax), the
+   admin till PIN, and any extra users. Social sign-ins skip OTP (the provider
+   verified the email) and land on the same /welcome flow. The account is only
+   ever created AFTER the code is verified. */
+app.post("/api/signup/otp", pubThrottle(6, "otp"), wrap(async (req, res) => {
+  const email = String((req.body || {}).email || "").trim().toLowerCase();
+  const pw = String((req.body || {}).password || "");
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  const pwErr = passwordProblem(pw); if (pwErr) return res.status(400).json({ error: pwErr });
+  const taken = await withSystem((c) => c.query("SELECT 1 FROM orgs WHERE lower(email)=$1 LIMIT 1", [email]));
+  if (taken.rowCount) return res.status(409).json({ error: "That email already has an account — sign in instead." });
+  const cur = await withSystem((c) => c.query("SELECT last_sent FROM otp_codes WHERE email=$1 AND purpose='signup'", [email]));
+  if (cur.rowCount && (Date.now() - new Date(cur.rows[0].last_sent).getTime()) < 45000) return res.status(429).json({ error: "Please wait a moment before requesting another code." });
+  const code = genOtp();
+  await withSystem((c) => c.query(
+    `INSERT INTO otp_codes (email, purpose, code_hash, expires_at, attempts, verified, last_sent, created_at)
+     VALUES ($1,'signup',$2, now() + interval '10 minutes', 0, false, now(), now())
+     ON CONFLICT (email, purpose) DO UPDATE SET code_hash=$2, expires_at=now() + interval '10 minutes', attempts=0, verified=false, last_sent=now()`,
+    [email, otpHash(email, code)]));
+  const mail = await sendEmail({ to: email, subject: "Your KashikeyoPOS verification code", html: otpEmailHtml(code), text: "Your KashikeyoPOS verification code is " + code + " (valid for 10 minutes)." });
+  const out = { ok: true, configured: mail.configured };
+  if (!mail.ok && process.env.NODE_ENV !== "production") out.devCode = code; // lets testing proceed without a mail provider
+  res.json(out);
+}));
+
+app.post("/api/signup/verify-otp", pubThrottle(12, "otpv"), wrap(async (req, res) => {
+  const email = String((req.body || {}).email || "").trim().toLowerCase();
+  const code = String((req.body || {}).code || "").trim();
+  const pw = String((req.body || {}).password || "");
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  const pwErr = passwordProblem(pw); if (pwErr) return res.status(400).json({ error: pwErr });
+  const row = await withSystem((c) => c.query("SELECT code_hash, expires_at, attempts FROM otp_codes WHERE email=$1 AND purpose='signup'", [email]));
+  if (!row.rowCount) return res.status(400).json({ error: "Request a code first." });
+  const r = row.rows[0];
+  if (new Date(r.expires_at).getTime() < Date.now()) return res.status(400).json({ error: "That code has expired — request a new one." });
+  if (r.attempts >= 6) return res.status(429).json({ error: "Too many attempts — request a new code." });
+  if (otpHash(email, code) !== r.code_hash) {
+    await withSystem((c) => c.query("UPDATE otp_codes SET attempts=attempts+1 WHERE email=$1 AND purpose='signup'", [email]));
+    return res.status(400).json({ error: "Incorrect code." });
+  }
+  const taken = await withSystem((c) => c.query("SELECT 1 FROM orgs WHERE lower(email)=$1 LIMIT 1", [email]));
+  if (taken.rowCount) return res.status(409).json({ error: "That email already has an account — sign in instead." });
+  const slug = await withSystem((c) => uniqueSlug(c, slugify(email.split("@")[0])));
+  const id = uid();
+  await withSystem((c) => c.query(
+    `INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, phone, registers, onboarded, setup_step)
+     VALUES ($1,$2,$3,$4,'My Store','','',1,false,'welcome')`,
+    [id, slug, email, bcrypt.hashSync(pw, 10)]));
+  await ensureDefaultStore(id, "My Store");
+  await withOrg(id, (c) => c.query(
+    "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) ON CONFLICT (org_id, kind, id) DO NOTHING",
+    [id, JSON.stringify({ storeName: "My Store", gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR", footer: "" })]));
+  try { await ensureDefaultMenu(id); } catch (e) { console.warn("default-menu seed skipped:", e.message); }
+  await withSystem((c) => c.query("DELETE FROM otp_codes WHERE email=$1 AND purpose='signup'", [email]));
+  const token = sign(id, "R1", DEFAULT_STORE_ID);
+  setAppCookieTracked(req, res, token, { orgId: id, role: "owner", register: "R1", name: email });
+  res.json({ ok: true, token, slug, next: "/welcome" });
+}));
+
+/* Onboarding state for the /welcome wizard: which stage to show + prefills. */
+app.get("/api/onboard/state", wrap(async (req, res) => {
+  const orgId = await resolveAppSession(req);
+  if (!orgId) return res.status(401).json({ error: "sign in required" });
+  const o = (await withOrg(orgId, (c) => c.query("SELECT store_name, owner_name, email, phone, onboarded, setup_step FROM orgs WHERE id=$1", [orgId]))).rows[0] || {};
+  const set = ((await withOrg(orgId, (c) => c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [orgId]))).rows[0] || {}).data || {};
+  const gstBp = Number(set.gstBp);
+  const taxStatus = gstBp === 1700 ? "tgst" : gstBp === 800 ? "ggst" : (set.gstBp != null ? "none" : "");
+  res.json({ ok: true,
+    setupStep: o.onboarded ? "done" : (o.setup_step || "welcome"),
+    email: o.email || "", storeName: (o.store_name && o.store_name !== "My Store") ? o.store_name : "",
+    ownerName: o.owner_name || "", phone: o.phone || "",
+    currency: set.currency || "MVR", taxStatus, emailConfigured: emailConfigured() });
+}));
+
+/* Welcome stage 1: store profile. Store name + currency + tax status mandatory;
+   owner name & phone optional (editable later in the admin cockpit). */
+app.post("/api/onboard/profile", wrap(async (req, res) => {
+  const orgId = await resolveAppSession(req);
+  if (!orgId) return res.status(401).json({ error: "sign in required" });
+  const b = req.body || {};
+  const storeName = String(b.storeName || "").trim().slice(0, 80);
+  const ownerName = String(b.ownerName || "").trim().slice(0, 100);
+  const phone = String(b.phone || "").trim().slice(0, 30);
+  const currency = b.currency === "USD" ? "USD" : "MVR";
+  const taxMap = { none: 0, ggst: 800, tgst: 1700 };
+  const taxStatus = String(b.taxStatus || "");
+  if (!storeName) return res.status(400).json({ error: "Give your store a name." });
+  if (!Object.prototype.hasOwnProperty.call(taxMap, taxStatus)) return res.status(400).json({ error: "Choose your tax status." });
+  const gstBp = taxMap[taxStatus];
+  await withOrg(orgId, async (c) => {
+    await c.query("UPDATE orgs SET store_name=$2, owner_name=COALESCE(NULLIF($3,''),owner_name), phone=COALESCE(NULLIF($4,''),phone), setup_step=CASE WHEN setup_step='welcome' THEN 'pin' ELSE setup_step END WHERE id=$1",
+      [orgId, storeName, ownerName, phone]);
+    await c.query("UPDATE stores SET name=$3 WHERE org_id=$1 AND id=$2", [orgId, DEFAULT_STORE_ID, storeName]);
+    await c.query(
+      `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
+       ON CONFLICT (org_id, kind, id) DO UPDATE SET data = entities.data || $3::jsonb, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
+      [orgId, JSON.stringify({ storeName, currency, gstBp, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, footer: "" }), JSON.stringify({ storeName, currency, gstBp })]);
+  });
+  res.json({ ok: true, next: "pin" });
+}));
+
+/* Welcome stage 2: the admin till PIN (mandatory) + any extra users (optional).
+   Completes onboarding. PINs are validated 4-digit, non-trivial, and unique. */
+app.post("/api/onboard/finish", wrap(async (req, res) => {
+  const orgId = await resolveAppSession(req);
+  if (!orgId) return res.status(401).json({ error: "sign in required" });
+  const b = req.body || {};
+  const pin = String(b.pin || "").trim();
+  if (!/^\d{4}$/.test(pin)) return res.status(400).json({ error: "Set a 4-digit admin PIN." });
+  if (/^(\d)\1{3}$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) return res.status(400).json({ error: "Choose a less predictable PIN (avoid 1234, 0000, 1111…)." });
+  const ROLES = { admin: 1, manager: 1, cashier: 1, waiter: 1, kitchen: 1, rider: 1 };
+  const raw = Array.isArray(b.users) ? b.users.slice(0, 20) : [];
+  const users = []; const pins = new Set([pin]);
+  for (const u of raw) {
+    const name = String((u && u.name) || "").trim().slice(0, 60);
+    if (!name) continue;
+    const role = String((u && u.role) || "cashier").toLowerCase();
+    const upin = String((u && u.pin) || "").trim();
+    if (!ROLES[role]) return res.status(400).json({ error: "Pick a valid role for " + name + "." });
+    if (!/^\d{4}$/.test(upin)) return res.status(400).json({ error: "Give " + name + " a 4-digit PIN." });
+    if (pins.has(upin)) return res.status(400).json({ error: "PINs must be unique — " + name + "'s PIN is already used." });
+    pins.add(upin); users.push({ name, role, pin: upin });
+  }
+  await withOrg(orgId, async (c) => {
+    const org = (await c.query("SELECT owner_name, email FROM orgs WHERE id=$1", [orgId])).rows[0] || {};
+    const ownerName = (org.owner_name && org.owner_name.trim()) || (org.email ? org.email.split("@")[0] : "Owner");
+    const existing = await c.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'role'='owner' ORDER BY updated_at ASC LIMIT 1", [orgId]);
+    if (existing.rowCount) {
+      const d = existing.rows[0].data || {}; d.pin = hashTillPin(pin); if (!d.name) d.name = ownerName; d.role = "owner";
+      await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='users' AND id=$2", [orgId, existing.rows[0].id, JSON.stringify(d)]);
+    } else {
+      const d = { id: uid(), name: ownerName, role: "owner", pin: hashTillPin(pin) };
+      await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'users',$2,$3)", [orgId, d.id, JSON.stringify(d)]);
+    }
+    for (const u of users) {
+      const d = { id: uid(), name: u.name, role: u.role, pin: hashTillPin(u.pin) };
+      await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'users',$2,$3)", [orgId, d.id, JSON.stringify(d)]);
+    }
+    await c.query("UPDATE orgs SET onboarded=true, setup_step='done' WHERE id=$1", [orgId]);
+  });
+  res.json({ ok: true, next: "/app" });
 }));
 
 app.post("/api/login", wrap(async (req, res) => {

@@ -14,126 +14,65 @@
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: var(--app); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    padding: 24px;
-  }
-  .card {
-    width: 100%; max-width: 440px; background: var(--panel); border: 1px solid var(--border);
-    border-radius: 16px; padding: 32px 28px; box-shadow: 0 8px 30px rgba(42,36,30,.08);
-  }
-  .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
-  .logo-img { display: block; height: 38px; width: auto; }
-  .back { display: inline-block; margin-bottom: 18px; color: var(--sub); text-decoration: none; font-size: 13px; }
-  .back:hover { color: var(--text); }
-
-  .steps { display: flex; gap: 6px; margin-bottom: 24px; }
-  .steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--border); }
-  .steps i.on { background: var(--primary); }
-
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  p.sub { color: var(--sub); font-size: 14px; margin: 0 0 22px; }
-  label { display: block; font-size: 13px; color: var(--sub); margin: 14px 0 6px; }
-  input {
-    width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border);
-    background: var(--input); color: var(--text); font-size: 15px; outline: none;
-  }
-  input:focus { border-color: var(--primary); }
-  .row { display: flex; gap: 12px; }
-  .row > div { flex: 1; }
-  .actions { display: flex; gap: 10px; margin-top: 26px; }
-  button {
-    flex: 1; padding: 12px; border-radius: 10px; border: none;
-    font-size: 15px; font-weight: 600; cursor: pointer;
-  }
-  button.primary { background: var(--primary); color: #fff; }
-  button.primary:hover { background: var(--primary-hov); }
-  button.primary:disabled { opacity: .6; cursor: default; }
-  button.ghost { background: var(--btn); color: var(--text); flex: 0 0 auto; padding: 12px 18px; }
-  button.ghost:hover { background: var(--btn-hov); }
-  .error {
-    display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px;
-    background: #FBEAE4; color: #A3391F; font-size: 13px;
-  }
-  .hint { font-size: 12px; color: var(--faint); margin-top: 6px; }
-  .step { display: none; }
-  .step.on { display: block; }
-  .review dl { margin: 4px 0 0; }
-  .review dt { font-size: 12px; color: var(--sub); margin-top: 12px; }
-  .review dd { margin: 2px 0 0; font-size: 15px; }
-  .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
-  .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
-  .foot a:hover { text-decoration: underline; }
-
-  .currency-pick { display: flex; gap: 10px; margin-top: 6px; }
-  .currency-pick label { flex: 1; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; font-size: 14px; transition: border-color .15s; }
-  .currency-pick input[type=radio] { width: auto; accent-color: var(--primary); }
-  .currency-pick label:has(input:checked) { border-color: var(--primary); background: #FBF7EF; }
-  .currency-pick .flag { font-size: 20px; line-height: 1; }
-  .currency-pick .cname { font-weight: 600; }
-  .currency-pick .csub { font-size: 11px; color: var(--sub); }
-
-  #oauthBox { display: none; gap: 10px; margin-bottom: 4px; }
-  #googleBtn { display: flex; justify-content: center; }
-  #googleBtn > div { width: 100% !important; }
-  .oauth-btn {
-    display: none; align-items: center; justify-content: center; gap: 8px; width: 100%;
-    padding: 10px; border-radius: 999px; border: 1px solid #000; background: #000; color: #fff;
-    font-size: 14px; font-weight: 600; cursor: pointer; flex: none;
-  }
-  .oauth-btn:hover { background: #1a1a1a; }
-  .oauth-btn svg { width: 16px; height: 16px; flex: none; }
-  .divider { display: none; align-items: center; gap: 10px; margin: 18px 0; color: var(--faint); font-size: 12px; }
-  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
-
-  /* Glass treatment — match the till / back-office front-end: warm gradient
-     canvas with a frosted, blurred card, gradient primary button, frosted
-     ghost button and a soft input focus ring. */
-  body {
     background:
       radial-gradient(1100px 620px at 12% -8%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 58%),
       radial-gradient(950px 520px at 108% 4%, color-mix(in srgb, var(--primary) 9%, transparent), transparent 55%),
       var(--app);
-    background-attachment: fixed;
+    background-attachment: fixed; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 24px;
   }
   .card {
+    width: 100%; max-width: 440px; padding: 32px 28px;
     background: color-mix(in srgb, var(--panel) 72%, transparent);
-    -webkit-backdrop-filter: blur(22px) saturate(1.4);
-    backdrop-filter: blur(22px) saturate(1.4);
-    border-color: color-mix(in srgb, var(--border) 60%, transparent);
-    border-radius: 20px;
+    -webkit-backdrop-filter: blur(22px) saturate(1.4); backdrop-filter: blur(22px) saturate(1.4);
+    border: 1px solid color-mix(in srgb, var(--border) 60%, transparent); border-radius: 20px;
     box-shadow: 0 1px 2px rgba(38,34,28,.05), 0 24px 56px rgba(38,34,28,.12);
   }
+  .back { display: inline-block; margin-bottom: 16px; color: var(--sub); text-decoration: none; font-size: 13px; }
+  .back:hover { color: var(--text); }
+  .logo-img { display: block; height: 36px; width: auto; margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing:-.01em; }
+  p.sub { color: var(--sub); font-size: 14px; margin: 0 0 20px; line-height:1.45; }
+  label { display: block; font-size: 12.5px; font-weight:600; color: var(--sub); margin: 14px 0 6px; }
   input {
-    background: color-mix(in srgb, var(--input) 82%, transparent);
-    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--input) 82%, transparent); color: var(--text); font-size: 15px; outline: none;
     transition: border-color .15s, box-shadow .15s;
   }
-  input:focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
-  button { transition: background .15s, box-shadow .15s, transform .08s; }
+  input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent); }
+  .row { display: flex; gap: 12px; } .row > div { flex: 1; }
   button.primary {
-    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 90%, #fff 10%), var(--primary));
+    width: 100%; margin-top: 22px; padding: 13px; border-radius: 10px; border: none; font-size: 15px; font-weight: 700; cursor: pointer;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 90%, #fff 10%), var(--primary)); color: #fff;
     box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 32%, transparent);
   }
-  button.primary:hover { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 94%, #fff 6%), var(--primary-hov)); box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 40%, transparent); }
-  button.primary:active { transform: translateY(1px); }
-  button.ghost {
-    background: color-mix(in srgb, var(--panel) 60%, transparent);
-    -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
-    border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
-  }
-  button.ghost:hover { background: color-mix(in srgb, var(--panel2, var(--btn)) 82%, transparent); border-color: color-mix(in srgb, var(--primary) 42%, transparent); color: var(--primary); }
-  .currency-pick label { background: color-mix(in srgb, var(--panel) 55%, transparent); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
-  .currency-pick label:has(input:checked) { background: color-mix(in srgb, var(--primary) 8%, var(--panel)); }
+  button.primary:hover { filter:brightness(1.04); }
+  button.primary:disabled { opacity: .6; cursor: default; }
+  button.linkbtn { background:none; border:none; color:var(--primary); font-size:13px; font-weight:600; cursor:pointer; padding:0; }
+  .error { display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px; background: #FBEAE4; color: #A3391F; font-size: 13px; }
+  .note { display:none; margin-top:12px; padding:9px 12px; border-radius:8px; background:#EEF6EE; color:#2C6E3A; font-size:12.5px; }
+  .hint { font-size: 12px; color: var(--faint); margin-top: 6px; line-height:1.4; }
+  .terms { display:flex; align-items:flex-start; gap:8px; margin-top:16px; font-size:12.5px; color:var(--sub); }
+  .terms input { width:auto; margin-top:2px; accent-color:var(--primary); }
+  .terms a { color:var(--primary); text-decoration:none; }
+  .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
+  .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  #oauthBox { display: none; flex-direction:column; gap: 10px; margin-bottom: 4px; }
+  #googleBtn { display: flex; justify-content: center; } #googleBtn > div { width: 100% !important; }
+  .oauth-btn { display: none; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px; border-radius: 999px; border: 1px solid #000; background: #000; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .oauth-btn:hover { background: #1a1a1a; } .oauth-btn svg { width: 16px; height: 16px; flex: none; }
+  .divider { display: none; align-items: center; gap: 10px; margin: 18px 0; color: var(--faint); font-size: 12px; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+  .otpbox input { text-align:center; font-size:24px; letter-spacing:.4em; font-weight:700; }
+  .hide { display:none; }
 </style>
 </head>
 <body>
   <div class="card">
     <a class="back" href="/">&larr; kashikeyopos.com</a>
-    <div class="logo">
-      <img class="logo-img" src="/logo.png" alt="KashikeyoPOS" />
-    </div>
+    <img class="logo-img" src="/logo.png" alt="KashikeyoPOS" onerror="this.style.display='none'" />
 
+    <!-- Social sign-up -->
     <div id="oauthBox">
       <div id="googleBtn"></div>
       <button type="button" id="appleBtn" class="oauth-btn">
@@ -141,82 +80,35 @@
         Continue with Apple
       </button>
     </div>
-    <div class="divider" id="oauthDivider"><span>or set up with an email</span></div>
+    <div class="divider" id="oauthDivider"><span>or sign up with email</span></div>
 
-    <div class="steps"><i class="on" data-s="1"></i><i data-s="2"></i><i data-s="3"></i></div>
-
-    <form id="f">
-      <div class="step on" data-step="1">
-        <h1>Tell us about your outlet</h1>
-        <p class="sub">Step 1 of 3 — store details</p>
-        <label for="storeName">Store / outlet name</label>
-        <input id="storeName" required placeholder="e.g. Island Zone Cafe" />
-        <label>Store currency</label>
-        <div class="currency-pick">
-          <label>
-            <input type="radio" name="currency" id="currMVR" value="MVR" checked />
-            <span class="flag">🇲🇻</span>
-            <span><span class="cname">MVR</span><br><span class="csub">Maldivian Rufiyaa</span></span>
-          </label>
-          <label>
-            <input type="radio" name="currency" id="currUSD" value="USD" />
-            <span class="flag">🇺🇸</span>
-            <span><span class="cname">USD</span><br><span class="csub">US Dollar</span></span>
-          </label>
-        </div>
-        <div class="error" id="err1"></div>
-        <div class="actions">
-          <button type="button" class="primary" data-next>Continue</button>
-        </div>
+    <!-- Stage 1: email + password -->
+    <form id="emailForm">
+      <h1>Create your account</h1>
+      <p class="sub">We'll email you a code to verify your address, then help you set up your store.</p>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required placeholder="you@business.mv" />
+      <div class="row">
+        <div><label for="password">Password</label><input id="password" type="password" autocomplete="new-password" minlength="8" required /></div>
+        <div><label for="password2">Confirm</label><input id="password2" type="password" autocomplete="new-password" minlength="8" required /></div>
       </div>
+      <div class="hint">At least 8 characters.</div>
+      <label class="terms"><input type="checkbox" id="terms" /> <span>I agree to the <a href="/terms" target="_blank">Terms</a> &amp; <a href="/privacy" target="_blank">Privacy Policy</a>.</span></label>
+      <div class="error" id="err1"></div>
+      <button class="primary" type="submit" id="sendBtn">Send verification code</button>
+    </form>
 
-      <div class="step" data-step="2">
-        <h1>Create your admin account</h1>
-        <p class="sub">Step 2 of 3 — you'll manage everything from here</p>
-        <label for="ownerName">Your name</label>
-        <input id="ownerName" required placeholder="e.g. Aisha Naeem" />
-        <label for="phone">Phone number</label>
-        <input id="phone" type="tel" placeholder="e.g. 960 7XXXXXX" />
-        <label for="email">Email</label>
-        <input id="email" type="email" autocomplete="email" required />
-        <div class="row">
-          <div>
-            <label for="password">Password</label>
-            <input id="password" type="password" autocomplete="new-password" required minlength="8" />
-          </div>
-          <div>
-            <label for="password2">Confirm password</label>
-            <input id="password2" type="password" autocomplete="new-password" required minlength="8" />
-          </div>
-        </div>
-        <div class="hint">At least 8 characters.</div>
-        <label for="pin">Till PIN (4 digits)</label>
-        <input id="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required placeholder="e.g. 4821" />
-        <div class="hint">Used to sign in at the till counter itself - quick to type between staff during a shift. You can add more staff PINs later.</div>
-        <div class="error" id="err2"></div>
-        <div class="actions">
-          <button type="button" class="ghost" data-back>Back</button>
-          <button type="button" class="primary" data-next>Continue</button>
-        </div>
-      </div>
-
-      <div class="step" data-step="3">
-        <h1>Review &amp; confirm</h1>
-        <p class="sub">Step 3 of 3 — this creates your workspace</p>
-        <div class="review">
-          <dl>
-            <dt>Store</dt><dd id="rvStore"></dd>
-            <dt>Currency</dt><dd id="rvCurrency"></dd>
-            <dt>Admin</dt><dd id="rvOwner"></dd>
-            <dt>Email</dt><dd id="rvEmail"></dd>
-            <dt>Till PIN</dt><dd id="rvPin"></dd>
-          </dl>
-        </div>
-        <div class="error" id="err3"></div>
-        <div class="actions">
-          <button type="button" class="ghost" data-back>Back</button>
-          <button id="submit" type="submit" class="primary">Create my store</button>
-        </div>
+    <!-- Stage 2: OTP verify -->
+    <form id="otpForm" class="hide">
+      <h1>Check your email 📩</h1>
+      <p class="sub">We sent a 6-digit code to <b id="otpEmail"></b>. Enter it below.</p>
+      <div class="note" id="devNote"></div>
+      <div class="otpbox"><label for="code">Verification code</label><input id="code" inputmode="numeric" maxlength="6" placeholder="••••••" autocomplete="one-time-code" /></div>
+      <div class="error" id="err2"></div>
+      <button class="primary" type="submit" id="verifyBtn">Verify &amp; continue</button>
+      <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+        <button type="button" class="linkbtn" id="resend">Resend code</button>
+        <button type="button" class="linkbtn" id="changeEmail" style="color:var(--sub)">Change email</button>
       </div>
     </form>
 
@@ -224,97 +116,63 @@
   </div>
   <script src="/oauth.js"></script>
   <script>
-    (function () {
-      // "Already signed in?" is decided server-side by the session cookie
-      // (redirectIfAppSession on GET /signup), never by a possibly-stale
-      // localStorage token - that mismatch caused a /signup->/app->/login loop.
-      window.KashikeyoOAuth.init({
-        boxId: "oauthBox", googleId: "googleBtn", appleId: "appleBtn", dividerId: "oauthDivider",
-        onError: function (msg) { var e = document.getElementById("err1"); e.textContent = msg; e.style.display = "block"; },
-      });
+  (function () {
+    function $(id){ return document.getElementById(id); }
+    function showErr(id,msg){ var e=$(id); e.textContent=msg; e.style.display="block"; }
+    function hideErr(id){ $(id).style.display="none"; }
+    var email = "", password = "";
 
-      var state = 1;
-      var steps = document.querySelectorAll(".step");
-      var dots = document.querySelectorAll(".steps i");
-      function show(n) {
-        state = n;
-        steps.forEach(function (el) { el.classList.toggle("on", Number(el.dataset.step) === n); });
-        dots.forEach(function (el) { el.classList.toggle("on", Number(el.dataset.s) <= n); });
-      }
-      function errFor(n) { return document.getElementById("err" + n); }
-      function showErr(n, msg) { var e = errFor(n); e.textContent = msg; e.style.display = "block"; }
-      function clearErr(n) { var e = errFor(n); e.style.display = "none"; }
+    if (window.KashikeyoOAuth) window.KashikeyoOAuth.init({
+      boxId: "oauthBox", googleId: "googleBtn", appleId: "appleBtn", dividerId: "oauthDivider",
+      onError: function (msg) { showErr("err1", msg); },
+    });
 
-      function validateStep1() {
-        clearErr(1);
-        if (!document.getElementById("storeName").value.trim()) { showErr(1, "Enter your store name"); return false; }
-        return true;
-      }
-      function validateStep2() {
-        clearErr(2);
-        if (!document.getElementById("ownerName").value.trim()) { showErr(2, "Enter your name"); return false; }
-        var email = document.getElementById("email").value.trim();
-        if (!email || !/.+@.+\..+/.test(email)) { showErr(2, "Enter a valid email"); return false; }
-        var pass = document.getElementById("password").value;
-        if (pass.length < 8) { showErr(2, "Password must be at least 8 characters"); return false; }
-        if (pass !== document.getElementById("password2").value) { showErr(2, "Passwords don't match"); return false; }
-        if (!/^\d{4}$/.test(document.getElementById("pin").value.trim())) { showErr(2, "Till PIN must be exactly 4 digits"); return false; }
-        return true;
-      }
+    $("emailForm").addEventListener("submit", function (e) {
+      e.preventDefault(); hideErr("err1");
+      email = $("email").value.trim().toLowerCase();
+      password = $("password").value;
+      if (!/.+@.+\..+/.test(email)) return showErr("err1", "Enter a valid email.");
+      if (password.length < 8) return showErr("err1", "Password must be at least 8 characters.");
+      if (password !== $("password2").value) return showErr("err1", "Passwords don't match.");
+      if (!$("terms").checked) return showErr("err1", "Please accept the Terms & Privacy Policy.");
+      var btn = $("sendBtn"); btn.disabled = true; btn.textContent = "Sending…";
+      fetch("/api/signup/otp", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email: email, password: password }) })
+        .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {ok:r.ok, j:j}; }); })
+        .then(function(x){
+          btn.disabled = false; btn.textContent = "Send verification code";
+          if (!x.ok) return showErr("err1", x.j.error || "Could not send a code.");
+          $("otpEmail").textContent = email;
+          $("emailForm").classList.add("hide"); $("otpForm").classList.remove("hide"); $("oauthBox").style.display="none"; $("oauthDivider").style.display="none";
+          if (x.j.devCode) { $("devNote").textContent = "Dev mode (email not configured): your code is " + x.j.devCode; $("devNote").style.display="block"; $("code").value = x.j.devCode; }
+          else if (x.j.configured === false) { $("devNote").textContent = "Email delivery isn't set up on this server yet — ask an admin to add an email key."; $("devNote").style.display="block"; }
+          $("code").focus();
+        })
+        .catch(function(){ btn.disabled=false; btn.textContent="Send verification code"; showErr("err1","Network error — try again."); });
+    });
 
-      document.querySelectorAll("[data-next]").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          if (state === 1 && !validateStep1()) return;
-          if (state === 2 && !validateStep2()) return;
-          if (state === 2) {
-            document.getElementById("rvStore").textContent = document.getElementById("storeName").value.trim();
-            var selCur = document.querySelector('input[name="currency"]:checked');
-            var curVal = selCur ? selCur.value : "MVR";
-            document.getElementById("rvCurrency").textContent = curVal === "USD" ? "USD — US Dollar" : "MVR — Maldivian Rufiyaa";
-            document.getElementById("rvOwner").textContent = document.getElementById("ownerName").value.trim();
-            document.getElementById("rvEmail").textContent = document.getElementById("email").value.trim();
-            document.getElementById("rvPin").textContent = document.getElementById("pin").value.trim();
-          }
-          show(state + 1);
-        });
-      });
-      document.querySelectorAll("[data-back]").forEach(function (btn) {
-        btn.addEventListener("click", function () { show(state - 1); });
-      });
+    $("otpForm").addEventListener("submit", function (e) {
+      e.preventDefault(); hideErr("err2");
+      var code = $("code").value.trim();
+      if (!/^\d{6}$/.test(code)) return showErr("err2", "Enter the 6-digit code.");
+      var btn = $("verifyBtn"); btn.disabled = true; btn.textContent = "Verifying…";
+      fetch("/api/signup/verify-otp", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email: email, password: password, code: code }) })
+        .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {ok:r.ok, j:j}; }); })
+        .then(function(x){
+          if (!x.ok) { btn.disabled=false; btn.textContent="Verify & continue"; return showErr("err2", x.j.error || "Incorrect code."); }
+          try { localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url:"", token:x.j.token, slug:x.j.slug, register:"R1" })); } catch(e){}
+          location.href = x.j.next || "/welcome";
+        })
+        .catch(function(){ btn.disabled=false; btn.textContent="Verify & continue"; showErr("err2","Network error — try again."); });
+    });
 
-      document.getElementById("f").addEventListener("submit", async function (e) {
-        e.preventDefault();
-        clearErr(3);
-        var btn = document.getElementById("submit");
-        btn.disabled = true;
-        btn.textContent = "Creating your store…";
-        try {
-          var chosenCur = (document.querySelector('input[name="currency"]:checked') || {}).value || "MVR";
-          var res = await fetch("/api/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              storeName: document.getElementById("storeName").value.trim(),
-              ownerName: document.getElementById("ownerName").value.trim(),
-              phone: document.getElementById("phone").value.trim(),
-              email: document.getElementById("email").value.trim(),
-              password: document.getElementById("password").value,
-              pin: document.getElementById("pin").value.trim(),
-              currency: chosenCur,
-            }),
-          });
-          var data = await res.json().catch(function () { return {}; });
-          if (!res.ok) throw new Error(data.error || "Couldn't create your store");
-          localStorage.setItem("kashikeyo-cloud", JSON.stringify({ url: "", token: data.token, slug: data.slug, register: data.register }));
-          if (data.pin) alert("Your till PIN is " + data.pin + " - you'll use this to sign in at the till counter. You can change it anytime from Staff settings.");
-          location.href = "/app";
-        } catch (err) {
-          showErr(3, err.message || "Something went wrong — please try again");
-          btn.disabled = false;
-          btn.textContent = "Create my store";
-        }
-      });
-    })();
+    $("resend").addEventListener("click", function(){
+      hideErr("err2");
+      fetch("/api/signup/otp", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ email: email, password: password }) })
+        .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {ok:r.ok, j:j}; }); })
+        .then(function(x){ if(!x.ok) return showErr("err2", x.j.error||"Could not resend."); if(x.j.devCode){ $("devNote").textContent="Dev mode: your code is "+x.j.devCode; $("devNote").style.display="block"; $("code").value=x.j.devCode; } $("devNote").scrollIntoView&&0; });
+    });
+    $("changeEmail").addEventListener("click", function(){ $("otpForm").classList.add("hide"); $("emailForm").classList.remove("hide"); $("oauthBox").style.display="flex"; $("oauthDivider").style.display="flex"; });
+  })();
   </script>
 </body>
 </html>
