@@ -1624,28 +1624,22 @@ class Component extends DCLogic {
     };
     this.UP='<svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 8V2M5 2L2.5 4.5M5 2l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     this.DN='<svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 2v6M5 8L2.5 5.5M5 8l2.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    /* Empty by default — the backend overrides today via window.__ksAdmin.dash
+       and every range via window.__ksAdmin.reports (real revenue, orders, GP,
+       basket, the hourly/day sparkline `rc`, payMix, top items and deltas `d`).
+       A brand-new store with no sales therefore shows honest zeros, not demo. */
+    const _emptyRange=(word,xl)=>({word:word,rev:0,orders:0,gpVal:0,gpPct:'—',aov:0,d:['—','—','—','—'],items:0,basket:'—',rc:[],xl:xl,peakN:''});
     this.DATA={
-      today:{word:'day',rev:6820.50,orders:74,gpVal:2351.10,gpPct:'34.5%',aov:92.16,d:['+8.2%','+11.0%','+2.4%','−1.1%'],items:284,basket:'3.8',
-        rc:[8,12,10,16,22,30,52,74,60,44,38,54,90,120,96,70,58,72,110,150,132,88,54,30],xl:['9a','12p','3p','6p','9p','12a'],peakN:'Busiest 6–9pm'},
-      yest:{word:'day',rev:6110.00,orders:66,gpVal:2088.00,gpPct:'34.2%',aov:92.58,d:['+3.1%','+4.0%','+1.2%','−0.4%'],items:255,basket:'3.9',
-        rc:[6,10,14,12,18,26,44,66,70,50,40,48,84,104,88,66,52,64,96,128,120,80,50,26],xl:['9a','12p','3p','6p','9p','12a'],peakN:'Busiest 6–9pm'},
-      week:{word:'week',rev:38940.25,orders:452,gpVal:13411.00,gpPct:'34.4%',aov:86.15,d:['+9.5%','+7.7%','+3.0%','+1.6%'],items:1786,basket:'3.9',
-        rc:[42,48,60,90,74,52,44,58,88,150,120,66,58,72,110,168,140,80,54,40,70,132,96,50,44,88],xl:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],peakN:'Fri & Sat lead'},
-      month:{word:'month',rev:162380.00,orders:1894,gpVal:55686.00,gpPct:'34.3%',aov:85.73,d:['+12.1%','+10.4%','+2.8%','+1.5%'],items:7420,basket:'3.9',
-        rc:[60,72,88,66,54,90,140,110,70,58,96,160,130,80,60,74,120,180,150,90,64,50,88,150,120,70,58,92,140,112],xl:['1','6','11','16','21','26','30'],peakN:'Weekends peak'},
-      quarter:{word:'quarter',rev:486120.00,orders:5640,gpVal:166740.00,gpPct:'34.3%',aov:86.19,d:['+14.6%','+12.2%','+3.4%','+2.0%'],items:22180,basket:'3.9',
-        rc:[120,140,110,90,150,200,160,120,100,170,230,180,130,110,180,250,200,140,120,190,150,110,170,220],xl:['Jul','Aug','Sep'],peakN:'Ramadan uplift'},
-      year:{word:'year',rev:1924610.00,orders:22140,gpVal:660140.00,gpPct:'34.3%',aov:86.93,d:['+18.4%','+16.1%','+3.9%','+2.2%'],items:87200,basket:'3.9',
-        rc:[90,110,140,120,100,160,210,180,150,240,300,260,180,150,130,190,250,220,170,150,280,340,300,210,170,140,200,260,230,190,320,380],xl:['Jan','Mar','May','Jul','Sep','Nov'],peakN:'Dec & Ramadan spikes'}
+      today:_emptyRange('day',['9a','12p','3p','6p','9p','12a']),
+      yest:_emptyRange('day',['9a','12p','3p','6p','9p','12a']),
+      week:_emptyRange('week',['Mon','Tue','Wed','Thu','Fri','Sat','Sun']),
+      month:_emptyRange('month',['1','6','11','16','21','26','30']),
+      quarter:_emptyRange('quarter',['Jul','Aug','Sep']),
+      year:_emptyRange('year',['Jan','Mar','May','Jul','Sep','Nov'])
     };
     if(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.dash){try{Object.assign(this.DATA.today,window.__ksAdmin.dash);}catch(e){}}
     if(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.reports){try{var _R=window.__ksAdmin.reports;for(var _rk in _R){if(this.DATA[_rk])Object.assign(this.DATA[_rk],_R[_rk]);}}catch(e){}}
-    this.MENU=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.menuAll&&window.__ksAdmin.menuAll.length)?window.__ksAdmin.menuAll:(typeof window!=='undefined'&&window.__ksMenu&&window.__ksMenu.length)?window.__ksMenu:[
-      {id:'gulha',cat:'hedhikaa',en:'Gulha',dv:'ގުޅަ',price:5},{id:'bajiya',cat:'hedhikaa',en:'Bajiya',dv:'ބަޖިޔާ',price:5},{id:'kavaabu',cat:'hedhikaa',en:'Kavaabu',dv:'ކަވާބު',price:7},{id:'kboakibaa',cat:'hedhikaa',en:'Kulhi Boakibaa',dv:'ކުޅިބޯކިބާ',price:10},{id:'masroshi',cat:'hedhikaa',en:'Masroshi',dv:'މަސްރޮށި',price:8},{id:'cutlets',cat:'hedhikaa',en:'Cutlets',dv:'ކަޓްލަސް',price:6},
-      {id:'mashuni',cat:'mains',en:'Mas Huni & Roshi',dv:'މަސްހުނި ރޮށި',price:30},{id:'garudhiya',cat:'mains',en:'Garudhiya Set',dv:'ގަރުދިޔަ',price:45},{id:'riha',cat:'mains',en:'Kukulhu Riha',dv:'ކުކުޅު ރިހަ',price:55},{id:'friedrice',cat:'mains',en:'Fried Rice',dv:'ފްރައިޑް ރައިސް',price:50},
-      {id:'kalhusai',cat:'drinks',en:'Kalhu Sai',dv:'ކަޅުސައި',price:8},{id:'kirusai',cat:'drinks',en:'Kiru Sai',dv:'ކިރުސައި',price:12},{id:'coffee',cat:'drinks',en:'Coffee',dv:'ކޮފީ',price:30},{id:'passion',cat:'drinks',en:'Passion Juice',dv:'ޕެޝަން ޖޫސް',price:35},{id:'kurumba',cat:'drinks',en:'Kurumba',dv:'ކުރުނބާ',price:40},
-      {id:'bondibai',cat:'sweets',en:'Bondibai',dv:'ބޮނޑިބައި',price:20},{id:'fonibkb',cat:'sweets',en:'Foni Boakibaa',dv:'ފޮނިބޯކިބާ',price:15},{id:'saagu',cat:'sweets',en:'Saagu Bondibai',dv:'ސާގު ބޮނޑިބައި',price:22}
-    ];
+    this.MENU=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.menuAll&&window.__ksAdmin.menuAll.length)?window.__ksAdmin.menuAll:(typeof window!=='undefined'&&window.__ksMenu&&window.__ksMenu.length)?window.__ksMenu:[];
     this.CATS=[['hedhikaa','Hedhikaa','🥟'],['mains','Rice & Mains','🍛'],['drinks','Drinks','☕'],['sweets','Sweets','🍮']];
     this.MODGROUPS=[
       {id:'g_roshi',name:'Roshi & rice add-ons',applies:'Mas Huni, Garudhiya',opts:[['Extra roshi',5],['Extra rice',5],['Githeyo mirus',8],['Lime & mirus',0]]},
@@ -1653,56 +1647,20 @@ class Component extends DCLogic {
     ];
     this.state={dark:false,acct:false,lang:'en',who:'naseem',range:'today',tab:'trend',navOpen:false,live:null,flags:{sales:[],credit:[],loaded:false},pnl:null,expiring:[],expLoaded:false,onb:null,poDraft:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuEdit:{},menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:(function(){var d={sales:0,inventory:0,proc:0,reports:0};try{var v=JSON.parse(localStorage.getItem('kashikeyo_admin_sub')||'null');if(v&&typeof v==='object')return Object.assign(d,v);}catch(e){}return d;})(),cfg:Object.assign({autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.cfg)||{})),taxRate:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.taxRate)||'ggst'),
       payOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.payOff)||{}),ntog:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.ntog)||{}),authOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.authOff)||{}),cfgStaffAdd:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]),seoOv:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.seo)||null),promoNew:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.promoAdd)||[]),chanCfg:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.channels)||null),
-      store:Object.assign({name:'Kashikeyo Café',legal:'Kashikeyo Pvt Ltd',tin:'1080527GST001',greg:'GST-1080527',activity:'Café & restaurant',phone:'+960 330 1080',email:'hello@kashikeyo.mv',addr:'Majeedhee Magu, H. Fann',island:'Malé',atoll:'Kaafu, Maldives',footer:'Thank you! · ޝުކުރިއްޔާ',currency:'MVR',usdRate:'15.42',logo:null},(function(){var a=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.store)||{};var o={};if(a.name)o.name=a.name;o.currency=a.currency||'MVR';o.usdRate=String((Number(a.usdRate)||1542)/100);if(a.tin)o.tin=a.tin;if(a.address)o.addr=a.address;if(a.footer)o.footer=a.footer;return o;})(),((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.store)||{})),
+      store:Object.assign({name:'',legal:'',tin:'',greg:'',activity:'',phone:'',email:'',addr:'',island:'',atoll:'',footer:'',currency:'MVR',usdRate:'15.42',logo:null},(function(){var a=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.store)||{};var o={};if(a.name)o.name=a.name;o.currency=a.currency||'MVR';o.usdRate=String((Number(a.usdRate)||1542)/100);if(a.tin)o.tin=a.tin;if(a.address)o.addr=a.address;if(a.footer)o.footer=a.footer;if(a.phone)o.phone=a.phone;if(a.email)o.email=a.email;return o;})(),((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.store)||{})),
       an:{rev:0,orders:0,gpVal:0,aov:0,items:0},toast:null,
       open:(function(){try{var v=JSON.parse(localStorage.getItem('kashikeyo_admin_open')||'null');if(v&&typeof v==='object')return v;}catch(e){}return {sales:false,inventory:false,proc:false,reports:false};})(),active:(function(){try{var v=localStorage.getItem('kashikeyo_admin_tab');return ['dash','review','sales','outlets','kitchen','store','menu','inventory','proc','recv','cust','pay','reports','staff','hw','notif','config','sysadmin'].indexOf(v)>=0?v:'dash';}catch(e){return 'dash';}})(),vw:typeof window!=='undefined'?window.innerWidth:1440,
       mdl:null,
-      stock:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.stock&&window.__ksAdmin.stock.length)?window.__ksAdmin.stock:[
-        {n:'Skipjack tuna',oh:18,unit:'kg',par:25,cost:120},{n:'Rihaakuru',oh:6,unit:'kg',par:8,cost:140},
-        {n:'Onion',oh:4,unit:'kg',par:12,cost:30},{n:'Coconut',oh:22,unit:'pcs',par:30,cost:15},
-        {n:'Flour',oh:14,unit:'kg',par:20,cost:20},{n:'Curry leaves',oh:0.3,unit:'kg',par:1,cost:80},
-        {n:'UHT milk',oh:9,unit:'L',par:15,cost:35}
-      ],
-      waste:[
-        {d:'Today',n:'Garudhiya (prep)',qty:2.1,unit:'kg',rs:'Expiry',cost:78},{d:'Today',n:'UHT milk',qty:3,unit:'L',rs:'Spoilage',cost:54},
-        {d:'Yest',n:'Roshi',qty:12,unit:'pcs',rs:'Spillage',cost:24},{d:'Yest',n:'Salad mix',qty:1.4,unit:'kg',rs:'Expiry',cost:42}
-      ],
-      expenses:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.expenses&&window.__ksAdmin.expenses.length)?window.__ksAdmin.expenses:[
-        {d:'18 Oct',cat:'Produce',v:'Malé Local Market',m:'Cash',amt:1240,ap:'Approved'},{d:'18 Oct',cat:'Dairy',v:'Lily Foods',m:'Transfer',amt:860,ap:'Approved'},
-        {d:'17 Oct',cat:'Gas',v:'Villa Gas',m:'Card',amt:450,ap:'Approved'},{d:'17 Oct',cat:'Packaging',v:'EcoPack MV',m:'Transfer',amt:620,ap:'Pending'},
-        {d:'16 Oct',cat:'Fish',v:'Ensis Fisheries',m:'Cash',amt:2100,ap:'Pending'}
-      ],
-      bills:[
-        {v:'Lily Foods',inv:'LF-2291',amt:3420,due:'24 Oct',st:'Open'},{v:'Ensis Fisheries',inv:'EN-1180',amt:5600,due:'20 Oct',st:'Overdue'},
-        {v:'EcoPack MV',inv:'EP-0442',amt:1240,due:'28 Oct',st:'Open'},{v:'Villa Gas',inv:'VG-7781',amt:900,due:'—',st:'Paid'}
-      ],
-      transfers:[
-        {no:'TR-024',item:'Skipjack tuna',qty:'8 kg',from:'Malé',to:'Hulhumalé',st:'Pending'},
-        {no:'TR-023',item:'Coconut',qty:'20 pcs',from:'Central Store',to:'Malé',st:'Approved'},
-        {no:'TR-022',item:'UHT milk',qty:'24 L',from:'Hulhumalé',to:'Malé',st:'In transit'},
-        {no:'TR-021',item:'Rice',qty:'40 kg',from:'Central Store',to:'Villimalé',st:'Received'}
-      ],trSeq:25,poSeq:59,
-      staff:(((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]).concat([
-        {n:'Ahmed Rasheed',role:'Cashier',stt:'On shift',stk:'ok',shift:'09:00–17:00',sales:4210,orders:38},{n:'Sana Ali',role:'Cashier',stt:'On shift',stk:'ok',shift:'12:00–20:00',sales:3860,orders:31},
-        {n:'Imran Hassan',role:'Rider',stt:'On shift',stk:'ok',shift:'11:00–19:00',sales:0,orders:22},{n:'Mariyam Zahir',role:'Manager',stt:'Off',stk:'mut',shift:'—',sales:0,orders:0},
-        {n:'Nashid Moosa',role:'Rider',stt:'Break',stk:'warn',shift:'10:00–18:00',sales:0,orders:15}
-      ])),
-      custData:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.custData&&window.__ksAdmin.custData.length)?window.__ksAdmin.custData:[
-        {n:'Hassan Fulhu',dv:'ހަސަން ފުޅު',ph:'+960 777-1122',tier:'Gold',visits:64,spend:8420,joined:'Mar 2024',allergy:'Shellfish',diet:'—',note:'Prefers window seat · no ice in drinks.'},
-        {n:'Aishath Naeem',dv:'އައިޝަތު ނަޢީމް',ph:'+960 991-8842',tier:'Silver',visits:52,spend:6180,joined:'Jun 2024',allergy:'Peanuts',diet:'Vegetarian Tue & Thu',note:'Mas Huni extra spicy, always.'},
-        {n:'Ibrahim Shakir',dv:'އިބްރާހީމް ޝާކިރު',ph:'+960 913-4410',tier:'Silver',visits:41,spend:4870,joined:'Aug 2024',allergy:'—',diet:'Halal (default)',note:'Corporate — invoice monthly to Dhiraagu.'},
-        {n:'Mariyam Didi',dv:'މަރިޔަމް ދީދީ',ph:'+960 799-2231',tier:'Bronze',visits:33,spend:3240,joined:'Nov 2024',allergy:'Gluten',diet:'Gluten-free roshi',note:'Calls ahead for large family orders.'}
-      ],
+      stock:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.stock)?window.__ksAdmin.stock:[],
+      waste:[],
+      expenses:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.expenses)?window.__ksAdmin.expenses:[],
+      bills:[],
+      transfers:[],trSeq:1,poSeq:1,
+      staff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]).slice(),
+      custData:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.custData)?window.__ksAdmin.custData:[],
       sessions:[],
       recipeExpand:null,
-      recipes:{
-        mashuni:[{ing:'Skipjack tuna',qty:0.05},{ing:'Onion',qty:0.03},{ing:'Coconut',qty:0.2},{ing:'Flour',qty:0.05}],
-        garudhiya:[{ing:'Skipjack tuna',qty:0.08},{ing:'Onion',qty:0.04},{ing:'Curry leaves',qty:0.01},{ing:'Coconut',qty:0.2}],
-        gulha:[{ing:'Flour',qty:0.03},{ing:'Skipjack tuna',qty:0.008},{ing:'Onion',qty:0.005}],
-        friedrice:[{ing:'Skipjack tuna',qty:0.07},{ing:'Onion',qty:0.05},{ing:'Coconut',qty:0.2},{ing:'Flour',qty:0.05}],
-        riha:[{ing:'Skipjack tuna',qty:0.1},{ing:'Onion',qty:0.06},{ing:'Coconut',qty:0.3},{ing:'Curry leaves',qty:0.01}],
-        kirusai:[{ing:'UHT milk',qty:0.1}]
-      }};
+      recipes:{}};
   }
   openMdl(kind,seed){this.setState({mdl:Object.assign({kind:kind},seed||{})});}
   closeMdl(){this.setState({mdl:null});}
@@ -1996,25 +1954,12 @@ class Component extends DCLogic {
     const mkSubs=(m,arr)=>arr.map((l,i)=>{const on=(s.sub[m]||0)===i;return {label:l,tap:()=>me.setState({sub:Object.assign({},s.sub,{[m]:i})}),bg:on?'var(--card)':'transparent',co:on?'var(--ink)':'var(--ink2)',sh:on?'var(--shadow)':'none'};});
     const ss=s.sub.sales||0,si=s.sub.inventory||0,sp=s.sub.proc||0,sr=s.sub.reports||0;
     // ---- SALES ----
-    let allOrders=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.orders&&window.__ksAdmin.orders.length)?window.__ksAdmin.orders:[
-      {no:'0231',ch:'Dine-in · T3',chK:'reg',time:'19:42',items:6,staff:'Ahmed',total:214,st:'Paid',stk:'ok'},
-      {no:'0230',ch:'QR · T4',chK:'qr',time:'19:38',items:3,staff:'Self',total:96,st:'Paid',stk:'ok'},
-      {no:'0229',ch:'Delivery',chK:'deliv',time:'19:31',items:8,staff:'Imran',total:410,st:'Out for delivery',stk:'info'},
-      {no:'0228',ch:'Takeaway',chK:'reg',time:'19:20',items:2,staff:'Ahmed',total:78,st:'Paid',stk:'ok'},
-      {no:'0227',ch:'QR · T2',chK:'qr',time:'19:12',items:4,staff:'Self',total:132,st:'Paid',stk:'ok'},
-      {no:'0226',ch:'Delivery',chK:'deliv',time:'18:58',items:5,staff:'Nashid',total:268,st:'Delivered',stk:'ok'},
-      {no:'0225',ch:'Dine-in · T7',chK:'reg',time:'18:44',items:9,staff:'Sana',total:512,st:'Paid',stk:'ok'},
-      {no:'0224',ch:'QR · T7',chK:'qr',time:'18:30',items:2,staff:'Self',total:64,st:'Void',stk:'bad'},
-      {no:'0223',ch:'Delivery',chK:'deliv',time:'18:12',items:6,staff:'Imran',total:344,st:'Delivered',stk:'ok'},
-      {no:'0222',ch:'Takeaway',chK:'reg',time:'17:58',items:3,staff:'Ahmed',total:120,st:'Paid',stk:'ok'},
-      {no:'0221',ch:'QR · T1',chK:'qr',time:'17:40',items:5,staff:'Self',total:176,st:'Paid',stk:'ok'}
-    ];
+    let allOrders=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.orders)?window.__ksAdmin.orders.slice():[];
     const key=ss===0?'reg':ss===1?'qr':'deliv';
-    const demoOrders=allOrders;
     if(live){
       const lr=(live.log||[]).map(o=>({no:o.no,ch:o.ch,chK:o.chK,time:o.time,items:o.items,staff:'Cashier',total:o.total,st:'Paid',stk:'ok'}));
       const orr=(live.open||[]).map(o=>({no:o.no,ch:o.type==='dine'?('Dine-in · T'+o.table):o.type==='takeaway'?'Takeaway':'Delivery',chK:o.type==='delivery'?'deliv':'reg',time:new Date(o.at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),items:o.count,staff:'Open',total:o.total,st:o.status==='ready'?'Ready':o.status==='kitchen'?'In kitchen':'Open',stk:o.status==='ready'?'ok':o.status==='kitchen'?'info':'mut'}));
-      allOrders=orr.concat(lr).concat(demoOrders.filter(o=>o.chK==='qr'));
+      allOrders=orr.concat(lr).concat(allOrders);
     }
     const sf0=allOrders.filter(o=>o.chK===key);
     const sQ=(s.salesQuery||'').trim().toLowerCase();
@@ -2111,36 +2056,20 @@ class Component extends DCLogic {
     const invWaste=s.waste.map(r=>({d:r.d,n:r.n,qty:(r.qty+(r.unit?' '+r.unit:'')),rs:r.rs,costF:f(r.cost)}));
     const wasteTotF=f(s.waste.reduce((a,x)=>a+x.cost,0));
     const invTransfers=s.transfers.map((r,i)=>{const k=r.st==='Pending'?'warn':r.st==='Approved'?'info':r.st==='In transit'?'mut':'ok';const c=P[k];const act=r.st==='Pending'?'Approve':r.st==='In transit'?'Receive':null;return {no:r.no,item:r.item,qty:r.qty,from:r.from,to:r.to,st:r.st,stBg:c[0],stC:c[1],canAct:!!act,actLbl:act||'',act:()=>me.actTransfer(i)};});
-    const invSupplyRaw=(s.supply!=null)?s.supply:[
-      {n:'Onion',oh:'4 kg',sug:'+20 kg',vendor:'Malé Local Market',cost:440},
-      {n:'UHT milk',oh:'9 L',sug:'+18 L',vendor:'Lily Foods',cost:324},
-      {n:'Skipjack tuna',oh:'18 kg',sug:'+12 kg',vendor:'Ensis Fisheries',cost:960}
-    ];
+    const invSupplyRaw=(s.supply!=null)?s.supply:[];
     const invSupply=invSupplyRaw.map(r=>({n:r.n,oh:r.oh,sug:r.sug,vendor:r.vendor,costF:me.fm(r.cost)}));
     const supplyTotF=me.fm(invSupplyRaw.reduce((a,x)=>a+x.cost,0));
     // ---- PROCUREMENT (state-backed) ----
     const procExp=s.expenses.map((r,i)=>{const k=r.ap==='Approved'?'ok':'warn';const c=P[k];return {d:r.d,cat:r.cat,v:r.v,m:r.m,amtF:f(r.amt),ap:r.ap,apBg:c[0],apC:c[1],pending:r.ap==='Pending',approve:()=>me.approveExp(i)};});
     const expPending=s.expenses.filter(e=>e.ap==='Pending').length;
-    const supBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.suppliers&&window.__ksAdmin.suppliers.length)?window.__ksAdmin.suppliers:[
-      {n:'Ensis Fisheries',cat:'Fish & seafood',c:'+960 331-2200',terms:'Net 15',out:5600,k:'bad'},
-      {n:'Lily Foods',cat:'Dairy & dry goods',c:'+960 333-8890',terms:'Net 30',out:3420,k:'warn'},
-      {n:'Malé Local Market',cat:'Fresh produce',c:'Cash on pickup',terms:'COD',out:0,k:'ok'},
-      {n:'EcoPack MV',cat:'Packaging',c:'+960 779-4410',terms:'Net 30',out:1240,k:'warn'},
-      {n:'Villa Gas',cat:'Utilities · gas',c:'+960 330-1122',terms:'Prepaid',out:0,k:'ok'}
-    ];
+    const supBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.suppliers)?window.__ksAdmin.suppliers:[];
     const suppliers=(s.supNew||[]).concat(supBase).map(v=>{const c=P[v.k||'ok'];return {n:v.n,cat:v.cat||'General',c:v.c||'—',terms:v.terms||'—',outF:v.out?me.fm(v.out):'—',st:v.out?'Owing':'Clear',stBg:c[0],stC:c[1]};});
     const procBills=s.bills.map((r,i)=>{const stk=r.st==='Paid'?'ok':r.st==='Overdue'?'bad':'warn';return Object.assign({v:r.v,inv:r.inv,amtF:f(r.amt),due:r.due,payable:r.st!=='Paid',pay:()=>me.openMdl('paybill',{idx:i,v:r.v,inv:r.inv,amtF:f(r.amt),title:'Pay vendor bill'})},pill(r.st,stk));});
     const billsOwed=me.fm(s.bills.filter(b=>b.st!=='Paid').reduce((a,b)=>a+b.amt,0));
-    const poBase=(s.pos&&s.pos.length)?s.pos:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pos&&window.__ksAdmin.pos.length)?window.__ksAdmin.pos:[
-      {no:'PO-058',v:'Lily Foods',items:12,total:3420,st:'Sent',stk:'info'},{no:'PO-057',v:'Malé Local Market',items:8,total:1980,st:'Received',stk:'ok'},
-      {no:'PO-056',v:'Ensis Fisheries',items:4,total:5600,st:'Draft',stk:'mut'}
-    ]);
+    const poBase=(s.pos&&s.pos.length)?s.pos:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pos)?window.__ksAdmin.pos:[]);
     const procPos=poBase.map(r=>Object.assign({no:r.no,v:r.v,items:String(r.items),totalF:f(r.total),id:r.id||'',open:!!r.open&&!!r.id,receive:()=>me.openReceivePo(r)},pill(r.st,r.stk)));
     // ---- RECEIVABLES ----
-    const recvBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.recv&&window.__ksAdmin.recv.length)?window.__ksAdmin.recv:[
-      {id:'seed1',n:'Hassan Fulhu',c:'+960 777-1122',bal:560,age:'31 d',last:'12 Oct',stk:'bad'},{id:'seed2',n:'Villa Hotels',c:'Accounts dept',bal:2400,age:'12 d',last:'16 Oct',stk:'warn'},
-      {id:'seed3',n:'Aishath Naseer',c:'+960 991-8842',bal:180,age:'6 d',last:'18 Oct',stk:'ok'},{id:'seed4',n:'MTCC Staff',c:'Corporate',bal:1320,age:'22 d',last:'14 Oct',stk:'warn'}
-    ];
+    const recvBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.recv)?window.__ksAdmin.recv:[];
     const recvOv=s.recvOv||{};
     const recvSrc=recvBase.map(r=>{const ov=recvOv[r.id];return ov!=null?Object.assign({},r,{bal:ov,stk:ov<=0?'ok':r.stk}):r;}).filter(r=>r.bal>0);
     const recvRowsAll=recvSrc.map(r=>Object.assign({n:r.n,c:r.c,balF:f(r.bal),age:r.age,last:r.last,settle:()=>me.openSettle(r),remind:()=>me.toast('Reminder sent · '+r.n)},pill(r.stk==='bad'?'Overdue':r.stk==='warn'?'Due soon':'Current',r.stk)));
@@ -2162,21 +2091,12 @@ class Component extends DCLogic {
     const custProfiles=custData.map((c,i)=>{const tc=tierC[c.tier];return {n:c.n,i:c.n.split(' ').map(w=>w[0]).join('').slice(0,2),ph:c.ph,tier:c.tier,tierBg:tc[0],tierC:tc[1],visits:String(c.visits),spendF:me.fm(c.spend),joined:c.joined,note:c.note,edit:()=>me.editCustomer(i)};});
     const custPrefsList=custData.map(c=>({n:c.n,i:c.n.split(' ').map(w=>w[0]).join('').slice(0,2),hasAllergy:c.allergy!=='—',allergy:c.allergy,diet:c.diet,note:c.note}));
     const custChips=custData.map((c,i)=>({label:c.n.split(' ')[0],tap:()=>me.setState({custSel:i}),bg:s.custSel===i?'var(--ink)':'var(--card)',co:s.custSel===i?'var(--bg)':'var(--ink2)',bc:s.custSel===i?'var(--ink)':'var(--line2)'}));
-    const custOrdersAll=[
-      [{no:'#0224',out:'Malé',d:'19 Oct',items:'Garudhiya Set · Kalhu Sai',total:88,st:'Paid',k:'ok'},{no:'#0198',out:'Hulhumalé',d:'12 Oct',items:'Mas Huni ×2 · Roshi ×4',total:120,st:'On tab',k:'warn'},{no:'#0171',out:'Malé',d:'05 Oct',items:'Kukulhu Riha · Coke',total:78,st:'Paid',k:'ok'}],
-      [{no:'#0221',out:'Malé',d:'19 Oct',items:'Mas Huni & Roshi · Sai',total:52,st:'Paid',k:'ok'},{no:'#0202',out:'Malé',d:'14 Oct',items:'Gulha ×6 · Coffee',total:66,st:'Paid',k:'ok'}],
-      [{no:'#0215',out:'Delivery',d:'18 Oct',items:'Fried Rice ×3 · Juice ×3',total:268,st:'Paid',k:'ok'},{no:'#0180',out:'Delivery',d:'08 Oct',items:'Garudhiya Set ×2',total:104,st:'Paid',k:'ok'}],
-      [{no:'#0209',out:'Hulhumalé',d:'17 Oct',items:'Bajiya ×8 · Tea ×2',total:74,st:'Paid',k:'ok'},{no:'#0166',out:'Malé',d:'03 Oct',items:'Kavaabu ×6',total:42,st:'Refunded',k:'bad'}]
-    ];
+    const custOrdersAll=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.custOrders))?window.__ksAdmin.custOrders:[];
     const custSelData=custData[s.custSel]||custData[0];
     const custOrders=(custOrdersAll[s.custSel]||[]).map(o=>{const c=P[o.k];return {no:o.no,out:o.out,d:o.d,items:o.items,totalF:me.fm(o.total),st:o.st,stBg:c[0],stC:c[1]};});
-    const custSelName=custSelData.n;const custSelSummary=custSelData.visits+' orders · '+me.fm(custSelData.spend)+' lifetime';
+    const custSelName=custSelData?custSelData.n:'';const custSelSummary=custSelData?(custSelData.visits+' orders · '+me.fm(custSelData.spend)+' lifetime'):'';
     const stv=s.sub.store||0;
-    const outletBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.outlets&&window.__ksAdmin.outlets.length)?window.__ksAdmin.outlets.map(o=>({n:o.n,url:(o.addr||o.code||o.n),pub:!!o.active,visits:0})):[
-      {n:'Kashikeyo · Malé',url:'kashikeyo-male.platto.cloud',pub:true,visits:1240},
-      {n:'Kashikeyo · Hulhumalé',url:'kashikeyo-hulhumale.platto.cloud',pub:true,visits:680},
-      {n:'Kashikeyo · Villimalé',url:'kashikeyo-villimale.platto.cloud',pub:false,visits:0}
-    ];
+    const outletBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.outlets&&window.__ksAdmin.outlets.length)?window.__ksAdmin.outlets.map(o=>({n:o.n,url:(o.addr||o.code||o.n),pub:!!o.active,visits:0})):[];
     const outletStores=outletBase.map(o=>({n:o.n,url:o.url,visits:o.pub?(o.visits?(o.visits+' visits · 7d'):'Published'):'Not published',st:o.pub?'Live':'Draft',stBg:o.pub?'var(--greensoft)':'var(--bg)',stC:o.pub?'var(--green)':'var(--ink2)',open:()=>me.toast('Opening '+o.url),copy:()=>me.toast('Link copied · '+o.url)}));
     const qrSvg='<svg width="88" height="88" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="var(--ink)" d="M0 0h7v7H0zM2 2v3h3V2zM22 0h7v7h-7zM24 2v3h3V2zM0 22h7v7H0zM2 24v3h3v-3zM9 0h2v2H9zM13 1h2v2h-2zM17 0h2v3h-2zM9 4h3v2H9zM14 5h4v2h-4zM0 9h2v2H0zM4 9h3v2H4zM10 9h2v2h-2zM15 9h2v3h-2zM19 9h4v2h-4zM25 9h4v2h-4zM2 12h3v2H2zM7 13h3v2H7zM12 12h2v3h-2zM17 13h3v2h-3zM22 12h2v2h-2zM26 13h3v2h-3zM0 16h3v2H0zM5 16h2v2H5zM9 17h4v2H9zM15 16h2v3h-2zM20 16h3v2h-3zM25 17h3v2h-3zM9 22h2v3H9zM13 23h4v2h-4zM19 22h3v2h-3zM24 23h3v3h-3zM11 26h4v2h-4zM17 26h3v2h-3zM22 27h5v2h-5z"/></svg>';
     const _qrSlug=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.slug)||'';
@@ -2184,12 +2104,7 @@ class Component extends DCLogic {
     const qrCount=Math.max(1,Math.min(40,(s.cfg&&+s.cfg.qrTables)||8));
     const qrLink=n=>_qrSlug?(_qrOrigin+'/?s='+encodeURIComponent(_qrSlug)+'&t='+n):(_qrOrigin+'/?t='+n);
     const qrTables=Array.from({length:qrCount},(x,i)=>i+1).map(n=>({label:'Table '+n,qr:{__html:qrSvg},dl:()=>me.copyLink(qrLink(n),'Table '+n+' link')}));
-    const promoRows=(s.promoNew||[]).concat([
-      {n:'Ramadan Iftar Combo',code:'IFTAR25',type:'Combo · −25%',st:'Active',k:'ok',red:142,win:'Until 30 Mar'},
-      {n:'Weekday Lunch Deal',code:'LUNCH10',type:'−10%',st:'Active',k:'ok',red:88,win:'Mon–Fri · 12–3pm'},
-      {n:'First online order',code:'WELCOME50',type:'−'+me.fm(50),st:'Active',k:'ok',red:214,win:'New customers'},
-      {n:'Eid Sweets Box',code:'EIDBOX',type:'Seasonal menu',st:'Scheduled',k:'warn',red:0,win:'Starts 8 Apr'}
-    ]).map(p=>{const c=P[p.k||'ok'];return {n:p.n,code:p.code,type:p.type,st:p.st,stBg:c[0],stC:c[1],red:String(p.red||0),win:p.win};});
+    const promoRows=(s.promoNew||[]).map(p=>{const c=P[p.k||'ok'];return {n:p.n,code:p.code,type:p.type,st:p.st,stBg:c[0],stC:c[1],red:String(p.red||0),win:p.win};});
     const brandSwatches=[['Primary','#C1492A'],['Blade green','#1FA65C'],['Ink','#2E2418'],['Sand','#F3EADB']].map(b=>({label:b[0],hex:b[1]}));
     const _seo=Object.assign({},(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.seo)||{},s.seoOv||{});
     const _seoTitle=_seo.title||'—',_seoDesc=_seo.desc||'—';
@@ -2202,22 +2117,20 @@ class Component extends DCLogic {
     const gstRows=[['Output tax · sales',f(_gOut),false],['Input tax · purchases','− '+f(_gIn),false],['Net GST payable',f(_gNet),true]].map(r=>({k:r[0],v:r[1],big:r[2]}));
     const shiftData=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.shifts))?window.__ksAdmin.shifts:[];
     const shiftRows=shiftData.map(function(d){var v=Number(d.variance)||0;return {staff:d.staff||'—',when:(d.open||'—')+'–'+(d.close||'—'),floatF:me.fm(d.float||0),cashF:me.fm(d.cashSales||0),countedF:me.fm(d.counted||0),expectedF:me.fm(d.expected||0),varF:(v>=0?'+':'−')+me.fm(Math.abs(v)),varC:Math.abs(v)<0.5?'var(--green)':'var(--red)'};});const hasShifts=shiftRows.length>0;
+    const _topOutletRows=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets))?window.__ksAdmin.outlets.slice():[]).map(o=>[o.n,Number(o.rev)||0]).filter(r=>r[1]>0).sort((a,b)=>b[1]-a[1]);
     const perfCards=[
-      {title:'TOP OUTLETS',rows:[['Kashikeyo · Malé',6820,100,'var(--coral)'],['Kashikeyo · Hulhumalé',4210,62,'var(--coral)'],['Kashikeyo · Villimalé',1980,29,'var(--amber)']]},
-      {title:'TOP STAFF · SALES',rows:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.topStaff&&window.__ksAdmin.topStaff.length)?window.__ksAdmin.topStaff.map(t=>[t.n,t.rev]):[['Mariyam Didi',3120],['Ahmed Rasheed',2480],['Aminath Shifa',1760]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--green)']).slice(0,4)},
-      {title:'TOP PRODUCTS · REVENUE',rows:((g.topItems&&g.topItems.length)?g.topItems.map(t=>[t.n,t.rev]):[['Mas Huni & Roshi',2140],['Garudhiya Set',1680],['Kukulhu Riha',1290],['Gulha · 6pc',940]]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--blue)']).slice(0,4)}
+      {title:'TOP OUTLETS',rows:_topOutletRows.map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--coral)']).slice(0,4)},
+      {title:'TOP STAFF · SALES',rows:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.topStaff&&window.__ksAdmin.topStaff.length)?window.__ksAdmin.topStaff.map(t=>[t.n,t.rev]):[]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--green)']).slice(0,4)},
+      {title:'TOP PRODUCTS · REVENUE',rows:((g.topItems&&g.topItems.length)?g.topItems.map(t=>[t.n,t.rev]):[]).map((r,i,arr)=>[r[0],r[1],Math.max(6,Math.round(r[1]/(arr[0][1]||1)*100)),'var(--blue)']).slice(0,4)}
     ].map(c=>({title:c.title,rows:c.rows.map((r,i)=>({rank:'#'+(i+1),n:r[0],v:me.fm(r[1]),w:r[2]+'%',c:r[3]}))}));
     const _cd=custData||[];const _nowM=new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'});
     const _repeat=_cd.length?Math.round(_cd.filter(c=>(+c.visits||0)>1).length/_cd.length*100):0;
     const _alv=_cd.length?Math.round(_cd.reduce((a,c)=>a+(+c.spend||0),0)/_cd.length):0;
     const _newM=_cd.filter(c=>(c.joined||'')===_nowM).length;
-    const custStats=_cd.length?[{label:'TOTAL CUSTOMERS',v:me.fi(_cd.length)},{label:'REPEAT RATE',v:_repeat+'%'},{label:'AVG LIFETIME VALUE',v:me.fm(_alv)},{label:'NEW · THIS MONTH',v:String(_newM)}]:[{label:'TOTAL CUSTOMERS',v:'1,284'},{label:'REPEAT RATE',v:'58%'},{label:'AVG LIFETIME VALUE',v:me.fm(1840)},{label:'NEW · THIS MONTH',v:'96'}];
-    const custTop=(_cd.length?_cd.slice().sort((a,b)=>(+b.spend||0)-(+a.spend||0)).slice(0,4).map(c=>({n:c.n,orders:+c.visits||0,clv:+c.spend||0})):[
-      {n:'Hassan Fulhu',orders:64,clv:8420},{n:'Aishath Naeem',orders:52,clv:6180},
-      {n:'Ibrahim Shakir',orders:41,clv:4870},{n:'Mariyam Didi',orders:33,clv:3240}
-    ]).map(r=>({n:r.n,orders:String(r.orders),clvF:me.fm(r.clv)}));
-    const custDayparts=[['Morning',28,'var(--amber)'],['Afternoon',22,'var(--blue)'],['Evening',38,'var(--coral)'],['Late night',12,'var(--ink3)']].map(d=>({label:d[0],pct:d[1]+'%',w:d[1]+'%',c:d[2]}));
-    const custPrefs=[['Short eats',34],['Rice & curry',26],['Hot drinks',18],['Cold drinks',12],['Sweets',10]].map(p=>({n:p[0],pct:p[1]+'%'}));
+    const custStats=[{label:'TOTAL CUSTOMERS',v:me.fi(_cd.length)},{label:'REPEAT RATE',v:_repeat+'%'},{label:'AVG LIFETIME VALUE',v:me.fm(_alv)},{label:'NEW · THIS MONTH',v:String(_newM)}];
+    const custTop=(_cd.length?_cd.slice().sort((a,b)=>(+b.spend||0)-(+a.spend||0)).slice(0,4).filter(c=>(+c.spend||0)>0).map(c=>({n:c.n,orders:+c.visits||0,clv:+c.spend||0})):[]).map(r=>({n:r.n,orders:String(r.orders),clvF:me.fm(r.clv)}));
+    const custDayparts=[];
+    const custPrefs=((g.topItems&&g.topItems.length)?(function(){var tot=g.topItems.reduce((a,t)=>a+(Number(t.qty)||0),0)||1;return g.topItems.slice(0,5).map(t=>[t.n,Math.round((Number(t.qty)||0)/tot*100)]);})():[]).map(p=>({n:p[0],pct:p[1]+'%'}));
     // ---- STAFF ----
     const _realStaff=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.staffTeam&&window.__ksAdmin.staffTeam.length)?window.__ksAdmin.staffTeam.map(u=>({id:u.id,roleKey:u.roleKey,owner:u.owner,n:u.n,role:u.role,shift:'—',sales:u.sales,orders:u.orders,hours:u.hours,shifts:u.shifts,stt:'Active',stk:'ok'})):null;
     const staffSrc=_realStaff?_realStaff.concat(s.cfgStaffAdd||[]):s.staff;
@@ -2240,24 +2153,13 @@ class Component extends DCLogic {
     const permMatrix=['Admin','Manager','Cashier','Waiter','Kitchen','Rider'].map(function(role){var arr=_rp[role]||[];var locked=(role==='Admin');return {role:role,cells:arr.map(function(v,i){return {on:!!v,off:!v,tap:locked?null:function(){me.togglePerm(role,i);}};})};});
     const _relS=function(ms){if(!ms)return '';var m=Math.max(0,Math.round((Date.now()-ms)/60000));if(m<1)return 'just now';if(m<60)return m+'m';var h=Math.floor(m/60);if(h<24)return h+'h '+(m%60)+'m';return Math.floor(h/24)+'d';};
     const sessions=(s.sessions||[]).map(function(r){return {u:r.name||'—',role:(r.role?String(r.role).replace(/^./,function(c){return c.toUpperCase();}):'—')+(r.register?(' · '+r.register):''),dev:r.device||'—',loc:r.ip||'—',since:_relS(r.since),doing:r.current?'This device':'Active',dotC:r.current?'var(--blue)':'var(--green)',cur:!!r.current,sid:r.sid,signout:function(){me.signOutSession(r.sid);}};});
-    const teamActivity=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.activity&&window.__ksAdmin.activity.length)?window.__ksAdmin.activity.map(x=>({t:x.t,u:x.u,a:x.a,dotC:/refund|void|over/.test(x.a)?'var(--amber)':/day|start|purchase/.test(x.a)?'var(--green)':'var(--blue)'})):[
-      {t:'19:40',u:'Ahmed',a:'Voided order #0224',dotC:'var(--amber)'},
-      {t:'18:30',u:'Sana',a:'Applied 15% discount · #0221',dotC:'var(--blue)'},
-      {t:'17:05',u:'Mariyam',a:'Updated price · Kalhu Sai',dotC:'var(--blue)'},
-      {t:'16:12',u:'Mariyam',a:'Created PO-058',dotC:'var(--green)'},
-      {t:'12:40',u:'Naseem',a:'Changed Cashier permissions',dotC:'var(--coral)'},
-      {t:'09:02',u:'Ahmed',a:'Day started · drawer '+f(1500),dotC:'var(--green)'}
-    ];
+    const teamActivity=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.activity))?window.__ksAdmin.activity.map(x=>({t:x.t,u:x.u,a:x.a,dotC:/refund|void|over/.test(x.a)?'var(--amber)':/day|start|purchase/.test(x.a)?'var(--green)':'var(--blue)'})):[];
     const authRules=[
       {k:'void',n:'Void bill',need:'Manager PIN',def:true},{k:'disc',n:'Discount over 15%',need:'Manager PIN',def:true},
       {k:'refund',n:'Refund',need:'Manager PIN',def:true},{k:'drawer',n:'Open drawer · no sale',need:'Manager PIN',def:true},
       {k:'override',n:'Price override',need:'Admin PIN',def:false}
     ].map(a=>{const on=s.authOff[a.k]!=null?!s.authOff[a.k]:a.def;return {n:a.n,need:a.need,trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(16px)':'translateX(0)',tap:()=>{const authOff=Object.assign({},s.authOff,{[a.k]:on});me.setState({authOff});me.saveCfg({authOff});}};});
-    const recentAuth=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.authLog&&window.__ksAdmin.authLog.length)?window.__ksAdmin.authLog:[
-      {t:'19:40',a:'Void · #0224',by:'Approved by Mariyam (Manager)',st:'Approved',k:'ok'},
-      {t:'18:30',a:'20% discount · #0221',by:'Approved by Mariyam (Manager)',st:'Approved',k:'ok'},
-      {t:'15:10',a:'Refund · #0198',by:'Cashier request',st:'Declined',k:'bad'}
-    ]).map(r=>{const c=P[r.k];return {t:r.t,a:r.a,by:r.by,st:r.st,stBg:c[0],stC:c[1]};});
+    const recentAuth=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.authLog))?window.__ksAdmin.authLog:[]).map(r=>{const c=P[r.k];return {t:r.t,a:r.a,by:r.by,st:r.st,stBg:c[0],stC:c[1]};});
     // ---- CONFIG ----
     const cfgSecs=[
       {title:'Operations',rows:[['autoKot','Auto-send to KOT','Fire tickets on order confirm'],['rounding','Round totals to MVR','Nearest whole rufiyaa'],['svc10','10% service charge','Dine-in only']]},
@@ -2266,15 +2168,9 @@ class Component extends DCLogic {
     ].map(sec=>({title:sec.title,rows:sec.rows.map(r=>{const on=!!s.cfg[r[0]];return {label:r[1],desc:r[2],hasDesc:!!r[2],trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(15px)':'translateX(0)',tap:()=>{const cfg=Object.assign({},s.cfg,{[r[0]]:!on});me.setState({cfg});me.saveCfg({cfg});}};})}));
     const taxOpts=[['ggst','General GST · 8%'],['tgst','Tourism GST · 16%']].map(o=>{const on=s.taxRate===o[0];return {label:o[1],bg:on?'var(--coral)':'transparent',co:on?'#fff':'var(--ink2)',tap:()=>{me.setState({taxRate:o[0]});me.saveCfg({taxRate:o[0]});}};});
     // ---- SYSTEM ADMIN ----
-    const sysUsers=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.sysUsers&&window.__ksAdmin.sysUsers.length)?window.__ksAdmin.sysUsers.map(u=>({n:u.n,role:u.role,last:'—',stk:'ok'})):[
-      {n:'admin@kashikeyo.mv',role:'Master Admin',last:'Active now',stk:'ok'},{n:'mariyam@kashikeyo.mv',role:'Manager',last:'2 h ago',stk:'ok'},
-      {n:'ahmed@kashikeyo.mv',role:'Cashier',last:'12 min ago',stk:'ok'},{n:'POS Till 2',role:'Device',last:'5 min ago',stk:'ok'}
-    ]).map(r=>Object.assign({n:r.n,role:r.role,last:r.last},pill('Active','ok')));
-    const sysAudit=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.audit&&window.__ksAdmin.audit.length)?window.__ksAdmin.audit:[
-      {t:'19:40',a:'Voided order #0224',u:'Ahmed'},{t:'18:30',a:'Applied 15% discount · #0221',u:'Sana'},
-      {t:'17:05',a:'Updated price · Kalhu Sai',u:'Mariyam'},{t:'16:12',a:'Created PO-058',u:'Mariyam'},{t:'09:02',a:'Day started · drawer '+f(1500),u:'Ahmed'}
-    ];
-    const sysInteg=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.integrations&&window.__ksAdmin.integrations.length)?window.__ksAdmin.integrations.map(x=>[x.name,x.detail,x.on?'ok':'mut']):[['Cloud sync','Connected','ok'],['MIRA GST portal','Linked','ok'],['BML payment gateway','Connected','ok'],['Nightly backup','02:00 daily','info']]).map(r=>Object.assign({name:r[0],detail:r[1]},pill(r[1],r[2]),{dot:P[r[2]][1]}));
+    const sysUsers=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.sysUsers))?window.__ksAdmin.sysUsers.map(u=>({n:u.n,role:u.role,last:'—',stk:'ok'})):[]).map(r=>Object.assign({n:r.n,role:r.role,last:r.last},pill('Active','ok')));
+    const sysAudit=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.audit))?window.__ksAdmin.audit:[];
+    const sysInteg=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.integrations))?window.__ksAdmin.integrations.map(x=>[x.name,x.detail,x.on?'ok':'mut']):[]).map(r=>Object.assign({name:r[0],detail:r[1]},pill(r[1],r[2]),{dot:P[r[2]][1]}));
     const spy=s.sub.pay||0;
     const payCols=s.vw<640?'1fr':(s.vw<1024?'1fr 1fr':'1fr 1fr 1fr');
     const payTwoCols=s.vw<640?'1fr':'1fr 1fr';
@@ -2287,12 +2183,7 @@ class Component extends DCLogic {
       {k:'wallet',n:'Digital wallets · Fahipay, m-Faisaa',vol:0,dotC:'var(--ink3)',defOff:true},
       {k:'tab',n:'On tab · store credit',vol:_pmx.tab||0,dotC:'var(--blue)'}
     ].map(m=>{const on=s.payOff[m.k]!=null?!s.payOff[m.k]:!m.defOff;return {n:m.n,dotC:on?m.dotC:'var(--ink3)',volLbl:on?('Today · '+me.fm(m.vol)):'Not enabled',st:on?'Enabled':'Off',stBg:on?'var(--greensoft)':'var(--bg)',stC:on?'var(--green)':'var(--ink2)',tap:()=>{const payOff=Object.assign({},s.payOff,{[m.k]:on});me.setState({payOff});me.saveCfg({payOff});me.toast(m.n+' · '+(on?'disabled':'enabled'));}};});
-    const payLinks=[
-      {ref:'PL-3391',cust:'Aishath Naeem',amt:420,st:'Paid',k:'ok',when:'Today · 10:24'},
-      {ref:'PL-3390',cust:'Dhiraagu · corporate',amt:2650,st:'Pending',k:'warn',when:'Today · 09:50'},
-      {ref:'PL-3389',cust:'Ibrahim Shakir',amt:180,st:'Paid',k:'ok',when:'Yesterday'},
-      {ref:'PL-3388',cust:'Walk-in',amt:95,st:'Expired',k:'mut',when:'Yesterday'}
-    ].map(r=>{const c=P[r.k];return {ref:r.ref,cust:r.cust,amtF:me.fm(r.amt),st:r.st,stBg:c[0],stC:c[1],when:r.when,copy:()=>me.toast('Link copied · '+r.ref)};});
+    const payLinks=[].map(r=>{const c=P[r.k];return {ref:r.ref,cust:r.cust,amtF:me.fm(r.amt),st:r.st,stBg:c[0],stC:c[1],when:r.when,copy:()=>me.toast('Link copied · '+r.ref)};});
     const billTemplates=[
       {n:'Receipt · 80mm',desc:'Logo, GST breakdown and footer note.',status:'Default',k:'info'},
       {n:'Tax invoice · A4',desc:'MIRA-compliant, itemised, TIN shown.',status:'Active',k:'ok'},
@@ -2300,21 +2191,10 @@ class Component extends DCLogic {
     ].map(b=>{const c=P[b.k];return {n:b.n,desc:b.desc,status:b.status,stBg:c[0],stC:c[1],edit:()=>me.toast('Editing '+b.n)};});
     const splitByMethod=[{m:'Cash',amt:400,dotC:'var(--green)'},{m:'Card · BML',amt:540,dotC:'var(--coral)'}].map(p=>({m:p.m,amtF:me.fm(p.amt),dotC:p.dotC}));
     const splitByGuest=[['1','Guest 1'],['2','Guest 2'],['3','Guest 3']].map(g=>({i:g[0],n:g[1],amtF:me.fm(313.33)}));
-    const recentSplits=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.splits&&window.__ksAdmin.splits.length)?window.__ksAdmin.splits:[
-      {ref:'#0043',total:534,parts:'Cash 300 · Card 234',n:2},
-      {ref:'#0039',total:1200,parts:'3 guests × 400',n:3}
-    ]).map(r=>({ref:r.ref,totalF:me.fm(r.total),parts:r.parts,n:String(r.n)}));
-    const refundRows=((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.refunds&&window.__ksAdmin.refunds.length)?window.__ksAdmin.refunds:[
-      {ref:'#0041',amt:96,reason:'Wrong item served',staff:'Mariyam',st:'Approved',k:'ok',when:'Today 13:10'},
-      {ref:'#0037',amt:250,reason:'Customer cancelled order',staff:'Ahmed',st:'Approved',k:'ok',when:'Today 11:42'},
-      {ref:'#0031',amt:60,reason:'Quality complaint',staff:'Mariyam',st:'Pending',k:'warn',when:'Yest 20:15'}
-    ]).map(r=>{const c=P[r.k];return {ref:r.ref,amtF:me.fm(r.amt),reason:r.reason,staff:r.staff,when:r.when,st:r.st,stBg:c[0],stC:c[1]};});
-    const gwStats=[{label:'SETTLING TODAY',v:me.fm(3720)},{label:'NEXT SETTLEMENT',v:'20 Oct'},{label:'GATEWAY FEE · MTD',v:me.fm(1284)}];
-    const settlements=[
-      {date:'18 Oct',gross:8420,fee:126,net:8294,st:'Settled',k:'ok'},
-      {date:'17 Oct',gross:7180,fee:108,net:7072,st:'Settled',k:'ok'},
-      {date:'19 Oct',gross:6240,fee:94,net:6146,st:'Pending',k:'warn'}
-    ].map(r=>{const c=P[r.k];return {date:r.date,grossF:me.fm(r.gross),feeF:me.fm(r.fee),netF:me.fm(r.net),st:r.st,stBg:c[0],stC:c[1]};});
+    const recentSplits=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.splits))?window.__ksAdmin.splits:[]).map(r=>({ref:r.ref,totalF:me.fm(r.total),parts:r.parts,n:String(r.n)}));
+    const refundRows=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.refunds))?window.__ksAdmin.refunds:[]).map(r=>{const c=P[r.k];return {ref:r.ref,amtF:me.fm(r.amt),reason:r.reason,staff:r.staff,when:r.when,st:r.st,stBg:c[0],stC:c[1]};});
+    const gwStats=[{label:'SETTLING TODAY',v:me.fm(0)},{label:'NEXT SETTLEMENT',v:'—'},{label:'GATEWAY FEE · MTD',v:me.fm(0)}];
+    const settlements=[];
     const hw=s.sub.hw||0;
     const printers=[
       {n:'Front counter · receipt',model:'Epson TM-T20III',st:'Connected',k:'ok'},
@@ -2329,7 +2209,7 @@ class Component extends DCLogic {
       {cat:'Sweets & desserts',stn:'Pastry',c:'var(--green)'}
     ];
     const offOn=s.cfg.offlineFirst!==false;
-    const offlineStats=[{label:'CONNECTION',v:'Online'},{label:'LAST SYNCED',v:'Just now'},{label:'QUEUED ORDERS',v:'0'},{label:'LOCAL CACHE',v:'2,481 items'}];
+    const offlineStats=[{label:'CONNECTION',v:(typeof navigator!=='undefined'&&navigator.onLine===false)?'Offline':'Online'},{label:'LAST SYNCED',v:'—'},{label:'QUEUED ORDERS',v:'0'},{label:'LOCAL CACHE',v:'—'}];
     const kioskOn=s.cfg.kiosk===true;
     const kioskSettings=[['Welcome message','“Order here — tap to begin”'],['Categories shown','All 6 menu groups'],['Idle reset','After 60s inactivity'],['Payment','Card & wallet at kiosk']].map(r=>({label:r[0],val:r[1]}));
     const themeMode=s.themeMode||(s.dark?'dark':'light');
@@ -2339,7 +2219,7 @@ class Component extends DCLogic {
     const notif=s.sub.notif||0;
     const kc={reg:'var(--coral)',warn:'var(--amber)',ok:'var(--green)',bad:'#e0564f',info:'var(--blue)'};
     const alertRules=[['a_order','New orders','Every order across register, QR & delivery',true],['a_stock','Low stock','When an item drops below its reorder point',true],['a_pay','Payments','Settlements, refunds & failed charges',true],['a_auth','Authorization','Void, discount & manager-PIN requests',true]].map(r=>Object.assign({event:r[1],desc:r[2]},mkTog(nOn(r[0],r[3]),r[0])));
-    const recentAlerts=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.alerts&&window.__ksAdmin.alerts.length)?window.__ksAdmin.alerts.map(x=>({t:x.a,time:x.time,dot:kc[x.k]||kc.reg})):[['reg','New order #0231 · MVR 214','19:42'],['ok','Payment settled · #0230','19:38'],['warn','Low stock · Chicken breast 2kg','18:20'],['info','Auth · Void #0224 approved','18:30']].map(r=>({t:r[1],time:r[2],dot:kc[r[0]]}));
+    const recentAlerts=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.alerts))?window.__ksAdmin.alerts.map(x=>({t:x.a,time:x.time,dot:kc[x.k]||kc.reg})):[];
     const _tgChat=(s.chanCfg&&s.chanCfg.telegramChatId!=null)?s.chanCfg.telegramChatId:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.channels&&window.__ksAdmin.cfg.channels.telegramChatId)||'');
     const _tgOn=!!_tgChat;const _tgOutlets=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.outlets&&window.__ksAdmin.outlets.length)?window.__ksAdmin.outlets.map(o=>o.n):['Kashikeyo · Malé','Kashikeyo · Hulhumalé'];
     const chanRows=_tgOutlets.map(nm=>{const k=_tgOn?'ok':'mut';const c=P[k];return{outlet:nm,chan:_tgOn?_tgChat:'Not linked',members:_tgOn?'Telegram':'—',st:_tgOn?'Connected':'Connect',stBg:c[0],stC:c[1],linked:_tgOn,linkLabel:_tgOn?'Test':'Connect',tap:()=>_tgOn?me.testTelegram(_tgChat):me.openChannel()};});
@@ -2521,20 +2401,22 @@ class Component extends DCLogic {
     const tabDefs=[['trend','Trend'],['cat','By Category'],['type','By Channel']];
     const tabs=tabDefs.map(t=>({label:t[1],tap:()=>me.setState({tab:t[0]}),bg:s.tab===t[0]?'var(--card)':'transparent',co:s.tab===t[0]?'var(--ink)':'var(--ink2)',sh:s.tab===t[0]?'var(--shadow)':'none'}));
     const grid=[0,1,2,3,4].map(i=>({y:(10+i*67.5).toFixed(0)}));
-    const cats=[['Hedhikaa & short eats','var(--coral)',38],['Mains','var(--green)',27],['Drinks','var(--blue)',22],['Sweets','var(--amber)',9],['Retail / packaged','var(--ink3)',4]];
-    const catBars=cats.map(c=>({name:c[0],c:c[1],pct:c[2]+'%',w:c[2]+'%',amt:me.fm(g.rev*c[2]/100,0)}));
-    const types=[['Dine-in','var(--coral)',44],['Takeaway','var(--green)',26],['Delivery','var(--blue)',19],['QR self-order','var(--amber)',11]];
+    // Revenue breakdown from the real top-selling items (empty until there are sales).
+    const _catPalette=['var(--coral)','var(--green)','var(--blue)','var(--amber)','var(--ink3)'];
+    const _topRevTot=(g.topItems||[]).reduce((a,t)=>a+(Number(t.rev)||0),0)||1;
+    const catBars=(g.topItems||[]).slice(0,5).map((t,i)=>{const pct=Math.round((Number(t.rev)||0)/_topRevTot*100);return {name:t.n,c:_catPalette[i%5],pct:pct+'%',w:pct+'%',amt:me.fm(t.rev,0)};});
+    // Order-type mix (dine-in/takeaway/delivery/QR) is not yet aggregated server-side.
+    const types=[];
     let acc=0;const segs=types.map(t=>{const a=acc;acc+=t[2];return t[1]+' '+a+'% '+acc+'%';});
     const pmax=Math.max.apply(null,g.rc)||1;
     const peak=g.rc.map((v,i)=>{const r=v/pmax;const c=r>0.82?'var(--coral)':r>0.55?'var(--amber)':'var(--line2)';return {h:Math.max(6,Math.round(r*100))+'%',c,d:(i*0.02).toFixed(2)+'s',lbl:i%3===0?String((8+i)%24||24):''};});
-    const attn=[
-      {icon:ic.box,bg:'var(--redsoft)',c:'var(--red)',title:'Onion below par',sub:'4 / 12 kg — reorder today',cta:'Reorder'},
-      {icon:ic.recv,bg:'var(--ambersoft)',c:'var(--amber)',title:'Hassan Fulhu · overdue tab',sub:'MVR 560 · 31 days',cta:'Remind'},
-      {icon:ic.doc,bg:'var(--bluesoft)',c:'var(--blue)',title:'Q3 GST return draft ready',sub:'Net payable MVR 27,204 · due 28 Oct',cta:'Review'},
-      {icon:ic.fire,bg:'var(--coralsoft)',c:'var(--coral)',title:'3 tickets open in kitchen',sub:'Oldest 11 min · hot station',cta:'Open KDS'}
-    ];
-    const attention=attn.map(a=>({icon:H(a.icon),bg:a.bg,c:a.c,title:a.title,sub:a.sub,cta:a.cta,tap:()=>me.toast(a.cta+' · '+a.title)}));
-    const prime=[['Food cost','var(--green)',31],['Labour','var(--amber)',27],['Other opex','var(--ink3)',14]].map(p=>({label:p[0],c:p[1],pct:p[2]+'%',w:p[2]+'%'}));
+    // Attention list derives from real signals only: items below par and
+    // overdue receivables. Empty when nothing needs attention.
+    const attn=[];
+    (s.stock||[]).filter(x=>Number(x.par)>0&&Number(x.oh)<Number(x.par)).slice(0,3).forEach(x=>attn.push({icon:ic.box,bg:'var(--redsoft)',c:'var(--red)',title:x.n+' below par',sub:(x.oh+' / '+x.par+' '+(x.unit||'')+' — reorder'),cta:'Reorder',go:()=>me.setState({active:'inventory'})}));
+    ((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.recv))?window.__ksAdmin.recv:[]).filter(r=>r.stk==='bad').slice(0,3).forEach(r=>attn.push({icon:ic.recv,bg:'var(--ambersoft)',c:'var(--amber)',title:(r.n||'Customer')+' · overdue tab',sub:me.fm(r.bal)+(r.age&&r.age!=='—'?(' · '+r.age):''),cta:'Remind',go:()=>me.setState({active:'recv'})}));
+    const attention=attn.slice(0,4).map(a=>({icon:H(a.icon),bg:a.bg,c:a.c,title:a.title,sub:a.sub,cta:a.cta,tap:a.go||(()=>me.toast(a.cta+' · '+a.title))}));
+    const prime=[];
     const A=s.active,tablet=s.vw>=640&&s.vw<1024;
     const heads={review:['Review','Sales the till couldn’t reconcile & customers over their credit limit — check each, then clear it. Money is never changed.'],sales:['Sales','Every order across register, QR & delivery.'],outlets:['Outlets','Live performance across your locations.'],kitchen:['Kitchen Display','Open tickets by station.'],hw:['Hardware & Offline','Works everywhere, always.'],notif:['Notifications','Stay informed, instantly.'],menu:['Menu','Items, prices, add-ons & availability — synced to the register.'],store:['Online Store','Your brand, zero commission.'],inventory:['Inventory','Stock, recipes & wastage control.'],proc:['Procurement','Expenses, vendor bills & purchase orders.'],recv:['Receivables','Open customer tabs & aging.'],cust:['Customers','Know them, serve them better.'],pay:['Payments','Fast, flexible & secure.'],reports:['Reports','Analytics, Z-report & GST filing.'],staff:['Staff & Roles','Team, shifts & permissions.'],config:['Configurations','Outlet, tax, receipt & payments.'],sysadmin:['System Admin','Users, audit log & integrations.']};
     const greetV=(new Date().getHours()<12?'Good morning':new Date().getHours()<18?'Good afternoon':'Good evening');
@@ -2552,15 +2434,16 @@ class Component extends DCLogic {
       chartH:mobile?'210px':'280px',heroFs:mobile?'30px':'38px',catNameW:mobile?'96px':'150px',catAmtW:mobile?'74px':'100px',
       greeting:(new Date().getHours()<12?'Good morning':new Date().getHours()<18?'Good afternoon':'Good evening'),
       narrative:me.fm(g.rev)+' this '+g.word+' — '+g.d[0]+' vs the previous '+g.word+'. '+g.orders.toLocaleString()+' orders, avg '+me.fm(g.aov)+'.',
-      outlet:'Kashikeyo · Malé',toggleDark:()=>me.setState({dark:!s.dark}),
+      outlet:(s.store&&s.store.name)||'—',toggleDark:()=>me.setState({dark:!s.dark}),
       ...(()=>{const sun='<svg width="14" height="14" viewBox="0 0 15 15"><circle cx="7.5" cy="7.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="7.5" y1="1" x2="7.5" y2="2.6"/><line x1="7.5" y1="12.4" x2="7.5" y2="14"/><line x1="1" y1="7.5" x2="2.6" y2="7.5"/><line x1="12.4" y1="7.5" x2="14" y2="7.5"/><line x1="3" y1="3" x2="4.1" y2="4.1"/><line x1="10.9" y1="10.9" x2="12" y2="12"/><line x1="12" y1="3" x2="10.9" y2="4.1"/><line x1="4.1" y1="10.9" x2="3" y2="12"/></g></svg>';
         const moon='<svg width="14" height="14" viewBox="0 0 15 15"><path d="M12.5 9.3A5.2 5.2 0 0 1 5.7 2.5 5.3 5.3 0 1 0 12.5 9.3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
-        const admins=[{id:'naseem',name:'Naseem Adam',role:'Master Admin',initial:'N',avBg:'var(--ink)',avCo:'var(--bg)'},{id:'aisha',name:'Aishath Ali',role:'Outlet Manager',initial:'A',avBg:'var(--coralsoft)',avCo:'var(--coral)'},{id:'ibrahim',name:'Ibrahim Zayd',role:'Accountant',initial:'I',avBg:'var(--bluesoft)',avCo:'var(--blue)'}];
-        const cur=admins.find(a=>a.id===s.who)||admins[0];
+        const _me=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.me)||{name:'Admin',role:'Owner'};
+        const _nm=(_me.name||'Admin').trim()||'Admin';
+        const cur={name:_nm,role:_me.role||'Owner',initial:(_nm[0]||'A').toUpperCase(),avBg:'var(--ink)',avCo:'var(--bg)'};
         return {
           acctOpen:s.acct,toggleAcct:()=>me.setState({acct:!s.acct}),closeAcct:()=>me.setState({acct:false}),
           acctName:cur.name,acctRole:cur.role,acctInitial:cur.initial,acctRoleVer:cur.role+' · v2.0.0',acctCaret:s.acct?'rotate(180deg)':'rotate(0deg)',
-          adminOpts:admins.map(a=>({name:a.name,role:a.role,initial:a.initial,avBg:a.avBg,avCo:a.avCo,on:a.id===s.who,bg:a.id===s.who?'var(--coralsoft)':'transparent',tap:()=>me.setState({who:a.id,acct:false})})),
+          adminOpts:[{name:cur.name,role:cur.role,initial:cur.initial,avBg:cur.avBg,avCo:cur.avCo,on:true,bg:'var(--coralsoft)',tap:()=>me.setState({acct:false})}],
           themeOpts:[{label:'Light',icon:H(sun),on:!s.dark,tap:()=>me.setState({dark:false}),bg:!s.dark?'var(--coralsoft)':'transparent',co:!s.dark?'var(--coral)':'var(--ink2)',bd:!s.dark?'var(--coral)':'var(--line2)'},{label:'Dark',icon:H(moon),on:s.dark,tap:()=>me.setState({dark:true}),bg:s.dark?'var(--coralsoft)':'transparent',co:s.dark?'var(--coral)':'var(--ink2)',bd:s.dark?'var(--coral)':'var(--line2)'}],
           langOpts:[{code:'EN',label:'English',on:s.lang==='en',bg:s.lang==='en'?'var(--coralsoft)':'transparent',tap:()=>me.setState({lang:'en',acct:false})},{code:'ދވ',label:'ދިވެހި Dhivehi',on:s.lang==='dv',bg:s.lang==='dv'?'var(--coralsoft)':'transparent',tap:()=>me.setState({lang:'dv',acct:false})}],
         };
@@ -2571,7 +2454,7 @@ class Component extends DCLogic {
       ringOff:(289-289*gp/100).toFixed(1),goalPct:Math.round(gp)+'%',goalF:me.fm(goal,0),
       spkLine:me.spk(g.rc,'line'),spkArea:me.spk(g.rc,'area'),
       ordersV:(s.live&&s.range==='today')?me.fi(s.live.orders):me.fi(an.orders),ordDelta:g.d[1],ordDc:dcf(g.d[1]),aovV:me.fm(an.aov),basket:g.basket,
-      pulse:(s.live&&s.live.log&&s.live.log.length)?s.live.log.slice(0,3).map(o=>({ch:o.chK==='deliv'?'DELIV':(o.ch&&o.ch.indexOf('QR')>=0?'QR':'POS'),no:o.no,ago:o.time,amt:me.fm(o.total,0)})):(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.pulse&&window.__ksAdmin.pulse.length)?window.__ksAdmin.pulse:[{ch:'DINE',no:'0231',ago:'2 min ago',amt:'MVR 214'},{ch:'QR·T4',no:'0230',ago:'5 min ago',amt:'MVR 96'},{ch:'DELIV',no:'0229',ago:'8 min ago',amt:'MVR 410'}],
+      pulse:(s.live&&s.live.log&&s.live.log.length)?s.live.log.slice(0,3).map(o=>({ch:o.chK==='deliv'?'DELIV':(o.ch&&o.ch.indexOf('QR')>=0?'QR':'POS'),no:o.no,ago:o.time,amt:me.fm(o.total,0)})):(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.pulse))?window.__ksAdmin.pulse:[],
       peak,peakNote:g.peakN,
       tabTrend:s.tab==='trend',tabCat:s.tab==='cat',tabType:s.tab==='type',
       chartTitle:s.tab==='trend'?'Revenue & orders trend':s.tab==='cat'?'Revenue by category':'Orders by channel',

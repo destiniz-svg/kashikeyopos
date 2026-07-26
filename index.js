@@ -2131,12 +2131,31 @@ if (fs.existsSync(protoFile)) {
       week: [now - 7 * day, now, 7, day, now - 7 * day], month: [now - 30 * day, now, 30, day, now - 30 * day],
       quarter: [now - 90 * day, now, 13, 7 * day, now - 90 * day], year: [now - 365 * day, now, 12, 30 * day, now - 365 * day] };
     const qtyOf = (s) => (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0);
+    // Sum revenue/orders/items/GP over an arbitrary [since,until) window — used
+    // for the current window and the immediately-preceding one (for deltas).
+    const windowAgg = (since, until) => {
+      const rows = saleRows.filter((s) => { const t = Number(s.at) || 0; return t >= since && t < until; });
+      const rev = rows.reduce((a, s) => a + (Number(s.total) || 0), 0) / 100;
+      const orders = rows.length, items = rows.reduce((a, s) => a + qtyOf(s), 0);
+      const purchases = expRows.filter((e) => { const t = Number(e.t) || 0; return t >= since && t < until && e.cat === "Purchases"; }).reduce((a, e) => a + (Number(e.amount) || 0), 0) / 100;
+      return { rev, orders, items, gpVal: Math.max(0, rev - purchases), rows };
+    };
+    // A signed percentage-change string ("+8.2%", "−4.0%", or "—" when there's
+    // no prior baseline) in the exact shape the dashboard's arrow/colour helpers
+    // parse (leading "−" = down/red).
+    const pctDelta = (cur, prev) => {
+      if (!(prev > 0)) return cur > 0 ? "New" : "—";
+      const p = (cur - prev) / prev * 100;
+      return (p >= 0 ? "+" : "−") + Math.abs(p).toFixed(1) + "%";
+    };
     const out = {};
     for (const k in specs) {
       const [since, until, nb, bk, bs] = specs[k];
-      const rows = saleRows.filter((s) => { const t = Number(s.at) || 0; return t >= since && t < until; });
-      const rev = Math.round(rows.reduce((a, s) => a + (Number(s.total) || 0), 0)) / 100;
-      const orders = rows.length, items = rows.reduce((a, s) => a + qtyOf(s), 0);
+      const cur = windowAgg(since, until);
+      const prev = windowAgg(since - (until - since), since);
+      const rows = cur.rows;
+      const orders = cur.orders, items = cur.items;
+      const aov = (w) => (w.orders ? w.rev / w.orders : 0);
       const gst = Math.round(rows.reduce((a, s) => a + (Number(s.gst) || 0), 0)) / 100;
       const rc = new Array(nb).fill(0);
       for (const s of rows) { let i = Math.floor(((Number(s.at) || since) - bs) / bk); if (i < 0) i = 0; if (i >= nb) i = nb - 1; rc[i] += (Number(s.total) || 0) / 100; }
@@ -2145,11 +2164,19 @@ if (fs.existsSync(protoFile)) {
       const byItem = {};
       for (const s of rows) for (const l of (s.lines || [])) { const n = l.name || l.pid; if (!n) continue; const g = byItem[n] || (byItem[n] = { qty: 0, rev: 0 }); g.qty += Number(l.qty) || 0; g.rev += ((Number(l.price) || 0) * (Number(l.qty) || 0)) / 100; }
       const topItems = Object.keys(byItem).map((n) => ({ n, qty: byItem[n].qty, rev: Math.round(byItem[n].rev) })).sort((a, b) => b.qty - a.qty).slice(0, 6);
-      const purchases = expRows.filter((e) => { const t = Number(e.t) || 0; return t >= since && t < until && e.cat === "Purchases"; }).reduce((a, e) => a + (Number(e.amount) || 0), 0) / 100;
-      const gpVal = Math.max(0, rev - purchases);
-      out[k] = { rev, orders, items, aov: orders ? Math.round(rev / orders * 100) / 100 : 0,
-        gpVal: Math.round(gpVal), gpPct: rev ? ((gpVal / rev * 100).toFixed(1) + "%") : "0%",
+      const gpVal = cur.gpVal;
+      // Busiest bucket, only for the hour-resolution ranges (today/yest).
+      let peakN = "";
+      if ((k === "today" || k === "yest") && rc.some((x) => x > 0)) {
+        let pi = 0; for (let i = 1; i < rc.length; i++) if (rc[i] > rc[pi]) pi = i;
+        const h = (n) => (n % 12 || 12) + (n < 12 || n === 24 ? "am" : "pm");
+        peakN = "Busiest " + h(pi) + "–" + h((pi + 1) % 24);
+      }
+      out[k] = { rev: Math.round(cur.rev), orders, items, aov: orders ? Math.round(cur.rev / orders * 100) / 100 : 0,
+        gpVal: Math.round(gpVal), gpPct: cur.rev ? ((gpVal / cur.rev * 100).toFixed(1) + "%") : "0%",
         basket: orders ? (items / orders).toFixed(1) : "0", rc: rc.map((x) => Math.round(x)),
+        d: [pctDelta(cur.rev, prev.rev), pctDelta(orders, prev.orders), pctDelta(gpVal, prev.gpVal), pctDelta(aov(cur), aov(prev))],
+        peakN,
         gst, payMix: { cash: Math.round(pm.cash), card: Math.round(pm.card), transfer: Math.round(pm.transfer), tab: Math.round(pm.tab) }, topItems };
     }
     return out;
@@ -2362,6 +2389,7 @@ if (fs.existsSync(protoFile)) {
                 name: storeName, currency: setData.currency || "MVR",
                 usdRate: Number(setData.usdRate) || 1542,
                 tin: setData.tin || "", address: setData.address || "", footer: setData.receiptFooter || setData.footer || "",
+                phone: setData.phone || "", email: setData.email || "",
                 gst: Number(setData.gst != null ? setData.gst : setData.gstRate) || 0, svc: Number(setData.svcCharge) || 0,
               };
               // Store slug (for real per-table QR deep-links) + effective SEO
@@ -2483,6 +2511,14 @@ if (fs.existsSync(protoFile)) {
                 { name: "BML payment gateway", detail: (setData.adminCfg && setData.adminCfg.bmlMerchant) ? "Connected" : "Not connected", on: !!(setData.adminCfg && setData.adminCfg.bmlMerchant) },
                 { name: "Telegram alerts", detail: notifCfg.telegramChatId ? "Connected" : "Not connected", on: !!notifCfg.telegramChatId },
               ];
+              // The signed-in admin's own identity for the account menu (no demo
+              // user switcher). Falls back to the org owner when the session
+              // carries no staff profile (e.g. the owner's first login).
+              const ownerRow = userRows.find((u) => u.role === "owner");
+              adminData.me = {
+                name: (req.appStaff && req.appStaff.name) || (ownerRow && ownerRow.name) || "Admin",
+                role: roleLabel(req.appRole || (ownerRow && ownerRow.role) || "owner"),
+              };
             }
           });
         } catch (e) { recordError(base + " data inject", e); }
