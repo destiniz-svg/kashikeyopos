@@ -1775,7 +1775,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      expense reports and P&L include ingredient purchases without anyone
      entering the bill twice. srcRef makes the booking idempotent — an
      expense for this invoice/PO can only ever exist once. */
-  async function postInvoiceTx(client, orgId, { supplierId, supplierName, invoiceNo, lines, expenseRef, expenseNote }) {
+  async function postInvoiceTx(client, orgId, { supplierId, supplierName, invoiceNo, lines, expenseRef, expenseNote, gst }) {
     const invId = uid();
     let total = 0;
     const posted = [];
@@ -1820,7 +1820,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       [orgId, invId, String(supplierId || ""), String(invoiceNo || ""), total]);
     const expense = {
       id: uid(), no: "EXP-" + (invoiceNo || invId.slice(0, 6).toUpperCase()), t: Date.now(),
-      cat: "Purchases", supplier: String(supplierName || ""), amount: total,
+      cat: "Purchases", supplier: String(supplierName || ""), amount: total, gst: Math.max(0, Math.round(Number(gst) || 0)),
       note: expenseNote || `${invoiceNo || "Delivery"} · ${posted.length} line${posted.length === 1 ? "" : "s"} · back office`,
       paidFrom: "other", userName: "Back office", shiftId: null, img: "",
       srcRef: expenseRef || "invoice:" + invId,
@@ -1835,7 +1835,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   }
 
   router.post("/invoices", authAny, requireBackOffice(1), wrap(async (req, res) => {
-    const { supplierId, invoiceNo, lines } = req.body || {};
+    const { supplierId, invoiceNo, lines, gst } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "invoice needs at least one line" });
     const out = await withOrg(req.orgId, async (client) => {
       let supplierName = "";
@@ -1843,7 +1843,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
         const s = await client.query("SELECT name FROM suppliers WHERE org_id=$1 AND id=$2", [req.orgId, supplierId]);
         supplierName = s.rowCount ? s.rows[0].name : "";
       }
-      return postInvoiceTx(client, req.orgId, { supplierId, supplierName, invoiceNo, lines });
+      return postInvoiceTx(client, req.orgId, { supplierId, supplierName, invoiceNo, lines, gst });
     });
     if (out.rowver && poke) poke(req.orgId, out.rowver);
     await recomputeAvailability(req.orgId, (out.lines || []).map((l) => l && String(l.ingredientId)).filter(Boolean));
@@ -2131,10 +2131,11 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     }
     const netSales = grossSales - discounts - refunds;
 
-    let purchases = 0, opex = 0, paidOut = 0;
+    let purchases = 0, opex = 0, paidOut = 0, inputTax = 0;
     const opexByCat = {};
     for (const row of exps) {
       const d = row.data || {}; const amt = num(d.amount); const cat = String(d.cat || "Other"); const type = String(d.type || "");
+      inputTax += num(d.gst); // GST paid on any expense/purchase invoice (input tax)
       if (/purchase/i.test(cat)) { purchases += amt; continue; }
       opex += amt;
       if (type === "paidout") paidOut += amt;
@@ -2151,8 +2152,8 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
         foodCostPct: netSales > 0 ? Math.round((cogs / netSales) * 100) : 0,
         wastage, opex, opexByCat, purchases, netProfit,
         netMarginPct: netSales > 0 ? Math.round((netProfit / netSales) * 100) : 0, saleCount },
-      gstReturn: { outputTax: gst, inputTax: 0, netPayable: gst,
-        note: "Input tax on purchases isn't itemised in the app; enter it manually if you claim it." },
+      gstReturn: { outputTax: gst, inputTax, netPayable: gst - inputTax,
+        note: inputTax > 0 ? "Input tax is the GST recorded on purchase invoices in this period." : "Add the GST amount when you book a purchase invoice to claim input tax." },
       cash: { tenders, cashSales, paidOut, drawerNet: cashSales - paidOut, accountsReceivable: ar, focValue: foc },
       flagged: { count: flaggedCount, claimedTotal: flaggedClaimed, computedTotal: flaggedComputed, variance: flaggedComputed - flaggedClaimed },
       storeRev,
