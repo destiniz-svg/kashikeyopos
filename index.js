@@ -369,6 +369,28 @@ const rlFail = (keys) => { const now = Date.now(); for (const k of keys) { let e
 const rlClear = (keys) => { for (const k of keys) loginFails.delete(k); };
 const rlDeny = (res, secs) => { res.set("Retry-After", String(secs)); return res.status(429).json({ error: `Too many attempts — try again in ${Math.max(1, Math.ceil(secs / 60))} min.` }); };
 
+/* ── Public-endpoint throttle (audit B1) ─────────────────────────────────────
+   The guest order/waiter-call endpoints are unauthenticated, so an anonymous
+   client could otherwise flood the kitchen queue and grow the DB without
+   bound. Count EVERY hit per client IP + workspace slug + route in a rolling
+   window and reject past a ceiling. In-memory / single-instance (same trade-off
+   as the SSE hub and login throttle); a real multi-instance deploy would move
+   this to the shared store already used for poke fan-out. Ceilings are set well
+   above what a single venue's guests generate (even behind one NAT IP) but far
+   below what a flood script does. */
+const pubHits = new Map();
+const PUB_WINDOW = 60 * 1000;
+setInterval(() => { const now = Date.now(); for (const [k, v] of pubHits) if (now > v.reset) pubHits.delete(k); }, 5 * 60 * 1000).unref();
+const pubThrottle = (max, label) => (req, res, next) => {
+  const key = (req.ip || "?") + "|" + (req.params.slug || "?") + "|" + label;
+  const now = Date.now();
+  let e = pubHits.get(key);
+  if (!e || now > e.reset) { e = { n: 0, reset: now + PUB_WINDOW }; pubHits.set(key, e); }
+  e.n++;
+  if (e.n > max) { res.set("Retry-After", String(Math.max(1, Math.ceil((e.reset - now) / 1000)))); return res.status(429).json({ error: "Too many requests — please slow down and try again in a minute." }); }
+  next();
+};
+
 /* Correlation ID (audit OPS-02): every request gets a short id, echoed on the
    response and threaded into error logs + the audit trail, so an incident can be
    traced from a support report to the exact request. */
@@ -606,6 +628,25 @@ async function resolveAppSession(req) {
   req.appStaff = payload.staff || null;
   return payload.o;
 }
+/* App-session RBAC (audit B2): the /api/app2/* write endpoints previously
+   checked only "is there a session", so a till-level staff cookie (cashier /
+   waiter / kitchen) could accept orders, edit customers, settle receivables,
+   change store config or manage staff purely because the UI hid the button.
+   Rank the session's role and gate each write to the minimum it needs. An
+   owner/email login carries no role and resolves to "owner" (full access),
+   preserving backward compatibility. Ranks mirror inventory.js's model:
+   manager = operational back office, admin/owner = settings + staff. */
+const APP_ROLE_RANK = { owner: 5, admin: 4, manager: 3, cashier: 2, waiter: 2, kitchen: 1 };
+const APP_RANK = { KITCHEN: 1, TILL: 2, MANAGER: 3, ADMIN: 4, OWNER: 5 };
+const appRankOf = (r) => { const k = APP_ROLE_RANK[String(r || "owner").toLowerCase()]; return k == null ? 0 : k; };
+/* Inline gate (not middleware) because each handler resolves the session itself
+   — call right after resolveAppSession. Returns true (and has already sent 403)
+   when the caller lacks the rank, so the handler can `if (denyAppRole(...)) return;`. */
+const denyAppRole = (req, res, min, msg) => {
+  if (appRankOf(req.appRole) >= min) return false;
+  res.status(403).json({ error: msg || "You don't have permission for this." });
+  return true;
+};
 const requireAppSession = (req, res, next) => {
   resolveAppSession(req)
     .then((orgId) => {
@@ -1530,12 +1571,17 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
     cust });
 }));
 
-app.post("/p/:slug/order", wrap(async (req, res) => {
+app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const { items, table, custId, gtype, zoneId, note, payOnline } = req.body || {};
   const storeId = cleanStoreId(req.body?.storeId || req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "cart is empty" });
+  /* Per-order size caps (audit B1): a tampered/anonymous client posted a
+     500-line-item order. Bound the distinct lines here (before the per-line
+     work) and the total quantity after normalisation, so one order can't be
+     used to bloat the kitchen ticket or the DB row. */
+  if (items.length > 40) return res.status(400).json({ error: "That's too many different items for one order — please split it into more than one." });
   const [products, zones, customers] = await Promise.all([kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "customers", storeId)]);
   const lines = items.map((ci) => {
     const pid = String(ci.pid || ci.id || ci.productId || "");
@@ -1568,6 +1614,8 @@ app.post("/p/:slug/order", wrap(async (req, res) => {
     return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: (Number(src.price) || 0) + addOnSum, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false, addons: addons.length ? addons : undefined, spice: spice || undefined, comment: comment || undefined, noKitchen: noKitchen || undefined, note: noteBits.length ? noteBits.join(" · ") : undefined };
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
+  const totalQty = lines.reduce((s, l) => s + (Number(l.qty) || 0), 0);
+  if (totalQty > 200) return res.status(400).json({ error: "That order is too large — please split it into more than one." });
   /* Enforce availability server-side: a guest must never place an order for an
      item that has just sold out (ingredient-driven recipeAvail<=0, or a
      stock-tracked item at zero), even if their menu was loaded moments ago. */
@@ -1603,7 +1651,7 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
   res.json({ storeId, orders: mine });
 }));
 
-app.post("/p/:slug/call", wrap(async (req, res) => {
+app.post("/p/:slug/call", pubThrottle(20, "call"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const { table, custId } = req.body || {};
@@ -2240,6 +2288,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/order/:id/accept", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Kitchen staff can't accept orders — ask a cashier, waiter or manager.")) return;
     const id = String(req.params.id || "");
     const rowver = await withOrg(orgId, async (c) => {
       const cur = await c.query(
@@ -2264,6 +2313,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/customer", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing customers needs a manager or the owner.")) return;
     const b = req.body || {};
     const name = String(b.name || "").trim().slice(0, 80);
     if (!name) return res.status(400).json({ error: "name required" });
@@ -2296,6 +2346,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/customer/:id/settle", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Settling a balance needs a manager or the owner.")) return;
     const id = String(req.params.id || "");
     const amount = Math.max(0, Math.round(Number((req.body || {}).amount) || 0));
     if (!(amount > 0)) return res.status(400).json({ error: "enter an amount" });
@@ -2321,6 +2372,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/config", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Changing store settings needs an admin or the owner.")) return;
     const patch = (req.body && req.body.cfg && typeof req.body.cfg === "object") ? req.body.cfg : null;
     if (!patch) return res.status(400).json({ error: "no config" });
     const out = await withOrg(orgId, async (c) => {
@@ -2368,6 +2420,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/notify/test", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing notifications needs an admin or the owner.")) return;
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = String((req.body && req.body.chatId) || "").trim();
     if (!token) return res.json({ ok: true, configured: false, message: "Telegram alerts aren't set up yet. Add TELEGRAM_BOT_TOKEN to switch them on." });
@@ -2394,6 +2447,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/staff", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing team members needs an admin or the owner.")) return;
     const b = req.body || {};
     const name = String(b.name || "").trim().slice(0, 80);
     const role = String(b.role || "").toLowerCase();
@@ -2430,6 +2484,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/staff/:id/delete", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing team members needs an admin or the owner.")) return;
     const id = String(req.params.id || "");
     const out = await withOrg(orgId, async (c) => {
       const cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND id=$2 AND deleted=false", [orgId, id])).rows[0];
