@@ -465,6 +465,18 @@ const publicId = (row) => String(row.data && row.data.id ? row.data.id : row.id)
      lineTotal = round(price * qty * (1 - discPct/100))     (mirrors the till's Un)
      total     = subtotal - billDisc + gst + svcCharge      (mirrors the till's $n) */
 const saleLineTotal = (l) => Math.round((Number(l && l.price) || 0) * (Number(l && l.qty) || 0) * (1 - (Number(l && l.discPct) || 0) / 100));
+/* Effective discount as a percent of the sale's own gross (line price × qty,
+   before any discount), combining per-line discPct and the bill-level discount
+   — used by the B3 large-discount backstop below. Reads only the sale's own
+   declared components, so it's independent of server settings. */
+const effectiveDiscountPct = (sale) => {
+  const lines = Array.isArray(sale && sale.lines) ? sale.lines : [];
+  const gross = lines.reduce((a, l) => a + (Number(l && l.price) || 0) * (Number(l && l.qty) || 0), 0);
+  if (gross <= 0) return 0;
+  const lineDisc = Math.max(0, gross - lines.reduce((a, l) => a + saleLineTotal(l), 0));
+  const billDisc = Math.max(0, Number(sale.billDisc) || 0);
+  return Math.round(((lineDisc + billDisc) / gross) * 100);
+};
 function auditSaleMoney(sale, ctx) {
   if (!sale || sale.foc) return null;                       // free-of-charge is legitimately 0
   if (sale.type && sale.type !== "sale") return null;       // refunds derive from their original; validated by linkage
@@ -1325,7 +1337,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
       const st = setRes.rows[0] ? setRes.rows[0].data : {};
       const prices = new Map();
       for (const r of prodRes.rows) prices.set(String(r.id), { price: Number(r.price) || 0, open: r.op === "true" });
-      moneyCtx = { gstBp: Number(st.gstBp) || 0, svcBp: Number(st.svcChargeBp) || 0, prices };
+      const discLim = Number(st.discountLimitPct);
+      moneyCtx = { gstBp: Number(st.gstBp) || 0, svcBp: Number(st.svcChargeBp) || 0, prices, discLimitPct: (discLim > 0 && discLim <= 100) ? discLim : 50 };
     }
     for (const op of ops) {
       const storeId = opStore(req, op);
@@ -1346,6 +1359,26 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         if (p.kind === "sales" && data.lines) {
           const money = auditSaleMoney(data, moneyCtx);
           if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); auditEvents.push({ actor: data.userName || "", action: "sale.flagged", ref: data.no || data.id, detail: { claimedTotal: money.claimedTotal, computedTotal: money.computedTotal, reasons: money.reasons } }); }
+        }
+        /* SEC-03 (audit B3): a large discount / comp is a manager-authorised
+           action just like a refund. The till gates it in the UI, but the
+           server must not trust that. Past the store's discount ceiling (a
+           settings %, default 50), require a manager elevation on the batch:
+           without one the sale still syncs (offline-safe, money is never
+           rejected) but is flagged into the Review tab and logged; with one it
+           is stamped approved. Free-of-charge (foc) and refunds are exempt —
+           foc is legitimately 0 and refunds have their own approval path. */
+        if (p.kind === "sales" && data.type !== "refund" && !data.foc && Array.isArray(data.lines) && data.lines.length && moneyCtx) {
+          const discPct = effectiveDiscountPct(data);
+          if (discPct >= moneyCtx.discLimitPct) {
+            if (elevated) { if (!data.managerApproved) data.managerApproved = { method: "password", at: Date.now(), for: "discount" }; }
+            else {
+              const sa = (data.serverAudit && data.serverAudit.flagged) ? data.serverAudit : { flagged: true, at: Date.now(), claimedTotal: Number(data.total) || 0, computedTotal: Number(data.total) || 0, reasons: [] };
+              if (!(sa.reasons || []).some((r) => String(r).startsWith("discount"))) sa.reasons = (sa.reasons || []).concat(`discount ${discPct}% over ${moneyCtx.discLimitPct}% without manager approval`);
+              data.serverAudit = sa;
+              auditEvents.push({ actor: data.userName || "", action: "sale.discount_over_limit", ref: data.no || data.id, detail: { discPct, limit: moneyCtx.discLimitPct, total: data.total } });
+            }
+          }
         }
         /* SEC-03: refunds are manager-authorised money movements. Client-supplied
            approval is never trusted; the server carries forward its OWN earlier
@@ -1470,10 +1503,21 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         }
       }
       for (const d of op.dels || []) {
+        /* SEC-03 (audit B3): voiding a settled sale is a destructive, money-
+           affecting action that previously left NO trace — the row was just
+           soft-deleted. Capture its summary first and log a sale.void event
+           (with the batch's manager-approval state), so voids surface in the
+           Payments > authLog for review. Non-sale deletes are unaffected. */
+        let voidInfo = null;
+        if (d.kind === "sales") {
+          const pre = await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND id=$2 AND deleted=false", [req.org.o, String(d.id)]);
+          if (pre.rowCount) { const sd = pre.rows[0].data || {}; voidInfo = { no: sd.no || String(d.id), total: Number(sd.total) || 0, userName: sd.userName || "" }; }
+        }
         const r = await client.query(
           `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
            WHERE org_id=$1 AND kind=$2 AND id=$3 RETURNING rowver`, [req.org.o, d.kind, String(d.id)]);
         for (const row of r.rows) rowver = Math.max(rowver, Number(row.rowver));
+        if (voidInfo && r.rowCount) auditEvents.push({ actor: voidInfo.userName, action: "sale.void", ref: voidInfo.no, detail: { total: voidInfo.total, approved: elevated } });
       }
     }
     await client.query("COMMIT");
