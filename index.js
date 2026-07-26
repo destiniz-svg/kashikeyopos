@@ -2183,15 +2183,25 @@ if (fs.existsSync(protoFile)) {
                 }));
               // Reports > Z-Report: persisted cashier shift cash-ups (drawer
               // reconciliation + variance), newest first, for manager review.
-              adminData.shifts = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND data->>'status'='closed' ORDER BY (data->>'closedAt')::numeric DESC NULLS LAST LIMIT 30", [orgId]))
-                .rows.map((r) => r.data || {}).map((d) => ({
-                  staff: d.closedBy || d.staffName || "—",
-                  open: d.openedAt ? hhmm(d.openedAt) : "—", close: d.closedAt ? hhmm(d.closedAt) : "—",
-                  float: Math.round((Number(d.float) || 0)) / 100, counted: Math.round((Number(d.counted) || 0)) / 100,
-                  expected: Math.round((Number(d.expected) || 0)) / 100, cashSales: Math.round((Number(d.cashSales) || 0)) / 100,
-                  variance: Math.round((Number(d.variance) || 0)) / 100, gross: Math.round((Number(d.grossSales) || 0)) / 100,
-                }));
+              const shiftRaw = (await c.query(
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND data->>'status'='closed' ORDER BY (data->>'closedAt')::numeric DESC NULLS LAST LIMIT 200", [orgId]))
+                .rows.map((r) => r.data || {});
+              adminData.shifts = shiftRaw.slice(0, 30).map((d) => ({
+                staff: d.closedBy || d.staffName || "—",
+                open: d.openedAt ? hhmm(d.openedAt) : "—", close: d.closedAt ? hhmm(d.closedAt) : "—",
+                float: Math.round((Number(d.float) || 0)) / 100, counted: Math.round((Number(d.counted) || 0)) / 100,
+                expected: Math.round((Number(d.expected) || 0)) / 100, cashSales: Math.round((Number(d.cashSales) || 0)) / 100,
+                variance: Math.round((Number(d.variance) || 0)) / 100, gross: Math.round((Number(d.grossSales) || 0)) / 100,
+              }));
+              // Per-staff hours worked, summed from closed-shift durations.
+              const staffHrs = new Map();
+              for (const d of shiftRaw) {
+                const nm = (d.closedBy || d.staffName || "").trim();
+                const ms = (Number(d.closedAt) || 0) - (Number(d.openedAt) || 0);
+                if (!nm || !(ms > 0)) continue;
+                const cur = staffHrs.get(nm) || { ms: 0, shifts: 0 };
+                cur.ms += ms; cur.shifts += 1; staffHrs.set(nm, cur);
+              }
               // Staff + System Admin: real users entities.
               const userRows = (await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false ORDER BY updated_at", [orgId]))
@@ -2199,7 +2209,8 @@ if (fs.existsSync(protoFile)) {
               const roleLabel = (r) => r === "owner" ? "Master Admin" : r ? (r.charAt(0).toUpperCase() + r.slice(1)) : "Cashier";
               adminData.staffTeam = userRows.map((u) => {
                 const ag = staffAgg.get((u.name || "").trim()) || { rev: 0, orders: 0 };
-                return { id: u.id, n: u.name || "—", role: roleLabel(u.role), roleKey: (u.role || "").toLowerCase(), owner: u.role === "owner", sales: Math.round(ag.rev), orders: ag.orders };
+                const hr = staffHrs.get((u.name || "").trim()) || { ms: 0, shifts: 0 };
+                return { id: u.id, n: u.name || "—", role: roleLabel(u.role), roleKey: (u.role || "").toLowerCase(), owner: u.role === "owner", sales: Math.round(ag.rev), orders: ag.orders, hours: Math.round(hr.ms / 3600000 * 10) / 10, shifts: hr.shifts };
               });
               adminData.sysUsers = userRows.map((u) => ({ n: u.email || u.name || "—", role: roleLabel(u.role) }));
               // Activity feeds (Staff > Activity, Auth codes; Notifications > alerts;
