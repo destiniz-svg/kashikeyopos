@@ -2516,7 +2516,7 @@ class Component extends DCLogic {
     const navItems=navDef.map(nd=>{const hasKids=!!nd.kids,isOpen=!!s.open[nd.id],act=s.active===nd.id;
       return {label:nd.label,icon:H(nd.icon),hasChildren:hasKids,caret:isOpen?'rotate(90deg)':'rotate(0deg)',showKids:hasKids&&isOpen,
         bg:act?'var(--coralsoft)':'transparent',co:act?'var(--coral)':'var(--ink)',
-        tap:()=>{if(hasKids){me.setState({open:Object.assign({},s.open,{[nd.id]:!isOpen}),active:nd.id});}else{me.setState({active:nd.id,navOpen:false});}},
+        tap:()=>{if(hasKids){me.setState({open:(isOpen?{}:{[nd.id]:true}),active:nd.id});}else{me.setState({active:nd.id,navOpen:false});}},
         kids:(nd.kids||[]).map((k,ki)=>({label:k,tap:()=>me.setState({active:nd.id,sub:Object.assign({},s.sub,{[nd.id]:ki}),navOpen:false})}))};});
     const tabDefs=[['trend','Trend'],['cat','By Category'],['type','By Channel']];
     const tabs=tabDefs.map(t=>({label:t[1],tap:()=>me.setState({tab:t[0]}),bg:s.tab===t[0]?'var(--card)':'transparent',co:s.tab===t[0]?'var(--ink)':'var(--ink2)',sh:s.tab===t[0]?'var(--shadow)':'none'}));
