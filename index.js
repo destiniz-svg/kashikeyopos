@@ -2371,7 +2371,10 @@ if (fs.existsSync(protoFile)) {
      the product's stored data-URI once and serves it immutable, so photos download
      a single time and are reused on every later load instead of re-shipping ~450KB
      of base64 in the page. Cookie-scoped to the caller's org via RLS. */
-  const DATA_URI_RE = /^data:([\w.+-]+\/[\w.+-]+)?(;base64)?,([\s\S]*)$/;
+  // Accept optional media-type parameters (e.g. `;utf8`, `;charset=utf-8`) before
+  // the base64 flag — the AI menu builder stores its SVG art as
+  // `data:image/svg+xml;utf8,…`, which the stricter form rejected (blank tile).
+  const DATA_URI_RE = /^data:([\w.+-]+\/[\w.+-]+)?(?:;[\w.+=-]+)*?(;base64)?,([\s\S]*)$/;
   app.get("/api/img/:id", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).end();
