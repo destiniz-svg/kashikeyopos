@@ -1965,6 +1965,32 @@ if (fs.existsSync(protoFile)) {
     out.users = (await c.query(
       "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [orgId])).rows
       .map((r) => ({ id: r.id, name: ((r.data && r.data.name) || "").toString().slice(0, 60) || "Staff", role: (r.data && r.data.role) || "cashier", pin: (r.data && r.data.pin) || "" }));
+    /* Real Day-End / Z-report aggregate for the till (audit B4): the register's
+       Day-End used to render hardcoded demo takings. Sum TODAY's completed
+       sales by payment method + GST/service so a cashier's end-of-day reflects
+       actual money taken. Money is laari → major units. Day boundary is the
+       server-local midnight, matching the /admin Reports convention. */
+    const sodz = new Date(); sodz.setHours(0, 0, 0, 0);
+    const zrows = (await c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND (data->>'at')::numeric >= $2", [orgId, sodz.getTime()]))
+      .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
+    const zag = { gross: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0 };
+    for (const s of zrows) {
+      zag.orders++;
+      zag.gross += Number(s.total) || 0;
+      zag.gst += Number(s.gst) || 0;
+      zag.svc += Number(s.svcCharge) || 0;
+      const pays = (Array.isArray(s.payments) && s.payments.length) ? s.payments : [{ method: s.method || "cash", amount: Number(s.total) || 0 }];
+      for (const p of pays) {
+        const amt = Number(p.amount) || 0, m = String(p.method || "cash").toLowerCase();
+        if (m === "cash") zag.cash += amt;
+        else if (m === "card") zag.card += amt;
+        else if (m === "tab" || m === "ontab") zag.tab += amt;
+        else zag.transfer += amt; // transfer, bml/gateway
+      }
+    }
+    const zM = (v) => Math.round(v) / 100;
+    out.zday = { gross: zM(zag.gross), cash: zM(zag.cash), card: zM(zag.card), transfer: zM(zag.transfer), tab: zM(zag.tab), gst: zM(zag.gst), svc: zM(zag.svc), orders: zag.orders };
     return out;
   };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
