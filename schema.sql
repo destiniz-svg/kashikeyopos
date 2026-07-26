@@ -315,3 +315,27 @@ ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS product_id TEXT NOT NULL DEFAUL
 -- item, rolling their cost into its weighted average — so one item is both
 -- built-from-a-recipe and a stock item consumed by other recipes.
 ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS producible BOOLEAN NOT NULL DEFAULT false;
+
+-- Change / audit trail (audit FIN-03). An append-only record of sensitive,
+-- server-observed events — money-integrity flags, credit over-limit breaches,
+-- flag acknowledgements, refunds and voids — so a manager/accountant can answer
+-- "who did what, when, and why" without trusting a mutable entity row. Written
+-- server-side only; never updated or deleted by the app (no UPDATE/DELETE grant).
+CREATE TABLE IF NOT EXISTS activity_log (
+  id         BIGSERIAL,
+  org_id     TEXT NOT NULL,
+  at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actor      TEXT NOT NULL DEFAULT '',   -- staff name/id, or 'system'
+  action     TEXT NOT NULL,              -- e.g. sale.flagged, credit.over_limit, flag.ack, sale.refund, sale.void
+  ref        TEXT NOT NULL DEFAULT '',   -- related sale no / entity id
+  request_id TEXT NOT NULL DEFAULT '',   -- correlates to the request that caused it (OPS-02)
+  detail     JSONB NOT NULL DEFAULT '{}',
+  PRIMARY KEY (org_id, id)
+);
+CREATE INDEX IF NOT EXISTS activity_log_org_at ON activity_log (org_id, at DESC);
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON activity_log;
+CREATE POLICY tenant_isolation ON activity_log
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
