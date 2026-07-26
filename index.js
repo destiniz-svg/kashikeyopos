@@ -134,7 +134,7 @@ async function ensureAppRole() {
     END $do$;
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
-  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
@@ -617,6 +617,33 @@ const APP_COOKIE = "kashikeyo_session";
 const setAppCookie = (res, token) => res.cookie(APP_COOKIE, token, {
   httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 24 * 3600 * 1000, path: "/",
 });
+/* ── Session tracking ────────────────────────────────────────────────────────
+   Each cookie session gets a row in app_sessions keyed by a hash of its token
+   (sid), so the back office can list active sign-ins and revoke one. Deriving
+   the sid from the token means no change to the JWT payload or sign(); an old
+   cookie with no row is simply treated as "not revoked" (backward compatible).*/
+const sidOf = (token) => crypto.createHash("sha256").update(String(token || "")).digest("hex").slice(0, 40);
+const deviceOf = (req) => {
+  const ua = String((req.get && req.get("user-agent")) || "");
+  const os = /Windows/.test(ua) ? "Windows" : /Macintosh|Mac OS X/.test(ua) ? "Mac" : /Android/.test(ua) ? "Android" : /iPhone|iPad|iOS/.test(ua) ? "iOS" : /Linux/.test(ua) ? "Linux" : "Device";
+  const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "browser";
+  return br + " · " + os;
+};
+async function recordSession(orgId, token, meta = {}) {
+  try {
+    await withOrg(orgId, (c) => c.query(
+      `INSERT INTO app_sessions (org_id, sid, staff_id, name, role, register, device, ip)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (org_id, sid) DO UPDATE SET revoked=false, last_seen=now(), device=EXCLUDED.device, ip=EXCLUDED.ip`,
+      [orgId, sidOf(token), meta.staffId || null, meta.name || null, meta.role || null, meta.register || null, meta.device || null, meta.ip || null]));
+  } catch (e) { recordError("session record", e); }
+}
+/* Set the cookie AND track the session (fire-and-forget so a tracking hiccup
+   never blocks a login). Use in place of setAppCookie for real user logins. */
+const setAppCookieTracked = (req, res, token, meta = {}) => {
+  setAppCookie(res, token);
+  recordSession(meta.orgId, token, Object.assign({ device: deviceOf(req), ip: (req.ip || "") }, meta));
+};
 /* Resolves the app-session cookie to a live, active org id, or null. The one
    place that decides "is this browser really signed in?" - both the /app gate
    and the /login,/signup "skip straight to the app" shortcut go through it, so
@@ -624,11 +651,26 @@ const setAppCookie = (res, token) => res.cookie(APP_COOKIE, token, {
    a stale localStorage token with no valid cookie - was an infinite
    /login<->/app redirect flash). */
 async function resolveAppSession(req) {
+  const raw = parseCookies(req)[APP_COOKIE];
   let payload;
-  try { payload = jwt.verify(parseCookies(req)[APP_COOKIE], SECRET); } catch { return null; }
+  try { payload = jwt.verify(raw, SECRET); } catch { return null; }
   if (!payload.o) return null;
-  const r = await withSystem((client) => client.query("SELECT status, onboarded FROM orgs WHERE id=$1", [payload.o]));
-  if (!r.rowCount || (r.rows[0].status && r.rows[0].status !== "active")) return null;
+  const r = await withSystem(async (client) => {
+    const org = await client.query("SELECT status, onboarded FROM orgs WHERE id=$1", [payload.o]);
+    /* Per-session revocation: a matching, revoked row rejects this cookie.
+       Absent row = an older/untracked session, treated as valid. Any DB error
+       here fails OPEN (session stays valid) so a hiccup can never lock everyone
+       out — the worst case is a revoked device lingers until the DB recovers. */
+    let revoked = false;
+    try {
+      const s = await client.query("SELECT revoked FROM app_sessions WHERE org_id=$1 AND sid=$2", [payload.o, sidOf(raw)]);
+      revoked = s.rowCount ? !!s.rows[0].revoked : false;
+    } catch { revoked = false; }
+    return { org, revoked };
+  });
+  if (!r.org.rowCount || (r.org.rows[0].status && r.org.rows[0].status !== "active")) return null;
+  if (r.revoked) return null;
+  r.rowCount = r.org.rowCount; r.rows = r.org.rows;
   /* Side-channel for requireAppSession so it can steer un-onboarded orgs to
      /welcome without a second lookup; API callers simply ignore it. */
   req.kOnboarded = r.rows[0].onboarded !== false;
@@ -959,7 +1001,7 @@ app.post("/api/auth/google", wrap(async (req, res) => {
   const org = await findOrCreateOAuthOrg({ provider: "google", sub: payload.sub, email: payload.email, name: payload.name });
   const result = await finishOAuthLogin(org);
   if (result.error) return res.status(result.status).json({ error: result.error });
-  setAppCookie(res, result.token);
+  setAppCookieTracked(req, res, result.token, { orgId: org.id, role: "owner", register: result.register, name: (org.owner_name || org.email || "Owner") });
   res.json(result);
 }));
 
@@ -987,7 +1029,7 @@ app.post("/auth/apple/callback", express.urlencoded({ extended: false }), wrap(a
   const org = await findOrCreateOAuthOrg({ provider: "apple", sub: payload.sub, email: payload.email, name });
   const result = await finishOAuthLogin(org);
   if (result.error) return respond({ kashikeyoAppleAuth: true, error: result.error });
-  setAppCookie(res, result.token);
+  setAppCookieTracked(req, res, result.token, { orgId: org.id, role: "owner", register: result.register, name: (org.owner_name || org.email || "Owner") });
   respond(Object.assign({ kashikeyoAppleAuth: true }, result));
 }));
 
@@ -1018,7 +1060,7 @@ app.post("/api/register", wrap(async (req, res) => {
   const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
   const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
   const token = sign(id, "R1", DEFAULT_STORE_ID);
-  setAppCookie(res, token);
+  setAppCookieTracked(req, res, token, { orgId: id, role: "owner", register: "R1", name: (cleanOwnerName || email || "Owner") });
   const result = { token, slug, register: "R1", storeId: DEFAULT_STORE_ID };
   if (seededPin) result.pin = seededPin;
   res.json(result);
@@ -1042,7 +1084,7 @@ app.post("/api/login", wrap(async (req, res) => {
   const register = "R" + upd.rows[0].registers;
   const seededPin = await ensureOwnerSeed(org);
   const token = sign(org.id, register, selectedStore);
-  setAppCookie(res, token);
+  setAppCookieTracked(req, res, token, { orgId: org.id, role: "owner", register, name: (org.owner_name || org.email || "Owner") });
   const result = { token, slug: org.slug, register, storeId: selectedStore };
   if (seededPin) result.pin = seededPin;
   res.json(result);
@@ -1074,7 +1116,7 @@ app.post("/api/back/login", wrap(async (req, res) => {
   rlClear(keys);
   await ensureDefaultStore(org.id, org.store_name);
   const storeId = cleanStoreId(me.storeId || DEFAULT_STORE_ID);
-  setAppCookie(res, sign(org.id, "BACK", storeId, { role: me.role, staff: { id: me.id, name: me.name } }));
+  { const btok = sign(org.id, "BACK", storeId, { role: me.role, staff: { id: me.id, name: me.name } }); setAppCookieTracked(req, res, btok, { orgId: org.id, role: me.role, register: "BACK", name: me.name, staffId: me.id }); }
   res.json({ ok: true, role: me.role, name: me.name, slug: org.slug });
 }));
 
@@ -1128,7 +1170,7 @@ app.post("/api/pair", wrap(async (req, res) => {
   if (!org) return res.status(401).json({ error: "sign in required" });
   const result = await finishOAuthLogin(org);
   if (result.error) return res.status(result.status).json({ error: result.error });
-  setAppCookie(res, result.token);
+  setAppCookieTracked(req, res, result.token, { orgId: org.id, role: "owner", register: result.register, name: (org.owner_name || org.email || "Owner") });
   res.json(result);
 }));
 
@@ -2662,6 +2704,39 @@ if (fs.existsSync(protoFile)) {
     });
     if (out == null) return res.status(404).json({ error: "member not found" });
     poke(orgId, out.rowver);
+    res.json({ ok: true });
+  }));
+  // Sessions: list active cookie sessions for this org, and revoke one (or all
+  // but the current). Admin+; the current device is flagged and can't be
+  // revoked here (use Sign out for that).
+  app.get("/api/app2/sessions", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing sessions needs an admin or the owner.")) return;
+    const curSid = sidOf(parseCookies(req)[APP_COOKIE]);
+    const rows = (await withOrg(orgId, (c) => c.query(
+      "SELECT sid, name, role, register, device, ip, created_at, last_seen FROM app_sessions WHERE org_id=$1 AND revoked=false ORDER BY last_seen DESC LIMIT 50", [orgId]))).rows;
+    res.json({ sessions: rows.map((r) => ({
+      sid: r.sid, current: r.sid === curSid, name: r.name || "—", role: r.role || "", register: r.register || "",
+      device: r.device || "—", ip: r.ip || "", since: Number(new Date(r.created_at)), lastSeen: Number(new Date(r.last_seen)) })) });
+  }));
+  app.post("/api/app2/sessions/revoke", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing sessions needs an admin or the owner.")) return;
+    const b = req.body || {};
+    const curSid = sidOf(parseCookies(req)[APP_COOKIE]);
+    const actor = (req.appStaff && req.appStaff.name) || "admin";
+    if (b.all) {
+      await withOrg(orgId, (c) => c.query("UPDATE app_sessions SET revoked=true WHERE org_id=$1 AND sid<>$2", [orgId, curSid]));
+      logActivity(orgId, { actor, action: "sessions.revoked_all", requestId: req.id, detail: {} });
+      return res.json({ ok: true });
+    }
+    const sid = String(b.sid || "");
+    if (!sid) return res.status(400).json({ error: "which session?" });
+    if (sid === curSid) return res.status(400).json({ error: "That's this device — use Sign out instead." });
+    await withOrg(orgId, (c) => c.query("UPDATE app_sessions SET revoked=true WHERE org_id=$1 AND sid=$2", [orgId, sid]));
+    logActivity(orgId, { actor, action: "session.revoked", ref: sid.slice(0, 8), requestId: req.id, detail: {} });
     res.json({ ok: true });
   }));
 }

@@ -409,3 +409,29 @@ UPDATE entities
        updated_at = now()
  WHERE kind = 'settings'
    AND (data->>'gstBp') = '1600';
+
+-- ── Session tracking (real /admin Sessions tab) ───────────────────────────
+-- One row per issued cookie session, keyed by a hash of the token (sid). Lets
+-- the back office list active sign-ins and revoke a lost/stale device. RLS +
+-- grant mirror the other tenant tables. Idempotent.
+CREATE TABLE IF NOT EXISTS app_sessions (
+  org_id     TEXT NOT NULL,
+  sid        TEXT NOT NULL,
+  staff_id   TEXT,
+  name       TEXT,
+  role       TEXT,
+  register   TEXT,
+  device     TEXT,
+  ip         TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  revoked    BOOLEAN NOT NULL DEFAULT false,
+  PRIMARY KEY (org_id, sid)
+);
+CREATE INDEX IF NOT EXISTS app_sessions_org ON app_sessions (org_id, revoked, last_seen);
+ALTER TABLE app_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_sessions FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON app_sessions;
+CREATE POLICY tenant_isolation ON app_sessions
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
