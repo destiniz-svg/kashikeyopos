@@ -107,6 +107,13 @@
       <div id="users"></div>
       <button type="button" class="ghost" id="addUser">+ Add a team member</button>
 
+      <label style="margin-top:22px">Your menu</label>
+      <div class="pick" style="flex-direction:column;gap:8px">
+        <label><input type="radio" name="menu" value="sample" checked /><span><span class="cname">Start with a sample menu</span><br><span class="csub">A ready Maldivian menu — coffee, mains, snacks, drinks & retail. Edit anytime.</span></span></label>
+        <label><input type="radio" name="menu" value="empty" /><span><span class="cname">Start empty</span><br><span class="csub">Add your own items later in the admin panel.</span></span></label>
+        <label><input type="radio" name="menu" value="ai" /><span><span class="cname">Build with AI ✨</span><br><span class="csub">Opens the AI menu builder — type an item name and it creates the rest.</span></span></label>
+      </div>
+
       <div class="error" id="err2"></div>
       <button class="primary" type="submit" id="finishBtn">Open my store</button>
       <button type="button" class="ghost" id="back1">← Back</button>
@@ -185,10 +192,11 @@
         users.push({ name:nm, role:rl, pin:up });
       });
       if(!ok) return;
+      var menuSel=document.querySelector('input[name="menu"]:checked'); var menu=menuSel?menuSel.value:"sample";
       var btn=$("finishBtn"); btn.disabled=true; btn.textContent="Opening…";
-      fetch("/api/onboard/finish",{ method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ pin:pin, users:users }) })
+      fetch("/api/onboard/finish",{ method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ pin:pin, users:users, menu:menu }) })
         .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {ok:r.ok, j:j}; }); })
-        .then(function(x){ if(!x.ok){ btn.disabled=false; btn.textContent="Open my store"; return showErr("err2",x.j.error||"Could not finish."); } location.href="/app"; })
+        .then(function(x){ if(!x.ok){ btn.disabled=false; btn.textContent="Open my store"; return showErr("err2",x.j.error||"Could not finish."); } location.href=x.j.next||"/app"; })
         .catch(function(){ btn.disabled=false; btn.textContent="Open my store"; showErr("err2","Network error — try again."); });
     });
 

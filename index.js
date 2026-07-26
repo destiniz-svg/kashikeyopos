@@ -1153,7 +1153,9 @@ app.post("/api/signup/verify-otp", pubThrottle(12, "otpv"), wrap(async (req, res
   await withOrg(id, (c) => c.query(
     "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) ON CONFLICT (org_id, kind, id) DO NOTHING",
     [id, JSON.stringify({ storeName: "My Store", gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR", footer: "" })]));
-  try { await ensureDefaultMenu(id); } catch (e) { console.warn("default-menu seed skipped:", e.message); }
+  /* The starter menu is NOT seeded here — the /welcome wizard lets the owner
+     choose (sample menu / start empty / build with AI), and /api/onboard/finish
+     seeds it only if they pick the sample. */
   await withSystem((c) => c.query("DELETE FROM otp_codes WHERE email=$1 AND purpose='signup'", [email]));
   const token = sign(id, "R1", DEFAULT_STORE_ID);
   setAppCookieTracked(req, res, token, { orgId: id, role: "owner", register: "R1", name: email });
@@ -1241,7 +1243,13 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
     }
     await c.query("UPDATE orgs SET onboarded=true, setup_step='done' WHERE id=$1", [orgId]);
   });
-  res.json({ ok: true, next: "/app" });
+  /* Starter menu choice: 'sample' seeds the shared Maldivian starter menu;
+     'empty'/'ai' seed nothing (the owner builds it by hand or with the AI Menu
+     Builder in the admin panel). 'ai' lands them in the admin cockpit where the
+     builder lives; the others open the till, ready to sell. */
+  const menu = String(b.menu || "sample").toLowerCase();
+  if (menu === "sample") { try { await ensureDefaultMenu(orgId); } catch (e) { console.warn("starter-menu seed skipped:", e.message); } }
+  res.json({ ok: true, next: menu === "ai" ? "/admin" : "/app" });
 }));
 
 app.post("/api/login", wrap(async (req, res) => {
