@@ -2581,10 +2581,9 @@ patchFile(indexPath, (html) => html
   )
 );
 
-/* Force every installed PWA onto the current build. Match ANY prior version
-   (not just the 2.9.x line) and move strictly forward — staging previously ran
-   the 3.0.x release line, so a 2.9.x number would sort *below* what clients
-   have installed. 3.1.0 supersedes every version shipped to date. */
-patchFile(swPath, (sw) => sw.replace(/kashikeyo-\d+\.\d+\.\d+/g, "kashikeyo-3.1.9"));
+/* sw.js is now a self-removing kill switch (the till/register moved to the
+   live server-rendered /app with no service worker). Nothing to bump: the
+   worker unregisters itself and purges its caches on activate, so we leave the
+   file untouched instead of rewriting a cache version that no longer exists. */
 
 if (!process.env.PATCH_ONLY) require("./index.js");

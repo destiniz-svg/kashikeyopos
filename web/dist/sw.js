@@ -1,53 +1,33 @@
-/* NexusPOS service worker — offline-first shell caching.
-   Bump VERSION on releases to force clients onto the new build. */
-const VERSION = 'kashikeyo-3.1.9';
-const SHELL = ['./', './manifest.webmanifest', './offline-bridge.js'];
+/* KILL SWITCH — kashikeyo-4.0.0-unregister.
+   The register/till used to be a baked, offline-first bundle served at /app,
+   and this worker cached its app shell. /app (and /admin, and the guest
+   portal) are now live, server-rendered pages with no service worker and
+   Cache-Control:no-cache. Any browser still running the OLD worker keeps
+   serving that frozen shell from cache — the sample menu and demo staff
+   (Abdulla/Shifna/Ahmed) users saw after "Go to dashboard" / sign-out.
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
-    caches.open(VERSION)
-      .then((c) => c.addAll(SHELL))
-      .then(() => self.skipWaiting())
-  );
+   This build replaces the worker with one that removes itself: it purges
+   every cache, unregisters, and reloads any open page so it loads the live
+   app from the network. Because browsers fetch the worker script itself over
+   the network (bypassing any fetch handler) on each navigation, even a stale
+   cache-first worker will pick this up and self-destruct. */
+self.addEventListener('install', () => self.skipWaiting());
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch (e) { /* nothing to purge */ }
+    try { await self.clients.claim(); } catch (e) {}
+    let clients = [];
+    try { clients = await self.clients.matchAll({ type: 'window' }); } catch (e) {}
+    try { await self.registration.unregister(); } catch (e) {}
+    // Reload open pages so they re-fetch the live app instead of the cache.
+    clients.forEach((c) => { try { c.navigate(c.url); } catch (e) {} });
+  })());
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
-
-self.addEventListener('fetch', (e) => {
-  const req = e.request;
-  if (req.method !== 'GET') return;
-  const url = new URL(req.url);
-  if (url.origin !== self.location.origin) return;
-  /* Live data (guest portal + sync API) must always come from the network —
-     serving these cache-first froze customer profiles, menus and order status. */
-  if (url.pathname.startsWith('/api') || url.pathname.startsWith('/p/')) return;
-  if (req.mode === 'navigate') {
-    e.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put('./', copy));
-          return res;
-        })
-        .catch(() => caches.match('./'))
-    );
-    return;
-  }
-  e.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      try {
-        if (res.ok) {
-          const copy = res.clone();
-          caches.open(VERSION).then((c) => c.put(req, copy));
-        }
-      } catch (err) {}
-      return res;
-    }))
-  );
-});
+/* Deliberately no fetch handler: with none registered every request goes
+   straight to the network, so even in the brief window before this worker
+   finishes unregistering nothing is served from the old cache. */
