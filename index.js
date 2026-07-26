@@ -291,7 +291,10 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
        missing or changed), so this is a no-op on subsequent boots. New outlets
        get the same menu at registration. */
     try {
-      const orgs = (await bootPool.query("SELECT id FROM orgs")).rows;
+      // Only outlets that didn't opt out of the starter menu (skip_default_menu
+      // is set when onboarding chose an empty or AI-built menu) — so an empty
+      // menu stays empty across deploys instead of being re-seeded here.
+      const orgs = (await bootPool.query("SELECT id FROM orgs WHERE COALESCE(skip_default_menu,false)=false")).rows;
       let touched = 0;
       for (const o of orgs) { if (await ensureDefaultMenu(o.id)) touched++; }
       if (touched) console.log(`default menu applied/refreshed for ${touched} of ${orgs.length} outlet(s)`);
@@ -1226,6 +1229,11 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
     if (pins.has(upin)) return res.status(400).json({ error: "PINs must be unique — " + name + "'s PIN is already used." });
     pins.add(upin); users.push({ name, role, pin: upin });
   }
+  /* Starter menu choice: 'sample' seeds the shared Maldivian starter menu;
+     'empty'/'ai' seed nothing (the owner builds it by hand or with the AI Menu
+     Builder in the admin panel). 'ai' lands them in the admin cockpit where the
+     builder lives; the others open the till, ready to sell. */
+  const menu = String(b.menu || "sample").toLowerCase();
   await withOrg(orgId, async (c) => {
     const org = (await c.query("SELECT owner_name, email FROM orgs WHERE id=$1", [orgId])).rows[0] || {};
     const ownerName = (org.owner_name && org.owner_name.trim()) || (org.email ? org.email.split("@")[0] : "Owner");
@@ -1241,13 +1249,11 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
       const d = { id: uid(), name: u.name, role: u.role, pin: hashTillPin(u.pin) };
       await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'users',$2,$3)", [orgId, d.id, JSON.stringify(d)]);
     }
-    await c.query("UPDATE orgs SET onboarded=true, setup_step='done' WHERE id=$1", [orgId]);
+    /* Mark the org so the boot-time starter-menu backfill never re-seeds it when
+       the owner chose an empty or AI-built menu — otherwise the sample menu
+       reappears on the next deploy and their empty menu won't stay empty. */
+    await c.query("UPDATE orgs SET onboarded=true, setup_step='done', skip_default_menu=$2 WHERE id=$1", [orgId, menu !== "sample"]);
   });
-  /* Starter menu choice: 'sample' seeds the shared Maldivian starter menu;
-     'empty'/'ai' seed nothing (the owner builds it by hand or with the AI Menu
-     Builder in the admin panel). 'ai' lands them in the admin cockpit where the
-     builder lives; the others open the till, ready to sell. */
-  const menu = String(b.menu || "sample").toLowerCase();
   if (menu === "sample") { try { await ensureDefaultMenu(orgId); } catch (e) { console.warn("starter-menu seed skipped:", e.message); } }
   res.json({ ok: true, next: menu === "ai" ? "/admin" : "/app" });
 }));

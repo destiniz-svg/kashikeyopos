@@ -459,3 +459,6 @@ CREATE INDEX IF NOT EXISTS otp_codes_exp ON otp_codes (expires_at);
 --  'done'    = fully set up → straight to the app
 -- Existing orgs default to 'done' so they are unaffected.
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS setup_step TEXT NOT NULL DEFAULT 'done';
+-- Owners who chose an empty or AI-built menu at onboarding: the boot-time
+-- starter-menu backfill skips these so their empty menu stays empty.
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS skip_default_menu BOOLEAN NOT NULL DEFAULT false;
