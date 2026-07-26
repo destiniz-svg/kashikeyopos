@@ -648,7 +648,7 @@ async function resolveAppSession(req) {
    owner/email login carries no role and resolves to "owner" (full access),
    preserving backward compatibility. Ranks mirror inventory.js's model:
    manager = operational back office, admin/owner = settings + staff. */
-const APP_ROLE_RANK = { owner: 5, admin: 4, manager: 3, cashier: 2, waiter: 2, kitchen: 1 };
+const APP_ROLE_RANK = { owner: 5, admin: 4, manager: 3, cashier: 2, waiter: 2, kitchen: 1, rider: 1 };
 const APP_RANK = { KITCHEN: 1, TILL: 2, MANAGER: 3, ADMIN: 4, OWNER: 5 };
 const appRankOf = (r) => { const k = APP_ROLE_RANK[String(r || "owner").toLowerCase()]; return k == null ? 0 : k; };
 /* Inline gate (not middleware) because each handler resolves the session itself
@@ -2610,7 +2610,7 @@ if (fs.existsSync(protoFile)) {
   // and their role is the control (owner/admin/manager reach the back office;
   // cashier/waiter/kitchen are till-only). The owner role is never assignable
   // here (there is exactly one owner, seeded at registration).
-  const ASSIGNABLE_ROLES = new Set(["manager", "cashier", "waiter", "kitchen"]);
+  const ASSIGNABLE_ROLES = new Set(["manager", "cashier", "waiter", "kitchen", "rider"]);
   app.post("/api/app2/staff", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
@@ -2620,7 +2620,7 @@ if (fs.existsSync(protoFile)) {
     const role = String(b.role || "").toLowerCase();
     const pin = String(b.pin || "").trim();
     if (!name) return res.status(400).json({ error: "name is required" });
-    if (!ASSIGNABLE_ROLES.has(role)) return res.status(400).json({ error: "pick a role: manager, cashier, waiter or kitchen" });
+    if (!ASSIGNABLE_ROLES.has(role)) return res.status(400).json({ error: "pick a role: manager, cashier, waiter, kitchen or rider" });
     if (pin && !/^\d{4}$/.test(pin)) return res.status(400).json({ error: "PIN must be 4 digits" });
     const out = await withOrg(orgId, async (c) => {
       const id = String(b.id || "").trim();
