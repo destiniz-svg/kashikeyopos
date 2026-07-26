@@ -1891,7 +1891,7 @@ if (fs.existsSync(protoFile)) {
     .slice(0, 12)
     .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, "D-"), cust: o.customerName || "Guest", custDv: o.customerDv || o.customerName || "Guest", zone: o.zone || "Malé",
       items: (o.items || []).map((li) => (Number(li.qty || li.q) || 1) + "× " + (li.name || li.n || "")).join(" · "),
-      rider: "—", st: String(o.status) === "ready" ? 1 : 0 }));
+      rider: (o.rider && String(o.rider).trim()) || "—", st: String(o.status) === "ready" ? 1 : 0 }));
   // Per-range real analytics for the admin dashboard + Reports, computed from
   // real sales (+ expenses for a rough COGS). Overlaid onto the prototype's
   // DATA[range] so the stat cards, trend chart, GST, payment mix and top items
@@ -2388,6 +2388,26 @@ if (fs.existsSync(protoFile)) {
     if (rowver == null) return res.status(404).json({ error: "order not found" });
     poke(orgId, rowver);
     res.json({ ok: true });
+  }));
+  // Delivery ops: assign (or clear) the rider on a delivery order. Free-text
+  // name — riders aren't a login role. Any till staff may assign; kitchen can't.
+  app.post("/api/app2/order/:id/rider", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Kitchen staff can't assign riders.")) return;
+    const id = String(req.params.id || "");
+    const rider = String((req.body || {}).rider || "").trim().slice(0, 60);
+    const rowver = await withOrg(orgId, async (c) => {
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cur.rowCount) return null;
+      const data = cur.rows[0].data || {};
+      data.rider = rider; data.updatedAt = Date.now();
+      const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    if (rowver == null) return res.status(404).json({ error: "order not found" });
+    poke(orgId, rowver);
+    res.json({ ok: true, rider });
   }));
   // Customer profile upsert (name/phone/tier/notes) — never touches balance or
   // points (server-authoritative). Cookie-authed; used by the /admin2 editor.
