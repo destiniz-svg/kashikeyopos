@@ -2298,7 +2298,13 @@ if (fs.existsSync(protoFile)) {
               // across every later load — the register HTML drops from ~850KB to ~360KB.
               if (!withAdmin) for (const r of prodRows) {
                 const im = r.data && r.data.img;
-                if (im) menuImg["art-" + (r.id)] = "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+                if (!im) continue;
+                // A remote (https) photo is handed straight to the tile; a stored
+                // data-URI is served from /api/img/<id> so its base64 doesn't ride
+                // in this no-cache HTML.
+                menuImg["art-" + (r.id)] = /^https?:\/\//i.test(String(im))
+                  ? String(im)
+                  : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
               }
             }
             if (isRegister) Object.assign(regData, await collectRegData(c, orgId));
