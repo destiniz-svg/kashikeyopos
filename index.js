@@ -134,7 +134,7 @@ async function ensureAppRole() {
     END $do$;
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
-  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, otp_codes TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, otp_codes, store_backups TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
@@ -883,6 +883,89 @@ function hashTillPin(pin) {
   let h = 5381;
   for (const ch of String(pin)) h = (h * 33 ^ ch.charCodeAt(0)) >>> 0;
   return String(h);
+}
+
+/* ── Store backup / reset / restore ───────────────────────────────────────────
+   Every org-scoped table, snapshotted / wiped / restored as a whole. Run through
+   bootPool (superuser) so wipe+restore can bypass RLS and the append-only guard
+   on activity_log; every statement is still scoped to a single authenticated
+   org_id. Table names come only from this fixed whitelist (never user input). */
+const BACKUP_TABLES = ["entities", "ingredients", "ingredient_units", "recipe_lines", "stock_moves",
+  "suppliers", "purchase_invoices", "purchase_invoice_lines", "ingredient_lots",
+  "audit_sessions", "audit_lines", "activity_log"];
+
+async function snapshotStore(orgId) {
+  const tables = {};
+  for (const t of BACKUP_TABLES) {
+    const r = await bootPool.query(`SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) AS rows FROM "${t}" x WHERE org_id=$1`, [orgId]);
+    tables[t] = r.rows[0].rows;
+  }
+  return { version: 1, at: Date.now(), tables };
+}
+
+function backupCounts(snap) {
+  const ents = (snap.tables && snap.tables.entities) || [];
+  const byKind = {};
+  for (const e of ents) { if (e && !e.deleted) byKind[e.kind] = (byKind[e.kind] || 0) + 1; }
+  return {
+    products: byKind.products || 0, sales: byKind.sales || 0, customers: byKind.customers || 0,
+    orders: byKind.orders || 0, ingredients: ((snap.tables && snap.tables.ingredients) || []).length,
+    rows: BACKUP_TABLES.reduce((a, t) => a + (((snap.tables && snap.tables[t]) || []).length), 0),
+  };
+}
+
+// Reset a store to empty: soft-delete every content entity (so connected tills
+// sync the removals) while keeping the store profile + staff, hard-delete the
+// inventory/audit tables, and opt the outlet out of the starter-menu backfill so
+// it stays empty until the owner adds a menu or restores. Returns the max rowver
+// so callers can poke SSE. FK triggers off for the txn → whitelist order is moot.
+async function resetStore(orgId) {
+  const keep = ["users", "settings"];
+  const c = await bootPool.connect();
+  let maxRowver = 0;
+  try {
+    await c.query("BEGIN");
+    const r = await c.query(
+      "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) RETURNING rowver", [orgId, keep]);
+    for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+    await c.query("SET LOCAL session_replication_role = replica");
+    for (const t of BACKUP_TABLES) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
+    await c.query("UPDATE orgs SET skip_default_menu=true WHERE id=$1", [orgId]);
+    await c.query("COMMIT");
+  } catch (e) { await c.query("ROLLBACK").catch(() => {}); throw e; } finally { c.release(); }
+  return maxRowver;
+}
+
+// Full point-in-time restore: wipe everything for the org, re-insert the snapshot
+// (jsonb_populate_recordset rebuilds each row from the table's rowtype), then
+// re-stamp entity rowvers so connected tills pull the restored data. Returns the
+// max rowver for the SSE poke.
+async function restoreStore(orgId, snap) {
+  const c = await bootPool.connect();
+  let maxRowver = 0;
+  try {
+    await c.query("BEGIN");
+    await c.query("SET LOCAL session_replication_role = replica");
+    for (const t of BACKUP_TABLES) await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]);
+    for (const t of BACKUP_TABLES) {
+      const rows = (snap.tables && snap.tables[t]) || [];
+      if (rows.length) await c.query(`INSERT INTO "${t}" SELECT * FROM jsonb_populate_recordset(NULL::"${t}", $1::jsonb)`, [JSON.stringify(rows)]);
+    }
+    const r = await c.query("UPDATE entities SET rowver=nextval('entities_rowver_seq') WHERE org_id=$1 RETURNING rowver", [orgId]);
+    for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+    await c.query("COMMIT");
+  } catch (e) { await c.query("ROLLBACK").catch(() => {}); throw e; } finally { c.release(); }
+  return maxRowver;
+}
+
+// Reset / restore confirmation: match the 4-digit PIN against any owner/admin
+// staff PIN for the org.
+async function verifyAdminPin(orgId, pin) {
+  if (!/^\d{4}$/.test(String(pin || ""))) return false;
+  const want = hashTillPin(pin);
+  const r = await bootPool.query(
+    "SELECT data->>'pin' AS pin FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'role' IN ('owner','admin')", [orgId]);
+  return r.rows.some((x) => x.pin && String(x.pin) === want);
 }
 
 /* ── Transactional email (signup OTP + welcome) ───────────────────────────────
@@ -2992,6 +3075,92 @@ if (fs.existsSync(protoFile)) {
     poke(orgId, out.rowver);
     res.json({ ok: true });
   }));
+
+  // ── Store backup / reset / restore (admin/owner only) ──────────────────────
+  app.get("/api/app2/backups", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
+    const r = await bootPool.query(
+      "SELECT id, label, reason, counts, created_at FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50", [orgId]);
+    res.json({ backups: r.rows.map((b) => ({ id: b.id, label: b.label, reason: b.reason, counts: b.counts, createdAt: new Date(b.created_at).getTime() })) });
+  }));
+
+  app.post("/api/app2/backup", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
+    const label = String((req.body || {}).label || "").trim().slice(0, 80) || ("Backup · " + new Date().toLocaleString("en-GB"));
+    const reason = String((req.body || {}).reason || "manual").slice(0, 20);
+    const snap = await snapshotStore(orgId);
+    const counts = backupCounts(snap);
+    const id = uid();
+    await bootPool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,$4,$5,$6)",
+      [id, orgId, label, reason, JSON.stringify(counts), JSON.stringify(snap)]);
+    // Keep only the newest 20 backups per org so this can't grow without bound.
+    await bootPool.query("DELETE FROM store_backups WHERE org_id=$1 AND id NOT IN (SELECT id FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20)", [orgId]);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.backup", ref: label, requestId: req.id });
+    res.json({ ok: true, id, label, counts });
+  }));
+
+  app.post("/api/app2/backup/:id/delete", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
+    await bootPool.query("DELETE FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(req.params.id || "")]);
+    res.json({ ok: true });
+  }));
+
+  app.post("/api/app2/restore", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Restoring needs an admin or the owner.")) return;
+    const b = req.body || {};
+    if (!(await verifyAdminPin(orgId, b.pin))) return res.status(403).json({ error: "Incorrect admin PIN." });
+    const row = (await bootPool.query("SELECT data FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(b.id || "")])).rows[0];
+    if (!row) return res.status(404).json({ error: "Backup not found." });
+    const maxRowver = await restoreStore(orgId, row.data);
+    poke(orgId, maxRowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.restore", ref: String(b.id || ""), requestId: req.id });
+    res.json({ ok: true });
+  }));
+
+  app.post("/api/app2/reset", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Resetting the store needs an admin or the owner.")) return;
+    const b = req.body || {};
+    if (!(await verifyAdminPin(orgId, b.pin))) return res.status(403).json({ error: "Incorrect admin PIN." });
+    // Optional safety backup before wiping.
+    let backupId = null;
+    if (b.backup) {
+      const snap = await snapshotStore(orgId);
+      const counts = backupCounts(snap);
+      backupId = uid();
+      const label = "Before reset · " + new Date().toLocaleString("en-GB");
+      await bootPool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,'pre-reset',$4,$5)",
+        [backupId, orgId, label, JSON.stringify(counts), JSON.stringify(snap)]);
+    }
+    const maxRowver = await resetStore(orgId);
+    poke(orgId, maxRowver);
+    // A single record of the reset itself (the rest of the log was cleared).
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset", ref: backupId ? "backup kept" : "no backup", requestId: req.id });
+    res.json({ ok: true, backupId });
+  }));
+
+  // Add the starter menu on demand (the post-reset "add a menu" action). Clears
+  // the skip flag and seeds the shared default menu + categories.
+  app.post("/api/app2/seed-menu", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Adding the menu needs an admin or the owner.")) return;
+    await bootPool.query("UPDATE orgs SET skip_default_menu=false WHERE id=$1", [orgId]);
+    await ensureDefaultMenu(orgId);
+    const mx = (await bootPool.query("SELECT COALESCE(MAX(rowver),0) AS m FROM entities WHERE org_id=$1", [orgId])).rows[0].m;
+    poke(orgId, Number(mx));
+    res.json({ ok: true });
+  }));
+
   // Sessions: list active cookie sessions for this org, and revoke one (or all
   // but the current). Admin+; the current device is flagged and can't be
   // revoked here (use Sign out for that).

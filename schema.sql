@@ -462,3 +462,18 @@ ALTER TABLE orgs ADD COLUMN IF NOT EXISTS setup_step TEXT NOT NULL DEFAULT 'done
 -- Owners who chose an empty or AI-built menu at onboarding: the boot-time
 -- starter-menu backfill skips these so their empty menu stays empty.
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS skip_default_menu BOOLEAN NOT NULL DEFAULT false;
+
+-- Point-in-time snapshots of a store's data (menu, sales, customers, inventory,
+-- audit trail…) for the Reset Store / Restore feature. Global table scoped by
+-- org_id (no RLS — the app role only reaches its own rows through the endpoints,
+-- which always filter by the authenticated org).
+CREATE TABLE IF NOT EXISTS store_backups (
+  id         TEXT PRIMARY KEY,
+  org_id     TEXT NOT NULL,
+  label      TEXT NOT NULL DEFAULT '',
+  reason     TEXT NOT NULL DEFAULT 'manual',
+  counts     JSONB NOT NULL DEFAULT '{}'::jsonb,
+  data       JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS store_backups_org ON store_backups(org_id, created_at DESC);

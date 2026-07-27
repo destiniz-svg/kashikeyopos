@@ -154,6 +154,13 @@ button[disabled],button:disabled{cursor:not-allowed}
       </div>
     </header>
     <main style="flex:1;overflow-y:auto;padding:{{ mainPad }};display:flex;flex-direction:column;gap:14px">
+      <sc-if value="{{ menuEmpty }}" hint-placeholder-val="{{ false }}"><div style="border:1px solid var(--coralsoft);background:var(--coralsoft);border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px"><div style="font-size:13.5px;font-weight:800;color:var(--coral)">Your store has no menu yet 🍽️</div><div style="font-size:11.5px;color:var(--ink2);font-weight:600;line-height:1.5">Add the starter menu to begin selling, or restore a backup.</div></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onClick="{{ addStarterMenu }}" style="border:0;border-radius:10px;padding:9px 15px;background:var(--coral);color:#fff;font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)">Add starter menu</button>
+          <button onClick="{{ goRestore }}" style="border:1px solid var(--line2);border-radius:10px;padding:9px 15px;background:var(--card);color:var(--ink);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)">Restore a backup</button>
+        </div>
+      </div></sc-if>
       <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:14px">
       <sc-if value="{{ onbShow }}" hint-placeholder-val="{{ false }}">
         <div style="background:var(--card);border:1px solid var(--coral);border-radius:18px;padding:18px 20px;box-shadow:var(--shadow);animation:rise .3s both">
@@ -1256,6 +1263,19 @@ button[disabled],button:disabled{cursor:not-allowed}
             <sc-for list="{{ sysInteg }}" as="ig" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:10px;padding:12px 13px;border:1px solid var(--line);border-radius:12px"><span style="width:9px;height:9px;border-radius:99px;flex:none;background:{{ ig.dot }}"></span><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">{{ ig.name }}</div><div style="font-size:10.5px;color:var(--ink2);font-weight:600">{{ ig.detail }}</div></div></div></sc-for>
           </div>
         </div>
+        <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2);flex:1">DATA &amp; BACKUPS</span><button onClick="{{ runBackup }}" style="border:1px solid var(--line2);border-radius:9px;padding:7px 13px;background:var(--card);color:var(--ink);font-size:11.5px;font-weight:800;cursor:pointer" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.95)">Create backup now</button></div>
+          <div style="font-size:11.5px;color:var(--ink2);font-weight:600;line-height:1.5;margin-bottom:12px">Snapshots of your whole store — menu, sales, customers &amp; inventory. Restore any time. The newest 20 are kept.</div>
+          <sc-if value="{{ noBackups }}" hint-placeholder-val="{{ false }}"><div style="border:1px dashed var(--line2);border-radius:12px;padding:18px;text-align:center;font-size:12px;font-weight:600;color:var(--ink3)">No backups yet — create one before any big change.</div></sc-if>
+          <sc-if value="{{ hasBackups }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ backups }}" as="bk" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:11px 13px"><div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ bk.label }}</div><div style="font-size:10.5px;color:var(--ink2);font-weight:600">{{ bk.when }} · {{ bk.summary }}</div></div><button onClick="{{ bk.restore }}" style="flex:none;border:1px solid var(--line2);border-radius:8px;padding:6px 12px;background:var(--card);color:var(--coral);font-size:11px;font-weight:800;cursor:pointer" style-hover="background:var(--coralsoft)" style-active="transform:scale(.94)">Restore</button><button onClick="{{ bk.del }}" aria-label="Delete backup" style="flex:none;width:30px;height:30px;border:1px solid var(--line2);border-radius:8px;background:var(--card);color:var(--ink3);cursor:pointer;display:grid;place-items:center" style-hover="color:var(--red);border-color:var(--red)" style-active="transform:scale(.9)">×</button></div></sc-for>
+          </div></sc-if>
+          <div style="height:1px;background:var(--line);margin:16px 0"></div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;border:1px solid var(--redsoft);background:var(--redsoft);border-radius:13px;padding:13px 15px">
+            <div style="flex:1;min-width:180px"><div style="font-size:12.5px;font-weight:800;color:var(--red)">Reset store</div><div style="font-size:11px;color:var(--ink2);font-weight:600;line-height:1.5">Erases the menu, sales, orders, customers &amp; inventory and starts fresh. Your account, staff &amp; store profile stay. Needs the admin PIN.</div></div>
+            <button onClick="{{ openReset }}" style="flex:none;border:0;border-radius:10px;padding:10px 16px;background:var(--red);color:#fff;font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)">Reset store…</button>
+          </div>
+        </div>
       </div></sc-if>
     </main>
   </div>
@@ -1265,6 +1285,21 @@ button[disabled],button:disabled{cursor:not-allowed}
     <div onClick="{{ stopMdl }}" style="width:min(440px,100%);max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;animation:pop .22s">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;flex:1">{{ mdlTitle }}</div><button onClick="{{ closeMdl }}" aria-label="Close" style="width:30px;height:30px;border:0;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-active="transform:scale(.9)">×</button></div>
       <sc-if value="{{ mdlErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;background:var(--redsoft);color:var(--red);border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700;margin-bottom:14px">{{ mdlErr }}</div></sc-if>
+
+      <sc-if value="{{ isReset }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+        <div style="background:var(--redsoft);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink);font-weight:600;line-height:1.55">This erases the <b>menu, sales, orders, customers and inventory</b> for this store. Your account, staff and store profile stay. This can't be undone.</div>
+        <label style="display:flex;align-items:center;gap:11px;cursor:pointer;border:1px solid var(--line2);border-radius:12px;padding:11px 13px"><span onClick="{{ toggleRBackup }}" style="flex:none;width:38px;height:22px;border-radius:99px;background:{{ rBackupTrackBg }};position:relative;transition:background .2s;cursor:pointer"><span style="position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transform:{{ rBackupKnobX }};transition:transform .2s"></span></span><span style="flex:1;font-size:12.5px;font-weight:700">Back up my data first<span style="display:block;font-size:10.5px;color:var(--ink2);font-weight:600">Recommended — you can restore it later</span></span></label>
+        <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">ADMIN PIN</div><input value="{{ rPin }}" onInput="{{ setRPin }}" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:11px;padding:11px 13px;background:var(--bg);color:var(--ink);font-size:18px;letter-spacing:.3em;font-weight:800;text-align:center;outline:none" style-focus="border-color:var(--red)"></div>
+        <sc-if value="{{ hasRErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12px;font-weight:700">{{ rErr }}</div></sc-if>
+        <button onClick="{{ doReset }}" style="border:0;border-radius:12px;padding:13px;background:var(--red);color:#fff;font-size:13px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">Reset store now</button>
+      </div></sc-if>
+
+      <sc-if value="{{ isRestore }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font-size:12.5px;color:var(--ink);font-weight:600;line-height:1.55">Restore <b>{{ rLabel }}</b>?<div style="font-size:11px;color:var(--ink2);margin-top:3px">{{ rCountsLbl }}</div><div style="margin-top:8px;color:var(--red);font-weight:700">This replaces all current store data.</div></div>
+        <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">ADMIN PIN</div><input value="{{ rPin }}" onInput="{{ setRPin }}" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:11px;padding:11px 13px;background:var(--bg);color:var(--ink);font-size:18px;letter-spacing:.3em;font-weight:800;text-align:center;outline:none" style-focus="border-color:var(--coral)"></div>
+        <sc-if value="{{ hasRErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12px;font-weight:700">{{ rErr }}</div></sc-if>
+        <button onClick="{{ doRestore }}" style="border:0;border-radius:12px;padding:13px;background:var(--coral);color:#fff;font-size:13px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">Restore this backup</button>
+      </div></sc-if>
 
       <sc-if value="{{ isReceive }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
         <div style="background:var(--bg);border-radius:12px;padding:13px 15px"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">RECEIVING INTO STOCK</div><div style="font-size:15px;font-weight:800;margin-top:3px">{{ mdlItemName }}</div></div>
@@ -1658,7 +1693,7 @@ class Component extends DCLogic {
       transfers:[],trSeq:1,poSeq:1,
       staff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]).slice(),
       custData:(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.custData)?window.__ksAdmin.custData:[],
-      sessions:[],
+      sessions:[],backups:[],
       recipeExpand:null,
       recipes:{}};
   }
@@ -1779,7 +1814,16 @@ class Component extends DCLogic {
   addKitchenRoute(){var name=null;try{name=window.prompt('Routing rule — e.g. "Drinks → Bar station"','');}catch(e){}if(name==null)return;name=(name||'').trim();if(!name)return;var routes=((this._adm().cfg&&this._adm().cfg.kitchenRoutes)||[]).concat([name]);this.saveCfg({kitchenRoutes:routes});this.toast('Routing rule added · '+name);}
   newPayLink(){var on=!!(this._adm().cfg&&this._adm().cfg.bmlMerchant);this.toast(on?'Payment link created':'Connect a payment gateway in Payments → Gateway first.');}
   startRefund(){this.toast('Refunds are issued at the register — open the sale and tap Refund.');}
-  runBackup(){this.toast('Your data is backed up automatically on the managed cloud database.');}
+  loadBackups(){var me=this;try{fetch('/api/app2/backups',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&Array.isArray(d.backups))me.setState({backups:d.backups});}).catch(function(){});}catch(e){}}
+  runBackup(){var me=this;me.toast('Creating backup…');try{fetch('/api/app2/backup',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:'{}'}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.toast('Backup saved · '+((j.counts&&j.counts.products)||0)+' items, '+((j.counts&&j.counts.sales)||0)+' sales');me.loadBackups();}else me.toast((j&&j.error)||'Backup failed');}).catch(function(){me.toast('Backup failed — check your connection.');});}catch(e){}}
+  openReset(){this.openMdl('reset',{rbackup:true,rpin:'',rerr:'',title:'Reset store'});}
+  openRestore(b){this.openMdl('restore',{rid:b.id,rlabel:b.label,rcounts:b.counts,rpin:'',rerr:'',title:'Restore from backup'});}
+  setRPin(v){var m=this.state.mdl;this.setState({mdl:Object.assign({},m,{rpin:String(v).replace(/\D/g,'').slice(0,4),rerr:''})});}
+  toggleRBackup(){var m=this.state.mdl;this.setState({mdl:Object.assign({},m,{rbackup:!m.rbackup})});}
+  delBackup(id){var me=this;fetch('/api/app2/backup/'+encodeURIComponent(id)+'/delete',{method:'POST',credentials:'same-origin'}).then(function(){me.toast('Backup deleted');me.loadBackups();}).catch(function(){});}
+  doReset(){var me=this;var m=this.state.mdl;if(!/^\d{4}$/.test(m.rpin||'')){this.setState({mdl:Object.assign({},m,{rerr:'Enter your 4-digit admin PIN.'})});return;}this.setState({mdl:Object.assign({},m,{busy:true,rerr:''})});fetch('/api/app2/reset',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({pin:m.rpin,backup:!!m.rbackup})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.setState({mdl:null});me.toast('Store reset · starting fresh');setTimeout(function(){location.reload();},700);}else{me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:(j&&j.error)||'Reset failed.'})});}}).catch(function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:'Network error — try again.'})});});}
+  doRestore(){var me=this;var m=this.state.mdl;if(!/^\d{4}$/.test(m.rpin||'')){this.setState({mdl:Object.assign({},m,{rerr:'Enter your 4-digit admin PIN.'})});return;}this.setState({mdl:Object.assign({},m,{busy:true,rerr:''})});fetch('/api/app2/restore',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({id:m.rid,pin:m.rpin})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.setState({mdl:null});me.toast('Backup restored');setTimeout(function(){location.reload();},700);}else{me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:(j&&j.error)||'Restore failed.'})});}}).catch(function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:'Network error — try again.'})});});}
+  addStarterMenu(){var me=this;me.toast('Adding starter menu…');fetch('/api/app2/seed-menu',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.toast('Starter menu added');setTimeout(function(){location.reload();},700);}else me.toast((j&&j.error)||'Could not add menu');}).catch(function(){me.toast('Network error');});}
   editOutlet(){this.setState({active:'config',navOpen:false});this.toast('Opening store settings');}
   _outletSrc(){return (typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets))?window.__ksAdmin.outlets:[];}
   addOutlet(){this.openMdl('outlet',{onew:true,oname:'',ocode:'',oaddr:'',title:'Add outlet'});}
@@ -1841,7 +1885,7 @@ class Component extends DCLogic {
   setRecipeLineQty(i,v){const m=this.state.mdl;const q=parseFloat(v);const lines=(m.lines||[]).map((x,ix)=>ix===i?Object.assign({},x,{qty:isNaN(q)?0:q}):x);this.setState({mdl:Object.assign({},m,{lines})});}
   saveRecipe(){var me=this;const m=this.state.mdl;const lines=(m.lines||[]).filter(l=>l.qty>0);const recipes=Object.assign({},this.state.recipes,{[m.id]:lines});this.setState({recipes,mdl:null});this.toast('Recipe saved · '+((this.MENU.find(x=>x.id===m.id)||{}).en||''));var byName={};(this.state.stock||[]).forEach(function(x){if(x.id)byName[x.n]=x.id;});var apiLines=lines.map(function(l){return {ingredientId:byName[l.ing]||'',qty:Number(l.qty)};}).filter(function(l){return l.ingredientId;});try{fetch('/api/inv/recipes/'+encodeURIComponent(m.id),{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:apiLines})}).catch(function(){});}catch(e){}}
   depleteRecipe(id,mult){const rec=this.state.recipes[id];const mi=this.MENU.find(x=>x.id===id);if(!rec||!rec.length){this.openRecipe(id);this.toast('Add ingredients to this recipe first');return;}const low=[];const stock=this.state.stock.map(x=>{const l=rec.find(r=>r.ing===x.n);if(!l)return x;const oh=Math.max(0,Math.round((x.oh-l.qty*(mult||1))*1000)/1000);if(oh<x.par*0.65)low.push(x.n);return Object.assign({},x,{oh});});this.setState({stock});this.toast((mi?mi.en:'Item')+' sold · '+rec.length+' ingredients auto-deducted'+(low.length?' · '+low[0]+' now low':''));}
-  componentDidMount(){this.applyDoc();this.animate();this._rs=()=>this.setState({vw:window.innerWidth});window.addEventListener('resize',this._rs);this._readLive=()=>{try{const r=localStorage.getItem('kashikeyo_live');if(r===this._liveSig)return;this._liveSig=r;this.setState({live:r?JSON.parse(r):null});}catch(e){}};this._readLive();try{const rs=localStorage.getItem('kashikeyo_store');if(rs)this.setState({store:Object.assign({},this.state.store,JSON.parse(rs))});}catch(e){}this._onStore=(e)=>{if(!e||e.key==='kashikeyo_live'||e.key===null)this._readLive();};window.addEventListener('storage',this._onStore);this._liveIv=setInterval(this._readLive,3000);this.loadInsights();this.loadFlags();this.loadPnl();this.loadExpiring();this.loadOnb();this.loadSessions();}
+  componentDidMount(){this.applyDoc();this.animate();this._rs=()=>this.setState({vw:window.innerWidth});window.addEventListener('resize',this._rs);this._readLive=()=>{try{const r=localStorage.getItem('kashikeyo_live');if(r===this._liveSig)return;this._liveSig=r;this.setState({live:r?JSON.parse(r):null});}catch(e){}};this._readLive();try{const rs=localStorage.getItem('kashikeyo_store');if(rs)this.setState({store:Object.assign({},this.state.store,JSON.parse(rs))});}catch(e){}this._onStore=(e)=>{if(!e||e.key==='kashikeyo_live'||e.key===null)this._readLive();};window.addEventListener('storage',this._onStore);this._liveIv=setInterval(this._readLive,3000);this.loadInsights();this.loadFlags();this.loadPnl();this.loadExpiring();this.loadOnb();this.loadSessions();this.loadBackups();}
   loadSessions(){var me=this;try{fetch('/api/app2/sessions',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&Array.isArray(d.sessions))me.setState({sessions:d.sessions});}).catch(function(){});}catch(e){}}
   loadOnb(){var me=this;try{fetch('/api/inv/onboarding',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.ok)me.setState({onb:d});}).catch(function(){});}catch(e){}}
   dismissOnb(){var me=this;var o=this.state.onb||{};this.setState({onb:Object.assign({},o,{dismissed:true})});try{fetch('/api/inv/onboarding/dismiss',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin'}).catch(function(){});}catch(e){}this.toast('Setup checklist dismissed');}
@@ -2160,6 +2204,12 @@ class Component extends DCLogic {
       {k:'override',n:'Price override',need:'Admin PIN',def:false}
     ].map(a=>{const on=s.authOff[a.k]!=null?!s.authOff[a.k]:a.def;return {n:a.n,need:a.need,trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(16px)':'translateX(0)',tap:()=>{const authOff=Object.assign({},s.authOff,{[a.k]:on});me.setState({authOff});me.saveCfg({authOff});}};});
     const recentAuth=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.authLog))?window.__ksAdmin.authLog:[]).map(r=>{const c=P[r.k];return {t:r.t,a:r.a,by:r.by,st:r.st,stBg:c[0],stC:c[1]};});
+    // ---- BACKUPS / RESET ----
+    const _relB=function(ms){if(!ms)return '';var d=new Date(ms);return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' · '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});};
+    const backups=(s.backups||[]).map(function(b){var c=b.counts||{};return {id:b.id,label:b.label,when:_relB(b.createdAt),summary:((c.products)||0)+' items · '+((c.sales)||0)+' sales · '+((c.customers)||0)+' customers',auto:b.reason==='pre-reset',restore:function(){me.openRestore(b);},del:function(){me.delBackup(b.id);}};});
+    const hasBackups=backups.length>0;
+    const menuEmpty=(me.MENU||[]).length===0;
+    const rmdl=s.mdl||{};
     // ---- CONFIG ----
     const cfgSecs=[
       {title:'Operations',rows:[['autoKot','Auto-send to KOT','Fire tickets on order confirm'],['rounding','Round totals to MVR','Nearest whole rufiyaa'],['svc10','10% service charge','Dine-in only']]},
@@ -2369,7 +2419,13 @@ class Component extends DCLogic {
       logoImg:s.store.logo?React.createElement('img',{src:s.store.logo,alt:'Store logo',style:{width:'100%',height:'100%',objectFit:'cover'}}):null,hasLogo:!!s.store.logo,noLogo:!s.store.logo,logoInitial:(s.store.name||'K').trim().charAt(0),storeCols:s.vw<640?'1fr':'1fr 1fr',
       pickLogo:e=>me.pickLogo(e),removeLogo:()=>me.setStore('logo',null),saveStore:()=>me.saveStore(),
       storeFields:[['name','Trade name','Shown on register & receipts'],['legal','Legal entity','Registered company name'],['tin','TIN (Taxpayer ID)','e.g. 1080527GST001'],['greg','GST registration no.','From MIRA'],['activity','Business activity','e.g. Café & restaurant'],['phone','Phone','+960 …'],['email','Email','name@business.mv'],['addr','Street address','Building, road'],['island','Island / City','e.g. Malé'],['atoll','Atoll / Region','e.g. Kaafu, Maldives'],['footer','Receipt footer note','Prints at the bottom of every receipt'],['currency','Currency (MVR or USD)','MVR'],['usdRate','Exchange rate (MVR per USD)','e.g. 15.42']].map(f=>{const v=s.store[f[0]]||'';const req=f[0]==='name';const emailBad=f[0]==='email'&&v.trim()&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());const err=!!s.storeTouched&&((req&&!v.trim())||emailBad);return {key:f[0],label:f[1],ph:f[2],val:v,req,err,errMsg:req?'Trade name is required':'Enter a valid email address',bc:err?'var(--red)':'var(--line)',on:e=>me.setStore(f[0],e.target.value)};}),
-      sysUsers,sysAudit,sysInteg,runBackup:()=>me.runBackup()
+      sysUsers,sysAudit,sysInteg,runBackup:()=>me.runBackup(),
+      backups,hasBackups,noBackups:!hasBackups,menuEmpty,openReset:()=>me.openReset(),addStarterMenu:()=>me.addStarterMenu(),goRestore:()=>{me.setState({active:'sysadmin'});},
+      isReset:s.mdl&&s.mdl.kind==='reset',isRestore:s.mdl&&s.mdl.kind==='restore',
+      rPin:rmdl.rpin||'',setRPin:e=>me.setRPin(e.target.value),
+      rBackupOn:!!rmdl.rbackup,toggleRBackup:()=>me.toggleRBackup(),rBackupTrackBg:rmdl.rbackup?'var(--coral)':'var(--line2)',rBackupKnobX:rmdl.rbackup?'translateX(16px)':'translateX(0)',
+      rErr:rmdl.rerr||'',hasRErr:!!rmdl.rerr,rBusy:!!rmdl.busy,doReset:()=>me.doReset(),doRestore:()=>me.doRestore(),
+      rLabel:rmdl.rlabel||'',rCountsLbl:rmdl.rcounts?(((rmdl.rcounts.products)||0)+' items · '+((rmdl.rcounts.sales)||0)+' sales · '+((rmdl.rcounts.customers)||0)+' customers'):''
     };
   }
   renderVals(){
