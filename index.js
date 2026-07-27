@@ -893,6 +893,14 @@ function hashTillPin(pin) {
 const BACKUP_TABLES = ["entities", "ingredients", "ingredient_units", "recipe_lines", "stock_moves",
   "suppliers", "purchase_invoices", "purchase_invoice_lines", "ingredient_lots",
   "audit_sessions", "audit_lines", "activity_log"];
+/* FK-safe order (only ingredient_units/recipe_lines reference ingredients): delete
+   ingredients LAST, insert it FIRST. We order explicitly instead of using
+   session_replication_role=replica, which needs a superuser managed Postgres
+   doesn't grant. */
+const DELETE_ORDER = ["entities", "ingredient_units", "recipe_lines", "stock_moves",
+  "purchase_invoice_lines", "purchase_invoices", "ingredient_lots", "audit_lines",
+  "audit_sessions", "suppliers", "activity_log", "ingredients"];
+const INSERT_ORDER = DELETE_ORDER.slice().reverse();
 
 async function snapshotStore(orgId) {
   const tables = {};
@@ -928,8 +936,7 @@ async function resetStore(orgId) {
     const r = await c.query(
       "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) RETURNING rowver", [orgId, keep]);
     for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
-    await c.query("SET LOCAL session_replication_role = replica");
-    for (const t of BACKUP_TABLES) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
+    for (const t of DELETE_ORDER) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
     await c.query("UPDATE orgs SET skip_default_menu=true WHERE id=$1", [orgId]);
     await c.query("COMMIT");
   } catch (e) { await c.query("ROLLBACK").catch(() => {}); throw e; } finally { c.release(); }
@@ -945,9 +952,8 @@ async function restoreStore(orgId, snap) {
   let maxRowver = 0;
   try {
     await c.query("BEGIN");
-    await c.query("SET LOCAL session_replication_role = replica");
-    for (const t of BACKUP_TABLES) await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]);
-    for (const t of BACKUP_TABLES) {
+    for (const t of DELETE_ORDER) await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]);
+    for (const t of INSERT_ORDER) {
       const rows = (snap.tables && snap.tables[t]) || [];
       if (rows.length) await c.query(`INSERT INTO "${t}" SELECT * FROM jsonb_populate_recordset(NULL::"${t}", $1::jsonb)`, [JSON.stringify(rows)]);
     }
