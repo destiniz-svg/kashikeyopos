@@ -286,6 +286,30 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
         [Date.now() - 6 * 3600 * 1000]);
       if (staleCalls.rowCount) console.log(`expired ${staleCalls.rowCount} stale waiter call(s)`);
     } catch (e) { console.warn("waiter-call cleanup skipped:", e.message); }
+    /* One-time cleanup: retire the previous starter menu (ids p1–p19 / ow01–ow69)
+       so outlets that carried it don't end up with the old and new starter menus
+       side by side. Soft-deletes only still-live copies, so it's a no-op once
+       done and never touches an outlet's own custom products (which use random
+       ids). The new starter menu is seeded by the backfill just below. */
+    try {
+      const legacyIds = ["p1", "p2", "p3", "p4", "p5", "p6", "p8", "p9", "p10", "p11", "p12", "p13", "p14", "p15", "p16", "p17", "p18", "p19"]
+        .concat(Array.from({ length: 69 }, (_, i) => "ow" + String(i + 1).padStart(2, "0")));
+      const r = await bootPool.query(
+        "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE kind='products' AND deleted=false AND id = ANY($1)",
+        [legacyIds]);
+      if (r.rowCount) console.log(`retired ${r.rowCount} legacy starter-menu item(s) across outlets`);
+      // Outlets still on the previous starter category tree (its unmistakable
+      // Main Dishes + Bakery + Grocery signature) get the new colour-coded
+      // groups so the new items land in the right sections. A back office that
+      // renamed/rebuilt its categories no longer matches, so it's left alone.
+      const g = await bootPool.query(
+        `UPDATE entities SET data = jsonb_set(jsonb_set(data,'{catGroups}',$1::jsonb),'{catOrder}',$2::jsonb),
+             rowver=nextval('entities_rowver_seq'), updated_at=now()
+         WHERE kind='settings' AND data->'catGroups' @> '[{"name":"Main Dishes"}]'
+           AND data->'catGroups' @> '[{"name":"Bakery"}]' AND data->'catGroups' @> '[{"name":"Grocery"}]'`,
+        [JSON.stringify(CAT_GROUPS), JSON.stringify(CAT_ORDER)]);
+      if (g.rowCount) console.log(`migrated ${g.rowCount} outlet(s) to the new menu categories`);
+    } catch (e) { console.warn("legacy starter-menu cleanup skipped:", e.message); }
     /* Ensure every existing outlet carries the shared starter menu with its
        photos. Idempotent (ensureDefaultMenu only writes when an image is
        missing or changed), so this is a no-op on subsequent boots. New outlets
