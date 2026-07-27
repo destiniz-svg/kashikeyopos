@@ -259,16 +259,12 @@ button[disabled],button:disabled{cursor:not-allowed}
         <sc-if value="{{ tabTrend }}" hint-placeholder-val="{{ true }}">
           <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px">
             <span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ink2)"><span style="width:14px;height:3px;border-radius:2px;background:var(--coral)"></span>This {{ rangeWord }}</span>
-            <span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ink2)"><span style="width:14px;height:3px;border-radius:2px;background:var(--ink3)"></span>Previous</span>
-            <span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--ink2)"><span style="width:9px;height:9px;border-radius:99px;background:var(--blue)"></span>Orders</span>
           </div>
           <div style="position:relative;width:100%;height:{{ chartH }}">
             <svg viewBox="0 0 1000 290" preserveAspectRatio="none" style="width:100%;height:100%;overflow:visible">
               <defs><linearGradient id="rev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--coral)" stop-opacity=".2"></stop><stop offset="1" stop-color="var(--coral)" stop-opacity="0"></stop></linearGradient></defs>
               <sc-for list="{{ grid }}" as="g" hint-placeholder-count="5"><line x1="0" y1="{{ g.y }}" x2="1000" y2="{{ g.y }}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"></line></sc-for>
-              <path d="{{ ghostPath }}" fill="none" stroke="var(--ink3)" stroke-width="1.8" stroke-dasharray="5 5" stroke-linecap="round" stroke-linejoin="round" opacity=".7"></path>
               <path d="{{ areaPath }}" fill="url(#rev)"></path>
-              <path d="{{ ordPath }}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-opacity=".5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4000" stroke-dashoffset="4000" style="animation:draw 1.1s .15s ease-out forwards"></path>
               <path d="{{ linePath }}" fill="none" stroke="var(--coral)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4000" stroke-dashoffset="4000" style="animation:draw 1.1s ease-out forwards"></path>
             </svg>
           </div>
@@ -319,9 +315,9 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px"><span style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2)">PRIME COST HEALTH</span><span style="margin-inline-start:auto;font-size:11px;font-weight:800;color:var(--green)">Healthy</span></div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px"><span style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2)">PRIME COST HEALTH</span><span style="margin-inline-start:auto;font-size:11px;font-weight:800;color:{{ primeHealthC }}">{{ primeHealth }}</span></div>
           <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:14px">
-            <span style="font-family:'Bricolage Grotesque';font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1">58%</span>
+            <span style="font-family:'Bricolage Grotesque';font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1">{{ primePctF }}</span>
             <span style="font-size:11px;color:var(--ink2);font-weight:700;padding-bottom:4px">prime cost · target &lt; 60%</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:11px">
@@ -751,12 +747,9 @@ button[disabled],button:disabled{cursor:not-allowed}
           <div style="background:var(--greensoft);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:10px"><span style="width:8px;height:8px;border-radius:99px;background:var(--green);flex:none"></span><span style="font-size:11.5px;font-weight:700;color:var(--green)">Automatic tax — GGST 8% applied to every line and shown on receipts &amp; MIRA invoices. No manual calculation.</span></div>
         </sc-if>
         <sc-if value="{{ paySplitView }}" hint-placeholder-val="{{ false }}">
-          <div style="font-size:12px;font-weight:700;color:var(--ink2)">Split bills between multiple payment methods or multiple customers.</div>
-          <div style="display:grid;grid-template-columns:{{ payTwoCols }};gap:12px">
-            <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)"><div style="font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--ink2);margin-bottom:12px">SPLIT BY METHOD · BILL {{ splitBillF }}</div><sc-for list="{{ splitByMethod }}" as="p" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line)"><span style="width:6px;height:18px;border-radius:99px;background:{{ p.dotC }}"></span><span style="flex:1;font-size:12.5px;font-weight:700">{{ p.m }}</span><span style="font-weight:800;font-variant-numeric:tabular-nums">{{ p.amtF }}</span></div></sc-for></div>
-            <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)"><div style="font-size:11px;font-weight:800;letter-spacing:.05em;color:var(--ink2);margin-bottom:12px">SPLIT BY GUEST · {{ splitGuests }} WAYS</div><sc-for list="{{ splitByGuest }}" as="p" hint-placeholder-count="3"><div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line)"><span style="width:26px;height:26px;flex:none;border-radius:99px;background:var(--bg);display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--coral)">{{ p.i }}</span><span style="flex:1;font-size:12.5px;font-weight:700">{{ p.n }}</span><span style="font-weight:800;font-variant-numeric:tabular-nums">{{ p.amtF }}</span></div></sc-for></div>
-          </div>
-          <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden"><div style="overflow-x:auto"><div style="min-width:520px"><div style="display:grid;grid-template-columns:90px 100px 1fr 70px;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--ink2)"><span>ORDER</span><span style="text-align:end">TOTAL</span><span>SPLIT</span><span style="text-align:center">WAYS</span></div><sc-for list="{{ recentSplits }}" as="r" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:90px 100px 1fr 70px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600;align-items:center"><span style="font-weight:800;font-variant-numeric:tabular-nums">{{ r.ref }}</span><span style="text-align:end;font-weight:800;font-variant-numeric:tabular-nums">{{ r.totalF }}</span><span style="color:var(--ink2);font-size:11.5px">{{ r.parts }}</span><span style="text-align:center;font-weight:700;font-variant-numeric:tabular-nums">{{ r.n }}</span></div></sc-for></div></div></div>
+          <div style="font-size:12px;font-weight:700;color:var(--ink2)">Split bills between multiple payment methods or multiple customers — split a bill from the register and it appears here.</div>
+          <sc-if value="{{ splitsEmpty }}" hint-placeholder-val="{{ true }}"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:34px 18px;box-shadow:var(--shadow);text-align:center"><div style="font-size:13px;font-weight:800;margin-bottom:4px">No split bills yet</div><div style="font-size:12px;font-weight:600;color:var(--ink2)">When you split a bill across methods or guests on the register, it shows up here.</div></div></sc-if>
+          <sc-if value="{{ splitsAny }}" hint-placeholder-val="{{ false }}"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden"><div style="overflow-x:auto"><div style="min-width:520px"><div style="display:grid;grid-template-columns:90px 100px 1fr 70px;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);font-size:10px;font-weight:800;letter-spacing:.05em;color:var(--ink2)"><span>ORDER</span><span style="text-align:end">TOTAL</span><span>SPLIT</span><span style="text-align:center">WAYS</span></div><sc-for list="{{ recentSplits }}" as="r" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:90px 100px 1fr 70px;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);font-size:12.5px;font-weight:600;align-items:center"><span style="font-weight:800;font-variant-numeric:tabular-nums">{{ r.ref }}</span><span style="text-align:end;font-weight:800;font-variant-numeric:tabular-nums">{{ r.totalF }}</span><span style="color:var(--ink2);font-size:11.5px">{{ r.parts }}</span><span style="text-align:center;font-weight:700;font-variant-numeric:tabular-nums">{{ r.n }}</span></div></sc-for></div></div></div></sc-if>
         </sc-if>
         <sc-if value="{{ payRefundView }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:var(--ink2);flex:1">Process refunds with full audit trail and reason tracking.</div><button onClick="{{ newRefund }}" style="border:1px solid var(--coral);border-radius:10px;padding:8px 14px;background:var(--coralsoft);color:var(--coral);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.96)">+ Process refund</button></div>
@@ -795,7 +788,6 @@ button[disabled],button:disabled{cursor:not-allowed}
                 <defs><linearGradient id="rev2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--coral)" stop-opacity=".2"></stop><stop offset="1" stop-color="var(--coral)" stop-opacity="0"></stop></linearGradient></defs>
                 <sc-for list="{{ grid }}" as="g" hint-placeholder-count="5"><line x1="0" y1="{{ g.y }}" x2="1000" y2="{{ g.y }}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 5"></line></sc-for>
                 <path d="{{ areaPath }}" fill="url(#rev2)"></path>
-                <path d="{{ ordPath }}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-opacity=".5" stroke-linecap="round" stroke-linejoin="round"></path>
                 <path d="{{ linePath }}" fill="none" stroke="var(--coral)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
               </svg>
             </div>
@@ -2239,8 +2231,6 @@ class Component extends DCLogic {
       {n:'Tax invoice · A4',desc:'MIRA-compliant, itemised, TIN shown.',status:'Active',k:'ok'},
       {n:'Proforma invoice',desc:'Quotes & deposits before service.',status:'Draft',k:'mut'}
     ].map(b=>{const c=P[b.k];return {n:b.n,desc:b.desc,status:b.status,stBg:c[0],stC:c[1],edit:()=>me.toast('Editing '+b.n)};});
-    const splitByMethod=[{m:'Cash',amt:400,dotC:'var(--green)'},{m:'Card · BML',amt:540,dotC:'var(--coral)'}].map(p=>({m:p.m,amtF:me.fm(p.amt),dotC:p.dotC}));
-    const splitByGuest=[['1','Guest 1'],['2','Guest 2'],['3','Guest 3']].map(g=>({i:g[0],n:g[1],amtF:me.fm(313.33)}));
     const recentSplits=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.splits))?window.__ksAdmin.splits:[]).map(r=>({ref:r.ref,totalF:me.fm(r.total),parts:r.parts,n:String(r.n)}));
     const refundRows=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.refunds))?window.__ksAdmin.refunds:[]).map(r=>{const c=P[r.k];return {ref:r.ref,amtF:me.fm(r.amt),reason:r.reason,staff:r.staff,when:r.when,st:r.st,stBg:c[0],stC:c[1]};});
     const gwStats=[{label:'SETTLING TODAY',v:me.fm(0)},{label:'NEXT SETTLEMENT',v:'—'},{label:'GATEWAY FEE · MTD',v:me.fm(0)}];
@@ -2318,7 +2308,7 @@ class Component extends DCLogic {
       reviewEmpty:!!(s.flags&&s.flags.loaded&&!((s.flags.sales||[]).length)&&!((s.flags.credit||[]).length)),
       onbShow:!!(s.onb&&!s.onb.complete&&!s.onb.dismissed),onbDoneLbl:s.onb?(s.onb.doneCount+' of '+s.onb.total+' done'):'',dismissOnb:()=>me.dismissOnb(),
       onbSteps:s.onb?[['profile','Set up your store profile'],['menu','Add your menu items'],['ingredients','Add ingredients & stock'],['firstSale','Ring up your first sale']].map(function(st){var done=!!(s.onb.steps&&s.onb.steps[st[0]]);return {label:st[1],dotBg:done?'var(--green)':'transparent',dotBd:done?'var(--green)':'var(--line2)',mk:done?'✓':'',co:done?'var(--ink3)':'var(--ink)'};}):[],
-      isPay:A==='pay',paySubTabs:mkSubs('pay',['Methods','Payment Links','Billing','Split Payments','Refunds','Gateway']),payMethodsView:spy===0,payLinksView:spy===1,payBillingView:spy===2,paySplitView:spy===3,payRefundView:spy===4,payGatewayView:spy===5,payMethods,payLinks,billTemplates,splitByMethod,splitBillF:me.fm(940),splitGuests:'3',splitByGuest,recentSplits,refundRows,gwStats,settlements,payCols,payTwoCols,newLink:()=>me.newPayLink(),newRefund:()=>me.startRefund(),
+      isPay:A==='pay',paySubTabs:mkSubs('pay',['Methods','Payment Links','Billing','Split Payments','Refunds','Gateway']),payMethodsView:spy===0,payLinksView:spy===1,payBillingView:spy===2,paySplitView:spy===3,payRefundView:spy===4,payGatewayView:spy===5,payMethods,payLinks,billTemplates,recentSplits,splitsEmpty:recentSplits.length===0,splitsAny:recentSplits.length>0,refundRows,gwStats,settlements,payCols,payTwoCols,newLink:()=>me.newPayLink(),newRefund:()=>me.startRefund(),
       salesSubTabs:mkSubs('sales',['Register','QR Orders','Delivery']),salesRows,salesStats,salesCols,salesStatusOpts,salesEmpty,salesCount,salesQuery:s.salesQuery,onSalesQuery:e=>me.setSalesQuery(e.target.value),onSalesStatus:e=>me.setSalesStatus(e.target.value),clearSalesQuery:()=>me.setSalesQuery(''),
       outlets,kds,
       outletSubTabs:mkSubs('outlets',['Overview','Compare','Settings','Transfers']),ovOverviewView:ov===0,ovCompareView:ov===1,ovSettingsView:ov===2,ovTransfersView:ov===3,conStats,outNames,compareRows,outCompareCols,outChips,outSettings,outSelName,outSelStt,outSelSttBg,outSelSttC,outToggleLbl,addOutlet:()=>me.addOutlet(),outEdit:()=>me.openOutlet(s.outSel),outToggle:()=>me.toggleOutlet(),
@@ -2472,7 +2462,11 @@ class Component extends DCLogic {
     (s.stock||[]).filter(x=>Number(x.par)>0&&Number(x.oh)<Number(x.par)).slice(0,3).forEach(x=>attn.push({icon:ic.box,bg:'var(--redsoft)',c:'var(--red)',title:x.n+' below par',sub:(x.oh+' / '+x.par+' '+(x.unit||'')+' — reorder'),cta:'Reorder',go:()=>me.setState({active:'inventory'})}));
     ((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.recv))?window.__ksAdmin.recv:[]).filter(r=>r.stk==='bad').slice(0,3).forEach(r=>attn.push({icon:ic.recv,bg:'var(--ambersoft)',c:'var(--amber)',title:(r.n||'Customer')+' · overdue tab',sub:me.fm(r.bal)+(r.age&&r.age!=='—'?(' · '+r.age):''),cta:'Remind',go:()=>me.setState({active:'recv'})}));
     const attention=attn.slice(0,4).map(a=>({icon:H(a.icon),bg:a.bg,c:a.c,title:a.title,sub:a.sub,cta:a.cta,tap:a.go||(()=>me.toast(a.cta+' · '+a.title))}));
-    const prime=[];
+    // Prime-cost health from real data: cost of goods as a share of revenue
+    // (rev − gross profit). No revenue yet → honest em-dash, not a demo figure.
+    const _pc=g.rev>0?Math.round((g.rev-g.gpVal)/g.rev*100):null;
+    const _pcC=_pc==null?'var(--ink3)':_pc<60?'var(--green)':_pc<75?'var(--amber)':'var(--red)';
+    const prime=_pc!=null?[{label:'Cost of goods',pct:_pc+'%',w:Math.min(100,_pc)+'%',c:_pcC}]:[];
     const A=s.active,tablet=s.vw>=640&&s.vw<1024;
     const heads={review:['Review','Sales the till couldn’t reconcile & customers over their credit limit — check each, then clear it. Money is never changed.'],sales:['Sales','Every order across register, QR & delivery.'],outlets:['Outlets','Live performance across your locations.'],kitchen:['Kitchen Display','Open tickets by station.'],hw:['Hardware & Offline','Works everywhere, always.'],notif:['Notifications','Stay informed, instantly.'],menu:['Menu','Items, prices, add-ons & availability — synced to the register.'],store:['Online Store','Your brand, zero commission.'],inventory:['Inventory','Stock, recipes & wastage control.'],proc:['Procurement','Expenses, vendor bills & purchase orders.'],recv:['Receivables','Open customer tabs & aging.'],cust:['Customers','Know them, serve them better.'],pay:['Payments','Fast, flexible & secure.'],reports:['Reports','Analytics, Z-report & GST filing.'],staff:['Staff & Roles','Team, shifts & permissions.'],config:['Configurations','Outlet, tax, receipt & payments.'],sysadmin:['System Admin','Users, audit log & integrations.']};
     const greetV=(new Date().getHours()<12?'Good morning':new Date().getHours()<18?'Good afternoon':'Good evening');
@@ -2514,10 +2508,11 @@ class Component extends DCLogic {
       peak,peakNote:g.peakN,
       tabTrend:s.tab==='trend',tabCat:s.tab==='cat',tabType:s.tab==='type',
       chartTitle:s.tab==='trend'?'Revenue & orders trend':s.tab==='cat'?'Revenue by category':'Orders by channel',
-      linePath:me.path(g.rc,'line'),areaPath:me.path(g.rc,'area'),ghostPath:me.path(g.rc.map(v=>v*0.82),'line'),ordPath:me.path(g.rc.map((v,i)=>v*0.55+((i%3)*6)),'line'),
+      linePath:me.path(g.rc,'line'),areaPath:me.path(g.rc,'area'),
       xlabels:g.xl,catBars,donut:'conic-gradient('+segs.join(',')+')',typeTotal:me.fi(g.orders),
       typeRows:types.map(t=>({name:t[0],c:t[1],pct:t[2]+'%',amt:me.fm(g.rev*t[2]/100,0)})),
       attention,attnCount:String(attn.length),prime,
+      primePctF:_pc!=null?_pc+'%':'—',primeHealth:_pc==null?'No data yet':_pc<60?'Healthy':_pc<75?'Watch':'High',primeHealthC:_pcC,
       toastOn:!!s.toast,toastMsg:s.toast
     };
   }

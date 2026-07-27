@@ -1078,7 +1078,7 @@ button[disabled],button:disabled{cursor:not-allowed}
         </div>
         <div style="background:var(--sur);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column">
           <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--ink2);margin-bottom:12px">{{ L.cashDrawer }}</div>
-          <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;padding:4px 0;border-bottom:1px dashed var(--line)"><span>{{ L.floatLbl }}</span><span style="font-variant-numeric:tabular-nums">MVR 2,000.00</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;padding:4px 0;border-bottom:1px dashed var(--line)"><span>{{ L.floatLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ z.floatF }}</span></div>
           <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;padding:8px 0"><span>{{ L.expected }}</span><span style="font-variant-numeric:tabular-nums">{{ z.expectedF }}</span></div>
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0">
             <span style="font-size:12.5px;font-weight:700;flex:1">{{ L.counted }}</span>
@@ -1575,7 +1575,7 @@ class Component extends DCLogic {
     Object.assign(T.en,{themeLbl:'Theme',languageLbl:'Language',signOut:'Sign out',scanLbl:'Scan',healthy:'Healthy'});
     Object.assign(T.dv,{themeLbl:'ތީމް',languageLbl:'ބަސް',signOut:'ސައިން އައުޓް',scanLbl:'ސްކޭން',healthy:'ރަނގަޅު'});
     const tint={hedhikaa:['var(--coralsoft)','var(--coral)'],mains:['var(--greensoft)','var(--green)'],drinks:['var(--ambersoft)','var(--amber)'],sweets:['var(--redsoft)','var(--red)']};
-    this.MENU=(typeof window!=='undefined'&&window.__ksMenu&&window.__ksMenu.length)?window.__ksMenu:[
+    this.MENU=(typeof window!=='undefined'&&typeof window.__ksMenu!=='undefined')?(window.__ksMenu||[]):[
       {id:'gulha',cat:'hedhikaa',en:'Gulha',dv:'ގުޅަ',price:5},
       {id:'bajiya',cat:'hedhikaa',en:'Bajiya',dv:'ބަޖިޔާ',price:5},
       {id:'kavaabu',cat:'hedhikaa',en:'Kavaabu',dv:'ކަވާބު',price:7},
@@ -1635,8 +1635,8 @@ class Component extends DCLogic {
         {no:'0046',at:now-660000,src:'POS',station:'drinks',items:[{q:3,n:'Coffee'},{q:1,n:'Bondibai'}]}
       ],
       sales:__ksZD.gross,orders:__ksZD.orders,cash:__ksZD.cash,card:__ksZD.card,transfer:__ksZD.transfer,tabAmt:__ksZD.tab,gstColl:__ksZD.gst,svcColl:__ksZD.svc,
-      recv:__ksGuest?(__ksGuestCust?[__ksGuestCust]:[]):(typeof window!=='undefined'&&window.__ksReg&&window.__ksReg.recv&&window.__ksReg.recv.length)?window.__ksReg.recv:[{id:'r1',name:'Ahmed Rasheed',dv:'އަހްމަދު ރަޝީދު',bal:245,days:12,addr:'M. Fasmeeru, Sosun Magu, Malé',pts:384,visits:24,spend:4775.29,memberNo:'C1',usuals:['kalhusai','coffee','bondibai','mashuni']},{id:'r2',name:'Mariyam Didi',dv:'މަރިޔަމް ދީދީ',bal:130,days:5,addr:'H. Blue Villa, Hulhumalé Phase 1',pts:210,visits:12,spend:2140.50,memberNo:'C2',usuals:['garudhiya','coffee','mashuni']},{id:'r3',name:'Hassan Fulhu',dv:'ހަސަން ފުޅު',bal:560,days:31,addr:'G. Reethi, Ameenee Magu, Malé',pts:640,visits:41,spend:8420.00,memberNo:'C3',usuals:['mashuni','kirusai','coffee','bondibai']},{id:'r4',name:'Aminath Shifa',dv:'އާމިނަތު ޝިފާ',bal:85,days:2,addr:'H. Orchid Lodge, Malé',pts:95,visits:4,spend:640.75,memberNo:'C4',usuals:['coffee','passion']}],
-      po:[],recipeOpen:false,drawer:13210,closed:false,journalOpen:false,
+      recv:__ksGuest?(__ksGuestCust?[__ksGuestCust]:[]):(typeof window!=='undefined'&&window.__ksReg&&Array.isArray(window.__ksReg.recv))?window.__ksReg.recv:[],
+      po:[],recipeOpen:false,drawer:0,closed:false,journalOpen:false,
       invTab:'stock',
       transfers:[
         {no:'TR-024',item:'Tuna',qty:8,unit:'kg',from:'Kashikeyo Café',to:'Kashikeyo Hulhumalé',status:'pending'},
@@ -1672,7 +1672,7 @@ class Component extends DCLogic {
          next 5s poll. */
       try{var tok=(typeof window!=='undefined'&&window.__ksToken)||'';if(tok&&typeof EventSource!=='undefined'){var res=new EventSource('/api/events?token='+encodeURIComponent(tok));res.onmessage=function(){me._regSig='';me.pullReg();};this._es=res;}}catch(e){}
     }this.publish();}
-  pullReg(){var me=this;try{fetch('/api/app2/pull',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d)return;var j=JSON.stringify(d);if(j===me._regSig)return;me._regSig=j;var u={};if(d.storeP)u.storeP=d.storeP;if(d.recv&&d.recv.length)u.recv=d.recv;if(d.salesLog)u.salesLog=d.salesLog;if(d.tickets){var _loc=(me.state.tickets||[]).filter(function(t){return t&&t.billId&&!t.oid;});var _srv=(d.tickets||[]).filter(function(t){return !_loc.some(function(l){return l.no===t.no;});});u.tickets=_loc.concat(_srv);}if(d.deliv)u.deliv=d.deliv;if(Array.isArray(d.orders))u.liveOrders=d.orders;if(Array.isArray(d.users))u.users=d.users;if(d.zday){u.sales=d.zday.gross;u.orders=d.zday.orders;u.cash=d.zday.cash;u.card=d.zday.card;u.transfer=d.zday.transfer;u.tabAmt=d.zday.tab;u.gstColl=d.zday.gst;u.svcColl=d.zday.svc;}if(d.menu&&d.menu.length){var ms=JSON.stringify(d.menu);if(ms!==me._menuSig){me._menuSig=ms;me.MENU=d.menu;u.menuTick=(me.state.menuTick||0)+1;}}me.setState(u);}).catch(function(){});}catch(e){}}
+  pullReg(){var me=this;try{fetch('/api/app2/pull',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(!d)return;var j=JSON.stringify(d);if(j===me._regSig)return;me._regSig=j;var u={};if(d.storeP)u.storeP=d.storeP;if(Array.isArray(d.recv))u.recv=d.recv;if(d.salesLog)u.salesLog=d.salesLog;if(d.tickets){var _loc=(me.state.tickets||[]).filter(function(t){return t&&t.billId&&!t.oid;});var _srv=(d.tickets||[]).filter(function(t){return !_loc.some(function(l){return l.no===t.no;});});u.tickets=_loc.concat(_srv);}if(d.deliv)u.deliv=d.deliv;if(Array.isArray(d.orders))u.liveOrders=d.orders;if(Array.isArray(d.users))u.users=d.users;if(d.zday){u.sales=d.zday.gross;u.orders=d.zday.orders;u.cash=d.zday.cash;u.card=d.zday.card;u.transfer=d.zday.transfer;u.tabAmt=d.zday.tab;u.gstColl=d.zday.gst;u.svcColl=d.zday.svc;}if(d.menu&&d.menu.length){var ms=JSON.stringify(d.menu);if(ms!==me._menuSig){me._menuSig=ms;me.MENU=d.menu;u.menuTick=(me.state.menuTick||0)+1;}}me.setState(u);}).catch(function(){});}catch(e){}}
   setOrderStatus(id,status){var me=this;if(!id)return;try{fetch('/api/app2/order/'+encodeURIComponent(id)+'/status',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({status:status})}).then(function(){me._regSig='';setTimeout(function(){me.pullReg();},500);}).catch(function(){});}catch(e){}}
   readStore(){try{const r=localStorage.getItem('kashikeyo_store');if(r)this.setState({storeP:JSON.parse(r)});}catch(e){}}
   readMenu(){try{const r=localStorage.getItem('kashikeyo_menu');const o=r?JSON.parse(r):{off:{},hidden:{},price:{}};const sig=JSON.stringify(o);if(sig!==this._menuSig){this._menuSig=sig;this.setState({menuOv:o});}}catch(e){}}
@@ -2152,7 +2152,7 @@ class Component extends DCLogic {
         return {
           acctOpen:s.acct,toggleAcct:()=>me.setState({acct:!s.acct}),closeAcct:()=>me.setState({acct:false}),acctCaret:s.acct?'rotate(180deg)':'rotate(0deg)',
           acctThemeLabel:s.white?'Switch to light theme':s.dark?'Switch to white theme':'Switch to dark theme',themeIcon:H(s.white?sun:s.dark?contrast:moon),
-          acctShiftSub:'Drawer float · '+me.fm(2000),
+          acctShiftSub:'Drawer float · '+me.fm(s.shiftFloat||0),
           shiftOpen:s.shiftOpen,shiftClosed:!s.shiftOpen,
           shiftTitle:s.shiftOpen?('Shift open · '+((s.curUser&&s.curUser.name)||'Owner')):'Shift closed',
           shiftSub:s.shiftOpen?('Since '+new Date(s.shiftAt).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+' · Drawer float '+me.fm(s.shiftFloat||0)):'Open a shift to start the till',
@@ -2314,7 +2314,7 @@ class Component extends DCLogic {
       shareLbl:me.t('shareBtn'),copyLbl:me.t('copyBtn'),imgLbl:me.t('shareImg'),waLbl:me.t('viaWhatsApp'),printLbl:me.t('print'),
       stmt:(()=>{const st=s.statement;if(!st)return {history:[]};return {no:st.no,name:s.lang==='dv'?st.dv:st.name,dateFull:st.dateFull,openBalF:me.fm(st.openBal),payAmtF:'− '+me.fm(st.payAmt),methodLbl:st.methodLbl,closeBalF:me.fm(st.closeBal),full:st.full,history:st.history.map(h=>({amtF:'− '+me.fm(h.amt),method:h.methodLbl,when:h.date+' · '+h.time}))};})(),
       stmtL:{title:me.t('stmtTitle'),opening:me.t('openingBal'),paying:me.t('payingNow'),closing:me.t('closingBal'),thanks:me.t('stmtThanks'),share:me.t('shareStmt'),wa:me.t('viaWhatsApp'),viber:me.t('viaViber'),print:me.t('printStmt'),done:me.t('doneBtn'),cleared:me.t('stmtCleared'),histTitle:me.t('stmtHistTitle'),noLbl:me.t('stmtNoLbl')},
-      z:{zno:'Z-'+(function(){var d=new Date();return ''+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');})(),dateLbl:new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}),grossF:me.fm(gross),cashF:me.fm(s.cash),cardF:me.fm(s.card),transferF:me.fm(s.transfer),tabF:me.fm(s.tabAmt),gstF:me.fm(gst),svcF:me.fm(svc),rateLbl:s.sector==='general'?'8%':'17%',expectedF:me.fm(expected),countedF:me.fm(s.drawer),varF:(dvr>=0?'+':'−')+me.fm(Math.abs(dvr)).replace('MVR ','MVR '),varBg:Math.abs(dvr)<0.5?'var(--greensoft)':'var(--redsoft)',varC:Math.abs(dvr)<0.5?'var(--green)':'var(--red)'},
+      z:{zno:'Z-'+(function(){var d=new Date();return ''+d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');})(),dateLbl:new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}),grossF:me.fm(gross),cashF:me.fm(s.cash),cardF:me.fm(s.card),transferF:me.fm(s.transfer),tabF:me.fm(s.tabAmt),gstF:me.fm(gst),svcF:me.fm(svc),rateLbl:s.sector==='general'?'8%':'17%',floatF:me.fm(s.shiftFloat||0),expectedF:me.fm(expected),countedF:me.fm(s.drawer),varF:(dvr>=0?'+':'−')+me.fm(Math.abs(dvr)).replace('MVR ','MVR '),varBg:Math.abs(dvr)<0.5?'var(--greensoft)':'var(--redsoft)',varC:Math.abs(dvr)<0.5?'var(--green)':'var(--red)'},
       drawerPlus:()=>me.setState({drawer:s.drawer+10}),drawerMinus:()=>me.setState({drawer:Math.max(0,s.drawer-10)}),
       closed:s.closed,closeOp:s.closed?.5:1,closeLbl:me.t(s.closed?'dayClosed':'closeDay'),closeDay:()=>{if(!s.closed){me.setState({closed:true});me.toast(me.t('posted')+' · JE-2026-0189');}},
       journal,permRows,staffList,
