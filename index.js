@@ -3098,15 +3098,17 @@ if (fs.existsSync(protoFile)) {
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
     const label = String((req.body || {}).label || "").trim().slice(0, 80) || ("Backup · " + new Date().toLocaleString("en-GB"));
     const reason = String((req.body || {}).reason || "manual").slice(0, 20);
-    const snap = await snapshotStore(orgId);
-    const counts = backupCounts(snap);
-    const id = uid();
-    await bootPool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,$4,$5,$6)",
-      [id, orgId, label, reason, JSON.stringify(counts), JSON.stringify(snap)]);
-    // Keep only the newest 20 backups per org so this can't grow without bound.
-    await bootPool.query("DELETE FROM store_backups WHERE org_id=$1 AND id NOT IN (SELECT id FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20)", [orgId]);
-    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.backup", ref: label, requestId: req.id });
-    res.json({ ok: true, id, label, counts });
+    try {
+      const snap = await snapshotStore(orgId);
+      const counts = backupCounts(snap);
+      const id = uid();
+      await bootPool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,$4,$5,$6)",
+        [id, orgId, label, reason, JSON.stringify(counts), JSON.stringify(snap)]);
+      // Keep only the newest 20 backups per org so this can't grow without bound.
+      await bootPool.query("DELETE FROM store_backups WHERE org_id=$1 AND id NOT IN (SELECT id FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20)", [orgId]);
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.backup", ref: label, requestId: req.id });
+      res.json({ ok: true, id, label, counts });
+    } catch (e) { recordError("store.backup", e); res.status(500).json({ error: "Backup failed: " + ((e && e.message) || "error") }); }
   }));
 
   app.post("/api/app2/backup/:id/delete", wrap(async (req, res) => {
@@ -3125,10 +3127,12 @@ if (fs.existsSync(protoFile)) {
     if (!(await verifyAdminPin(orgId, b.pin))) return res.status(403).json({ error: "Incorrect admin PIN." });
     const row = (await bootPool.query("SELECT data FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(b.id || "")])).rows[0];
     if (!row) return res.status(404).json({ error: "Backup not found." });
-    const maxRowver = await restoreStore(orgId, row.data);
-    poke(orgId, maxRowver);
-    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.restore", ref: String(b.id || ""), requestId: req.id });
-    res.json({ ok: true });
+    try {
+      const maxRowver = await restoreStore(orgId, row.data);
+      poke(orgId, maxRowver);
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.restore", ref: String(b.id || ""), requestId: req.id });
+      res.json({ ok: true });
+    } catch (e) { recordError("store.restore", e); res.status(500).json({ error: "Restore failed: " + ((e && e.message) || "error") }); }
   }));
 
   app.post("/api/app2/reset", wrap(async (req, res) => {
@@ -3137,21 +3141,23 @@ if (fs.existsSync(protoFile)) {
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Resetting the store needs an admin or the owner.")) return;
     const b = req.body || {};
     if (!(await verifyAdminPin(orgId, b.pin))) return res.status(403).json({ error: "Incorrect admin PIN." });
-    // Optional safety backup before wiping.
-    let backupId = null;
-    if (b.backup) {
-      const snap = await snapshotStore(orgId);
-      const counts = backupCounts(snap);
-      backupId = uid();
-      const label = "Before reset · " + new Date().toLocaleString("en-GB");
-      await bootPool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,'pre-reset',$4,$5)",
-        [backupId, orgId, label, JSON.stringify(counts), JSON.stringify(snap)]);
-    }
-    const maxRowver = await resetStore(orgId);
-    poke(orgId, maxRowver);
-    // A single record of the reset itself (the rest of the log was cleared).
-    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset", ref: backupId ? "backup kept" : "no backup", requestId: req.id });
-    res.json({ ok: true, backupId });
+    try {
+      // Optional safety backup before wiping.
+      let backupId = null;
+      if (b.backup) {
+        const snap = await snapshotStore(orgId);
+        const counts = backupCounts(snap);
+        backupId = uid();
+        const label = "Before reset · " + new Date().toLocaleString("en-GB");
+        await bootPool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,'pre-reset',$4,$5)",
+          [backupId, orgId, label, JSON.stringify(counts), JSON.stringify(snap)]);
+      }
+      const maxRowver = await resetStore(orgId);
+      poke(orgId, maxRowver);
+      // A single record of the reset itself (the rest of the log was cleared).
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset", ref: backupId ? "backup kept" : "no backup", requestId: req.id });
+      res.json({ ok: true, backupId });
+    } catch (e) { recordError("store.reset", e); res.status(500).json({ error: "Reset failed: " + ((e && e.message) || "error") }); }
   }));
 
   // Add the starter menu on demand (the post-reset "add a menu" action). Clears
