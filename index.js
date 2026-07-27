@@ -1070,6 +1070,11 @@ app.post("/auth/apple/callback", express.urlencoded({ extended: false }), wrap(a
 
 app.post("/api/register", wrap(async (req, res) => {
   const { email, password, storeName, ownerName, phone, pin, currency } = req.body || {};
+  /* Starter menu choice, matching the onboarding wizard: default 'sample' seeds
+     the shared menu (back-compat for callers that omit it); 'empty'/'ai' start
+     with no menu and opt out of the boot-time backfill so it stays empty. */
+  const menuChoice = String((req.body || {}).menu || "sample").toLowerCase();
+  const skipMenu = menuChoice === "empty" || menuChoice === "ai";
   if (!email || !password) return res.status(400).json({ error: "email and password required" });
   if (String(password).length < MIN_PASSWORD_LEN) return res.status(400).json({ error: `password must be at least ${MIN_PASSWORD_LEN} characters` });
   const base = slugify(storeName || email.split("@")[0]);
@@ -1079,8 +1084,8 @@ app.post("/api/register", wrap(async (req, res) => {
   const cleanCurrency = currency === "USD" ? "USD" : "MVR";
   try {
     await withSystem((client) => client.query(
-      "INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, phone, registers) VALUES ($1,$2,$3,$4,$5,$6,$7,1)",
-      [id, slug, email.toLowerCase(), bcrypt.hashSync(password, 10), storeName || "My Store", cleanOwnerName, String(phone || "").slice(0, 30)]));
+      "INSERT INTO orgs (id, slug, email, pass_hash, store_name, owner_name, phone, registers, skip_default_menu) VALUES ($1,$2,$3,$4,$5,$6,$7,1,$8)",
+      [id, slug, email.toLowerCase(), bcrypt.hashSync(password, 10), storeName || "My Store", cleanOwnerName, String(phone || "").slice(0, 30), skipMenu]));
   } catch {
     return res.status(409).json({ error: "email already registered - use Sign in" });
   }
@@ -1089,9 +1094,10 @@ app.post("/api/register", wrap(async (req, res) => {
   await withOrg(id, (client) => client.query(
     "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) ON CONFLICT (org_id, kind, id) DO NOTHING",
     [id, JSON.stringify(initSettings)]));
-  /* Every new outlet starts with the shared starter menu (same items + photos
-     as every other outlet), on the till and the guest portal. Non-fatal. */
-  try { await ensureDefaultMenu(id); } catch (e) { console.warn("default-menu seed on register skipped:", e.message); }
+  /* Unless the owner asked to start empty (or build with AI), seed the shared
+     starter menu (same items + photos as every other outlet), on the till and
+     the guest portal. Non-fatal. */
+  if (!skipMenu) { try { await ensureDefaultMenu(id); } catch (e) { console.warn("default-menu seed on register skipped:", e.message); } }
   const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
   const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
   const token = sign(id, "R1", DEFAULT_STORE_ID);
