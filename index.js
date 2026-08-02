@@ -3715,9 +3715,24 @@ if (fs.existsSync(webDir)) {
       "https://unpkg.com/react@18.3.1/umd/react.production.min.js": "/app/vendor/react.production.min.js",
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": "/app/vendor/react-dom.production.min.js",
     };
+    /* Product photos, keyed art-<id>, exactly as the register gets them (see the
+       menuImg map in serveProto). Without this the guest portal resolved every
+       tile through assetUrl()'s artwork/<id>.png fallback, which does not exist —
+       so the diner scanning a table QR saw a grid of letter placeholders while
+       staff on the till saw the photos. Remote URLs pass straight through; a
+       stored data-URI is served from /api/img/<id> so its base64 doesn't ride in
+       this no-cache HTML. */
+    const gArt = {};
+    for (const pr of visible) {
+      const im = pr && pr.img;
+      if (!im) continue;
+      gArt["art-" + pr.id] = /^https?:\/\//i.test(String(im))
+        ? String(im)
+        : "/api/img/" + encodeURIComponent(pr.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+    }
     const inject = `\n<base href="/app/">\n<title>${seoEsc(seoTitle)}</title>\n<script>` +
       `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP, catGroups, catOrder })};window.__ksGuest=${gEnc(guest)};` +
-      `window.__resources=Object.assign(window.__resources||{},${gEnc(gVendor)});</script>\n`;
+      `window.__resources=Object.assign(window.__resources||{},${gEnc(Object.assign({}, gVendor, gArt))});</script>\n`;
     const html = fs.readFileSync(path.join(gProtoDir, "index.html"), "utf8")
       .replace(/<title>[\s\S]*?<\/title>/i, "")
       .replace(/<head([^>]*)>/i, (m) => m + inject);
