@@ -463,10 +463,11 @@ ALTER TABLE orgs ADD COLUMN IF NOT EXISTS setup_step TEXT NOT NULL DEFAULT 'done
 -- starter-menu backfill skips these so their empty menu stays empty.
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS skip_default_menu BOOLEAN NOT NULL DEFAULT false;
 
--- Point-in-time snapshots of a store's data (menu, sales, customers, inventory,
--- audit trail…) for the Reset Store / Restore feature. Global table scoped by
--- org_id (no RLS — the app role only reaches its own rows through the endpoints,
--- which always filter by the authenticated org).
+-- Point-in-time snapshots of a store's data (menu, sales, customers, inventory…)
+-- for the Reset Store / Restore feature. This is the single most concentrated
+-- table in the system — one row is a complete copy of one tenant's business —
+-- so it gets the same FORCE RLS treatment as everything else rather than relying
+-- on every endpoint remembering its org_id predicate.
 CREATE TABLE IF NOT EXISTS store_backups (
   id         TEXT PRIMARY KEY,
   org_id     TEXT NOT NULL,
@@ -477,3 +478,9 @@ CREATE TABLE IF NOT EXISTS store_backups (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS store_backups_org ON store_backups(org_id, created_at DESC);
+ALTER TABLE store_backups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE store_backups FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON store_backups;
+CREATE POLICY tenant_isolation ON store_backups
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');

@@ -902,16 +902,44 @@ const DELETE_ORDER = ["entities", "ingredient_units", "recipe_lines", "stock_mov
   "audit_sessions", "suppliers", "ingredients"];
 const INSERT_ORDER = DELETE_ORDER.slice().reverse();
 
-async function snapshotStore(orgId) {
-  return await withOrg(orgId, async (c) => {
-    const tables = {};
-    for (const t of SNAPSHOT_TABLES) {
-      const r = await c.query(`SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) AS rows FROM "${t}" x WHERE org_id=$1`, [orgId]);
-      tables[t] = r.rows[0].rows;
-    }
-    return { version: 1, at: Date.now(), tables };
-  });
+/* An in-database snapshot is one JSONB value that also has to survive being
+   parsed into JS and re-stringified — several times its own size in RSS. A store
+   with a couple of years of trading can run to hundreds of MB, which OOMs the
+   whole process (every tenant on the instance, not just this one), and Postgres
+   itself caps a jsonb container near 256 MB. Refuse early, with a number the
+   owner can act on, rather than dying mid-write. */
+const SNAPSHOT_MAX_ROWS = 400000;
+const SNAPSHOT_MAX_BYTES = 60 * 1024 * 1024;
+class SnapshotTooLarge extends Error {}
+
+async function snapshotSize(c, orgId) {
+  let rows = 0, bytes = 0;
+  for (const t of SNAPSHOT_TABLES) {
+    const r = await c.query(
+      `SELECT count(*)::bigint AS n, COALESCE(sum(pg_column_size(x.*)),0)::bigint AS b FROM "${t}" x WHERE org_id=$1`, [orgId]);
+    rows += Number(r.rows[0].n) || 0;
+    bytes += Number(r.rows[0].b) || 0;
+  }
+  return { rows, bytes };
 }
+
+// Runs inside a caller-supplied transaction so a snapshot taken for /reset is
+// consistent with the wipe that follows it (no sale can land in between).
+async function snapshotStoreIn(c, orgId) {
+  const size = await snapshotSize(c, orgId);
+  if (size.rows > SNAPSHOT_MAX_ROWS || size.bytes > SNAPSHOT_MAX_BYTES) {
+    throw new SnapshotTooLarge(
+      "this store is too large for an in-app backup (" + size.rows.toLocaleString() + " rows, " +
+      Math.round(size.bytes / 1048576) + " MB). Export your data instead, then reset.");
+  }
+  const tables = {};
+  for (const t of SNAPSHOT_TABLES) {
+    const r = await c.query(`SELECT COALESCE(jsonb_agg(to_jsonb(x)), '[]'::jsonb) AS rows FROM "${t}" x WHERE org_id=$1`, [orgId]);
+    tables[t] = r.rows[0].rows;
+  }
+  return { version: 1, at: Date.now(), tables };
+}
+const snapshotStore = (orgId) => withOrg(orgId, (c) => snapshotStoreIn(c, orgId));
 
 function backupCounts(snap) {
   const ents = (snap.tables && snap.tables.entities) || [];
@@ -928,32 +956,110 @@ function backupCounts(snap) {
 // sync the removals) while keeping the store profile + staff, hard-delete the
 // inventory/audit tables, and opt the outlet out of the starter-menu backfill so
 // it stays empty until the owner adds a menu or restores. Returns the max rowver.
-async function resetStore(orgId) {
+async function resetStoreIn(c, orgId) {
   const keep = ["users", "settings"];
-  return await withOrg(orgId, async (c) => {
-    let maxRowver = 0;
-    const r = await c.query(
-      "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) RETURNING rowver", [orgId, keep]);
-    for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
-    for (const t of DELETE_ORDER) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
-    await c.query("UPDATE orgs SET skip_default_menu=true WHERE id=$1", [orgId]);
-    return maxRowver;
-  });
+  let maxRowver = 0;
+  const r = await c.query(
+    "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) RETURNING rowver", [orgId, keep]);
+  for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+  for (const t of DELETE_ORDER) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
+  // Queued till ops refer to sales that no longer exist; clearing lets a fresh
+  // start re-use op ids instead of silently discarding them as replays.
+  await c.query("DELETE FROM ops WHERE org_id=$1", [orgId]);
+  await c.query("UPDATE orgs SET skip_default_menu=true WHERE id=$1", [orgId]);
+  if (!maxRowver) {
+    const mx = await c.query("SELECT COALESCE(MAX(rowver),0) AS m FROM entities WHERE org_id=$1", [orgId]);
+    maxRowver = Number(mx.rows[0].m) || 0;
+  }
+  return maxRowver;
+}
+const resetStore = (orgId) => withOrg(orgId, (c) => resetStoreIn(c, orgId));
+
+class BadSnapshot extends Error {}
+
+/* A restore deletes everything the org has before it writes anything back, so a
+   snapshot that turns out to be empty, truncated or from a future version would
+   destroy the store and report success. Check it BEFORE the first DELETE. */
+function validateSnapshot(snap) {
+  if (!snap || typeof snap !== "object") throw new BadSnapshot("this backup is unreadable.");
+  if (Number(snap.version) !== 1) throw new BadSnapshot("this backup was written by a newer version of the app and can't be restored here.");
+  if (!snap.tables || typeof snap.tables !== "object") throw new BadSnapshot("this backup has no data in it.");
+  for (const t of SNAPSHOT_TABLES) {
+    if (!Array.isArray(snap.tables[t])) throw new BadSnapshot("this backup is incomplete (missing " + t + ") — restoring it would lose data.");
+  }
+  /* Staff and store profile are the only way back in: `verifyAdminPin` and
+     /api/back/login both read them. Restoring a snapshot without an owner/admin
+     would lock the account out of its own reset/restore permanently. */
+  const owner = snap.tables.entities.some((e) => e && e.kind === "users" && !e.deleted
+    && e.data && (e.data.role === "owner" || e.data.role === "admin") && e.data.pin);
+  if (!owner) throw new BadSnapshot("this backup contains no owner or admin with a PIN — restoring it would lock you out of your own store.");
 }
 
-// Full point-in-time restore: wipe everything for the org, re-insert the snapshot
-// (jsonb_populate_recordset rebuilds each row from the table's rowtype), then
-// re-stamp entity rowvers so connected tills pull the restored data.
+/* Columns a table actually has right now. A snapshot taken before a migration
+   won't carry newer columns; naming columns explicitly lets those take their
+   DEFAULT instead of the NULL that `SELECT *` would force (which fails outright
+   against the NOT NULL DEFAULT '' pattern this schema uses). */
+async function tableColumns(c, t) {
+  const r = await c.query(
+    "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1", [t]);
+  return r.rows.map((x) => x.column_name);
+}
+
+/* Full point-in-time restore, in one transaction.
+
+   Entities are NOT hard-deleted: clients sync by `rowver > since`, so a vanished
+   row is simply absent from every future pull and the till keeps showing it for
+   ever (and re-pushes it through /api/ops the moment anyone edits it). Instead
+   every current entity is tombstoned with a fresh rowver, then the snapshot rows
+   are written over the top — so a till learns both what came back and what went
+   away. The inventory tables have no client-side mirror, so they stay a plain
+   delete + insert. */
 async function restoreStore(orgId, snap) {
+  validateSnapshot(snap);
   return await withOrg(orgId, async (c) => {
-    for (const t of DELETE_ORDER) await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]);
+    // Tombstone everything currently live, so removals propagate to clients.
+    await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false", [orgId]);
+    for (const t of DELETE_ORDER) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
+    /* The till's idempotency ledger. Left in place, a queued op from after the
+       backup would be discarded as a replay and its sale lost silently; cleared,
+       an offline till can re-push and the sale is recreated. */
+    await c.query("DELETE FROM ops WHERE org_id=$1", [orgId]);
+
     for (const t of INSERT_ORDER) {
-      const rows = (snap.tables && snap.tables[t]) || [];
-      if (rows.length) await c.query(`INSERT INTO "${t}" SELECT * FROM jsonb_populate_recordset(NULL::"${t}", $1::jsonb)`, [JSON.stringify(rows)]);
+      const rows = snap.tables[t] || [];
+      if (!rows.length) continue;
+      const live = new Set(await tableColumns(c, t));
+      const cols = Object.keys(rows[0]).filter((k) => live.has(k));
+      if (!cols.length) continue;
+      const quoted = cols.map((k) => `"${k}"`).join(", ");
+      // org_id is forced to the authenticated org: a snapshot never gets to say
+      // which tenant it lands in (RLS would reject it, but don't rely on that).
+      const sel = cols.map((k) => (k === "org_id" ? "$2" : `x."${k}"`)).join(", ");
+      if (t === "entities") {
+        await c.query(
+          `INSERT INTO "${t}" (${quoted}) SELECT ${sel} FROM jsonb_populate_recordset(NULL::"${t}", $1::jsonb) x
+           ON CONFLICT (org_id, kind, id) DO UPDATE SET data = EXCLUDED.data, deleted = EXCLUDED.deleted, updated_at = now()`,
+          [JSON.stringify(rows), String(orgId)]);
+      } else {
+        await c.query(
+          `INSERT INTO "${t}" (${quoted}) SELECT ${sel} FROM jsonb_populate_recordset(NULL::"${t}", $1::jsonb) x`,
+          [JSON.stringify(rows), String(orgId)]);
+      }
     }
+    /* Re-stamp EVERY entity (restored and tombstoned alike) above the sequence
+       high-water mark. Restored rows carry their old rowver, which sits below
+       connected clients' cursors — without this they would never be pulled.
+       Must stay unconditional and inside this transaction. */
     let maxRowver = 0;
     const r = await c.query("UPDATE entities SET rowver=nextval('entities_rowver_seq') WHERE org_id=$1 RETURNING rowver", [orgId]);
     for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+    // A restore brings a menu back, so undo the reset's opt-out of the backfill.
+    const hadMenu = snap.tables.entities.some((e) => e && e.kind === "products" && !e.deleted);
+    await c.query("UPDATE orgs SET skip_default_menu=$2 WHERE id=$1", [orgId, !hadMenu]);
+    if (!maxRowver) {
+      const mx = await c.query("SELECT COALESCE(MAX(rowver),0) AS m FROM entities WHERE org_id=$1", [orgId]);
+      maxRowver = Number(mx.rows[0].m) || 0;
+    }
     return maxRowver;
   });
 }
@@ -3079,82 +3185,125 @@ if (fs.existsSync(protoFile)) {
     res.json({ ok: true });
   }));
 
-  // ── Store backup / reset / restore (admin/owner only) ──────────────────────
+  /* ── Store backup / reset / restore (admin/owner only) ──────────────────────
+     These are the only endpoints that can destroy a merchant's business in one
+     call, so they carry more than the admin-role check:
+       - the confirmation PIN is rate-limited like a password (it is only four
+         digits, and `verifyAdminPin` matches ANY owner/admin, so an unthrottled
+         endpoint is ~10k guesses from a wipe);
+       - snapshots are size-capped, because materialising one is several times
+         its own size in RSS and an OOM takes down every tenant on the instance;
+       - every destructive action, including deleting a backup, is written to the
+         append-only activity log. */
+  const destructiveGuard = async (req, res, orgId, what) => {
+    const keys = rlKeys(req, "storepin:" + orgId);
+    const blocked = rlBlockedFor(keys);
+    if (blocked) { res.status(429).json({ error: "Too many incorrect PINs. Try again in " + blocked + "s." }); return false; }
+    if (!(await verifyAdminPin(orgId, (req.body || {}).pin))) {
+      rlFail(keys);
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store." + what + ".denied", requestId: req.id });
+      res.status(403).json({ error: "Incorrect admin PIN." });
+      return false;
+    }
+    rlClear(keys);
+    return true;
+  };
+  const backupFailed = (res, verb, e) => {
+    recordError("store." + verb, e);
+    const clean = (e instanceof SnapshotTooLarge) || (e instanceof BadSnapshot);
+    res.status(clean ? 400 : 500).json({ error: (clean ? "" : verb[0].toUpperCase() + verb.slice(1) + " failed: ") + ((e && e.message) || "error") });
+  };
+  // Newest 20 per org, so repeated resets can't grow the table without bound.
+  const pruneBackups = (c, orgId) => c.query(
+    "DELETE FROM store_backups WHERE org_id=$1 AND id NOT IN (SELECT id FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20)", [orgId]);
+
   app.get("/api/app2/backups", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
-    const r = await pool.query(
-      "SELECT id, label, reason, counts, created_at FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50", [orgId]);
+    const r = await withOrg(orgId, (c) => c.query(
+      "SELECT id, label, reason, counts, created_at FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 50", [orgId]));
     res.json({ backups: r.rows.map((b) => ({ id: b.id, label: b.label, reason: b.reason, counts: b.counts, createdAt: new Date(b.created_at).getTime() })) });
   }));
 
-  app.post("/api/app2/backup", wrap(async (req, res) => {
+  app.post("/api/app2/backup", pubThrottle(6, "backup"), wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
     const label = String((req.body || {}).label || "").trim().slice(0, 80) || ("Backup · " + new Date().toLocaleString("en-GB"));
     const reason = String((req.body || {}).reason || "manual").slice(0, 20);
+    const id = uid();
     try {
-      const snap = await snapshotStore(orgId);
-      const counts = backupCounts(snap);
-      const id = uid();
-      await pool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,$4,$5,$6)",
-        [id, orgId, label, reason, JSON.stringify(counts), JSON.stringify(snap)]);
-      // Keep only the newest 20 backups per org so this can't grow without bound.
-      await pool.query("DELETE FROM store_backups WHERE org_id=$1 AND id NOT IN (SELECT id FROM store_backups WHERE org_id=$1 ORDER BY created_at DESC LIMIT 20)", [orgId]);
+      const counts = await withOrg(orgId, async (c) => {
+        const snap = await snapshotStoreIn(c, orgId);
+        const n = backupCounts(snap);
+        await c.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,$4,$5,$6)",
+          [id, orgId, label, reason, JSON.stringify(n), JSON.stringify(snap)]);
+        await pruneBackups(c, orgId);
+        return n;
+      });
       logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.backup", ref: label, requestId: req.id });
       res.json({ ok: true, id, label, counts });
-    } catch (e) { recordError("store.backup", e); res.status(500).json({ error: "Backup failed: " + ((e && e.message) || "error") }); }
+    } catch (e) { backupFailed(res, "backup", e); }
   }));
 
+  /* Deleting a backup is irreversible and can strip away the pre-reset copy that
+     is the only route back, so it takes the same PIN as a reset and is logged. */
   app.post("/api/app2/backup/:id/delete", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
-    await pool.query("DELETE FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(req.params.id || "")]);
-    res.json({ ok: true });
+    if (!(await destructiveGuard(req, res, orgId, "backup.delete"))) return;
+    const id = String(req.params.id || "");
+    try {
+      const r = await withOrg(orgId, (c) => c.query("DELETE FROM store_backups WHERE org_id=$1 AND id=$2 RETURNING label", [orgId, id]));
+      if (!r.rowCount) return res.status(404).json({ error: "Backup not found." });
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.backup.deleted", ref: r.rows[0].label || id, requestId: req.id });
+      res.json({ ok: true });
+    } catch (e) { backupFailed(res, "delete", e); }
   }));
 
   app.post("/api/app2/restore", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Restoring needs an admin or the owner.")) return;
+    if (!(await destructiveGuard(req, res, orgId, "restore"))) return;
     const b = req.body || {};
-    if (!(await verifyAdminPin(orgId, b.pin))) return res.status(403).json({ error: "Incorrect admin PIN." });
-    const row = (await pool.query("SELECT data FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(b.id || "")])).rows[0];
+    const row = (await withOrg(orgId, (c) => c.query("SELECT data FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(b.id || "")]))).rows[0];
     if (!row) return res.status(404).json({ error: "Backup not found." });
     try {
       const maxRowver = await restoreStore(orgId, row.data);
       poke(orgId, maxRowver);
       logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.restore", ref: String(b.id || ""), requestId: req.id });
       res.json({ ok: true });
-    } catch (e) { recordError("store.restore", e); res.status(500).json({ error: "Restore failed: " + ((e && e.message) || "error") }); }
+    } catch (e) { backupFailed(res, "restore", e); }
   }));
 
   app.post("/api/app2/reset", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Resetting the store needs an admin or the owner.")) return;
+    if (!(await destructiveGuard(req, res, orgId, "reset"))) return;
     const b = req.body || {};
-    if (!(await verifyAdminPin(orgId, b.pin))) return res.status(403).json({ error: "Incorrect admin PIN." });
     try {
-      // Optional safety backup before wiping.
-      let backupId = null;
-      if (b.backup) {
-        const snap = await snapshotStore(orgId);
-        const counts = backupCounts(snap);
-        backupId = uid();
-        const label = "Before reset · " + new Date().toLocaleString("en-GB");
-        await pool.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,'pre-reset',$4,$5)",
-          [backupId, orgId, label, JSON.stringify(counts), JSON.stringify(snap)]);
-      }
-      const maxRowver = await resetStore(orgId);
-      poke(orgId, maxRowver);
+      /* Snapshot and wipe share one transaction: taken separately, anything that
+         synced in between would be destroyed WITHOUT being in the safety copy. */
+      const out = await withOrg(orgId, async (c) => {
+        let backupId = null;
+        if (b.backup) {
+          const snap = await snapshotStoreIn(c, orgId);
+          backupId = uid();
+          await c.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,'pre-reset',$4,$5)",
+            [backupId, orgId, "Before reset · " + new Date().toLocaleString("en-GB"), JSON.stringify(backupCounts(snap)), JSON.stringify(snap)]);
+          await pruneBackups(c, orgId);
+        }
+        return { backupId, maxRowver: await resetStoreIn(c, orgId) };
+      });
+      poke(orgId, out.maxRowver);
       // A single record of the reset itself (the rest of the log was cleared).
-      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset", ref: backupId ? "backup kept" : "no backup", requestId: req.id });
-      res.json({ ok: true, backupId });
-    } catch (e) { recordError("store.reset", e); res.status(500).json({ error: "Reset failed: " + ((e && e.message) || "error") }); }
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset", ref: out.backupId ? "backup kept" : "no backup", requestId: req.id });
+      res.json({ ok: true, backupId: out.backupId });
+    } catch (e) { backupFailed(res, "reset", e); }
   }));
 
   // Add the starter menu on demand (the post-reset "add a menu" action). Clears
