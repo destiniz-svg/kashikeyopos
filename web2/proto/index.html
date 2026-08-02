@@ -1193,7 +1193,11 @@ button[disabled],button:disabled{cursor:not-allowed}
             <sc-for list="{{ journal }}" as="j" hint-placeholder-count="6">
               <span style="padding:5px 0;border-top:1px dashed var(--line)">{{ j.acct }}</span><span style="padding:5px 0;border-top:1px dashed var(--line);text-align:end">{{ j.dr }}</span><span style="padding:5px 0;border-top:1px dashed var(--line);text-align:end;color:var(--ink2)">{{ j.cr }}</span>
             </sc-for>
+            <span style="padding:7px 0;border-top:1.5px solid var(--ink);font-weight:800">Totals</span><span style="padding:7px 0;border-top:1.5px solid var(--ink);text-align:end;font-weight:800;color:{{ jrnTotC }}">{{ jrnDrF }}</span><span style="padding:7px 0;border-top:1.5px solid var(--ink);text-align:end;font-weight:800;color:{{ jrnTotC }}">{{ jrnCrF }}</span>
           </div>
+          <sc-if value="{{ jrnHasNote }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:11px;border:1px solid {{ jrnNoteBc }};background:{{ jrnNoteBg }};color:{{ jrnNoteC }};border-radius:11px;padding:10px 12px;font-size:11.5px;font-weight:700;line-height:1.45;text-wrap:pretty">{{ jrnNote }}</div>
+          </sc-if>
         </div>
       </sc-if>
     </div>
@@ -1830,7 +1834,7 @@ if(!saved||!saved.id||!saved.token)return null;return users.find(function(u){ret
   pullReg(){var me=this;try{/* Send back the last snapshot's tag: an unchanged poll comes back as a
    bodiless 304 instead of 186KB of mostly-unchanged catalogue. */
 var _h={};if(me._regTag)_h['If-None-Match']=me._regTag;
-fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).then(function(r){if(r.status===304)return null;me._regTag=r.headers.get('ETag')||me._regTag;return r.ok?r.json():null;}).then(function(d){if(!d)return;var j=JSON.stringify(d);if(j===me._regSig)return;me._regSig=j;var u={};if(d.storeP){u.storeP=d.storeP;u.sector=d.storeP.taxRate==='tgst'?'tourism':'general';}if(Array.isArray(d.recv))u.recv=d.recv;var _pend=me.pendingTotals();if(d.salesLog){var _srv={};(d.salesLog||[]).forEach(function(x){if(x&&x.no)_srv[String(x.no)]=1;});var _keep=(me.state.salesLog||[]).filter(function(x){return x&&x.local&&!_srv[String(x.no)];});u.salesLog=_keep.concat(d.salesLog).slice(0,20);}if(d.tickets){var _loc=(me.state.tickets||[]).filter(function(t){return t&&t.billId&&!t.oid;});var _srv=(d.tickets||[]).filter(function(t){return !_loc.some(function(l){return l.no===t.no;});});u.tickets=_loc.concat(_srv);}if(Array.isArray(d.openBills)){var _srvB={};d.openBills.forEach(function(b){if(b&&b.id)_srvB[String(b.id)]=1;});var _pendB=(me.state.held||[]).filter(function(b){return b&&b.id&&!_srvB[String(b.id)]&&b.localOnly;});u.held=_pendB.concat(d.openBills);}if(d.deliv)u.deliv=d.deliv;if(Array.isArray(d.orders))u.liveOrders=d.orders;if(Array.isArray(d.users))u.users=d.users;if(d.zday){u.sales=d.zday.gross+_pend.gross;u.orders=d.zday.orders+_pend.n;u.cash=d.zday.cash+_pend.cash;u.card=d.zday.card+_pend.card;u.transfer=d.zday.transfer+_pend.transfer;u.tabAmt=d.zday.tab+_pend.tab;u.gstColl=d.zday.gst+_pend.gst;u.svcColl=d.zday.svc+_pend.svc;u.cashSettled=d.zday.cashSettled||0;u.refundsToday=d.zday.refunds||0;}if(d.menu&&d.menu.length){var ms=JSON.stringify(d.menu);if(ms!==me._menuSig){me._menuSig=ms;me.MENU=d.menu;u.menuTick=(me.state.menuTick||0)+1;}}me.setState(u);}).catch(function(){});}catch(e){}}
+fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).then(function(r){if(r.status===304)return null;me._regTag=r.headers.get('ETag')||me._regTag;return r.ok?r.json():null;}).then(function(d){if(!d)return;var j=JSON.stringify(d);if(j===me._regSig)return;me._regSig=j;var u={};if(d.storeP){u.storeP=d.storeP;u.sector=d.storeP.taxRate==='tgst'?'tourism':'general';}if(Array.isArray(d.recv))u.recv=d.recv;var _pend=me.pendingTotals();if(d.salesLog){var _srv={};(d.salesLog||[]).forEach(function(x){if(x&&x.no)_srv[String(x.no)]=1;});var _keep=(me.state.salesLog||[]).filter(function(x){return x&&x.local&&!_srv[String(x.no)];});u.salesLog=_keep.concat(d.salesLog).slice(0,20);}if(d.tickets){var _loc=(me.state.tickets||[]).filter(function(t){return t&&t.billId&&!t.oid;});var _srv=(d.tickets||[]).filter(function(t){return !_loc.some(function(l){return l.no===t.no;});});u.tickets=_loc.concat(_srv);}if(Array.isArray(d.openBills)){var _srvB={};d.openBills.forEach(function(b){if(b&&b.id)_srvB[String(b.id)]=1;});var _pendB=(me.state.held||[]).filter(function(b){return b&&b.id&&!_srvB[String(b.id)]&&b.localOnly;});u.held=_pendB.concat(d.openBills);}if(d.deliv)u.deliv=d.deliv;if(Array.isArray(d.orders))u.liveOrders=d.orders;if(Array.isArray(d.users))u.users=d.users;if(d.zday){u.sales=d.zday.gross+_pend.gross;u.netRev=(d.zday.net||0)+_pend.net;u.orders=d.zday.orders+_pend.n;u.cash=d.zday.cash+_pend.cash;u.card=d.zday.card+_pend.card;u.transfer=d.zday.transfer+_pend.transfer;u.tabAmt=d.zday.tab+_pend.tab;u.gstColl=d.zday.gst+_pend.gst;u.svcColl=d.zday.svc+_pend.svc;u.cashSettled=d.zday.cashSettled||0;u.refundsToday=d.zday.refunds||0;}if(d.menu&&d.menu.length){var ms=JSON.stringify(d.menu);if(ms!==me._menuSig){me._menuSig=ms;me.MENU=d.menu;u.menuTick=(me.state.menuTick||0)+1;}}me.setState(u);}).catch(function(){});}catch(e){}}
   setOrderStatus(id,status){var me=this;if(!id)return;try{fetch('/api/app2/order/'+encodeURIComponent(id)+'/status',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({status:status})}).then(function(){me._regSig='';setTimeout(function(){me.pullReg();},500);}).catch(function(){});}catch(e){}}
   readStore(){try{const r=localStorage.getItem('kashikeyo_store');if(r)this.setState({storeP:JSON.parse(r)});}catch(e){}}
   readMenu(){try{const r=localStorage.getItem('kashikeyo_menu');const o=r?JSON.parse(r):{off:{},hidden:{},price:{}};const sig=JSON.stringify(o);if(sig!==this._menuSig){this._menuSig=sig;this.setState({menuOv:o});}}catch(e){}}
@@ -2335,9 +2339,9 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     var u={n:used,seq:used+1,seqTo:to,seqQ:q};this.saveSeqBlock(u);return u;}
   /* Totals for sales sitting in the outbox, so the day's figures on screen
      include money already taken but not yet acknowledged by the server. */
-  pendingTotals(){var z={n:0,gross:0,cash:0,card:0,transfer:0,tab:0,gst:0,svc:0,nos:{}};
+  pendingTotals(){var z={n:0,gross:0,net:0,cash:0,card:0,transfer:0,tab:0,gst:0,svc:0,nos:{}};
     try{var p=(window.__ksOutbox&&window.__ksOutbox.pendingSales)?window.__ksOutbox.pendingSales():[];
-      p.forEach(function(x){if(!x||x.type==='refund')return;z.n++;z.gross+=(x.total||0)/100;z.gst+=(x.gst||0)/100;z.svc+=(x.svcCharge||0)/100;
+      p.forEach(function(x){if(!x||x.type==='refund')return;z.n++;z.gross+=(x.total||0)/100;z.net+=((x.subtotal||0)-(x.billDisc||0)-(x.fee||0))/100;z.gst+=(x.gst||0)/100;z.svc+=(x.svcCharge||0)/100;
         z.nos[String(x.no||'').replace(/^.*-/,'')]=1;
         (x.payments||[]).forEach(function(pm){var a=(pm.amount||0)/100,m=String(pm.method||'');
           if(m==='cash')z.cash+=a;else if(m==='card')z.card+=a;else if(m==='tab')z.tab+=a;else z.transfer+=a;});});}catch(e){}
@@ -2789,12 +2793,23 @@ if(_visible.length>_shown.length&&el.scrollTop+el.clientHeight>el.scrollHeight-3
        the drawer: cash taken, less cash refunded, plus cash settlements of
        customer tabs. */
     const expected=(s.shiftFloat||0)+s.cash+(s.cashSettled||0);const dvr=s.drawer-expected;
+    /* Revenue is MEASURED, not plugged. It used to be gross − GST − service
+       charge, which made the entry balance by construction: whatever was wrong
+       upstream, revenue silently absorbed it and the journal still footed, so
+       it could never report an error. The server now sums each sale's own
+       declared revenue component (subtotal less the bill discount and the
+       delivery fee), and the two sides are added up and compared below. A
+       store closing a day whose sales don't reconcile sees that fact instead
+       of a tidy entry. Falls back to the old derivation only for a day whose
+       sales predate the measured figure, and says so when it does. */
+    const netMeasured=(s.netRev!=null&&s.netRev!==0)||s.sales===0;
+    const revPosted=netMeasured?(s.netRev||0):rev;
     const journal=[
       {acct:'1000 · Cash on hand',dr:me.fm(s.cash),cr:''},
       {acct:'1010 · Card clearing',dr:me.fm(s.card),cr:''},
       {acct:'1020 · Bank transfers',dr:me.fm(s.transfer),cr:''},
       {acct:'1100 · Accounts receivable (tabs)',dr:me.fm(s.tabAmt),cr:''},
-      {acct:'4000 · Food & beverage revenue',dr:'',cr:me.fm(rev)},
+      {acct:'4000 · Food & beverage revenue',dr:'',cr:me.fm(revPosted)},
       {acct:'2100 · GST payable (MIRA)',dr:'',cr:me.fm(gst)},
       {acct:'2200 · Service charge payable',dr:'',cr:me.fm(svc)},
     ];
@@ -2808,6 +2823,18 @@ if(_visible.length>_shown.length&&el.scrollTop+el.clientHeight>el.scrollHeight-3
       journal.push({acct:'5000 · Cost of sales',dr:me.fm(s.closedCogs),cr:''});
       journal.push({acct:'1300 · Inventory',dr:'',cr:me.fm(s.closedCogs)});
     }
+    /* The totals a bookkeeper would foot by hand, and the difference when they
+       don't agree. Rounded to laari before comparing so a half-laari of float
+       never raises a false alarm. */
+    const _jd=Math.round((s.cash+s.card+s.transfer+s.tabAmt+(s.closedCogs>0?s.closedCogs:0))*100);
+    const _jc=Math.round((revPosted+gst+svc+(s.closedCogs>0?s.closedCogs:0))*100);
+    const jrnDrF=me.fm(_jd/100),jrnCrF=me.fm(_jc/100);
+    const jrnOff=_jd!==_jc;
+    const jrnDiffF=me.fm(Math.abs(_jd-_jc)/100);
+    const jrnNote=jrnOff
+      ?('Out of balance by '+jrnDiffF+' — the day\u2019s sales do not reconcile. Check the Review tab for flagged sales before filing.')
+      :(netMeasured?'':'Revenue derived from gross for this day — close a new day to post it from the sales themselves.');
+    const jrnHasNote=!!jrnNote;
     const roles=['owner','manager','cashier','waiter'];
     const permRows=[['pRefunds','refunds'],['pDiscounts','discounts'],['pVoids','voids'],['pReports','reports'],['pStock','stock']].map(pr=>({label:me.t(pr[0]),cells:s.perms[pr[1]].map((v,ci)=>({on:!!v,bg:v?'var(--greensoft)':'var(--sur)',bc:v?'var(--green)':'var(--line)',tap:()=>{if(ci===0)return;const p=Object.assign({},s.perms);p[pr[1]]=p[pr[1]].map((x,i)=>i===ci?(x?0:1):x);me.setState({perms:p});}}))}));
     const staffTints=[['var(--coralsoft)','var(--coral)'],['var(--greensoft)','var(--green)'],['var(--ambersoft)','var(--amber)'],['var(--redsoft)','var(--red)'],['var(--coralsoft)','var(--coral)']];
@@ -2880,7 +2907,10 @@ if(_visible.length>_shown.length&&el.scrollTop+el.clientHeight>el.scrollHeight-3
             me.toast(me.t('posted')+' · '+d.journalRef);})
           .catch(function(){me.setState({closeBusy:false,closeConfirm:false,closed:false});me.toast(me.t('dayCloseOffline'));});
         }catch(e){me.setState({closeBusy:false,closeConfirm:false,closed:false});me.toast(me.t('dayCloseOffline'));}},
-      journal,permRows,staffList,
+      journal,jrnDrF,jrnCrF,jrnHasNote,jrnNote,
+      jrnTotC:jrnOff?'var(--red)':'var(--ink)',
+      jrnNoteBc:jrnOff?'var(--red)':'var(--line)',jrnNoteBg:jrnOff?'var(--redsoft)':'var(--sur2)',jrnNoteC:jrnOff?'var(--red)':'var(--ink2)',
+      permRows,staffList,
       onbItems,onbPct:Math.round(onbDone/5*100)+'%',onbPctTxt:onbDone+'/5',
       wiz0:s.wizStep===0,wiz1:s.wizStep===1,wiz2:s.wizStep===2,
       wizDots:[0,1,2].map(i=>({c:i<=s.wizStep?'var(--coral)':'var(--sur2)'})),

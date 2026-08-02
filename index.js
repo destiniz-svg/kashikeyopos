@@ -2189,7 +2189,11 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
             if (!(sa.reasons || []).includes("refund without manager approval")) sa.reasons = (sa.reasons || []).concat("refund without manager approval");
             data.serverAudit = sa;
           }
-          auditEvents.push({ actor: data.userName || "", action: "sale.refund", ref: data.no || data.id, detail: { total: data.total, customerId: data.customerId || null, approved: !!data.managerApproved } });
+          /* The cashier is required to type a reason and the till has always
+             sent it, but the audit row dropped it — so the admin's promise of
+             "reason tracking" was not kept by the record it pointed at. It is
+             the one field that makes a refund reviewable months later. */
+          auditEvents.push({ actor: data.userName || "", action: "sale.refund", ref: data.no || data.id, detail: { total: data.total, reason: String(data.reason || "").slice(0, 140), refundOf: data.refundOf || null, customerId: data.customerId || null, approved: !!data.managerApproved } });
         }
         const preserve = p.kind === "products"
           /* The till bundle is prebuilt and doesn't know about the back-office-
@@ -2958,12 +2962,19 @@ if (fs.existsSync(protoFile)) {
        the whole refund, GST over-accrued, and the drawer expected to hold MVR
        110 that had been paid out. A refund carries negative amounts, so it nets
        correctly simply by being counted. */
-    const zag = { gross: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0, refunds: 0, refundCount: 0 };
+    /* `net` is the sales' OWN revenue component (subtotal less the bill
+       discount), summed independently of gross. The day-end journal used to
+       derive revenue by subtracting GST and service charge from gross, which
+       made it a plug: the entry balanced by construction and could never
+       report an error, however wrong the underlying figures were. Measured
+       separately, the two sides can genuinely disagree — and say so. */
+    const zag = { gross: 0, net: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0, refunds: 0, refundCount: 0 };
     for (const s of zrows) {
       const isRefund = s.type === "refund";
       if (isRefund) { zag.refunds += Math.abs(Number(s.total) || 0); zag.refundCount++; }
       else zag.orders++;
       zag.gross += Number(s.total) || 0;
+      zag.net += (Number(s.subtotal) || 0) - (Number(s.billDisc) || 0) - (Number(s.fee) || 0);
       zag.gst += Number(s.gst) || 0;
       zag.svc += Number(s.svcCharge) || 0;
       const pays = (Array.isArray(s.payments) && s.payments.length) ? s.payments : [{ method: s.method || "cash", amount: Number(s.total) || 0 }];
@@ -2983,7 +2994,7 @@ if (fs.existsSync(protoFile)) {
     let zCashSettled = 0, zSettled = 0;
     for (const st of zsettle) { zSettled += Number(st.amount) || 0; if (/^cash$/i.test(String(st.method || "cash"))) zCashSettled += Number(st.amount) || 0; }
     const zM = (v) => Math.round(v) / 100;
-    out.zday = { gross: zM(zag.gross), cash: zM(zag.cash), card: zM(zag.card), transfer: zM(zag.transfer), tab: zM(zag.tab), gst: zM(zag.gst), svc: zM(zag.svc), orders: zag.orders,
+    out.zday = { gross: zM(zag.gross), net: zM(zag.net), cash: zM(zag.cash), card: zM(zag.card), transfer: zM(zag.transfer), tab: zM(zag.tab), gst: zM(zag.gst), svc: zM(zag.svc), orders: zag.orders,
       refunds: zM(zag.refunds), refundCount: zag.refundCount, cashSettled: zM(zCashSettled), settled: zM(zSettled) };
     return out;
   };
