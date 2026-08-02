@@ -19,14 +19,22 @@ const CACHE = 'kashikeyo-app-1';
 /* The register is served at /app and at /app/... alike; one cached shell
  * serves both, keyed on the canonical path. */
 const SHELL = '/app/';
-/* Everything the register needs to boot with no network. React and the Dhivehi
- * fonts are already self-hosted under /app/. */
+/* Everything the register needs to boot with no network. All the fonts are
+ * self-hosted under /app/ now — the latin faces used to come from
+ * fonts.googleapis.com, so an outage cost the till its typography on the one
+ * product whose whole promise is that it keeps working without a link. */
 const PRECACHE = [
   '/app/support.js',
   '/app/vendor/react.production.min.js',
   '/app/vendor/react-dom.production.min.js',
   '/app/fonts/MV_A_Waheed_Bold.ttf',
   '/app/fonts/MV_Randhoo_Regular.ttf',
+  '/app/fonts/bricolage-grotesque-latin-200-800.woff2',
+  '/app/fonts/bricolage-grotesque-latin-ext-200-800.woff2',
+  '/app/fonts/inter-latin-100-900.woff2',
+  '/app/fonts/inter-latin-ext-100-900.woff2',
+  '/app/fonts/space-mono-latin-400.woff2',
+  '/app/fonts/space-mono-latin-700.woff2',
   '/logo-mark.png',
   '/icon-192.png',
 ];

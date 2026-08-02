@@ -34,9 +34,14 @@ header.site .bar { max-width: none; padding: 11px 18px; display: flex; align-ite
   display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 14px;
 }
 .header-cta { display: flex; gap: 10px; align-items: center; }
+/* 44px minimum. "Get started" was 110x36 and "Sign in" 85x38 -- conventional
+   for a desktop web page, but this is the page a Maldivian shop owner opens on
+   a phone to sign up, and both sat under the touch-target floor the rest of the
+   product holds to. The visual size is unchanged on desktop; the box just
+   reaches a thumb-sized height. */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
-  padding: 9px 16px; border-radius: 10px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap;
+  padding: 11px 18px; min-height: 44px; border-radius: 10px; font-size: 14px; font-weight: 600; border: none; cursor: pointer; white-space: nowrap;
 }
 .btn-primary { background: var(--primary); color: #fff; }
 .btn-primary:hover { background: var(--primary-hov); }
@@ -99,7 +104,10 @@ table.api th { color: var(--sub); font-weight: 600; }
 
 footer.site { border-top: 1px solid var(--border); padding: 26px 0; margin-top: 40px; }
 footer.site .row { max-width: 1000px; margin: 0 auto; padding: 0 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--faint); }
-footer.site a { color: var(--sub); text-decoration: none; margin-left: 16px; }
+/* Footer and nav links were 16px tall -- a line of text with no box around
+   it. Padding gives them a 44px hit area without moving them visually. */
+footer.site a { color: var(--sub); text-decoration: none; margin-left: 16px;
+  display: inline-flex; align-items: center; min-height: 44px; }
 footer.site a:hover { color: var(--primary); }
 
 /* Glass treatment — align these content pages with the till / back-office /

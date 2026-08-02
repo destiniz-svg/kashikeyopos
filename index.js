@@ -2660,8 +2660,8 @@ if (fs.existsSync(protoFile)) {
     "base-uri 'self'",
     "object-src 'none'",
     "img-src 'self' data: blob: https:",
-    "font-src 'self' data: https://fonts.gstatic.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
     "connect-src 'self' blob: data:",
     "frame-src 'self' blob:",
@@ -4468,8 +4468,8 @@ if (fs.existsSync(webDir)) {
   const gEnc = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
   const gCSP = [
     "default-src 'self'", "base-uri 'self'", "object-src 'none'",
-    "img-src 'self' data: blob: https:", "font-src 'self' data: https://fonts.gstatic.com",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https:", "font-src 'self' data:",
+    "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:", "connect-src 'self' blob: data:",
     "frame-src 'self' blob:", "worker-src 'self' blob:", "frame-ancestors 'none'",
   ].join("; ");
