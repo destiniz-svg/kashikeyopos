@@ -484,3 +484,25 @@ DROP POLICY IF EXISTS tenant_isolation ON store_backups;
 CREATE POLICY tenant_isolation ON store_backups
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
+-- Receipt numbering. The old scheme derived the next receipt number from
+-- COUNT(sales), which (a) decremented when a sale was soft-deleted, so a used
+-- number could be reissued, and (b) was computed identically on every terminal,
+-- so two tills on one register printed the same number to different customers.
+-- MIRA requires sequential, non-repeating numbering per register, so the
+-- counter has to be a real monotonic allocation the database owns. Terminals
+-- draw a small block and never hand back; gaps are acceptable, reuse is not.
+CREATE TABLE IF NOT EXISTS receipt_seq (
+  org_id     TEXT NOT NULL,
+  store_id   TEXT NOT NULL DEFAULT 'main',
+  register   TEXT NOT NULL,
+  n          BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (org_id, store_id, register)
+);
+ALTER TABLE receipt_seq ENABLE ROW LEVEL SECURITY;
+ALTER TABLE receipt_seq FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON receipt_seq;
+CREATE POLICY tenant_isolation ON receipt_seq
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');

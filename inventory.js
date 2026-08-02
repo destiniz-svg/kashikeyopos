@@ -1881,7 +1881,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const r = await withOrg(req.orgId, (client) => client.query(
       `SELECT id, data FROM entities
        WHERE org_id=$1 AND kind='pords' AND deleted=false AND data->>'status'='open'
-       ORDER BY (data->>'t')::numeric DESC LIMIT 50`, [req.orgId]));
+       ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 50`, [req.orgId]));
     res.json({ pos: r.rows.map((x) => {
       const d = x.data || {};
       return { id: String(d.id || x.id), no: d.no || "", supplier: d.supplier || "", total: num(d.total), t: num(d.t), note: d.note || "", source: d.source || "",
@@ -2041,7 +2041,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       `SELECT data FROM entities
        WHERE org_id=$1 AND kind='sales' AND deleted=false
          AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
-         AND (data->>'t')::numeric BETWEEN $3 AND $4`, [req.orgId, storeId, from, to]));
+         AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $3 AND $4`, [req.orgId, storeId, from, to]));
     const cogs = await withOrg(req.orgId, (client) => client.query(
       `SELECT COALESCE(-SUM(qty*unit_cost),0) AS cogs FROM stock_moves
        WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to]));
@@ -2070,9 +2070,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
         const m = String(p.method || "Other");
         j.tenders[m] = (j.tenders[m] || 0) + num(p.amount);
         if (/tip/i.test(m)) j.tips += num(p.amount);
-        if (/credit/i.test(m) && !isRefund) j.accountsReceivable += num(p.amount);
-        if (/^(card|qr|transfer)$/i.test(m)) tenderDetail.push({
-          saleNo: d.no || d.id, at: num(d.t), method: m, amount: num(p.amount),
+        /* The register writes the on-account tender as `tab` (see finishPay);
+           matching only /credit/ meant accounts receivable was structurally
+           zero however many bills were charged to a house account. */
+        if (/credit|^tab$|account/i.test(m) && !isRefund) j.accountsReceivable += num(p.amount);
+        if (/^(card|qr|transfer|bml)$/i.test(m)) tenderDetail.push({
+          saleNo: d.no || d.id, at: num(d.t) || num(d.at), method: m, amount: num(p.amount),
           ref: p.ref ? String(p.ref).slice(0, 40) : "", refund: isRefund,
         });
       }
@@ -2099,11 +2102,11 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const sales = (await client.query(
       `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
          AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
-         AND (data->>'t')::numeric BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
+         AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
     const exps = (await client.query(
       `SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false
          AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
-         AND (data->>'t')::numeric BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
+         AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
     const cogsR = (await client.query(
       `SELECT COALESCE(-SUM(qty*unit_cost),0) AS c FROM stock_moves
          WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [orgId, from, to])).rows[0];
@@ -2126,7 +2129,9 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       for (const p of (d.payments || [])) {
         const m = String(p.method || "Other");
         tenders[m] = (tenders[m] || 0) + num(p.amount);
-        if (/credit/i.test(m) && !isRefund) ar += num(p.amount);
+        /* The register books an on-account bill as tender `tab`; matching
+           only /credit/ left accounts receivable structurally zero. */
+        if (/credit|^tab$|account/i.test(m) && !isRefund) ar += num(p.amount);
       }
     }
     const netSales = grossSales - discounts - refunds;
@@ -2144,7 +2149,9 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     }
     const grossProfit = netSales - cogs;
     const netProfit = grossProfit - wastage - opex;
-    const cashSales = tenders.Cash || 0;
+    /* Tender keys arrive lower-case from the till (`cash`), so the old
+       `tenders.Cash` read undefined and the drawer figure was always 0. */
+    const cashSales = Object.keys(tenders).reduce((a, k) => (/^cash$/i.test(k) ? a + tenders[k] : a), 0);
     return {
       from, to, storeId: storeId || "all", currency: "laari",
       pnl: { revenue: netSales, grossSales, discounts, refunds, serviceCharge: svc, cogs, grossProfit,
@@ -2195,7 +2202,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const plateBy = new Map(plate.map((r) => [String(r.pid), { cost: Number(r.cost), n: Number(r.n) }]));
       const salesRows = (await client.query(
         `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
-           AND (data->>'t')::numeric BETWEEN $2 AND $3`, [req.orgId, from, to])).rows;
+           AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $2 AND $3`, [req.orgId, from, to])).rows;
       const stores = (await client.query("SELECT id, name FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [req.orgId])).rows;
       const owing = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false AND (data->>'balance')::numeric > 0", [req.orgId])).rows.map((r) => r.data);
       const priceRows = (await client.query(
@@ -2315,7 +2322,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const acct = await computeAccounting(client, orgId, from, now, null);
       const P = acct.pnl;
       if (kind === "bestseller") {
-        const sales = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND (data->>'t')::numeric > $2", [orgId, from])).rows;
+        const sales = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) > $2", [orgId, from])).rows;
         const prods = (await client.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
         const nameBy = new Map(prods.map((r) => [String(r.id), (r.data || {}).name || "item"]));
         const units = new Map();

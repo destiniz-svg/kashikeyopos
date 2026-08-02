@@ -45,6 +45,10 @@ async function verifyAppleIdToken(idToken) {
   return payload;
 }
 const SHARED_KINDS = new Set(["settings", "customers", "units", "categories", "vendors"]);
+/* Kinds whose rows are reported on over a date range, so a missing timestamp
+   would drop them out of every period (see the `data.t` normalisation in
+   /api/ops). Anything else keeps whatever timestamp it arrived with. */
+const TIMED_KINDS = new Set(["sales", "expenses", "pords", "waiterCalls", "shifts", "settlements"]);
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
 const hasPgEnv = !!(process.env.PGHOST || process.env.PGUSER || process.env.PGDATABASE);
 const localDatabaseUrl = process.env.NODE_ENV === "production" ? "" : "postgres://kash:kash@127.0.0.1:5432/kash";
@@ -134,7 +138,7 @@ async function ensureAppRole() {
     END $do$;
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
-  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, otp_codes, store_backups TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, otp_codes, store_backups, receipt_seq TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
@@ -548,6 +552,46 @@ function auditSaleMoney(sale, ctx) {
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
 }
 
+/* The register's durable sale outbox, injected into /app. Kept as a plain
+   string so it can be served inline under the page CSP (no external script).
+   See the pushSaleJs comment below for why this exists. */
+const OUTBOX_JS = "(function(){\nvar KEY='kashikeyo_outbox';\nvar q=[];try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(Array.isArray(p))q=p;}}catch(e){}\nvar subs=[],busy=false,timer=0,delay=2000,lastOk=Number(localStorage.getItem('kashikeyo_outbox_ok'))||0,lastErr='';\nfunction save(){try{localStorage.setItem(KEY,JSON.stringify(q.slice(0,500)));}catch(e){}}\nfunction notify(){for(var i=0;i<subs.length;i++){try{subs[i](status());}catch(e){}}}\nfunction status(){return {pending:q.length,lastOk:lastOk,lastErr:lastErr,oldest:q.length?q[0].at:0};}\nfunction pendingSales(){return q.map(function(it){try{return it.body.ops[0].puts[0].data;}catch(e){return null;}}).filter(Boolean);}\nfunction schedule(ms){if(timer)return;timer=setTimeout(function(){timer=0;flush();},ms);}\nfunction flush(){\n  if(busy||!q.length)return Promise.resolve(status());\n  busy=true;\n  var item=q[0];\n  return fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify(item.body)})\n    .then(function(r){\n      if(r.ok){q.shift();save();lastOk=Date.now();lastErr='';try{localStorage.setItem('kashikeyo_outbox_ok',String(lastOk));}catch(e){}delay=2000;notify();if(q.length)schedule(150);return;}\n      /* 4xx other than 401/408/429 means this batch will never be accepted as\n         written — keep it (money is never silently dropped) but stop hammering\n         and surface it, so the operator can be told the sale needs attention. */\n      lastErr='HTTP '+r.status;item.tries=(item.tries||0)+1;save();notify();\n      delay=Math.min(60000,Math.max(4000,delay*2));schedule(delay);\n    })\n    .catch(function(){lastErr='offline';item.tries=(item.tries||0)+1;save();notify();delay=Math.min(60000,delay*2);schedule(delay);})\n    .then(function(){busy=false;return status();});\n}\nwindow.__ksOutbox={\n  status:status,\n  pendingSales:pendingSales,\n  flush:function(){delay=2000;return flush();},\n  subscribe:function(fn){subs.push(fn);return function(){subs=subs.filter(function(x){return x!==fn;});};}\n};\n/* A completed sale is money the cashier has already taken. It goes into a\n   durable queue FIRST and is retried until the server acknowledges it — the old\n   implementation was a bare fetch().catch(function(){}), so a two-second WiFi\n   dropout destroyed the sale with no trace and no warning to anyone. */\nwindow.__ksPushSale=function(sale){\n  try{\n    q.push({at:Date.now(),tries:0,body:{ops:[{opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]}]}});\n    save();notify();flush();\n  }catch(e){}\n  return status();\n};\n/* Also used for non-sale register writes that must survive a dropout. */\nwindow.__ksPushOp=function(opId,puts){\n  try{q.push({at:Date.now(),tries:0,body:{ops:[{opId:opId,puts:puts}]}});save();notify();flush();}catch(e){}\n  return status();\n};\ntry{window.addEventListener('online',function(){delay=2000;flush();});}catch(e){}\nsetInterval(function(){if(q.length)flush();},15000);\nif(q.length)flush();\n})();\n";
+
+/* Receipt numbering (FIN-C3 / MIRA sequential numbering).
+   The old scheme was `nextSeq = COUNT(sales) + 1`, computed fresh on every page
+   load. Two things went wrong with that: soft-deleting a sale made the count go
+   DOWN, so the next receipt reused a number that had already been handed to a
+   customer; and every terminal on the same register computed the identical
+   number, so two tills printed the same receipt no. to two different people.
+   A receipt number has to come from an allocation the database owns, per
+   (org, store, register). Terminals draw a small block up front and never hand
+   numbers back — so a number is issued at most once, ever, including offline.
+   Gaps (an unfinished block, a reload) are acceptable and explicable; reuse is
+   not. The seed on first allocation clears any numbers the old COUNT scheme
+   already issued so we can't collide with history. */
+async function allocReceiptBlock(c, orgId, storeId, register, count) {
+  const n = Math.max(1, Math.min(200, Number(count) || 1));
+  const seedRow = await c.query(
+    "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId]);
+  const seed = Number(seedRow.rows[0].n) || 0;
+  const r = await c.query(
+    `INSERT INTO receipt_seq (org_id, store_id, register, n) VALUES ($1,$2,$3,$4::bigint + $5::bigint)
+     ON CONFLICT (org_id, store_id, register) DO UPDATE SET n = receipt_seq.n + $4::bigint, updated_at = now()
+     RETURNING n`, [orgId, storeId, register, n, seed]);
+  const end = Number(r.rows[0].n) || n;
+  return { from: end - n + 1, to: end };
+}
+/* Read-only: what the next number WOULD be, for display before the register has
+   drawn a block. Never advances the counter. */
+async function peekReceiptSeq(c, orgId, storeId, register) {
+  const r = await c.query(
+    "SELECT n FROM receipt_seq WHERE org_id=$1 AND store_id=$2 AND register=$3", [orgId, storeId, register]);
+  if (r.rowCount) return Number(r.rows[0].n) + 1;
+  const s = await c.query(
+    "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId]);
+  return (Number(s.rows[0].n) || 0) + 1;
+}
+
 /* Real-time fan-out (audit ARCH-01). SSE subscribers are held per-org in this
    in-memory Map, so a poke on one instance only reaches its own clients. To stay
    correct when the app is horizontally scaled, poke() delivers locally AND
@@ -707,7 +751,12 @@ async function resolveAppSession(req) {
      /api/inv role gate and back.html can enforce/branch on it. */
   req.appRole = payload.role || "owner";
   req.appStaff = payload.staff || null;
-  req.appRegister = payload.register || "R1";
+  /* The register is minted into the JWT as claim `r` (see sign()), not
+     `register` — reading the wrong key made every terminal think it was R1,
+     which collided receipt numbers across tills. Same for the store: claim
+     `s`, needed so the ops token this session mints keeps its outlet. */
+  req.appRegister = payload.r || "R1";
+  req.appStoreId = payload.s || DEFAULT_STORE_ID;
   return payload.o;
 }
 /* App-session RBAC (audit B2): the /api/app2/* write endpoints previously
@@ -1939,6 +1988,19 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
         const data = { ...(p.data || {}) };
         data.id = String(data.id || p.id);
         if (!shared) data.storeId = cleanStoreId(p.storeId || data.storeId || storeId);
+        /* FIN-C1: every reporting query (accounting, GST return, P&L, top
+           sellers) filters on `data->>'t'`, but the register stamps the sale
+           time as `at`/`createdAt` and never writes `t` — and `NULL BETWEEN
+           x AND y` is NULL, so those reports matched no rows and the owner's
+           GST return drafted as a nil return on a full day of trade. Normalise
+           the timestamp once here, on the way in, so there is a single field
+           reports can rely on. Falls back to ingest time rather than leaving a
+           money row outside every period. */
+        if (data.t == null || !(Number(data.t) > 0)) {
+          const ts = Number(data.at) || Number(data.createdAt) || Number(data.ts) || 0;
+          if (ts > 0) data.t = ts;
+          else if (TIMED_KINDS.has(p.kind)) data.t = Date.now();
+        }
         /* FIN-01: re-check the sale's money against the catalogue + GST rate and
            flag (never reject) any inconsistency, so a tampered or mis-priced
            sale is accepted-but-quarantined for manager review rather than
@@ -2545,7 +2607,7 @@ if (fs.existsSync(protoFile)) {
   };
   // Collect the register read-path payload (window.__ksReg) for an org. Shared
   // by the page inject (serveProto) and the live-refresh poll (/api/app2/pull).
-  const collectRegData = async (c, orgId, register) => {
+  const collectRegData = async (c, orgId, register, storeId) => {
     const out = {};
     const setRow = (await c.query(
       "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
@@ -2588,12 +2650,11 @@ if (fs.existsSync(protoFile)) {
       .map((r) => r.data || {})
       .filter((z) => z.name)
       .map((z) => ({ id: z.id || "", name: String(z.name), dv: z.dv || "", fee: (Number(z.fee) || 0) / 100, eta: z.eta || "" }));
-    /* Next receipt number for this register. The till used to start every new
-       store at 0047 with a hardcoded date, which breaks the sequential-numbering
-       requirement receipts are supposed to satisfy. */
-    const seqRow = await c.query(
-      "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId]);
-    out.nextSeq = (Number(seqRow.rows[0].n) || 0) + 1;
+    /* Next receipt number for this register — display only. The real number is
+       drawn from a database-owned block via /api/app2/seq (see
+       allocReceiptBlock); deriving it from COUNT(sales) let a soft-delete
+       rewind the counter onto a number a customer already held. */
+    out.nextSeq = await peekReceiptSeq(c, orgId, storeId, register);
     out.catGroups = Array.isArray(sd.catGroups) ? sd.catGroups : [];
     out.catOrder = Array.isArray(sd.catOrder) ? sd.catOrder : [];
     /* Staff for the register's PIN lock (name, role, djb2-hashed pin) — the
@@ -2652,7 +2713,7 @@ if (fs.existsSync(protoFile)) {
           // A short-lived-enough ops bearer token so the register can persist
           // completed sales to /api/ops from the browser (same credential the
           // baked till uses). Only minted for the register route.
-          if (withMenu) token = sign(orgId, "R1");
+          if (withMenu) token = sign(orgId, req.appRegister, req.appStoreId);
           await withOrg(orgId, async (c) => {
             if (withMenu) {
               const prodRows = (await c.query(
@@ -2677,7 +2738,7 @@ if (fs.existsSync(protoFile)) {
                   : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
               }
             }
-            if (isRegister) Object.assign(regData, await collectRegData(c, orgId, req.appRegister));
+            if (isRegister) Object.assign(regData, await collectRegData(c, orgId, req.appRegister, req.appStoreId));
             if (withAdmin) {
               const custRows = (await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
@@ -2921,11 +2982,18 @@ if (fs.existsSync(protoFile)) {
       // <base href="base/"> so the template's relative ./support.js, artwork/*
       // and fonts/* resolve under the route even though the page URL has no
       // trailing slash. Injected right after <head> so it governs every later ref.
-      // __ksPushSale persists a completed sale to /api/ops with the ops bearer
-      // token; fire-and-forget so the register's own offline-first UX is never
-      // blocked (a failed push just leaves the sale in the till's local log).
+      /* Sale persistence (audit A-C2). This used to be a bare
+         fetch('/api/ops', …).catch(function(){}) — no response check, no retry,
+         no queue. A momentary dropout between the tablet and the router
+         destroyed a completed, paid-for sale in silence: not in the Z-report,
+         not in the GST return, not in the stock deduction, and cash in the
+         drawer with no matching record. It is now a durable localStorage-backed
+         outbox that retries with backoff until the server acknowledges, keyed
+         on an opId minted once at enqueue so a replay is idempotent against the
+         `ops` table. window.__ksOutbox exposes the real pending count so the
+         register can show the truth instead of an animation. */
       const pushSaleJs = token
-        ? `window.__ksToken=${JSON.stringify(token)};window.__ksPushSale=function(sale){try{fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify({ops:[{opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]}]})}).catch(function(){});}catch(e){}};`
+        ? `window.__ksToken=${JSON.stringify(token)};\n` + OUTBOX_JS
         : "";
       // Corrective CSS: hide the scrollbar on horizontally-scrollable pill/tab
       // rows (they scroll instead of clipping on narrow screens) — Firefox uses
@@ -3011,7 +3079,7 @@ if (fs.existsSync(protoFile)) {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     const data = await withOrg(orgId, async (c) => {
-      const d = await collectRegData(c, orgId, req.appRegister);
+      const d = await collectRegData(c, orgId, req.appRegister, req.appStoreId);
       // Live menu so add-on/price/hide/86/item edits from /admin2 reach an
       // already-open register without a reload.
       d.menu = liveMenu((await c.query(
@@ -3020,6 +3088,20 @@ if (fs.existsSync(protoFile)) {
     });
     res.set("Cache-Control", "no-store");
     res.json(data);
+  }));
+  /* Draw a block of receipt numbers for this terminal's register. The register
+     calls this at boot and again when its block runs low, so it always holds
+     numbers it can print offline without any chance of another terminal
+     printing the same one. Numbers are never handed back — an unused block is a
+     gap in the series, which is fine; a reissued number is not. */
+  app.post("/api/app2/seq", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const count = Math.max(1, Math.min(100, Number((req.body || {}).count) || 20));
+    const block = await withOrg(orgId, (c) =>
+      allocReceiptBlock(c, orgId, req.appStoreId, req.appRegister, count));
+    res.set("Cache-Control", "no-store");
+    res.json({ register: req.appRegister, storeId: req.appStoreId, from: block.from, to: block.to });
   }));
   // Register write-path: advance a live order's status (KDS bump, delivery
   // advance). Server-side read-modify-write preserves every other order field,
