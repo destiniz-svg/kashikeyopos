@@ -2968,7 +2968,7 @@ if (fs.existsSync(protoFile)) {
        made it a plug: the entry balanced by construction and could never
        report an error, however wrong the underlying figures were. Measured
        separately, the two sides can genuinely disagree — and say so. */
-    const zag = { gross: 0, net: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0, refunds: 0, refundCount: 0 };
+    const zag = { gross: 0, net: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0, refunds: 0, refundCount: 0, cashFx: {}, cashFxHome: 0, fxChange: 0 };
     for (const s of zrows) {
       const isRefund = s.type === "refund";
       if (isRefund) { zag.refunds += Math.abs(Number(s.total) || 0); zag.refundCount++; }
@@ -2980,7 +2980,21 @@ if (fs.existsSync(protoFile)) {
       const pays = (Array.isArray(s.payments) && s.payments.length) ? s.payments : [{ method: s.method || "cash", amount: Number(s.total) || 0 }];
       for (const p of pays) {
         const amt = Number(p.amount) || 0, m = String(p.method || "cash").toLowerCase();
-        if (m === "cash") zag.cash += amt;
+        if (m === "cash") {
+          zag.cash += amt;
+          /* A tender taken in a foreign note is still cash, and still counts
+             towards the day's takings in home currency — but it is a different
+             pile in the drawer. A manager cannot add dollar notes to a rufiyaa
+             total, so the face value is tracked per currency alongside the
+             home-currency amount, and the change given back (always in home
+             currency) is netted off the home cash the drawer should hold. */
+          const cur = String(p.curr || "").toUpperCase();
+          if (cur && Number(p.fxAmount)) {
+            zag.cashFx[cur] = (zag.cashFx[cur] || 0) + Number(p.fxAmount);
+            zag.cashFxHome += amt;
+            zag.fxChange += Number(p.fxChange) || 0;
+          }
+        }
         else if (m === "card") zag.card += amt;
         else if (m === "tab" || m === "ontab") zag.tab += amt;
         else zag.transfer += amt; // transfer, bml/gateway
@@ -2995,7 +3009,9 @@ if (fs.existsSync(protoFile)) {
     for (const st of zsettle) { zSettled += Number(st.amount) || 0; if (/^cash$/i.test(String(st.method || "cash"))) zCashSettled += Number(st.amount) || 0; }
     const zM = (v) => Math.round(v) / 100;
     out.zday = { gross: zM(zag.gross), net: zM(zag.net), cash: zM(zag.cash), card: zM(zag.card), transfer: zM(zag.transfer), tab: zM(zag.tab), gst: zM(zag.gst), svc: zM(zag.svc), orders: zag.orders,
-      refunds: zM(zag.refunds), refundCount: zag.refundCount, cashSettled: zM(zCashSettled), settled: zM(zSettled) };
+      refunds: zM(zag.refunds), refundCount: zag.refundCount, cashSettled: zM(zCashSettled), settled: zM(zSettled),
+      cashFx: Object.keys(zag.cashFx).map((c) => ({ curr: c, amount: zM(zag.cashFx[c]) })),
+      cashFxHome: zM(zag.cashFxHome), fxChange: zM(zag.fxChange) };
     return out;
   };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
