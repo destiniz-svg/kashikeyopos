@@ -621,8 +621,10 @@ const OUTBOX_JS = "(function(){\nvar KEY='kashikeyo_outbox';\nvar q=[];try{var r
    already issued so we can't collide with history. */
 async function allocReceiptBlock(c, orgId, storeId, register, count) {
   const n = Math.max(1, Math.min(200, Number(count) || 1));
+  /* Seed past whatever the old COUNT(*) scheme already issued, per outlet — a
+     new branch should start near 1, not inherit the head office's count. */
   const seedRow = await c.query(
-    "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId]);
+    "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE(data->>'storeId',$2)=$2", [orgId, storeId]);
   const seed = Number(seedRow.rows[0].n) || 0;
   const r = await c.query(
     `INSERT INTO receipt_seq (org_id, store_id, register, n) VALUES ($1,$2,$3,$4::bigint + $5::bigint)
@@ -638,7 +640,7 @@ async function peekReceiptSeq(c, orgId, storeId, register) {
     "SELECT n FROM receipt_seq WHERE org_id=$1 AND store_id=$2 AND register=$3", [orgId, storeId, register]);
   if (r.rowCount) return Number(r.rows[0].n) + 1;
   const s = await c.query(
-    "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId]);
+    "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE(data->>'storeId',$2)=$2", [orgId, storeId]);
   return (Number(s.rows[0].n) || 0) + 1;
 }
 
@@ -3257,6 +3259,37 @@ if (fs.existsSync(protoFile)) {
     const token = jwt.sign({ k: "till", o: orgId, u: row.rows[0].id }, SECRET, { expiresIn: "30d" });
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, user: { id: row.rows[0].id, name: d.name || "Staff", role: d.role || "cashier" }, token });
+  }));
+
+  /* Outlet selection for the register (audit A-H2). The register never chose a
+     store: the ops token defaulted to 'main' and every op stamped storeId
+     'main', so a two-outlet owner's Hulhumale branch booked its sales under
+     Male. The per-outlet dashboard showed the new branch at MVR 0 forever while
+     Male's numbers were inflated. /api/select-store existed and re-issued a
+     bearer token, but the page is cookie-authed and nothing called it — the
+     multi-store architecture was complete on the server and unreachable from
+     the client. Switching re-mints the session cookie for the chosen outlet,
+     which is what every later op, receipt block and report keys off. */
+  app.get("/api/app2/outlets", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const rows = await withOrg(orgId, (c) => c.query(
+      "SELECT id, name, code FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [orgId]));
+    res.set("Cache-Control", "no-store");
+    res.json({ current: req.appStoreId || DEFAULT_STORE_ID, outlets: rows.rows.map((r) => ({ id: r.id, name: r.name || r.id, code: r.code || "" })) });
+  }));
+  app.post("/api/app2/outlet", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const want = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+    const hit = await withOrg(orgId, (c) => c.query(
+      "SELECT id, name FROM stores WHERE org_id=$1 AND id=$2 AND active=true", [orgId, want]));
+    if (!hit.rowCount) return res.status(404).json({ error: "unknown outlet" });
+    const token = sign(orgId, req.appRegister, want, { role: req.appRole, staff: req.appStaff || undefined });
+    setAppCookieTracked(req, res, token, { orgId, role: req.appRole, register: req.appRegister,
+      name: (req.appStaff && req.appStaff.name) || "", staffId: (req.appStaff && req.appStaff.id) || "" });
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "outlet.switch", ref: want, requestId: req.id, detail: {} });
+    res.json({ ok: true, storeId: want, name: hit.rows[0].name || want });
   }));
 
   /* Day End (audit B-H5). "Close day & post journal" set a local flag and
