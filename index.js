@@ -1438,6 +1438,76 @@ app.post("/api/signup/verify-otp", pubThrottle(12, "otpv"), wrap(async (req, res
   res.json({ ok: true, token, slug, next: "/welcome" });
 }));
 
+/* ── Password reset ───────────────────────────────────────────────────────────
+   The owner's account password is now the only way into the back office (a till
+   PIN no longer mints an owner session) and the only confirmation accepted for
+   reset/restore, so forgetting it must not be terminal. Same one-time-code
+   machinery as signup, with the differences that matter for a reset:
+     - the response never reveals whether an email has an account;
+     - a successful reset stamps sessions_invalid_before, so any session an
+       attacker already holds dies with the old password;
+     - it is written to the append-only activity log.
+   Degrades like the rest of the email features: with no RESEND_API_KEY the
+   caller is told delivery isn't configured rather than being left waiting. */
+const resetEmailHtml = (code) => `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:440px;margin:0 auto;padding:28px 24px;color:#221a12">
+  <div style="font-weight:800;font-size:18px;color:#C7431D;margin-bottom:14px">KashikeyoPOS</div>
+  <p style="font-size:15px;line-height:1.6;margin:0 0 18px">Use this code to set a new password for your account:</p>
+  <div style="font-size:30px;font-weight:800;letter-spacing:.22em;background:#F7F1E8;border-radius:12px;padding:16px;text-align:center">${code}</div>
+  <p style="font-size:13px;color:#6b5c4a;line-height:1.6;margin:18px 0 0">It expires in 10 minutes. If you didn't ask to reset your password you can ignore this email — nothing has changed.</p>
+</div>`;
+
+app.post("/api/password/forgot", pubThrottle(6, "pwforgot"), wrap(async (req, res) => {
+  const email = String((req.body || {}).email || "").trim().toLowerCase();
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  /* Answer identically whether or not the account exists, so this can't be used
+     to enumerate customers. Everything below is best-effort behind that. */
+  const generic = { ok: true, configured: emailConfigured() };
+  const org = await withSystem((c) => c.query("SELECT id FROM orgs WHERE lower(email)=$1 LIMIT 1", [email]));
+  if (!org.rowCount) return res.json(generic);
+  const cur = await withSystem((c) => c.query("SELECT last_sent FROM otp_codes WHERE email=$1 AND purpose='reset'", [email]));
+  if (cur.rowCount && (Date.now() - new Date(cur.rows[0].last_sent).getTime()) < 45000) return res.json(generic);
+  const code = genOtp();
+  await withSystem((c) => c.query(
+    `INSERT INTO otp_codes (email, purpose, code_hash, expires_at, attempts, verified, last_sent, created_at)
+     VALUES ($1,'reset',$2, now() + interval '10 minutes', 0, false, now(), now())
+     ON CONFLICT (email, purpose) DO UPDATE SET code_hash=$2, expires_at=now() + interval '10 minutes', attempts=0, verified=false, last_sent=now()`,
+    [email, otpHash(email, code)]));
+  const mail = await sendEmail({ to: email, subject: "Reset your KashikeyoPOS password", html: resetEmailHtml(code),
+    text: "Your KashikeyoPOS password reset code is " + code + " (valid for 10 minutes)." });
+  logActivity(org.rows[0].id, { actor: "system", action: "password.reset_requested", requestId: req.id });
+  const out = Object.assign({}, generic);
+  if (!mail.ok && process.env.NODE_ENV !== "production") out.devCode = code; // lets testing proceed without a mail provider
+  res.json(out);
+}));
+
+app.post("/api/password/reset", pubThrottle(12, "pwreset"), wrap(async (req, res) => {
+  const b = req.body || {};
+  const email = String(b.email || "").trim().toLowerCase();
+  const code = String(b.code || "").trim();
+  const pw = String(b.password || "");
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  const pwErr = passwordProblem(pw); if (pwErr) return res.status(400).json({ error: pwErr });
+  const bad = () => res.status(400).json({ error: "That code is wrong or has expired." });
+  const r = (await withSystem((c) => c.query(
+    "SELECT code_hash, attempts, expires_at FROM otp_codes WHERE email=$1 AND purpose='reset'", [email]))).rows[0];
+  if (!r) return bad();
+  if (new Date(r.expires_at).getTime() < Date.now()) return bad();
+  if (Number(r.attempts) >= 6) return res.status(429).json({ error: "Too many attempts — request a new code." });
+  if (otpHash(email, code) !== r.code_hash) {
+    await withSystem((c) => c.query("UPDATE otp_codes SET attempts=attempts+1 WHERE email=$1 AND purpose='reset'", [email]));
+    return bad();
+  }
+  const org = (await withSystem((c) => c.query("SELECT id FROM orgs WHERE lower(email)=$1 LIMIT 1", [email]))).rows[0];
+  if (!org) return bad();
+  /* New password, and every session issued under the old one is revoked — a
+     reset is exactly the moment someone else's foothold should end. */
+  await withSystem((c) => c.query(
+    "UPDATE orgs SET pass_hash=$2, sessions_invalid_before = now() WHERE id=$1", [org.id, bcrypt.hashSync(pw, 10)]));
+  await withSystem((c) => c.query("DELETE FROM otp_codes WHERE email=$1 AND purpose='reset'", [email]));
+  logActivity(org.id, { actor: "system", action: "password.reset", requestId: req.id });
+  res.json({ ok: true });
+}));
+
 /* Onboarding state for the /welcome wizard: which stage to show + prefills. */
 app.get("/api/onboard/state", wrap(async (req, res) => {
   const orgId = await resolveAppSession(req);

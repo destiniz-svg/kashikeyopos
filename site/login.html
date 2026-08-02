@@ -43,6 +43,10 @@
     display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px;
     background: #FBEAE4; color: #A3391F; font-size: 13px;
   }
+  .ok {
+    display: none; margin-top: 16px; padding: 10px 12px; border-radius: 8px;
+    background: #E8F3EC; color: #1F6B42; font-size: 13px; line-height: 1.5;
+  }
   .foot { margin-top: 20px; text-align: center; font-size: 13px; color: var(--sub); }
   .foot a { color: var(--primary); text-decoration: none; font-weight: 600; }
   .foot a:hover { text-decoration: underline; }
@@ -120,9 +124,11 @@
       <label for="password">Password</label>
       <input id="password" type="password" autocomplete="current-password" required />
       <div class="error" id="err"></div>
+      <div class="ok" id="okBox" style="display:none"></div>
       <button id="submit" type="submit">Sign in</button>
     </form>
     <div class="foot" id="ownerFoot">
+      <a href="#" id="toForgot">Forgot your password?</a><br />
       <a href="#" id="toStaff">Staff sign-in with PIN</a> &middot; New here? <a href="/signup">Create your store</a>
     </div>
 
@@ -136,6 +142,27 @@
     </form>
     <div class="foot" id="staffFoot" style="display:none">
       <a href="#" id="toOwner">&larr; Owner sign-in</a>
+    </div>
+
+    <form id="fgForm" style="display:none">
+      <label for="fgEmail">Email</label>
+      <input id="fgEmail" type="email" autocomplete="email" required />
+      <div class="error" id="fgErr"></div>
+      <div class="ok" id="fgNote" style="display:none"></div>
+      <button id="fgSubmit" type="submit">Email me a code</button>
+    </form>
+
+    <form id="rsForm" style="display:none">
+      <label for="rsCode">6-digit code</label>
+      <input id="rsCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" required />
+      <label for="rsPw">New password</label>
+      <input id="rsPw" type="password" autocomplete="new-password" placeholder="At least 8 characters" required />
+      <div class="error" id="rsErr"></div>
+      <button id="rsSubmit" type="submit">Set new password</button>
+    </form>
+
+    <div class="foot" id="fgFoot" style="display:none">
+      <a href="#" id="toOwner2">&larr; Back to sign in</a>
     </div>
   </div>
   <script src="/oauth.js"></script>
@@ -202,6 +229,104 @@
       }
       document.getElementById("toStaff").addEventListener("click", function (e) { e.preventDefault(); showStaff(true); });
       document.getElementById("toOwner").addEventListener("click", function (e) { e.preventDefault(); showStaff(false); });
+
+      /* ---- Forgot password ------------------------------------------------
+         Two steps on the same card: ask for the email, then take the emailed
+         code plus a new password. The server answers the first step the same
+         way whether or not the account exists, so this UI must not imply it
+         found one. */
+      var fgForm = document.getElementById("fgForm");
+      var rsForm = document.getElementById("rsForm");
+      var fgFoot = document.getElementById("fgFoot");
+      var fgErr = document.getElementById("fgErr");
+      var rsErr = document.getElementById("rsErr");
+      var fgNote = document.getElementById("fgNote");
+      var fgBtn = document.getElementById("fgSubmit");
+      var rsBtn = document.getElementById("rsSubmit");
+      function showForgot(step) {
+        var on = step > 0;
+        form.style.display = on ? "none" : "";
+        ownerFoot.style.display = on ? "none" : "";
+        staffForm.style.display = "none";
+        staffFoot.style.display = "none";
+        fgForm.style.display = step === 1 ? "" : "none";
+        rsForm.style.display = step === 2 ? "" : "none";
+        fgFoot.style.display = on ? "" : "none";
+        if (on) {
+          h1.textContent = step === 1 ? "Reset your password" : "Enter your code";
+          sub.textContent = step === 1
+            ? "We'll email you a one-time code."
+            : "Check your email for the code, then choose a new password.";
+        }
+      }
+      document.getElementById("toForgot").addEventListener("click", function (e) {
+        e.preventDefault();
+        var em = document.getElementById("email").value.trim();
+        if (em) document.getElementById("fgEmail").value = em;
+        fgErr.style.display = "none"; fgNote.style.display = "none";
+        showForgot(1);
+      });
+      document.getElementById("toOwner2").addEventListener("click", function (e) {
+        e.preventDefault(); showForgot(0); showStaff(false);
+      });
+      fgForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        fgErr.style.display = "none"; fgNote.style.display = "none";
+        fgBtn.disabled = true; fgBtn.textContent = "Sending…";
+        try {
+          var res = await fetch("/api/password/forgot", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: document.getElementById("fgEmail").value.trim() }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Couldn't send the code");
+          /* Outside production the server hands back the code when there is no
+             mail provider, so testing isn't blocked; honour that before deciding
+             delivery has failed. */
+          if (data.devCode) {
+            document.getElementById("rsCode").value = data.devCode;
+          } else if (data.configured === false) {
+            fgErr.textContent = "Email delivery isn't set up for this workspace yet — contact support to reset your password.";
+            fgErr.style.display = "block";
+            fgBtn.disabled = false; fgBtn.textContent = "Email me a code";
+            return;
+          }
+          showForgot(2);
+        } catch (e2) {
+          fgErr.textContent = e2.message || "Something went wrong — please try again";
+          fgErr.style.display = "block";
+        }
+        fgBtn.disabled = false; fgBtn.textContent = "Email me a code";
+      });
+      rsForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        rsErr.style.display = "none";
+        rsBtn.disabled = true; rsBtn.textContent = "Saving…";
+        try {
+          var res = await fetch("/api/password/reset", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: document.getElementById("fgEmail").value.trim(),
+              code: document.getElementById("rsCode").value.trim(),
+              password: document.getElementById("rsPw").value,
+            }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Couldn't reset the password");
+          showForgot(0); showStaff(false);
+          document.getElementById("email").value = document.getElementById("fgEmail").value.trim();
+          var oe = document.getElementById("err");
+          oe.textContent = "";
+          fgNote.textContent = "";
+          var okBox = document.getElementById("okBox");
+          okBox.textContent = "Password updated — sign in with your new password.";
+          okBox.style.display = "block";
+        } catch (e2) {
+          rsErr.textContent = e2.message || "Something went wrong — please try again";
+          rsErr.style.display = "block";
+        }
+        rsBtn.disabled = false; rsBtn.textContent = "Set new password";
+      });
       staffForm.addEventListener("submit", async function (e) {
         e.preventDefault();
         staffErr.style.display = "none";
