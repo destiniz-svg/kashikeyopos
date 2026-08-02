@@ -26,13 +26,16 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   const authAny = (req, res, next) => {
     resolveAppSession(req).then((orgId) => {
       if (orgId) { req.orgId = orgId; req.authSource = "cookie"; return next(); }  // cookie sets req.appRole in resolveAppSession
-      bearerAuth(req, res, () => { req.orgId = req.org.o; req.authSource = "bearer"; req.appRole = req.appRole || "owner"; next(); });
+      bearerAuth(req, res, () => { req.orgId = req.org.o; req.authSource = "bearer"; req.appRole = "till"; next(); });
     }).catch(next);
   };
 
   /* Server-side RBAC (roles-audit gap 4). Back-office sessions carry a role;
-     bearer (till) callers are treated as owner (the till gates itself and never
-     hits these config endpoints). Only manager/admin/owner can hold a back
+     a bearer (till) caller is ranked BELOW manager and can satisfy no role gate
+     at all. It used to be ranked "owner" — and that token is printed into every
+     register page as window.__ksToken with a 90-day life, so anyone who read the
+     page source could reprice the menu, create outlets and book expenses. The
+     register never calls /api/inv; only the cookie-authed back office does. Only manager/admin/owner can hold a back
      session at all, so the meaningful server gate is the admin-tier one: staff
      & settings writes, the owner dashboard, and the plain-English agent require
      admin+ — a manager's session literally cannot reach them, not just have the
@@ -444,7 +447,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   /* Persist the owner's menu category order into the shared settings entity.
      The till (ce.catOrder) and guest menu (A.catOrder) both read this and sort
      their category chips + sections by it, so one arrangement drives both. */
-  router.put("/category-order", authAny, wrap(async (req, res) => {
+  router.put("/category-order", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const order = Array.isArray(req.body && req.body.order)
       ? [...new Set(req.body.order.filter((c) => typeof c === "string").map((c) => c.trim()).filter(Boolean))].slice(0, 200)
       : [];
@@ -518,7 +521,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      only accept a bounded image data URI here and write it onto the product
      entity — it then rides the normal sync stream onto every till tile and the
      guest menu. Passing an empty img clears the photo (back to the emoji). */
-  router.put("/products/:id/image", authAny, wrap(async (req, res) => {
+  router.put("/products/:id/image", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const pid = req.params.id;
     const img = typeof (req.body && req.body.img) === "string" ? req.body.img : "";
     if (img && !/^data:image\/(png|jpe?g|webp);base64,/.test(img)) return res.status(400).json({ error: "expected an image" });
@@ -550,7 +553,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      the options per item (e.g. "Non-spicy, Spicy" or "Mild, Medium, Hot"). */
   const cleanSpice = (arr) => (Array.isArray(arr) ? arr : [])
     .map((s) => String(s || "").trim().slice(0, 30)).filter(Boolean).slice(0, 8);
-  router.put("/products/:id/meta", authAny, wrap(async (req, res) => {
+  router.put("/products/:id/meta", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const pid = req.params.id, body = req.body || {};
     const cat = typeof body.cat === "string" ? body.cat.trim().slice(0, 40) : undefined;
     const allergens = typeof body.allergens === "string" ? body.allergens.slice(0, 200) : undefined;
@@ -585,7 +588,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   /* Create or update a menu item (used by the /admin2 Menu manager to add and
      edit items). Read-modify-write preserves any other fields on an existing
      product; a new item gets a generated id. price is laari (MVR×100). */
-  router.post("/products", authAny, wrap(async (req, res) => {
+  router.post("/products", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const body = req.body || {};
     const name = String(body.name || body.en || "").trim().slice(0, 80);
     const dv = String(body.dv || "").trim().slice(0, 80);
@@ -622,7 +625,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   }));
 
   /* Soft-delete a menu item. */
-  router.post("/products/:id/delete", authAny, wrap(async (req, res) => {
+  router.post("/products/:id/delete", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const id = req.params.id;
     const rowver = await withOrg(req.orgId, async (client) => {
       const up = await client.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver", [req.orgId, id]);
@@ -679,7 +682,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      ownTablesOnly = waiters see only their own open tables/tickets. Stored on the
      shared settings entity keyed by store id (settings.outletPrefs[storeId]); the
      till reads its own outlet's prefs from the synced settings. */
-  router.post("/stores/:id/prefs", authAny, wrap(async (req, res) => {
+  router.post("/stores/:id/prefs", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const sid = String(req.params.id || "").slice(0, 32);
     const body = req.body || {};
     const rowver = await withOrg(req.orgId, async (client) => {
@@ -706,7 +709,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     if (poke && rowver) poke(req.orgId, rowver);
     res.json({ ok: true });
   }));
-  router.post("/stores", authAny, wrap(async (req, res) => {
+  router.post("/stores", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const body = req.body || {};
     const name = String(body.name || "").trim().slice(0, 60);
     if (!name) return res.status(400).json({ error: "outlet name required" });
@@ -720,7 +723,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       [req.orgId, id, code, name, address]));
     res.json({ store: r.rows[0] });
   }));
-  router.post("/stores/:id/active", authAny, wrap(async (req, res) => {
+  router.post("/stores/:id/active", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const active = !!(req.body && req.body.active);
     const out = await withOrg(req.orgId, async (client) => {
       if (!active) {
@@ -1237,7 +1240,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     required: ["supplier", "invoiceNo", "date", "lines"],
   };
 
-  router.post("/ocr", authAny, wrap(async (req, res) => {
+  router.post("/ocr", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const client = aiClient();
     if (!client) {
       return res.json({ ok: true, configured: false, message: "Scanning isn't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to turn it on — or enter this delivery by hand below." });
@@ -1400,7 +1403,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      answered against a fresh, compact digest of the current figures, so the
      assistant can only talk about what's actually true right now. Degrades to
      a plain message when no key is configured (the insights above still work). */
-  router.post("/assistant", authAny, wrap(async (req, res) => {
+  router.post("/assistant", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const client = aiClient();
     const question = String((req.body && req.body.question) || "").trim().slice(0, 500);
     if (!question) return res.status(400).json({ error: "ask a question first" });
@@ -1492,7 +1495,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   }
   const svgDataUri = (svg) => svg ? "data:image/svg+xml;utf8," + encodeURIComponent(svg) : "";
 
-  router.post("/menu/generate", authAny, wrap(async (req, res) => {
+  router.post("/menu/generate", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const client = aiClient();
     if (!client) {
       return res.json({ ok: true, configured: false, message: "The AI menu builder isn't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to turn it on — you can still add items by hand." });
@@ -1564,7 +1567,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, configured: true, draft });
   }));
 
-  router.post("/menu/apply", authAny, wrap(async (req, res) => {
+  router.post("/menu/apply", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const d = (req.body && req.body.draft) || {};
     const name = String(d.en || d.name || "").trim().slice(0, 120);
     if (!name) return res.status(400).json({ error: "The item needs a name." });
@@ -1728,7 +1731,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(Object.assign({ ok: true }, out));
   }));
 
-  router.put("/recipes/:productId", authAny, wrap(async (req, res) => {
+  router.put("/recipes/:productId", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const lines = Array.isArray(req.body && req.body.lines) ? req.body.lines : [];
     const out = await withOrg(req.orgId, async (client) => {
       await client.query("DELETE FROM recipe_lines WHERE org_id=$1 AND product_id=$2", [req.orgId, req.params.productId]);
@@ -1753,7 +1756,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ suppliers: r.rows });
   }));
 
-  router.post("/suppliers", authAny, wrap(async (req, res) => {
+  router.post("/suppliers", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const { id, name, phone, email, notes } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "supplier name required" });
     const sid = id || uid();
@@ -1852,7 +1855,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
   /* Book a standalone expense (rent, wages, gas, a paid vendor bill) — a plain
      'expenses' entity, no stock movement. amount is laari (MVR×100). */
-  router.post("/expenses", authAny, wrap(async (req, res) => {
+  router.post("/expenses", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const b = req.body || {};
     const amount = Math.max(0, Math.round(num(b.amount)));
     const cat = String(b.cat || "General").trim().slice(0, 40) || "General";
@@ -1925,7 +1928,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, currency: out.currency, count: out.reorder.length, drafts });
   }));
 
-  router.post("/reorder/approve", authAny, wrap(async (req, res) => {
+  router.post("/reorder/approve", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const drafts = Array.isArray(req.body && req.body.drafts) ? req.body.drafts : [];
     if (!drafts.length) return res.status(400).json({ error: "nothing to order" });
     const result = await withOrg(req.orgId, async (client) => {
@@ -1994,7 +1997,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
   /* Acknowledge one flag. kind = 'sale' stamps serverAudit.ack; kind = 'credit'
      clears the customer's over-limit flag (the balance stays as-is). */
-  router.post("/flags/:kind/:id/ack", authAny, wrap(async (req, res) => {
+  router.post("/flags/:kind/:id/ack", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const who = String((req.body && req.body.by) || "back office").slice(0, 60);
     const kind = req.params.kind === "credit" ? "credit" : "sale";
     const r = await withOrg(req.orgId, (client) => kind === "sale"
@@ -2517,7 +2520,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true });
   }));
 
-  router.post("/pos/:id/receive", authAny, wrap(async (req, res) => {
+  router.post("/pos/:id/receive", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const { lines, invoiceNo } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });
     const out = await withOrg(req.orgId, async (client) => {

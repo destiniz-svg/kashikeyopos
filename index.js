@@ -2662,7 +2662,13 @@ if (fs.existsSync(protoFile)) {
        per-staff PIN and carry that staff's role into its permission checks. */
     out.users = (await c.query(
       "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [orgId])).rows
-      .map((r) => ({ id: r.id, name: ((r.data && r.data.name) || "").toString().slice(0, 60) || "Staff", role: (r.data && r.data.role) || "cashier", pin: (r.data && r.data.pin) || "" }));
+      /* The PIN hash is deliberately NOT sent. It is djb2 over a 4-digit
+         space — the whole keyspace is brute-forceable in milliseconds from the
+         page source — and the same PIN logs into the back office. /api/pull
+         already scrubs it (see scrubEntity); this payload used to hand it
+         over verbatim. The till gets a boolean and asks the server to check
+         the PIN (POST /api/app2/unlock). */
+      .map((r) => ({ id: r.id, name: ((r.data && r.data.name) || "").toString().slice(0, 60) || "Staff", role: (r.data && r.data.role) || "cashier", hasPin: !!(r.data && r.data.pin) }));
     /* Real Day-End / Z-report aggregate for the till (audit B4): the register's
        Day-End used to render hardcoded demo takings. Sum TODAY's completed
        sales by payment method + GST/service so a cashier's end-of-day reflects
@@ -3089,6 +3095,47 @@ if (fs.existsSync(protoFile)) {
     res.set("Cache-Control", "no-store");
     res.json(data);
   }));
+  /* Till lock: verify a staff PIN server-side.
+     The register used to compare the typed PIN against a hash embedded in the
+     page, which meant every device carried every staff member's (and the
+     owner's) recoverable PIN. Now the PIN is checked here, throttled like any
+     other credential, and the caller gets back a short-lived signed handle it
+     can present on reload instead of storing anything secret. */
+  app.post("/api/app2/unlock", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const body = req.body || {};
+    /* Restore path: a previously issued handle, no PIN re-entry. */
+    if (body.token) {
+      try {
+        const p = jwt.verify(String(body.token), SECRET);
+        if (p && p.k === "till" && p.o === orgId) {
+          const row = await withOrg(orgId, (c) => c.query(
+            "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND id=$2 AND deleted=false", [orgId, String(p.u)]));
+          if (row.rowCount) {
+            const d = row.rows[0].data || {};
+            return res.json({ ok: true, user: { id: row.rows[0].id, name: d.name || "Staff", role: d.role || "cashier" }, token: String(body.token) });
+          }
+        }
+      } catch { /* fall through to a plain rejection */ }
+      return res.status(401).json({ error: "session expired — enter your PIN" });
+    }
+    const keys = rlKeys(req, "till:" + orgId + ":" + String(body.userId || ""));
+    const blocked = rlBlockedFor(keys);
+    if (blocked) return rlDeny(res, blocked);
+    const row = await withOrg(orgId, (c) => c.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND id=$2 AND deleted=false", [orgId, String(body.userId || "")]));
+    const d = row.rowCount ? (row.rows[0].data || {}) : null;
+    if (!d || !d.pin || hashTillPin(String(body.pin || "")) !== String(d.pin)) {
+      rlFail(keys);
+      return res.status(401).json({ error: "wrong PIN" });
+    }
+    rlClear(keys);
+    const token = jwt.sign({ k: "till", o: orgId, u: row.rows[0].id }, SECRET, { expiresIn: "30d" });
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, user: { id: row.rows[0].id, name: d.name || "Staff", role: d.role || "cashier" }, token });
+  }));
+
   /* Draw a block of receipt numbers for this terminal's register. The register
      calls this at boot and again when its block runs low, so it always holds
      numbers it can print offline without any chance of another terminal
