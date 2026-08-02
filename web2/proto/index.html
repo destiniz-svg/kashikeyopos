@@ -1848,20 +1848,57 @@ fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).
         from the unrounded sum, so the receipt's own sub-lines did not add up to
         its total on 22% of dine-in bills and 67% of discounted ones. Each
         component is now rounded to laari ONCE, and the total is the sum of
-        those rounded components — so what is printed always foots. */
+        those rounded components — so what is printed always foots.
+
+     3. The goods base was built from a rounded PER-UNIT price. Three items at
+        MVR 45.00 inclusive de-gross to 41.666… each; rounding the unit to
+        41.67 and multiplying by three gave 125.01 for a line that is 125.00.
+        Nine at MVR 12.50 drifted four laari. That drift was stored on the sale
+        and carried into the GST return. The line amount is now rounded once,
+        from the line, and the per-unit price is carried alongside it for
+        display only.
+
+     4. Because each stored component was rounded off its own unrounded
+        intermediate, subtotal − discount + service + GST did not equal the
+        stored total on 74% of bills (up to 7 laari out). Everything below is
+        computed in whole laari and each figure is rounded exactly once, so the
+        identity holds by construction on every bill, with no residual for a
+        reconciliation to explain. The integers are returned in .L for the
+        payment path to store verbatim — no re-rounding on the way out.
+
+     5. The arithmetic runs INCLUSIVE-first and extracts GST as the tax
+        fraction, rate/(1+rate), rather than de-grossing and then applying the
+        rate to the result. De-gross-then-re-gross is not a round trip: a
+        MVR 500.00 bill could be charged 500.01, which the customer can see
+        because the printed lines are the inclusive prices off the menu. It
+        happened on 14% of plain bills. Extraction makes goods + fee + service
+        + GST equal the inclusive base exactly, and it is the method the GST
+        Act prescribes for tax-inclusive pricing anyway. */
   totals(){const r=this.rate(),sp=this.scPct(),dp=(this.state.discountPct||0)/100;
+    const R=Math.round,TF=(v)=>R(v*r/(1+r));       /* GST contained in an inclusive amount */
     let incl=0;this.state.cart.forEach(l=>{incl+=l.unit*l.qty*(1-(l.disc||0)/100);});
     const dz=this.DZONES;const delFeeIncl=(this.state.orderType==='delivery'&&this.state.deliveryZoneIx!=null&&dz[this.state.deliveryZoneIx])?dz[this.state.deliveryZoneIx].fee:0;
-    const itemsExcl=incl/(1+r);
-    const discount=itemsExcl*dp;
-    const feeExcl=delFeeIncl/(1+r);
-    const excl=itemsExcl-discount;                 /* goods, after discount */
-    const svc=this.state.orderType==='dine'?excl*sp:0;
-    const gst=(excl+feeExcl+svc)*r;                /* the fee is part of the supply */
-    const L=(v)=>Math.round(v*100)/100;
-    const cExcl=L(excl),cSvc=L(svc),cGst=L(gst),cFee=L(feeExcl),cDisc=L(discount);
-    return {incl,grossExcl:L(itemsExcl),discount:cDisc,excl:cExcl,svc:cSvc,gst:cGst,
-      delFee:cFee,delFeeIncl:L(delFeeIncl),total:L(cExcl+cFee+cSvc+cGst),dp};}
+    /* Per-line inclusive amounts, in laari, each rounded once from the line —
+       never by multiplying a rounded per-unit price back out. */
+    const lineIncl=this.state.cart.map(l=>R(l.unit*l.qty*(1-(l.disc||0)/100)*100));
+    const itemsIncl=lineIncl.reduce((a,v)=>a+v,0);
+    const discIncl=R(itemsIncl*dp);
+    const goodsIncl=itemsIncl-discIncl;
+    const feeIncl=R(delFeeIncl*100);
+    const svcIncl=this.state.orderType==='dine'?R(goodsIncl*sp):0;
+    const totalL=goodsIncl+feeIncl+svcIncl;        /* what the customer pays, exactly */
+    const gstL=TF(totalL);                         /* the fee and the service charge are part of the supply */
+    const feeL=feeIncl-TF(feeIncl),svcL=svcIncl-TF(svcIncl);
+    const exclL=totalL-gstL-feeL-svcL;             /* goods net; carries the split residual */
+    const discL=discIncl-TF(discIncl);
+    const itemsL=exclL+discL;                      /* goods net, before the bill discount */
+    /* The exclusive line amounts are the split of itemsL, so the sale's own
+       lines add up to its subtotal with nothing left over. */
+    const lineL=[];let acc=0;
+    for(let i=0;i<lineIncl.length;i++){const v=i===lineIncl.length-1?itemsL-acc:R(lineIncl[i]/(1+r));lineL.push(v);acc+=v;}
+    return {incl,lineL,grossExcl:itemsL/100,discount:discL/100,excl:exclL/100,svc:svcL/100,gst:gstL/100,
+      delFee:feeL/100,delFeeIncl:feeIncl/100,total:totalL/100,dp,
+      L:{items:itemsL,fee:feeL,disc:discL,excl:exclL,svc:svcL,gst:gstL,total:totalL}};}
   _modPad(s){const me=this;const digit=d=>({label:String(d),isText:true,bg:'var(--sur)',co:'var(--ink)',bc:'var(--line)',tap:()=>{const q=s.modFresh?d:(s.modQty*10+d);me.setState({modQty:Math.min(999,q),modFresh:false});}});const quick=n=>({label:'+'+n,isText:true,bg:'var(--coralsoft)',co:'var(--coral)',bc:'transparent',tap:()=>me.setState({modQty:Math.min(999,s.modQty+n),modFresh:false})});const clear={label:'C',isText:true,bg:'var(--sur2)',co:'var(--ink2)',bc:'transparent',tap:()=>me.setState({modQty:0,modFresh:true})};const dot={label:'.',isText:true,bg:'var(--sur)',co:'var(--ink3)',bc:'var(--line)',tap:()=>{}};const back={label:'',isText:false,isBack:true,bg:'var(--redsoft)',co:'var(--red)',bc:'transparent',tap:()=>me.setState({modQty:Math.floor(s.modQty/10),modFresh:false})};return [digit(1),digit(2),digit(3),quick(10),digit(4),digit(5),digit(6),quick(15),digit(7),digit(8),digit(9),quick(20),clear,digit(0),dot,back];}
   pushLine(m,mods,qty,note){const nk=note?('~'+note):'';const key=m.id+'|'+mods.map(x=>x.id).join(',')+nk;const cart=this.state.cart.slice();const ex=cart.find(l=>l.key===key);const unit=m.price+mods.reduce((a,x)=>a+x.price,0);if(ex)ex.qty+=qty;else cart.push({key,id:m.id,mods,unit,qty,note:note||''});const upd={cart};if(this.state.cart.length===0)upd.orderStartedAt=Date.now();this.setState(upd);}
   /* Accept a live customer/QR order (cashier/waiter/admin): open a bill for it
@@ -1974,11 +2011,14 @@ fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).
    COUNT(sales), which two tills computed identically. If the block is
    exhausted (long outage) we fall back to a device-stamped provisional
    number that still cannot collide, and mark the sale provisional. */
-var _sq=this.nextSeqVal();var _seqN=_sq.n||s.seq;var _prov=!_sq.n;const no=_prov?(_reg+'-'+_ymd+'-P'+this.devId()+String(_seqN).padStart(4,'0')):(_reg+'-'+_ymd+'-'+String(_seqN).padStart(4,'0'));try{if(typeof window!=='undefined'&&window.__ksPushSale){var _cu=s.curUser||{};var _l=s.cart.map(function(l){var m=this.MENU.find(function(x){return x.id===l.id;});return {pid:l.id,qty:l.qty,price:Math.round(l.unit/(1+r)*100),discPct:Number(l.disc)||0,name:this.itemName(m)};}.bind(this));var _fee=Math.round(t.delFee*100);var _sub=_l.reduce(function(a,x){return a+Math.round(x.price*x.qty*(1-(x.discPct||0)/100));},0)+_fee;var _tabId=(s.method==='tab'&&s.tabCust)?s.tabCust:null;window.__ksPushSale({id:'s'+Date.now()+'-'+_seqN,no:no,provisionalNo:_prov||undefined,type:'sale',at:Date.now(),createdAt:Date.now(),t:Date.now(),register:_reg,orderType:s.orderType,tableNo:s.orderType==='dine'?s.tableNo:null,splitWays:(Number(s.split)>1?Number(s.split):undefined),lines:_l,subtotal:_sub,fee:_fee,billDisc:Math.round(t.discount*100),billDiscPct:s.discountPct||0,svcCharge:Math.round(t.svc*100),gst:Math.round(t.gst*100),total:Math.round(t.total*100),/* What tax was actually applied, and at what exchange rate — reprinting a
+var _sq=this.nextSeqVal();var _seqN=_sq.n||s.seq;var _prov=!_sq.n;const no=_prov?(_reg+'-'+_ymd+'-P'+this.devId()+String(_seqN).padStart(4,'0')):(_reg+'-'+_ymd+'-'+String(_seqN).padStart(4,'0'));try{if(typeof window!=='undefined'&&window.__ksPushSale){var _cu=s.curUser||{};/* amount is the authority: it is the line rounded once, so the sale's own
+   lines add up to its subtotal exactly. price stays as the per-unit figure
+   the receipt shows, which cannot be multiplied back without drifting. */
+var _l=s.cart.map(function(l,i){var m=this.MENU.find(function(x){return x.id===l.id;});return {pid:l.id,qty:l.qty,price:Math.round(l.unit/(1+r)*100),amount:t.lineL[i],discPct:Number(l.disc)||0,name:this.itemName(m)};}.bind(this));var _fee=t.L.fee;var _sub=t.L.items+_fee;var _tabId=(s.method==='tab'&&s.tabCust)?s.tabCust:null;window.__ksPushSale({id:'s'+Date.now()+'-'+_seqN,no:no,provisionalNo:_prov||undefined,type:'sale',at:Date.now(),createdAt:Date.now(),t:Date.now(),register:_reg,orderType:s.orderType,tableNo:s.orderType==='dine'?s.tableNo:null,splitWays:(Number(s.split)>1?Number(s.split):undefined),lines:_l,subtotal:_sub,fee:_fee,billDisc:t.L.disc,billDiscPct:s.discountPct||0,svcCharge:t.L.svc,gst:t.L.gst,total:t.L.total,/* What tax was actually applied, and at what exchange rate — reprinting a
    January receipt after the owner edits the USD rate in June used to show a
    different figure for the same historic sale, and tourism GST is filed in
    USD at the rate on the date of supply. */
-gstBp:Math.round(r*10000),svcBp:Math.round(me_scPct*10000),buyerName:(s.taxInvName||undefined),buyerTin:(s.taxInvTin||undefined),docType:(s.taxInvName?'taxinvoice':'receipt'),currency:((s.storeP&&s.storeP.currency)||'MVR'),fxRate:((s.storeP&&Number(s.storeP.usdRate))||0),userName:_cu.name||'',staffRole:_cu.role||s.myRole||'',customerId:_tabId,payments:[{method:s.method||'cash',amount:Math.round(t.total*100),customerId:_tabId}]},_tabId?{cust:[{id:_tabId,bal:Math.round(t.total*100),pts:0}]}:null);}}catch(e){}
+gstBp:Math.round(r*10000),svcBp:Math.round(me_scPct*10000),buyerName:(s.taxInvName||undefined),buyerTin:(s.taxInvTin||undefined),docType:(s.taxInvName?'taxinvoice':'receipt'),currency:((s.storeP&&s.storeP.currency)||'MVR'),fxRate:((s.storeP&&Number(s.storeP.usdRate))||0),userName:_cu.name||'',staffRole:_cu.role||s.myRole||'',customerId:_tabId,payments:[{method:s.method||'cash',amount:t.L.total,customerId:_tabId}]},_tabId?{cust:[{id:_tabId,bal:t.L.total,pts:0}]}:null);}}catch(e){}
     /* The lines used to print a bare inclusive amount with no unit price, so a
    customer could not check the arithmetic — and a per-line discount was
    folded invisibly into that amount. */

@@ -561,7 +561,13 @@ const publicId = (row) => String(row.data && row.data.id ? row.data.id : row.id)
    server settings) plus a catalogue price-floor and the server GST rate.
      lineTotal = round(price * qty * (1 - discPct/100))     (mirrors the till's Un)
      total     = subtotal - billDisc + gst + svcCharge      (mirrors the till's $n) */
-const saleLineTotal = (l) => Math.round((Number(l && l.price) || 0) * (Number(l && l.qty) || 0) * (1 - (Number(l && l.discPct) || 0) / 100));
+/* A till that sends an explicit line amount is authoritative: it rounded the
+   line once, where multiplying its rounded per-unit price back out drifts by a
+   few laari (three items at MVR 45.00 de-gross to 41.666… each). Older sales
+   carry only price/qty, so the multiply-back stays as the fallback. */
+const saleLineTotal = (l) => (l && Number.isFinite(Number(l.amount))
+  ? Math.round(Number(l.amount))
+  : Math.round((Number(l && l.price) || 0) * (Number(l && l.qty) || 0) * (1 - (Number(l && l.discPct) || 0) / 100)));
 /* Effective discount as a percent of the sale's own gross (line price × qty,
    before any discount), combining per-line discPct and the bill-level discount
    — used by the B3 large-discount backstop below. Reads only the sale's own
@@ -1348,15 +1354,26 @@ const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 
    an already-inclusive price, so a guest who confirmed MVR 35.00 on their phone
    was charged MVR 37.80 seconds later — the same order, two totals, 8% apart.
    De-gross first, then apply service charge and GST to the exclusive base,
-   exactly as the till does. */
+   exactly as the till does.
+
+   Two further corrections, both to keep this identical to totals():
+   - The delivery fee was added twice: orderSubtotal already includes it, and
+     this added it again, so a guest confirming a delivery was quoted the fee
+     twice over and the cashier settled a different number.
+   - GST is extracted as the tax fraction of the inclusive amount rather than
+     re-grossed off a rounded exclusive base, so the parts sum to the total
+     exactly and a guest's quote equals the till's charge to the laari. */
 const orderBreakdown = (o, settings = {}) => {
   const r = Number(settings.gstBp || 800) / 10000;
   const sp = String(o.otype || "dinein") === "dinein" ? Number(settings.svcChargeBp || 0) / 10000 : 0;
-  const incl = orderSubtotal(o) + (Number(o.fee) || 0);
-  const excl = incl / (1 + r);
-  const svc = excl * sp;
-  const gst = (excl + svc) * r;
-  return { excl: Math.round(excl), svc: Math.round(svc), gst: Math.round(gst), total: Math.round(excl + svc + gst) };
+  const TF = (v) => Math.round(v * r / (1 + r));
+  const fee = Number(o.fee) || 0;
+  const goodsIncl = orderSubtotal(o);
+  const svcIncl = Math.round((goodsIncl - fee) * sp);  // service is on the goods, never the delivery fee
+  const total = goodsIncl + svcIncl;
+  const gst = TF(total);
+  const svc = svcIncl - TF(svcIncl);
+  return { excl: total - gst - svc, svc, gst, total };
 };
 const orderTotal = (o, settings = {}) => orderBreakdown(o, settings).total;
 const normalizeOrder = (o, settings = {}) => ({
@@ -2393,7 +2410,16 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
      work) and the total quantity after normalisation, so one order can't be
      used to bloat the kitchen ticket or the DB row. */
   if (items.length > 40) return res.status(400).json({ error: "That's too many different items for one order — please split it into more than one." });
-  const [products, zones, customers] = await Promise.all([kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "customers", storeId)]);
+  const [products, zones, customers, settingsArr] = await Promise.all([kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "customers", storeId), kindAll(org.id, "settings", storeId)]);
+  /* The confirmation the guest sees has to be priced with THIS store's rates.
+     It was normalised with no settings at all, so it quoted 0% service charge
+     and the house rate on every order — a dine-in guest confirmed MVR 135.00
+     and the cashier settled 148.50 for the same three items. Every later read
+     of the order (guestOrders, the KDS) already passed the real settings, so
+     the number even changed under them on the "My orders" tab. */
+  const settings = settingsArr[0]
+    ? { usdRate: 1542, ...settingsArr[0] }
+    : { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
   const lines = items.map((ci) => {
     const pid = String(ci.pid || ci.id || ci.productId || "");
     const p = products.find((x) => String(x.id) === pid);
@@ -2447,7 +2473,7 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
   const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, customerDv: cust ? (cust.dv || cust.name || null) : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
   const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
   poke(org.id, Number(r.rows[0].rowver));
-  res.json({ ok: true, order: normalizeOrder(order) });
+  res.json({ ok: true, order: normalizeOrder(order, settings) });
 }));
 
 app.get("/p/:slug/orders", wrap(async (req, res) => {
@@ -2741,7 +2767,7 @@ if (fs.existsSync(protoFile)) {
       const pm = { cash: 0, card: 0, transfer: 0, tab: 0 };
       for (const s of rows) for (const p of (s.payments || [])) { const m = String(p.method || "").toLowerCase(), a = (Number(p.amount) || 0) / 100; if (m === "cash") pm.cash += a; else if (m === "card") pm.card += a; else if (m === "tab" || m === "credit") pm.tab += a; else pm.transfer += a; }
       const byItem = {};
-      for (const s of rows) for (const l of (s.lines || [])) { const n = l.name || l.pid; if (!n) continue; const g = byItem[n] || (byItem[n] = { qty: 0, rev: 0 }); g.qty += Number(l.qty) || 0; g.rev += ((Number(l.price) || 0) * (Number(l.qty) || 0)) / 100; }
+      for (const s of rows) for (const l of (s.lines || [])) { const n = l.name || l.pid; if (!n) continue; const g = byItem[n] || (byItem[n] = { qty: 0, rev: 0 }); g.qty += Number(l.qty) || 0; g.rev += saleLineTotal(l) / 100; }
       const topItems = Object.keys(byItem).map((n) => ({ n, qty: byItem[n].qty, rev: Math.round(byItem[n].rev) })).sort((a, b) => b.qty - a.qty).slice(0, 6);
       const gpVal = cur.gpVal;
       // Busiest bucket, only for the hour-resolution ranges (today/yest).
