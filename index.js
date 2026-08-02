@@ -2758,10 +2758,18 @@ if (fs.existsSync(protoFile)) {
     const sodz = new Date(); sodz.setHours(0, 0, 0, 0);
     const zrows = (await c.query(
       "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2", [orgId, sodz.getTime()]))
-      .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
-    const zag = { gross: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0 };
+      .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale" || s.type === "refund");
+    /* Refunds used to be filtered OUT of the Z-report entirely. On a day with
+       MVR 496.50 of sales and a MVR 110 cash refund the report read gross
+       496.50 / cash 447.00 instead of 386.50 / 337.00 — revenue overstated by
+       the whole refund, GST over-accrued, and the drawer expected to hold MVR
+       110 that had been paid out. A refund carries negative amounts, so it nets
+       correctly simply by being counted. */
+    const zag = { gross: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0, refunds: 0, refundCount: 0 };
     for (const s of zrows) {
-      zag.orders++;
+      const isRefund = s.type === "refund";
+      if (isRefund) { zag.refunds += Math.abs(Number(s.total) || 0); zag.refundCount++; }
+      else zag.orders++;
       zag.gross += Number(s.total) || 0;
       zag.gst += Number(s.gst) || 0;
       zag.svc += Number(s.svcCharge) || 0;
@@ -2774,8 +2782,16 @@ if (fs.existsSync(protoFile)) {
         else zag.transfer += amt; // transfer, bml/gateway
       }
     }
+    /* Cash taken against a customer tab is cash in the drawer that no sale
+       accounts for, so a drawer count without it always reads "over". */
+    const zsettle = (await c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settlements' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2",
+      [orgId, sodz.getTime()])).rows.map((r) => r.data || {});
+    let zCashSettled = 0, zSettled = 0;
+    for (const st of zsettle) { zSettled += Number(st.amount) || 0; if (/^cash$/i.test(String(st.method || "cash"))) zCashSettled += Number(st.amount) || 0; }
     const zM = (v) => Math.round(v) / 100;
-    out.zday = { gross: zM(zag.gross), cash: zM(zag.cash), card: zM(zag.card), transfer: zM(zag.transfer), tab: zM(zag.tab), gst: zM(zag.gst), svc: zM(zag.svc), orders: zag.orders };
+    out.zday = { gross: zM(zag.gross), cash: zM(zag.cash), card: zM(zag.card), transfer: zM(zag.transfer), tab: zM(zag.tab), gst: zM(zag.gst), svc: zM(zag.svc), orders: zag.orders,
+      refunds: zM(zag.refunds), refundCount: zag.refundCount, cashSettled: zM(zCashSettled), settled: zM(zSettled) };
     return out;
   };
   // Serve one design-tool prototype under `base` (e.g. /app2, /admin2). index/
@@ -3428,16 +3444,32 @@ if (fs.existsSync(protoFile)) {
         const data = Object.assign({}, cur.data || {});
         const sinceOpen = Number(data.openedAt) || 0;
         const sales = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2 AND COALESCE(data->>'storeId',$3)=$3", [orgId, sinceOpen, data.storeId || storeId]))
-          .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
-        let cashSales = 0, gross = 0;
+          .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale" || s.type === "refund");
+        /* Refunds were excluded here too, so a shift that paid out MVR 110 in
+           cash refunds closed expecting MVR 110 more in the drawer than could
+           possibly be there — and the cashier wore the shortage. They carry
+           negative amounts, so counting them nets the drawer correctly. Cash
+           settlements of customer tabs are cash INTO the drawer for the same
+           reason, and were missing entirely. */
+        let cashSales = 0, gross = 0, refunds = 0, cashRefunds = 0;
         for (const s of sales) {
+          const isRefund = s.type === "refund";
+          if (isRefund) refunds += Math.abs(Number(s.total) || 0);
           gross += Number(s.total) || 0;
           const pays = (Array.isArray(s.payments) && s.payments.length) ? s.payments : [{ method: s.method || "cash", amount: Number(s.total) || 0 }];
-          for (const p of pays) if (String(p.method || "cash").toLowerCase() === "cash") cashSales += Number(p.amount) || 0;
+          for (const p of pays) if (String(p.method || "cash").toLowerCase() === "cash") {
+            cashSales += Number(p.amount) || 0;
+            if (isRefund) cashRefunds += Math.abs(Number(p.amount) || 0);
+          }
         }
+        const settleRows = (await c.query(
+          "SELECT data FROM entities WHERE org_id=$1 AND kind='settlements' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2 AND COALESCE(data->>'storeId',$3)=$3",
+          [orgId, sinceOpen, data.storeId || storeId])).rows.map((r) => r.data || {});
+        let cashSettled = 0;
+        for (const st of settleRows) if (/^cash$/i.test(String(st.method || "cash"))) cashSettled += Number(st.amount) || 0;
         const float = Number(data.float) || 0;
-        const expected = float + cashSales, variance = counted - expected;
-        Object.assign(data, { status: "closed", closedAt: Date.now(), counted, cashSales, expected, variance, grossSales: gross, closedBy: staffName || data.staffName || "" });
+        const expected = float + cashSales + cashSettled, variance = counted - expected;
+        Object.assign(data, { status: "closed", closedAt: Date.now(), counted, cashSales, cashSettled, cashRefunds, refunds, expected, variance, grossSales: gross, closedBy: staffName || data.staffName || "" });
         const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='shifts' AND id=$2 RETURNING rowver", [orgId, data.id, JSON.stringify(data)]);
         return { rowver: Number(r.rows[0].rowver), data };
       });
