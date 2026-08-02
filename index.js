@@ -552,6 +552,17 @@ function auditSaleMoney(sale, ctx) {
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
 }
 
+/* Failed writes used to vanish. Thirty-four fetches across the register and
+   the back office were `.catch(function(){})` with no r.ok check — shift
+   open/close, deliveries, waste, expenses, store config and every menu edit
+   could fail (including on an HTTP 403 from the role gate) into a UI that
+   reported success. A manager editing a product saw the row update and
+   nothing was saved. Rather than trust 34 call sites to remember, this shim
+   wraps fetch once and surfaces any non-GET /api/ failure to the operator.
+   Paths that report their own errors inline (ops/elevate/unlock/seq/pull)
+   are skipped so nothing is reported twice. */
+const NETERR_JS = "(function(){\nvar SKIP=/\\/api\\/(ops|elevate|app2\\/(unlock|seq|pull))/;\nvar box=null,timer=0;\nfunction show(msg){\n  try{\n    if(!box){\n      box=document.createElement('div');\n      box.setAttribute('role','alert');\n      box.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99999;max-width:min(560px,92vw);background:#8A2B12;color:#FFF;border-radius:13px;padding:13px 17px;font:700 13.5px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.28);cursor:pointer';\n      box.onclick=function(){if(box)box.style.display='none';};\n      document.body.appendChild(box);\n    }\n    box.textContent=msg;\n    box.style.display='block';\n    if(timer)clearTimeout(timer);\n    timer=setTimeout(function(){if(box)box.style.display='none';},9000);\n  }catch(e){}\n}\nwindow.__ksNetError=show;\nvar of=window.fetch;\nif(typeof of!=='function')return;\nwindow.fetch=function(input,init){\n  var url='';\n  try{url=(typeof input==='string')?input:((input&&input.url)||'');}catch(e){}\n  var method='GET';\n  try{method=String((init&&init.method)||(input&&input.method)||'GET').toUpperCase();}catch(e){}\n  var p=of.apply(this,arguments);\n  try{\n    if(method!=='GET'&&url.indexOf('/api/')===0&&!SKIP.test(url)){\n      p.then(function(r){\n        if(r&&!r.ok){\n          r.clone().json().then(function(j){show((j&&j.error)||('Not saved — the server refused this ('+r.status+')'));},\n                                function(){show('Not saved — the server refused this ('+r.status+')');});\n        }\n      },function(){show('No connection — that change was NOT saved. Try again.');});\n    }\n  }catch(e){}\n  return p;\n};\n})();\n";
+
 /* The register's durable sale outbox, injected into /app. Kept as a plain
    string so it can be served inline under the page CSP (no external script).
    See the pushSaleJs comment below for why this exists. */
@@ -3068,7 +3079,7 @@ if (fs.existsSync(protoFile)) {
         (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
         (isRegister ? `window.__ksReg=${enc(regData)};` : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
-        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});${navIconsJs}${ordTabIconsJs}${adminIconsJs}</script>\n`;
+        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});` + NETERR_JS + `${navIconsJs}${ordTabIconsJs}${adminIconsJs}</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
       res.set("Content-Security-Policy", PROTO_CSP);
       res.set("Cache-Control", "no-cache");
