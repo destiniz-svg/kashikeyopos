@@ -189,16 +189,6 @@ button[disabled],button:disabled{cursor:not-allowed}
                 <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">ITEMS SOLD</div><div style="font-family:'Bricolage Grotesque';font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:2px">{{ heroItems }}</div></div>
               </div>
             </div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-              <div style="position:relative;width:104px;height:104px">
-                <svg width="104" height="104" viewBox="0 0 104 104">
-                  <circle cx="52" cy="52" r="46" fill="none" stroke="var(--bg)" stroke-width="9"></circle>
-                  <circle cx="52" cy="52" r="46" fill="none" stroke="var(--coral)" stroke-width="9" stroke-linecap="round" stroke-dasharray="289" stroke-dashoffset="{{ ringOff }}" transform="rotate(-90 52 52)" style="transition:stroke-dashoffset .8s cubic-bezier(.2,.9,.3,1)"></circle>
-                </svg>
-                <div style="position:absolute;inset:0;display:grid;place-items:center;text-align:center"><div><div style="font-family:'Bricolage Grotesque';font-size:20px;font-weight:800;font-variant-numeric:tabular-nums">{{ goalPct }}</div><div style="font-size:9px;font-weight:700;color:var(--ink2)">of goal</div></div></div>
-              </div>
-              <div style="font-size:10.5px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums">Goal {{ goalF }}</div>
-            </div>
           </div>
           <div style="margin-top:14px;position:relative;width:100%;height:64px">
             <svg viewBox="0 0 600 64" preserveAspectRatio="none" style="width:100%;height:100%;overflow:visible">
@@ -315,10 +305,10 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div>
         </div>
         <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
-          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px"><span style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2)">PRIME COST HEALTH</span><span style="margin-inline-start:auto;font-size:11px;font-weight:800;color:{{ primeHealthC }}">{{ primeHealth }}</span></div>
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px"><span style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2)">FOOD COST</span><span style="margin-inline-start:auto;font-size:11px;font-weight:800;color:{{ primeHealthC }}">{{ primeHealth }}</span></div>
           <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:14px">
             <span style="font-family:'Bricolage Grotesque';font-size:32px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1">{{ primePctF }}</span>
-            <span style="font-size:11px;color:var(--ink2);font-weight:700;padding-bottom:4px">prime cost · target &lt; 60%</span>
+            <span style="font-size:11px;color:var(--ink2);font-weight:700;padding-bottom:4px">{{ primeCaption }}</span>
           </div>
           <div style="display:flex;flex-direction:column;gap:11px">
             <sc-for list="{{ prime }}" as="pr" hint-placeholder-count="3">
@@ -2428,7 +2418,6 @@ class Component extends DCLogic {
     const ranges=rangeDefs.map(r=>({label:r[1],tap:()=>me.setRange(r[0]),bg:s.range===r[0]?(r[0]==='year'?'var(--red)':'var(--ink)'):'transparent',co:s.range===r[0]?'#fff':'var(--ink2)'}));
     const dcf=x=>x.trim().charAt(0)==='−'?'var(--red)':'var(--green)';
     const arrow=x=>H(x.trim().charAt(0)==='−'?me.DN:me.UP);
-    const goal=Math.round(g.rev/0.87/100)*100;const gp=Math.min(100,g.rev/goal*100);
     const navDef=[
       {id:'dash',label:'Dashboard',icon:ic.dash},{id:'review',label:'Review',icon:ic.review},{id:'sales',label:'Sales',icon:ic.sales,kids:['Register','QR Orders','Delivery']},
       {id:'outlets',label:'Outlets',icon:ic.outlets,kids:['Overview','Compare','Settings','Transfers']},{id:'kitchen',label:'Kitchen Display',icon:ic.kitchen},
@@ -2444,7 +2433,7 @@ class Component extends DCLogic {
         bg:act?'var(--coralsoft)':'transparent',co:act?'var(--coral)':'var(--ink)',
         tap:()=>{if(hasKids){me.setState({open:(isOpen?{}:{[nd.id]:true}),active:nd.id});}else{me.setState({active:nd.id,navOpen:false});}},
         kids:(nd.kids||[]).map((k,ki)=>({label:k,tap:()=>me.setState({active:nd.id,sub:Object.assign({},s.sub,{[nd.id]:ki}),navOpen:false})}))};});
-    const tabDefs=[['trend','Trend'],['cat','By Category'],['type','By Channel']];
+    const tabDefs=[['trend','Trend'],['cat','Top items']];
     const tabs=tabDefs.map(t=>({label:t[1],tap:()=>me.setState({tab:t[0]}),bg:s.tab===t[0]?'var(--card)':'transparent',co:s.tab===t[0]?'var(--ink)':'var(--ink2)',sh:s.tab===t[0]?'var(--shadow)':'none'}));
     const grid=[0,1,2,3,4].map(i=>({y:(10+i*67.5).toFixed(0)}));
     // Revenue breakdown from the real top-selling items (empty until there are sales).
@@ -2464,8 +2453,12 @@ class Component extends DCLogic {
     const attention=attn.slice(0,4).map(a=>({icon:H(a.icon),bg:a.bg,c:a.c,title:a.title,sub:a.sub,cta:a.cta,tap:a.go||(()=>me.toast(a.cta+' · '+a.title))}));
     // Prime-cost health from real data: cost of goods as a share of revenue
     // (rev − gross profit). No revenue yet → honest em-dash, not a demo figure.
-    const _pc=g.rev>0?Math.round((g.rev-g.gpVal)/g.rev*100):null;
-    const _pcC=_pc==null?'var(--ink3)':_pc<60?'var(--green)':_pc<75?'var(--amber)':'var(--red)';
+    /* Purchases booked as expenses, over revenue. Not prime cost — there is no
+       labour input anywhere — and it only means anything once the outlet has
+       actually recorded purchases, so 0 reads as "no data", never as "healthy". */
+    const _cogs=g.rev-g.gpVal;
+    const _pc=(g.rev>0&&_cogs>0)?Math.round(_cogs/g.rev*100):null;
+    const _pcC=_pc==null?'var(--ink3)':_pc<35?'var(--green)':_pc<45?'var(--amber)':'var(--red)';
     const prime=_pc!=null?[{label:'Cost of goods',pct:_pc+'%',w:Math.min(100,_pc)+'%',c:_pcC}]:[];
     const A=s.active,tablet=s.vw>=640&&s.vw<1024;
     const heads={review:['Review','Sales the till couldn’t reconcile & customers over their credit limit — check each, then clear it. Money is never changed.'],sales:['Sales','Every order across register, QR & delivery.'],outlets:['Outlets','Live performance across your locations.'],kitchen:['Kitchen Display','Open tickets by station.'],hw:['Hardware & Offline','Works everywhere, always.'],notif:['Notifications','Stay informed, instantly.'],menu:['Menu','Items, prices, add-ons & availability — synced to the register.'],store:['Online Store','Your brand, zero commission.'],inventory:['Inventory','Stock, recipes & wastage control.'],proc:['Procurement','Expenses, vendor bills & purchase orders.'],recv:['Receivables','Open customer tabs & aging.'],cust:['Customers','Know them, serve them better.'],pay:['Payments','Fast, flexible & secure.'],reports:['Reports','Analytics, Z-report & GST filing.'],staff:['Staff & Roles','Team, shifts & permissions.'],config:['Configurations','Outlet, tax, receipt & payments.'],sysadmin:['System Admin','Users, audit log & integrations.']};
@@ -2501,18 +2494,18 @@ class Component extends DCLogic {
       ranges,navItems,tabs,grid,rangeLabel:(rangeMap[s.range]||'').toUpperCase(),rangeWord:g.word,
       heroRev:(s.live&&s.range==='today')?me.fm(s.live.sales):me.fm(an.rev),heroDelta:g.d[0],heroDc:dcf(g.d[0]),heroArrow:arrow(g.d[0]),
       heroGp:me.fm(an.gpVal,0),heroGpPct:g.gpPct,heroItems:me.fi(an.items),
-      ringOff:(289-289*gp/100).toFixed(1),goalPct:Math.round(gp)+'%',goalF:me.fm(goal,0),
       spkLine:me.spk(g.rc,'line'),spkArea:me.spk(g.rc,'area'),
       ordersV:(s.live&&s.range==='today')?me.fi(s.live.orders):me.fi(an.orders),ordDelta:g.d[1],ordDc:dcf(g.d[1]),aovV:me.fm(an.aov),basket:g.basket,
       pulse:(s.live&&s.live.log&&s.live.log.length)?s.live.log.slice(0,3).map(o=>({ch:o.chK==='deliv'?'DELIV':(o.ch&&o.ch.indexOf('QR')>=0?'QR':'POS'),no:o.no,ago:o.time,amt:me.fm(o.total,0)})):(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.pulse))?window.__ksAdmin.pulse:[],
       peak,peakNote:g.peakN,
       tabTrend:s.tab==='trend',tabCat:s.tab==='cat',tabType:s.tab==='type',
-      chartTitle:s.tab==='trend'?'Revenue & orders trend':s.tab==='cat'?'Revenue by category':'Orders by channel',
+      chartTitle:s.tab==='trend'?'Revenue trend':'Revenue by item',
       linePath:me.path(g.rc,'line'),areaPath:me.path(g.rc,'area'),
       xlabels:g.xl,catBars,donut:'conic-gradient('+segs.join(',')+')',typeTotal:me.fi(g.orders),
       typeRows:types.map(t=>({name:t[0],c:t[1],pct:t[2]+'%',amt:me.fm(g.rev*t[2]/100,0)})),
       attention,attnCount:String(attn.length),prime,
-      primePctF:_pc!=null?_pc+'%':'—',primeHealth:_pc==null?'No data yet':_pc<60?'Healthy':_pc<75?'Watch':'High',primeHealthC:_pcC,
+      primePctF:_pc!=null?_pc+'%':'—',primeHealth:_pc==null?'No data yet':_pc<35?'Healthy':_pc<45?'Watch':'High',primeHealthC:_pcC,
+      primeCaption:_pc==null?'book purchases to see food cost':'of revenue spent on purchases',
       toastOn:!!s.toast,toastMsg:s.toast
     };
   }

@@ -1965,7 +1965,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
 app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
-  const { items, table, custId, gtype, zoneId, note, payOnline } = req.body || {};
+  const { items, table, custId, gtype, zoneId, note } = req.body || {};
   const storeId = cleanStoreId(req.body?.storeId || req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: "cart is empty" });
   /* Per-order size caps (audit B1): a tampered/anonymous client posted a
@@ -2024,7 +2024,7 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
      "ready" to hand over / settle straight away. Mixed orders stay "new" and
      the kitchen display just hides the non-kitchen lines. */
   const allNoKitchen = lines.length > 0 && lines.every((l) => l.noKitchen);
-  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), paidOnline: !!payOnline, call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, customerDv: cust ? (cust.dv || cust.name || null) : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
+  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, customerDv: cust ? (cust.dv || cust.name || null) : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
   const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, order: normalizeOrder(order) });
@@ -2210,6 +2210,9 @@ if (fs.existsSync(protoFile)) {
     currency: (settings && settings.currency) || "MVR",
     usdRate: (settings && Number(settings.usdRate)) || 1542,
     tin: (settings && settings.tin) || "",
+    /* Which MIRA rate this outlet files under — the guest portal has no other
+       source for it, and used to charge a hardcoded 10%. */
+    taxRate: (settings && settings.adminCfg && settings.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst",
     address: (settings && settings.address) || "",
     footer: (settings && (settings.receiptFooter || settings.footer)) || "",
     logo: (settings && settings.logo) || "",
@@ -3333,8 +3336,14 @@ if (fs.existsSync(webDir)) {
     const recipeRows = await withOrg(org.id, (c) => c.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [org.id]));
     const hasRecipe = new Set(recipeRows.rows.map((r) => String(r.product_id)));
     const st = settingsArr[0] || { storeName: org.store_name, currency: "MVR", usdRate: 1542 };
+    /* Mirrors liveStoreP (which lives in another closure). `taxRate` matters: without
+       it the guest portal has no way to know the outlet's MIRA rate, and used to
+       charge a hardcoded 10%. Keep the two in step. */
     const storeP = { name: st.storeName || org.store_name, currency: st.currency || "MVR", usdRate: Number(st.usdRate) || 1542,
-      tin: st.tin || "", address: st.address || "", footer: st.receiptFooter || st.footer || "", logo: st.logo || "" };
+      tin: st.tin || "", address: st.address || "", footer: st.receiptFooter || st.footer || "", logo: st.logo || "",
+      taxRate: (st.adminCfg && st.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst" };
+    const catGroups = Array.isArray(st.catGroups) ? st.catGroups : [];
+    const catOrder = Array.isArray(st.catOrder) ? st.catOrder : [];
     const visible = products.filter((p) => !p.hidden && (hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0));
     const menu = gMenu(visible);
     let customer = null;
@@ -3360,7 +3369,7 @@ if (fs.existsSync(webDir)) {
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": "/app/vendor/react-dom.production.min.js",
     };
     const inject = `\n<base href="/app/">\n<title>${seoEsc(seoTitle)}</title>\n<script>` +
-      `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP })};window.__ksGuest=${gEnc(guest)};` +
+      `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP, catGroups, catOrder })};window.__ksGuest=${gEnc(guest)};` +
       `window.__resources=Object.assign(window.__resources||{},${gEnc(gVendor)});</script>\n`;
     const html = fs.readFileSync(path.join(gProtoDir, "index.html"), "utf8")
       .replace(/<title>[\s\S]*?<\/title>/i, "")
