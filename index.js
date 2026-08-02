@@ -718,6 +718,18 @@ async function resolveAppSession(req) {
    owner/email login carries no role and resolves to "owner" (full access),
    preserving backward compatibility. Ranks mirror inventory.js's model:
    manager = operational back office, admin/owner = settings + staff. */
+/* Never let a staff PIN leave the server over the sync stream. `/api/pull` is
+   Bearer-authenticated, so anyone holding a paired till's token could read every
+   `users` row verbatim — and the PIN is a 4-digit value behind a fast unsalted
+   hash, i.e. recoverable in microseconds, and it doubles as a back-office login.
+   Clients that need to know whether a staff member has a PIN get a boolean. */
+function scrubEntity(kind, data) {
+  if (kind !== "users" || !data || typeof data !== "object") return data;
+  const out = Object.assign({}, data);
+  out.hasPin = !!out.pin;
+  delete out.pin;
+  return out;
+}
 const APP_ROLE_RANK = { owner: 5, admin: 4, manager: 3, cashier: 2, waiter: 2, kitchen: 1, rider: 1 };
 const APP_RANK = { KITCHEN: 1, TILL: 2, MANAGER: 3, ADMIN: 4, OWNER: 5 };
 const appRankOf = (r) => { const k = APP_ROLE_RANK[String(r || "owner").toLowerCase()]; return k == null ? 0 : k; };
@@ -1024,7 +1036,7 @@ function validateSnapshot(snap) {
   for (const t of SNAPSHOT_TABLES) {
     if (!Array.isArray(snap.tables[t])) throw new BadSnapshot("this backup is incomplete (missing " + t + ") — restoring it would lose data.");
   }
-  /* Staff and store profile are the only way back in: `verifyOwnerPin` and
+  /* Staff and store profile are the only way back in: `verifyOwnerPassword` and
      /api/back/login both read them. Restoring a snapshot without an owner/admin
      would lock the account out of its own reset/restore permanently. */
   const owner = snap.tables.entities.some((e) => e && e.kind === "users" && !e.deleted
@@ -1101,15 +1113,19 @@ async function restoreStore(orgId, snap) {
   });
 }
 
-/* Confirmation PIN for the destructive store actions. These are owner-only, so
-   the PIN must be an OWNER's — accepting any admin's would let an owner-gated
-   action be confirmed with a credential other staff also hold. */
-async function verifyOwnerPin(orgId, pin) {
-  if (!/^\d{4}$/.test(String(pin || ""))) return false;
-  const want = hashTillPin(pin);
-  const r = await withOrg(orgId, (c) => c.query(
-    "SELECT data->>'pin' AS pin FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'role' = 'owner'", [orgId]));
-  return r.rows.some((x) => x.pin && String(x.pin) === want);
+/* Confirmation for the destructive store actions: the owner's ACCOUNT PASSWORD,
+   checked with bcrypt against orgs.pass_hash — the same credential /api/elevate
+   uses, and for the same reason. The till PIN is deliberately not accepted: it
+   is four digits, it is a shift selector rather than a secret, and every member
+   of staff holds one. Wiping a business should need the credential only the
+   owner has. */
+async function verifyOwnerPassword(orgId, password) {
+  const pw = String(password || "");
+  if (!pw) return false;
+  const org = await withSystem(async (c) =>
+    (await c.query("SELECT pass_hash FROM orgs WHERE id=$1", [orgId])).rows[0]);
+  if (!org || !org.pass_hash) return false;
+  try { return bcrypt.compareSync(pw, org.pass_hash); } catch (e) { return false; }
 }
 
 /* ── Transactional email (signup OTP + welcome) ───────────────────────────────
@@ -2038,7 +2054,7 @@ app.get("/api/pull", auth, wrap(async (req, res) => {
     `SELECT kind, id, data, deleted, rowver FROM entities
      WHERE org_id=$1 AND rowver>$2 AND COALESCE(data->>'storeId','global') IN ('global',$3)
      ORDER BY rowver ASC LIMIT 500`, [req.org.o, since, storeId]));
-  const entities = r.rows.map((x) => ({ kind: x.kind, id: publicId(x), data: x.data, deleted: x.deleted, rowver: Number(x.rowver), storeId: entityStore(x.data) }));
+  const entities = r.rows.map((x) => ({ kind: x.kind, id: publicId(x), data: scrubEntity(x.kind, x.data), deleted: x.deleted, rowver: Number(x.rowver), storeId: entityStore(x.data) }));
   const rowver = entities.length ? entities[entities.length - 1].rowver : since;
   res.json({ rowver, storeId, entities, more: entities.length === 500 });
 }));
@@ -3249,20 +3265,20 @@ if (fs.existsSync(protoFile)) {
      These are the only endpoints that can destroy a merchant's business in one
      call, so they carry more than the admin-role check:
        - the confirmation PIN is rate-limited like a password (it is only four
-         digits, and it is recoverable, so an unthrottled
+         digits, so an unthrottled
          endpoint is ~10k guesses from a wipe);
        - snapshots are size-capped, because materialising one is several times
          its own size in RSS and an OOM takes down every tenant on the instance;
        - every destructive action, including deleting a backup, is written to the
          append-only activity log. */
   const destructiveGuard = async (req, res, orgId, what) => {
-    const keys = rlKeys(req, "storepin:" + orgId);
+    const keys = rlKeys(req, "storepw:" + orgId);
     const blocked = rlBlockedFor(keys);
-    if (blocked) { res.status(429).json({ error: "Too many incorrect PINs. Try again in " + blocked + "s." }); return false; }
-    if (!(await verifyOwnerPin(orgId, (req.body || {}).pin))) {
+    if (blocked) { res.status(429).json({ error: "Too many failed attempts. Try again in " + blocked + "s." }); return false; }
+    if (!(await verifyOwnerPassword(orgId, (req.body || {}).password))) {
       rlFail(keys);
       logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store." + what + ".denied", requestId: req.id });
-      res.status(403).json({ error: "Incorrect owner PIN." });
+      res.status(403).json({ error: "That isn\u2019t the owner\u2019s account password." });
       return false;
     }
     rlClear(keys);
