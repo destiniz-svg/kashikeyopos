@@ -320,6 +320,42 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
     };
     await pruneOps();
     setInterval(pruneOps, 24 * 3600 * 1000).unref();
+    /* Recipe deduction runs AFTER the sync commit so a till sale is never
+       rejected for an inventory failure — but nothing retried it, so a crash
+       between commit and deduction silently skipped the stock movement and the
+       comment's promise that "the next audit reconciles" was never scheduled.
+       It is idempotent (the ledger's (org_id, ref, ingredient_id) uniqueness),
+       so a sweep can simply re-run it for recent sales with no ledger row. */
+    const sweepDeductions = async () => {
+      try {
+        const since = Date.now() - 48 * 3600 * 1000;
+        const rows = await bootPool.query(
+          `SELECT e.org_id, e.data FROM entities e
+             WHERE e.kind='sales' AND NOT e.deleted
+               AND COALESCE((e.data->>'t')::numeric,(e.data->>'at')::numeric,(e.data->>'createdAt')::numeric,0) >= $1
+               AND jsonb_array_length(COALESCE(e.data->'lines','[]'::jsonb)) > 0
+               AND NOT EXISTS (
+                 SELECT 1 FROM stock_moves m
+                  WHERE m.org_id = e.org_id
+                    AND m.ref = (CASE WHEN e.data->>'type'='refund' THEN 'refund:' ELSE 'sale:' END) || e.id)
+             LIMIT 500`, [since]);
+        if (!rows.rowCount) return;
+        const byOrg = new Map();
+        for (const r of rows.rows) {
+          if (!byOrg.has(r.org_id)) byOrg.set(r.org_id, []);
+          byOrg.get(r.org_id).push(r.data);
+        }
+        let n = 0;
+        for (const [orgId, sales] of byOrg) {
+          try { await inventory.processSales(orgId, sales); n += sales.length; } catch (e) { recordError("sweepDeductions " + orgId, e); }
+        }
+        /* Most of these are sales for products with no recipe, which legitimately
+           never produce a ledger row; the sweep is idempotent either way. */
+        if (n) console.log(`reconciled ${n} sale(s) with no ingredient ledger entry`);
+      } catch (e) { console.warn("deduction sweep skipped:", e.message); }
+    };
+    setTimeout(sweepDeductions, 30000).unref();
+    setInterval(sweepDeductions, 30 * 60 * 1000).unref();
     /* One-time cleanup: retire the previous starter menu (ids p1–p19 / ow01–ow69)
        so outlets that carried it don't end up with the old and new starter menus
        side by side. Soft-deletes only still-live copies, so it's a no-op once
@@ -2164,11 +2200,23 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
                   " || CASE WHEN NOT (excluded.data ? 'defaultsUntracked') AND entities.data ? 'defaultsUntracked' THEN jsonb_build_object('defaultsUntracked', entities.data->'defaultsUntracked') ELSE '{}'::jsonb END" +
                   " || CASE WHEN NOT (excluded.data ? 'outletPrefs') AND entities.data ? 'outletPrefs' THEN jsonb_build_object('outletPrefs', entities.data->'outletPrefs') ELSE '{}'::jsonb END"
                 : "";
+        /* Staleness guard (audit A-M1). The upsert was pure last-write-wins: an
+           OLDER push overwrote a newer one. That is why the preserve-clause
+           chain above exists at all — it is a per-field patch for the same
+           underlying problem, added once for each time a stale terminal wiped a
+           photo, a Dhivehi name, a stock count or a PO status. When BOTH sides
+           carry an explicit numeric updatedAt and the incoming one is older, we
+           keep what is stored. When either side lacks it we fall through to the
+           old behaviour, so nothing that works today stops working. */
         const r = await client.query(
           `INSERT INTO entities (org_id, kind, id, data, deleted, updated_at)
            VALUES ($1,$2,$3,$4,false,now())
            ON CONFLICT (org_id, kind, id)
-           DO UPDATE SET data = excluded.data${preserve}, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()
+           DO UPDATE SET data = (CASE
+               WHEN jsonb_exists(excluded.data,'updatedAt') AND jsonb_exists(entities.data,'updatedAt')
+                    AND (excluded.data->>'updatedAt') ~ '^[0-9]+$' AND (entities.data->>'updatedAt') ~ '^[0-9]+$'
+                    AND (excluded.data->>'updatedAt')::numeric < (entities.data->>'updatedAt')::numeric
+               THEN entities.data ELSE excluded.data END)${preserve}, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()
            RETURNING rowver`,
           [req.org.o, p.kind, String(p.id), JSON.stringify(data)]);
         rowver = Math.max(rowver, Number(r.rows[0].rowver));
@@ -2248,7 +2296,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
      failed. The ledger's (org_id, ref, ingredient_id) uniqueness makes the
      deduction idempotent, so a crash between commit and here at worst skips
      a deduction the next audit reconciles — it can never double-deduct. */
-  if (settledSales.length) inventory.processSales(req.org.o, settledSales);
+  if (settledSales.length) inventory.processSales(req.org.o, settledSales).catch((e) => recordError("processSales", e));
   /* Persist the sensitive events observed above (post-commit, non-fatal). */
   for (const ev of auditEvents) logActivity(req.org.o, { ...ev, requestId: req.id });
   res.json({ ok: true, rowver });
@@ -2830,7 +2878,7 @@ if (fs.existsSync(protoFile)) {
   // injects the live catalogue into window.__ksMenu (register tiles + admin Menu
   // section); `withAdmin` injects real customers into window.__ksAdmin. Sections
   // without injected data fall back to the prototype's own demo data.
-  const serveProto = ({ base, file, withMenu, withAdmin }) => {
+  const serveProto = ({ base, file, withMenu, withAdmin, minRank }) => {
     app.use(base, express.static(protoDir, { index: false, redirect: false, maxAge: "1h",
       /* The worker script itself must never be served from cache, or a
          fleet can be stuck on an old worker with no way to replace it. */
@@ -2847,6 +2895,12 @@ if (fs.existsSync(protoFile)) {
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": base + "/vendor/react-dom.production.min.js",
     };
     app.get(new RegExp("^" + base.replace(/[/]/g, "\\$&") + "(\\/.*)?$"), requireAppSession, async (req, res) => {
+      /* The back office's WRITE endpoints were gated, but the page itself was
+         not: any session got the whole cockpit — every customer's name and
+         phone, the staff list, receivables and all revenue reports — because
+         only requireAppSession stood in front of it. On a shared tablet left
+         signed in, any staff member could simply navigate there. */
+      if (minRank && appRankOf(req.appRole) < minRank) return res.redirect(302, "/app");
       let menu = []; const adminData = {}; const regData = {}; let token = null;
       const menuImg = {}; // art-<id> → product photo, only for photo-rendering surfaces
       const isRegister = file === "index.html";
@@ -3177,6 +3231,19 @@ if (fs.existsSync(protoFile)) {
       const navIconsJs = file === "index.html"
         ? `(function(){var IC={register:'<path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"/><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"/><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"/>',orders:'<path d="M12 17V7"/><path d="M16 8h-6a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H8"/><path d="M4 3a1 1 0 0 1 1-1 1.3 1.3 0 0 1 .7.2l.933.6a1.3 1.3 0 0 0 1.4 0l.934-.6a1.3 1.3 0 0 1 1.4 0l.933.6a1.3 1.3 0 0 0 1.4 0l.933-.6a1.3 1.3 0 0 1 1.4 0l.934.6a1.3 1.3 0 0 0 1.4 0l.933-.6A1.3 1.3 0 0 1 19 2a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1 1.3 1.3 0 0 1-.7-.2l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.934.6a1.3 1.3 0 0 1-1.4 0l-.933-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-1.4 0l-.934-.6a1.3 1.3 0 0 0-1.4 0l-.933.6a1.3 1.3 0 0 1-.7.2 1 1 0 0 1-1-1z"/>',qr:'<rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/>',tabs:'<path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M15 2v20"/><path d="M15 7h5"/><path d="M15 12h5"/><path d="M15 17h5"/>',dayend:'<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>'};var ORDER=['register','orders','qr','tabs','dayend'];function fill(){var nav=document.querySelector('nav');if(!nav)return;var b=nav.querySelectorAll('button');if(b.length<3||b.length>7)return;for(var i=0;i<b.length&&i<ORDER.length;i++){var w=b[i].querySelector('span');if(!w)continue;var bg=w.style.background||'';if(bg.indexOf('coral')<0){w.style.background='var(--sur2)';}w.style.borderRadius='11px';var inner=w.querySelector('span')||w;if(!inner.querySelector('svg')){var g=IC[ORDER[i]];if(g)inner.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+g+'</svg>';}}}var raf=0;function sched(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;fill();});}function start(){fill();try{new MutationObserver(sched).observe(document.body,{childList:true,subtree:true});}catch(e){}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(start,600);});else setTimeout(start,600);})();`
         : "";
+      /* Below admin rank, withhold the owner-tier blocks. The back office's
+         WRITE endpoints are gated at ADMIN, but the page shipped the whole
+         payload to anyone who could load it: every customer's name and phone,
+         the staff list with per-person sales, and the system audit. A manager
+         needs the operational screens, not the personnel file. */
+      if (withAdmin && appRankOf(req.appRole) < APP_RANK.ADMIN) {
+        if (Array.isArray(adminData.custData)) {
+          adminData.custData = adminData.custData.map((c2) => Object.assign({}, c2, { phone: "", email: "", addr: "" }));
+        }
+        adminData.sysUsers = [];
+        adminData.audit = [];
+        adminData.staffTeam = (adminData.staffTeam || []).map((u) => ({ id: u.id, n: u.n, role: u.role, roleKey: u.roleKey, owner: u.owner }));
+      }
       const adminIconsJs = file === "admin.html"
         ? `(function(){var IC={"Dashboard":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>',"Sales":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>',"Outlets":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-5a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v5"/><path d="M17.774 10.31a1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.451 0 1.12 1.12 0 0 0-1.548 0 2.5 2.5 0 0 1-3.452 0 1.12 1.12 0 0 0-1.549 0 2.5 2.5 0 0 1-3.77-3.248l2.889-4.184A2 2 0 0 1 7 2h10a2 2 0 0 1 1.653.873l2.895 4.192a2.5 2.5 0 0 1-3.774 3.244"/><path d="M4 10.95V19a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8.05"/></svg>',"Kitchen Display":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z"/><path d="M6 17h12"/></svg>',"Online Store":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>',"Menu":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>',"Inventory":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><polyline points="3.29 7 12 12 20.71 7"/><path d="m7.5 4.27 9 5.15"/></svg>',"Procurement":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>',"Receivables":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"/><path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9"/><path d="m2 16 6 6"/><circle cx="16" cy="9" r="2.9"/><circle cx="6" cy="5" r="3"/></svg>',"Customers":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>',"Payments":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>',"Reports":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',"Staff & Roles":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15H6a4 4 0 0 0-4 4v2"/><path d="m14.305 16.53.923-.382"/><path d="m15.228 13.852-.923-.383"/><path d="m16.852 12.228-.383-.923"/><path d="m16.852 17.772-.383.924"/><path d="m19.148 12.228.383-.923"/><path d="m19.53 18.696-.382-.924"/><path d="m20.772 13.852.924-.383"/><path d="m20.772 16.148.924.383"/><circle cx="18" cy="15" r="3"/><circle cx="9" cy="7" r="4"/></svg>',"Hardware & Offline":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>',"Notifications":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>',"Configurations":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>',"System Admin":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>'};function fill(){var nav=document.querySelector('aside nav');if(!nav)return;var kids=nav.children;for(var i=0;i<kids.length;i++){var btn=kids[i];if(!btn||btn.tagName!=='BUTTON')continue;var direct=btn.querySelectorAll(':scope > span');if(direct.length<2)continue;var iconSpan=direct[0],labelSpan=direct[1];var label=(labelSpan.textContent||'').trim();if(iconSpan.querySelector('svg'))continue;var g=IC[label];if(g)iconSpan.innerHTML=g;}}var raf=0;function sched(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;fill();});}function start(){fill();try{new MutationObserver(sched).observe(document.body,{childList:true,subtree:true});}catch(e){}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(start,600);});else setTimeout(start,600);})();`
         : "";
@@ -3203,7 +3270,7 @@ if (fs.existsSync(protoFile)) {
   // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
   app.get(/^\/app2(\/.*)?$/, (req, res) => res.redirect(301, "/app"));
   if (fs.existsSync(path.join(protoDir, "admin.html"))) {
-    serveProto({ base: "/admin", file: "admin.html", withMenu: true, withAdmin: true }); // Back-office cockpit (canonical URL)
+    serveProto({ base: "/admin", file: "admin.html", withMenu: true, withAdmin: true, minRank: APP_RANK.MANAGER }); // Back-office cockpit (canonical URL)
     // Legacy /admin2 links (old redirects, bookmarks) → the /admin URL.
     app.get(/^\/admin2(\/.*)?$/, (req, res) => res.redirect(301, "/admin"));
   }
@@ -3490,15 +3557,25 @@ if (fs.existsSync(protoFile)) {
   // bumps rowver and pokes SSE so the till, back office and other /app2 polls
   // all see it. Cookie-authed (same session as the page).
   const ORDER_STATUSES = new Set(["new", "preparing", "ready", "completed", "cancelled"]);
+  /* Kitchen work (preparing/ready) is kitchen-rank; closing or cancelling an
+     order is money, so it needs till rank. This was the one app2 write endpoint
+     with no rank check at all, and it accepts "completed" — which stamps
+     settledAt and drops the order off the register's open list. An unpaid order
+     could be closed from a kitchen screen. */
+  const ORDER_STATUS_RANK = { preparing: APP_RANK.KITCHEN, ready: APP_RANK.KITCHEN, new: APP_RANK.KITCHEN, completed: APP_RANK.TILL, cancelled: APP_RANK.TILL };
   app.post("/api/app2/order/:id/status", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     const id = String(req.params.id || "");
     const status = String((req.body || {}).status || "");
     if (!ORDER_STATUSES.has(status)) return res.status(400).json({ error: "bad status" });
+    if (denyAppRole(req, res, ORDER_STATUS_RANK[status] || APP_RANK.TILL, "You don't have permission to change this order.")) return;
     const rowver = await withOrg(orgId, async (c) => {
+      /* FOR UPDATE: this is a read-modify-write, and READ COMMITTED lets two
+         concurrent writers both read the pre-image — a waiter accepting an
+         order at the same moment the kitchen bumps it loses one of the two. */
       const cur = await c.query(
-        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false", [orgId, id]);
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
       if (!cur.rowCount) return null;
       const data = cur.rows[0].data || {};
       data.status = status;
@@ -3524,7 +3601,7 @@ if (fs.existsSync(protoFile)) {
     const id = String(req.params.id || "");
     const rowver = await withOrg(orgId, async (c) => {
       const cur = await c.query(
-        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false", [orgId, id]);
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
       if (!cur.rowCount) return null;
       const data = cur.rows[0].data || {};
       data.accepted = true;
@@ -3549,7 +3626,7 @@ if (fs.existsSync(protoFile)) {
     const id = String(req.params.id || "");
     const rider = String((req.body || {}).rider || "").trim().slice(0, 60);
     const rowver = await withOrg(orgId, async (c) => {
-      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false", [orgId, id]);
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
       if (!cur.rowCount) return null;
       const data = cur.rows[0].data || {};
       data.rider = rider; data.updatedAt = Date.now();
