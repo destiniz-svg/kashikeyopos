@@ -2583,6 +2583,14 @@ if (fs.existsSync(protoFile)) {
     gstBp: (settings && Number(settings.gstBp) > 0) ? Number(settings.gstBp)
       : ((settings && settings.adminCfg && settings.adminCfg.taxRate) === "tgst" ? 1700 : 800),
     svcChargeBp: (settings && Number(settings.svcChargeBp) >= 0) ? Number(settings.svcChargeBp) : 0,
+    /* The floor plan and the table picker were hardcoded to 12 tables, so a
+       40-table outlet could not seat T13-T40 from the till at all — and a QR
+       order from a higher table created a bill that never appeared in the grid
+       while still counting toward "occupied". */
+    tableCount: (settings && Number(settings.tableCount) > 0) ? Math.min(200, Math.round(Number(settings.tableCount))) : 12,
+    /* Which categories go to the hot line. Two "stations" used to exist only as
+       a label chosen by first-match over hardcoded slugs. */
+    hotCats: Array.isArray(settings && settings.hotCats) ? settings.hotCats : ["hedhikaa", "mains"],
     address: (settings && settings.address) || "",
     footer: (settings && (settings.receiptFooter || settings.footer)) || "",
     logo: (settings && settings.logo) || "",
@@ -2613,8 +2621,12 @@ if (fs.existsSync(protoFile)) {
     .filter((o) => !finalStatuses.has(String(o.status || "new")) && String(o.status) !== "ready" && !o.noKitchen)
     .slice(0, 12)
     .map((o) => ({ oid: o.id, no: String(o.no || "").replace(/^ORD-/, ""), at: Number(o.createdAt) || Date.now(),
-      src: o.source === "qr" ? ("QR" + (o.table && o.table !== "Pickup" && o.table !== "Delivery" ? " · " + o.table : "")) : "POS",
-      station: "hot", items: (o.items || []).map((li) => ({ q: Number(li.qty || li.q) || 1, n: li.name || li.n || "" })) }));
+      src: o.source === "qr" ? ("QR" + (o.table && o.table !== "Pickup" && o.table !== "Delivery" ? " · " + o.table : "")) : ("POS" + (o.table && o.table !== "Pickup" && o.table !== "Delivery" ? " · " + o.table : "")),
+      billId: o.billId || "", table: o.table || "",
+      /* The station used to be hardcoded "hot" for every server-sourced
+         ticket, so six juices and a curry all printed HOT KITCHEN. It comes
+         from the order now, routed off the store's category map. */
+      station: o.station || "hot", items: (o.items || []).map((li) => ({ q: Number(li.qty || li.q) || 1, n: li.name || li.n || "" })) }));
   const liveDeliv = (ordRows) => ordRows
     .filter((o) => o.otype === "delivery" && !finalStatuses.has(String(o.status || "new")))
     .slice(0, 12)
@@ -3261,6 +3273,40 @@ if (fs.existsSync(protoFile)) {
     res.json({ ok: true, user: { id: row.rows[0].id, name: d.name || "Staff", role: d.role || "cashier" }, token });
   }));
 
+  /* Kitchen tickets from the register (audit C-H5). sendKot wrote LOCAL STATE
+     ONLY: a POS kitchen ticket never reached the server, so a second kitchen
+     display never saw it, a refresh lost it, and bumping it on screen A did not
+     clear it on screen B. Only QR orders drove real state. A POS ticket is now
+     an order like any other, and bumping it uses the same status endpoint. */
+  app.post("/api/app2/kot", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const b = req.body || {};
+    const items = Array.isArray(b.items) ? b.items.slice(0, 200) : [];
+    if (!items.length) return res.status(400).json({ error: "no items" });
+    const id = "kot-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    const data = {
+      id, no: "KOT-" + String(b.billNo || "").padStart(4, "0"), source: "pos",
+      billId: String(b.billId || "").slice(0, 60),
+      status: "new", otype: String(b.otype || "dinein").slice(0, 12),
+      table: String(b.table || "").slice(0, 20),
+      station: String(b.station || "hot").slice(0, 20),
+      createdAt: Date.now(), t: Date.now(), at: Date.now(),
+      storeId: req.appStoreId || DEFAULT_STORE_ID, register: req.appRegister,
+      userName: String(b.userName || "").slice(0, 60),
+      items: items.map((it) => ({ pid: String(it.pid || "").slice(0, 60), name: String(it.name || it.n || "Item").slice(0, 80),
+        qty: Number(it.qty || it.q) || 1, price: Math.round(Number(it.price) || 0), station: String(it.station || "").slice(0, 20) })),
+    };
+    const rowver = await withOrg(orgId, async (c) => {
+      const r = await c.query(
+        "INSERT INTO entities (org_id, kind, id, data, deleted, updated_at) VALUES ($1,'orders',$2,$3,false,now()) RETURNING rowver",
+        [orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    poke(orgId, rowver);
+    res.json({ ok: true, id, no: data.no });
+  }));
+
   /* Outlet selection for the register (audit A-H2). The register never chose a
      store: the ops token defaulted to 'main' and every op stamped storeId
      'main', so a two-outlet owner's Hulhumale branch booked its sales under
@@ -3664,6 +3710,11 @@ if (fs.existsSync(protoFile)) {
          reached the tablet at the counter. It is a store setting in basis
          points now, and the register reads it from the server. */
       if (patch.svc10 !== undefined) data.svcChargeBp = patch.svc10 === false ? 0 : 1000;
+      if (patch.tableCount !== undefined) {
+        const n = Math.round(Number(patch.tableCount));
+        if (n > 0 && n <= 200) data.tableCount = n;
+      }
+      if (Array.isArray(patch.hotCats)) data.hotCats = patch.hotCats.map((x) => String(x).slice(0, 40)).slice(0, 40);
       if (patch.svcChargeBp !== undefined) {
         const bp = Math.round(Number(patch.svcChargeBp));
         if (bp >= 0 && bp <= 5000) data.svcChargeBp = bp;
@@ -4171,7 +4222,8 @@ if (fs.existsSync(webDir)) {
        charge a hardcoded 10%. Keep the two in step. */
     const storeP = { name: st.storeName || org.store_name, currency: st.currency || "MVR", usdRate: Number(st.usdRate) || 1542,
       tin: st.tin || "", address: st.address || "", footer: st.receiptFooter || st.footer || "", logo: st.logo || "",
-      taxRate: (st.adminCfg && st.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst" };
+      taxRate: (st.adminCfg && st.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst",
+      tableCount: Number(st.tableCount) > 0 ? Number(st.tableCount) : 12 };
     const catGroups = Array.isArray(st.catGroups) ? st.catGroups : [];
     const catOrder = Array.isArray(st.catOrder) ? st.catOrder : [];
     const visible = products.filter((p) => !p.hidden && (hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0));
