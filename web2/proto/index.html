@@ -1910,6 +1910,13 @@ fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).
       if(preferred&&_ratio(_lum(preferred),lb)>=4.5)return preferred;
       return _ratio(0,lb)>=_ratio(1,lb)?'#000000':'#FFFFFF';};/* White mode keeps a clean white background but honours the chosen accent (and the semantic colours from :root[data-white]) instead of forcing everything to black. Dark mode tints its near-black background with the accent so picking a colour visibly changes the background too. */if(s.white)return {'--coral':a[0],'--coralink':inkOn(a[0],a[2]),'--coralsoft':a[4],'--kbg':'linear-gradient(165deg,#FFFFFF,#F3F4F6)'};return {'--coral':dm?a[1]:a[0],'--coralink':inkOn(dm?a[1]:a[0],dm?a[3]:a[2]),'--coralsoft':dm?a[5]:a[4],'--kbg':dm?darkBgFor(a[0]):bgFor(a[0])};}
   toast(msg){clearTimeout(this._tt);this.setState({toast:msg});this._tt=setTimeout(()=>this.setState({toast:null}),2600);}
+  /* Mirror of asOtype() on the server. Two vocabularies grew up for the same
+     three ideas — a sale carries orderType:'dine', an order carries
+     otype:'dinein' — and they lined up only because acceptOrder translated by
+     hand. Everything that reads an order type runs it through here, so a row
+     written under either spelling still lands in the right channel colour and
+     the right history filter instead of silently falling through to "other". */
+  ot(v){const x=String(v||'').toLowerCase();return (x==='dine'||x==='dinein'||x==='dine-in')?'dinein':(x==='delivery'?'delivery':'takeaway');}
   itemName(m){if(!m)return'';return (this.state.lang==='dv'&&m.dv)?m.dv:(m.en||m.dv||m.name||'');}
   /* The inclusive de-grossing and taxing the service charge are both correct
      under the Maldives GST Act and are deliberately unchanged. Two things
@@ -2538,15 +2545,15 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     const otDefAll=[['tracking','otTracking',(s.liveOrders||[]).length],['kitchen','otKitchen',s.tickets.length],['delivery','otDelivery',s.deliv.length],['tables','otTables',occDine],['history','otHistory',0]];
     const otDef=kitchenRole?otDefAll.filter(d=>d[0]==='kitchen'):otDefAll;
     const ordTabs=otDef.map(d=>{const on=s.ordTab===d[0];return {label:me.t(d[1]),icon:{__html:otIcon[d[0]]},tap:()=>me.setState({ordTab:d[0]}),bg:on?'var(--sur)':'transparent',co:on?'var(--coral)':'var(--ink2)',sh:on?'var(--shadow)':'none',hasN:d[2]>0,n:String(d[2]),nbg:'var(--coral)',nco:'var(--coralink)'};});
-    const chMap={dine:['var(--coralsoft)','var(--coral)'],takeaway:['var(--ambersoft)','var(--amber)'],delivery:['var(--greensoft)','var(--green)']};
+    const chMap={dinein:['var(--coralsoft)','var(--coral)'],takeaway:['var(--ambersoft)','var(--amber)'],delivery:['var(--greensoft)','var(--green)']};
     const hq=(s.histQuery||'').trim().toLowerCase();
     const hsk=s.histSort||'no',hsd=s.histDir||-1;
     const hsv=x=>hsk==='no'?x.no:hsk==='ch'?x.otype:hsk==='cust'?x.cust:hsk==='items'?x.items:hsk==='total'?x.total:hsk==='method'?x.method:x.no;
-    const histSorted=s.salesLog.filter(x=>(s.histFilter==='all'||x.otype===s.histFilter)&&(!hq||(''+x.no).includes(hq)||((x.cust||'').toLowerCase().includes(hq)))).slice().sort((a,b)=>{const x=hsv(a),y=hsv(b);if(typeof x==='number'&&typeof y==='number')return (x-y)*hsd;return String(x).localeCompare(String(y))*hsd;});
+    const histSorted=s.salesLog.filter(x=>(s.histFilter==='all'||me.ot(x.otype)===s.histFilter)&&(!hq||(''+x.no).includes(hq)||((x.cust||'').toLowerCase().includes(hq)))).slice().sort((a,b)=>{const x=hsv(a),y=hsv(b);if(typeof x==='number'&&typeof y==='number')return (x-y)*hsd;return String(x).localeCompare(String(y))*hsd;});
     const hArrow=hsd>0?' \u2191':' \u2193';
     const histCols=[{key:'no',label:'#',jc:'flex-start'},{key:'ch',label:me.t('histChannel'),jc:'flex-start'},{key:'cust',label:me.t('histCust'),jc:'flex-start'},{key:'items',label:me.t('histItems'),jc:'center'},{key:'total',label:me.t('histTotal'),jc:'flex-end'},{key:'method',label:me.t('histMethod'),jc:'flex-end'}].map(c=>({label:c.label+(hsk===c.key?hArrow:''),jc:c.jc,co:hsk===c.key?'var(--ink)':'var(--ink2)',tap:()=>{if(s.histSort===c.key)me.setState({histDir:-hsd});else me.setState({histSort:c.key,histDir:c.key==='no'||c.key==='items'||c.key==='total'?-1:1});}}));
-    const _canRef=!!(s.perms&&s.perms.refunds&&s.perms.refunds[me.roleIdx()]);const histRows=histSorted.map(x=>{const c=chMap[x.otype]||['var(--sur2)','var(--ink2)'];const _isRef=x.type==='refund';return {no:x.no,time:x.time,canRefund:_canRef&&!_isRef&&!x.refunded&&!!x.id,refundedOn:_isRef||!!x.refunded,refund:()=>me.openRefund(x),typeLbl:me.t(x.otype==='dine'?'dineIn':x.otype==='takeaway'?'takeaway':'deliveryType'),chBg:c[0],chC:c[1],cust:(s.lang==='dv'?(x.custDv||x.cust):x.cust)||me.t('walkIn'),items:String(x.items),totalF:me.fm(x.total),method:x.method||'—'};});
-    const histFilters=[['all','histAllL'],['dine','dineIn'],['takeaway','takeaway'],['delivery','deliveryType']].map(f=>{const on=s.histFilter===f[0];return {label:me.t(f[1]),tap:()=>me.setState({histFilter:f[0]}),bg:on?'var(--coral)':'var(--sur)',co:on?'var(--coralink)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)'};});
+    const _canRef=!!(s.perms&&s.perms.refunds&&s.perms.refunds[me.roleIdx()]);const histRows=histSorted.map(x=>{const c=chMap[me.ot(x.otype)]||['var(--sur2)','var(--ink2)'];const _isRef=x.type==='refund';return {no:x.no,time:x.time,canRefund:_canRef&&!_isRef&&!x.refunded&&!!x.id,refundedOn:_isRef||!!x.refunded,refund:()=>me.openRefund(x),typeLbl:me.t(me.ot(x.otype)==='dinein'?'dineIn':me.ot(x.otype)==='takeaway'?'takeaway':'deliveryType'),chBg:c[0],chC:c[1],cust:(s.lang==='dv'?(x.custDv||x.cust):x.cust)||me.t('walkIn'),items:String(x.items),totalF:me.fm(x.total),method:x.method||'—'};});
+    const histFilters=[['all','histAllL'],['dinein','dineIn'],['takeaway','takeaway'],['delivery','deliveryType']].map(f=>{const on=s.histFilter===f[0];return {label:me.t(f[1]),tap:()=>me.setState({histFilter:f[0]}),bg:on?'var(--coral)':'var(--sur)',co:on?'var(--coralink)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)'};});
     return {
       L,nav,on,scr,railItems,
       ordTab:s.ordTab,ordTabs,ordTabsShow:!kitchenRole,ordTabsHide:kitchenRole,ordTrack:s.ordTab==='tracking',ordKitchen:s.ordTab==='kitchen',ordDelivery:s.ordTab==='delivery',ordTables:s.ordTab==='tables',ordHistoryOn:s.ordTab==='history',

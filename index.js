@@ -706,7 +706,12 @@ const localPoke = (orgId, rowver) => {
   /* The rowver doubles as the event id, so a client that reconnects can tell
      the server where it left off via Last-Event-ID. */
   const frame = `id: ${Number(rowver) || 0}\ndata: ${JSON.stringify({ rowver })}\n\n`;
-  for (const res of set) { try { res.write(frame); } catch {} }
+  /* Guest streams are unauthenticated — anyone holding a public store slug can
+     open one. They get a bare nudge instead: the portal ignores the payload
+     and just re-polls its own orders, so the rowver was pure leakage, a live
+     read on how busy the store is to anyone who scanned a table QR once. */
+  const guestFrame = "data: {\"poke\":1}\n\n";
+  for (const res of set) { try { res.write(res.__guest ? guestFrame : frame); } catch {} }
 };
 const poke = (orgId, rowver) => {
   localPoke(orgId, rowver);
@@ -1348,6 +1353,18 @@ async function kindAll(orgId, kind, storeId = DEFAULT_STORE_ID) {
 
 const lineTotal = (l) => Math.round(Number(l.price || 0) * Number(l.qty || 1) * (1 - (Number(l.discPct || 0)) / 100));
 const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (Number(o.fee) || 0);
+/* Two vocabularies grew up for the same three ideas: a sale carries
+   orderType:'dine', an order carries otype:'dinein'. They only ever lined up
+   because acceptOrder translated by hand on the till. Anything the server
+   publishes under the name `otype` goes through here first, so a consumer
+   testing otype==='dinein' can never silently miss a dine-in sale. Accepts
+   either vocabulary, so rows already written in the old one still read right. */
+const asOtype = (v) => {
+  const s = String(v || "").toLowerCase();
+  if (s === "dine" || s === "dinein" || s === "dine-in" || s === "eatin") return "dinein";
+  if (s === "delivery") return "delivery";
+  return "takeaway";
+};
 /* Mirrors the till's $n checkout math exactly (see guest-sync-patch.js #3):
    GST only on taxable lines (products can be GST-exempt), service charge on
    the full subtotal — so what a guest sees for an open order matches what
@@ -2309,8 +2326,25 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
     recordError("ops[" + req.id + "]", e);
     return res.status(500).json({ error: "ops failed: " + errDetail(e), requestId: req.id });
   }
-  client.release();
-  if (rowver) poke(req.org.o, rowver);
+  /* A batch every op of which was already applied writes nothing, so the
+     accumulator above never moves and the reply used to be rowver:0. No
+     shipped client reads it as a cursor, but 0 is the one value that means
+     "start over" — a client that ever did would re-pull its entire history
+     the first time the outbox retried a batch the server had already taken,
+     which is exactly the situation a retry is supposed to be harmless in.
+     Report where the org actually is instead. Cheap: it is a backwards index
+     scan on entities_pull (org_id, rowver). */
+  let deduplicated = false;
+  if (!rowver) {
+    deduplicated = true;
+    try {
+      const cur = await withOrg(req.org.o, (c) => c.query(
+        "SELECT COALESCE(MAX(rowver),0)::bigint AS v FROM entities WHERE org_id=$1", [req.org.o]));
+      rowver = Number(cur.rows[0].v) || 0;
+    } catch (e) { recordError("ops rowver probe", e); }
+  } else {
+    poke(req.org.o, rowver);
+  }
   /* Recipe-based ingredient deduction runs AFTER the sync commit, never
      inside it: a till sale must never be rejected because inventory math
      failed. The ledger's (org_id, ref, ingredient_id) uniqueness makes the
@@ -2319,7 +2353,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   if (settledSales.length) inventory.processSales(req.org.o, settledSales).catch((e) => recordError("processSales", e));
   /* Persist the sensitive events observed above (post-commit, non-fatal). */
   for (const ev of auditEvents) logActivity(req.org.o, { ...ev, requestId: req.id });
-  res.json({ ok: true, rowver });
+  res.json({ ok: true, rowver, ...(deduplicated ? { deduplicated: true } : {}) });
 }));
 
 app.get("/api/pull", auth, wrap(async (req, res) => {
@@ -2359,7 +2393,23 @@ app.get("/api/pull", auth, wrap(async (req, res) => {
    The heartbeat also drops from 25s to 20s: a 30-second idle timeout is common
    in front-end proxies, and 25s plus scheduling jitter sat close enough to it
    to be cut mid-shift. */
-const openEventStream = (orgId, req, res) => {
+/* How many unauthenticated guest streams one store may hold open at once.
+   Comfortably above a full house of diners, far below what an unmetered open
+   socket per caller would allow. */
+const GUEST_STREAM_CAP = 300;
+const openEventStream = (orgId, req, res, guest) => {
+  if (guest) {
+    let open = 0;
+    const cur = hubs.get(orgId);
+    if (cur) for (const r of cur) if (r.__guest) open++;
+    if (open >= GUEST_STREAM_CAP) {
+      /* Shed rather than accumulate. The portal's 8s poll keeps working and
+         its reconnect backoff will find a slot when the rush passes. */
+      res.set("Retry-After", "30");
+      return res.status(503).json({ error: "too many live connections, retrying shortly" });
+    }
+    res.__guest = true;
+  }
   res.set({
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
@@ -2384,10 +2434,10 @@ const openEventStream = (orgId, req, res) => {
 
 app.get("/api/events", auth, (req, res) => openEventStream(req.org.o, req, res));
 
-app.get("/p/:slug/events", wrap(async (req, res) => {
+app.get("/p/:slug/events", pubThrottle(30, "events"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).end();
-  openEventStream(org.id, req, res);
+  openEventStream(org.id, req, res, true);
 }));
 
 app.get("/p/:slug/boot", wrap(async (req, res) => {
@@ -2724,7 +2774,7 @@ if (fs.existsSync(protoFile)) {
     /* A refund is numbered as the original with a -R suffix; strip that
        before taking the last segment, or every refund row reads just "R". */
     no: (String(s.no || "").replace(/-R$/, "").replace(/^.*-/, "") + (s.type === "refund" ? "R" : "")) || String(s.id || "").slice(-4),
-    ch: chLabel(s), chK: chKind(s), otype: s.orderType || "takeaway",
+    ch: chLabel(s), chK: chKind(s), otype: asOtype(s.orderType),
     time: hhmm(s.at), items: (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0),
     total: Math.round(Number(s.total) || 0) / 100, cust: s.customerName || "Walk-in", custDv: s.customerDv || s.customerName || "Walk-in", method: payLabel(s),
     methodKey: String(((s.payments || [])[0] || {}).method || "cash"),
@@ -2848,7 +2898,7 @@ if (fs.existsSync(protoFile)) {
     out.orders = ordRows
       .filter((o) => o && o.id && !finalStatuses.has(String(o.status || "new").toLowerCase()) && String(o.status || "") !== "cancelled")
       .map((o) => ({
-        id: o.id, no: o.no || "", status: String(o.status || "new"), otype: o.otype || "dinein",
+        id: o.id, no: o.no || "", status: String(o.status || "new"), otype: asOtype(o.otype),
         table: o.table || "", accepted: !!o.accepted, source: o.source || "qr",
         customerId: o.customerId || null, customerName: o.customerName || "", customerDv: o.customerDv || "",
         zone: o.zone || "", note: o.note || "", createdAt: o.createdAt || Date.now(),
@@ -3476,7 +3526,7 @@ if (fs.existsSync(protoFile)) {
     const data = {
       id, no: "KOT-" + String(b.billNo || "").padStart(4, "0"), source: "pos",
       billId: String(b.billId || "").slice(0, 60),
-      status: "new", otype: String(b.otype || "dinein").slice(0, 12),
+      status: "new", otype: asOtype(b.otype).slice(0, 12),
       table: String(b.table || "").slice(0, 20),
       station: String(b.station || "hot").slice(0, 20),
       createdAt: Date.now(), t: Date.now(), at: Date.now(),
@@ -4451,7 +4501,7 @@ if (fs.existsSync(webDir)) {
           address: c.address || "", memberNo: c.memberNo || "", visits: completed.length,
           spent: completed.reduce((a, o) => a + Number(o.total || 0), 0),
           orders: orders.map((o) => ({ no: o.no, total: Number(o.total || 0) / 100, status: o.status, when: o.createdAt || o.at || Date.now(),
-            otype: o.otype || "dinein", table: o.table || "", zone: o.zone || "", items: (o.items || []).map((it) => ({ q: it.qty, n: it.name })) })) };
+            otype: asOtype(o.otype), table: o.table || "", zone: o.zone || "", items: (o.items || []).map((it) => ({ q: it.qty, n: it.name })) })) };
       }
     }
     const guest = { slug: org.slug, storeId, table: req.query.t ? String(req.query.t) : "", customer };
