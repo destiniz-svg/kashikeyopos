@@ -24,8 +24,8 @@
 <style>
 @font-face{font-family:'MV Randhoo';src:url('fonts/MV_A_Waheed_Bold.ttf') format('truetype');font-weight:400 800;font-display:swap;size-adjust:120%}
 :root{--bg:#FEFEFE;--sur:rgba(255,255,255,.86);--sur2:rgba(20,22,28,.045);--ink:#1D1F22;--ink2:#696C73;--ink3:#70737A;--line:rgba(20,22,28,.10);--coral:#0E6EC6;--coralink:#FFFFFF;--coralsoft:rgba(15,114,204,.12);--coralgrad:linear-gradient(165deg,#2E9BEE,#0C63BE);--green:#16814A;--greensoft:rgba(31,166,92,.12);--amber:#D98A1C;--ambersoft:rgba(238,140,33,.14);--red:#C13A26;--redsoft:rgba(193,58,38,.11);--shadow:0 1px 2px rgba(38,41,48,.06)}
-html[data-dark]{--bg:#0F1712;--sur:#16211A;--sur2:rgba(220,255,235,.05);--ink:#E4F0E8;--ink2:#94A89C;--ink3:#647468;--line:rgba(220,255,235,.09);--coral:#57C486;--coralink:#08210F;--coralsoft:rgba(87,196,134,.15);--green:#57C486;--greensoft:rgba(87,196,134,.13);--amber:#D7A24A;--ambersoft:rgba(215,162,74,.13);--red:#E27A5E;--redsoft:rgba(226,122,94,.15);--shadow:0 1px 2px rgba(0,0,0,.35)}
-html[data-white]{--bg:#FFFFFF;--sur:#FFFFFF;--sur2:rgba(0,0,0,.045);--ink:#0A0A0A;--ink2:#565656;--ink3:#8E8E8E;--line:rgba(0,0,0,.13);--shadow:0 1px 2px rgba(0,0,0,.07)}
+html[data-dark]{--bg:#0F1712;--sur:#16211A;--sur2:rgba(220,255,235,.05);--ink:#E4F0E8;--ink2:#94A89C;--ink3:#8FA396;--line:rgba(220,255,235,.09);--coral:#57C486;--coralink:#08210F;--coralsoft:rgba(87,196,134,.15);--green:#57C486;--greensoft:rgba(87,196,134,.13);--amber:#D7A24A;--ambersoft:rgba(215,162,74,.13);--red:#E27A5E;--redsoft:rgba(226,122,94,.15);--shadow:0 1px 2px rgba(0,0,0,.35)}
+html[data-white]{--bg:#FFFFFF;--sur:#FFFFFF;--sur2:rgba(0,0,0,.045);--ink:#0A0A0A;--ink2:#565656;--ink3:#767676;--line:rgba(0,0,0,.13);--shadow:0 1px 2px rgba(0,0,0,.07)}
 *{box-sizing:border-box}
 body{margin:0;background:#F4F5F6;color:var(--ink);font-family:'Inter',Montserrat,'MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;letter-spacing:-.005em}
 html[data-dark] body{background:#0B120D}
@@ -93,7 +93,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 </helmet>
 <div style="{{ rootStyle }}">
 <sc-if value="{{ locked }}" hint-placeholder-val="{{ false }}">
-  <div style="position:fixed;inset:0;z-index:400;background:radial-gradient(920px 540px at 14% -8%,var(--coralsoft),transparent 60%),radial-gradient(760px 480px at 112% 6%,var(--coralsoft),transparent 58%),var(--kbg);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow-y:auto;padding:24px;animation:fade .2s">
+  <div role="dialog" aria-modal="true" aria-label="Locked — sign in with your PIN" data-modal="lock" style="position:fixed;inset:0;z-index:400;background:radial-gradient(920px 540px at 14% -8%,var(--coralsoft),transparent 60%),radial-gradient(760px 480px at 112% 6%,var(--coralsoft),transparent 58%),var(--kbg);display:flex;flex-direction:column;align-items:center;justify-content:center;overflow-y:auto;padding:24px;animation:fade .2s">
     <img src="/logo-mark.png" alt="" style="width:64px;height:64px;flex:none;object-fit:contain;margin-bottom:12px">
     <div style="font-family:'Bricolage Grotesque';font-weight:700;font-size:24px;letter-spacing:-.02em;line-height:1;color:var(--ink);margin-bottom:4px">Kashikeyo<span style="color:var(--coral)">POS</span></div>
     <div style="font-size:12px;color:var(--ink2);font-weight:500;margin-bottom:32px;text-align:center">{{ lockSub }}</div>
@@ -141,7 +141,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 </nav>
     <div style="{{ spacerStyle }}"></div>
     <div style="font-size:12.5px;color:var(--ink2);font-weight:600;font-variant-numeric:tabular-nums;display:{{ clockDisp }}">{{ clock }}</div>
-    <button onClick="{{ toggleOnline }}" style="border:0;cursor:pointer;border-radius:999px;padding:7px;display:flex;align-items:center;justify-content:center;background:{{ net.bg }};color:{{ net.c }}" style-active="transform:scale(.9)" title="{{ net.label }}">
+    <button onClick="{{ toggleOnline }}" aria-label="{{ net.label }}" style="border:0;cursor:pointer;border-radius:999px;padding:13px;display:flex;align-items:center;justify-content:center;background:{{ net.bg }};color:{{ net.c }}" style-active="transform:scale(.9)" title="{{ net.label }}">
       <span style="width:9px;height:9px;border-radius:99px;background:currentColor;animation:{{ net.anim }}"></span>
     </button>
     <div style="position:relative;flex:none">
@@ -388,7 +388,7 @@ button[disabled],button:disabled{cursor:not-allowed}
                     <sc-if value="{{ pb.isDine }}" hint-placeholder-val="{{ true }}"><span style="font-size:9px;font-weight:800;background:var(--sur2);color:var(--ink);border-radius:6px;padding:1.5px 5px">{{ pb.tableTag }}</span></sc-if>
                     <sc-if value="{{ pb.isActive }}" hint-placeholder-val="{{ false }}"><span style="font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:var(--ink);color:var(--coralink);border-radius:5px;padding:2px 5px">{{ L.editingLbl }}</span></sc-if>
                     <div style="flex:1"></div>
-                    <button onClick="{{ pb.del }}" style="width:22px;height:22px;flex:none;border:0;border-radius:7px;background:none;color:var(--ink2);font-size:15px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.88)">×</button>
+                    <button onClick="{{ pb.del }}" aria-label="Delete parked bill" style="width:44px;height:44px;flex:none;border:0;border-radius:11px;background:none;color:var(--ink2);font-size:17px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.88)">×</button>
                   </div>
                   <sc-if value="{{ pb.hasCust }}" hint-placeholder-val="{{ false }}">
                     <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px"><svg width="12" height="12" viewBox="0 0 12 12" style="color:var(--ink2)"><circle cx="6" cy="4" r="2.3" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M2 10.5c0-2.2 1.8-3.5 4-3.5s4 1.3 4 3.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg><span style="font-size:10px;font-weight:800;color:var(--ink)">{{ pb.custTag }}</span></div>
@@ -523,13 +523,13 @@ button[disabled],button:disabled{cursor:not-allowed}
                     <div style="font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums">{{ ln.amtF }}</div>
                     <sc-if value="{{ ln.hasDisc }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:var(--ink3);text-decoration:line-through;font-variant-numeric:tabular-nums">{{ ln.grossF }}</div></sc-if>
                   </div>
-                  <button onClick="{{ ln.remove }}" title="Remove item" style="width:22px;height:22px;flex:none;border:0;border-radius:7px;background:none;color:var(--ink3);font-size:16px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.88)">×</button>
+                  <button onClick="{{ ln.remove }}" title="Remove item" aria-label="Remove item" style="width:44px;height:44px;flex:none;border:0;border-radius:11px;background:none;color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.88)">×</button>
                 </div>
               </div>
               <div style="display:flex;align-items:center;gap:6px;margin-top:7px;padding-inline-start:42px;flex-wrap:wrap">
-                <button onClick="{{ ln.dec }}" style="width:24px;height:24px;border-radius:8px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;line-height:1" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.9)">−</button>
+                <button onClick="{{ ln.dec }}" aria-label="One less" style="width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:17px;font-weight:700;cursor:pointer;line-height:1" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.9)">−</button>
                 <span style="min-width:16px;text-align:center;font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">{{ ln.qty }}</span>
-                <button onClick="{{ ln.inc }}" style="width:24px;height:24px;border-radius:8px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:14px;font-weight:700;cursor:pointer;line-height:1" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.9)">+</button>
+                <button onClick="{{ ln.inc }}" aria-label="One more" style="width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:17px;font-weight:700;cursor:pointer;line-height:1" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.9)">+</button>
                 <span style="font-size:10px;color:var(--ink3);font-weight:600;font-variant-numeric:tabular-nums;margin-inline-start:2px">@ {{ ln.unitF }}/{{ L.pcs }}</span>
                 <div style="flex:1;min-width:0"></div>
                 <button onClick="{{ ln.openDisc }}" style="border:1px solid {{ ln.discBc }};background:{{ ln.discBg }};color:{{ ln.discC }};border-radius:99px;padding:3px 10px;font-size:10.5px;font-weight:800;cursor:pointer;font-variant-numeric:tabular-nums;white-space:nowrap" style-active="transform:scale(.92)">{{ ln.discLbl }}</button>
@@ -740,9 +740,9 @@ button[disabled],button:disabled{cursor:not-allowed}
                           <div style="font-size:12.5px;font-weight:800;color:#C1492A;margin-top:2px;font-variant-numeric:tabular-nums">{{ l.priceF }}</div>
                         </div>
                         <div style="display:flex;align-items:center;gap:9px">
-                          <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:99px;border:0;background:#F3EADB;color:#C1492A;font-size:16px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">−</button>
+                          <button onClick="{{ l.dec }}" aria-label="One less" style="width:44px;height:44px;border-radius:99px;border:0;background:#F3EADB;color:#C1492A;font-size:19px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">−</button>
                           <span style="min-width:14px;text-align:center;font-size:13px;font-weight:800;color:#2E2418">{{ l.qty }}</span>
-                          <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:99px;border:0;background:#C1492A;color:#FFF;font-size:16px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">+</button>
+                          <button onClick="{{ l.inc }}" aria-label="One more" style="width:44px;height:44px;border-radius:99px;border:0;background:#C1492A;color:#FFF;font-size:19px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">+</button>
                         </div>
                       </div>
                     </sc-for>
@@ -1114,9 +1114,9 @@ button[disabled],button:disabled{cursor:not-allowed}
           <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;padding:8px 0"><span>{{ L.expected }}</span><span style="font-variant-numeric:tabular-nums">{{ z.expectedF }}</span></div>
           <div style="display:flex;align-items:center;gap:10px;padding:10px 0">
             <span style="font-size:12.5px;font-weight:700;flex:1">{{ L.counted }}</span>
-            <button onClick="{{ drawerMinus }}" style="width:34px;height:34px;border-radius:11px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:16px;font-weight:800;cursor:pointer" style-active="transform:scale(.9)">−</button>
+            <button onClick="{{ drawerMinus }}" aria-label="Less" style="width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:16px;font-weight:800;cursor:pointer" style-active="transform:scale(.9)">−</button>
             <input value="{{ drawerVal }}" onInput="{{ setDrawer }}" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0.00" style="font-family:'Bricolage Grotesque';font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;width:118px;text-align:center;border:1px solid var(--line);border-radius:11px;padding:6px 8px;background:var(--sur2);color:var(--ink);outline:none" style-focus="border-color:var(--coral)">
-            <button onClick="{{ drawerPlus }}" style="width:34px;height:34px;border-radius:11px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:16px;font-weight:800;cursor:pointer" style-active="transform:scale(.9)">+</button>
+            <button onClick="{{ drawerPlus }}" aria-label="More" style="width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--sur);color:var(--ink);font-size:16px;font-weight:800;cursor:pointer" style-active="transform:scale(.9)">+</button>
           </div>
           <div style="border-radius:13px;padding:11px 14px;display:flex;justify-content:space-between;align-items:center;font-weight:800;background:{{ z.varBg }};color:{{ z.varC }}">
             <span style="font-size:12px">{{ L.varianceLbl }}</span><span style="font-size:15px;font-variant-numeric:tabular-nums">{{ z.varF }}</span>
@@ -1167,7 +1167,7 @@ button[disabled],button:disabled{cursor:not-allowed}
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <svg width="18" height="18" viewBox="0 0 15 15" style="color:var(--ink)"><rect x="2" y="3" width="11" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"></rect><line x1="4.5" y1="9.5" x2="4.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></line><line x1="10.5" y1="9.5" x2="10.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></line></svg>
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;color:var(--ink);flex:1">{{ L.selectTable }}</span>
-        <button onClick="{{ toggleTableMenu }}" style="width:30px;height:30px;flex:none;border:0;border-radius:9px;background:var(--sur2);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.9)">×</button>
+        <button onClick="{{ toggleTableMenu }}" aria-label="Close" style="width:44px;height:44px;flex:none;border:0;border-radius:12px;background:var(--sur2);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.9)">×</button>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
         <sc-for list="{{ tables }}" as="tb" hint-placeholder-count="12">
@@ -1182,7 +1182,7 @@ button[disabled],button:disabled{cursor:not-allowed}
     <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(400px,100%);background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:18px 18px 20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink);flex:1">{{ L.pickCustTitle }}</span>
-        <button onClick="{{ closeCustPick }}" style="width:30px;height:30px;flex:none;border:0;border-radius:9px;background:var(--sur2);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.9)">×</button>
+        <button onClick="{{ closeCustPick }}" aria-label="Close" style="width:44px;height:44px;flex:none;border:0;border-radius:12px;background:var(--sur2);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-hover="background:var(--redsoft);color:var(--red)" style-active="transform:scale(.9)">×</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:7px">
         <sc-for list="{{ delCustomers }}" as="dc" hint-placeholder-count="4">
@@ -1792,7 +1792,13 @@ if(!saved||!saved.id||!saved.token)return null;return users.find(function(u){ret
      (rufiyaa/dollars); usdRate is MVR-per-USD x100. Returns '' when there's no rate. */
   secondaryF(v){var sp=this.state.storeP||{};var rate=Number(sp.usdRate||0);if(!(rate>0))return '';var n=Number(v||0);var f=function(x){return x.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});};return (sp.currency==='USD')?('≈ MVR '+f(n*rate/100)):('≈ USD '+f(n*100/rate));}
   inkOn(hex){try{var h=String(hex).replace('#','');var r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);return (0.299*r+0.587*g+0.114*b)>150?'#1A1A1A':'#FFFFFF';}catch(e){return '#FFFFFF';}}
-  accentVars(){const s=this.state;const ACC={orange:['#BE3E19','#F79A4A','#FFFFFF','#2A1606','rgba(242,106,33,.14)','rgba(247,154,74,.18)'],terracotta:['#C1492A','#E0703F','#FFF4EC','#2A1408','rgba(193,73,42,.13)','rgba(224,112,63,.16)'],green:['#1FA65C','#57C486','#EFFAF2','#08210F','rgba(31,166,92,.13)','rgba(87,196,134,.16)'],red:['#C13A26','#E86B54','#FFF1EE','#2A0C06','rgba(193,58,38,.13)','rgba(232,107,84,.16)'],amber:['#B07714','#D7A24A','#FFF8EC','#2A1E06','rgba(176,119,20,.16)','rgba(215,162,74,.16)'],pink:['#C43A78','#E86BA0','#FFF0F6','#2A0A18','rgba(196,58,120,.14)','rgba(232,107,160,.16)'],blue:['#0E6EC6','#4AA3EE','#FFFFFF','#04121F','rgba(15,114,204,.12)','rgba(74,163,238,.16)']};var hx=function(h){h=h.replace('#','');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];};var mix=function(hex,w){var c=hx(hex);return 'rgb('+Math.round(c[0]+(255-c[0])*w)+','+Math.round(c[1]+(255-c[1])*w)+','+Math.round(c[2]+(255-c[2])*w)+')';};var bgFor=function(hex){return 'linear-gradient(165deg,'+mix(hex,.925)+' 0%,'+mix(hex,.87)+' 55%,'+mix(hex,.82)+' 100%)';};var dmix=function(hex,w){var c=hx(hex);return 'rgb('+Math.round(c[0]*w)+','+Math.round(c[1]*w)+','+Math.round(c[2]*w)+')';};var darkBgFor=function(hex){return 'linear-gradient(165deg,'+dmix(hex,.17)+' 0%,'+dmix(hex,.10)+' 55%,'+dmix(hex,.07)+' 100%)';};const a=ACC[s.accent]||ACC.orange;const dm=s.dark;/* White mode keeps a clean white background but honours the chosen accent (and the semantic colours from :root[data-white]) instead of forcing everything to black. Dark mode tints its near-black background with the accent so picking a colour visibly changes the background too. */if(s.white)return {'--coral':a[0],'--coralink':a[2],'--coralsoft':a[4],'--kbg':'linear-gradient(165deg,#FFFFFF,#F3F4F6)'};return {'--coral':dm?a[1]:a[0],'--coralink':dm?a[3]:a[2],'--coralsoft':dm?a[5]:a[4],'--kbg':dm?darkBgFor(a[0]):bgFor(a[0])};}
+  accentVars(){const s=this.state;const ACC={orange:['#BE3E19','#F79A4A','#FFFFFF','#2A1606','rgba(242,106,33,.14)','rgba(247,154,74,.18)'],terracotta:['#C1492A','#E0703F','#FFF4EC','#2A1408','rgba(193,73,42,.13)','rgba(224,112,63,.16)'],green:['#1FA65C','#57C486','#EFFAF2','#08210F','rgba(31,166,92,.13)','rgba(87,196,134,.16)'],red:['#C13A26','#E86B54','#FFF1EE','#2A0C06','rgba(193,58,38,.13)','rgba(232,107,84,.16)'],amber:['#B07714','#D7A24A','#FFF8EC','#2A1E06','rgba(176,119,20,.16)','rgba(215,162,74,.16)'],pink:['#C43A78','#E86BA0','#FFF0F6','#2A0A18','rgba(196,58,120,.14)','rgba(232,107,160,.16)'],blue:['#0E6EC6','#4AA3EE','#FFFFFF','#04121F','rgba(15,114,204,.12)','rgba(74,163,238,.16)']};var hx=function(h){h=h.replace('#','');return [parseInt(h.substr(0,2),16),parseInt(h.substr(2,2),16),parseInt(h.substr(4,2),16)];};var mix=function(hex,w){var c=hx(hex);return 'rgb('+Math.round(c[0]+(255-c[0])*w)+','+Math.round(c[1]+(255-c[1])*w)+','+Math.round(c[2]+(255-c[2])*w)+')';};var bgFor=function(hex){return 'linear-gradient(165deg,'+mix(hex,.925)+' 0%,'+mix(hex,.87)+' 55%,'+mix(hex,.82)+' 100%)';};var dmix=function(hex,w){var c=hx(hex);return 'rgb('+Math.round(c[0]*w)+','+Math.round(c[1]*w)+','+Math.round(c[2]*w)+')';};var darkBgFor=function(hex){return 'linear-gradient(165deg,'+dmix(hex,.17)+' 0%,'+dmix(hex,.10)+' 55%,'+dmix(hex,.07)+' 100%)';};const a=ACC[s.accent]||ACC.orange;const dm=s.dark;/* Contrast-safe ink on the accent, whatever accent is chosen. */
+    var _lum=function(hex){var c=hx(hex);var f=function(v){v=v/255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+      return 0.2126*f(c[0])+0.7152*f(c[1])+0.0722*f(c[2]);};
+    var _ratio=function(l1,l2){var hi=Math.max(l1,l2),lo=Math.min(l1,l2);return (hi+0.05)/(lo+0.05);};
+    var inkOn=function(bgHex,preferred){var lb=_lum(bgHex);
+      if(preferred&&_ratio(_lum(preferred),lb)>=4.5)return preferred;
+      return _ratio(0,lb)>=_ratio(1,lb)?'#000000':'#FFFFFF';};/* White mode keeps a clean white background but honours the chosen accent (and the semantic colours from :root[data-white]) instead of forcing everything to black. Dark mode tints its near-black background with the accent so picking a colour visibly changes the background too. */if(s.white)return {'--coral':a[0],'--coralink':inkOn(a[0],a[2]),'--coralsoft':a[4],'--kbg':'linear-gradient(165deg,#FFFFFF,#F3F4F6)'};return {'--coral':dm?a[1]:a[0],'--coralink':inkOn(dm?a[1]:a[0],dm?a[3]:a[2]),'--coralsoft':dm?a[5]:a[4],'--kbg':dm?darkBgFor(a[0]):bgFor(a[0])};}
   toast(msg){clearTimeout(this._tt);this.setState({toast:msg});this._tt=setTimeout(()=>this.setState({toast:null}),2600);}
   itemName(m){if(!m)return'';return (this.state.lang==='dv'&&m.dv)?m.dv:(m.en||m.dv||m.name||'');}
   /* The inclusive de-grossing and taxing the service charge are both correct

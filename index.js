@@ -582,6 +582,10 @@ function auditSaleMoney(sale, ctx) {
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
 }
 
+const UIFIX_JS = "(function(){\n/* Two things the operator could not see.\n *\n * 1. Broken product images. The starter menu ships remote photo URLs, and the\n *    tile decides whether it has an image at render time with no error path —\n *    so on a metered or dropped connection the whole grid became the browser's\n *    broken-image glyph, on the register and on the diner's phone alike. The\n *    app already has a lettered fallback tile; it just never got used. On an\n *    image error we draw that fallback in place.\n *\n * 2. No loading state anywhere: not on boot, not while a modal action ran, not\n *    on Charge or Confirm or Close day. The only recourse was to tap again. A\n *    thin progress bar shows whenever a write is in flight. */\nvar PAL=['#C1492A','#B07714','#1FA65C','#0E6EC6','#C43A78','#7A5AF8','#0F766E'];\nfunction initial(el){\n  var alt=el.getAttribute('alt')||'';\n  var t=(alt||el.getAttribute('data-name')||'').trim();\n  if(!t){var card=el.closest('div');var txt=card?(card.textContent||'').trim():'';t=txt;}\n  return (t.charAt(0)||'?').toUpperCase();\n}\nfunction swap(el){\n  if(el.getAttribute('data-fellback'))return;\n  el.setAttribute('data-fellback','1');\n  var ch=initial(el);\n  var code=0;for(var i=0;i<ch.length;i++)code+=ch.charCodeAt(i);\n  var bg=PAL[code%PAL.length];\n  var box=document.createElement('div');\n  box.setAttribute('aria-hidden','true');\n  box.style.cssText='width:100%;height:100%;display:grid;place-items:center;background:'+bg+'22';\n  var glyph=document.createElement('div');\n  glyph.style.cssText='width:52px;height:52px;border-radius:15px;background:'+bg+';color:#fff;display:grid;place-items:center;font-weight:800;font-size:23px';\n  glyph.textContent=ch;\n  box.appendChild(glyph);\n  el.style.display='none';\n  if(el.parentNode)el.parentNode.insertBefore(box,el);\n}\ndocument.addEventListener('error',function(ev){\n  var el=ev.target;\n  if(el&&el.tagName==='IMG')swap(el);\n},true);\n\nvar bar=null,inflight=0,hideT=0;\nfunction show(){\n  if(!bar){\n    bar=document.createElement('div');\n    bar.setAttribute('aria-hidden','true');\n    bar.style.cssText='position:fixed;top:0;left:0;height:3px;width:0;z-index:99998;background:currentColor;color:#C1492A;transition:width .25s ease,opacity .3s;pointer-events:none';\n    document.body.appendChild(bar);\n  }\n  clearTimeout(hideT);\n  bar.style.opacity='1';\n  bar.style.width='72%';\n}\nfunction done(){\n  if(!bar)return;\n  bar.style.width='100%';\n  hideT=setTimeout(function(){if(bar){bar.style.opacity='0';bar.style.width='0';}},320);\n}\nvar of=window.fetch;\nif(typeof of==='function'){\n  window.fetch=function(input,init){\n    var url='';try{url=(typeof input==='string')?input:((input&&input.url)||'');}catch(e){}\n    var method='GET';try{method=String((init&&init.method)||(input&&input.method)||'GET').toUpperCase();}catch(e){}\n    var track=(method!=='GET'&&url.indexOf('/api/')===0);\n    if(track){inflight++;show();}\n    var p=of.apply(this,arguments);\n    if(track){\n      var fin=function(){inflight=Math.max(0,inflight-1);if(!inflight)done();};\n      try{p.then(fin,fin);}catch(e){fin();}\n    }\n    return p;\n  };\n}\n})();\n";
+
+const A11Y_JS = '(function(){\n/* Focus containment and Escape. The PIN lock and every modal were plain\n * overlays: pointer clicks were blocked by the backdrop, but Tab walked\n * straight past them into the locked till, so a counter tablet with a USB\n * barcode scanner or keyboard bypassed the PIN gate entirely. Nothing closed\n * on Escape either, and backdrop-dismiss was unsignposted.\n *\n * Implemented as a document-level shim rather than per-modal wiring so it\n * covers the overlays the design tool renders, present and future: anything\n * position:fixed with inset:0 and a high z-index is treated as modal, topmost\n * wins, and focus is kept inside it. */\nvar SEL=\'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])\';\nfunction overlays(){\n  var out=[];\n  var all=document.querySelectorAll(\'div\');\n  for(var i=0;i<all.length;i++){\n    var el=all[i];\n    /* React serialises inline styles WITH spaces ("position: fixed"), so match\n       on the computed style, not on the attribute text. */\n    var cs=null;try{cs=getComputedStyle(el);}catch(e){}\n    if(!cs)continue;\n    if(cs.position!==\'fixed\')continue;\n    if(cs.display===\'none\'||cs.visibility===\'hidden\')continue;\n    var r=el.getBoundingClientRect();\n    if(r.width<window.innerWidth*0.5||r.height<window.innerHeight*0.5)continue;\n    var z=parseInt(cs.zIndex,10)||0;\n    if(z<30)continue;\n    if(!el.querySelector(SEL))continue;\n    out.push({el:el,z:z});\n  }\n  out.sort(function(a,b){return a.z-b.z;});\n  return out;\n}\nfunction top(){var o=overlays();return o.length?o[o.length-1].el:null;}\ndocument.addEventListener(\'keydown\',function(ev){\n  var t=top();\n  if(!t)return;\n  if(ev.key===\'Escape\'){\n    /* The lock is not dismissible — that is the point of it. */\n    if(t.getAttribute(\'data-modal\')===\'lock\')return;\n    var close=t.querySelector(\'[aria-label="Close"],[data-close]\');\n    if(close){ev.preventDefault();close.click();}\n    return;\n  }\n  if(ev.key!==\'Tab\')return;\n  var f=[].slice.call(t.querySelectorAll(SEL)).filter(function(el){\n    return el.offsetWidth>0||el.offsetHeight>0||el===document.activeElement;});\n  if(!f.length)return;\n  var first=f[0],last=f[f.length-1];\n  if(!t.contains(document.activeElement)){ev.preventDefault();first.focus();return;}\n  if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}\n  else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}\n},true);\n/* When an overlay appears, move focus into it. */\nfunction claim(){\n  var t=top();\n  if(!t)return;\n  if(t.contains(document.activeElement))return;\n  var f=t.querySelector(SEL);\n  if(f){try{f.focus();}catch(e){}}\n}\ntry{new MutationObserver(function(){clearTimeout(claim._t);claim._t=setTimeout(claim,120);})\n  .observe(document.documentElement,{childList:true,subtree:true});}catch(e){}\nsetTimeout(claim,800);\n})();\n';
+
 /* Failed writes used to vanish. Thirty-four fetches across the register and
    the back office were `.catch(function(){})` with no r.ok check — shift
    open/close, deliveries, waste, expenses, store config and every menu edit
@@ -3149,7 +3153,16 @@ if (fs.existsSync(protoFile)) {
         // (inset:0) — the dark translucent dim stays, so they still read as
         // modal — and shorten the card entrance so it snaps in. The frosted
         // header (not inset:0) is untouched.
-        `[style*="inset:0"][style*="backdrop-filter"]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}</style>`;
+        `[style*="inset:0"][style*="backdrop-filter"]{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}` +
+        /* Minimum tap target. 61 of 63 register controls measured under the 44px
+           floor — a 22px destructive "remove" sitting beside a 24px "−" on a
+           cart line, 20px-tall Clear and Hold, 30px category chips. On a
+           counter tablet during a rush that is a mis-tap machine. Enforced as a
+           floor on the interactive elements rather than by hand-editing dozens
+           of inline styles, so it also covers controls added later. Elements
+           that opt out (`data-tap="tight"`) keep their own size. */
+        `button:not([data-tap="tight"]),[role="button"]:not([data-tap="tight"]){min-height:44px}` +
+        `input:not([type=checkbox]):not([type=radio]):not([data-tap="tight"]),select:not([data-tap="tight"]){min-height:44px}</style>`;
       // The prototype's top-nav icons are injected via dangerouslySetInnerHTML,
       // which the design-tool runtime doesn't populate in this served setup, so
       // the bar shows labels with empty icon slots. This self-healing script
@@ -3174,7 +3187,7 @@ if (fs.existsSync(protoFile)) {
         (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
         (isRegister ? `window.__ksReg=${enc(regData)};` : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
-        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});` + NETERR_JS + `${navIconsJs}${ordTabIconsJs}${adminIconsJs}</script>\n`;
+        `window.__resources=Object.assign(window.__resources||{},${enc(resources)});` + NETERR_JS + A11Y_JS + UIFIX_JS + `${navIconsJs}${ordTabIconsJs}${adminIconsJs}</script>\n`;
       const html = readProto(file).replace(/<head([^>]*)>/i, (m) => m + inject);
       res.set("Content-Security-Policy", PROTO_CSP);
       res.set("Cache-Control", "no-cache");
@@ -4265,9 +4278,15 @@ if (fs.existsSync(webDir)) {
         ? String(im)
         : "/api/img/" + encodeURIComponent(pr.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
     }
-    const inject = `\n<base href="/app/">\n<title>${seoEsc(seoTitle)}</title>\n<script>` +
+    /* The diner's screen gets the same floors the register does: a real tap
+       target on every control, and a fallback when a product photo fails to
+       load (this menu's art is remote, so on a metered or dropped connection
+       the whole grid was the browser's broken-image glyph). */
+    const gFixCss = `\n<style>button:not([data-tap="tight"]),[role="button"]:not([data-tap="tight"]){min-height:44px}` +
+      `input:not([type=checkbox]):not([type=radio]):not([data-tap="tight"]){min-height:44px}</style>`;
+    const inject = `\n<base href="/app/">\n<title>${seoEsc(seoTitle)}</title>${gFixCss}\n<script>` +
       `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP, catGroups, catOrder })};window.__ksGuest=${gEnc(guest)};` +
-      `window.__resources=Object.assign(window.__resources||{},${gEnc(Object.assign({}, gVendor, gArt))});</script>\n`;
+      `window.__resources=Object.assign(window.__resources||{},${gEnc(Object.assign({}, gVendor, gArt))});` + UIFIX_JS + `</script>\n`;
     const html = fs.readFileSync(path.join(gProtoDir, "index.html"), "utf8")
       .replace(/<title>[\s\S]*?<\/title>/i, "")
       .replace(/<head([^>]*)>/i, (m) => m + inject);
