@@ -20,7 +20,13 @@
 <helmet>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@500;700&display=swap" rel="stylesheet">
+<!-- Loaded without blocking first paint. This is an offline-first POS in the
+     Maldives: with fonts.googleapis.com unreachable, a render-blocking
+     stylesheet took DOMContentLoaded from 163ms to 12.9s — the till simply
+     did not appear. It now applies when it arrives and the app falls back to
+     system faces when it does not. -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all';this.onload=null">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Mono:wght@400;700&family=Noto+Sans+Thaana:wght@500;700&display=swap" rel="stylesheet"></noscript>
 <style>
 @font-face{font-family:'MV Randhoo';src:url('fonts/MV_A_Waheed_Bold.ttf') format('truetype');font-weight:400 800;font-display:swap;size-adjust:120%}
 :root{--bg:#F4F5F6;--card:rgba(255,255,255,.86);--ink:#1D1F22;--ink2:#696C73;--ink3:#70737A;--line:rgba(20,22,28,.10);--line2:rgba(20,22,28,.16);--coral:#0E6EC6;--coralsoft:rgba(15,114,204,.12);--coralgrad:linear-gradient(165deg,#2E9BEE,#0C63BE);--red:#C13A26;--redsoft:rgba(193,58,38,.12);--green:#16814A;--greensoft:rgba(31,166,92,.13);--amber:#D98A1C;--ambersoft:rgba(217,138,28,.14);--blue:#4E7C86;--bluesoft:rgba(78,124,134,.14);--shadow:0 1px 2px rgba(20,22,28,.06)}

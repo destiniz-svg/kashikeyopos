@@ -618,7 +618,7 @@ function auditSaleMoney(sale, ctx) {
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
 }
 
-const UIFIX_JS = "(function(){\n/* Two things the operator could not see.\n *\n * 1. Broken product images. The starter menu ships remote photo URLs, and the\n *    tile decides whether it has an image at render time with no error path —\n *    so on a metered or dropped connection the whole grid became the browser's\n *    broken-image glyph, on the register and on the diner's phone alike. The\n *    app already has a lettered fallback tile; it just never got used. On an\n *    image error we draw that fallback in place.\n *\n * 2. No loading state anywhere: not on boot, not while a modal action ran, not\n *    on Charge or Confirm or Close day. The only recourse was to tap again. A\n *    thin progress bar shows whenever a write is in flight. */\nvar PAL=['#C1492A','#B07714','#1FA65C','#0E6EC6','#C43A78','#7A5AF8','#0F766E'];\nfunction initial(el){\n  var alt=el.getAttribute('alt')||'';\n  var t=(alt||el.getAttribute('data-name')||'').trim();\n  if(!t){var card=el.closest('div');var txt=card?(card.textContent||'').trim():'';t=txt;}\n  return (t.charAt(0)||'?').toUpperCase();\n}\nfunction swap(el){\n  if(el.getAttribute('data-fellback'))return;\n  el.setAttribute('data-fellback','1');\n  var ch=initial(el);\n  var code=0;for(var i=0;i<ch.length;i++)code+=ch.charCodeAt(i);\n  var bg=PAL[code%PAL.length];\n  var box=document.createElement('div');\n  box.setAttribute('aria-hidden','true');\n  box.style.cssText='width:100%;height:100%;display:grid;place-items:center;background:'+bg+'22';\n  var glyph=document.createElement('div');\n  glyph.style.cssText='width:52px;height:52px;border-radius:15px;background:'+bg+';color:#fff;display:grid;place-items:center;font-weight:800;font-size:23px';\n  glyph.textContent=ch;\n  box.appendChild(glyph);\n  el.style.display='none';\n  if(el.parentNode)el.parentNode.insertBefore(box,el);\n}\ndocument.addEventListener('error',function(ev){\n  var el=ev.target;\n  if(el&&el.tagName==='IMG')swap(el);\n},true);\n\nvar bar=null,inflight=0,hideT=0;\nfunction show(){\n  if(!bar){\n    bar=document.createElement('div');\n    bar.setAttribute('aria-hidden','true');\n    bar.style.cssText='position:fixed;top:0;left:0;height:3px;width:0;z-index:99998;background:currentColor;color:#C1492A;transition:width .25s ease,opacity .3s;pointer-events:none';\n    document.body.appendChild(bar);\n  }\n  clearTimeout(hideT);\n  bar.style.opacity='1';\n  bar.style.width='72%';\n}\nfunction done(){\n  if(!bar)return;\n  bar.style.width='100%';\n  hideT=setTimeout(function(){if(bar){bar.style.opacity='0';bar.style.width='0';}},320);\n}\nvar of=window.fetch;\nif(typeof of==='function'){\n  window.fetch=function(input,init){\n    var url='';try{url=(typeof input==='string')?input:((input&&input.url)||'');}catch(e){}\n    var method='GET';try{method=String((init&&init.method)||(input&&input.method)||'GET').toUpperCase();}catch(e){}\n    var track=(method!=='GET'&&url.indexOf('/api/')===0);\n    if(track){inflight++;show();}\n    var p=of.apply(this,arguments);\n    if(track){\n      var fin=function(){inflight=Math.max(0,inflight-1);if(!inflight)done();};\n      try{p.then(fin,fin);}catch(e){fin();}\n    }\n    return p;\n  };\n}\n})();\n";
+const UIFIX_JS = '(function(){\n/* Two things the operator could not see.\n *\n * 1. Broken product images. The starter menu ships remote photo URLs, and the\n *    tile decides whether it has an image at render time with no error path —\n *    so on a metered or dropped connection the whole grid became the browser\'s\n *    broken-image glyph, on the register and on the diner\'s phone alike. The\n *    app already has a lettered fallback tile; it just never got used. On an\n *    image error we draw that fallback in place.\n *\n * 2. No loading state anywhere: not on boot, not while a modal action ran, not\n *    on Charge or Confirm or Close day. The only recourse was to tap again. A\n *    thin progress bar shows whenever a write is in flight. */\nvar PAL=[\'#C1492A\',\'#B07714\',\'#1FA65C\',\'#0E6EC6\',\'#C43A78\',\'#7A5AF8\',\'#0F766E\'];\nfunction initial(el){\n  var alt=el.getAttribute(\'alt\')||\'\';\n  var t=(alt||el.getAttribute(\'data-name\')||\'\').trim();\n  if(!t){var card=el.closest(\'div\');var txt=card?(card.textContent||\'\').trim():\'\';t=txt;}\n  return (t.charAt(0)||\'?\').toUpperCase();\n}\nfunction swap(el){\n  if(el.getAttribute(\'data-fellback\'))return;\n  /* An unresolved template binding ("{{ d.src }}") is not a missing photo — it\n     is a slot with no data yet. Hide it rather than invent a letter tile. */\n  var raw=el.getAttribute(\'src\')||\'\';\n  if(raw.indexOf(\'{{\')>=0||raw.indexOf(\'%7B%7B\')>=0){el.setAttribute(\'data-fellback\',\'1\');el.style.display=\'none\';return;}\n  el.setAttribute(\'data-fellback\',\'1\');\n  var ch=initial(el);\n  var code=0;for(var i=0;i<ch.length;i++)code+=ch.charCodeAt(i);\n  var bg=PAL[code%PAL.length];\n  var box=document.createElement(\'div\');\n  box.setAttribute(\'aria-hidden\',\'true\');\n  box.style.cssText=\'width:100%;height:100%;display:grid;place-items:center;background:\'+bg+\'22\';\n  var glyph=document.createElement(\'div\');\n  glyph.style.cssText=\'width:52px;height:52px;border-radius:15px;background:\'+bg+\';color:#fff;display:grid;place-items:center;font-weight:800;font-size:23px\';\n  glyph.textContent=ch;\n  box.appendChild(glyph);\n  el.style.display=\'none\';\n  if(el.parentNode)el.parentNode.insertBefore(box,el);\n}\ndocument.addEventListener(\'error\',function(ev){\n  var el=ev.target;\n  if(el&&el.tagName===\'IMG\')swap(el);\n},true);\n\nvar bar=null,inflight=0,hideT=0;\nfunction show(){\n  if(!bar){\n    bar=document.createElement(\'div\');\n    bar.setAttribute(\'aria-hidden\',\'true\');\n    bar.style.cssText=\'position:fixed;top:0;left:0;height:3px;width:0;z-index:99998;background:currentColor;color:#C1492A;transition:width .25s ease,opacity .3s;pointer-events:none\';\n    document.body.appendChild(bar);\n  }\n  clearTimeout(hideT);\n  bar.style.opacity=\'1\';\n  bar.style.width=\'72%\';\n}\nfunction done(){\n  if(!bar)return;\n  bar.style.width=\'100%\';\n  hideT=setTimeout(function(){if(bar){bar.style.opacity=\'0\';bar.style.width=\'0\';}},320);\n}\nvar of=window.fetch;\nif(typeof of===\'function\'){\n  window.fetch=function(input,init){\n    var url=\'\';try{url=(typeof input===\'string\')?input:((input&&input.url)||\'\');}catch(e){}\n    var method=\'GET\';try{method=String((init&&init.method)||(input&&input.method)||\'GET\').toUpperCase();}catch(e){}\n    var track=(method!==\'GET\'&&url.indexOf(\'/api/\')===0);\n    if(track){inflight++;show();}\n    var p=of.apply(this,arguments);\n    if(track){\n      var fin=function(){inflight=Math.max(0,inflight-1);if(!inflight)done();};\n      try{p.then(fin,fin);}catch(e){fin();}\n    }\n    return p;\n  };\n}\n})();\n';
 
 const A11Y_JS = '(function(){\n/* Focus containment and Escape. The PIN lock and every modal were plain\n * overlays: pointer clicks were blocked by the backdrop, but Tab walked\n * straight past them into the locked till, so a counter tablet with a USB\n * barcode scanner or keyboard bypassed the PIN gate entirely. Nothing closed\n * on Escape either, and backdrop-dismiss was unsignposted.\n *\n * Implemented as a document-level shim rather than per-modal wiring so it\n * covers the overlays the design tool renders, present and future: anything\n * position:fixed with inset:0 and a high z-index is treated as modal, topmost\n * wins, and focus is kept inside it. */\nvar SEL=\'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])\';\nfunction overlays(){\n  var out=[];\n  var all=document.querySelectorAll(\'div\');\n  for(var i=0;i<all.length;i++){\n    var el=all[i];\n    /* React serialises inline styles WITH spaces ("position: fixed"), so match\n       on the computed style, not on the attribute text. */\n    var cs=null;try{cs=getComputedStyle(el);}catch(e){}\n    if(!cs)continue;\n    if(cs.position!==\'fixed\')continue;\n    if(cs.display===\'none\'||cs.visibility===\'hidden\')continue;\n    var r=el.getBoundingClientRect();\n    if(r.width<window.innerWidth*0.5||r.height<window.innerHeight*0.5)continue;\n    var z=parseInt(cs.zIndex,10)||0;\n    if(z<30)continue;\n    if(!el.querySelector(SEL))continue;\n    out.push({el:el,z:z});\n  }\n  out.sort(function(a,b){return a.z-b.z;});\n  return out;\n}\nfunction top(){var o=overlays();return o.length?o[o.length-1].el:null;}\ndocument.addEventListener(\'keydown\',function(ev){\n  var t=top();\n  if(!t)return;\n  if(ev.key===\'Escape\'){\n    /* The lock is not dismissible — that is the point of it. */\n    if(t.getAttribute(\'data-modal\')===\'lock\')return;\n    var close=t.querySelector(\'[aria-label="Close"],[data-close]\');\n    if(close){ev.preventDefault();close.click();}\n    return;\n  }\n  if(ev.key!==\'Tab\')return;\n  var f=[].slice.call(t.querySelectorAll(SEL)).filter(function(el){\n    return el.offsetWidth>0||el.offsetHeight>0||el===document.activeElement;});\n  if(!f.length)return;\n  var first=f[0],last=f[f.length-1];\n  if(!t.contains(document.activeElement)){ev.preventDefault();first.focus();return;}\n  if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}\n  else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}\n},true);\n/* When an overlay appears, move focus into it. */\nfunction claim(){\n  var t=top();\n  if(!t)return;\n  if(t.contains(document.activeElement))return;\n  var f=t.querySelector(SEL);\n  if(f){try{f.focus();}catch(e){}}\n}\ntry{new MutationObserver(function(){clearTimeout(claim._t);claim._t=setTimeout(claim,120);})\n  .observe(document.documentElement,{childList:true,subtree:true});}catch(e){}\nsetTimeout(claim,800);\n})();\n';
 
@@ -2901,6 +2901,20 @@ if (fs.existsSync(protoFile)) {
          only requireAppSession stood in front of it. On a shared tablet left
          signed in, any staff member could simply navigate there. */
       if (minRank && appRankOf(req.appRole) < minRank) return res.redirect(302, "/app");
+      /* Not every request under this prefix wants the page. Five unresolved
+         template bindings ship in the markup as img src values ("{{ d.src }}"
+         and friends); the browser dutifully requests them, this catch-all
+         matched, and each one returned ~460 KB of register HTML AND re-ran the
+         whole data collection — two sequential scans of the sales table apiece.
+         3.0 MB transferred for a 0.6 MB page and six times the database work
+         per boot. A sub-resource request gets a 404, which is what it is. */
+      const dest = String(req.get("Sec-Fetch-Dest") || "");
+      const accept = String(req.get("Accept") || "");
+      const wantsPage = req.method === "GET" && (dest === "" || dest === "document" || dest === "iframe") &&
+        (accept === "" || accept.includes("text/html") || accept.includes("*/*"));
+      if (!wantsPage || /\.[a-z0-9]{2,5}$/i.test(req.path) || /[{}]/.test(decodeURIComponent(req.path))) {
+        return res.status(404).type("text/plain").send("not found");
+      }
       let menu = []; const adminData = {}; const regData = {}; let token = null;
       const menuImg = {}; // art-<id> → product photo, only for photo-rendering surfaces
       const isRegister = file === "index.html";
@@ -2965,6 +2979,15 @@ if (fs.existsSync(protoFile)) {
                 "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 3000", [orgId]))
                 .rows.map((r) => r.data || {});
               const saleRows = rawSaleRows.filter((s) => !s.type || s.type === "sale");
+              /* The cap is real: at 3000 rows a high-volume outlet's quarter and
+                 year figures are the most recent 3000 sales, not the period.
+                 The disk-spilling sort behind this is gone (the ordering is
+                 index-backed now), but the truncation is not — so say so rather
+                 than quietly under-report. Aggregating the long ranges in SQL is
+                 the proper fix and a larger change than this. */
+              adminData.salesTruncated = rawSaleRows.length >= 3000;
+              adminData.salesWindowFrom = rawSaleRows.length ? Number(
+                rawSaleRows[rawSaleRows.length - 1].t || rawSaleRows[rawSaleRows.length - 1].at || 0) : 0;
               const qtyOf = (s) => (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0);
               const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
               const today = saleRows.filter((s) => (Number(s.at) || 0) >= startOfDay.getTime());
@@ -3221,7 +3244,12 @@ if (fs.existsSync(protoFile)) {
            of inline styles, so it also covers controls added later. Elements
            that opt out (`data-tap="tight"`) keep their own size. */
         `button:not([data-tap="tight"]),[role="button"]:not([data-tap="tight"]){min-height:44px}` +
-        `input:not([type=checkbox]):not([type=radio]):not([data-tap="tight"]),select:not([data-tap="tight"]){min-height:44px}</style>`;
+        `input:not([type=checkbox]):not([type=radio]):not([data-tap="tight"]),select:not([data-tap="tight"]){min-height:44px}` +
+        /* Named font families fall back to real system faces rather than to
+           the browser's default serif when the remote stylesheet has not
+           arrived (or never will). */
+        `@font-face{font-family:'Bricolage Grotesque';src:local('Bricolage Grotesque'),local('Montserrat'),local('Inter'),local('Segoe UI'),local('Roboto'),local('Helvetica Neue');font-display:swap}` +
+        `@font-face{font-family:'Inter';src:local('Inter'),local('Segoe UI'),local('Roboto'),local('Helvetica Neue'),local('Arial');font-display:swap}</style>`;
       // The prototype's top-nav icons are injected via dangerouslySetInnerHTML,
       // which the design-tool runtime doesn't populate in this served setup, so
       // the bar shows labels with empty icon slots. This self-healing script
@@ -3314,8 +3342,18 @@ if (fs.existsSync(protoFile)) {
         "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
       return d;
     });
+    /* Every terminal pulled the FULL snapshot every five seconds — 186 KB of
+       it, most of it the unchanged catalogue — and then JSON.stringify'd the
+       whole thing twice to decide nothing had changed. At six terminals that is
+       roughly 1.4 MB a minute per outlet, often on mobile data. The payload is
+       still computed (cheap now that it is indexed), but an unchanged one goes
+       back as a bodiless 304. */
+    const body = JSON.stringify(data);
+    const etag = '"' + crypto.createHash("sha1").update(body).digest("base64").slice(0, 22) + '"';
     res.set("Cache-Control", "no-store");
-    res.json(data);
+    res.set("ETag", etag);
+    if (String(req.get("If-None-Match") || "") === etag) return res.status(304).end();
+    res.type("application/json").send(body);
   }));
   /* Till lock: verify a staff PIN server-side.
      The register used to compare the typed PIN against a hash embedded in the
