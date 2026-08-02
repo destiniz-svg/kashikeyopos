@@ -76,6 +76,31 @@ button:focus:not(:focus-visible),a:focus:not(:focus-visible),input:focus:not(:fo
 button,a[role="button"]{cursor:pointer}
 button:active:not(:disabled){transform:scale(.97)}
 button[disabled],button:disabled{cursor:not-allowed}
+/* Scroll affordance for the horizontal chip and card rows.
+
+   The category, sub-category and parked-bill rows all scroll sideways, and
+   several of them set scrollbar-width:none — so on a counter tablet there was
+   nothing at all to say more content existed off-screen. Staff scrolled the
+   ones they already knew about and never found the rest.
+
+   A sticky pseudo-element pinned to the row's end edge, painting a short fade
+   in the row's own backdrop colour. Because it is sticky it stays at the edge
+   of the scrollport while the chips slide under it, so the last visible chip
+   is always cut off mid-fade — the conventional "there is more this way" cue.
+   It costs no JavaScript and needs no overflow measurement: when a row does
+   NOT overflow, the pseudo-element sits past the last chip over empty
+   background, where a fade from the background to transparent is invisible.
+
+   Deliberately end-edge only. A matching start-edge fade was tried and
+   dropped: it has no way to know it is at scroll position zero, so it dimmed
+   the first chip of every row permanently, including rows with nothing to
+   scroll. --krowbg is the row's backdrop; set it inline where that is not the
+   app background. Chips are opaque, so this has to paint on top — the
+   background-attachment:local scroll-shadow trick renders underneath them and
+   is invisible here. */
+.krow::after{content:'';position:sticky;inset-inline-end:0;flex:none;align-self:stretch;
+  width:30px;margin-inline-start:-30px;pointer-events:none;z-index:2;
+  background:linear-gradient(to left,var(--krowbg,var(--bg)),transparent)}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style>
 <meta name="ext-resource-dependency" content="artwork/gulha.png" data-resource-id="art-gulha">
@@ -272,7 +297,13 @@ button[disabled],button:disabled{cursor:not-allowed}
           <button onClick="{{ d.tap }}" style="flex:1;border:1px solid {{ d.bc }};background:{{ d.bg }};color:{{ d.co }};border-radius:13px;padding:11px 4px;font-size:13px;font-weight:800;cursor:pointer;font-variant-numeric:tabular-nums" style-active="transform:scale(.94)">{{ d.label }}</button>
         </sc-for>
       </div>
-      <button onClick="{{ removeDisc }}" style="width:100%;border:0;border-radius:14px;padding:14px;background:var(--coral);color:var(--coralink);font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">{{ L.removeDiscount }}</button>
+      <!-- This slot used to hold a full-width coral "Remove discount". Every
+           other modal in the app puts its confirm action here, so the one
+           button that undid the cashier's work was sitting exactly where the
+           muscle-memory "Done" button lives — and it was redundant, because
+           the "None" chip above already clears the discount and shows itself
+           as selected when there isn't one. It is a plain dismiss now. -->
+      <button onClick="{{ closeDisc }}" style="width:100%;border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--sur2);color:var(--ink);font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">{{ L.cancel }}</button>
     </div>
   </sc-if>
   <sc-if value="{{ rmShow }}" hint-placeholder-val="{{ false }}">
@@ -385,7 +416,7 @@ button[disabled],button:disabled{cursor:not-allowed}
               <div style="flex:1"></div>
               <span style="font-size:10.5px;color:var(--ink2);font-weight:600">{{ L.billsHint }}</span>
             </div>
-            <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:3px">
+            <div class="krow" style="display:flex;gap:10px;overflow-x:auto;padding-bottom:3px">
               <sc-for list="{{ parkedBills }}" as="pb" hint-placeholder-count="3">
                 <div onClick="{{ pb.tap }}" style="position:relative;flex:none;width:148px;border:{{ pb.cardBw }} solid {{ pb.cardBd }};background:var(--sur);border-radius:12px;padding:8px 10px 7px;cursor:pointer;overflow:hidden;transition:transform .12s,border-color .18s;animation:rise .3s both" style-hover="transform:translateY(-2px)" style-active="transform:scale(.97)">
                   <span style="position:absolute;top:0;inset-inline-start:0;width:4px;height:100%;background:{{ pb.accent }}"></span>
@@ -417,7 +448,7 @@ button[disabled],button:disabled{cursor:not-allowed}
             <span style="flex:none;font-size:12.5px;font-weight:800;white-space:nowrap">Open shift →</span>
           </button>
         </sc-if>
-        <div style="--catrow:1;display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;padding-bottom:2px">
+        <div class="krow" style="--catrow:1;display:flex;gap:8px;align-items:center;overflow-x:auto;scrollbar-width:none;margin-bottom:14px;padding-bottom:2px">
           <sc-if value="{{ searchClosed }}" hint-placeholder-val="{{ true }}"><button onClick="{{ openSearch }}" title="{{ L.search }}" style="flex:none;width:36px;height:36px;border:1px solid var(--line);background:var(--sur);border-radius:11px;cursor:pointer;display:grid;place-items:center;color:var(--ink2)" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.94)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><line x1="10.6" y1="10.6" x2="14" y2="14"/></svg></button></sc-if>
           <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:7px;flex:1;min-width:150px;max-width:280px;border:1px solid var(--coral);background:var(--sur);border-radius:11px;padding:0 10px;height:36px;animation:fade .15s"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="color:var(--ink3);flex:none"><circle cx="7" cy="7" r="4.6"/><line x1="10.6" y1="10.6" x2="14" y2="14"/></svg><input autofocus="true" placeholder="{{ L.search }}" value="{{ query }}" onChange="{{ setQuery }}" onBlur="{{ closeSearchIfEmpty }}" dir="auto" style="flex:1;min-width:0;border:0;background:none;color:var(--ink);font-size:12.5px;outline:none"><button onClick="{{ clearSearch }}" style="flex:none;border:0;background:none;color:var(--ink3);font-size:15px;line-height:1;cursor:pointer;padding:2px" style-hover="color:var(--red)">×</button></div></sc-if>
           <sc-if value="{{ searchOpen }}" hint-placeholder-val="{{ false }}"><button onClick="{{ scanBarcode }}" title="Scan barcode" style="flex:none;display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;border:1px solid var(--line);background:var(--sur);border-radius:11px;cursor:pointer;color:var(--ink);font-size:12px;font-weight:700;white-space:nowrap;animation:fade .15s" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.95)"><svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V4a2 2 0 0 1 2-2h2M12 2h2a2 2 0 0 1 2 2v2M16 12v2a2 2 0 0 1-2 2h-2M6 16H4a2 2 0 0 1-2-2v-2"/><line x1="5" y1="9" x2="13" y2="9"/></svg>{{ L.scanLbl }}</button></sc-if>
@@ -429,7 +460,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </sc-for></sc-if>
         </div>
         <sc-if value="{{ showSubRow }}" hint-placeholder-val="{{ false }}">
-          <div style="--subrow:1;display:flex;gap:7px;align-items:center;overflow-x:auto;scrollbar-width:none;margin:-4px 0 14px;padding-bottom:2px;animation:fade .15s">
+          <div class="krow" style="--subrow:1;display:flex;gap:7px;align-items:center;overflow-x:auto;scrollbar-width:none;margin:-4px 0 14px;padding-bottom:2px;animation:fade .15s">
             <sc-for list="{{ subChips }}" as="su" hint-placeholder-count="4">
               <button onClick="{{ su.tap }}" style="flex:none;border:1px solid var(--line);border-radius:99px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap;background:{{ su.bg }};color:{{ su.co }};border-color:{{ su.bc }}" style-active="transform:scale(.95)">{{ su.label }}</button>
             </sc-for>
@@ -657,13 +688,13 @@ button[disabled],button:disabled{cursor:not-allowed}
                     <span style="flex:1;font-size:12.5px;color:#B7A892;font-weight:500">{{ L.searchDish }}</span>
                     <svg width="16" height="16" viewBox="0 0 16 16" style="color:#C1492A"><path d="M2 3.5h12l-4.5 5.2V13l-3 1.5V8.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
                   </div>
-                  <div style="display:flex;gap:8px;overflow-x:auto;margin-bottom:15px;padding-bottom:2px">
+                  <div class="krow" style="--krowbg:#FFFFFF;display:flex;gap:8px;overflow-x:auto;margin-bottom:15px;padding-bottom:2px">
                     <sc-for list="{{ qrCatChips }}" as="c" hint-placeholder-count="4">
                       <button onClick="{{ c.tap }}" style="flex:none;display:flex;align-items:center;gap:7px;border:1px solid {{ c.bc }};background:{{ c.bg }};color:{{ c.co }};border-radius:14px;padding:5px 13px 5px 5px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .15s" style-active="transform:scale(.95)"><span style="width:26px;height:26px;flex:none;border-radius:8px;background:{{ c.iconBg }};display:grid;place-items:center;font-size:14px;line-height:1">{{ c.emoji }}</span>{{ c.label }}</button>
                     </sc-for>
                   </div>
                   <sc-if value="{{ qrShowSub }}" hint-placeholder-val="{{ false }}">
-                    <div style="display:flex;gap:7px;overflow-x:auto;margin:-8px 0 15px;padding-bottom:2px">
+                    <div class="krow" style="--krowbg:#FFFFFF;display:flex;gap:7px;overflow-x:auto;margin:-8px 0 15px;padding-bottom:2px">
                       <sc-for list="{{ qrSubChips }}" as="su" hint-placeholder-count="4">
                         <button onClick="{{ su.tap }}" style="flex:none;border:1px solid {{ su.bc }};background:{{ su.bg }};color:{{ su.co }};border-radius:99px;padding:5px 13px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .15s" style-active="transform:scale(.95)">{{ su.label }}</button>
                       </sc-for>
@@ -695,7 +726,10 @@ button[disabled],button:disabled{cursor:not-allowed}
                   <div style="position:relative;width:100%;height:236px">
                     <img src="{{ qrDetail.src }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block">
                     <button onClick="{{ qrBackMenu }}" style="position:absolute;top:14px;left:14px;width:38px;height:38px;border-radius:99px;background:#FFF;border:0;display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow);color:#2E2418" style-active="transform:scale(.9)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10,3 5,8 10,13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-                    <button style="position:absolute;top:14px;right:14px;width:38px;height:38px;border-radius:99px;background:#FFF;border:0;display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow);color:#2E2418"><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="4" cy="9" r="1.5" fill="currentColor"/><circle cx="9" cy="9" r="1.5" fill="currentColor"/><circle cx="14" cy="9" r="1.5" fill="currentColor"/></svg></button>
+                    <!-- A three-dot overflow button used to sit here with no
+                         handler and no menu behind it: it took taps and did
+                         nothing. Removed rather than given an invented menu —
+                         everything the sheet offers is already on the sheet. -->
                   </div>
                   <div style="background:#FFFFFF;border-radius:24px 24px 0 0;margin-top:-22px;position:relative;padding:20px 18px 8px">
                     <div style="display:flex;align-items:center;gap:6px"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:#2E2418">{{ qrDetail.name }}</span><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#C1492A"/><polyline points="5,9.3 8,12 13,6" fill="none" stroke="#FFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -2473,8 +2507,17 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     const mod=s.mod;const modMods=mod?(mod.mods||[]).filter(x=>s.modSel[x.id]):[];
     const modUnit=mod?mod.price+modMods.reduce((a,x)=>a+x.price,0):0;
     const net=s.syncing?{label:me.t('syncing')+(s.outbox?' '+s.outbox:'')+'…',bg:'var(--ambersoft)',c:'var(--amber)',anim:'spin 1s linear infinite'}:s.outbox?{label:s.outbox+' '+me.t('outboxWarn'),bg:'var(--ambersoft)',c:'var(--amber)',anim:'pulse 1.6s infinite'}:s.online?{label:me.t('online'),bg:'var(--greensoft)',c:'var(--green)',anim:'pulse 1.6s ease-in-out infinite'}:{label:me.t('offline'),bg:'var(--ambersoft)',c:'var(--amber)',anim:'pulse 1.6s infinite'};
-    const methods=[['cash','cash'],['card','card'],['bml','bml'],['transfer','transfer'],['tab','ontab']].map(([id,k])=>({label:me.t(k),tap:()=>me.setState(id==='tab'?{method:id,tender:0,tabPickOpen:true}:{method:id,tender:0}),bg:s.method===id?'var(--coralsoft)':'var(--sur)',bc:s.method===id?'var(--coral)':'var(--line)',ic:s.method===id?'var(--coral)':'var(--ink2)'}));
+    /* Ringing up a cash sale took a tap more than it needed to. Choosing Cash
+       set the tender to zero, so Confirm stayed disabled behind "Enter the
+       amount received" until the cashier also tapped a tender chip — even for
+       the common case where the customer hands over the exact amount or the
+       cashier is not counting change on the screen at all. Cash now starts at
+       the amount due, which is what the sale records either way (the tender is
+       a change-calculation aid, never a stored figure), and the note chips are
+       still there for when there IS change to work out. Tile, Charge, Cash,
+       Confirm — four taps, down from five. */
     const due=t.total;
+    const methods=[['cash','cash'],['card','card'],['bml','bml'],['transfer','transfer'],['tab','ontab']].map(([id,k])=>({label:me.t(k),tap:()=>me.setState(id==='tab'?{method:id,tender:0,tabPickOpen:true}:{method:id,tender:(id==='cash'?due:0)}),bg:s.method===id?'var(--coralsoft)':'var(--sur)',bc:s.method===id?'var(--coral)':'var(--line)',ic:s.method===id?'var(--coral)':'var(--ink2)'}));
     const tenders=[{v:due,label:me.t('exact')},{v:Math.ceil(due/50)*50,label:me.cur()+' '+Math.ceil(due/50)*50},{v:Math.ceil(due/100)*100,label:me.cur()+' '+Math.ceil(due/100)*100},{v:Math.ceil(due/500)*500,label:me.cur()+' '+Math.ceil(due/500)*500}].filter((x,i,a)=>a.findIndex(y=>y.v===x.v)===i).map(tn=>({label:tn.label,tap:()=>me.setState({tender:tn.v}),bg:s.tender===tn.v?'var(--ink)':'var(--sur)',co:s.tender===tn.v?'var(--bg)':'var(--ink)',bc:s.tender===tn.v?'var(--ink)':'var(--line)'}));
     /* !s.payDone stops a second tap: finishPay mints its id from the CAPTURED
        state, so two taps before React flushes produced two distinct ids and two
@@ -2550,7 +2593,7 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
       openBillDisc:()=>me.setState({discOpen:'bill'}),
       billDiscLbl:s.discountPct>0?(me.t('billDiscBtn')+' '+s.discountPct+'%'):('+ '+me.t('billDiscBtn')),
       billDiscBg:s.discountPct>0?'var(--coral)':'var(--sur)',billDiscC:s.discountPct>0?'var(--coralink)':'var(--coral)',billDiscBc:'var(--coral)',
-      discShow:s.discOpen!=null,discTitle:s.discOpen==='bill'?me.t('billDiscTitle'):me.t('lineDiscTitle'),discNote:s.perms.discounts[me.roleIdx()]?me.t('discMgrNote'):me.t('discStaffNote'),closeDisc:()=>me.setState({discOpen:null}),removeDisc:()=>me.applyDisc(0),
+      discShow:s.discOpen!=null,discTitle:s.discOpen==='bill'?me.t('billDiscTitle'):me.t('lineDiscTitle'),discNote:s.perms.discounts[me.roleIdx()]?me.t('discMgrNote'):me.t('discStaffNote'),closeDisc:()=>me.setState({discOpen:null}),
       discOpts:[0,5,10,15,20].map(d=>{const cur=s.discOpen==='bill'?(s.discountPct||0):(s.discOpen!=null&&s.cart[s.discOpen]?(s.cart[s.discOpen].disc||0):0);const on=cur===d;return {label:d===0?me.t('noDiscount'):d+'%',bg:on?'var(--coral)':'var(--sur2)',co:on?'var(--coralink)':'var(--ink)',bc:on?'var(--coral)':'var(--line)',tap:()=>me.applyDisc(d)};}),
       rmShow:s.rmOpen!=null,rmName:(s.rmOpen!=null&&s.cart[s.rmOpen])?me.itemName(me.MENU.find(x=>x.id===s.cart[s.rmOpen].id)):'',closeRm:()=>me.setState({rmOpen:null}),rmConfirm:()=>me.confirmRemove(),
       rmReasons:['rGuest','rKitchen','rStock','rOther'].map(k=>{const on=s.rmReason===k;return {label:me.t(k),bg:on?'var(--coral)':'var(--sur2)',co:on?'var(--coralink)':'var(--ink)',bc:on?'var(--coral)':'var(--line)',tap:()=>me.setState({rmReason:k})};}),
