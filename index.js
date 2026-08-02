@@ -707,6 +707,7 @@ async function resolveAppSession(req) {
      /api/inv role gate and back.html can enforce/branch on it. */
   req.appRole = payload.role || "owner";
   req.appStaff = payload.staff || null;
+  req.appRegister = payload.register || "R1";
   return payload.o;
 }
 /* App-session RBAC (audit B2): the /api/app2/* write endpoints previously
@@ -2448,11 +2449,16 @@ if (fs.existsSync(protoFile)) {
   };
   // Collect the register read-path payload (window.__ksReg) for an org. Shared
   // by the page inject (serveProto) and the live-refresh poll (/api/app2/pull).
-  const collectRegData = async (c, orgId) => {
+  const collectRegData = async (c, orgId, register) => {
     const out = {};
     const setRow = (await c.query(
       "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
-    out.storeP = liveStoreP(setRow ? setRow.data : {});
+    out.storeP = Object.assign(liveStoreP(setRow ? setRow.data : {}), {
+      // The till printed a hardcoded "R1" on receipts and a hardcoded "Malé"
+      // chip in its header; both now come from the session's real register and
+      // the outlet's own address.
+      register: register || "R1",
+    });
     out.recv = liveRegRecv((await c.query(
       "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows);
     out.salesLog = liveSalesLog((await c.query(
@@ -2477,6 +2483,21 @@ if (fs.existsSync(protoFile)) {
         total: Math.round(((o.items || []).reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty) || 1), 0) + (Number(o.fee) || 0))) / 100,
       }));
     const sd = (setRow && setRow.data) || {};
+    /* Delivery zones the outlet actually configured. The register used to carry a
+       hardcoded Malé/Hulhumalé/Villimalé table and add ITS fee to the bill, so
+       every store in the country charged Malé-area delivery. No zones configured
+       means no zone list and no fee — never an invented one. */
+    out.zones = (await c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='zones' AND deleted=false", [orgId])).rows
+      .map((r) => r.data || {})
+      .filter((z) => z.name)
+      .map((z) => ({ id: z.id || "", name: String(z.name), dv: z.dv || "", fee: (Number(z.fee) || 0) / 100, eta: z.eta || "" }));
+    /* Next receipt number for this register. The till used to start every new
+       store at 0047 with a hardcoded date, which breaks the sequential-numbering
+       requirement receipts are supposed to satisfy. */
+    const seqRow = await c.query(
+      "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId]);
+    out.nextSeq = (Number(seqRow.rows[0].n) || 0) + 1;
     out.catGroups = Array.isArray(sd.catGroups) ? sd.catGroups : [];
     out.catOrder = Array.isArray(sd.catOrder) ? sd.catOrder : [];
     /* Staff for the register's PIN lock (name, role, djb2-hashed pin) — the
@@ -2560,7 +2581,7 @@ if (fs.existsSync(protoFile)) {
                   : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
               }
             }
-            if (isRegister) Object.assign(regData, await collectRegData(c, orgId));
+            if (isRegister) Object.assign(regData, await collectRegData(c, orgId, req.appRegister));
             if (withAdmin) {
               const custRows = (await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
@@ -2894,7 +2915,7 @@ if (fs.existsSync(protoFile)) {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     const data = await withOrg(orgId, async (c) => {
-      const d = await collectRegData(c, orgId);
+      const d = await collectRegData(c, orgId, req.appRegister);
       // Live menu so add-on/price/hide/86/item edits from /admin2 reach an
       // already-open register without a reload.
       d.menu = liveMenu((await c.query(
@@ -3363,6 +3384,28 @@ if (fs.existsSync(protoFile)) {
         ref: scopeName + (out.backupId ? " · backup kept" : " · no backup"), requestId: req.id });
       res.json({ ok: true, backupId: out.backupId, scope, scopeName });
     } catch (e) { backupFailed(res, "reset", e); }
+  }));
+
+  /* Real scannable table QR codes. The admin used to render one decorative SVG
+     for every table — it encoded nothing, so an owner who printed them handed
+     guests images that don't scan. Generated from the outlet's actual portal
+     link. Degrades like the other optional integrations: without the `qrcode`
+     package the endpoint 503s and the UI shows the link instead of a dead
+     image. */
+  app.get("/api/app2/qr.svg", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    let QR = null;
+    try { QR = require("qrcode"); } catch (e) { return res.status(503).json({ error: "QR generation isn't available on this server." }); }
+    const org = (await withOrg(orgId, (c) => c.query("SELECT slug FROM orgs WHERE id=$1", [orgId]))).rows[0];
+    if (!org || !org.slug) return res.status(404).json({ error: "no portal link yet" });
+    const table = String(req.query.t || "").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 12);
+    const base = (process.env.PUBLIC_ORIGIN || (req.protocol + "://" + req.get("host")));
+    const link = base + "/?s=" + encodeURIComponent(org.slug) + (table ? "&t=" + encodeURIComponent(table) : "");
+    try {
+      const svg = await QR.toString(link, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+      res.set("Content-Type", "image/svg+xml").set("Cache-Control", "private, max-age=300").send(svg);
+    } catch (e) { recordError("qr.svg", e); res.status(500).json({ error: "Couldn't build that QR code." }); }
   }));
 
   // Add the starter menu on demand (the post-reset "add a menu" action). Clears

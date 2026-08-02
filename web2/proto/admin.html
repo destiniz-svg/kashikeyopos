@@ -461,7 +461,7 @@ button[disabled],button:disabled{cursor:not-allowed}
                 <div style="text-align:end;min-width:74px"><div style="font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--ink3)">PLATE COST</div><div style="font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">{{ r.costF }}</div></div>
                 <div style="text-align:end;min-width:74px"><div style="font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--ink3)">PRICE</div><div style="font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums">{{ r.priceF }}</div></div>
                 <div style="min-width:88px"><div style="display:flex;justify-content:space-between;font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--ink3)"><span>FOOD COST</span><span style="color:{{ r.fcC }}">{{ r.fcPct }}</span></div><div style="height:7px;border-radius:99px;background:var(--bg);overflow:hidden;margin-top:4px"><div style="height:100%;border-radius:99px;background:{{ r.fcC }};width:{{ r.fcW }}"></div></div></div>
-                <div style="display:flex;gap:6px;flex:none"><button onClick="{{ r.sell }}" title="Record a sale — deducts ingredients" style="border:1px solid var(--line2);border-radius:9px;padding:7px 12px;background:var(--card);color:var(--green);font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap" style-hover="background:var(--greensoft)" style-active="transform:scale(.94)">Sell −1</button><button onClick="{{ r.edit }}" style="border:1px solid var(--line2);border-radius:9px;padding:7px 12px;background:var(--card);color:var(--ink2);font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.94)">Edit recipe</button></div>
+                <div style="display:flex;gap:6px;flex:none"><button onClick="{{ r.edit }}" style="border:1px solid var(--line2);border-radius:9px;padding:7px 12px;background:var(--card);color:var(--ink2);font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.94)">Edit recipe</button></div>
               </div>
               <sc-if value="{{ r.expanded }}" hint-placeholder-val="{{ false }}"><div style="border-top:1px solid var(--line);background:var(--bg);padding:6px 15px 6px 40px">
                 <sc-for list="{{ r.lines }}" as="l" hint-placeholder-count="3"><div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px dashed var(--line)"><span style="font-size:12px;font-weight:700">{{ l.ing }}</span><span style="display:flex;gap:16px"><span style="font-size:12px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums">{{ l.qtyF }}</span><span style="font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;min-width:70px;text-align:end">{{ l.lineF }}</span></span></div></sc-for>
@@ -666,16 +666,16 @@ button[disabled],button:disabled{cursor:not-allowed}
           <sc-for list="{{ storeSubTabs }}" as="t" hint-placeholder-count="5"><button onClick="{{ t.tap }}" style="border:0;border-radius:8px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;background:{{ t.bg }};color:{{ t.co }};box-shadow:{{ t.sh }}" style-active="transform:scale(.96)">{{ t.label }}</button></sc-for>
         </div>
         <sc-if value="{{ swWebView }}" hint-placeholder-val="{{ true }}">
-          <div style="font-size:12px;font-weight:700;color:var(--ink2)">Every outlet gets a branded store at platto.cloud with zero commission.</div>
+          <div style="font-size:12px;font-weight:700;color:var(--ink2)">Every outlet gets a branded store at {{ portalHost }} with zero commission.</div>
           <div style="display:grid;grid-template-columns:{{ perfTwoCols }};gap:12px">
             <sc-for list="{{ outletStores }}" as="o" hint-placeholder-count="3"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 17px;box-shadow:var(--shadow)"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800">{{ o.n }}</div><div style="font-size:11.5px;color:var(--coral);font-weight:700">{{ o.url }}</div></div><span style="font-size:10px;font-weight:800;border-radius:999px;padding:4px 10px;background:{{ o.stBg }};color:{{ o.stC }}">{{ o.st }}</span></div><div style="font-size:11px;color:var(--ink2);font-weight:700;margin-bottom:12px;font-variant-numeric:tabular-nums">{{ o.visits }}</div><div style="display:flex;gap:8px"><button onClick="{{ o.open }}" style="flex:1;border:1px solid var(--line2);border-radius:9px;padding:8px;background:var(--card);color:var(--ink);font-size:11.5px;font-weight:800;cursor:pointer" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.96)">Preview</button><button onClick="{{ o.copy }}" style="flex:1;border:1px solid var(--line2);border-radius:9px;padding:8px;background:var(--card);color:var(--ink);font-size:11.5px;font-weight:800;cursor:pointer" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.96)">Copy link</button></div></div></sc-for>
           </div>
-          <div style="background:var(--greensoft);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:10px"><span style="width:8px;height:8px;border-radius:99px;background:var(--green);flex:none"></span><span style="font-size:11.5px;font-weight:700;color:var(--green)">0% commission — you keep every rufiyaa. platto.cloud hosting, SSL and updates included.</span></div>
+          <div style="background:var(--greensoft);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:10px"><span style="width:8px;height:8px;border-radius:99px;background:var(--green);flex:none"></span><span style="font-size:11.5px;font-weight:700;color:var(--green)">0% commission — you keep every rufiyaa. Hosting, SSL and updates included.</span></div>
         </sc-if>
         <sc-if value="{{ swQrView }}" hint-placeholder-val="{{ false }}">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><div style="font-size:12px;font-weight:700;color:var(--ink2);flex:1">Print QR codes for tables. Customers scan, browse, and order from their phone.</div><div style="display:flex;align-items:center;gap:6px"><span style="font-size:11px;font-weight:800;color:var(--ink2)">TABLES</span><button onClick="{{ qrLess }}" style="width:28px;height:28px;border:1px solid var(--line2);border-radius:8px;background:var(--card);color:var(--ink);font-size:15px;font-weight:800;cursor:pointer" style-active="transform:scale(.92)">−</button><span style="min-width:22px;text-align:center;font-size:13px;font-weight:800;font-variant-numeric:tabular-nums">{{ qrCount }}</span><button onClick="{{ qrMore }}" style="width:28px;height:28px;border:1px solid var(--line2);border-radius:8px;background:var(--card);color:var(--ink);font-size:15px;font-weight:800;cursor:pointer" style-active="transform:scale(.92)">+</button></div><button onClick="{{ dlAllQr }}" style="border:0;border-radius:10px;padding:9px 15px;background:var(--ink);color:var(--bg);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.96)">Download all</button></div>
           <div style="display:grid;grid-template-columns:{{ qrCols }};gap:12px">
-            <sc-for list="{{ qrTables }}" as="q" hint-placeholder-count="8"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:88px;height:88px;border-radius:10px;overflow:hidden;background:#fff;border:1px solid var(--line)" dangerouslySetInnerHTML="{{ q.qr }}"></div><span style="font-size:12px;font-weight:800">{{ q.label }}</span><button onClick="{{ q.dl }}" style="width:100%;border:1px solid var(--line2);border-radius:8px;padding:6px;background:var(--card);color:var(--coral);font-size:11px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)">Download</button></div></sc-for>
+            <sc-for list="{{ qrTables }}" as="q" hint-placeholder-count="8"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:8px"><img src="{{ q.qrSrc }}" alt="{{ q.label }} QR" style="width:88px;height:88px;border-radius:10px;background:#fff;border:1px solid var(--line);object-fit:contain"><span style="font-size:12px;font-weight:800">{{ q.label }}</span><button onClick="{{ q.dl }}" style="width:100%;border:1px solid var(--line2);border-radius:8px;padding:6px;background:var(--card);color:var(--coral);font-size:11px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)">Download</button></div></sc-for>
           </div>
         </sc-if>
         <sc-if value="{{ swPromoView }}" hint-placeholder-val="{{ false }}">
@@ -690,7 +690,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           <div style="display:grid;grid-template-columns:{{ perfTwoCols }};gap:14px;align-items:start">
             <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
               <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2);margin-bottom:12px">LOGO & DOMAIN</div>
-              <div style="display:flex;align-items:center;gap:14px"><div style="width:60px;height:60px;flex:none;border-radius:14px;overflow:hidden;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center"><sc-if value="{{ hasLogo }}" hint-placeholder-val="{{ false }}"><span style="display:contents">{{ logoImg }}</span></sc-if><sc-if value="{{ noLogo }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:24px;color:var(--ink3)">{{ logoInitial }}</span></sc-if></div><div style="flex:1;min-width:0"><div style="font-size:9.5px;font-weight:800;letter-spacing:.04em;color:var(--ink3)">CUSTOM DOMAIN</div><div style="font-size:14px;font-weight:800;margin-top:3px">order.kashikeyo.mv</div><div style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:10.5px;font-weight:800;background:var(--greensoft);color:var(--green);border-radius:99px;padding:3px 9px"><span style="width:6px;height:6px;border-radius:99px;background:currentColor"></span>SSL active</div></div></div>
+              <div style="display:flex;align-items:center;gap:14px"><div style="width:60px;height:60px;flex:none;border-radius:14px;overflow:hidden;background:var(--bg);border:1px solid var(--line);display:grid;place-items:center"><sc-if value="{{ hasLogo }}" hint-placeholder-val="{{ false }}"><span style="display:contents">{{ logoImg }}</span></sc-if><sc-if value="{{ noLogo }}" hint-placeholder-val="{{ true }}"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:24px;color:var(--ink3)">{{ logoInitial }}</span></sc-if></div><div style="flex:1;min-width:0"><div style="font-size:9.5px;font-weight:800;letter-spacing:.04em;color:var(--ink3)">CUSTOM DOMAIN</div><div style="font-size:14px;font-weight:800;margin-top:3px">{{ portalHost }}</div><div style="display:inline-flex;align-items:center;gap:5px;margin-top:6px;font-size:10.5px;font-weight:800;background:var(--greensoft);color:var(--green);border-radius:99px;padding:3px 9px"><span style="width:6px;height:6px;border-radius:99px;background:currentColor"></span>SSL active</div></div></div>
             </div>
             <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)">
               <div style="font-size:10px;font-weight:800;letter-spacing:.07em;color:var(--ink2);margin-bottom:12px">BRAND COLORS</div>
@@ -749,7 +749,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div></div></div>
         </sc-if>
         <sc-if value="{{ payGatewayView }}" hint-placeholder-val="{{ false }}">
-          <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span style="width:44px;height:44px;flex:none;border-radius:12px;background:var(--coralsoft);color:var(--coral);display:grid;place-items:center;font-family:'Bricolage Grotesque';font-weight:800;font-size:15px">BML</span><div style="flex:1;min-width:180px"><div style="font-size:14px;font-weight:800">BML Payment Gateway</div><div style="font-size:11.5px;color:var(--ink2);font-weight:700">2-day settlement · fraud protection enabled</div></div><span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;background:var(--greensoft);color:var(--green);border-radius:999px;padding:6px 12px"><span style="width:7px;height:7px;border-radius:99px;background:currentColor;animation:pulse 2s infinite"></span>Connected</span></div>
+          <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;flex-wrap:wrap"><span style="width:44px;height:44px;flex:none;border-radius:12px;background:var(--coralsoft);color:var(--coral);display:grid;place-items:center;font-family:'Bricolage Grotesque';font-weight:800;font-size:15px">BML</span><div style="flex:1;min-width:180px"><div style="font-size:14px;font-weight:800">BML Payment Gateway</div><div style="font-size:11.5px;color:var(--ink2);font-weight:700">{{ gwSub }}</div></div><span style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:800;background:{{ gwBg }};color:{{ gwC }};border-radius:999px;padding:6px 12px"><span style="width:7px;height:7px;border-radius:99px;background:currentColor"></span>{{ gwState }}</span></div>
           <div style="display:grid;grid-template-columns:{{ payCols }};gap:12px">
             <sc-for list="{{ gwStats }}" as="g" hint-placeholder-count="3"><div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 17px;box-shadow:var(--shadow)"><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2)">{{ g.label }}</div><div style="font-family:'Bricolage Grotesque';font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:6px">{{ g.v }}</div></div></sc-for>
           </div>
@@ -852,7 +852,7 @@ button[disabled],button:disabled{cursor:not-allowed}
         </sc-if>
         <sc-if value="{{ repGstView }}" hint-placeholder-val="{{ false }}">
           <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px;box-shadow:var(--shadow);max-width:520px">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;flex:1">GST return · Q3 (Jul–Sep)</div><span style="font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:99px;background:var(--bluesoft);color:var(--blue)">Draft · due 28 Oct</span></div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px"><div style="font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;flex:1">GST return · {{ gstPeriod }}</div><span style="font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:99px;background:var(--bluesoft);color:var(--blue)">Draft · due {{ gstDue }}</span></div>
             <div style="display:flex;flex-direction:column;gap:11px">
               <sc-for list="{{ gstRows }}" as="r" hint-placeholder-count="3"><div style="display:flex;justify-content:space-between;align-items:baseline;padding-top:10px;border-top:1px solid var(--line)"><span style="font-weight:700;color:var(--ink2)">{{ r.k }}</span><span style="font-family:'Bricolage Grotesque';font-weight:800;font-variant-numeric:tabular-nums">{{ r.v }}</span></div></sc-for>
             </div>
@@ -1005,7 +1005,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           <div style="font-size:12px;font-weight:700;color:var(--ink2)">Instant notifications for orders, low stock, payments, and authorization.</div>
           <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px 18px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px">
             <span style="width:34px;height:34px;flex:none;border-radius:10px;background:#229ED9;display:grid;place-items:center"><svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.9 4.3 2.9 11.6c-1 .4-1 1.8 0 2.1l4.7 1.5 1.8 5.6c.3.9 1.4 1 2 .3l2.5-2.7 4.7 3.4c.7.5 1.7.1 1.9-.7l3.3-15.4c.2-1-.7-1.8-1.6-1.4z"></path></svg></span>
-            <div style="flex:1"><div style="font-size:13px;font-weight:800">Bot connected · <span style="color:var(--coral)">@KashikeyoBot</span></div><div style="font-size:11.5px;color:var(--ink2);font-weight:600;margin-top:1px">3 managers subscribed · delivering in real time</div></div>
+            <div style="flex:1"><div style="font-size:13px;font-weight:800">{{ tgStateLbl }}</div><div style="font-size:11.5px;color:var(--ink2);font-weight:600;margin-top:1px">{{ tgSubLbl }}</div></div>
             <span style="width:8px;height:8px;border-radius:99px;background:var(--green);flex:none"></span>
           </div>
           <div style="background:var(--card);border:1px solid var(--line);border-radius:16px;padding:6px 18px;box-shadow:var(--shadow)">
@@ -1679,7 +1679,7 @@ class Component extends DCLogic {
       {id:'g_roshi',name:'Roshi & rice add-ons',applies:'Mas Huni, Garudhiya',opts:[['Extra roshi',5],['Extra rice',5],['Githeyo mirus',8],['Lime & mirus',0]]},
       {id:'g_coffee',name:'Hot drink options',applies:'Coffee, Kalhu Sai',opts:[['Iced',5],['Extra shot',8],['Less sugar',0],['Extra strong',0]]}
     ];
-    this.state={dark:false,acct:false,lang:'en',who:'naseem',range:'today',tab:'trend',navOpen:false,live:null,flags:{sales:[],credit:[],loaded:false},pnl:null,expiring:[],expLoaded:false,onb:null,poDraft:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuEdit:{},menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:(function(){var d={sales:0,inventory:0,proc:0,reports:0};try{var v=JSON.parse(localStorage.getItem('kashikeyo_admin_sub')||'null');if(v&&typeof v==='object')return Object.assign(d,v);}catch(e){}return d;})(),cfg:Object.assign({autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.cfg)||{})),taxRate:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.taxRate)||'ggst'),
+    this.state={dark:false,acct:false,lang:'en',range:'today',tab:'trend',navOpen:false,live:null,flags:{sales:[],credit:[],loaded:false},pnl:null,expiring:[],expLoaded:false,onb:null,poDraft:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuEdit:{},menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:(function(){var d={sales:0,inventory:0,proc:0,reports:0};try{var v=JSON.parse(localStorage.getItem('kashikeyo_admin_sub')||'null');if(v&&typeof v==='object')return Object.assign(d,v);}catch(e){}return d;})(),cfg:Object.assign({autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.cfg)||{})),taxRate:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.taxRate)||'ggst'),
       payOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.payOff)||{}),ntog:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.ntog)||{}),authOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.authOff)||{}),cfgStaffAdd:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]),seoOv:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.seo)||null),promoNew:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.promoAdd)||[]),chanCfg:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.channels)||null),
       store:Object.assign({name:'',legal:'',tin:'',greg:'',activity:'',phone:'',email:'',addr:'',island:'',atoll:'',footer:'',currency:'MVR',usdRate:'15.42',logo:null},(function(){var a=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.store)||{};var o={};if(a.name)o.name=a.name;o.currency=a.currency||'MVR';o.usdRate=String((Number(a.usdRate)||1542)/100);if(a.tin)o.tin=a.tin;if(a.address)o.addr=a.address;if(a.footer)o.footer=a.footer;if(a.phone)o.phone=a.phone;if(a.email)o.email=a.email;return o;})(),((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.store)||{})),
       an:{rev:0,orders:0,gpVal:0,aov:0,items:0},toast:null,
@@ -1808,7 +1808,7 @@ class Component extends DCLogic {
   _adm(){return (typeof window!=='undefined'&&window.__ksAdmin)||{};}
   exportReportCsv(){var rep=this._adm().reports||{};var rng=this.state.range;var d=rep[rng]||rep.today||{};var rows=[['KashikeyoPOS report'],['Range',rng],[],['Metric','Value'],['Revenue (MVR)',(d.rev!=null?d.rev:'')],['Orders',(d.orders!=null?d.orders:'')],['GST (MVR)',(d.gst!=null?d.gst:'')]];var pm=d.payMix||{};rows.push([],['Payment method','Amount (MVR)'],['Cash',pm.cash||0],['Card',pm.card||0],['Transfer',pm.transfer||0],['On tab',pm.tab||0]);if(Array.isArray(d.topItems)&&d.topItems.length){rows.push([],['Top item','Units']);d.topItems.forEach(function(t){rows.push([t.name||t.n||'',t.units||t.qty||t.u||0]);});}var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c==null?'':c).replace(/"/g,'""')+'"';}).join(',');}).join('\r\n');this._download('kashikeyo-report-'+rng+'.csv',csv,'text/csv');this.toast('CSV downloaded');}
   exportReportPdf(){this.toast('Opening print dialog…');setTimeout(function(){try{window.print();}catch(e){}},150);}
-  scheduleReport(){var cur=!!(this._adm().cfg&&this._adm().cfg.repSchedule);var on=!cur;this.saveCfg({repSchedule:on});this.toast(on?'Weekly email report scheduled':'Report schedule turned off');}
+  scheduleReport(){var cur=!!(this._adm().cfg&&this._adm().cfg.repSchedule);var on=!cur;this.saveCfg({repSchedule:on});this.toast(on?'Saved \u2014 automated delivery isn\u2019t running yet, export manually for now':'Report schedule turned off');}
   launchKiosk(){try{var slug=this._adm().slug||'';window.open(location.origin+'/?s='+encodeURIComponent(slug),'_blank');}catch(e){}this.toast('Guest ordering opened in a new tab');}
   addKitchenRoute(){var name=null;try{name=window.prompt('Routing rule — e.g. "Drinks → Bar station"','');}catch(e){}if(name==null)return;name=(name||'').trim();if(!name)return;var routes=((this._adm().cfg&&this._adm().cfg.kitchenRoutes)||[]).concat([name]);this.saveCfg({kitchenRoutes:routes});this.toast('Routing rule added · '+name);}
   newPayLink(){var on=!!(this._adm().cfg&&this._adm().cfg.bmlMerchant);this.toast(on?'Payment link created':'Connect a payment gateway in Payments → Gateway first.');}
@@ -1873,7 +1873,7 @@ class Component extends DCLogic {
   saveChannel(){const m=this.state.mdl;const chatId=(m.chatId||'').trim();if(!chatId){this.setMF('err','Enter a chat id or @channel');return;}const channels=Object.assign({},this.state.chanCfg||{},{telegramChatId:chatId});this.setState({chanCfg:channels,mdl:null});this.toast('Telegram connected');this.saveCfg({channels});this.testTelegram(chatId);}
   testTelegram(chatId){const me=this;try{fetch('/api/app2/notify/test',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({chatId:chatId||''})}).then(function(r){return r.json();}).then(function(j){me.toast((j&&j.message)||'Test sent');}).catch(function(){me.toast('Could not send test');});}catch(e){}}
   openPromo(){this.openMdl('promo',{pn:'',pcode:'',ptype:'',title:'New promotion'});}
-  savePromo(){const m=this.state.mdl;const n=(m.pn||'').trim();if(!n){this.setMF('err','Promotion name is required');return;}const rec={n,code:(m.pcode||'').trim().toUpperCase()||'PROMO',type:(m.ptype||'').trim()||'Discount',st:'Active',k:'ok',red:0,win:'Active'};const promoNew=[rec].concat(this.state.promoNew||[]);this.setState({promoNew,mdl:null});this.toast(n+' · promotion created');this.saveCfg({promoAdd:promoNew});}
+  savePromo(){const m=this.state.mdl;const n=(m.pn||'').trim();if(!n){this.setMF('err','Promotion name is required');return;}const rec={n,code:(m.pcode||'').trim().toUpperCase()||'PROMO',type:(m.ptype||'').trim()||'Discount',st:'Active',k:'ok',red:0,win:'Active'};const promoNew=[rec].concat(this.state.promoNew||[]);this.setState({promoNew,mdl:null});this.toast(n+' \u00b7 saved \u2014 not yet applied at the register');this.saveCfg({promoAdd:promoNew});}
   saveSupplier(){const m=this.state.mdl;const n=(m.sn||'').trim();if(!n){this.setMF('err','Supplier name is required');return;}const contact=(m.sc||'').trim(),cat=(m.scat||'').trim();const supNew=[{n,c:contact||'—',cat:cat||'General',terms:'—',out:0,k:'ok'}].concat(this.state.supNew||[]);this.setState({supNew,mdl:null});this.toast(n+' · supplier added');const isEmail=/@/.test(contact);const body={name:n,phone:isEmail?'':contact,email:isEmail?contact:'',notes:cat};try{fetch('/api/inv/suppliers',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
   openSettle(r){this.openMdl('settle',{cid:r.id,cn:r.n,bal:r.bal,balF:this.fm(r.bal),amt:String(r.bal),title:'Settle balance'});}
   setSettleAmt(v){const m=this.state.mdl;this.setState({mdl:Object.assign({},m,{amt:v,err:''})});}
@@ -1884,7 +1884,6 @@ class Component extends DCLogic {
   removeRecipeLine(i){const m=this.state.mdl;const lines=(m.lines||[]).filter((x,ix)=>ix!==i);this.setState({mdl:Object.assign({},m,{lines})});}
   setRecipeLineQty(i,v){const m=this.state.mdl;const q=parseFloat(v);const lines=(m.lines||[]).map((x,ix)=>ix===i?Object.assign({},x,{qty:isNaN(q)?0:q}):x);this.setState({mdl:Object.assign({},m,{lines})});}
   saveRecipe(){var me=this;const m=this.state.mdl;const lines=(m.lines||[]).filter(l=>l.qty>0);const recipes=Object.assign({},this.state.recipes,{[m.id]:lines});this.setState({recipes,mdl:null});this.toast('Recipe saved · '+((this.MENU.find(x=>x.id===m.id)||{}).en||''));var byName={};(this.state.stock||[]).forEach(function(x){if(x.id)byName[x.n]=x.id;});var apiLines=lines.map(function(l){return {ingredientId:byName[l.ing]||'',qty:Number(l.qty)};}).filter(function(l){return l.ingredientId;});try{fetch('/api/inv/recipes/'+encodeURIComponent(m.id),{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:apiLines})}).catch(function(){});}catch(e){}}
-  depleteRecipe(id,mult){const rec=this.state.recipes[id];const mi=this.MENU.find(x=>x.id===id);if(!rec||!rec.length){this.openRecipe(id);this.toast('Add ingredients to this recipe first');return;}const low=[];const stock=this.state.stock.map(x=>{const l=rec.find(r=>r.ing===x.n);if(!l)return x;const oh=Math.max(0,Math.round((x.oh-l.qty*(mult||1))*1000)/1000);if(oh<x.par*0.65)low.push(x.n);return Object.assign({},x,{oh});});this.setState({stock});this.toast((mi?mi.en:'Item')+' sold · '+rec.length+' ingredients auto-deducted'+(low.length?' · '+low[0]+' now low':''));}
   componentDidMount(){this.applyDoc();this.animate();this._rs=()=>this.setState({vw:window.innerWidth});window.addEventListener('resize',this._rs);this._readLive=()=>{try{const r=localStorage.getItem('kashikeyo_live');if(r===this._liveSig)return;this._liveSig=r;this.setState({live:r?JSON.parse(r):null});}catch(e){}};this._readLive();try{const rs=localStorage.getItem('kashikeyo_store');if(rs)this.setState({store:Object.assign({},this.state.store,JSON.parse(rs))});}catch(e){}this._onStore=(e)=>{if(!e||e.key==='kashikeyo_live'||e.key===null)this._readLive();};window.addEventListener('storage',this._onStore);this._liveIv=setInterval(this._readLive,3000);this.loadInsights();this.loadFlags();this.loadPnl();this.loadExpiring();this.loadOnb();this.loadSessions();this.loadBackups();}
   loadSessions(){var me=this;try{fetch('/api/app2/sessions',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&Array.isArray(d.sessions))me.setState({sessions:d.sessions});}).catch(function(){});}catch(e){}}
   loadOnb(){var me=this;try{fetch('/api/inv/onboarding',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.ok)me.setState({onb:d});}).catch(function(){});}catch(e){}}
@@ -2001,7 +2000,7 @@ class Component extends DCLogic {
     let allOrders=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.orders)?window.__ksAdmin.orders.slice():[];
     const key=ss===0?'reg':ss===1?'qr':'deliv';
     if(live){
-      const lr=(live.log||[]).map(o=>({no:o.no,ch:o.ch,chK:o.chK,time:o.time,items:o.items,staff:'Cashier',total:o.total,st:'Paid',stk:'ok'}));
+      const lr=(live.log||[]).map(o=>({no:o.no,ch:o.ch,chK:o.chK,time:o.time,items:o.items,staff:(o.staff||'—'),total:o.total,st:'Paid',stk:'ok'}));
       const orr=(live.open||[]).map(o=>({no:o.no,ch:o.type==='dine'?('Dine-in · T'+o.table):o.type==='takeaway'?'Takeaway':'Delivery',chK:o.type==='delivery'?'deliv':'reg',time:new Date(o.at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),items:o.count,staff:'Open',total:o.total,st:o.status==='ready'?'Ready':o.status==='kitchen'?'In kitchen':'Open',stk:o.status==='ready'?'ok':o.status==='kitchen'?'info':'mut'}));
       allOrders=orr.concat(lr).concat(allOrders);
     }
@@ -2088,7 +2087,7 @@ class Component extends DCLogic {
         costF:me.fm(plate),priceF:me.fm(mi.price),fcPct:foodPct+'%',fcW:Math.min(100,foodPct)+'%',fcC:fcColor(foodPct),
         expanded:s.recipeExpand===mi.id,caret:s.recipeExpand===mi.id?'rotate(90deg)':'rotate(0deg)',
         toggle:()=>me.setState({recipeExpand:s.recipeExpand===mi.id?null:mi.id}),
-        edit:()=>me.openRecipe(mi.id),sell:()=>me.depleteRecipe(mi.id,1)};
+        edit:()=>me.openRecipe(mi.id)};
     });
     const recipesSet=me.MENU.filter(mi=>(s.recipes[mi.id]||[]).length).length;
     const recipeStats=[{label:'Menu items',v:String(me.MENU.length)},{label:'Recipes set',v:String(recipesSet)},{label:'Missing',v:String(me.MENU.length-recipesSet)}];
@@ -2116,7 +2115,7 @@ class Component extends DCLogic {
     const recvBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.recv)?window.__ksAdmin.recv:[];
     const recvOv=s.recvOv||{};
     const recvSrc=recvBase.map(r=>{const ov=recvOv[r.id];return ov!=null?Object.assign({},r,{bal:ov,stk:ov<=0?'ok':r.stk}):r;}).filter(r=>r.bal>0);
-    const recvRowsAll=recvSrc.map(r=>Object.assign({n:r.n,c:r.c,balF:f(r.bal),age:r.age,last:r.last,settle:()=>me.openSettle(r),remind:()=>me.toast('Reminder sent · '+r.n)},pill(r.stk==='bad'?'Overdue':r.stk==='warn'?'Due soon':'Current',r.stk)));
+    const recvRowsAll=recvSrc.map(r=>Object.assign({n:r.n,c:r.c,balF:f(r.bal),age:r.age,last:r.last,settle:()=>me.openSettle(r),remind:()=>me.toast('Reminders aren\u2019t automated yet \u2014 contact '+r.n+' directly')},pill(r.stk==='bad'?'Overdue':r.stk==='warn'?'Due soon':'Current',r.stk)));
     const rvSt={ok:'Current',warn:'Due soon',bad:'Overdue'};
     const rvQ=(s.recvQuery||'').trim().toLowerCase(),rvStat=s.recvStatus||'all';
     const rvStatusList=Array.from(new Set(recvSrc.map(r=>rvSt[r.stk])));
@@ -2126,7 +2125,7 @@ class Component extends DCLogic {
     rvf=rvf.slice().sort((a,b)=>{const x=rvVal(a),y=rvVal(b);if(typeof x==='number'&&typeof y==='number')return (x-y)*rd;return String(x).localeCompare(String(y))*rd;});
     const rvArrow=rd>0?' \u2191':' \u2193';
     const recvCols=[{key:'n',label:'CUSTOMER',jc:'flex-start'},{key:'c',label:'CONTACT',jc:'flex-start'},{key:'bal',label:'BALANCE',jc:'flex-end'},{key:'age',label:'AGING',jc:'flex-start'},{key:'st',label:'STATUS',jc:'flex-start'},{key:'',label:'',jc:'flex-start'}].map(c=>({label:c.label+(c.key&&rk===c.key?rvArrow:''),jc:c.jc,co:c.key&&rk===c.key?'var(--ink)':'var(--ink2)',tap:c.key?(()=>me.sortRecv(c.key)):(()=>{})}));
-    const recvRows=rvf.map(r=>Object.assign({n:r.n,c:r.c,balF:f(r.bal),age:r.age,last:r.last,settle:()=>me.openSettle(r),remind:()=>me.toast('Reminder sent · '+r.n)},pill(rvSt[r.stk],r.stk)));
+    const recvRows=rvf.map(r=>Object.assign({n:r.n,c:r.c,balF:f(r.bal),age:r.age,last:r.last,settle:()=>me.openSettle(r),remind:()=>me.toast('Reminders aren\u2019t automated yet \u2014 contact '+r.n+' directly')},pill(rvSt[r.stk],r.stk)));
     const recvStatusOpts=[{v:'all',label:'All statuses',sel:rvStat==='all'}].concat(rvStatusList.map(st=>({v:st,label:st,sel:rvStat===st})));
     const recvEmpty=rvf.length===0;const recvCount=rvf.length+' of '+recvSrc.length+(rvf.length===1?' account':' accounts');
     const recvStats=[{label:'Outstanding',v:f(recvSrc.reduce((a,r)=>a+r.bal,0))},{label:'Overdue',v:String(recvSrc.filter(r=>r.stk==='bad').length)},{label:'Customers',v:String(recvSrc.length)}];
@@ -2142,18 +2141,16 @@ class Component extends DCLogic {
     const stv=s.sub.store||0;
     const outletBase=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.outlets&&window.__ksAdmin.outlets.length)?window.__ksAdmin.outlets.map(o=>({n:o.n,url:(o.addr||o.code||o.n),pub:!!o.active,visits:0})):[];
     const outletStores=outletBase.map(o=>({n:o.n,url:o.url,visits:o.pub?(o.visits?(o.visits+' visits · 7d'):'Published'):'Not published',st:o.pub?'Live':'Draft',stBg:o.pub?'var(--greensoft)':'var(--bg)',stC:o.pub?'var(--green)':'var(--ink2)',open:()=>me.toast('Opening '+o.url),copy:()=>me.toast('Link copied · '+o.url)}));
-    const qrSvg='<svg width="88" height="88" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="var(--ink)" d="M0 0h7v7H0zM2 2v3h3V2zM22 0h7v7h-7zM24 2v3h3V2zM0 22h7v7H0zM2 24v3h3v-3zM9 0h2v2H9zM13 1h2v2h-2zM17 0h2v3h-2zM9 4h3v2H9zM14 5h4v2h-4zM0 9h2v2H0zM4 9h3v2H4zM10 9h2v2h-2zM15 9h2v3h-2zM19 9h4v2h-4zM25 9h4v2h-4zM2 12h3v2H2zM7 13h3v2H7zM12 12h2v3h-2zM17 13h3v2h-3zM22 12h2v2h-2zM26 13h3v2h-3zM0 16h3v2H0zM5 16h2v2H5zM9 17h4v2H9zM15 16h2v3h-2zM20 16h3v2h-3zM25 17h3v2h-3zM9 22h2v3H9zM13 23h4v2h-4zM19 22h3v2h-3zM24 23h3v3h-3zM11 26h4v2h-4zM17 26h3v2h-3zM22 27h5v2h-5z"/></svg>';
     const _qrSlug=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.slug)||'';
     const _qrOrigin=(typeof location!=='undefined'&&location.origin)||'';
     const qrCount=Math.max(1,Math.min(40,(s.cfg&&+s.cfg.qrTables)||8));
     const qrLink=n=>_qrSlug?(_qrOrigin+'/?s='+encodeURIComponent(_qrSlug)+'&t='+n):(_qrOrigin+'/?t='+n);
-    const qrTables=Array.from({length:qrCount},(x,i)=>i+1).map(n=>({label:'Table '+n,qr:{__html:qrSvg},dl:()=>me.copyLink(qrLink(n),'Table '+n+' link')}));
+    const qrTables=Array.from({length:qrCount},(x,i)=>i+1).map(n=>({label:'Table '+n,qrSrc:'/api/app2/qr.svg?t='+encodeURIComponent(n),dl:()=>me.copyLink(qrLink(n),'Table '+n+' link')}));
     const promoRows=(s.promoNew||[]).map(p=>{const c=P[p.k||'ok'];return {n:p.n,code:p.code,type:p.type,st:p.st,stBg:c[0],stC:c[1],red:String(p.red||0),win:p.win};});
-    const brandSwatches=[['Primary','#C1492A'],['Blade green','#1FA65C'],['Ink','#2E2418'],['Sand','#F3EADB']].map(b=>({label:b[0],hex:b[1]}));
+    const brandSwatches=[];
     const _seo=Object.assign({},(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.seo)||{},s.seoOv||{});
     const _seoTitle=_seo.title||'—',_seoDesc=_seo.desc||'—';
-    const seoChecks=[['Meta title',_seoTitle.length>40?(_seoTitle.slice(0,40)+'…'):_seoTitle],['Meta description',_seoDesc.length>44?(_seoDesc.slice(0,44)+'…'):_seoDesc],['Open Graph tags','Live on guest portal'],['Structured data','Restaurant JSON-LD'],['XML sitemap','Auto-generated'],['Mobile-friendly','Responsive · passes']].map(r=>({label:r[0],val:r[1]}));
-    // ---- REPORTS: Z & GST ----
+    const seoChecks=[];
     const _pm=g.payMix||{cash:0,card:0,transfer:0,tab:0};
     const zr=[['Gross sales',f(g.rev)],['Net sales',f(g.rev)],['GST output',f(g.gst||0)],['Orders',me.fi(g.orders)]].map((r,i)=>({k:r[0],v:r[1],big:i===1}));
     const zrPay=[['Cash',f(_pm.cash)],['Card / BML',f(_pm.card)],['Bank transfer',f(_pm.transfer)],['On tab',f(_pm.tab)]].map(r=>({k:r[0],v:r[1]}));
@@ -2217,7 +2214,7 @@ class Component extends DCLogic {
       {title:'Receipt & tax',rows:[['taxIncl','Tax-inclusive pricing','GST shown inside menu price'],['printRecpt','Auto-print receipt','On settle']]},
       {title:'Payment methods',rows:[['cash','Cash',''],['card','Card / BML gateway',''],['transfer','Bank transfer',''],['tab','On tab (store credit)','']]}
     ].map(sec=>({title:sec.title,rows:sec.rows.map(r=>{const on=!!s.cfg[r[0]];return {label:r[1],desc:r[2],hasDesc:!!r[2],trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(15px)':'translateX(0)',tap:()=>{const cfg=Object.assign({},s.cfg,{[r[0]]:!on});me.setState({cfg});me.saveCfg({cfg});}};})}));
-    const taxOpts=[['ggst','General GST · 8%'],['tgst','Tourism GST · 16%']].map(o=>{const on=s.taxRate===o[0];return {label:o[1],bg:on?'var(--coral)':'transparent',co:on?'#fff':'var(--ink2)',tap:()=>{me.setState({taxRate:o[0]});me.saveCfg({taxRate:o[0]});}};});
+    const taxOpts=[['ggst','General GST · 8%'],['tgst','Tourism GST · 17%']].map(o=>{const on=s.taxRate===o[0];return {label:o[1],bg:on?'var(--coral)':'transparent',co:on?'#fff':'var(--ink2)',tap:()=>{me.setState({taxRate:o[0]});me.saveCfg({taxRate:o[0]});}};});
     // ---- SYSTEM ADMIN ----
     const sysUsers=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.sysUsers))?window.__ksAdmin.sysUsers.map(u=>({n:u.n,role:u.role,last:'—',stk:'ok'})):[]).map(r=>Object.assign({n:r.n,role:r.role,last:r.last},pill('Active','ok')));
     const sysAudit=(typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.audit))?window.__ksAdmin.audit:[];
@@ -2235,32 +2232,19 @@ class Component extends DCLogic {
       {k:'tab',n:'On tab · store credit',vol:_pmx.tab||0,dotC:'var(--blue)'}
     ].map(m=>{const on=s.payOff[m.k]!=null?!s.payOff[m.k]:!m.defOff;return {n:m.n,dotC:on?m.dotC:'var(--ink3)',volLbl:on?('Today · '+me.fm(m.vol)):'Not enabled',st:on?'Enabled':'Off',stBg:on?'var(--greensoft)':'var(--bg)',stC:on?'var(--green)':'var(--ink2)',tap:()=>{const payOff=Object.assign({},s.payOff,{[m.k]:on});me.setState({payOff});me.saveCfg({payOff});me.toast(m.n+' · '+(on?'disabled':'enabled'));}};});
     const payLinks=[].map(r=>{const c=P[r.k];return {ref:r.ref,cust:r.cust,amtF:me.fm(r.amt),st:r.st,stBg:c[0],stC:c[1],when:r.when,copy:()=>me.toast('Link copied · '+r.ref)};});
-    const billTemplates=[
-      {n:'Receipt · 80mm',desc:'Logo, GST breakdown and footer note.',status:'Default',k:'info'},
-      {n:'Tax invoice · A4',desc:'MIRA-compliant, itemised, TIN shown.',status:'Active',k:'ok'},
-      {n:'Proforma invoice',desc:'Quotes & deposits before service.',status:'Draft',k:'mut'}
-    ].map(b=>{const c=P[b.k];return {n:b.n,desc:b.desc,status:b.status,stBg:c[0],stC:c[1],edit:()=>me.toast('Editing '+b.n)};});
+    const billTemplates=[];
     const recentSplits=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.splits))?window.__ksAdmin.splits:[]).map(r=>({ref:r.ref,totalF:me.fm(r.total),parts:r.parts,n:String(r.n)}));
     const refundRows=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.refunds))?window.__ksAdmin.refunds:[]).map(r=>{const c=P[r.k];return {ref:r.ref,amtF:me.fm(r.amt),reason:r.reason,staff:r.staff,when:r.when,st:r.st,stBg:c[0],stC:c[1]};});
     const gwStats=[{label:'SETTLING TODAY',v:me.fm(0)},{label:'NEXT SETTLEMENT',v:'—'},{label:'GATEWAY FEE · MTD',v:me.fm(0)}];
     const settlements=[];
     const hw=s.sub.hw||0;
-    const printers=[
-      {n:'Front counter · receipt',model:'Epson TM-T20III',st:'Connected',k:'ok'},
-      {n:'Kitchen · KOT',model:'Epson TM-U220',st:'Connected',k:'ok'},
-      {n:'Office · invoice / A4',model:'HP LaserJet M110',st:'Idle',k:'mut'},
-      {n:'Bar · KOT',model:'Star TSP143',st:'Offline',k:'bad'}
-    ].map(p=>{const c=P[p.k];return {n:p.n,model:p.model,st:p.st,stBg:c[0],stC:c[1],test:()=>me.toast('Test print · '+p.n)};});
-    const docRouting=[['Customer receipt','Front counter · receipt'],['Kitchen ticket (KOT)','Kitchen · KOT'],['Tax invoice','Office · invoice / A4'],['Bar ticket','Bar · KOT']].map(r=>({doc:r[0],printer:r[1]}));
-    const routeRules=[
-      {cat:'Hedhikaa & short eats',stn:'Hot Kitchen',c:'var(--coral)'},{cat:'Mains · rice & curry',stn:'Hot Kitchen',c:'var(--coral)'},
-      {cat:'Hot drinks',stn:'Barista',c:'var(--amber)'},{cat:'Cold drinks & juice',stn:'Drinks & Cold',c:'var(--blue)'},
-      {cat:'Sweets & desserts',stn:'Pastry',c:'var(--green)'}
-    ];
+    const printers=((s.cfg&&Array.isArray(s.cfg.printers))?s.cfg.printers:[]).map(function(pr){var c=P[pr.k||'ok'];return {n:pr.n,model:pr.model||'',st:pr.st||'',stBg:c[0],stC:c[1],test:function(){me.toast('Pairing is not set up yet');}};});
+    const docRouting=[];
+    const routeRules=[];
     const offOn=s.cfg.offlineFirst!==false;
     const offlineStats=[{label:'CONNECTION',v:(typeof navigator!=='undefined'&&navigator.onLine===false)?'Offline':'Online'},{label:'LAST SYNCED',v:'—'},{label:'QUEUED ORDERS',v:'0'},{label:'LOCAL CACHE',v:'—'}];
     const kioskOn=s.cfg.kiosk===true;
-    const kioskSettings=[['Welcome message','“Order here — tap to begin”'],['Categories shown','All 6 menu groups'],['Idle reset','After 60s inactivity'],['Payment','Card & wallet at kiosk']].map(r=>({label:r[0],val:r[1]}));
+    const kioskSettings=[];
     const themeMode=s.themeMode||(s.dark?'dark':'light');
     const hwThemeOpts=[['light','Light','Bright, daytime service'],['dark','Dark','Easy on the eyes for late shifts'],['auto','Auto','Follows the device']].map(o=>({id:o[0],label:o[1],desc:o[2],on:themeMode===o[0],bg:themeMode===o[0]?'var(--coral)':'var(--card)',co:themeMode===o[0]?'#fff':'var(--ink)',bc:themeMode===o[0]?'var(--coral)':'var(--line2)',pick:()=>me.setTheme(o[0])}));
     const nt=s.ntog||{};const nOn=(k,d)=>(k in nt)?nt[k]:d;
@@ -2274,7 +2258,7 @@ class Component extends DCLogic {
     const chanRows=_tgOutlets.map(nm=>{const k=_tgOn?'ok':'mut';const c=P[k];return{outlet:nm,chan:_tgOn?_tgChat:'Not linked',members:_tgOn?'Telegram':'—',st:_tgOn?'Connected':'Connect',stBg:c[0],stC:c[1],linked:_tgOn,linkLabel:_tgOn?'Test':'Connect',tap:()=>_tgOn?me.testTelegram(_tgChat):me.openChannel()};});
     const twofaOn=nOn('f_on',true);
     const twofaOps=[['f_void','Voids','Manager',true],['f_refund','Refunds over MVR 200','Admin',true],['f_disc','Discounts over 20%','Manager',true],['f_dayend','Day-end close','Manager',false]].map(r=>Object.assign({op:r[1],by:r[2]},mkTog(nOn(r[0],r[3]),r[0])));
-    const twofaLog=[['Void · #0224','Mariyam','Approved','18:30'],['Discount 25% · #0219','Ibrahim','Approved','17:05'],['Refund MVR 250','Mariyam','Declined','11:40']].map(r=>{const c=P[r[2]==='Declined'?'bad':'ok'];return{op:r[0],mgr:r[1],when:r[3],st:r[2],stBg:c[0],stC:c[1]};});
+    const twofaLog=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.authLog))?window.__ksAdmin.authLog:[]).map(function(a){return [a.a||'',a.u||'',a.st||'Approved',a.t||''];});
     const twofaMaster=mkTog(twofaOn,'f_on');
     // ---- MENU MANAGEMENT ----
     const mv=s.sub.menu||0;
@@ -2378,7 +2362,7 @@ class Component extends DCLogic {
       pnlWasteF:me.fm((((s.pnl||{}).pnl||{}).wastage||0)/100),pnlOpexF:me.fm((((s.pnl||{}).pnl||{}).opex||0)/100),pnlNetF:me.fm((((s.pnl||{}).pnl||{}).netProfit||0)/100),pnlNetPct:String((((s.pnl||{}).pnl||{}).netMarginPct||0))+'%',pnlNetNeg:((((s.pnl||{}).pnl||{}).netProfit||0)<0),
       pnlGstF:me.fm(((((s.pnl||{}).gstReturn||{}).netPayable)||0)/100),pnlArF:me.fm(((((s.pnl||{}).cash||{}).accountsReceivable)||0)/100),pnlSaleCount:String((((s.pnl||{}).pnl||{}).saleCount||0)),
       pnlTenders:(function(){var t=(((s.pnl||{}).cash||{}).tenders)||{};return Object.keys(t).map(function(k){return {method:k,amtF:me.fm((Number(t[k])||0)/100)};});})(),
-      perfCards,custStats,custTop,custDayparts,custPrefs,perfCols:s.vw<640?'1fr':(s.vw<1024?'1fr 1fr':'1fr 1fr 1fr'),perfTwoCols:s.vw<860?'1fr':'1fr 1fr',quadCols:s.vw<640?'1fr 1fr':(s.vw<1024?'1fr 1fr':'repeat(4,1fr)'),repScheduleNote:'Scheduled · Weekly · Mon 08:00 → owner@kashikeyo.mv',exportPdf:()=>me.exportReportPdf(),exportCsv:()=>me.exportReportCsv(),scheduleRep:()=>me.scheduleReport(),
+      perfCards,custStats,custTop,custDayparts,custPrefs,perfCols:s.vw<640?'1fr':(s.vw<1024?'1fr 1fr':'1fr 1fr 1fr'),perfTwoCols:s.vw<860?'1fr':'1fr 1fr',quadCols:s.vw<640?'1fr 1fr':(s.vw<1024?'1fr 1fr':'repeat(4,1fr)'),repScheduleNote:'',exportPdf:()=>me.exportReportPdf(),exportCsv:()=>me.exportReportCsv(),scheduleRep:()=>me.scheduleReport(),
       staffRows,staffRoles,staffStats,
       addStaffBtn:()=>me.openMdl('addstaff',{role:'cashier',sn:'',spin:'',sid:'',title:'Add team member'}),
       addCustBtn:()=>me.addCustomer(),
@@ -2422,6 +2406,26 @@ class Component extends DCLogic {
       backups,hasBackups,noBackups:!hasBackups,menuEmpty,openReset:()=>me.openReset(),addStarterMenu:()=>me.addStarterMenu(),goRestore:()=>{me.setState({active:'sysadmin'});},
       isReset:s.mdl&&s.mdl.kind==='reset',isRestore:s.mdl&&s.mdl.kind==='restore',
       isOwner:_isOwner,notOwner:!_isOwner,
+      /* Real values for things that used to be asserted: the portal host, the
+         GST period from the calendar, and gateway/Telegram state from config. */
+      ...(()=>{
+        var host=(typeof location!=='undefined'&&location.host)||'';
+        var d=new Date(),q=Math.floor(d.getMonth()/3),qn=['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'][q];
+        var due=new Date(d.getFullYear(),q*3+3,28);
+        var cfg=(s.cfg||{});
+        var gwOn=!!cfg.bmlMerchant;
+        var tgOn=!!(cfg.tgChat||cfg.telegramChatId);
+        return {
+          portalHost:host,
+          gstPeriod:'Q'+(q+1)+' ('+qn+')',
+          gstDue:due.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}),
+          gwState:gwOn?'Connected':'Not connected',
+          gwBg:gwOn?'var(--greensoft)':'var(--bg)',
+          gwC:gwOn?'var(--green)':'var(--ink2)',
+          gwSub:gwOn?('Merchant '+String(cfg.bmlMerchant)):'Add your merchant ID in Configurations to accept card payments.',
+          tgStateLbl:tgOn?'Telegram alerts on':'Telegram not connected',
+          tgSubLbl:tgOn?'Sending to your configured chat':'Add a chat ID in Notifications to receive alerts.'
+        };})(),
       ...(()=>{
         var _out=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets))?window.__ksAdmin.outlets:[]);
         var _names=_out.map(function(x){return x.n;}).filter(Boolean);
