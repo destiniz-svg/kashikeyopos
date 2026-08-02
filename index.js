@@ -561,6 +561,15 @@ function auditSaleMoney(sale, ctx) {
    wraps fetch once and surfaces any non-GET /api/ failure to the operator.
    Paths that report their own errors inline (ops/elevate/unlock/seq/pull)
    are skipped so nothing is reported twice. */
+/* Offline shell for the register (audit A-C1). /app was network-only: a
+   reload during an ISP drop replaced the till with the browser's error
+   page and there was no path back to selling until the link returned. The
+   worker is network-first, so it can never pin a stale bundle across a
+   fleet — it only serves the cached shell when the network actually fails.
+   Registered on the register alone; /admin and the guest portal stay
+   purely network-served. */
+const SW_REG_JS = "try{if('serviceWorker' in navigator)window.addEventListener('load',function(){navigator.serviceWorker.register('/app/sw.js',{scope:'/app'}).catch(function(){});});}catch(e){}";
+
 const NETERR_JS = "(function(){\nvar SKIP=/\\/api\\/(ops|elevate|app2\\/(unlock|seq|pull))/;\nvar box=null,timer=0;\nfunction show(msg){\n  try{\n    if(!box){\n      box=document.createElement('div');\n      box.setAttribute('role','alert');\n      box.style.cssText='position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:99999;max-width:min(560px,92vw);background:#8A2B12;color:#FFF;border-radius:13px;padding:13px 17px;font:700 13.5px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,.28);cursor:pointer';\n      box.onclick=function(){if(box)box.style.display='none';};\n      document.body.appendChild(box);\n    }\n    box.textContent=msg;\n    box.style.display='block';\n    if(timer)clearTimeout(timer);\n    timer=setTimeout(function(){if(box)box.style.display='none';},9000);\n  }catch(e){}\n}\nwindow.__ksNetError=show;\nvar of=window.fetch;\nif(typeof of!=='function')return;\nwindow.fetch=function(input,init){\n  var url='';\n  try{url=(typeof input==='string')?input:((input&&input.url)||'');}catch(e){}\n  var method='GET';\n  try{method=String((init&&init.method)||(input&&input.method)||'GET').toUpperCase();}catch(e){}\n  var p=of.apply(this,arguments);\n  try{\n    if(method!=='GET'&&url.indexOf('/api/')===0&&!SKIP.test(url)){\n      p.then(function(r){\n        if(r&&!r.ok){\n          r.clone().json().then(function(j){show((j&&j.error)||('Not saved — the server refused this ('+r.status+')'));},\n                                function(){show('Not saved — the server refused this ('+r.status+')');});\n        }\n      },function(){show('No connection — that change was NOT saved. Try again.');});\n    }\n  }catch(e){}\n  return p;\n};\n})();\n";
 
 /* The register's durable sale outbox, injected into /app. Kept as a plain
@@ -2746,7 +2755,17 @@ if (fs.existsSync(protoFile)) {
   // section); `withAdmin` injects real customers into window.__ksAdmin. Sections
   // without injected data fall back to the prototype's own demo data.
   const serveProto = ({ base, file, withMenu, withAdmin }) => {
-    app.use(base, express.static(protoDir, { index: false, redirect: false, maxAge: "1h" }));
+    app.use(base, express.static(protoDir, { index: false, redirect: false, maxAge: "1h",
+      /* The worker script itself must never be served from cache, or a
+         fleet can be stuck on an old worker with no way to replace it. */
+      setHeaders: (res, file) => { if (file.endsWith("sw.js")) {
+        res.set("Cache-Control", "no-cache");
+        /* The register is served at /app as well as /app/..., and a worker's
+           default scope is its own directory — /app/ — which does NOT cover
+           /app. Without this header the worker installs and then never
+           controls the page anyone actually loads. */
+        res.set("Service-Worker-Allowed", base);
+      } } }));
     const vendor = {
       "https://unpkg.com/react@18.3.1/umd/react.production.min.js": base + "/vendor/react.production.min.js",
       "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js": base + "/vendor/react-dom.production.min.js",
@@ -3041,7 +3060,7 @@ if (fs.existsSync(protoFile)) {
          `ops` table. window.__ksOutbox exposes the real pending count so the
          register can show the truth instead of an animation. */
       const pushSaleJs = token
-        ? `window.__ksToken=${JSON.stringify(token)};\n` + OUTBOX_JS
+        ? `window.__ksToken=${JSON.stringify(token)};\n` + OUTBOX_JS + (isRegister ? SW_REG_JS : "")
         : "";
       // Corrective CSS: hide the scrollbar on horizontally-scrollable pill/tab
       // rows (they scroll instead of clipping on narrow screens) — Firefox uses
@@ -3075,7 +3094,12 @@ if (fs.existsSync(protoFile)) {
       const ordTabIconsJs = file === "index.html"
         ? `(function(){var IC={"Tracking":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/></svg>',"Kitchen":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z"/><path d="M6 17h12"/></svg>',"Delivery":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>',"Tables":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 9V6a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v3"/><path d="M3 16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-9a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z"/><path d="M5 18v2"/><path d="M19 18v2"/></svg>',"History":'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>'};function fill(){var btns=document.querySelectorAll('button');for(var i=0;i<btns.length;i++){var btn=btns[i];var direct=btn.querySelectorAll(':scope > span');if(direct.length<2)continue;var wrap=direct[0];var st=wrap.getAttribute('style')||'';if(st.indexOf('position:relative')<0&&st.indexOf('position: relative')<0)continue;var label=(direct[direct.length-1].textContent||'').trim();var g=IC[label];if(!g)continue;var slot=wrap.querySelector('span')||wrap;var active=false;try{active=getComputedStyle(btn).boxShadow!=='none';}catch(e){}slot.style.width='30px';slot.style.height='30px';slot.style.borderRadius='10px';slot.style.display='grid';slot.style.placeItems='center';slot.style.background=active?'var(--coralsoft)':'var(--sur)';if(!slot.querySelector('svg'))slot.innerHTML=g;}}var raf=0;function sched(){if(raf)return;raf=requestAnimationFrame(function(){raf=0;fill();});}function start(){fill();try{new MutationObserver(sched).observe(document.body,{childList:true,subtree:true});}catch(e){}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',function(){setTimeout(start,600);});else setTimeout(start,600);})();`
         : "";
-      const inject = `\n<base href="${base}/">${fixCss}\n<script>` +
+      const inject = `\n<base href="${base}/">`
+        /* Installable on a counter tablet, so the till has its own home-screen
+           icon and standalone window instead of living in a browser tab that
+           can be closed mid-service. Register only. */
+        + (isRegister ? `\n<link rel="manifest" href="/app/app.webmanifest">` : "")
+        + `${fixCss}\n<script>` +
         (withMenu ? `window.__ksMenu=${enc(menu)};` + pushSaleJs : "") +
         (isRegister ? `window.__ksReg=${enc(regData)};` : "") +
         (withAdmin ? `window.__ksAdmin=${enc(adminData)};` : "") +
