@@ -1023,7 +1023,7 @@ function validateSnapshot(snap) {
   for (const t of SNAPSHOT_TABLES) {
     if (!Array.isArray(snap.tables[t])) throw new BadSnapshot("this backup is incomplete (missing " + t + ") — restoring it would lose data.");
   }
-  /* Staff and store profile are the only way back in: `verifyAdminPin` and
+  /* Staff and store profile are the only way back in: `verifyOwnerPin` and
      /api/back/login both read them. Restoring a snapshot without an owner/admin
      would lock the account out of its own reset/restore permanently. */
   const owner = snap.tables.entities.some((e) => e && e.kind === "users" && !e.deleted
@@ -1100,13 +1100,14 @@ async function restoreStore(orgId, snap) {
   });
 }
 
-// Reset / restore confirmation: match the 4-digit PIN against any owner/admin
-// staff PIN for the org.
-async function verifyAdminPin(orgId, pin) {
+/* Confirmation PIN for the destructive store actions. These are owner-only, so
+   the PIN must be an OWNER's — accepting any admin's would let an owner-gated
+   action be confirmed with a credential other staff also hold. */
+async function verifyOwnerPin(orgId, pin) {
   if (!/^\d{4}$/.test(String(pin || ""))) return false;
   const want = hashTillPin(pin);
   const r = await withOrg(orgId, (c) => c.query(
-    "SELECT data->>'pin' AS pin FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'role' IN ('owner','admin')", [orgId]));
+    "SELECT data->>'pin' AS pin FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false AND data->>'role' = 'owner'", [orgId]));
   return r.rows.some((x) => x.pin && String(x.pin) === want);
 }
 
@@ -2788,6 +2789,8 @@ if (fs.existsSync(protoFile)) {
               adminData.me = {
                 name: (req.appStaff && req.appStaff.name) || (ownerRow && ownerRow.name) || "Admin",
                 role: roleLabel(req.appRole || (ownerRow && ownerRow.role) || "owner"),
+                // Machine-readable, for gating owner-only actions in the UI.
+                isOwner: appRankOf(req.appRole || (ownerRow && ownerRow.role) || "owner") >= APP_RANK.OWNER,
               };
             }
           });
@@ -3225,7 +3228,7 @@ if (fs.existsSync(protoFile)) {
      These are the only endpoints that can destroy a merchant's business in one
      call, so they carry more than the admin-role check:
        - the confirmation PIN is rate-limited like a password (it is only four
-         digits, and `verifyAdminPin` matches ANY owner/admin, so an unthrottled
+         digits, and it is recoverable, so an unthrottled
          endpoint is ~10k guesses from a wipe);
        - snapshots are size-capped, because materialising one is several times
          its own size in RSS and an OOM takes down every tenant on the instance;
@@ -3235,10 +3238,10 @@ if (fs.existsSync(protoFile)) {
     const keys = rlKeys(req, "storepin:" + orgId);
     const blocked = rlBlockedFor(keys);
     if (blocked) { res.status(429).json({ error: "Too many incorrect PINs. Try again in " + blocked + "s." }); return false; }
-    if (!(await verifyAdminPin(orgId, (req.body || {}).pin))) {
+    if (!(await verifyOwnerPin(orgId, (req.body || {}).pin))) {
       rlFail(keys);
       logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store." + what + ".denied", requestId: req.id });
-      res.status(403).json({ error: "Incorrect admin PIN." });
+      res.status(403).json({ error: "Incorrect owner PIN." });
       return false;
     }
     rlClear(keys);
@@ -3288,7 +3291,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/backup/:id/delete", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
-    if (denyAppRole(req, res, APP_RANK.ADMIN, "Backups need an admin or the owner.")) return;
+    if (denyAppRole(req, res, APP_RANK.OWNER, "Only the account owner can delete a backup.")) return;
     if (!(await destructiveGuard(req, res, orgId, "backup.delete"))) return;
     const id = String(req.params.id || "");
     try {
@@ -3302,7 +3305,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/restore", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
-    if (denyAppRole(req, res, APP_RANK.ADMIN, "Restoring needs an admin or the owner.")) return;
+    if (denyAppRole(req, res, APP_RANK.OWNER, "Only the account owner can restore a backup.")) return;
     if (!(await destructiveGuard(req, res, orgId, "restore"))) return;
     const b = req.body || {};
     const row = (await withOrg(orgId, (c) => c.query("SELECT data FROM store_backups WHERE org_id=$1 AND id=$2", [orgId, String(b.id || "")]))).rows[0];
@@ -3318,7 +3321,7 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/reset", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
-    if (denyAppRole(req, res, APP_RANK.ADMIN, "Resetting the store needs an admin or the owner.")) return;
+    if (denyAppRole(req, res, APP_RANK.OWNER, "Only the account owner can reset the store.")) return;
     if (!(await destructiveGuard(req, res, orgId, "reset"))) return;
     const b = req.body || {};
     /* Scope: omitted (or "*") wipes the whole account; otherwise one outlet, which
