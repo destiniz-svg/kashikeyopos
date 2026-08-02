@@ -115,11 +115,28 @@ function appPoolConfigFrom(baseConnStr) {
   }
   return poolConfig;
 }
+/* Backpressure (audit C-H7). pg's pool waits forever for a connection by
+   default and nothing set a statement timeout, so under load latency climbed
+   linearly with ZERO errors — /admin p50 reached 2.05s at 32 concurrent and the
+   till simply hung with no 503 to retry against. A counter tablet needs to be
+   told "busy, try again", not left holding a spinner. */
+const CONNECT_TIMEOUT_MS = Number(process.env.PG_CONNECT_TIMEOUT_MS) > 0 ? Number(process.env.PG_CONNECT_TIMEOUT_MS) : 4000;
+const STATEMENT_TIMEOUT_MS = Number(process.env.PG_STATEMENT_TIMEOUT_MS) > 0 ? Number(process.env.PG_STATEMENT_TIMEOUT_MS) : 15000;
+function withTimeouts(cfg) {
+  cfg.connectionTimeoutMillis = CONNECT_TIMEOUT_MS;
+  cfg.statement_timeout = STATEMENT_TIMEOUT_MS;
+  cfg.query_timeout = STATEMENT_TIMEOUT_MS + 1000;
+  cfg.idleTimeoutMillis = 30000;
+  return cfg;
+}
 // request pool → pooled endpoint (DATABASE_URL); safe through a transaction pooler
-function appPoolConfig() { return appPoolConfigFrom(connectionString); }
+function appPoolConfig() { return withTimeouts(appPoolConfigFrom(connectionString)); }
 // background pool (PERF-1) → same endpoint, small cap so post-commit inventory
 // work never starves the request pool. Override with PG_BG_POOL_MAX.
-function bgPoolConfig() { const c = appPoolConfig(); c.max = Number(process.env.PG_BG_POOL_MAX) > 0 ? Number(process.env.PG_BG_POOL_MAX) : 4; return c; }
+function bgPoolConfig() { const c = appPoolConfig(); c.max = Number(process.env.PG_BG_POOL_MAX) > 0 ? Number(process.env.PG_BG_POOL_MAX) : 4;
+  /* Post-commit recipe deduction over a big batch legitimately runs longer
+     than a request should, so the background pool gets its own ceiling. */
+  c.statement_timeout = 60000; c.query_timeout = 61000; return c; }
 // LISTEN client → DIRECT endpoint; a long-lived registration must not cross a pooler
 function appDirectPoolConfig() { return appPoolConfigFrom(directConnectionString); }
 let pool = bootPool; // until ensureAppRole() below swaps in the restricted-role pool
@@ -290,6 +307,19 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
         [Date.now() - 6 * 3600 * 1000]);
       if (staleCalls.rowCount) console.log(`expired ${staleCalls.rowCount} stale waiter call(s)`);
     } catch (e) { console.warn("waiter-call cleanup skipped:", e.message); }
+    /* The idempotency ledger is append-only and had no retention: ~365k rows a
+       year for a 1,000-sale-a-day outlet, growing forever. An op_id only needs
+       to be remembered for as long as a client might still retry it, and the
+       outbox gives up long before 90 days. Runs at boot and daily after. */
+    const pruneOps = async () => {
+      try {
+        const cutoff = Number(process.env.OPS_RETENTION_DAYS) > 0 ? Number(process.env.OPS_RETENTION_DAYS) : 90;
+        const r = await bootPool.query("DELETE FROM ops WHERE applied_at < now() - ($1 || ' days')::interval", [String(cutoff)]);
+        if (r.rowCount) console.log(`pruned ${r.rowCount} op ledger row(s) older than ${cutoff}d`);
+      } catch (e) { console.warn("ops prune skipped:", e.message); }
+    };
+    await pruneOps();
+    setInterval(pruneOps, 24 * 3600 * 1000).unref();
     /* One-time cleanup: retire the previous starter menu (ids p1–p19 / ow01–ow69)
        so outlets that carried it don't end up with the old and new starter menus
        side by side. Soft-deletes only still-live copies, so it's a no-op once
@@ -2656,16 +2686,16 @@ if (fs.existsSync(protoFile)) {
       register: register || "R1",
     });
     out.recv = liveRegRecv((await c.query(
-      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows);
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false ORDER BY (data->>'balance')::numeric DESC NULLS LAST, (data->>'lastOrderAt')::numeric DESC NULLS LAST LIMIT 1000", [orgId])).rows);
     {
       const saleRows = (await c.query(
-        "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY COALESCE((data->>'at')::numeric,(data->>'t')::numeric) DESC NULLS LAST LIMIT 60", [orgId]))
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 60", [orgId]))
         .rows.map((r) => r.data || {});
       const refunded = new Set(saleRows.filter((x) => x.type === "refund" && x.refundOf).map((x) => String(x.refundOf)));
       out.salesLog = liveSalesLog(saleRows.filter((x) => !x.type || x.type === "sale" || x.type === "refund").slice(0, 40), refunded);
     }
     const ordRows = (await c.query(
-      "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY (data->>'createdAt')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 40", [orgId]))
       .rows.map((r) => r.data || {});
     out.tickets = liveTickets(ordRows);
     out.deliv = liveDeliv(ordRows);
@@ -2694,7 +2724,7 @@ if (fs.existsSync(protoFile)) {
        first billed half the table. They are entities now, so every terminal
        sees the same floor. */
     out.openBills = (await c.query(
-      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='openBills' AND deleted=false AND COALESCE(data->>'storeId',$2)=$2 ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 60",
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='openBills' AND deleted=false AND COALESCE(data->>'storeId',$2)=$2 ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 60",
       [orgId, storeId || DEFAULT_STORE_ID])).rows.map((r) => Object.assign({}, r.data || {}, { id: String(r.id) }));
     out.zones = (await c.query(
       "SELECT data FROM entities WHERE org_id=$1 AND kind='zones' AND deleted=false", [orgId])).rows
@@ -2727,7 +2757,7 @@ if (fs.existsSync(protoFile)) {
        server-local midnight, matching the /admin Reports convention. */
     const sodz = new Date(); sodz.setHours(0, 0, 0, 0);
     const zrows = (await c.query(
-      "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND (data->>'at')::numeric >= $2", [orgId, sodz.getTime()]))
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2", [orgId, sodz.getTime()]))
       .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
     const zag = { gross: 0, cash: 0, card: 0, transfer: 0, tab: 0, gst: 0, svc: 0, orders: 0 };
     for (const s of zrows) {
@@ -2807,10 +2837,14 @@ if (fs.existsSync(protoFile)) {
             }
             if (isRegister) Object.assign(regData, await collectRegData(c, orgId, req.appRegister, req.appStoreId));
             if (withAdmin) {
+              /* Bounded: /admin used to pull every customer and every order the
+                 store had ever taken on each page load and parse them all into
+                 JS. Ninety days of QR trading is ~90k rows for a panel that
+                 shows recent history. */
               const custRows = (await c.query(
-                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows;
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false ORDER BY (data->>'lastOrderAt')::numeric DESC NULLS LAST LIMIT 2000", [orgId])).rows;
               const orderRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false", [orgId])).rows;
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 4000", [orgId])).rows;
               adminData.custData = liveCustData(custRows, orderRows);
               adminData.menuAll = liveMenuAll((await c.query(
                 "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
@@ -2828,7 +2862,7 @@ if (fs.existsSync(protoFile)) {
               // capped a busy day's totals (a 1000-cover day showed only the last
               // 200 orders); 3000 covers a full day of even a high-volume outlet.
               const rawSaleRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 3000", [orgId]))
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 3000", [orgId]))
                 .rows.map((r) => r.data || {});
               const saleRows = rawSaleRows.filter((s) => !s.type || s.type === "sale");
               const qtyOf = (s) => (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0);
@@ -2865,7 +2899,7 @@ if (fs.existsSync(protoFile)) {
                 });
               // Procurement > Expenses from the real expense ledger.
               const expRows = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 40", [orgId])).rows.map((r) => r.data || {});
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 40", [orgId])).rows.map((r) => r.data || {});
               adminData.expenses = expRows.map((e) => ({
                 d: dfmt(e.t), cat: e.cat || "Purchases", v: e.supplier || e.userName || "—",
                 m: e.paidFrom === "cash" ? "Cash" : e.paidFrom === "card" ? "Card" : "Transfer",
@@ -2881,7 +2915,7 @@ if (fs.existsSync(protoFile)) {
               }));
               // Procurement > Purchase Orders from the till's pords sync stream.
               const poRows = (await c.query(
-                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='pords' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 40", [orgId])).rows;
+                "SELECT id, data FROM entities WHERE org_id=$1 AND kind='pords' AND deleted=false ORDER BY COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) DESC LIMIT 40", [orgId])).rows;
               adminData.pos = poRows.map((x) => {
                 const d = x.data || {}; const st = d.status === "received" ? "Received" : d.status === "draft" ? "Draft" : "Open";
                 const lineItems = (d.items || []).map((it) => ({
@@ -3393,7 +3427,7 @@ if (fs.existsSync(protoFile)) {
         if (!cur) return null;
         const data = Object.assign({}, cur.data || {});
         const sinceOpen = Number(data.openedAt) || 0;
-        const sales = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND (data->>'at')::numeric >= $2 AND COALESCE(data->>'storeId',$3)=$3", [orgId, sinceOpen, data.storeId || storeId]))
+        const sales = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2 AND COALESCE(data->>'storeId',$3)=$3", [orgId, sinceOpen, data.storeId || storeId]))
           .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale");
         let cashSales = 0, gross = 0;
         for (const s of sales) {
@@ -3979,6 +4013,13 @@ app.use((err, req, res, next) => {
   /* Handlers throw Object.assign(new Error(msg), { status: 4xx }) for
      client-facing validation/conflict errors — pass those through so the
      UI can show the real message instead of a generic 500. */
+  /* Saturation is temporary, not a bug: a pool-connect timeout or a statement
+     timeout means the database is busy. Answer 503 + Retry-After so the till
+     backs off and retries instead of hanging on a request that will never
+     arrive (the outbox already knows how to retry a 5xx). */
+  const msg = String((err && err.message) || "");
+  const busy = /timeout exceeded when trying to connect|Connection terminated due to connection timeout|canceling statement due to statement timeout|Query read timeout/i.test(msg);
+  if (busy) { res.set("Retry-After", "2"); return res.status(503).json({ error: "Busy right now — try again in a moment." }); }
   const code = err && Number(err.status) >= 400 && Number(err.status) < 500 ? Number(err.status) : 500;
   res.status(code).json({ error: code === 500 ? "something went wrong on our side - please try again" : err.message });
 });

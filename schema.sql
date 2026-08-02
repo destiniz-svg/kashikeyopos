@@ -506,3 +506,25 @@ DROP POLICY IF EXISTS tenant_isolation ON receipt_seq;
 CREATE POLICY tenant_isolation ON receipt_seq
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
+-- Hot-path indexes. Without these every register poll, every /admin load and
+-- every Z-report was a parallel sequential scan of the WHOLE entities heap —
+-- which, because all tenants share that heap, meant a busy neighbour slowed
+-- your outlet down (measured: adding an unrelated org with 100k sales took
+-- /app from 104ms to 146ms with nothing about this store changed).
+--
+-- There is ONE canonical timestamp expression for an entity, and every query
+-- that orders or filters by time uses it verbatim. An index on a JSONB
+-- expression only applies when the query spells the expression identically, so
+-- a second, nearly-identical form silently gets a sequential scan — which is
+-- how the first attempt at this index did nothing.
+CREATE INDEX IF NOT EXISTS entities_kind_ts ON entities
+  (org_id, kind, (COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0)) DESC)
+  WHERE NOT deleted;
+-- Plain per-kind lookups (customers, products, users, settings, zones, openBills).
+CREATE INDEX IF NOT EXISTS entities_kind_live ON entities (org_id, kind) WHERE NOT deleted;
+
+-- The idempotency ledger is append-only and was never pruned: ~365k rows a year
+-- for a 1,000-sale-a-day outlet. Retention is handled in the app (see
+-- pruneOps); this index makes that sweep cheap.
+CREATE INDEX IF NOT EXISTS ops_applied ON ops (applied_at);
