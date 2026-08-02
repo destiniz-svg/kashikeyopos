@@ -121,7 +121,7 @@ The source modules under `frontend/offline` and `frontend/transactions` now carr
 - local order/payment records
 - stock/customer deltas
 
-The runtime `web/dist/offline-bridge.js` also preserves store context for queued writes from the current minified POS shell. It checks, in order:
+The register carries the active store on every queued write, so an outbox drained after a dropout books against the outlet it was rung on. (Historically the same job was done by the retired `web/dist/offline-bridge.js` for the minified POS shell.) It checks, in order:
 
 1. request body `storeId`
 2. URL `storeId`, `store`, or `st`

@@ -4,7 +4,17 @@ Postgres-backed KashikeyoPOS cloud sync for Railway.
 
 Production domain: https://kashikeyopos.com
 
-This build serves the existing POS/PWA from `web/dist` and adds a Node/Express sync server. Tills pair from Admin -> Cloud Sync, push menu/tables/zones/customers to Postgres, pull remote orders in real time, and expose public customer/table links at `/p/:slug/...`.
+A Node/Express + Postgres server that serves all three front-ends and the sync API. Tills push menu/tables/zones/customers to Postgres, pull remote orders in real time, and expose public customer/table links at `/p/:slug/...`.
+
+The front-ends are hand-written HTML/JS in this repository, with no build step:
+
+| URL | File | What it is |
+| --- | --- | --- |
+| `/app` | `web2/proto/index.html` | Register / till, PIN-gated, offline-first |
+| `/admin` | `web2/proto/admin.html` | Admin cockpit (manager rank and above) |
+| `/?s=<slug>` | same as `/app`, guest mode | Customer QR menu and ordering |
+
+`web/dist` holds the retired prebuilt bundle. It is no longer served at `/app`; it survives only so already-installed legacy PWAs can still fetch their root-relative assets.
 
 ## What This Build Supports
 
@@ -105,6 +115,6 @@ To update a Pages-only site, upload the standalone Pages `index.html`, `sw.js`, 
 
 ## Notes
 
-- Do not run a Vite build for this package. The frontend is already built in `web/dist`.
+- There is no build step. The front-ends under `web2/proto/` are hand-written HTML/JS served directly — edit, restart, reload.
 - The server initializes `schema.sql` automatically on boot.
-- `npm start` runs `guest-sync-patch.js`, which patches the uploaded static bundle so guest checkout posts to `/p/:slug/order`, then starts `index.js`.
+- `npm start` runs `guest-sync-patch.js` before `index.js`. That patcher only touches the retired `web/dist` bundle; it is kept so already-installed legacy PWAs keep working. New front-end work does not go through it.

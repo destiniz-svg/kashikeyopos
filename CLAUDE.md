@@ -14,35 +14,45 @@ otherwise, it's aspirational; build in this app. Deployed on Railway
 image). CommonJS, lean deps (express, pg, jsonwebtoken, bcryptjs, jose,
 @anthropic-ai/sdk). Node 22 in the sandbox (has native `fetch`).
 
-## The three UIs
+## The three UIs — all hand-written and directly editable
 
-1. **Till** (`/app`) — a **prebuilt, minified Vite+React SPA** baked into
-   `web/dist/index.html`. **You cannot edit its source.** It's PIN-gated and
-   offline-first (syncs via `/api/ops` push + `/api/pull` + SSE `/api/events`).
-2. **Back office** (`/back` → `site/back.html`) — plain hand-written HTML/JS,
-   **fully editable, server-served** (no bake, no SW bump). This is where all
-   the inventory/back-office work lives.
-3. **Guest/QR portal** (`/p/:slug`) — served from the same baked bundle.
+Every UI is now plain HTML/JS in this repo, served by `serveProto()` in
+`index.js`. **There is no build step and no bundle to bake.** Edit the file,
+restart, reload.
 
-### Patching the till bundle (critical)
+1. **Register / till** (`/app` → `web2/proto/index.html`) — PIN-gated,
+   offline-first. Syncs via `/api/ops` push, `/api/pull`, the cookie-auth
+   snapshot `/api/app2/pull` (5s poll, ETag/304) and SSE `/api/events`.
+   Templating is `dc-template`: `{{ x }}` bindings, `<sc-if value="{{ b }}">`,
+   `<sc-for list="{{ y }}" as="z">`.
+2. **Admin cockpit** (`/admin` → `web2/proto/admin.html`) — the back office.
+   Requires MANAGER rank or above. This is where inventory, reports, staff and
+   configuration live.
+3. **Guest / QR portal** — the *same* `web2/proto/index.html` run in a
+   locked-down customer mode, reached at `/?s=<slug>` (`serveGuestPortal`, a
+   different code path from `serveProto`) and `/p/:slug/...` for its APIs.
 
-The React SPA is modified by **string `.replace()` patches** in
-`guest-sync-patch.js` (numbered patches, currently up to ~#75). Also patches
-`web/dist/sw.js` service-worker cache version.
+### What was retired (docs elsewhere may still describe it)
 
-- Bake with `PATCH_ONLY=1 node guest-sync-patch.js`. Bake **from the committed
-  `web/dist/index.html`, not a clean bundle** (there's a non-idempotent patch
-  ordering dependency).
-- **Idempotency rule:** each patch's find-string must NOT appear in its
-  replacement, so re-baking is a no-op. Verify: re-run the bake, `git diff`
-  should be empty.
-- **Bump the SW version** (`kashikeyo-2.9.NN` in `guest-sync-patch.js`) whenever
-  you change the bundle, so installed PWAs pick up the build.
-- Purged Tailwind: only classes already in the bundle exist. Missing ones
-  (`lg:grid-cols-6`, `min-h-0`, `max-w-3xl`, etc.) must be custom-injected CSS
-  or inline styles.
-- `/back`-only changes need **no bake and no SW bump** (server-served,
-  network-first).
+- **`/back` and `site/back.html` are gone.** `/back` 301-redirects to `/admin`.
+  Anything describing a `S`/`TABS`/`render()` back office is obsolete.
+- **The prebuilt minified Vite/React bundle under `web/dist` is no longer the
+  till.** `guest-sync-patch.js` and its ~75 string-`.replace()` patches, the
+  `PATCH_ONLY=1` bake and the `kashikeyo-2.9.NN` SW bump all applied to *that*
+  bundle. `web/dist` survives only so already-installed legacy PWAs can still
+  fetch their root-relative assets, and `npm start` still runs the patcher over
+  it. **Do not add patches there** — change `web2/proto/*.html` instead.
+- The register's own service worker is `web2/proto/sw.js` (`kashikeyo-app-1`),
+  network-first, and it never touches `/api/` or `/p/`.
+
+### Editing `web2/proto/*.html` safely
+
+- **Mismatched string quotes** are the #1 self-inflicted bug (open `'`,
+  accidentally close `"`). Always syntax-check after editing: extract the
+  largest inline `<script>` block and `node --check` it.
+- Also confirm `<sc-if>`/`<sc-for>` open and close counts still balance — an
+  unbalanced tag renders as an empty screen with no error.
+- Tailwind is not in play here; these files carry their own CSS.
 
 ## Data model
 
@@ -167,36 +177,57 @@ auth = Bearer token (from the same response) on `/api/ops` (op shape:
 `{ops:[{opId,puts:[{kind,id,data}]}]}`; a sale is a `sales` entity with
 `lines:[{pid,qty}]` and a `payments` array).
 
-**Browser verify** (the till is PIN-gated and heavy; it may not fully boot
-headless — verify `/back` instead where possible):
+**Browser verify** (`/app` boots headless; it stops at the PIN gate unless you
+set the session cookie):
 ```
 import pkg from '/opt/node22/lib/node_modules/playwright/index.js';
 const {chromium}=pkg;                // playwright is CJS — must destructure
 // executablePath:'/opt/pw-browsers/chromium'; goto waitUntil:'domcontentloaded'
-// (SSE breaks networkidle). Set the kashikeyo_session cookie to reach /back.
+// (SSE breaks networkidle). Set the kashikeyo_session cookie to reach /admin.
 ```
-`window.S` (back-office state) is closure-scoped — not injectable from the page.
+The app's own state is closure-scoped — not injectable from the page. To test a
+method's arithmetic, slice its source out of the HTML and run it with `new
+Function` against a stub `this`; that exercises the shipped text rather than a
+retyped copy.
+
+`pkill -f "node index.js"` **kills this shell too** whenever the command line
+you are running contains that same string (the pattern matches its own argv).
+Use `pkill -f "[n]ode index[.]js"`, and run restarts as their own step.
 
 ## Conventions / gotchas
 
-- **Mismatched string quotes** are the #1 self-inflicted bug in `site/back.html`
-  (open `'`, accidentally close `"`). Always syntax-check after editing:
-  extract the single `<script>` block and `node --check` it.
-- `site/back.html` render: `S` state, `TABS`, `render()` switches on `S.tab`,
-  `api(path,opts)` → `/api/inv`, `go(tab)`, `loadAll()`. Modals go in
-  `#modalHost`. Reuse existing CSS (`.card/.cards`, `.suggest/.s`, `.badge`,
-  `.chips`, `.adj-preview`, `.seg`, `.flow/.st`).
 - Design tokens: kashikeyo palette (keyo-600 `#C7431D`, sand neutrals). Themeable
-  via `.ksh-*` CSS vars driven by `window.__kpal`. Injected helpers on the till:
-  `__kpal, __ksnd, __ksChart, __kstatus, __kshexSvg, __ksOut, __ksDismissedCalls`.
-- Waiter calls: accepting adds the id to `window.__ksDismissedCalls` (patch #75)
-  so an in-flight pull can't resurrect it; the server delete clears it elsewhere.
+  via `.ksh-*` CSS vars driven by `window.__kpal`.
+- **Money is integer laari everywhere** (MVR×100). Menu prices are
+  GST-inclusive, and so is the delivery zone fee. GST is *extracted* as the tax
+  fraction `rate/(1+rate)` of the inclusive amount — never re-grossed off a
+  rounded exclusive base, which is not a round trip. Service charge applies to
+  the goods (not the fee) and is itself taxable. Round each figure exactly once,
+  from the figure itself: `totals()` in `web2/proto/index.html` returns the
+  integers in `.L` for the payment path to store verbatim. The invariant
+  `subtotal − discount + service + GST = total` must hold on every bill.
+- Sale lines carry an explicit `amount` (the line, rounded once). `price` is the
+  per-unit figure for display only — multiplying it back out drifts by laari.
+- `orderBreakdown()` in `index.js` is the guest-portal mirror of `totals()`.
+  If you change one, change both, and check a guest quote against a till charge.
+- Server money-integrity: `auditSaleMoney()` re-checks every incoming sale
+  against its own declared components and stamps `data.serverAudit` on a
+  mismatch. It never rejects — a cashier has already taken the money.
+- SSE (`/api/events`, `/p/:slug/events`) goes through `openEventStream()`:
+  `retry:` hint (jittered), `id:` = rowver, `Last-Event-ID` honoured,
+  `X-Accel-Buffering: no`. On the client, `openStream()` re-opens on
+  `readyState === 2` with backoff — EventSource does *not* retry a 401/503/502
+  by itself. The 5s/8s polls are the safety net under it.
 - Don't create PRs unless asked. Only push to the designated branch.
 
-## Status: the Inventory & Ingredient Management revamp is fully shipped
+## Status
 
-Availability/out-of-stock, guided overview, per-item timeline, clearer
-stock-count wording, wastage/adjustments ledger, per-location + transfers, the
-full item-role graph, OCR delivery notes (§13), and the AI assistant +
-behaviour-learning insights (§18–19) — all on `main`. Deferred/none pending
-except turning on `ANTHROPIC_API_KEY` in Railway to enable the live model calls.
+The Inventory & Ingredient Management revamp is fully shipped (availability,
+guided overview, per-item timeline, wastage ledger, per-location + transfers,
+the item-role graph, OCR delivery notes §13, AI assistant + insights §18–19).
+`ANTHROPIC_API_KEY` still needs turning on in Railway for the live model calls.
+
+A 5-member production audit (offline/sync, accounting, restaurant operations,
+ergonomics) is being worked through on `staging`: CRITICAL and HIGH findings are
+done, MEDIUM is in progress. Production `main` has not been promoted since that
+work started.

@@ -1744,13 +1744,55 @@ if(!saved||!saved.id||!saved.token)return null;return users.find(function(u){ret
     if(this.state.guestMode){this.guestPollOrders();this._gpIv=setInterval(()=>this.guestPollOrders(),8000);
       /* Instant customer-side sync: the store's SSE hub pushes on every order
          change, so the diner sees staff progress the moment it happens. */
-      try{if(this.state.guest&&this.state.guest.slug&&typeof EventSource!=='undefined'){var ges=new EventSource('/p/'+encodeURIComponent(this.state.guest.slug)+'/events');ges.onmessage=function(){me.guestPollOrders();};this._es=ges;}}catch(e){}
+      this.openStream(function(){var g=me.state.guest;return (g&&g.slug)?('/p/'+encodeURIComponent(g.slug)+'/events'):null;},function(){me.guestPollOrders();});
     }else{this._regIv=setInterval(()=>this.pullReg(),5000);this.initSync();this.verifyTillToken();
       /* Instant register sync: a new QR/customer order (or status change) pokes
          the SSE hub, so it lands on the Orders panel in real time, not on the
          next 5s poll. */
-      try{var tok=(typeof window!=='undefined'&&window.__ksToken)||'';if(tok&&typeof EventSource!=='undefined'){var res=new EventSource('/api/events?token='+encodeURIComponent(tok));res.onmessage=function(){me._regSig='';me.pullReg();};this._es=res;}}catch(e){}
+      this.openStream(function(){var tok=(typeof window!=='undefined'&&window.__ksToken)||'';return tok?('/api/events?token='+encodeURIComponent(tok)):null;},function(){me._regSig='';me.pullReg();});
     }this.publish();}
+  /* A managed SSE connection.
+
+     EventSource retries a dropped TCP connection on its own, but it does NOT
+     retry when the server answers with anything that isn't a 200 event-stream
+     — a 401 once the till's session ages out, a 503 when the pool sheds load,
+     a 502 from a proxy mid-deploy. In those cases it goes to readyState 2 and
+     stays there forever. Nothing here listened for that, so the live feed
+     died silently: orders stopped appearing on the register and staff
+     progress stopped appearing on the diner's phone until someone thought to
+     reload the tab. The 5s/8s poll kept the screen roughly correct, which is
+     exactly why nobody noticed the push had gone.
+
+     So: watch for the closed state and re-open, backing off 2s, 4s, 8s … to a
+     minute, with jitter so a fleet of tablets doesn't reconnect in lockstep
+     after a deploy. Re-opening is cheap and the poll covers the gap. A
+     successful open resets the backoff. The last event id is replayed on
+     reconnect so the server can tell us straight away if we missed anything.
+
+     Also closes the stream on unmount, which nothing did before. */
+  openStream(urlFn,onPoke){var me=this;this._esStop=false;this._esTry=0;
+    var open=function(){
+      if(me._esStop)return;
+      var url;try{url=urlFn();}catch(e){url=null;}
+      if(!url||typeof EventSource==='undefined')return;
+      if(me._esLastId)url+=(url.indexOf('?')<0?'?':'&')+'lastEventId='+encodeURIComponent(me._esLastId);
+      var es;try{es=new EventSource(url);}catch(e){return;}
+      me._es=es;
+      es.onopen=function(){me._esTry=0;};
+      es.onmessage=function(ev){me._esTry=0;if(ev&&ev.lastEventId)me._esLastId=ev.lastEventId;try{onPoke();}catch(e){}};
+      es.onerror=function(){
+        /* readyState 0 means the browser is reconnecting by itself; leave it. */
+        if(!es||es.readyState!==2)return;
+        try{es.close();}catch(e){}
+        if(me._es===es)me._es=null;
+        if(me._esStop)return;
+        me._esTry=Math.min(me._esTry+1,5);
+        var wait=Math.min(60000,1000*Math.pow(2,me._esTry))+Math.floor(Math.random()*2000);
+        clearTimeout(me._esTimer);me._esTimer=setTimeout(open,wait);
+      };
+    };
+    open();}
+  closeStream(){this._esStop=true;clearTimeout(this._esTimer);try{if(this._es)this._es.close();}catch(e){}this._es=null;}
   pullReg(){var me=this;try{/* Send back the last snapshot's tag: an unchanged poll comes back as a
    bodiless 304 instead of 186KB of mostly-unchanged catalogue. */
 var _h={};if(me._regTag)_h['If-None-Match']=me._regTag;
@@ -1759,7 +1801,7 @@ fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).
   readStore(){try{const r=localStorage.getItem('kashikeyo_store');if(r)this.setState({storeP:JSON.parse(r)});}catch(e){}}
   readMenu(){try{const r=localStorage.getItem('kashikeyo_menu');const o=r?JSON.parse(r):{off:{},hidden:{},price:{}};const sig=JSON.stringify(o);if(sig!==this._menuSig){this._menuSig=sig;this.setState({menuOv:o});}}catch(e){}}
   seedParked(){const mk=(billNo,orderType,tableNo,custId,items,agoMin,kot,status)=>{const cart=items.map(([id,qty],ix)=>{const m=this.MENU.find(x=>x.id===id)||this.MENU[ix%Math.max(1,this.MENU.length)];return m?{key:m.id+'|',id:m.id,mods:[],unit:m.price,qty}:null;}).filter(Boolean);const r=this.rate(),sp=this.scPct();let incl=0;cart.forEach(l=>incl+=l.unit*l.qty);const excl=incl/(1+r);const svc=orderType==='dine'?excl*sp:0;const gst=(excl+svc)*r;const total=excl+svc+gst;const ts=Date.now()-agoMin*60000;return {id:'seed'+billNo,billNo,cart,orderType,tableNo,custId,discountPct:0,kotSent:kot,status:status||(kot?'kitchen':'open'),readyAt:status==='ready'?ts:null,at:ts,startedAt:ts,total,count:cart.reduce((a,l)=>a+l.qty,0),totalF:this.fm(total)};};const rv=this.state.recv;this.setState({held:[mk(11,'dine',6,null,[['mashuni',2],['garudhiya',1],['kalhusai',2]],14,true,'ready'),mk(10,'dine',2,(rv[0]&&rv[0].id)||null,[['friedrice',1],['coffee',2]],27,true,'kitchen'),mk(9,'takeaway',null,null,[['gulha',6],['bajiya',4]],8,false,'open')]});}
-  componentWillUnmount(){clearInterval(this._iv);clearTimeout(this._tt);clearInterval(this._ai);clearInterval(this._menuIv);clearInterval(this._regIv);window.removeEventListener('resize',this._rs);if(this._onCfg)window.removeEventListener('storage',this._onCfg);}
+  componentWillUnmount(){clearInterval(this._iv);clearTimeout(this._tt);clearInterval(this._ai);clearInterval(this._menuIv);clearInterval(this._regIv);/* The guest poll and the SSE connection were both left running on unmount. */clearInterval(this._gpIv);this.closeStream();window.removeEventListener('resize',this._rs);if(this._onCfg)window.removeEventListener('storage',this._onCfg);}
   componentDidUpdate(){this.applyDoc();this.publish();try{if(this.state.scr!==this._lastScr){this._lastScr=this.state.scr;localStorage.setItem('kashikeyo_scr',this.state.scr);}if(this.state.accent!==this._lastAccent){this._lastAccent=this.state.accent;localStorage.setItem('kashikeyo_accent',this.state.accent);}}catch(e){}}
   applyDoc(){const d=document.documentElement,s=this.state;const dir=s.lang==='dv'?'rtl':'ltr';if(d.dir!==dir)d.dir=dir;if(d.lang!==s.lang){d.lang=s.lang;try{localStorage.setItem('kashikeyo_lang',s.lang);}catch(e){}}const dk=d.hasAttribute('data-dark');if(s.dark&&!dk)d.setAttribute('data-dark','');if(!s.dark&&dk)d.removeAttribute('data-dark');const wt=d.hasAttribute('data-white');if(s.white&&!wt)d.setAttribute('data-white','');if(!s.white&&wt)d.removeAttribute('data-white');}
   t(k){const l=this.T[this.state.lang];return (l&&l[k])||this.T.en[k]||k;}

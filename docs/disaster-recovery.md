@@ -15,7 +15,7 @@ works — *a backup that has never been restored is not evidence of recoverabili
 | Asset | Store | Recovery source |
 | --- | --- | --- |
 | Business data — sales, orders, customers, products, stock, shifts | PostgreSQL (`entities` JSONB, `ops`, `stock_moves`, `ingredients`, `recipe_lines`, `orgs`, `stores`, `suppliers`, `purchase_invoices…`, `platform_admins`) | **DB backup** (this runbook) |
-| Application code + the baked till bundle (`web/dist`) | Git (`main`) | `git` + Railway redeploy |
+| Application code + the front-ends (`web2/proto/`) | Git (`main`) | `git` + Railway redeploy |
 | Secrets & config (`DATABASE_URL`, `JWT_SECRET`/`SECRET`, `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`, `PLATFORM_ADMIN_*`, `ANTHROPIC_API_KEY`) | Railway → service → Variables | **Railway variables** (back these up separately — see §6) |
 | Unsynced sales on a till | Browser `localStorage` (`kashikeyo-outbox`) on each device | The device itself (re-syncs after recovery) |
 

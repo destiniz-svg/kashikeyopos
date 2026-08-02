@@ -1,22 +1,48 @@
 # Offline-First Transaction Path
 
-This is the front-end migration path for a Plattoo-style POS flow: the cashier can create orders and payments without internet, the UI updates instantly from IndexedDB, and the cloud sync engine pushes changes when the connection returns.
+This is the front-end migration path for a Plattoo-style POS flow: the cashier can create orders and payments without internet, the UI updates instantly from local storage, and the cloud sync engine pushes changes when the connection returns.
 
-## Production Wiring Added
+> **Superseded in part.** Everything below about `web/dist`, `offline-bridge.js`
+> and `guest-sync-patch.js` describes the *old* prebuilt/minified till, which is
+> no longer what `/app` serves. It is kept for the design reasoning and for the
+> legacy PWAs still installed on counter tablets. See "How it actually works
+> now" immediately below for the shipped path.
 
-The repository currently deploys a prebuilt/minified POS shell under `web/dist`, not a normal editable React/Vue source tree. To wire offline-first behavior into that real deployed POS immediately, this build includes:
+## How it actually works now
+
+`/app` serves `web2/proto/index.html` — hand-written, editable, no build step.
+The offline path is native to it, not bridged in:
+
+- **The outbox** is a durable queue in `localStorage['kashikeyo-outbox']`,
+  written *before* the sale is considered done and drained against `/api/ops`
+  with retry and idempotent `opId`s. It survives a reload, a crash and a battery
+  swap. A two-second dropout used to destroy a paid-for sale silently.
+- **The app shell** is cached by `web2/proto/sw.js` (`kashikeyo-app-1`), which
+  is deliberately **network-first** for navigations: a cache-first worker on a
+  fleet of counter tablets can pin a stale bundle across every outlet, which is
+  worse than having no worker at all. It never intercepts `/api/` or `/p/`.
+- **The cart** is persisted on every change and restored on boot, so a reload
+  mid-order does not lose the customer's items.
+- **Reads** come from `/api/app2/pull` (cookie-auth snapshot, 5s poll with
+  ETag/304) and `/api/pull` (rowver cursor), nudged by SSE `/api/events`.
+
+The rest of this document is the historical design and the legacy bridge.
+
+## Production Wiring Added (legacy bundle)
+
+The repository used to deploy a prebuilt/minified POS shell under `web/dist`, not a normal editable React/Vue source tree. To wire offline-first behavior into that deployed POS at the time, this build included:
 
 - `web/dist/offline-bridge.js` - a browser runtime bridge that intercepts existing write `fetch()` calls.
 - `guest-sync-patch.js` - injects `/offline-bridge.js` into the POS shell at startup.
 - `web/dist/sw.js` - caches `/offline-bridge.js` with the app shell.
 
-The bridge queues failed writes in IndexedDB and replays them when the browser returns online. It currently catches:
+The bridge queued failed writes in IndexedDB and replayed them when the browser returned online. It caught:
 
 - `POST /api/ops` - main POS sync operations.
 - `POST /p/:slug/order` - guest/customer/table orders.
 - `POST /p/:slug/call` - waiter calls.
 
-This gives the current deployed app an offline write safety net without editing the minified POS internals.
+That gave the deployed app an offline write safety net without editing the minified POS internals. It still runs for already-installed legacy PWAs; new work does not go there.
 
 ## Source Modules Added
 
@@ -117,12 +143,12 @@ For the proper long-term frontend, replace the checkout handler with `createTran
 
 ## Verification — offline queue tested at the wire contract (audit SYNC / offline-15)
 
-The audit flagged "client queue NOT TESTED": the live sync engine lives in the
-prebuilt, minified till bundle (`web/dist`, served at `/app`), which cannot be
-edited from source and — per `CLAUDE.md` — does not fully boot to an interactive
-PIN pad under headless Chromium in the sandbox (it stalls on the sign-in splash).
-So the full offline→online UI cycle can't be driven here; that pass needs a real
-device with the browser a11y/Application inspector.
+The audit flagged "client queue NOT TESTED". At the time the live sync engine
+lived in the prebuilt, minified till bundle, which could not be edited from
+source and did not boot to an interactive PIN pad under headless Chromium. That
+constraint is gone — `/app` is now the editable `web2/proto/index.html` and does
+boot headless — but the full offline→online UI cycle still wants a real device
+with the browser's Application inspector to confirm on hardware.
 
 What *was* verified, because it is the guarantee the durable outbox actually
 depends on — the till holds unsynced ops in `localStorage['kashikeyo-outbox']`

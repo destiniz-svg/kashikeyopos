@@ -703,7 +703,10 @@ const hubs = new Map();
 const localPoke = (orgId, rowver) => {
   const set = hubs.get(orgId);
   if (!set) return;
-  for (const res of set) { try { res.write(`data: ${JSON.stringify({ rowver })}\n\n`); } catch {} }
+  /* The rowver doubles as the event id, so a client that reconnects can tell
+     the server where it left off via Last-Event-ID. */
+  const frame = `id: ${Number(rowver) || 0}\ndata: ${JSON.stringify({ rowver })}\n\n`;
+  for (const res of set) { try { res.write(frame); } catch {} }
 };
 const poke = (orgId, rowver) => {
   localPoke(orgId, rowver);
@@ -2336,28 +2339,55 @@ app.get("/api/pull", auth, wrap(async (req, res) => {
   res.json({ rowver, storeId, entities, more: entities.length === 500 });
 }));
 
-app.get("/api/events", auth, (req, res) => {
-  res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
+/* One place that opens an SSE stream, so the register's feed and the guest's
+   behave identically. Three things were missing:
+
+   - No X-Accel-Buffering: no. A buffering reverse proxy holds the stream in
+     its own buffer and forwards nothing until it fills, so the client sits on
+     an open socket that never delivers an event. The header tells the proxy to
+     pass bytes straight through, and it is ignored by proxies that don't need
+     it.
+   - No retry: hint, so every client used the browser's own default. After a
+     deploy or a hub restart, a whole fleet of tablets reconnects in the same
+     3-second window and stampedes the new instance. The hint is jittered per
+     connection to spread the herd out.
+   - No id:, so a client reconnecting after a gap had no way to say where it
+     left off. Each poke now carries the rowver as its id, and a reconnect
+     presenting Last-Event-ID is answered immediately with the current rowver
+     so the client pulls the gap at once instead of waiting for its next poll.
+
+   The heartbeat also drops from 25s to 20s: a 30-second idle timeout is common
+   in front-end proxies, and 25s plus scheduling jitter sat close enough to it
+   to be cut mid-shift. */
+const openEventStream = (orgId, req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
   res.flushHeaders();
-  res.write("data: {\"hello\":true}\n\n");
-  let set = hubs.get(req.org.o);
-  if (!set) { set = new Set(); hubs.set(req.org.o, set); }
+  res.write(`retry: ${4000 + Math.floor(Math.random() * 4000)}\n\n`);
+  const last = Number(req.get("Last-Event-ID") || req.query.lastEventId || 0) || 0;
+  res.write(`data: ${JSON.stringify({ hello: true, resumedFrom: last || undefined })}\n\n`);
+  let set = hubs.get(orgId);
+  if (!set) { set = new Set(); hubs.set(orgId, set); }
   set.add(res);
-  const hb = setInterval(() => { try { res.write(": hb\n\n"); } catch {} }, 25000);
-  req.on("close", () => { clearInterval(hb); set.delete(res); });
-});
+  const hb = setInterval(() => { try { res.write(": hb\n\n"); } catch {} }, 20000);
+  req.on("close", () => {
+    clearInterval(hb);
+    set.delete(res);
+    /* Don't leave an empty Set behind for every org that has ever connected. */
+    if (!set.size) hubs.delete(orgId);
+  });
+};
+
+app.get("/api/events", auth, (req, res) => openEventStream(req.org.o, req, res));
 
 app.get("/p/:slug/events", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).end();
-  res.set({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" });
-  res.flushHeaders();
-  res.write("data: {\"hello\":true}\n\n");
-  let set = hubs.get(org.id);
-  if (!set) { set = new Set(); hubs.set(org.id, set); }
-  set.add(res);
-  const hb = setInterval(() => { try { res.write(": hb\n\n"); } catch {} }, 25000);
-  req.on("close", () => { clearInterval(hb); set.delete(res); });
+  openEventStream(org.id, req, res);
 }));
 
 app.get("/p/:slug/boot", wrap(async (req, res) => {

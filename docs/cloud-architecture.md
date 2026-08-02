@@ -3,7 +3,7 @@
 A consolidated research note behind the prototype→production upgrade. It answers
 one question honestly: *is KashikeyoPOS built the way a modern, cloud-native POS
 is built in 2026, and where are the gaps?* It grounds every claim in this repo's
-actual code (`index.js`, `inventory.js`, `schema.sql`, `web/dist`, the `docs/`)
+actual code (`index.js`, `inventory.js`, `schema.sql`, `web2/proto/`, the `docs/`)
 and compares against how Toast, Square, Lightspeed, and the newer agentic POS
 (AgenticPOS) are architected publicly.
 
@@ -60,10 +60,15 @@ ISP down.
 - **Realtime nudge:** SSE `GET /api/events` over Postgres `LISTEN/NOTIFY` fans a
   `poke(orgId, rowver)` to every connected till across every app instance, so
   "new order" lands on the kitchen screen in ~a second without polling.
-- **The offline safety net today:** because the till is a prebuilt minified
-  bundle, `web/dist/offline-bridge.js` intercepts failed `POST /api/ops` /
-  guest-order writes, queues them in IndexedDB, returns a synthetic success so
-  the cashier keeps going, and replays on reconnect + every 15 s.
+- **The offline safety net today:** the register holds unsynced ops in a durable
+  outbox (`localStorage['kashikeyo-outbox']`, written before the sale is
+  considered done) and drains it against `/api/ops` with retry and idempotent
+  `opId`s, so a dropout cannot lose a paid-for sale. `web2/proto/sw.js` caches
+  the app shell network-first so a cold load during an outage still reaches a
+  working till.
+  *(Historical: when the till was a prebuilt minified bundle this was done by
+  `web/dist/offline-bridge.js` intercepting failed writes into IndexedDB and
+  returning a synthetic success. That bundle is retired from `/app`.)*
 
 **Verdict.** This is the same shape as Square/Toast: local-first, idempotent
 replay, monotonic pull cursor, tombstones, realtime fan-out. The one honest
