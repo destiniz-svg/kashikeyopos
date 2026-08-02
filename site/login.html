@@ -198,7 +198,7 @@
         staffForm.style.display = on ? "" : "none";
         staffFoot.style.display = on ? "" : "none";
         h1.textContent = on ? "Staff sign-in" : "Sign in";
-        sub.textContent = on ? "Managers and admins — enter your store and till PIN." : "Welcome back — sign in to your workspace.";
+        sub.textContent = on ? "Managers and admins — enter your store and till PIN. Owners sign in with email and password." : "Welcome back — sign in to your workspace.";
       }
       document.getElementById("toStaff").addEventListener("click", function (e) { e.preventDefault(); showStaff(true); });
       document.getElementById("toOwner").addEventListener("click", function (e) { e.preventDefault(); showStaff(false); });
@@ -213,6 +213,16 @@
             body: JSON.stringify({ slug: slug, pin: document.getElementById("staffPin").value }),
           });
           var data = await res.json().catch(function () { return {}; });
+          /* An owner PIN no longer opens the back office. Bounce them to the
+             email + password form with the reason showing, rather than leaving
+             them stuck on a form that can never succeed. */
+          if (!res.ok && data.ownerUsePassword) {
+            showStaff(false);
+            var oe = document.getElementById("err");
+            if (oe) { oe.textContent = data.error; oe.style.display = "block"; }
+            staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
+            return;
+          }
           if (!res.ok) throw new Error(data.error || "Sign in failed");
           try { localStorage.setItem("kback-store", slug); } catch (e3) {}
           location.href = "/admin";

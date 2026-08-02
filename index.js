@@ -1578,6 +1578,16 @@ app.post("/api/back/login", wrap(async (req, res) => {
   if (!me) return bad();
   const RANK = { owner: 3, admin: 2, manager: 1 };
   if (!RANK[me.role]) { rlFail(keys); return res.status(403).json({ error: "The back office is for managers and above — use the till app for your role." }); }
+  /* An owner session is the keys to the business, and this form asks only for a
+     public slug plus a four-digit PIN that every shift-worker device knows. The
+     owner already has a first-class route in (email + password, which is what
+     the rest of this page does), so the PIN route is closed to them — it stays
+     open for managers and admins, whose rank cannot reset, restore or delete a
+     backup anyway. */
+  if (me.role === "owner") {
+    rlFail(keys);
+    return res.status(403).json({ error: "That PIN belongs to the account owner. Sign in with your email and password instead.", ownerUsePassword: true });
+  }
   rlClear(keys);
   await ensureDefaultStore(org.id, org.store_name);
   const storeId = cleanStoreId(me.storeId || DEFAULT_STORE_ID);
