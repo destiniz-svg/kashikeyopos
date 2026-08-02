@@ -555,7 +555,7 @@ function auditSaleMoney(sale, ctx) {
 /* The register's durable sale outbox, injected into /app. Kept as a plain
    string so it can be served inline under the page CSP (no external script).
    See the pushSaleJs comment below for why this exists. */
-const OUTBOX_JS = "(function(){\nvar KEY='kashikeyo_outbox';\nvar q=[];try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(Array.isArray(p))q=p;}}catch(e){}\nvar subs=[],busy=false,timer=0,delay=2000,lastOk=Number(localStorage.getItem('kashikeyo_outbox_ok'))||0,lastErr='';\nfunction save(){try{localStorage.setItem(KEY,JSON.stringify(q.slice(0,500)));}catch(e){}}\nfunction notify(){for(var i=0;i<subs.length;i++){try{subs[i](status());}catch(e){}}}\nfunction status(){return {pending:q.length,lastOk:lastOk,lastErr:lastErr,oldest:q.length?q[0].at:0};}\nfunction pendingSales(){return q.map(function(it){try{return it.body.ops[0].puts[0].data;}catch(e){return null;}}).filter(Boolean);}\nfunction schedule(ms){if(timer)return;timer=setTimeout(function(){timer=0;flush();},ms);}\nfunction flush(){\n  if(busy||!q.length)return Promise.resolve(status());\n  busy=true;\n  var item=q[0];\n  return fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify(item.body)})\n    .then(function(r){\n      if(r.ok){q.shift();save();lastOk=Date.now();lastErr='';try{localStorage.setItem('kashikeyo_outbox_ok',String(lastOk));}catch(e){}delay=2000;notify();if(q.length)schedule(150);return;}\n      /* 4xx other than 401/408/429 means this batch will never be accepted as\n         written — keep it (money is never silently dropped) but stop hammering\n         and surface it, so the operator can be told the sale needs attention. */\n      lastErr='HTTP '+r.status;item.tries=(item.tries||0)+1;save();notify();\n      delay=Math.min(60000,Math.max(4000,delay*2));schedule(delay);\n    })\n    .catch(function(){lastErr='offline';item.tries=(item.tries||0)+1;save();notify();delay=Math.min(60000,delay*2);schedule(delay);})\n    .then(function(){busy=false;return status();});\n}\nwindow.__ksOutbox={\n  status:status,\n  pendingSales:pendingSales,\n  flush:function(){delay=2000;return flush();},\n  subscribe:function(fn){subs.push(fn);return function(){subs=subs.filter(function(x){return x!==fn;});};}\n};\n/* A completed sale is money the cashier has already taken. It goes into a\n   durable queue FIRST and is retried until the server acknowledges it — the old\n   implementation was a bare fetch().catch(function(){}), so a two-second WiFi\n   dropout destroyed the sale with no trace and no warning to anyone. */\nwindow.__ksPushSale=function(sale){\n  try{\n    q.push({at:Date.now(),tries:0,body:{ops:[{opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]}]}});\n    save();notify();flush();\n  }catch(e){}\n  return status();\n};\n/* Also used for non-sale register writes that must survive a dropout. */\nwindow.__ksPushOp=function(opId,puts){\n  try{q.push({at:Date.now(),tries:0,body:{ops:[{opId:opId,puts:puts}]}});save();notify();flush();}catch(e){}\n  return status();\n};\ntry{window.addEventListener('online',function(){delay=2000;flush();});}catch(e){}\nsetInterval(function(){if(q.length)flush();},15000);\nif(q.length)flush();\n})();\n";
+const OUTBOX_JS = "(function(){\nvar KEY='kashikeyo_outbox';\nvar q=[];try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(Array.isArray(p))q=p;}}catch(e){}\nvar subs=[],busy=false,timer=0,delay=2000,lastOk=Number(localStorage.getItem('kashikeyo_outbox_ok'))||0,lastErr='';\nfunction save(){try{localStorage.setItem(KEY,JSON.stringify(q.slice(0,500)));}catch(e){}}\nfunction notify(){for(var i=0;i<subs.length;i++){try{subs[i](status());}catch(e){}}}\nfunction status(){return {pending:q.length,lastOk:lastOk,lastErr:lastErr,oldest:q.length?q[0].at:0};}\nfunction pendingSales(){return q.map(function(it){try{return it.body.ops[0].puts[0].data;}catch(e){return null;}}).filter(Boolean);}\nfunction schedule(ms){if(timer)return;timer=setTimeout(function(){timer=0;flush();},ms);}\nfunction flush(){\n  if(busy||!q.length)return Promise.resolve(status());\n  busy=true;\n  var item=q[0];\n  return fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify(item.body)})\n    .then(function(r){\n      if(r.ok){q.shift();save();lastOk=Date.now();lastErr='';try{localStorage.setItem('kashikeyo_outbox_ok',String(lastOk));}catch(e){}delay=2000;notify();if(q.length)schedule(150);return;}\n      /* 4xx other than 401/408/429 means this batch will never be accepted as\n         written — keep it (money is never silently dropped) but stop hammering\n         and surface it, so the operator can be told the sale needs attention. */\n      lastErr='HTTP '+r.status;item.tries=(item.tries||0)+1;save();notify();\n      delay=Math.min(60000,Math.max(4000,delay*2));schedule(delay);\n    })\n    .catch(function(){lastErr='offline';item.tries=(item.tries||0)+1;save();notify();delay=Math.min(60000,delay*2);schedule(delay);})\n    .then(function(){busy=false;return status();});\n}\nwindow.__ksOutbox={\n  status:status,\n  pendingSales:pendingSales,\n  flush:function(){delay=2000;return flush();},\n  subscribe:function(fn){subs.push(fn);return function(){subs=subs.filter(function(x){return x!==fn;});};}\n};\n/* A completed sale is money the cashier has already taken. It goes into a\n   durable queue FIRST and is retried until the server acknowledges it — the old\n   implementation was a bare fetch().catch(function(){}), so a two-second WiFi\n   dropout destroyed the sale with no trace and no warning to anyone. */\nwindow.__ksPushSale=function(sale,deltas){\n  try{\n    var op={opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]};\n    if(deltas)op.deltas=deltas;\n    q.push({at:Date.now(),tries:0,body:{ops:[op]}});\n    save();notify();flush();\n  }catch(e){}\n  return status();\n};\n/* Also used for non-sale register writes that must survive a dropout. */\nwindow.__ksPushOp=function(opId,puts){\n  try{q.push({at:Date.now(),tries:0,body:{ops:[{opId:opId,puts:puts}]}});save();notify();flush();}catch(e){}\n  return status();\n};\ntry{window.addEventListener('online',function(){delay=2000;flush();});}catch(e){}\nsetInterval(function(){if(q.length)flush();},15000);\nif(q.length)flush();\n})();\n";
 
 /* Receipt numbering (FIN-C3 / MIRA sequential numbering).
    The old scheme was `nextSeq = COUNT(sales) + 1`, computed fresh on every page
@@ -1251,13 +1251,22 @@ const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 
    GST only on taxable lines (products can be GST-exempt), service charge on
    the full subtotal — so what a guest sees for an open order matches what
    the cashier settles it for. */
-const orderTotal = (o, settings = {}) => {
-  const sub = orderSubtotal(o);
-  const taxBase = (o.items || []).reduce((x, l) => l.taxable === false ? x : x + lineTotal(l), 0) + (Number(o.fee) || 0);
-  const gst = Math.round(taxBase * (Number(settings.gstBp || 800)) / 10000);
-  const svc = Math.round(sub * (Number(settings.svcChargeBp || 0)) / 10000);
-  return sub + gst + svc;
+/* Menu prices in this system are GST-INCLUSIVE (so is the delivery fee), which
+   is what the register's own totals() assumes. This used to add GST on top of
+   an already-inclusive price, so a guest who confirmed MVR 35.00 on their phone
+   was charged MVR 37.80 seconds later — the same order, two totals, 8% apart.
+   De-gross first, then apply service charge and GST to the exclusive base,
+   exactly as the till does. */
+const orderBreakdown = (o, settings = {}) => {
+  const r = Number(settings.gstBp || 800) / 10000;
+  const sp = String(o.otype || "dinein") === "dinein" ? Number(settings.svcChargeBp || 0) / 10000 : 0;
+  const incl = orderSubtotal(o) + (Number(o.fee) || 0);
+  const excl = incl / (1 + r);
+  const svc = excl * sp;
+  const gst = (excl + svc) * r;
+  return { excl: Math.round(excl), svc: Math.round(svc), gst: Math.round(gst), total: Math.round(excl + svc + gst) };
 };
+const orderTotal = (o, settings = {}) => orderBreakdown(o, settings).total;
 const normalizeOrder = (o, settings = {}) => ({
   ...o,
   status: String(o.status || "new"),
@@ -3274,12 +3283,24 @@ if (fs.existsSync(protoFile)) {
       const before = Number(data.balance) || 0;
       data.balance = Math.max(0, before - amount);
       data.lastSettledAt = Date.now();
+      /* A settlement is cash physically received against a debt. It used to
+         leave no record at all — no entity, no ledger line, no activity log —
+         so the drawer moved with nothing to reconcile it against. Book it. */
+      const stId = "stl-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+      const method = String((req.body || {}).method || "cash").slice(0, 16);
+      await c.query(
+        "INSERT INTO entities (org_id, kind, id, data, deleted, updated_at) VALUES ($1,'settlements',$2,$3,false,now())",
+        [orgId, stId, JSON.stringify({ id: stId, customerId: id, customerName: data.name || "", amount, method,
+          balanceBefore: before, balanceAfter: data.balance, t: Date.now(), at: Date.now(),
+          userName: (req.appStaff && req.appStaff.name) || "", storeId: req.appStoreId || DEFAULT_STORE_ID })]);
       const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
-      return { rowver: Number(r.rows[0].rowver), balance: data.balance };
+      return { rowver: Number(r.rows[0].rowver), balance: data.balance, settlementId: stId };
     });
     if (out == null) return res.status(404).json({ error: "customer not found" });
     poke(orgId, out.rowver);
-    res.json({ ok: true, balance: out.balance });
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "customer.settle", ref: id,
+      detail: { amount, method: String((req.body || {}).method || "cash").slice(0, 16), balance: out.balance, settlementId: out.settlementId } });
+    res.json({ ok: true, balance: out.balance, settlementId: out.settlementId });
   }));
   /* Cashier shift + drawer cash-up (persisted). The till had an open/close
      drawer flow that only lived in localStorage; persist it as a `shifts`
