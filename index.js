@@ -2258,8 +2258,13 @@ app.get("/api/pull", auth, wrap(async (req, res) => {
   const since = Number(req.query.since) || 0;
   const storeId = cleanStoreId(req.query.storeId || req.org.s || DEFAULT_STORE_ID);
   const r = await withOrg(req.org.o, (client) => client.query(
+    /* Only rows whose writing transaction is strictly older than the oldest
+       still-running one. rowver is assigned at write time, not commit time, so
+       without this a row that took a LOWER rowver but committed LATER would be
+       skipped forever by a cursor that had already advanced past it. */
     `SELECT kind, id, data, deleted, rowver FROM entities
      WHERE org_id=$1 AND rowver>$2 AND COALESCE(data->>'storeId','global') IN ('global',$3)
+       AND (txid IS NULL OR txid < pg_snapshot_xmin(pg_current_snapshot()))
      ORDER BY rowver ASC LIMIT 500`, [req.org.o, since, storeId]));
   const entities = r.rows.map((x) => ({ kind: x.kind, id: publicId(x), data: scrubEntity(x.kind, x.data), deleted: x.deleted, rowver: Number(x.rowver), storeId: entityStore(x.data) }));
   const rowver = entities.length ? entities[entities.length - 1].rowver : since;

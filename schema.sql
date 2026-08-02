@@ -528,3 +528,33 @@ CREATE INDEX IF NOT EXISTS entities_kind_live ON entities (org_id, kind) WHERE N
 -- for a 1,000-sale-a-day outlet. Retention is handled in the app (see
 -- pruneOps); this index makes that sweep cheap.
 CREATE INDEX IF NOT EXISTS ops_applied ON ops (applied_at);
+
+-- Sync-cursor visibility (audit A-H3). `rowver` is assigned by nextval() at
+-- WRITE time, not at commit time, so a transaction that took a LOWER rowver can
+-- commit AFTER one that took a higher one. A client polling in that gap sees the
+-- higher row, advances its cursor past the lower one, and never sees the lower
+-- row again — the sale is lost to that device for the life of its cursor.
+--
+-- The fix is to hold a row back until no transaction older than it is still in
+-- flight. Each row records the transaction that wrote it; /api/pull returns only
+-- rows whose transaction is strictly older than the oldest currently-running
+-- one, which is exactly the condition under which no earlier row can still
+-- appear. Typically a delay of milliseconds.
+--
+-- Added nullable with the default set separately: a volatile DEFAULT on ADD
+-- COLUMN would rewrite the whole table on an existing deployment. NULL means
+-- "written before this column existed", i.e. long committed.
+ALTER TABLE entities ADD COLUMN IF NOT EXISTS txid xid8;
+ALTER TABLE entities ALTER COLUMN txid SET DEFAULT pg_current_xact_id();
+-- Stamped by a trigger rather than at each call site: twenty-six places bump
+-- rowver, and a single one forgetting to stamp the transaction would silently
+-- reopen the hole for those rows. A trigger cannot be forgotten by future code.
+CREATE OR REPLACE FUNCTION entities_stamp_txid() RETURNS trigger AS $fn$
+BEGIN
+  NEW.txid := pg_current_xact_id();
+  RETURN NEW;
+END
+$fn$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS entities_txid ON entities;
+CREATE TRIGGER entities_txid BEFORE INSERT OR UPDATE ON entities
+  FOR EACH ROW EXECUTE FUNCTION entities_stamp_txid();
