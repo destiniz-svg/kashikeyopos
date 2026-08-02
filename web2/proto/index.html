@@ -1716,8 +1716,17 @@ if(!saved||!saved.id||!saved.token)return null;return users.find(function(u){ret
   componentDidUpdate(){this.applyDoc();this.publish();try{if(this.state.scr!==this._lastScr){this._lastScr=this.state.scr;localStorage.setItem('kashikeyo_scr',this.state.scr);}if(this.state.accent!==this._lastAccent){this._lastAccent=this.state.accent;localStorage.setItem('kashikeyo_accent',this.state.accent);}}catch(e){}}
   applyDoc(){const d=document.documentElement,s=this.state;const dir=s.lang==='dv'?'rtl':'ltr';if(d.dir!==dir)d.dir=dir;if(d.lang!==s.lang){d.lang=s.lang;try{localStorage.setItem('kashikeyo_lang',s.lang);}catch(e){}}const dk=d.hasAttribute('data-dark');if(s.dark&&!dk)d.setAttribute('data-dark','');if(!s.dark&&dk)d.removeAttribute('data-dark');const wt=d.hasAttribute('data-white');if(s.white&&!wt)d.setAttribute('data-white','');if(!s.white&&wt)d.removeAttribute('data-white');}
   t(k){const l=this.T[this.state.lang];return (l&&l[k])||this.T.en[k]||k;}
-  rate(){return this.state.sector==='general'?(this.props.gstGeneral??8)/100:(this.props.gstTourism??17)/100;}
-  scPct(){return this.state.svcOn===false?0:(this.props.serviceChargePct??10)/100;}
+  /* The store's own GST rate, from the server. This used to be a prototype
+     prop, so every store on the platform charged 8%/17% whatever its
+     settings said — and a TGST outlet had every sale flagged because the
+     server audited it against a gstBp the sector switch never moved. */
+  rate(){var sp=this.state.storeP;if(sp&&Number(sp.gstBp)>0)return Number(sp.gstBp)/10000;
+    return this.state.sector==='general'?(this.props.gstGeneral??8)/100:(this.props.gstTourism??17)/100;}
+  /* Service charge, likewise. The only control was a toggle published via
+     localStorage, so a manager changing it on a laptop never reached the
+     tablet at the counter. */
+  scPct(){var sp=this.state.storeP;if(sp&&sp.svcChargeBp!=null)return Math.max(0,Number(sp.svcChargeBp)||0)/10000;
+    return this.state.svcOn===false?0:(this.props.serviceChargePct??10)/100;}
   openShiftPrompt(){this.setState({acct:false,shiftModal:{mode:'open',float:'',counted:''}});}
   closeShiftPrompt(){this.setState({acct:false,shiftModal:{mode:'close',float:'',counted:''}});}
   cancelShiftModal(){this.setState({shiftModal:null});}
@@ -1896,13 +1905,17 @@ if(!saved||!saved.id||!saved.token)return null;return users.find(function(u){ret
     txt+=this.t('varianceLbl')+': '+(dvr>=0?'+':'−')+this.fm(Math.abs(dvr));
     if(via==='image'){var il=[{l:this.t('grossSales'),r:this.fm(gross),bold:true,big:true}].concat(rows.map(function(r){return {l:r[0],r:r[1]};}));il.push({l:this.t('varianceLbl'),r:(dvr>=0?'+':'−')+this.fm(Math.abs(dvr)),bold:true});this._shareImage(this.t('dayend')+' · '+zno,il,'dayend-'+zno);return;}
     this._shareVia(via,this.t('dayend'),txt,'');}
-  finishPay(){const s=this.state,t=this.totals(),r=this.rate();var _d=new Date();var _ymd=''+_d.getFullYear()+String(_d.getMonth()+1).padStart(2,'0')+String(_d.getDate()).padStart(2,'0');var _reg=((s.storeP&&s.storeP.register)||'R1');/* The number is drawn from a block the server allocated to this terminal,
+  finishPay(){const s=this.state,t=this.totals(),r=this.rate();const me_scPct=this.scPct();var _d=new Date();var _ymd=''+_d.getFullYear()+String(_d.getMonth()+1).padStart(2,'0')+String(_d.getDate()).padStart(2,'0');var _reg=((s.storeP&&s.storeP.register)||'R1');/* The number is drawn from a block the server allocated to this terminal,
    so it is unique whether or not we are online — the old '-OFF-' prefix
    created a second, unreconcilable series and the number itself came from
    COUNT(sales), which two tills computed identically. If the block is
    exhausted (long outage) we fall back to a device-stamped provisional
    number that still cannot collide, and mark the sale provisional. */
-var _sq=this.nextSeqVal();var _seqN=_sq.n||s.seq;var _prov=!_sq.n;const no=_prov?(_reg+'-'+_ymd+'-P'+this.devId()+String(_seqN).padStart(4,'0')):(_reg+'-'+_ymd+'-'+String(_seqN).padStart(4,'0'));try{if(typeof window!=='undefined'&&window.__ksPushSale){var _cu=s.curUser||{};var _l=s.cart.map(function(l){var m=this.MENU.find(function(x){return x.id===l.id;});return {pid:l.id,qty:l.qty,price:Math.round(l.unit/(1+r)*100),discPct:Number(l.disc)||0,name:this.itemName(m)};}.bind(this));var _fee=Math.round(t.delFee*100);var _sub=_l.reduce(function(a,x){return a+Math.round(x.price*x.qty*(1-(x.discPct||0)/100));},0)+_fee;var _tabId=(s.method==='tab'&&s.tabCust)?s.tabCust:null;window.__ksPushSale({id:'s'+Date.now()+'-'+_seqN,no:no,provisionalNo:_prov||undefined,type:'sale',at:Date.now(),createdAt:Date.now(),t:Date.now(),register:_reg,orderType:s.orderType,tableNo:s.orderType==='dine'?s.tableNo:null,splitWays:(Number(s.split)>1?Number(s.split):undefined),lines:_l,subtotal:_sub,fee:_fee,billDisc:Math.round(t.discount*100),billDiscPct:s.discountPct||0,svcCharge:Math.round(t.svc*100),gst:Math.round(t.gst*100),total:Math.round(t.total*100),userName:_cu.name||'',staffRole:_cu.role||s.myRole||'',customerId:_tabId,payments:[{method:s.method||'cash',amount:Math.round(t.total*100),customerId:_tabId}]},_tabId?{cust:[{id:_tabId,bal:Math.round(t.total*100),pts:0}]}:null);}}catch(e){}
+var _sq=this.nextSeqVal();var _seqN=_sq.n||s.seq;var _prov=!_sq.n;const no=_prov?(_reg+'-'+_ymd+'-P'+this.devId()+String(_seqN).padStart(4,'0')):(_reg+'-'+_ymd+'-'+String(_seqN).padStart(4,'0'));try{if(typeof window!=='undefined'&&window.__ksPushSale){var _cu=s.curUser||{};var _l=s.cart.map(function(l){var m=this.MENU.find(function(x){return x.id===l.id;});return {pid:l.id,qty:l.qty,price:Math.round(l.unit/(1+r)*100),discPct:Number(l.disc)||0,name:this.itemName(m)};}.bind(this));var _fee=Math.round(t.delFee*100);var _sub=_l.reduce(function(a,x){return a+Math.round(x.price*x.qty*(1-(x.discPct||0)/100));},0)+_fee;var _tabId=(s.method==='tab'&&s.tabCust)?s.tabCust:null;window.__ksPushSale({id:'s'+Date.now()+'-'+_seqN,no:no,provisionalNo:_prov||undefined,type:'sale',at:Date.now(),createdAt:Date.now(),t:Date.now(),register:_reg,orderType:s.orderType,tableNo:s.orderType==='dine'?s.tableNo:null,splitWays:(Number(s.split)>1?Number(s.split):undefined),lines:_l,subtotal:_sub,fee:_fee,billDisc:Math.round(t.discount*100),billDiscPct:s.discountPct||0,svcCharge:Math.round(t.svc*100),gst:Math.round(t.gst*100),total:Math.round(t.total*100),/* What tax was actually applied, and at what exchange rate — reprinting a
+   January receipt after the owner edits the USD rate in June used to show a
+   different figure for the same historic sale, and tourism GST is filed in
+   USD at the rate on the date of supply. */
+gstBp:Math.round(r*10000),svcBp:Math.round(me_scPct*10000),currency:((s.storeP&&s.storeP.currency)||'MVR'),fxRate:((s.storeP&&Number(s.storeP.usdRate))||0),userName:_cu.name||'',staffRole:_cu.role||s.myRole||'',customerId:_tabId,payments:[{method:s.method||'cash',amount:Math.round(t.total*100),customerId:_tabId}]},_tabId?{cust:[{id:_tabId,bal:Math.round(t.total*100),pts:0}]}:null);}}catch(e){}
     const lines=s.cart.map(l=>{const m=this.MENU.find(x=>x.id===l.id);return {qty:l.qty,name:this.itemName(m)+(l.mods.length?' ('+l.mods.map(x=>this.itemName(x)).join(', ')+')':''),amtF:this.fm(l.unit*l.qty*(1-(l.disc||0)/100))};});
     const mkeys={cash:'cash',card:'card',bml:'bml',transfer:'transfer',tab:'ontab'};
     const dz=(s.orderType==='delivery'&&s.deliveryZoneIx!=null)?this.DZONES[s.deliveryZoneIx]:null;

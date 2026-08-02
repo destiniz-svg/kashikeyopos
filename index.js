@@ -2574,6 +2574,13 @@ if (fs.existsSync(protoFile)) {
     /* Which MIRA rate this outlet files under — the guest portal has no other
        source for it, and used to charge a hardcoded 10%. */
     taxRate: (settings && settings.adminCfg && settings.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst",
+    /* The register used to carry the GST and service rates as hardcoded
+       prototype props, so every store on the platform charged 8%/17% and
+       exactly 10% service regardless of its own settings. These are the
+       store's, and they are what the server audits sales against. */
+    gstBp: (settings && Number(settings.gstBp) > 0) ? Number(settings.gstBp)
+      : ((settings && settings.adminCfg && settings.adminCfg.taxRate) === "tgst" ? 1700 : 800),
+    svcChargeBp: (settings && Number(settings.svcChargeBp) >= 0) ? Number(settings.svcChargeBp) : 0,
     address: (settings && settings.address) || "",
     footer: (settings && (settings.receiptFooter || settings.footer)) || "",
     logo: (settings && settings.logo) || "",
@@ -3611,6 +3618,23 @@ if (fs.existsSync(protoFile)) {
         "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
       const data = Object.assign({}, cur ? cur.data : {});
       data.adminCfg = Object.assign({}, data.adminCfg || {}, patch);
+      /* The sector selector used to change a LABEL only. data.gstBp stayed at
+         800 while the till charged 17%, so every tourism sale failed the
+         server's money-integrity check and landed in the review tab — and the
+         guest portal, the order totals and the reports all disagreed with the
+         receipt. The rate is the setting; the label follows it. */
+      if (patch.taxRate === "tgst" || patch.taxRate === "ggst") {
+        data.gstBp = patch.taxRate === "tgst" ? 1700 : 800;
+      }
+      /* Same for the service charge: the only control was a toggle published
+         through localStorage, so a manager switching it on a laptop never
+         reached the tablet at the counter. It is a store setting in basis
+         points now, and the register reads it from the server. */
+      if (patch.svc10 !== undefined) data.svcChargeBp = patch.svc10 === false ? 0 : 1000;
+      if (patch.svcChargeBp !== undefined) {
+        const bp = Math.round(Number(patch.svcChargeBp));
+        if (bp >= 0 && bp <= 5000) data.svcChargeBp = bp;
+      }
       // Promote store identity to the top-level settings fields the register
       // (liveStoreP) and the admin store card actually read, so a rename in the
       // cockpit is reflected on the till instead of only living inside adminCfg.
@@ -3618,8 +3642,46 @@ if (fs.existsSync(protoFile)) {
         const st = patch.store;
         const nm = String(st.name || "").trim();
         if (nm) data.storeName = nm.slice(0, 80);
+        /* Changing the store currency used to relabel every price without
+           converting it: a MVR 100 dish silently became a USD 100 dish, a
+           15.42x overcharge, because the stored value is just an integer in the
+           store's own minor unit. Convert the catalogue at the store's recorded
+           rate so the numbers keep meaning the same thing, and record that we
+           did it. Prices are the only thing converted — historic sales are
+           left exactly as they were charged. */
         const cur3 = String(st.currency || "").trim();
-        if (cur3) data.currency = (cur3.toUpperCase() === "USD" ? "USD" : "MVR");
+        if (cur3) {
+          const want = cur3.toUpperCase() === "USD" ? "USD" : "MVR";
+          const have = data.currency || "MVR";
+          if (want !== have) {
+            const rate = Number(data.usdRate) || 1542;   // MVR per USD, x100
+            const factor = want === "USD" ? (100 / rate) : (rate / 100);
+            const prods = (await c.query(
+              "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+            for (const pr of prods) {
+              const pd = Object.assign({}, pr.data || {});
+              let touched = false;
+              for (const k of ["price", "cost"]) {
+                const v = Number(pd[k]);
+                if (v > 0) { pd[k] = Math.max(1, Math.round(v * factor)); touched = true; }
+              }
+              if (Array.isArray(pd.addons)) {
+                pd.addons = pd.addons.map((ad) => {
+                  const v = Number(ad && ad.price);
+                  return (v > 0) ? Object.assign({}, ad, { price: Math.round(v * factor) }) : ad;
+                });
+                touched = true;
+              }
+              if (touched) await c.query(
+                "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2",
+                [orgId, pr.id, JSON.stringify(pd)]);
+            }
+            data.currencyChangedAt = Date.now();
+            data.currencyChangedFrom = have;
+            data.currencyChangeRate = rate;
+          }
+          data.currency = want;
+        }
         // Promote the rest of the store profile to the top-level settings fields the
         // register (liveStoreP) + receipt + inv/settings read, so /admin's config
         // persists identically to /back's Settings — the two are now one source.
