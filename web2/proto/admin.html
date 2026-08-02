@@ -2220,7 +2220,7 @@ class Component extends DCLogic {
     const rmdl=s.mdl||{};
     // ---- CONFIG ----
     const cfgSecs=[
-      {title:'Operations',rows:[['autoKot','Auto-send to KOT','Fire tickets on order confirm'],['rounding','Round totals to MVR','Nearest whole rufiyaa'],['svc10','10% service charge','Dine-in only']]},
+      {title:'Operations',rows:[['autoKot','Auto-send to KOT','Fire tickets on order confirm'],['svc10','10% service charge','Dine-in only']]},
       {title:'Receipt & tax',rows:[['taxIncl','Tax-inclusive pricing','GST shown inside menu price'],['printRecpt','Auto-print receipt','On settle']]},
       {title:'Payment methods',rows:[['cash','Cash',''],['card','Card / BML gateway',''],['transfer','Bank transfer',''],['tab','On tab (store credit)','']]}
     ].map(sec=>({title:sec.title,rows:sec.rows.map(r=>{const on=!!s.cfg[r[0]];return {label:r[1],desc:r[2],hasDesc:!!r[2],trackBg:on?'var(--coral)':'var(--line2)',knobX:on?'translateX(15px)':'translateX(0)',tap:()=>{const cfg=Object.assign({},s.cfg,{[r[0]]:!on});me.setState({cfg});me.saveCfg({cfg});}};})}));

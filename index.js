@@ -2630,6 +2630,12 @@ if (fs.existsSync(protoFile)) {
     currency: (settings && settings.currency) || "MVR",
     usdRate: (settings && Number(settings.usdRate)) || 1542,
     tin: (settings && settings.tin) || "",
+    /* MIRA particulars the back office collected and the receipt never saw. */
+    gstRegNo: (settings && settings.gstRegNo) || "",
+    legalName: (settings && settings.legalName) || "",
+    phone: (settings && settings.phone) || "",
+    island: (settings && settings.island) || "",
+    atoll: (settings && settings.atoll) || "",
     /* Which MIRA rate this outlet files under — the guest portal has no other
        source for it, and used to charge a hardcoded 10%. */
     taxRate: (settings && settings.adminCfg && settings.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst",
@@ -2668,7 +2674,10 @@ if (fs.existsSync(protoFile)) {
     methodKey: String(((s.payments || [])[0] || {}).method || "cash"),
   }));
   const liveRegRecv = (custRows) => custRows.map((r) => {
-    const d = r.data || {}; const bal = Math.round((Number(d.balance) || 0) / 100);
+    /* Laari, not rounded rufiyaa. This used to Math.round(balance/100), so a
+       debtor's balance was misstated by up to MVR 0.50 — and the till printed
+       that figure on the customer's receipt as their new balance. */
+    const d = r.data || {}; const bal = Math.round(Number(d.balance) || 0) / 100;
     const days = d.lastOrderAt ? Math.max(0, Math.round((Date.now() - Number(d.lastOrderAt)) / 86400000)) : 0;
     return { id: r.id, name: d.name || "", dv: d.dv || d.name || "", bal, days, addr: d.address || d.addr || "",
       pts: Math.round(Number(d.points) || 0), visits: Number(d.visits) || 0, spend: Math.round((Number(d.spend) || 0) / 100),
@@ -3499,6 +3508,16 @@ if (fs.existsSync(protoFile)) {
           else if (m === "tab" || m === "ontab") z.tab += amt; else z.transfer += amt;
         }
       }
+      /* Real cost of sales, from the stock ledger (audit B-J3). The day-end
+         journal has always been short a COGS line and its inventory credit,
+         and a previous sweep removed a FABRICATED one — rightly. But the real
+         figure is right there: inventory.processSales writes a signed
+         stock_moves row per sale with the weighted unit_cost. Sum it. */
+      const cogsR = (await c.query(
+        `SELECT COALESCE(-SUM(qty*unit_cost),0) AS c FROM stock_moves
+           WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) >= $2`,
+        [orgId, sod.getTime()])).rows[0];
+      const cogs = Math.round(Number(cogsR.c) || 0);
       const settles = (await c.query(
         `SELECT data FROM entities WHERE org_id=$1 AND kind='settlements' AND deleted=false
            AND COALESCE(data->>'storeId',$2)=$2
@@ -3522,7 +3541,7 @@ if (fs.existsSync(protoFile)) {
         gross: Math.round(z.gross), gst: Math.round(z.gst), svc: Math.round(z.svc),
         cash: Math.round(z.cash), card: Math.round(z.card), transfer: Math.round(z.transfer), tab: Math.round(z.tab),
         orders: z.orders, refunds: Math.round(z.refunds), refundCount: z.refundCount,
-        revenue: Math.round(z.gross - z.gst - z.svc),
+        revenue: Math.round(z.gross - z.gst - z.svc), cogs,
         t: Date.now(), at: Date.now(),
       };
       const r = await c.query(
@@ -3903,6 +3922,11 @@ if (fs.existsSync(protoFile)) {
         // register (liveStoreP) + receipt + inv/settings read, so /admin's config
         // persists identically to /back's Settings — the two are now one source.
         if (st.tin != null) data.tin = String(st.tin).slice(0, 40);
+        if (st.greg != null) data.gstRegNo = String(st.greg).slice(0, 40);
+        if (st.legal != null) data.legalName = String(st.legal).slice(0, 120);
+        if (st.phone != null) data.phone = String(st.phone).slice(0, 40);
+        if (st.island != null) data.island = String(st.island).slice(0, 60);
+        if (st.atoll != null) data.atoll = String(st.atoll).slice(0, 60);
         if (st.addr != null) data.address = String(st.addr).slice(0, 200);
         if (st.footer != null) data.receiptFooter = String(st.footer).slice(0, 200);
         if (st.logo !== undefined) data.logo = st.logo || "";
