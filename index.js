@@ -555,7 +555,7 @@ function auditSaleMoney(sale, ctx) {
 /* The register's durable sale outbox, injected into /app. Kept as a plain
    string so it can be served inline under the page CSP (no external script).
    See the pushSaleJs comment below for why this exists. */
-const OUTBOX_JS = "(function(){\nvar KEY='kashikeyo_outbox';\nvar q=[];try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(Array.isArray(p))q=p;}}catch(e){}\nvar subs=[],busy=false,timer=0,delay=2000,lastOk=Number(localStorage.getItem('kashikeyo_outbox_ok'))||0,lastErr='';\nfunction save(){try{localStorage.setItem(KEY,JSON.stringify(q.slice(0,500)));}catch(e){}}\nfunction notify(){for(var i=0;i<subs.length;i++){try{subs[i](status());}catch(e){}}}\nfunction status(){return {pending:q.length,lastOk:lastOk,lastErr:lastErr,oldest:q.length?q[0].at:0};}\nfunction pendingSales(){return q.map(function(it){try{return it.body.ops[0].puts[0].data;}catch(e){return null;}}).filter(Boolean);}\nfunction schedule(ms){if(timer)return;timer=setTimeout(function(){timer=0;flush();},ms);}\nfunction flush(){\n  if(busy||!q.length)return Promise.resolve(status());\n  busy=true;\n  var item=q[0];\n  return fetch('/api/ops',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken},body:JSON.stringify(item.body)})\n    .then(function(r){\n      if(r.ok){q.shift();save();lastOk=Date.now();lastErr='';try{localStorage.setItem('kashikeyo_outbox_ok',String(lastOk));}catch(e){}delay=2000;notify();if(q.length)schedule(150);return;}\n      /* 4xx other than 401/408/429 means this batch will never be accepted as\n         written — keep it (money is never silently dropped) but stop hammering\n         and surface it, so the operator can be told the sale needs attention. */\n      lastErr='HTTP '+r.status;item.tries=(item.tries||0)+1;save();notify();\n      delay=Math.min(60000,Math.max(4000,delay*2));schedule(delay);\n    })\n    .catch(function(){lastErr='offline';item.tries=(item.tries||0)+1;save();notify();delay=Math.min(60000,delay*2);schedule(delay);})\n    .then(function(){busy=false;return status();});\n}\nwindow.__ksOutbox={\n  status:status,\n  pendingSales:pendingSales,\n  flush:function(){delay=2000;return flush();},\n  subscribe:function(fn){subs.push(fn);return function(){subs=subs.filter(function(x){return x!==fn;});};}\n};\n/* A completed sale is money the cashier has already taken. It goes into a\n   durable queue FIRST and is retried until the server acknowledges it — the old\n   implementation was a bare fetch().catch(function(){}), so a two-second WiFi\n   dropout destroyed the sale with no trace and no warning to anyone. */\nwindow.__ksPushSale=function(sale,deltas){\n  try{\n    var op={opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]};\n    if(deltas)op.deltas=deltas;\n    q.push({at:Date.now(),tries:0,body:{ops:[op]}});\n    save();notify();flush();\n  }catch(e){}\n  return status();\n};\n/* Also used for non-sale register writes that must survive a dropout. */\nwindow.__ksPushOp=function(opId,puts){\n  try{q.push({at:Date.now(),tries:0,body:{ops:[{opId:opId,puts:puts}]}});save();notify();flush();}catch(e){}\n  return status();\n};\ntry{window.addEventListener('online',function(){delay=2000;flush();});}catch(e){}\nsetInterval(function(){if(q.length)flush();},15000);\nif(q.length)flush();\n})();\n";
+const OUTBOX_JS = "(function(){\nvar KEY='kashikeyo_outbox';\nvar q=[];try{var raw=localStorage.getItem(KEY);if(raw){var p=JSON.parse(raw);if(Array.isArray(p))q=p;}}catch(e){}\nvar subs=[],busy=false,timer=0,delay=2000,lastOk=Number(localStorage.getItem('kashikeyo_outbox_ok'))||0,lastErr='';\nfunction save(){try{localStorage.setItem(KEY,JSON.stringify(q.slice(0,500)));}catch(e){}}\nfunction notify(){for(var i=0;i<subs.length;i++){try{subs[i](status());}catch(e){}}}\nfunction status(){return {pending:q.length,lastOk:lastOk,lastErr:lastErr,oldest:q.length?q[0].at:0};}\nfunction pendingSales(){return q.map(function(it){try{return it.body.ops[0].puts[0].data;}catch(e){return null;}}).filter(Boolean);}\nfunction schedule(ms){if(timer)return;timer=setTimeout(function(){timer=0;flush();},ms);}\nfunction flush(){\n  if(busy||!q.length)return Promise.resolve(status());\n  busy=true;\n  var item=q[0];\n  var hdrs={'Content-Type':'application/json','Authorization':'Bearer '+window.__ksToken};\n  if(item.headers)for(var hk in item.headers)hdrs[hk]=item.headers[hk];\n  return fetch('/api/ops',{method:'POST',headers:hdrs,body:JSON.stringify(item.body)})\n    .then(function(r){\n      if(r.ok){q.shift();save();lastOk=Date.now();lastErr='';try{localStorage.setItem('kashikeyo_outbox_ok',String(lastOk));}catch(e){}delay=2000;notify();if(q.length)schedule(150);return;}\n      /* 4xx other than 401/408/429 means this batch will never be accepted as\n         written — keep it (money is never silently dropped) but stop hammering\n         and surface it, so the operator can be told the sale needs attention. */\n      lastErr='HTTP '+r.status;item.tries=(item.tries||0)+1;save();notify();\n      delay=Math.min(60000,Math.max(4000,delay*2));schedule(delay);\n    })\n    .catch(function(){lastErr='offline';item.tries=(item.tries||0)+1;save();notify();delay=Math.min(60000,delay*2);schedule(delay);})\n    .then(function(){busy=false;return status();});\n}\nwindow.__ksOutbox={\n  status:status,\n  pendingSales:pendingSales,\n  flush:function(){delay=2000;return flush();},\n  subscribe:function(fn){subs.push(fn);return function(){subs=subs.filter(function(x){return x!==fn;});};}\n};\n/* A completed sale is money the cashier has already taken. It goes into a\n   durable queue FIRST and is retried until the server acknowledges it — the old\n   implementation was a bare fetch().catch(function(){}), so a two-second WiFi\n   dropout destroyed the sale with no trace and no warning to anyone. */\nwindow.__ksPushSale=function(sale,deltas,headers){\n  try{\n    var op={opId:'app2-'+sale.id,puts:[{kind:'sales',id:sale.id,data:sale}]};\n    if(deltas)op.deltas=deltas;\n    q.push({at:Date.now(),tries:0,body:{ops:[op]},headers:headers||null});\n    save();notify();flush();\n  }catch(e){}\n  return status();\n};\n/* Also used for non-sale register writes that must survive a dropout. */\nwindow.__ksPushOp=function(opId,puts){\n  try{q.push({at:Date.now(),tries:0,body:{ops:[{opId:opId,puts:puts}]}});save();notify();flush();}catch(e){}\n  return status();\n};\ntry{window.addEventListener('online',function(){delay=2000;flush();});}catch(e){}\nsetInterval(function(){if(q.length)flush();},15000);\nif(q.length)flush();\n})();\n";
 
 /* Receipt numbering (FIN-C3 / MIRA sequential numbering).
    The old scheme was `nextSeq = COUNT(sales) + 1`, computed fresh on every page
@@ -2528,11 +2528,20 @@ if (fs.existsSync(protoFile)) {
     footer: (settings && (settings.receiptFooter || settings.footer)) || "",
     logo: (settings && settings.logo) || "",
   });
-  const liveSalesLog = (saleRows) => saleRows.map((s) => ({
-    no: String(s.no || "").replace(/^.*-/, "") || String(s.id || "").slice(-4),
+  const liveSalesLog = (saleRows, refundedIds) => saleRows.map((s) => ({
+    id: String(s.id || ""), fullNo: String(s.no || ""), at: Number(s.at) || Number(s.t) || 0,
+    type: s.type || "sale",
+    /* Whether this sale already has a refund against it, so the register can
+       show the state instead of letting a second refund be raised. */
+    refunded: !!(refundedIds && refundedIds.has(String(s.id || ""))),
+    total0: Math.round(Number(s.total) || 0),
+    /* A refund is numbered as the original with a -R suffix; strip that
+       before taking the last segment, or every refund row reads just "R". */
+    no: (String(s.no || "").replace(/-R$/, "").replace(/^.*-/, "") + (s.type === "refund" ? "R" : "")) || String(s.id || "").slice(-4),
     ch: chLabel(s), chK: chKind(s), otype: s.orderType || "takeaway",
     time: hhmm(s.at), items: (s.lines || []).reduce((a, l) => a + (Number(l.qty) || 0), 0),
     total: Math.round(Number(s.total) || 0) / 100, cust: s.customerName || "Walk-in", custDv: s.customerDv || s.customerName || "Walk-in", method: payLabel(s),
+    methodKey: String(((s.payments || [])[0] || {}).method || "cash"),
   }));
   const liveRegRecv = (custRows) => custRows.map((r) => {
     const d = r.data || {}; const bal = Math.round((Number(d.balance) || 0) / 100);
@@ -2628,9 +2637,13 @@ if (fs.existsSync(protoFile)) {
     });
     out.recv = liveRegRecv((await c.query(
       "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false", [orgId])).rows);
-    out.salesLog = liveSalesLog((await c.query(
-      "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY (data->>'at')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
-      .rows.map((r) => r.data || {}).filter((s) => !s.type || s.type === "sale"));
+    {
+      const saleRows = (await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY COALESCE((data->>'at')::numeric,(data->>'t')::numeric) DESC NULLS LAST LIMIT 60", [orgId]))
+        .rows.map((r) => r.data || {});
+      const refunded = new Set(saleRows.filter((x) => x.type === "refund" && x.refundOf).map((x) => String(x.refundOf)));
+      out.salesLog = liveSalesLog(saleRows.filter((x) => !x.type || x.type === "sale" || x.type === "refund").slice(0, 40), refunded);
+    }
     const ordRows = (await c.query(
       "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY (data->>'createdAt')::numeric DESC NULLS LAST LIMIT 40", [orgId]))
       .rows.map((r) => r.data || {});
