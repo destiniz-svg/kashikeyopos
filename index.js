@@ -956,24 +956,60 @@ function backupCounts(snap) {
 // sync the removals) while keeping the store profile + staff, hard-delete the
 // inventory/audit tables, and opt the outlet out of the starter-menu backfill so
 // it stays empty until the owner adds a menu or restores. Returns the max rowver.
-async function resetStoreIn(c, orgId) {
+/* Which parts of the model are per-outlet, and which are shared across the whole
+   account, decides what a single-outlet reset is allowed to touch:
+
+     per-outlet   entities (via data->>'storeId'), stock_moves.store_id,
+                  ingredient_lots.store_id, ops.store_id
+     shared       the ingredient catalogue, recipes, units, suppliers, purchase
+                  invoices, stock-check sessions — and any entity with no
+                  storeId ("global" products are shared by every outlet)
+
+   So resetting one outlet clears that outlet's trading history and its stock
+   ledger, and deliberately leaves the shared catalogue and the other outlets
+   untouched. Resetting ALL outlets additionally clears the shared tables — that
+   is the "start the account over" case. */
+const isAllOutlets = (storeId) => !storeId || storeId === "*";
+
+async function resetStoreIn(c, orgId, storeId) {
   const keep = ["users", "settings"];
+  const all = isAllOutlets(storeId);
   let maxRowver = 0;
-  const r = await c.query(
-    "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) RETURNING rowver", [orgId, keep]);
+
+  const r = all
+    ? await c.query(
+      "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) RETURNING rowver", [orgId, keep])
+    : await c.query(
+      "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND deleted=false AND NOT (kind = ANY($2)) AND data->>'storeId' = $3 RETURNING rowver", [orgId, keep, String(storeId)]);
   for (const row of r.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
-  for (const t of DELETE_ORDER) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
-  // Queued till ops refer to sales that no longer exist; clearing lets a fresh
-  // start re-use op ids instead of silently discarding them as replays.
-  await c.query("DELETE FROM ops WHERE org_id=$1", [orgId]);
-  await c.query("UPDATE orgs SET skip_default_menu=true WHERE id=$1", [orgId]);
+
+  if (all) {
+    for (const t of DELETE_ORDER) { if (t !== "entities") await c.query(`DELETE FROM "${t}" WHERE org_id=$1`, [orgId]); }
+    await c.query("DELETE FROM ops WHERE org_id=$1", [orgId]);
+    // Nothing is left to sell from, so don't let the boot backfill re-seed a menu.
+    await c.query("UPDATE orgs SET skip_default_menu=true WHERE id=$1", [orgId]);
+  } else {
+    await c.query("DELETE FROM stock_moves WHERE org_id=$1 AND store_id=$2", [orgId, String(storeId)]);
+    await c.query("DELETE FROM ingredient_lots WHERE org_id=$1 AND store_id=$2", [orgId, String(storeId)]);
+    await c.query("DELETE FROM ops WHERE org_id=$1 AND store_id=$2", [orgId, String(storeId)]);
+    /* current_stock is a cache of SUM(stock_moves.qty); having just deleted one
+       outlet's moves it would otherwise drift permanently. Rebuild it from what
+       actually remains. */
+    await c.query(
+      `UPDATE ingredients i SET current_stock = COALESCE(m.total, 0), updated_at = now()
+         FROM (SELECT id FROM ingredients WHERE org_id=$1) k
+         LEFT JOIN (SELECT ingredient_id, SUM(qty) AS total FROM stock_moves WHERE org_id=$1 GROUP BY ingredient_id) m
+           ON m.ingredient_id = k.id
+        WHERE i.org_id=$1 AND i.id = k.id`, [orgId]);
+  }
+
   if (!maxRowver) {
     const mx = await c.query("SELECT COALESCE(MAX(rowver),0) AS m FROM entities WHERE org_id=$1", [orgId]);
     maxRowver = Number(mx.rows[0].m) || 0;
   }
   return maxRowver;
 }
-const resetStore = (orgId) => withOrg(orgId, (c) => resetStoreIn(c, orgId));
+const resetStore = (orgId, storeId) => withOrg(orgId, (c) => resetStoreIn(c, orgId, storeId));
 
 class BadSnapshot extends Error {}
 
@@ -3285,24 +3321,44 @@ if (fs.existsSync(protoFile)) {
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Resetting the store needs an admin or the owner.")) return;
     if (!(await destructiveGuard(req, res, orgId, "reset"))) return;
     const b = req.body || {};
+    /* Scope: omitted (or "*") wipes the whole account; otherwise one outlet, which
+       must actually belong to this org — never trust an id off the wire. */
+    const wanted = String(b.storeId || "").trim();
+    let scope = "*", scopeName = "all outlets";
+    if (wanted && wanted !== "*") {
+      const st = (await withOrg(orgId, (c) => c.query("SELECT id, name FROM stores WHERE org_id=$1 AND id=$2", [orgId, wanted]))).rows[0];
+      if (!st) return res.status(400).json({ error: "That outlet doesn't exist." });
+      scope = st.id; scopeName = st.name || st.id;
+    }
     try {
       /* Snapshot and wipe share one transaction: taken separately, anything that
-         synced in between would be destroyed WITHOUT being in the safety copy. */
+         synced in between would be destroyed WITHOUT being in the safety copy.
+         The snapshot is always account-wide, even for a single-outlet reset —
+         restoring is all-or-nothing, so a partial copy would be a trap. */
       const out = await withOrg(orgId, async (c) => {
         let backupId = null;
         if (b.backup) {
           const snap = await snapshotStoreIn(c, orgId);
           backupId = uid();
           await c.query("INSERT INTO store_backups (id, org_id, label, reason, counts, data) VALUES ($1,$2,$3,'pre-reset',$4,$5)",
-            [backupId, orgId, "Before reset · " + new Date().toLocaleString("en-GB"), JSON.stringify(backupCounts(snap)), JSON.stringify(snap)]);
+            [backupId, orgId, "Before reset · " + scopeName + " · " + new Date().toLocaleString("en-GB"), JSON.stringify(backupCounts(snap)), JSON.stringify(snap)]);
           await pruneBackups(c, orgId);
         }
-        return { backupId, maxRowver: await resetStoreIn(c, orgId) };
+        return { backupId, maxRowver: await resetStoreIn(c, orgId, scope) };
       });
       poke(orgId, out.maxRowver);
-      // A single record of the reset itself (the rest of the log was cleared).
-      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset", ref: out.backupId ? "backup kept" : "no backup", requestId: req.id });
-      res.json({ ok: true, backupId: out.backupId });
+      /* A scoped reset leaves the shared ingredient catalogue in place but has
+         just changed how much stock backs it, so the sold-out state computed onto
+         each product entity has to be recalculated. */
+      if (!isAllOutlets(scope) && inventory && typeof inventory.recomputeAvailability === "function") {
+        try {
+          const ids = (await withOrg(orgId, (c) => c.query("SELECT id FROM ingredients WHERE org_id=$1", [orgId]))).rows.map((x) => x.id);
+          if (ids.length) await inventory.recomputeAvailability(orgId, ids);
+        } catch (e) { recordError("store.reset.availability", e); }
+      }
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "store.reset",
+        ref: scopeName + (out.backupId ? " · backup kept" : " · no backup"), requestId: req.id });
+      res.json({ ok: true, backupId: out.backupId, scope, scopeName });
     } catch (e) { backupFailed(res, "reset", e); }
   }));
 

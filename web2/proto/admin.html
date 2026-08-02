@@ -1269,7 +1269,17 @@ button[disabled],button:disabled{cursor:not-allowed}
       <sc-if value="{{ mdlErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;background:var(--redsoft);color:var(--red);border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700;margin-bottom:14px">{{ mdlErr }}</div></sc-if>
 
       <sc-if value="{{ isReset }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
-        <div style="background:var(--redsoft);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink);font-weight:600;line-height:1.55">This erases the <b>menu, sales, orders, customers and inventory</b> across <b>every outlet in this account</b> — not just the one you are viewing. Your login, staff and outlet profiles stay. This can't be undone.<sc-if value="{{ hasManyOutlets }}" hint-placeholder-val="{{ false }}"><span style="display:block;margin-top:8px;font-weight:800">Affects: {{ outletNamesLbl }}</span></sc-if></div>
+        <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:7px">WHAT TO RESET</div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <sc-for list="{{ rScopes }}" as="sc" hint-placeholder-count="2">
+              <button onClick="{{ sc.tap }}" style="display:flex;align-items:flex-start;gap:10px;text-align:start;border:1px solid {{ sc.bc }};background:{{ sc.bg }};color:var(--ink);border-radius:12px;padding:10px 12px;cursor:pointer" style-active="transform:scale(.99)">
+                <span style="flex:none;width:16px;height:16px;margin-top:2px;border-radius:99px;border:2px solid {{ sc.dotBc }};background:{{ sc.dotBg }}"></span>
+                <span style="flex:1;min-width:0"><span style="display:block;font-size:12.5px;font-weight:800">{{ sc.label }}</span><span style="display:block;font-size:11px;color:var(--ink2);font-weight:600;line-height:1.45">{{ sc.sub }}</span></span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="background:var(--redsoft);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--ink);font-weight:600;line-height:1.55">{{ rScopeWarn }} This can't be undone.</div>
         <label style="display:flex;align-items:center;gap:11px;cursor:pointer;border:1px solid var(--line2);border-radius:12px;padding:11px 13px"><span onClick="{{ toggleRBackup }}" style="flex:none;width:38px;height:22px;border-radius:99px;background:{{ rBackupTrackBg }};position:relative;transition:background .2s;cursor:pointer"><span style="position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transform:{{ rBackupKnobX }};transition:transform .2s"></span></span><span style="flex:1;font-size:12.5px;font-weight:700">Back up my data first<span style="display:block;font-size:10.5px;color:var(--ink2);font-weight:600">Recommended — you can restore it later</span></span></label>
         <div><div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:6px">ADMIN PIN</div><input value="{{ rPin }}" onInput="{{ setRPin }}" type="password" inputmode="numeric" maxlength="4" placeholder="••••" style="width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:11px;padding:11px 13px;background:var(--bg);color:var(--ink);font-size:18px;letter-spacing:.3em;font-weight:800;text-align:center;outline:none" style-focus="border-color:var(--red)"></div>
         <sc-if value="{{ hasRErr }}" hint-placeholder-val="{{ false }}"><div style="color:var(--red);font-size:12px;font-weight:700">{{ rErr }}</div></sc-if>
@@ -1805,13 +1815,13 @@ class Component extends DCLogic {
   startRefund(){this.toast('Refunds are issued at the register — open the sale and tap Refund.');}
   loadBackups(){var me=this;try{fetch('/api/app2/backups',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&Array.isArray(d.backups))me.setState({backups:d.backups});}).catch(function(){});}catch(e){}}
   runBackup(){var me=this;me.toast('Creating backup…');try{fetch('/api/app2/backup',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:'{}'}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.toast('Backup saved · '+((j.counts&&j.counts.products)||0)+' items, '+((j.counts&&j.counts.sales)||0)+' sales');me.loadBackups();}else me.toast((j&&j.error)||'Backup failed');}).catch(function(){me.toast('Backup failed — check your connection.');});}catch(e){}}
-  openReset(){this.openMdl('reset',{rbackup:true,rpin:'',rerr:'',title:'Reset store'});}
+  openReset(){this.openMdl('reset',{rbackup:true,rpin:'',rerr:'',rscope:'*',title:'Reset store'});}
   openRestore(b){this.openMdl('restore',{rid:b.id,rlabel:b.label,rcounts:b.counts,rpin:'',rerr:'',title:'Restore from backup'});}
   setRPin(v){var m=this.state.mdl;this.setState({mdl:Object.assign({},m,{rpin:String(v).replace(/\D/g,'').slice(0,4),rerr:''})});}
   toggleRBackup(){var m=this.state.mdl;this.setState({mdl:Object.assign({},m,{rbackup:!m.rbackup})});}
   delBackup(b){this.openMdl('delbackup',{rid:b.id,rlabel:b.label||'this backup',rpin:'',rerr:'',title:'Delete backup'});}
   doDelBackup(){var me=this;var m=this.state.mdl;if(!/^\d{4}$/.test(m.rpin||'')){this.setState({mdl:Object.assign({},m,{rerr:'Enter your 4-digit admin PIN.'})});return;}this.setState({mdl:Object.assign({},m,{busy:true,rerr:''})});fetch('/api/app2/backup/'+encodeURIComponent(m.rid)+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({pin:m.rpin})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.setState({mdl:null});me.toast('Backup deleted');me.loadBackups();}else{me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:(j&&j.error)||'Delete failed.'})});}}).catch(function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:'Network error — try again.'})});});}
-  doReset(){var me=this;var m=this.state.mdl;if(!/^\d{4}$/.test(m.rpin||'')){this.setState({mdl:Object.assign({},m,{rerr:'Enter your 4-digit admin PIN.'})});return;}this.setState({mdl:Object.assign({},m,{busy:true,rerr:''})});fetch('/api/app2/reset',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({pin:m.rpin,backup:!!m.rbackup})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.setState({mdl:null});me.toast('Store reset · starting fresh');setTimeout(function(){location.reload();},700);}else{me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:(j&&j.error)||'Reset failed.'})});}}).catch(function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:'Network error — try again.'})});});}
+  doReset(){var me=this;var m=this.state.mdl;if(!/^\d{4}$/.test(m.rpin||'')){this.setState({mdl:Object.assign({},m,{rerr:'Enter your 4-digit admin PIN.'})});return;}this.setState({mdl:Object.assign({},m,{busy:true,rerr:''})});fetch('/api/app2/reset',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({pin:m.rpin,backup:!!m.rbackup,storeId:m.rscope||'*'})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.setState({mdl:null});me.toast('Store reset · starting fresh');setTimeout(function(){location.reload();},700);}else{me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:(j&&j.error)||'Reset failed.'})});}}).catch(function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:'Network error — try again.'})});});}
   doRestore(){var me=this;var m=this.state.mdl;if(!/^\d{4}$/.test(m.rpin||'')){this.setState({mdl:Object.assign({},m,{rerr:'Enter your 4-digit admin PIN.'})});return;}this.setState({mdl:Object.assign({},m,{busy:true,rerr:''})});fetch('/api/app2/restore',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({id:m.rid,pin:m.rpin})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.setState({mdl:null});me.toast('Backup restored');setTimeout(function(){location.reload();},700);}else{me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:(j&&j.error)||'Restore failed.'})});}}).catch(function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{busy:false,rerr:'Network error — try again.'})});});}
   addStarterMenu(){var me=this;me.toast('Adding starter menu…');fetch('/api/app2/seed-menu',{method:'POST',credentials:'same-origin'}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.ok){me.toast('Starter menu added');setTimeout(function(){location.reload();},700);}else me.toast((j&&j.error)||'Could not add menu');}).catch(function(){me.toast('Network error');});}
   editOutlet(){this.setState({active:'config',navOpen:false});this.toast('Opening store settings');}
@@ -2410,8 +2420,23 @@ class Component extends DCLogic {
       sysUsers,sysAudit,sysInteg,runBackup:()=>me.runBackup(),
       backups,hasBackups,noBackups:!hasBackups,menuEmpty,openReset:()=>me.openReset(),addStarterMenu:()=>me.addStarterMenu(),goRestore:()=>{me.setState({active:'sysadmin'});},
       isReset:s.mdl&&s.mdl.kind==='reset',isRestore:s.mdl&&s.mdl.kind==='restore',
-      ...(()=>{var _o=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets))?window.__ksAdmin.outlets:[]).map(function(x){return x.n;}).filter(Boolean);
-        return {hasManyOutlets:_o.length>1,outletNamesLbl:_o.join(', ')};})(),
+      ...(()=>{
+        var _out=((typeof window!=='undefined'&&window.__ksAdmin&&Array.isArray(window.__ksAdmin.outlets))?window.__ksAdmin.outlets:[]);
+        var _names=_out.map(function(x){return x.n;}).filter(Boolean);
+        var _m=s.mdl||{},_sel=_m.rscope||'*';
+        var _mk=function(id,label,sub){var on=_sel===id;return {label:label,sub:sub,
+          bg:on?'var(--coralsoft)':'transparent',bc:on?'var(--coral)':'var(--line2)',
+          dotBc:on?'var(--coral)':'var(--line2)',dotBg:on?'var(--coral)':'transparent',
+          tap:function(){me.setState({mdl:Object.assign({},me.state.mdl||{},{rscope:id})});}};};
+        var _scopes=[_mk('*','Everything · all outlets',
+          'Menu, sales, orders, customers, ingredients, suppliers and purchase history'+(_names.length>1?(' for all '+_names.length+' outlets'):'')+'. The account starts completely empty.')];
+        _out.forEach(function(o){_scopes.push(_mk(o.id,o.n||o.id,
+          'Only this outlet\u2019s sales, orders, customers and stock ledger. The shared menu, ingredient list, suppliers and your other outlets are untouched.'));});
+        var _selName=(_sel==='*')?'':((_out.find(function(x){return x.id===_sel;})||{}).n||_sel);
+        return {rScopes:_scopes,
+          rScopeWarn:(_sel==='*')
+            ? ('This erases the menu, sales, orders, customers and inventory across every outlet in this account'+(_names.length>1?(' ('+_names.join(', ')+')'):'')+'. Your login, staff and outlet profiles stay.')
+            : ('This erases the sales, orders, customers and stock ledger for '+_selName+' only. The shared menu, ingredients, suppliers and your other outlets are left alone.')};})(),
       rPin:rmdl.rpin||'',setRPin:e=>me.setRPin(e.target.value),
       rBackupOn:!!rmdl.rbackup,toggleRBackup:()=>me.toggleRBackup(),rBackupTrackBg:rmdl.rbackup?'var(--coral)':'var(--line2)',rBackupKnobX:rmdl.rbackup?'translateX(16px)':'translateX(0)',
       rErr:rmdl.rerr||'',hasRErr:!!rmdl.rerr,rBusy:!!rmdl.busy,doReset:()=>me.doReset(),doRestore:()=>me.doRestore(),doDelBackup:()=>me.doDelBackup(),isDelBackup:rmdl.kind==='delbackup',

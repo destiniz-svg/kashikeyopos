@@ -2744,5 +2744,5 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(out);
   }));
 
-  return { router, processSales };
+  return { router, processSales, recomputeAvailability };
 };
