@@ -3252,6 +3252,121 @@ if (fs.existsSync(protoFile)) {
     res.json({ ok: true, user: { id: row.rows[0].id, name: d.name || "Staff", role: d.role || "cashier" }, token });
   }));
 
+  /* Day End (audit B-H5). "Close day & post journal" set a local flag and
+     toasted "Posted · JE-2026-0189" — a hardcoded reference presented to the
+     operator as a real journal number. Nothing was posted, no Z-report was
+     stored, and the drawer variance was computed, displayed, shared, and then
+     discarded, so yesterday's Z could never be reproduced and a cash
+     over/short had no home. The day is now closed on the server, which
+     recomputes the figures itself rather than trusting the screen, and issues
+     a real sequential journal reference. */
+  app.post("/api/app2/dayend", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Closing the day needs a manager or the owner.")) return;
+    const counted = Math.max(0, Math.round(Number((req.body || {}).counted) || 0));
+    const float = Math.max(0, Math.round(Number((req.body || {}).float) || 0));
+    const storeId = req.appStoreId || DEFAULT_STORE_ID;
+    const sod = new Date(); sod.setHours(0, 0, 0, 0);
+    const out = await withOrg(orgId, async (c) => {
+      const already = await c.query(
+        "SELECT id FROM entities WHERE org_id=$1 AND kind='dayend' AND deleted=false AND COALESCE(data->>'storeId',$2)=$2 AND (data->>'sod')::numeric = $3",
+        [orgId, storeId, sod.getTime()]);
+      if (already.rowCount) return { dup: true, id: already.rows[0].id };
+      const rows = (await c.query(
+        `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+           AND COALESCE(data->>'storeId',$2)=$2
+           AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $3`,
+        [orgId, storeId, sod.getTime()])).rows.map((r) => r.data || {});
+      const z = { gross: 0, gst: 0, svc: 0, cash: 0, card: 0, transfer: 0, tab: 0, orders: 0, refunds: 0, refundCount: 0 };
+      for (const s2 of rows) {
+        if (s2.foc) continue;
+        if (s2.type === "refund") { z.refunds += Math.abs(Number(s2.total) || 0); z.refundCount++; } else z.orders++;
+        z.gross += Number(s2.total) || 0; z.gst += Number(s2.gst) || 0; z.svc += Number(s2.svcCharge) || 0;
+        const pays = (Array.isArray(s2.payments) && s2.payments.length) ? s2.payments : [{ method: s2.method || "cash", amount: Number(s2.total) || 0 }];
+        for (const p of pays) {
+          const amt = Number(p.amount) || 0, m = String(p.method || "cash").toLowerCase();
+          if (m === "cash") z.cash += amt; else if (m === "card") z.card += amt;
+          else if (m === "tab" || m === "ontab") z.tab += amt; else z.transfer += amt;
+        }
+      }
+      const settles = (await c.query(
+        `SELECT data FROM entities WHERE org_id=$1 AND kind='settlements' AND deleted=false
+           AND COALESCE(data->>'storeId',$2)=$2
+           AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $3`,
+        [orgId, storeId, sod.getTime()])).rows.map((r) => r.data || {});
+      let cashSettled = 0, settled = 0;
+      for (const st of settles) { settled += Number(st.amount) || 0; if (/^cash$/i.test(String(st.method || "cash"))) cashSettled += Number(st.amount) || 0; }
+      const expected = float + z.cash + cashSettled;
+      const variance = counted - expected;
+      /* A real, sequential journal reference — the old one was a string
+         literal. Numbered per calendar year, per org. */
+      const yr = new Date().getFullYear();
+      const nseq = await c.query(
+        "SELECT count(*)::int AS n FROM entities WHERE org_id=$1 AND kind='dayend' AND deleted=false AND (data->>'year')::int = $2", [orgId, yr]);
+      const jref = "JE-" + yr + "-" + String((Number(nseq.rows[0].n) || 0) + 1).padStart(4, "0");
+      const id = "de-" + sod.getTime() + "-" + storeId;
+      const data = {
+        id, storeId, sod: sod.getTime(), year: yr, journalRef: jref, closedAt: Date.now(),
+        closedBy: String((req.body || {}).staffName || (req.appStaff && req.appStaff.name) || "").slice(0, 60),
+        float, counted, expected, variance, cashSettled, settled,
+        gross: Math.round(z.gross), gst: Math.round(z.gst), svc: Math.round(z.svc),
+        cash: Math.round(z.cash), card: Math.round(z.card), transfer: Math.round(z.transfer), tab: Math.round(z.tab),
+        orders: z.orders, refunds: Math.round(z.refunds), refundCount: z.refundCount,
+        revenue: Math.round(z.gross - z.gst - z.svc),
+        t: Date.now(), at: Date.now(),
+      };
+      const r = await c.query(
+        "INSERT INTO entities (org_id, kind, id, data, deleted, updated_at) VALUES ($1,'dayend',$2,$3,false,now()) RETURNING rowver",
+        [orgId, id, JSON.stringify(data)]);
+      return { rowver: Number(r.rows[0].rowver), data };
+    });
+    if (out.dup) return res.status(409).json({ error: "The day is already closed.", id: out.id });
+    poke(orgId, out.rowver);
+    logActivity(orgId, { actor: out.data.closedBy || "manager", action: "day.close", ref: out.data.journalRef, requestId: req.id,
+      detail: { gross: out.data.gross, expected: out.data.expected, counted: out.data.counted, variance: out.data.variance, refunds: out.data.refunds } });
+    res.json({ ok: true, dayend: out.data });
+  }));
+
+  /* Voids and line removals (audit B-H6). Voiding an open bill and pulling a
+     line off a ticket already sent to the kitchen are the two easiest ways to
+     make money disappear from a restaurant, and both used to filter local state
+     and toast a reason that was stored NOWHERE — no entity, no log, no actor.
+     The server's own sale.void control only ever fired on `dels` of a SETTLED
+     sale, which this UI never sends, so it was dead code for the register.
+     Recorded as an entity (so it reaches reports and the sync stream) and as an
+     activity_log event (so it surfaces in the back office's review list). */
+  const VOID_KINDS = new Set(["bill", "line"]);
+  app.post("/api/app2/void", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const b = req.body || {};
+    const kind = VOID_KINDS.has(String(b.kind)) ? String(b.kind) : "bill";
+    const id = "vd-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+    const data = {
+      id, kind, t: Date.now(), at: Date.now(),
+      ref: String(b.ref || "").slice(0, 40),
+      reason: String(b.reason || "").slice(0, 60),
+      item: String(b.item || "").slice(0, 80),
+      qty: Number(b.qty) || 0,
+      amount: Math.round(Number(b.amount) || 0),
+      userName: String(b.userName || (req.appStaff && req.appStaff.name) || "").slice(0, 60),
+      staffRole: String(req.appRole || "").slice(0, 20),
+      register: req.appRegister, storeId: req.appStoreId || DEFAULT_STORE_ID,
+      kotSent: !!b.kotSent,
+    };
+    const rowver = await withOrg(orgId, async (c) => {
+      const r = await c.query(
+        "INSERT INTO entities (org_id, kind, id, data, deleted, updated_at) VALUES ($1,'voids',$2,$3,false,now()) RETURNING rowver",
+        [orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    poke(orgId, rowver);
+    logActivity(orgId, { actor: data.userName, action: kind === "line" ? "bill.line_removed" : "bill.void",
+      ref: data.ref, requestId: req.id, detail: { reason: data.reason, item: data.item, qty: data.qty, amount: data.amount, kotSent: data.kotSent } });
+    res.json({ ok: true, id });
+  }));
+
   /* Draw a block of receipt numbers for this terminal's register. The register
      calls this at boot and again when its block runs low, so it always holds
      numbers it can print offline without any chance of another terminal
