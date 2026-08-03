@@ -135,33 +135,38 @@ Sized in work sessions, not days. Each ends green on all six guards, commits to
 the saving is Phase 3 (classes, not a component library) and the fact that 21 of
 27 screens already have working data behind them.
 
-## Phase 7 correction — the guest portal is a second palette
+## Phase 7 — the guest portal was a second palette. Now it isn't.
 
 The plan assumed the portal was "mostly inherited" because it runs the same
-`index.html`. That is true of the *file* and false of the *styling*. The
-guest-mode markup carries **171 hardcoded colour literals** forming a complete
-warm-café skin of its own:
+`index.html`. True of the *file*, false of the *styling*: the guest markup
+carried **181 hardcoded literals** forming a complete warm-café skin that
+rendered light with terracotta accents whatever the theme.
 
-| | | | |
-|---|---|---|---|
-| `#8A7B65` ×50 | `#2E2418` ×35 | `#C1492A` ×26 | `#ECE2D2` ×17 |
-| `#241D11` ×11 | `#C9BFA6` ×9 | `#B7A892` ×6 | `#B4471F` ×4 |
+Decision taken: **apply the prototype design**. The portal now uses the same
+token set as the till and the cockpit.
 
-It renders **light with terracotta accents** whatever the theme, and it never
-picked up the adopted palette. Phase 1 made the mix visible rather than
-causing it: the handful of places that *did* use `var(--coral)` flipped to
-amber, so an amber tab now sits among terracotta buttons.
+**How, since the value never says background-or-text:** classify by the CSS
+property each literal sits on. `color:#8A7B65` is text, `background:#8A7B65`
+is a surface — the property is decisive where the value is not. Measured
+first, then mapped:
 
-**Not swept blind.** Half those literals are backgrounds and half are text,
-and which is which cannot be read off the value. A global replace on the
-customer-facing surface is precisely how a screen breaks silently. It needs a
-pass that classifies each site, which is its own phase.
+| literal | dominant role | → |
+|---|---|---|
+| `#8A7B65` ×50 | `color` ×46 | `--ink2` |
+| `#2E2418` ×35 | `color` ×25 | `--ink` |
+| `#C1492A` ×26 | `color` ×12, `background` ×8 | `--coral` |
+| `#ECE2D2` ×17 | `border` ×14 | `--line` |
+| `#C9BFA6` ×9 | `border-*` ×9 | `--line` |
+| `#FFF`/`#FFFFFF` ×20 | `background` | `--sur` |
 
-**Open decision:** should the customer portal follow the dark/amber design at
-all, or stay a deliberately light café skin? A menu a guest opens on their own
-phone in daylight is a different context from a counter tablet. Answer that
-before the sweep, because it decides whether the target is the token set or a
-tokenised light variant.
+The accent-picker presets (`ACC`) were fenced off — those hexes are data, the
+white-label palette an operator chooses from, not styling.
+
+**It took three rounds, and each round was found by rendering.** Mapping the
+text without the surfaces left 28 light-on-white nodes; tokenising the white
+grounds left 5; the last was a chip avatar on a stray `#F4EEE3`. Final audit
+at 390px and 1200px: **0 low-contrast text, 0 sub-44px targets, no overflow,
+no page errors.**
 
 ## Sequencing rule
 

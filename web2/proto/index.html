@@ -12,7 +12,7 @@
 <template id="__bundler_thumbnail" data-bg-color="#E9EDEF">
   <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
     <rect width="1200" height="800" fill="#E9EDEF"/>
-    <rect x="470" y="300" width="260" height="260" rx="70" fill="#C1492A"/>
+    <rect x="470" y="300" width="260" height="260" rx="70" fill="var(--coral)"/>
     <text x="600" y="490" font-family="Georgia,serif" font-size="170" font-weight="800" fill="#FFFFFF" text-anchor="middle">K</text>
   </svg>
 </template>
@@ -522,7 +522,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           <button onClick="{{ toggleSound }}" style="width:100%;display:flex;align-items:center;gap:11px;background:var(--sur2);border:0;border-radius:13px;padding:12px 13px;margin:10px 0 8px;cursor:pointer;text-align:start;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
             <span style="flex:none;display:grid;place-items:center;color:var(--amber)"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M5 8a4 4 0 0 1 8 0c0 3 1.2 4.2 1.8 4.8H3.2C3.8 12.2 5 11 5 8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M7.2 15a1.8 1.8 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg></span>
             <span style="flex:1">{{ acctSoundLabel }}</span>
-            <span style="width:34px;height:20px;flex:none;border-radius:99px;background:{{ soundBg }};position:relative;transition:background .18s"><span style="position:absolute;top:2px;inset-inline-start:{{ soundX }};width:16px;height:16px;border-radius:99px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:all .18s"></span></span>
+            <span style="width:34px;height:20px;flex:none;border-radius:99px;background:{{ soundBg }};position:relative;transition:background .18s"><span style="position:absolute;top:2px;inset-inline-start:{{ soundX }};width:16px;height:16px;border-radius:99px;background:var(--sur);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:all .18s"></span></span>
           </button>
           <a href="/admin" style="display:flex;align-items:center;gap:11px;background:var(--sur2);border-radius:13px;padding:12px 13px;margin-bottom:10px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
             <span style="flex:none;display:grid;place-items:center;color:var(--coral)"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M2.5 6.5 9 3l6.5 3.5-6.5 3.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path><path d="M2.5 6.5v5L9 15l6.5-3.5v-5M9 10v5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg></span>
@@ -895,23 +895,23 @@ button[disabled],button:disabled{cursor:not-allowed}
       <div style="{{ qrCenterStyle }}">
         <div style="{{ qrBezelStyle }}">
           <div style="{{ qrScreenStyle }}">
-            <sc-if value="{{ qrShowStatus }}" hint-placeholder-val="{{ true }}"><div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:11px 24px 5px;font-size:13px;font-weight:700;color:#2E2418">
+            <sc-if value="{{ qrShowStatus }}" hint-placeholder-val="{{ true }}"><div style="flex:none;display:flex;align-items:center;justify-content:space-between;padding:11px 24px 5px;font-size:13px;font-weight:700;color:var(--ink)">
               <span style="font-variant-numeric:tabular-nums">9:41</span>
-              <span style="width:64px;height:17px;border-radius:99px;background:#2A1D12"></span>
-              <span style="display:flex;align-items:center;gap:5px"><svg width="17" height="11" viewBox="0 0 17 11"><rect x="0" y="7" width="3" height="4" rx="1" fill="#2E2418"/><rect x="4.5" y="5" width="3" height="6" rx="1" fill="#2E2418"/><rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="#2E2418"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="#2E2418"/></svg><svg width="16" height="11" viewBox="0 0 16 11"><path d="M8 2.2c2.4 0 4.6.9 6.2 2.4l-1.3 1.3A7 7 0 0 0 8 4a7 7 0 0 0-4.9 1.9L1.8 4.6A9 9 0 0 1 8 2.2Z" fill="#2E2418"/><circle cx="8" cy="8.6" r="1.6" fill="#2E2418"/></svg><svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="#2E2418" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="#2E2418"/><rect x="22.5" y="4" width="1.8" height="4" rx="1" fill="#2E2418" opacity=".4"/></svg></span>
+              <span style="width:64px;height:17px;border-radius:99px;background:var(--sur2)"></span>
+              <span style="display:flex;align-items:center;gap:5px"><svg width="17" height="11" viewBox="0 0 17 11"><rect x="0" y="7" width="3" height="4" rx="1" fill="var(--ink)"/><rect x="4.5" y="5" width="3" height="6" rx="1" fill="var(--ink)"/><rect x="9" y="2.5" width="3" height="8.5" rx="1" fill="var(--ink)"/><rect x="13.5" y="0" width="3" height="11" rx="1" fill="var(--ink)"/></svg><svg width="16" height="11" viewBox="0 0 16 11"><path d="M8 2.2c2.4 0 4.6.9 6.2 2.4l-1.3 1.3A7 7 0 0 0 8 4a7 7 0 0 0-4.9 1.9L1.8 4.6A9 9 0 0 1 8 2.2Z" fill="var(--ink)"/><circle cx="8" cy="8.6" r="1.6" fill="var(--ink)"/></svg><svg width="25" height="12" viewBox="0 0 25 12"><rect x="0.5" y="0.5" width="21" height="11" rx="3" fill="none" stroke="var(--ink)" opacity=".4"/><rect x="2" y="2" width="17" height="8" rx="1.5" fill="var(--ink)"/><rect x="22.5" y="4" width="1.8" height="4" rx="1" fill="var(--ink)" opacity=".4"/></svg></span>
             </div></sc-if>
-            <div style="flex:1;overflow-y:auto;background:#FFFFFF">
+            <div style="flex:1;overflow-y:auto;background:var(--sur)">
               <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 8px">
-                <div style="width:26px;height:26px;flex:none;border-radius:7px;overflow:hidden;display:grid;place-items:center;background:linear-gradient(135deg,#C1492A,#9A3418);color:#FFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:13px">{{ brandInitial }}</div>
-                <span style="flex:1;font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;color:#2E2418">{{ brandName }}</span>
-                <button onClick="{{ qrCallWaiter }}" style="display:flex;align-items:center;gap:5px;border:0;border-radius:99px;padding:6px 13px;background:#FBE7E0;color:#C1492A;font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2v1M3.5 6.5a3.5 3.5 0 0 1 7 0c0 3 1 4 1 4h-9s1-1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.8 12a1.3 1.3 0 0 0 2.4 0" stroke-linecap="round"/></svg>{{ callWaiterLbl }}</button>
+                <div style="width:26px;height:26px;flex:none;border-radius:7px;overflow:hidden;display:grid;place-items:center;background:linear-gradient(135deg,var(--coral),#9A3418);color:#FFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:13px">{{ brandInitial }}</div>
+                <span style="flex:1;font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;color:var(--ink)">{{ brandName }}</span>
+                <button onClick="{{ qrCallWaiter }}" style="display:flex;align-items:center;gap:5px;border:0;border-radius:99px;padding:6px 13px;background:var(--coralsoft);color:var(--coral);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2v1M3.5 6.5a3.5 3.5 0 0 1 7 0c0 3 1 4 1 4h-9s1-1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.8 12a1.3 1.3 0 0 0 2.4 0" stroke-linecap="round"/></svg>{{ callWaiterLbl }}</button>
               </div>
               <div style="display:flex;align-items:flex-start;gap:8px;padding:2px 16px 10px">
                 <div style="flex:1;min-width:0">
-                  <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:21px;color:#2E2418;line-height:1.1">{{ qrGreet }}</div>
-                  <div style="font-size:12px;color:#8A7B65;font-weight:600;margin-top:3px">{{ qrGreetSub }}</div>
+                  <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:21px;color:var(--ink);line-height:1.1">{{ qrGreet }}</div>
+                  <div style="font-size:12px;color:var(--ink2);font-weight:600;margin-top:3px">{{ qrGreetSub }}</div>
                 </div>
-                <sc-if value="{{ qrCanSwitch }}" hint-placeholder-val="{{ true }}"><button onClick="{{ qrNextCust }}" style="flex:none;display:flex;align-items:center;gap:5px;border:1px solid #ECE2D2;background:#FFF;color:#8A7B65;border-radius:99px;padding:6px 11px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap" style-active="transform:scale(.95)"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h8l-2-2M12 9H4l2 2"/></svg>{{ qrSwitchLbl }}</button></sc-if>
+                <sc-if value="{{ qrCanSwitch }}" hint-placeholder-val="{{ true }}"><button onClick="{{ qrNextCust }}" style="flex:none;display:flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--sur);color:var(--ink2);border-radius:99px;padding:6px 11px;font-size:11px;font-weight:800;cursor:pointer;white-space:nowrap" style-active="transform:scale(.95)"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h8l-2-2M12 9H4l2 2"/></svg>{{ qrSwitchLbl }}</button></sc-if>
               </div>
               <div style="display:flex;gap:6px;padding:0 16px 4px">
                 <button onClick="{{ qrToMenu }}" style="flex:1;border:1px solid var(--line);background:{{ qrMenuTabBg }};color:{{ qrMenuTabC }};border-radius:99px;padding:8px;font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.97)">{{ qrMenuLbl }}</button>
@@ -940,31 +940,31 @@ button[disabled],button:disabled{cursor:not-allowed}
                     </div>
                   </div>
                   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px">
-                    <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:14px;padding:12px 13px"><div style="font-size:10.5px;color:#8A7B65;font-weight:700">{{ visitsLbl }}</div><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:#2E2418;margin-top:3px;font-variant-numeric:tabular-nums">{{ prof.visits }}</div></div>
-                    <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:14px;padding:12px 13px"><div style="font-size:10.5px;color:#8A7B65;font-weight:700">{{ spentLbl }}</div><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:#2E2418;margin-top:3px;font-variant-numeric:tabular-nums">{{ prof.spentF }}</div></div>
-                    <div style="background:#FBE7E0;border-radius:14px;padding:12px 13px"><div style="font-size:10.5px;color:#C1492A;font-weight:700">{{ onAccountLbl }}</div><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:#C1492A;margin-top:3px;font-variant-numeric:tabular-nums">{{ prof.onAcctF }}</div></div>
+                    <div style="background:var(--sur);border:1px solid var(--line);border-radius:14px;padding:12px 13px"><div style="font-size:10.5px;color:var(--ink2);font-weight:700">{{ visitsLbl }}</div><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums">{{ prof.visits }}</div></div>
+                    <div style="background:var(--sur);border:1px solid var(--line);border-radius:14px;padding:12px 13px"><div style="font-size:10.5px;color:var(--ink2);font-weight:700">{{ spentLbl }}</div><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:var(--ink);margin-top:3px;font-variant-numeric:tabular-nums">{{ prof.spentF }}</div></div>
+                    <div style="background:var(--coralsoft);border-radius:14px;padding:12px 13px"><div style="font-size:10.5px;color:var(--coral);font-weight:700">{{ onAccountLbl }}</div><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:var(--coral);margin-top:3px;font-variant-numeric:tabular-nums">{{ prof.onAcctF }}</div></div>
                   </div>
-                  <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:18px;padding:15px 16px;margin-top:12px">
-                    <div style="font-size:13px;font-weight:800;color:#2E2418;margin-bottom:12px">{{ last7Lbl }}</div>
+                  <div style="background:var(--sur);border:1px solid var(--line);border-radius:18px;padding:15px 16px;margin-top:12px">
+                    <div style="font-size:13px;font-weight:800;color:var(--ink);margin-bottom:12px">{{ last7Lbl }}</div>
                     <div style="display:flex;align-items:flex-end;gap:8px;height:96px">
                       <sc-for list="{{ profWeek }}" as="wk" hint-placeholder-count="7">
                         <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end">
-                          <div style="width:100%;border-radius:6px 6px 3px 3px;background:#C1492A;height:{{ wk.h }};transform-origin:bottom;animation:barup .5s both"></div>
-                          <span style="font-size:10px;font-weight:700;color:#B7A892">{{ wk.lbl }}</span>
+                          <div style="width:100%;border-radius:6px 6px 3px 3px;background:var(--coral);height:{{ wk.h }};transform-origin:bottom;animation:barup .5s both"></div>
+                          <span style="font-size:10px;font-weight:700;color:var(--ink3)">{{ wk.lbl }}</span>
                         </div>
                       </sc-for>
                     </div>
                   </div>
                   </sc-if>
                   <sc-if value="{{ qrIsWalkIn }}" hint-placeholder-val="{{ false }}">
-                    <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:18px;padding:16px 17px;margin-bottom:2px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:#2E2418">{{ qrWalkTitle }}</div><div style="font-size:12.5px;color:#8A7B65;font-weight:600;margin-top:5px;line-height:1.5">{{ qrWalkBody }}</div></div>
+                    <div style="background:var(--sur);border:1px solid var(--line);border-radius:18px;padding:16px 17px;margin-bottom:2px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink)">{{ qrWalkTitle }}</div><div style="font-size:12.5px;color:var(--ink2);font-weight:600;margin-top:5px;line-height:1.5">{{ qrWalkBody }}</div></div>
                   </sc-if>
                   <div style="display:flex;flex-direction:column;gap:11px;margin-top:12px">
                     <sc-for list="{{ qrOrdRows }}" as="o" hint-placeholder-count="3">
-                      <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:18px;padding:14px 15px;box-shadow:var(--shadow)">
-                        <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;color:#2E2418;font-variant-numeric:tabular-nums">{{ o.no }}</span><span style="flex:1;font-size:10.5px;color:#8A7B65;font-weight:600">{{ o.when }}</span><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:#2E2418;font-variant-numeric:tabular-nums">{{ o.totalF }}</span></div>
-                        <sc-if value="{{ o.hasType }}" hint-placeholder-val="{{ true }}"><div style="display:inline-block;margin-top:7px;font-size:10px;font-weight:800;letter-spacing:.02em;color:#C1492A;background:#FBE7E0;border-radius:99px;padding:3px 10px">{{ o.typeLbl }}</div></sc-if>
-                        <div style="font-size:11.5px;color:#8A7B65;font-weight:500;margin-top:6px;line-height:1.4;text-wrap:pretty">{{ o.sum }}</div>
+                      <div style="background:var(--sur);border:1px solid var(--line);border-radius:18px;padding:14px 15px;box-shadow:var(--shadow)">
+                        <div style="display:flex;align-items:baseline;gap:8px"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums">{{ o.no }}</span><span style="flex:1;font-size:10.5px;color:var(--ink2);font-weight:600">{{ o.when }}</span><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums">{{ o.totalF }}</span></div>
+                        <sc-if value="{{ o.hasType }}" hint-placeholder-val="{{ true }}"><div style="display:inline-block;margin-top:7px;font-size:10px;font-weight:800;letter-spacing:.02em;color:var(--coral);background:var(--coralsoft);border-radius:99px;padding:3px 10px">{{ o.typeLbl }}</div></sc-if>
+                        <div style="font-size:11.5px;color:var(--ink2);font-weight:500;margin-top:6px;line-height:1.4;text-wrap:pretty">{{ o.sum }}</div>
                         <div style="display:flex;gap:5px;margin-top:11px">
                           <sc-for list="{{ o.segs }}" as="sg" hint-placeholder-count="5">
                             <div style="flex:1;height:6px;border-radius:99px;background:{{ sg.bg }};transition:background .3s"></div>
@@ -978,41 +978,41 @@ button[disabled],button:disabled{cursor:not-allowed}
               </sc-if>
               <sc-if value="{{ qrMenuView }}" hint-placeholder-val="{{ true }}">
                 <div style="padding:6px 16px 18px">
-                  <div style="display:flex;align-items:center;gap:9px;background:#FFF;border:1px solid #ECE2D2;border-radius:12px;padding:11px 13px;margin-bottom:14px">
-                    <svg width="16" height="16" viewBox="0 0 16 16" style="color:#B7A892"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.7"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-                    <span style="flex:1;font-size:12.5px;color:#B7A892;font-weight:500">{{ L.searchDish }}</span>
-                    <svg width="16" height="16" viewBox="0 0 16 16" style="color:#C1492A"><path d="M2 3.5h12l-4.5 5.2V13l-3 1.5V8.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+                  <div style="display:flex;align-items:center;gap:9px;background:var(--sur);border:1px solid var(--line);border-radius:12px;padding:11px 13px;margin-bottom:14px">
+                    <svg width="16" height="16" viewBox="0 0 16 16" style="color:var(--ink3)"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.7"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                    <span style="flex:1;font-size:12.5px;color:var(--ink3);font-weight:500">{{ L.searchDish }}</span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" style="color:var(--coral)"><path d="M2 3.5h12l-4.5 5.2V13l-3 1.5V8.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
                   </div>
-                  <div class="krow" style="--krowbg:#FFFFFF;display:flex;gap:8px;overflow-x:auto;margin-bottom:15px;padding-bottom:2px">
+                  <div class="krow" style="--krowbg:var(--sur);display:flex;gap:8px;overflow-x:auto;margin-bottom:15px;padding-bottom:2px">
                     <sc-for list="{{ qrCatChips }}" as="c" hint-placeholder-count="4">
                       <button onClick="{{ c.tap }}" style="flex:none;display:flex;align-items:center;gap:7px;border:1px solid {{ c.bc }};background:{{ c.bg }};color:{{ c.co }};border-radius:14px;padding:5px 13px 5px 5px;font-size:12px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .15s" style-active="transform:scale(.95)"><span style="width:26px;height:26px;flex:none;border-radius:8px;background:{{ c.iconBg }};display:grid;place-items:center;font-size:14px;line-height:1">{{ c.emoji }}</span>{{ c.label }}</button>
                     </sc-for>
                   </div>
                   <sc-if value="{{ qrShowSub }}" hint-placeholder-val="{{ false }}">
-                    <div class="krow" style="--krowbg:#FFFFFF;display:flex;gap:7px;overflow-x:auto;margin:-8px 0 15px;padding-bottom:2px">
+                    <div class="krow" style="--krowbg:var(--sur);display:flex;gap:7px;overflow-x:auto;margin:-8px 0 15px;padding-bottom:2px">
                       <sc-for list="{{ qrSubChips }}" as="su" hint-placeholder-count="4">
                         <button onClick="{{ su.tap }}" style="flex:none;border:1px solid {{ su.bc }};background:{{ su.bg }};color:{{ su.co }};border-radius:99px;padding:5px 13px;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;transition:all .15s" style-active="transform:scale(.95)">{{ su.label }}</button>
                       </sc-for>
                     </div>
                   </sc-if>
-                  <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:#B7A892;margin-bottom:11px">{{ favTitle }}</div>
+                  <div style="font-size:11px;font-weight:800;letter-spacing:.08em;color:var(--ink3);margin-bottom:11px">{{ favTitle }}</div>
                   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                     <sc-for list="{{ qrMenuList }}" as="d" hint-placeholder-count="4">
-                      <div onClick="{{ d.open }}" style="background:#FFF;border:1px solid #ECE2D2;border-radius:16px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);display:{{ d.disp }};flex-direction:column;transition:transform .12s" style-active="transform:scale(.98)">
+                      <div onClick="{{ d.open }}" style="background:var(--sur);border:1px solid var(--line);border-radius:16px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow);display:{{ d.disp }};flex-direction:column;transition:transform .12s" style-active="transform:scale(.98)">
                         <div style="position:relative;width:100%;height:98px"><sc-if value="{{ d.hasImg }}" hint-placeholder-val="{{ true }}"><img src="{{ d.src }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block"></sc-if><sc-if value="{{ d.noImg }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;display:grid;place-items:center;background:{{ d.tileBg }}"><div style="width:46px;height:46px;border-radius:14px;background:{{ d.tileTc }};color:#fff;display:grid;place-items:center;font-family:'Bricolage Grotesque';font-weight:800;font-size:21px;box-shadow:0 4px 12px rgba(0,0,0,.14)">{{ d.glyph }}</div></div></sc-if></div>
                         <div style="padding:9px 10px 11px;display:flex;flex-direction:column;gap:3px;flex:1">
-                          <div style="font-size:12.5px;font-weight:800;color:#2E2418;line-height:1.2">{{ d.name }}</div>
-                          <sc-if value="{{ d.hasAllerg }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:#B7A892;font-weight:600;line-height:1.3">{{ d.allerg }}</div></sc-if>
+                          <div style="font-size:12.5px;font-weight:800;color:var(--ink);line-height:1.2">{{ d.name }}</div>
+                          <sc-if value="{{ d.hasAllerg }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:var(--ink3);font-weight:600;line-height:1.3">{{ d.allerg }}</div></sc-if>
                           <div style="display:flex;align-items:center;gap:6px;margin-top:5px">
-                            <span style="font-size:12.5px;font-weight:800;color:#C1492A;font-variant-numeric:tabular-nums;flex:1">{{ d.priceF }}</span>
-                            <button onClick="{{ d.quickAdd }}" aria-label="{{ d.addLbl }}" title="{{ d.addLbl }}" style="width:44px;height:44px;border-radius:99px;background:#C1492A;color:#FFF;border:0;display:grid;place-items:center;font-size:20px;font-weight:800;line-height:1;cursor:pointer;flex:none" style-active="transform:scale(.9)">+</button>
+                            <span style="font-size:12.5px;font-weight:800;color:var(--coral);font-variant-numeric:tabular-nums;flex:1">{{ d.priceF }}</span>
+                            <button onClick="{{ d.quickAdd }}" aria-label="{{ d.addLbl }}" title="{{ d.addLbl }}" style="width:44px;height:44px;border-radius:99px;background:var(--coral);color:var(--on-amber);border:0;display:grid;place-items:center;font-size:20px;font-weight:800;line-height:1;cursor:pointer;flex:none" style-active="transform:scale(.9)">+</button>
                           </div>
                         </div>
                       </div>
                     </sc-for>
                   </div>
                   <sc-if value="{{ qrHasLines }}" hint-placeholder-val="{{ false }}">
-                    <button onClick="{{ qrGoSummary }}" style="width:100%;margin-top:16px;border:0;border-radius:14px;padding:14px;background:#C1492A;color:#FFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;cursor:pointer" style-active="transform:scale(.98)">{{ L.yourOrder }} · {{ qrCartCount }}</button>
+                    <button onClick="{{ qrGoSummary }}" style="width:100%;margin-top:16px;border:0;border-radius:14px;padding:14px;background:var(--coral);color:var(--on-amber);font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;cursor:pointer" style-active="transform:scale(.98)">{{ L.yourOrder }} · {{ qrCartCount }}</button>
                   </sc-if>
                 </div>
               </sc-if>
@@ -1020,49 +1020,49 @@ button[disabled],button:disabled{cursor:not-allowed}
                 <div>
                   <div style="position:relative;width:100%;height:236px">
                     <img src="{{ qrDetail.src }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block">
-                    <button onClick="{{ qrBackMenu }}" style="position:absolute;top:14px;left:14px;width:38px;height:38px;border-radius:99px;background:#FFF;border:0;display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow);color:#2E2418" style-active="transform:scale(.9)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10,3 5,8 10,13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                    <button onClick="{{ qrBackMenu }}" style="position:absolute;top:14px;left:14px;width:38px;height:38px;border-radius:99px;background:var(--sur);border:0;display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow);color:var(--ink)" style-active="transform:scale(.9)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10,3 5,8 10,13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <!-- A three-dot overflow button used to sit here with no
                          handler and no menu behind it: it took taps and did
                          nothing. Removed rather than given an invented menu —
                          everything the sheet offers is already on the sheet. -->
                   </div>
-                  <div style="background:#FFFFFF;border-radius:24px 24px 0 0;margin-top:-22px;position:relative;padding:20px 18px 8px">
-                    <div style="display:flex;align-items:center;gap:6px"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:#2E2418">{{ qrDetail.name }}</span><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="#C1492A"/><polyline points="5,9.3 8,12 13,6" fill="none" stroke="#FFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-                    <div style="font-size:11.5px;color:#8A7B65;font-weight:600;margin-top:3px">{{ qrDetail.tag }}</div>
+                  <div style="background:var(--sur);border-radius:24px 24px 0 0;margin-top:-22px;position:relative;padding:20px 18px 8px">
+                    <div style="display:flex;align-items:center;gap:6px"><span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;color:var(--ink)">{{ qrDetail.name }}</span><svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="9" fill="var(--coral)"/><polyline points="5,9.3 8,12 13,6" fill="none" stroke="#FFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+                    <div style="font-size:11.5px;color:var(--ink2);font-weight:600;margin-top:3px">{{ qrDetail.tag }}</div>
                     <sc-if value="{{ qrDetail.hasRating }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;margin-top:11px">
                       <svg width="15" height="15" viewBox="0 0 15 15" style="color:#E8A020"><path d="M7.5 1l1.8 3.9 4.2.5-3.1 2.9.8 4.2-3.7-2.1-3.7 2.1.8-4.2L1.5 5.4l4.2-.5z" fill="currentColor"/></svg>
-                      <span style="font-size:12.5px;font-weight:800;color:#2E2418">{{ qrDetail.rating }} <span style="color:#8A7B65;font-weight:600">({{ qrDetail.ratingN }})</span></span>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--ink)">{{ qrDetail.rating }} <span style="color:var(--ink2);font-weight:600">({{ qrDetail.ratingN }})</span></span>
                     </div></sc-if>
-                    <div style="font-size:12px;color:#8A7B65;font-weight:500;line-height:1.55;margin-top:13px;text-wrap:pretty">{{ qrDetail.desc }}</div>
-                    <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:#2E2418;margin:17px 0 9px">{{ L.addOns }}</div>
-                    <div style="border:1px solid #ECE2D2;border-radius:14px;overflow:hidden;background:#FFF">
+                    <div style="font-size:12px;color:var(--ink2);font-weight:500;line-height:1.55;margin-top:13px;text-wrap:pretty">{{ qrDetail.desc }}</div>
+                    <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:var(--ink);margin:17px 0 9px">{{ L.addOns }}</div>
+                    <div style="border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--sur)">
                       <sc-for list="{{ qrDetail.addRows }}" as="a" hint-placeholder-count="3">
-                        <div style="display:flex;align-items:center;gap:8px;padding:12px 13px;border-bottom:1px solid #EFE6D6">
-                          <span style="flex:1;font-size:12.5px;font-weight:700;color:#2E2418">{{ a.label }} <span style="color:#8A7B65;font-weight:700">{{ a.priceF }}</span></span>
+                        <div style="display:flex;align-items:center;gap:8px;padding:12px 13px;border-bottom:1px solid var(--line)">
+                          <span style="flex:1;font-size:12.5px;font-weight:700;color:var(--ink)">{{ a.label }} <span style="color:var(--ink2);font-weight:700">{{ a.priceF }}</span></span>
                           <sc-if value="{{ a.has }}" hint-placeholder-val="{{ false }}">
-                            <button onClick="{{ a.dec }}" style="width:25px;height:25px;border-radius:99px;border:0;background:#F3EADB;color:#C1492A;font-size:15px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">−</button>
-                            <span style="min-width:12px;text-align:center;font-size:12.5px;font-weight:800;color:#2E2418">{{ a.q }}</span>
+                            <button onClick="{{ a.dec }}" style="width:25px;height:25px;border-radius:99px;border:0;background:var(--sur2);color:var(--coral);font-size:15px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">−</button>
+                            <span style="min-width:12px;text-align:center;font-size:12.5px;font-weight:800;color:var(--ink)">{{ a.q }}</span>
                           </sc-if>
-                          <button onClick="{{ a.inc }}" style="width:25px;height:25px;border-radius:99px;border:0;background:#C1492A;color:#FFF;font-size:15px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">+</button>
+                          <button onClick="{{ a.inc }}" style="width:25px;height:25px;border-radius:99px;border:0;background:var(--coral);color:var(--on-amber);font-size:15px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">+</button>
                         </div>
                       </sc-for>
                     </div>
-                    <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:#2E2418;margin:17px 0 9px">{{ L.notesLbl }}</div>
-                    <input value="{{ qrDetail.note }}" onChange="{{ qrDetail.setNote }}" placeholder="{{ L.notePh }}" dir="auto" style="width:100%;border:1px solid #ECE2D2;background:#FFF;border-radius:12px;padding:12px 13px;font-size:12.5px;color:#2E2418;outline:none;box-sizing:border-box">
+                    <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:var(--ink);margin:17px 0 9px">{{ L.notesLbl }}</div>
+                    <input value="{{ qrDetail.note }}" onChange="{{ qrDetail.setNote }}" placeholder="{{ L.notePh }}" dir="auto" style="width:100%;border:1px solid var(--line);background:var(--sur);border-radius:12px;padding:12px 13px;font-size:12.5px;color:var(--ink);outline:none;box-sizing:border-box">
                   </div>
-                  <div style="position:sticky;bottom:0;background:#FFFFFF;border-top:1px solid #ECE2D2;padding:12px 16px;display:flex;align-items:center;gap:12px">
-                    <div><div style="font-size:10px;color:#8A7B65;font-weight:800;letter-spacing:.04em">{{ L.totalLbl }}</div><div style="font-family:'Bricolage Grotesque';font-size:16px;font-weight:800;color:#C1492A;font-variant-numeric:tabular-nums">{{ qrDetail.totalF }}</div></div>
-                    <button onClick="{{ qrAddToOrder }}" style="flex:1;border:0;border-radius:13px;padding:14px;background:#C1492A;color:#FFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;cursor:pointer" style-active="transform:scale(.98)">{{ L.addToOrder }}</button>
+                  <div style="position:sticky;bottom:0;background:var(--sur);border-top:1px solid var(--line);padding:12px 16px;display:flex;align-items:center;gap:12px">
+                    <div><div style="font-size:10px;color:var(--ink2);font-weight:800;letter-spacing:.04em">{{ L.totalLbl }}</div><div style="font-family:'Bricolage Grotesque';font-size:16px;font-weight:800;color:var(--coral);font-variant-numeric:tabular-nums">{{ qrDetail.totalF }}</div></div>
+                    <button onClick="{{ qrAddToOrder }}" style="flex:1;border:0;border-radius:13px;padding:14px;background:var(--coral);color:var(--on-amber);font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;cursor:pointer" style-active="transform:scale(.98)">{{ L.addToOrder }}</button>
                   </div>
                 </div>
               </sc-if>
               <sc-if value="{{ qrSummaryView }}" hint-placeholder-val="{{ false }}">
                 <div style="padding:14px 16px 8px">
                   <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:18px">
-                    <button onClick="{{ qrBackMenu }}" style="width:38px;height:38px;flex:none;border-radius:99px;border:1px solid #ECE2D2;background:#FFF;display:grid;place-items:center;cursor:pointer;color:#2E2418" style-active="transform:scale(.9)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10,3 5,8 10,13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+                    <button onClick="{{ qrBackMenu }}" style="width:38px;height:38px;flex:none;border-radius:99px;border:1px solid var(--line);background:var(--sur);display:grid;place-items:center;cursor:pointer;color:var(--ink)" style-active="transform:scale(.9)"><svg width="16" height="16" viewBox="0 0 16 16"><polyline points="10,3 5,8 10,13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
                     <div style="flex:1;text-align:end">
-                      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:18px;color:#2E2418">{{ L.yourOrder }}</div>
-                      <sc-if value="{{ qrHasTable }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;color:#C1492A;font-weight:800;font-size:12px;margin-top:3px"><svg width="13" height="13" viewBox="0 0 14 14"><rect x="2" y="3" width="10" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4.3" y1="9" x2="4.3" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="9.7" y1="9" x2="9.7" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{{ qrTableLbl }}</div></sc-if>
+                      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:18px;color:var(--ink)">{{ L.yourOrder }}</div>
+                      <sc-if value="{{ qrHasTable }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:5px;justify-content:flex-end;color:var(--coral);font-weight:800;font-size:12px;margin-top:3px"><svg width="13" height="13" viewBox="0 0 14 14"><rect x="2" y="3" width="10" height="6" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4.3" y1="9" x2="4.3" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="9.7" y1="9" x2="9.7" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{{ qrTableLbl }}</div></sc-if>
                     </div>
                   </div>
                   <div style="display:flex;flex-direction:column;gap:15px">
@@ -1070,36 +1070,36 @@ button[disabled],button:disabled{cursor:not-allowed}
                       <div style="display:flex;align-items:center;gap:11px">
                         <div style="width:50px;height:50px;flex:none;border-radius:12px;overflow:hidden"><img src="{{ l.src }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block"></div>
                         <div style="flex:1;min-width:0">
-                          <div style="font-size:13px;font-weight:800;color:#2E2418">{{ l.name }}</div>
-                          <sc-if value="{{ l.hasSub }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#8A7B65;font-weight:600">{{ l.sub }}</div></sc-if>
-                          <div style="font-size:12.5px;font-weight:800;color:#C1492A;margin-top:2px;font-variant-numeric:tabular-nums">{{ l.priceF }}</div>
+                          <div style="font-size:13px;font-weight:800;color:var(--ink)">{{ l.name }}</div>
+                          <sc-if value="{{ l.hasSub }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:var(--ink2);font-weight:600">{{ l.sub }}</div></sc-if>
+                          <div style="font-size:12.5px;font-weight:800;color:var(--coral);margin-top:2px;font-variant-numeric:tabular-nums">{{ l.priceF }}</div>
                         </div>
                         <div style="display:flex;align-items:center;gap:9px">
-                          <button onClick="{{ l.dec }}" aria-label="One less" style="width:44px;height:44px;border-radius:99px;border:0;background:#F3EADB;color:#C1492A;font-size:19px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">−</button>
-                          <span style="min-width:14px;text-align:center;font-size:13px;font-weight:800;color:#2E2418">{{ l.qty }}</span>
-                          <button onClick="{{ l.inc }}" aria-label="One more" style="width:44px;height:44px;border-radius:99px;border:0;background:#C1492A;color:#FFF;font-size:19px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">+</button>
+                          <button onClick="{{ l.dec }}" aria-label="One less" style="width:44px;height:44px;border-radius:99px;border:0;background:var(--sur2);color:var(--coral);font-size:19px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">−</button>
+                          <span style="min-width:14px;text-align:center;font-size:13px;font-weight:800;color:var(--ink)">{{ l.qty }}</span>
+                          <button onClick="{{ l.inc }}" aria-label="One more" style="width:44px;height:44px;border-radius:99px;border:0;background:var(--coral);color:var(--on-amber);font-size:19px;font-weight:800;cursor:pointer;line-height:1" style-active="transform:scale(.88)">+</button>
                         </div>
                       </div>
                     </sc-for>
                   </div>
-                  <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:#2E2418;margin:18px 0 10px">{{ L.paymentSummary }}</div>
-                  <div style="background:#FFF;border:1px solid #ECE2D2;border-radius:14px;padding:14px 15px;display:flex;flex-direction:column;gap:10px">
-                    <div style="display:flex;justify-content:space-between;font-size:12px;color:#8A7B65;font-weight:600"><span>{{ L.subtotalLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ qrSubF }}</span></div>
-                    <sc-if value="{{ qrHasSvc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:12px;color:#8A7B65;font-weight:600"><span>{{ qrSvcLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ qrSvcF }}</span></div></sc-if>
-                    <div style="display:flex;justify-content:space-between;font-size:12px;color:#8A7B65;font-weight:600"><span>{{ qrTaxLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ qrTaxF }}</span></div>
-                    <div style="height:1px;background:#EFE6D6"></div>
-                    <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px;font-weight:800;color:#2E2418">{{ L.totalPayment }}</span><span style="font-family:'Bricolage Grotesque';font-size:18px;font-weight:800;color:#C1492A;font-variant-numeric:tabular-nums">{{ qrTotalF }}</span></div>
+                  <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:15px;color:var(--ink);margin:18px 0 10px">{{ L.paymentSummary }}</div>
+                  <div style="background:var(--sur);border:1px solid var(--line);border-radius:14px;padding:14px 15px;display:flex;flex-direction:column;gap:10px">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);font-weight:600"><span>{{ L.subtotalLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ qrSubF }}</span></div>
+                    <sc-if value="{{ qrHasSvc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);font-weight:600"><span>{{ qrSvcLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ qrSvcF }}</span></div></sc-if>
+                    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--ink2);font-weight:600"><span>{{ qrTaxLbl }}</span><span style="font-variant-numeric:tabular-nums">{{ qrTaxF }}</span></div>
+                    <div style="height:1px;background:var(--sur2)"></div>
+                    <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:13px;font-weight:800;color:var(--ink)">{{ L.totalPayment }}</span><span style="font-family:'Bricolage Grotesque';font-size:18px;font-weight:800;color:var(--coral);font-variant-numeric:tabular-nums">{{ qrTotalF }}</span></div>
                   </div>
                   <div style="display:flex;gap:9px;margin:16px 0 4px">
-                    <button onClick="{{ qrOrderNow }}" style="flex:1;border:0;background:#C1492A;color:#FFF;border-radius:13px;padding:13px 6px;font-family:'Bricolage Grotesque';font-weight:800;font-size:12.5px;cursor:pointer" style-active="transform:scale(.98)">{{ L.orderNow }}</button>
+                    <button onClick="{{ qrOrderNow }}" style="flex:1;border:0;background:var(--coral);color:var(--on-amber);border-radius:13px;padding:13px 6px;font-family:'Bricolage Grotesque';font-weight:800;font-size:12.5px;cursor:pointer" style-active="transform:scale(.98)">{{ L.orderNow }}</button>
                   </div>
                 </div>
               </sc-if>
             </div>
             <sc-if value="{{ qrShowStatus }}" hint-placeholder-val="{{ false }}">
-            <div style="flex:none;border-top:1px solid #ECE2D2;background:#F3EADB;padding:9px 16px 14px;display:flex;align-items:center;gap:10px">
-              <span style="font-size:12px;color:#8A7B65;font-weight:700">AA</span>
-              <div style="flex:1;background:#FFF;border-radius:9px;padding:7px 10px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:#2E2418;font-weight:600"><svg width="11" height="11" viewBox="0 0 11 11" style="color:#8A7B65"><rect x="2" y="5" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 5V3.5a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>{{ qrPortalHost }}<svg width="13" height="13" viewBox="0 0 13 13" style="color:#8A7B65"><path d="M11 6.5a4.5 4.5 0 1 1-1.3-3.2M11 1v3H8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+            <div style="flex:none;border-top:1px solid var(--line);background:var(--sur2);padding:9px 16px 14px;display:flex;align-items:center;gap:10px">
+              <span style="font-size:12px;color:var(--ink2);font-weight:700">AA</span>
+              <div style="flex:1;background:var(--sur);border-radius:9px;padding:7px 10px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;color:var(--ink);font-weight:600"><svg width="11" height="11" viewBox="0 0 11 11" style="color:var(--ink2)"><rect x="2" y="5" width="7" height="5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3.5 5V3.5a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>{{ qrPortalHost }}<svg width="13" height="13" viewBox="0 0 13 13" style="color:var(--ink2)"><path d="M11 6.5a4.5 4.5 0 1 1-1.3-3.2M11 1v3H8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
             </div>
             </sc-if>
           </div>
@@ -1773,50 +1773,50 @@ button[disabled],button:disabled{cursor:not-allowed}
 <sc-if value="{{ receiptOpen }}" hint-placeholder-val="{{ false }}">
   <div onClick="{{ closeReceipt }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:180;animation:fade .2s"></div>
   <div style="position:fixed;z-index:181;left:50%;top:50%;transform:translate(-50%,-50%);width:330px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;animation:sheet .32s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
-    <div style="background:#FFFDF6;color:#241D11;border-radius:14px 14px 0 0;padding:22px 22px 14px;overflow-y:auto;box-shadow:var(--shadow)">
+    <div style="background:var(--sur);color:var(--ink);border-radius:14px 14px 0 0;padding:22px 22px 14px;overflow-y:auto;box-shadow:var(--shadow)">
       <div style="text-align:center;border-bottom:1px dashed #C9BFa6;padding-bottom:12px">
         <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">{{ outletName }}</div>
-        <sc-if value="{{ hasOutletAddr }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:#8A7B65;margin-top:2px">{{ outletAddr }}</div></sc-if>
-        <sc-if value="{{ hasLegalName }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;color:#8A7B65">{{ legalName }}</div></sc-if>
-        <sc-if value="{{ hasPhone }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;color:#8A7B65;font-variant-numeric:tabular-nums">{{ storePhone }}</div></sc-if>
-        <sc-if value="{{ hasTin }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:#8A7B65;font-variant-numeric:tabular-nums">TIN: {{ tin }}</div></sc-if>
-        <sc-if value="{{ hasGstReg }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:#8A7B65;font-variant-numeric:tabular-nums">{{ L.gstRegLbl }}: {{ gstRegNo }}</div></sc-if>
-        <div style="display:inline-block;margin-top:8px;border:1.5px solid #241D11;border-radius:6px;padding:2px 10px;font-size:10.5px;font-weight:800;letter-spacing:.12em">{{ rc.docType }}</div>
+        <sc-if value="{{ hasOutletAddr }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:var(--ink2);margin-top:2px">{{ outletAddr }}</div></sc-if>
+        <sc-if value="{{ hasLegalName }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;color:var(--ink2)">{{ legalName }}</div></sc-if>
+        <sc-if value="{{ hasPhone }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;color:var(--ink2);font-variant-numeric:tabular-nums">{{ storePhone }}</div></sc-if>
+        <sc-if value="{{ hasTin }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums">TIN: {{ tin }}</div></sc-if>
+        <sc-if value="{{ hasGstReg }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums">{{ L.gstRegLbl }}: {{ gstRegNo }}</div></sc-if>
+        <div style="display:inline-block;margin-top:8px;border:1.5px solid var(--line);border-radius:6px;padding:2px 10px;font-size:10.5px;font-weight:800;letter-spacing:.12em">{{ rc.docType }}</div>
         <sc-if value="{{ rc.isTaxInvoice }}" hint-placeholder-val="{{ false }}">
-          <div style="margin-top:8px;text-align:start;border:1px dashed #C9BFA6;border-radius:8px;padding:7px 9px">
-            <div style="font-size:9.5px;color:#8A7B65;font-weight:800;letter-spacing:.06em">{{ L.billTo }}</div>
-            <div style="font-size:11.5px;font-weight:700;color:#241D11">{{ rc.buyerName }}</div>
-            <sc-if value="{{ rc.hasBuyerTin }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;color:#8A7B65;font-variant-numeric:tabular-nums">TIN: {{ rc.buyerTin }}</div></sc-if>
+          <div style="margin-top:8px;text-align:start;border:1px dashed var(--line);border-radius:8px;padding:7px 9px">
+            <div style="font-size:9.5px;color:var(--ink2);font-weight:800;letter-spacing:.06em">{{ L.billTo }}</div>
+            <div style="font-size:11.5px;font-weight:700;color:var(--ink)">{{ rc.buyerName }}</div>
+            <sc-if value="{{ rc.hasBuyerTin }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;color:var(--ink2);font-variant-numeric:tabular-nums">TIN: {{ rc.buyerTin }}</div></sc-if>
           </div>
         </sc-if>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8A7B65;padding:10px 0 4px;font-variant-numeric:tabular-nums"><span>{{ L.receiptNo }}</span><span style="font-weight:700;color:#241D11">{{ rc.no }}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8A7B65;padding-bottom:10px;font-variant-numeric:tabular-nums;border-bottom:1px dashed #C9BFA6"><span>{{ L.date }}</span><span style="font-weight:700;color:#241D11">{{ rc.date }}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8A7B65;padding:8px 0 4px;border-bottom:1px dashed #C9BFA6"><span>{{ L.orderType }}</span><span style="font-weight:800;color:#241D11">{{ rc.orderTypeLbl }}<sc-if value="{{ rc.isDine }}" hint-placeholder-val="{{ false }}"> · {{ rc.tableLbl }}</sc-if></span></div>
-      <sc-if value="{{ rc.hasDelFee }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;gap:10px;font-size:11px;color:#8A7B65;padding:2px 0 8px;border-bottom:1px dashed #C9BFA6"><span>{{ L.deliverToTitle }}</span><span style="font-weight:700;color:#241D11;text-align:end">{{ rc.delTo }}</span></div></sc-if>
-      <div style="padding:8px 0;border-bottom:1px dashed #C9BFA6">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);padding:10px 0 4px;font-variant-numeric:tabular-nums"><span>{{ L.receiptNo }}</span><span style="font-weight:700;color:var(--ink)">{{ rc.no }}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);padding-bottom:10px;font-variant-numeric:tabular-nums;border-bottom:1px dashed var(--line)"><span>{{ L.date }}</span><span style="font-weight:700;color:var(--ink)">{{ rc.date }}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);padding:8px 0 4px;border-bottom:1px dashed var(--line)"><span>{{ L.orderType }}</span><span style="font-weight:800;color:var(--ink)">{{ rc.orderTypeLbl }}<sc-if value="{{ rc.isDine }}" hint-placeholder-val="{{ false }}"> · {{ rc.tableLbl }}</sc-if></span></div>
+      <sc-if value="{{ rc.hasDelFee }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--ink2);padding:2px 0 8px;border-bottom:1px dashed var(--line)"><span>{{ L.deliverToTitle }}</span><span style="font-weight:700;color:var(--ink);text-align:end">{{ rc.delTo }}</span></div></sc-if>
+      <div style="padding:8px 0;border-bottom:1px dashed var(--line)">
         <sc-for list="{{ rc.lines }}" as="rl" hint-placeholder-count="2">
-          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums"><span style="font-weight:600;display:flex;gap:5px;min-width:0"><span style="white-space:nowrap">{{ rl.qty }}×</span><span style="min-width:0">{{ rl.name }}<sc-if value="{{ rl.hasUnit }}" hint-placeholder-val="{{ false }}"><span style="display:block;font-size:10px;color:#8A7B65;font-weight:600">@ {{ rl.unitF }}<sc-if value="{{ rl.hasDisc }}" hint-placeholder-val="{{ false }}"><span style="color:#B4471F"> · −{{ rl.discPct }}</span></sc-if></span></sc-if></span></span><span style="font-weight:700">{{ rl.amtF }}</span></div>
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 0;font-variant-numeric:tabular-nums"><span style="font-weight:600;display:flex;gap:5px;min-width:0"><span style="white-space:nowrap">{{ rl.qty }}×</span><span style="min-width:0">{{ rl.name }}<sc-if value="{{ rl.hasUnit }}" hint-placeholder-val="{{ false }}"><span style="display:block;font-size:10px;color:var(--ink2);font-weight:600">@ {{ rl.unitF }}<sc-if value="{{ rl.hasDisc }}" hint-placeholder-val="{{ false }}"><span style="color:var(--coral)"> · −{{ rl.discPct }}</span></sc-if></span></sc-if></span></span><span style="font-weight:700">{{ rl.amtF }}</span></div>
         </sc-for>
       </div>
       <div style="padding-top:8px;font-variant-numeric:tabular-nums">
-        <sc-if value="{{ rc.hasDiscount }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:#8A7B65;padding:2px 0"><span>{{ L.subtotal }}</span><span>{{ rc.subtotalF }}</span></div></sc-if>
-        <sc-if value="{{ rc.hasDiscount }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:#B4471F;font-weight:700;padding:2px 0"><span>{{ L.discount }} {{ rc.discountPct }}</span><span>{{ rc.discountF }}</span></div></sc-if>
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#8A7B65;padding:2px 0"><span>{{ L.excl }}</span><span>{{ rc.exclF }}</span></div>
-        <sc-if value="{{ rc.hasSvc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:#8A7B65;padding:2px 0"><span>{{ L.svc }} {{ rc.svcPct }}</span><span>{{ rc.svcF }}</span></div></sc-if>
-        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:#8A7B65;padding:2px 0"><span style="white-space:nowrap">{{ L.gst }} {{ rc.rateLbl }}</span><span>{{ rc.gstF }}</span></div>
-        <sc-if value="{{ rc.hasDelFee }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:#8A7B65;padding:2px 0"><span>{{ L.delFeeLbl }} · {{ rc.delZone }}</span><span>{{ rc.delFeeF }}</span></div></sc-if>
+        <sc-if value="{{ rc.hasDiscount }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2);padding:2px 0"><span>{{ L.subtotal }}</span><span>{{ rc.subtotalF }}</span></div></sc-if>
+        <sc-if value="{{ rc.hasDiscount }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--coral);font-weight:700;padding:2px 0"><span>{{ L.discount }} {{ rc.discountPct }}</span><span>{{ rc.discountF }}</span></div></sc-if>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2);padding:2px 0"><span>{{ L.excl }}</span><span>{{ rc.exclF }}</span></div>
+        <sc-if value="{{ rc.hasSvc }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2);padding:2px 0"><span>{{ L.svc }} {{ rc.svcPct }}</span><span>{{ rc.svcF }}</span></div></sc-if>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2);padding:2px 0"><span style="white-space:nowrap">{{ L.gst }} {{ rc.rateLbl }}</span><span>{{ rc.gstF }}</span></div>
+        <sc-if value="{{ rc.hasDelFee }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink2);padding:2px 0"><span>{{ L.delFeeLbl }} · {{ rc.delZone }}</span><span>{{ rc.delFeeF }}</span></div></sc-if>
         <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;padding:8px 0 4px"><span>{{ L.total }}</span><span>{{ rc.totalF }}</span></div>
-        <sc-if value="{{ rc.hasConv }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:flex-end;font-size:11px;color:#8A7B65;font-variant-numeric:tabular-nums;padding-bottom:2px">{{ rc.convF }}</div></sc-if>
-        <sc-if value="{{ rc.hasFx }}" hint-placeholder-val="{{ false }}"><div style="margin-top:7px;border-top:1px dashed #D9CFBE;padding-top:6px;font-size:10.5px;color:#5C5142;font-weight:700;font-variant-numeric:tabular-nums"><div style="display:flex;justify-content:space-between"><span>{{ L.tender }}</span><span>{{ rc.fxPaidF }}</span></div><div style="display:flex;justify-content:space-between;color:#8A7B65;font-weight:600"><span>{{ L.fxRateLbl }}</span><span>{{ rc.fxRateF }}</span></div><sc-if value="{{ rc.hasFxChange }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between"><span>{{ L.change }}</span><span>{{ rc.fxChangeF }}</span></div></sc-if></div></sc-if>
-        <div style="font-size:10px;color:#8A7B65;text-align:center;padding-top:6px">{{ L.gstIncl }} · {{ rc.method }}</div>
-        <sc-if value="{{ rc.hasServer }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:#8A7B65;text-align:center;padding-top:2px">{{ L.servedBy }} {{ rc.serverName }} · {{ rc.registerLbl }}</div></sc-if>
+        <sc-if value="{{ rc.hasConv }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:flex-end;font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums;padding-bottom:2px">{{ rc.convF }}</div></sc-if>
+        <sc-if value="{{ rc.hasFx }}" hint-placeholder-val="{{ false }}"><div style="margin-top:7px;border-top:1px dashed #D9CFBE;padding-top:6px;font-size:10.5px;color:#5C5142;font-weight:700;font-variant-numeric:tabular-nums"><div style="display:flex;justify-content:space-between"><span>{{ L.tender }}</span><span>{{ rc.fxPaidF }}</span></div><div style="display:flex;justify-content:space-between;color:var(--ink2);font-weight:600"><span>{{ L.fxRateLbl }}</span><span>{{ rc.fxRateF }}</span></div><sc-if value="{{ rc.hasFxChange }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:space-between"><span>{{ L.change }}</span><span>{{ rc.fxChangeF }}</span></div></sc-if></div></sc-if>
+        <div style="font-size:10px;color:var(--ink2);text-align:center;padding-top:6px">{{ L.gstIncl }} · {{ rc.method }}</div>
+        <sc-if value="{{ rc.hasServer }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:var(--ink2);text-align:center;padding-top:2px">{{ L.servedBy }} {{ rc.serverName }} · {{ rc.registerLbl }}</div></sc-if>
         <sc-if value="{{ rc.isTab }}" hint-placeholder-val="{{ false }}"><div style="margin-top:8px;background:#F3E7D6;border:1px dashed #C9973F;color:#8A5E0D;border-radius:8px;padding:7px 10px;font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums"><div style="display:flex;justify-content:space-between"><span>{{ L.chargedTo }}</span><span>{{ rc.tabName }}</span></div><div style="display:flex;justify-content:space-between;padding-top:3px"><span>{{ L.newBalLbl }}</span><span>{{ rc.tabNewBalF }}</span></div></div></sc-if>
         <sc-if value="{{ rc.queued }}" hint-placeholder-val="{{ false }}"><div style="margin-top:8px;background:#F6E9CB;color:#8A5E0D;border-radius:8px;padding:6px 10px;font-size:10.5px;font-weight:700;text-align:center">{{ L.queuedNote }}</div></sc-if>
         <div style="text-align:center;font-size:12px;font-weight:700;padding-top:12px">{{ receiptFooterTxt }}</div>
       </div>
     </div>
-    <div style="height:12px;background:repeating-linear-gradient(135deg,#FFFDF6 0 8px,transparent 8px 16px)"></div>
+    <div style="height:12px;background:repeating-linear-gradient(135deg,var(--sur) 0 8px,transparent 8px 16px)"></div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:14px">
       <button onClick="{{ shareBillShare }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:13px;padding:10px 4px;background:var(--sur2);color:var(--ink);cursor:pointer;font-size:11px;font-weight:800" style-active="transform:scale(.95)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>{{ shareLbl }}</button>
       <button onClick="{{ shareBillWA }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:13px;padding:10px 4px;background:var(--sur2);color:var(--ink);cursor:pointer;font-size:11px;font-weight:800" style-active="transform:scale(.95)"><svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-2.8.9.9-2.8-.2-.3A8 8 0 1 1 12 20zm4.4-5.6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.5.1-.7.3-.8.8-.9 1.9-.4 3.1a11 11 0 0 0 4.6 4.5c1.6.7 2.3.8 3.1.7.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1l-.4-.2z"/></svg>{{ waLbl }}</button>
@@ -1869,27 +1869,27 @@ button[disabled],button:disabled{cursor:not-allowed}
 <sc-if value="{{ stmtShow }}" hint-placeholder-val="{{ false }}">
   <div onClick="{{ closeStmt }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:80;animation:fade .2s"></div>
   <div style="position:fixed;z-index:81;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;max-width:93vw;max-height:90vh;display:flex;flex-direction:column;animation:sheet .32s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
-    <div style="background:#FFFDF6;color:#241D11;border-radius:16px 16px 0 0;padding:22px 22px 16px;overflow-y:auto;box-shadow:var(--shadow)">
-      <div style="text-align:center;border-bottom:1px dashed #C9BFA6;padding-bottom:12px">
+    <div style="background:var(--sur);color:var(--ink);border-radius:16px 16px 0 0;padding:22px 22px 16px;overflow-y:auto;box-shadow:var(--shadow)">
+      <div style="text-align:center;border-bottom:1px dashed var(--line);padding-bottom:12px">
         <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">{{ outletName }}</div>
-        <sc-if value="{{ hasTin }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:#8A7B65;font-variant-numeric:tabular-nums">TIN: {{ tin }}</div></sc-if>
-        <div style="display:inline-block;margin-top:8px;border:1.5px solid #241D11;border-radius:6px;padding:2px 10px;font-size:10.5px;font-weight:800;letter-spacing:.1em">{{ stmtL.title }}</div>
+        <sc-if value="{{ hasTin }}" hint-placeholder-val="{{ true }}"><div style="font-size:11px;color:var(--ink2);font-variant-numeric:tabular-nums">TIN: {{ tin }}</div></sc-if>
+        <div style="display:inline-block;margin-top:8px;border:1.5px solid var(--line);border-radius:6px;padding:2px 10px;font-size:10.5px;font-weight:800;letter-spacing:.1em">{{ stmtL.title }}</div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8A7B65;padding:10px 0 3px"><span>{{ stmtL.noLbl }}</span><span style="font-weight:700;color:#241D11;font-variant-numeric:tabular-nums">{{ stmt.no }}</span></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:#8A7B65;padding-bottom:9px;border-bottom:1px dashed #C9BFA6"><span>{{ stmt.name }}</span><span style="font-weight:700;color:#241D11;font-variant-numeric:tabular-nums">{{ stmt.dateFull }}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);padding:10px 0 3px"><span>{{ stmtL.noLbl }}</span><span style="font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums">{{ stmt.no }}</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink2);padding-bottom:9px;border-bottom:1px dashed var(--line)"><span>{{ stmt.name }}</span><span style="font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums">{{ stmt.dateFull }}</span></div>
       <div style="padding:10px 0;font-variant-numeric:tabular-nums">
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0"><span style="color:#8A7B65">{{ stmtL.opening }}</span><span style="font-weight:700">{{ stmt.openBalF }}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0"><span style="color:#B4471F">{{ stmtL.paying }} · {{ stmt.methodLbl }}</span><span style="font-weight:700;color:#B4471F">{{ stmt.payAmtF }}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;padding:8px 0 2px;border-top:1px dashed #C9BFA6"><span>{{ stmtL.closing }}</span><span>{{ stmt.closeBalF }}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0"><span style="color:var(--ink2)">{{ stmtL.opening }}</span><span style="font-weight:700">{{ stmt.openBalF }}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;padding:4px 0"><span style="color:var(--coral)">{{ stmtL.paying }} · {{ stmt.methodLbl }}</span><span style="font-weight:700;color:var(--coral)">{{ stmt.payAmtF }}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;padding:8px 0 2px;border-top:1px dashed var(--line)"><span>{{ stmtL.closing }}</span><span>{{ stmt.closeBalF }}</span></div>
       </div>
       <sc-if value="{{ stmt.full }}" hint-placeholder-val="{{ false }}"><div style="background:#E5F5EA;color:#1B7A44;border-radius:9px;padding:7px 10px;font-size:11px;font-weight:800;text-align:center;margin-bottom:6px">{{ stmtL.cleared }}</div></sc-if>
-      <div style="font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#8A7B65;padding:8px 0 4px;border-top:1px dashed #C9BFA6">{{ stmtL.histTitle }}</div>
+      <div style="font-size:9.5px;font-weight:800;letter-spacing:.08em;color:var(--ink2);padding:8px 0 4px;border-top:1px dashed var(--line)">{{ stmtL.histTitle }}</div>
       <sc-for list="{{ stmt.history }}" as="h" hint-placeholder-count="1">
-        <div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;font-variant-numeric:tabular-nums"><span style="color:#8A7B65">{{ h.when }} · {{ h.method }}</span><span style="font-weight:700">{{ h.amtF }}</span></div>
+        <div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;font-variant-numeric:tabular-nums"><span style="color:var(--ink2)">{{ h.when }} · {{ h.method }}</span><span style="font-weight:700">{{ h.amtF }}</span></div>
       </sc-for>
       <div style="text-align:center;font-size:11.5px;font-weight:700;padding-top:12px">{{ stmtL.thanks }}</div>
     </div>
-    <div style="height:12px;background:repeating-linear-gradient(135deg,#FFFDF6 0 8px,transparent 8px 16px)"></div>
+    <div style="height:12px;background:repeating-linear-gradient(135deg,var(--sur) 0 8px,transparent 8px 16px)"></div>
     <div style="background:var(--sur);border-radius:0 0 16px 16px;padding:14px;box-shadow:var(--shadow)">
       <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--ink2);margin-bottom:9px">{{ stmtL.share }}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
@@ -2554,14 +2554,14 @@ const _hc=this.hotCats();let station='drinks';for(const l of s.cart){const m=thi
   qrVals(){const s=this.state,me=this,INFO=this.QRINFO;
     const ALLERG={mashuni:'Fish',garudhiya:'Fish',riha:'Dairy',friedrice:'Egg, Soy',kirusai:'Dairy',coffee:'Dairy',kboakibaa:'Gluten, Egg',masroshi:'Fish, Gluten',cutlets:'Fish, Gluten',bajiya:'Gluten',kavaabu:'Fish, Gluten',gulha:'Fish, Gluten',bondibai:'Dairy, Nuts',fonibkb:'Gluten, Egg',saagu:'Dairy'};
     const _seen={};const cats=(me.MENU||[]).reduce(function(a,m){var k=m.cat||'';var lbl=(m.sub||k||'').trim();if(!k||!lbl||_seen[k])return a;_seen[k]=1;a.push([k,lbl,'']);return a;},[]);
-    const legacyCatChips=cats.map(c=>({label:c[1],emoji:c[2],hasEmoji:!!c[2],iconBg:s.qrCat===c[0]?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrCat:c[0]}),bg:s.qrCat===c[0]?'var(--coral)':'var(--on-amber)',co:s.qrCat===c[0]?'var(--on-amber)':'#8A7B65',bc:s.qrCat===c[0]?'var(--coral)':'#ECE2D2'}));
+    const legacyCatChips=cats.map(c=>({label:c[1],emoji:c[2],hasEmoji:!!c[2],iconBg:s.qrCat===c[0]?'rgba(255,255,255,.22)':'var(--sur2)',tap:()=>me.setState({qrCat:c[0]}),bg:s.qrCat===c[0]?'var(--coral)':'var(--sur)',co:s.qrCat===c[0]?'var(--on-amber)':'var(--ink2)',bc:s.qrCat===c[0]?'var(--coral)':'var(--line)'}));
     const QCG=me._catGroups();const qUseGroups=QCG.length>0;
     const qgrp=qUseGroups?((s.qrGrp&&QCG.some(function(g){return g.name===s.qrGrp;}))?s.qrGrp:QCG[0].name):null;
     const qsub=s.qrSub||'all';
     const qcurSubs=qUseGroups?((((QCG.find(function(g){return g.name===qgrp;}))||{}).subs)||[]):[];
-    const qrGrpChips=qUseGroups?QCG.map(function(g){var on=qgrp===g.name;return {label:g.name,emoji:(g.name||'?').trim().charAt(0),iconBg:on?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrGrp:g.name,qrSub:'all'}),bg:on?'var(--coral)':'var(--on-amber)',co:on?'var(--on-amber)':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
+    const qrGrpChips=qUseGroups?QCG.map(function(g){var on=qgrp===g.name;return {label:g.name,emoji:(g.name||'?').trim().charAt(0),iconBg:on?'rgba(255,255,255,.22)':'var(--sur2)',tap:()=>me.setState({qrGrp:g.name,qrSub:'all'}),bg:on?'var(--coral)':'var(--sur)',co:on?'var(--on-amber)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)'};}):[];
     const qrShowSub=qUseGroups&&qcurSubs.length>0;
-    const qrSubChips=qrShowSub?[{name:'all',label:me.t('cats_all')}].concat(qcurSubs.map(function(su){return {name:su,label:su};})).map(function(su){var on=qsub===su.name;return {label:su.label,tap:()=>me.setState({qrSub:su.name}),bg:on?'var(--coral)':'var(--on-amber)',co:on?'var(--on-amber)':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
+    const qrSubChips=qrShowSub?[{name:'all',label:me.t('cats_all')}].concat(qcurSubs.map(function(su){return {name:su,label:su};})).map(function(su){var on=qsub===su.name;return {label:su.label,tap:()=>me.setState({qrSub:su.name}),bg:on?'var(--coral)':'var(--sur)',co:on?'var(--on-amber)':'var(--ink2)',bc:on?'var(--coral)':'var(--line)'};}):[];
     const catChips=qUseGroups?qrGrpChips:legacyCatChips;
     const qMatch=function(m){if(!qUseGroups)return m.cat===s.qrCat;if(qsub==='all')return qcurSubs.indexOf(m.sub)>=0;return m.sub===qsub;};
     const qov=s.menuOv||{off:{},hidden:{},price:{}};const qOff=qov.off||{},qHid=qov.hidden||{},qPr=qov.price||{};
@@ -2586,14 +2586,14 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     const wk=[];const wmax=1;const wlabels=['W','T','F','S','S','M','T'];
     const week=wlabels.map((lb,i)=>({lbl:lb,h:i<wk.length?Math.round(wk[i]/wmax*100)+'%':'0%',on:i<wk.length}));
     const custOrders=(s.guestMode&&s.guest&&s.guest.customer&&Array.isArray(s.guest.customer.orders))?s.guest.customer.orders.map(function(o){var st=String(o.status||'').toLowerCase();var stage=/settl|paid|complete|done/.test(st)?4:/serv/.test(st)?3:/ready/.test(st)?2:/kitchen|prepar/.test(st)?1:0;var d=new Date(o.when||Date.now());var tl=o.otype==='delivery'?(me.t('deliveryType')+(o.zone?(' · '+o.zone):'')):o.otype==='takeaway'?me.t('takeaway'):(me.t('dineIn')+(o.table?(' · '+me.t('table')+' '+o.table):''));return {no:o.no||'',when:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),typeLbl:tl,totalF:me.fmn(o.total||0),sum:(o.items||[]).map(function(it){return it.q+'× '+it.n;}).join(' · '),stage:stage};}):[];
-    const STAGES=[{k:'stPlaced',c:'#E8A020'},{k:'stKitchen',c:'#E86B54'},{k:'stReady',c:'#1FA65C'},{k:'stServed',c:'#1B7A44'},{k:'stSettled',c:'#C1492A'}];
-    const ordRows=custOrders.map(o=>{const cur=STAGES[o.stage];const settled=o.stage>=4;const segs=STAGES.map((st,i)=>({bg:i<=o.stage?cur.c:'#EFE6D6'}));return {no:o.no,when:o.when,typeLbl:o.typeLbl||'',hasType:!!o.typeLbl,totalF:o.totalF,sum:o.sum,segs,statusLbl:settled?me.t('settledTag'):me.t(cur.k),statusC:cur.c,live:!settled};});
+    const STAGES=[{k:'stPlaced',c:'#E8A020'},{k:'stKitchen',c:'#E86B54'},{k:'stReady',c:'#1FA65C'},{k:'stServed',c:'#1B7A44'},{k:'stSettled',c:'var(--coral)'}];
+    const ordRows=custOrders.map(o=>{const cur=STAGES[o.stage];const settled=o.stage>=4;const segs=STAGES.map((st,i)=>({bg:i<=o.stage?cur.c:'var(--sur2)'}));return {no:o.no,when:o.when,typeLbl:o.typeLbl||'',hasType:!!o.typeLbl,totalF:o.totalF,sum:o.sum,segs,statusLbl:settled?me.t('settledTag'):me.t(cur.k),statusC:cur.c,live:!settled};});
     return {qrOnMenu:s.qrTab!=='mytab',qrOnTab:s.qrTab==='mytab',qrToMenu:()=>me.setState({qrTab:'menu'}),qrToTab:()=>me.setState({qrTab:'mytab'}),
       qrShowStatus:!s.guestMode,qrShowStaff:!s.guestMode,
       qrPageStyle:s.guestMode?'height:100%;overflow-y:auto;padding:0;animation:fade .25s':'height:100%;overflow-y:auto;padding:18px 24px;animation:fade .25s',
       qrCenterStyle:s.guestMode?'display:block;height:100%':'display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;justify-content:center',
-      qrBezelStyle:s.guestMode?'width:100%;flex:none;background:transparent;border-radius:0;padding:0;box-shadow:none;height:100%':'width:332px;flex:none;background:#2A1D12;border-radius:46px;padding:11px;box-shadow:var(--shadow)',
-      qrScreenStyle:s.guestMode?'background:#FFFFFF;border-radius:0;overflow:hidden;display:flex;flex-direction:column;min-height:100%;position:relative':'background:#FFFFFF;border-radius:36px;overflow:hidden;display:flex;flex-direction:column;height:632px;position:relative',
+      qrBezelStyle:s.guestMode?'width:100%;flex:none;background:transparent;border-radius:0;padding:0;box-shadow:none;height:100%':'width:332px;flex:none;background:var(--sur2);border-radius:46px;padding:11px;box-shadow:var(--shadow)',
+      qrScreenStyle:s.guestMode?'background:var(--sur);border-radius:0;overflow:hidden;display:flex;flex-direction:column;min-height:100%;position:relative':'background:var(--sur);border-radius:36px;overflow:hidden;display:flex;flex-direction:column;height:632px;position:relative',
       qrMenuTabBg:s.qrTab!=='mytab'?'var(--coral)':'var(--sur)',qrMenuTabC:s.qrTab!=='mytab'?'var(--on-amber)':'var(--ink2)',qrTabBg:s.qrTab==='mytab'?'var(--coral)':'var(--sur)',qrTabC:s.qrTab==='mytab'?'var(--on-amber)':'var(--ink2)',
       qrMenuLbl:me.t('menuTab'),qrMyTabLbl:me.t('ordersTab'),qrMyTabTitle:me.t('myTabTitle'),qrBalLbl:me.t('balanceLbl'),qrBalF:me.fm(meBal),qrCustName:meName,qrStmtHistTitle:me.t('stmtHistTitle'),qrNoStmt:me.t('noStmt'),qrHasStmt:meHist.length>0,qrNoStmtShow:meHist.length===0,
       qrGreet:me.t('greetEve')+(meFirst?(', '+meFirst):'')+'! 👋',qrGreetSub:isMember?((s.lang==='dv'?(prof.isGold?'ގޯލްޑް މެމްބަރ':'ސިލްވަރ މެމްބަރ'):(prof.isGold?'Gold member':'Silver member'))+' · '+prof.points+' '+me.t('ptsLbl')+' · '+me.t('accountDue')+' '+me.fm(meBal)):(me.t('guestSub')+(gTable?(' · '+me.t('table')+' '+gTable):'')),qrIsMember:isMember,qrIsWalkIn:!isMember,qrWalkTitle:me.t('guestCardTitle'),qrWalkBody:me.t('guestCardBody'),qrSwitchLbl:me.t('switchAcct'),qrNextCust:()=>me.qrNextCust(),qrCanSwitch:!s.guestMode,
@@ -2803,7 +2803,7 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
       {bg:'var(--coralsoft)',c:'var(--coral)',title:s.tickets.length+' tickets in kitchen',sub:'Oldest ticket open now',cta:'KDS',go:'kds'}
     ].map(a=>({bg:a.bg,c:a.c,title:a.title,sub:a.sub,cta:a.cta,tap:()=>me.setState(a.go==='kds'?{scr:'orders',ordTab:'kitchen'}:{scr:a.go})}));
     const prime=[['Food cost','var(--green)',31],['Labour','var(--amber)',27],['Other opex','var(--ink3)',14]].map(p=>({label:p[0],c:p[1],pct:p[2]+'%',w:p[2]+'%'}));
-    const light='--sur:rgba(255,255,255,.66);--sur2:rgba(150,110,70,.09);--ink:#2E2418;--ink2:#8A7B65;--ink3:#B7A892;--line:rgba(130,100,60,.16);--coral:#C1492A;--coralink:#FFF4EC;--coralsoft:rgba(193,73,42,.13);--green:#3E8E59;--greensoft:rgba(62,142,89,.14);--amber:#B07714;--ambersoft:rgba(176,119,20,.16);--red:#C13A26;--redsoft:rgba(193,58,38,.13);--blue:#4E7C86;';
+    const light='--sur:rgba(255,255,255,.66);--sur2:rgba(150,110,70,.09);--ink:var(--ink);--ink2:var(--ink2);--ink3:var(--ink3);--line:rgba(130,100,60,.16);--coral:var(--coral);--coralink:#FFF4EC;--coralsoft:rgba(193,73,42,.13);--green:#3E8E59;--greensoft:rgba(62,142,89,.14);--amber:#B07714;--ambersoft:rgba(176,119,20,.16);--red:#C13A26;--redsoft:rgba(193,58,38,.13);--blue:#4E7C86;';
     const dark='--sur:rgba(46,36,24,.6);--sur2:rgba(255,244,230,.06);--ink:#F3E8D6;--ink2:#B09A7E;--ink3:#7C6B54;--line:rgba(255,240,220,.1);--coralsoft:rgba(224,112,63,.16);--greensoft:rgba(124,190,146,.14);--ambersoft:rgba(215,162,74,.14);--redsoft:rgba(226,122,94,.16);';
     const white='--sur:rgba(255,255,255,.72);--sur2:rgba(0,0,0,.05);--ink:#0A0A0A;--ink2:#565656;--ink3:#8E8E8E;--line:rgba(0,0,0,.22);';
     return {
@@ -3080,7 +3080,7 @@ if(_visible.length>_shown.length&&el.scrollTop+el.clientHeight>el.scrollHeight-3
     const cartPanelStyle=mob?(s.cartSheet?{position:'fixed',left:0,right:0,bottom:0,height:'74vh',zIndex:130,background:'var(--sur)',borderRadius:'22px 22px 0 0',display:'flex',flexDirection:'column',boxShadow:'var(--shadow)',animation:'sheet .3s cubic-bezier(.2,.9,.3,1)'}:{display:'none'}):{width:tab?300:340,flex:'none',display:'flex',flexDirection:'column',background:'var(--sur)',borderInlineStart:'1px solid var(--line)'};
     return {
       rootStyle:Object.assign({display:'flex',flexDirection:'column',height:'100dvh',overflow:'hidden',background:'var(--kbg)',transition:'background .3s',paddingBottom:mob?'calc(58px + env(safe-area-inset-bottom))':0},me.accentVars()),
-      ...(()=>{const H=x=>({__html:x});const cmap={keyo:'#f2a43a',green:'#2E8B57',terracotta:'#C1492A',red:'#C13A26',amber:'#D7A24A',pink:'#E86BA0',blue:'#1B84E0'};
+      ...(()=>{const H=x=>({__html:x});const cmap={keyo:'#f2a43a',green:'#2E8B57',terracotta:'var(--coral)',red:'#C13A26',amber:'#D7A24A',pink:'#E86BA0',blue:'#1B84E0'};
         const moon='<svg width="18" height="18" viewBox="0 0 18 18"><path d="M15 11A7 7 0 0 1 7 3 7 7 0 1 0 15 11z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>';
         const contrast='<svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 2.6a6.4 6.4 0 0 1 0 12.8z" fill="currentColor"/></svg>';
         const sun='<svg width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="3.6" fill="none" stroke="currentColor" stroke-width="1.5"/><g stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><line x1="9" y1="1.5" x2="9" y2="3.2"/><line x1="9" y1="14.8" x2="9" y2="16.5"/><line x1="1.5" y1="9" x2="3.2" y2="9"/><line x1="14.8" y1="9" x2="16.5" y2="9"/><line x1="3.8" y1="3.8" x2="5" y2="5"/><line x1="13" y1="13" x2="14.2" y2="14.2"/><line x1="14.2" y1="3.8" x2="13" y2="5"/><line x1="5" y1="13" x2="3.8" y2="14.2"/></g></svg>';
