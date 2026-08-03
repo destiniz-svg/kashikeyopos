@@ -1,4 +1,4 @@
-/* Register offline shell — kashikeyo-app-1.
+/* Register offline shell — kashikeyo-app-2.
  *
  * Why this exists: /app was a network-only page. A cold load during an outage
  * gave the browser's error page, and there was no path back to selling — a
@@ -15,7 +15,7 @@
  * It never touches /api/ — sync, ops and the outbox must always see the real
  * network state, never a cached answer.
  */
-const CACHE = 'kashikeyo-app-1';
+const CACHE = 'kashikeyo-app-2';
 /* The register is served at /app and at /app/... alike; one cached shell
  * serves both, keyed on the canonical path. */
 const SHELL = '/app/';
@@ -33,8 +33,8 @@ const PRECACHE = [
   '/app/fonts/bricolage-grotesque-latin-ext-200-800.woff2',
   '/app/fonts/inter-latin-100-900.woff2',
   '/app/fonts/inter-latin-ext-100-900.woff2',
-  '/app/fonts/space-mono-latin-400.woff2',
-  '/app/fonts/space-mono-latin-700.woff2',
+  '/app/fonts/jetbrains-mono-latin-100-800.woff2',
+  '/app/fonts/jetbrains-mono-latin-ext-100-800.woff2',
   '/logo-mark.png',
   '/icon-192.png',
 ];

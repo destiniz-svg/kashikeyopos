@@ -104,13 +104,55 @@ they are what keeps the numbers honest.
 - **Touch targets ≥ 44px**, focus rings, and the contrast floor the audit set.
 - **One token set**, replacing the two we have — not a third alongside them.
 
-## Open decision before Phase 1
+## Phase 1 — done
 
-The handoff's tokens have two measured contrast failures in their own light
-theme: `--text-faint` (2.82 dark / 2.34 light — and it is the colour of every
-empty-state message) and light-theme `--amber` (2.68 on canvas, 2.94 on panels,
-failing even the 3:1 UI threshold). Its own Phase 7 requires ≥4.5 body and ≥3
-micro-labels in both themes.
+Palette confirmed as the prototype's own dark/amber. Landed:
 
-Adopting the palette as delivered means **fixing those two values** while keeping
-the hue. Flagged rather than silently changed.
+- **One token set**, byte-identical in `index.html` and `admin.html`, replacing
+  the two independent sets. The legacy names (`--sur`, `--card`, `--ink`,
+  `--coral` …) are now **aliases** onto it, so ~400 KB of existing inline styles
+  repaint without being rewritten.
+- **Dark is the default** on both surfaces, matching the reference palette.
+  Safe: theme was never persisted (only `lang` is), so no saved preference is
+  overridden.
+- **JetBrains Mono** self-hosted (latin + latin-ext, variable 100–800),
+  replacing Space Mono; `sw.js` PRECACHE updated and the cache bumped to
+  `kashikeyo-app-2` so installed tills purge the stale entries.
+- **The accent system was a second palette.** `accentVars()` overrode
+  `--coral`/`--coralink`/`--coralsoft`/`--kbg` inline on the root element, so
+  the token block never reached the screen — the PIN gate rendered blue on the
+  dark canvas. Rebased: `keyo` (the design's amber) is now the default preset
+  and defers `--kbg` to `--bg`; the picker survives as the white-label feature.
+
+### Contrast: seven values moved, hue untouched
+
+Measured against the **worst** of the five surfaces per theme, not just the
+canvas — which is why these are worse than the numbers first recorded here.
+
+| Token | Before | After | Ratio |
+|---|---|---|---|
+| dark `--text-muted` | `#6b6e74` | `#979a9f` | 2.90 → 5.25 |
+| dark `--text-faint` | `#585b61` | `#8a8e95` | 2.17 → 4.50 |
+| light `--text-dim` | `#6b6459` | `#58534a` | 4.29 → 5.60 |
+| light `--text-muted` | `#8d857a` | `#605a52` | 2.67 → 5.00 |
+| light `--text-faint` | `#a89f92` | `#696054` | 1.92 → 4.53 |
+| light `--amber` | `#d1841c` | `#9b6215` | 2.19 → 3.71 |
+| light `--amber-bright` | `#a8630f` | `#8e540d` | 3.46 → 4.50 |
+
+`--text-faint` colours every empty-state **message**, so it is body copy.
+Raising it alone would have made it brighter than `--text-muted` and inverted
+the ramp, so the bottom of the ramp was re-spaced together — `text > dim >
+muted > faint` stays ordered in both themes.
+
+The worst failure was one the earlier note missed entirely: the **light primary
+button**, white ink on `#d1841c`, at **2.94**. `#9b6215` takes that pair to 4.98.
+
+### Still open, deliberately
+
+Per-screen colour literals remain: **394 in `index.html` (173 distinct)** and
+**123 in `admin.html` (103 distinct)** — the PIN pad's sand/brown keys and the
+blue accent bar on the admin revenue card are the visible ones. Those are Phase
+5 screen work, not tokens. The handoff's "zero hardcoded literals outside the
+token block" is the target; this is the gap to it.
+
+`html[data-white]` still hardcodes its own `--kbg` gradient in `accentVars()`.

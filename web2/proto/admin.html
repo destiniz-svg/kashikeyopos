@@ -31,7 +31,7 @@
      Bricolage Grotesque, which is the face 102 of the register's own styles
      name — so the app's dominant typeface had been silently falling back all
      along. What is served now is exactly what is used: Bricolage Grotesque,
-     Inter and Space Mono, latin + latin-ext only (Dhivehi comes from the
+     Inter and JetBrains Mono, latin + latin-ext only (Dhivehi comes from the
      self-hosted MV Randhoo below), as variable woff2. 300 KB in total, cached
      by the service worker with the rest of the shell, and no third-party
      request on the boot path at all. -->
@@ -40,19 +40,50 @@
 @font-face{font-family:'Bricolage Grotesque';font-style:normal;font-weight:200 800;font-display:swap;src:url('fonts/bricolage-grotesque-latin-200-800.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
 @font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('fonts/inter-latin-ext-100-900.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
 @font-face{font-family:'Inter';font-style:normal;font-weight:100 900;font-display:swap;src:url('fonts/inter-latin-100-900.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-@font-face{font-family:'Space Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/space-mono-latin-ext-400.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
-@font-face{font-family:'Space Mono';font-style:normal;font-weight:400;font-display:swap;src:url('fonts/space-mono-latin-400.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
-@font-face{font-family:'Space Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/space-mono-latin-ext-700.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
-@font-face{font-family:'Space Mono';font-style:normal;font-weight:700;font-display:swap;src:url('fonts/space-mono-latin-700.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('fonts/jetbrains-mono-latin-ext-100-800.woff2') format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:100 800;font-display:swap;src:url('fonts/jetbrains-mono-latin-100-800.woff2') format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
 @font-face{font-family:'MV Randhoo';src:url('fonts/MV_A_Waheed_Bold.ttf') format('truetype');font-weight:400 800;font-display:swap;size-adjust:120%}
-:root{--bg:#F4F5F6;--card:rgba(255,255,255,.86);--ink:#1D1F22;--ink2:#696C73;--ink3:#70737A;--line:rgba(20,22,28,.10);--line2:rgba(20,22,28,.16);--coral:#0E6EC6;--coralsoft:rgba(15,114,204,.12);--coralgrad:linear-gradient(165deg,#2E9BEE,#0C63BE);--red:#C13A26;--redsoft:rgba(193,58,38,.12);--green:#16814A;--greensoft:rgba(31,166,92,.13);--amber:#D98A1C;--ambersoft:rgba(217,138,28,.14);--blue:#4E7C86;--bluesoft:rgba(78,124,134,.14);--shadow:0 1px 2px rgba(20,22,28,.06)}
-html[data-dark]{--bg:#1C160E;--card:#241C12;--ink:#F3E8D6;--ink2:#B09A7E;--ink3:#7C6B54;--line:rgba(255,240,220,.09);--line2:rgba(255,240,220,.16);--coral:#4AA3EE;--coralsoft:rgba(74,163,238,.16);--coralgrad:linear-gradient(165deg,#3A9BEE,#1168C4);--redsoft:rgba(226,122,94,.15);--green:#7CBE92;--greensoft:rgba(124,190,146,.13);--amber:#D7A24A;--ambersoft:rgba(215,162,74,.13);--blue:#8FB3BE;--bluesoft:rgba(143,179,190,.13);--shadow:0 1px 2px rgba(0,0,0,.35)}
+/* ── Design tokens ───────────────────────────────────────────────────────
+   ONE set, byte-identical in index.html and admin.html. Adopted from the
+   KashikeyoPOS design handoff; dark is its reference palette.
+
+   Theme is an attribute on <html>: no attribute = light, [data-dark] = the
+   reference dark palette, [data-white] = the high-contrast white variant.
+
+   CONTRAST. Seven values are lifted off the handoff's own numbers because
+   they miss the floor it sets for itself (>=4.5 body, >=3 non-text UI, and
+   >=4.5 for text on a fill). Hue and saturation are untouched; only
+   lightness moves. Measured against the WORST of the five surfaces in that
+   theme, not just the canvas:
+     dark  --text-muted  #6b6e74 -> #979a9f   2.90 -> 5.25
+     dark  --text-faint  #585b61 -> #8a8e95   2.17 -> 4.50
+     light --text-dim    #6b6459 -> #58534a   4.29 -> 5.60
+     light --text-muted  #8d857a -> #605a52   2.67 -> 5.00
+     light --text-faint  #a89f92 -> #696054   1.92 -> 4.53
+     light --amber       #d1841c -> #9b6215   2.19 -> 3.71
+     light --amber-bright#a8630f -> #8e540d   3.46 -> 4.50
+   --text-faint colours every empty-state MESSAGE, so it is body copy, not
+   decoration. Raising it alone would have made it brighter than
+   --text-muted and inverted the ramp, so the bottom of the ramp is re-spaced
+   together: text > dim > muted > faint stays ordered in both themes.
+   The light primary button was the worst of them — white ink on #d1841c is
+   2.94, and #9b6215 takes that pair to 4.98.
+
+   The legacy names (--sur, --card, --ink, --coral …) are ALIASES onto these
+   tokens at the bottom of this block, not a second palette. That is what
+   lets the existing inline styles repaint without being rewritten. New work
+   uses the tokens directly; the aliases retire as call sites migrate. */
+:root{--bg:#f6f2ea;--bg-0:#efe9de;--bg-1:#fffdf9;--bg-2:#f1ece2;--bg-3:#e4dccd;--line-soft:#eee7db;--line:#e0d8c8;--line-2:#cec4b0;--line-3:#b9ae98;--text:#1f1c17;--text-dim:#58534a;--text-muted:#605a52;--text-faint:#696054;--code-text:#3a352c;--amber:#9b6215;--amber-bright:#8e540d;--amber-dim:#fbeed6;--amber-line:#e0bc7e;--amber-deep:#8a5210;--on-amber:#fffdf9;--green:#3f8a4f;--green-line:#a9cfb1;--green-soft:#2f6b3c;--red:#c04545;--red-bright:#a83636;--red-line:#e0a9a9;--red-line-2:#e8c4c4;--red-dim:#b06060;--red-dim-2:#9a3f3f;--red-soft:#8a3030;--blue:#3d7cb8;--blue-bright:#2c5f91;--violet:#7d5fb0;--violet-bright:#5f4490;--paper:#ffffff;--paper-ink:#1a1a1a;--qr-ink:#1f1c17;--scrim:rgba(60,52,40,.42);--shadow-lg:0 24px 70px rgba(90,75,50,.22);--shadow:0 1px 2px rgba(38,41,48,.06);--tint-ok:rgba(63,138,79,.12);--tint-warn:rgba(155,98,21,.13);--tint-err:rgba(192,69,69,.11);--tint-info:rgba(61,124,184,.12);--tint-violet:rgba(125,95,176,.12);--tint-mute:rgba(31,28,23,.05)}
+html[data-dark]{--bg:#0e0f11;--bg-0:#121417;--bg-1:#15171a;--bg-2:#1b1e22;--bg-3:#24282e;--line-soft:#22262b;--line:#2a2f36;--line-2:#363c44;--line-3:#3d4249;--text:#f2ede2;--text-dim:#a8a79f;--text-muted:#979a9f;--text-faint:#8a8e95;--code-text:#c9c6bd;--amber:#f2a43a;--amber-bright:#ffb84a;--amber-dim:#3a2a12;--amber-line:#6b4a1f;--amber-deep:#c4761e;--on-amber:#1a0f00;--green:#6bbf7b;--green-line:#2d5a35;--green-soft:#9fd0aa;--red:#e26060;--red-bright:#f08585;--red-line:#6b2f2f;--red-line-2:#3a2626;--red-dim:#7a4444;--red-dim-2:#c07070;--red-soft:#f0a5a5;--blue:#67a2d9;--blue-bright:#8fbde8;--violet:#a88ad9;--violet-bright:#c3aae6;--paper:#fdfbf6;--paper-ink:#1a1a1a;--qr-ink:#0e0f11;--scrim:rgba(6,7,8,.72);--shadow-lg:0 24px 70px rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.35);--tint-ok:rgba(107,191,123,.13);--tint-warn:rgba(242,164,58,.14);--tint-err:rgba(226,96,96,.13);--tint-info:rgba(103,162,217,.14);--tint-violet:rgba(168,138,217,.14);--tint-mute:rgba(255,255,255,.05)}
+html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-3:#e8e3d8;--line-soft:#f0ece3;--line:#ddd6c8;--line-2:#c6bda9;--line-3:#aea391;--text:#141210;--text-dim:#4e4a42;--text-muted:#57524a;--text-faint:#5f584d;--paper:#ffffff;--qr-ink:#141210;--shadow:0 1px 2px rgba(0,0,0,.07)}
+/* Legacy aliases. Declared once — a custom property resolves against the
+   element it is used on, so these follow whichever theme block is in force. */
+:root{--sur:var(--bg-1);--card:var(--bg-1);--sur2:var(--bg-2);--ink:var(--text);--ink2:var(--text-dim);--ink3:var(--text-muted);--line2:var(--line-2);--coral:var(--amber);--coralink:var(--on-amber);--coralsoft:var(--tint-warn);--coralgrad:linear-gradient(165deg,var(--amber-bright),var(--amber-deep));--greensoft:var(--tint-ok);--ambersoft:var(--tint-warn);--redsoft:var(--tint-err);--bluesoft:var(--tint-info)}
 *{box-sizing:border-box}
-body{margin:0;background:linear-gradient(165deg,#EAF3FC 0%,#DCEBF9 55%,#D0E4F6 100%) fixed;color:var(--ink);font-family:'Inter','MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;letter-spacing:-.005em}
-html[data-dark] body{background:#14100A}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter','MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;letter-spacing:-.005em}
 [style*="var(--card)"]{outline:1px solid var(--line);outline-offset:-1px}
 html[data-dark] [style*="var(--card)"]{outline-color:var(--line)}
-[style*="tabular-nums"]{font-family:'Space Mono',ui-monospace,monospace;letter-spacing:-.02em}
+[style*="tabular-nums"]{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
 [style*="Bricolage Grotesque"]{font-family:'Inter',system-ui,sans-serif!important}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--green)}
 ::selection{background:var(--coralgrad);color:#fff}
@@ -1701,7 +1732,7 @@ class Component extends DCLogic {
       {id:'g_roshi',name:'Roshi & rice add-ons',applies:'Mas Huni, Garudhiya',opts:[['Extra roshi',5],['Extra rice',5],['Githeyo mirus',8],['Lime & mirus',0]]},
       {id:'g_coffee',name:'Hot drink options',applies:'Coffee, Kalhu Sai',opts:[['Iced',5],['Extra shot',8],['Less sugar',0],['Extra strong',0]]}
     ];
-    this.state={dark:false,acct:false,lang:'en',range:'today',tab:'trend',navOpen:false,live:null,flags:{sales:[],credit:[],loaded:false},pnl:null,expiring:[],expLoaded:false,onb:null,poDraft:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuEdit:{},menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:(function(){var d={sales:0,inventory:0,proc:0,reports:0};try{var v=JSON.parse(localStorage.getItem('kashikeyo_admin_sub')||'null');if(v&&typeof v==='object')return Object.assign(d,v);}catch(e){}return d;})(),cfg:Object.assign({autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.cfg)||{})),taxRate:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.taxRate)||'ggst'),
+    this.state={/* Dark is the reference palette of the adopted design; theme is not persisted, so this default overrides no saved preference. */dark:true,acct:false,lang:'en',range:'today',tab:'trend',navOpen:false,live:null,flags:{sales:[],credit:[],loaded:false},pnl:null,expiring:[],expLoaded:false,onb:null,poDraft:null,custSel:0,outSel:0,menuOff:(this.MENU||[]).reduce((a,m)=>{if(m.soldOut)a[m.id]=true;return a;},{}),menuHidden:(this.MENU||[]).reduce((a,m)=>{if(m.hidden)a[m.id]=true;return a;},{}),menuPrice:{},menuNew:[],menuEdit:{},menuDeleted:{},menuDraft:null,salesQuery:'',salesSort:'time',salesDir:-1,salesStatus:'all',recvQuery:'',recvSort:'bal',recvDir:-1,recvStatus:'all',sub:(function(){var d={sales:0,inventory:0,proc:0,reports:0};try{var v=JSON.parse(localStorage.getItem('kashikeyo_admin_sub')||'null');if(v&&typeof v==='object')return Object.assign(d,v);}catch(e){}return d;})(),cfg:Object.assign({autoKot:true,rounding:false,svc10:true,taxIncl:true,printRecpt:true,cash:true,card:true,transfer:true,tab:true},((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.cfg)||{})),taxRate:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.taxRate)||'ggst'),
       payOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.payOff)||{}),ntog:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.ntog)||{}),authOff:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.authOff)||{}),cfgStaffAdd:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.staffAdd)||[]),seoOv:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.seo)||null),promoNew:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.promoAdd)||[]),chanCfg:((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.channels)||null),
       store:Object.assign({name:'',legal:'',tin:'',greg:'',activity:'',phone:'',email:'',addr:'',island:'',atoll:'',footer:'',currency:'MVR',usdRate:'15.42',tables:'',logo:null},(function(){var a=(typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.store)||{};var o={};if(a.name)o.name=a.name;o.currency=a.currency||'MVR';o.usdRate=String((Number(a.usdRate)||1542)/100);if(Number(a.tableCount)>0)o.tables=String(a.tableCount);if(a.tin)o.tin=a.tin;if(a.address)o.addr=a.address;if(a.footer)o.footer=a.footer;if(a.phone)o.phone=a.phone;if(a.email)o.email=a.email;return o;})(),((typeof window!=='undefined'&&window.__ksAdmin&&window.__ksAdmin.cfg&&window.__ksAdmin.cfg.store)||{})),
       an:{rev:0,orders:0,gpVal:0,aov:0,items:0},toast:null,
