@@ -73,12 +73,254 @@
    tokens at the bottom of this block, not a second palette. That is what
    lets the existing inline styles repaint without being rewritten. New work
    uses the tokens directly; the aliases retire as call sites migrate. */
-:root{--bg:#f6f2ea;--bg-0:#efe9de;--bg-1:#fffdf9;--bg-2:#f1ece2;--bg-3:#e4dccd;--line-soft:#eee7db;--line:#e0d8c8;--line-2:#cec4b0;--line-3:#b9ae98;--text:#1f1c17;--text-dim:#58534a;--text-muted:#605a52;--text-faint:#696054;--code-text:#3a352c;--amber:#9b6215;--amber-bright:#8e540d;--amber-dim:#fbeed6;--amber-line:#e0bc7e;--amber-deep:#8a5210;--on-amber:#fffdf9;--green:#3f8a4f;--green-line:#a9cfb1;--green-soft:#2f6b3c;--red:#c04545;--red-bright:#a83636;--red-line:#e0a9a9;--red-line-2:#e8c4c4;--red-dim:#b06060;--red-dim-2:#9a3f3f;--red-soft:#8a3030;--blue:#3d7cb8;--blue-bright:#2c5f91;--violet:#7d5fb0;--violet-bright:#5f4490;--paper:#ffffff;--paper-ink:#1a1a1a;--qr-ink:#1f1c17;--scrim:rgba(60,52,40,.42);--shadow-lg:0 24px 70px rgba(90,75,50,.22);--shadow:0 1px 2px rgba(38,41,48,.06);--tint-ok:rgba(63,138,79,.12);--tint-warn:rgba(155,98,21,.13);--tint-err:rgba(192,69,69,.11);--tint-info:rgba(61,124,184,.12);--tint-violet:rgba(125,95,176,.12);--tint-mute:rgba(31,28,23,.05)}
-html[data-dark]{--bg:#0e0f11;--bg-0:#121417;--bg-1:#15171a;--bg-2:#1b1e22;--bg-3:#24282e;--line-soft:#22262b;--line:#2a2f36;--line-2:#363c44;--line-3:#3d4249;--text:#f2ede2;--text-dim:#a8a79f;--text-muted:#979a9f;--text-faint:#8a8e95;--code-text:#c9c6bd;--amber:#f2a43a;--amber-bright:#ffb84a;--amber-dim:#3a2a12;--amber-line:#6b4a1f;--amber-deep:#c4761e;--on-amber:#1a0f00;--green:#6bbf7b;--green-line:#2d5a35;--green-soft:#9fd0aa;--red:#e26060;--red-bright:#f08585;--red-line:#6b2f2f;--red-line-2:#3a2626;--red-dim:#7a4444;--red-dim-2:#c07070;--red-soft:#f0a5a5;--blue:#67a2d9;--blue-bright:#8fbde8;--violet:#a88ad9;--violet-bright:#c3aae6;--paper:#fdfbf6;--paper-ink:#1a1a1a;--qr-ink:#0e0f11;--scrim:rgba(6,7,8,.72);--shadow-lg:0 24px 70px rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.35);--tint-ok:rgba(107,191,123,.13);--tint-warn:rgba(242,164,58,.14);--tint-err:rgba(226,96,96,.13);--tint-info:rgba(103,162,217,.14);--tint-violet:rgba(168,138,217,.14);--tint-mute:rgba(255,255,255,.05)}
+:root{--bg:#f6f2ea;--bg-0:#efe9de;--bg-1:#fffdf9;--bg-2:#f1ece2;--bg-3:#e4dccd;--line-soft:#eee7db;--line:#e0d8c8;--line-2:#cec4b0;--line-3:#b9ae98;--text:#1f1c17;--text-dim:#58534a;--text-muted:#605a52;--text-faint:#696054;--code-text:#3a352c;--amber:#9b6215;--amber-bright:#8e540d;--amber-dim:#fbeed6;--amber-line:#e0bc7e;--amber-deep:#8a5210;--on-amber:#fffdf9;--on-red:#fffdf9;--green:#3f8a4f;--green-line:#a9cfb1;--green-soft:#2f6b3c;--red:#c04545;--red-bright:#a83636;--red-line:#e0a9a9;--red-line-2:#e8c4c4;--red-dim:#b06060;--red-dim-2:#9a3f3f;--red-soft:#8a3030;--blue:#3d7cb8;--blue-bright:#2c5f91;--violet:#7d5fb0;--violet-bright:#5f4490;--paper:#ffffff;--paper-ink:#1a1a1a;--qr-ink:#1f1c17;--scrim:rgba(60,52,40,.42);--shadow-lg:0 24px 70px rgba(90,75,50,.22);--shadow:0 1px 2px rgba(38,41,48,.06);--tint-ok:rgba(63,138,79,.12);--tint-warn:rgba(155,98,21,.13);--tint-err:rgba(192,69,69,.11);--tint-info:rgba(61,124,184,.12);--tint-violet:rgba(125,95,176,.12);--tint-mute:rgba(31,28,23,.05)}
+html[data-dark]{--bg:#0e0f11;--bg-0:#121417;--bg-1:#15171a;--bg-2:#1b1e22;--bg-3:#24282e;--line-soft:#22262b;--line:#2a2f36;--line-2:#363c44;--line-3:#3d4249;--text:#f2ede2;--text-dim:#a8a79f;--text-muted:#979a9f;--text-faint:#8a8e95;--code-text:#c9c6bd;--amber:#f2a43a;--amber-bright:#ffb84a;--amber-dim:#3a2a12;--amber-line:#6b4a1f;--amber-deep:#c4761e;--on-amber:#1a0f00;--on-red:#2a0a0a;--green:#6bbf7b;--green-line:#2d5a35;--green-soft:#9fd0aa;--red:#e26060;--red-bright:#f08585;--red-line:#6b2f2f;--red-line-2:#3a2626;--red-dim:#7a4444;--red-dim-2:#c07070;--red-soft:#f0a5a5;--blue:#67a2d9;--blue-bright:#8fbde8;--violet:#a88ad9;--violet-bright:#c3aae6;--paper:#fdfbf6;--paper-ink:#1a1a1a;--qr-ink:#0e0f11;--scrim:rgba(6,7,8,.72);--shadow-lg:0 24px 70px rgba(0,0,0,.6);--shadow:0 1px 2px rgba(0,0,0,.35);--tint-ok:rgba(107,191,123,.13);--tint-warn:rgba(242,164,58,.14);--tint-err:rgba(226,96,96,.13);--tint-info:rgba(103,162,217,.14);--tint-violet:rgba(168,138,217,.14);--tint-mute:rgba(255,255,255,.05)}
 html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-3:#e8e3d8;--line-soft:#f0ece3;--line:#ddd6c8;--line-2:#c6bda9;--line-3:#aea391;--text:#141210;--text-dim:#4e4a42;--text-muted:#57524a;--text-faint:#5f584d;--paper:#ffffff;--qr-ink:#141210;--shadow:0 1px 2px rgba(0,0,0,.07)}
 /* Legacy aliases. Declared once — a custom property resolves against the
    element it is used on, so these follow whichever theme block is in force. */
 :root{--sur:var(--bg-1);--card:var(--bg-1);--sur2:var(--bg-2);--ink:var(--text);--ink2:var(--text-dim);--ink3:var(--text-muted);--line2:var(--line-2);--coral:var(--amber);--coralink:var(--on-amber);--coralsoft:var(--tint-warn);--coralgrad:linear-gradient(165deg,var(--amber-bright),var(--amber-deep));--greensoft:var(--tint-ok);--ambersoft:var(--tint-warn);--redsoft:var(--tint-err);--bluesoft:var(--tint-info)}
+/* ── Primitives (.k-*) ───────────────────────────────────────────────────
+   Phase 3 of the re-skin (docs/reskin-plan.md). The design handoff's 22
+   components, as CSS classes, with its exact values.
+
+   Why classes and not a component layer: there is no build step here and no
+   component layer to build into — both front-ends are one HTML file of inline
+   styles. A class is the only unit that lets a screen migrate one attribute at
+   a time and collapses ~520 colour literals into these definitions.
+
+   This block is INERT until a screen uses it. Nothing here is an element
+   selector, so adding it cannot restyle existing markup; screens adopt it in
+   the phases that follow, one commit each.
+
+   Byte-identical in index.html and admin.html — if you edit one, edit both.
+   Mobile breakpoint is 759px, matching the breakpoint the files already use. */
+
+/* Motion. Prefixed k* so they cannot collide with the existing unprefixed
+   keyframes (fade, pop, pulse, rise, spin …). */
+@keyframes kfade{from{opacity:0}to{opacity:1}}
+@keyframes kmodal{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes ktoast{from{opacity:0;transform:translate(-50%,18px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes ksheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes kslide{from{transform:translateX(-100%)}to{transform:none}}
+@keyframes kpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes kspin{to{transform:rotate(360deg)}}
+
+/* Numbers, everywhere they are read as data. */
+.k-mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+
+/* 1-2 Shell + sidebar */
+.k-shell{display:grid;grid-template-columns:clamp(178px,15vw,212px) 1fr;height:100dvh;background:var(--bg);color:var(--text);overflow:hidden}
+.k-shell.is-rail{grid-template-columns:60px 1fr}
+.k-sidebar{background:var(--bg-1);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px 0;overflow:hidden}
+.k-sidebar-nav{flex:1;overflow-y:auto}
+.k-sidebar-foot{margin-top:auto}
+
+/* 3 Brand mark */
+.k-brand{display:flex;align-items:center;gap:9px;padding:0 12px 12px}
+.k-brand-mark{width:38px;height:38px;flex:none;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,var(--amber),var(--amber-deep));box-shadow:0 0 18px rgba(242,164,58,.28);color:var(--on-amber);font-size:20px;font-weight:800;letter-spacing:-.05em}
+.k-brand-name{font-size:13.5px;font-weight:800;letter-spacing:-.03em;color:var(--text)}
+.k-brand-sub{font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)}
+
+/* 4 Nav item */
+.k-nav-group{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);padding:12px 8px 5px}
+.k-nav-item{width:100%;display:flex;align-items:center;gap:9px;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:500;color:var(--text-dim);background:transparent;border:0;cursor:pointer;transition:background .12s;min-height:44px}
+.k-nav-item:hover{background:var(--bg-1)}
+.k-nav-item.is-active{font-weight:600;color:var(--on-amber);background:var(--amber)}
+.k-nav-badge{margin-left:auto;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;font-family:'JetBrains Mono',ui-monospace,monospace;background:var(--red);color:var(--on-red)}
+.k-nav-badge.is-kds{background:var(--amber-dim);color:var(--amber-bright)}
+.is-rail .k-nav-item{padding:10px 0;justify-content:center}
+.is-rail .k-nav-label,.is-rail .k-nav-group,.is-rail .k-brand-name,.is-rail .k-brand-sub{display:none}
+
+/* 5 Topbar */
+.k-topbar{min-height:62px;background:var(--bg-1);border-bottom:1px solid var(--line);display:flex;align-items:center;padding:9px 18px;gap:14px;flex-wrap:wrap}
+.k-topbar-title{font-size:17px;font-weight:700;letter-spacing:-.025em;color:var(--text)}
+.k-topbar-sub{font-size:11px;font-weight:400;color:var(--text-dim)}
+.k-topbar-tools{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+
+/* 6 Select — an <option> must hold a bare text node or WebKit renders the
+   closed select blank. Keep option content unwrapped. */
+.k-select{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:8px 10px;outline:none;min-height:44px}
+
+/* 7 Search field */
+.k-search{display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:clamp(112px,14vw,180px);min-height:44px}
+.k-search input{flex:1;min-width:0;background:transparent;border:0;outline:none;font-family:inherit;font-size:12px;color:var(--text)}
+
+/* 8 Status pill */
+.k-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid var(--line);background:var(--bg-2);color:var(--text-dim)}
+.k-pill-dot{width:6px;height:6px;border-radius:50%;flex:none;background:currentColor}
+.k-pill.is-online{text-transform:uppercase;letter-spacing:.04em;border-color:var(--green-line);background:var(--tint-ok);color:var(--green)}
+.k-pill.is-online .k-pill-dot{box-shadow:0 0 8px var(--green)}
+.k-pill.is-offline{text-transform:uppercase;letter-spacing:.04em;border-color:var(--red-line);background:var(--tint-err);color:var(--red-bright)}
+.k-pill.is-offline .k-pill-dot{animation:kpulse 1.4s infinite}
+.k-pill.is-sync{font-weight:600}
+.k-pill.is-queued{font-weight:600;border-color:var(--amber-line);background:var(--tint-warn);color:var(--amber-bright)}
+.k-pill.is-syncing svg{animation:kspin 1s linear infinite}
+.k-pill.is-shift{background:var(--amber-dim);color:var(--amber-bright);border-color:transparent;font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.k-pill.is-shift .k-pill-dot{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+
+/* 9 Theme toggle · 10 Clock */
+.k-theme-toggle{width:44px;height:44px;border-radius:8px;display:grid;place-items:center;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);cursor:pointer}
+.k-clock-time{font-size:16px;font-weight:600;letter-spacing:-.01em;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--text)}
+.k-clock-date{font-size:10px;color:var(--text-dim)}
+
+/* 11 Stat strip — the 1px gap IS the hairline */
+.k-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.k-stat{background:var(--bg-1);padding:11px 18px;display:flex;flex-direction:column;gap:2px}
+.k-stat-label{font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-dim)}
+.k-stat-value{font-size:21px;font-weight:700;letter-spacing:-.03em;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--text)}
+.k-stat:first-child .k-stat-value{color:var(--amber-bright)}
+.k-stat-sub{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 12 Table tile (floor) */
+.k-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px}
+.k-tile{display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--line-3);transition:.12s;cursor:pointer;text-align:left}
+.k-tile.is-occupied{border-left-color:var(--amber)}
+.k-tile.is-reserved{border-left-color:var(--blue)}
+.k-tile.is-selected{background:var(--tint-warn);border-color:var(--amber)}
+.k-tile-num{font-size:20px;font-weight:700;letter-spacing:-.03em;font-family:'JetBrains Mono',ui-monospace,monospace;color:var(--text)}
+.k-tile-foot{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.k-tile-meta{font-size:10px;color:var(--text-dim)}
+.k-tile-total{font-size:12px;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--amber-bright)}
+
+/* 13 Menu card — photo is a background, so nothing shifts while it loads */
+.k-menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px}
+.k-mcard{display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;text-align:left;cursor:pointer;position:relative}
+.k-mcard-photo{aspect-ratio:1.55;background-size:cover;background-position:center;background-color:var(--bg-2)}
+.k-mcard.is-86 .k-mcard-photo{filter:grayscale(1) brightness(.45)}
+/* The handoff dims the whole card to .62. That drags the sold-out REASON —
+   the one thing a cashier needs to read here — to 2.98 light / 3.61 dark.
+   The greyed photo and the badge already say "off"; the text stays legible. */
+.k-mcard.is-86 .k-mcard-name{color:var(--text-dim)}
+.k-mcard.is-86 .k-mcard-desc{color:var(--text-muted)}
+.k-mcard.is-86 .k-mcard-price{color:var(--text-muted)}
+.k-mcard-86{position:absolute;top:8px;left:8px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:var(--on-red)}
+.k-mcard-veg{position:absolute;top:8px;right:8px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--green)}
+.k-mcard-body{padding:9px 11px 10px;display:flex;flex-direction:column;gap:3px}
+.k-mcard-name{font-size:12.5px;font-weight:600;line-height:1.3;color:var(--text)}
+.k-mcard-desc{font-size:10.5px;line-height:1.35;color:var(--text-dim)}
+.k-mcard-foot{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.k-mcard-price{font-size:13px;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--amber-bright)}
+.k-mcard-note{font-size:9.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint)}
+
+/* 14 Tab pill · 15 Action button. 44px floors are ours, from the audit: the
+   handoff's paddings alone give a ~30px target, which is not a counter tablet. */
+.k-tab{padding:6px 13px;border-radius:20px;font-size:11.5px;font-weight:600;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim);cursor:pointer;min-height:44px}
+.k-tab.is-active{border-color:var(--amber);background:var(--amber);color:var(--on-amber)}
+.k-tab-count{font-size:10px;opacity:.6;margin-left:6px;font-family:'JetBrains Mono',ui-monospace,monospace}
+.k-btn{padding:7px 14px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid transparent;min-height:44px}
+.k-btn.is-primary{background:var(--amber);color:var(--on-amber)}
+.k-btn.is-secondary{background:var(--bg-1);border-color:var(--line);color:var(--text-dim)}
+.k-btn.is-lg{padding:11px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center}
+.k-btn:disabled,.k-btn.is-disabled{background:var(--bg-2);border-color:var(--line);color:var(--text-faint);cursor:not-allowed}
+
+/* 16 Data table */
+.k-table{background:var(--bg-1);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.k-thead{display:grid;gap:12px;padding:10px 16px;background:var(--bg-0);border-bottom:1px solid var(--line);font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)}
+.k-tr{display:grid;gap:12px;padding:11px 16px;align-items:center;border-bottom:1px solid var(--line-soft);transition:background .1s;font-size:12px;color:var(--text-dim)}
+.k-tr:hover{background:var(--bg-2)}
+.k-tr.is-selected{background:var(--tint-warn)}
+.k-tr>*{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.k-tr>:first-child{font-weight:600;color:var(--text)}
+.k-empty{padding:44px;text-align:center;color:var(--text-faint);font-size:12.5px}
+
+/* 17 Record card — what keeps an 8-column table usable on a phone */
+.k-records{display:flex;flex-direction:column;gap:9px}
+.k-record{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:11px;background:var(--bg-1);border:1px solid var(--line);min-height:44px;text-align:left}
+.k-record.is-selected{background:var(--tint-warn);border-color:var(--amber-line)}
+.k-record-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
+.k-record-title{font-size:13.5px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+.k-record-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;width:100%;margin-top:9px}
+.k-record-label{font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.k-record-value{font-size:12px;font-weight:600;color:var(--text)}
+
+/* 18 Info card */
+.k-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:11px}
+.k-info{background:var(--bg-1);border:1px solid var(--line);border-radius:11px;padding:14px 15px;display:flex;flex-direction:column;gap:4px}
+.k-info-title{font-size:13px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
+.k-info-sub{font-size:10.5px;color:var(--text-muted)}
+.k-info-value{font-size:24px;font-weight:700;letter-spacing:-.03em;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--amber-bright);margin:8px 0 2px}
+.k-bar{height:5px;border-radius:3px;background:var(--line-soft);overflow:hidden}
+.k-bar>span{display:block;height:100%;background:var(--amber)}
+.k-bar.is-ok>span{background:var(--green)}
+.k-bar.is-bad>span{background:var(--red)}
+.k-kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:4px 0;border-top:1px solid var(--line-soft);color:var(--text-dim)}
+.k-kv>:last-child{font-weight:600;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--text)}
+.k-foot{font-size:10.5px;color:var(--text-muted);line-height:1.5;margin-top:8px}
+
+/* 19 Note panel */
+.k-note{background:var(--bg-1);border:1px solid var(--line);border-radius:11px;padding:14px 15px}
+.k-note-title{font-size:11.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--amber-bright);margin-bottom:7px}
+.k-note-body{font-size:12px;color:var(--text-dim);line-height:1.65}
+
+/* 20 Modal / bottom sheet */
+.k-scrim{position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);z-index:60;display:flex;align-items:center;justify-content:center;padding:28px;animation:kfade .14s}
+.k-modal{background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;animation:kmodal .18s}
+.k-modal.is-pay{max-width:740px}
+.k-modal.is-receipt{max-width:400px}
+.k-modal.is-wide{max-width:620px}
+.k-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line)}
+.k-modal-title{font-size:16px;font-weight:700;letter-spacing:-.02em;color:var(--text)}
+.k-modal-sub{font-size:11.5px;color:var(--text-dim)}
+.k-modal-close{width:44px;height:44px;border-radius:7px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);display:grid;place-items:center;cursor:pointer;flex:none}
+.k-modal-body{padding:16px 18px;overflow-y:auto;flex:1}
+
+/* 21 Toast — auto-dismiss 2800ms */
+.k-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;padding:11px 20px;border-radius:24px;font-size:12.5px;font-weight:600;box-shadow:0 8px 30px rgba(0,0,0,.5);animation:ktoast .18s;background:var(--amber);color:var(--on-amber)}
+.k-toast.is-warn{background:var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line)}
+.k-toast.is-err{background:var(--red);color:var(--on-red)}
+
+/* 22 Receipt — paper stock, deliberately unaffected by theme */
+.k-receipt{background:var(--paper);color:var(--paper-ink);border-radius:8px;padding:22px 20px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11.5px;line-height:1.75}
+.k-receipt-head{text-align:center}
+.k-receipt-brand{font-size:15px;font-weight:700;letter-spacing:.06em}
+.k-receipt-meta{font-size:10px}
+.k-receipt-rule{border-top:1px dashed #999}
+.k-receipt-line{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.k-receipt-total{font-size:13.5px;font-weight:700}
+
+/* Chips — tints composite over any surface */
+.k-chip{display:inline-block;padding:3px 8px;border-radius:5px;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;background:var(--tint-mute);color:var(--text-faint)}
+.k-chip.is-ok{background:var(--tint-ok);color:var(--green)}
+.k-chip.is-warn{background:var(--tint-warn);color:var(--amber-bright)}
+.k-chip.is-err{background:var(--tint-err);color:var(--red-bright)}
+.k-chip.is-info{background:var(--tint-info);color:var(--blue-bright)}
+.k-chip.is-violet{background:var(--tint-violet);color:var(--violet-bright)}
+
+/* Ticket panel sub-components */
+.k-guest-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:16px;font-size:10.5px;font-weight:600;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);cursor:pointer}
+.k-guest-chip.is-active{background:var(--amber);border-color:var(--amber);color:var(--on-amber)}
+.k-guest-chip .k-guest-dot{width:5px;height:5px;border-radius:50%;background:var(--violet-bright)}
+.k-guest-chip.is-active .k-guest-dot{background:var(--on-amber)}
+.k-line{padding:9px 16px;border-bottom:1px solid var(--line);animation:kfade .16s}
+.k-line-head{display:flex;justify-content:space-between;gap:10px}
+.k-line-name{font-size:12.5px;font-weight:500;color:var(--text)}
+.k-line-amt{font-size:12.5px;font-weight:600;font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;color:var(--text)}
+.k-stepper{display:inline-flex;background:var(--bg-2);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.k-stepper button{width:44px;height:44px;display:grid;place-items:center;font-size:15px;color:var(--text-dim);background:none;border:0;cursor:pointer}
+.k-stepper-count{min-width:22px;display:grid;place-items:center;font-size:12px;font-weight:700;font-family:'JetBrains Mono',ui-monospace,monospace;color:var(--text)}
+.k-fired{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;padding:3px 7px;border-radius:4px;background:var(--tint-ok);color:var(--green)}
+.k-fired.is-unsent{background:var(--tint-warn);color:var(--amber-bright)}
+.k-line-note{margin-top:6px;font-size:10.5px;color:var(--amber-bright);background:var(--tint-warn);border-left:2px solid var(--amber);padding:4px 8px;border-radius:0 4px 4px 0}
+.k-tot{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;color:var(--text-dim);padding:3px 0}
+.k-tot.is-total{font-size:17px;font-weight:700;border-top:1px solid var(--line);color:var(--text);padding-top:8px}
+
+/* Mobile. 759px is the boundary the files already use. */
+@media (max-width:759px){
+  .k-shell{display:flex;flex-direction:column;grid-template-columns:none}
+  .k-sidebar{position:fixed;inset-block:0;left:0;width:min(280px,84vw);z-index:70;box-shadow:0 0 60px rgba(0,0,0,.6);animation:kslide .2s}
+  .k-sidebar.is-closed{display:none}
+  .k-nav-item{padding:11px 12px}
+  .k-topbar{min-height:56px;padding:8px 12px;gap:10px;flex-wrap:nowrap}
+  .k-stats{display:flex;gap:1px;overflow-x:auto;scroll-snap-type:x mandatory}
+  .k-stat{padding:10px 14px;min-width:150px;flex:0 0 auto;scroll-snap-align:start}
+  .k-tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+  .k-menu-grid{grid-template-columns:repeat(auto-fill,minmax(144px,1fr))}
+  .k-cards{grid-template-columns:1fr}
+  .k-search{width:100%}
+  .k-scrim{padding:0;align-items:flex-end}
+  .k-modal,.k-modal.is-pay,.k-modal.is-receipt,.k-modal.is-wide{max-width:none;border-radius:16px 16px 0 0;border-top:1px solid var(--line);max-height:92dvh;box-shadow:0 -14px 50px rgba(0,0,0,.6);animation:ksheet .2s}
+}
+
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',Montserrat,'MV Randhoo','Noto Sans Thaana',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden;transition:background .3s;letter-spacing:-.005em}
 [style*="var(--sur)"]{outline:1px solid var(--line);outline-offset:-1px}

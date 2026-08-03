@@ -1001,7 +1001,7 @@
       "scIf": 184,
       "scFor": 64
     },
-    "literals": 399,
+    "literals": 401,
     "problems": []
   },
   "web2/proto/admin.html": {
@@ -1737,7 +1737,7 @@
       "scIf": 221,
       "scFor": 155
     },
-    "literals": 123,
+    "literals": 125,
     "problems": []
   }
 }
