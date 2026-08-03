@@ -305,6 +305,26 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 .k-tot.is-total{font-size:17px;font-weight:700;border-top:1px solid var(--line);color:var(--text);padding-top:8px}
 
 /* Mobile. 759px is the boundary the files already use. */
+/* ── Modal system (§20) ──────────────────────────────────────────────────
+   The register grew 22 hand-rolled overlays, each with its own scrim colour,
+   z-index, radius and animation, and only four of them became bottom sheets
+   on a phone. These two classes are the design's single modal setup fitted to
+   the markup we have: the scrim and the panel are SIBLINGS here rather than
+   parent and child, so the panel is positioned rather than flex-centred, but
+   the tokens, the sizes, the motion and the mobile sheet are the spec's.
+   Size by kind: pay 740 · receipt/Z 400 · conflict/count/outlet 620 · 520
+   default. */
+.k-scrim-fixed{position:fixed;inset:0;z-index:140;background:var(--scrim);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:kfade .14s}
+.k-modal-fixed{position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column;overflow:auto;background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);animation:kmodal .18s;padding:18px}
+.k-modal-fixed.is-pay{width:740px}
+.k-modal-fixed.is-receipt{width:400px}
+.k-modal-fixed.is-wide{width:620px}
+@media (max-width:759px){
+  .k-modal-fixed,.k-modal-fixed.is-pay,.k-modal-fixed.is-receipt,.k-modal-fixed.is-wide{
+    left:0;right:0;top:auto;bottom:0;transform:none;width:auto;max-width:none;
+    border-radius:16px 16px 0 0;border-top:1px solid var(--line);border-inline:0;border-bottom:0;
+    max-height:92dvh;box-shadow:0 -14px 50px rgba(0,0,0,.6);animation:ksheet .2s;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+}
 @media (max-width:759px){
   .k-shell{display:flex;flex-direction:column;grid-template-columns:none}
   .k-sidebar{position:fixed;inset-block:0;left:0;width:min(280px,84vw);z-index:70;box-shadow:0 0 60px rgba(0,0,0,.6);animation:kslide .2s}
@@ -476,8 +496,8 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </header>
   <sc-if value="{{ acctOpen }}" hint-placeholder-val="{{ false }}">
-        <div onClick="{{ closeAcct }}" style="position:fixed;inset:0;z-index:120;background:rgba(15,10,4,.62);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-        <div dir="{{ dirAttr }}" style="position:fixed;z-index:130;left:50%;top:50%;transform:translate(-50%,-50%);width:344px;max-width:92vw;max-height:90vh;overflow-y:auto;background:var(--sur);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);padding:12px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+        <div onClick="{{ closeAcct }}" class="k-scrim-fixed" style="z-index:120"></div>
+        <div dir="{{ dirAttr }}" class="k-modal-fixed is-receipt" style="z-index:130">
           <div style="display:flex;align-items:flex-start;gap:12px;padding:5px 4px 12px">
             <span style="width:44px;height:44px;flex:none;border-radius:99px;background:var(--coral);color:var(--coralink);display:grid;place-items:center;font-size:17px;font-weight:800">{{ acctInitial }}</span>
             <div style="flex:1;min-width:0;padding-top:1px">
@@ -500,7 +520,7 @@ button[disabled],button:disabled{cursor:not-allowed}
             </div>
           </div>
           <div style="height:8px"></div>
-          <button onClick="{{ toggleDark }}" style="width:100%;display:flex;align-items:center;gap:11px;background:var(--sur2);border:0;border-radius:13px;padding:12px 13px;margin-bottom:10px;cursor:pointer;text-align:start;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
+          <button onClick="{{ toggleDark }}" style="width:100%;display:flex;align-items:center;gap:11px;background:var(--sur2);border:0;border-radius:13px;padding:12px 13px;min-height:44px;margin-bottom:10px;cursor:pointer;text-align:start;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
             <span style="flex:none;display:grid;place-items:center;color:var(--ink)" dangerouslySetInnerHTML="{{ themeIcon }}"></span>{{ acctThemeLabel }}
           </button>
           <div style="padding:0 4px 4px">
@@ -519,12 +539,12 @@ button[disabled],button:disabled{cursor:not-allowed}
               </sc-for>
             </div>
           </div>
-          <button onClick="{{ toggleSound }}" style="width:100%;display:flex;align-items:center;gap:11px;background:var(--sur2);border:0;border-radius:13px;padding:12px 13px;margin:10px 0 8px;cursor:pointer;text-align:start;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
+          <button onClick="{{ toggleSound }}" style="width:100%;display:flex;align-items:center;gap:11px;background:var(--sur2);border:0;border-radius:13px;padding:12px 13px;min-height:44px;margin:10px 0 8px;cursor:pointer;text-align:start;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
             <span style="flex:none;display:grid;place-items:center;color:var(--amber)"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M5 8a4 4 0 0 1 8 0c0 3 1.2 4.2 1.8 4.8H3.2C3.8 12.2 5 11 5 8z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"></path><path d="M7.2 15a1.8 1.8 0 0 0 3.6 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path></svg></span>
             <span style="flex:1">{{ acctSoundLabel }}</span>
             <span style="width:34px;height:20px;flex:none;border-radius:99px;background:{{ soundBg }};position:relative;transition:background .18s"><span style="position:absolute;top:2px;inset-inline-start:{{ soundX }};width:16px;height:16px;border-radius:99px;background:var(--sur);box-shadow:0 1px 2px rgba(0,0,0,.25);transition:all .18s"></span></span>
           </button>
-          <a href="/admin" style="display:flex;align-items:center;gap:11px;background:var(--sur2);border-radius:13px;padding:12px 13px;margin-bottom:10px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
+          <a href="/admin" style="display:flex;align-items:center;gap:11px;background:var(--sur2);border-radius:13px;padding:12px 13px;min-height:44px;margin-bottom:10px;text-decoration:none;color:var(--ink);font-size:13px;font-weight:700" style-hover="background:var(--coralsoft)">
             <span style="flex:none;display:grid;place-items:center;color:var(--coral)"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M2.5 6.5 9 3l6.5 3.5-6.5 3.5z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path><path d="M2.5 6.5v5L9 15l6.5-3.5v-5M9 10v5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg></span>
             <span style="flex:1">Back office — stock, recipes &amp; deliveries</span><span style="color:var(--ink3);font-weight:800">→</span>
           </a>
@@ -549,8 +569,8 @@ button[disabled],button:disabled{cursor:not-allowed}
         </div>
   </sc-if>
   <sc-if value="{{ shiftModalOpen }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ cancelShiftModal }}" style="position:fixed;inset:0;z-index:150;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-    <div dir="{{ dirAttr }}" style="position:fixed;z-index:160;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;max-width:92vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+    <div onClick="{{ cancelShiftModal }}" class="k-scrim-fixed" style="z-index:150"></div>
+    <div dir="{{ dirAttr }}" class="k-modal-fixed is-receipt" style="z-index:160">
       <sc-if value="{{ shiftIsOpenMode }}" hint-placeholder-val="{{ true }}">
         <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;margin-bottom:5px">Open shift</div>
         <div style="font-size:12.5px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:16px">Count the cash you're starting the drawer with — this opening float is used to reconcile the drawer when you close.</div>
@@ -580,8 +600,8 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </sc-if>
   <sc-if value="{{ discShow }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ closeDisc }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-    <div dir="{{ dirAttr }}" style="position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;max-width:92vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+    <div onClick="{{ closeDisc }}" class="k-scrim-fixed" style="z-index:140"></div>
+    <div dir="{{ dirAttr }}" class="k-modal-fixed is-receipt" style="z-index:150">
       <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;letter-spacing:-.01em;margin-bottom:6px">{{ discTitle }}</div>
       <div style="font-size:12.5px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:16px">{{ discNote }}</div>
       <div style="display:flex;gap:8px;margin-bottom:16px">
@@ -599,8 +619,8 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </sc-if>
   <sc-if value="{{ rmShow }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ closeRm }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-    <div dir="{{ dirAttr }}" style="position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;max-width:92vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+    <div onClick="{{ closeRm }}" class="k-scrim-fixed" style="z-index:140"></div>
+    <div dir="{{ dirAttr }}" class="k-modal-fixed is-receipt" style="z-index:150">
       <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;letter-spacing:-.01em;margin-bottom:6px">{{ L.rmTitle }}</div>
       <div style="font-size:12.5px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:16px"><b style="color:var(--coral);font-weight:800">{{ rmName }}</b> — {{ L.rmHint }}</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
@@ -612,8 +632,8 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </sc-if>
   <sc-if value="{{ voidShow }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ closeVoid }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-    <div dir="{{ dirAttr }}" style="position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:392px;max-width:92vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+    <div onClick="{{ closeVoid }}" class="k-scrim-fixed" style="z-index:140"></div>
+    <div dir="{{ dirAttr }}" class="k-modal-fixed is-receipt" style="z-index:150">
       <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:19px;letter-spacing:-.01em;margin-bottom:6px">{{ L.voidTitle }}</div>
       <div style="font-size:12.5px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:16px"><b style="color:var(--coral);font-weight:800">{{ voidBillLbl }}</b> — {{ L.voidHint }}</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
@@ -625,8 +645,8 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </sc-if>
   <sc-if value="{{ setlShow }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ closeSetl }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-    <div dir="{{ dirAttr }}" style="position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:420px;max-width:93vw;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1)">
+    <div onClick="{{ closeSetl }}" class="k-scrim-fixed" style="z-index:140"></div>
+    <div dir="{{ dirAttr }}" class="k-modal-fixed" style="z-index:150">
       <div style="display:flex;align-items:center;gap:11px;margin-bottom:16px">
         <span style="width:40px;height:40px;flex:none;border-radius:99px;background:var(--sur2);display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--coral)">{{ setlInit }}</span>
         <div style="flex:1;min-width:0">
@@ -786,7 +806,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </sc-if>
         </div>
       </div>
-      <sc-if value="{{ cartBackdropOn }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeCartSheet }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);z-index:129;animation:fade .2s"></div></sc-if>
+      <sc-if value="{{ cartBackdropOn }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeCartSheet }}" class="k-scrim-fixed" style="z-index:129"></div></sc-if>
       <sc-if value="{{ cartFabOn }}" hint-placeholder-val="{{ false }}">
         <button onClick="{{ openCartSheet }}" style="position:fixed;bottom:calc(70px + env(safe-area-inset-bottom));inset-inline-end:14px;z-index:116;border:0;border-radius:999px;padding:13px 18px;background:var(--coral);color:var(--coralink);font-family:'Bricolage Grotesque';font-size:14px;font-weight:800;cursor:pointer;box-shadow:var(--shadow);display:flex;align-items:center;gap:9px;animation:pop .25s" style-active="transform:scale(.95)">
           <span style="min-width:22px;height:22px;border-radius:99px;background:rgba(255,255,255,.25);display:grid;place-items:center;font-size:12px;padding:0 5px">{{ fabCount }}</span>{{ L.order }} · {{ fabTotF }}
@@ -1355,7 +1375,7 @@ button[disabled],button:disabled{cursor:not-allowed}
             </div>
           </sc-for>
           <sc-if value="{{ refundOpen }}" hint-placeholder-val="{{ false }}">
-            <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;z-index:60;padding:20px">
+            <div class="k-scrim-fixed" style="z-index:60">
               <div style="background:var(--sur);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:400px;width:100%;box-shadow:var(--shadow)">
                 <div style="font-family:'Bricolage Grotesque';font-size:17px;font-weight:800;color:var(--ink);margin-bottom:4px">{{ L.refundTitle }}</div>
                 <div style="font-size:13px;color:var(--ink2);font-weight:700;margin-bottom:14px">{{ refundSaleLbl }}</div>
@@ -1465,7 +1485,7 @@ button[disabled],button:disabled{cursor:not-allowed}
             <span style="font-size:12px">{{ L.varianceLbl }}</span><span style="font-size:15px;font-variant-numeric:tabular-nums">{{ z.varF }}</span>
           </div>
           <sc-if value="{{ closeConfirmOpen }}" hint-placeholder-val="{{ false }}">
-            <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:grid;place-items:center;z-index:60;padding:20px">
+            <div class="k-scrim-fixed" style="z-index:60">
               <div style="background:var(--sur);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:380px;width:100%;box-shadow:var(--shadow)">
                 <div style="font-family:'Bricolage Grotesque';font-size:17px;font-weight:800;color:var(--ink);margin-bottom:6px">{{ closeConfirmTitle }}</div>
                 <div style="font-size:13px;color:var(--ink2);font-weight:600;line-height:1.45;margin-bottom:14px">{{ closeConfirmSub }}</div>
@@ -1509,7 +1529,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 </div>
 </div>
 <sc-if value="{{ tableMenuOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ toggleTableMenu }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+  <div onClick="{{ toggleTableMenu }}" class="k-scrim-fixed" style="z-index:140">
     <div onClick="{{ stop }}" style="width:min(420px,100%);background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px 20px 22px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <svg width="18" height="18" viewBox="0 0 15 15" style="color:var(--ink)"><rect x="2" y="3" width="11" height="6.5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"></rect><line x1="4.5" y1="9.5" x2="4.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></line><line x1="10.5" y1="9.5" x2="10.5" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></line></svg>
@@ -1525,7 +1545,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ custPickOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeCustPick }}" style="position:fixed;inset:0;z-index:142;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+  <div onClick="{{ closeCustPick }}" class="k-scrim-fixed" style="z-index:142">
     <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(400px,100%);background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:18px 18px 20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink);flex:1">{{ L.pickCustTitle }}</span>
@@ -1544,7 +1564,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ tabPickOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeTabPick }}" style="position:fixed;inset:0;z-index:185;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+  <div onClick="{{ closeTabPick }}" class="k-scrim-fixed" style="z-index:185">
     <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(400px,100%);max-height:calc(100dvh - 48px);display:flex;flex-direction:column;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:18px 18px 20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex:none">
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink);flex:1">{{ L.pickCustomer }}</span>
@@ -1563,7 +1583,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ deliveryOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeDelivery }}" style="position:fixed;inset:0;z-index:140;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:24px;animation:fade .18s">
+  <div onClick="{{ closeDelivery }}" class="k-scrim-fixed" style="z-index:140">
     <div onClick="{{ stop }}" dir="{{ dirAttr }}" style="width:min(440px,100%);max-height:calc(100dvh - 48px);overflow-y:auto;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);padding:20px;animation:sheet .24s cubic-bezier(.2,.9,.3,1.1)">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
         <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;color:var(--ink);flex:1">{{ L.orderType }}</span>
@@ -1593,8 +1613,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ modOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeMod }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:170;animation:fade .2s"></div>
-  <div dir="{{ dirAttr }}" style="position:fixed;z-index:171;left:50%;top:50%;transform:translate(-50%,-50%);width:660px;max-width:94vw;max-height:92vh;background:var(--sur);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;display:flex;flex-direction:column;animation:sheet .28s cubic-bezier(.2,.9,.3,1.2)">
+  <div onClick="{{ closeMod }}" class="k-scrim-fixed" style="z-index:170"></div>
+  <div dir="{{ dirAttr }}" class="k-modal-fixed is-wide" style="z-index:171">
     <div style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:{{ modFlexDir }}">
       <div style="flex:none;width:{{ modLeftW }};padding:18px;border-inline-end:1px solid var(--line);display:flex;flex-direction:column;gap:14px">
         <div style="display:flex;gap:12px;align-items:flex-start">
@@ -1663,7 +1683,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ payOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closePay }}" style="position:fixed;inset:0;background:rgba(20,14,8,.45);backdrop-filter:blur(3px);z-index:170;animation:fade .2s"></div>
+  <div onClick="{{ closePay }}" class="k-scrim-fixed" style="z-index:170"></div>
   <div style="--paydrawer:1;position:fixed;z-index:171;top:0;bottom:0;inset-inline-end:0;width:420px;max-width:94vw;background:var(--sur);box-shadow:var(--shadow);display:flex;flex-direction:column;animation:sheet .3s cubic-bezier(.2,.9,.3,1)" dir="{{ dirAttr }}">
     <sc-if value="{{ payDone }}" hint-placeholder-val="{{ false }}">
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:fade .3s">
@@ -1771,8 +1791,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ receiptOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeReceipt }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:180;animation:fade .2s"></div>
-  <div style="position:fixed;z-index:181;left:50%;top:50%;transform:translate(-50%,-50%);width:330px;max-width:92vw;max-height:88vh;display:flex;flex-direction:column;animation:sheet .32s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
+  <div onClick="{{ closeReceipt }}" class="k-scrim-fixed" style="z-index:180"></div>
+  <div class="k-modal-fixed is-receipt" style="z-index:181" dir="{{ dirAttr }}">
     <div style="background:var(--sur);color:var(--ink);border-radius:14px 14px 0 0;padding:22px 22px 14px;overflow-y:auto;box-shadow:var(--shadow)">
       <div style="text-align:center;border-bottom:1px dashed #C9BFa6;padding-bottom:12px">
         <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">{{ outletName }}</div>
@@ -1830,8 +1850,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ custHistShow }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeCustHist }}" style="position:fixed;inset:0;z-index:160;background:rgba(15,10,4,.5);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:fade .2s"></div>
-  <div dir="{{ dirAttr }}" style="position:fixed;z-index:161;left:50%;top:50%;transform:translate(-50%,-50%);width:420px;max-width:93vw;max-height:88vh;display:flex;flex-direction:column;background:var(--sur);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);animation:sheet .26s cubic-bezier(.2,.9,.3,1)">
+  <div onClick="{{ closeCustHist }}" class="k-scrim-fixed" style="z-index:160"></div>
+  <div dir="{{ dirAttr }}" class="k-modal-fixed" style="z-index:161">
     <div style="flex:none;display:flex;align-items:center;gap:11px;padding:20px 22px 14px;border-bottom:1px solid var(--line)">
       <span style="width:42px;height:42px;flex:none;border-radius:99px;background:var(--sur2);display:grid;place-items:center;font-size:14px;font-weight:800;color:var(--coral)">{{ custHist.init }}</span>
       <div style="flex:1;min-width:0">
@@ -1867,8 +1887,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ stmtShow }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeStmt }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:80;animation:fade .2s"></div>
-  <div style="position:fixed;z-index:81;left:50%;top:50%;transform:translate(-50%,-50%);width:360px;max-width:93vw;max-height:90vh;display:flex;flex-direction:column;animation:sheet .32s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
+  <div onClick="{{ closeStmt }}" class="k-scrim-fixed" style="z-index:80"></div>
+  <div class="k-modal-fixed is-receipt" style="z-index:81" dir="{{ dirAttr }}">
     <div style="background:var(--sur);color:var(--ink);border-radius:16px 16px 0 0;padding:22px 22px 16px;overflow-y:auto;box-shadow:var(--shadow)">
       <div style="text-align:center;border-bottom:1px dashed var(--line);padding-bottom:12px">
         <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">{{ outletName }}</div>
@@ -1903,8 +1923,8 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ aiOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeAi }}" style="position:fixed;inset:0;background:rgba(20,14,8,.5);backdrop-filter:blur(4px);z-index:90;animation:fade .2s"></div>
-  <div style="position:fixed;z-index:91;left:50%;top:50%;transform:translate(-50%,-50%);width:440px;max-width:94vw;max-height:88vh;background:var(--sur);border-radius:22px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;animation:sheet .3s cubic-bezier(.2,.9,.3,1.1)" dir="{{ dirAttr }}">
+  <div onClick="{{ closeAi }}" class="k-scrim-fixed" style="z-index:90"></div>
+  <div class="k-modal-fixed" style="z-index:91" dir="{{ dirAttr }}">
     <div style="display:flex;align-items:center;gap:10px;padding:18px 20px;border-bottom:1px solid var(--line)">
       <span style="width:32px;height:32px;border-radius:10px;background:var(--coral);color:var(--coralink);display:grid;place-items:center"><svg width="16" height="16" viewBox="0 0 22 22"><path d="M11 2l1.7 4.9L18 8l-4.3 2.4L11 15l-1.7-4.6L5 8l5.3-1.1z" fill="currentColor"></path></svg></span>
       <div style="flex:1"><div style="font-family:'Bricolage Grotesque';font-size:15px;font-weight:800">{{ L.aiTitle }}</div></div>

@@ -305,6 +305,26 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 .k-tot.is-total{font-size:17px;font-weight:700;border-top:1px solid var(--line);color:var(--text);padding-top:8px}
 
 /* Mobile. 759px is the boundary the files already use. */
+/* ── Modal system (§20) ──────────────────────────────────────────────────
+   The register grew 22 hand-rolled overlays, each with its own scrim colour,
+   z-index, radius and animation, and only four of them became bottom sheets
+   on a phone. These two classes are the design's single modal setup fitted to
+   the markup we have: the scrim and the panel are SIBLINGS here rather than
+   parent and child, so the panel is positioned rather than flex-centred, but
+   the tokens, the sizes, the motion and the mobile sheet are the spec's.
+   Size by kind: pay 740 · receipt/Z 400 · conflict/count/outlet 620 · 520
+   default. */
+.k-scrim-fixed{position:fixed;inset:0;z-index:140;background:var(--scrim);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);animation:kfade .14s}
+.k-modal-fixed{position:fixed;z-index:150;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:94vw;max-height:88vh;display:flex;flex-direction:column;overflow:auto;background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);animation:kmodal .18s;padding:18px}
+.k-modal-fixed.is-pay{width:740px}
+.k-modal-fixed.is-receipt{width:400px}
+.k-modal-fixed.is-wide{width:620px}
+@media (max-width:759px){
+  .k-modal-fixed,.k-modal-fixed.is-pay,.k-modal-fixed.is-receipt,.k-modal-fixed.is-wide{
+    left:0;right:0;top:auto;bottom:0;transform:none;width:auto;max-width:none;
+    border-radius:16px 16px 0 0;border-top:1px solid var(--line);border-inline:0;border-bottom:0;
+    max-height:92dvh;box-shadow:0 -14px 50px rgba(0,0,0,.6);animation:ksheet .2s;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+}
 @media (max-width:759px){
   .k-shell{display:flex;flex-direction:column;grid-template-columns:none}
   .k-sidebar{position:fixed;inset-block:0;left:0;width:min(280px,84vw);z-index:70;box-shadow:0 0 60px rgba(0,0,0,.6);animation:kslide .2s}
@@ -355,7 +375,7 @@ button[disabled],button:disabled{cursor:not-allowed}
 </helmet>
 <div style="display:flex;height:100dvh;overflow:hidden">
   <sc-if value="{{ navBackdrop }}" hint-placeholder-val="{{ false }}">
-    <div onClick="{{ closeNav }}" style="position:fixed;inset:0;z-index:110;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:fade .2s"></div>
+    <div onClick="{{ closeNav }}" class="k-scrim-fixed" style="z-index:110"></div>
   </sc-if>
   <aside class="k-sidebar" style="{{ asideStyle }}">
     <div class="k-brand" style="padding:17px 18px 15px;border-bottom:1px solid var(--line)">
@@ -841,7 +861,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div></div></div>
         </sc-if>
         <sc-if value="{{ ocrOpen }}" hint-placeholder-val="{{ false }}">
-          <div onClick="{{ closeOcr }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+          <div onClick="{{ closeOcr }}" class="k-scrim-fixed" style="z-index:200">
             <div onClick="{{ stop }}" style="width:min(520px,100%);max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;animation:pop .22s">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;flex:1">📷 Scan a delivery note</div><button onClick="{{ closeOcr }}" style="width:30px;height:30px;border:0;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-active="transform:scale(.9)">×</button></div>
               <sc-if value="{{ ocrIsInput }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
@@ -1392,7 +1412,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div></sc-if>
         </sc-if>
         <sc-if value="{{ menuDraftOpen }}" hint-placeholder-val="{{ false }}">
-          <div onClick="{{ closeDraft }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+          <div onClick="{{ closeDraft }}" class="k-scrim-fixed" style="z-index:200">
             <div onClick="{{ stop }}" style="width:min(420px,100%);max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;animation:pop .22s">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;flex:1">{{ draftTitle }}</div><button onClick="{{ closeDraft }}" style="width:30px;height:30px;border:0;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-active="transform:scale(.9)">×</button></div>
               <div style="display:flex;flex-direction:column;gap:14px">
@@ -1433,7 +1453,7 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div>
         </sc-if>
         <sc-if value="{{ aiBuildOpen }}" hint-placeholder-val="{{ false }}">
-          <div onClick="{{ closeAiBuild }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+          <div onClick="{{ closeAiBuild }}" class="k-scrim-fixed" style="z-index:200">
             <div onClick="{{ stop }}" style="width:min(440px,100%);max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;animation:pop .22s">
               <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;flex:1">✨ Create a menu item with AI</div><button onClick="{{ closeAiBuild }}" style="width:30px;height:30px;border:0;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-active="transform:scale(.9)">×</button></div>
               <sc-if value="{{ aiIsInput }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:14px">
@@ -1562,7 +1582,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </div>
 <sc-if value="{{ mdl }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeMdl }}" style="position:fixed;inset:0;z-index:200;background:rgba(20,14,8,.44);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+  <div onClick="{{ closeMdl }}" class="k-scrim-fixed" style="z-index:200">
     <div onClick="{{ stopMdl }}" style="width:min(440px,100%);max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;animation:pop .22s">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;flex:1">{{ mdlTitle }}</div><button onClick="{{ closeMdl }}" aria-label="Close" style="width:30px;height:30px;border:0;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-active="transform:scale(.9)">×</button></div>
       <sc-if value="{{ mdlErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;background:var(--redsoft);color:var(--red);border-radius:10px;padding:9px 12px;font-size:12px;font-weight:700;margin-bottom:14px">{{ mdlErr }}</div></sc-if>
@@ -1791,7 +1811,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ importOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeImport }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+  <div onClick="{{ closeImport }}" class="k-scrim-fixed" style="z-index:200">
     <div onClick="{{ stopMdl }}" style="width:min(520px,100%);max-height:88vh;overflow-y:auto;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);padding:22px;animation:pop .22s">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;flex:1">⬆ Import menu from a spreadsheet</div><button onClick="{{ closeImport }}" style="width:30px;height:30px;border:0;border-radius:9px;background:var(--bg);color:var(--ink2);font-size:18px;line-height:1;cursor:pointer" style-active="transform:scale(.9)">×</button></div>
       <sc-if value="{{ importIsInput }}" hint-placeholder-val="{{ true }}"><div style="display:flex;flex-direction:column;gap:14px">
@@ -1829,7 +1849,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ histOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeHistory }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+  <div onClick="{{ closeHistory }}" class="k-scrim-fixed" style="z-index:200">
     <div onClick="{{ stopMdl }}" style="width:min(560px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .22s">
       <div style="display:flex;align-items:center;gap:10px;padding:20px 22px 14px">
         <div style="flex:1"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">{{ histName }}</div><div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-top:2px">Stock movement history</div></div>
@@ -1864,7 +1884,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ catMgrOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closeCatMgr }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+  <div onClick="{{ closeCatMgr }}" class="k-scrim-fixed" style="z-index:200">
     <div onClick="{{ stopMdl }}" style="width:min(560px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .22s">
       <div style="display:flex;align-items:center;gap:10px;padding:20px 22px 8px">
         <div style="flex:1"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">🗂 Menu categories</div><div style="font-size:11.5px;font-weight:600;color:var(--ink2);margin-top:2px">Groups hold sub-categories. The register &amp; QR menu show a group row, then its sub-categories.</div></div>
@@ -1897,7 +1917,7 @@ button[disabled],button:disabled{cursor:not-allowed}
   </div>
 </sc-if>
 <sc-if value="{{ poDraftOpen }}" hint-placeholder-val="{{ false }}">
-  <div onClick="{{ closePoDraft }}" style="position:fixed;inset:0;z-index:200;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);display:grid;place-items:center;padding:20px;animation:fade .18s">
+  <div onClick="{{ closePoDraft }}" class="k-scrim-fixed" style="z-index:200">
     <div onClick="{{ stopMdl }}" style="width:min(600px,100%);max-height:88vh;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line2);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:pop .22s">
       <div style="display:flex;align-items:center;gap:10px;padding:20px 22px 8px">
         <div style="flex:1"><div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px">🧾 Suggested purchase orders</div><div style="font-size:11.5px;font-weight:600;color:var(--ink2);margin-top:2px">Learned from your stock, usage & usual suppliers. Review, adjust, then create — grouped by supplier.</div></div>
