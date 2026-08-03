@@ -123,7 +123,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 4 Nav item */
 .k-nav-group{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);padding:12px 8px 5px}
-.k-nav-item{width:100%;display:flex;align-items:center;gap:9px;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:500;color:var(--text-dim);background:transparent;border:0;cursor:pointer;transition:background .12s;min-height:44px}
+.k-nav-item{width:100%;display:flex;align-items:center;gap:9px;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:500;color:var(--text-dim);background:transparent;border:0;cursor:pointer;transition:background .12s;min-height:44px;text-align:start}
 .k-nav-item:hover{background:var(--bg-1)}
 .k-nav-item.is-active{font-weight:600;color:var(--on-amber);background:var(--amber)}
 .k-nav-badge{margin-left:auto;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;font-family:'JetBrains Mono',ui-monospace,monospace;background:var(--red);color:var(--on-red)}
@@ -173,7 +173,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 12 Table tile (floor) */
 .k-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px}
-.k-tile{display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--line-3);transition:.12s;cursor:pointer;text-align:left}
+.k-tile{display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--line-3);transition:.12s;cursor:pointer;text-align:start}
 .k-tile.is-occupied{border-left-color:var(--amber)}
 .k-tile.is-reserved{border-left-color:var(--blue)}
 .k-tile.is-selected{background:var(--tint-warn);border-color:var(--amber)}
@@ -184,7 +184,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 13 Menu card — photo is a background, so nothing shifts while it loads */
 .k-menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px}
-.k-mcard{display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;text-align:left;cursor:pointer;position:relative}
+.k-mcard{display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;text-align:start;cursor:pointer;position:relative}
 .k-mcard-photo{aspect-ratio:1.55;background-size:cover;background-position:center;background-color:var(--bg-2)}
 .k-mcard.is-86 .k-mcard-photo{filter:grayscale(1) brightness(.45)}
 /* The handoff dims the whole card to .62. That drags the sold-out REASON —
@@ -225,7 +225,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 17 Record card — what keeps an 8-column table usable on a phone */
 .k-records{display:flex;flex-direction:column;gap:9px}
-.k-record{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:11px;background:var(--bg-1);border:1px solid var(--line);min-height:44px;text-align:left}
+.k-record{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:11px;background:var(--bg-1);border:1px solid var(--line);min-height:44px;text-align:start}
 .k-record.is-selected{background:var(--tint-warn);border-color:var(--amber-line)}
 .k-record-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
 .k-record-title{font-size:13.5px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
@@ -310,7 +310,12 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
   .k-sidebar{position:fixed;inset-block:0;left:0;width:min(280px,84vw);z-index:70;box-shadow:0 0 60px rgba(0,0,0,.6);animation:kslide .2s}
   .k-sidebar.is-closed{display:none}
   .k-nav-item{padding:11px 12px}
-  .k-topbar{min-height:56px;padding:8px 12px;gap:10px;flex-wrap:nowrap}
+  /* The spec says flex-wrap:nowrap here, which assumes the prototype's sparse
+     mobile topbar. Ours carries a greeting plus six range tabs, and nowrap
+     squeezed the title to min-content — it character-wrapped down the left
+     edge while the tabs ran off-screen. Wrapping is correct for our content. */
+  .k-topbar{min-height:56px;padding:8px 12px;gap:10px}
+  .k-topbar-title{min-width:0}
   .k-stats{display:flex;gap:1px;overflow-x:auto;scroll-snap-type:x mandatory}
   .k-stat{padding:10px 14px;min-width:150px;flex:0 0 auto;scroll-snap-align:start}
   .k-tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
@@ -352,16 +357,16 @@ button[disabled],button:disabled{cursor:not-allowed}
   <sc-if value="{{ navBackdrop }}" hint-placeholder-val="{{ false }}">
     <div onClick="{{ closeNav }}" style="position:fixed;inset:0;z-index:110;background:rgba(15,15,18,.42);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:fade .2s"></div>
   </sc-if>
-  <aside style="{{ asideStyle }}">
-    <div style="display:flex;align-items:center;gap:10px;padding:17px 18px 15px;border-bottom:1px solid var(--line)">
+  <aside class="k-sidebar" style="{{ asideStyle }}">
+    <div class="k-brand" style="padding:17px 18px 15px;border-bottom:1px solid var(--line)">
       <img src="/logo-mark.png" alt="KashikeyoPOS" style="width:34px;height:34px;flex:none;object-fit:contain">
-      <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;letter-spacing:-.01em">Kashikeyo<span style="color:var(--coral)">POS</span></div>
+      <div class="k-brand-name" style="font-size:16px">Kashikeyo<span style="color:var(--amber)">POS</span></div>
       <div style="flex:1"></div>
-      <div style="width:8px;height:8px;border-radius:99px;background:var(--green)" title="Cloud connected"></div>
+      <div style="width:8px;height:8px;flex:none;border-radius:99px;background:var(--green)" title="Cloud connected"></div>
     </div>
     <nav style="flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:1px">
       <sc-for list="{{ navItems }}" as="ni" hint-placeholder-count="11">
-        <button onClick="{{ ni.tap }}" style="width:100%;display:flex;align-items:center;gap:11px;border:0;border-radius:10px;padding:9px 11px;cursor:pointer;text-align:start;font-size:13px;font-weight:600;transition:background .15s,color .15s;background:{{ ni.bg }};color:{{ ni.co }}" style-hover="background:var(--bg)">
+        <button onClick="{{ ni.tap }}" class="{{ ni.cls }}">
           <span style="width:19px;height:19px;flex:none;display:grid;place-items:center" dangerouslySetInnerHTML="{{ ni.icon }}"></span>
           <span style="flex:1">{{ ni.label }}</span>
           <sc-if value="{{ ni.hasChildren }}" hint-placeholder-val="{{ false }}"><span style="transition:transform .2s;transform:{{ ni.caret }};color:var(--ink3)"><svg width="11" height="11" viewBox="0 0 11 11"><polyline points="4,3 7,5.5 4,8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></polyline></svg></span></sc-if>
@@ -423,18 +428,17 @@ button[disabled],button:disabled{cursor:not-allowed}
     </div>
   </aside>
   <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-    <header style="flex:none;display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap;padding:{{ headPad }};border-bottom:1px solid var(--line);background:transparent">
+    <header class="k-topbar" style="flex:none;align-items:flex-start;padding:{{ headPad }};background:transparent">
       <sc-if value="{{ showBurger }}" hint-placeholder-val="{{ false }}">
-        <button onClick="{{ openNav }}" style="width:38px;height:38px;flex:none;border:1px solid var(--line2);background:var(--card);border-radius:11px;cursor:pointer;display:grid;place-items:center;color:var(--ink)" style-hover="border-color:var(--coral);color:var(--coral)" style-active="transform:scale(.94)"><svg width="16" height="16" viewBox="0 0 16 16"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line><line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line></svg></button>
+        <button onClick="{{ openNav }}" title="Menu" class="k-theme-toggle" style="flex:none" style-active="transform:scale(.94)"><svg width="16" height="16" viewBox="0 0 16 16"><line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line><line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line><line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></line></svg></button>
       </sc-if>
       <div style="min-width:0">
-        <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:22px;letter-spacing:-.015em">{{ headTitle }}</div>
-        <div style="font-size:12.5px;color:var(--ink2);font-weight:600;margin-top:4px;max-width:560px;text-wrap:pretty">{{ headSub }}</div>
+        <div class="k-topbar-title" style="font-size:22px">{{ headTitle }}</div>
+        <div class="k-topbar-sub" style="font-size:12.5px;margin-top:4px;max-width:560px;text-wrap:pretty">{{ headSub }}</div>
       </div>
-      <div style="flex:1"></div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div class="k-topbar-tools">
         <sc-if value="{{ liveOn }}" hint-placeholder-val="{{ false }}">
-          <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;background:var(--greensoft);color:var(--green);border-radius:999px;padding:6px 12px" title="Live data from the register app"><span style="width:7px;height:7px;border-radius:99px;background:var(--green);animation:pulse 1.6s infinite"></span>Live · register</span>
+          <span class="k-pill is-online" title="Live data from the register app"><span class="k-pill-dot"></span>Live · register</span>
         </sc-if>
         <span style="display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;background:var(--card);border:1px solid var(--line2);border-radius:999px;padding:6px 12px">
           <svg width="12" height="12" viewBox="0 0 12 12" style="color:var(--coral)"><path d="M2 10V4l4-2.5L10 4v6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path></svg>{{ outlet }}
@@ -2765,7 +2769,7 @@ class Component extends DCLogic {
     const s=this.state,me=this,g=this.DATA[s.range],an=s.an,ic=this.IC,H=x=>({__html:x});
     const desktop=s.vw>=1024,mobile=s.vw<640;
     const closeIf=()=>{if(!desktop)me.setState({navOpen:false});};
-    const asideStyle=desktop?'width:234px;flex:none;display:flex;flex-direction:column;background:var(--card);border-inline-end:1px solid var(--line);overflow:hidden':('position:fixed;z-index:120;top:0;bottom:0;inset-inline-start:0;width:min(84vw,270px);display:flex;flex-direction:column;background:var(--card);border-inline-end:1px solid var(--line);overflow:hidden;box-shadow:var(--shadow);transition:transform .28s cubic-bezier(.2,.9,.3,1);transform:translateX('+(s.navOpen?'0':'-110%')+')');
+    const asideStyle=desktop?'width:clamp(178px,15vw,212px);flex:none':('position:fixed;z-index:120;top:0;bottom:0;inset-inline-start:0;width:min(84vw,280px);box-shadow:0 0 60px rgba(0,0,0,.6);transition:transform .28s cubic-bezier(.2,.9,.3,1);transform:translateX('+(s.navOpen?'0':'-110%')+')');
     const rangeDefs=[['today','Today'],['yest','Yesterday'],['week','This Week'],['month','This Month'],['quarter','Quarter'],['year','Year']];
     const rangeMap={today:'Today',yest:'Yesterday',week:'This Week',month:'This Month',quarter:'Quarter',year:'Year'};
     const ranges=rangeDefs.map(r=>({label:r[1],tap:()=>me.setRange(r[0]),bg:s.range===r[0]?(r[0]==='year'?'var(--red)':'var(--ink)'):'transparent',co:s.range===r[0]?'#fff':'var(--ink2)'}));
@@ -2783,7 +2787,7 @@ class Component extends DCLogic {
     ];
     const navItems=navDef.map(nd=>{const hasKids=!!nd.kids,isOpen=!!s.open[nd.id],act=s.active===nd.id;
       return {label:nd.label,icon:H(nd.icon),hasChildren:hasKids,caret:isOpen?'rotate(90deg)':'rotate(0deg)',showKids:hasKids&&isOpen,
-        bg:act?'var(--coralsoft)':'transparent',co:act?'var(--coral)':'var(--ink)',
+        cls:act?'k-nav-item is-active':'k-nav-item',
         tap:()=>{if(hasKids){me.setState({open:(isOpen?{}:{[nd.id]:true}),active:nd.id});}else{me.setState({active:nd.id,navOpen:false});}},
         kids:(nd.kids||[]).map((k,ki)=>({label:k,tap:()=>me.setState({active:nd.id,sub:Object.assign({},s.sub,{[nd.id]:ki}),navOpen:false})}))};});
     const tabDefs=[['trend','Trend'],['cat','Top items']];

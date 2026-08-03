@@ -123,7 +123,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 4 Nav item */
 .k-nav-group{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint);padding:12px 8px 5px}
-.k-nav-item{width:100%;display:flex;align-items:center;gap:9px;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:500;color:var(--text-dim);background:transparent;border:0;cursor:pointer;transition:background .12s;min-height:44px}
+.k-nav-item{width:100%;display:flex;align-items:center;gap:9px;border-radius:8px;padding:7px 9px;font-size:12px;font-weight:500;color:var(--text-dim);background:transparent;border:0;cursor:pointer;transition:background .12s;min-height:44px;text-align:start}
 .k-nav-item:hover{background:var(--bg-1)}
 .k-nav-item.is-active{font-weight:600;color:var(--on-amber);background:var(--amber)}
 .k-nav-badge{margin-left:auto;font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;font-family:'JetBrains Mono',ui-monospace,monospace;background:var(--red);color:var(--on-red)}
@@ -173,7 +173,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 12 Table tile (floor) */
 .k-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px}
-.k-tile{display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--line-3);transition:.12s;cursor:pointer;text-align:left}
+.k-tile{display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid var(--line-3);transition:.12s;cursor:pointer;text-align:start}
 .k-tile.is-occupied{border-left-color:var(--amber)}
 .k-tile.is-reserved{border-left-color:var(--blue)}
 .k-tile.is-selected{background:var(--tint-warn);border-color:var(--amber)}
@@ -184,7 +184,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 13 Menu card — photo is a background, so nothing shifts while it loads */
 .k-menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px}
-.k-mcard{display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;text-align:left;cursor:pointer;position:relative}
+.k-mcard{display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;text-align:start;cursor:pointer;position:relative}
 .k-mcard-photo{aspect-ratio:1.55;background-size:cover;background-position:center;background-color:var(--bg-2)}
 .k-mcard.is-86 .k-mcard-photo{filter:grayscale(1) brightness(.45)}
 /* The handoff dims the whole card to .62. That drags the sold-out REASON —
@@ -225,7 +225,7 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
 
 /* 17 Record card — what keeps an 8-column table usable on a phone */
 .k-records{display:flex;flex-direction:column;gap:9px}
-.k-record{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:11px;background:var(--bg-1);border:1px solid var(--line);min-height:44px;text-align:left}
+.k-record{display:flex;flex-direction:column;align-items:flex-start;width:100%;padding:13px 14px;border-radius:11px;background:var(--bg-1);border:1px solid var(--line);min-height:44px;text-align:start}
 .k-record.is-selected{background:var(--tint-warn);border-color:var(--amber-line)}
 .k-record-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%}
 .k-record-title{font-size:13.5px;font-weight:700;letter-spacing:-.01em;color:var(--text)}
@@ -310,7 +310,12 @@ html[data-white]{--bg:#ffffff;--bg-0:#f7f5f0;--bg-1:#ffffff;--bg-2:#f4f1ea;--bg-
   .k-sidebar{position:fixed;inset-block:0;left:0;width:min(280px,84vw);z-index:70;box-shadow:0 0 60px rgba(0,0,0,.6);animation:kslide .2s}
   .k-sidebar.is-closed{display:none}
   .k-nav-item{padding:11px 12px}
-  .k-topbar{min-height:56px;padding:8px 12px;gap:10px;flex-wrap:nowrap}
+  /* The spec says flex-wrap:nowrap here, which assumes the prototype's sparse
+     mobile topbar. Ours carries a greeting plus six range tabs, and nowrap
+     squeezed the title to min-content — it character-wrapped down the left
+     edge while the tabs ran off-screen. Wrapping is correct for our content. */
+  .k-topbar{min-height:56px;padding:8px 12px;gap:10px}
+  .k-topbar-title{min-width:0}
   .k-stats{display:flex;gap:1px;overflow-x:auto;scroll-snap-type:x mandatory}
   .k-stat{padding:10px 14px;min-width:150px;flex:0 0 auto;scroll-snap-align:start}
   .k-tiles{grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
