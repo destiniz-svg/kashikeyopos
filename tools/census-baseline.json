@@ -33,6 +33,8 @@
       "5000 · Cost of sales",
       "6.5 kg/day",
       "7.4 kg/day",
+      "86 list",
+      "86 ލިސްޓް",
       "AI އިން މެނޫ އިމްޕޯޓް",
       "ALL-TIME FAVORITES",
       "Acting as",
@@ -123,6 +125,7 @@
       "Delivery order",
       "Dhonkeyo Kajuru",
       "Discount recorded on the sale",
+      "Dismiss hint",
       "Drawer float ·",
       "Drawer variance",
       "Duplicate order",
@@ -147,6 +150,7 @@
       "First live sale in under 5 minutes",
       "Fish, Gluten",
       "Flatbread filled with spiced smoked tuna.",
+      "Floor plan",
       "Foni Boakibaa",
       "Foni Folhi",
       "Food cost",
@@ -814,6 +818,7 @@
       "ފޯޓޯ ކިޔަނީ…",
       "ފްރައިޑް ރައިސް",
       "ފްލޯރް",
+      "ފްލޯރް ޕްލޭން",
       "ދަރަނި",
       "ދަރަނި · ކަސްޓަމަރު ޓެބް",
       "ދަރަނި ބަލާ",
@@ -992,16 +997,16 @@
       "★ Bestseller"
     ],
     "dhivehi": {
-      "thaana": 8341,
+      "thaana": 8359,
       "keys": 260
     },
     "handlers": {
-      "onClick": 173,
+      "onClick": 175,
       "onChangeInput": 14,
       "onSubmit": 0,
       "fetch": 19,
-      "scIf": 184,
-      "scFor": 64
+      "scIf": 188,
+      "scFor": 65
     },
     "literals": 215,
     "problems": []

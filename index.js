@@ -2689,7 +2689,11 @@ if (fs.existsSync(protoFile)) {
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p) }));
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p),
+      // Why it is off, when the availability engine knows ("Out of Tuna").
+      // Null for a manual off-switch or a plain stock-out; the register's 86
+      // list falls back to the item name alone in that case.
+      soldOutReason: p.soldOutReason || "" }));
   // Sold-out is real when the owner flagged it, an ingredient-driven recipe has
   // no servings left (recipeAvail<=0), or a stock-tracked item hit zero — the
   // same rule the guest boot mapper uses, so the register tile + admin menu

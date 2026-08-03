@@ -212,6 +212,67 @@ One real finding came out of it: the cockpit's "Open register app" link was
 - Parts of the till's account sheet are still English under Dhivehi.
   Pre-existing; the census proves no dv key was lost.
 
+## POS Floor features (after the re-skin, one commit each)
+
+The re-skin left the Floor screen *looking* like the prototype without its new
+behaviour. Three pieces, in ascending risk.
+
+### 1 — 86 list, hint banner, floor header + legend — shipped
+
+Presentation over data we already hold; no behaviour changed.
+
+- **86 list strip** on the register: a micro-label plus one err-tone chip per
+  unsellable dish, above the category row, only when something is off. Driven
+  by the same two sources the tiles read — the availability engine's
+  `recipeAvail`/`soldOutReason` riding sync, and the owner's manual off switch
+  — so it cannot disagree with the grid. `liveMenu` now carries
+  `soldOutReason`, so the chip reads *"Bajiya · Out of Tuna"* when the engine
+  knows why, and the name alone when it does not (manual off, plain stock-out).
+- **Hint banner**: the floor's seat hint becomes a dismissible amber wash. The
+  gradient direction mirrors with `dir`; the dismissal persists in
+  `kashikeyo_floorhint`.
+- **Floor header**: "Floor plan" at 15px/700, a sub-line of occupied / free /
+  open items, a **Open Bills · n** pill that jumps to the register rail, and the
+  open-value pill.
+
+**Two things the prototype's floor header asks for and we did not fake.**
+*Covers* (guests per table) is not a number we record anywhere, so the sub-line
+counts tables and items instead. *Reserved* is not a state we can be in — there
+is no reservations entity (screen 6 is a Hold) — so the legend has the three
+states the tiles actually paint: Free, Occupied, Editing.
+
+### The QA harness had never measured the light theme
+
+Phase 8 reported "0 problems across 7 configurations". It drove the theme by
+clicking a control matching *"switch to light theme"* — but the till's control
+is a **cycle** whose label names the *next* theme, so from dark it reads
+"Switch to white theme" and the match failed. `viaSheet` returned null and the
+row was dropped from the table rather than failing it. **Every light-theme row
+in Phase 8 was silently skipped, not passed.** The cockpit was worse: its theme
+switch is not in the account sheet at all, it is in Hardware & Offline → Theme.
+
+Fixed by driving the app's own toggle in a loop until `document` reports the
+theme that was asked for, and by driving the cockpit's real control. Light then
+found two real contrast failures on first measurement:
+
+| where | was | fix |
+|---|---|---|
+| "86 list" label | `--red` on `--sur2`, **4.27** | `--red-bright` (5.74) — the token that is brighter in dark and darker in light |
+| "Close shift" | `--coral` on `--sur2`, **4.30** | neutral `--ink`; it is the secondary of the pair, the accented primary is "Open shift" |
+
+Now 0 problems across **16** configurations (till / floor / cockpit / portal ×
+dark + light × phone / tablet / desktop, plus two RTL passes). The portal still
+has no theme control, so it is measured in its component default only.
+
+### 2 — per-line fire state — next
+
+`FIRED · 24m` / `NOT SENT` per line, replacing the single `kotSent` boolean.
+
+### 3 — per-guest tickets — after that
+
+Guest array per table, line → guest index, settle one guest while the table
+keeps trading. Replaces `splitWays`, which only divides a total for display.
+
 ## Sequencing rule
 
 Never restyle a screen and change its behaviour in the same commit. The
