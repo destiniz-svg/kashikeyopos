@@ -96,9 +96,14 @@ reimaged terminal should pull its config back, and we already sync settings.
   `style-src 'self' 'unsafe-inline'`. Do not reintroduce `fonts.googleapis.com`;
   self-host as the handoff itself recommends.
 - **Dhivehi and RTL are ours, not the prototype's.** The prototype is
-  English-only across 2,692 lines. We carry two full dictionaries and `dir`
-  switching. **Every re-skinned screen must keep them.** This is the single
-  easiest regression to introduce.
+  English-only across 2,692 lines. **Every re-skinned screen must keep them.**
+  This is the single easiest regression to introduce.
+  Corrected count (measured, not assumed): the dictionary is **register-only** —
+  `index.html` carries a 260-key `dv` map and 8,341 Thaana characters;
+  `admin.html` has **66** Thaana characters and no dictionary at all. So the
+  translation-regression risk is concentrated entirely in `index.html`, and the
+  cockpit has no Dhivehi to lose. (An earlier draft of this file said "two full
+  dictionaries"; that was wrong.)
 - **Money is integer laari, GST-inclusive.** The prototype's ticket shows
   GST *added on top* (515.00 + 51.50 + 45.32 = 611.82). Our menu prices include
   GST and we extract it as the tax fraction. The panel *layout* transfers; the
