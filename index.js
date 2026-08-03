@@ -3049,11 +3049,28 @@ if (fs.existsSync(protoFile)) {
          matched, and each one returned ~460 KB of register HTML AND re-ran the
          whole data collection — two sequential scans of the sales table apiece.
          3.0 MB transferred for a 0.6 MB page and six times the database work
-         per boot. A sub-resource request gets a 404, which is what it is. */
+         per boot. A sub-resource request gets a 404, which is what it is.
+
+         This tests for what a sub-resource POSITIVELY IS, not for what a
+         document positively is. The first version demanded a Sec-Fetch-Dest of
+         "", "document" or "iframe" — but the register's own offline shell
+         (web2/proto/sw.js) re-issues every navigation through fetch(), and a
+         service-worker-issued navigation arrives as Sec-Fetch-Dest: empty in
+         WebKit. So on any iOS till that had installed the shell, /app answered
+         "not found" as text/plain, which Safari rendered bare and offered to
+         save as app.txt. The offline shell and this guard were each correct
+         alone and took the till down together; an allow-list of document
+         destinations cannot be kept in step with what engines actually send,
+         so only a known sub-resource destination is rejected here. The five
+         unresolved "{{ d.src }}" bindings are still caught — they arrive as
+         dest "image" and their paths still carry the braces. */
       const dest = String(req.get("Sec-Fetch-Dest") || "");
-      const accept = String(req.get("Accept") || "");
-      const wantsPage = req.method === "GET" && (dest === "" || dest === "document" || dest === "iframe") &&
-        (accept === "" || accept.includes("text/html") || accept.includes("*/*"));
+      const SUB_RESOURCE = new Set([
+        "image", "style", "script", "font", "audio", "video", "track",
+        "object", "embed", "manifest", "worker", "serviceworker",
+        "sharedworker", "paintworklet", "audioworklet", "xslt", "report",
+      ]);
+      const wantsPage = req.method === "GET" && !SUB_RESOURCE.has(dest);
       if (!wantsPage || /\.[a-z0-9]{2,5}$/i.test(req.path) || /[{}]/.test(decodeURIComponent(req.path))) {
         return res.status(404).type("text/plain").send("not found");
       }
