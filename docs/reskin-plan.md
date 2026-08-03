@@ -88,8 +88,31 @@ and fails loudly.
 | 5 | **Money invariant** — `subtotal − discount + service + GST = total`, guest quote == till charge | B's red line | Test, every phase |
 | 6 | **Literal count** — hardcoded hex per file | Progress toward the design's own "zero literals" rule | 394 / 123 → 0, monotonically down |
 
-Guards 1–3 do not exist yet. **They are step one** and they are what makes
-"don't degrade" enforceable rather than aspirational.
+### Built — `npm run guards`
+
+`tools/census.js` (guards 1–4, 6) + `test/money.test.js` (guard 5).
+`--check` gates; `--update` re-baselines; `ALLOW_REMOVED` in the script is the
+audit trail for every deliberate wording change. Baseline committed at
+`tools/census-baseline.json`.
+
+Every guard was **verified by deliberately breaking what it claims to catch** —
+a guard that cannot fail is theatre. Two of them couldn't, and were fixed:
+
+- **The handler count never fired.** `onClick` → `onClickX` still matched the
+  substring, so a detached handler read green. Word-bounded now.
+- **The string census was unstable** — one dropped Dhivehi string reported 37
+  removals. The literal regex capped the body at 90 characters, so any longer
+  string failed to match, the scanner resumed *inside* it, and every quote after
+  that point paired up wrongly; editing one string re-shuffled the mis-pairing.
+  Matching a complete JS string literal with no length bound fixed it (and
+  recovered 303 strings that were being lost).
+- **The money invariant alone could not catch a bad line calculation.** Every
+  figure derives from `lineIncl`, so a wrong `lineIncl` still balances against
+  itself — the same tautology the day-end journal had. Independent hand-computed
+  oracles were added; they catch it, the invariant does not.
+
+Baseline: **987 + 718 strings, 260 dv keys / 8,341 Thaana, 389 onClick,
+399 + 123 literals.**
 
 ---
 
