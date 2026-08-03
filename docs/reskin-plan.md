@@ -129,7 +129,7 @@ Sized in work sessions, not days. Each ends green on all six guards, commits to
 | **5** | **Register + floor** | The money screens: register, floor, ticket panel, payment drawer, KDS. Highest risk — guard 5 gates it | 2 |
 | **6** | **Back office** | 16 cockpit sections, batched 4 per session, in ascending risk: config/staff → inventory/procurement → sales/customers → reports/receivables | 4 |
 | **7** | **Guest portal** | ~~Mostly inherited from 5~~ — **wrong, see below**. Parity guard done; the re-skin itself is not | 1 → **2 more** |
-| **8** | **QA + promote** | Full six guards, both themes, Dhivehi pass, 44px audit, real-device check, then `main` | 1 |
+| **8** | **QA** | Done — see below. Promote to `main` awaits sign-off | 1 |
 
 **~11 sessions.** The handoff estimated 15–24 days for the equivalent; most of
 the saving is Phase 3 (classes, not a component library) and the fact that 21 of
@@ -167,6 +167,50 @@ text without the surfaces left 28 light-on-white nodes; tokenising the white
 grounds left 5; the last was a chip avatar on a stray `#F4EEE3`. Final audit
 at 390px and 1200px: **0 low-contrast text, 0 sub-44px targets, no overflow,
 no page errors.**
+
+## Phase 8 — QA result
+
+`npm run guards` clean. **58/58** money + guest-parity assertions. Census: 987
++ 720 strings, 260 dv keys / 8,341 Thaana, no handler lost.
+
+Browser sweep — **0 problems across 7 configurations** (three surfaces × phone
+/ tablet / desktop, plus RTL): no sub-44px targets, no low-contrast text, no
+horizontal overflow, no page errors. All 18 cockpit sections still 0/18. Till
+still sells: 87.96 + 7.04 = 95.00.
+
+**Dhivehi/RTL verified by looking, not counting.** Switched through the app's
+own control: `dir=rtl`, `lang=dv`, **979 Thaana characters** rendered, layout
+fully mirrored, amber accents intact.
+
+### The QA harness lied twice before it told the truth
+
+Worth recording, because both failures are the kind that produce confident
+wrong answers:
+
+- **Flipping `data-dark` on `<html>` reported 45 contrast failures on the till
+  that do not exist.** The theme lives in component state, and `accentVars()`
+  injects `--coral` inline from that state. Removing the attribute left the
+  DARK accent on a LIGHT token set. Driven through the app's own toggle,
+  token and inline agree in all three themes — dark `#f2a43a`/`#f2a43a`,
+  light and white `#9b6215`/`#9b6215`. **Never set the theme attribute
+  directly to test theming.**
+- **Gradient backdrops read as contrast failures.** `getComputedStyle` gives
+  no sampleable colour for a gradient, so the walk-up found some distant
+  ancestor and scored "Charge" at 1.05. Gradients are now an unmeasurable
+  stop, not a failure.
+
+One real finding came out of it: the cockpit's "Open register app" link was
+187×35. Now 44px.
+
+### Known and unchanged
+
+- The customer portal has **no user-facing theme switch** — it renders in the
+  component default (dark). A guest cannot choose light.
+- Neither side can express a **GST-exempt store**: `gstBp: 0` falls through to
+  the 8% sector default on the till and to `|| 800` on the server. They agree,
+  so it is not drift, but a zero-rated store cannot be configured.
+- Parts of the till's account sheet are still English under Dhivehi.
+  Pre-existing; the census proves no dv key was lost.
 
 ## Sequencing rule
 
