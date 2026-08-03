@@ -2554,14 +2554,14 @@ const _hc=this.hotCats();let station='drinks';for(const l of s.cart){const m=thi
   qrVals(){const s=this.state,me=this,INFO=this.QRINFO;
     const ALLERG={mashuni:'Fish',garudhiya:'Fish',riha:'Dairy',friedrice:'Egg, Soy',kirusai:'Dairy',coffee:'Dairy',kboakibaa:'Gluten, Egg',masroshi:'Fish, Gluten',cutlets:'Fish, Gluten',bajiya:'Gluten',kavaabu:'Fish, Gluten',gulha:'Fish, Gluten',bondibai:'Dairy, Nuts',fonibkb:'Gluten, Egg',saagu:'Dairy'};
     const _seen={};const cats=(me.MENU||[]).reduce(function(a,m){var k=m.cat||'';var lbl=(m.sub||k||'').trim();if(!k||!lbl||_seen[k])return a;_seen[k]=1;a.push([k,lbl,'']);return a;},[]);
-    const legacyCatChips=cats.map(c=>({label:c[1],emoji:c[2],hasEmoji:!!c[2],iconBg:s.qrCat===c[0]?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrCat:c[0]}),bg:s.qrCat===c[0]?'var(--coral)':'#FFFFFF',co:s.qrCat===c[0]?'#FFF':'#8A7B65',bc:s.qrCat===c[0]?'var(--coral)':'#ECE2D2'}));
+    const legacyCatChips=cats.map(c=>({label:c[1],emoji:c[2],hasEmoji:!!c[2],iconBg:s.qrCat===c[0]?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrCat:c[0]}),bg:s.qrCat===c[0]?'var(--coral)':'var(--on-amber)',co:s.qrCat===c[0]?'var(--on-amber)':'#8A7B65',bc:s.qrCat===c[0]?'var(--coral)':'#ECE2D2'}));
     const QCG=me._catGroups();const qUseGroups=QCG.length>0;
     const qgrp=qUseGroups?((s.qrGrp&&QCG.some(function(g){return g.name===s.qrGrp;}))?s.qrGrp:QCG[0].name):null;
     const qsub=s.qrSub||'all';
     const qcurSubs=qUseGroups?((((QCG.find(function(g){return g.name===qgrp;}))||{}).subs)||[]):[];
-    const qrGrpChips=qUseGroups?QCG.map(function(g){var on=qgrp===g.name;return {label:g.name,emoji:(g.name||'?').trim().charAt(0),iconBg:on?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrGrp:g.name,qrSub:'all'}),bg:on?'var(--coral)':'#FFFFFF',co:on?'#FFF':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
+    const qrGrpChips=qUseGroups?QCG.map(function(g){var on=qgrp===g.name;return {label:g.name,emoji:(g.name||'?').trim().charAt(0),iconBg:on?'rgba(255,255,255,.22)':'#F4EEE3',tap:()=>me.setState({qrGrp:g.name,qrSub:'all'}),bg:on?'var(--coral)':'var(--on-amber)',co:on?'var(--on-amber)':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
     const qrShowSub=qUseGroups&&qcurSubs.length>0;
-    const qrSubChips=qrShowSub?[{name:'all',label:me.t('cats_all')}].concat(qcurSubs.map(function(su){return {name:su,label:su};})).map(function(su){var on=qsub===su.name;return {label:su.label,tap:()=>me.setState({qrSub:su.name}),bg:on?'var(--coral)':'#FFFFFF',co:on?'#FFF':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
+    const qrSubChips=qrShowSub?[{name:'all',label:me.t('cats_all')}].concat(qcurSubs.map(function(su){return {name:su,label:su};})).map(function(su){var on=qsub===su.name;return {label:su.label,tap:()=>me.setState({qrSub:su.name}),bg:on?'var(--coral)':'var(--on-amber)',co:on?'var(--on-amber)':'#8A7B65',bc:on?'var(--coral)':'#ECE2D2'};}):[];
     const catChips=qUseGroups?qrGrpChips:legacyCatChips;
     const qMatch=function(m){if(!qUseGroups)return m.cat===s.qrCat;if(qsub==='all')return qcurSubs.indexOf(m.sub)>=0;return m.sub===qsub;};
     const qov=s.menuOv||{off:{},hidden:{},price:{}};const qOff=qov.off||{},qHid=qov.hidden||{},qPr=qov.price||{};
