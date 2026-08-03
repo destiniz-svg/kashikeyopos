@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node favicon-patch.js && node guest-sync-patch.js",
     "test": "node --test test/*.test.js",
-    "guards": "node tools/census.js --check && node --test test/money.test.js",
+    "guards": "node tools/census.js --check && node --test test/money.test.js test/guest-quote.test.js",
     "census": "node tools/census.js --report"
   },
   "dependencies": {

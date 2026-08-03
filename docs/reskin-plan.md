@@ -128,12 +128,40 @@ Sized in work sessions, not days. Each ends green on all six guards, commits to
 | **4** | **Shell** | Sidebar + topbar to spec on both surfaces. Admin is already close; the register moves from top-nav to the sidebar shell. Mobile drawer, tablet icon rail | 1 |
 | **5** | **Register + floor** | The money screens: register, floor, ticket panel, payment drawer, KDS. Highest risk — guard 5 gates it | 2 |
 | **6** | **Back office** | 16 cockpit sections, batched 4 per session, in ascending risk: config/staff → inventory/procurement → sales/customers → reports/receivables | 4 |
-| **7** | **Guest portal** | Shares `index.html`; mostly inherited from 5. Verify guest quote == till charge | 1 |
+| **7** | **Guest portal** | ~~Mostly inherited from 5~~ — **wrong, see below**. Parity guard done; the re-skin itself is not | 1 → **2 more** |
 | **8** | **QA + promote** | Full six guards, both themes, Dhivehi pass, 44px audit, real-device check, then `main` | 1 |
 
 **~11 sessions.** The handoff estimated 15–24 days for the equivalent; most of
 the saving is Phase 3 (classes, not a component library) and the fact that 21 of
 27 screens already have working data behind them.
+
+## Phase 7 correction — the guest portal is a second palette
+
+The plan assumed the portal was "mostly inherited" because it runs the same
+`index.html`. That is true of the *file* and false of the *styling*. The
+guest-mode markup carries **171 hardcoded colour literals** forming a complete
+warm-café skin of its own:
+
+| | | | |
+|---|---|---|---|
+| `#8A7B65` ×50 | `#2E2418` ×35 | `#C1492A` ×26 | `#ECE2D2` ×17 |
+| `#241D11` ×11 | `#C9BFA6` ×9 | `#B7A892` ×6 | `#B4471F` ×4 |
+
+It renders **light with terracotta accents** whatever the theme, and it never
+picked up the adopted palette. Phase 1 made the mix visible rather than
+causing it: the handful of places that *did* use `var(--coral)` flipped to
+amber, so an amber tab now sits among terracotta buttons.
+
+**Not swept blind.** Half those literals are backgrounds and half are text,
+and which is which cannot be read off the value. A global replace on the
+customer-facing surface is precisely how a screen breaks silently. It needs a
+pass that classifies each site, which is its own phase.
+
+**Open decision:** should the customer portal follow the dark/amber design at
+all, or stay a deliberately light café skin? A menu a guest opens on their own
+phone in daylight is a different context from a counter tablet. Answer that
+before the sweep, because it decides whether the target is the token set or a
+tokenised light variant.
 
 ## Sequencing rule
 
