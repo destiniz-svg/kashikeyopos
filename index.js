@@ -3627,6 +3627,60 @@ if (fs.existsSync(protoFile)) {
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
 
+    /* Guest / QR portal (reference KashikeyoGuest.dc.html), served under the same
+       vendored /v2 asset mount (base href="/v2/"). It is customer-facing: the
+       store is identified by its public slug (?s=<slug>), and only PUBLIC data is
+       injected — the menu, categories and outlet tax. No ops token, staff,
+       customers or sales ever reach a guest. Orders are placed through the
+       existing /p/:slug guest order API. */
+    const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
+      const prodRows = (await c.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+      const items = liveMenu(prodRows);
+      const photo = {};
+      for (const r of prodRows) {
+        const im = r.data && r.data.img; if (!im) continue;
+        photo[r.id] = /^https?:\/\//i.test(String(im)) ? String(im)
+          : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+      }
+      const catName = {};
+      items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
+      const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
+      const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
+        price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, veg: false, recipe: [] }));
+      const st = ((await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
+      const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
+      const storeRows = (await c.query(
+        "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
+      const outlets = storeRows.map((sr, i) => ({ id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
+        name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0, region: "",
+        tax: tax, rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), addr: sr.address || "", mgr: "", pos: true, seats: 48, tables: 12 }));
+      return {
+        guest: true, outlet: { name: st.storeName || "Store", tax: tax, rate: Math.round(gstBp / 100),
+          sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
+        outlets: outlets.length ? outlets : null, categories, menu,
+      };
+    });
+    app.get(/^\/vg(\/.*)?$/, async (req, res) => {
+      res.set("Content-Security-Policy", V2_CSP);
+      res.set("Cache-Control", "no-cache");
+      let inject = "";
+      try {
+        const slug = String(req.query.s || (req.path.split("/")[2] || "")).trim().toLowerCase();
+        if (slug) {
+          const org = await orgBySlug(slug);
+          if (org) {
+            const real = await buildGuestReal(org.id);
+            if (real) inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
+          }
+        }
+      } catch (e) { recordError("vg hydrate", e); }
+      let html = fs.readFileSync(path.join(proto3Dir, "guest.html"), "utf8");
+      if (inject) html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject);
+      res.set("Content-Type", "text/html; charset=utf-8").send(html);
+    });
+
     /* V2_SELFTEST=1 — a boot-time verification that the /v2 real-data injection
        works against the deployment's OWN Postgres, logged to the deploy log
        (the environment can't be reached over HTTP from every network). Builds

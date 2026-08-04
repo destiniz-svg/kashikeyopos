@@ -1,0 +1,1860 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base href="/v2/">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="fonts.css">
+<script src="./kashikeyo-raw.js"></script>
+<script src="./kashikeyo-data.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{background:#191614;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;transition:transform .09s cubic-bezier(.2,.8,.3,1)}
+button:active:not(:disabled){transform:scale(.975)}
+input,textarea{font:inherit;color:inherit;background:none;border:none;outline:none;width:100%}
+a{color:#982030;text-decoration:none}
+a:hover{color:#7d1826}
+::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none}
+@keyframes gpulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes gspin{to{transform:rotate(360deg)}}
+@keyframes gpop{from{transform:scale(.5);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes gup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes gin{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+@keyframes gtoast{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes gshake{10%,90%{transform:translate(-50%,0) translateX(-2px)}20%,80%{transform:translate(-50%,0) translateX(3px)}30%,50%,70%{transform:translate(-50%,0) translateX(-5px)}40%,60%{transform:translate(-50%,0) translateX(5px)}}
+@keyframes gbumpA{0%{transform:none}35%{transform:scale(1.045)}100%{transform:none}}
+@keyframes gbumpB{0%{transform:none}35%{transform:scale(1.045)}100%{transform:none}}
+@keyframes gsheet{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+</style>
+</helmet>
+
+<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:22px 20px 40px">
+
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;justify-content:center">
+    <button onClick="{{ goQr }}" style="{{ tabQrStyle }}">QR&nbsp;portal</button>
+    <button onClick="{{ goAccount }}" style="{{ tabAccStyle }}">Customer&nbsp;account</button>
+    <span style="width:1px;height:20px;background:#332c27;display:block"></span>
+    <span style="font-size:11px;color:#7d766e;font-family:'JetBrains Mono',monospace">{{ crumb }}</span>
+    <button onClick="{{ reset }}" style="font-size:11px;color:#78716c;padding:6px 11px;border:1px solid #332c27;border-radius:20px;white-space:nowrap">Reset&nbsp;demo</button>
+  </div>
+
+  <div style="width:390px;height:844px;background:#fafaf9;border-radius:30px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.55);display:flex;flex-direction:column;position:relative;flex-shrink:0">
+
+    <sc-if value="{{ sLanding }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;flex-direction:column;height:100%;animation:gup .22s">
+        <div style="height:318px;flex-shrink:0;position:relative;background:#2a2320;overflow:hidden">
+          <span style="{{ heroImgStyle }}"></span>
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(25,20,18,.5) 0%,rgba(25,20,18,0) 38%,rgba(25,20,18,.85) 100%)"></div>
+          <div style="position:absolute;top:15px;left:24px;right:24px;display:flex;justify-content:space-between;color:#fff;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">
+            <span>{{ clock }}</span>
+            <span style="display:flex;gap:5px;align-items:center"><span style="width:15px;height:9px;border:1.4px solid #fff;border-radius:2px;display:block;opacity:.85"></span><span style="width:3px;height:9px;background:#fff;border-radius:1px;display:block;opacity:.85"></span></span>
+          </div>
+          <div style="position:absolute;left:24px;right:24px;bottom:22px;display:flex;flex-direction:column;align-items:center;gap:10px">
+            <span style="width:60px;height:60px;border-radius:17px;background:#fff;display:grid;place-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)"><img src="brand/kashikeyo-mark.png" alt="Kashikeyo" style="width:48px;height:48px;object-fit:contain;display:block;mix-blend-mode:multiply"/></span>
+            <span style="font-size:21px;font-weight:800;letter-spacing:.16em;color:#fff;line-height:1">{{ brandName }}</span>
+            <span style="font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.04em">{{ tagline }}</span>
+          </div>
+        </div>
+        <div style="flex:1;padding:22px 24px 0;display:flex;flex-direction:column;gap:15px;overflow-y:auto;overflow-x:hidden;min-height:0">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:19px;font-weight:800;color:#1c1917;letter-spacing:-0.02em">{{ tableLabel }}</div>
+              <div style="font-size:12.5px;color:#78716c;margin-top:3px">{{ outletLine }}</div>
+            </div>
+            <span style="display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;color:#17603f;background:rgba(31,111,74,.1);padding:6px 11px;border-radius:20px;flex-shrink:0"><span style="width:6px;height:6px;border-radius:50%;background:#1f6f4a;display:block;animation:gpulse 2s ease-in-out infinite"></span>{{ modeChip }}</span>
+          </div>
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:15px 16px;display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">Before you order</div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#44403c"><span>Service charge</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ scLabel }}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#44403c"><span>{{ taxName }}</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ taxLabel }}</span></div>
+            <div style="font-size:11px;color:#78716c;line-height:1.55;border-top:1px solid #eceae7;padding-top:10px;text-wrap:pretty">Both are added at the end, and menu prices exclude them. The service charge is distributed to the team — tipping on top is not expected.</div>
+          </div>
+          <div style="{{ alcoholStyle }}">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#982030" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><path d="M12 9v4M12 17h.01M10.3 3.9 2.4 17.6A1.9 1.9 0 0 0 4 20.5h16a1.9 1.9 0 0 0 1.6-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"></path></svg>
+            <span style="font-size:11.5px;color:#8f1d2d;line-height:1.5;text-wrap:pretty">{{ alcoholNote }}</span>
+          </div>
+        </div>
+        <div style="padding:16px 24px 26px;display:flex;flex-direction:column;gap:9px;border-top:1px solid #eceae7;flex-shrink:0">
+          <button onClick="{{ toMenu }}" style="width:100%;padding:16px;border-radius:14px;background:#982030;color:#fff;font-size:14.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:9px">
+            {{ landingCta }}
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          </button>
+          <div style="display:flex;gap:9px">
+            <button onClick="{{ callServer }}" style="flex:1;padding:13px;border-radius:12px;background:#fff;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:600">Call a server</button>
+            <button onClick="{{ toggleLang }}" style="flex:1;padding:13px;border-radius:12px;background:#fff;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:600">{{ langLabel }}</button>
+          </div>
+          <div style="text-align:center;font-size:9.5px;letter-spacing:.07em;color:#b8b3ae;margin-top:3px;{{ poweredVis }}">Powered by KashikeyoPOS™</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sMenu }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%;animation:gup .2s cubic-bezier(.2,.8,.3,1)">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 0">
+          <div style="display:flex;align-items:center;gap:11px;padding-bottom:12px">
+            <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" style="width:30px;height:30px;object-fit:contain;display:block;mix-blend-mode:multiply;flex-shrink:0"/>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:800;letter-spacing:.11em;color:#1c1917">{{ brandName }}</div>
+              <div style="font-size:10.5px;color:#78716c;margin-top:1px">{{ menuSub }}</div>
+            </div>
+            <button onClick="{{ toBasket }}" style="width:38px;height:38px;border-radius:12px;background:#982030;display:grid;place-items:center;position:relative;flex-shrink:0">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"></path></svg>
+              <span style="{{ badgeStyle }}">{{ basketCount }}</span>
+            </button>
+          </div>
+          <div style="display:flex;align-items:center;gap:9px;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:11px;padding:10px 13px;margin-bottom:11px">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#a8a29e" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4.3-4.3"></path></svg>
+            <input value="{{ q }}" onInput="{{ onSearch }}" placeholder="Search the menu" style="font-size:12.5px;color:#1c1917"/>
+          </div>
+          <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:12px">
+            <button onClick="{{ togglePop }}" style="{{ popStyle }}">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 3c3 2.6 4.5 5 4.5 7.5a4.5 4.5 0 0 1-9 0C7.5 9 8.6 7.9 10 7c0 1.8.9 2.7 1.6 2.7.8 0 1.1-1.4 1-2.5-.1-1.6-.6-3-.6-4.2z"></path></svg>
+              Most popular
+            </button>
+            <button onClick="{{ toggleNew }}" style="{{ newStyle }}">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 3v3M12 18v3M4.2 7.2l2.1 2.1M17.7 14.7l2.1 2.1M3 12h3M18 12h3M4.2 16.8l2.1-2.1M17.7 9.3l2.1-2.1"></path></svg>
+              New
+            </button>
+            <button onClick="{{ toggleVeg }}" style="{{ vegStyle }}">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M11 20A7 7 0 0 1 4 13V8a9 9 0 0 1 9 9zM11 20c0-6 3-11 9-13"></path></svg>
+              {{ vegLabel }}
+            </button>
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="5">
+              <button onClick="{{ c.go }}" style="{{ c.style }}">
+                <span style="{{ c.thumbStyle }}"></span>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="{{ c.iconStyle }}"><path d="{{ c.icon }}"></path></svg>
+                {{ c.name }}
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 16px 14px;min-height:0">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;align-items:start">
+            <sc-for list="{{ dishes }}" as="d" hint-placeholder-count="4">
+              <div style="{{ d.cardStyle }}">
+                <span style="{{ d.imgStyle }}"></span>
+                <button onClick="{{ d.open }}" style="display:flex;flex-direction:column;gap:3px;text-align:left;align-items:flex-start;padding:10px 11px 38px">
+                  <span style="font-size:12.5px;font-weight:700;color:#1c1917;line-height:1.3;letter-spacing:-0.01em">{{ d.name }}</span>
+                  <span style="font-size:10.5px;color:#8c8580;line-height:1.4;text-wrap:pretty">{{ d.desc }}</span>
+                  <span style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">
+                    <span style="{{ d.promoTagStyle }}">{{ d.promoTag }}</span>
+                    <span style="{{ d.badgeStyle }}">{{ d.badge }}</span>
+                  </span>
+                  <span style="display:flex;align-items:center;gap:7px;margin-top:5px;flex-wrap:wrap">
+                    <span style="{{ d.priceStyle }}">{{ d.price }}</span>
+                    <span style="display:flex;align-items:center;gap:3px;font-size:9.5px;font-weight:600;color:#b8b3ae;white-space:nowrap">
+                      <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                      {{ d.mins }}
+                    </span>
+                  </span>
+                </button>
+                <span style="{{ d.stepWrapStyle }}">
+                  <button onClick="{{ d.dec }}" style="width:24px;height:24px;border-radius:50%;background:#f5f5f4;color:#57534e;font-size:14px;font-weight:700;line-height:1;display:grid;place-items:center">−</button>
+                  <span style="font-size:12.5px;font-weight:800;color:#1c1917;font-family:'JetBrains Mono',monospace;min-width:10px;text-align:center">{{ d.qty }}</span>
+                  <button onClick="{{ d.inc }}" style="width:24px;height:24px;border-radius:50%;background:#982030;color:#fff;font-size:14px;font-weight:700;line-height:1;display:grid;place-items:center">+</button>
+                </span>
+                <button onClick="{{ d.inc }}" style="{{ d.addStyle }}">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                </button>
+              </div>
+            </sc-for>
+          </div>
+          <div style="{{ noDishStyle }}">
+            <span style="font-size:12.5px;color:#78716c;line-height:1.55;text-wrap:pretty">{{ noDishMsg }}</span>
+            <button onClick="{{ clearAll }}" style="padding:10px 16px;border-radius:20px;background:#982030;color:#fff;font-size:11.5px;font-weight:700">Show all dishes</button>
+          </div>
+        </div>
+        <div style="{{ menuBarStyle }}">
+          <button onClick="{{ toBasket }}" style="width:100%;padding:15px 18px;border-radius:14px;background:#982030;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <span style="display:flex;align-items:center;gap:9px">
+              <span style="min-width:22px;height:22px;border-radius:7px;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:11px;font-weight:800;font-family:'JetBrains Mono',monospace">{{ basketCount }}</span>
+              <span style="font-size:14px;font-weight:700">Review order</span>
+            </span>
+            <span style="font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ subLabel }}</span>
+          </button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sDish }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%;animation:gsheet .24s cubic-bezier(.2,.8,.3,1)">
+        <div style="height:260px;flex-shrink:0;position:relative;background:#2a2320;overflow:hidden">
+          <span style="{{ dImgStyle }}"></span>
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(25,20,18,.4) 0%,rgba(25,20,18,0) 45%)"></div>
+          <button onClick="{{ toMenu }}" style="position:absolute;top:34px;left:18px;width:36px;height:36px;border-radius:12px;background:rgba(25,20,18,.55);display:grid;place-items:center;color:#fff">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+        </div>
+        <div style="flex:1;padding:20px 24px 0;display:flex;flex-direction:column;gap:16px;overflow-y:auto;overflow-x:hidden;min-height:0">
+          <div>
+            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+              <h3 style="font-size:20px;font-weight:800;color:#1c1917;letter-spacing:-0.025em;line-height:1.2">{{ dName }}</h3>
+              <span style="font-size:19px;font-weight:800;color:#1c1917;font-family:'JetBrains Mono',monospace;flex-shrink:0">{{ dPrice }}</span>
+            </div>
+            <p style="font-size:13px;color:#57534e;line-height:1.6;margin-top:8px;text-wrap:pretty">{{ dDesc }}</p>
+          </div>
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <sc-for list="{{ dTags }}" as="t" hint-placeholder-count="3">
+              <span style="{{ t.style }}">{{ t.label }}</span>
+            </sc-for>
+          </div>
+          <sc-if value="{{ hasAddons }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">Add ons</div>
+              <div style="background:#fff;border:1px solid #e7e5e4;border-radius:13px;overflow:hidden">
+                <sc-for list="{{ dAddons }}" as="a" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:10px;padding:12px 13px;border-top:1px solid #f5f5f4">
+                    <span style="flex:1;min-width:0;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+                      <span style="font-size:12.5px;font-weight:600;color:#1c1917">{{ a.label }}</span>
+                      <span style="font-size:10.5px;font-weight:700;color:#92661a;font-family:'JetBrains Mono',monospace">{{ a.plus }}</span>
+                    </span>
+                    <button onClick="{{ a.dec }}" style="{{ a.minusStyle }}">−</button>
+                    <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
+                    <button onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:#982030;color:#fff;font-size:15px;font-weight:700;line-height:1;display:grid;place-items:center;flex-shrink:0">+</button>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-for list="{{ dMods }}" as="g" hint-placeholder-count="1">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">{{ g.label }}</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ g.opts }}" as="o" hint-placeholder-count="3">
+                  <button onClick="{{ o.go }}" style="{{ o.style }}">
+                    <span style="font-size:12.5px;font-weight:600">{{ o.label }}</span>
+                    <span style="{{ o.dotStyle }}"></span>
+                  </button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">Anything else the kitchen should know</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ dChips }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.go }}" style="{{ c.style }}">{{ c.label }}</button>
+              </sc-for>
+            </div>
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:12px 14px">
+              <textarea value="{{ dNote }}" onInput="{{ onNote }}" rows="2" placeholder="Allergies, doneness, anything else" style="font-size:12.5px;color:#1c1917;line-height:1.5;resize:none"></textarea>
+            </div>
+            <div style="font-size:10.5px;color:#a8a29e;line-height:1.5">{{ noteHint }}</div>
+          </div>
+        </div>
+        <div style="flex-shrink:0;padding:15px 24px 26px;background:#fff;border-top:1px solid #e7e5e4;display:flex;gap:11px;align-items:center">
+          <span style="display:flex;align-items:center;gap:12px;background:#f5f5f4;border:1px solid #e7e5e4;border-radius:13px;padding:8px 10px;flex-shrink:0">
+            <button onClick="{{ qtyDown }}" style="width:28px;height:28px;border-radius:9px;background:#fff;border:1px solid #d6d3d1;color:#57534e;font-size:16px;font-weight:600;line-height:1;display:grid;place-items:center">−</button>
+            <span style="font-size:15px;font-weight:800;color:#1c1917;font-family:'JetBrains Mono',monospace;min-width:12px;text-align:center">{{ dQty }}</span>
+            <button onClick="{{ qtyUp }}" style="width:28px;height:28px;border-radius:9px;background:#982030;color:#fff;font-size:16px;font-weight:600;line-height:1;display:grid;place-items:center">+</button>
+          </span>
+          <button onClick="{{ addToBasket }}" style="flex:1;padding:14px 16px;border-radius:14px;background:#982030;color:#fff;text-align:center">
+            <span style="display:block;font-size:14px;font-weight:700">{{ addLabel }}</span>
+            <span style="{{ extrasLineStyle }}">{{ extrasLine }}</span>
+          </button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sBasket }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%;animation:gup .2s cubic-bezier(.2,.8,.3,1)">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 13px;display:flex;align-items:center;gap:13px">
+          <button onClick="{{ toMenu }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">Your order</div>
+            <div style="font-size:10.5px;color:#78716c;margin-top:1px">{{ basketSub }}</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 20px 0;display:flex;flex-direction:column;gap:10px;min-height:0">
+          <sc-for list="{{ lines }}" as="l" hint-placeholder-count="3">
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:13px 14px;display:flex;flex-direction:column;gap:10px;animation:gin .2s">
+              <div style="display:flex;gap:12px;align-items:flex-start">
+                <span style="min-width:24px;height:24px;border-radius:8px;background:#eceae7;color:#1c1917;font-size:11.5px;font-weight:800;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;flex-shrink:0">{{ l.qty }}</span>
+                <span style="flex:1;min-width:0">
+                  <span style="display:block;font-size:13px;font-weight:700;color:#1c1917;line-height:1.35">{{ l.name }}</span>
+                  <span style="{{ l.noteStyle }}">{{ l.note }}</span>
+                  <span style="display:block;font-size:11px;color:#a8a29e;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ l.each }}</span>
+                </span>
+                <span style="font-size:13px;font-weight:700;color:#1c1917;font-family:'JetBrains Mono',monospace;flex-shrink:0">{{ l.amount }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;border-top:1px solid #f5efe8;padding-top:9px">
+                <button onClick="{{ l.dec }}" style="width:26px;height:26px;border-radius:8px;background:#f5f5f4;border:1px solid #e7e5e4;color:#57534e;font-size:14px;font-weight:600;line-height:1;display:grid;place-items:center">−</button>
+                <button onClick="{{ l.inc }}" style="width:26px;height:26px;border-radius:8px;background:#f5f5f4;border:1px solid #e7e5e4;color:#57534e;font-size:14px;font-weight:600;line-height:1;display:grid;place-items:center">+</button>
+                <button onClick="{{ l.hold }}" style="{{ l.holdStyle }}">{{ l.holdLabel }}</button>
+                <button onClick="{{ l.remove }}" style="margin-left:auto;font-size:11px;font-weight:700;color:#8f1d2d;padding:5px 8px">Remove</button>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ hasUpsell }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:11px;background:#fff;border:1px dashed #d6d3d1;border-radius:14px;padding:11px 13px">
+              <span style="{{ upImgStyle }}"></span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#a8a29e">{{ upWhy }}</span>
+                <span style="display:block;font-size:12.5px;font-weight:700;color:#1c1917;margin-top:2px;line-height:1.3">{{ upName }}</span>
+                <span style="display:block;font-size:11px;color:#78716c;margin-top:1px;font-family:'JetBrains Mono',monospace">{{ upPrice }}</span>
+              </span>
+              <span style="display:flex;flex-direction:column;gap:5px;flex-shrink:0">
+                <button onClick="{{ upAdd }}" style="font-size:11px;font-weight:700;color:#fff;background:#982030;padding:7px 12px;border-radius:9px">Add</button>
+                <button onClick="{{ upSkip }}" style="font-size:10.5px;font-weight:600;color:#a8a29e;padding:4px 12px">No thanks</button>
+              </span>
+            </div>
+          </sc-if>
+          <button onClick="{{ toMenu }}" style="align-self:flex-start;font-size:12px;font-weight:700;color:#982030;padding:8px 0;display:flex;align-items:center;gap:7px">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+            Add something else
+          </button>
+          <div style="{{ emptyBasketStyle }}">Nothing in the order yet.</div>
+        </div>
+        <div style="flex-shrink:0;background:#fff;border-top:1px solid #e7e5e4;padding:15px 20px 26px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#57534e"><span>Food &amp; drink</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ gross }}</span></div>
+          <div style="{{ promoRowStyle }}"><span>{{ promoDiscLabel }}</span><span style="font-family:'JetBrains Mono',monospace">− {{ promoDiscAmt }}</span></div>
+          <div style="{{ codeRowStyle }}"><span>{{ codeDiscLabel }}</span><span style="font-family:'JetBrains Mono',monospace">− {{ codeDiscAmt }}</span></div>
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#57534e"><span>Service charge {{ scLabel }}</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ svc }}</span></div>
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#57534e"><span>{{ taxName }} {{ taxLabel }}</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ tax }}</span></div>
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:17px;font-weight:800;color:#1c1917;padding-top:10px;border-top:1px solid #eceae7;letter-spacing:-0.015em"><span>Total</span><span style="font-family:'JetBrains Mono',monospace">{{ totalLabel }}</span></div>
+          <div style="{{ promoScopeStyle }}">{{ promoScopeNote }}</div>
+          <div style="font-size:10.5px;color:#a8a29e;line-height:1.5;text-wrap:pretty">{{ taxNote }}</div>
+          <button onClick="{{ sendKitchen }}" style="{{ sendStyle }}">{{ sendLabel }}</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sTracking }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%;animation:gup .22s cubic-bezier(.2,.8,.3,1)">
+        <div style="flex-shrink:0;background:#982030;padding:34px 22px 20px;color:#fff">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.72">{{ orderRef }}</div>
+          <div style="font-size:20px;font-weight:800;letter-spacing:-0.02em;margin-top:6px">{{ trackTitle }}</div>
+          <div style="font-size:12.5px;opacity:.85;margin-top:5px;line-height:1.5">{{ trackSub }}</div>
+          <div style="display:flex;gap:5px;margin-top:16px">
+            <span style="{{ step1 }}"></span><span style="{{ step2 }}"></span><span style="{{ step3 }}"></span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin-top:8px;letter-spacing:.05em">
+            <span style="{{ lab1 }}">SENT</span><span style="{{ lab2 }}">COOKING</span><span style="{{ lab3 }}">SERVED</span>
+          </div>
+        </div>
+        <div style="flex-shrink:0;display:flex;background:#fff;border-bottom:1px solid #e7e5e4">
+          <sc-for list="{{ orderTabs }}" as="t" hint-placeholder-count="3">
+            <button onClick="{{ t.go }}" style="{{ t.style }}">
+              {{ t.label }}
+              <span style="{{ t.badgeStyle }}">{{ t.count }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:10px;min-height:0">
+          <sc-for list="{{ trackRows }}" as="t" hint-placeholder-count="3">
+            <div style="{{ t.cardStyle }}">
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:13px;font-weight:700;color:#1c1917">{{ t.name }}</span>
+                <span style="{{ t.noteStyle }}">{{ t.note }}</span>
+                <span style="display:block;font-size:11px;color:#a8a29e;margin-top:3px">{{ t.meta }}</span>
+              </span>
+              <span style="{{ t.chipStyle }}">
+                <span style="{{ t.dotStyle }}"></span>
+                {{ t.chip }}
+              </span>
+              <button onClick="{{ t.fire }}" style="{{ t.fireStyle }}">Send now</button>
+            </div>
+          </sc-for>
+        </div>
+        <div style="flex-shrink:0;background:#fff;border-top:1px solid #e7e5e4;padding:14px 20px 26px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;gap:9px">
+            <button onClick="{{ callServer }}" style="flex:1;padding:14px;border-radius:12px;background:#fafaf9;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:700">Call a server</button>
+            <button onClick="{{ toMenu }}" style="flex:1;padding:14px;border-radius:12px;background:#fafaf9;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:700">Order more</button>
+          </div>
+          <button onClick="{{ toPay }}" style="width:100%;padding:16px;border-radius:14px;background:#1c1917;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <span>Ask for the bill</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:700">{{ totalLabel }}</span>
+          </button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sPay }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%;animation:gup .2s cubic-bezier(.2,.8,.3,1)">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 13px;display:flex;align-items:center;gap:13px">
+          <button onClick="{{ toTracking }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">Settle the bill</div>
+            <div style="font-size:10.5px;color:#78716c;margin-top:1px">{{ paySub }}</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:15px;min-height:0">
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:15px;padding:16px;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#57534e"><span>Food &amp; drink</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ gross }}</span></div>
+            <div style="{{ promoRowStyle }}"><span>{{ promoDiscLabel }}</span><span style="font-family:'JetBrains Mono',monospace">− {{ promoDiscAmt }}</span></div>
+          <div style="{{ codeRowStyle }}"><span>{{ codeDiscLabel }}</span><span style="font-family:'JetBrains Mono',monospace">− {{ codeDiscAmt }}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#57534e"><span>Service charge {{ scLabel }}</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ svc }}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#57534e"><span>{{ taxName }} {{ taxLabel }}</span><span style="font-family:'JetBrains Mono',monospace;color:#1c1917">{{ tax }}</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:18px;font-weight:800;color:#1c1917;padding-top:11px;border-top:1px solid #eceae7;letter-spacing:-0.015em"><span>Total</span><span style="font-family:'JetBrains Mono',monospace">{{ totalLabel }}</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">Have a promo code?</div>
+            <div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:12px 14px">
+              <span style="width:4px;height:22px;border-radius:3px;background:#982030;flex-shrink:0;display:block"></span>
+              <input value="{{ code }}" onInput="{{ onCode }}" placeholder="Enter a code" style="{{ codeFieldStyle }}"/>
+              <button onClick="{{ applyCode }}" style="font-size:12px;font-weight:700;color:#982030;flex-shrink:0;padding:4px 6px">Apply</button>
+            </div>
+            <div style="{{ codeOkStyle }}">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M20 6 9 17l-5-5"></path></svg>
+              Promo applied · DISC5, 5% off the food line
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">How are you splitting it</div>
+            <div style="display:flex;gap:7px">
+              <sc-for list="{{ splits }}" as="s" hint-placeholder-count="3">
+                <button onClick="{{ s.go }}" style="{{ s.style }}">
+                  <span style="display:block;font-size:12px;font-weight:700">{{ s.label }}</span>
+                  <span style="{{ s.amtStyle }}">{{ s.amt }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#78716c">Pay with</div>
+            <sc-for list="{{ methods }}" as="p" hint-placeholder-count="3">
+              <button onClick="{{ p.go }}" style="{{ p.style }}">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="{{ p.iconStyle }}"><path d="{{ p.icon }}"></path></svg>
+                <span style="flex:1;min-width:0;text-align:left">
+                  <span style="display:block;font-size:13px;font-weight:700;color:#1c1917">{{ p.label }}</span>
+                  <span style="display:block;font-size:10.5px;color:#78716c;margin-top:1px">{{ p.sub }}</span>
+                </span>
+                <span style="{{ p.tickStyle }}">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="font-size:11px;color:#a8a29e;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
+        </div>
+        <div style="flex-shrink:0;background:#fff;border-top:1px solid #e7e5e4;padding:15px 20px 26px;display:flex;flex-direction:column;gap:10px">
+          <button onClick="{{ doPay }}" style="{{ payBtnStyle }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" style="{{ spinStyle }}"><path d="M21 12a9 9 0 1 1-3-6.7"></path></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="{{ checkStyle }}"><path d="M20 6 9 17l-5-5"></path></svg>
+            {{ payLabel }}
+          </button>
+          <div style="display:flex;justify-content:center;gap:16px;font-size:11px;color:#78716c">
+            <span>Receipt by email</span><span style="color:#d6d3d1">·</span><span>Receipt by SMS</span>
+          </div>
+          <div style="text-align:center;font-size:9.5px;letter-spacing:.07em;color:#b8b3ae;{{ poweredVis }}">Powered by KashikeyoPOS™</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sDone }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex-shrink:0;background:#1f6f4a;padding:40px 22px 24px;color:#fff;text-align:center">
+          <span style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,.18);display:grid;place-items:center;margin:0 auto 13px;animation:gpop .3s cubic-bezier(.2,.8,.3,1)">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+          </span>
+          <div style="font-size:19px;font-weight:800;letter-spacing:-0.02em">{{ doneTitle }}</div>
+          <div style="font-size:12.5px;opacity:.85;margin-top:6px;line-height:1.5">{{ doneSub }}</div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px 0;min-height:0">
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:19px 18px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#292524;line-height:1.7">
+            <div style="text-align:center;border-bottom:1.5px dashed #d6d3d1;padding-bottom:12px">
+              <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" style="width:36px;height:36px;object-fit:contain;display:block;margin:0 auto 6px;mix-blend-mode:multiply"/>
+              <div style="font-size:13px;font-weight:700;letter-spacing:.11em">{{ brandName }}</div>
+              <div style="font-size:9px;opacity:.7;margin-top:2px">{{ tagline }}</div>
+              <div style="font-size:10px;margin-top:6px">{{ outletName }}</div>
+              <div style="font-size:10px">{{ outletAddr }}</div>
+              <div style="font-size:9.5px;opacity:.85;margin-top:5px">{{ legalName }}</div>
+              <div style="font-size:10px;margin-top:3px">TIN {{ tin }}</div>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed #d6d3d1;font-size:10.5px">
+              <span>{{ tableLabel }} · {{ orderRef }}</span><span>{{ payMethodLabel }}</span>
+            </div>
+            <div style="padding:10px 0;display:flex;flex-direction:column;gap:5px">
+              <sc-for list="{{ receiptLines }}" as="r" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;gap:10px"><span>{{ r.label }}</span><span>{{ r.amount }}</span></div>
+              </sc-for>
+            </div>
+            <div style="border-top:1px dashed #d6d3d1;padding-top:10px;display:flex;flex-direction:column;gap:5px">
+              <div style="display:flex;justify-content:space-between;gap:10px"><span>Food &amp; drink</span><span>{{ gross }}</span></div>
+              <div style="{{ promoRowMonoStyle }}"><span>{{ promoDiscLabel }}</span><span>− {{ promoDiscAmt }}</span></div>
+              <div style="{{ codeRowMonoStyle }}"><span>{{ codeDiscLabel }}</span><span>− {{ codeDiscAmt }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px"><span>Service charge {{ scLabel }}</span><span>{{ svc }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px"><span>{{ taxName }} {{ taxLabel }}</span><span>{{ tax }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;font-size:14px;font-weight:700;padding-top:9px;border-top:1.5px solid #292524;margin-top:4px"><span>TOTAL</span><span>{{ total }}</span></div>
+            </div>
+            <div style="text-align:center;border-top:1.5px dashed #d6d3d1;margin-top:12px;padding-top:10px;font-size:10px">{{ receiptFoot }}</div>
+            <div style="text-align:center;font-size:8.5px;opacity:.5;margin-top:7px;letter-spacing:.07em;{{ poweredVis }}">Powered by KashikeyoPOS™</div>
+          </div>
+          <div style="background:rgba(31,111,74,.08);border:1px solid rgba(31,111,74,.2);border-radius:13px;padding:13px 14px;margin-top:11px;display:flex;align-items:center;gap:11px">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#17603f" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m12 3 2.6 5.6 6.1.8-4.5 4.2 1.2 6.1L12 16.8 6.6 19.7l1.2-6.1L3.3 9.4l6.1-.8z"></path></svg>
+            <span style="font-size:11.5px;color:#124d33;line-height:1.5">{{ pointsNote }}</span>
+          </div>
+        </div>
+        <div style="flex-shrink:0;padding:15px 20px 26px;background:#fff;border-top:1px solid #e7e5e4;display:flex;gap:9px">
+          <button onClick="{{ goAccount }}" style="flex:1;padding:14px;border-radius:12px;background:#fafaf9;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:700">My account</button>
+          <button onClick="{{ reset }}" style="flex:1;padding:14px;border-radius:12px;background:#1c1917;color:#fff;font-size:12.5px;font-weight:700">New table</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sAccount }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:26px 20px 22px;display:flex;flex-direction:column;gap:22px">
+
+          <div style="display:flex;align-items:center;gap:11px">
+            <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" style="width:24px;height:24px;object-fit:contain;display:block;mix-blend-mode:multiply;flex-shrink:0"/>
+            <span style="flex:1;min-width:0;font-size:10.5px;font-weight:800;letter-spacing:.14em;color:#1c1917">{{ brandName }}</span>
+            <span style="width:30px;height:30px;border-radius:50%;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#57534e;flex-shrink:0">RL</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:13px">
+            <div>
+              <div style="font-size:19px;font-weight:700;color:#1c1917;letter-spacing:-0.025em;line-height:1.3;text-wrap:pretty">{{ welcomeLine }}</div>
+              <div style="font-size:11.5px;color:#a8a29e;margin-top:5px;line-height:1.45">{{ welcomeSub }}</div>
+            </div>
+            <div>
+              <div style="{{ memCardStyle }}">
+                <span style="{{ memSheenStyle }}"></span>
+                <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+                  <span style="min-width:0">
+                    <span style="{{ memTierStyle }}">{{ tierName }} member</span>
+                    <span style="display:block;font-size:15.5px;font-weight:700;color:#fff;letter-spacing:-0.015em;line-height:1.3;margin-top:7px">{{ custName }}</span>
+                  </span>
+                  <span style="{{ memMarkStyle }}"></span>
+                </div>
+                <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-top:30px">
+                  <span style="min-width:0">
+                    <span style="display:block;font-size:8.5px;font-weight:700;letter-spacing:.14em;color:rgba(255,255,255,.62)">MEMBER NO</span>
+                    <span style="display:block;font-size:12.5px;font-weight:600;font-family:'JetBrains Mono',monospace;letter-spacing:.07em;color:#fff;margin-top:4px">{{ memberNo }}</span>
+                  </span>
+                  <span style="text-align:right;flex-shrink:0">
+                    <span style="display:block;font-size:8.5px;font-weight:700;letter-spacing:.14em;color:rgba(255,255,255,.62)">POINTS</span>
+                    <span style="{{ memPointsStyle }}">{{ pointsLabel }}</span>
+                  </span>
+                </div>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:12px;margin-top:9px;padding:0 2px;font-size:10.5px;color:#a8a29e">
+                <span>{{ tierNext }}</span>
+                <span style="font-family:'JetBrains Mono',monospace">TIN {{ custTin }}</span>
+              </div>
+            </div>
+          </div>
+
+          <button onClick="{{ startOrder }}" style="display:flex;align-items:center;gap:13px;width:100%;background:#982030;border-radius:15px;padding:15px 16px;text-align:left">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 13h16M6.5 13a5.5 5.5 0 0 1 11 0M3 17h18"></path></svg>
+            <span style="flex:1;min-width:0">
+              <span style="display:block;font-size:13.5px;font-weight:700;color:#fff">Order now</span>
+              <span style="display:block;font-size:10.5px;color:rgba(255,255,255,.72);margin-top:2px">Dine in, takeaway or delivery</span>
+            </span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+          </button>
+
+          <sc-if value="{{ hasPromo }}" hint-placeholder-val="{{ true }}">
+            <div style="position:relative;border-radius:15px;overflow:hidden;min-height:128px;display:flex;flex-direction:column;justify-content:flex-end;gap:7px;padding:15px 16px">
+              <span style="{{ promoImgStyle }}"></span>
+              <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(25,20,18,.2) 0%,rgba(25,20,18,.88) 100%);display:block"></span>
+              <span style="position:relative;align-self:flex-start;font-size:9px;font-weight:800;letter-spacing:.1em;color:#e8d9b5;background:rgba(232,217,181,.18);padding:4px 9px;border-radius:20px">{{ promoBadge }}</span>
+              <span style="position:relative;font-size:15px;font-weight:800;color:#fff;letter-spacing:-0.015em;line-height:1.25">{{ promoTitle }}</span>
+              <span style="position:relative;font-size:11.5px;color:rgba(255,255,255,.78);line-height:1.45;text-wrap:pretty">{{ promoSub }}</span>
+              <button onClick="{{ promoTake }}" style="{{ promoBtnStyle }}">{{ promoBtnLabel }}</button>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Your account</div>
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:15px;padding:16px;display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+                <span style="font-size:11px;font-weight:600;color:#78716c">Credit available</span>
+                <span style="font-size:10.5px;color:#a8a29e;font-family:'JetBrains Mono',monospace">limit {{ limitLabel }}</span>
+              </div>
+              <div style="font-size:29px;font-weight:800;color:#1c1917;letter-spacing:-0.035em;font-family:'JetBrains Mono',monospace;line-height:1">{{ availLabel }}</div>
+              <div style="height:6px;border-radius:4px;background:#f0efed;overflow:hidden;display:flex"><span style="{{ drawnBarStyle }}"></span></div>
+              <div style="display:flex;justify-content:space-between;gap:12px;font-size:11px">
+                <span style="color:#78716c">Drawn <strong style="color:#1c1917;font-weight:600;font-family:'JetBrains Mono',monospace">{{ drawnLabel }}</strong></span>
+                <span style="color:#92661a;font-weight:600">Due 15 Aug</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px">
+              <div style="flex:1;background:#fff;border:1px solid #e7e5e4;border-radius:15px;padding:14px 15px">
+                <div style="font-size:11px;font-weight:600;color:#78716c">Points</div>
+                <div style="font-size:21px;font-weight:800;color:#17603f;letter-spacing:-0.03em;font-family:'JetBrains Mono',monospace;margin-top:6px;line-height:1">{{ pointsLabel }}</div>
+                <div style="font-size:10.5px;color:#a8a29e;margin-top:5px;line-height:1.4">{{ pointsWorth }}</div>
+              </div>
+              <div style="flex:1;background:#fff;border:1px solid #e7e5e4;border-radius:15px;padding:14px 15px">
+                <div style="font-size:11px;font-weight:600;color:#78716c">Invoices</div>
+                <div style="font-size:21px;font-weight:800;color:#1c1917;letter-spacing:-0.03em;font-family:'JetBrains Mono',monospace;margin-top:6px;line-height:1">{{ invCount }}</div>
+                <div style="font-size:10.5px;color:#a8a29e;margin-top:5px;line-height:1.4">On this statement</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Open</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <button onClick="{{ toStatement }}" style="display:flex;align-items:center;gap:10px;padding:14px 14px;border-radius:14px;background:#fff;border:1px solid #e7e5e4;text-align:left">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#57534e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M8 2h8v4H8zM6 6h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM9 12h6M9 16h6"></path></svg>
+                <span style="font-size:12px;font-weight:600;color:#1c1917">Statement</span>
+              </button>
+              <button onClick="{{ toReceipts }}" style="display:flex;align-items:center;gap:10px;padding:14px 14px;border-radius:14px;background:#fff;border:1px solid #e7e5e4;text-align:left">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#57534e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+                <span style="font-size:12px;font-weight:600;color:#1c1917">Receipts</span>
+              </button>
+              <button onClick="{{ toRewards }}" style="display:flex;align-items:center;gap:10px;padding:14px 14px;border-radius:14px;background:#fff;border:1px solid #e7e5e4;text-align:left">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#57534e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m12 3 2.6 5.6 6.1.8-4.5 4.2 1.2 6.1L12 16.8 6.6 19.7l1.2-6.1L3.3 9.4l6.1-.8z"></path></svg>
+                <span style="font-size:12px;font-weight:600;color:#1c1917">Rewards</span>
+              </button>
+              <button onClick="{{ toCard }}" style="display:flex;align-items:center;gap:10px;padding:14px 14px;border-radius:14px;background:#fff;border:1px solid #e7e5e4;text-align:left">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#57534e" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3M20 14v3M17 20h4"></path></svg>
+                <span style="font-size:12px;font-weight:600;color:#1c1917">Card</span>
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e;margin-bottom:5px">Recent</div>
+            <sc-for list="{{ recent }}" as="r" hint-placeholder-count="3">
+              <button onClick="{{ r.go }}" style="display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;padding:11px 0;border-bottom:1px solid #eceae7">
+                <span style="min-width:0">
+                  <span style="display:block;font-size:12.5px;font-weight:600;color:#1c1917">{{ r.label }}</span>
+                  <span style="display:block;font-size:10.5px;color:#a8a29e;margin-top:2px">{{ r.sub }}</span>
+                </span>
+                <span style="{{ r.amtStyle }}">{{ r.amt }}</span>
+              </button>
+            </sc-for>
+          </div>
+
+        </div>
+        <div style="flex-shrink:0;padding:13px 20px 24px;background:#fff;border-top:1px solid #e7e5e4">
+          <button onClick="{{ settle }}" style="width:100%;padding:15px 16px;border-radius:14px;background:#982030;color:#fff;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <span>Settle the balance</span>
+            <span style="font-family:'JetBrains Mono',monospace">{{ drawnMvr }}</span>
+          </button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sStatement }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 13px;display:flex;align-items:center;gap:13px">
+          <button onClick="{{ toAccount }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">Statement</div>
+            <div style="font-size:10.5px;color:#78716c;margin-top:1px">{{ stmtSub }}</div>
+          </div>
+          <button onClick="{{ download }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+          </button>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:0 20px;min-height:0">
+          <div style="display:flex;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid #eceae7">
+            <span style="font-size:11.5px;color:#78716c">Opening balance · 1 Jul</span>
+            <span style="font-size:12px;font-weight:600;color:#1c1917;font-family:'JetBrains Mono',monospace">{{ openingLabel }}</span>
+          </div>
+          <sc-for list="{{ stmtRows }}" as="r" hint-placeholder-count="5">
+            <div style="{{ r.rowStyle }}">
+              <span style="font-size:10.5px;color:#a8a29e;font-family:'JetBrains Mono',monospace;width:38px;flex-shrink:0;padding-top:2px">{{ r.date }}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:12.5px;font-weight:600;color:#1c1917">{{ r.label }}</span>
+                <span style="display:block;font-size:10.5px;color:#a8a29e;margin-top:2px">{{ r.sub }}</span>
+              </span>
+              <span style="text-align:right;flex-shrink:0">
+                <span style="{{ r.amtStyle }}">{{ r.amt }}</span>
+                <span style="{{ r.balStyle }}">{{ r.bal }}</span>
+              </span>
+            </div>
+          </sc-for>
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:15px;padding:14px 15px;margin:11px 0">
+            <div style="font-size:11px;color:#78716c;line-height:1.55;text-wrap:pretty">Nothing here is ever edited. A correction arrives as its own line, so the balance you are looking at can always be rebuilt from the rows above it.</div>
+          </div>
+        </div>
+        <div style="flex-shrink:0;padding:14px 20px 26px;background:#fff;border-top:1px solid #e7e5e4;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;justify-content:space-between;gap:12px;font-size:16px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">
+            <span>Closing balance</span><span style="font-family:'JetBrains Mono',monospace">{{ drawnMvr }}</span>
+          </div>
+          <div style="display:flex;gap:9px;margin-top:3px">
+            <button onClick="{{ download }}" style="flex:1;padding:14px;border-radius:14px;background:#fafaf9;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:700">Download CSV</button>
+            <button onClick="{{ settle }}" style="flex:1;padding:14px;border-radius:14px;background:#982030;color:#fff;font-size:12.5px;font-weight:700">Pay now</button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sReceipts }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 13px;display:flex;align-items:center;gap:13px">
+          <button onClick="{{ toAccount }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">Receipts</div>
+            <div style="font-size:10.5px;color:#78716c;margin-top:1px">{{ receiptsSub }}</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 20px 0;display:flex;flex-direction:column;gap:10px;min-height:0">
+          <sc-for list="{{ receipts }}" as="r" hint-placeholder-count="4">
+            <button onClick="{{ r.go }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:13px 14px">
+              <span style="width:38px;height:38px;border-radius:11px;background:#f5f5f4;display:grid;place-items:center;flex-shrink:0">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#78716c" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8v4H8zM6 6h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM9 12h6M9 16h4"></path></svg>
+              </span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:13px;font-weight:700;color:#1c1917;font-family:'JetBrains Mono',monospace">{{ r.ref }}</span>
+                <span style="display:block;font-size:10.5px;color:#a8a29e;margin-top:2px">{{ r.sub }}</span>
+              </span>
+              <span style="font-size:13px;font-weight:700;color:#1c1917;font-family:'JetBrains Mono',monospace;flex-shrink:0">{{ r.amt }}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="flex-shrink:0;padding:14px 20px 26px;background:#fff;border-top:1px solid #e7e5e4">
+          <div style="font-size:11px;color:#a8a29e;line-height:1.55;text-align:center">Every settled bill appears here within a second of the till closing it.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sRewards }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex-shrink:0;background:#1f6f4a;padding:34px 22px 22px;color:#fff">
+          <div style="display:flex;align-items:center;gap:13px">
+            <button onClick="{{ toAccount }}" style="width:34px;height:34px;border-radius:11px;background:rgba(255,255,255,.15);display:grid;place-items:center;color:#fff;flex-shrink:0">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+            </button>
+            <span style="font-size:13px;font-weight:700;letter-spacing:-0.01em">Rewards</span>
+          </div>
+          <div style="margin-top:18px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.7">Points balance</div>
+            <div style="font-size:37px;font-weight:800;letter-spacing:-0.035em;font-family:'JetBrains Mono',monospace;line-height:1;margin-top:7px">{{ pointsLabel }}</div>
+            <div style="font-size:12px;opacity:.85;margin-top:7px">{{ pointsEarnedNote }}</div>
+          </div>
+          <div style="margin-top:17px">
+            <div style="height:6px;border-radius:3px;background:rgba(255,255,255,.22);overflow:hidden;display:flex"><span style="{{ tierBarStyle }}"></span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;font-size:10.5px;margin-top:8px;opacity:.85">
+              <span>{{ tierName }}</span><span>{{ tierNext }}</span>
+            </div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:10px;min-height:0">
+          <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Redeem</div>
+          <sc-for list="{{ rewards }}" as="w" hint-placeholder-count="4">
+            <div style="{{ w.cardStyle }}">
+              <span style="{{ w.imgStyle }}"></span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font-size:13px;font-weight:700;color:#1c1917">{{ w.name }}</span>
+                <span style="display:block;font-size:11px;color:#78716c;margin-top:3px">{{ w.sub }}</span>
+              </span>
+              <button onClick="{{ w.go }}" style="{{ w.btnStyle }}">{{ w.btnLabel }}</button>
+            </div>
+          </sc-for>
+          <div style="font-size:10.5px;color:#a8a29e;line-height:1.55;margin:2px 0 4px;text-wrap:pretty">Points post when a bill is settled, not when it is opened, and a refund takes them back out.</div>
+        </div>
+        <div style="flex-shrink:0;padding:14px 20px 26px;background:#fff;border-top:1px solid #e7e5e4">
+          <div style="font-size:11px;color:#a8a29e;line-height:1.55;text-align:center">{{ redeemedNote }}</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sFulfil }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 13px;display:flex;align-items:center;gap:13px">
+          <button onClick="{{ toAccount }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">{{ fulfilTitle }}</div>
+            <div style="font-size:10.5px;color:#78716c;margin-top:1px">Set this once — the menu and the tax follow it</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:16px;min-height:0">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">How would you like it</div>
+            <sc-for list="{{ modes }}" as="m" hint-placeholder-count="3">
+              <button onClick="{{ m.go }}" style="{{ m.style }}">
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="{{ m.iconStyle }}"><path d="{{ m.icon }}"></path></svg>
+                <span style="flex:1;min-width:0;text-align:left">
+                  <span style="display:block;font-size:13px;font-weight:700;color:#1c1917">{{ m.label }}</span>
+                  <span style="display:block;font-size:10.5px;color:#78716c;margin-top:1px">{{ m.sub }}</span>
+                </span>
+                <span style="{{ m.tickStyle }}">
+                  <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Which outlet</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <sc-for list="{{ outletOpts }}" as="x" hint-placeholder-count="4">
+                <button onClick="{{ x.go }}" style="{{ x.style }}">
+                  <span style="{{ x.labelStyle }}">{{ x.label }}</span>
+                  <span style="{{ x.subStyle }}">{{ x.sub }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+
+          <sc-if value="{{ showTables }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Pick a table</div>
+              <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:7px">
+                <sc-for list="{{ tables }}" as="t" hint-placeholder-count="10">
+                  <button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button>
+                </sc-for>
+              </div>
+              <div style="font-size:10.5px;color:#a8a29e;line-height:1.5">Struck-through tables are already seated tonight.</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showAddr }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Where to</div>
+              <div style="background:#fff;border:1px solid #e7e5e4;border-radius:12px;padding:13px 14px">
+                <input value="{{ addr }}" onInput="{{ onAddr }}" placeholder="Building, floor, street — Malé" style="font-size:12.5px;color:#1c1917"/>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showSlot }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">{{ slotTitle }}</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ slots }}" as="s" hint-placeholder-count="4">
+                  <button onClick="{{ s.go }}" style="{{ s.style }}">{{ s.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="flex-shrink:0;padding:14px 20px 26px;background:#fff;border-top:1px solid #e7e5e4;display:flex;flex-direction:column;gap:9px">
+          <div style="font-size:11px;color:#78716c;line-height:1.5;text-align:center">{{ fulfilSummary }}</div>
+          <button onClick="{{ fulfilNext }}" style="width:100%;padding:16px;border-radius:14px;background:#982030;color:#fff;font-size:14.5px;font-weight:700;text-align:center">Choose the food</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ sCard }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;height:100%">
+        <div style="flex-shrink:0;background:#fff;border-bottom:1px solid #e7e5e4;padding:34px 20px 13px;display:flex;align-items:center;gap:13px">
+          <button onClick="{{ toAccount }}" style="width:34px;height:34px;border-radius:11px;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;color:#44403c;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          </button>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-0.015em">Membership card</div>
+            <div style="font-size:10.5px;color:#78716c;margin-top:1px">Show this before the bill is closed</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:18px 20px 0;display:flex;flex-direction:column;gap:14px;min-height:0">
+          <div style="background:#fff;border:1px solid #e7e5e4;border-radius:18px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:14px">
+            <div style="display:flex;align-items:center;gap:11px;align-self:stretch">
+              <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" style="width:32px;height:32px;object-fit:contain;display:block;mix-blend-mode:multiply;flex-shrink:0"/>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:800;letter-spacing:.11em;color:#1c1917">{{ brandName }}</div>
+                <div style="font-size:10px;color:#78716c;margin-top:1px">{{ custName }}</div>
+              </div>
+              <span style="font-size:9.5px;font-weight:800;letter-spacing:.08em;color:#17603f;background:rgba(31,111,74,.1);padding:5px 9px;border-radius:20px;flex-shrink:0">{{ tierName }}</span>
+            </div>
+            <div style="width:210px;height:210px;background:#fff;padding:10px;border-radius:12px;display:grid;grid-template-columns:repeat(25,1fr);grid-template-rows:repeat(25,1fr);gap:0">
+              <sc-for list="{{ qrCells }}" as="c" hint-placeholder-count="0">
+                <span style="{{ c }}"></span>
+              </sc-for>
+            </div>
+            <div style="text-align:center">
+              <div style="font-size:15px;font-weight:800;color:#1c1917;font-family:'JetBrains Mono',monospace;letter-spacing:.04em">{{ memberNo }}</div>
+              <div style="font-size:10.5px;color:#a8a29e;margin-top:4px">Member number · key it in if the camera will not focus</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:11px">
+            <div style="flex:1;background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:14px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Points</div>
+              <div style="font-size:19px;font-weight:800;color:#17603f;font-family:'JetBrains Mono',monospace;margin-top:6px;line-height:1">{{ pointsLabel }}</div>
+            </div>
+            <div style="flex:1;background:#fff;border:1px solid #e7e5e4;border-radius:14px;padding:14px">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#a8a29e">Credit left</div>
+              <div style="font-size:19px;font-weight:800;color:#1c1917;font-family:'JetBrains Mono',monospace;margin-top:6px;line-height:1">{{ availLabel }}</div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#a8a29e;line-height:1.55;text-wrap:pretty">Scanning this at the till attaches the account to the open ticket, so points and any house-account charge land without anyone typing a name.</div>
+        </div>
+        <div style="flex-shrink:0;padding:14px 20px 26px;background:#fff;border-top:1px solid #e7e5e4">
+          <button onClick="{{ toRewards }}" style="width:100%;padding:15px;border-radius:14px;background:#1f6f4a;color:#fff;font-size:13.5px;font-weight:700;text-align:center">See what points buy</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="{{ toastStyle }}">{{ toast }}</div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:460,&quot;height&quot;:960},&quot;showPoweredBy&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Branding&quot;}}">
+const KEY = "kashikeyo.guest.v1";
+const MVR = (n) => (n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Prep time per category, in seconds. Compressed for a demo, but the shape is
+// real: drinks land before starters, a grill item is the long pole, and the
+// table's headline is driven by whatever finishes last.
+const PREP = { drinks: 14, starters: 30, sides: 34, rice: 46, mains: 52, grill: 68, desserts: 38 };
+
+const LEDGER = [
+  { date: "12 Jul", label: "Payment received · cash", sub: "Receipted by Ismail Nabeeh", amt: -4000 },
+  { date: "18 Jul", label: "Invoice KO-CHA-2344", sub: "Chaandhanee · 4 covers · GGST 8%", amt: 1890 },
+  { date: "22 Jul", label: "Invoice KO-CHA-2398", sub: "Chaandhanee · 9 covers · GGST 8%", amt: 3150 },
+  { date: "24 Jul", label: "Payment received · BML", sub: "Transfer ref RL-240726", amt: -6200 },
+  { date: "28 Jul", label: "Invoice KO-CHA-2451", sub: "Chaandhanee · 6 covers · GGST 8%", amt: 2197.8 }
+];
+const OPENING = 11020;
+const LIMIT = 25000;
+
+const REWARDS = [
+  { id: "r1", name: "Dessert on us", sub: "Any dessert, any outlet", cost: 650, img: "img/photo_1470124182917_cc6e71b22ecc.jpg" },
+  { id: "r2", name: "MVR 250 off a bill", sub: "Minimum spend MVR 750", cost: 2500, img: "img/photo_1615141982883_c7ad0e69fd62.jpg" },
+  { id: "r3", name: "Striploin for two", sub: "900g shared cut, garlic butter", cost: 7600, img: "img/photo_1546964124_0cce460f38ef.jpg" },
+  { id: "r4", name: "Chef's table, six seats", sub: "Platinum accounts only", cost: 12000, img: "" }
+];
+
+const NOTE_CHIPS = ["No chilli", "Extra lime", "Off the bone", "Allergy"];
+
+// Structured modifiers, by category. A free-text note is a fallback; these are
+// the choices the kitchen expects every time, so they are picked from a list
+// and cannot be mistyped. Index 1 is the default, and ONLY a deviation from it
+// reaches the ticket — a KOT that says "normal ice" on every line trains the
+// pass to stop reading modifiers at all.
+const MODS = {
+  drinks: [
+    { k: "sugar", label: "Sugar", opts: ["Less sugar", "Normal sugar", "Extra sweet"] },
+    { k: "ice", label: "Ice", opts: ["Less ice", "Normal ice", "Extra ice"] }
+  ],
+  grill: [{ k: "done", label: "How would you like it", opts: ["Medium rare", "Medium", "Well done"] }],
+  mains: [{ k: "heat", label: "Heat", opts: ["Mild", "Medium heat", "Maldivian hot"] }],
+  rice: [{ k: "heat", label: "Heat", opts: ["Mild", "Medium heat", "Maldivian hot"] }],
+  starters: [{ k: "heat", label: "Heat", opts: ["Mild", "Medium heat", "Maldivian hot"] }],
+  sides: [{ k: "salt", label: "Seasoning", opts: ["No added salt", "Normal", "Extra seasoning"] }]
+};
+// Promotions are windowed on the wall clock, so the banner a guest sees at
+// 07:00 is not the one they see at 18:30. A promo that is always on is not a
+// promotion, it is a price — and staff stop mentioning it within a week.
+const PROMOS = [
+  { id: "p1", from: 6, to: 10.5, badge: "UNTIL 10:30", title: "Breakfast rice, MVR 65", sub: "Any rice dish before half ten", cats: ["rice"], disc: { type: "set", value: 65 }, img: "img/photo_1621996346565_e3dbc646d9a9.jpg" },
+  { id: "p2", from: 11.5, to: 14.5, badge: "LUNCH", title: "15% off starters and rice", sub: "Weekday lunch, until half past two", cats: ["starters", "rice"], disc: { type: "pct", value: 15 }, img: "img/photo_1476124369491_e7addf5db371.jpg" },
+  { id: "p3", from: 17.5, to: 19, badge: "SUNSET HOUR", title: "Quarter off the coolers", sub: "Every drink, on the deck until 19:00", cats: ["drinks"], disc: { type: "pct", value: 25 }, img: "img/photo_1514362545857_3bc16c4c7d1b.jpg" },
+  { id: "p4", from: 21.5, to: 24, badge: "LATE KITCHEN", title: "15% off the grill", sub: "The coals stay lit until midnight", cats: ["grill"], disc: { type: "pct", value: 15 }, img: "img/photo_1558030006_450675393462.jpg" },
+  { id: "p5", from: 0, to: 6, badge: "OPENS AT 06:00", title: "Kitchen is closed", sub: "Pre-order breakfast now and collect from 06:30", disc: null, img: "img/photo_1461023058943_07fcbe16d735.jpg" }
+];
+const SUNSET = "18:21";
+
+const ADDONS = {
+  grill: [["Extra prawn skewer", 65], ["Garlic butter", 20]],
+  mains: [["Extra rice", 25], ["Fried egg", 15]],
+  rice: [["Fried egg", 15], ["Papadum", 12]],
+  starters: [["Extra sambal", 10], ["Make it a double", 55]],
+  drinks: [["Make it large", 20]],
+  desserts: [["Extra scoop", 30], ["Chocolate sauce", 15]],
+  sides: [["Make it large", 18]]
+};
+const addonsFor = (cat) => ADDONS[cat] || [];
+const modsFor = (cat) => MODS[cat] || [];
+const modDefaults = (cat) => { const o = {}; modsFor(cat).forEach((g) => { o[g.k] = g.opts[1]; }); return o; };
+
+class Component extends DCLogic {
+  state = Object.assign({
+    app: "qr", screen: "landing", cat: "all", q: "", lang: "en", vegOnly: 0, flag: "",
+    orderCtx: "table", outletId: 0, mode: "dinein", table: "04", slot: "asap", addr: "", visits: 11, promoOn: null, upsellOff: 0,
+    basket: {}, notes: {}, holds: {},
+    dish: null, dQty: 1, dNote: "", dChip: "", dMods: {}, mods: {}, otab: "prog",
+    dExtras: {}, extras: {}, code: "", codeOk: 0,
+    sentAt: 0, fired: {}, split: "all", method: "card", paying: 0, toastBad: 0, bump: 0,
+    paid: null, points: 4820, redeemed: [], charges: [], viewReceipt: null,
+    toast: "", now: Date.now()
+  }, this.load());
+
+  // Every screen gated on transient state has to be clamped on resume, not
+  // trusted. `dish` is deliberately not persisted, so a session saved on the
+  // dish sheet would restore with screen:"dish" and no dish — and because every
+  // branch is an sc-if, the guest gets a blank page with nothing to tap. A
+  // guest cannot reach a debug control to escape, so the guard belongs here.
+  load() {
+    let v = {};
+    try { const r = localStorage.getItem(KEY); v = r ? JSON.parse(r) : {}; } catch (e) { return {}; }
+    const qr = ["landing", "menu", "basket", "tracking", "pay", "done"];
+    const acc = ["account", "statement", "receipts", "rewards", "card", "fulfil"];
+    const known = qr.concat(acc);
+    if (known.indexOf(v.screen) < 0) v.screen = v.app === "acc" ? "account" : "landing";
+    // The dish sheet is never restorable: the id it needs is transient, and a
+    // stale id would point at a dish since 86'd or removed from the master.
+    if (v.screen === "dish") v.screen = "menu";
+    if (v.screen === "done" && !v.paid) v.screen = "landing";
+    if (v.app === "acc" && qr.indexOf(v.screen) >= 0) v.screen = "account";
+    // A table QR is scanned AT a table, so that context is always dine-in —
+    // asking a seated guest to choose delivery is the flow's original mistake.
+    if (v.orderCtx !== "account") v.mode = "dinein";
+    else if (v.mode === "delivery") {
+      const o = ((window.KPOS || {}).OUTLETS || []).find((x) => x.id === v.outletId);
+      if (o && (o.region || "") !== "Malé") v.mode = "takeaway";
+    }
+    if (v.app !== "acc" && acc.indexOf(v.screen) >= 0) v.app = "acc";
+    return v;
+  }
+  save() {
+    const s = this.state;
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        app: s.app, screen: s.screen, cat: s.cat, lang: s.lang, basket: s.basket,
+        notes: s.notes, holds: s.holds, mods: s.mods, extras: s.extras, codeOk: s.codeOk, sentAt: s.sentAt, fired: s.fired,
+        split: s.split, method: s.method, paid: s.paid, points: s.points,
+        orderCtx: s.orderCtx, outletId: s.outletId, mode: s.mode, table: s.table, slot: s.slot, addr: s.addr, visits: s.visits, promoOn: s.promoOn,
+        redeemed: s.redeemed, charges: s.charges
+      }));
+    } catch (e) { /* private mode — the session just will not resume */ }
+  }
+  componentDidMount() {
+    // One second is the right resolution: the kitchen statuses move in seconds
+    // and nothing else on these screens is time-sensitive.
+    this._t = setInterval(() => { if (this.state.sentAt && !this.state.paid) this.setState({ now: Date.now() }); }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this._t); clearTimeout(this._toast); clearTimeout(this._pay); }
+  componentDidUpdate() { this.save(); }
+
+  // Shared with KashikeyoPOS. Append-only, capped, and every row carries the
+  // outlet and table so the terminal can route it without guessing.
+  signal(kind, detail) {
+    try {
+      const K = "kashikeyo.bridge.v1";
+      const raw = localStorage.getItem(K);
+      const list = raw ? JSON.parse(raw) : [];
+      list.push({ id: "sig" + Date.now() + Math.floor(Math.random() * 90 + 10),
+        kind: kind, outlet: this.outlet().id, table: this.state.table || "01",
+        mode: this.state.mode, detail: detail || "", at: Date.now(), ack: 0 });
+      localStorage.setItem(K, JSON.stringify(list.slice(-40)));
+    } catch (e) { /* a full quota must never block the guest's order */ }
+  }
+  say(msg, bad) {
+    clearTimeout(this._toast);
+    this.setState({ toast: msg, toastBad: bad ? 1 : 0 });
+    this._toast = setTimeout(() => this.setState({ toast: "" }), 2400);
+  }
+  go(screen) { this.setState({ screen: screen }); }
+
+  K() { return window.KPOS || {}; }
+  outlets() { return (this.K().OUTLETS || []).filter((o) => o.pos); }
+  outlet() {
+    const O = this.outlets();
+    return (this.state.outletId && O.find((o) => o.id === this.state.outletId))
+      || O.find((o) => /maafushi/i.test(o.name || "")) || O[0]
+      || { name: "Kashikeyo", tax: "TGST", rate: 16, sc: 10, addr: "Maldives", region: "" };
+  }
+  // Decimal hours, so a window can close at half past.
+  hourNow() { const d = new Date(); return d.getHours() + d.getMinutes() / 60; }
+  promo() {
+    const h = this.hourNow();
+    return PROMOS.find((p) => h >= p.from && h < p.to) || null;
+  }
+  // Scoped to the categories the offer names, and computed line by line —
+  // a set price reprices each qualifying line, never the basket total.
+  discountOn(lines) {
+    const p = this.state.promoOn ? this.promo() : null;
+    if (!p || !p.disc) return 0;
+    const q = (lines || []).filter((l) => (p.cats || []).indexOf(l.m.cat) >= 0);
+    if (!q.length) return 0;
+    if (p.disc.type === "pct") return q.reduce((a, l) => a + l.amount * (p.disc.value / 100), 0);
+    if (p.disc.type === "set") return q.reduce((a, l) => a + Math.max(0, l.amount - p.disc.value * l.qty), 0);
+    if (p.disc.type === "off") return Math.min(q.reduce((a, l) => a + l.amount, 0), p.disc.value);
+    return 0;
+  }
+  promoQualifies() {
+    const p = this.state.promoOn ? this.promo() : null;
+    if (!p) return false;
+    return this.lines().some((l) => (p.cats || []).indexOf(l.m.cat) >= 0);
+  }
+  // Warm, but never the same line twice running — it rotates on visit count so
+  // a regular is not greeted with identical words every single time.
+  welcome() {
+    const h = this.hourNow(), v = this.state.visits || 0, first = "Reef Logistics";
+    const band = h < 10.5 ? 0 : h < 15 ? 1 : h < 20 ? 2 : 3;
+    const sets = [
+      ["Good morning. The boats are back — the reef fish came in an hour ago.",
+       "Good morning. Roshi is on the griddle and the tea is already brewing."],
+      ["Good afternoon. Busy on the floor, so we have held a table back for you.",
+       "Good afternoon. The lunch set is on until half past two."],
+      ["Good evening. Sunset is at " + SUNSET + " — the deck is the place to be.",
+       "Good evening. The coals are lit and the deck is filling up."],
+      ["Still up? The late kitchen runs until midnight.",
+       "Late one. The grill is still going, and it is quiet enough to talk."]
+    ];
+    const line = sets[band][v % 2];
+    return { line: line, greetSub: "Visit " + (v + 1) + " · " + first + " · Gold accounts are seated first" };
+  }
+  menu() { return (this.K().MENU || []).filter((m) => !m.off); }
+  dishOf(id) { return this.menu().find((m) => m.id === id) || null; }
+  // Two items are off tonight. In the terminal this is derived from stock or a
+  // chef's 86; here it is fixed so the state is always visible in the demo.
+  is86(id) { return id === "m30" || id === "m34"; }
+  // Popularity is a fact about sales, not something a menu can infer, so it is
+  // an explicit list — the terminal's own top-sellers report is what would feed
+  // it in production. "New" is equally deliberate: a dish is new because the
+  // kitchen says so, and it stops being new when they say so.
+  // Ids are sparse in the menu master (m1–m10, m20–m23, m30–m36), so these are
+  // verified against it — a flag pointing at a missing id fails silently and
+  // leaves the filter showing fewer dishes than the kitchen expects.
+  isPopular(id) { return ["m1", "m20", "m32", "m40", "m50", "m62", "m74"].indexOf(id) >= 0; }
+  isNew(id) { return ["m9", "m33", "m41", "m71"].indexOf(id) >= 0; }
+  // The question a 3D model is usually reached for is "how much food is this" —
+  // and a word answers it at a fraction of the weight, which matters on an
+  // island connection. Derived from category and price band rather than stored,
+  // so a new dish gets a sensible answer without anyone tagging it.
+  // Read from the dish's own name and description, never from its category: a
+  // ceviche in "starters" and a curry in "rice" both contain fish, and a
+  // category can only ever be a guess. Every match is emitted, because a dish
+  // can carry two (shrimp ravioli in parmesan cream is shellfish AND dairy).
+  // When nothing matches, no chip — an absent allergen line is safe, a wrong
+  // one is not, and shellfish is among the most severe allergens there is.
+  allergensOf(m) {
+    const t = ((m.name || "") + " " + (m.desc || "")).toLowerCase();
+    const has = (words) => words.some((w) => t.indexOf(w) >= 0);
+    const out = [];
+    if (has(["shrimp", "prawn", "crab", "lobster", "squid", "calamari"])) out.push("Contains shellfish");
+    if (has(["fish", "tuna", "reef", "ceviche", "mas ", "mas riha", "anchovy", "snapper"])) out.push("Contains fish");
+    if (has(["beef", "striploin", "steak", "chicken", "lamb", "mutton", "bacon"])) out.push("Contains meat");
+    if (has(["cream", "parmesan", "cheese", "butter", "milk", "yoghurt", "yogurt", "custard", "brûlée", "brulee", "ice cream"])) out.push("Contains dairy");
+    if (has(["peanut", "cashew", "almond", "pistachio", "walnut"])) out.push("Contains nuts");
+    if (has(["egg", "mayo", "aioli", "meringue"])) out.push("Contains egg");
+    return out;
+  }
+  upsell() {
+    const lines = this.lines();
+    if (!lines.length || this.state.upsellOff) return null;
+    const has = (c) => lines.some((l) => l.m.cat === c);
+    const pick = (c) => this.menu().filter((m) => m.cat === c && !this.is86(m.id)).sort((a, b) => a.price - b.price)[0];
+    const want = [["drinks", "Nothing to drink yet"], ["desserts", "Room for something sweet"], ["sides", "A side to share"]];
+    for (let i = 0; i < want.length; i++) {
+      if (!has(want[i][0])) { const m = pick(want[i][0]); if (m) return { m: m, why: want[i][1] }; }
+    }
+    return null;
+  }
+  // Per-portion add-on cost for the sheet currently open.
+  extrasAmt() {
+    const d = this.state.dish ? this.dishOf(this.state.dish) : null;
+    if (!d) return 0;
+    const x = this.state.dExtras || {};
+    return addonsFor(d.cat).reduce((a, p) => a + (x[p[0]] || 0) * p[1], 0);
+  }
+  canDeliver(o) { return ((o || this.outlet()).region || "") === "Malé"; }
+  // A saved mode outlives the order that chose it, so on resume it can be
+  // impossible: delivery persisted from a Malé session is still "selected" at
+  // Maafushi, where the ferry rules it out. Validate, never trust.
+  modeFor(mode, o) { return (mode === "delivery" && !this.canDeliver(o)) ? "takeaway" : (mode || "dinein"); }
+  fulfil() {
+    const s = this.state;
+    if (s.mode === "takeaway") return { label: "Takeaway", chip: "For collection" };
+    if (s.mode === "delivery") return { label: "Delivery", chip: "For delivery" };
+    return { label: "Table " + (s.table || "01"), chip: "Table open" };
+  }
+  portionOf(m) {
+    if (m.cat === "drinks") return "One glass";
+    if (m.cat === "sides") return "Side, shares between 2";
+    if (m.cat === "desserts") return m.price >= 90 ? "Shares between 2" : "One";
+    if (m.cat === "starters") return m.price >= 120 ? "Shares between 3" : "Shares between 2";
+    if (m.price >= 300) return "Shares between 2 to 3";
+    if (m.price >= 200) return "Generous, one hungry guest";
+    return "Serves one";
+  }
+
+  lines() {
+    const b = this.state.basket;
+    return Object.keys(b).filter((k) => b[k] > 0).map((k) => {
+      const m = this.dishOf(k);
+      const x = (this.state.extras || {})[k] || { amt: 0, labels: [] };
+      return m ? { id: k, m: m, qty: b[k], extra: x.amt || 0, extraLabels: x.labels || [],
+        amount: (m.price + (x.amt || 0)) * b[k], note: this.state.notes[k] || "", hold: !!this.state.holds[k] } : null;
+    }).filter(Boolean);
+  }
+  totals(lines) {
+    const o = this.outlet();
+    const L = lines || this.lines();
+    const gross = L.reduce((a, l) => a + l.amount, 0);
+    // A promotion reduces the food line, so service charge and GST are both
+    // computed on the discounted figure — charging tax on money the guest never
+    // paid is the most common promo bug in hospitality billing.
+    // The two sources stay separate all the way to the bill. Folded into one
+    // figure they cannot be labelled honestly, and a receipt that says money
+    // came off for a reason it did not is a false tax document.
+    const promoDisc = Math.min(gross, this.discountOn(L));
+    const codeDisc = this.state.codeOk ? (gross - promoDisc) * 0.05 : 0;
+    const disc = promoDisc + codeDisc;
+    const sub = Math.max(0, gross - disc);
+    const svc = sub * ((o.sc || 0) / 100);
+    const tax = (sub + svc) * ((o.rate || 0) / 100);
+    return { gross: gross, disc: disc, promoDisc: promoDisc, codeDisc: codeDisc, sub: sub, svc: svc, tax: tax, total: sub + svc + tax };
+  }
+  // Closing balance is always recomputed from the rows, never stored — the
+  // number on screen can therefore never disagree with the statement above it.
+  ledger() { return LEDGER.concat(this.state.charges || []); }
+  balance() { return this.ledger().reduce((a, r) => a + r.amt, OPENING); }
+
+  addQty(id, d) {
+    const b = Object.assign({}, this.state.basket);
+    b[id] = Math.max(0, (b[id] || 0) + d);
+    if (d > 0) this.setState({ bump: (this.state.bump || 0) + 1 });
+    if (!b[id]) { delete b[id]; }
+    this.setState({ basket: b });
+  }
+
+  sendKitchen() {
+    const lines = this.lines();
+    if (!lines.length) return this.say("Nothing to send yet");
+    const going = lines.filter((l) => !l.hold);
+    if (!going.length) return this.say("Every line is on hold — release one first");
+    const now = Date.now();
+    const fired = Object.assign({}, this.state.fired);
+    going.forEach((l) => { if (!fired[l.id]) fired[l.id] = { at: now, prep: PREP[l.m.cat] || 40 }; });
+    this.setState({ sentAt: this.state.sentAt || now, fired: fired, screen: "tracking", now: now });
+    // Modifiers, paid add-ons and allergy notes all ride on the line text, so
+    // the terminal receives what the guest actually asked for rather than a
+    // bare dish name the kitchen then has to chase.
+    this.signal("order", going.map((l) => l.qty + "× " + l.m.name + (l.note ? " (" + l.note + ")" : "")).join(" · "));
+    this.say(going.length + (going.length > 1 ? " items" : " item") + " sent to the kitchen");
+  }
+  fireOne(id) {
+    const fired = Object.assign({}, this.state.fired);
+    const holds = Object.assign({}, this.state.holds);
+    delete holds[id];
+    const m = this.dishOf(id);
+    fired[id] = { at: Date.now(), prep: PREP[m ? m.cat : ""] || 40 };
+    this.setState({ fired: fired, holds: holds, now: Date.now() });
+    this.say((m ? m.name : "Item") + " sent");
+  }
+  stageOf(l) {
+    const f = this.state.fired[l.id];
+    if (!f) return { key: "hold", label: "Held until you ask", chip: "On hold" };
+    const el = (this.state.now - f.at) / 1000;
+    if (el >= f.prep) return { key: "served", label: "At the table", chip: "At the table" };
+    if (el >= f.prep * 0.55) return { key: "almost", label: "Plating now", chip: "Almost up" };
+    return { key: "cooking", label: "In the kitchen", chip: Math.max(1, Math.ceil((f.prep - el) / 6)) + " min" };
+  }
+
+  pay() {
+    const t = this.totals();
+    if (!t.total) return this.say("There is nothing to pay");
+    if (this.state.paying) return;
+    if (this.state.method === "account") {
+      const avail = LIMIT - this.balance();
+      if (t.total > avail) return this.say("Over the account limit — MVR " + MVR(avail) + " left");
+    }
+    // Cash at the till is instant. Card and transfer go to an acquirer, so the
+    // button holds the guest here until the approval actually lands.
+    if (this.state.method === "till") return this.settleBill();
+    this.setState({ paying: 1 });
+    this._pay = setTimeout(() => {
+      this.setState({ paying: 2 });
+      this._pay = setTimeout(() => this.settleBill(), 480);
+    }, 900);
+  }
+  settleBill() {
+    const t = this.totals(), lines = this.lines(), o = this.outlet();
+    const ref = "KO-" + String(o.code || "KO-MAA").split("-")[1] + "-" + (2500 + Math.floor((Date.now() / 1000) % 400));
+    const earned = Math.floor(t.total / 10);
+    const paid = {
+      ref: ref, at: Date.now(), method: this.state.method, split: this.state.split,
+      lines: lines.map((l) => ({ qty: l.qty, name: l.m.name, amount: l.amount })),
+      sub: t.sub, svc: t.svc, tax: t.tax, total: t.total, earned: earned,
+      outlet: o.name, rate: o.rate, tax_name: o.tax, sc: o.sc
+    };
+    const charges = (this.state.charges || []).slice();
+    if (this.state.method === "account") {
+      charges.push({ date: this.dayLabel(), label: "Invoice " + ref, sub: o.name.replace("Kashikeyo ", "") + " · " + (o.tax || "GST") + " " + (o.rate || 0) + "%", amt: t.total });
+    }
+    this.setState({ paying: 0, paid: paid, charges: charges, points: this.state.points + earned, screen: "done" });
+    this.say("Paid · " + earned + " points earned");
+  }
+  dayLabel() {
+    const d = new Date();
+    return d.getDate() + " " + ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+  }
+
+  redeem(w) {
+    if ((this.state.redeemed || []).indexOf(w.id) >= 0) return this.say("Already redeemed — show it to your server");
+    if (w.id === "r4") return this.say("Platinum accounts only");
+    if (this.state.points < w.cost) return this.say("Needs " + (w.cost - this.state.points).toLocaleString() + " more points");
+    this.setState({ points: this.state.points - w.cost, redeemed: (this.state.redeemed || []).concat([w.id]) });
+    this.say(w.name + " redeemed · show this to your server");
+  }
+
+  csv() {
+    const rows = [["Date", "Detail", "Amount MVR", "Balance MVR"]];
+    let bal = OPENING;
+    this.ledger().forEach((r) => { bal += r.amt; rows.push([r.date, r.label + " — " + r.sub, r.amt.toFixed(2), bal.toFixed(2)]); });
+    const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
+    try {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+      a.download = "kashikeyo-statement.csv";
+      a.click();
+      this.say("Statement downloaded");
+    } catch (e) { this.say("Download blocked by the browser"); }
+  }
+
+  reset() {
+    clearTimeout(this._pay);
+    this.setState({
+      app: "qr", screen: "landing", cat: "all", q: "", basket: {}, notes: {}, holds: {},
+      dish: null, dQty: 1, dNote: "", dChip: "", dMods: {}, mods: {}, otab: "prog",
+    dExtras: {}, extras: {}, code: "", codeOk: 0, sentAt: 0, fired: {}, paying: 0,
+      paid: null, split: "all", method: "card", viewReceipt: null
+    });
+    this.say("New table opened");
+  }
+
+  renderVals() {
+    const s = this.state, o = this.outlet(), K0 = this.K();
+    const CH = K0.CHAIN || {};
+    const brand = (CH.brand || {});
+    const powered = this.props.showPoweredBy !== false && brand.poweredBy !== false;
+    const lines = this.lines(), t = this.totals(lines);
+    const count = lines.reduce((a, l) => a + l.qty, 0);
+    const bal = this.balance(), avail = LIMIT - bal;
+    const on = "#982030";
+
+    const catIcons = {
+      all: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+      starter: "M4 13h16M6.5 13a5.5 5.5 0 0 1 11 0M3 17h18",
+      main: "M7 3v7M5 3v4a2 2 0 0 0 4 0V3M7 10v11M17 3c-1.4 1.8-2 3.8-2 6h4M17 9v12",
+      grill: "M12 3c3 2.6 4.5 5 4.5 7.5a4.5 4.5 0 0 1-9 0C7.5 9 8.6 7.9 10 7c0 1.8.9 2.7 1.6 2.7.8 0 1.1-1.4 1-2.5-.1-1.6-.6-3-.6-4.2zM5 21h14",
+      rice: "M4 11h16a8 8 0 0 1-16 0zM3 21h18M12 4v3M9 6.5V8M15 6.5V8",
+      side: "M6 12h12a6 6 0 0 1-12 0zM4 20h16M10 8V5M14 8V6",
+      dessert: "M8.5 21h7l1-8h-9zM7 13a5 5 0 0 1 10 0M12 3v2M10.5 5.5h3",
+      drink: "M6 4h12l-1.4 9h-9.2zM12 13v6M8.5 19h7M15.5 8h3"
+    };
+
+    const q = (s.q || "").toLowerCase();
+    const filtered = this.menu().filter((m) => (s.cat === "all" || m.cat === s.cat)
+      && (!s.vegOnly || m.veg)
+      && (s.flag !== "pop" || this.isPopular(m.id))
+      && (s.flag !== "new" || this.isNew(m.id))
+      && (!q || (m.name + " " + m.desc).toLowerCase().indexOf(q) >= 0));
+
+    const dish = s.dish ? this.dishOf(s.dish) : null;
+    const livePromo = this.promo();
+    const stage = { hold: ["#f5f5f4", "#d6d3d1", "#57534e"], cooking: ["rgba(152,32,48,.1)", "#982030", "#8f1d2d"], almost: ["rgba(176,128,31,.11)", "#b0801f", "#92661a"], served: ["rgba(31,111,74,.1)", "#1f6f4a", "#17603f"] };
+
+    const tierPts = 7500;
+    const tier = s.points >= tierPts ? "Platinum" : s.points >= 2500 ? "Gold" : "Silver";
+    const tierAcc = tier === "Platinum" ? "#dfe3e6" : tier === "Gold" ? "#e8d9b5" : "#d6d3d1";
+    const tierBg = tier === "Platinum" ? "#12100f" : tier === "Gold" ? "#1c1917" : "#292524";
+    const paidR = s.paid;
+
+    const V = {
+      poweredVis: powered ? "" : "display:none",
+      brandName: brand.name || "KASHIKEYO",
+      tagline: brand.tagline || "Reef to table, since 2021",
+      outletName: o.name, outletAddr: o.addr || "", legalName: CH.name || "",
+      tin: CH.tin || "", receiptFoot: brand.receiptFoot || "Thank you",
+      tableLabel: this.fulfil().label,
+      // The status chip has to follow the fulfilment mode, or a takeaway order
+      // is headed "Takeaway" and badged "Table open" in the same row.
+      modeChip: this.fulfil().chip,
+      outletLine: o.name + " · beach deck",
+      scLabel: (o.sc || 0) + "%", taxName: (o.tax || "GST") + (o.tax === "TGST" ? " — tourism zone" : ""),
+      taxLabel: (o.rate || 0) + "%",
+      heroImgStyle: "position:absolute;inset:0;display:block;background:url('" + ((this.menu()[0] || {}).img || "img/photo_1544025162_d76694265947.jpg") + "') center/cover no-repeat",
+      clock: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      alcoholNote: "No alcohol is served. Maafushi is an inhabited island.",
+      alcoholStyle: /maafushi/i.test(o.name) ? "display:flex;gap:9px;align-items:flex-start;background:rgba(152,32,48,.06);border:1px solid rgba(152,32,48,.16);border-radius:12px;padding:12px 14px;margin-bottom:4px" : "display:none",
+      langLabel: s.lang === "en" ? "English · ދިވެހި" : "ދިވެހި · English",
+      landingCta: count ? "Back to your order · " + count : "Browse the menu",
+
+      sLanding: s.app === "qr" && s.screen === "landing",
+      sMenu: s.screen === "menu",
+      sDish: s.screen === "dish" && !!dish,
+      sBasket: s.screen === "basket",
+      sTracking: s.screen === "tracking",
+      sPay: s.screen === "pay",
+      sDone: s.screen === "done" && !!paidR,
+      sAccount: s.app === "acc" && s.screen === "account",
+      sStatement: s.app === "acc" && s.screen === "statement",
+      sReceipts: s.app === "acc" && s.screen === "receipts",
+      sRewards: s.app === "acc" && s.screen === "rewards",
+      sCard: s.app === "acc" && s.screen === "card",
+      sFulfil: s.screen === "fulfil",
+
+      // ── welcome, always current with the hour ────────────────────────────
+      welcomeLine: this.welcome().line,
+      welcomeSub: this.welcome().greetSub,
+
+      // ── the live promotion, or nothing at all ───────────────────────────
+      hasPromo: !!this.promo(),
+      promoTitle: (this.promo() || {}).title || "",
+      promoSub: (this.promo() || {}).sub || "",
+      promoBadge: (this.promo() || {}).badge || "",
+      promoImgStyle: "position:absolute;inset:0;display:block;background:url('" + ((this.promo() || {}).img || "") + "') center/cover no-repeat",
+      promoBtnLabel: !(this.promo() || {}).disc ? "Pre-order for later" : s.promoOn ? "Applied to your order" : "Add it to my order",
+      promoBtnStyle: "align-self:flex-start;font-size:11.5px;font-weight:700;padding:8px 13px;border-radius:20px;" + (s.promoOn ? "background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.4)" : "background:#fff;color:#1c1917"),
+      promoTake: () => {
+        const p = this.promo();
+        if (!p) return;
+        if (!p.disc) { this.setState({ orderCtx: "account", app: "acc", mode: "takeaway", screen: "fulfil" }); return this.say("Pre-order — pick a collection time"); }
+        this.setState({ promoOn: s.promoOn ? null : p.id });
+        this.say(s.promoOn ? p.title + " removed" : p.title + " applied — it comes off the food line before tax");
+      },
+
+      // ── ordering from the account ────────────────────────────────────────
+      startOrder: () => this.setState({ orderCtx: "account", app: "acc", screen: "fulfil", mode: this.modeFor("dinein"), slot: "asap" }),
+      fulfilTitle: "Where are we sending it",
+      modes: [
+        { k: "dinein", label: "Dine in", sub: "Pick a table — food lands as you arrive", icon: "M7 3v7M5 3v4a2 2 0 0 0 4 0V3M7 10v11M17 3c-1.4 1.8-2 3.8-2 6h4M17 9v12" },
+        { k: "takeaway", label: "Takeaway", sub: "Collect from the counter", icon: "M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0" },
+        { k: "delivery", label: "Delivery", sub: this.outlet().region === "Malé" ? "Within Malé, 30–45 minutes" : "Malé outlets only — ferry rules out islands", icon: "M3 8h11v9H3zM14 11h4l3 3v3h-7M6.5 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM17.5 20a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" }
+      ].map((m) => {
+        const off = m.k === "delivery" && !this.canDeliver();
+        const on = !off && s.mode === m.k;
+        return {
+          label: m.label, sub: off ? "Not available from this outlet" : m.sub, icon: m.icon,
+          go: () => off
+            ? this.say("Delivery runs from the Malé outlets only — the ferry rules out island delivery", 1)
+            : this.setState({ mode: m.k, slot: m.k === "dinein" ? "asap" : s.slot }),
+          style: "display:flex;align-items:center;gap:12px;width:100%;border-radius:13px;padding:14px;background:" + (off ? "#f5f5f4" : "#fff")
+            + ";border:" + (on ? "1.5px solid #982030" : "1px solid #e7e5e4") + (off ? ";opacity:.55" : ""),
+          iconStyle: "flex-shrink:0;color:" + (on ? "#982030" : off ? "#a8a29e" : "#57534e"),
+          tickStyle: on ? "width:18px;height:18px;border-radius:50%;background:#982030;display:grid;place-items:center;flex-shrink:0" : "display:none"
+        };
+      }),
+      outletOpts: this.outlets().map((x) => ({
+        label: x.name.replace("Kashikeyo ", ""),
+        sub: x.region + " · " + x.tax + " " + x.rate + "%",
+        go: () => { const next = this.modeFor(s.mode, x); if (next !== s.mode) this.say("Delivery is not available from " + x.name.replace("Kashikeyo ", "") + " — switched to takeaway"); this.setState({ outletId: x.id, mode: next }); },
+        style: "display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:11px 13px;border-radius:12px;flex:1 1 44%;min-width:0;text-align:left;" + (this.outlet().id === x.id ? "background:rgba(152,32,48,.06);border:1.5px solid #982030" : "background:#fff;border:1px solid #e7e5e4"),
+        labelStyle: "font-size:12.5px;font-weight:700;color:#1c1917;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%",
+        subStyle: "font-size:10px;color:#78716c"
+      })),
+      showTables: s.mode === "dinein",
+      tables: (function () {
+        const n = this.outlet().tables || 12, taken = [3, 7, 11];
+        const out = [];
+        for (let i = 1; i <= n; i++) {
+          const lbl = i < 10 ? "0" + i : String(i);
+          const busy = taken.indexOf(i) >= 0;
+          out.push({
+            label: lbl, busy: busy,
+            go: () => busy ? this.say("Table " + lbl + " is taken tonight") : this.setState({ table: lbl }),
+            style: "aspect-ratio:1;border-radius:11px;display:grid;place-items:center;font-size:13px;font-weight:800;font-family:'JetBrains Mono',monospace;" + (busy ? "background:#eceae7;color:#d6d3d1;text-decoration:line-through" : s.table === lbl ? "background:#982030;color:#fff" : "background:#fff;border:1px solid #d6d3d1;color:#44403c")
+          });
+        }
+        return out;
+      }).call(this),
+      showSlot: s.mode !== "dinein",
+      slotTitle: s.mode === "delivery" ? "When should it arrive" : "When will you collect",
+      slots: [["asap", "As soon as it is ready"], ["30", "In 30 minutes"], ["60", "In an hour"], ["sunset", "At sunset · " + SUNSET]].map((x) => ({
+        label: x[1],
+        go: () => this.setState({ slot: x[0] }),
+        style: "font-size:11.5px;font-weight:600;padding:9px 13px;border-radius:20px;white-space:nowrap;" + (s.slot === x[0] ? "background:#982030;color:#fff" : "background:#fff;border:1px solid #d6d3d1;color:#57534e")
+      })),
+      showAddr: s.mode === "delivery",
+      addr: s.addr, onAddr: (e) => this.setState({ addr: e.target.value }),
+      fulfilNext: () => {
+        if (s.mode === "delivery" && !(s.addr || "").trim()) return this.say("An address is needed for delivery");
+        this.setState({ screen: "menu" });
+      },
+      fulfilSummary: this.fulfil().label + " · " + this.outlet().name.replace("Kashikeyo ", "")
+        + (s.mode === "dinein" ? "" : " · " + (s.slot === "asap" ? "as soon as ready" : s.slot === "sunset" ? "at sunset" : "in " + s.slot + " min")),
+      toCard: () => this.go("card"),
+      memberNo: "RL-4821-0093",
+      // A deterministic block pattern with the three finder squares a real code
+      // carries. It is a visual stand-in — production renders the member token
+      // through a proper QR encoder, which is why the number is printed under
+      // it: a cashier can always key it if the camera will not focus.
+      qrCells: (function () {
+        const N = 25, out = [];
+        let seed = 90210;
+        const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+        for (let y = 0; y < N; y++) {
+          for (let x = 0; x < N; x++) {
+            const finder = (fx, fy) => x >= fx && x < fx + 7 && y >= fy && y < fy + 7
+              && (x === fx || x === fx + 6 || y === fy || y === fy + 6 || (x >= fx + 2 && x <= fx + 4 && y >= fy + 2 && y <= fy + 4));
+            const blank = (fx, fy) => x >= fx && x < fx + 8 && y >= fy && y < fy + 8;
+            const isF = finder(0, 0) || finder(N - 7, 0) || finder(0, N - 7);
+            const inF = blank(0, 0) || blank(N - 8, 0) || blank(0, N - 8);
+            const on = isF || (!inF && rnd() > 0.48);
+            out.push("background:" + (on ? "#1c1917" : "transparent") + ";display:block;border-radius:1px");
+          }
+        }
+        return out;
+      })(),
+
+      crumb: s.app === "qr" ? "qr · " + s.screen : (s.screen === "account" ? "account" : "account · " + s.screen),
+      tabQrStyle: "font-size:11.5px;font-weight:700;padding:7px 14px;border-radius:20px;" + (s.app === "qr" ? "background:" + on + ";color:#fff" : "background:#241f1c;border:1px solid #332c27;color:#78716c"),
+      tabAccStyle: "font-size:11.5px;font-weight:700;padding:7px 14px;border-radius:20px;" + (s.app === "acc" ? "background:#1f6f4a;color:#fff" : "background:#241f1c;border:1px solid #332c27;color:#78716c"),
+      goQr: () => this.setState({ app: "qr", screen: s.paid ? "done" : s.sentAt ? "tracking" : "landing" }),
+      goAccount: () => this.setState({ app: "acc", screen: "account" }),
+      reset: () => this.reset(),
+
+      toMenu: () => this.go("menu"),
+      backFromMenu: () => this.go(s.orderCtx === "account" ? "fulfil" : "landing"),
+      toBasket: () => this.go(count ? "basket" : "menu"),
+      toTracking: () => this.go("tracking"),
+      toPay: () => { if (s.sentAt) this.signal("bill", "Guest asked for the bill"); this.go("pay"); },
+      toAccount: () => this.go("account"),
+      toStatement: () => this.go("statement"),
+      toReceipts: () => this.go("receipts"),
+      toRewards: () => this.go("rewards"),
+      callServer: () => {
+        this.signal("assist", s.mode === "dinein" ? "Guest at " + this.fulfil().label + " needs a server" : "Collection guest waiting at the counter");
+        const at = this.outlet().name.replace("Kashikeyo ", "");
+        this.say(s.mode === "dinein" ? "A server is on the way to " + this.fulfil().label + " · " + at : "The counter at " + at + " has been notified — we will call your name");
+      },
+      toggleLang: () => { this.setState({ lang: s.lang === "en" ? "dv" : "en" }); this.say(s.lang === "en" ? "ދިވެހި — full translation ships with the menu master" : "English"); },
+
+      menuSub: o.name.replace("Kashikeyo ", "") + " · " + this.fulfil().label,
+      q: s.q,
+      onSearch: (e) => this.setState({ q: e.target.value }),
+      badgeStyle: count ? "position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;background:#1c1917;color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;font-family:'JetBrains Mono',monospace;border:2px solid #fff" : "display:none",
+      basketCount: String(count),
+      subLabel: "MVR " + MVR(t.sub),
+      menuBarStyle: count ? "flex-shrink:0;padding:12px 20px 26px;background:#fff;border-top:1px solid #e7e5e4;animation:" + ((s.bump || 0) % 2 ? "gbumpA" : "gbumpB") + " .34s cubic-bezier(.2,.8,.3,1)" : "display:none",
+      noDishStyle: filtered.length ? "display:none" : "display:flex;flex-direction:column;align-items:center;gap:11px;padding:30px 4px;text-align:center",
+      noDishMsg: (function () {
+        const bits = [];
+        if (s.flag === "pop") bits.push("popular dishes");
+        else if (s.flag === "new") bits.push("new dishes");
+        if (s.vegOnly) bits.push(bits.length ? "that are vegetarian" : "vegetarian dishes");
+        const where = s.cat === "all" ? "" : " in " + (((K0.MENU_CATEGORIES || []).find((c) => c.id === s.cat) || {}).name || "that course");
+        if (s.q) return "Nothing matches “" + s.q + "”" + where + ".";
+        return bits.length ? "No " + bits.join(" ") + where + "." : "Nothing on the menu" + where + " right now.";
+      })(),
+      clearAll: () => this.setState({ flag: "", vegOnly: 0, cat: "all", q: "" }),
+      code: s.code,
+      onCode: (e) => this.setState({ code: e.target.value.toUpperCase() }),
+      applyCode: () => {
+        const c = (s.code || "").trim().toUpperCase();
+        if (!c) return this.say("Enter a code", 1);
+        // One real code, and an explicit refusal for anything else. A field that
+        // silently accepts nonsense teaches guests to distrust the total.
+        if (c !== "DISC5" && c !== "SUITENDISC5") { this.setState({ codeOk: 0 }); return this.say(c + " is not a valid code", 1); }
+        this.setState({ codeOk: 1 });
+        this.say("DISC5 applied — 5% off the food line");
+      },
+      codeOkStyle: s.codeOk ? "display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;color:#17603f" : "display:none",
+      codeFieldStyle: "flex:1;min-width:0;font-size:12.5px;font-weight:600;color:#1c1917;letter-spacing:.04em",
+      hasUpsell: !!this.upsell(),
+      upName: (this.upsell() || { m: {} }).m.name || "",
+      upWhy: (this.upsell() || {}).why || "",
+      upPrice: this.upsell() ? "MVR " + MVR(this.upsell().m.price) : "",
+      upImgStyle: "width:46px;height:46px;border-radius:10px;flex-shrink:0;display:block;background:url('" + ((this.upsell() || { m: {} }).m.img || "") + "') center/cover no-repeat",
+      upAdd: () => { const u = this.upsell(); if (!u) return; this.addQty(u.m.id, 1); this.say(u.m.name + " added"); },
+      upSkip: () => this.setState({ upsellOff: 1 }),
+      vegStyle: "display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:20px;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;" + (s.vegOnly ? "background:#1f6f4a;color:#fff" : "background:#fff;border:1px solid #e7e5e4;color:#57534e"),
+      vegLabel: s.vegOnly ? "Vegetarian only" : "Vegetarian",
+      toggleVeg: () => this.setState({ vegOnly: s.vegOnly ? 0 : 1 }),
+      popStyle: "display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:20px;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;" + (s.flag === "pop" ? "background:#982030;color:#fff" : "background:#fff;border:1px solid #e7e5e4;color:#57534e"),
+      newStyle: "display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:20px;font-size:11.5px;font-weight:700;white-space:nowrap;flex-shrink:0;" + (s.flag === "new" ? "background:#982030;color:#fff" : "background:#fff;border:1px solid #e7e5e4;color:#57534e"),
+      togglePop: () => this.setState({ flag: s.flag === "pop" ? "" : "pop", cat: "all" }),
+      toggleNew: () => this.setState({ flag: s.flag === "new" ? "" : "new", cat: "all" }),
+
+      cats: [{ id: "all", name: "All", icon: "all" }].concat(K0.MENU_CATEGORIES || []).map((c) => ({
+        name: c.name, icon: catIcons[c.icon || c.id] || catIcons.main,
+        thumbStyle: (function () {
+          const d = c.id === "all" ? null : this.menu().filter((m) => m.cat === c.id && m.img)[0];
+          return d ? "width:22px;height:22px;border-radius:50%;flex-shrink:0;display:block;background:url('" + d.img + "') center/cover no-repeat" : "display:none";
+        }).call(this),
+        iconStyle: (c.id === "all" || !this.menu().filter((m) => m.cat === c.id && m.img)[0]) ? "flex-shrink:0;opacity:.9" : "display:none",
+        go: () => this.setState({ cat: c.id }),
+        style: "display:inline-flex;align-items:center;gap:7px;padding:6px 13px 6px 6px;border-radius:22px;font-size:11.5px;font-weight:" + (s.cat === c.id ? "700" : "600") + ";white-space:nowrap;flex-shrink:0;" + (s.cat === c.id ? "background:" + on + ";color:#fff" : "background:#fff;border:1px solid #e7e5e4;color:#57534e;box-shadow:0 1px 2px rgba(35,32,29,.04)")
+      })),
+
+      dishes: filtered.map((m) => {
+        const off = this.is86(m.id), inB = s.basket[m.id] || 0;
+        // A severe allergen outranks a marketing badge on the browse card — it
+        // is the one thing a guest must not have to open the dish to discover.
+        const sev = this.allergensOf(m).filter((a) => /shellfish|nuts/.test(a))[0] || "";
+        const pop = this.isPopular(m.id), fresh = this.isNew(m.id);
+        const pr = livePromo && (livePromo.cats || []).indexOf(m.cat) >= 0 ? livePromo : null;
+        return {
+          name: m.name, desc: m.desc, img: m.img,
+          price: MVR(m.price), qty: String(inB),
+          cardStyle: "position:relative;display:flex;flex-direction:column;background:#fff;border:1px solid " + (inB ? "rgba(152,32,48,.32)" : "#e7e5e4") + ";border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(35,32,29,.05)" + (off ? ";opacity:.55" : ""),
+          imgStyle: "width:100%;aspect-ratio:1.12;display:block;flex-shrink:0;background:url('" + m.img + "') center/cover no-repeat" + (off ? ";filter:grayscale(1)" : ""),
+          priceStyle: "font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;" + (off ? "color:#a8a29e;text-decoration:line-through" : "color:#1c1917"),
+          mins: "~" + Math.round((PREP[m.cat] || 40) / 3) + " min",
+          promoTag: pr && !off ? pr.badge : "",
+          promoTagStyle: (pr && !off) ? "font-size:9px;font-weight:800;letter-spacing:.06em;padding:3px 7px;border-radius:5px;color:#124d33;background:rgba(31,111,74,.14);white-space:nowrap" : "display:none",
+          badge: off ? "FINISHED TONIGHT" : sev ? sev.replace("Contains ", "").toUpperCase() : pop ? "MOST POPULAR" : fresh ? "NEW" : m.veg ? "VEGETARIAN" : m.cat === "grill" ? "OVER COCONUT HUSK" : m.cat === "drinks" ? "MADE TO ORDER" : "HALAL",
+          badgeStyle: "font-size:9.5px;font-weight:700;padding:3px 7px;border-radius:5px;letter-spacing:.04em;" + (off ? "color:#8f1d2d;background:rgba(152,32,48,.12)" : sev ? "color:#8f1d2d;background:rgba(152,32,48,.11)" : pop ? "color:#92661a;background:rgba(176,128,31,.13)" : fresh ? "color:#17603f;background:rgba(31,111,74,.12)" : m.veg ? "color:#17603f;background:rgba(31,111,74,.1)" : "color:#78716c;background:#eceae7"),
+          open: () => off ? this.say(m.name + " has finished for tonight", 1) : this.setState({ dish: m.id, dQty: 1, dNote: "", dChip: "", dExtras: {}, dMods: Object.assign(modDefaults(m.cat), s.mods[m.id] || {}), screen: "dish" }),
+          inc: () => off ? this.say(m.name + " has finished for tonight", 1) : this.addQty(m.id, 1),
+          dec: () => this.addQty(m.id, -1),
+          stepWrapStyle: (inB && !off) ? "position:absolute;right:8px;bottom:8px;display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #e7e5e4;border-radius:20px;padding:4px;box-shadow:0 2px 8px rgba(35,32,29,.12)" : "display:none",
+          addStyle: (inB || off) ? "display:none" : "position:absolute;right:9px;bottom:9px;width:32px;height:32px;border-radius:50%;background:" + on + ";color:#fff;display:grid;place-items:center;box-shadow:0 2px 8px rgba(152,32,48,.35)"
+        };
+      }),
+
+      dImgStyle: "position:absolute;inset:0;display:block;background:url('" + (dish ? dish.img : "") + "') center/cover no-repeat",
+      dName: dish ? dish.name : "", dDesc: dish ? dish.desc : "",
+      dPrice: dish ? MVR(dish.price) : "", dQty: String(s.dQty),
+      dNote: s.dNote, onNote: (e) => this.setState({ dNote: e.target.value }),
+      noteHint: s.dNote ? "This prints in bold capitals on the kitchen ticket." : "Anything you type reaches the chef, not just the server.",
+      dTags: dish ? []
+        .concat(this.isPopular(dish.id) ? [{ label: "Most popular", tone: "a" }] : [])
+        .concat(this.isNew(dish.id) ? [{ label: "New this week", tone: "g" }] : [])
+        .concat([{ label: this.portionOf(dish), tone: "n" }, { label: "Halal", tone: "g" }])
+        .concat(dish.veg ? [{ label: "Vegetarian", tone: "g" }] : [])
+        .concat(this.allergensOf(dish).map((a) => ({ label: a, tone: /shellfish|nuts/.test(a) ? "r" : "a" })))
+        .concat([{ label: "~" + Math.round((PREP[dish.cat] || 40) / 3) + " min", tone: "n" }])
+        .map((x) => ({
+          label: x.label,
+          style: "font-size:10.5px;font-weight:700;padding:6px 11px;border-radius:20px;" + (
+            x.tone === "g" ? "color:#17603f;background:rgba(31,111,74,.1)"
+              : x.tone === "r" ? "color:#8f1d2d;background:rgba(152,32,48,.11)"
+                : x.tone === "a" ? "color:#92661a;background:rgba(176,128,31,.11)"
+                  : "color:#44403c;background:#eceae7")
+        })) : [],
+      dMods: dish ? modsFor(dish.cat).map((g) => ({
+        label: g.label,
+        opts: g.opts.map((op) => {
+          const sel = s.dMods[g.k] === op, dflt = op === g.opts[1];
+          return {
+            label: op + (dflt && !sel ? " · default" : ""),
+            go: () => { const m2 = Object.assign({}, s.dMods); m2[g.k] = op; this.setState({ dMods: m2 }); },
+            style: "display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;padding:12px 14px;border-radius:11px;" + (sel ? "background:rgba(152,32,48,.06);border:1.5px solid #982030;color:#1c1917" : "background:#f5f5f4;border:1px solid #e7e5e4;color:#57534e"),
+            dotStyle: "width:17px;height:17px;border-radius:50%;flex-shrink:0;display:block;" + (sel ? "background:#982030;box-shadow:inset 0 0 0 3.5px #fff" : "border:1.5px solid #d6d3d1")
+          };
+        })
+      })) : [],
+      orderTabs: (function () {
+        const cart = lines.filter((l) => !s.fired[l.id]).length;
+        const prog = lines.filter((l) => s.fired[l.id] && this.stageOf(l).key !== "served").length;
+        const done = lines.filter((l) => s.fired[l.id] && this.stageOf(l).key === "served").length;
+        return [["cart", "Cart", cart], ["prog", "In progress", prog], ["done", "Done", done]].map((x) => ({
+          label: x[1], count: String(x[2]),
+          go: () => this.setState({ otab: x[0] }),
+          style: "flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 6px;font-size:11.5px;font-weight:700;border-bottom:2px solid " + (s.otab === x[0] ? "#982030" : "transparent") + ";color:" + (s.otab === x[0] ? "#1c1917" : "#a8a29e"),
+          badgeStyle: x[2] ? "min-width:17px;height:17px;border-radius:9px;display:grid;place-items:center;font-size:9.5px;font-weight:800;font-family:'JetBrains Mono',monospace;background:" + (s.otab === x[0] ? "#982030" : "#e7e5e4") + ";color:" + (s.otab === x[0] ? "#fff" : "#78716c") : "display:none"
+        }));
+      }).call(this),
+      hasAddons: !!(dish && addonsFor(dish.cat).length),
+      dAddons: dish ? addonsFor(dish.cat).map((a) => {
+        const q = (s.dExtras || {})[a[0]] || 0;
+        return {
+          label: a[0], plus: "+MVR " + MVR(a[1]),
+          qty: String(q),
+          qtyStyle: q ? "font-size:12.5px;font-weight:800;color:#1c1917;font-family:'JetBrains Mono',monospace;min-width:11px;text-align:center" : "display:none",
+          minusStyle: q ? "width:26px;height:26px;border-radius:50%;background:#f5f5f4;color:#57534e;font-size:15px;font-weight:700;line-height:1;display:grid;place-items:center;flex-shrink:0" : "display:none",
+          inc: () => { const x = Object.assign({}, s.dExtras); x[a[0]] = (x[a[0]] || 0) + 1; this.setState({ dExtras: x }); },
+          dec: () => { const x = Object.assign({}, s.dExtras); x[a[0]] = Math.max(0, (x[a[0]] || 0) - 1); if (!x[a[0]]) delete x[a[0]]; this.setState({ dExtras: x }); }
+        };
+      }) : [],
+      dChips: NOTE_CHIPS.map((c) => ({
+        label: c, go: () => this.setState({ dChip: s.dChip === c ? "" : c }),
+        style: "font-size:11.5px;font-weight:600;padding:8px 12px;border-radius:10px;white-space:nowrap;" + (s.dChip === c ? "color:#fff;background:" + on + ";border:1px solid " + on : "color:#57534e;background:#fff;border:1px solid #d6d3d1")
+      })),
+      qtyUp: () => this.setState({ dQty: s.dQty + 1 }),
+      qtyDown: () => this.setState({ dQty: Math.max(1, s.dQty - 1) }),
+      addLabel: dish ? "Add · MVR " + MVR((dish.price + this.extrasAmt()) * s.dQty) : "Add",
+      extrasLine: this.extrasAmt() ? "Add-ons +MVR " + MVR(this.extrasAmt()) + " per portion" : "",
+      extrasLineStyle: this.extrasAmt() ? "font-size:10.5px;color:#92661a;font-weight:600;margin-top:6px" : "display:none",
+      addToBasket: () => {
+        if (!dish) return;
+        const b = Object.assign({}, s.basket); b[dish.id] = (b[dish.id] || 0) + s.dQty;
+        const n = Object.assign({}, s.notes), mm = Object.assign({}, s.mods), ex = Object.assign({}, s.extras);
+        const exLabels = Object.keys(s.dExtras || {}).filter((k) => s.dExtras[k]).map((k) => (s.dExtras[k] > 1 ? s.dExtras[k] + "× " : "") + k);
+        if (this.extrasAmt()) { ex[dish.id] = { amt: this.extrasAmt(), labels: exLabels }; } else { delete ex[dish.id]; }
+        mm[dish.id] = Object.assign({}, s.dMods);
+        const devs = modsFor(dish.cat).map((g) => s.dMods[g.k]).filter((v, i) => v && v !== modsFor(dish.cat)[i].opts[1]);
+        const note = devs.concat(exLabels).concat([s.dChip, s.dNote]).filter(Boolean).join(" · ");
+        if (note) { n[dish.id] = note; } else { delete n[dish.id]; }
+        this.setState({ basket: b, notes: n, mods: mm, extras: ex, screen: "menu", dish: null });
+        this.say(s.dQty + " × " + dish.name + " added");
+      },
+
+      basketSub: this.fulfil().label + " · " + (s.sentAt ? "adding to a sent order" : "nothing sent yet"),
+      emptyBasketStyle: lines.length ? "display:none" : "padding:30px 4px;font-size:12.5px;color:#a8a29e;text-align:center",
+      lines: lines.map((l) => ({
+        qty: String(l.qty), name: l.m.name, amount: MVR(l.amount),
+        each: l.qty > 1 ? l.qty + " × " + MVR(l.m.price) : "",
+        note: l.note, noteStyle: l.note ? "display:block;font-size:11px;color:#8f1d2d;font-weight:600;margin-top:4px;line-height:1.4" : "display:none",
+        inc: () => this.addQty(l.id, 1), dec: () => this.addQty(l.id, -1),
+        remove: () => { const b = Object.assign({}, s.basket); delete b[l.id]; this.setState({ basket: b }); this.say(l.m.name + " removed"); },
+        hold: () => { const h = Object.assign({}, s.holds); if (h[l.id]) { delete h[l.id]; } else { h[l.id] = 1; } this.setState({ holds: h }); },
+        holdLabel: l.hold ? "On hold" : "Hold",
+        holdStyle: "font-size:11px;font-weight:700;padding:6px 10px;border-radius:8px;" + (l.hold ? "background:rgba(176,128,31,.12);color:#92661a" : "background:#f5f5f4;border:1px solid #e7e5e4;color:#57534e")
+      })),
+      sub: MVR(t.sub), svc: MVR(t.svc), tax: MVR(t.tax), total: MVR(t.total),
+      gross: MVR(t.gross), disc: MVR(t.disc),
+      promoDiscLabel: (this.promo() || {}).title || "Promotion",
+      promoDiscAmt: MVR(t.promoDisc), codeDiscAmt: MVR(t.codeDisc),
+      codeDiscLabel: "Code DISC5 · 5% off",
+      promoRowStyle: t.promoDisc > 0 ? "display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#17603f;font-weight:600" : "display:none",
+      codeRowStyle: t.codeDisc > 0 ? "display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#17603f;font-weight:600" : "display:none",
+      promoRowMonoStyle: t.promoDisc > 0 ? "display:flex;justify-content:space-between;gap:10px" : "display:none",
+      codeRowMonoStyle: t.codeDisc > 0 ? "display:flex;justify-content:space-between;gap:10px" : "display:none",
+      promoScopeNote: s.promoOn && !this.promoQualifies() ? (this.promo() || {}).title + " is on your order, but nothing in it qualifies yet." : "",
+      promoScopeStyle: s.promoOn && !this.promoQualifies() ? "font-size:10.5px;color:#92661a;line-height:1.5;background:rgba(176,128,31,.09);border-radius:9px;padding:9px 11px" : "display:none",
+      discRowStyle: t.disc > 0 ? "display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#17603f;font-weight:600" : "display:none",
+      discRowMonoStyle: t.disc > 0 ? "display:flex;justify-content:space-between;gap:10px" : "display:none",
+      totalLabel: "MVR " + MVR(t.total),
+      taxNote: (o.tax || "GST") + " is charged on the subtotal plus service charge. The service charge goes to the team, in equal shares.",
+      sendStyle: "width:100%;padding:16px;border-radius:14px;font-size:14.5px;font-weight:700;margin-top:4px;text-align:center;" + (lines.length ? "background:" + on + ";color:#fff" : "background:#e7e5e4;color:#b8b3ae"),
+      sendLabel: s.sentAt ? "Send the new items" : "Send to the kitchen",
+      sendKitchen: () => this.sendKitchen(),
+
+      orderRef: "Order KO-MAA-" + (2400 + Math.floor((s.sentAt || 0) / 1000) % 90),
+      trackTitle: (function () {
+        const st = lines.filter((l) => s.fired[l.id]).map((l) => this.stageOf(l).key);
+        if (!st.length) return "Nothing sent yet";
+        if (st.every((k) => k === "served")) return "Everything is with you";
+        if (st.some((k) => k === "cooking")) return "The kitchen has it";
+        return "Plating up";
+      }).call(this),
+      trackSub: (function () {
+        const pend = lines.filter((l) => s.fired[l.id] && this.stageOf(l).key !== "served");
+        if (!pend.length) return "Enjoy it. Ask for the bill whenever you are ready.";
+        const worst = pend.reduce((a, l) => {
+          const f = s.fired[l.id], left = f.prep - (s.now - f.at) / 1000;
+          return left > a.left ? { left: left, name: l.m.name } : a;
+        }, { left: -1, name: "" });
+        return worst.name + " is the long pole. About " + Math.max(1, Math.ceil(worst.left / 6)) + " minutes.";
+      }).call(this),
+      step1: "flex:1;height:4px;border-radius:2px;background:#fff;display:block",
+      step2: "flex:1;height:4px;border-radius:2px;display:block;background:" + (lines.some((l) => s.fired[l.id]) ? "#fff" : "rgba(255,255,255,.3)"),
+      step3: "flex:1;height:4px;border-radius:2px;display:block;background:" + (lines.length && lines.filter((l) => s.fired[l.id]).every((l) => this.stageOf(l).key === "served") ? "#fff" : "rgba(255,255,255,.3)"),
+      lab1: "", lab2: lines.some((l) => s.fired[l.id]) ? "" : "opacity:.55",
+      lab3: lines.length && lines.filter((l) => s.fired[l.id]).every((l) => this.stageOf(l).key === "served") ? "" : "opacity:.55",
+      trackRows: lines.filter((l) => {
+        const k = this.stageOf(l).key;
+        if (s.otab === "cart") return !s.fired[l.id];
+        if (s.otab === "done") return k === "served";
+        return !!s.fired[l.id] && k !== "served";
+      }).map((l) => {
+        const st = this.stageOf(l), c = stage[st.key];
+        return {
+          name: l.m.name, meta: l.qty + " · " + st.label,
+          note: l.note, noteStyle: l.note ? "display:block;font-size:11px;color:#8f1d2d;font-weight:600;margin-top:4px;line-height:1.4" : "display:none",
+          chip: st.chip,
+          cardStyle: "display:flex;justify-content:space-between;align-items:flex-start;gap:12px;background:" + (st.key === "hold" ? "#f5f5f4" : "#fff") + ";border:" + (st.key === "cooking" ? "1.5px solid rgba(152,32,48,.3)" : st.key === "hold" ? "1px dashed #d6d3d1" : "1px solid #e7e5e4") + ";border-radius:14px;padding:13px 14px",
+          chipStyle: st.key === "hold" ? "display:none" : "display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;padding:6px 10px;border-radius:20px;flex-shrink:0;background:" + c[0] + ";color:" + c[2],
+          dotStyle: st.key === "cooking" ? "width:6px;height:6px;border-radius:50%;background:#982030;display:block;animation:gpulse 1.6s ease-in-out infinite" : "display:none",
+          fireStyle: st.key === "hold" ? "font-size:11px;font-weight:700;color:#982030;flex-shrink:0;padding:5px 6px" : "display:none",
+          fire: () => this.fireOne(l.id)
+        };
+      }),
+
+      paySub: this.fulfil().label + " · " + count + (count === 1 ? " item" : " items"),
+      splits: [
+        { k: "all", label: "Whole bill", amt: MVR(t.total) },
+        { k: "four", label: "Split by 4", amt: MVR(t.total / 4) },
+        { k: "mine", label: "My items", amt: "Pick" }
+      ].map((x) => ({
+        label: x.label, amt: x.amt,
+        go: () => { this.setState({ split: x.k }); if (x.k === "mine") this.say("Tap the lines you are covering"); },
+        style: "flex:1;padding:13px 10px;border-radius:12px;text-align:center;" + (s.split === x.k ? "background:" + on + ";color:#fff" : "background:#fff;border:1px solid #d6d3d1;color:#44403c"),
+        amtStyle: "display:block;font-size:10.5px;margin-top:2px;font-family:'JetBrains Mono',monospace;" + (s.split === x.k ? "opacity:.75" : "color:#a8a29e")
+      })),
+      methods: [
+        { k: "card", label: "Card", sub: "Visa, Mastercard, Amex · MVR or USD", icon: "M2 5h20v14H2zM2 10h20M6 15h4" },
+        { k: "transfer", label: "Bank transfer", sub: "BML QR · reference fills itself", icon: "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" },
+        { k: "account", label: "Charge to my account", sub: "Reef Logistics · MVR " + MVR(avail) + " available", icon: "M8 2h8v4H8zM6 6h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2zM9 12h6M9 16h6" },
+        { k: "till", label: "Pay at the till", sub: "Cash, or hand a card to the cashier", icon: "M3 8h18v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 8l2.5-4h13L21 8M16 14h2" }
+      ].map((x) => ({
+        label: x.label, sub: x.sub, icon: x.icon,
+        go: () => this.setState({ method: x.k }),
+        style: "display:flex;align-items:center;gap:12px;width:100%;background:#fff;border:" + (s.method === x.k ? "1.5px solid " + on : "1px solid #e7e5e4") + ";border-radius:13px;padding:14px",
+        iconStyle: "flex-shrink:0;color:" + (s.method === x.k ? on : "#57534e"),
+        tickStyle: s.method === x.k ? "width:18px;height:18px;border-radius:50%;background:" + on + ";display:grid;place-items:center;flex-shrink:0" : "display:none"
+      })),
+      tipNote: "The " + (o.sc || 0) + "% service charge is already on this bill and is shared equally by the whole team. A tip is not expected.",
+      payBtnStyle: "width:100%;padding:16px;border-radius:14px;font-size:14.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:9px;" + (s.paying === 2 ? "background:#1f6f4a;color:#fff" : "background:" + on + ";color:#fff"),
+      payLabel: s.paying === 1 ? "Waiting for the terminal…" : s.paying === 2 ? "Approved" : s.method === "till" ? "Confirm at the till · MVR " + MVR(t.total) : s.method === "account" ? "Charge MVR " + MVR(t.total) : "Pay MVR " + MVR(t.total),
+      spinStyle: s.paying === 1 ? "width:15px;height:15px;flex-shrink:0;animation:gspin .8s linear infinite" : "display:none",
+      checkStyle: s.paying === 2 ? "width:16px;height:16px;flex-shrink:0;animation:gpop .22s cubic-bezier(.2,.8,.3,1)" : "display:none",
+      doPay: () => this.pay(),
+
+      doneTitle: paidR ? (paidR.method === "account" ? "Charged to your account" : paidR.method === "till" ? "Take this to the till" : "Paid — thank you") : "",
+      doneSub: paidR ? (paidR.method === "account" ? "Invoice " + paidR.ref + " is on your statement already" : "Receipt " + paidR.ref + " · " + paidR.earned + " points earned") : "",
+      payMethodLabel: paidR ? ({ card: "Card", transfer: "Bank transfer", account: "On account", till: "At the till" })[paidR.method] : "",
+      receiptLines: paidR ? paidR.lines.map((l) => ({ label: l.qty + " " + l.name, amount: MVR(l.amount) })) : [],
+      pointsNote: paidR ? paidR.earned + " points earned on this bill. Balance " + (s.points).toLocaleString() + " — worth MVR " + MVR(s.points / 10) + " off a future visit." : "",
+
+      custName: "Reef Logistics Pvt Ltd", custTin: "1009812GST404",
+      tierLabel: tier.toUpperCase() + " ACCOUNT",
+      // The card is one design and the TIER carries the difference, in a single
+      // metallic accent. Three separate card treatments would read as three
+      // brands; one card with a changing accent reads as one programme.
+      memCardStyle: "position:relative;overflow:hidden;border-radius:18px;padding:18px;background:" + tierBg,
+      memSheenStyle: "position:absolute;inset:0;display:block;background:linear-gradient(135deg,rgba(255,255,255,.09),rgba(255,255,255,0) 46%)",
+      memTierStyle: "display:block;font-size:9px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:" + tierAcc,
+      memMarkStyle: "width:30px;height:30px;border-radius:9px;flex-shrink:0;display:block;background:#fff url('brand/kashikeyo-mark.png') center/22px 22px no-repeat",
+      memPointsStyle: "display:block;font-size:16px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:3px;color:" + tierAcc,
+      limitLabel: MVR(LIMIT).split(".")[0],
+      availLabel: MVR(avail), drawnLabel: MVR(bal), drawnMvr: "MVR " + MVR(bal),
+      drawnBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (bal / LIMIT) * 100).toFixed(1) + "%;background:" + (bal / LIMIT > 0.8 ? "#c2452a" : on) + ";display:block",
+      pointsLabel: (s.points).toLocaleString(),
+      pointsWorth: "Worth MVR " + MVR(s.points / 10) + " off a bill",
+      invCount: String(this.ledger().filter((r) => r.amt > 0).length),
+      recent: this.ledger().slice().reverse().slice(0, 3).map((r) => ({
+        label: r.label, sub: r.date + " · " + r.sub,
+        amt: (r.amt > 0 ? "+" : "") + MVR(r.amt),
+        amtStyle: "font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;color:" + (r.amt > 0 ? "#8f1d2d" : "#17603f"),
+        go: () => this.go("statement")
+      })),
+      settle: () => { this.say("MVR " + MVR(bal) + " — BML transfer sheet opened"); },
+
+      stmtSub: "July 2026 · Reef Logistics Pvt Ltd",
+      openingLabel: MVR(OPENING),
+      stmtRows: (function () {
+        let run = OPENING;
+        const all = this.ledger();
+        return all.map((r, i) => {
+          run += r.amt;
+          const last = i === all.length - 1;
+          return {
+            date: r.date, label: r.label, sub: r.sub,
+            amt: (r.amt > 0 ? "+" : "") + MVR(r.amt), bal: MVR(run),
+            rowStyle: "display:flex;gap:12px;align-items:flex-start;padding:13px 0;" + (last ? "" : "border-bottom:1px solid #eceae7"),
+            amtStyle: "display:block;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (r.amt > 0 ? "#8f1d2d" : "#17603f"),
+            balStyle: "display:block;font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;" + (last ? "font-weight:700;color:#1c1917" : "color:#a8a29e")
+          };
+        });
+      }).call(this),
+      download: () => this.csv(),
+
+      receiptsSub: this.ledger().filter((r) => r.amt > 0).length + " bills on this account",
+      receipts: this.ledger().filter((r) => r.amt > 0).slice().reverse().map((r) => ({
+        ref: r.label.replace("Invoice ", ""), sub: r.date + " · " + r.sub, amt: MVR(r.amt),
+        go: () => this.say(r.label + " · PDF sent to your email")
+      })),
+
+      pointsEarnedNote: "Earned on MVR " + MVR(s.points * 10) + " of spend",
+      tierBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (s.points / tierPts) * 100).toFixed(0) + "%;background:" + tierAcc + ";display:block",
+      tierName: tier,
+      tierNext: s.points >= tierPts ? "Top tier reached" : (((s.points >= 2500 ? tierPts : 2500) - s.points).toLocaleString() + " points to " + (s.points >= 2500 ? "Platinum" : "Gold")),
+      rewards: REWARDS.map((w) => {
+        const done = (s.redeemed || []).indexOf(w.id) >= 0;
+        const locked = w.id === "r4";
+        const can = !done && !locked && s.points >= w.cost;
+        return {
+          name: w.name, sub: w.sub,
+          cardStyle: "display:flex;gap:13px;align-items:center;background:" + (done ? "rgba(31,111,74,.07)" : locked ? "#f5f5f4" : "#fff") + ";border:" + (locked ? "1px dashed #d6d3d1" : done ? "1px solid rgba(31,111,74,.26)" : "1px solid #e7e5e4") + ";border-radius:15px;padding:13px" + (locked ? ";opacity:.7" : ""),
+          imgStyle: "width:56px;height:56px;border-radius:11px;display:block;flex-shrink:0;background:url('" + (w.img || "img/photo_1546964124_0cce460f38ef.jpg") + "') center/cover no-repeat" + (locked ? ";filter:grayscale(1)" : ""),
+          btnLabel: done ? "Redeemed" : locked ? "Locked" : w.cost.toLocaleString() + " pts",
+          btnStyle: "flex-shrink:0;font-size:11.5px;font-weight:800;padding:9px 12px;border-radius:10px;font-family:'JetBrains Mono',monospace;" + (done ? "background:rgba(31,111,74,.14);color:#124d33" : can ? "background:#1f6f4a;color:#fff" : "background:#eceae7;color:#a8a29e"),
+          go: () => this.redeem(w)
+        };
+      }),
+      redeemedNote: (s.redeemed || []).length ? (s.redeemed || []).length + " reward" + ((s.redeemed || []).length > 1 ? "s" : "") + " waiting — your server applies it at the table" : "Redeem here, then show your server before the bill is closed.",
+
+      toast: s.toast,
+      toastStyle: s.toast ? "position:absolute;left:50%;bottom:96px;transform:translateX(-50%);z-index:40;max-width:78%;padding:11px 18px;border-radius:24px;background:" + (s.toastBad ? "#8f1d2d" : "#1c1917") + ";color:#fff;animation:" + (s.toastBad ? "gshake .42s cubic-bezier(.3,.7,.4,1)" : "gtoast .2s cubic-bezier(.2,.8,.3,1)") + ";font-size:12px;font-weight:600;text-align:center;line-height:1.4;box-shadow:0 8px 26px rgba(0,0,0,.3)" : "display:none"
+    };
+    return V;
+  }
+}
+
+</script>
+</body>
+</html>
