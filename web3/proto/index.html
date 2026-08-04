@@ -2654,7 +2654,7 @@ class Component extends DCLogic {
           }
           const gname = this.guestLabel(gAll[gIdx]);
           const snapshot = {
-            no: "KO-" + o.code.split("-")[1] + "-" + (2450 + Math.floor(Math.random() * 90)),
+            no: "KO-" + (o.code.split("-")[1] || o.code || "01") + "-" + (2450 + Math.floor(Math.random() * 90)),
             time: pad(s.now.getHours()) + ":" + pad(s.now.getMinutes()),
             table: "T" + pad(s.activeTable), guest: gname, tender: m.tender, cust: cust,
             lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
