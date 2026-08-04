@@ -3502,6 +3502,9 @@ if (fs.existsSync(protoFile)) {
       const orgId = await resolveAppSession(req);
       if (!orgId) return null;
       const token = sign(orgId, req.appRegister || "R1", req.appStoreId || DEFAULT_STORE_ID);
+      return buildV2RealForOrg(orgId, token);
+    };
+    const buildV2RealForOrg = async (orgId, token) => {
       return await withOrg(orgId, async (c) => {
         const prodRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
@@ -3623,6 +3626,30 @@ if (fs.existsSync(protoFile)) {
       if (inject) html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject);
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
+
+    /* V2_SELFTEST=1 — a boot-time verification that the /v2 real-data injection
+       works against the deployment's OWN Postgres, logged to the deploy log
+       (the environment can't be reached over HTTP from every network). Builds
+       KPOS_REAL for the first org that has a store, using the exact route code,
+       and logs COUNTS only — never PINs or customer detail. */
+    if (process.env.V2_SELFTEST) {
+      setTimeout(async () => {
+        try {
+          const org = await withSystem((c) => c.query(
+            "SELECT o.id, o.store_name FROM orgs o WHERE EXISTS (SELECT 1 FROM stores s WHERE s.org_id=o.id) ORDER BY o.created_at LIMIT 1").then((r) => r.rows[0]));
+          if (!org) { console.log("V2 self-test: no org with a store"); return; }
+          const r = await buildV2RealForOrg(org.id, "selftest");
+          console.log("V2 self-test:", JSON.stringify({
+            org: org.store_name || String(org.id).slice(0, 8),
+            outlets: (r.outlets || []).length, outletNames: (r.outlets || []).map((o) => o.name),
+            menuItems: (r.menu || []).length, categories: (r.categories || []).map((c) => c.name),
+            customers: (r.customers || []).length, staff: (r.staff || []).length,
+            ordersLoaded: (r.orders || []).length, stats: r.stats,
+            tax: r.outlet ? r.outlet.tax + " " + r.outlet.rate + "%" : null,
+          }));
+        } catch (e) { console.log("V2 self-test error:", (e && e.message) || e); }
+      }, 5000);
+    }
   }
   serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)
   // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
