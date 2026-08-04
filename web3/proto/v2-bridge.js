@@ -94,9 +94,10 @@
 
   // ── Public: enqueue a completed settlement, then try to drain immediately ──
   function unitLaari(m, outlet) {
-    var p = num(m.price);
-    if (outlet && outlet.tax === "TGST") p = Math.round(p * 1.12 / 5) * 5; // matches menuPrice()
-    return Math.round(p * 100);
+    // GST-exclusive menu price in laari; service charge and GST are added once
+    // below. No TGST uplift here — that double-taxed tourist outlets and is gone
+    // from menuPrice() too.
+    return Math.round(num(m.price) * 100);
   }
   function pushSale(sale) {
     if (!token()) return;                                   // no session → demo only

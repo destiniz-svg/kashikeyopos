@@ -1642,10 +1642,11 @@ class Component extends DCLogic {
   }
 
   menuPrice(m) {
-    const o = this.outlet();
-    let p = m.price;
-    if (o.tax === "TGST") p = Math.round(p * 1.12 / 5) * 5;
-    return p;
+    // Menu prices are GST-exclusive (the Maldivian "++" model); service charge
+    // and GST are added once, at the outlet's real rate, in totals(). There is
+    // no per-outlet price uplift — a stale ×1.12 here double-taxed TGST outlets
+    // (GST was then added again on top) and assumed a 12% rate that isn't TGST.
+    return m.price;
   }
   totals(tk, split) {
     const o = this.outlet();
@@ -2050,7 +2051,7 @@ class Component extends DCLogic {
         ];
       }
       return [
-        card("GST collected · month", MVRc(96420), "GGST 8% · TGST 16% split by outlet", amber),
+        card("GST collected · month", MVRc(96420), "GGST 8% · TGST 17% split by outlet", amber),
         card("Journal entries · today", "1,284", "All auto-posted, none manual"),
         card("Cost of sales · MTD", MVRc(842300), "29.4% of net sales"),
         card("Unreconciled", "0", "Card settlement matched to BML file")
@@ -4502,7 +4503,7 @@ class Component extends DCLogic {
     const list = this.scopedOutlets().filter((o) => !q || o.name.toLowerCase().indexOf(q) >= 0 || o.code.toLowerCase().indexOf(q) >= 0);
     const kind = { main_store: ["Main store", "info"], central_kitchen: ["Central kitchen", "purple"], restaurant: ["Restaurant", "warn"] };
     return {
-      guideTitle: "Opening a location", guide: ["Create the outlet with its tax profile — GGST 8% or TGST 16%", "Restaurants get tables and a till; stores and kitchens do not", "Add stock sub-locations beneath it for freezer, dry store, bar", "Bind printer stations before the first service"],
+      guideTitle: "Opening a location", guide: ["Create the outlet with its tax profile — GGST 8% or TGST 17%", "Restaurants get tables and a till; stores and kitchens do not", "Add stock sub-locations beneath it for freezer, dry store, bar", "Bind printer stations before the first service"],
       actions: [
         { label: "Add outlet", primary: true, go: () => this.openForm("outlet") },
         { label: "Printer profiles", go: () => this.info("Printer profiles", "Stations bound per outlet", this.posOutlets().map((o) => [o.name, "KOT " + o.code.toLowerCase() + "-kot · Bar " + o.code.toLowerCase() + "-bar · Bill " + o.code.toLowerCase() + "-bill", "t"])) }
@@ -4523,7 +4524,7 @@ class Component extends DCLogic {
       }),
       notes: [
         ["Stock locations", "Sub-locations (dry store, freezer, prep line, floor) are rows in kpos.outlets with parent_id set, so the same RLS predicate covers both a restaurant and the freezer inside it — outlet_ids[] in the JWT carries the whole subtree."],
-        ["Tax profile", "GGST 8% applies to general outlets; TGST 16% to tourism-zone outlets (airport, Maafushi, Baa). The rate is stored on the outlet, never hard-coded in the terminal, so a rate change is a single UPDATE."]
+        ["Tax profile", "GGST 8% applies to general outlets; TGST 17% to tourism-zone outlets (airport, Maafushi, Baa). The rate is stored on the outlet, never hard-coded in the terminal, so a rate change is a single UPDATE."]
       ]
     };
   }
@@ -5896,7 +5897,7 @@ class Component extends DCLogic {
           { k: "code", label: "Code", v: "KO-ADD" },
           { k: "type", label: "Type", options: [{ v: "restaurant", l: "Restaurant" }, { v: "central_kitchen", l: "Central kitchen" }, { v: "main_store", l: "Main store" }] },
           { k: "region", label: "Region", v: "Atolls" },
-          { k: "tax", label: "Tax class", options: [{ v: "TGST", l: "TGST 16%" }, { v: "GGST", l: "GGST 8%" }] },
+          { k: "tax", label: "Tax class", options: [{ v: "TGST", l: "TGST 17%" }, { v: "GGST", l: "GGST 8%" }] },
           { k: "sc", label: "Service charge %", v: "10" },
           { k: "seats", label: "Seats", v: "44" },
           { k: "tables", label: "Tables", v: "11" },
@@ -6665,7 +6666,7 @@ class Component extends DCLogic {
           go: gate(() => this.openForm("chain")) },
         { title: "Tax profile", sub: o.name, chip: o.tax, chipBg: "rgba(242,164,58,.12)", chipFg: "var(--amber-bright)",
           rows: [["Class", o.tax], ["Rate", o.rate + "%"], ["Service charge", (o.sc || 0) + "%"], ["Applied to", "Subtotal + service charge"]],
-          foot: "GGST 8% general, TGST 16% tourism zone — stored per outlet, never in the terminal. Opens the outlet record.",
+          foot: "GGST 8% general, TGST 17% tourism zone — stored per outlet, never in the terminal. Opens the outlet record.",
           go: () => this.can("branches", "e") ? this.openForm("outlet", o) : this.toast("Tax profile is set on the outlet record — you need branch edit rights", "warn") },
         { title: "Receipt & printing", sub: P.paper + " mm · " + (P.copies > 1 ? "two copies" : "one copy"),
           toggles: [
