@@ -179,6 +179,33 @@ input{font-family:inherit}
 .receipt{text-align:center;padding:8px 4px}
 .rcheck{width:54px;height:54px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:6px auto 12px;animation:kpop .3s}
 
+/* ── KDS (kitchen display) ───────────────────────────────────────────────── */
+.kds-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+.kds-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;align-items:start}
+.kt{background:var(--bg-1);border:1px solid var(--line);border-radius:13px;overflow:hidden;animation:kpop .2s}
+.kt.urgent{border-color:var(--red-line)}
+.kt-head{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;border-bottom:1px solid var(--line)}
+.kt.urgent .kt-head{background:rgba(226,96,63,.08)}
+.kt-tn{font-size:15px;font-weight:800;letter-spacing:-.02em;font-family:'JetBrains Mono',monospace}
+.kt-meta{font-size:10px;color:var(--text-dim);margin-top:2px}
+.kt-timer{font-size:13px;font-weight:800;font-family:'JetBrains Mono',monospace;padding:4px 9px;border-radius:8px;
+  background:var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line)}
+.kt.urgent .kt-timer{background:rgba(226,96,63,.15);color:var(--red-bright);border-color:var(--red-line);animation:kpulse 1.6s infinite}
+@keyframes kpulse{0%,100%{opacity:1}50%{opacity:.55}}
+.kt-lines{padding:5px 0}
+.kt-line{display:flex;align-items:center;gap:10px;width:100%;padding:8px 13px}
+.kt-line:hover{background:var(--bg-2)}
+.kt-q{min-width:26px;height:26px;border-radius:7px;background:var(--bg-3);border:1px solid var(--line-2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;font-family:'JetBrains Mono',monospace;flex-shrink:0}
+.kt-n{flex:1;min-width:0;font-size:12.5px;font-weight:600;line-height:1.3}
+.kt-line.done .kt-n{text-decoration:line-through;color:var(--text-faint)}
+.kt-line.done .kt-q{background:var(--green-line);border-color:var(--green-line);color:var(--green-soft)}
+.kt-ck{width:18px;flex-shrink:0;text-align:center;color:var(--green);font-weight:800;opacity:0}
+.kt-line.done .kt-ck{opacity:1}
+.kt-serve{width:100%;padding:11px;font-size:12px;font-weight:800;text-align:center;border-top:1px solid var(--line);color:var(--text-dim)}
+.kt-serve.ready{background:var(--green);color:#fff;border-color:var(--green)}
+.kt-serve:hover{color:var(--text)}
+.nav-badge{margin-left:auto;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;background:var(--amber);color:var(--on-amber);border-radius:10px;padding:1px 7px;min-width:18px;text-align:center}
+
 /* ── Generic module placeholder (views built in later increments) ────────── */
 .mod{max-width:760px}
 .mod-blurb{font-size:13px;color:var(--text-dim);line-height:1.7;margin:8px 0 18px;max-width:560px}
@@ -331,7 +358,9 @@ var S = {
   table: null,            // open table number (null = floor view)
   cat: "starters",        // active menu category
   carts: {},              // { [tableNo]: [ {id,name,price,qty} ] }
-  pay: null               // { method, tendered } while the pay modal is open
+  pay: null,              // { method, tendered } while the pay modal is open
+  fired: {},              // { [tableNo]: true } once fired to the kitchen
+  kds: null               // seeded below (needs Date.now, set after helpers)
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -342,6 +371,54 @@ function totals(lines, out){
   var svc = sub * ((out.sc||0)/100);
   var tax = (sub + svc) * ((out.rate||0)/100);
   return { sub: sub, svc: svc, tax: tax, total: sub + svc + tax };
+}
+/* ── KDS state. Tickets fire from the till; each keeps a firedAt so the wait
+   timer counts up live. SLA 18m for mains (prefs.kdsSla in the design). ────── */
+var KDS_SLA = 18;
+function ageMin(ts){ return Math.max(0, Math.floor((Date.now() - ts) / 60000)); }
+function seedKds(){
+  var n = Date.now();
+  return [
+    { id:"k1", table:4,  meta:"Dine-in · 4 covers", firedAt:n-23*60000, lines:[{name:"Striploin 450g, Garlic Butter",qty:1,done:false},{name:"Pan-Seared Reef Snapper",qty:2,done:true},{name:"Parmesan Fries",qty:2,done:false}] },
+    { id:"k2", table:2,  meta:"QR order · pickup",   firedAt:n-15*60000, lines:[{name:"Gulha & Bajiya Platter",qty:1,done:true},{name:"Masala Tea",qty:2,done:false}] },
+    { id:"k3", table:7,  meta:"Dine-in · 2 covers", firedAt:n-8*60000,  lines:[{name:"Half Chicken, Paprika & Lime",qty:1,done:false},{name:"Cilantro Rice Bowl",qty:1,done:false}] },
+    { id:"k4", table:11, meta:"Dine-in · 3 covers", firedAt:n-3*60000,  lines:[{name:"Reef Fish Ceviche",qty:1,done:false},{name:"Guacamole & Totopos",qty:1,done:false},{name:"Hibiscus Cooler",qty:3,done:false}] }
+  ];
+}
+function fireToKitchen(){
+  var lines = cart(); if(!lines.length) return;
+  var kl = lines.map(function(l){ return { name:l.name, qty:l.qty, done:false }; });
+  var ex = S.kds.filter(function(k){ return k.table === S.table; })[0];
+  if(ex){ ex.lines = kl; ex.firedAt = Date.now(); ex.meta = "Dine-in · re-fired"; }
+  else S.kds.push({ id:"k"+Date.now(), table:S.table, meta:"Dine-in · fired now", firedAt:Date.now(), lines:kl });
+  S.fired[S.table] = true;
+}
+function kdsView(){
+  var list = S.kds.slice().sort(function(a,b){ return b.firedAt - a.firedAt ? a.firedAt - b.firedAt : 0; }); // longest wait first
+  var h = '<div class="kds-head"><div class="floor-title">Kitchen display</div>'
+        + '<div class="crumb-sub">Live fire queue · longest ticket first · SLA '+KDS_SLA+'m for mains</div></div>';
+  if(!list.length){
+    return h + '<div class="tk-empty" style="padding:70px 20px">No tickets in the pass. Fire an order from the POS floor — build a table\'s order and tap “Fire order to kitchen”.</div>';
+  }
+  h += '<div class="kds-grid">';
+  list.forEach(function(k){
+    var wait = ageMin(k.firedAt);
+    var urgent = wait >= KDS_SLA;
+    var allDone = k.lines.every(function(l){ return l.done; });
+    h += '<div class="kt'+(urgent?' urgent':'')+'">';
+    h += '<div class="kt-head"><div><div class="kt-tn">Table '+k.table+'</div><div class="kt-meta">'+esc(k.meta)+'</div></div>'
+       + '<div class="kt-timer">'+wait+'m</div></div>';
+    h += '<div class="kt-lines">';
+    k.lines.forEach(function(l,idx){
+      h += '<button class="kt-line'+(l.done?' done':'')+'" data-kbump="'+k.id+':'+idx+'">'
+         + '<span class="kt-q">'+l.qty+'</span><span class="kt-n">'+esc(l.name)+'</span><span class="kt-ck">✓</span></button>';
+    });
+    h += '</div>';
+    h += '<button class="kt-serve'+(allDone?' ready':'')+'" data-kserve="'+k.id+'">'+(allDone?'Serve & clear ticket':'Tap items as they are plated')+'</button>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
 }
 document.documentElement.setAttribute("data-theme", S.theme);
 var root = document.getElementById("root");
@@ -398,6 +475,7 @@ function visibleModules(role){
   return MODULES.filter(function(m){ return v[m.key]; });
 }
 function renderShell(){
+  if(S.kds===null) S.kds = seedKds();   // seed before the nav so the KDS badge counts on first render
   var u = S.session, ro = ROLE[u.role]||{}, out = outletOf(u.outlet);
   var mods = visibleModules(u.role);
   if(!mods.some(function(m){return m.key===S.view;})) S.view = (mods[0]||{key:"pos"}).key;
@@ -408,13 +486,16 @@ function renderShell(){
     if(!inGrp.length) return;
     nav += '<div class="nav-grp">'+esc(g)+'</div>';
     inGrp.forEach(function(m){
+      var badge = (m.key==="kds" && S.kds && S.kds.length) ? '<span class="nav-badge">'+S.kds.length+'</span>' : '';
       nav += '<button class="nav-item'+(m.key===S.view?' active':'')+'" data-view="'+m.key+'">'
-           + '<span class="nav-dot"></span><span>'+esc(m.label)+'</span></button>';
+           + '<span class="nav-dot"></span><span>'+esc(m.label)+'</span>'+badge+'</button>';
     });
   });
 
   var cur = MODULES.filter(function(m){return m.key===S.view;})[0] || MODULES[0];
-  var body = (S.view==="pos") ? (S.table ? orderView(out) : floorView(out)) : moduleView(cur, u);
+  var body = (S.view==="pos") ? (S.table ? orderView(out) : floorView(out))
+           : (S.view==="kds") ? kdsView()
+           : moduleView(cur, u);
 
   var h = '<div class="shell">'
     + '<aside class="side">'
@@ -493,6 +574,12 @@ function orderView(out){
      + (out.sc?'<div class="tk-row"><span>Service '+out.sc+'%</span><span class="v">'+money(T.svc)+'</span></div>':'')
      + '<div class="tk-row"><span>GST '+out.rate+'%</span><span class="v">'+money(T.tax)+'</span></div>'
      + '<div class="tk-row grand"><span>Total</span><span class="v">MVR '+money(T.total)+'</span></div></div>';
+  if(lines.length){
+    var fired = S.fired[S.table];
+    h += '<div style="padding:0 15px 2px"><button class="btn ghost" data-fire="1" style="width:100%;'
+       + (fired?'color:var(--green-soft);border-color:var(--green-line)':'color:var(--amber-bright);border-color:var(--amber-line)')+'">'
+       + (fired?'Sent to kitchen ✓ · re-fire':'Fire order to kitchen ↗')+'</button></div>';
+  }
   h += '<div class="tk-actions">'
      + '<button class="btn ghost" data-hold="1">Hold</button>'
      + '<button class="btn pay" data-pay="1"'+(lines.length?'':' disabled')+'>Pay · MVR '+money(T.total)+'</button></div>';
@@ -550,7 +637,11 @@ function tickClock(){
   t.textContent = now.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
   d.textContent = now.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
 }
-setInterval(function(){ if(S.session) tickClock(); }, 1000*20);
+setInterval(function(){
+  if(!S.session) return;
+  // Re-render the KDS so wait timers advance; otherwise just tick the clock.
+  if(S.view==="kds" && !S.pay) renderShell(); else tickClock();
+}, 1000*20);
 
 /* ── Render + events ─────────────────────────────────────────────────────── */
 function render(){ if(S.session) renderShell(); else renderLock(); }
@@ -591,7 +682,12 @@ root.addEventListener("click", function(e){
   if(d.cash){ S.pay.tendered = (S.pay.tendered==="0"?"":S.pay.tendered) + d.cash; render(); return; }
   if(d.cashclr){ S.pay.tendered = ""; render(); return; }
   if(d.confirm){ S.pay.done = true; render(); return; }
-  if(d.newbill){ S.carts[S.table] = []; S.pay = null; render(); return; }
+  if(d.newbill){ S.carts[S.table] = []; S.fired[S.table] = false; S.pay = null; render(); return; }
+  // ── KDS ──
+  if(d.fire){ fireToKitchen(); render(); return; }
+  if(d.kbump){ var parts = d.kbump.split(":"); var tk = S.kds.filter(function(k){return k.id===parts[0];})[0];
+    if(tk && tk.lines[+parts[1]]){ var ln2 = tk.lines[+parts[1]]; ln2.done = !ln2.done; render(); } return; }
+  if(d.kserve){ S.kds = S.kds.filter(function(k){ return k.id !== d.kserve; }); render(); return; }
 });
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
