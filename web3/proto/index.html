@@ -4897,15 +4897,44 @@ class Component extends DCLogic {
     };
   }
 
+  // Human label for the stored payment-terms code.
+  termsLabel(t) { return ({ cod: "COD", net7: "Net 7", net15: "Net 15", net30: "Net 30", net60: "Net 60" })[t] || "—"; }
+  // Create or update a supplier. Real mode persists to /api/inv/suppliers (with
+  // the full record — TIN, terms, contact, address, lead time); demo mode keeps
+  // it local. Optimistically updates the vendor list so it shows at once.
+  saveVendor(v, sid) {
+    const body = { name: (v.name || "").trim(), contact: v.contact || "", phone: v.phone || "", email: v.email || "",
+      tin: v.tin || "", terms: v.terms || "cod", leadDays: parseInt(v.leadDays, 10) || 0, address: v.address || "" };
+    if (sid && /-/.test(String(sid))) body.id = sid;             // real supplier uuid → update in place
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      fetch("/api/inv/suppliers", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          if (j && j.error) { this.toast(j.error, "warn"); return; }
+          const raw = window.KPOS_RAW || (window.KPOS_RAW = {}); const arr = raw.vendors || (raw.vendors = []);
+          const ex = arr.find((x) => x.sid === j.id);
+          if (ex) Object.assign(ex, body, { sid: j.id });
+          else arr.unshift(Object.assign({ id: arr.reduce((m, x) => Math.max(m, x.id || 0), 0) + 1, sid: j.id }, body));
+          this.setState({ modal: null });
+          this.toast((sid ? "Vendor updated · " : "Vendor created · ") + body.name);
+        }).catch(() => this.toast("Could not save the vendor — check the connection", "warn"));
+      this.setState({ modal: null });
+      return;
+    }
+    if (sid) this.patchRows("vendors", [sid], body, "Vendor updated · " + body.name, "vendors");
+    else this.insertRow("vendors", Object.assign({ id: this.nextId("vendors") }, body), "Vendor created · " + body.name, "vendors");
+  }
   g_vendors() {
     const raw = window.KPOS_RAW || {};
     return {
-      guideTitle: "Supplier master", guide: ["Add the supplier before the first delivery arrives", "Prices are captured per GRN, so adding one changes no existing cost", "Spend and GRN count build up from received deliveries", "Price trends across GRNs are what expose a creeping supplier"],
+      guideTitle: "Supplier master", guide: ["Add the supplier with its TIN and payment terms before the first delivery", "Prices are captured per GRN, so adding one changes no existing cost", "Spend and GRN count build up from received deliveries", "The TIN lets the store claim input GST on the supplier's bills"],
       actions: [{ label: "Add vendor", primary: true, go: () => this.openForm("vendor") }],
-      cols: [{ label: "Vendor", w: "2fr" }, { label: "GRNs", w: ".8fr", a: "right", mono: 1 }, { label: "Spend", w: "1fr", a: "right", mono: 1 }, { label: "Terms", w: "1fr", a: "right" }],
+      cols: [{ label: "Vendor", w: "1.8fr" }, { label: "Contact", w: "1.2fr" }, { label: "GRNs", w: ".6fr", a: "right", mono: 1 }, { label: "Spend", w: "1fr", a: "right", mono: 1 }, { label: "Terms", w: ".8fr", a: "right" }],
       rows: (raw.vendors || []).map((v) => {
         const ps = (raw.purch || []).filter((p) => p.vendor === v.id);
-        return { cells: [v.name, String(ps.length), { t: MVRc(ps.reduce((a, p) => a + p.total, 0)), c: "var(--amber-bright)", w: 600 }, "Net 30"] };
+        return {
+          go: () => this.info(v.name, v.tin ? "TIN " + v.tin : "No TIN on file", [["Contact", v.contact || "—"], ["Phone", v.phone || "—"], ["Email", v.email || "—"], ["Payment terms", this.termsLabel(v.terms)], ["Lead time", v.leadDays ? v.leadDays + " days" : "—"], ["Address", v.address || "—"], ["GRNs received", String(ps.length)], ["Total spend", MVRc(ps.reduce((a, p) => a + p.total, 0))]], "A vendor's TIN is what lets the store reclaim the GST it was charged on this supplier's bills; the payment terms drive when the bill is actually due.", this.can("vendors", "e") ? { label: "Edit vendor", go: () => this.openForm("vendor", v) } : null),
+          cells: [v.name, v.contact || v.phone || "—", String(ps.length), { t: MVRc(ps.reduce((a, p) => a + p.total, 0)), c: "var(--amber-bright)", w: 600 }, this.termsLabel(v.terms)]
+        };
       })
     };
   }
@@ -6101,17 +6130,21 @@ class Component extends DCLogic {
       },
       vendor: {
         title: "Add vendor", sub: "Supplier master", save: "Create vendor",
-        foot: "Vendor prices are captured per GRN, so adding a supplier does not change any existing cost.",
-        fields: [{ k: "name", label: "Vendor name", v: "", full: 1 }],
+        foot: "A vendor's TIN lets the store claim input GST on its bills, and the payment terms carry onto every purchase order. Vendor prices are captured per GRN, so adding a supplier does not change any existing cost.",
+        fields: [
+          { k: "name", label: "Vendor name", v: "", full: 1 },
+          { k: "contact", label: "Contact person", v: "" },
+          { k: "phone", label: "Phone", v: "" },
+          { k: "email", label: "Email", v: "" },
+          { k: "tin", label: "TIN / GST reg.", v: "" },
+          { k: "terms", label: "Payment terms", options: [{ v: "cod", l: "Cash on delivery" }, { v: "net7", l: "Net 7 days" }, { v: "net15", l: "Net 15 days" }, { v: "net30", l: "Net 30 days" }, { v: "net60", l: "Net 60 days" }] },
+          { k: "leadDays", label: "Lead time (days)", v: "2" },
+          { k: "address", label: "Address", v: "", full: 1 }
+        ],
         editSave: "Save changes",
-        onEdit: (v, x) => {
-          if (!v.name) return this.toast("Vendor name is required", "warn");
-          this.patchRows("vendors", [x.id], { name: v.name }, "Vendor renamed · " + x.name + " to " + v.name, "vendors");
-        },
-        onSave: (v) => {
-          if (!v.name) return this.toast("Vendor name is required", "warn");
-          this.insertRow("vendors", { id: this.nextId("vendors"), name: v.name }, "Vendor created · " + v.name, "vendors");
-        }
+        pre: (x) => ({ name: x.name, contact: x.contact || "", phone: x.phone || "", email: x.email || "", tin: x.tin || "", terms: x.terms || "cod", leadDays: String(x.leadDays || 2), address: x.address || "" }),
+        onEdit: (v, x) => { if (!v.name) return this.toast("Vendor name is required", "warn"); this.saveVendor(v, x.sid || x.id); },
+        onSave: (v) => { if (!v.name) return this.toast("Vendor name is required", "warn"); this.saveVendor(v, null); }
       }
     };
     return F[name] || null;

@@ -3750,9 +3750,12 @@ if (fs.existsSync(protoFile)) {
         // numeric vendor id links the two, matching the terminal's shape; money
         // is laari→MVR and every GRN attributes to the primary outlet (id 3).
         const supRows = (await c.query(
-          "SELECT id, name FROM suppliers WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+          "SELECT id, name, phone, email, notes, tin, terms, contact, address, lead_days FROM suppliers WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
         const vendNumId = {};
-        const invVendors = supRows.map((sup, i) => { vendNumId[sup.id] = i + 1; return { id: i + 1, name: sup.name || "Vendor" }; });
+        const invVendors = supRows.map((sup, i) => { vendNumId[sup.id] = i + 1; return {
+          id: i + 1, sid: sup.id, name: sup.name || "Vendor", phone: sup.phone || "", email: sup.email || "",
+          tin: sup.tin || "", terms: sup.terms || "", contact: sup.contact || "", address: sup.address || "",
+          leadDays: Number(sup.lead_days) || 0, notes: sup.notes || "" }; });
         const grnRows = (await c.query(
           "SELECT id, supplier_id, invoice_no, total, received_at FROM purchase_invoices WHERE org_id=$1 ORDER BY received_at DESC LIMIT 200", [orgId])).rows;
         const invPurch = grnRows.map((g, i) => ({

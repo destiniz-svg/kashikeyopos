@@ -558,3 +558,13 @@ $fn$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS entities_txid ON entities;
 CREATE TRIGGER entities_txid BEFORE INSERT OR UPDATE ON entities
   FOR EACH ROW EXECUTE FUNCTION entities_stamp_txid();
+
+-- Richer supplier records: a real vendor needs a tax id (to book input GST and
+-- to name on a PO), payment terms, a contact person, an address and a lead
+-- time — not just a name and one contact. Added idempotently; existing rows
+-- default to blank.
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS tin       TEXT NOT NULL DEFAULT '';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS terms     TEXT NOT NULL DEFAULT '';  -- COD / Net 7 / Net 15 / Net 30
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact   TEXT NOT NULL DEFAULT '';  -- contact person
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address   TEXT NOT NULL DEFAULT '';
+ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS lead_days INTEGER NOT NULL DEFAULT 0;

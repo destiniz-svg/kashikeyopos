@@ -1864,18 +1864,26 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   /* ── Procurement: suppliers + invoice posting ─────────────────────────── */
   router.get("/suppliers", authAny, wrap(async (req, res) => {
     const r = await withOrg(req.orgId, (client) => client.query(
-      "SELECT id, name, phone, email, notes FROM suppliers WHERE org_id=$1 AND active ORDER BY name", [req.orgId]));
+      "SELECT id, name, phone, email, notes, tin, terms, contact, address, lead_days FROM suppliers WHERE org_id=$1 AND active ORDER BY name", [req.orgId]));
     res.json({ suppliers: r.rows });
   }));
 
   router.post("/suppliers", authAny, requireBackOffice(1), wrap(async (req, res) => {
-    const { id, name, phone, email, notes } = req.body || {};
+    const b = req.body || {};
+    const { id, name, phone, email, notes } = b;
     if (!name || !String(name).trim()) return res.status(400).json({ error: "supplier name required" });
     const sid = id || uid();
+    const terms = ["cod", "net7", "net15", "net30", "net60"].indexOf(String(b.terms || "").toLowerCase()) >= 0 ? String(b.terms).toLowerCase() : "";
+    const lead = Math.max(0, Math.min(90, Math.round(num(b.leadDays)) || 0));
     await withOrg(req.orgId, (client) => client.query(
-      `INSERT INTO suppliers (org_id, id, name, phone, email, notes) VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (org_id, id) DO UPDATE SET name=excluded.name, phone=excluded.phone, email=excluded.email, notes=excluded.notes, active=true`,
-      [req.orgId, sid, String(name).trim(), String(phone || ""), String(email || ""), String(notes || "")]));
+      `INSERT INTO suppliers (org_id, id, name, phone, email, notes, tin, terms, contact, address, lead_days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (org_id, id) DO UPDATE SET name=excluded.name, phone=excluded.phone, email=excluded.email,
+         notes=excluded.notes, tin=excluded.tin, terms=excluded.terms, contact=excluded.contact,
+         address=excluded.address, lead_days=excluded.lead_days, active=true`,
+      [req.orgId, sid, String(name).trim(), String(phone || "").slice(0, 40), String(email || "").slice(0, 120),
+       String(notes || "").slice(0, 200), String(b.tin || "").slice(0, 40), terms,
+       String(b.contact || "").slice(0, 80), String(b.address || "").slice(0, 200), lead]));
     res.json({ ok: true, id: sid });
   }));
 
