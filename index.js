@@ -3677,9 +3677,10 @@ if (fs.existsSync(protoFile)) {
         const uMap = { g: ["GRM", "KG", 1000], gram: ["GRM", "KG", 1000], grm: ["GRM", "KG", 1000],
           kg: ["GRM", "KG", 1000], ml: ["ML", "LTR", 1000], l: ["ML", "LTR", 1000], ltr: ["ML", "LTR", 1000],
           pcs: ["PCS", "PCS", 1], pc: ["PCS", "PCS", 1], each: ["PCS", "PCS", 1] };
-        const invItems = [], invRows = [];
+        const invItems = [], invRows = [], ingNumId = {};
         ingRows.forEach((g, i) => {
           const id = i + 1;
+          ingNumId[g.id] = id;                                   // uuid → numeric id, reused by the ledger
           const u = uMap[String(g.base_unit || "").toLowerCase()] || ["PCS", "PCS", 1];
           const baseU = u[0], stockU = u[1], cf = u[2];
           const costPerStock = Math.round((Number(g.avg_cost) || 0) * cf / 100 * 100) / 100; // MVR/stock unit
@@ -3689,6 +3690,19 @@ if (fs.existsSync(protoFile)) {
           invRows.push([3, id, Number(g.current_stock) || 0]);   // location = primary outlet, base units
         });
         const invCats = invItems.length ? [{ id: 1, name: "Ingredients", icon: "dry", storage: "daily", freq: "" }] : [];
+        // Stock ledger: the immutable stock_moves, oldest→newest so each row's
+        // running balance is correct, then reversed for a newest-first view. In
+        // and out are base-unit magnitudes (the terminal converts for display).
+        const moveRows = (await c.query(
+          "SELECT ingredient_id, kind, qty FROM stock_moves WHERE org_id=$1 ORDER BY created_at ASC, id ASC", [orgId])).rows;
+        const runBal = {}, ledgerAsc = [];
+        for (const mv of moveRows) {
+          const nid = ingNumId[mv.ingredient_id]; if (!nid) continue;
+          const q = Number(mv.qty) || 0;
+          runBal[mv.ingredient_id] = (runBal[mv.ingredient_id] || 0) + q;
+          ledgerAsc.push([3, nid, mv.kind, q > 0 ? q : 0, q < 0 ? -q : 0, runBal[mv.ingredient_id]]);
+        }
+        const invLedger = ledgerAsc.reverse().slice(0, 140);
         // Today's clock punches (time_entries) → the terminal's labour engine.
         // Persisted by clockIn/clockOut on the till; only today's shifts feed
         // the labour cost and prime-cost figures.
@@ -3721,7 +3735,7 @@ if (fs.existsSync(protoFile)) {
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), customers, staff, clock,
-          inventory: { items: invItems, inv: invRows, cats: invCats },
+          inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger },
         };
       });
     };
