@@ -595,6 +595,8 @@ function renderShell(){
            : (S.view==="chain") ? chainView()
            : (S.view==="accounting") ? accountingView(out)
            : (S.view==="reports") ? reportsView(out)
+           : (S.view==="reservations") ? reservationsView(out)
+           : (S.view==="delivery") ? deliveryView(out)
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -1066,6 +1068,87 @@ function reportsView(out){
      + rrow("Customer credit (1040)", money(L.byTender.credit))
      + rrowB("Total banked + receivable", money(L.gross), "var(--text)")
      + '</div></div>';
+  h += '</div>';
+  return h;
+}
+/* ── Reservations — tonight's book. ──────────────────────────────────────── */
+function buildRes(out){
+  var r = rng(out.id*31+3);
+  var names = CUSTOMERS.map(function(c){return c.name;}).concat(["Sofia Almeida","Ravi Menon","Lucas Meyer","Fathmath Ali","Yuki Tanaka"]);
+  var notes = ["Window seat","Birthday cake","Allergy: nuts","High chair","Anniversary","Quiet corner"];
+  var sts = ["confirmed","confirmed","confirmed","seated","no-show"];
+  var list = [];
+  for(var i=0;i<9;i++){
+    list.push({ time:pad2(18+Math.floor(r()*4))+":"+(r()>0.5?"30":"00"), name:names[Math.floor(r()*names.length)],
+      party:2+Math.floor(r()*7), table:"T"+pad2(1+Math.floor(r()*(out.tables||12))),
+      status:sts[Math.floor(r()*sts.length)], note:r()>0.65?notes[Math.floor(r()*notes.length)]:"" });
+  }
+  return list.sort(function(a,b){ return a.time<b.time?-1:1; });
+}
+function reservationsView(out){
+  var list = buildRes(out);
+  var covers = list.reduce(function(a,x){return a+x.party;},0);
+  var seated = list.filter(function(x){return x.status==="seated";}).length;
+  var stChip = { confirmed:["var(--blue-bright)","rgba(103,162,217,.12)","var(--blue)"], seated:["var(--green-soft)","rgba(107,191,123,.1)","var(--green-line)"], "no-show":["var(--red-bright)","rgba(226,96,63,.1)","var(--red-line)"] };
+  var h = '<div class="floor-title" style="margin-bottom:2px">Reservations</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Tonight\'s book for '+esc(out.name)+'</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Bookings tonight</div><div class="stat-v">'+list.length+'</div><div class="stat-s">'+seated+' already seated</div></div>'
+     + '<div class="stat"><div class="stat-l">Covers booked</div><div class="stat-v">'+covers+'</div><div class="stat-s">of '+(out.seats||0)+' seats</div></div>'
+     + '<div class="stat"><div class="stat-l">On-time tonight</div><div class="stat-v" style="color:var(--green-soft)">94%</div><div class="stat-s">target 92%</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:70px 1fr 80px 70px 1fr 110px"><span>Time</span><span>Guest</span><span class="oright">Covers</span><span>Table</span><span>Note</span><span>Status</span></div>';
+  list.forEach(function(x){
+    var c = stChip[x.status] || stChip.confirmed;
+    h += '<div class="orow" style="grid-template-columns:70px 1fr 80px 70px 1fr 110px;cursor:default">'
+       + '<span class="mono" style="font-size:12px;font-weight:700">'+esc(x.time)+'</span>'
+       + '<span class="cname">'+esc(x.name)+'</span>'
+       + '<span class="oright mono">'+x.party+'</span>'
+       + '<span class="mono" style="font-size:11.5px">'+esc(x.table)+'</span>'
+       + '<span class="dim" style="font-size:11px">'+esc(x.note||"—")+'</span>'
+       + '<span><span class="ost" style="color:'+c[0]+';background:'+c[1]+';border:1px solid '+c[2]+'">'+esc(x.status)+'</span></span></div>';
+  });
+  h += '</div>';
+  return h;
+}
+/* ── Delivery & QR — own-fleet + aggregator delivery, live table QR sessions. ─ */
+var DL_STAGES = ["Received","In the kitchen","Ready","With the rider","Delivered"];
+function buildDelivery(out){
+  var r = rng(out.id*17+9);
+  var riders = ["Adam Saleem","Hussain Niyaz","Ahmed Sinan","Aggregator · Kaafu Eats"];
+  var areas = ["Maafannu","Henveiru","Galolhu","Hulhumalé Ph.1","Villimalé"];
+  var custs = CUSTOMERS.map(function(c){return c.name;});
+  var list = [];
+  for(var i=0;i<12;i++){
+    var rd = riders[Math.floor(r()*4)];
+    list.push({ no:"DL-"+(7712+i), cust:custs[Math.floor(r()*custs.length)], area:areas[Math.floor(r()*5)],
+      rider:rd, agg:rd.indexOf("Aggregator")>=0, eta:(6+Math.floor(r()*34))+" min",
+      total:Math.round((220+r()*900)/5)*5, status:DL_STAGES[Math.floor(r()*5)] });
+  }
+  return list;
+}
+function deliveryView(out){
+  var list = buildDelivery(out);
+  var own = list.filter(function(x){return !x.agg;}).length, agg = list.length-own;
+  var qrActive = 2 + (out.id%3);
+  var stChip = { "Received":["var(--text-dim)","var(--bg-3)","var(--line-2)"], "In the kitchen":["var(--amber-bright)","var(--amber-dim)","var(--amber-line)"], "Ready":["var(--blue-bright)","rgba(103,162,217,.12)","var(--blue)"], "With the rider":["var(--violet-bright)","rgba(168,138,217,.12)","var(--violet)"], "Delivered":["var(--green-soft)","rgba(107,191,123,.1)","var(--green-line)"] };
+  var h = '<div class="floor-title" style="margin-bottom:2px">Delivery & QR orders</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Table QR sessions, aggregator and own-fleet delivery</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Delivery orders</div><div class="stat-v">'+list.length+'</div><div class="stat-s">own fleet '+own+' · aggregators '+agg+'</div></div>'
+     + '<div class="stat"><div class="stat-l">Active QR sessions</div><div class="stat-v">'+qrActive+'</div><div class="stat-s">open table QR carts</div></div>'
+     + '<div class="stat"><div class="stat-l">On the road</div><div class="stat-v">'+list.filter(function(x){return x.status==="With the rider";}).length+'</div><div class="stat-s">out for delivery now</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:90px 1fr 120px 150px 80px 90px 130px"><span>Order</span><span>Customer</span><span>Area</span><span>Rider</span><span class="oright">ETA</span><span class="oright">Total</span><span>Status</span></div>';
+  list.forEach(function(x){
+    var c = stChip[x.status] || stChip.Received;
+    h += '<div class="orow" style="grid-template-columns:90px 1fr 120px 150px 80px 90px 130px;cursor:default">'
+       + '<span class="ono">'+esc(x.no)+'</span>'
+       + '<span class="cname" style="font-size:12px">'+esc(x.cust)+'</span>'
+       + '<span class="dim" style="font-size:11px">'+esc(x.area)+'</span>'
+       + '<span style="font-size:11px;'+(x.agg?'color:var(--violet-bright)':'')+'">'+esc(x.rider)+'</span>'
+       + '<span class="oright mono" style="font-size:11px">'+esc(x.eta)+'</span>'
+       + '<span class="oright" style="color:var(--amber-bright)">'+money(x.total)+'</span>'
+       + '<span><span class="ost" style="color:'+c[0]+';background:'+c[1]+';border:1px solid '+c[2]+'">'+esc(x.status)+'</span></span></div>';
+  });
   h += '</div>';
   return h;
 }
