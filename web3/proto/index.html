@@ -4258,7 +4258,7 @@ class Component extends DCLogic {
     // Real mode calls the store's own backend (/api/inv/cfo → the configured AI);
     // the prototype's window.claude shim is only used when there's no session.
     const useReal = !!(window.KPOS_REAL && window.KPOS_REAL.token);
-    if (!useReal && !(window.claude && window.claude.complete)) { this.setState({ cfoAnswer: "The advisory model is unreachable from this terminal. The briefing above is computed locally from posted rows and stays accurate without it." }); return; }
+    if (!useReal && !(window.claude && window.claude.complete)) { this.setState({ cfoAnswer: "This terminal isn't signed in to a store, so it's showing the demo data set — the advisory needs a live session to read your real figures. Open /v2 in the browser where you're signed in to the back office (or log in on this device), then ask again." }); return; }
     const d = this.analyticsData(), f = this.cfoFindings(d);
     this.setState({ cfoRunning: true });
     const sys = "You are the CFO of a Maldivian restaurant group, briefing the owner. You are given the real figures. "
