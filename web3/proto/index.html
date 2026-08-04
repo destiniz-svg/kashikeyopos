@@ -609,7 +609,8 @@ function renderShell(){
     + '<div class="main">'
       + '<div class="topbar">'
         + '<div><div class="crumb">'+esc(cur.label)+'</div><div class="crumb-sub">'+esc(out.name)+' · '+esc(out.region)+'</div></div>'
-        + '<div class="clock"><div class="clock-t" id="clk-t"></div><div class="clock-d" id="clk-d"></div></div>'
+        + '<div id="syncchip" style="margin-left:auto;font-size:11px;font-weight:700;color:var(--text-dim);display:flex;align-items:center;gap:5px;padding:6px 11px;border:1px solid var(--line);border-radius:9px;background:var(--bg-1);white-space:nowrap"></div>'
+        + '<div class="clock" style="margin-left:14px"><div class="clock-t" id="clk-t"></div><div class="clock-d" id="clk-d"></div></div>'
         + '<button class="iconbtn" data-theme-toggle="1" title="Toggle theme">'+(S.theme==="dark"?"☀":"☾")+'</button>'
         + '<button class="iconbtn" data-signout="1" title="Sign out">⎋</button>'
       + '</div>'
@@ -618,6 +619,7 @@ function renderShell(){
   + '</div>';
   root.innerHTML = h;
   tickClock();
+  syncChip();
 }
 function floorView(out){
   var n = out.tables || 12;
@@ -698,7 +700,7 @@ function payModal(T, out){
       + '<div class="rcheck">✓</div>'
       + '<div style="font-size:15px;font-weight:800">Paid · MVR '+money(T.total)+'</div>'
       + '<div style="font-size:12px;color:var(--text-dim);margin-top:4px">Table '+S.table+' · '+esc(p.method)+(p.method==="Cash"?' · change '+money(change):'')+'</div>'
-      + '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">Receipt queued. In production this posts a sale to the sync outbox and prints/queues the receipt.</div>'
+      + '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">Sale '+esc(p.saleNo||"")+' written to the real <b>/api/ops</b> outbox (idempotent). Watch the sync chip top-right — it flushes to the backend and this ticket becomes pullable by the shipped /app. Go offline and it queues, then syncs on reconnect.</div>'
       + '<button class="confirm" data-newbill="1" style="margin-top:16px">New order on Table '+S.table+'</button>'
       + '<button class="btn ghost" data-floor2="1" style="margin-top:8px;width:100%">Back to floor</button>'
       + '</div></div></div></div>';
@@ -1128,7 +1130,17 @@ root.addEventListener("click", function(e){
   if(d.tender){ S.pay.method = d.tender; render(); return; }
   if(d.cash){ S.pay.tendered = (S.pay.tendered==="0"?"":S.pay.tendered) + d.cash; render(); return; }
   if(d.cashclr){ S.pay.tendered = ""; render(); return; }
-  if(d.confirm){ S.pay.done = true; render(); return; }
+  if(d.confirm){
+    /* Build the settled sale in laari (MVR×100) and hand it to the real outbox —
+       this is a genuine /api/ops write, idempotent on its opId. */
+    var out2 = outletOf(S.session.outlet), lns = cart(), TT = totals(lns, out2), L = function(x){ return Math.round(x*100); };
+    var sale = { id:"v2-"+S.table+"-"+Date.now(), type:"sale", no:"V2-"+String(Date.now()).slice(-6), t:Date.now(),
+      lines: lns.map(function(l){ return { pid:l.id, name:l.name, qty:l.qty, price:L(l.price), amount:L(l.price*l.qty), taxable:true }; }),
+      subtotal:L(TT.sub), svcCharge:L(TT.svc), gst:L(TT.tax), total:L(TT.total),
+      payments:[{ method:S.pay.method.toLowerCase(), amount:L(TT.total) }], srcTable:S.table };
+    enqueueSale(sale);
+    S.pay.done = true; S.pay.saleNo = sale.no; render(); return;
+  }
   if(d.newbill){ S.carts[S.table] = []; S.fired[S.table] = false; S.pay = null; render(); return; }
   // ── KDS ──
   if(d.fire){ fireToKitchen(); render(); return; }
@@ -1155,6 +1167,69 @@ function toast(msg){
   if(toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(function(){ t.style.display = "none"; }, 2600);
 }
+
+/* ── Real sync. The till writes each settled sale to the SAME backend the
+   shipped /app uses: a durable localStorage outbox flushed to /api/ops with a
+   stable opId (so a retry can never double-post), against a demo workspace this
+   browser provisions once via /api/register. This is the actual offline-first
+   transaction path, not a mock — sales appear in /api/pull and the real /app. */
+var SYNC = {
+  token: localStorage.getItem("kv2-token"),
+  slug: localStorage.getItem("kv2-slug"),
+  outbox: JSON.parse(localStorage.getItem("kv2-outbox") || "[]"),
+  rowver: 0, state: "local", busy: false   // local | syncing | synced | offline
+};
+function syncPersist(){ localStorage.setItem("kv2-outbox", JSON.stringify(SYNC.outbox)); }
+function syncChip(){
+  var el = document.getElementById("syncchip"); if(!el) return;
+  var n = SYNC.outbox.length;
+  var map = {
+    local:   ["○","var(--text-muted)","Local"],
+    syncing: ["◍","var(--amber-bright)","Syncing"+(n?" · "+n:"")],
+    synced:  ["●","var(--green-soft)","Synced"+(SYNC.rowver?" · r"+SYNC.rowver:"")],
+    offline: ["●","var(--red-bright)", (navigator.onLine?"Queued":"Offline")+(n?" · "+n:"")]
+  };
+  var m = map[SYNC.state] || map.local;
+  el.innerHTML = '<span style="color:'+m[1]+';font-size:9px">'+m[0]+'</span> '+esc(m[2]);
+  el.title = "Real /api/ops sync · "+n+" queued"+(SYNC.slug?" · workspace "+SYNC.slug:"");
+}
+async function ensureStore(){
+  if(SYNC.token) return true;
+  var rnd = Math.random().toString(36).slice(2,9);
+  var r = await fetch("/api/register",{ method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ email:"v2-"+rnd+"@demo.kashikeyo.mv", password:"v2demo-"+rnd, storeName:"KashikeyoPOS v2 demo", currency:"MVR", pin:"1234" }) });
+  if(!r.ok) return false;
+  var j = await r.json(); SYNC.token=j.token; SYNC.slug=j.slug;
+  localStorage.setItem("kv2-token",j.token); localStorage.setItem("kv2-slug",j.slug);
+  // Seed the catalogue so each sale validates against real product prices (laari).
+  SYNC.outbox.unshift({ opId:"seed-products-"+j.slug, puts: MENU.map(function(m){ return {kind:"products",id:m.id,data:{id:m.id,name:m.name,price:Math.round(m.price*100)}}; }) });
+  syncPersist();
+  return true;
+}
+async function flush(){
+  if(SYNC.busy) return;
+  if(!SYNC.outbox.length){ SYNC.state = SYNC.token ? "synced" : "local"; syncChip(); return; }
+  if(!navigator.onLine){ SYNC.state="offline"; syncChip(); return; }
+  SYNC.busy = true; SYNC.state="syncing"; syncChip();
+  try{
+    if(!(await ensureStore())){ SYNC.state="offline"; return; }
+    var batch = SYNC.outbox.slice(0,50);
+    var r = await fetch("/api/ops",{ method:"POST", headers:{"Content-Type":"application/json","Authorization":"Bearer "+SYNC.token}, body:JSON.stringify({ops:batch}) });
+    if(r.status===401){ localStorage.removeItem("kv2-token"); SYNC.token=null; SYNC.state="offline"; return; }
+    if(!r.ok){ SYNC.state="offline"; return; }
+    var j = await r.json(); SYNC.rowver = j.rowver || SYNC.rowver;
+    SYNC.outbox = SYNC.outbox.slice(batch.length); syncPersist();
+    SYNC.state = SYNC.outbox.length ? "syncing" : "synced";
+  }catch(e){ SYNC.state="offline"; }
+  finally{ SYNC.busy=false; syncChip(); if(SYNC.outbox.length && navigator.onLine) setTimeout(flush,400); }
+}
+function enqueueSale(sale){
+  SYNC.outbox.push({ opId:"v2-"+sale.id, puts:[{kind:"sales",id:sale.id,data:sale}] });
+  syncPersist(); syncChip(); flush();
+}
+window.addEventListener("online", function(){ flush(); });
+window.addEventListener("offline", function(){ SYNC.state="offline"; syncChip(); });
+setInterval(function(){ if(SYNC.outbox.length) flush(); }, 8000);  // safety-net poll, like the shipped till
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
   if(/^[0-9]$/.test(e.key)){ if(S.entry.length<4){ S.entry+=e.key; render(); tryPin(); } }
@@ -1162,4 +1237,6 @@ document.addEventListener("keydown", function(e){
   else if(e.key==="Escape"){ S.picking=null; S.entry=""; render(); }
 });
 render();
+syncChip();
+if(SYNC.outbox.length) flush();   // resume any queued sales from a previous session
 </script>
