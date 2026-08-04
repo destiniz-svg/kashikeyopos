@@ -29,8 +29,8 @@ describe("auth & tenancy", () => {
     const aPull = await H.pull(a.token, 0);
     const leaked = (aPull.json.entities || []).some((e) => JSON.stringify(e.data).includes("ORGB-SECRET"));
     assert.equal(leaked, false, "org A must not see org B's customer");
-    const bPull = await H.pull(b.token, 0);
-    const own = (bPull.json.entities || []).some((e) => JSON.stringify(e.data).includes("ORGB-SECRET"));
+    const own = await H.until(async () =>
+      (((await H.pull(b.token, 0)).json.entities || []).some((e) => JSON.stringify(e.data).includes("ORGB-SECRET"))) || null);
     assert.equal(own, true, "org B must see its own customer");
   });
 
@@ -62,10 +62,21 @@ describe("sync idempotency", () => {
   test("pull returns only rows newer than the cursor", async () => {
     const o = await H.registerOrg({ tag: "cursor" });
     await H.ops(o.token, [{ opId: "c1", puts: [{ kind: "customers", id: "c-1", data: { id: "c-1", name: "First" } }] }]);
-    const first = await H.pull(o.token, 0);
+    /* Capture the cursor only once c-1 is actually visible. The never-skip
+       visibility guard can transiently hide a freshly-committed row while an
+       unrelated concurrent transaction holds the snapshot xmin down; capturing
+       a cursor below c-1's rowver would then harmlessly (but non-deterministically)
+       re-send c-1 on the next pull. Polling removes that race from the assertion. */
+    const first = await H.until(async () => {
+      const p = await H.pull(o.token, 0);
+      return (p.json.entities || []).some((e) => e.id === "c-1") ? p : null;
+    });
     const cursor = first.json.rowver;
     await H.ops(o.token, [{ opId: "c2", puts: [{ kind: "customers", id: "c-2", data: { id: "c-2", name: "Second" } }] }]);
-    const second = await H.pull(o.token, cursor);
+    const second = await H.until(async () => {
+      const p = await H.pull(o.token, cursor);
+      return (p.json.entities || []).some((e) => e.id === "c-2") ? p : null;
+    });
     const ids = (second.json.entities || []).map((e) => e.id);
     assert.ok(ids.includes("c-2"), "the newer customer is returned");
     assert.ok(!ids.includes("c-1"), "the older customer is not re-sent");
@@ -107,10 +118,16 @@ describe("money integrity (FIN-01)", () => {
 /* ── FIN-02: credit-limit enforcement ────────────────────────────────── */
 describe("credit limit (FIN-02)", () => {
   let o;
-  const balOf = async (id) => {
+  /* Read the customer back by polling until the just-applied balance is
+     visible. A single pull(since=0) can transiently miss a freshly-committed
+     row while an unrelated concurrent transaction holds the snapshot xmin down
+     (the same never-skip visibility guard the sync cursor relies on), which
+     surfaced as a NaN balance under the suite's concurrent registration load.
+     Polling for the expected value asserts the same behaviour without the race. */
+  const balWhen = (id, bal) => H.until(async () => {
     const c = ((await H.pull(o.token, 0)).json.entities || []).find((e) => e.kind === "customers" && e.id === id);
-    return c ? c.data : {};
-  };
+    return c && Number(c.data.balance) === bal ? c.data : null;
+  });
   before(async () => {
     o = await H.registerOrg({ tag: "credit" });
     await H.ops(o.token, [{ opId: "cust", puts: [{ kind: "customers", id: "cl-cust", data: { id: "cl-cust", name: "Credit Cust", balance: 0, creditLimit: 10000 } }] }]);
@@ -119,27 +136,24 @@ describe("credit limit (FIN-02)", () => {
 
   test("under the limit does not flag", async () => {
     await credit("cl-1", 6000);
-    const d = await balOf("cl-cust");
-    assert.equal(Number(d.balance), 6000);
+    const d = await balWhen("cl-cust", 6000);
     assert.equal(d.creditOverLimit, false);
   });
   test("crossing the limit flags with the overage, balance still applied", async () => {
     await credit("cl-2", 6000); // 12000 > 10000
-    const d = await balOf("cl-cust");
-    assert.equal(Number(d.balance), 12000, "money owed is recorded even over limit");
+    const d = await balWhen("cl-cust", 12000); // money owed is recorded even over limit
     assert.equal(d.creditOverLimit, true);
     assert.equal(Number(d.creditOverBy), 2000);
   });
   test("paying back under the limit clears the flag", async () => {
     await credit("cl-3", -8000); // 4000 < 10000
-    const d = await balOf("cl-cust");
-    assert.equal(Number(d.balance), 4000);
+    const d = await balWhen("cl-cust", 4000);
     assert.equal(d.creditOverLimit, false);
   });
   test("a customer with no limit is never flagged", async () => {
     await H.ops(o.token, [{ opId: "cust2", puts: [{ kind: "customers", id: "nolimit", data: { id: "nolimit", name: "No Limit", balance: 0, creditLimit: 0 } }] }]);
     await H.ops(o.token, [{ opId: "nl-1", puts: [], deltas: { cust: [{ id: "nolimit", pts: 0, bal: 999999 }] } }]);
-    const d = await balOf("nolimit");
+    const d = await balWhen("nolimit", 999999);
     assert.equal(d.creditOverLimit, false);
   });
 });
@@ -157,15 +171,15 @@ describe("compliance flags API", () => {
     assert.ok(flags.sales.some((s) => s.id === "f-sale"), "flagged sale listed");
     assert.ok(flags.credit.some((c) => c.id === "f-cust"), "over-limit customer listed");
 
-    assert.equal((await H.invPost(o.token, "/flags/sale/f-sale/ack", { by: "tester" })).status, 200);
-    assert.equal((await H.invPost(o.token, "/flags/credit/f-cust/ack", { by: "tester" })).status, 200);
+    assert.equal((await H.invPost({ cookie: o.cookie }, "/flags/sale/f-sale/ack", { by: "tester" })).status, 200);
+    assert.equal((await H.invPost({ cookie: o.cookie }, "/flags/credit/f-cust/ack", { by: "tester" })).status, 200);
 
     flags = (await H.invGet(o.token, "/flags")).json;
     assert.ok(!flags.sales.some((s) => s.id === "f-sale"), "acked sale drops off");
     assert.ok(!flags.credit.some((c) => c.id === "f-cust"), "acked customer drops off");
 
     // acking an unknown flag 404s
-    assert.equal((await H.invPost(o.token, "/flags/sale/nope/ack", {})).status, 404);
+    assert.equal((await H.invPost({ cookie: o.cookie }, "/flags/sale/nope/ack", {})).status, 404);
   });
 });
 
@@ -178,7 +192,7 @@ describe("stock ledger", () => {
     await H.invPost({ cookie: o.cookie }, "/adjust", { ingredientId: "s-milk", mode: "correct", qty: 1000 });
     // a product that uses 200 ml per unit
     await H.ops(o.token, [{ opId: "sp", puts: [{ kind: "products", id: "s-latte", data: { id: "s-latte", name: "Latte", price: 5000 } }] }]);
-    await H.invPut(o.token, "/recipes/s-latte", { lines: [{ ingredientId: "s-milk", qty: 200 }] });
+    await H.invPut({ cookie: o.cookie }, "/recipes/s-latte", { lines: [{ ingredientId: "s-milk", qty: 200 }] });
 
     const stockOf = async (id) => {
       const list = (await H.invGet(o.token, "/ingredients")).json.ingredients || [];
@@ -219,6 +233,7 @@ describe("guest orders & counter-modify", () => {
     assert.ok(r.json.order && r.json.order.no, "returns an order number");
     assert.equal(r.json.order.source, "qr");
     const id = r.json.order.id;
+    await H.pullEntity(o.token, "orders", (e) => e.id === id); // wait until the QR order is visible to the till
     const orders = ((await H.pull(o.token, 0)).json.entities || []).filter((e) => e.kind === "orders" && e.id === id);
     assert.equal(orders.length, 1, "the order is pullable by the till");
     assert.equal(orders[0].data.status !== "completed", true, "starts open, not settled");
@@ -245,7 +260,7 @@ describe("guest orders & counter-modify", () => {
     // an ingredient with no stock + a product that needs it → 0 servings available
     await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "g-bean", name: "Beans", baseUnit: "g", location: "Dry" });
     await H.ops(o.token, [{ opId: "gc", puts: [{ kind: "products", id: "g-coffee", data: { id: "g-coffee", name: "Coffee", price: 4000 } }] }]);
-    await H.invPut(o.token, "/recipes/g-coffee", { lines: [{ ingredientId: "g-bean", qty: 10 }] });
+    await H.invPut({ cookie: o.cookie }, "/recipes/g-coffee", { lines: [{ ingredientId: "g-bean", qty: 10 }] });
     assert.equal((await order({ items: [{ pid: "g-coffee", qty: 1 }], gtype: "pickup" })).status, 409);
   });
   test("an unknown workspace 404s", async () => {
@@ -265,9 +280,8 @@ describe("guest orders & counter-modify", () => {
         lines: [{ pid: "g-tea", qty: 2, price: 3000, taxable: true }], subtotal: 6000, gst: 480, total: 6480, payments: [{ method: "Cash", amount: 6480 }] } }] },
       { opId: "cm-ord", puts: [{ kind: "orders", id: orderId, data: { id: orderId, status: "completed", saleId: "cm-sale", settledAtTill: true } }] },
     ]);
-    const ents = (await H.pull(o.token, 0)).json.entities || [];
-    const sale = ents.find((e) => e.kind === "sales" && e.id === "cm-sale");
-    const ord = ents.find((e) => e.kind === "orders" && e.id === orderId);
+    const sale = await H.pullEntity(o.token, "sales", (e) => e.id === "cm-sale");
+    const ord = await H.pullEntity(o.token, "orders", (e) => e.id === orderId);
     assert.equal(sale.data.srcOrderId, orderId, "sale is linked to the source order");
     assert.equal(ord.data.status, "completed", "source order is completed");
     // honest counter-modified sale must NOT be flagged
@@ -292,8 +306,10 @@ describe("multi-store scoping", () => {
   };
 
   test("a store-scoped product is visible only from its own store", async () => {
-    const main = await idsFor("main");
-    const b2 = await idsFor("branch2");
+    // Wait for each store's product to become visible before asserting cross-store
+    // isolation (a single pull can transiently miss it under concurrent xmin load).
+    const main = await H.until(async () => { const m = await idsFor("main"); return m.includes("products:p-main") ? m : null; });
+    const b2 = await H.until(async () => { const x = await idsFor("branch2"); return x.includes("products:p-b2") ? x : null; });
     assert.ok(main.includes("products:p-main"), "main store sees its product");
     assert.ok(!main.includes("products:p-b2"), "main store does NOT see branch2's product");
     assert.ok(b2.includes("products:p-b2"), "branch2 sees its product");
@@ -301,8 +317,8 @@ describe("multi-store scoping", () => {
   });
 
   test("shared-kind entities (customers) are global to every store", async () => {
-    assert.ok((await idsFor("main")).includes("customers:shared-cust"), "customer visible from main");
-    assert.ok((await idsFor("branch2")).includes("customers:shared-cust"), "same customer visible from branch2");
+    assert.ok((await H.until(async () => (await idsFor("main")).includes("customers:shared-cust") || null)), "customer visible from main");
+    assert.ok((await H.until(async () => (await idsFor("branch2")).includes("customers:shared-cust") || null)), "same customer visible from branch2");
   });
 });
 
@@ -332,7 +348,7 @@ describe("operational hardening", () => {
     });
     assert.ok(acts.some((x) => x.action === "sale.flagged"), "money flag logged");
     assert.ok(acts.some((x) => x.action === "credit.over_limit"), "over-limit logged");
-    await H.invPost(o.token, "/flags/sale/a-sale/ack", { by: "tester" });
+    await H.invPost({ cookie: o.cookie }, "/flags/sale/a-sale/ack", { by: "tester" });
     const acts2 = await H.until(async () => {
       const a = (await H.invGet(o.token, "/activity")).json.activity || [];
       return a.some((x) => x.action === "flag.ack") ? a : null;
@@ -381,9 +397,7 @@ describe("manager elevation (SEC-03)", () => {
       id: "el-ref1", no: "INV-EL1", type: "refund", lines: [{ pid: "x", qty: 1 }], total: 1000,
       managerApproved: { forged: true },   // client-supplied approval must never be trusted
     } }] }]);
-    const pull = await H.pull(o.token, 0);
-    const ref = (pull.json.entities || []).find((e) => e.kind === "sales" && e.data && e.data.no === "INV-EL1");
-    assert.ok(ref, "refund synced (never rejected)");
+    const ref = await H.pullEntity(o.token, "sales", (e) => e.data && e.data.no === "INV-EL1"); // refund synced (never rejected)
     assert.ok(!ref.data.managerApproved, "forged client approval stripped");
     assert.ok(ref.data.serverAudit && ref.data.serverAudit.flagged, "flagged for review");
     assert.ok(ref.data.serverAudit.reasons.join(" ").includes("manager approval"), "reason names the missing approval");
@@ -403,8 +417,7 @@ describe("manager elevation (SEC-03)", () => {
     await H.req("POST", "/api/ops", { token: o.token, headers: { "X-Elevation": e.json.elevation },
       body: { ops: [{ opId: "el-r2", puts: [{ kind: "sales", id: "el-ref2", data: {
         id: "el-ref2", no: "INV-EL2", type: "refund", lines: [{ pid: "x", qty: 1 }], total: 500 } }] }] } });
-    const pull = await H.pull(o.token, 0);
-    const ref = (pull.json.entities || []).find((x) => x.kind === "sales" && x.data && x.data.no === "INV-EL2");
+    const ref = await H.pullEntity(o.token, "sales", (x) => x.data && x.data.no === "INV-EL2");
     assert.ok(ref.data.managerApproved, "server stamped the approval");
     assert.equal(ref.data.managerApproved.method, "password");
     assert.ok(!ref.data.serverAudit, "approved refund is not flagged");
@@ -413,8 +426,7 @@ describe("manager elevation (SEC-03)", () => {
   test("approval survives an unelevated re-push of the same refund", async () => {
     await H.ops(o.token, [{ opId: "el-r3", puts: [{ kind: "sales", id: "el-ref2", data: {
       id: "el-ref2", no: "INV-EL2", type: "refund", lines: [{ pid: "x", qty: 1 }], total: 500 } }] }]);
-    const pull = await H.pull(o.token, 0);
-    const ref = (pull.json.entities || []).find((x) => x.kind === "sales" && x.data && x.data.no === "INV-EL2");
+    const ref = await H.pullEntity(o.token, "sales", (x) => x.data && x.data.no === "INV-EL2");
     assert.ok(ref.data.managerApproved, "server-side approval carried forward");
     assert.ok(!ref.data.serverAudit, "still unflagged after re-push");
   });
@@ -437,8 +449,14 @@ describe("offline outbox & flaky-network sync (SYNC)", () => {
     await H.ops(o.token, [{ opId: "sr-p", puts: [{ kind: "products", id: "sp", data: { id: "sp", name: "X", price: 1000, stock: 10 } }] }]);
     const flush = [{ opId: "sr-sale", puts: [{ kind: "sales", id: "srs", data: { id: "srs", type: "sale", lines: [{ pid: "sp", qty: 1 }], total: 1000 } }], deltas: { stock: [{ id: "sp", d: -1 }] } }];
     for (let i = 0; i < 3; i++) assert.equal((await H.ops(o.token, flush)).status, 200); // 3 identical retries
-    assert.equal((await salesOf(o)).length, 1, "one sale after 3 retries");
-    assert.equal(await stockOf(o, "sp"), 9, "stock deducted exactly once");
+    // Assert on the snapshot the poll validated — re-reading separately can transiently
+    // miss the row again while a concurrent tx holds xmin down (the never-skip guard).
+    const s = await H.until(async () => {
+      const sales = (await salesOf(o)).length, stock = await stockOf(o, "sp");
+      return sales === 1 && stock === 9 ? { sales, stock } : null;
+    });
+    assert.equal(s.sales, 1, "one sale after 3 retries");
+    assert.equal(s.stock, 9, "stock deducted exactly once");
   });
 
   test("a full offline-shift backlog flushes exactly once; a duplicated flush is a no-op", async () => {
@@ -447,11 +465,17 @@ describe("offline outbox & flaky-network sync (SYNC)", () => {
     const N = 25;
     const batch = Array.from({ length: N }, (_, i) => ({ opId: "bk-" + i, puts: [{ kind: "sales", id: "bs" + i, data: { id: "bs" + i, type: "sale", lines: [{ pid: "bp", qty: 1 }], total: 500 } }], deltas: { stock: [{ id: "bp", d: -1 }] } }));
     assert.equal((await H.ops(o.token, batch)).status, 200); // reconnect: whole shift flushed at once
-    assert.equal((await salesOf(o)).length, N, `all ${N} offline sales landed`);
-    assert.equal(await stockOf(o, "bp"), 100 - N, "stock deducted once per sale");
+    const settle = () => H.until(async () => {
+      const sales = (await salesOf(o)).length, stock = await stockOf(o, "bp");
+      return sales === N && stock === 100 - N ? { sales, stock } : null;
+    });
+    const s1 = await settle();
+    assert.equal(s1.sales, N, `all ${N} offline sales landed`);
+    assert.equal(s1.stock, 100 - N, "stock deducted once per sale");
     assert.equal((await H.ops(o.token, batch)).status, 200); // duplicated flush (ack was lost)
-    assert.equal((await salesOf(o)).length, N, "re-flush adds no duplicates");
-    assert.equal(await stockOf(o, "bp"), 100 - N, "re-flush does not double-deduct");
+    const s2 = await settle();
+    assert.equal(s2.sales, N, "re-flush adds no duplicates");
+    assert.equal(s2.stock, 100 - N, "re-flush does not double-deduct");
   });
 
   test("an auth failure mid-sync loses nothing; the retry after re-auth applies exactly once", async () => {
@@ -463,6 +487,7 @@ describe("offline outbox & flaky-network sync (SYNC)", () => {
     assert.equal((await salesOf(o, (e) => e.id === "axs")).length, 0, "a rejected flush persists nothing");
     // the durable outbox keeps the batch and retries it after re-auth → applies once
     assert.equal((await H.ops(o.token, flush)).status, 200);
+    await H.until(async () => (await salesOf(o, (e) => e.id === "axs")).length === 1);
     assert.equal((await salesOf(o, (e) => e.id === "axs")).length, 1, "retry after re-auth applies the queued sale exactly once");
   });
 });
@@ -482,9 +507,15 @@ describe("multi-terminal concurrency (LOAD)", () => {
         assert.equal((await H.ops(o.token, [{ opId: `mt-${t}-${n}`, puts: [{ kind: "sales", id: `ms-${t}-${n}`, data: { id: `ms-${t}-${n}`, type: "sale", lines: [{ pid: "mp", qty: 1 }], total: 1000 } }], deltas: { stock: [{ id: "mp", d: -1 }] } }])).status, 200);
       }
     })()));
-    const ents = (await H.pull(o.token, 0)).json.entities || [];
-    assert.equal(ents.filter((e) => e.kind === "sales" && !e.deleted).length, total, "no sale lost or duplicated under concurrency");
-    assert.equal(Number(ents.find((e) => e.kind === "products" && e.id === "mp").data.stock), 1000 - total, "stock deducted exactly once per concurrent sale (no lost updates)");
+    const settled = await H.until(async () => {
+      const ents = (await H.pull(o.token, 0)).json.entities || [];
+      const sales = ents.filter((e) => e.kind === "sales" && !e.deleted).length;
+      const prod = ents.find((e) => e.kind === "products" && e.id === "mp");
+      const stock = prod ? Number(prod.data.stock) : NaN;
+      return sales === total && stock === 1000 - total ? { sales, stock } : null;
+    }, { timeout: 10000 });
+    assert.equal(settled.sales, total, "no sale lost or duplicated under concurrency");
+    assert.equal(settled.stock, 1000 - total, "stock deducted exactly once per concurrent sale (no lost updates)");
   });
 
   test("two terminals sell the final unit at once: both recorded, stock floors at 0 (never negative)", async () => {
@@ -494,9 +525,15 @@ describe("multi-terminal concurrency (LOAD)", () => {
       H.ops(o.token, [{ opId: "lu-A", puts: [{ kind: "sales", id: "lsA", data: { id: "lsA", type: "sale", lines: [{ pid: "lp", qty: 1 }], total: 1 } }], deltas: { stock: [{ id: "lp", d: -1 }] } }]),
       H.ops(o.token, [{ opId: "lu-B", puts: [{ kind: "sales", id: "lsB", data: { id: "lsB", type: "sale", lines: [{ pid: "lp", qty: 1 }], total: 1 } }], deltas: { stock: [{ id: "lp", d: -1 }] } }]),
     ]);
-    const ents = (await H.pull(o.token, 0)).json.entities || [];
-    assert.equal(ents.filter((e) => e.kind === "sales" && !e.deleted).length, 2, "both offline sales recorded (never silently rejected)");
-    assert.equal(Number(ents.find((e) => e.kind === "products" && e.id === "lp").data.stock), 0, "stock floors at 0, never negative");
+    const settled = await H.until(async () => {
+      const ents = (await H.pull(o.token, 0)).json.entities || [];
+      const sales = ents.filter((e) => e.kind === "sales" && !e.deleted).length;
+      const prod = ents.find((e) => e.kind === "products" && e.id === "lp");
+      const stock = prod ? Number(prod.data.stock) : NaN;
+      return sales === 2 && stock === 0 ? { sales, stock } : null;
+    });
+    assert.equal(settled.sales, 2, "both offline sales recorded (never silently rejected)");
+    assert.equal(settled.stock, 0, "stock floors at 0, never negative");
   });
 });
 

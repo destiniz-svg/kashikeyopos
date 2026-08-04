@@ -103,4 +103,18 @@ async function until(fn, { timeout = 5000, step = 150 } = {}) {
   throw new Error("condition not met within " + timeout + "ms");
 }
 
-module.exports = { BASE, startServer, stopServer, req, registerOrg, ops, pull, invGet, invPost, invPut, until, uniqEmail };
+/* Poll pull(since=0) until an entity matching (kind, pred) is visible, then
+   return it. A single pull can transiently miss a freshly-committed row while
+   an unrelated concurrent transaction holds the cluster snapshot xmin down —
+   the never-skip visibility guard the sync cursor depends on. The till's real
+   5s poll (and SSE re-poke) ride straight over that window with no data loss;
+   a read-back assertion in a suite that registers many orgs concurrently must
+   do the same instead of asserting on one immediate pull. */
+async function pullEntity(token, kind, pred = () => true) {
+  return until(async () => {
+    const e = ((await pull(token, 0)).json.entities || []).find((x) => x.kind === kind && !x.deleted && pred(x));
+    return e || null;
+  });
+}
+
+module.exports = { BASE, startServer, stopServer, req, registerOrg, ops, pull, invGet, invPost, invPut, until, pullEntity, uniqEmail };

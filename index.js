@@ -2092,11 +2092,11 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
        "at" the cut-off (valid), while anything from an earlier second is killed. */
     const orgChk = await client.query("SELECT status, FLOOR(EXTRACT(EPOCH FROM sessions_invalid_before)) AS sib FROM orgs WHERE id=$1", [req.org.o]);
     if (!orgChk.rowCount || (orgChk.rows[0].status && orgChk.rows[0].status !== "active")) {
-      await client.query("ROLLBACK"); client.release();
+      await client.query("ROLLBACK");
       return res.status(403).json({ error: "This store is not active — contact the owner.", requestId: req.id });
     }
     if (orgChk.rows[0].sib && req.org.iat && Number(req.org.iat) < Number(orgChk.rows[0].sib)) {
-      await client.query("ROLLBACK"); client.release();
+      await client.query("ROLLBACK");
       return res.status(401).json({ error: "Session ended — please sign in again.", requestId: req.id });
     }
     /* Money-integrity context (FIN-01): the catalogue prices + GST rate this org
@@ -2157,7 +2157,11 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
            foc is legitimately 0 and refunds have their own approval path. */
         if (p.kind === "sales" && data.type !== "refund" && !data.foc && Array.isArray(data.lines) && data.lines.length && moneyCtx) {
           const discPct = effectiveDiscountPct(data);
-          if (discPct >= moneyCtx.discLimitPct) {
+          /* Flag only a discount PAST the ceiling, not one exactly AT it: a store
+             that sets a 50% limit means 50% is allowed. The reason text and the
+             "past the ceiling" intent both read as strictly-greater; `>=` spuriously
+             flagged every at-limit sale for manager review (FIN-01 boundary). */
+          if (discPct > moneyCtx.discLimitPct) {
             if (elevated) { if (!data.managerApproved) data.managerApproved = { method: "password", at: Date.now(), for: "discount" }; }
             else {
               const sa = (data.serverAudit && data.serverAudit.flagged) ? data.serverAudit : { flagged: true, at: Date.now(), claimedTotal: Number(data.total) || 0, computedTotal: Number(data.total) || 0, reasons: [] };
@@ -2325,10 +2329,16 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
     }
     await client.query("COMMIT");
   } catch (e) {
-    await client.query("ROLLBACK");
-    client.release();
+    try { await client.query("ROLLBACK"); } catch { /* connection may be gone; release still runs */ }
     recordError("ops[" + req.id + "]", e);
     return res.status(500).json({ error: "ops failed: " + errDetail(e), requestId: req.id });
+  } finally {
+    /* CRIT: the success path fell out of the try with no release, leaking one
+       pooled connection per sync that wrote anything — the pool exhausted after
+       `max` writes and every till hung on 503 until restart (regressed in
+       8e416b9). A single finally guarantees release on every exit: success,
+       error, or the early store-inactive / session-ended returns above. */
+    client.release();
   }
   /* A batch every op of which was already applied writes nothing, so the
      accumulator above never moves and the reply used to be rowver:0. No
