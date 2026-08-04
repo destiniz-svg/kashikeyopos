@@ -243,6 +243,40 @@ input{font-family:inherit}
 .led-row.bal{background:var(--bg-0);font-weight:800}
 .det-note{margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px}
 
+/* ── Orders & receipts ───────────────────────────────────────────────────── */
+.tabs{display:flex;gap:7px;flex-wrap:wrap;margin:2px 0 16px}
+.tab{font-size:12px;font-weight:700;padding:7px 14px;border-radius:20px;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)}
+.tab.on{background:var(--amber);border-color:var(--amber);color:var(--on-amber)}
+.orow{display:grid;grid-template-columns:120px 54px 60px 110px 1fr 90px 96px 78px;gap:10px;align-items:center;padding:11px 15px;border-bottom:1px solid var(--line-soft);width:100%;text-align:left;font-size:12px}
+.orow.head{background:var(--bg-0);font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.07em;font-weight:800;cursor:default}
+.orow:not(.head):hover{background:var(--bg-2)}
+.orow:last-child{border-bottom:none}
+.ono{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11.5px}
+.chan{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.chan.dine_in{background:rgba(103,162,217,.14);color:var(--blue-bright);border:1px solid var(--blue)}
+.chan.qr{background:rgba(168,138,217,.14);color:var(--violet-bright);border:1px solid var(--violet)}
+.chan.takeaway{background:var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line)}
+.chan.delivery{background:rgba(107,191,123,.12);color:var(--green-soft);border:1px solid var(--green-line)}
+.ost{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:6px}
+.ost.closed{background:rgba(107,191,123,.10);color:var(--green-soft);border:1px solid var(--green-line)}
+.ost.open{background:var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line)}
+.ost.refunded{background:rgba(226,96,63,.10);color:var(--red-bright);border:1px solid var(--red-line)}
+.oright{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700}
+/* receipt */
+.rcp{width:100%;max-width:380px;background:var(--paper,#fdfbf6);color:#1a1a1a;border-radius:14px;box-shadow:var(--shadow-lg);overflow:hidden;animation:kmodal .22s;max-height:88vh;display:flex;flex-direction:column;font-family:'JetBrains Mono',monospace}
+.rcp-b{padding:20px 22px;overflow-y:auto}
+.rcp-c{text-align:center;margin-bottom:14px}
+.rcp-name{font-family:'Inter',sans-serif;font-size:16px;font-weight:800}
+.rcp-meta{font-size:10.5px;color:#666;margin-top:3px;line-height:1.5}
+.rcp-div{border-top:1px dashed #bbb;margin:12px 0}
+.rcp-line{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0}
+.rcp-line .q{color:#888;margin-right:6px}
+.rcp-tot{display:flex;justify-content:space-between;font-size:11.5px;padding:2px 0;color:#333}
+.rcp-tot.grand{font-weight:800;font-size:13.5px;border-top:1px solid #999;margin-top:6px;padding-top:6px;color:#1a1a1a}
+.rcp-foot{text-align:center;font-size:10px;color:#777;margin-top:14px;line-height:1.6;font-family:'Inter',sans-serif}
+.rcp-actions{display:flex;gap:8px;padding:12px 16px;background:var(--bg-1);border-top:1px solid var(--line)}
+.rcp-refunded{text-align:center;font-family:'Inter',sans-serif;font-size:11px;font-weight:800;color:#c2452a;border:1.5px solid #c2452a;border-radius:8px;padding:6px;margin-top:10px;letter-spacing:.1em}
+
 /* ── Generic module placeholder (views built in later increments) ────────── */
 .mod{max-width:760px}
 .mod-blurb{font-size:13px;color:var(--text-dim);line-height:1.7;margin:8px 0 18px;max-width:560px}
@@ -409,7 +443,12 @@ var S = {
   pay: null,              // { method, tendered } while the pay modal is open
   fired: {},              // { [tableNo]: true } once fired to the kitchen
   kds: null,              // seeded below (needs Date.now, set after helpers)
-  cust: null              // open customer id (detail modal)
+  cust: null,             // open customer id (detail modal)
+  // Orders
+  orders: null, ordersFor: null,  // cached per outlet
+  ordTab: 0,              // channel filter index
+  order: null,            // open order no (receipt)
+  refunded: {}            // { [orderNo]: true }
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -545,6 +584,7 @@ function renderShell(){
   var body = (S.view==="pos") ? (S.table ? orderView(out) : floorView(out))
            : (S.view==="kds") ? kdsView()
            : (S.view==="customers") ? customersView()
+           : (S.view==="orders") ? ordersView(out)
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -751,6 +791,93 @@ function custModal(){
   h += '</div></div></div>';
   return h;
 }
+/* ── Orders & receipts. A deterministic seeded generator stands in for today's
+   ticket history; each order's lines drive its total through the same totals(),
+   so the receipt reconciles to the list. ────────────────────────────────────*/
+function pad2(n){ return (n<10?"0":"")+n; }
+function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+var CHAN = { dine_in:"Dine-in", qr:"QR table", takeaway:"Takeaway", delivery:"Delivery" };
+var TENDER = { cash:"Cash", card:"Card", wallet:"BML Pay", credit:"Customer credit" };
+function genOrders(out){
+  var r = rng(4242 + out.id);
+  var chans = ["dine_in","dine_in","dine_in","qr","takeaway","delivery"];
+  var servers = ["Ismail Nabeeh","Shifa Adam","Hassan Shifau"];
+  var tenders = ["cash","card","wallet","credit"];
+  var list = [];
+  for(var i=0;i<28;i++){
+    var ch = chans[Math.floor(r()*chans.length)];
+    var nl = 2 + Math.floor(r()*3), lines = [];
+    for(var j=0;j<nl;j++){ var m = MENU[Math.floor(r()*MENU.length)]; lines.push({ name:m.name, price:m.price, qty:1+Math.floor(r()*2) }); }
+    list.push({
+      no:"KO-"+out.code.split("-")[1]+"-"+(2418+i),
+      table:(ch==="dine_in"||ch==="qr") ? "T"+pad2(1+Math.floor(r()*(out.tables||10))) : "—",
+      channel:ch, lines:lines, total:totals(lines,out).total,
+      tender:tenders[Math.floor(r()*tenders.length)],
+      status:r()>0.14 ? "closed":"open",
+      server:servers[Math.floor(r()*servers.length)],
+      time:pad2(11+Math.floor(r()*11))+":"+pad2(Math.floor(r()*60))
+    });
+  }
+  return list.sort(function(a,b){ return a.time<b.time?1:-1; });
+}
+function ordersView(out){
+  if(!S.orders || S.ordersFor!==out.id){ S.orders = genOrders(out); S.ordersFor = out.id; }
+  var TABS = [null,"dine_in","qr","takeaway","delivery"];
+  var chan = TABS[S.ordTab];
+  var list = S.orders.filter(function(o){ return !chan || o.channel===chan; });
+  var closed = list.filter(function(o){ return o.status==="closed" && !S.refunded[o.no]; });
+  var sales = closed.reduce(function(a,o){ return a + o.total; }, 0);
+  var h = '<div class="floor-title" style="margin-bottom:2px">Orders & receipts</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Every ticket written by '+esc(out.name)+' today</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Tickets</div><div class="stat-v">'+list.length+'</div><div class="stat-s">'+closed.length+' closed · '+(list.length-closed.length)+' open/refunded</div></div>'
+     + '<div class="stat"><div class="stat-l">Sales (closed)</div><div class="stat-v">'+money(sales)+'</div><div class="stat-s">MVR · GST-inclusive</div></div>'
+     + '<div class="stat"><div class="stat-l">Average cheque</div><div class="stat-v">'+money(closed.length?sales/closed.length:0)+'</div><div class="stat-s">across closed tickets</div></div></div>';
+  h += '<div class="tabs">';
+  ["All","Dine-in","QR table","Takeaway","Delivery"].forEach(function(t,i){ h += '<button class="tab'+(S.ordTab===i?' on':'')+'" data-ordtab="'+i+'">'+esc(t)+'</button>'; });
+  h += '</div>';
+  h += '<div class="ctable"><div class="orow head"><span>Ticket</span><span>Time</span><span>Table</span><span>Channel</span><span>Server</span><span>Tender</span><span class="oright">Total</span><span>Status</span></div>';
+  list.forEach(function(o){
+    var st = S.refunded[o.no] ? "refunded" : o.status;
+    h += '<button class="orow" data-order="'+o.no+'">'
+       + '<span class="ono">'+esc(o.no)+'</span><span class="dim">'+esc(o.time)+'</span><span class="mono" style="font-size:11.5px">'+esc(o.table)+'</span>'
+       + '<span><span class="chan '+o.channel+'">'+esc(CHAN[o.channel])+'</span></span>'
+       + '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(o.server)+'</span>'
+       + '<span class="dim">'+esc(TENDER[o.tender])+'</span>'
+       + '<span class="oright">'+money(o.total)+'</span>'
+       + '<span><span class="ost '+st+'">'+st+'</span></span></button>';
+  });
+  h += '</div>';
+  if(S.order) h += orderReceipt(out);
+  return h;
+}
+function orderReceipt(out){
+  var o = (S.orders||[]).filter(function(x){return x.no===S.order;})[0]; if(!o) return "";
+  var T = totals(o.lines, out), refunded = S.refunded[o.no];
+  var h = '<div class="scrim" data-ordscrim="1"><div style="display:flex;flex-direction:column;align-items:center;gap:10px">';
+  h += '<div class="rcp"><div class="rcp-b">';
+  h += '<div class="rcp-c"><div class="rcp-name">'+esc(out.name)+'</div>'
+     + '<div class="rcp-meta">'+esc(out.code)+' · GST-registered · TGST/GGST '+out.rate+'%<br/>Ticket '+esc(o.no)+' · '+esc(o.time)+'<br/>'+esc(CHAN[o.channel])+(o.table!=="—"?" · "+esc(o.table):"")+' · Served by '+esc(o.server)+'</div></div>';
+  h += '<div class="rcp-div"></div>';
+  o.lines.forEach(function(l){ h += '<div class="rcp-line"><span><span class="q">'+l.qty+'×</span>'+esc(l.name)+'</span><span>'+money(l.price*l.qty)+'</span></div>'; });
+  h += '<div class="rcp-div"></div>';
+  h += '<div class="rcp-tot"><span>Subtotal</span><span>'+money(T.sub)+'</span></div>'
+     + (out.sc?'<div class="rcp-tot"><span>Service '+out.sc+'%</span><span>'+money(T.svc)+'</span></div>':'')
+     + '<div class="rcp-tot"><span>GST '+out.rate+'%</span><span>'+money(T.tax)+'</span></div>'
+     + '<div class="rcp-tot grand"><span>TOTAL</span><span>MVR '+money(T.total)+'</span></div>'
+     + '<div class="rcp-tot" style="margin-top:5px"><span>'+esc(TENDER[o.tender])+'</span><span>'+money(T.total)+'</span></div>';
+  if(refunded) h += '<div class="rcp-refunded">R E F U N D E D</div>';
+  h += '<div class="rcp-foot">This is a valid GST receipt.<br/>Thank you — visit again.</div>';
+  h += '</div>';
+  h += '<div class="rcp-actions">'
+     + '<button class="btn ghost" data-ordclose="1" style="flex:1">Close</button>'
+     + (refunded ? '' : '<button class="btn" data-refund="'+o.no+'" style="flex:1;color:var(--red-bright);border-color:var(--red-line)">Refund ticket</button>')
+     + '</div>';
+  h += '</div>';
+  h += '<button class="btn ghost" data-ordclose="1" style="background:transparent;border-color:transparent;color:var(--text-dim)">Close receipt</button>';
+  h += '</div></div>';
+  return h;
+}
 function moduleView(m, u){
   return '<div class="mod"><div class="floor-title">'+esc(m.label)+'<span class="pill">'+esc(m.group)+'</span></div>'
     + '<div class="mod-blurb">'+esc(BLURB[m.key]||"")+'</div>'
@@ -783,6 +910,7 @@ root.addEventListener("click", function(e){
   // Modal backdrops (divs, not buttons) close their modal.
   if(e.target.dataset && e.target.dataset.scrim){ S.pay=null; render(); return; }
   if(e.target.dataset && e.target.dataset.custscrim){ S.cust=null; render(); return; }
+  if(e.target.dataset && e.target.dataset.ordscrim){ S.order=null; render(); return; }
   var el = e.target.closest("button"); if(!el) return;
   var d = el.dataset;
   // ── lock screen ──
@@ -791,7 +919,7 @@ root.addEventListener("click", function(e){
   if(d.del){ S.entry = S.entry.slice(0,-1); render(); return; }
   if(d.key){ if(S.entry.length<4){ S.entry += d.key; render(); tryPin(); } return; }
   // ── shell ──
-  if(d.view){ S.view = d.view; if(S.view!=="pos") S.table=null; render(); return; }
+  if(d.view){ S.view = d.view; if(S.view!=="pos") S.table=null; S.order=null; S.cust=null; S.pay=null; render(); return; }
   if(d.signout){ S.session=null; S.picking=null; S.entry=""; S.table=null; render(); return; }
   if(d.themeToggle){ S.theme = S.theme==="dark"?"light":"dark"; localStorage.setItem("kv2-theme",S.theme);
     document.documentElement.setAttribute("data-theme",S.theme); render(); return; }
@@ -819,6 +947,11 @@ root.addEventListener("click", function(e){
   // ── Customers ──
   if(d.cust){ S.cust = d.cust; render(); return; }
   if(d.custclose){ S.cust = null; render(); return; }
+  // ── Orders ──
+  if(d.ordtab){ S.ordTab = Number(d.ordtab); render(); return; }
+  if(d.order){ S.order = d.order; render(); return; }
+  if(d.ordclose){ S.order = null; render(); return; }
+  if(d.refund){ S.refunded[d.refund] = true; render(); return; }
 });
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
