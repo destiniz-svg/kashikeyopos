@@ -1892,9 +1892,11 @@ class Component extends DCLogic {
       const tot = cst.reduce((a, x) => a + x.sales, 0);
       const cov = cst.reduce((a, x) => a + x.covers, 0);
       const best = this.posOutlets()[cst.indexOf(cst.slice().sort((a, b) => b.avg - a.avg)[0])] || {};
+      const REAL = window.KPOS_REAL;
+      const nonPos = (K0.OUTLETS || []).filter((o) => !o.pos).length;
       return [
-        card("Chain net sales · today", MVRc(tot), "+12.4% vs same day last week", amber),
-        card("Trading outlets", String(this.posOutlets().length) + " / " + (K0.OUTLETS || []).length, "2 non-trading: main store, central kitchen"),
+        card("Chain net sales · today", MVRc(tot), REAL ? "Net of tax, across all outlets" : "+12.4% vs same day last week", amber),
+        card("Trading outlets", String(this.posOutlets().length) + " / " + (K0.OUTLETS || []).length, nonPos ? nonPos + " non-trading (store / kitchen)" : "All outlets sell"),
         card("Average cheque", MVR(tot / (cov || 1)), "Highest: " + (best.name || "—").replace("Kashikeyo ", "")),
         card("Chain food cost", this.blendedCost().toFixed(1) + "%", "Theoretical, from live recipes · target 30%")
       ];
@@ -3105,7 +3107,19 @@ class Component extends DCLogic {
       };
     }
     if (m.kind === "z") {
-      const rows = [["Gross sales", MVR(214800)], ["Discounts", "-" + MVR(3120)], ["Net sales", MVR(211680)], ["Service charge", MVR(21168)], [o.tax + " " + o.rate + "%", MVR(18628)], ["Cash declared", MVR(48200)], ["Cash expected", MVR(48200)], ["Card", MVR(151400)], ["Customer credit", MVR(12000)]];
+      let rows;
+      if (window.KPOS_REAL) {
+        // Real cash-up from today's orders: net is the sum of real totals, split
+        // by tender. GST is extracted from the inclusive total at the outlet
+        // rate. No fabricated declared/expected drawer figures.
+        const ords = window.KPOS_REAL.orders || [];
+        const byTender = (t) => ords.filter((x) => String(x.tender || "cash").toLowerCase() === t).reduce((a, x) => a + (Number(x.total) || 0), 0);
+        const net = ords.reduce((a, x) => a + (Number(x.total) || 0), 0);
+        const gst = Math.round(net - net / (1 + (o.rate || 0) / 100));
+        rows = [["Net sales", MVR(net)], [o.tax + " " + o.rate + "% (extracted)", MVR(gst)], ["Cash", MVR(byTender("cash"))], ["Card", MVR(byTender("card"))], ["Customer credit", MVR(byTender("credit") + byTender("tab"))], ["Transfer", MVR(byTender("transfer"))], ["Orders", String(ords.length)]];
+      } else {
+        rows = [["Gross sales", MVR(214800)], ["Discounts", "-" + MVR(3120)], ["Net sales", MVR(211680)], ["Service charge", MVR(21168)], [o.tax + " " + o.rate + "%", MVR(18628)], ["Cash declared", MVR(48200)], ["Cash expected", MVR(48200)], ["Card", MVR(151400)], ["Customer credit", MVR(12000)]];
+      }
       return {
         modalTitle: "Z-report", modalSub: o.name + " · evening shift",
         rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
@@ -3116,9 +3130,36 @@ class Component extends DCLogic {
       };
     }
     const ord = m.ord || {};
-    const rnd = this.rng(ord.total || 1);
+    const REAL = !!window.KPOS_REAL;
     const lines = [];
     let acc = 0;
+    if (REAL) {
+      // Real orders are header-only (no per-line detail captured yet), so the
+      // receipt shows the real total and tender without inventing dishes. The
+      // tax shown is extracted from the total at the outlet's rate.
+      const total = Number(ord.total) || 0;
+      const svcR = o.sc || 0, rateR = o.rate || 0;
+      // total (GST-inclusive) → back out GST and service on the goods.
+      const tax = Math.round(total - total / (1 + rateR / 100));
+      const goodsWithSvc = total - tax;
+      const svc = svcR ? Math.round(goodsWithSvc - goodsWithSvc / (1 + svcR / 100)) : 0;
+      acc = goodsWithSvc - svc;
+      return {
+        modalTitle: "Receipt " + (ord.no || ""), modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
+        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
+        rcpNo: ord.no || "", rcpTime: ord.time || "",
+        rcpLines: [{ n: "Order total", v: MVRc(acc) }],
+        rcpTotals: [
+          { n: "Subtotal", v: MVRc(acc), style: "display:flex;justify-content:space-between;padding:2px 0" },
+          { n: "Service " + svcR + "%", v: MVRc(svc), style: (svcR ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none") },
+          { n: o.tax + " " + rateR + "%", v: MVRc(tax), style: "display:flex;justify-content:space-between;padding:2px 0" },
+          { n: "Total", v: MVRc(total), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13px;padding-top:5px;border-top:1px solid var(--line-soft);margin-top:3px" },
+        ],
+        rcpFoot: "Line detail is not stored for this order · " + (this.brandOf().receiptFoot || "Thank you"),
+        settledDone: () => this.setState({ modal: null }),
+      };
+    }
+    const rnd = this.rng(ord.total || 1);
     for (let i = 0; i < 3 + Math.floor(rnd() * 3); i++) {
       const dish = K0.MENU[Math.floor(rnd() * K0.MENU.length)];
       const q = 1 + Math.floor(rnd() * 2);
@@ -3475,6 +3516,10 @@ class Component extends DCLogic {
   clockRows() {
     const s = this.state;
     if (s.clock) return s.clock;
+    // Real mode: the only punches are the ones actually made on this device
+    // (clockIn/clockOut write s.clock). Nobody is on the floor until someone
+    // clocks in — labour, payroll OT and the scorecard all read zero honestly.
+    if (window.KPOS_REAL) return [];
     // Seeded relative to the wall clock, never to fixed hours: a terminal opened
     // at 03:00 for a late-night outlet must still show a staffed floor, and a
     // roster pinned to 09:00 would leave labour at zero for half the day.
@@ -3542,7 +3587,8 @@ class Component extends DCLogic {
     return staff.map((st) => {
       const rnd = this.rng(3300 + st.id.charCodeAt(1) * 17); rnd();
       // Overtime is measured for everyone. Whether it is PAID is the contract.
-      const otHours = Math.round(rnd() * 22);
+      // Real mode has no OT until real clock punches accrue it → 0, not rng.
+      const otHours = window.KPOS_REAL ? 0 : Math.round(rnd() * 22);
       const otEligible = st.ot !== false;
       const otPay = otEligible ? otHours * this.rate(st) * (R.ot_weekday || 1.25) : 0;
       const svcShare = st.svc === false ? 0 : share;
@@ -3566,7 +3612,16 @@ class Component extends DCLogic {
   // employees — the split is a legal rule, so the software owns it.
   serviceChargePool() {
     const R = this.rules();
-    const month = this.posOutlets().reduce((a, o) => a + this.outletSales(o) * ((o.sc || 10) / 100), 0) * 26;
+    // Real mode: the pool is the service charge on the real month-to-date net
+    // sales, not today's takings scaled up by a nominal 26 trading days.
+    let month;
+    if (window.KPOS_REAL) {
+      const netMonth = Math.round((((window.KPOS_REAL.stats || {}).netMonth) || 0) / 100);
+      const scPct = (this.outlet().sc || 0) / 100;
+      month = netMonth * scPct;
+    } else {
+      month = this.posOutlets().reduce((a, o) => a + this.outletSales(o) * ((o.sc || 10) / 100), 0) * 26;
+    }
     return { pool: month, distributable: month * (R.service_charge_distributable || 0.99), retained: month * (1 - (R.service_charge_distributable || 0.99)) };
   }
   g_staff() {
@@ -3637,17 +3692,24 @@ class Component extends DCLogic {
     }
     if (tab === 3) {
       g.cols = [{ label: "Staff", w: "1.3fr" }, { label: "Sales", w: ".9fr", a: "right", mono: 1 }, { label: "Covers", w: ".6fr", a: "right", mono: 1 }, { label: "Avg cheque", w: ".8fr", a: "right", mono: 1 }, { label: "Sales / labour h", w: "1fr", a: "right", mono: 1 }, { label: "Voids", w: ".6fr", a: "right", mono: 1 }, { label: "Rating", w: ".7fr" }];
+      const REAL = !!window.KPOS_REAL;
+      // Real per-server sales come from the orders' `server` field; covers,
+      // voids and sales-per-hour need per-line detail and clock punches that
+      // aren't captured yet, so they read zero rather than being invented.
+      const realByServer = {};
+      if (REAL) (window.KPOS_REAL.orders || []).forEach((o) => { const k = (o.server || "").trim(); if (k) realByServer[k] = (realByServer[k] || 0) + (Number(o.total) || 0) * 100; });
       g.rows = scoped.map((st) => {
         const r = this.rng(5500 + st.id.charCodeAt(1) * 23); r();
         const mine = rows.filter((c) => c.staff === st.id);
-        const h = mine.reduce((a, c) => a + this.clockHours(c), 0) || 6;
-        const sold = Math.round(sales / (scoped.length || 1) * (0.5 + r()));
-        const cov = Math.max(1, Math.round(sold / (140 + r() * 90)));
-        const sph = sold / h, voids = Math.round(r() * 6);
-        const good = sph > 900 && voids <= 3;
+        const hRaw = mine.reduce((a, c) => a + this.clockHours(c), 0);
+        const h = hRaw || (REAL ? 0 : 6);
+        const sold = REAL ? (realByServer[(st.name || "").trim()] || 0) : Math.round(sales / (scoped.length || 1) * (0.5 + r()));
+        const cov = REAL ? 0 : Math.max(1, Math.round(sold / (140 + r() * 90)));
+        const sph = h > 0 ? sold / h : 0, voids = REAL ? 0 : Math.round(r() * 6);
+        const good = !REAL && sph > 900 && voids <= 3;
         return {
-          go: () => this.info(st.name, st.job + " · " + this.locName(st.outlet), [["Sales rung", MVRc(sold)], ["Covers served", String(cov)], ["Average cheque", MVR(sold / cov)], ["Hours clocked today", h.toFixed(2)], ["Sales per labour hour", MVRc(sph)], ["Voids", String(voids)], ["Late arrivals", String(mine.filter((c) => c.late).length)]], "Sales per labour hour is the only server metric that survives a busy night — raw totals just reward whoever worked longest. Voids are counted from reversals, each one already carrying a manager authorisation."),
-          cells: [st.name, { t: MVRc(sold), mono: 1 }, { t: String(cov), mono: 1 }, { t: MVR(sold / cov), mono: 1 }, { t: MVRc(sph), mono: 1, c: sph > 900 ? "var(--green)" : sph < 500 ? "var(--red-bright)" : "var(--text)" }, { t: String(voids), mono: 1, c: voids > 3 ? "var(--red-bright)" : "var(--text)" }, { t: good ? "Strong" : sph < 500 ? "Coach" : "Steady", chip: good ? ["rgba(107,191,123,.12)", "var(--green)"] : sph < 500 ? ["rgba(226,96,96,.12)", "var(--red-bright)"] : ["rgba(242,164,58,.12)", "var(--amber-bright)"] }]
+          go: () => this.info(st.name, (st.job || st.role || "") + " · " + this.locName(st.outlet), [["Sales rung", MVRc(sold)], ["Covers served", cov ? String(cov) : "—"], ["Average cheque", cov ? MVR(sold / cov) : "—"], ["Hours clocked today", h.toFixed(2)], ["Sales per labour hour", h > 0 ? MVRc(sph) : "—"], ["Voids", String(voids)], ["Late arrivals", String(mine.filter((c) => c.late).length)]], "Sales per labour hour is the only server metric that survives a busy night — raw totals just reward whoever worked longest. Voids are counted from reversals, each one already carrying a manager authorisation."),
+          cells: [st.name, { t: MVRc(sold), mono: 1 }, { t: cov ? String(cov) : "—", mono: 1 }, { t: cov ? MVR(sold / cov) : "—", mono: 1 }, { t: h > 0 ? MVRc(sph) : "—", mono: 1, c: sph > 900 ? "var(--green)" : h > 0 && sph < 500 ? "var(--red-bright)" : "var(--text)" }, { t: String(voids), mono: 1, c: voids > 3 ? "var(--red-bright)" : "var(--text)" }, { t: good ? "Strong" : (h > 0 && sph < 500) ? "Coach" : "Steady", chip: good ? ["rgba(107,191,123,.12)", "var(--green)"] : (h > 0 && sph < 500) ? ["rgba(226,96,96,.12)", "var(--red-bright)"] : ["rgba(242,164,58,.12)", "var(--amber-bright)"] }]
         };
       }).sort((a, b) => 0);
     }
@@ -3858,6 +3920,7 @@ class Component extends DCLogic {
   // figure can never disagree with the sentence written about it.
   analyticsData() {
     const s = this.state, K0 = K(), outs = this.posOutlets(), target = 30;
+    const REAL = !!window.KPOS_REAL;
     const chainFc = this.blendedCost();
     const rows = outs.map((o) => {
       const r = this.rng(4400 + o.id * 13); r();
@@ -3866,10 +3929,12 @@ class Component extends DCLogic {
       return {
         id: o.id, code: o.code || "", name: (o.name || "").replace("Kashikeyo ", ""),
         net: net, cov: cov, avg: net / cov,
-        fc: +(chainFc + (r() * 9 - 3.6)).toFixed(1),
+        // Real mode: food cost is whatever the recipes actually cost (no rng
+        // jitter); waste has no real ledger yet, so it is zero, not invented.
+        fc: +(REAL ? chainFc : (chainFc + (r() * 9 - 3.6))).toFixed(1),
         labourCost: L.cost, labourHours: L.hours,
         labour: +((L.cost / (net || 1)) * 100).toFixed(1),
-        waste: Math.round(net * (0.003 + r() * 0.014)),
+        waste: REAL ? 0 : Math.round(net * (0.003 + r() * 0.014)),
         tax: o.tax, rate: o.rate
       };
     });
@@ -3883,23 +3948,27 @@ class Component extends DCLogic {
     const assetList = this.assetList();
     const assetsDown = assetList.filter((a) => a.status === "down").length;
     const serviceDue = assetList.filter((a) => { const dd = new Date(a.lastSvc); dd.setDate(dd.getDate() + a.svcDays); return dd <= s.now && a.status !== "down"; }).length;
+    // No real historical series exists yet (sales are only aggregated for
+    // today/month), so in real mode the 14-day trend carries only today's real
+    // point and the hourly curve is empty rather than a fabricated shape.
     const days = [], rd = this.rng(7712);
     for (let i = 13; i >= 0; i--) {
       const d = new Date(s.now.getTime() - i * 86400000), wknd = d.getDay() === 5 || d.getDay() === 6;
-      days.push({ d: d, v: Math.round(tot * (0.70 + rd() * 0.40 + (wknd ? 0.14 : 0))) });
+      days.push({ d: d, v: REAL ? 0 : Math.round(tot * (0.70 + rd() * 0.40 + (wknd ? 0.14 : 0))) });
     }
     days[days.length - 1].v = tot;
     const shape = [.06, .09, .14, .30, .44, .31, .19, .24, .58, .88, 1, .74, .36, .13];
     const hours = [], rh = this.rng(551);
-    for (let i = 0; i < 14; i++) hours.push({ h: 10 + i, v: Math.round(tot * shape[i] * (0.13 + rh() * 0.05)) });
+    for (let i = 0; i < 14; i++) hours.push({ h: 10 + i, v: REAL ? 0 : Math.round(tot * shape[i] * (0.13 + rh() * 0.05)) });
     const last7 = days.slice(7).reduce((a, x) => a + x.v, 0);
-    const prev7 = days.slice(0, 7).reduce((a, x) => a + x.v, 0);
+    const prev7 = REAL ? 0 : days.slice(0, 7).reduce((a, x) => a + x.v, 0);
     const credit = (K0.CUSTOMERS || []).reduce((a, c) => a + (c.used || 0), 0);
     const overdue = (K0.CUSTOMERS || []).filter((c) => c.used > 0 && c.used >= c.credit).length;
     return {
       rows: rows, tot: tot, cov: cov, waste: waste, days: days, hours: hours,
       target: target, fc: chainFc, last7: last7, prev7: prev7,
-      growth: ((last7 - prev7) / (prev7 || 1)) * 100,
+      // No week-on-week baseline in real mode (no history) → 0, not a fake delta.
+      growth: REAL ? 0 : ((last7 - prev7) / (prev7 || 1)) * 100,
       credit: credit, overdue: overdue,
       queued: s.outbox.filter((x) => x.state === "queued").length,
       conflicts: s.conflicts.length,
@@ -4018,11 +4087,14 @@ class Component extends DCLogic {
     const peak = d.hours.slice().sort((a, b) => b.v - a.v)[0] || { h: 20 };
     const trough = d.hours.slice(3, 11).sort((a, b) => a.v - b.v)[0] || { h: 16 };
 
+    const REAL = !!window.KPOS_REAL;
     const menu = (K().MENU || []).filter((m) => m.cat !== "drinks");
     const scored = menu.map((m) => {
       const r = this.rng(2200 + (m.id || 0) * 7); r();
       const price = this.menuPrice(m), cost = this.foodCost(m);
-      return { name: m.name, margin: price - cost, vol: Math.round(4 + r() * 46) };
+      // Real orders are header-only (no per-line detail), so sold-volume has no
+      // real source yet — 0 rather than an invented count.
+      return { name: m.name, margin: price - cost, vol: REAL ? 0 : Math.round(4 + r() * 46) };
     });
     const mMed = scored.slice().sort((a, b) => a.margin - b.margin)[Math.floor(scored.length / 2)] || { margin: 0 };
     const vMed = scored.slice().sort((a, b) => a.vol - b.vol)[Math.floor(scored.length / 2)] || { vol: 0 };
@@ -4034,16 +4106,16 @@ class Component extends DCLogic {
         style: "background:var(--bg);border:1px solid " + (tone === "g" ? "rgba(107,191,123,.28)" : tone === "r" ? "var(--red-line)" : "var(--line)") + ";border-radius:10px;padding:11px 12px;min-width:0",
         titleStyle: "font-size:11.5px;font-weight:800;letter-spacing:-0.01em;color:" + (tone === "g" ? "var(--green)" : tone === "r" ? "var(--red-bright)" : "var(--text)"),
         cntStyle: chip(tone),
-        dishes: list.slice(0, 3).map((x) => "· " + x.name + " — " + MVR(x.margin) + " × " + x.vol)
+        dishes: list.slice(0, 3).map((x) => "· " + x.name + " — " + MVR(x.margin) + (REAL ? " margin" : " × " + x.vol))
       };
     };
 
     const riskItems = [
       { label: "Wastage today", v: MVRc(d.waste), pct: Math.min(100, (d.waste / (d.tot || 1)) * 100 / 2 * 100), tone: (d.waste / (d.tot || 1)) * 100 > 1.2 ? "r" : "g", chip: ((d.waste / (d.tot || 1)) * 100).toFixed(2) + "% of sales", note: "Every entry carries a reason code, so this splits into spoilage, over-prep and suspected theft." },
-      { label: "Count variance · last cycle", v: MVRc(412), pct: 18, tone: "a", chip: "Posted to 5100", note: "Blind count. The counter never sees the expected figure, so the variance means something." },
+      { label: "Count variance · last cycle", v: MVRc(REAL ? 0 : 412), pct: REAL ? 0 : 18, tone: REAL ? "g" : "a", chip: REAL ? "No count yet" : "Posted to 5100", note: "Blind count. The counter never sees the expected figure, so the variance means something." },
       { label: "Credit outstanding", v: MVRc(d.credit), pct: Math.min(100, (d.credit / 12000) * 100), tone: d.overdue ? "r" : "g", chip: d.overdue ? d.overdue + " at limit" : "All within limit", note: "House accounts are the slowest money in the business. The limit is enforced by a database trigger, not a form." },
       { label: "Unmatched card settlement", v: MVRc(0), pct: 0, tone: "g", chip: "Matched", note: "Reconciled against the BML settlement file. Unmatched receivable is where a month of revenue quietly goes missing." },
-      { label: "Voids & comps today", v: MVRc(Math.round(d.tot * 0.006)), pct: 12, tone: "a", chip: "0.6% of sales", note: "Each one is a reversal with a manager PIN behind it, ranked by staff member on the exception report." },
+      { label: "Voids & comps today", v: MVRc(REAL ? 0 : Math.round(d.tot * 0.006)), pct: REAL ? 0 : 12, tone: REAL ? "g" : "a", chip: REAL ? "None today" : "0.6% of sales", note: "Each one is a reversal with a manager PIN behind it, ranked by staff member on the exception report." },
       { label: "Terminals out of step", v: String(d.queued), pct: Math.min(100, d.queued * 8), tone: d.queued ? "a" : "g", chip: d.queued ? "Replaying" : "Synced", note: "Queued operations replay in Lamport order. A closed ticket is never overwritten." }
     ];
 
@@ -4145,10 +4217,12 @@ class Component extends DCLogic {
   g_chain() {
     const K0 = K(), s = this.state;
     const rnd = this.rng(77);
+    const REAL = !!window.KPOS_REAL;
     const outs = this.posOutlets().map((o) => {
       const st = this.outletStats(o);
-      const fc = Math.round((this.blendedCost() + (rnd() * 7 - 2.5)) * 10) / 10;
-      return { o: o, sales: st.sales, covers: st.covers, fc: fc, avg: st.sales / st.covers, growth: st.growth };
+      // Real mode: one blended food cost from the recipes, no per-outlet rng.
+      const fc = Math.round((this.blendedCost() + (REAL ? 0 : (rnd() * 7 - 2.5))) * 10) / 10;
+      return { o: o, sales: st.sales, covers: st.covers, fc: fc, avg: st.covers ? st.sales / st.covers : 0, growth: st.growth };
     });
     const best = Math.max.apply(null, outs.map((x) => x.sales));
     const total = outs.reduce((a, x) => a + x.sales, 0);
@@ -5613,10 +5687,16 @@ class Component extends DCLogic {
   g_sync() {
     const s = this.state, K0 = K(), rnd = this.rng(88);
     const devices = [];
-    (K0.OUTLETS || []).filter((o) => o.pos).forEach((o, i) => {
-      const n = i === 0 ? 3 : 2;
-      for (let j = 1; j <= n; j++) devices.push({ id: "dev_" + o.code.split("-")[1] + "_T" + j, outlet: o, ver: rnd() > 0.2 ? "4.2.1" : "4.1.8", seen: rnd() > 0.16 ? "just now" : (2 + Math.floor(rnd() * 90)) + " min ago", pend: rnd() > 0.7 ? Math.floor(rnd() * 6) : 0 });
-    });
+    if (window.KPOS_REAL) {
+      // No fleet registry yet — show the only device we can vouch for: this one.
+      const pend = s.outbox.filter((x) => x.state === "queued" || x.state === "conflict").length;
+      devices.push({ id: this.deviceCode(), outlet: this.outlet(), ver: "v2", seen: s.online ? "just now" : "offline", pend: pend });
+    } else {
+      (K0.OUTLETS || []).filter((o) => o.pos).forEach((o, i) => {
+        const n = i === 0 ? 3 : 2;
+        for (let j = 1; j <= n; j++) devices.push({ id: "dev_" + o.code.split("-")[1] + "_T" + j, outlet: o, ver: rnd() > 0.2 ? "4.2.1" : "4.1.8", seen: rnd() > 0.16 ? "just now" : (2 + Math.floor(rnd() * 90)) + " min ago", pend: rnd() > 0.7 ? Math.floor(rnd() * 6) : 0 });
+      });
+    }
     const tone = { queued: "warn", sent: "ok", conflict: "err" };
     return {
       tabs: [{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => { const on = !s.online; this.setState({ online: on }); if (on) this.flush(); } }],
@@ -5814,10 +5894,24 @@ class Component extends DCLogic {
       };
     }
     if (tab === 2) {
-      const rnd = this.rng(51), rows = [];
-      const kinds = [["Ticket closed", "4000", "1010"], ["Card settlement", "1030", "4000"], ["GRN received", "1200", "2100"], ["Recipe consumption", "5000", "1200"], ["GST on sale", "1010", "2200"], ["Count variance", "5100", "1200"], ["Credit charge", "1040", "4000"]];
-      for (let i = 0; i < 16; i++) { const k = kinds[Math.floor(rnd() * kinds.length)]; rows.push({ ref: "JE-" + (91240 + i), src: k[0], dr: k[1], cr: k[2], amt: Math.round(rnd() * 9000 + 120), t: pad(9 + Math.floor(rnd() * 12)) + ":" + pad(Math.floor(rnd() * 60)) }); }
+      let rows = [];
+      if (window.KPOS_REAL) {
+        // Real journal: one auto-posted "Ticket closed" line per real order —
+        // debit the tender account, credit revenue. No fabricated entries; an
+        // empty day is an empty journal.
+        const tenderAcct = { cash: "1010", card: "1030", credit: "1040", tab: "1040", transfer: "1020", bank: "1020" };
+        rows = (window.KPOS_REAL.orders || []).map((o, i) => ({
+          ref: "JE-" + (o.no || (i + 1)), src: "Ticket closed · " + (o.no || ""),
+          dr: tenderAcct[String(o.tender || "cash").toLowerCase()] || "1010", cr: "4000",
+          amt: Number(o.total) || 0, t: o.time || "",
+        }));
+      } else {
+        const rnd = this.rng(51);
+        const kinds = [["Ticket closed", "4000", "1010"], ["Card settlement", "1030", "4000"], ["GRN received", "1200", "2100"], ["Recipe consumption", "5000", "1200"], ["GST on sale", "1010", "2200"], ["Count variance", "5100", "1200"], ["Credit charge", "1040", "4000"]];
+        for (let i = 0; i < 16; i++) { const k = kinds[Math.floor(rnd() * kinds.length)]; rows.push({ ref: "JE-" + (91240 + i), src: k[0], dr: k[1], cr: k[2], amt: Math.round(rnd() * 9000 + 120), t: pad(9 + Math.floor(rnd() * 12)) + ":" + pad(Math.floor(rnd() * 60)) }); }
+      }
       return {
+        empty: "No journal entries yet today — they post automatically as tickets close.",
         tabs: tabs,
         actions: [{ label: "Manual entry", go: () => this.openForm("journal") }],
         guideTitle: "Reading the journal", guide: ["Every line here was posted by a business event, not a person", "Sales, cash, card, credit, stock and GST are closed to hand-keying", "Accruals and depreciation have no source document — post those manually", "A wrong figure is fixed by correcting its source document"],
