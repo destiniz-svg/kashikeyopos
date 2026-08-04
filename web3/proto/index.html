@@ -4762,6 +4762,7 @@ class Component extends DCLogic {
     const raw = window.KPOS_RAW || {};
     return {
       actions: [
+        { label: "Generate POs", go: () => this.generatePOs() },
         {
           label: "Scan invoice", go: () => {
             const no = this.nextNo("purch", "GRN-2026-");
@@ -4985,6 +4986,37 @@ class Component extends DCLogic {
       reader.readAsText(f);
     };
     input.click();
+  }
+  // Turn the velocity-based reorder draft into purchase orders the owner can
+  // actually send. The backend groups the low-cover items by each item's usual
+  // supplier; this builds a per-vendor PO document — with the vendor's contact,
+  // TIN and payment terms — that the owner emails or WhatsApps to the supplier.
+  // (Automated transmission would need an email/WhatsApp integration; until then
+  // a real, complete PO document is the honest close of the loop.)
+  generatePOs() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to generate purchase orders", "warn"); return; }
+    this.toast("Building purchase orders from stock cover…");
+    fetch("/api/inv/reorder/draft", { credentials: "same-origin" }).then((r) => r.json().catch(() => ({}))).then((j) => {
+      if (j && j.error) { this.toast(j.error, "warn"); return; }
+      const drafts = (j && j.drafts) || [];
+      if (!drafts.length) { this.toast("Nothing needs reordering — every item has enough days of cover", "warn"); return; }
+      const vendors = ((window.KPOS_REAL.inventory || {}).vendors) || [];
+      const rows = [["PURCHASE ORDERS", this.brandOf().name || "", new Date().toISOString().slice(0, 10)], []];
+      let poNo = 2601;
+      drafts.forEach((d) => {
+        const v = vendors.find((x) => x.sid && x.sid === d.supplierId) || {};
+        rows.push(["PO-" + (poNo++), d.supplier]);
+        if (v.contact || v.phone || v.email) rows.push(["Contact", [v.contact, v.phone, v.email].filter(Boolean).join(" · ")]);
+        rows.push(["Payment terms", this.termsLabel(v.terms)]);
+        if (v.tin) rows.push(["Vendor TIN", v.tin]);
+        rows.push(["Item", "Order qty", "Unit", "Unit cost MVR", "Line MVR"]);
+        (d.items || []).forEach((it) => rows.push([it.desc, it.qty, it.unit, (it.cost / 100).toFixed(2), (it.lineCost / 100).toFixed(2)]));
+        rows.push(["", "", "", "TOTAL", (d.total / 100).toFixed(2)]);
+        rows.push([]);
+      });
+      this.downloadCsv("kashikeyo-purchase-orders.csv", rows);
+      this.toast(drafts.length + " purchase order" + (drafts.length === 1 ? "" : "s") + " generated — send each to its vendor");
+    }).catch(() => this.toast("Could not build the orders — check the connection", "warn"));
   }
   g_vendors() {
     const raw = window.KPOS_RAW || {};
