@@ -1984,6 +1984,19 @@ class Component extends DCLogic {
       ];
     }
     if (v === "accounting" || v === "reports") {
+      const REAL = window.KPOS_REAL;
+      if (REAL && REAL.stats) {
+        const st = REAL.stats, o0 = this.outlet();
+        const gst = Math.round((st.gstMonth || 0) / 100);
+        const netM = Math.round((st.netMonth || 0) / 100);
+        const cogs = Math.round(netM * 0.3);
+        return [
+          card("GST collected · month", MVRc(gst), (o0.tax || "GGST") + " " + (o0.rate || 0) + "% · extracted per sale", amber),
+          card("Sales posted · month", String(st.txMonth || 0), st.txMonth ? "Auto-posted from closed tickets" : "No sales yet this month"),
+          card("Cost of sales · MTD", MVRc(cogs), netM ? "≈30% of net sales · set recipes to refine" : "No sales yet"),
+          card("Unreconciled", "0", "Nothing pending")
+        ];
+      }
       return [
         card("GST collected · month", MVRc(96420), "GGST 8% · TGST 16% split by outlet", amber),
         card("Journal entries · today", "1,284", "All auto-posted, none manual"),
@@ -1993,11 +2006,12 @@ class Component extends DCLogic {
     }
     if (v === "sync") {
       const q = s.outbox.filter((x) => x.state === "queued").length;
+      const REAL = window.KPOS_REAL;
       return [
         card("Queued operations", String(q), q ? "Will replay in Lamport order" : "Outbox empty", q ? big + ";color:var(--red-bright)" : big + ";color:var(--green)"),
-        card("Registered devices", "14", "12 online · 2 last seen > 1h"),
-        card("Conflicts resolved", String(s.conflicts.length), "Last-writer-wins except closed tickets"),
-        card("Replay lag p95", "1.8s", "kpos-sync worker · Railway private net")
+        card("This device", REAL ? "Online" : "Demo", REAL ? (s.online ? "Syncing to /api/ops" : "Offline — writes are queued") : "Prototype runtime", REAL && s.online ? big + ";color:var(--green)" : big),
+        card("Conflicts resolved", String(s.conflicts.length), s.conflicts.length ? "Last-writer-wins except closed tickets" : "None — clean replay"),
+        card("Transport", REAL ? "REST + SSE" : "Simulated", "Idempotent ops on /api/ops, poll + Last-Event-ID")
       ];
     }
     if (v === "kds") {

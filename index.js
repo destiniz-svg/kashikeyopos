@@ -3527,6 +3527,9 @@ if (fs.existsSync(protoFile)) {
         const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
         const t0 = startOfDay.getTime();
         let net = 0, covers = 0;
+        const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+        const m0 = monthStart.getTime();
+        let netMonth = 0, gstMonth = 0, txMonth = 0;
         const pad2 = (n) => String(n).padStart(2, "0");
         const chanMap = { v2: "dine_in", dine_in: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
         const orders = [];
@@ -3535,6 +3538,7 @@ if (fs.existsSync(protoFile)) {
           if ((d.type && d.type !== "sale") || d.void) continue;
           const at = Number(d.at) || 0;
           if (at >= t0) { net += Number(d.total) || 0; covers += 1; }
+          if (at >= m0) { netMonth += Number(d.total) || 0; gstMonth += Number(d.gst) || 0; txMonth += 1; }
           const dt = at ? new Date(at) : null;
           orders.push({
             no: d.no || r.id, table: d.table != null ? "T" + pad2(d.table) : "—",
@@ -3585,7 +3589,8 @@ if (fs.existsSync(protoFile)) {
           hasSession: true, token,
           outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
             rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-          categories, menu, stats: { net: net, covers: covers }, orders: orders.slice(0, 200), customers, staff,
+          categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth },
+          orders: orders.slice(0, 200), customers, staff,
         };
       });
     };
