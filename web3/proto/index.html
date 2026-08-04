@@ -606,6 +606,12 @@ function renderShell(){
            : (S.view==="purchases") ? purchasesView(out)
            : (S.view==="counts") ? countsView(out)
            : (S.view==="recipes") ? recipesView(out)
+           : (S.view==="production") ? productionView(out)
+           : (S.view==="batches") ? batchesView(out)
+           : (S.view==="dispatches") ? dispatchesView(out)
+           : (S.view==="requests") ? requestsView(out)
+           : (S.view==="staff") ? staffView(out)
+           : (S.view==="costs") ? costsView(out)
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -1406,6 +1412,120 @@ function recipeModal(out){
   h += '<div class="det-note">Cost is a moving average recalculated on every GRN line; consumption deducts against it the moment a ticket closes.</div>';
   h += '</div></div></div>';
   return h;
+}
+/* Small helpers for the remaining table modules. */
+function statCards(cards){ return '<div class="stats">'+cards.map(function(c){ return '<div class="stat"><div class="stat-l">'+esc(c[0])+'</div><div class="stat-v"'+(c[3]?' style="color:'+c[3]+'"':'')+'>'+c[1]+'</div><div class="stat-s">'+esc(c[2])+'</div></div>'; }).join('')+'</div>'; }
+function pageHead(t,s){ return '<div class="floor-title" style="margin-bottom:2px">'+esc(t)+'</div><div class="crumb-sub" style="margin-bottom:14px">'+esc(s)+'</div>'; }
+function chipEl(text,tone){ var m={green:["var(--green-soft)","closed"],amber:["var(--amber-bright)","open"],red:["var(--red-bright)","refunded"],blue:["var(--blue-bright)",""],dim:["var(--text-dim)",""]}; var c=m[tone]||m.dim; return '<span class="ost '+(c[1]||"")+'"'+(c[1]?'':' style="color:'+c[0]+';background:var(--bg-3);border:1px solid var(--line-2)"')+'>'+esc(text)+'</span>'; }
+
+/* ── Production — central-kitchen batches and yields. ────────────────────── */
+function productionView(out){
+  var r = rng(out.id*41+7);
+  var preps = ["Baja Sauce","Adobo Chicken Mix","Birria Base","Chipotle Mayo","Guacamole","Horchata Base","Salsa Verde","Anchiote Paste"];
+  var list = preps.slice(0,6).map(function(n,i){
+    var qty = 4+Math.floor(r()*20); var yld = 88+Math.floor(r()*11);
+    return { batch:"PRD-"+pad4(120+i), name:n, qty:qty, unit:i%3===0?"L":"kg", comp:2+Math.floor(r()*4), yield:yld, cost:Math.round((300+r()*2600)/5)*5, status:r()>0.3?"done":"in progress" };
+  });
+  var made = list.reduce(function(a,x){return a+x.cost;},0);
+  var h = pageHead("Production","Central-kitchen batches and yields · builds prep items from their component recipes")
+    + statCards([["Batches today",list.length,list.filter(function(x){return x.status==="done";}).length+" complete"],["Produced value",money(made),"MVR · into finished stock (1210)"],["Avg yield",Math.round(list.reduce(function(a,x){return a+x.yield;},0)/list.length)+"%","after trim & cook loss","var(--green-soft)"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:120px 1fr 100px 90px 80px 110px 110px"><span>Batch</span><span>Prep item</span><span class="oright">Made</span><span class="oright">Components</span><span class="oright">Yield</span><span class="oright">Cost</span><span>Status</span></div>';
+  list.forEach(function(x){ h += '<div class="orow" style="grid-template-columns:120px 1fr 100px 90px 80px 110px 110px;cursor:default">'
+    + '<span class="ono">'+esc(x.batch)+'</span><span class="cname" style="font-size:12px">'+esc(x.name)+'</span>'
+    + '<span class="oright mono" style="font-size:11.5px">'+x.qty+' '+esc(x.unit)+'</span><span class="oright mono" style="font-size:11px">'+x.comp+'</span>'
+    + '<span class="oright mono" style="color:var(--green-soft)">'+x.yield+'%</span><span class="oright" style="color:var(--amber-bright)">'+money(x.cost)+'</span>'
+    + '<span>'+chipEl(x.status,x.status==="done"?"green":"amber")+'</span></div>'; });
+  return h+'</div>';
+}
+/* ── Batches & expiry — FEFO rotation, shelf-life alerts. ────────────────── */
+function batchesView(out){
+  var r = rng(out.id*43+11);
+  var items = ["Reef Fish","Yellowfin Tuna","Beef Striploin","Fresh Milk","Cream","Avocado","Cheddar","Prawns","Butter","Coriander"];
+  var list = items.map(function(n,i){
+    var days = Math.floor(r()*14)-1;
+    return { batch:"BT-"+pad4(300+i), name:n, qty:(2+Math.floor(r()*40))+(r()>0.5?" kg":" pcs"), days:days };
+  }).sort(function(a,b){ return a.days-b.days; });
+  var expSoon = list.filter(function(x){return x.days<=2;}).length;
+  var h = pageHead("Batches & expiry","FEFO rotation and shelf-life alerts — oldest stock leaves first")
+    + statCards([["Tracked batches",list.length,"perishable lots"],["Expiring ≤2 days",expSoon,"use or write off","var(--red-bright)"],["Expired",list.filter(function(x){return x.days<0;}).length,"pull from the line","var(--red-bright)"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:120px 1fr 120px 130px 120px"><span>Batch</span><span>Item</span><span class="oright">On hand</span><span class="oright">Shelf life</span><span>Status</span></div>';
+  list.forEach(function(x){ var tone = x.days<0?"red":(x.days<=2?"amber":"green"); var label = x.days<0?"expired":(x.days<=2?x.days+"d left":x.days+"d left");
+    h += '<div class="orow" style="grid-template-columns:120px 1fr 120px 130px 120px;cursor:default">'
+    + '<span class="ono">'+esc(x.batch)+'</span><span class="cname">'+esc(x.name)+'</span>'
+    + '<span class="oright mono" style="font-size:11.5px">'+esc(x.qty)+'</span>'
+    + '<span class="oright mono" style="color:'+(x.days<0?'var(--red-bright)':(x.days<=2?'var(--amber-bright)':'var(--text-dim)'))+'">'+(x.days<0?"—":x.days+" days")+'</span>'
+    + '<span>'+chipEl(label,tone)+'</span></div>'; });
+  return h+'</div>';
+}
+/* ── Dispatches — inter-branch transfers in transit. ────────────────────── */
+function dispatchesView(out){
+  var r = rng(out.id*47+13);
+  var froms = ["Main Store — Malé","Hulhumalé Central Kitchen"];
+  var tos = ["Chaandhanee","Hulhumalé","Velana Airport","Maafushi","Baa Atoll"];
+  var sts = ["dispatched","in transit","received","in transit"];
+  var list = []; for(var i=0;i<8;i++){ list.push({ no:"TRF-"+pad4(500+i), from:froms[Math.floor(r()*2)], to:tos[Math.floor(r()*5)], items:3+Math.floor(r()*12), value:Math.round((400+r()*8000)/5)*5, status:sts[Math.floor(r()*sts.length)] }); }
+  var transit = list.filter(function(x){return x.status==="in transit";}).length;
+  var h = pageHead("Dispatches","Inter-branch transfers in transit · stock leaves one location and arrives at another")
+    + statCards([["Transfers",list.length,"today"],["In transit",transit,"awaiting receipt","var(--amber-bright)"],["Value moving",money(list.reduce(function(a,x){return a+x.value;},0)),"MVR at cost"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:120px 1fr 1fr 80px 110px 120px"><span>Transfer</span><span>From</span><span>To</span><span class="oright">Lines</span><span class="oright">Value</span><span>Status</span></div>';
+  list.forEach(function(x){ var tone=x.status==="received"?"green":(x.status==="in transit"?"amber":"blue");
+    h += '<div class="orow" style="grid-template-columns:120px 1fr 1fr 80px 110px 120px;cursor:default">'
+    + '<span class="ono">'+esc(x.no)+'</span><span class="dim" style="font-size:11px">'+esc(x.from)+'</span><span class="cname" style="font-size:12px">'+esc(x.to)+'</span>'
+    + '<span class="oright mono" style="font-size:11px">'+x.items+'</span><span class="oright" style="color:var(--amber-bright)">'+money(x.value)+'</span>'
+    + '<span>'+chipEl(x.status,tone)+'</span></div>'; });
+  return h+'</div>';
+}
+/* ── Indent requests — outlet to central store requisitions. ────────────── */
+function requestsView(out){
+  var r = rng(out.id*53+17);
+  var outs = ["Chaandhanee","Hulhumalé","Velana Airport","Maafushi","Baa Atoll"];
+  var by = USERS.filter(function(u){return u.role==="OutletManager"||u.role==="KitchenManager";}).map(function(u){return u.name;});
+  var sts = ["pending","approved","fulfilled","pending"];
+  var list=[]; for(var i=0;i<9;i++){ list.push({ no:"IND-"+pad4(800+i), outlet:outs[Math.floor(r()*5)], by:by[Math.floor(r()*by.length)], items:2+Math.floor(r()*10), status:sts[Math.floor(r()*sts.length)] }); }
+  var pend = list.filter(function(x){return x.status==="pending";}).length;
+  var h = pageHead("Indent requests","Outlet to central-store requisitions · approve, then dispatch fulfils them")
+    + statCards([["Requests",list.length,"open today"],["Pending approval",pend,"need a manager","var(--amber-bright)"],["Fulfilled",list.filter(function(x){return x.status==="fulfilled";}).length,"dispatched to outlet","var(--green-soft)"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:120px 1fr 170px 90px 120px"><span>Request</span><span>Outlet</span><span>Requested by</span><span class="oright">Lines</span><span>Status</span></div>';
+  list.forEach(function(x){ var tone=x.status==="fulfilled"?"green":(x.status==="approved"?"blue":"amber");
+    h += '<div class="orow" style="grid-template-columns:120px 1fr 170px 90px 120px;cursor:default">'
+    + '<span class="ono">'+esc(x.no)+'</span><span class="cname" style="font-size:12px">'+esc(x.outlet)+'</span>'
+    + '<span style="font-size:11.5px">'+esc(x.by)+'</span><span class="oright mono" style="font-size:11px">'+x.items+'</span>'
+    + '<span>'+chipEl(x.status,tone)+'</span></div>'; });
+  return h+'</div>';
+}
+/* ── Staff & time clock — clocked hours, labour cost against sales. ──────── */
+function staffView(out){
+  var r = rng(out.id*59+19);
+  var roster = USERS.filter(function(u){return u.status==="Active"&&(u.outlet===out.id||u.role==="Cashier"||u.role==="OutletManager");}).slice(0,7);
+  if(!roster.length) roster = USERS.slice(0,6);
+  var rows = roster.map(function(u){
+    var inH=8+Math.floor(r()*3), hrs=5+Math.floor(r()*6), rate=45+Math.floor(r()*90), onNow=r()>0.35;
+    return { name:u.name, role:(ROLE[u.role]||{}).label||u.role, clockIn:pad2(inH)+":00", hrs:hrs, rate:rate, cost:hrs*rate, onNow:onNow };
+  });
+  var labour = rows.reduce(function(a,x){return a+x.cost;},0);
+  var sales = dayLedger(out).gross || 1;
+  var h = pageHead("Staff & time clock","Clocked hours, roster and labour cost against sales")
+    + statCards([["On the clock",rows.filter(function(x){return x.onNow;}).length+" / "+rows.length,"currently on the floor"],["Labour cost today",money(labour),"MVR · gross wages"],["Labour %",Math.round(labour/sales*100)+"%","of sales · target ≤ 28%",labour/sales>0.28?"var(--amber-bright)":"var(--green-soft)"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 150px 90px 80px 100px 110px"><span>Name</span><span>Role</span><span>Clock-in</span><span class="oright">Hours</span><span class="oright">Rate/h</span><span class="oright">Cost</span></div>';
+  rows.forEach(function(x){ h += '<div class="orow" style="grid-template-columns:1fr 150px 90px 80px 100px 110px;cursor:default">'
+    + '<span class="cwho"><span style="width:7px;height:7px;border-radius:50%;background:'+(x.onNow?'var(--green)':'var(--line-3)')+'"></span><span class="cname" style="font-size:12px">'+esc(x.name)+'</span></span>'
+    + '<span class="dim" style="font-size:11px">'+esc(x.role)+'</span><span class="mono" style="font-size:11.5px">'+esc(x.clockIn)+'</span>'
+    + '<span class="oright mono" style="font-size:11.5px">'+x.hrs+'h</span><span class="oright dim" style="font-size:11px">'+money(x.rate)+'</span>'
+    + '<span class="oright" style="color:var(--amber-bright)">'+money(x.cost)+'</span></div>'; });
+  return h+'</div>';
+}
+/* ── Operating costs — rent, utilities, everything below gross profit. ───── */
+function costsView(out){
+  var items = [["Rent — "+out.name.replace("Kashikeyo ",""),"Occupancy",42000,"paid"],["Electricity (STELCO)","Utilities",18500,"due"],["Water (MWSC)","Utilities",3200,"paid"],["Internet & POS line","Utilities",2400,"paid"],["Cooking gas","Utilities",6800,"due"],["Business & music licences","Compliance",1500,"paid"],["Insurance","Compliance",4100,"paid"],["Cleaning & pest control","Services",3600,"paid"]];
+  var total = items.reduce(function(a,x){return a+x[2];},0);
+  var due = items.filter(function(x){return x[3]==="due";}).reduce(function(a,x){return a+x[2];},0);
+  var h = pageHead("Operating costs","Rent, utilities and everything below gross profit · this outlet, monthly")
+    + statCards([["Monthly opex",money(total),"MVR · fixed + recurring"],["Outstanding",money(due),"invoices due","var(--amber-bright)"],["Categories",[...new Set(items.map(function(x){return x[1];}))].length,"cost lines grouped"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 150px 130px 110px"><span>Cost</span><span>Category</span><span class="oright">Monthly</span><span>Status</span></div>';
+  items.forEach(function(x){ h += '<div class="orow" style="grid-template-columns:1fr 150px 130px 110px;cursor:default">'
+    + '<span class="cname" style="font-size:12px">'+esc(x[0])+'</span><span class="dim" style="font-size:11px">'+esc(x[1])+'</span>'
+    + '<span class="oright" style="color:var(--amber-bright)">'+money(x[2])+'</span><span>'+chipEl(x[3],x[3]==="paid"?"green":"amber")+'</span></div>'; });
+  return h+'</div>';
 }
 function rrow(l,v){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);padding:3px 0"><span>'+esc(l)+'</span><span class="mono">'+v+'</span></div>'; }
 function rrowB(l,v,c){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;padding:7px 0 2px;margin-top:5px;border-top:1px solid var(--line-2)"><span>'+esc(l)+'</span><span class="mono" style="color:'+(c||'var(--text)')+'">'+v+'</span></div>'; }
