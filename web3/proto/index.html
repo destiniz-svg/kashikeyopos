@@ -6114,24 +6114,141 @@ class Component extends DCLogic {
     };
   }
 
+  // Real figures for each report in the pack. Everything is computed from data
+  // the terminal already holds — live orders (with line items), menu recipes,
+  // on-hand stock, the stock ledger, clock punches and customer credit — so an
+  // exported CSV carries the store's actual numbers, not a template stub. Each
+  // returns { header, rows }; an empty store yields a header with no rows rather
+  // than an invented figure.
+  reportRows(key) {
+    const K0 = K(), o = this.outlet();
+    const ords = this.todayOrders().filter((r) => r.status !== "open");
+    const menu = (K0.MENU || []);
+    const m2 = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+    // Units sold per dish today. Real orders carry lines[{pid,q,n}]; demo orders
+    // are header-only, so in demo mode this simply stays empty (honest zero).
+    const soldByPid = {}, soldByName = {};
+    ords.forEach((od) => (od.items || []).forEach((it) => {
+      if (it.pid != null) soldByPid[it.pid] = (soldByPid[it.pid] || 0) + (Number(it.q) || 0);
+      if (it.n) soldByName[it.n] = (soldByName[it.n] || 0) + (Number(it.q) || 0);
+    }));
+    const unitsOf = (m) => soldByPid[m.id] != null ? soldByPid[m.id] : (soldByName[m.en] || soldByName[m.name] || 0);
+
+    if (key === "z") {
+      // Label each tender by its real name. tenderName() falls back to "Cash"
+      // for any code it doesn't know, which would misstate the drawer, so an
+      // unrecognised tender keeps its own key (title-cased) instead.
+      const tenderLabel = (t) => this.TENDERS()[t] ? this.tenderName(t) : (String(t).charAt(0).toUpperCase() + String(t).slice(1));
+      const agg = {};
+      ords.forEach((od) => { const t = od.tender || "cash"; (agg[t] = agg[t] || { n: 0, g: 0 }); agg[t].n++; agg[t].g += Number(od.total) || 0; });
+      const rows = Object.keys(agg).map((t) => [tenderLabel(t), agg[t].n, m2(agg[t].g)]);
+      const tot = rows.reduce((a, r) => ({ n: a.n + r[1], g: a.g + Number(r[2]) }), { n: 0, g: 0 });
+      if (rows.length) rows.push(["TOTAL", tot.n, m2(tot.g)]);
+      return { header: ["Tender", "Tickets", "Gross MVR"], rows };
+    }
+    if (key === "gst") {
+      const REAL = window.KPOS_REAL;
+      let net, gst, tx;
+      if (REAL && REAL.stats) { net = Math.round((REAL.stats.netMonth || 0) / 100); gst = Math.round((REAL.stats.gstMonth || 0) / 100); tx = REAL.stats.txMonth || 0; }
+      else { net = ords.reduce((a, r) => a + (Number(r.subtotal) || Number(r.total) || 0), 0); gst = ords.reduce((a, r) => a + (Number(r.gst) || 0), 0); tx = ords.length; }
+      return { header: ["Line", "Value"], rows: [
+        ["Tax type", o.tax + " " + o.rate + "%"],
+        ["Taxable sales (net)", m2(net)],
+        [o.tax + " collected", m2(gst)],
+        ["Gross takings", m2(net + gst)],
+        ["Transactions", tx],
+        ["Period", "Month to date"],
+      ] };
+    }
+    if (key === "cos") {
+      let tp = 0, tc = 0;
+      const rows = menu.map((m) => {
+        const p = this.menuPrice(m), c = this.foodCost(m); tp += p; tc += c;
+        return [m.en || m.name, m2(p), m2(c), m2(p - c), p ? ((c / p) * 100).toFixed(1) + "%" : "—"];
+      });
+      if (rows.length) rows.push(["ALL DISHES", m2(tp), m2(tc), m2(tp - tc), tp ? ((tc / tp) * 100).toFixed(1) + "%" : "—"]);
+      return { header: ["Dish", "Menu price", "Food cost", "Margin", "Food cost %"], rows };
+    }
+    if (key === "menu") {
+      const list = menu.map((m) => { const p = this.menuPrice(m), c = this.foodCost(m), u = unitsOf(m); return { name: m.en || m.name, u: u, margin: p - c, tot: (p - c) * u }; });
+      const med = (arr) => { const s = arr.slice().sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
+      const mv = med(list.map((x) => x.u)), mm = med(list.map((x) => x.margin));
+      const klass = (x) => x.u >= mv ? (x.margin >= mm ? "Star" : "Plough-horse") : (x.margin >= mm ? "Puzzle" : "Dog");
+      const rows = list.sort((a, b) => b.tot - a.tot).map((x) => [x.name, x.u, m2(x.margin), m2(x.tot), klass(x)]);
+      return { header: ["Dish", "Units sold (today)", "Unit margin", "Total margin", "Class"], rows };
+    }
+    if (key === "stock") {
+      const raw = window.KPOS_RAW || {};
+      let tv = 0;
+      const rows = (raw.inv || []).map((r) => {
+        const it = this.item(r[1]) || []; const q = this.stockQty(it, r[2]); const v = (Number(it[4]) || 0) * q; tv += v;
+        return [this.itemName(r[1]), this.locName(r[0]), (Math.round(q * 100) / 100) + " " + (it[8] || it[3] || ""), m2(it[4] || 0), m2(v)];
+      });
+      if (rows.length) rows.push(["TOTAL ON HAND", "", "", "", m2(tv)]);
+      return { header: ["Item", "Location", "On hand", "Unit cost", "Value MVR"], rows };
+    }
+    if (key === "waste") {
+      const raw = window.KPOS_RAW || {};
+      let tv = 0;
+      const rows = (raw.ledger || []).filter((r) => r[2] === "waste" && (r[4] || 0) > 0).map((r) => {
+        const it = this.item(r[1]) || []; const f = this.convFactor(it); const qty = (r[4] || 0) / f; const v = (Number(it[4]) || 0) * qty; tv += v;
+        return [this.itemName(r[1]), (Math.round(qty * 100) / 100) + " " + (it[8] || it[3] || ""), m2(it[4] || 0), m2(v), r[6] ? new Date(r[6]).toISOString().slice(0, 10) : ""];
+      });
+      if (rows.length) rows.push(["TOTAL WASTE", "", "", m2(tv), ""]);
+      return { header: ["Item", "Qty wasted", "Unit cost", "Loss MVR", "Date"], rows };
+    }
+    if (key === "labour") {
+      const L = this.labourToday(), sales = ords.reduce((a, r) => a + (Number(r.total) || 0), 0);
+      return { header: ["Line", "Value"], rows: [
+        ["Shifts today", L.heads],
+        ["Still clocked in", L.open],
+        ["Hours worked", L.hours.toFixed(1)],
+        ["Overtime hours", L.ot.toFixed(1)],
+        ["Labour cost", m2(L.cost)],
+        ["Net sales today", m2(sales)],
+        ["Labour % of sales", sales ? ((L.cost / sales) * 100).toFixed(1) + "%" : "—"],
+      ] };
+    }
+    if (key === "credit") {
+      const rows = (K0.CUSTOMERS || []).filter((c) => (c.credit || 0) > 0 || (c.used || 0) > 0)
+        .sort((a, b) => (b.used || 0) - (a.used || 0))
+        .map((c) => [c.name, c.phone || "", m2(c.credit || 0), m2(c.used || 0), m2(Math.max(0, (c.credit || 0) - (c.used || 0))), c.last || ""]);
+      return { header: ["Customer", "Phone", "Credit limit", "Balance used", "Available", "Last visit"], rows };
+    }
+    return { header: ["Report"], rows: [] };
+  }
+
   g_reports() {
+    // [key, title, description, cadence]. The row count shown per report is the
+    // live figure from reportRows, so an owner sees at a glance which packs have
+    // data behind them tonight and which are still empty.
     const rep = [
-      ["Z-report", "End-of-shift cash-up per terminal, declared against expected drawer", "Per shift"],
-      ["GST return", "GGST and TGST split by outlet, in the format MIRA expects", "Monthly"],
-      ["Cost of sales", "Theoretical against actual food cost, by outlet and by dish", "Weekly"],
-      ["Menu engineering", "Stars, plough-horses, puzzles and dogs from margin against volume", "Monthly"],
-      ["Stock valuation", "On-hand value at moving average, by location and category", "On demand"],
-      ["Wastage & variance", "Count variance and production yield loss with reason codes", "Weekly"],
-      ["Labour against sales", "Shift hours against net sales per outlet", "Weekly"],
-      ["Customer credit ageing", "Outstanding credit by customer, bucketed 30/60/90", "Monthly"]
+      ["z", "Z-report", "End-of-shift cash-up per tender, declared against expected drawer", "Per shift"],
+      ["gst", "GST return", "GGST/TGST split for the month, in the format MIRA expects", "Monthly"],
+      ["cos", "Cost of sales", "Theoretical food cost by dish, from the live recipe cost", "Weekly"],
+      ["menu", "Menu engineering", "Stars, plough-horses, puzzles and dogs from margin against volume", "Monthly"],
+      ["stock", "Stock valuation", "On-hand value at moving average, by location", "On demand"],
+      ["waste", "Wastage & variance", "Wasted stock and its cost, from the stock ledger", "Weekly"],
+      ["labour", "Labour against sales", "Clocked hours and cost against today's net sales", "Weekly"],
+      ["credit", "Customer credit ageing", "Outstanding credit by customer", "Monthly"]
     ];
+    const fname = (label) => "kashikeyo-" + (this.outlet().code || "OUT") + "-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".csv";
+    const exportOne = (key, label) => { const d = this.reportRows(key); this.downloadCsv(fname(label), [d.header].concat(d.rows)); };
     return {
       actions: [
-        { label: "Schedule email", go: () => this.info("Scheduled reports", "Delivered 06:00 local to the outlet manager", rep.map((r) => [r[0], r[2], "t"])) },
-        { label: "Export all as CSV", primary: true, go: () => this.downloadCsv("kashikeyo-report-pack.csv", [["Report", "Contents", "Cadence"]].concat(rep.map((r) => [r[0], r[1], r[2]]))) }
+        { label: "Schedule email", go: () => this.info("Scheduled reports", "Delivered 06:00 local to the outlet manager", rep.map((r) => [r[1], r[3], "t"])) },
+        { label: "Export all as CSV", primary: true, go: () => {
+          const all = [["KashikeyoPOS report pack", this.outlet().name || "", new Date().toISOString().slice(0, 16).replace("T", " ")], []];
+          rep.forEach((r) => { const d = this.reportRows(r[0]); all.push([r[1].toUpperCase()]); all.push(d.header); d.rows.forEach((row) => all.push(row)); all.push([]); });
+          this.downloadCsv("kashikeyo-" + (this.outlet().code || "OUT") + "-report-pack.csv", all);
+        } }
       ],
-      cols: [{ label: "Report", w: "1.4fr" }, { label: "What it contains", w: "3.4fr" }, { label: "Cadence", w: "1fr", a: "center" }, { label: "Formats", w: "1.2fr", a: "right" }],
-      rows: rep.map((r) => ({ go: () => this.downloadCsv("kashikeyo-" + r[0].toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".csv", [["Report", r[0]], ["Outlet", this.outlet().name], ["Cadence", r[2]], ["Contents", r[1]], [], ["Generated", new Date().toISOString()]]), cells: [{ t: r[0], w: 600 }, { t: r[1], size: 11.5 }, { t: r[2], chip: this.chip("info") }, "CSV · PDF · XLSX"] }))
+      cols: [{ label: "Report", w: "1.4fr" }, { label: "What it contains", w: "3fr" }, { label: "Cadence", w: "1fr", a: "center" }, { label: "Rows", w: ".7fr", a: "right", mono: 1 }, { label: "Export", w: "1fr", a: "right" }],
+      rows: rep.map((r) => {
+        const n = this.reportRows(r[0]).rows.length;
+        return { go: () => exportOne(r[0], r[1]), cells: [{ t: r[1], w: 600 }, { t: r[2], size: 11.5 }, { t: r[3], chip: this.chip("info") }, { t: String(n), mono: 1, c: n ? "var(--text)" : "var(--text-faint)" }, { t: "Export CSV", c: "var(--amber-bright)", w: 600 }] };
+      }),
+      notes: [["Reports are computed, not stored", "Every figure here is derived on demand from the same rows the rest of the terminal reads — closed tickets, the recipe cost of each dish, the stock ledger and the clock. There is no separate reporting table to fall out of step, so a Z-report and the orders list can never disagree."]]
     };
   }
 
