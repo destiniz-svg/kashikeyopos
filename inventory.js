@@ -1546,7 +1546,8 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
           "Reply with JSON only, no prose, no code fences. Shape: " +
           '{"rationale":"2-3 sentences on the trade-offs you made","dishes":[{"name":"","cat":"one of the given categories","price":<MVR integer>,"lines":[{"item":<pantry id>,"qty":<integer>}],"why":"one sentence tying this dish to cost or stock"}]}. ' +
           "Use pantry ids exactly. qty is per single portion, in THAT item's own base unit as given in the pantry (GRM = grams, ML = millilitres, PCS = whole pieces) — never convert. " +
-          "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit.",
+          "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit. " +
+          "The context lists the dishes already on the menu — do NOT propose any dish that duplicates one of those; design genuinely new or complementary dishes that fill gaps instead.",
         messages: [{ role: "user", content: context + (brief ? "\n\nBrief: " + brief : "") }],
       });
       if (msg.stop_reason === "refusal") throw Object.assign(new Error("I can't build that one."), { status: 422 });

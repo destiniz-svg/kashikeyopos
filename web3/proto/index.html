@@ -6290,9 +6290,14 @@ class Component extends DCLogic {
       + "Reply with JSON only, no prose, no code fences. Shape: "
       + '{"rationale":"2-3 sentences on the trade-offs you made","dishes":[{"name":"","cat":"one of the given categories","price":<MVR integer>,"lines":[{"item":<pantry id>,"qty":<integer>}],"why":"one sentence tying this dish to cost or stock"}]}. '
       + "Use pantry ids exactly. qty is per single portion, in THAT item's own base unit as given in the pantry (GRM = grams, ML = millilitres, PCS = whole pieces) — never convert. "
-      + "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit.";
+      + "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit. "
+      + "Do NOT propose a dish that is already on the menu (the list is given) — design genuinely new or complementary dishes that fill gaps, not duplicates.";
+    // The dishes already on the menu, so the model proposes NEW items rather than
+    // re-suggesting ones the store already sells.
+    const existing = (K().MENU || []).map((m) => m.en || m.name).filter(Boolean);
     const body = "Outlet: " + o.name + " (" + o.code + "), " + o.type.replace("_", " ") + ", tax " + o.tax + " " + o.rate + "%.\n"
       + "Menu categories: " + cats + "\n"
+      + "Dishes ALREADY on the menu (do not duplicate — propose new/complementary dishes only): " + (existing.length ? existing.join(", ") : "none yet") + "\n"
       + "Brief: " + s.aiPrompt + "\n\nPantry (id · item · category · base unit · MVR per one base unit · on hand):\n"
       + pantry.map((p) => p.id + " · " + p.name + " · " + p.cat + " · " + p.base + " · " + p.costPerBase.toFixed(4) + " · " + p.onHand.toFixed(1) + p.unit).join("\n");
     try {
