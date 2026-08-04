@@ -10,6 +10,7 @@
 <x-dc>
 <helmet>
 <link rel="stylesheet" href="fonts.css">
+<script src="v2-bridge.js"></script>
 <style>
 /* Palette as the reference defined it — :root custom properties, dark by
    default. ThemeMode / CustomColors on the Users table select the variant. */
@@ -2588,6 +2589,15 @@ class Component extends DCLogic {
             }),
             T: T, given: given, change: change, server: tk ? tk.waiter : ""
           };
+          // Persist this settlement as a real sale to the backend (no-op in demo
+          // mode). Each guest-split settle posts its own bill, mirroring how the
+          // ticket is actually being closed.
+          try {
+            if (window.__v2PushSale) window.__v2PushSale({
+              lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => ({ id: l.id, qty: l.qty })),
+              tender: m.tender, table: s.activeTable, no: snapshot.no, given: given, change: change,
+            });
+          } catch (e) { /* never block closing the ticket on a sync attempt */ }
           const last = gAll.length < 2;
           const tables = Object.assign({}, s.tickets);
           if (last) { delete tables[this.ticketKey()]; }
