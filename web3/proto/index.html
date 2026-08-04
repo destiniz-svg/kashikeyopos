@@ -4255,7 +4255,10 @@ class Component extends DCLogic {
     if (s.cfoRunning) return;
     const q = (s.cfoQ || "").trim() || "Give me a two-minute read on this business.";
     if (!s.online) { this.toast("The CFO agent needs the network — the briefing above is already live", "warn"); return; }
-    if (!(window.claude && window.claude.complete)) { this.setState({ cfoAnswer: "The advisory model is unreachable from this terminal. The briefing above is computed locally from posted rows and stays accurate without it." }); return; }
+    // Real mode calls the store's own backend (/api/inv/cfo → the configured AI);
+    // the prototype's window.claude shim is only used when there's no session.
+    const useReal = !!(window.KPOS_REAL && window.KPOS_REAL.token);
+    if (!useReal && !(window.claude && window.claude.complete)) { this.setState({ cfoAnswer: "The advisory model is unreachable from this terminal. The briefing above is computed locally from posted rows and stays accurate without it." }); return; }
     const d = this.analyticsData(), f = this.cfoFindings(d);
     this.setState({ cfoRunning: true });
     const sys = "You are the CFO of a Maldivian restaurant group, briefing the owner. You are given the real figures. "
@@ -4273,11 +4276,24 @@ class Component extends DCLogic {
       + "\n\nMy own rule-based read — health " + f.score + "/100:\nWorking: " + f.work.map((x) => x.what).join("; ")
       + "\nWatch: " + f.watch.map((x) => x.what).join("; ") + "\nAct now: " + (f.act.map((x) => x.what).join("; ") || "nothing urgent");
     try {
-      const txt = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 900, system: sys, messages: [{ role: "user", content: body }] });
-      this.setState({ cfoRunning: false, cfoAnswer: String(txt || "").trim() });
+      let answer;
+      if (useReal) {
+        // Real backend: the store's own /api/inv/cfo relays this digest to the
+        // configured AI (cookie-authenticated; the server owns the CFO prompt).
+        const r = await fetch("/api/inv/cfo", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+          body: JSON.stringify({ question: q, context: body }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j && j.error ? j.error : "HTTP " + r.status);
+        answer = (j && j.answer) || "";
+      } else {
+        answer = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 900, system: sys, messages: [{ role: "user", content: body }] });
+      }
+      this.setState({ cfoRunning: false, cfoAnswer: String(answer || "").trim() });
       this.queue("cfo_query", "CFO advisory · " + q.slice(0, 48), "audit_log");
     } catch (e) {
-      this.setState({ cfoRunning: false, cfoAnswer: "The advisory call did not complete. The briefing above is computed locally from posted rows and is unaffected." });
+      this.setState({ cfoRunning: false, cfoAnswer: (e && e.message ? e.message + " " : "") + "The briefing above is computed locally from posted rows and is unaffected." });
     }
   }
 

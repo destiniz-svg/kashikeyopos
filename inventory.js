@@ -1488,6 +1488,41 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, configured: true, answer: answer || "I don't have enough data to answer that yet." });
   }));
 
+  /* ── CFO advisory (Analytics & CFO panel "Ask") ──────────────────────────
+     The terminal computes the full business digest (sales, food/labour/prime
+     cost, per-outlet, its own rule-based read) and sends it here as `context`;
+     the model answers grounded strictly on those figures. The server owns the
+     system prompt so the client can't steer it. Degrades to configured:false
+     without a key, exactly like the inventory assistant. */
+  router.post("/cfo", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const client = aiClient();
+    const question = String((req.body && req.body.question) || "").trim().slice(0, 500);
+    const context = String((req.body && req.body.context) || "").trim().slice(0, 8000);
+    if (!question) return res.status(400).json({ error: "ask a question first" });
+    if (!context) return res.status(400).json({ error: "no figures to reason over yet" });
+    if (!client) return res.json({ ok: true, configured: false, answer: "The advisory model isn't switched on. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) in the service settings — the briefing above is computed locally from posted rows and stays accurate without it." });
+
+    let answer;
+    try {
+      const model = process.env.OCR_MODEL || "claude-opus-4-8";
+      const msg = await client.messages.create({
+        model, max_tokens: 900, thinking: { type: "adaptive" },
+        system:
+          "You are the CFO of a Maldivian restaurant group, briefing the owner. You are given the real figures below. " +
+          "Answer in plain prose — no markdown, no bullet characters, no headings. Three short paragraphs at most. " +
+          "Be specific and quantitative, name outlets, and always say what to DO rather than what to observe. " +
+          "Use ONLY the figures provided; never invent a number that is not given. If the figures do not support an answer, say so plainly.",
+        messages: [{ role: "user", content: context + "\n\nQuestion: " + question }],
+      });
+      if (msg.stop_reason === "refusal") throw Object.assign(new Error("I can't answer that one."), { status: 422 });
+      answer = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
+    } catch (e) {
+      recordError("cfo advisory", e);
+      return res.status(e.status === 422 ? 422 : 502).json({ error: e.status === 422 ? e.message : "The advisory call didn't complete — try again in a moment. The briefing above is unaffected." });
+    }
+    res.json({ ok: true, configured: true, answer: answer || "I don't have enough posted data to answer that yet." });
+  }));
+
   /* ── AI Menu Builder (P2) ────────────────────────────────────────────────
      Owner types an item name + one line of what it is; Claude returns a whole
      menu item — bilingual name/description, tags, add-ons, allergens, a price
