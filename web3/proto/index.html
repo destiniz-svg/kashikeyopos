@@ -1441,6 +1441,9 @@ class Component extends DCLogic {
   // ── seed a plausible live service ────────────────────────────────────────
   seed() {
     const K0 = window.KPOS; if (!K0) { setTimeout(() => this.seed(), 60); return; }
+    // Real mode: the floor starts empty — the till owns the open ticket, and a
+    // real store has no open tables until a cashier seats one. No demo busyness.
+    if (window.KPOS_REAL) { this.setState({ tickets: {} }); return; }
     const rnd = this.rng(20260803);
     const now0 = Date.now();
     const tickets = {};
@@ -1486,10 +1489,20 @@ class Component extends DCLogic {
   // and the chain roll-up so the two can never disagree.
   outletSales(o) {
     if (!o || !o.pos) return 0;
+    // Real mode: today's actual net sales for the active outlet (laari→MVR),
+    // and 0 for the other chain outlets, which don't exist in a single store.
+    const REAL = window.KPOS_REAL;
+    if (REAL) return (REAL.stats && o.id === 3) ? Math.round((REAL.stats.net || 0) / 100) : 0;
     const r = this.rng(1000 + o.id * 7); r();
     return Math.round((o.seats * 430 + r() * 9000) / 10) * 10;
   }
   outletStats(o) {
+    const REAL = window.KPOS_REAL;
+    if (REAL) {
+      const sales = this.outletSales(o);
+      const covers = (REAL.stats && o.id === 3) ? (REAL.stats.covers || 0) : 0;
+      return { sales: sales, covers: covers, fc: 30, avg: covers ? sales / covers : 0, growth: 0 };
+    }
     const r = this.rng(1000 + o.id * 7); r(); r();
     const sales = this.outletSales(o);
     const covers = Math.round(o.seats * (1.6 + r()));

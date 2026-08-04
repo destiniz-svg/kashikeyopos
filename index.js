@@ -3520,11 +3520,23 @@ if (fs.existsSync(protoFile)) {
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
         const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
+        // Today's real trading, for the POS stats strip (net sales + covers).
+        // Empty for a store that hasn't sold yet — the honest zero, not a seed.
+        const salesRows = (await c.query(
+          "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId])).rows;
+        const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+        const t0 = startOfDay.getTime();
+        let net = 0, covers = 0;
+        for (const r of salesRows) {
+          const d = r.data || {};
+          if ((d.type && d.type !== "sale") || d.void) continue;
+          if (Number(d.at) >= t0) { net += Number(d.total) || 0; covers += 1; }
+        }
         return {
           hasSession: true, token,
           outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
             rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-          categories, menu,
+          categories, menu, stats: { net: net, covers: covers },
         };
       });
     };
