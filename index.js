@@ -3473,9 +3473,29 @@ if (fs.existsSync(protoFile)) {
      viewable on staging without disturbing anything in production use. */
   const proto3Dir = path.join(__dirname, "web3", "proto");
   if (fs.existsSync(path.join(proto3Dir, "index.html"))) {
+    /* /v2 adopts the reference terminal UI (React), vendored locally — no CDN.
+       It needs its own CSP: 'unsafe-eval' for the in-browser JSX compile
+       (babel-standalone, no build step), inline scripts/styles for the dc
+       template, blob/data images, and the self-hosted webfonts. This overrides
+       the strict global CSP for the /v2 subtree only; /app, /admin and the
+       guest portal are untouched. */
+    const V2_CSP = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "img-src 'self' data: blob: https:",
+      "font-src 'self' data: https://fonts.gstatic.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+      "connect-src 'self' blob: data:",
+      "frame-ancestors 'none'",
+    ].join("; ");
+    app.use("/v2", (req, res, next) => { res.set("Content-Security-Policy", V2_CSP); next(); });
     app.use("/v2", express.static(proto3Dir, { index: false, redirect: false, maxAge: "5m" }));
-    app.get(/^\/v2(\/.*)?$/, (req, res) =>
-      res.sendFile(path.join(proto3Dir, "index.html"), { headers: { "Cache-Control": "no-cache" } }));
+    app.get(/^\/v2(\/.*)?$/, (req, res) => {
+      res.set("Content-Security-Policy", V2_CSP);
+      res.sendFile(path.join(proto3Dir, "index.html"), { headers: { "Cache-Control": "no-cache" } });
+    });
   }
   serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)
   // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
