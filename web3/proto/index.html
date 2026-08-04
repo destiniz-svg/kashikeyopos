@@ -455,7 +455,8 @@ var S = {
   refunded: {},           // { [orderNo]: true }
   // Inventory
   inv: null, invTab: 0,
-  menuTab: 0
+  menuTab: 0,
+  recipe: null            // open dish id (recipe modal)
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -601,6 +602,10 @@ function renderShell(){
            : (S.view==="menu") ? menuView(out)
            : (S.view==="users") ? usersView()
            : (S.view==="logs") ? auditView(out)
+           : (S.view==="vendors") ? vendorsView()
+           : (S.view==="purchases") ? purchasesView(out)
+           : (S.view==="counts") ? countsView(out)
+           : (S.view==="recipes") ? recipesView(out)
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -1264,6 +1269,144 @@ function auditView(out){
   h += '</div>';
   return h;
 }
+function pad4(n){ return ("000"+n).slice(-4); }
+/* ── Vendors — supplier master (kashikeyo-raw.js vendors, enriched). ──────── */
+var VENDORS = [
+  {id:1,name:"General Food Supplies Co",cat:"Dry, spice & staples",terms:"Net 30",skus:112,spend:184500},
+  {id:2,name:"Packaging Supplies Co",cat:"Packaging",terms:"Net 15",skus:34,spend:22100},
+  {id:3,name:"Fresh Produce Vendor",cat:"Veg & juice",terms:"COD",skus:48,spend:96400},
+  {id:4,name:"Blue Reef Seafood",cat:"Meat & seafood",terms:"Net 15",skus:26,spend:238900},
+  {id:5,name:"Maldive Dairy & Chill",cat:"Dairy & frozen",terms:"Net 30",skus:41,spend:73200}
+];
+function vendorsView(){
+  var spend = VENDORS.reduce(function(a,v){return a+v.spend;},0), skus = VENDORS.reduce(function(a,v){return a+v.skus;},0);
+  var h = '<div class="floor-title" style="margin-bottom:2px">Vendors</div><div class="crumb-sub" style="margin-bottom:14px">Supplier master · price history feeds moving-average cost</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Suppliers</div><div class="stat-v">'+VENDORS.length+'</div><div class="stat-s">active vendor accounts</div></div>'
+     + '<div class="stat"><div class="stat-l">Catalogue SKUs</div><div class="stat-v">'+skus+'</div><div class="stat-s">purchasable items</div></div>'
+     + '<div class="stat"><div class="stat-l">Spend (90d)</div><div class="stat-v">'+money(spend)+'</div><div class="stat-s">MVR across suppliers</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 170px 90px 90px 120px"><span>Vendor</span><span>Category</span><span>Terms</span><span class="oright">SKUs</span><span class="oright">Spend 90d</span></div>';
+  VENDORS.forEach(function(v){
+    h += '<div class="orow" style="grid-template-columns:1fr 170px 90px 90px 120px;cursor:default">'
+       + '<span class="cname">'+esc(v.name)+'</span><span class="dim" style="font-size:11px">'+esc(v.cat)+'</span>'
+       + '<span><span class="ost closed">'+esc(v.terms)+'</span></span>'
+       + '<span class="oright mono" style="font-size:11.5px">'+v.skus+'</span>'
+       + '<span class="oright" style="color:var(--amber-bright)">'+money(v.spend)+'</span></div>';
+  });
+  h += '</div>'; return h;
+}
+/* ── Purchases / GRN — goods received against vendor invoices. ────────────── */
+function buildGRN(out){
+  var r = rng(out.id*29+2), list = [];
+  for(var i=0;i<10;i++){
+    var v = VENDORS[Math.floor(r()*VENDORS.length)];
+    list.push({ no:"GRN-2026-"+pad4(1+i), vendor:v.name, inv:"VND-"+(4400+Math.floor(r()*600)),
+      date:pad2(1+Math.floor(r()*28))+" Aug", items:2+Math.floor(r()*15), total:Math.round((200+r()*15000)/5)*5,
+      status:r()>0.25?"received":"pending" });
+  }
+  return list;
+}
+function purchasesView(out){
+  var list = buildGRN(out);
+  var recv = list.filter(function(x){return x.status==="received";}), pend = list.length-recv.length;
+  var value = recv.reduce(function(a,x){return a+x.total;},0);
+  var h = '<div class="floor-title" style="margin-bottom:2px">Purchases / GRN</div><div class="crumb-sub" style="margin-bottom:14px">Goods received against vendor invoices · raises stock at moving-average cost</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">GRNs today</div><div class="stat-v">'+list.length+'</div><div class="stat-s">'+recv.length+' posted · '+pend+' to receive</div></div>'
+     + '<div class="stat"><div class="stat-l">Received value</div><div class="stat-v">'+money(value)+'</div><div class="stat-s">MVR posted to inventory (1200)</div></div>'
+     + '<div class="stat"><div class="stat-l">To receive</div><div class="stat-v" style="color:'+(pend?'var(--amber-bright)':'var(--green-soft)')+'">'+pend+'</div><div class="stat-s">awaiting a store keeper</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:140px 1fr 110px 80px 80px 110px 110px"><span>GRN</span><span>Vendor</span><span>Invoice</span><span>Date</span><span class="oright">Lines</span><span class="oright">Total</span><span>Status</span></div>';
+  list.forEach(function(x){
+    h += '<div class="orow" style="grid-template-columns:140px 1fr 110px 80px 80px 110px 110px;cursor:default">'
+       + '<span class="ono">'+esc(x.no)+'</span><span class="cname" style="font-size:12px">'+esc(x.vendor)+'</span>'
+       + '<span class="mono dim" style="font-size:11px">'+esc(x.inv)+'</span><span class="dim" style="font-size:11px">'+esc(x.date)+'</span>'
+       + '<span class="oright mono" style="font-size:11px">'+x.items+'</span><span class="oright" style="color:var(--amber-bright)">'+money(x.total)+'</span>'
+       + '<span><span class="ost '+(x.status==="received"?"closed":"open")+'">'+esc(x.status)+'</span></span></div>';
+  });
+  h += '</div>'; return h;
+}
+/* ── Stock counts — blind cycle counts, variance posts to 5100. ──────────── */
+function countsView(out){
+  if(!S.inv) S.inv = buildInventory();
+  var rows = S.inv.slice(0,12).map(function(i){
+    var r = rng(i.n.length*7 + i.cost);
+    var system = i.onHand, counted = Math.max(0, Math.round(system*(1+(r()-0.5)*0.22)));
+    var vq = counted - system;
+    return { n:i.n, u:i.u, system:system, counted:counted, vq:vq, vv:vq*i.cost };
+  });
+  var netVar = rows.reduce(function(a,x){return a+x.vv;},0);
+  var flagged = rows.filter(function(x){return Math.abs(x.vq)>0;}).length;
+  var h = '<div class="floor-title" style="margin-bottom:2px">Stock counts</div><div class="crumb-sub" style="margin-bottom:14px">Blind cycle count — the counter never sees the expected figure, so the variance means something</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Items counted</div><div class="stat-v">'+rows.length+'</div><div class="stat-s">this cycle</div></div>'
+     + '<div class="stat"><div class="stat-l">Net variance</div><div class="stat-v" style="color:'+(Math.abs(netVar)<50?'var(--green-soft)':'var(--red-bright)')+'">'+(netVar<0?'−':'')+money(Math.abs(netVar))+'</div><div class="stat-s">MVR · posts to 5100</div></div>'
+     + '<div class="stat"><div class="stat-l">Lines with variance</div><div class="stat-v" style="color:var(--amber-bright)">'+flagged+'</div><div class="stat-s">need a reason code</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 110px 110px 110px 120px"><span>Item</span><span class="oright">System</span><span class="oright">Counted</span><span class="oright">Variance</span><span class="oright">Value</span></div>';
+  rows.forEach(function(x){
+    var c = x.vq===0 ? "var(--text-dim)" : (x.vq<0 ? "var(--red-bright)" : "var(--green-soft)");
+    h += '<div class="orow" style="grid-template-columns:1fr 110px 110px 110px 120px;cursor:default">'
+       + '<span class="cname">'+esc(x.n)+'</span>'
+       + '<span class="oright mono" style="font-size:11.5px">'+x.system+' '+esc(x.u)+'</span>'
+       + '<span class="oright mono" style="font-size:11.5px">'+x.counted+' '+esc(x.u)+'</span>'
+       + '<span class="oright mono" style="color:'+c+'">'+(x.vq>0?'+':'')+x.vq+'</span>'
+       + '<span class="oright mono" style="color:'+c+'">'+(x.vv<0?'−':'')+money(Math.abs(x.vv))+'</span></div>';
+  });
+  h += '</div>'; return h;
+}
+/* ── Recipes & costing — theoretical food cost per dish. ─────────────────── */
+function recipeLines(m){
+  var r = rng(m.id.charCodeAt(1)*11 + m.name.length), target = foodCost(m), n = 2+Math.floor(r()*3);
+  var picks = [], weights = [];
+  for(var i=0;i<n;i++){ picks.push(INV_BASE[Math.floor(r()*INV_BASE.length)]); weights.push(0.5+r()); }
+  var ws = weights.reduce(function(a,x){return a+x;},0);
+  return picks.map(function(p,idx){
+    var cost = Math.max(1, Math.round(target*weights[idx]/ws));
+    var qty = Math.max(1, Math.round(cost/p.cost*(p.u==="PCS"?1:1000)));
+    return { name:p.n, unit:p.u==="PCS"?"pcs":(p.u==="LTR"?"ml":"g"), qty:qty, cost:cost };
+  });
+}
+function recipesView(out){
+  var cats = ["All"].concat(MENU_CATS.map(function(c){return c.name;}));
+  var cat = cats[S.menuTab] || "All";
+  var catId = (MENU_CATS.filter(function(c){return c.name===cat;})[0]||{}).id;
+  var list = MENU.filter(function(m){ return cat==="All" || m.cat===catId; });
+  var avgFc = Math.round(MENU.reduce(function(a,m){return a+foodCost(m)/m.price;},0)/MENU.length*100);
+  var h = '<div class="floor-title" style="margin-bottom:2px">Recipes & costing</div><div class="crumb-sub" style="margin-bottom:14px">Theoretical food cost per dish — recipe lines resolve against the item master, so a GRN price change recosts automatically</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Costed dishes</div><div class="stat-v">'+MENU.length+'</div><div class="stat-s">with live recipes</div></div>'
+     + '<div class="stat"><div class="stat-l">Average food cost</div><div class="stat-v" style="color:var(--amber-bright)">'+avgFc+'%</div><div class="stat-s">target 30%</div></div>'
+     + '<div class="stat"><div class="stat-l">Item master</div><div class="stat-v">'+INV_BASE.length+'+</div><div class="stat-s">ingredients recipes draw on</div></div></div>';
+  h += '<div class="tabs">';
+  cats.forEach(function(c,i){ h += '<button class="tab'+(S.menuTab===i?' on':'')+'" data-menutab="'+i+'">'+esc(c)+'</button>'; });
+  h += '</div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 110px 100px 100px 70px"><span>Dish</span><span>Category</span><span class="oright">Price</span><span class="oright">Food cost</span><span class="oright">GP</span></div>';
+  list.forEach(function(m){
+    var ph = priceHere(out,m), fc = foodCost(m), gp = Math.round((ph-fc)/ph*100);
+    h += '<button class="orow" data-recipe="'+m.id+'" style="grid-template-columns:1fr 110px 100px 100px 70px">'
+       + '<span class="cname">'+esc(m.name)+'</span><span class="dim" style="font-size:11px">'+esc((MENU_CATS.filter(function(c){return c.id===m.cat;})[0]||{}).name)+'</span>'
+       + '<span class="oright mono" style="font-size:11.5px">'+money(ph)+'</span><span class="oright dim" style="font-size:11.5px">'+money(fc)+'</span>'
+       + '<span class="oright mono" style="color:'+(gp>=65?'var(--green-soft)':(gp>=55?'var(--amber-bright)':'var(--red-bright)'))+'">'+gp+'%</span></button>';
+  });
+  h += '</div>';
+  if(S.recipe) h += recipeModal(out);
+  return h;
+}
+function recipeModal(out){
+  var m = MENU.filter(function(x){return x.id===S.recipe;})[0]; if(!m) return "";
+  var lines = recipeLines(m), ph = priceHere(out,m), fc = lines.reduce(function(a,l){return a+l.cost;},0), gp = Math.round((ph-fc)/ph*100);
+  var h = '<div class="scrim" data-recipescrim="1"><div class="det">';
+  h += '<div class="det-head"><div style="flex:1;min-width:0"><div class="tk-t">'+esc(m.name)+'</div><div class="tk-s">Recipe · food cost '+money(fc)+' · GP '+gp+'%</div></div><button class="iconbtn" data-recipeclose="1">×</button></div>';
+  h += '<div class="det-body">';
+  h += '<div class="led"><div class="led-row head" style="grid-template-columns:1fr 90px 80px"><span class="n">Ingredient</span><span class="a">Qty</span><span class="a">Cost</span></div>';
+  lines.forEach(function(l){ h += '<div class="led-row" style="grid-template-columns:1fr 90px 80px"><span class="n">'+esc(l.name)+'</span><span class="a">'+l.qty+' '+esc(l.unit)+'</span><span class="a">'+money(l.cost)+'</span></div>'; });
+  h += '<div class="led-row bal" style="grid-template-columns:1fr 90px 80px"><span class="n">Food cost</span><span class="a"></span><span class="a">'+money(fc)+'</span></div></div>';
+  h += '<div class="drow" style="margin-top:12px"><span class="dl">Menu price here</span><span class="dv">'+money(ph)+'</span></div>'
+     + '<div class="drow"><span class="dl">Gross profit</span><span class="dv" style="color:var(--green-soft)">'+money(ph-fc)+'</span></div>'
+     + '<div class="drow"><span class="dl">GP %</span><span class="dv" style="color:'+(gp>=60?'var(--green-soft)':'var(--amber-bright)')+'">'+gp+'%</span></div>';
+  h += '<div class="det-note">Cost is a moving average recalculated on every GRN line; consumption deducts against it the moment a ticket closes.</div>';
+  h += '</div></div></div>';
+  return h;
+}
 function rrow(l,v){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);padding:3px 0"><span>'+esc(l)+'</span><span class="mono">'+v+'</span></div>'; }
 function rrowB(l,v,c){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;padding:7px 0 2px;margin-top:5px;border-top:1px solid var(--line-2)"><span>'+esc(l)+'</span><span class="mono" style="color:'+(c||'var(--text)')+'">'+v+'</span></div>'; }
 function moduleView(m, u){
@@ -1299,6 +1442,7 @@ root.addEventListener("click", function(e){
   if(e.target.dataset && e.target.dataset.scrim){ S.pay=null; render(); return; }
   if(e.target.dataset && e.target.dataset.custscrim){ S.cust=null; render(); return; }
   if(e.target.dataset && e.target.dataset.ordscrim){ S.order=null; render(); return; }
+  if(e.target.dataset && e.target.dataset.recipescrim){ S.recipe=null; render(); return; }
   var el = e.target.closest("button"); if(!el) return;
   var d = el.dataset;
   // ── lock screen ──
@@ -1353,6 +1497,9 @@ root.addEventListener("click", function(e){
   // ── Inventory / Menu ──
   if(d.invtab){ S.invTab = Number(d.invtab); render(); return; }
   if(d.menutab){ S.menuTab = Number(d.menutab); render(); return; }
+  // ── Recipes ──
+  if(d.recipe){ S.recipe = d.recipe; render(); return; }
+  if(d.recipeclose){ S.recipe = null; render(); return; }
   // ── Reports export ──
   if(d.export){ toast(d.export==="gst" ? "GST return exported — kashikeyo-gst-return.csv" : "Z-report exported — kashikeyo-z-report.csv"); return; }
 });
