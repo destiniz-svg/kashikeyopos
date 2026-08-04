@@ -2046,8 +2046,19 @@ class Component extends DCLogic {
       ];
     }
     if (v === "users" || v === "logs" || v === "architecture") {
+      const active = (K0.USERS || []).filter((u) => u.status === "Active").length;
+      const susp = (K0.USERS || []).filter((u) => u.status === "Suspended").length;
+      if (window.KPOS_REAL) {
+        const auditRows = ((window.KPOS_RAW || {}).logs || []).length;
+        return [
+          card("Active users", String(active), susp ? susp + " suspended" : "None suspended", amber),
+          card("Roles", String((K0.ROLES || []).length), "Every role maps to an RLS predicate"),
+          card("Policies enforced", "31", "force row level security on all kpos.* tables"),
+          card("Audit rows · today", String(auditRows), auditRows ? "Insert-only, update/delete revoked" : "No audit rows captured yet")
+        ];
+      }
       return [
-        card("Active users", String((K0.USERS || []).filter((u) => u.status === "Active").length), "1 suspended", amber),
+        card("Active users", String(active), "1 suspended", amber),
         card("Roles", String((K0.ROLES || []).length), "Every role maps to an RLS predicate"),
         card("Policies enforced", "31", "force row level security on all kpos.* tables"),
         card("Audit rows · today", "3,918", "Insert-only, update/delete revoked")
@@ -4605,10 +4616,23 @@ class Component extends DCLogic {
     const s = this.state, rnd = this.rng(661);
     const riders = ["Adam Saleem", "Hussain Niyaz", "Ahmed Sinan", "Aggregator · Kaafu Eats"];
     const st = ["preparing", "in_transit", "delivered", "in_transit", "preparing"];
-    const rows = [];
+    let rows = [], qrTables = [];
+    if (window.KPOS_REAL) {
+      // Live mode: delivery and QR rows are the store's own orders, filtered by
+      // channel. No rider/area synthesis — those fields aren't captured yet, so
+      // they read "—" rather than inventing a courier.
+      const ords = (window.KPOS_REAL.orders || []);
+      rows = ords.filter((o) => o.channel === "delivery").map((o) => ({
+        no: o.no, cust: o.server ? "" : "", area: "—", rider: "—", eta: "—",
+        total: Number(o.total) || 0, status: o.status === "open" ? "preparing" : "delivered",
+      }));
+      qrTables = ords.filter((o) => o.channel === "qr" && o.status === "open").map((o) => ({
+        t: o.table || "—", items: 0, since: 0,
+      }));
+    } else {
     for (let i = 0; i < 12; i++) rows.push({ no: "DL-" + (7712 + i), cust: ["Aishath Rifga", "Mohamed Zayan", "Ibrahim Faisal", "Hawwa Nazly", "Daniel Okafor"][Math.floor(rnd() * 5)], area: ["Maafannu", "Henveiru", "Galolhu", "Hulhumalé Ph.1", "Villimalé"][Math.floor(rnd() * 5)], rider: riders[Math.floor(rnd() * 4)], eta: (6 + Math.floor(rnd() * 34)) + " min", total: Math.round((220 + rnd() * 900) / 5) * 5, status: st[Math.floor(rnd() * 5)] });
-    const qrTables = [];
     for (let i = 1; i <= 6; i++) qrTables.push({ t: "T" + pad(1 + Math.floor(rnd() * 12)), items: 1 + Math.floor(rnd() * 5), since: 1 + Math.floor(rnd() * 14) });
+    }
     const tab = s.tab.del || 0;
     if (tab === 1) {
       return {
@@ -4648,7 +4672,8 @@ class Component extends DCLogic {
         { label: "New delivery", primary: true, go: () => { this.setState({ view: "pos", activeTable: null }); this.toast("Start the order on the floor, then set the channel to Delivery"); } }
       ],
       cols: [{ label: "Order", w: "1fr", mono: 1 }, { label: "Customer", w: "1.4fr" }, { label: "Area", w: "1.1fr" }, { label: "Rider / channel", w: "1.4fr" }, { label: "ETA", w: ".8fr", a: "right", mono: 1 }, { label: "Total", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: "1fr", a: "right" }],
-      rows: rows.map((r) => ({ cells: [{ t: r.no, mono: 1 }, r.cust, r.area, r.rider, { t: r.eta, mono: 1 }, { t: MVRc(r.total), c: "var(--amber-bright)", w: 600 }, { t: r.status.replace("_", " "), chip: this.chip(this.statusTone(r.status)) }] }))
+      rows: rows.map((r) => ({ cells: [{ t: r.no, mono: 1 }, r.cust, r.area, r.rider, { t: r.eta, mono: 1 }, { t: MVRc(r.total), c: "var(--amber-bright)", w: 600 }, { t: r.status.replace("_", " "), chip: this.chip(this.statusTone(r.status)) }] })),
+      empty: "No delivery orders yet. Start one on the floor and set the channel to Delivery."
     };
   }
 
@@ -4683,8 +4708,12 @@ class Component extends DCLogic {
   resBook() {
     const s = this.state, rnd = this.rng(303);
     const rows = (s.res || []).slice();
-    const names = ["Aishath Rifga", "Mohamed Zayan", "Sarah Lindqvist", "Ibrahim Faisal", "Hawwa Nazly", "Daniel Okafor", "Ali Rasheed", "Mariyam Shaza"];
-    for (let i = 0; i < 9; i++) rows.push({ t: pad(18 + Math.floor(i / 3)) + ":" + ["00", "30", "45"][i % 3], name: names[i % names.length], party: 2 + Math.floor(rnd() * 6), table: "T" + pad(1 + Math.floor(rnd() * 12)), status: ["confirmed", "seated", "confirmed", "no_show"][Math.floor(rnd() * 4)], note: ["Window seat", "Birthday — candle on dessert", "Allergy: shellfish", "", "Regular — usual table"][Math.floor(rnd() * 5)] });
+    // Real mode shows only the bookings actually taken on this device; the
+    // seeded evening below is demo colour and never mixes with live data.
+    if (!window.KPOS_REAL) {
+      const names = ["Aishath Rifga", "Mohamed Zayan", "Sarah Lindqvist", "Ibrahim Faisal", "Hawwa Nazly", "Daniel Okafor", "Ali Rasheed", "Mariyam Shaza"];
+      for (let i = 0; i < 9; i++) rows.push({ t: pad(18 + Math.floor(i / 3)) + ":" + ["00", "30", "45"][i % 3], name: names[i % names.length], party: 2 + Math.floor(rnd() * 6), table: "T" + pad(1 + Math.floor(rnd() * 12)), status: ["confirmed", "seated", "confirmed", "no_show"][Math.floor(rnd() * 4)], note: ["Window seat", "Birthday — candle on dessert", "Allergy: shellfish", "", "Regular — usual table"][Math.floor(rnd() * 5)] });
+    }
     const seated = s.seated || {};
     return rows.map((r) => { const k = r.t + "|" + r.name; return seated[k] ? Object.assign({}, r, { status: "seated", table: seated[k] }) : r; });
   }

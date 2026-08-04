@@ -577,7 +577,7 @@
        assets and payroll-staff all start from the real backend — empty for a
        store that hasn't entered them yet, and filled only from actual records
        (via /api/inv and /api/ops). This is what removes the demo dataset. */
-    ["items", "inv", "cats", "batches", "vendors", "purch", "reqs", "disp", "prod"]
+    ["items", "inv", "cats", "batches", "vendors", "purch", "reqs", "disp", "prod", "logs"]
       .forEach(function (k) { if (R && typeof R === "object") R[k] = []; });
     OPEX = []; ASSETS = []; STAFF = [];
     if (REAL.outlet) CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
