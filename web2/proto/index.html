@@ -934,8 +934,45 @@ button[disabled],button:disabled{cursor:not-allowed}
               <div style="display:flex;align-items:center;gap:8px;padding:12px 16px 8px">
                 <div style="width:26px;height:26px;flex:none;border-radius:7px;overflow:hidden;display:grid;place-items:center;background:linear-gradient(135deg,var(--coral),#9A3418);color:#FFF;font-family:'Bricolage Grotesque';font-weight:800;font-size:13px">{{ brandInitial }}</div>
                 <span style="flex:1;font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;color:var(--ink)">{{ brandName }}</span>
+                <button onClick="{{ qrOpenReserve }}" style="display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:99px;padding:6px 12px;background:var(--sur);color:var(--ink2);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="10" height="9" rx="1.5"/><path d="M2 6h10M5 1.5v2M9 1.5v2"/></svg>Reserve</button>
                 <button onClick="{{ qrCallWaiter }}" style="display:flex;align-items:center;gap:5px;border:0;border-radius:99px;padding:6px 13px;background:var(--coralsoft);color:var(--coral);font-size:12px;font-weight:800;cursor:pointer" style-active="transform:scale(.95)"><svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M7 2v1M3.5 6.5a3.5 3.5 0 0 1 7 0c0 3 1 4 1 4h-9s1-1 1-4Z" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.8 12a1.3 1.3 0 0 0 2.4 0" stroke-linecap="round"/></svg>{{ callWaiterLbl }}</button>
               </div>
+
+              <sc-if value="{{ qrReserveOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;inset:0;z-index:40;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;animation:fade .18s">
+                  <div style="width:100%;background:var(--sur);border-radius:20px 20px 0 0;padding:18px 18px 22px;box-shadow:0 -10px 30px -12px rgba(0,0,0,.5);max-height:92%;overflow-y:auto">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                      <span style="font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;color:var(--ink)">Reserve a table</span>
+                      <button onClick="{{ qrCloseReserve }}" style="border:0;background:none;color:var(--ink3);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px">×</button>
+                    </div>
+                    <sc-if value="{{ qrResvSent }}" hint-placeholder-val="{{ false }}">
+                      <div style="text-align:center;padding:22px 8px 10px">
+                        <div style="width:52px;height:52px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;background:var(--coralsoft);color:var(--coral)"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+                        <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:16px;color:var(--ink)">Request sent</div>
+                        <div style="font-size:12.5px;color:var(--ink2);font-weight:600;margin-top:5px;line-height:1.5">The restaurant will confirm your table shortly. You'll get a call on {{ qrResvPhoneEcho }} if anything changes.</div>
+                        <button onClick="{{ qrCloseReserve }}" style="margin-top:16px;width:100%;border:0;border-radius:13px;padding:13px;background:var(--coral);color:var(--on-amber);font-size:14px;font-weight:800;cursor:pointer">Done</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ qrResvForm }}" hint-placeholder-val="{{ true }}">
+                      <div style="font-size:12px;color:var(--ink2);font-weight:600;margin-bottom:12px">Tell us who's coming and when — no table is held until the restaurant confirms.</div>
+                      <input value="{{ qrResvNameV }}" onInput="{{ setQrResvName }}" placeholder="Your name" dir="auto" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 13px;font-size:14px;font-weight:600;background:var(--sur2);color:var(--ink);margin-bottom:9px;outline:none" style-focus="border-color:var(--coral)">
+                      <input value="{{ qrResvPhoneV }}" onInput="{{ setQrResvPhone }}" type="tel" inputmode="tel" placeholder="Phone number" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 13px;font-size:14px;font-weight:600;background:var(--sur2);color:var(--ink);margin-bottom:9px;outline:none" style-focus="border-color:var(--coral)">
+                      <div style="display:flex;gap:9px;margin-bottom:9px">
+                        <input value="{{ qrResvDateV }}" onInput="{{ setQrResvDate }}" type="date" style="flex:1;min-width:0;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 13px;font-size:14px;font-weight:600;background:var(--sur2);color:var(--ink);outline:none">
+                        <input value="{{ qrResvTimeV }}" onInput="{{ setQrResvTime }}" type="time" style="flex:1;min-width:0;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 13px;font-size:14px;font-weight:600;background:var(--sur2);color:var(--ink);outline:none">
+                      </div>
+                      <div style="display:flex;align-items:center;gap:10px;margin-bottom:9px">
+                        <span style="font-size:13px;font-weight:700;color:var(--ink2)">Party size</span>
+                        <button onClick="{{ qrResvPartyMinus }}" style="width:36px;height:36px;border:1px solid var(--line);border-radius:10px;background:var(--sur2);color:var(--ink);font-size:18px;font-weight:800;cursor:pointer">−</button>
+                        <span style="min-width:26px;text-align:center;font-family:'Bricolage Grotesque';font-weight:800;font-size:17px;color:var(--ink);font-variant-numeric:tabular-nums">{{ qrResvPartyV }}</span>
+                        <button onClick="{{ qrResvPartyPlus }}" style="width:36px;height:36px;border:1px solid var(--line);border-radius:10px;background:var(--sur2);color:var(--ink);font-size:18px;font-weight:800;cursor:pointer">+</button>
+                      </div>
+                      <input value="{{ qrResvNoteV }}" onInput="{{ setQrResvNote }}" placeholder="Any request? (window seat, allergies…)" dir="auto" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;padding:12px 13px;font-size:13px;font-weight:600;background:var(--sur2);color:var(--ink);margin-bottom:14px;outline:none" style-focus="border-color:var(--coral)">
+                      <button onClick="{{ qrSubmitReserve }}" style="width:100%;border:0;border-radius:13px;padding:14px;background:var(--coral);color:var(--on-amber);font-size:14px;font-weight:800;cursor:pointer" style-active="transform:scale(.98)">Request booking</button>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-if>
               <div style="display:flex;align-items:flex-start;gap:8px;padding:2px 16px 10px">
                 <div style="flex:1;min-width:0">
                   <div style="font-family:'Bricolage Grotesque';font-weight:800;font-size:21px;color:var(--ink);line-height:1.1">{{ qrGreet }}</div>
@@ -2138,6 +2175,7 @@ if(!saved||!saved.id||!saved.token)return null;return users.find(function(u){ret
       perms:{refunds:[1,1,0,0],discounts:[1,1,0,0],voids:[1,1,0,0],reports:[1,1,0,0],stock:[1,1,1,0]},
       onb:[true,true,true,false,false],wizOpen:false,wizStep:0,
       qrCart:{},qrCust:__ksGuest?(__ksGuestCust?__ksGuestCust.id:null):'r1',qrView:'menu',qrCat:'mains',qrGrp:'',qrSub:'all',qrSel:null,qrQty:1,qrAdd:{},qrNote:'',qrCartL:[],anim:{s:18432,o:214,a:86.13},toast:null,tick:now,menuTick:0,vw:window.innerWidth,cartSheet:false,
+      qrReserveOpen:false,qrResvName:'',qrResvPhone:'',qrResvParty:'2',qrResvDate:'',qrResvTime:'19:30',qrResvNote:'',qrResvSent:false,
       outlet:0,outletMenu:false,
       aiOpen:false,aiStage:0,aiPct:0,aiStatusIx:0,aiSel:{},
       outlets:[{name:'Kashikeyo Café',area:'Malé · Majeedhee Magu',sales:18432,orders:214,st:'open'},{name:'Kashikeyo Hulhumalé',area:'Hulhumalé · Central Park',sales:12680,orders:141,st:'open'},{name:'Kashikeyo Kitchen',area:'Malé · Cloud kitchen',sales:8940,orders:97,st:'busy'}],
@@ -2582,6 +2620,9 @@ const _hc=this.hotCats();let station='drinks';for(const l of s.cart){const m=thi
   qrLineDec(lid){this.setState({qrCartL:this.state.qrCartL.reduce((acc,l)=>{if(l.lid!==lid){acc.push(l);}else if(l.qty>1){acc.push(this._qrReqty(l,l.qty-1));}return acc;},[])});}
   qrReorder(id){const m=this.MENU.find(x=>x.id===id);if(!m)return;const lid='l'+Date.now()+Math.random().toString(36).slice(2,5);const l={lid,id:m.id,name:this.itemName(m),addons:[],note:'',qty:1,lineTot:m.price};this.setState({qrCartL:this.state.qrCartL.concat([l]),qrTab:'menu',qrView:'summary'});this.toast(this.itemName(m)+' · '+this.t('addToOrder'));}
   qrCallWaiter(){var s=this.state;this.toast(this.t('waiterCalled'));if(s.guestMode&&s.guest){try{fetch('/p/'+encodeURIComponent(s.guest.slug)+'/call',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({table:s.guest.table||'',custId:(s.guest.customer&&s.guest.customer.id)||'',storeId:s.guest.storeId||''})}).catch(function(){});}catch(e){}}}
+  qrOpenReserve(){var s=this.state,c=(s.guest&&s.guest.customer)||null;this.setState({qrReserveOpen:true,qrResvSent:false,qrResvName:(c&&c.name)||this.state.qrResvName||'',qrResvPhone:(c&&c.phone)||this.state.qrResvPhone||''});}
+  qrCloseReserve(){this.setState({qrReserveOpen:false});}
+  qrSubmitReserve(){var me=this,s=this.state;var name=(s.qrResvName||'').trim(),phone=(s.qrResvPhone||'').trim(),time=(s.qrResvTime||'').trim();if(!name||!phone){this.toast('Name and phone are required');return;}if(!time){this.toast('Pick a time');return;}if(!(s.guestMode&&s.guest)){this.toast('Open the menu from a store QR to book');return;}var body={name:name,phone:phone,party:parseInt(s.qrResvParty,10)||2,date:s.qrResvDate||'',time:time,note:(s.qrResvNote||'').trim(),storeId:(s.guest&&s.guest.storeId)||'',custId:(s.guest&&s.guest.customer&&s.guest.customer.id)||''};try{fetch('/p/'+encodeURIComponent(s.guest.slug)+'/reserve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.error){me.toast(j.error);}else{me.setState({qrResvSent:true});}}).catch(function(){me.toast('Could not send — check your connection');});}catch(e){}}
   qrOrderNow(){var s=this.state,me=this;if(!s.qrCartL.length)return;
     if(s.guestMode&&s.guest){
       var gitems=s.qrCartL.map(function(l){return {pid:l.id,qty:l.qty,addons:(l.addons||[]).map(function(a){return {id:a.id,qty:a.qty};}),note:l.note||''};});
@@ -2633,6 +2674,13 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     const ordRows=custOrders.map(o=>{const cur=STAGES[o.stage];const settled=o.stage>=4;const segs=STAGES.map((st,i)=>({bg:i<=o.stage?cur.c:'var(--sur2)'}));return {no:o.no,when:o.when,typeLbl:o.typeLbl||'',hasType:!!o.typeLbl,totalF:o.totalF,sum:o.sum,segs,statusLbl:settled?me.t('settledTag'):me.t(cur.k),statusC:cur.c,live:!settled};});
     return {qrOnMenu:s.qrTab!=='mytab',qrOnTab:s.qrTab==='mytab',qrToMenu:()=>me.setState({qrTab:'menu'}),qrToTab:()=>me.setState({qrTab:'mytab'}),
       qrShowStatus:!s.guestMode,qrShowStaff:!s.guestMode,
+      qrOpenReserve:()=>me.qrOpenReserve(),qrCloseReserve:()=>me.qrCloseReserve(),qrReserveOpen:!!s.qrReserveOpen,
+      qrResvSent:!!s.qrResvSent,qrResvForm:!s.qrResvSent,qrResvPhoneEcho:(s.qrResvPhone||'your phone'),
+      qrResvNameV:s.qrResvName||'',qrResvPhoneV:s.qrResvPhone||'',qrResvDateV:s.qrResvDate||'',qrResvTimeV:s.qrResvTime||'19:30',qrResvPartyV:String(s.qrResvParty||'2'),qrResvNoteV:s.qrResvNote||'',
+      setQrResvName:e=>me.setState({qrResvName:e.target.value}),setQrResvPhone:e=>me.setState({qrResvPhone:e.target.value}),
+      setQrResvDate:e=>me.setState({qrResvDate:e.target.value}),setQrResvTime:e=>me.setState({qrResvTime:e.target.value}),setQrResvNote:e=>me.setState({qrResvNote:e.target.value}),
+      qrResvPartyMinus:()=>me.setState({qrResvParty:String(Math.max(1,(parseInt(s.qrResvParty,10)||2)-1))}),qrResvPartyPlus:()=>me.setState({qrResvParty:String(Math.min(50,(parseInt(s.qrResvParty,10)||2)+1))}),
+      qrSubmitReserve:()=>me.qrSubmitReserve(),
       qrPageStyle:s.guestMode?'height:100%;overflow-y:auto;padding:0;animation:fade .25s':'height:100%;overflow-y:auto;padding:18px 24px;animation:fade .25s',
       qrCenterStyle:s.guestMode?'display:block;height:100%':'display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;justify-content:center',
       qrBezelStyle:s.guestMode?'width:100%;flex:none;background:transparent;border-radius:0;padding:0;box-shadow:none;height:100%':'width:332px;flex:none;background:var(--sur2);border-radius:46px;padding:11px;box-shadow:var(--shadow)',
