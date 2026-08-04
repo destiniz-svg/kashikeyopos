@@ -205,6 +205,7 @@ input{font-family:inherit}
 .kt-serve.ready{background:var(--green);color:#fff;border-color:var(--green)}
 .kt-serve:hover{color:var(--text)}
 .nav-badge{margin-left:auto;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;background:var(--amber);color:var(--on-amber);border-radius:10px;padding:1px 7px;min-width:18px;text-align:center}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:200;background:var(--bg-3);color:var(--text);border:1px solid var(--line-3);border-radius:11px;padding:11px 18px;font-size:12.5px;font-weight:700;box-shadow:var(--shadow-lg);animation:kpop .2s;display:none}
 
 /* ── Customers & credit ──────────────────────────────────────────────────── */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:2px 0 18px}
@@ -294,6 +295,7 @@ input{font-family:inherit}
 </style>
 
 <div id="root"></div>
+<div id="toast"></div>
 
 <script>
 "use strict";
@@ -392,7 +394,9 @@ var VIEW = {
   Cashier: only(["pos","reservations","customers","orders","delivery","kds"]),
   KitchenManager: only(["kds","pos","production","recipes","requests","dispatches","inventory","counts","batches","menu","reports","sync","staff","assets"]),
   StoreKeeper: only(["purchases","dispatches","requests","inventory","counts","batches","vendors","reports","sync","assets"]),
-  Accountant: only(ALLMOD)
+  /* Read-everything, write-nothing — but the POS terminal is masked (they never
+     ring sales), matching ROLES.Accountant.perms.pos = {v:0} in the design. */
+  Accountant: only(ALLMOD.filter(function(k){ return k !== "pos"; }))
 };
 var ROLE = {
   SuperAdmin:{label:"Super Admin",color:"#a88ad9"},
@@ -589,6 +593,8 @@ function renderShell(){
            : (S.view==="orders") ? ordersView(out)
            : (S.view==="inventory") ? inventoryView()
            : (S.view==="chain") ? chainView()
+           : (S.view==="accounting") ? accountingView(out)
+           : (S.view==="reports") ? reportsView(out)
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -802,6 +808,31 @@ function pad2(n){ return (n<10?"0":"")+n; }
 function rng(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; var t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
 var CHAN = { dine_in:"Dine-in", qr:"QR table", takeaway:"Takeaway", delivery:"Delivery" };
 var TENDER = { cash:"Cash", card:"Card", wallet:"BML Pay", credit:"Customer credit" };
+/* Chart of accounts (kashikeyo-data.js). Sales post Dr <tender> Cr revenue +
+   GST payable + service-charge payable — double entry, always balanced. */
+var ACCOUNTS = {
+  "1010":{name:"Cash on hand",type:"Asset"}, "1020":{name:"Bank — BML MVR",type:"Asset"},
+  "1030":{name:"Card settlement receivable",type:"Asset"}, "1040":{name:"Customer credit receivable",type:"Asset"},
+  "2200":{name:"GST payable (GGST/TGST)",type:"Liability"}, "2300":{name:"Service charge payable",type:"Liability"},
+  "4000":{name:"Food & beverage revenue",type:"Revenue"}
+};
+var TENDER_ACC = { cash:"1010", card:"1030", wallet:"1020", credit:"1040" };
+/* One place computes the day's books from the closed tickets, so Orders,
+   Accounting and Reports all reconcile to the same figures. */
+function dayLedger(out){
+  var orders = (S.ordersFor===out.id && S.orders) ? S.orders : genOrders(out);
+  var closed = orders.filter(function(o){ return o.status==="closed" && !S.refunded[o.no]; });
+  var acc = {}; function add(c,dr,cr){ if(!acc[c]) acc[c]={dr:0,cr:0}; acc[c].dr+=dr; acc[c].cr+=cr; }
+  var byTender={cash:0,card:0,wallet:0,credit:0}, gross=0,net=0,svc=0,gst=0, entries=[];
+  closed.forEach(function(o){
+    var T = totals(o.lines,out), ta = TENDER_ACC[o.tender];
+    add(ta,T.total,0); add("4000",0,T.sub); add("2300",0,T.svc); add("2200",0,T.tax);
+    byTender[o.tender]+=T.total; gross+=T.total; net+=T.sub; svc+=T.svc; gst+=T.tax;
+    entries.push({no:o.no,tender:o.tender,ta:ta,sub:T.sub,svc:T.svc,tax:T.tax,total:T.total});
+  });
+  var totDr=0,totCr=0; Object.keys(acc).forEach(function(c){ totDr+=acc[c].dr; totCr+=acc[c].cr; });
+  return { closed:closed, acc:acc, byTender:byTender, gross:gross, net:net, svc:svc, gst:gst, entries:entries, totDr:totDr, totCr:totCr };
+}
 function genOrders(out){
   var r = rng(4242 + out.id);
   var chans = ["dine_in","dine_in","dine_in","qr","takeaway","delivery"];
@@ -969,6 +1000,75 @@ function chainView(){
   h += '</div>';
   return h;
 }
+function accountingView(out){
+  var L = dayLedger(out);
+  var balanced = Math.abs(L.totDr - L.totCr) < 0.005;
+  var h = '<div class="floor-title" style="margin-bottom:2px">Accounting flow</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Every closed ticket posts a double-entry journal · '+esc(out.name)+' · today</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Journal entries</div><div class="stat-v">'+L.closed.length+'</div><div class="stat-s">one per closed ticket</div></div>'
+     + '<div class="stat"><div class="stat-l">Total debits</div><div class="stat-v">'+money(L.totDr)+'</div><div class="stat-s">money & receivables in</div></div>'
+     + '<div class="stat"><div class="stat-l">Total credits</div><div class="stat-v" style="color:'+(balanced?'var(--green-soft)':'var(--red-bright)')+'">'+money(L.totCr)+'</div><div class="stat-s">'+(balanced?'✓ balanced':'⚠ out of balance')+'</div></div></div>';
+  // Trial balance
+  h += '<div class="sect" style="margin:6px 0 10px;color:var(--text-dim);font-size:11px">Trial balance — today\'s postings</div>';
+  h += '<div class="ctable" style="margin-bottom:20px"><div class="orow head" style="grid-template-columns:70px 1fr 100px 120px 120px"><span>Code</span><span>Account</span><span>Type</span><span class="oright">Debit</span><span class="oright">Credit</span></div>';
+  ["1010","1020","1030","1040","4000","2300","2200"].forEach(function(c){
+    var a = L.acc[c]; if(!a || (!a.dr && !a.cr)) return;
+    h += '<div class="orow" style="grid-template-columns:70px 1fr 100px 120px 120px;cursor:default">'
+       + '<span class="mono" style="font-size:11.5px">'+c+'</span><span class="cname">'+esc(ACCOUNTS[c].name)+'</span>'
+       + '<span class="dim" style="font-size:11px">'+esc(ACCOUNTS[c].type)+'</span>'
+       + '<span class="oright">'+(a.dr?money(a.dr):'—')+'</span><span class="oright">'+(a.cr?money(a.cr):'—')+'</span></div>';
+  });
+  h += '<div class="orow" style="grid-template-columns:70px 1fr 100px 120px 120px;background:var(--bg-0);font-weight:800;cursor:default">'
+     + '<span></span><span>Totals</span><span></span><span class="oright">'+money(L.totDr)+'</span><span class="oright" style="color:'+(balanced?'var(--green-soft)':'var(--red-bright)')+'">'+money(L.totCr)+'</span></div>';
+  h += '</div>';
+  // Journal entries
+  h += '<div class="sect" style="margin:0 0 10px;color:var(--text-dim);font-size:11px">Journal — most recent postings</div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:120px 1fr 110px"><span>Ticket</span><span>Posting</span><span class="oright">Amount</span></div>';
+  L.entries.slice(0,10).forEach(function(e){
+    h += '<div class="orow" style="grid-template-columns:120px 1fr 110px;cursor:default">'
+       + '<span class="ono">'+esc(e.no)+'</span>'
+       + '<span style="font-size:11px;color:var(--text-dim)">Dr <b style="color:var(--text)">'+e.ta+'</b> '+money(e.total)+' · Cr <b style="color:var(--text)">4000</b> '+money(e.sub)+(out.sc?' · Cr <b style="color:var(--text)">2300</b> '+money(e.svc):'')+' · Cr <b style="color:var(--text)">2200</b> '+money(e.tax)+'</span>'
+       + '<span class="oright">'+money(e.total)+'</span></div>';
+  });
+  h += '</div>';
+  return h;
+}
+function reportsView(out){
+  var L = dayLedger(out);
+  var taxable = L.net + L.svc; // GST base = goods + service
+  var h = '<div class="floor-title" style="margin-bottom:2px">Reports & exports</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">GST return, Z-report and cost of sales · '+esc(out.name)+' · today</div>';
+  h += '<div class="kds-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">';
+  // GST return card
+  h += '<div class="kt" style="animation:none"><div class="kt-head"><div><div class="kt-tn" style="font-family:Inter;font-size:13.5px">GST return</div>'
+     + '<div class="kt-meta">'+(out.rate===16?'TGST':'GGST')+' · rate '+out.rate+'% · this period</div></div>'
+     + '<button class="ost open" data-export="gst" style="cursor:pointer">Export</button></div><div style="padding:12px 15px">'
+     + rrow("Taxable sales (goods + service)", money(taxable))
+     + rrow("Output GST @ "+out.rate+"%", money(L.gst))
+     + rrow("Input GST (purchases)", "0.00")
+     + rrowB("Net GST payable", money(L.gst), "var(--amber-bright)")
+     + '<div class="det-note" style="margin-top:12px">Extracted from GST-inclusive takings, posted to 2200. Round once, per figure.</div></div></div>';
+  // Z-report card
+  h += '<div class="kt" style="animation:none"><div class="kt-head"><div><div class="kt-tn" style="font-family:Inter;font-size:13.5px">Z-report</div>'
+     + '<div class="kt-meta">'+esc(out.name)+' · evening shift</div></div>'
+     + '<button class="ost open" data-export="z" style="cursor:pointer">Export</button></div><div style="padding:12px 15px">'
+     + rrow("Gross sales", money(L.gross))
+     + rrow("Net revenue (4000)", money(L.net))
+     + (out.sc?rrow("Service charge (2300)", money(L.svc)):"")
+     + rrow("GST (2200)", money(L.gst))
+     + '<div class="cbar" style="margin:10px 0"></div>'
+     + rrow("Cash (1010)", money(L.byTender.cash))
+     + rrow("Card (1030)", money(L.byTender.card))
+     + rrow("BML Pay (1020)", money(L.byTender.wallet))
+     + rrow("Customer credit (1040)", money(L.byTender.credit))
+     + rrowB("Total banked + receivable", money(L.gross), "var(--text)")
+     + '</div></div>';
+  h += '</div>';
+  return h;
+}
+function rrow(l,v){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);padding:3px 0"><span>'+esc(l)+'</span><span class="mono">'+v+'</span></div>'; }
+function rrowB(l,v,c){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;padding:7px 0 2px;margin-top:5px;border-top:1px solid var(--line-2)"><span>'+esc(l)+'</span><span class="mono" style="color:'+(c||'var(--text)')+'">'+v+'</span></div>'; }
 function moduleView(m, u){
   return '<div class="mod"><div class="floor-title">'+esc(m.label)+'<span class="pill">'+esc(m.group)+'</span></div>'
     + '<div class="mod-blurb">'+esc(BLURB[m.key]||"")+'</div>'
@@ -1045,7 +1145,16 @@ root.addEventListener("click", function(e){
   if(d.refund){ S.refunded[d.refund] = true; render(); return; }
   // ── Inventory ──
   if(d.invtab){ S.invTab = Number(d.invtab); render(); return; }
+  // ── Reports export ──
+  if(d.export){ toast(d.export==="gst" ? "GST return exported — kashikeyo-gst-return.csv" : "Z-report exported — kashikeyo-z-report.csv"); return; }
 });
+var toastTimer = 0;
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg; t.style.display = "block"; t.style.animation = "none"; void t.offsetWidth; t.style.animation = "kpop .2s";
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function(){ t.style.display = "none"; }, 2600);
+}
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
   if(/^[0-9]$/.test(e.key)){ if(S.entry.length<4){ S.entry+=e.key; render(); tryPin(); } }
