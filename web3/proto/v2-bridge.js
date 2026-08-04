@@ -168,10 +168,36 @@
     });
   }
 
+  // ── Public: upsert a reservation entity (approve/decline/seat from the till) ─
+  // The till reads reservations from KPOS_REAL.reservations and writes status
+  // changes back through this. The entity id is stable, so approving then
+  // seating the same booking upserts one row; a distinct opId per status leg
+  // lets the server record each transition.
+  function pushReservation(resv) {
+    if (!token() || !resv || !resv.id) return;
+    var id = String(resv.id);
+    var data = {
+      id: id, storeId: resv.storeId || null, status: resv.status || "pending",
+      source: resv.source || "till", name: resv.name || "Guest", phone: resv.phone || "",
+      party: num(resv.party) || 2, time: resv.time || "", date: resv.date || "",
+      note: resv.note || "", table: resv.table || "", custId: resv.custId || null,
+      t: num(resv.at) || Date.now(),
+    };
+    var op = { id: "resv_" + id + "_" + (resv.status || "x") + "_" + Date.now(), lamport: Date.now(),
+      state: "queued", attempts: 0, total: 0,
+      body: { ops: [{ opId: "resv_" + id + "_" + (resv.status || "x") + "_" + Date.now(),
+        puts: [{ kind: "reservations", id: id, data: data }] }] } };
+    putOp(op).then(flush).catch(function () {
+      var tk = token(); if (!tk) return;
+      fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify(op.body) }).catch(function () {});
+    });
+  }
+
   function queuedCount() { return allOps().then(function (o) { return o.filter(function (x) { return x.state !== "sent"; }).length; }); }
 
   window.__v2PushClock = pushClock;
   window.__v2PushSale = pushSale;
+  window.__v2PushReservation = pushReservation;
   window.__v2Outbox = { flush: flush, queued: queuedCount };
 
   // Drain triggers: reconnect, tab focus, and a slow safety-net interval.

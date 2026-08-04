@@ -2646,6 +2646,33 @@ app.post("/p/:slug/call", pubThrottle(20, "call"), wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/* Guest table reservation. A customer books from the QR portal; the request
+   lands as a `reservations` entity with status "pending" and pokes SSE, so it
+   shows up on the till's Reservations inbox for a staff Approve/Decline exactly
+   the way a waiter call does. No table is held until staff confirm. */
+app.post("/p/:slug/reserve", pubThrottle(10, "reserve"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const b = req.body || {};
+  const storeId = cleanStoreId(b.storeId || req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
+  const name = String(b.name || "").trim().slice(0, 80);
+  const phone = String(b.phone || "").trim().slice(0, 30);
+  const party = Math.max(1, Math.min(50, Math.round(Number(b.party) || 0) || 2));
+  const time = String(b.time || "").trim().slice(0, 20);   // "19:30"
+  const date = String(b.date || "").trim().slice(0, 20);   // "2026-08-05" (blank = tonight)
+  const note = String(b.note || "").trim().slice(0, 200);
+  if (!name || !phone) return res.status(400).json({ error: "Name and phone are required" });
+  if (!time) return res.status(400).json({ error: "Pick a time" });
+  const custId = b.custId ? String(b.custId).slice(0, 60) : null;
+  const resv = { id: uid(), storeId, status: "pending", source: "portal",
+    name, phone, party, time, date, note, custId, table: "", t: Date.now() };
+  const r = await withOrg(org.id, (client) => client.query(
+    "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'reservations',$2,$3) RETURNING rowver",
+    [org.id, resv.id, JSON.stringify(resv)]));
+  poke(org.id, Number(r.rows[0].rowver));
+  res.json({ ok: true, id: resv.id });
+}));
+
 app.get("/api/health", wrap(async (req, res) => {
   const dbEnv = { databaseUrl: !!databaseUrl, pgEnv: hasPgEnv };
   try { await pool.query("SELECT 1"); res.json({ ok: true, service: "kashikeyo-cloud", db: true, dbEnv }); }
@@ -3758,6 +3785,19 @@ if (fs.existsSync(protoFile)) {
           .filter((d) => (Number(d.in) || 0) >= t0)
           .map((d) => ({ id: d.id, staff: d.staffId, outlet: Number(d.outlet) || 3,
             in: Number(d.in) || 0, out: Number(d.out) || 0, late: Number(d.late) || 0 }));
+        // Reservations booked from the guest portal (or the till) — the store's
+        // real reservation entities, newest first. The till's Reservations inbox
+        // approves/declines these and the floor reflects confirmed ones. Cancelled
+        // and past declined rows are dropped from the projection.
+        const resvRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='reservations' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 100", [orgId])).rows;
+        const reservations = resvRows.map((r) => {
+          const d = r.data || {};
+          return { id: r.id, status: d.status || "pending", source: d.source || "portal",
+            name: d.name || "Guest", phone: d.phone || "", party: Number(d.party) || 2,
+            time: d.time || "", date: d.date || "", note: d.note || "", table: d.table || "",
+            custId: d.custId || null, at: Number(d.t) || 0 };
+        }).filter((r) => r.status !== "declined" && r.status !== "cancelled");
         // Real outlets — the org's own stores (a company can run several).
         // The primary/first store keeps outlet id 3, which is the terminal's
         // default outletId and the id the POS stat couplings key off, so the
@@ -3788,7 +3828,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), customers, staff, clock,
+          orders: orders.slice(0, 200), customers, staff, clock, reservations,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });

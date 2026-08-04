@@ -2334,24 +2334,30 @@ class Component extends DCLogic {
         return { token: token, label: this.slotLabel(token), meta: items + (items === 1 ? " item · " : " items · ") + MVRc(this.totals(t).total) }; })
       .sort((a, b) => a.token < b.token ? -1 : 1);
     const nT = o.tables || 0;
+    // Confirmed reservations assigned to a table show that tile as reserved on
+    // every device, so an approved booking is reflected on the floor end-to-end.
+    const resByTable = {};
+    if (window.KPOS_REAL) this.resBook().forEach((r) => { if (r.status === "confirmed" && r.table) resByTable[String(r.table)] = r; });
     const tables = [];
     for (let i = 1; i <= nT; i++) {
       const t = s.tickets[s.outletId + ":" + i];
-      const st = t ? t.status : "free";
+      const label = "T" + pad(i);
+      const resv = !t ? resByTable[label] : null;                 // a confirmed booking holding this table
+      const st = t ? t.status : (resv ? "reserved" : "free");
       const on = s.activeTable === i;
       const tot = t && t.lines.length ? this.totals(t).total : 0;
       const accent = st === "occupied" ? "var(--amber)" : st === "reserved" ? "var(--blue)" : "var(--line-3)";
       tables.push({
-        label: "T" + pad(i),
-        go: () => { if (this._lp) { this._lp = 0; return; } this.setState({ activeTable: i, activeSplit: 0 }); if (!t) this.ensure(i); },
-        hint: st === "free" ? "Tap to open · hold or right-click for table actions" : "Tap to open T" + pad(i) + " · hold or right-click for table actions",
+        label: label,
+        go: () => { if (this._lp) { this._lp = 0; return; } if (resv) { this.setState({ modal: { kind: "resv", id: resv.id } }); return; } this.setState({ activeTable: i, activeSplit: 0 }); if (!t) this.ensure(i); },
+        hint: resv ? (resv.name + " · " + resv.party + " covers · tap to seat") : st === "free" ? "Tap to open · hold or right-click for table actions" : "Tap to open T" + pad(i) + " · hold or right-click for table actions",
         ctx: (e) => { e.preventDefault(); this.tableMenu(i); },
         press: () => { clearTimeout(this._lpT); this._lpT = setTimeout(() => { this._lp = 1; this.tableMenu(i); }, 420); },
         release: () => { clearTimeout(this._lpT); },
         style: "display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:" + (on ? "rgba(242,164,58,.13)" : "var(--bg-1)") + ";border:1px solid " + (on ? "var(--amber)" : "var(--line)") + ";border-left:3px solid " + accent + ";transition:.12s",
         chip: "font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (st === "occupied" ? "rgba(242,164,58,.14);color:var(--amber-bright)" : st === "reserved" ? "rgba(103,162,217,.14);color:var(--blue-bright)" : "rgba(255,255,255,.04);color:var(--text-faint)"),
         chipText: st === "occupied" ? "Open" : st === "reserved" ? "Res" : "Free",
-        meta: st === "reserved" ? t.resName + " · " + t.resAt
+        meta: st === "reserved" ? (t ? (t.resName + " · " + t.resAt) : (resv.name + " · " + resv.t))
           : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
           : (i % 3 === 0 ? "4 seats" : "2 seats"),
         total: tot ? MVRc(tot) : "",
@@ -2618,7 +2624,7 @@ class Component extends DCLogic {
       payGridStyle: this.effBp() === "m" ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
       mPay: m.kind === "pay", mNote: m.kind === "note", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
       mKot: m.kind === "kot",
-      mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm",
+      mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm" || m.kind === "resv",
       mLock: m.kind === "lock",
       mDetail: ["outletDetail", "user", "customer", "dish", "item", "info"].indexOf(m.kind) >= 0,
       mReceipt: m.kind === "receipt" || m.kind === "z" || m.kind === "settled",
@@ -2889,6 +2895,28 @@ class Component extends DCLogic {
           head: a.head || "",
           headStyle: a.head ? "display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none"
         }))
+      };
+    }
+
+    if (m.kind === "resv") {
+      const r = this.resBook().find((x) => x.id === m.id);
+      const btn = "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px";
+      if (!r) return { modalTitle: "Reservation", modalSub: "This booking is no longer in the book", moreActions: [] };
+      const acts = [];
+      if (r.status === "pending") {
+        acts.push({ label: "Approve — hold a table", sub: "Confirm and assign the smallest free table that fits " + r.party, go: () => this.resAct(r.id, "approve") });
+        acts.push({ label: "Decline", sub: "Turn this request down — the guest's portal shows it declined", go: () => this.resAct(r.id, "decline") });
+      } else if (r.status === "confirmed") {
+        acts.push({ label: "Seat now — open the ticket", sub: "Seat on " + (r.table || "a free table") + " and open their order with covers preset", go: () => this.resAct(r.id, "seat") });
+        acts.push({ label: "No-show", sub: "They didn't arrive — frees the held table", go: () => this.resAct(r.id, "noshow") });
+        acts.push({ label: "Cancel booking", sub: "Withdraw this reservation", go: () => this.resAct(r.id, "decline") });
+      } else if (r.status === "seated") {
+        acts.push({ label: "Open their ticket", sub: "Go to " + (r.table || "the table"), go: () => { const num = Number(String(r.table).replace(/^T/, "")); if (num) this.setState({ activeTable: num, view: "pos", modal: null }); else this.setState({ modal: null }); } });
+      }
+      return {
+        modalTitle: r.name + " · " + r.party + " cover" + (r.party === 1 ? "" : "s"),
+        modalSub: (r.t || "—") + (r.date ? " · " + r.date : "") + (r.phone ? " · " + r.phone : "") + (r.source === "portal" ? " · from QR portal" : "") + (r.note ? " · " + r.note : ""),
+        moreActions: acts.map((a) => ({ label: a.label, sub: a.sub, style: btn, go: () => { this.setState({ modal: null }); setTimeout(a.go, 0); } }))
       };
     }
 
@@ -5020,24 +5048,94 @@ class Component extends DCLogic {
   // Reservations view and the floor summary, so they can never disagree.
   resBook() {
     const s = this.state, rnd = this.rng(303);
-    const rows = (s.res || []).slice();
-    // Real mode shows only the bookings actually taken on this device; the
-    // seeded evening below is demo colour and never mixes with live data.
-    if (!window.KPOS_REAL) {
-      const names = ["Aishath Rifga", "Mohamed Zayan", "Sarah Lindqvist", "Ibrahim Faisal", "Hawwa Nazly", "Daniel Okafor", "Ali Rasheed", "Mariyam Shaza"];
-      for (let i = 0; i < 9; i++) rows.push({ t: pad(18 + Math.floor(i / 3)) + ":" + ["00", "30", "45"][i % 3], name: names[i % names.length], party: 2 + Math.floor(rnd() * 6), table: "T" + pad(1 + Math.floor(rnd() * 12)), status: ["confirmed", "seated", "confirmed", "no_show"][Math.floor(rnd() * 4)], note: ["Window seat", "Birthday — candle on dessert", "Allergy: shellfish", "", "Regular — usual table"][Math.floor(rnd() * 5)] });
+    // Real mode: the store's actual reservations (guest-portal bookings + till
+    // ones), with any not-yet-synced status/table change from this device laid
+    // on top (state.resPatch), so an Approve feels instant and survives the poll.
+    if (window.KPOS_REAL) {
+      const patch = s.resPatch || {};
+      return (window.KPOS_REAL.reservations || []).map((r) => {
+        const o = patch[r.id] || {};
+        return { id: r.id, t: r.time, date: r.date, name: r.name, phone: r.phone,
+          party: r.party, table: o.table != null ? o.table : r.table,
+          status: o.status || r.status, note: r.note, source: r.source, real: true };
+      }).filter((r) => r.status !== "declined" && r.status !== "cancelled")
+        .sort((a, b) => (String(a.t) < String(b.t) ? -1 : 1));
     }
+    const rows = (s.res || []).slice();
+    const names = ["Aishath Rifga", "Mohamed Zayan", "Sarah Lindqvist", "Ibrahim Faisal", "Hawwa Nazly", "Daniel Okafor", "Ali Rasheed", "Mariyam Shaza"];
+    for (let i = 0; i < 9; i++) rows.push({ t: pad(18 + Math.floor(i / 3)) + ":" + ["00", "30", "45"][i % 3], name: names[i % names.length], party: 2 + Math.floor(rnd() * 6), table: "T" + pad(1 + Math.floor(rnd() * 12)), status: ["confirmed", "seated", "confirmed", "no_show"][Math.floor(rnd() * 4)], note: ["Window seat", "Birthday — candle on dessert", "Allergy: shellfish", "", "Regular — usual table"][Math.floor(rnd() * 5)] });
     const seated = s.seated || {};
     return rows.map((r) => { const k = r.t + "|" + r.name; return seated[k] ? Object.assign({}, r, { status: "seated", table: seated[k] }) : r; });
   }
+  // Free tables that seat the party, smallest-fit first — used to auto-assign a
+  // table when a booking is confirmed or seated.
+  freeTablesFor(party) {
+    const s = this.state, o = this.outlet(), nT = o.tables || 0, out = [];
+    const booked = {};
+    if (window.KPOS_REAL) this.resBook().forEach((r) => { if ((r.status === "confirmed" || r.status === "seated") && this.isTableSlot(String(r.table).replace(/^T/, ""))) booked[String(r.table)] = 1; });
+    for (let i = 1; i <= nT; i++) {
+      const occupied = !!s.tickets[s.outletId + ":" + i];
+      const label = "T" + pad(i);
+      if (!occupied && !booked[label]) out.push(label);
+    }
+    return out;
+  }
+  // Approve / decline / seat / no-show a real reservation, writing the status
+  // back through the sync bridge and patching local state so the change shows
+  // at once. Approving auto-assigns the smallest free table that fits.
+  resAct(id, action) {
+    const s = this.state;
+    const cur = (window.KPOS_REAL && window.KPOS_REAL.reservations || []).find((r) => r.id === id);
+    const patchCur = (s.resPatch || {})[id] || {};
+    const base = Object.assign({}, cur, patchCur);
+    if (!cur) return;
+    let status = base.status, table = base.table || "";
+    if (action === "approve") { status = "confirmed"; if (!table) { const f = this.freeTablesFor(base.party); table = f[0] || ""; } }
+    else if (action === "decline") status = "declined";
+    else if (action === "noshow") status = "no_show";
+    else if (action === "seat") {
+      status = "seated";
+      if (!table) { const f = this.freeTablesFor(base.party); table = f[0] || ""; }
+    }
+    const resPatch = Object.assign({}, s.resPatch || {}); resPatch[id] = { status: status, table: table };
+    this.setState({ resPatch: resPatch, modal: null });
+    if (window.__v2PushReservation) window.__v2PushReservation({
+      id: id, storeId: cur.storeId, status: status, source: cur.source, name: cur.name,
+      phone: cur.phone, party: cur.party, time: cur.time, date: cur.date, note: cur.note,
+      table: table, custId: cur.custId, at: cur.at,
+    });
+    const label = { approve: "Confirmed", decline: "Declined", noshow: "Marked no-show", seat: "Seated" }[action] || "Updated";
+    this.toast(label + " · " + base.name + (table && (action === "approve" || action === "seat") ? " · " + table : ""));
+    // Seating opens the ticket on the assigned table with the covers preset.
+    if (action === "seat" && this.isTableSlot(String(table).replace(/^T/, ""))) {
+      const num = Number(String(table).replace(/^T/, ""));
+      this.mutate(num, (t) => { t.party = base.party; t.status = "occupied"; if (base.note) t.resNote = base.note; });
+      this.setState({ activeTable: num, activeSplit: 0, view: "pos" });
+    }
+  }
   g_reservations() {
-    const rows = this.resBook();
+    const s = this.state, tab = s.tab_resv || 0;
+    const all = this.resBook();
+    const real = !!window.KPOS_REAL;
+    const pending = all.filter((r) => r.status === "pending");
+    const list = tab === 0 ? all : tab === 1 ? pending : all.filter((r) => r.status === "confirmed" || r.status === "seated");
     return {
-      guideTitle: "Tonight's book", guide: ["Take the booking with party size and any note the kitchen needs", "The table is held but no ticket exists yet", "Tap the row to seat the guest — that is what opens the order", "Walk-ins take the first free table that fits the party"],
+      tabs: real ? [
+        { label: "All", count: all.length, on: tab === 0, pick: () => this.setState({ tab_resv: 0 }) },
+        { label: "Pending", count: pending.length, on: tab === 1, pick: () => this.setState({ tab_resv: 1 }) },
+        { label: "Confirmed", on: tab === 2, pick: () => this.setState({ tab_resv: 2 }) },
+      ] : undefined,
+      guideTitle: "Tonight's book", guide: real
+        ? ["Guests book from the QR portal — new requests land here as Pending", "Approve to hold a table, Decline to turn it down; the guest sees the result", "Seat when they arrive — that opens the ticket on their table", "Walk-ins take the first free table that fits the party"]
+        : ["Take the booking with party size and any note the kitchen needs", "The table is held but no ticket exists yet", "Tap the row to seat the guest — that is what opens the order", "Walk-ins take the first free table that fits the party"],
       actions: [{ label: "Walk-in", go: () => this.seatWalkIn() }, { label: "New reservation", primary: true, go: () => this.openForm("res") }],
-      cols: [{ label: "Time", w: ".7fr", mono: 1 }, { label: "Guest", w: "1.6fr" }, { label: "Party", w: ".6fr", a: "right", mono: 1 }, { label: "Table", w: ".7fr", mono: 1 }, { label: "Note", w: "2fr" }, { label: "Status", w: ".9fr", a: "right" }],
-      rows: rows.map((r) => ({ go: () => this.seatRes(r), cells: [{ t: r.t, mono: 1 }, r.name, String(r.party), { t: r.table, mono: 1 }, { t: r.note || "—", c: r.note ? "var(--amber-bright)" : "var(--text-faint)" }, { t: r.status.replace("_", " "), chip: this.chip(this.statusTone(r.status)) }] })),
-      notes: [["Seating a booking", "Tap any confirmed row to seat it. The guest goes to their held table, or the first free one that fits the party; the reservation flips to seated and the ticket opens with their covers and note already on it."]]
+      cols: [{ label: "Time", w: ".7fr", mono: 1 }, { label: "Guest", w: "1.5fr" }, { label: "Party", w: ".5fr", a: "right", mono: 1 }, { label: "Table", w: ".7fr", mono: 1 }, { label: "Note", w: "1.7fr" }, { label: "Status", w: "1fr", a: "right" }],
+      rows: list.map((r) => ({
+        go: () => real ? this.setState({ modal: { kind: "resv", id: r.id } }) : this.seatRes(r),
+        cells: [{ t: r.t || "—", mono: 1 }, { t: r.name, sub: r.phone || "" }, String(r.party), { t: r.table || "—", mono: 1 }, { t: r.note || "—", c: r.note ? "var(--amber-bright)" : "var(--text-faint)" }, { t: String(r.status || "").replace("_", " "), chip: this.chip(this.statusTone(r.status)) }]
+      })),
+      empty: tab === 1 ? "No pending requests — you're all caught up." : "No reservations in the book yet.",
+      notes: [["From portal to table", real ? "A guest's booking arrives as Pending and pokes this screen live. Approve holds a table (the smallest free one that fits, unless you set it), the floor shows it reserved, and Seat opens the ticket with their covers and note already on it. Every step writes back so the guest's portal shows the current status." : "Tap any confirmed row to seat it. The reservation flips to seated and the ticket opens with their covers and note already on it."]]
     };
   }
   // Clean handover between shifts: clears the local cache and re-opens the
@@ -5839,14 +5937,30 @@ class Component extends DCLogic {
         foot: "Reservations hold the table but do not open a ticket; seating the guest is what creates the order.",
         fields: [
           { k: "name", label: "Guest name", v: "", full: 1 },
+          { k: "phone", label: "Phone", v: "" },
           { k: "t", label: "Time", v: "19:30" },
           { k: "party", label: "Party size", v: "2" },
-          { k: "table", label: "Table", v: "T04" },
+          { k: "table", label: "Table", v: "" },
           { k: "note", label: "Note for the floor", v: "", full: 1 }
         ],
         onSave: (v) => {
           if (!v.name) return this.toast("Guest name is required", "warn");
-          const row = { t: v.t, name: v.name, party: +v.party || 2, table: v.table.toUpperCase(), status: "confirmed", note: v.note };
+          const table = (v.table || "").toUpperCase();
+          // Real mode: a staff-taken booking persists as a confirmed reservation
+          // entity through the sync bridge, so it appears on every device and on
+          // the floor, exactly like a portal booking that's been approved.
+          if (window.KPOS_REAL && window.__v2PushReservation) {
+            const id = "resv_till_" + Date.now();
+            window.__v2PushReservation({ id: id, status: "confirmed", source: "till",
+              name: v.name, phone: v.phone || "", party: +v.party || 2, time: v.t, date: "",
+              note: v.note || "", table: table, at: Date.now() });
+            const resPatch = Object.assign({}, this.state.resPatch || {});
+            resPatch[id] = { status: "confirmed", table: table };
+            this.setState({ resPatch: resPatch, modal: null });
+            this.toast("Booked · " + v.name + " at " + v.t);
+            return;
+          }
+          const row = { t: v.t, name: v.name, party: +v.party || 2, table: table, status: "confirmed", note: v.note };
           this.setState({ res: (this.state.res || []).concat([row]), modal: null });
           this.queue("reservation_insert", "Reservation · " + v.name + " " + v.t + " " + row.table, "reservations");
           this.toast("Booked · " + v.name + " at " + v.t);
