@@ -414,6 +414,7 @@ button:active:not(:disabled){transform:scale(.975)}
               <button onClick="{{ pay }}" style="{{ payStyle }}">{{ payLabel }}</button>
             </div>
             <div style="{{ secondaryRowStyle }}">
+              <button onClick="{{ parkBill }}" style="{{ parkBtnStyle }}">Park bill</button>
               <button onClick="{{ printBill }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Print bill</button>
               <button onClick="{{ qrOrder }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Table QR</button>
               <button onClick="{{ clearT }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Clear</button>
@@ -2427,7 +2428,11 @@ class Component extends DCLogic {
       ticketMetaStyle: "display:flex;gap:6px;margin-top:" + (tight ? 7 : 10) + "px",
       splitRowStyle: tight ? "display:none" : "display:flex;gap:5px;margin-top:8px;flex-wrap:wrap;align-items:center",
       ticketFootStyle: "border-top:1px solid var(--line);padding:" + (tight ? "9px 16px 11px" : "12px 16px") + ";flex-shrink:0;background:var(--bg-1)",
-      secondaryRowStyle: tight ? "display:none" : "display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:7px",
+      secondaryRowStyle: tight ? "display:none" : "display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px",
+      // Park is a first-class footer action now, visible on desktop, tablet and
+      // mobile — not only via a long-press on the table tile. Highlighted amber
+      // when the ticket has lines to park, muted otherwise.
+      parkBtnStyle: "padding:8px;border-radius:7px;font-size:11px;font-weight:700;text-align:center;border:1px solid " + (canPay ? "var(--amber-dim)" : "var(--line)") + ";background:" + (canPay ? "rgba(242,164,58,.10)" : "var(--bg-2)") + ";color:" + (canPay ? "var(--amber-bright)" : "var(--text-faint)"),
       ticketLabel: s.activeTable ? "Ticket · " + (tk && tk.channel === "qr" ? "QR session" : "Dine-in") : "No table selected",
       ticketNum: s.activeTable ? "T" + pad(s.activeTable) + " / " + o.code : "—",
       ticketChip: s.activeTable ? "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:5px;background:rgba(242,164,58,.12);color:var(--amber-bright);white-space:nowrap" : "display:none",
