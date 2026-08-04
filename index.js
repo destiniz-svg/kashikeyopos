@@ -3666,6 +3666,15 @@ if (fs.existsSync(protoFile)) {
           return { id: r.id, name: nm, user: user, role: roleMap[String(d.role || "").toLowerCase()] || "Cashier",
             outlet: null, outlets: [], pin: pin, status: d.suspended ? "Suspended" : "Active", last: "" };
         });
+        // Today's clock punches (time_entries) → the terminal's labour engine.
+        // Persisted by clockIn/clockOut on the till; only today's shifts feed
+        // the labour cost and prime-cost figures.
+        const teRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='time_entries' AND deleted=false", [orgId])).rows;
+        const clock = teRows.map((r) => ({ ...(r.data || {}), id: r.id }))
+          .filter((d) => (Number(d.in) || 0) >= t0)
+          .map((d) => ({ id: d.id, staff: d.staffId, outlet: Number(d.outlet) || 3,
+            in: Number(d.in) || 0, out: Number(d.out) || 0, late: Number(d.late) || 0 }));
         // Real outlets — the org's own stores (a company can run several).
         // The primary/first store keeps outlet id 3, which is the terminal's
         // default outletId and the id the POS stat couplings key off, so the
@@ -3688,7 +3697,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), customers, staff,
+          orders: orders.slice(0, 200), customers, staff, clock,
         };
       });
     };

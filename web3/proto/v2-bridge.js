@@ -139,8 +139,30 @@
     });
   }
 
+  // ── Public: persist a clock punch (a time_entries entity) ──────────────────
+  // clockIn/clockOut in the terminal set local state and call this so the punch
+  // survives a reload and is visible to labour, payroll and the CFO panel. The
+  // entity id is stable (the local "ck…" id), so a clock-out upserts the same
+  // row; the opId differs for the in vs out leg so the server records both.
+  function pushClock(entry) {
+    if (!token() || !entry || !entry.id) return;
+    var id = String(entry.id);
+    var leg = entry.out ? "out" : "in";
+    var data = {
+      type: "time_entry", staffId: entry.staff, outlet: entry.outlet,
+      in: num(entry.in), out: num(entry.out), late: num(entry.late), at: Date.now(),
+    };
+    var op = { id: id + "-" + leg, lamport: Date.now(), state: "queued", attempts: 0, total: 0,
+      body: { ops: [{ opId: id + "-" + leg, puts: [{ kind: "time_entries", id: id, data: data }] }] } };
+    putOp(op).then(flush).catch(function () {
+      var tk = token(); if (!tk) return;
+      fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify(op.body) }).catch(function () {});
+    });
+  }
+
   function queuedCount() { return allOps().then(function (o) { return o.filter(function (x) { return x.state !== "sent"; }).length; }); }
 
+  window.__v2PushClock = pushClock;
   window.__v2PushSale = pushSale;
   window.__v2Outbox = { flush: flush, queued: queuedCount };
 

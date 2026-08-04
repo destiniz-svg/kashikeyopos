@@ -3542,10 +3542,10 @@ class Component extends DCLogic {
   clockRows() {
     const s = this.state;
     if (s.clock) return s.clock;
-    // Real mode: the only punches are the ones actually made on this device
-    // (clockIn/clockOut write s.clock). Nobody is on the floor until someone
-    // clocks in — labour, payroll OT and the scorecard all read zero honestly.
-    if (window.KPOS_REAL) return [];
+    // Real mode: punches come from the backend (time_entries projected into
+    // KPOS_REAL.clock) — today's real shifts, surviving a reload. Once someone
+    // clocks in/out on this device, s.clock (above) holds the working copy.
+    if (window.KPOS_REAL) return (window.KPOS_REAL.clock || []);
     // Seeded relative to the wall clock, never to fixed hours: a terminal opened
     // at 03:00 for a late-night outlet must still show a staffed floor, and a
     // roster pinned to 09:00 would leave labour at zero for half the day.
@@ -3589,9 +3589,13 @@ class Component extends DCLogic {
     const st = this.staffFor(staffId);
     const rows = this.clockRows().slice();
     if (rows.find((c) => c.staff === staffId && !c.out)) { this.toast(st.name + " is already clocked in", "warn"); return; }
-    rows.push({ id: "ck" + Date.now(), staff: staffId, outlet: st.outlet, in: Date.now(), out: 0, late: 0 });
+    // Attribute the punch to the active trading outlet (real staff carry no
+    // home outlet), so labour and payroll can filter it correctly.
+    const entry = { id: "ck" + Date.now(), staff: staffId, outlet: st.outlet || this.state.outletId, in: Date.now(), out: 0, late: 0 };
+    rows.push(entry);
     this.setState({ clock: rows, modal: null });
-    this.queue("clock_in", st.name + " clocked in · " + this.locName(st.outlet), "time_entries");
+    this.queue("clock_in", st.name + " clocked in · " + this.locName(entry.outlet), "time_entries");
+    if (window.__v2PushClock) window.__v2PushClock(entry);   // durable, survives reload
     this.toast(st.name + " clocked in");
   }
   clockOut(entryId) {
@@ -3599,6 +3603,7 @@ class Component extends DCLogic {
     const e = rows.find((c) => c.id === entryId), st = this.staffFor(e.staff);
     this.setState({ clock: rows });
     this.queue("clock_out", st.name + " clocked out · " + this.clockHours(e).toFixed(2) + "h", "time_entries");
+    if (window.__v2PushClock) window.__v2PushClock(e);        // upserts the same entity with its out time
     this.toast(st.name + " clocked out — " + this.clockHours(e).toFixed(2) + " hours");
   }
   // Per-employee monthly payroll. Pensionable wage is the contract basic, not
@@ -3618,8 +3623,11 @@ class Component extends DCLogic {
       const otEligible = st.ot !== false;
       const otPay = otEligible ? otHours * this.rate(st) * (R.ot_weekday || 1.25) : 0;
       const svcShare = st.svc === false ? 0 : share;
-      const allow = st.kind === "expat" ? 1500 : 1000;
-      const gross = st.basic + otPay + allow + svcShare;
+      // Allowance rides on a configured contract; a staff member with no basic
+      // wage set yet (real roster before HR fills it in) shows only their real
+      // service-charge share, not a fabricated allowance.
+      const allow = st.basic ? (st.kind === "expat" ? 1500 : 1000) : 0;
+      const gross = (st.basic || 0) + otPay + allow + svcShare;
       const mrpsEe = st.mrps ? st.basic * (R.mrps_employee || 0.07) : 0;
       const mrpsEr = st.mrps ? st.basic * (R.mrps_employer || 0.07) : 0;
       let taxable = gross - mrpsEe, wht = 0, prev = 0;

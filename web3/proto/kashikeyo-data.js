@@ -579,7 +579,17 @@
        (via /api/inv and /api/ops). This is what removes the demo dataset. */
     ["items", "inv", "cats", "batches", "vendors", "purch", "reqs", "disp", "prod", "logs"]
       .forEach(function (k) { if (R && typeof R === "object") R[k] = []; });
-    OPEX = []; ASSETS = []; STAFF = [];
+    OPEX = []; ASSETS = [];
+    // The HR/payroll roster is the real sign-in staff. Contract wage fields are
+    // left unset (basic 0) until an admin configures them — so labour HOURS are
+    // real from clock punches while labour COST stays an honest zero, and each
+    // person still shares real service charge. They map to the primary outlet
+    // (id 3) so clock and labour attribute to the trading floor.
+    STAFF = (REAL.staff || []).map(function (u) {
+      return { id: u.id, name: u.name, job: u.role || "Staff", outlet: 3,
+        kind: "local", basic: 0, ot: true, svc: true, mrps: false, joined: "",
+        status: u.status || "Active" };
+    });
     if (REAL.outlet) CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
     if (REAL.outlets && REAL.outlets.length) {
       // Real chain: the org's own stores replace the seeded outlet list. The
