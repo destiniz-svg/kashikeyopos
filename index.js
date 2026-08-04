@@ -2606,13 +2606,29 @@ app.get("/p/:slug/account", pubThrottle(20, "acct"), wrap(async (req, res) => {
   const pts = Number(c.points || c.loyaltyPoints || 0);
   const limit = Math.round((Number(c.creditLimit || c.credit || 0)) / 100);
   const bal = Math.round((Number(c.balance || c.used || 0)) / 100);
+  // Real order history for the account's Receipts and Statement tabs — the
+  // same source the terminal reads, priced by the store's own rates (money
+  // laari→MVR). No fabricated ledger: the statement is built from these.
+  const settingsArr = await kindAll(org.id, "settings", storeId);
+  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
+  const hist = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
+  const orders = hist.map((o) => ({
+    no: o.no, total: Math.round((Number(o.total) || 0) / 100), status: o.status,
+    when: o.createdAt || o.at || null, otype: asOtype(o.otype), table: o.table || "",
+    items: (o.items || []).map((it) => ({ q: it.qty, n: it.name })),
+    tender: o.tender || o.method || "", credit: /credit|tab|account/i.test(String(o.tender || o.method || "")),
+  }));
+  // A stable member number: the customer's own if set, else derived from the
+  // account id so it never changes between sign-ins.
+  const memberNo = c.memberNo || ("RL-" + String(c.id).replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase().padStart(8, "0"));
   res.json({
     found: true,
     account: {
-      id: c.id, name: c.name || "Guest", phone: c.phone || "",
+      id: c.id, name: c.name || "Guest", phone: c.phone || "", memberNo: memberNo,
       points: pts, tier: c.tier || (pts >= 7500 ? "Platinum" : pts >= 2500 ? "Gold" : "Silver"),
       creditLimit: limit, creditUsed: bal, creditLeft: Math.max(0, limit - bal),
       visits: Number(c.visits || 0), spent: Math.round((Number(c.spent || c.totalSpent || 0)) / 100),
+      orders: orders,
     },
   });
 }));

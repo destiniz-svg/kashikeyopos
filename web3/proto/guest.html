@@ -84,6 +84,10 @@ a:hover{color:#7d1826}
             <button onClick="{{ callServer }}" style="flex:1;padding:13px;border-radius:12px;background:#fff;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:600">Call a server</button>
             <button onClick="{{ toggleLang }}" style="flex:1;padding:13px;border-radius:12px;background:#fff;border:1px solid #d6d3d1;color:#44403c;font-size:12.5px;font-weight:600">{{ langLabel }}</button>
           </div>
+          <button onClick="{{ goAccount }}" style="width:100%;padding:12px;border-radius:12px;background:#fafaf9;border:1px solid #e7e5e4;color:#57534e;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:8px">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path></svg>
+            My account &amp; loyalty
+          </button>
           <div style="text-align:center;font-size:9.5px;letter-spacing:.07em;color:#b8b3ae;margin-top:3px;{{ poweredVis }}">Powered by KashikeyoPOS™</div>
         </div>
       </div>
@@ -584,7 +588,7 @@ a:hover{color:#7d1826}
               <div style="height:6px;border-radius:4px;background:#f0efed;overflow:hidden;display:flex"><span style="{{ drawnBarStyle }}"></span></div>
               <div style="display:flex;justify-content:space-between;gap:12px;font-size:11px">
                 <span style="color:#78716c">Drawn <strong style="color:#1c1917;font-weight:600;font-family:'JetBrains Mono',monospace">{{ drawnLabel }}</strong></span>
-                <span style="color:#92661a;font-weight:600">Due 15 Aug</span>
+                <span style="color:#92661a;font-weight:600;{{ dueVis }}">{{ dueLabel }}</span>
               </div>
             </div>
             <div style="display:flex;gap:10px">
@@ -662,7 +666,7 @@ a:hover{color:#7d1826}
         </div>
         <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:0 20px;min-height:0">
           <div style="display:flex;justify-content:space-between;gap:12px;padding:13px 0;border-bottom:1px solid #eceae7">
-            <span style="font-size:11.5px;color:#78716c">Opening balance · 1 Jul</span>
+            <span style="font-size:11.5px;color:#78716c">Opening balance · {{ openingDate }}</span>
             <span style="font-size:12px;font-weight:600;color:#1c1917;font-family:'JetBrains Mono',monospace">{{ openingLabel }}</span>
           </div>
           <sc-for list="{{ stmtRows }}" as="r" hint-placeholder-count="5">
@@ -1306,13 +1310,38 @@ class Component extends DCLogic {
   redeem(w) {
     if ((this.state.redeemed || []).indexOf(w.id) >= 0) return this.say("Already redeemed — show it to your server");
     if (w.id === "r4") return this.say("Platinum accounts only");
-    if (this.state.points < w.cost) return this.say("Needs " + (w.cost - this.state.points).toLocaleString() + " more points");
-    this.setState({ points: this.state.points - w.cost, redeemed: (this.state.redeemed || []).concat([w.id]) });
+    // Affordability checks the real balance when signed in. Redemption is an
+    // in-portal reservation the server applies at the till — there is no
+    // points-burn endpoint yet, so the real points figure is not mutated here.
+    const acct = this.state.acct;
+    const pts = acct ? acct.points : this.state.points;
+    if (pts < w.cost) return this.say("Needs " + (w.cost - pts).toLocaleString() + " more points");
+    if (acct) this.setState({ redeemed: (this.state.redeemed || []).concat([w.id]) });
+    else this.setState({ points: this.state.points - w.cost, redeemed: (this.state.redeemed || []).concat([w.id]) });
     this.say(w.name + " redeemed · show this to your server");
   }
 
   csv() {
     const rows = [["Date", "Detail", "Amount MVR", "Balance MVR"]];
+    const acct = this.state.acct;
+    if (acct) {
+      // Real statement: the account's on-account bills, opening balance
+      // brought forward so the running column closes on real credit-used.
+      const credit = (acct.orders || []).filter((o) => o.credit);
+      const sum = credit.reduce((a, o) => a + (o.total || 0), 0);
+      let bal = Math.max(0, (acct.creditUsed || 0) - sum);
+      const fmt = (w) => { try { return new Date(Number(w) || w).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }); } catch (e) { return ""; } };
+      rows.push(["", "Opening balance", "", bal.toFixed(2)]);
+      credit.slice().reverse().forEach((o) => { bal += (o.total || 0); rows.push([fmt(o.when), "Bill " + (o.no || "") + " — on account", (o.total || 0).toFixed(2), bal.toFixed(2)]); });
+      const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
+      try {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        a.download = "kashikeyo-statement.csv"; a.click();
+        this.say("Statement downloaded");
+      } catch (e) { this.say("Download blocked by the browser"); }
+      return;
+    }
     let bal = OPENING;
     this.ledger().forEach((r) => { bal += r.amt; rows.push([r.date, r.label + " — " + r.sub, r.amt.toFixed(2), bal.toFixed(2)]); });
     const csv = rows.map((r) => r.map((c) => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
@@ -1349,6 +1378,18 @@ class Component extends DCLogic {
     const bal = acct ? acct.creditUsed : this.balance(), avail = Math.max(0, CLIMIT - bal);
     const ptsEff = acct ? acct.points : s.points;
     const on = "#982030";
+
+    // ── Real account: Statement and Receipts from the customer's own orders ──
+    // A signed-in account replaces the seeded ledger entirely. Receipts are the
+    // real bills; the Statement is the credit ledger — brought-forward balance
+    // plus the on-account charges, closing exactly on the real credit-used
+    // figure. Nothing here is fabricated: if there are no orders, the tabs are
+    // honestly empty.
+    const fmtStmtDate = (w) => { if (!w) return ""; try { return new Date(Number(w) || w).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); } catch (e) { return ""; } };
+    const acctOrders = acct ? (acct.orders || []) : null;             // newest-first
+    const acctCredit = acctOrders ? acctOrders.filter((o) => o.credit) : [];
+    const acctCreditSum = acctCredit.reduce((a, o) => a + (o.total || 0), 0);
+    const acctOpening = acct ? Math.max(0, (acct.creditUsed || 0) - acctCreditSum) : 0;
 
     const catIcons = {
       all: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
@@ -1501,7 +1542,7 @@ class Component extends DCLogic {
       fulfilSummary: this.fulfil().label + " · " + this.outlet().name.replace("Kashikeyo ", "")
         + (s.mode === "dinein" ? "" : " · " + (s.slot === "asap" ? "as soon as ready" : s.slot === "sunset" ? "at sunset" : "in " + s.slot + " min")),
       toCard: () => this.go("card"),
-      memberNo: "RL-4821-0093",
+      memberNo: acct && acct.memberNo ? acct.memberNo : "RL-4821-0093",
       // A deterministic block pattern with the three finder squares a real code
       // carries. It is a visual stand-in — production renders the member token
       // through a proper QR encoder, which is why the number is printed under
@@ -1828,53 +1869,91 @@ class Component extends DCLogic {
       memPointsStyle: "display:block;font-size:16px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:3px;color:" + tierAcc,
       limitLabel: MVR(CLIMIT).split(".")[0],
       availLabel: MVR(avail), drawnLabel: MVR(bal), drawnMvr: "MVR " + MVR(bal),
+      // Statement due date: month-end of the current billing cycle, shown only
+      // when the account actually carries a balance. No fabricated date on a
+      // settled account.
+      dueLabel: (function () { const d = new Date(); const end = new Date(d.getFullYear(), d.getMonth() + 1, 0); return "Due " + end.toLocaleDateString("en-GB", { day: "numeric", month: "short" }); })(),
+      dueVis: bal > 0 ? "" : "display:none",
       drawnBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (CLIMIT ? bal / CLIMIT : 0) * 100).toFixed(1) + "%;background:" + (CLIMIT && bal / CLIMIT > 0.8 ? "#c2452a" : on) + ";display:block",
       pointsLabel: (ptsEff).toLocaleString(),
       pointsWorth: "Worth MVR " + MVR(ptsEff / 10) + " off a bill",
       acctName: acct ? acct.name : "",
       signedIn: !!acct,
-      invCount: String(this.ledger().filter((r) => r.amt > 0).length),
-      recent: this.ledger().slice().reverse().slice(0, 3).map((r) => ({
-        label: r.label, sub: r.date + " · " + r.sub,
-        amt: (r.amt > 0 ? "+" : "") + MVR(r.amt),
-        amtStyle: "font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;color:" + (r.amt > 0 ? "#8f1d2d" : "#17603f"),
-        go: () => this.go("statement")
-      })),
+      invCount: acct ? String(acctCredit.length) : String(this.ledger().filter((r) => r.amt > 0).length),
+      recent: acct
+        ? acctOrders.slice(0, 3).map((o) => ({
+            label: "Bill " + (o.no || ""), sub: fmtStmtDate(o.when) + " · " + (o.otype || "order") + (o.credit ? " · on account" : ""),
+            amt: "+" + MVR(o.total || 0),
+            amtStyle: "font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;color:#8f1d2d",
+            go: () => this.go(o.credit ? "statement" : "receipts")
+          }))
+        : this.ledger().slice().reverse().slice(0, 3).map((r) => ({
+            label: r.label, sub: r.date + " · " + r.sub,
+            amt: (r.amt > 0 ? "+" : "") + MVR(r.amt),
+            amtStyle: "font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;color:" + (r.amt > 0 ? "#8f1d2d" : "#17603f"),
+            go: () => this.go("statement")
+          })),
       settle: () => { this.say("MVR " + MVR(bal) + " — BML transfer sheet opened"); },
 
-      stmtSub: "July 2026 · Reef Logistics Pvt Ltd",
-      openingLabel: MVR(OPENING),
-      stmtRows: (function () {
-        let run = OPENING;
-        const all = this.ledger();
-        return all.map((r, i) => {
-          run += r.amt;
-          const last = i === all.length - 1;
-          return {
-            date: r.date, label: r.label, sub: r.sub,
-            amt: (r.amt > 0 ? "+" : "") + MVR(r.amt), bal: MVR(run),
-            rowStyle: "display:flex;gap:12px;align-items:flex-start;padding:13px 0;" + (last ? "" : "border-bottom:1px solid #eceae7"),
-            amtStyle: "display:block;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (r.amt > 0 ? "#8f1d2d" : "#17603f"),
-            balStyle: "display:block;font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;" + (last ? "font-weight:700;color:#1c1917" : "color:#a8a29e")
-          };
-        });
-      }).call(this),
+      stmtSub: acct ? (acct.name + " · account " + (acct.memberNo || "")) : "July 2026 · Reef Logistics Pvt Ltd",
+      openingDate: acct ? (function () { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); })() : "1 Jul",
+      openingLabel: acct ? MVR(acctOpening) : MVR(OPENING),
+      stmtRows: acct
+        ? (function () {
+            let run = acctOpening;
+            const rows = acctCredit.slice().reverse();          // oldest-first for a running balance
+            return rows.map((o, i) => {
+              run += (o.total || 0);
+              const last = i === rows.length - 1;
+              return {
+                date: fmtStmtDate(o.when), label: "Bill " + (o.no || ""),
+                sub: (o.otype || "order") + (o.table ? " · " + o.table : "") + " · on account",
+                amt: "+" + MVR(o.total || 0), bal: MVR(run),
+                rowStyle: "display:flex;gap:12px;align-items:flex-start;padding:13px 0;" + (last ? "" : "border-bottom:1px solid #eceae7"),
+                amtStyle: "display:block;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#8f1d2d",
+                balStyle: "display:block;font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;" + (last ? "font-weight:700;color:#1c1917" : "color:#a8a29e")
+              };
+            });
+          }).call(this)
+        : (function () {
+            let run = OPENING;
+            const all = this.ledger();
+            return all.map((r, i) => {
+              run += r.amt;
+              const last = i === all.length - 1;
+              return {
+                date: r.date, label: r.label, sub: r.sub,
+                amt: (r.amt > 0 ? "+" : "") + MVR(r.amt), bal: MVR(run),
+                rowStyle: "display:flex;gap:12px;align-items:flex-start;padding:13px 0;" + (last ? "" : "border-bottom:1px solid #eceae7"),
+                amtStyle: "display:block;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace;color:" + (r.amt > 0 ? "#8f1d2d" : "#17603f"),
+                balStyle: "display:block;font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;" + (last ? "font-weight:700;color:#1c1917" : "color:#a8a29e")
+              };
+            });
+          }).call(this),
       download: () => this.csv(),
 
-      receiptsSub: this.ledger().filter((r) => r.amt > 0).length + " bills on this account",
-      receipts: this.ledger().filter((r) => r.amt > 0).slice().reverse().map((r) => ({
-        ref: r.label.replace("Invoice ", ""), sub: r.date + " · " + r.sub, amt: MVR(r.amt),
-        go: () => this.say(r.label + " · PDF sent to your email")
-      })),
+      receiptsSub: acct
+        ? ((acctOrders.length || 0) + " bill" + (acctOrders.length === 1 ? "" : "s") + " on this account")
+        : this.ledger().filter((r) => r.amt > 0).length + " bills on this account",
+      receipts: acct
+        ? acctOrders.map((o) => ({
+            ref: String(o.no || ""), sub: fmtStmtDate(o.when) + " · " + (o.otype || "order") + (o.table ? " · " + o.table : ""),
+            amt: MVR(o.total || 0),
+            go: () => this.say("Bill " + (o.no || "") + " · " + MVR(o.total || 0)),
+          }))
+        : this.ledger().filter((r) => r.amt > 0).slice().reverse().map((r) => ({
+            ref: r.label.replace("Invoice ", ""), sub: r.date + " · " + r.sub, amt: MVR(r.amt),
+            go: () => this.say(r.label + " · PDF sent to your email")
+          })),
 
-      pointsEarnedNote: "Earned on MVR " + MVR(s.points * 10) + " of spend",
-      tierBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (s.points / tierPts) * 100).toFixed(0) + "%;background:" + tierAcc + ";display:block",
+      pointsEarnedNote: "Earned on MVR " + MVR(ptsEff * 10) + " of spend",
+      tierBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (ptsEff / tierPts) * 100).toFixed(0) + "%;background:" + tierAcc + ";display:block",
       tierName: tier,
-      tierNext: s.points >= tierPts ? "Top tier reached" : (((s.points >= 2500 ? tierPts : 2500) - s.points).toLocaleString() + " points to " + (s.points >= 2500 ? "Platinum" : "Gold")),
+      tierNext: ptsEff >= tierPts ? "Top tier reached" : (((ptsEff >= 2500 ? tierPts : 2500) - ptsEff).toLocaleString() + " points to " + (ptsEff >= 2500 ? "Platinum" : "Gold")),
       rewards: REWARDS.map((w) => {
         const done = (s.redeemed || []).indexOf(w.id) >= 0;
         const locked = w.id === "r4";
-        const can = !done && !locked && s.points >= w.cost;
+        const can = !done && !locked && ptsEff >= w.cost;
         return {
           name: w.name, sub: w.sub,
           cardStyle: "display:flex;gap:13px;align-items:center;background:" + (done ? "rgba(31,111,74,.07)" : locked ? "#f5f5f4" : "#fff") + ";border:" + (locked ? "1px dashed #d6d3d1" : done ? "1px solid rgba(31,111,74,.26)" : "1px solid #e7e5e4") + ";border-radius:15px;padding:13px" + (locked ? ";opacity:.7" : ""),
