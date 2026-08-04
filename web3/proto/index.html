@@ -3976,7 +3976,15 @@ class Component extends DCLogic {
     });
     const tot = rows.reduce((a, x) => a + x.net, 0);
     const cov = rows.reduce((a, x) => a + x.cov, 0);
-    const waste = rows.reduce((a, x) => a + x.waste, 0);
+    let waste = rows.reduce((a, x) => a + x.waste, 0);
+    if (REAL) {
+      // Real wastage today: value of today's waste-kind stock moves, priced at
+      // the ingredient's cost (ledger row = [loc,item,kind,in,out,bal,tsMs]).
+      const rawL = window.KPOS_RAW || {};
+      const t0w = new Date(s.now); t0w.setHours(0, 0, 0, 0); const tMidW = t0w.getTime();
+      waste = Math.round((rawL.ledger || []).filter((r) => r[2] === "waste" && (r[6] || 0) >= tMidW)
+        .reduce((a, r) => { const it = this.item(r[1]); return a + (it ? (it[4] / this.convFactor(it)) * (r[4] || 0) : 0); }, 0));
+    }
     const L = this.labourToday(0);
     const labourCost = L.cost, labourPct = (labourCost / (tot || 1)) * 100;
     const opexList = (K0.OPEX || []).concat(s.local.opex || []);
@@ -4005,7 +4013,15 @@ class Component extends DCLogic {
     }
     const shape = [.06, .09, .14, .30, .44, .31, .19, .24, .58, .88, 1, .74, .36, .13];
     const hours = [], rh = this.rng(551);
-    for (let i = 0; i < 14; i++) hours.push({ h: 10 + i, v: REAL ? 0 : Math.round(tot * shape[i] * (0.13 + rh() * 0.05)) });
+    // Real mode: today's sales bucketed by the hour they were rung (from each
+    // order's timestamp), across the 10:00–23:00 trading window the chart shows.
+    let byHour = null;
+    if (REAL) {
+      byHour = {};
+      const t0 = new Date(s.now); t0.setHours(0, 0, 0, 0); const tMid = t0.getTime();
+      (window.KPOS_REAL.orders || []).forEach((o) => { if (!o.at || o.at < tMid) return; const h = new Date(o.at).getHours(); byHour[h] = (byHour[h] || 0) + (Number(o.total) || 0); });
+    }
+    for (let i = 0; i < 14; i++) { const h = 10 + i; hours.push({ h: h, v: REAL ? (byHour[h] || 0) : Math.round(tot * shape[i] * (0.13 + rh() * 0.05)) }); }
     const last7 = days.slice(7).reduce((a, x) => a + x.v, 0);
     const prev7 = days.slice(0, 7).reduce((a, x) => a + x.v, 0);
     const credit = (K0.CUSTOMERS || []).reduce((a, c) => a + (c.used || 0), 0);

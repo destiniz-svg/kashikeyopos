@@ -3694,13 +3694,16 @@ if (fs.existsSync(protoFile)) {
         // running balance is correct, then reversed for a newest-first view. In
         // and out are base-unit magnitudes (the terminal converts for display).
         const moveRows = (await c.query(
-          "SELECT ingredient_id, kind, qty FROM stock_moves WHERE org_id=$1 ORDER BY created_at ASC, id ASC", [orgId])).rows;
+          "SELECT ingredient_id, kind, qty, created_at FROM stock_moves WHERE org_id=$1 ORDER BY created_at ASC, id ASC", [orgId])).rows;
         const runBal = {}, ledgerAsc = [];
         for (const mv of moveRows) {
           const nid = ingNumId[mv.ingredient_id]; if (!nid) continue;
           const q = Number(mv.qty) || 0;
           runBal[mv.ingredient_id] = (runBal[mv.ingredient_id] || 0) + q;
-          ledgerAsc.push([3, nid, mv.kind, q > 0 ? q : 0, q < 0 ? -q : 0, runBal[mv.ingredient_id]]);
+          // [loc, item, kind, in, out, balance, tsMs] — ts is an extra trailing
+          // field the ledger view ignores but analytics uses to scope waste.
+          ledgerAsc.push([3, nid, mv.kind, q > 0 ? q : 0, q < 0 ? -q : 0, runBal[mv.ingredient_id],
+            mv.created_at ? new Date(mv.created_at).getTime() : 0]);
         }
         const invLedger = ledgerAsc.reverse().slice(0, 140);
         // Recipes: recipe_lines(product_id → ingredient_id, qty per sold unit,
