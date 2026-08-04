@@ -37,17 +37,9 @@ a:hover{color:#7d1826}
 </style>
 </helmet>
 
-<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;gap:16px;padding:22px 20px 40px">
+<div style="min-height:100dvh;display:flex;flex-direction:column;align-items:stretch;background:#191614">
 
-  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;justify-content:center">
-    <button onClick="{{ goQr }}" style="{{ tabQrStyle }}">QR&nbsp;portal</button>
-    <button onClick="{{ goAccount }}" style="{{ tabAccStyle }}">Customer&nbsp;account</button>
-    <span style="width:1px;height:20px;background:#332c27;display:block"></span>
-    <span style="font-size:11px;color:#7d766e;font-family:'JetBrains Mono',monospace">{{ crumb }}</span>
-    <button onClick="{{ reset }}" style="font-size:11px;color:#78716c;padding:6px 11px;border:1px solid #332c27;border-radius:20px;white-space:nowrap">Reset&nbsp;demo</button>
-  </div>
-
-  <div style="width:390px;height:844px;background:#fafaf9;border-radius:30px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.55);display:flex;flex-direction:column;position:relative;flex-shrink:0">
+  <div style="width:100%;max-width:480px;margin:0 auto;min-height:100dvh;background:#fafaf9;overflow:hidden;display:flex;flex-direction:column;position:relative;flex-shrink:0">
 
     <sc-if value="{{ sLanding }}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;flex-direction:column;height:100%;animation:gup .22s">
