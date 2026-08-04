@@ -3703,6 +3703,18 @@ if (fs.existsSync(protoFile)) {
           ledgerAsc.push([3, nid, mv.kind, q > 0 ? q : 0, q < 0 ? -q : 0, runBal[mv.ingredient_id]]);
         }
         const invLedger = ledgerAsc.reverse().slice(0, 140);
+        // Recipes: recipe_lines(product_id → ingredient_id, qty per sold unit,
+        // in base units). Map the component to its numeric inventory id and
+        // attach [ingId, qty] lines to the matching menu item, so the terminal's
+        // foodCost() and the Recipes & Costing view read real component cost.
+        const recRows = (await c.query(
+          "SELECT product_id, ingredient_id, qty FROM recipe_lines WHERE org_id=$1", [orgId])).rows;
+        const recByProduct = {};
+        for (const rl of recRows) {
+          const nid = ingNumId[rl.ingredient_id]; if (!nid) continue;   // only real ingredient components
+          (recByProduct[String(rl.product_id)] = recByProduct[String(rl.product_id)] || []).push([nid, Number(rl.qty) || 0]);
+        }
+        menu.forEach((it) => { it.recipe = recByProduct[String(it.id)] || []; });
         // Today's clock punches (time_entries) → the terminal's labour engine.
         // Persisted by clockIn/clockOut on the till; only today's shifts feed
         // the labour cost and prime-cost figures.
