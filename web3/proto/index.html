@@ -448,7 +448,9 @@ var S = {
   orders: null, ordersFor: null,  // cached per outlet
   ordTab: 0,              // channel filter index
   order: null,            // open order no (receipt)
-  refunded: {}            // { [orderNo]: true }
+  refunded: {},           // { [orderNo]: true }
+  // Inventory
+  inv: null, invTab: 0
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -585,6 +587,8 @@ function renderShell(){
            : (S.view==="kds") ? kdsView()
            : (S.view==="customers") ? customersView()
            : (S.view==="orders") ? ordersView(out)
+           : (S.view==="inventory") ? inventoryView()
+           : (S.view==="chain") ? chainView()
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -878,6 +882,93 @@ function orderReceipt(out){
   h += '</div></div>';
   return h;
 }
+/* ── Inventory. Real item master (kashikeyo-raw.js); on-hand / reorder / location
+   synthesised deterministically so stock value and low-stock alerts read live. */
+var INV_BASE = [{"n":"Beef Becon","c":"Meat & seafood","u":"KG","cost":250},{"n":"Beef Marinade","c":"Meat & seafood","u":"KG","cost":334},{"n":"Beef Slices","c":"Meat & seafood","u":"PCS","cost":27},{"n":"Beef Striploin","c":"Meat & seafood","u":"KG","cost":230},{"n":"Yellowfin Tuna","c":"Meat & seafood","u":"KG","cost":120},{"n":"Butter","c":"Dairy","u":"KG","cost":93.75},{"n":"Cheddar","c":"Dairy","u":"KG","cost":142},{"n":"Condensed Milk","c":"Dairy","u":"PCS","cost":24.3},{"n":"Parmesan","c":"Dairy","u":"KG","cost":210},{"n":"Adobo Chicken","c":"Sauces & oil","u":"KG","cost":184},{"n":"Baja Sauce","c":"Sauces & oil","u":"KG","cost":145.5},{"n":"Olive Oil","c":"Sauces & oil","u":"LTR","cost":98},{"n":"Avocado","c":"Veg & juice","u":"KG","cost":90},{"n":"Cabbage","c":"Veg & juice","u":"KG","cost":8.35},{"n":"Capsicum","c":"Veg & juice","u":"KG","cost":21.85},{"n":"Carrot","c":"Veg & juice","u":"KG","cost":50},{"n":"Lime","c":"Veg & juice","u":"KG","cost":34},{"n":"Coca Cola Can","c":"Beverages","u":"PCS","cost":4.5},{"n":"Cola Zero Can","c":"Beverages","u":"PCS","cost":4.5},{"n":"Horchata Base","c":"Beverages","u":"LTR","cost":20.3},{"n":"Ancho Chili Powder","c":"Dry & spice","u":"KG","cost":20},{"n":"Ancho Chilli","c":"Dry & spice","u":"KG","cost":590},{"n":"Basmati Rice","c":"Dry & spice","u":"KG","cost":32},{"n":"Corn Tortilla","c":"Dry & spice","u":"PCS","cost":1.2}];
+function buildInventory(){
+  var r = rng(77), locs = ["Main Store — Malé","Kashikeyo Chaandhanee","Hulhumalé Central Kitchen"];
+  return INV_BASE.map(function(it){
+    var reorder = 5 + Math.floor(r()*40);
+    var onHand = Math.max(0, Math.round(reorder * (0.15 + r()*2.3)));
+    return { n:it.n, c:it.c, u:it.u, cost:it.cost, onHand:onHand, reorder:reorder,
+             loc:locs[Math.floor(r()*locs.length)], value:onHand*it.cost, low:onHand < reorder };
+  });
+}
+function inventoryView(){
+  if(!S.inv) S.inv = buildInventory();
+  var cats = ["All"].concat(INV_BASE.map(function(x){return x.c;}).filter(function(v,i,a){return a.indexOf(v)===i;}));
+  var cat = cats[S.invTab] || "All";
+  var list = S.inv.filter(function(i){ return cat==="All" || i.c===cat; });
+  var value = S.inv.reduce(function(a,i){ return a + i.value; }, 0);
+  var low = S.inv.filter(function(i){ return i.low; }).length;
+  var h = '<div class="floor-title" style="margin-bottom:2px">Inventory</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Ingredients on hand, weighted cost and reorder points</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Stock items</div><div class="stat-v">'+S.inv.length+'</div><div class="stat-s">across '+(cats.length-1)+' categories</div></div>'
+     + '<div class="stat"><div class="stat-l">Stock value</div><div class="stat-v">'+money(value)+'</div><div class="stat-s">MVR · weighted average cost</div></div>'
+     + '<div class="stat"><div class="stat-l">Low stock</div><div class="stat-v" style="color:'+(low?'var(--red-bright)':'var(--green-soft)')+'">'+low+'</div><div class="stat-s">at or below reorder point</div></div></div>';
+  h += '<div class="tabs">';
+  cats.forEach(function(c,i){ h += '<button class="tab'+(S.invTab===i?' on':'')+'" data-invtab="'+i+'">'+esc(c)+'</button>'; });
+  h += '</div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 120px 150px 96px 110px 150px">'
+     + '<span>Item</span><span>Category</span><span>On hand</span><span class="oright">Avg cost</span><span class="oright">Value</span><span>Location</span></div>';
+  list.forEach(function(i){
+    var pct = Math.min(100, Math.round(i.onHand/(i.reorder*2)*100));
+    h += '<div class="orow" style="grid-template-columns:1fr 120px 150px 96px 110px 150px;cursor:default">'
+       + '<span><span class="cname">'+esc(i.n)+'</span>'+(i.low?' <span class="ost open" style="margin-left:6px">low</span>':'')+'</span>'
+       + '<span class="dim" style="font-size:11px">'+esc(i.c)+'</span>'
+       + '<span><div class="mono" style="font-size:11.5px">'+i.onHand+' '+esc(i.u)+' <span class="dim" style="font-weight:400">/ par '+i.reorder+'</span></div>'
+         + '<div class="cbar'+(i.low?' full':'')+'"><span style="width:'+pct+'%"></span></div></span>'
+       + '<span class="oright" style="font-size:11.5px">'+money(i.cost)+'</span>'
+       + '<span class="oright">'+money(i.value)+'</span>'
+       + '<span class="dim" style="font-size:10.5px">'+esc(i.loc)+'</span></div>';
+  });
+  h += '</div>';
+  return h;
+}
+/* ── Chain overview. Consolidated across the trading outlets. ─────────────── */
+function buildChain(){
+  return OUTLETS.map(function(o){
+    var r = rng(o.id*13+1);
+    var covers = 40 + Math.floor(r()*170);
+    var avg = 180 + Math.floor(r()*260);
+    var sales = covers*avg;
+    var margin = 58 + Math.floor(r()*16);
+    var health = margin>=64 ? "Healthy" : (margin>=61 ? "Watch" : "Low");
+    return { o:o, covers:covers, sales:sales, avg:avg, margin:margin, health:health };
+  });
+}
+function chainView(){
+  var rows = buildChain();
+  var totSales = rows.reduce(function(a,r){return a+r.sales;},0);
+  var totCovers = rows.reduce(function(a,r){return a+r.covers;},0);
+  var wMargin = Math.round(rows.reduce(function(a,r){return a+r.margin*r.sales;},0)/totSales);
+  var max = Math.max.apply(null, rows.map(function(r){return r.sales;}));
+  var h = '<div class="floor-title" style="margin-bottom:2px">Chain overview</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Consolidated across '+rows.length+' trading outlets · today</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Chain sales today</div><div class="stat-v">'+money(totSales)+'</div><div class="stat-s">MVR · GST-inclusive</div></div>'
+     + '<div class="stat"><div class="stat-l">Covers</div><div class="stat-v">'+totCovers.toLocaleString("en-US")+'</div><div class="stat-s">guests served</div></div>'
+     + '<div class="stat"><div class="stat-l">Weighted margin</div><div class="stat-v">'+wMargin+'%</div><div class="stat-s">gross, across outlets</div></div></div>';
+  h += '<div class="kds-grid">';
+  rows.forEach(function(r){
+    var hc = r.health==="Healthy"?"var(--green-soft)":(r.health==="Watch"?"var(--amber-bright)":"var(--red-bright)");
+    var hbg = r.health==="Healthy"?"rgba(107,191,123,.1)":(r.health==="Watch"?"var(--amber-dim)":"rgba(226,96,63,.1)");
+    h += '<div class="kt" style="animation:none">'
+       + '<div class="kt-head"><div><div class="kt-tn" style="font-family:Inter;font-size:13.5px">'+esc(r.o.name.replace("Kashikeyo ",""))+'</div>'
+         + '<div class="kt-meta">'+esc(r.o.code)+' · '+esc(r.o.region)+'</div></div>'
+         + '<span class="ost" style="color:'+hc+';background:'+hbg+';border:1px solid '+hc+'">'+r.health+'</span></div>'
+       + '<div style="padding:12px 14px">'
+         + '<div style="font-size:20px;font-weight:800;font-family:JetBrains Mono,monospace;letter-spacing:-.02em">MVR '+money(r.sales)+'</div>'
+         + '<div class="cbar" style="margin:8px 0 12px"><span style="width:'+Math.round(r.sales/max*100)+'%"></span></div>'
+         + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);padding:2px 0"><span>Covers</span><span class="mono">'+r.covers+'</span></div>'
+         + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);padding:2px 0"><span>Average cheque</span><span class="mono">'+money(r.avg)+'</span></div>'
+         + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);padding:2px 0"><span>Gross margin</span><span class="mono" style="color:'+hc+'">'+r.margin+'%</span></div>'
+       + '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
 function moduleView(m, u){
   return '<div class="mod"><div class="floor-title">'+esc(m.label)+'<span class="pill">'+esc(m.group)+'</span></div>'
     + '<div class="mod-blurb">'+esc(BLURB[m.key]||"")+'</div>'
@@ -952,6 +1043,8 @@ root.addEventListener("click", function(e){
   if(d.order){ S.order = d.order; render(); return; }
   if(d.ordclose){ S.order = null; render(); return; }
   if(d.refund){ S.refunded[d.refund] = true; render(); return; }
+  // ── Inventory ──
+  if(d.invtab){ S.invTab = Number(d.invtab); render(); return; }
 });
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
