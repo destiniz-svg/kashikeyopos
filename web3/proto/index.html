@@ -1,0 +1,422 @@
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>KashikeyoPOS — Terminal (v2 build)</title>
+<style>
+/* ── Design tokens: verbatim from the handoff prototype (KashikeyoPOS.dc.html).
+      Dark by default; [data-theme="light"] is the daylight variant. ───────── */
+:root{
+  --bg:#0e0f11; --bg-0:#121417; --bg-1:#15171a; --bg-2:#1b1e22; --bg-3:#24282e;
+  --line-soft:#22262b; --line:#2a2f36; --line-2:#363c44; --line-3:#3d4249;
+  --text:#f2ede2; --text-dim:#a8a79f; --text-muted:#6b6e74; --text-faint:#585b61;
+  --amber:#f2a43a; --amber-bright:#ffb84a; --amber-dim:#3a2a12; --amber-line:#6b4a1f; --amber-deep:#c4761e;
+  --on-amber:#1a0f00;
+  --green:#6bbf7b; --green-line:#2d5a35; --green-soft:#9fd0aa;
+  --red:#e2603f; --red-bright:#ff7a55; --red-line:#6b3a2a;
+  --blue:#67a2d9; --blue-bright:#8fbde8; --violet:#a88ad9; --violet-bright:#c3aae6;
+  --scrim:rgba(6,7,8,.72); --shadow-lg:0 24px 70px rgba(0,0,0,.6);
+}
+[data-theme="light"]{
+  --bg:#f6f2ea; --bg-0:#efe9de; --bg-1:#fffdf9; --bg-2:#f1ece2; --bg-3:#e4dccd;
+  --line-soft:#eee7db; --line:#e0d8c8; --line-2:#cec4b0; --line-3:#b9ae98;
+  --text:#1f1c17; --text-dim:#6b6459; --text-muted:#8d857a; --text-faint:#a89f92;
+  --amber:#d1841c; --amber-bright:#a8630f; --amber-dim:#fbeed6; --amber-line:#e0bc7e; --amber-deep:#8a5210;
+  --on-amber:#fffdf9;
+  --green:#3f8a4f; --green-line:#a9cfb1; --green-soft:#2f6b3c;
+  --red:#c2452a; --red-bright:#a33418; --red-line:#e6b8a6;
+  --blue:#3d7cb8; --blue-bright:#2c5f91; --violet:#7d5fb0; --violet-bright:#5f4490;
+  --scrim:rgba(60,52,40,.42); --shadow-lg:0 24px 70px rgba(90,75,50,.22);
+}
+@font-face{font-family:'Inter';src:url('/app/fonts/inter-latin-100-900.woff2') format('woff2');font-weight:100 900;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url('/app/fonts/jetbrains-mono-latin-100-800.woff2') format('woff2');font-weight:100 800;font-display:swap}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;text-align:left;transition:transform .09s cubic-bezier(.2,.8,.3,1),background .12s,border-color .12s,color .12s}
+button:active:not(:disabled){transform:scale(.975)}
+input{font-family:inherit}
+::selection{background:var(--amber);color:#000}
+::-webkit-scrollbar{width:9px;height:9px}::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}::-webkit-scrollbar-track{background:transparent}
+@keyframes kfade{from{opacity:0}to{opacity:1}}
+@keyframes kmodal{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes kpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes kshake{0%,100%{transform:translateX(0)}18%{transform:translateX(-7px)}36%{transform:translateX(6px)}54%{transform:translateX(-4px)}72%{transform:translateX(3px)}}
+@keyframes kspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+#root{height:100%;animation:kfade .25s ease-out}
+
+/* ── Lock screen ─────────────────────────────────────────────────────────── */
+.lock{height:100%;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:radial-gradient(1200px 600px at 50% -10%,var(--bg-2),var(--bg))}
+.lock-card{width:100%;max-width:440px;background:var(--bg-1);border:1px solid var(--line);border-radius:18px;
+  box-shadow:var(--shadow-lg);overflow:hidden;animation:kmodal .3s cubic-bezier(.2,.8,.3,1)}
+.lock-head{padding:22px 22px 16px;border-bottom:1px solid var(--line-soft);text-align:center}
+.lock-mark{width:44px;height:44px;border-radius:12px;background:var(--amber);color:var(--on-amber);
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;margin:0 auto 10px}
+.lock-title{font-size:17px;font-weight:800;letter-spacing:-.02em}
+.lock-sub{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;margin-top:4px;font-weight:700}
+.lock-body{padding:16px 18px 20px;max-height:min(62vh,520px);overflow-y:auto}
+.staff-row{display:flex;align-items:center;gap:11px;width:100%;padding:11px 12px;border-radius:12px;
+  border:1px solid var(--line);background:var(--bg-2);margin-bottom:8px}
+.staff-row:hover{border-color:var(--line-3);background:var(--bg-3)}
+.staff-row[disabled]{opacity:.42;cursor:not-allowed}
+.avatar{width:36px;height:36px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:13px;color:#fff}
+.staff-name{font-size:13.5px;font-weight:700;letter-spacing:-.01em}
+.staff-role{font-size:11px;color:var(--text-dim);margin-top:2px}
+.pin-badge{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--amber-bright);
+  background:var(--amber-dim);border:1px solid var(--amber-line);border-radius:8px;padding:5px 9px;flex-shrink:0}
+.who{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:12px;background:var(--bg-2);border:1px solid var(--line);margin-bottom:14px}
+.not-you{margin-left:auto;font-size:11px;color:var(--text-dim);padding:7px 11px;border-radius:8px;border:1px solid var(--line)}
+.dots{display:flex;gap:12px;justify-content:center;margin:6px 0 16px}
+.dot{width:13px;height:13px;border-radius:50%;background:var(--bg-3);border:1px solid var(--line-2);transition:background .12s,transform .12s}
+.dot.on{background:var(--amber);border-color:var(--amber);transform:scale(1.08)}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.key{aspect-ratio:1.55;border-radius:12px;background:var(--bg-2);border:1px solid var(--line);
+  font-size:21px;font-weight:700;font-family:'JetBrains Mono',monospace;display:flex;align-items:center;justify-content:center;color:var(--text)}
+.key:hover{background:var(--bg-3);border-color:var(--line-3)}
+.key.wide{font-size:15px}
+.shake{animation:kshake .4s}
+.lock-hint{font-size:10.5px;color:var(--text-faint);line-height:1.6;margin-top:14px;text-align:center}
+
+/* ── Shell ───────────────────────────────────────────────────────────────── */
+.shell{height:100%;display:flex}
+.side{width:236px;flex-shrink:0;background:var(--bg-0);border-right:1px solid var(--line);display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:10px;padding:15px 16px;border-bottom:1px solid var(--line-soft)}
+.brand-mark{width:30px;height:30px;border-radius:9px;background:var(--amber);color:var(--on-amber);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;flex-shrink:0}
+.brand-name{font-size:13.5px;font-weight:800;letter-spacing:-.01em;line-height:1.1}
+.brand-sub{font-size:8.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-top:2px}
+.nav{flex:1;overflow-y:auto;padding:10px 10px 14px}
+.nav-grp{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.1em;font-weight:800;padding:12px 8px 5px}
+.nav-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:9px;font-size:12.5px;font-weight:600;color:var(--text-dim);margin-bottom:1px}
+.nav-item:hover{background:var(--bg-2);color:var(--text)}
+.nav-item.active{background:var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line)}
+.nav-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.55;flex-shrink:0}
+.ident{border-top:1px solid var(--line-soft);padding:10px}
+.ident-btn{display:flex;align-items:center;gap:9px;width:100%;padding:8px;border-radius:10px;border:1px solid transparent}
+.ident-btn:hover{background:var(--bg-2);border-color:var(--line)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:54px;flex-shrink:0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:0 18px;background:var(--bg-0)}
+.crumb{font-size:15px;font-weight:800;letter-spacing:-.02em}
+.crumb-sub{font-size:11px;color:var(--text-dim);margin-top:1px}
+.clock{margin-left:auto;text-align:right}
+.clock-t{font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;line-height:1.1}
+.clock-d{font-size:9.5px;color:var(--text-dim)}
+.iconbtn{width:36px;height:36px;border-radius:9px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--text-dim);background:var(--bg-1)}
+.iconbtn:hover{color:var(--text);border-color:var(--line-3)}
+.content{flex:1;overflow-y:auto;padding:20px}
+
+/* ── Floor plan (POS) ────────────────────────────────────────────────────── */
+.floor-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px}
+.floor-title{font-size:15px;font-weight:800;letter-spacing:-.02em}
+.floor-legend{display:flex;gap:16px;margin:10px 0 18px;font-size:11px;color:var(--text-dim);flex-wrap:wrap}
+.floor-legend span{display:inline-flex;align-items:center;gap:6px}
+.leg-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.tables{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px}
+.table{aspect-ratio:1;border-radius:14px;border:1px solid var(--line);background:var(--bg-1);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;position:relative;overflow:hidden}
+.table:hover{border-color:var(--line-3)}
+.table .tn{font-size:19px;font-weight:800;font-family:'JetBrains Mono',monospace}
+.table .ts{font-size:10px;color:var(--text-dim)}
+.table.occupied{border-color:var(--amber-line);background:var(--amber-dim)}
+.table.occupied .tn{color:var(--amber-bright)}
+.table.reserved{border-color:var(--blue)}
+.table.reserved .tn{color:var(--blue-bright)}
+.corner{position:absolute;top:0;left:0;width:100%;height:3px}
+
+/* ── Generic module placeholder (views built in later increments) ────────── */
+.mod{max-width:760px}
+.mod-blurb{font-size:13px;color:var(--text-dim);line-height:1.7;margin:8px 0 18px;max-width:560px}
+.mod-note{border:1px dashed var(--line-2);border-radius:12px;padding:18px 20px;background:var(--bg-1);
+  font-size:12.5px;color:var(--text-muted);line-height:1.7}
+.pill{display:inline-block;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  padding:3px 8px;border-radius:20px;background:var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line);margin-left:8px;vertical-align:middle}
+
+/* ── Responsive: tablet icon rail, phone drawer ──────────────────────────── */
+@media (max-width:1024px){ .side{width:64px} .brand-name,.brand-sub,.nav-item span:not(.nav-dot),.nav-grp,.ident-btn .idtext{display:none}
+  .nav-item{justify-content:center;padding:11px 0} .ident-btn{justify-content:center} }
+@media (max-width:720px){ .side{display:none} .content{padding:14px} .topbar{padding:0 14px} }
+.mobibar{display:none}
+@media (max-width:720px){ .mobibar{display:flex} }
+</style>
+
+<div id="root"></div>
+
+<script>
+"use strict";
+/* ── Demo data lifted from the handoff package (kashikeyo-data.js). Production
+      draws these from Postgres via the existing sync API; the lock screen and
+      access model below are the design's, faithfully. ─────────────────────── */
+var OUTLETS = [
+  { id: 3, code: "KO-CHA", name: "Kashikeyo Chaandhanee", tables: 16, region: "Malé" },
+  { id: 4, code: "KO-HUL", name: "Kashikeyo Hulhumalé", tables: 12, region: "Malé" },
+  { id: 5, code: "KO-VIA", name: "Kashikeyo Velana Airport", tables: 9, region: "Malé" },
+  { id: 6, code: "KO-MAA", name: "Kashikeyo Maafushi", tables: 13, region: "Atolls" },
+  { id: 7, code: "KO-BAA", name: "Kashikeyo Baa Atoll", tables: 10, region: "Atolls" }
+];
+var GROUPS = ["Front of house","Chain","Supply chain","People","Finance","Platform"];
+var MODULES = [
+  {key:"pos",label:"POS terminal",group:"Front of house"},
+  {key:"kds",label:"Kitchen display",group:"Front of house"},
+  {key:"reservations",label:"Reservations",group:"Front of house"},
+  {key:"customers",label:"Customers & credit",group:"Front of house"},
+  {key:"orders",label:"Orders & receipts",group:"Front of house"},
+  {key:"delivery",label:"Delivery & QR orders",group:"Front of house"},
+  {key:"chain",label:"Chain overview",group:"Chain"},
+  {key:"branches",label:"Outlets",group:"Chain"},
+  {key:"menu",label:"Menu master",group:"Chain"},
+  {key:"aimenu",label:"AI menu builder",group:"Chain"},
+  {key:"users",label:"Users & roles",group:"Chain"},
+  {key:"logs",label:"Audit log",group:"Chain"},
+  {key:"inventory",label:"Inventory",group:"Supply chain"},
+  {key:"counts",label:"Stock counts",group:"Supply chain"},
+  {key:"purchases",label:"Purchases / GRN",group:"Supply chain"},
+  {key:"requests",label:"Indent requests",group:"Supply chain"},
+  {key:"dispatches",label:"Dispatches",group:"Supply chain"},
+  {key:"production",label:"Production",group:"Supply chain"},
+  {key:"recipes",label:"Recipes",group:"Supply chain"},
+  {key:"batches",label:"Batches & expiry",group:"Supply chain"},
+  {key:"vendors",label:"Vendors",group:"Supply chain"},
+  {key:"staff",label:"Staff & time clock",group:"People"},
+  {key:"payroll",label:"Payroll & pension",group:"People"},
+  {key:"accounting",label:"Accounting flow",group:"Finance"},
+  {key:"costs",label:"Operating costs",group:"Finance"},
+  {key:"assets",label:"Equipment & maintenance",group:"Finance"},
+  {key:"reports",label:"Reports & exports",group:"Finance"},
+  {key:"sync",label:"Sync & devices",group:"Platform"},
+  {key:"settings",label:"Settings",group:"Platform"},
+  {key:"architecture",label:"Architecture",group:"Platform"}
+];
+var BLURB = {
+  pos:"The offline-first till: floor plan, tickets, split bills, tenders and receipts.",
+  kds:"Kitchen display — tickets fire from the till, bump when plated.",
+  reservations:"Bookings, covers and table holds across the service.",
+  customers:"Customer profiles, loyalty points and auditable credit accounts.",
+  orders:"Every order and receipt, dine-in through QR, in one ledger.",
+  delivery:"Delivery zones, fees and the QR ordering queue.",
+  chain:"Chain-wide overview: sales, margin and health across every outlet.",
+  branches:"Outlets — the physical stores, kitchens and their configuration.",
+  menu:"The chain menu master; outlets take local price/availability overrides.",
+  aimenu:"AI menu builder — draft dishes, recipes and pricing from a prompt.",
+  users:"Users, roles and per-person access — the model shown on the lock screen.",
+  logs:"Append-only audit log: sign-ins, voids, refunds, price and stock changes.",
+  inventory:"Ingredients, stock on hand, weighted cost and reorder points.",
+  counts:"Stock counts and the variance they book to the ledger.",
+  purchases:"Purchase orders and goods-received notes that raise stock.",
+  requests:"Indent requests from outlets to the central store.",
+  dispatches:"Transfers between the store, kitchen and outlets.",
+  production:"Batch production: build prep items from their component recipes.",
+  recipes:"Recipes — the per-dish ingredient draw that deducts stock on sale.",
+  batches:"Batches and expiry tracking for perishable stock.",
+  vendors:"Suppliers, their catalogue and price history.",
+  staff:"Staff records, the time clock and labour cost against sales.",
+  payroll:"Payroll runs and pension (MRPS) contributions.",
+  accounting:"The accounting flow: sales, GST, costs into journal totals.",
+  costs:"Operating costs — rent, utilities, the recurring outgoings.",
+  assets:"Equipment register and maintenance schedules.",
+  reports:"Reports and exports, including the GST return.",
+  sync:"Registered devices, sync cursors and offline queue health.",
+  settings:"Store settings: tax, service charge, receipt and theme.",
+  architecture:"How the platform is built — the reference architecture."
+};
+/* Per-person access (v=view) per role, from ROLES.perms in the handoff data. */
+var ALLMOD = MODULES.map(function(m){return m.key;});
+function only(keys){var s={};keys.forEach(function(k){s[k]=1;});return s;}
+var VIEW = {
+  SuperAdmin: only(ALLMOD),
+  ChainAdmin: only(ALLMOD),
+  OutletManager: only(["pos","kds","reservations","customers","orders","delivery","chain","branches","menu","inventory","counts","requests","dispatches","batches","reports","accounting","sync","settings","logs","staff","costs","assets"]),
+  Cashier: only(["pos","reservations","customers","orders","delivery","kds"]),
+  KitchenManager: only(["kds","pos","production","recipes","requests","dispatches","inventory","counts","batches","menu","reports","sync","staff","assets"]),
+  StoreKeeper: only(["purchases","dispatches","requests","inventory","counts","batches","vendors","reports","sync","assets"]),
+  Accountant: only(ALLMOD)
+};
+var ROLE = {
+  SuperAdmin:{label:"Super Admin",color:"#a88ad9"},
+  ChainAdmin:{label:"Chain / HQ Admin",color:"#f2a43a"},
+  OutletManager:{label:"Outlet Manager",color:"#2e7d32"},
+  Cashier:{label:"Cashier / Waiter",color:"#0074D9"},
+  KitchenManager:{label:"Kitchen Manager",color:"#e65100"},
+  StoreKeeper:{label:"Store Keeper",color:"#67a2d9"},
+  Accountant:{label:"Accountant / Auditor",color:"#6bbf7b"}
+};
+var USERS = [
+  {id:"u1",name:"Ahmed Shazail",role:"SuperAdmin",outlet:3,pin:"4718",status:"Active"},
+  {id:"u2",name:"Aminath Nashwa",role:"ChainAdmin",outlet:3,pin:"2093",status:"Active"},
+  {id:"u3",name:"Hassan Shifau",role:"OutletManager",outlet:3,pin:"7364",status:"Active"},
+  {id:"u4",name:"Mariyam Leena",role:"OutletManager",outlet:4,pin:"5281",status:"Active"},
+  {id:"u5",name:"Fathimath Zoona",role:"OutletManager",outlet:6,pin:"9047",status:"Active"},
+  {id:"u6",name:"Ali Rifau",role:"OutletManager",outlet:7,pin:"3915",status:"Suspended"},
+  {id:"u7",name:"Ismail Nabeeh",role:"Cashier",outlet:3,pin:"6520",status:"Active"},
+  {id:"u8",name:"Shifa Adam",role:"Cashier",outlet:3,pin:"1836",status:"Active"},
+  {id:"u9",name:"Aishath Reesha",role:"KitchenManager",outlet:2,pin:"4402",status:"Active"},
+  {id:"u10",name:"Ibrahim Nazim",role:"StoreKeeper",outlet:1,pin:"8173",status:"Active"},
+  {id:"u11",name:"Yoosuf Waheed",role:"Accountant",outlet:3,pin:"2657",status:"Active"}
+];
+
+/* ── State + helpers ─────────────────────────────────────────────────────── */
+var S = {
+  theme: localStorage.getItem("kv2-theme") || "dark",
+  session: null,          // signed-in user
+  view: "pos",
+  picking: null,          // user being PIN-verified on the lock screen
+  entry: "",              // PIN digits typed
+  shake: false
+};
+document.documentElement.setAttribute("data-theme", S.theme);
+var root = document.getElementById("root");
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
+function initials(name){return name.split(/\s+/).map(function(w){return w[0];}).slice(0,2).join("").toUpperCase();}
+function outletOf(id){for(var i=0;i<OUTLETS.length;i++)if(OUTLETS[i].id===id)return OUTLETS[i];return OUTLETS[0];}
+function avatarStyle(role){return "background:"+((ROLE[role]||{}).color||"#888");}
+
+/* ── Lock screen ─────────────────────────────────────────────────────────── */
+function renderLock(){
+  var h = '<div class="lock"><div class="lock-card">';
+  h += '<div class="lock-head"><div class="lock-mark">K</div>'
+     + '<div class="lock-title">KashikeyoPOS</div>'
+     + '<div class="lock-sub">Kashikeyo Group · MV</div></div>';
+  if(!S.picking){
+    h += '<div class="lock-body">';
+    USERS.forEach(function(u){
+      var dis = u.status !== "Active";
+      h += '<button class="staff-row" '+(dis?'disabled':'data-pick="'+u.id+'"')+'>'
+         + '<span class="avatar" style="'+avatarStyle(u.role)+'">'+esc(initials(u.name))+'</span>'
+         + '<span style="min-width:0"><span class="staff-name">'+esc(u.name)+'</span>'
+         + '<span class="staff-role" style="display:block">'+esc((ROLE[u.role]||{}).label||u.role)+(dis?" · suspended":"")+'</span></span>'
+         + (dis?'':'<span class="pin-badge">PIN '+esc(u.pin)+'</span>')
+         + '</button>';
+    });
+    h += '<div class="lock-hint">A shared till has one identity at a time. Tap your name, key four digits — that is what makes a void or a drawer-open attributable to a person. Demo PINs are shown here; production hashes them and never displays them.</div>';
+    h += '</div>';
+  } else {
+    var u = S.picking;
+    h += '<div class="lock-body">';
+    h += '<div class="who"><span class="avatar" style="'+avatarStyle(u.role)+'">'+esc(initials(u.name))+'</span>'
+       + '<span style="min-width:0"><span class="staff-name" style="display:block">'+esc(u.name)+'</span>'
+       + '<span class="staff-role">'+esc((ROLE[u.role]||{}).label||u.role)+'</span></span>'
+       + '<button class="not-you" data-back="1">Not you?</button></div>';
+    h += '<div class="dots'+(S.shake?' shake':'')+'">';
+    for(var i=0;i<4;i++) h += '<span class="dot'+(i<S.entry.length?' on':'')+'"></span>';
+    h += '</div>';
+    h += '<div class="keypad">';
+    ["1","2","3","4","5","6","7","8","9"].forEach(function(d){ h += '<button class="key" data-key="'+d+'">'+d+'</button>'; });
+    h += '<button class="key wide" data-back="1">Cancel</button>';
+    h += '<button class="key" data-key="0">0</button>';
+    h += '<button class="key wide" data-del="1">⌫</button>';
+    h += '</div>';
+    h += '<div class="lock-hint">Signed in as this person until sign-out. Demo PIN '+esc(u.pin)+'.</div>';
+    h += '</div>';
+  }
+  h += '</div></div>';
+  root.innerHTML = h;
+}
+
+/* ── Shell ───────────────────────────────────────────────────────────────── */
+function visibleModules(role){
+  var v = VIEW[role] || {};
+  return MODULES.filter(function(m){ return v[m.key]; });
+}
+function renderShell(){
+  var u = S.session, ro = ROLE[u.role]||{}, out = outletOf(u.outlet);
+  var mods = visibleModules(u.role);
+  if(!mods.some(function(m){return m.key===S.view;})) S.view = (mods[0]||{key:"pos"}).key;
+
+  var nav = "";
+  GROUPS.forEach(function(g){
+    var inGrp = mods.filter(function(m){return m.group===g;});
+    if(!inGrp.length) return;
+    nav += '<div class="nav-grp">'+esc(g)+'</div>';
+    inGrp.forEach(function(m){
+      nav += '<button class="nav-item'+(m.key===S.view?' active':'')+'" data-view="'+m.key+'">'
+           + '<span class="nav-dot"></span><span>'+esc(m.label)+'</span></button>';
+    });
+  });
+
+  var cur = MODULES.filter(function(m){return m.key===S.view;})[0] || MODULES[0];
+  var body = (S.view==="pos") ? floorView(out) : moduleView(cur, u);
+
+  var h = '<div class="shell">'
+    + '<aside class="side">'
+      + '<div class="brand"><div class="brand-mark">K</div><div><div class="brand-name">KashikeyoPOS</div><div class="brand-sub">'+esc(out.code)+'</div></div></div>'
+      + '<nav class="nav">'+nav+'</nav>'
+      + '<div class="ident"><button class="ident-btn" data-signout="1" title="Sign out">'
+        + '<span class="avatar" style="'+avatarStyle(u.role)+';width:32px;height:32px">'+esc(initials(u.name))+'</span>'
+        + '<span class="idtext" style="min-width:0"><span class="staff-name" style="display:block;font-size:12px">'+esc(u.name)+'</span>'
+        + '<span class="staff-role">'+esc(ro.label||u.role)+'</span></span></button></div>'
+    + '</aside>'
+    + '<div class="main">'
+      + '<div class="topbar">'
+        + '<div><div class="crumb">'+esc(cur.label)+'</div><div class="crumb-sub">'+esc(out.name)+' · '+esc(out.region)+'</div></div>'
+        + '<div class="clock"><div class="clock-t" id="clk-t"></div><div class="clock-d" id="clk-d"></div></div>'
+        + '<button class="iconbtn" data-theme-toggle="1" title="Toggle theme">'+(S.theme==="dark"?"☀":"☾")+'</button>'
+        + '<button class="iconbtn" data-signout="1" title="Sign out">⎋</button>'
+      + '</div>'
+      + '<div class="content">'+body+'</div>'
+    + '</div>'
+  + '</div>';
+  root.innerHTML = h;
+  tickClock();
+}
+function floorView(out){
+  var n = out.tables || 12;
+  var h = '<div class="floor-head"><div class="floor-title">Floor plan</div>'
+        + '<div class="crumb-sub">'+n+' tables · tap a table to open its ticket</div></div>';
+  h += '<div class="floor-legend">'
+     + '<span><span class="leg-dot" style="background:var(--line-3)"></span>Available</span>'
+     + '<span><span class="leg-dot" style="background:var(--amber)"></span>Occupied</span>'
+     + '<span><span class="leg-dot" style="background:var(--blue)"></span>Reserved</span></div>';
+  h += '<div class="tables">';
+  for(var i=1;i<=n;i++){
+    // deterministic demo states so the floor reads as a live service
+    var mod = (i*7 + out.id) % 10;
+    var st = mod < 4 ? "occupied" : (mod === 4 ? "reserved" : "");
+    var seats = [2,2,4,4,4,6,2,4][i%8];
+    var sub = st==="occupied" ? "seated" : (st==="reserved" ? "held" : seats+" seats");
+    h += '<button class="table '+st+'"><span class="tn">'+i+'</span><span class="ts">'+sub+'</span></button>';
+  }
+  h += '</div>';
+  h += '<div class="mod-note" style="margin-top:20px">This is the first screen of the v2 build — faithful to the design tokens and the access model. Live tickets, tenders and receipts wire onto the existing sync API in the next increment.</div>';
+  return h;
+}
+function moduleView(m, u){
+  return '<div class="mod"><div class="floor-title">'+esc(m.label)+'<span class="pill">'+esc(m.group)+'</span></div>'
+    + '<div class="mod-blurb">'+esc(BLURB[m.key]||"")+'</div>'
+    + '<div class="mod-note">You can reach <b>'+esc(m.label)+'</b> because you are signed in as <b>'+esc((ROLE[u.role]||{}).label||u.role)+'</b>. '
+    + 'This module\'s full screen is built in a later increment of the ground-up rebuild — the shell, role-filtered navigation, theme and identity you see here are complete and driven by the design\'s own data.</div></div>';
+}
+function tickClock(){
+  var t = document.getElementById("clk-t"), d = document.getElementById("clk-d");
+  if(!t||!d) return;
+  var now = new Date();
+  t.textContent = now.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+  d.textContent = now.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+}
+setInterval(function(){ if(S.session) tickClock(); }, 1000*20);
+
+/* ── Render + events ─────────────────────────────────────────────────────── */
+function render(){ if(S.session) renderShell(); else renderLock(); }
+function tryPin(){
+  var u = S.picking;
+  if(S.entry.length < 4) return;
+  if(S.entry === u.pin){ S.session = u; S.picking = null; S.entry = ""; S.view = "pos"; render(); }
+  else { S.shake = true; render(); setTimeout(function(){ S.shake=false; S.entry=""; render(); }, 420); }
+}
+root.addEventListener("click", function(e){
+  var el = e.target.closest("button"); if(!el) return;
+  var d = el.dataset;
+  if(d.pick){ S.picking = USERS.filter(function(x){return x.id===d.pick;})[0]; S.entry=""; render(); return; }
+  if(d.back){ S.picking = null; S.entry=""; render(); return; }
+  if(d.del){ S.entry = S.entry.slice(0,-1); render(); return; }
+  if(d.key){ if(S.entry.length<4){ S.entry += d.key; render(); tryPin(); } return; }
+  if(d.view){ S.view = d.view; render(); return; }
+  if(d.signout){ S.session=null; S.picking=null; S.entry=""; render(); return; }
+  if(d.themeToggle){ S.theme = S.theme==="dark"?"light":"dark"; localStorage.setItem("kv2-theme",S.theme);
+    document.documentElement.setAttribute("data-theme",S.theme); render(); return; }
+});
+document.addEventListener("keydown", function(e){
+  if(!S.picking) return;
+  if(/^[0-9]$/.test(e.key)){ if(S.entry.length<4){ S.entry+=e.key; render(); tryPin(); } }
+  else if(e.key==="Backspace"){ S.entry=S.entry.slice(0,-1); render(); }
+  else if(e.key==="Escape"){ S.picking=null; S.entry=""; render(); }
+});
+render();
+</script>

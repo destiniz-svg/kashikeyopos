@@ -3467,6 +3467,16 @@ if (fs.existsSync(protoFile)) {
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
   };
+  /* /v2 — the ground-up rebuild, served ALONGSIDE the live /app (nothing here
+     touches /app, /admin or the guest portal). Plain static, no injection: the
+     new build is self-contained and reuses the already-served /app fonts. It is
+     viewable on staging without disturbing anything in production use. */
+  const proto3Dir = path.join(__dirname, "web3", "proto");
+  if (fs.existsSync(path.join(proto3Dir, "index.html"))) {
+    app.use("/v2", express.static(proto3Dir, { index: false, redirect: false, maxAge: "5m" }));
+    app.get(/^\/v2(\/.*)?$/, (req, res) =>
+      res.sendFile(path.join(proto3Dir, "index.html"), { headers: { "Cache-Control": "no-cache" } }));
+  }
   serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)
   // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
   app.get(/^\/app2(\/.*)?$/, (req, res) => res.redirect(301, "/app"));
