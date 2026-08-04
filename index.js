@@ -3788,6 +3788,14 @@ if (fs.existsSync(protoFile)) {
           .filter((d) => (Number(d.in) || 0) >= t0)
           .map((d) => ({ id: d.id, staff: d.staffId, outlet: Number(d.outlet) || 3,
             in: Number(d.in) || 0, out: Number(d.out) || 0, late: Number(d.late) || 0 }));
+        // Credit settlements (payments received against a customer tab) — for
+        // the customer's credit statement on the till. Money laari→MVR.
+        const setlRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settlements' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 300", [orgId])).rows;
+        const settlements = setlRows.map((r) => { const d = r.data || {}; return {
+          id: r.id, customerId: d.customerId || "", customerName: d.customerName || "",
+          amount: Math.round((Number(d.amount) || 0) / 100), method: d.method || "cash",
+          balanceAfter: Math.round((Number(d.balanceAfter) || 0) / 100), at: Number(d.t) || Number(d.at) || 0 }; });
         // Operating costs / expenses — real 'expenses' entities mapped to the
         // terminal's opex row shape (money laari→MVR). Recurring metadata
         // (freq/due/acct/outlet) rides on the entity when the cost form set it;
@@ -3845,7 +3853,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), customers, staff, clock, reservations, expenses,
+          orders: orders.slice(0, 200), customers, staff, clock, reservations, expenses, settlements,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });

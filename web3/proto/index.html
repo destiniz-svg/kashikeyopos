@@ -997,6 +997,9 @@ button:active:not(:disabled){transform:scale(.975)}
                 </div>
               </sc-for>
               <div style="{{ detailNoteStyle }}">{{ detailNote }}</div>
+              <sc-if value="{{ hasDetailAction2 }}">
+                <button onClick="{{ detailAction2 }}" style="margin-top:13px;width:100%;padding:11px;border-radius:8px;background:var(--amber);border:1px solid var(--amber);color:var(--on-amber);font-size:12px;font-weight:700;text-align:center">{{ detailAction2Label }}</button>
+              </sc-if>
               <sc-if value="{{ hasDetailEdit }}">
                 <button onClick="{{ detailEdit }}" style="margin-top:13px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center">{{ detailEditLabel }}</button>
               </sc-if>
@@ -3433,10 +3436,22 @@ class Component extends DCLogic {
     }
     if (m.kind === "customer") {
       const c = (K0.CUSTOMERS || []).find((x) => x.id === m.id) || {};
+      const rows = [R("Lifetime spend", MVRc(c.spent), "var(--amber-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.portal === false ? "Not invited" : "Registered · order tracking on")];
+      // Credit statement: the customer's own charges (credit-tender orders) and
+      // settlements, newest first — the ledger, not just the net balance.
+      const REAL = window.KPOS_REAL;
+      if (REAL && (c.used > 0 || c.credit > 0)) {
+        const charges = (REAL.orders || []).filter((o) => o.customerId === c.id && /credit|tab/i.test(String(o.tender || ""))).map((o) => ({ at: o.at, t: "Charge · " + (o.no || ""), v: o.total, dr: 1 }));
+        const setls = (REAL.settlements || []).filter((x) => x.customerId === c.id).map((x) => ({ at: x.at, t: "Payment · " + (x.method || ""), v: x.amount, dr: 0 }));
+        const led = charges.concat(setls).sort((a, b) => b.at - a.at).slice(0, 8);
+        if (led.length) { rows.push(Rt("— Statement —", "")); led.forEach((l) => rows.push(R(l.t, (l.dr ? "" : "− ") + MVRc(l.v), l.dr ? "var(--text)" : "var(--green)"))); }
+      }
+      const canSettle = this.can("customers") && (c.used || 0) > 0;
       return {
         hasDetailEdit: this.can("customers"), detailEditLabel: "Edit tier or credit limit", detailEdit: () => this.openForm("cust", c),
+        hasDetailAction2: canSettle, detailAction2Label: "Settle balance · " + MVRc(c.used || 0), detailAction2: () => this.openForm("settle", c),
         modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier",
-        detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--amber-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.portal === false ? "Not invited" : "Registered · order tracking on")],
+        detailRows: rows,
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -4925,6 +4940,23 @@ class Component extends DCLogic {
     if (sid) this.patchRows("vendors", [sid], body, "Vendor updated · " + body.name, "vendors");
     else this.insertRow("vendors", Object.assign({ id: this.nextId("vendors") }, body), "Vendor created · " + body.name, "vendors");
   }
+  // Record a payment against a customer's credit tab: reduces the balance and
+  // books a settlement row through the backend, so the credit ledger and the
+  // drawer reconcile. Optimistically lowers the shown balance.
+  settleCredit(c, v) {
+    const amt = +v.amt || 0;
+    if (amt <= 0) return this.toast("Enter an amount", "warn");
+    if (amt > (c.used || 0) + 0.005) return this.toast("That's more than the outstanding balance", "warn");
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to record a settlement", "warn"); return; }
+    fetch("/api/app2/customer/" + encodeURIComponent(c.id) + "/settle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ amount: Math.round(amt * 100), method: v.method || "cash" }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { this.toast(j.error, "warn"); return; }
+        const cust = (K().CUSTOMERS || []).find((x) => x.id === c.id); if (cust) cust.used = Math.max(0, (cust.used || 0) - amt);
+        this.setState({});
+        this.toast("Settled " + MVRc(amt) + " · " + c.name + (j.balance != null ? " · balance " + MVRc(Math.round(j.balance / 100)) : ""));
+      }).catch(() => this.toast("Could not record the settlement — check the connection", "warn"));
+    this.setState({ modal: null });
+  }
   // Create an inventory item. Real mode persists to /api/inv/ingredients (base
   // unit, purchase-unit conversion and an opening cost); demo mode keeps it
   // local. Optimistically appends to the item master so it shows at once.
@@ -6233,6 +6265,17 @@ class Component extends DCLogic {
             by: this.me(), cost: +v.cost || 0, notes: "batch started"
           }, "Batch started · " + no, "production");
         }
+      },
+      settle: {
+        title: "Settle credit balance", sub: "Record a payment against the tab", save: "Record payment", editSave: "Record payment",
+        foot: "A settlement is cash received against a debt — it reduces the customer's balance and books a settlement row, so the drawer reconciles against the credit ledger rather than moving unexplained.",
+        fields: [
+          { k: "amt", label: "Amount received MVR", v: "0" },
+          { k: "method", label: "Received as", options: [{ v: "cash", l: "Cash" }, { v: "card", l: "Card" }, { v: "transfer", l: "Bank transfer" }] }
+        ],
+        pre: (c) => ({ amt: String(c.used || 0), method: "cash" }),
+        onEdit: (v, c) => this.settleCredit(c, v),
+        onSave: (v) => this.toast("Open a customer to settle their balance", "warn")
       },
       vendor: {
         title: "Add vendor", sub: "Supplier master", save: "Create vendor",

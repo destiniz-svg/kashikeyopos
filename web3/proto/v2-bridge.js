@@ -137,8 +137,16 @@
         change: sale.change != null ? Math.round(num(sale.change) * 100) : 0 }],
     };
     if (sale.customerId) { data.customerId = sale.customerId; data.customerName = sale.customerName || ""; }
+    // A credit/tab sale is money owed: raise the customer's balance the way the
+    // register does (deltas.cust → the server's FIN-02 accrual, which also does
+    // the over-limit check). Idempotent — the op is deduped by opId, so a replay
+    // never double-charges the tab.
+    var opObj = { opId: id, puts: [{ kind: "sales", id: id, data: data }] };
+    if (data.customerId && (tender === "credit" || tender === "tab")) {
+      opObj.deltas = { cust: [{ id: data.customerId, bal: total, pts: 0 }] };
+    }
     var op = { id: id, lamport: lamport, state: "queued", attempts: 0, total: total,
-      body: { ops: [{ opId: id, puts: [{ kind: "sales", id: id, data: data }] }] } };
+      body: { ops: [opObj] } };
 
     // Durable FIRST, then optimistic network. If IndexedDB is unavailable, fall
     // back to a best-effort direct POST rather than dropping the sale silently.
