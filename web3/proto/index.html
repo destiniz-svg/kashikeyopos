@@ -122,6 +122,63 @@ input{font-family:inherit}
 .table.reserved .tn{color:var(--blue-bright)}
 .corner{position:absolute;top:0;left:0;width:100%;height:3px}
 
+/* ── Order screen (till) ─────────────────────────────────────────────────── */
+.order{display:grid;grid-template-columns:1fr 340px;gap:16px;height:100%}
+.order-main{min-width:0;display:flex;flex-direction:column;min-height:0}
+.ord-back{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--text-dim);padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg-1);margin-bottom:12px;align-self:flex-start}
+.cats{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.cat{font-size:12px;font-weight:700;padding:7px 13px;border-radius:20px;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)}
+.cat.active{background:var(--amber);border-color:var(--amber);color:var(--on-amber)}
+.items{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;overflow-y:auto;align-content:start;padding-right:4px;flex:1;min-height:0}
+.item{padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg-1);display:flex;flex-direction:column;gap:8px;min-height:86px}
+.item:hover{border-color:var(--amber-line);background:var(--bg-2)}
+.item-n{font-size:12.5px;font-weight:700;line-height:1.3;flex:1}
+.item-b{display:flex;align-items:center;justify-content:space-between}
+.item-p{font-size:13px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--amber-bright)}
+.veg{width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);position:relative}
+.veg::after{content:"";position:absolute;inset:2.5px;border-radius:1px;background:var(--green)}
+/* Ticket panel */
+.ticket{background:var(--bg-0);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;min-height:0}
+.tk-head{padding:13px 15px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between}
+.tk-t{font-size:14px;font-weight:800;letter-spacing:-.01em}
+.tk-s{font-size:10.5px;color:var(--text-dim);margin-top:2px}
+.tk-lines{flex:1;overflow-y:auto;padding:8px 12px;min-height:60px}
+.tk-empty{padding:40px 16px;text-align:center;color:var(--text-faint);font-size:12px;line-height:1.6}
+.tk-line{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--bg-2);animation:kpop .18s}
+.tk-ln{flex:1;min-width:0}.tk-ln-n{font-size:12px;font-weight:600;line-height:1.3}
+.tk-ln-p{font-size:10.5px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+.step{display:flex;align-items:center;gap:2px;flex-shrink:0}
+.step button{width:24px;height:24px;border-radius:7px;border:1px solid var(--line);background:var(--bg-2);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:var(--text)}
+.step button:hover{border-color:var(--line-3)}
+.step .q{min-width:22px;text-align:center;font-size:12.5px;font-weight:800;font-family:'JetBrains Mono',monospace}
+.tk-lv{width:58px;text-align:right;font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0}
+.tk-tot{padding:12px 15px;border-top:1px solid var(--line)}
+.tk-row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);padding:2.5px 0}
+.tk-row.grand{font-size:15px;font-weight:800;color:var(--text);padding-top:8px;margin-top:4px;border-top:1px solid var(--line-2)}
+.tk-row .v{font-family:'JetBrains Mono',monospace}
+.tk-actions{display:flex;gap:8px;padding:12px 15px 14px}
+.btn{flex:1;padding:12px;border-radius:10px;font-size:12.5px;font-weight:800;text-align:center;border:1px solid var(--line)}
+.btn.ghost{background:var(--bg-1);color:var(--text-dim)}.btn.ghost:hover{color:var(--text);border-color:var(--line-3)}
+.btn.pay{background:var(--amber);color:var(--on-amber);border-color:var(--amber)}
+.btn.pay[disabled]{opacity:.4;cursor:not-allowed}
+
+/* ── Pay modal ───────────────────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:18px;z-index:50;animation:kfade .16s}
+.pay{width:100%;max-width:400px;background:var(--bg-1);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;animation:kmodal .24s cubic-bezier(.2,.8,.3,1)}
+.pay-head{padding:15px 17px;border-bottom:1px solid var(--line-soft);display:flex;justify-content:space-between;align-items:center}
+.pay-body{padding:15px 17px}
+.tenders{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.tender{padding:11px 6px;border-radius:10px;border:1px solid var(--line);background:var(--bg-2);text-align:center;font-size:12px;font-weight:700;color:var(--text-dim)}
+.tender.active{background:var(--amber-dim);border-color:var(--amber-line);color:var(--amber-bright)}
+.tendered{display:flex;justify-content:space-between;align-items:baseline;padding:10px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px;margin-bottom:9px}
+.tendered .l{font-size:10.5px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.tendered .n{font-size:21px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--amber-bright)}
+.change{display:flex;justify-content:space-between;font-size:12.5px;font-weight:700;padding:4px 2px 12px;color:var(--green)}
+.confirm{width:100%;padding:13px;border-radius:11px;background:var(--amber);color:var(--on-amber);font-size:13px;font-weight:800;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px}
+.confirm[disabled]{opacity:.4;cursor:not-allowed}
+.receipt{text-align:center;padding:8px 4px}
+.rcheck{width:54px;height:54px;border-radius:50%;background:var(--green);color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:6px auto 12px;animation:kpop .3s}
+
 /* ── Generic module placeholder (views built in later increments) ────────── */
 .mod{max-width:760px}
 .mod-blurb{font-size:13px;color:var(--text-dim);line-height:1.7;margin:8px 0 18px;max-width:560px}
@@ -146,11 +203,21 @@ input{font-family:inherit}
       draws these from Postgres via the existing sync API; the lock screen and
       access model below are the design's, faithfully. ─────────────────────── */
 var OUTLETS = [
-  { id: 3, code: "KO-CHA", name: "Kashikeyo Chaandhanee", tables: 16, region: "Malé" },
-  { id: 4, code: "KO-HUL", name: "Kashikeyo Hulhumalé", tables: 12, region: "Malé" },
-  { id: 5, code: "KO-VIA", name: "Kashikeyo Velana Airport", tables: 9, region: "Malé" },
-  { id: 6, code: "KO-MAA", name: "Kashikeyo Maafushi", tables: 13, region: "Atolls" },
-  { id: 7, code: "KO-BAA", name: "Kashikeyo Baa Atoll", tables: 10, region: "Atolls" }
+  { id: 3, code: "KO-CHA", name: "Kashikeyo Chaandhanee", tables: 16, region: "Malé", rate: 8, sc: 10 },
+  { id: 4, code: "KO-HUL", name: "Kashikeyo Hulhumalé", tables: 12, region: "Malé", rate: 8, sc: 10 },
+  { id: 5, code: "KO-VIA", name: "Kashikeyo Velana Airport", tables: 9, region: "Malé", rate: 16, sc: 10 },
+  { id: 6, code: "KO-MAA", name: "Kashikeyo Maafushi", tables: 13, region: "Atolls", rate: 16, sc: 10 },
+  { id: 7, code: "KO-BAA", name: "Kashikeyo Baa Atoll", tables: 10, region: "Atolls", rate: 16, sc: 10 }
+];
+/* Menu — chain master (kashikeyo-data.js). Prices are the MVR pre-tax base;
+   the bill adds service charge on goods then GST on (goods + service), exactly
+   as totals() does in the reference prototype. */
+var MENU_CATS = [
+  {id:"starters",name:"Starters"},{id:"mains",name:"Mains"},{id:"grill",name:"From the Grill"},
+  {id:"rice",name:"Rice & Noodles"},{id:"sides",name:"Sides"},{id:"desserts",name:"Desserts"},{id:"drinks",name:"Drinks"}
+];
+var MENU = [
+{"id":"m1","cat":"starters","name":"Gulha & Bajiya Platter","price":75,"veg":false},{"id":"m2","cat":"starters","name":"Reef Fish Ceviche","price":105,"veg":false},{"id":"m3","cat":"starters","name":"Guacamole & Totopos","price":170,"veg":false},{"id":"m4","cat":"starters","name":"Crispy Shrimp, Chipotle Mayo","price":80,"veg":false},{"id":"m5","cat":"starters","name":"Watermelon, Feta & Lime","price":165,"veg":true},{"id":"m6","cat":"starters","name":"Birria Dip Toast","price":220,"veg":false},{"id":"m7","cat":"starters","name":"Shrimp Ceviche Cups","price":110,"veg":false},{"id":"m8","cat":"starters","name":"Beef Tartare","price":150,"veg":false},{"id":"m9","cat":"starters","name":"Charred Cabbage, Chipotle Ranch","price":55,"veg":true},{"id":"m10","cat":"starters","name":"Roasted Garlic Soup","price":70,"veg":true},{"id":"m20","cat":"mains","name":"Pan-Seared Reef Snapper","price":150,"veg":false},{"id":"m21","cat":"mains","name":"Yellowfin Tuna Steak","price":120,"veg":false},{"id":"m22","cat":"mains","name":"Parmesan Rice, Caramelised Onion","price":105,"veg":true},{"id":"m23","cat":"mains","name":"Soy-Glazed Reef Fish","price":115,"veg":false},{"id":"m30","cat":"grill","name":"Striploin 450g, Garlic Butter","price":390,"veg":false},{"id":"m31","cat":"grill","name":"Beef Topside, Potato Purée","price":265,"veg":false},{"id":"m32","cat":"grill","name":"Half Chicken, Paprika & Lime","price":100,"veg":false},{"id":"m33","cat":"grill","name":"Cabbage & Chickpea Steak","price":85,"veg":true},{"id":"m34","cat":"grill","name":"Striploin for Two, 900g","price":760,"veg":false},{"id":"m35","cat":"grill","name":"Grilled Shrimp, Salsa Verde","price":145,"veg":false},{"id":"m36","cat":"grill","name":"Whole Grilled Reef Fish","price":160,"veg":false},{"id":"m37","cat":"grill","name":"Grilled Mozzarella & Capsicum","price":85,"veg":true},{"id":"m40","cat":"rice","name":"Mas Riha & Steamed Rice","price":100,"veg":false},{"id":"m41","cat":"rice","name":"Cilantro Rice Bowl","price":165,"veg":true},{"id":"m42","cat":"rice","name":"Shrimp Ravioli, Parmesan Cream","price":130,"veg":false},{"id":"m50","cat":"sides","name":"Parmesan Fries","price":60,"veg":true},{"id":"m51","cat":"sides","name":"Buttered Peas & Carrot","price":55,"veg":true},{"id":"m52","cat":"sides","name":"Creamed Sweet Corn","price":75,"veg":true},{"id":"m53","cat":"sides","name":"Mac & Cheese","price":85,"veg":true},{"id":"m60","cat":"desserts","name":"White Chocolate Torte","price":70,"veg":true},{"id":"m61","cat":"desserts","name":"Crème Brûlée","price":65,"veg":true},{"id":"m62","cat":"desserts","name":"Churros, Cinnamon Sugar","price":50,"veg":true},{"id":"m70","cat":"drinks","name":"Horchata, Cinnamon","price":45,"veg":true},{"id":"m71","cat":"drinks","name":"Hibiscus Cooler","price":40,"veg":true},{"id":"m72","cat":"drinks","name":"Sparkling Water","price":45,"veg":true},{"id":"m73","cat":"drinks","name":"Masala Tea","price":30,"veg":true},{"id":"m74","cat":"drinks","name":"Fresh Mango Juice","price":60,"veg":true}
 ];
 var GROUPS = ["Front of house","Chain","Supply chain","People","Finance","Platform"];
 var MODULES = [
@@ -259,8 +326,23 @@ var S = {
   view: "pos",
   picking: null,          // user being PIN-verified on the lock screen
   entry: "",              // PIN digits typed
-  shake: false
+  shake: false,
+  // POS till
+  table: null,            // open table number (null = floor view)
+  cat: "starters",        // active menu category
+  carts: {},              // { [tableNo]: [ {id,name,price,qty} ] }
+  pay: null               // { method, tendered } while the pay modal is open
 };
+function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
+function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+/* Bill math, identical to totals() in the reference prototype: menu price is the
+   pre-tax base; service charge on goods; GST on (goods + service). */
+function totals(lines, out){
+  var sub = lines.reduce(function(a,l){ return a + l.price*l.qty; }, 0);
+  var svc = sub * ((out.sc||0)/100);
+  var tax = (sub + svc) * ((out.rate||0)/100);
+  return { sub: sub, svc: svc, tax: tax, total: sub + svc + tax };
+}
 document.documentElement.setAttribute("data-theme", S.theme);
 var root = document.getElementById("root");
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];});}
@@ -332,7 +414,7 @@ function renderShell(){
   });
 
   var cur = MODULES.filter(function(m){return m.key===S.view;})[0] || MODULES[0];
-  var body = (S.view==="pos") ? floorView(out) : moduleView(cur, u);
+  var body = (S.view==="pos") ? (S.table ? orderView(out) : floorView(out)) : moduleView(cur, u);
 
   var h = '<div class="shell">'
     + '<aside class="side">'
@@ -366,15 +448,93 @@ function floorView(out){
      + '<span><span class="leg-dot" style="background:var(--blue)"></span>Reserved</span></div>';
   h += '<div class="tables">';
   for(var i=1;i<=n;i++){
-    // deterministic demo states so the floor reads as a live service
+    // A table with items in its cart reads as occupied; the rest are seeded so
+    // the floor looks like a live service.
+    var has = (S.carts[i] && S.carts[i].length);
     var mod = (i*7 + out.id) % 10;
-    var st = mod < 4 ? "occupied" : (mod === 4 ? "reserved" : "");
+    var st = has ? "occupied" : (mod < 4 ? "occupied" : (mod === 4 ? "reserved" : ""));
     var seats = [2,2,4,4,4,6,2,4][i%8];
-    var sub = st==="occupied" ? "seated" : (st==="reserved" ? "held" : seats+" seats");
-    h += '<button class="table '+st+'"><span class="tn">'+i+'</span><span class="ts">'+sub+'</span></button>';
+    var sub = has ? (S.carts[i].reduce(function(a,l){return a+l.qty;},0)+" items") : (st==="occupied" ? "seated" : (st==="reserved" ? "held" : seats+" seats"));
+    h += '<button class="table '+st+'" data-table="'+i+'"><span class="tn">'+i+'</span><span class="ts">'+sub+'</span></button>';
   }
   h += '</div>';
-  h += '<div class="mod-note" style="margin-top:20px">This is the first screen of the v2 build — faithful to the design tokens and the access model. Live tickets, tenders and receipts wire onto the existing sync API in the next increment.</div>';
+  return h;
+}
+function orderView(out){
+  var lines = cart();
+  var items = MENU.filter(function(m){ return m.cat === S.cat; });
+  var h = '<div class="order"><div class="order-main">';
+  h += '<button class="ord-back" data-floor="1">‹ Floor plan</button>';
+  h += '<div class="cats">';
+  MENU_CATS.forEach(function(c){ h += '<button class="cat'+(c.id===S.cat?' active':'')+'" data-cat="'+c.id+'">'+esc(c.name)+'</button>'; });
+  h += '</div><div class="items">';
+  items.forEach(function(m){
+    h += '<button class="item" data-add="'+m.id+'">'
+       + '<span class="item-n">'+esc(m.name)+'</span>'
+       + '<span class="item-b"><span class="item-p">'+money(m.price)+'</span>'+(m.veg?'<span class="veg" title="Vegetarian"></span>':'')+'</span></button>';
+  });
+  h += '</div></div>';
+
+  // ticket panel
+  var T = totals(lines, out);
+  h += '<div class="ticket"><div class="tk-head"><div><div class="tk-t">Table '+S.table+'</div>'
+     + '<div class="tk-s">'+esc(out.name)+' · '+(lines.reduce(function(a,l){return a+l.qty;},0))+' items</div></div></div>';
+  h += '<div class="tk-lines">';
+  if(!lines.length){ h += '<div class="tk-empty">Empty ticket. Tap items on the left to build the order.</div>'; }
+  else lines.forEach(function(l){
+    h += '<div class="tk-line"><div class="tk-ln"><div class="tk-ln-n">'+esc(l.name)+'</div>'
+       + '<div class="tk-ln-p">'+money(l.price)+' each</div></div>'
+       + '<div class="step"><button data-dec="'+l.id+'">−</button><span class="q">'+l.qty+'</span><button data-inc="'+l.id+'">+</button></div>'
+       + '<div class="tk-lv">'+money(l.price*l.qty)+'</div></div>';
+  });
+  h += '</div>';
+  h += '<div class="tk-tot">'
+     + '<div class="tk-row"><span>Subtotal</span><span class="v">'+money(T.sub)+'</span></div>'
+     + (out.sc?'<div class="tk-row"><span>Service '+out.sc+'%</span><span class="v">'+money(T.svc)+'</span></div>':'')
+     + '<div class="tk-row"><span>GST '+out.rate+'%</span><span class="v">'+money(T.tax)+'</span></div>'
+     + '<div class="tk-row grand"><span>Total</span><span class="v">MVR '+money(T.total)+'</span></div></div>';
+  h += '<div class="tk-actions">'
+     + '<button class="btn ghost" data-hold="1">Hold</button>'
+     + '<button class="btn pay" data-pay="1"'+(lines.length?'':' disabled')+'>Pay · MVR '+money(T.total)+'</button></div>';
+  h += '</div></div>';
+
+  if(S.pay) h += payModal(T, out);
+  return h;
+}
+function payModal(T, out){
+  var p = S.pay;
+  var tend = p.method==="Cash" ? (parseFloat(p.tendered)||0) : T.total;
+  var change = Math.max(0, tend - T.total);
+  var enough = p.method!=="Cash" || tend >= T.total;
+  if(p.done){
+    return '<div class="scrim"><div class="pay"><div class="pay-body"><div class="receipt">'
+      + '<div class="rcheck">✓</div>'
+      + '<div style="font-size:15px;font-weight:800">Paid · MVR '+money(T.total)+'</div>'
+      + '<div style="font-size:12px;color:var(--text-dim);margin-top:4px">Table '+S.table+' · '+esc(p.method)+(p.method==="Cash"?' · change '+money(change):'')+'</div>'
+      + '<div style="font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6">Receipt queued. In production this posts a sale to the sync outbox and prints/queues the receipt.</div>'
+      + '<button class="confirm" data-newbill="1" style="margin-top:16px">New order on Table '+S.table+'</button>'
+      + '<button class="btn ghost" data-floor2="1" style="margin-top:8px;width:100%">Back to floor</button>'
+      + '</div></div></div></div>';
+  }
+  var h = '<div class="scrim" data-scrim="1"><div class="pay">';
+  h += '<div class="pay-head"><div><div class="tk-t">Take payment</div><div class="tk-s">Table '+S.table+' · MVR '+money(T.total)+'</div></div>'
+     + '<button class="iconbtn" data-paycancel="1">×</button></div>';
+  h += '<div class="pay-body">';
+  h += '<div class="tenders">';
+  ["Cash","Card","Transfer"].forEach(function(m){ h += '<button class="tender'+(p.method===m?' active':'')+'" data-tender="'+m+'">'+m+'</button>'; });
+  h += '</div>';
+  if(p.method==="Cash"){
+    h += '<div class="tendered"><span class="l">Tendered</span><span class="n">'+money(tend)+'</span></div>';
+    h += '<div class="keypad" style="grid-template-columns:repeat(3,1fr)">';
+    ["1","2","3","4","5","6","7","8","9"].forEach(function(d){ h += '<button class="key" data-cash="'+d+'">'+d+'</button>'; });
+    h += '<button class="key wide" data-cashclr="1">C</button><button class="key" data-cash="0">0</button><button class="key wide" data-cash="00">00</button>';
+    h += '</div>';
+    h += '<div class="change"><span>Change due</span><span style="font-family:\'JetBrains Mono\',monospace">'+money(change)+'</span></div>';
+  } else {
+    h += '<div style="padding:14px 2px 16px;font-size:12px;color:var(--text-dim);line-height:1.6">'+esc(p.method)+' payment for the full MVR '+money(T.total)+'. In production this captures the terminal/transfer reference against the sale.</div>';
+  }
+  h += '<button class="confirm" data-confirm="1"'+(enough?'':' disabled')+'>Confirm · MVR '+money(T.total)+'</button>';
+  h += '</div></div></div>';
   return h;
 }
 function moduleView(m, u){
@@ -400,17 +560,38 @@ function tryPin(){
   if(S.entry === u.pin){ S.session = u; S.picking = null; S.entry = ""; S.view = "pos"; render(); }
   else { S.shake = true; render(); setTimeout(function(){ S.shake=false; S.entry=""; render(); }, 420); }
 }
+function findLine(id){ return cart().filter(function(l){return l.id===id;})[0]; }
 root.addEventListener("click", function(e){
+  // Pay-modal backdrop (a div, not a button) closes the modal.
+  if(e.target.dataset && e.target.dataset.scrim){ S.pay=null; render(); return; }
   var el = e.target.closest("button"); if(!el) return;
   var d = el.dataset;
+  // ── lock screen ──
   if(d.pick){ S.picking = USERS.filter(function(x){return x.id===d.pick;})[0]; S.entry=""; render(); return; }
   if(d.back){ S.picking = null; S.entry=""; render(); return; }
   if(d.del){ S.entry = S.entry.slice(0,-1); render(); return; }
   if(d.key){ if(S.entry.length<4){ S.entry += d.key; render(); tryPin(); } return; }
-  if(d.view){ S.view = d.view; render(); return; }
-  if(d.signout){ S.session=null; S.picking=null; S.entry=""; render(); return; }
+  // ── shell ──
+  if(d.view){ S.view = d.view; if(S.view!=="pos") S.table=null; render(); return; }
+  if(d.signout){ S.session=null; S.picking=null; S.entry=""; S.table=null; render(); return; }
   if(d.themeToggle){ S.theme = S.theme==="dark"?"light":"dark"; localStorage.setItem("kv2-theme",S.theme);
     document.documentElement.setAttribute("data-theme",S.theme); render(); return; }
+  // ── POS till ──
+  if(d.table){ S.table = Number(d.table); S.cat="starters"; S.pay=null; render(); return; }
+  if(d.floor || d.floor2){ S.table = null; S.pay = null; render(); return; }
+  if(d.cat){ S.cat = d.cat; render(); return; }
+  if(d.add){ var m = MENU.filter(function(x){return x.id===d.add;})[0]; var ln = findLine(d.add);
+    if(ln) ln.qty++; else cart().push({ id:m.id, name:m.name, price:m.price, qty:1 }); render(); return; }
+  if(d.inc){ var li = findLine(d.inc); if(li){ li.qty++; render(); } return; }
+  if(d.dec){ var ld = findLine(d.dec); if(ld){ ld.qty--; if(ld.qty<=0) S.carts[S.table] = cart().filter(function(l){return l.id!==d.dec;}); render(); } return; }
+  if(d.hold){ S.table = null; render(); return; }   // holding just parks the ticket (cart persists on the table)
+  if(d.pay){ S.pay = { method:"Cash", tendered:"" }; render(); return; }
+  if(d.paycancel){ S.pay = null; render(); return; }
+  if(d.tender){ S.pay.method = d.tender; render(); return; }
+  if(d.cash){ S.pay.tendered = (S.pay.tendered==="0"?"":S.pay.tendered) + d.cash; render(); return; }
+  if(d.cashclr){ S.pay.tendered = ""; render(); return; }
+  if(d.confirm){ S.pay.done = true; render(); return; }
+  if(d.newbill){ S.carts[S.table] = []; S.pay = null; render(); return; }
 });
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
