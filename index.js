@@ -3585,6 +3585,17 @@ if (fs.existsSync(protoFile)) {
         const m0 = monthStart.getTime();
         let netMonth = 0, gstMonth = 0, txMonth = 0;
         const pad2 = (n) => String(n).padStart(2, "0");
+        // 14-day net-sales history for the analytics trend chart + week-on-week.
+        // Bucketed by local calendar day; each bucket starts at 0 so a day with
+        // no sales is an honest zero, not a gap.
+        const DAYS = 14;
+        const dayKeys = [], dayNet = {};
+        for (let i = DAYS - 1; i >= 0; i--) {
+          const dd = new Date(startOfDay.getTime() - i * 86400000);
+          const key = dd.getFullYear() + "-" + pad2(dd.getMonth() + 1) + "-" + pad2(dd.getDate());
+          dayKeys.push({ key, at: dd.getTime() }); dayNet[key] = 0;
+        }
+        const dayKeyOf = (ts) => { const dd = new Date(ts); return dd.getFullYear() + "-" + pad2(dd.getMonth() + 1) + "-" + pad2(dd.getDate()); };
         const chanMap = { v2: "dine_in", dine_in: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
         // pid → display name, so a real sale's stored line items can carry the
         // dish name the receipt and menu-engineering report need.
@@ -3597,6 +3608,7 @@ if (fs.existsSync(protoFile)) {
           const at = Number(d.at) || 0;
           if (at >= t0) { net += Number(d.total) || 0; covers += 1; }
           if (at >= m0) { netMonth += Number(d.total) || 0; gstMonth += Number(d.gst) || 0; txMonth += 1; }
+          if (at) { const dk = dayKeyOf(at); if (dayNet[dk] != null) dayNet[dk] += Number(d.total) || 0; }
           const dt = at ? new Date(at) : null;
           // Real line detail: the sale entity persists lines[{pid,qty,price,amount}]
           // (all laari). Project them with the dish name so the terminal receipt
@@ -3674,7 +3686,8 @@ if (fs.existsSync(protoFile)) {
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
             currency: st.currency === "USD" ? "USD" : "MVR" },
           outlets: outlets.length ? outlets : null,
-          categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth },
+          categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
+            daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), customers, staff,
         };
       });

@@ -3974,27 +3974,38 @@ class Component extends DCLogic {
     const assetList = this.assetList();
     const assetsDown = assetList.filter((a) => a.status === "down").length;
     const serviceDue = assetList.filter((a) => { const dd = new Date(a.lastSvc); dd.setDate(dd.getDate() + a.svcDays); return dd <= s.now && a.status !== "down"; }).length;
-    // No real historical series exists yet (sales are only aggregated for
-    // today/month), so in real mode the 14-day trend carries only today's real
-    // point and the hourly curve is empty rather than a fabricated shape.
+    // Real mode reads the 14-day net-sales series aggregated server-side; demo
+    // mode fabricates a plausible shape. The hourly curve still has no real
+    // source (sales aren't time-bucketed by hour yet) → empty in real mode.
+    const realDaily = REAL ? ((window.KPOS_REAL.stats || {}).daily || []) : null;
     const days = [], rd = this.rng(7712);
     for (let i = 13; i >= 0; i--) {
       const d = new Date(s.now.getTime() - i * 86400000), wknd = d.getDay() === 5 || d.getDay() === 6;
       days.push({ d: d, v: REAL ? 0 : Math.round(tot * (0.70 + rd() * 0.40 + (wknd ? 0.14 : 0))) });
     }
-    days[days.length - 1].v = tot;
+    if (realDaily && realDaily.length) {
+      // Align the real series to the 14 day-slots (it is already oldest→newest).
+      const n = Math.min(days.length, realDaily.length);
+      for (let i = 0; i < n; i++) {
+        const rec = realDaily[realDaily.length - n + i];
+        days[days.length - n + i] = { d: new Date(rec.at), v: Number(rec.net) || 0 };
+      }
+    } else {
+      days[days.length - 1].v = tot;
+    }
     const shape = [.06, .09, .14, .30, .44, .31, .19, .24, .58, .88, 1, .74, .36, .13];
     const hours = [], rh = this.rng(551);
     for (let i = 0; i < 14; i++) hours.push({ h: 10 + i, v: REAL ? 0 : Math.round(tot * shape[i] * (0.13 + rh() * 0.05)) });
     const last7 = days.slice(7).reduce((a, x) => a + x.v, 0);
-    const prev7 = REAL ? 0 : days.slice(0, 7).reduce((a, x) => a + x.v, 0);
+    const prev7 = days.slice(0, 7).reduce((a, x) => a + x.v, 0);
     const credit = (K0.CUSTOMERS || []).reduce((a, c) => a + (c.used || 0), 0);
     const overdue = (K0.CUSTOMERS || []).filter((c) => c.used > 0 && c.used >= c.credit).length;
     return {
       rows: rows, tot: tot, cov: cov, waste: waste, days: days, hours: hours,
       target: target, fc: chainFc, last7: last7, prev7: prev7,
-      // No week-on-week baseline in real mode (no history) → 0, not a fake delta.
-      growth: REAL ? 0 : ((last7 - prev7) / (prev7 || 1)) * 100,
+      // Week-on-week from the real 14-day series; a zero prior week has no
+      // meaningful percentage base, so report 0 rather than an infinite spike.
+      growth: prev7 ? ((last7 - prev7) / prev7) * 100 : 0,
       credit: credit, overdue: overdue,
       queued: s.outbox.filter((x) => x.state === "queued").length,
       conflicts: s.conflicts.length,
