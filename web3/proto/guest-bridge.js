@@ -22,4 +22,15 @@
     }).catch(function (e) { try { console.warn("[vg] order POST failed", e); } catch (x) {} });
   }
   window.__vgPlaceOrder = placeOrder;
+
+  // Look up a loyalty/credit account by phone for the Customer-account tab.
+  function account(phone, cb) {
+    var s = slug();
+    if (!s) { if (cb) cb(null); return; }
+    fetch("/p/" + encodeURIComponent(s) + "/account?phone=" + encodeURIComponent(phone))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (cb) cb(j); })
+      .catch(function () { if (cb) cb(null); });
+  }
+  window.__vgAccount = account;
 })();

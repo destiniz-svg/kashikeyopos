@@ -507,10 +507,20 @@ a:hover{color:#7d1826}
           <div style="display:flex;align-items:center;gap:11px">
             <img src="brand/kashikeyo-mark.png" alt="Kashikeyo" style="width:24px;height:24px;object-fit:contain;display:block;mix-blend-mode:multiply;flex-shrink:0"/>
             <span style="flex:1;min-width:0;font-size:10.5px;font-weight:800;letter-spacing:.14em;color:#1c1917">{{ brandName }}</span>
-            <span style="width:30px;height:30px;border-radius:50%;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#57534e;flex-shrink:0">RL</span>
+            <span style="width:30px;height:30px;border-radius:50%;background:#f5f5f4;border:1px solid #e7e5e4;display:grid;place-items:center;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;color:#57534e;flex-shrink:0">{{ acctInitials }}</span>
           </div>
 
-          <div style="display:flex;flex-direction:column;gap:13px">
+          <sc-if value="{{ acctSignInVis }}">
+            <div style="background:#fff;border:1px solid #e7e5e4;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px">
+              <div style="font-size:15px;font-weight:800;color:#1c1917;letter-spacing:-.01em">See your account</div>
+              <div style="font-size:11.5px;color:#78716c;line-height:1.5;text-wrap:pretty">Enter the phone number on your loyalty account for points, tier and house credit.</div>
+              <input value="{{ acctPhone }}" onInput="{{ onAcctPhone }}" onKeyDown="{{ onAcctKey }}" placeholder="7XXXXXX" inputmode="tel" style="width:100%;padding:12px 14px;border:1px solid #d6d3d1;border-radius:12px;font-size:15px;font-family:'JetBrains Mono',monospace;letter-spacing:.03em"/>
+              <button onClick="{{ acctSignInGo }}" style="width:100%;padding:13px;border-radius:12px;background:#1f6f4a;color:#fff;font-size:13.5px;font-weight:700">View my account</button>
+              <sc-if value="{{ acctErrVis }}"><div style="font-size:11.5px;color:#982030;font-weight:600">{{ acctErr }}</div></sc-if>
+            </div>
+          </sc-if>
+
+          <div style="{{ acctBodyStyle }}">
             <div>
               <div style="font-size:19px;font-weight:700;color:#1c1917;letter-spacing:-0.025em;line-height:1.3;text-wrap:pretty">{{ welcomeLine }}</div>
               <div style="font-size:11.5px;color:#a8a29e;margin-top:5px;line-height:1.45">{{ welcomeSub }}</div>
@@ -1193,6 +1203,21 @@ class Component extends DCLogic {
   ledger() { return LEDGER.concat(this.state.charges || []); }
   balance() { return this.ledger().reduce((a, r) => a + r.amt, OPENING); }
 
+  // Sign in to a real loyalty/credit account by phone (via the store's public
+  // /p/:slug/account lookup). On success the account screen renders real points,
+  // tier and house credit instead of the seeded placeholder.
+  acctSignIn() {
+    const phone = (this.state.acctPhone || "").trim();
+    if (phone.replace(/\D/g, "").length < 6) { this.setState({ acctErr: "Enter your phone number" }); return; }
+    if (!window.__vgAccount) { this.setState({ acctErr: "Accounts aren't available here" }); return; }
+    const self = this;
+    window.__vgAccount(phone, (r) => {
+      if (r && r.found && r.account) self.setState({ acct: r.account, acctErr: "", acctPhone: "" });
+      else if (r && r.found === false) self.setState({ acctErr: "No account found for that number." });
+      else self.setState({ acctErr: "Couldn't reach the account service — try again." });
+    });
+  }
+
   addQty(id, d) {
     const b = Object.assign({}, this.state.basket);
     b[id] = Math.max(0, (b[id] || 0) + d);
@@ -1318,7 +1343,11 @@ class Component extends DCLogic {
     const powered = this.props.showPoweredBy !== false && brand.poweredBy !== false;
     const lines = this.lines(), t = this.totals(lines);
     const count = lines.reduce((a, l) => a + l.qty, 0);
-    const bal = this.balance(), avail = LIMIT - bal;
+    // Real account (from a phone sign-in) overrides the seeded ledger figures.
+    const acct = s.acct || null;
+    const CLIMIT = acct ? acct.creditLimit : LIMIT;
+    const bal = acct ? acct.creditUsed : this.balance(), avail = Math.max(0, CLIMIT - bal);
+    const ptsEff = acct ? acct.points : s.points;
     const on = "#982030";
 
     const catIcons = {
@@ -1344,7 +1373,7 @@ class Component extends DCLogic {
     const stage = { hold: ["#f5f5f4", "#d6d3d1", "#57534e"], cooking: ["rgba(152,32,48,.1)", "#982030", "#8f1d2d"], almost: ["rgba(176,128,31,.11)", "#b0801f", "#92661a"], served: ["rgba(31,111,74,.1)", "#1f6f4a", "#17603f"] };
 
     const tierPts = 7500;
-    const tier = s.points >= tierPts ? "Platinum" : s.points >= 2500 ? "Gold" : "Silver";
+    const tier = acct && acct.tier ? acct.tier : (ptsEff >= tierPts ? "Platinum" : ptsEff >= 2500 ? "Gold" : "Silver");
     const tierAcc = tier === "Platinum" ? "#dfe3e6" : tier === "Gold" ? "#e8d9b5" : "#d6d3d1";
     const tierBg = tier === "Platinum" ? "#12100f" : tier === "Gold" ? "#1c1917" : "#292524";
     const paidR = s.paid;
@@ -1384,8 +1413,17 @@ class Component extends DCLogic {
       sFulfil: s.screen === "fulfil",
 
       // ── welcome, always current with the hour ────────────────────────────
-      welcomeLine: this.welcome().line,
-      welcomeSub: this.welcome().greetSub,
+      welcomeLine: acct && acct.name ? ("Welcome back, " + acct.name.split(" ")[0]) : this.welcome().line,
+      welcomeSub: acct ? (tier + " · " + ptsEff.toLocaleString() + " points · " + (acct.visits || 0) + " visits") : this.welcome().greetSub,
+      acctInitials: acct && acct.name ? acct.name.split(" ").filter(Boolean).map((x) => x[0]).slice(0, 2).join("").toUpperCase() : "—",
+      acctSignInVis: !acct,
+      acctBodyStyle: acct ? "display:flex;flex-direction:column;gap:13px" : "display:none",
+      acctPhone: s.acctPhone || "",
+      onAcctPhone: (e) => this.setState({ acctPhone: (e && e.target ? e.target.value : "").replace(/[^\d+ ]/g, "").slice(0, 16), acctErr: "" }),
+      onAcctKey: (e) => { if (e && e.key === "Enter") this.acctSignIn(); },
+      acctSignInGo: () => this.acctSignIn(),
+      acctErrVis: !!s.acctErr,
+      acctErr: s.acctErr || "",
 
       // ── the live promotion, or nothing at all ───────────────────────────
       hasPromo: !!this.promo(),
@@ -1788,11 +1826,13 @@ class Component extends DCLogic {
       memTierStyle: "display:block;font-size:9px;font-weight:800;letter-spacing:.15em;text-transform:uppercase;color:" + tierAcc,
       memMarkStyle: "width:30px;height:30px;border-radius:9px;flex-shrink:0;display:block;background:#fff url('brand/kashikeyo-mark.png') center/22px 22px no-repeat",
       memPointsStyle: "display:block;font-size:16px;font-weight:800;font-family:'JetBrains Mono',monospace;margin-top:3px;color:" + tierAcc,
-      limitLabel: MVR(LIMIT).split(".")[0],
+      limitLabel: MVR(CLIMIT).split(".")[0],
       availLabel: MVR(avail), drawnLabel: MVR(bal), drawnMvr: "MVR " + MVR(bal),
-      drawnBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (bal / LIMIT) * 100).toFixed(1) + "%;background:" + (bal / LIMIT > 0.8 ? "#c2452a" : on) + ";display:block",
-      pointsLabel: (s.points).toLocaleString(),
-      pointsWorth: "Worth MVR " + MVR(s.points / 10) + " off a bill",
+      drawnBarStyle: "transition:width .55s cubic-bezier(.2,.8,.3,1);width:" + Math.min(100, (CLIMIT ? bal / CLIMIT : 0) * 100).toFixed(1) + "%;background:" + (CLIMIT && bal / CLIMIT > 0.8 ? "#c2452a" : on) + ";display:block",
+      pointsLabel: (ptsEff).toLocaleString(),
+      pointsWorth: "Worth MVR " + MVR(ptsEff / 10) + " off a bill",
+      acctName: acct ? acct.name : "",
+      signedIn: !!acct,
       invCount: String(this.ledger().filter((r) => r.amt > 0).length),
       recent: this.ledger().slice().reverse().slice(0, 3).map((r) => ({
         label: r.label, sub: r.date + " · " + r.sub,
