@@ -206,6 +206,43 @@ input{font-family:inherit}
 .kt-serve:hover{color:var(--text)}
 .nav-badge{margin-left:auto;font-size:10px;font-weight:800;font-family:'JetBrains Mono',monospace;background:var(--amber);color:var(--on-amber);border-radius:10px;padding:1px 7px;min-width:18px;text-align:center}
 
+/* ── Customers & credit ──────────────────────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:2px 0 18px}
+.stat{background:var(--bg-1);border:1px solid var(--line);border-radius:12px;padding:13px 15px}
+.stat-l{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:800}
+.stat-v{font-size:22px;font-weight:800;letter-spacing:-.02em;margin-top:5px;font-family:'JetBrains Mono',monospace}
+.stat-s{font-size:10.5px;color:var(--text-dim);margin-top:2px}
+.ctable{background:var(--bg-1);border:1px solid var(--line);border-radius:13px;overflow:hidden}
+.crow{display:grid;grid-template-columns:1fr 96px 108px 150px;gap:12px;align-items:center;padding:12px 15px;border-bottom:1px solid var(--line-soft);width:100%;text-align:left}
+.crow.head{background:var(--bg-0);font-size:9.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:800;cursor:default}
+.crow:not(.head):hover{background:var(--bg-2)}
+.crow:last-child{border-bottom:none}
+.cwho{display:flex;align-items:center;gap:11px;min-width:0}
+.cname{font-size:13px;font-weight:700;letter-spacing:-.01em}
+.cph{font-size:10.5px;color:var(--text-muted);font-family:'JetBrains Mono',monospace}
+.tier{display:inline-block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:20px;color:#fff}
+.mono{font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700}
+.dim{color:var(--text-dim)}
+.cbar{height:6px;border-radius:4px;background:var(--bg-3);overflow:hidden;margin-top:5px}
+.cbar>span{display:block;height:100%;background:var(--amber)}
+.cbar.full>span{background:var(--red)}
+.cavail{font-size:10px;color:var(--text-dim);margin-top:3px}
+/* detail modal */
+.det{width:100%;max-width:440px;background:var(--bg-1);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;animation:kmodal .24s cubic-bezier(.2,.8,.3,1);max-height:88vh;display:flex;flex-direction:column}
+.det-head{padding:16px 18px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:12px}
+.det-body{padding:14px 18px 18px;overflow-y:auto}
+.drow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--bg-2);font-size:12.5px}
+.drow .dl{color:var(--text-dim)}.drow .dv{font-weight:700;font-family:'JetBrains Mono',monospace}
+.sect{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:800;margin:16px 0 8px}
+.led{background:var(--bg);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.led-row{display:grid;grid-template-columns:1fr 74px 82px;gap:8px;padding:8px 12px;font-size:11.5px;border-bottom:1px solid var(--bg-2)}
+.led-row.head{background:var(--bg-0);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);font-weight:800}
+.led-row:last-child{border-bottom:none}
+.led-row .n{min-width:0}.led-row .a{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:700}
+.led-row .deb{color:var(--red-bright)}.led-row .cr{color:var(--green-soft)}
+.led-row.bal{background:var(--bg-0);font-weight:800}
+.det-note{margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px}
+
 /* ── Generic module placeholder (views built in later increments) ────────── */
 .mod{max-width:760px}
 .mod-blurb{font-size:13px;color:var(--text-dim);line-height:1.7;margin:8px 0 18px;max-width:560px}
@@ -332,6 +369,17 @@ var ROLE = {
   StoreKeeper:{label:"Store Keeper",color:"#67a2d9"},
   Accountant:{label:"Accountant / Auditor",color:"#6bbf7b"}
 };
+/* Customers — chain-wide profiles + credit facility (kashikeyo-data.js).
+   credit = limit, used = outstanding. available = credit − used. */
+var TIER = { Platinum:"#a88ad9", Gold:"#f2a43a", Silver:"#9aa0a6", Bronze:"#b0764a" };
+var CUSTOMERS = [
+  {id:"c1",name:"Aishath Rifga",phone:"+960 777 4821",visits:24,spent:18420,points:1842,tier:"Platinum",credit:2500,used:940,last:"Today"},
+  {id:"c2",name:"Mohamed Zayan",phone:"+960 991 2077",visits:11,spent:7310,points:731,tier:"Gold",credit:1500,used:1500,last:"2 days ago"},
+  {id:"c3",name:"Sarah Lindqvist",phone:"+46 70 118 9920",visits:4,spent:4180,points:418,tier:"Silver",credit:0,used:0,last:"Yesterday"},
+  {id:"c4",name:"Ibrahim Faisal",phone:"+960 778 0164",visits:31,spent:22960,points:2296,tier:"Platinum",credit:5000,used:1120,last:"Today"},
+  {id:"c5",name:"Hawwa Nazly",phone:"+960 966 3345",visits:7,spent:3120,points:312,tier:"Silver",credit:1000,used:0,last:"1 week ago"},
+  {id:"c6",name:"Daniel Okafor",phone:"+44 7700 900412",visits:2,spent:1560,points:156,tier:"Bronze",credit:0,used:0,last:"3 weeks ago"}
+];
 var USERS = [
   {id:"u1",name:"Ahmed Shazail",role:"SuperAdmin",outlet:3,pin:"4718",status:"Active"},
   {id:"u2",name:"Aminath Nashwa",role:"ChainAdmin",outlet:3,pin:"2093",status:"Active"},
@@ -360,7 +408,8 @@ var S = {
   carts: {},              // { [tableNo]: [ {id,name,price,qty} ] }
   pay: null,              // { method, tendered } while the pay modal is open
   fired: {},              // { [tableNo]: true } once fired to the kitchen
-  kds: null               // seeded below (needs Date.now, set after helpers)
+  kds: null,              // seeded below (needs Date.now, set after helpers)
+  cust: null              // open customer id (detail modal)
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -495,6 +544,7 @@ function renderShell(){
   var cur = MODULES.filter(function(m){return m.key===S.view;})[0] || MODULES[0];
   var body = (S.view==="pos") ? (S.table ? orderView(out) : floorView(out))
            : (S.view==="kds") ? kdsView()
+           : (S.view==="customers") ? customersView()
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -624,6 +674,83 @@ function payModal(T, out){
   h += '</div></div></div>';
   return h;
 }
+/* Credit statement synthesised to reconcile to the customer's outstanding
+   balance — the design's principle: credit is a ledger of charges and
+   settlements with a running balance, never a mutated number. */
+function creditLedger(c){
+  if(!c.credit) return [];
+  var rows = [
+    { n:"Charge · INV-"+(3200+c.id.charCodeAt(1)*3)+" · dine-in", debit:c.used+200, credit:0 },
+    { n:"Charge · INV-"+(3400+c.id.charCodeAt(1)*3)+" · delivery", debit:350, credit:0 },
+    { n:"Settlement · Cash", debit:0, credit:550 }
+  ];
+  var bal = 0;
+  rows.forEach(function(r){ bal += r.debit - r.credit; r.bal = bal; });
+  return rows;
+}
+function customersView(){
+  var totalOut = CUSTOMERS.reduce(function(a,c){ return a + c.used; }, 0);
+  var totalPts = CUSTOMERS.reduce(function(a,c){ return a + c.points; }, 0);
+  var withCredit = CUSTOMERS.filter(function(c){ return c.credit; }).length;
+  var h = '<div class="floor-title" style="margin-bottom:2px">Customers & credit</div>'
+        + '<div class="crumb-sub" style="margin-bottom:16px">Chain-wide profiles, loyalty tiers and the credit ledger</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Customers</div><div class="stat-v">'+CUSTOMERS.length+'</div><div class="stat-s">'+withCredit+' with a credit facility</div></div>'
+     + '<div class="stat"><div class="stat-l">Outstanding credit</div><div class="stat-v">'+money(totalOut)+'</div><div class="stat-s">receivable · GL 1040</div></div>'
+     + '<div class="stat"><div class="stat-l">Loyalty points</div><div class="stat-v">'+totalPts.toLocaleString("en-US")+'</div><div class="stat-s">outstanding liability</div></div></div>';
+  h += '<div class="ctable">';
+  h += '<div class="crow head"><span>Customer</span><span>Tier</span><span style="text-align:right">Points</span><span>Credit</span></div>';
+  CUSTOMERS.forEach(function(c){
+    var avail = c.credit - c.used, full = c.credit && c.used >= c.credit;
+    var credCell = c.credit
+      ? '<div><div class="mono">'+money(c.used)+' <span class="dim" style="font-weight:400">/ '+money(c.credit)+'</span></div>'
+        + '<div class="cbar'+(full?' full':'')+'"><span style="width:'+Math.min(100,Math.round(c.used/c.credit*100))+'%"></span></div>'
+        + '<div class="cavail">'+(full?'<span style="color:var(--red-bright)">at limit</span>':money(avail)+' available')+'</div></div>'
+      : '<span class="dim" style="font-size:11px">No facility</span>';
+    h += '<button class="crow" data-cust="'+c.id+'">'
+       + '<span class="cwho"><span class="avatar" style="background:'+(TIER[c.tier]||"#888")+';width:34px;height:34px">'+esc(initials(c.name))+'</span>'
+       + '<span style="min-width:0"><span class="cname" style="display:block">'+esc(c.name)+'</span><span class="cph">'+esc(c.phone)+'</span></span></span>'
+       + '<span><span class="tier" style="background:'+(TIER[c.tier]||"#888")+'">'+esc(c.tier)+'</span></span>'
+       + '<span class="mono" style="text-align:right">'+c.points.toLocaleString("en-US")+'</span>'
+       + credCell + '</button>';
+  });
+  h += '</div>';
+  if(S.cust) h += custModal();
+  return h;
+}
+function custModal(){
+  var c = CUSTOMERS.filter(function(x){return x.id===S.cust;})[0]; if(!c) return "";
+  var avg = c.spent / (c.visits||1), avail = c.credit - c.used, full = c.credit && c.used >= c.credit;
+  var h = '<div class="scrim" data-custscrim="1"><div class="det">';
+  h += '<div class="det-head"><span class="avatar" style="background:'+(TIER[c.tier]||"#888")+';width:40px;height:40px;font-size:14px">'+esc(initials(c.name))+'</span>'
+     + '<div style="flex:1;min-width:0"><div class="tk-t">'+esc(c.name)+'</div><div class="tk-s">'+esc(c.phone)+' · '+esc(c.tier)+' tier</div></div>'
+     + '<button class="iconbtn" data-custclose="1">×</button></div>';
+  h += '<div class="det-body">';
+  h += '<div class="drow"><span class="dl">Lifetime spend</span><span class="dv" style="color:var(--amber-bright)">'+money(c.spent)+'</span></div>'
+     + '<div class="drow"><span class="dl">Visits</span><span class="dv">'+c.visits+'</span></div>'
+     + '<div class="drow"><span class="dl">Average cheque</span><span class="dv">'+money(avg)+'</span></div>'
+     + '<div class="drow"><span class="dl">Loyalty points</span><span class="dv">'+c.points.toLocaleString("en-US")+'</span></div>'
+     + '<div class="drow"><span class="dl">Last visit</span><span class="dv" style="font-family:inherit;font-weight:600">'+esc(c.last)+'</span></div>';
+  if(c.credit){
+    h += '<div class="sect">Credit facility</div>';
+    h += '<div class="drow"><span class="dl">Limit</span><span class="dv">'+money(c.credit)+'</span></div>'
+       + '<div class="drow"><span class="dl">Used</span><span class="dv" style="color:'+(full?'var(--red-bright)':'var(--text)')+'">'+money(c.used)+'</span></div>'
+       + '<div class="drow"><span class="dl">Available</span><span class="dv" style="color:'+(full?'var(--red-bright)':'var(--green-soft)')+'">'+(full?'0.00 · at limit':money(avail))+'</span></div>';
+    h += '<div class="sect">Statement</div>';
+    h += '<div class="led"><div class="led-row head"><span class="n">Movement</span><span class="a">Charge</span><span class="a">Balance</span></div>';
+    creditLedger(c).forEach(function(r){
+      h += '<div class="led-row"><span class="n">'+esc(r.n)+'</span>'
+         + '<span class="a '+(r.debit?'deb':'cr')+'">'+(r.debit?'+'+money(r.debit):'−'+money(r.credit))+'</span>'
+         + '<span class="a">'+money(r.bal)+'</span></div>';
+    });
+    h += '<div class="led-row bal"><span class="n">Outstanding</span><span class="a"></span><span class="a">'+money(c.used)+'</span></div></div>';
+  } else {
+    h += '<div class="sect">Credit facility</div><div class="det-note">No credit facility. This customer pays per bill; a manager can open a facility from the back office.</div>';
+  }
+  h += '<div class="det-note">The customer sees this same profile in the portal — receipts, points, live order status and their statement. Credit is a ledger: every charge and settlement is a row, never a mutated balance.</div>';
+  h += '</div></div></div>';
+  return h;
+}
 function moduleView(m, u){
   return '<div class="mod"><div class="floor-title">'+esc(m.label)+'<span class="pill">'+esc(m.group)+'</span></div>'
     + '<div class="mod-blurb">'+esc(BLURB[m.key]||"")+'</div>'
@@ -653,8 +780,9 @@ function tryPin(){
 }
 function findLine(id){ return cart().filter(function(l){return l.id===id;})[0]; }
 root.addEventListener("click", function(e){
-  // Pay-modal backdrop (a div, not a button) closes the modal.
+  // Modal backdrops (divs, not buttons) close their modal.
   if(e.target.dataset && e.target.dataset.scrim){ S.pay=null; render(); return; }
+  if(e.target.dataset && e.target.dataset.custscrim){ S.cust=null; render(); return; }
   var el = e.target.closest("button"); if(!el) return;
   var d = el.dataset;
   // ── lock screen ──
@@ -688,6 +816,9 @@ root.addEventListener("click", function(e){
   if(d.kbump){ var parts = d.kbump.split(":"); var tk = S.kds.filter(function(k){return k.id===parts[0];})[0];
     if(tk && tk.lines[+parts[1]]){ var ln2 = tk.lines[+parts[1]]; ln2.done = !ln2.done; render(); } return; }
   if(d.kserve){ S.kds = S.kds.filter(function(k){ return k.id !== d.kserve; }); render(); return; }
+  // ── Customers ──
+  if(d.cust){ S.cust = d.cust; render(); return; }
+  if(d.custclose){ S.cust = null; render(); return; }
 });
 document.addEventListener("keydown", function(e){
   if(!S.picking) return;
