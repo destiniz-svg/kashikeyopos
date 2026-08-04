@@ -10,6 +10,7 @@
 <x-dc>
 <helmet>
 <link rel="stylesheet" href="fonts.css">
+<script src="guest-bridge.js"></script>
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <style>
@@ -1221,6 +1222,11 @@ class Component extends DCLogic {
     // the terminal receives what the guest actually asked for rather than a
     // bare dish name the kitchen then has to chase.
     this.signal("order", going.map((l) => l.qty + "× " + l.m.name + (l.note ? " (" + l.note + ")" : "")).join(" · "));
+    // Also place it as a real backend order (no-op in demo mode / no store slug).
+    try {
+      if (window.__vgPlaceOrder) window.__vgPlaceOrder(
+        going.map((l) => ({ pid: l.id, qty: l.qty, note: l.note })), this.state.table);
+    } catch (e) { /* never block the guest's send on a sync attempt */ }
     this.say(going.length + (going.length > 1 ? " items" : " item") + " sent to the kitchen");
   }
   fireOne(id) {
