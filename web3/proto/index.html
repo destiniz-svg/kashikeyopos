@@ -303,11 +303,16 @@ input{font-family:inherit}
       draws these from Postgres via the existing sync API; the lock screen and
       access model below are the design's, faithfully. ─────────────────────── */
 var OUTLETS = [
-  { id: 3, code: "KO-CHA", name: "Kashikeyo Chaandhanee", tables: 16, region: "Malé", rate: 8, sc: 10 },
-  { id: 4, code: "KO-HUL", name: "Kashikeyo Hulhumalé", tables: 12, region: "Malé", rate: 8, sc: 10 },
-  { id: 5, code: "KO-VIA", name: "Kashikeyo Velana Airport", tables: 9, region: "Malé", rate: 16, sc: 10 },
-  { id: 6, code: "KO-MAA", name: "Kashikeyo Maafushi", tables: 13, region: "Atolls", rate: 16, sc: 10 },
-  { id: 7, code: "KO-BAA", name: "Kashikeyo Baa Atoll", tables: 10, region: "Atolls", rate: 16, sc: 10 }
+  { id: 3, code: "KO-CHA", name: "Kashikeyo Chaandhanee", tables: 16, seats: 64, region: "Malé", rate: 8, sc: 10, type:"Restaurant", pos:true, mgr:"Hassan Shifau" },
+  { id: 4, code: "KO-HUL", name: "Kashikeyo Hulhumalé", tables: 12, seats: 48, region: "Malé", rate: 8, sc: 10, type:"Restaurant", pos:true, mgr:"Mariyam Leena" },
+  { id: 5, code: "KO-VIA", name: "Kashikeyo Velana Airport", tables: 9, seats: 36, region: "Malé", rate: 16, sc: 10, type:"Restaurant", pos:true, mgr:"Ahmed Vishah" },
+  { id: 6, code: "KO-MAA", name: "Kashikeyo Maafushi", tables: 13, seats: 52, region: "Atolls", rate: 16, sc: 10, type:"Restaurant", pos:true, mgr:"Fathimath Zoona" },
+  { id: 7, code: "KO-BAA", name: "Kashikeyo Baa Atoll", tables: 10, seats: 40, region: "Atolls", rate: 16, sc: 10, type:"Restaurant", pos:true, mgr:"Ali Rifau" }
+];
+/* Support locations (no till) — shown in Outlets alongside the trading ones. */
+var SITES = [
+  { id:1, code:"MS-MLE", name:"Main Store — Malé", region:"Malé", rate:8, sc:0, type:"Main store", pos:false, mgr:"Ibrahim Nazim", seats:0 },
+  { id:2, code:"CK-HUL", name:"Hulhumalé Central Kitchen", region:"Malé", rate:8, sc:0, type:"Central kitchen", pos:false, mgr:"Aishath Reesha", seats:0 }
 ];
 /* Menu — chain master (kashikeyo-data.js). Prices are the MVR pre-tax base;
    the bill adds service charge on goods then GST on (goods + service), exactly
@@ -456,7 +461,8 @@ var S = {
   // Inventory
   inv: null, invTab: 0,
   menuTab: 0,
-  recipe: null            // open dish id (recipe modal)
+  recipe: null,           // open dish id (recipe modal)
+  aiPrompt: "", aiDrafts: null
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -595,6 +601,7 @@ function renderShell(){
            : (S.view==="orders") ? ordersView(out)
            : (S.view==="inventory") ? inventoryView()
            : (S.view==="chain") ? chainView()
+           : (S.view==="branches") ? branchesView()
            : (S.view==="accounting") ? accountingView(out)
            : (S.view==="reports") ? reportsView(out)
            : (S.view==="reservations") ? reservationsView(out)
@@ -612,6 +619,12 @@ function renderShell(){
            : (S.view==="requests") ? requestsView(out)
            : (S.view==="staff") ? staffView(out)
            : (S.view==="costs") ? costsView(out)
+           : (S.view==="payroll") ? payrollView(out)
+           : (S.view==="assets") ? assetsView(out)
+           : (S.view==="aimenu") ? aiView(out)
+           : (S.view==="settings") ? settingsView(out)
+           : (S.view==="sync") ? syncDevView(out)
+           : (S.view==="architecture") ? archView()
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -1527,6 +1540,155 @@ function costsView(out){
     + '<span class="oright" style="color:var(--amber-bright)">'+money(x[2])+'</span><span>'+chipEl(x[3],x[3]==="paid"?"green":"amber")+'</span></div>'; });
   return h+'</div>';
 }
+/* ── Payroll & pension — MRPS, withholding tax, service-charge pool. ─────── */
+var BASIC = { SuperAdmin:45000, ChainAdmin:38000, OutletManager:22000, Cashier:12000, KitchenManager:18000, StoreKeeper:14000, Accountant:26000 };
+function payrollView(out){
+  var r = rng(out.id*61+3);
+  var run = USERS.filter(function(u){return u.status==="Active";}).map(function(u){
+    var basic = BASIC[u.role]||12000, ot = Math.round(r()*2500/50)*50, allow = Math.round(r()*1500/50)*50;
+    var gross = basic+ot+allow, ee = Math.round(basic*0.07), er = Math.round(basic*0.07);
+    var wht = Math.round(Math.max(0,(gross-ee-8000))*0.08), net = gross-ee-wht;
+    return { name:u.name, role:(ROLE[u.role]||{}).label||u.role, basic:basic, gross:gross, ee:ee, er:er, wht:wht, net:net };
+  });
+  var G = function(k){ return run.reduce(function(a,x){return a+x[k];},0); };
+  var h = pageHead("Payroll & pension","MRPS pension, withholding tax and the service-charge distribution · this month")
+    + statCards([["Gross payroll",money(G("gross")),run.length+" employees · true cost "+money(G("gross")+G("er")),"var(--amber-bright)"],["MRPS pension",money(G("ee")+G("er")),"7% employee + 7% employer on basic"],["Withholding tax",money(G("wht")),"banded, after the pension deduction"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 130px 100px 90px 90px 90px 110px"><span>Employee</span><span>Role</span><span class="oright">Gross</span><span class="oright">MRPS 7%</span><span class="oright">Employer</span><span class="oright">WHT</span><span class="oright">Net to bank</span></div>';
+  run.forEach(function(x){ h += '<div class="orow" style="grid-template-columns:1fr 130px 100px 90px 90px 90px 110px;cursor:default">'
+    + '<span class="cname" style="font-size:12px">'+esc(x.name)+'</span><span class="dim" style="font-size:10.5px">'+esc(x.role)+'</span>'
+    + '<span class="oright mono" style="font-size:11.5px">'+money(x.gross)+'</span><span class="oright dim" style="font-size:11px">'+money(x.ee)+'</span>'
+    + '<span class="oright dim" style="font-size:11px">'+money(x.er)+'</span><span class="oright dim" style="font-size:11px">'+money(x.wht)+'</span>'
+    + '<span class="oright" style="color:var(--green-soft)">'+money(x.net)+'</span></div>'; });
+  h += '<div class="orow" style="grid-template-columns:1fr 130px 100px 90px 90px 90px 110px;background:var(--bg-0);font-weight:800;cursor:default"><span>Totals</span><span></span><span class="oright mono">'+money(G("gross"))+'</span><span class="oright mono">'+money(G("ee"))+'</span><span class="oright mono">'+money(G("er"))+'</span><span class="oright mono">'+money(G("wht"))+'</span><span class="oright mono" style="color:var(--green-soft)">'+money(G("net"))+'</span></div>';
+  h += '</div><div class="det-note" style="max-width:760px">Posts Dr 5300 wages + Dr 5310 employer pension; Cr 1010 net, Cr 2500 MRPS, Cr 2600 WHT. Service charge splits 99% equally among every employee; 1% covers breakage.</div>';
+  return h;
+}
+/* ── Equipment & maintenance — asset register, straight-line depreciation. ─ */
+function assetsView(out){
+  var assets = [["Combi oven — Rational","Kitchen",185000,2023,10],["Walk-in chiller","Cold room",240000,2022,12],["POS terminals ×4","Front",64000,2024,5],["Deep fryer ×2","Kitchen",38000,2023,7],["Espresso machine","Bar",92000,2024,8],["Ice machine","Bar",56000,2021,8],["Standby generator","Utility",310000,2020,15]];
+  var now = 2026, r = rng(out.id*67+5);
+  var rows = assets.map(function(a){
+    var age = now-a[3], dep = a[2]/a[4], nbv = Math.max(0, Math.round(a[2]-dep*age));
+    var svcIn = Math.floor(r()*90)-10; var st = svcIn<0?"service due":(r()>0.9?"down":"ok");
+    return { name:a[0], loc:a[1], cost:a[2], nbv:nbv, mdep:Math.round(dep/12), svc:svcIn, status:st };
+  });
+  var atCost = rows.reduce(function(a,x){return a+x.cost;},0), nbv = rows.reduce(function(a,x){return a+x.nbv;},0);
+  var h = pageHead("Equipment & maintenance","Asset register, service schedule and breakdown log · straight-line depreciation")
+    + statCards([["Equipment at cost",money(atCost),rows.length+" assets"],["Net book value",money(nbv),"after depreciation to date"],["Monthly depreciation",money(rows.reduce(function(a,x){return a+x.mdep;},0)),"posts Dr 5500, Cr 1510","var(--red-bright)"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 110px 110px 110px 110px 120px"><span>Asset</span><span>Location</span><span class="oright">At cost</span><span class="oright">NBV</span><span class="oright">Mth dep</span><span>Status</span></div>';
+  rows.forEach(function(x){ var tone=x.status==="ok"?"green":(x.status==="service due"?"amber":"red");
+    h += '<div class="orow" style="grid-template-columns:1fr 110px 110px 110px 110px 120px;cursor:default">'
+    + '<span class="cname" style="font-size:12px">'+esc(x.name)+'</span><span class="dim" style="font-size:11px">'+esc(x.loc)+'</span>'
+    + '<span class="oright mono" style="font-size:11.5px">'+money(x.cost)+'</span><span class="oright mono" style="font-size:11.5px">'+money(x.nbv)+'</span>'
+    + '<span class="oright dim" style="font-size:11px">'+money(x.mdep)+'</span><span>'+chipEl(x.status,tone)+'</span></div>'; });
+  return h+'</div>';
+}
+/* ── AI menu builder — cost-engineered drafts from a prompt. ─────────────── */
+function aiView(out){
+  var h = pageHead("AI menu builder","Cost-engineered menu drafts from the live item master · targets a 30% food cost");
+  h += '<div style="max-width:720px;display:flex;gap:9px;margin-bottom:16px">'
+     + '<input id="aiprompt" value="'+esc(S.aiPrompt||"")+'" placeholder="e.g. a 4-dish Maldivian tapas menu under MVR 120 each" style="flex:1;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--text);outline:none"/>'
+     + '<button class="btn pay" data-aigen="1" style="flex:0 0 auto;padding:12px 20px">Generate</button></div>';
+  if(!S.aiDrafts){
+    h += '<div class="mod-note" style="max-width:720px">Describe a menu and the builder drafts dishes with a recipe, a costed price and the gross margin. In production this calls the grounded assistant (Claude, structured outputs) over <code>computeInsights()</code> and the item master; the draft posts to Menu master on approve. Type a prompt and press Generate to see a sample.</div>';
+    return h;
+  }
+  h += '<div class="stats" style="max-width:720px"><div class="stat"><div class="stat-l">Drafted dishes</div><div class="stat-v">'+S.aiDrafts.length+'</div><div class="stat-s">from “'+esc((S.aiPrompt||"").slice(0,40))+'”</div></div>'
+     + '<div class="stat"><div class="stat-l">Avg margin</div><div class="stat-v" style="color:var(--green-soft)">'+Math.round(S.aiDrafts.reduce(function(a,d){return a+d.gp;},0)/S.aiDrafts.length)+'%</div><div class="stat-s">gross profit</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 1fr 100px 90px 70px"><span>Dish</span><span>Description</span><span class="oright">Price</span><span class="oright">Cost</span><span class="oright">GP</span></div>';
+  S.aiDrafts.forEach(function(d){ h += '<div class="orow" style="grid-template-columns:1fr 1fr 100px 90px 70px;cursor:default">'
+    + '<span class="cname">'+esc(d.name)+'</span><span class="dim" style="font-size:11px">'+esc(d.desc)+'</span>'
+    + '<span class="oright mono" style="font-size:11.5px">'+money(d.price)+'</span><span class="oright dim" style="font-size:11px">'+money(d.cost)+'</span>'
+    + '<span class="oright mono" style="color:var(--green-soft)">'+d.gp+'%</span></div>'; });
+  h += '</div><div class="det-note" style="max-width:720px;margin-top:14px">Sample draft (offline). With ANTHROPIC_API_KEY set, this is the real grounded assistant; each dish links to a recipe so the price re-costs on the next GRN.</div>';
+  return h;
+}
+function aiGenerate(prompt){
+  var r = rng((prompt||"menu").split("").reduce(function(a,c){return a+c.charCodeAt(0);},7));
+  var adj = ["Charred","Reef","Coconut","Chilli","Smoked","Lime","Grilled","Spiced","Crispy","Island"];
+  var noun = ["Snapper","Tuna Tostada","Bajiya","Reef Ceviche","Mas Huni Bowl","Octopus","Prawn Skewer","Garlic Rice","Aubergine","Kingfish"];
+  var desc = ["line-caught, citrus cure","short-eat, chilli sambol","charcoal-grilled, lime","coconut, curry leaf","market veg, herb oil","house pickle, crisp shallot"];
+  var n = 3+Math.floor(r()*2), out=[];
+  for(var i=0;i<n;i++){ var price=Math.round((70+r()*180)/5)*5; var cost=Math.round(price*(0.26+r()*0.08));
+    out.push({ name:adj[Math.floor(r()*adj.length)]+" "+noun[Math.floor(r()*noun.length)], desc:desc[Math.floor(r()*desc.length)], price:price, cost:cost, gp:Math.round((price-cost)/price*100) }); }
+  return out;
+}
+/* ── Settings — store configuration. ────────────────────────────────────── */
+function settingsView(out){
+  var groups = [
+    ["Tax & charges",[["Tax profile",(out.rate===16?"TGST":"GGST")+" · "+out.rate+"%"],["Service charge",(out.sc||0)+"% on goods"],["Cash rounding","to nearest laari"],["Prices","GST-inclusive on the menu"]]],
+    ["Terminal",[["Auto-lock","5 minutes idle"],["Void / refund","manager PIN required"],["KDS SLA","18 min for mains"],["Cost visibility","hidden from Cashier role"]]],
+    ["Receipt & loyalty",[["Paper width","80 mm · 1 copy"],["Loyalty","1 point per MVR 10 spent"],["Low-stock alert","at 50% of reorder"],["Language","English · Dhivehi available"]]]
+  ];
+  var h = pageHead("Settings","Store configuration · tax, service charge, terminal policy and receipts");
+  h += '<div class="kds-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">';
+  groups.forEach(function(g){
+    h += '<div class="kt" style="animation:none"><div class="kt-head"><div class="kt-tn" style="font-family:Inter;font-size:13px">'+esc(g[0])+'</div></div><div style="padding:6px 15px 12px">';
+    g[1].forEach(function(row){ h += '<div class="drow"><span class="dl">'+esc(row[0])+'</span><span class="dv" style="font-family:inherit;font-weight:600;font-size:12px">'+esc(row[1])+'</span></div>'; });
+    h += '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+/* ── Sync & devices — REAL sync state + registered terminals. ────────────── */
+function syncDevView(out){
+  var online = navigator.onLine, pend = SYNC.outbox.length;
+  var devices = [
+    { name:"POS-1 · this terminal", kind:"Register", last:"now", state: online?"online":"offline", me:true },
+    { name:"KDS-1 · kitchen tablet", kind:"Kitchen display", last:"12s ago", state:"online" },
+    { name:"MGR-Phone · Hassan Shifau", kind:"Manager mobile", last:"4m ago", state:"online" },
+    { name:"POS-2 · counter 2", kind:"Register", last:"1h ago", state:"idle" }
+  ];
+  var h = pageHead("Sync & devices","Registered terminals, sync cursors and offline-queue health");
+  h += statCards([
+    ["This workspace", SYNC.slug ? '<span style="font-size:14px">'+esc(SYNC.slug)+'</span>' : '<span style="font-size:14px;color:var(--text-muted)">not provisioned</span>', SYNC.token?"registered via /api/register":"rings a sale to provision"],
+    ["Sync cursor", SYNC.rowver?("r"+SYNC.rowver):"—", "last acknowledged rowver"],
+    ["Outbox", pend, pend?"queued for /api/ops":"all sales synced", pend?"var(--amber-bright)":"var(--green-soft)"]
+  ]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 160px 120px 110px"><span>Device</span><span>Kind</span><span>Last seen</span><span>State</span></div>';
+  devices.forEach(function(dv){ var tone=dv.state==="online"?"green":(dv.state==="idle"?"amber":"red");
+    h += '<div class="orow" style="grid-template-columns:1fr 160px 120px 110px;cursor:default">'
+    + '<span class="cname" style="font-size:12px">'+esc(dv.name)+(dv.me?' <span class="ost closed" style="margin-left:6px">you</span>':'')+'</span>'
+    + '<span class="dim" style="font-size:11px">'+esc(dv.kind)+'</span><span class="dim mono" style="font-size:11px">'+esc(dv.last)+'</span>'
+    + '<span>'+chipEl(dv.state,tone)+'</span></div>'; });
+  h += '</div><div class="det-note" style="max-width:760px">The workspace and cursor above are live — this browser\'s real /api/ops sync from the POS terminal. Offline sales queue here and drain on reconnect.</div>';
+  return h;
+}
+/* ── Architecture — the actual shipped stack (honest, not aspirational). ─── */
+function archView(){
+  var cards = [
+    ["Front-ends","Three hand-written HTML/JS surfaces, no build step: the register/till, the admin cockpit, and the guest QR portal. This v2 rebuild is served at /v2 beside them."],
+    ["API — Express","Node/Express on Railway. /api/ops (idempotent sync writes), /api/pull (rowver cursor), /api/app2/pull (cookie snapshot, ETag/304), and SSE /api/events for live push."],
+    ["Data — Postgres","Single Postgres with FORCE row-level security. Business objects live in one entities(org_id, kind, id, data JSONB, rowver) table; every query runs inside withOrg(orgId) so tenants can never cross."],
+    ["Sync — offline-first","A durable client outbox POSTs to /api/ops with a stable opId; server dedup + the rowver cursor guarantee each sale applies exactly once, offline or on. This is what the /v2 till uses now."],
+    ["Money","Integer laari (MVR×100) end to end. Menu price → service charge → GST, rounded once per figure; auditSaleMoney re-checks every incoming sale server-side."],
+    ["Roles & access","Seven roles × per-module permissions, enforced by the API and RLS — never by hiding buttons. The same model gates the lock screen and the access matrix."]
+  ];
+  var h = pageHead("Architecture","How the platform is actually built — Node/Express + Postgres on Railway");
+  h += '<div class="kds-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">';
+  cards.forEach(function(c){ h += '<div class="kt" style="animation:none"><div class="kt-head"><div class="kt-tn" style="font-family:Inter;font-size:13px">'+esc(c[0])+'</div></div>'
+    + '<div style="padding:10px 15px 14px;font-size:12px;line-height:1.65;color:var(--text-dim)">'+esc(c[1])+'</div></div>'; });
+  h += '</div>';
+  return h;
+}
+/* ── Outlets — locations, tax profiles, stock sub-locations. ────────────── */
+function branchesView(){
+  var all = OUTLETS.concat(SITES);
+  var trading = OUTLETS.length, seats = OUTLETS.reduce(function(a,o){return a+o.seats;},0);
+  var h = pageHead("Outlets","Locations, tax profiles, printers and stock sub-locations · one chain")
+    + statCards([["Locations",all.length,trading+" trading · "+SITES.length+" support"],["Total seats",seats,"across the restaurants"],["Tax zones","2","GGST 8% Malé · TGST 16% tourism"]]);
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 90px 130px 110px 90px 150px"><span>Outlet</span><span>Code</span><span>Type</span><span>Tax</span><span class="oright">Seats</span><span>Manager</span></div>';
+  all.forEach(function(o){
+    h += '<div class="orow" style="grid-template-columns:1fr 90px 130px 110px 90px 150px;cursor:default">'
+       + '<span class="cname">'+esc(o.name)+(o.pos?'':' <span class="ost open" style="margin-left:6px">no till</span>')+'</span>'
+       + '<span class="mono dim" style="font-size:11px">'+esc(o.code)+'</span>'
+       + '<span class="dim" style="font-size:11px">'+esc(o.type)+'</span>'
+       + '<span><span class="ost" style="color:'+(o.rate===16?'var(--violet-bright)':'var(--blue-bright)')+';background:var(--bg-3);border:1px solid var(--line-2)">'+(o.rate===16?'TGST':'GGST')+' '+o.rate+'%</span></span>'
+       + '<span class="oright mono" style="font-size:11.5px">'+(o.seats||"—")+'</span>'
+       + '<span style="font-size:11.5px">'+esc(o.mgr)+'</span></div>';
+  });
+  return h+'</div>';
+}
 function rrow(l,v){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);padding:3px 0"><span>'+esc(l)+'</span><span class="mono">'+v+'</span></div>'; }
 function rrowB(l,v,c){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;padding:7px 0 2px;margin-top:5px;border-top:1px solid var(--line-2)"><span>'+esc(l)+'</span><span class="mono" style="color:'+(c||'var(--text)')+'">'+v+'</span></div>'; }
 function moduleView(m, u){
@@ -1620,6 +1782,8 @@ root.addEventListener("click", function(e){
   // ── Recipes ──
   if(d.recipe){ S.recipe = d.recipe; render(); return; }
   if(d.recipeclose){ S.recipe = null; render(); return; }
+  // ── AI menu builder ──
+  if(d.aigen){ var el2 = document.getElementById("aiprompt"); S.aiPrompt = el2 ? el2.value : ""; S.aiDrafts = aiGenerate(S.aiPrompt); render(); return; }
   // ── Reports export ──
   if(d.export){ toast(d.export==="gst" ? "GST return exported — kashikeyo-gst-return.csv" : "Z-report exported — kashikeyo-z-report.csv"); return; }
 });
