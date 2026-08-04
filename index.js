@@ -3666,6 +3666,29 @@ if (fs.existsSync(protoFile)) {
           return { id: r.id, name: nm, user: user, role: roleMap[String(d.role || "").toLowerCase()] || "Cashier",
             outlet: null, outlets: [], pin: pin, status: d.suspended ? "Suspended" : "Active", last: "" };
         });
+        // Real ingredient stock → the terminal's inventory views. The v2 uses a
+        // positional demo schema (numeric ids, MVR-per-stock-unit); the real
+        // ingredients table uses uuid ids and laari-per-base-unit weighted cost.
+        // Bridge them: a stable 1-based id per ingredient, base→stock unit and
+        // conversion factor by base_unit, and item[4] = avg_cost×factor/100 so
+        // that item[4]×stockQty === avg_cost×current_stock/100 (the true value).
+        const ingRows = (await c.query(
+          "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+        const uMap = { g: ["GRM", "KG", 1000], gram: ["GRM", "KG", 1000], grm: ["GRM", "KG", 1000],
+          kg: ["GRM", "KG", 1000], ml: ["ML", "LTR", 1000], l: ["ML", "LTR", 1000], ltr: ["ML", "LTR", 1000],
+          pcs: ["PCS", "PCS", 1], pc: ["PCS", "PCS", 1], each: ["PCS", "PCS", 1] };
+        const invItems = [], invRows = [];
+        ingRows.forEach((g, i) => {
+          const id = i + 1;
+          const u = uMap[String(g.base_unit || "").toLowerCase()] || ["PCS", "PCS", 1];
+          const baseU = u[0], stockU = u[1], cf = u[2];
+          const costPerStock = Math.round((Number(g.avg_cost) || 0) * cf / 100 * 100) / 100; // MVR/stock unit
+          invItems.push([id, 1, g.name || "Item", stockU, costPerStock, "raw",
+            g.sku || ("IT-" + String(id).padStart(4, "0")), baseU, stockU,
+            Number(g.min_stock) || 0, 100, 0, 0]);
+          invRows.push([3, id, Number(g.current_stock) || 0]);   // location = primary outlet, base units
+        });
+        const invCats = invItems.length ? [{ id: 1, name: "Ingredients", icon: "dry", storage: "daily", freq: "" }] : [];
         // Today's clock punches (time_entries) → the terminal's labour engine.
         // Persisted by clockIn/clockOut on the till; only today's shifts feed
         // the labour cost and prime-cost figures.
@@ -3698,6 +3721,7 @@ if (fs.existsSync(protoFile)) {
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), customers, staff, clock,
+          inventory: { items: invItems, inv: invRows, cats: invCats },
         };
       });
     };

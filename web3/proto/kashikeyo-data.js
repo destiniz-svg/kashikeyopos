@@ -579,6 +579,14 @@
        (via /api/inv and /api/ops). This is what removes the demo dataset. */
     ["items", "inv", "cats", "batches", "vendors", "purch", "reqs", "disp", "prod", "logs"]
       .forEach(function (k) { if (R && typeof R === "object") R[k] = []; });
+    // Real ingredient stock replaces the cleared inventory arrays. items/inv/cats
+    // are projected from the ingredients table (see buildV2RealForOrg); the other
+    // supply-chain arrays stay empty until their own records exist.
+    if (REAL.inventory && R && typeof R === "object") {
+      R.items = REAL.inventory.items || [];
+      R.inv = REAL.inventory.inv || [];
+      R.cats = REAL.inventory.cats || [];
+    }
     OPEX = []; ASSETS = [];
     // The HR/payroll roster is the real sign-in staff. Contract wage fields are
     // left unset (basic 0) until an admin configures them — so labour HOURS are
