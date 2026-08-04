@@ -3773,10 +3773,18 @@ if (fs.existsSync(protoFile)) {
           region: "", tax: tax, rate: rate, sc: sc, addr: sr.address || "", mgr: "",
           pos: true, seats: 48, tables: 12,
         }));
+        // Fiscal identity for a MIRA-compliant tax invoice — the registered
+        // taxpayer's TIN, GST registration number, legal name and address, from
+        // the store's own settings. Empty strings until the owner fills them in
+        // (in Settings), never a demo placeholder, so the receipt never prints a
+        // fake TIN.
+        const fiscalAddr = [st.address, st.island, st.atoll].filter(Boolean).join(", ");
         return {
           hasSession: true, token,
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
-            currency: st.currency === "USD" ? "USD" : "MVR" },
+            currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr },
+          fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "",
+            address: fiscalAddr, storeName: st.storeName || "" },
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },

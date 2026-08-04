@@ -1028,13 +1028,16 @@ button:active:not(:disabled){transform:scale(.975)}
                 <div role="img" aria-label="{{ brandName }}" style="{{ brandMarkStyle }}"></div>
                 <div style="font-size:15px;font-weight:700;letter-spacing:.1em">{{ brandName }}</div>
                 <div style="{{ brandTagStyle }}">{{ brandTagline }}</div>
+                <div style="{{ rcpDocStyle }}">{{ rcpDocType }}</div>
                 <div style="font-size:10px;margin-top:5px">{{ rcpOutlet }}</div>
                 <div style="font-size:10px">{{ rcpAddr }}</div>
                 <div style="{{ rcpLegalStyle }}">{{ rcpLegal }}</div>
                 <div style="font-size:10px;margin-top:3px">TIN {{ rcpTin }}</div>
+                <div style="{{ rcpGstNoStyle }}">GST Reg. {{ rcpGstNo }}</div>
               </div>
-              <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:7px 0;display:flex;justify-content:space-between;font-size:10.5px">
-                <span>{{ rcpNo }}</span><span>{{ rcpTime }}</span>
+              <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:7px 0;font-size:10.5px">
+                <div style="display:flex;justify-content:space-between"><span>{{ rcpNo }}</span><span>{{ rcpDate }}</span></div>
+                <div style="{{ rcpBuyerStyle }}">Bill to: {{ rcpBuyer }}</div>
               </div>
               <sc-for list="{{ rcpLines }}" as="l" hint-placeholder-count="3">
                 <div style="display:flex;justify-content:space-between;gap:12px;padding:3px 0">
@@ -3081,7 +3084,49 @@ class Component extends DCLogic {
     const K0 = K(), o = this.outlet();
     const base = (K0.CHAIN && K0.CHAIN.brand) || {};
     const local = this.state.brandOverride || {};
-    return Object.assign({}, base, o.brand || {}, local);
+    const merged = Object.assign({}, base, o.brand || {}, local);
+    // Real mode: the merchant brand is the store's own identity, not the demo
+    // "KASHIKEYO" fascia. Default the trading name to the store name and drop
+    // the sample tagline unless the owner has set an explicit brand override.
+    if (window.KPOS_REAL) {
+      const storeName = (window.KPOS_REAL.outlet && window.KPOS_REAL.outlet.name) || merged.name;
+      if (!local.name) merged.name = storeName;
+      if (!local.tagline) merged.tagline = "";
+    }
+    return merged;
+  }
+  // The registered taxpayer's fiscal identity for a MIRA tax invoice. In real
+  // mode this is the store's own TIN/GST-registration/legal-name from settings
+  // (projected as KPOS_REAL.fiscal); in demo mode it falls back to the sample
+  // chain so the layout is still visible. Empty (not a placeholder) until the
+  // owner fills Settings in — a receipt must never print a fake TIN.
+  fiscal() {
+    const F = (window.KPOS_REAL && window.KPOS_REAL.fiscal) || {};
+    const ch = this.chainOf();
+    return { tin: F.tin || ch.tin || "", gstNo: F.gstNo || ch.regNo || "",
+      legalName: F.legalName || (window.KPOS_REAL ? "" : ch.name) || "", address: F.address || "" };
+  }
+  // Shared header fields that turn the receipt into a valid GST tax invoice:
+  // the document heading, the supply date, the GST registration number and an
+  // optional buyer block (for a B2B customer who needs to claim input tax).
+  miraHead(docType, dateStr, buyerName) {
+    const f = this.fiscal();
+    return {
+      rcpTin: f.tin || "—",
+      rcpGstNo: f.gstNo,
+      rcpGstNoStyle: f.gstNo ? "font-size:10px;margin-top:2px" : "display:none",
+      rcpDocType: docType || "",
+      rcpDocStyle: docType ? "font-size:10px;font-weight:700;letter-spacing:.14em;margin-top:5px" : "display:none",
+      rcpDate: dateStr || "",
+      rcpBuyer: buyerName || "",
+      rcpBuyerStyle: buyerName ? "margin-top:5px" : "display:none",
+    };
+  }
+  // "07 Aug 2026 · 21:45" — a tax invoice must carry the date of supply, not
+  // only a time.
+  fmtInvoiceDT(d) {
+    const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return pad(d.getDate()) + " " + M[d.getMonth()] + " " + d.getFullYear() + " · " + pad(d.getHours()) + ":" + pad(d.getMinutes());
   }
   brandVals() {
     const b = this.brandOf();
@@ -3095,9 +3140,9 @@ class Component extends DCLogic {
     // guest recognises. Trading brand and legal entity differ exactly when
     // per-outlet branding is used — so when they differ, both must print or the
     // receipt stops being a valid GST document.
-    const ch = this.chainOf();
     const norm = (x) => String(x || "").toLowerCase().replace(/[^a-z]/g, "");
-    const legal = norm(ch.name) && norm(ch.name) !== norm(b.name) ? ch.name : "";
+    const legalName = this.fiscal().legalName;
+    const legal = norm(legalName) && norm(legalName) !== norm(b.name) ? legalName : "";
     return {
       rcpLegal: legal,
       rcpLegalStyle: legal ? "font-size:9.5px;margin-top:4px;opacity:.85" : "display:none",
@@ -3126,14 +3171,14 @@ class Component extends DCLogic {
       ];
       if (p.tender === "cash" && p.change > 0) rows.push({ n: "Change", v: MVRc(p.change), style: "display:flex;justify-content:space-between;font-weight:700;padding:2px 0" });
       if (p.tender === "credit" && p.cust) rows.push({ n: "Charged to", v: p.cust.name, style: "display:flex;justify-content:space-between;padding:2px 0" });
-      return {
+      return Object.assign({}, this.miraHead("TAX INVOICE", this.fmtInvoiceDT(s.now), p.cust ? p.cust.name : ""), {
         modalTitle: "Settled · " + MVR(T.total), modalSub: p.table + " · " + p.guest + (s.online ? "" : " · queued offline"),
-        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
-        rcpNo: p.no, rcpTime: p.time,
+        rcpOutlet: o.name, rcpAddr: o.addr || this.fiscal().address || "",
+        rcpNo: p.no,
         rcpLines: p.lines, rcpTotals: rows,
         rcpFoot: "Served by " + (p.server || "—") + " · " + p.guest + "\n" + (this.brandOf().receiptFoot || "Thank you"),
         settledDone: () => { this.setState({ modal: null }); this.toast("Receipt printed · " + MVR(T.total)); }
-      };
+      });
     }
     if (m.kind === "z") {
       let rows;
@@ -3149,14 +3194,14 @@ class Component extends DCLogic {
       } else {
         rows = [["Gross sales", MVR(214800)], ["Discounts", "-" + MVR(3120)], ["Net sales", MVR(211680)], ["Service charge", MVR(21168)], [o.tax + " " + o.rate + "%", MVR(18628)], ["Cash declared", MVR(48200)], ["Cash expected", MVR(48200)], ["Card", MVR(151400)], ["Customer credit", MVR(12000)]];
       }
-      return {
+      return Object.assign({}, this.miraHead("Z-REPORT · NOT A TAX INVOICE", this.fmtInvoiceDT(s.now), ""), {
         modalTitle: "Z-report", modalSub: o.name + " · evening shift",
-        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
-        rcpNo: "Z-20260803-EVE", rcpTime: pad(s.now.getHours()) + ":" + pad(s.now.getMinutes()),
+        rcpOutlet: o.name, rcpAddr: o.addr || this.fiscal().address || "",
+        rcpNo: "Z-" + s.now.getFullYear() + pad(s.now.getMonth() + 1) + pad(s.now.getDate()) + "-EVE",
         rcpLines: rows.map((r) => ({ n: r[0], v: r[1] })),
         rcpTotals: [{ n: "Variance", v: MVR(0), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13px;padding-top:4px" }],
         rcpFoot: "Terminal dev_CHA_T1 · closed by " + ((K0.USERS || []).find((u) => u.role === s.roleKey) || {}).name
-      };
+      });
     }
     const ord = m.ord || {};
     const REAL = !!window.KPOS_REAL;
@@ -3172,10 +3217,10 @@ class Component extends DCLogic {
         const sub = ord.subtotal != null ? ord.subtotal : items.reduce((a, it) => a + (it.amount || 0), 0);
         const svc = ord.svc != null ? ord.svc : (svcR ? Math.round(sub * svcR / 100) : 0);
         const tax = ord.gst != null ? ord.gst : Math.round((sub + svc) * rateR / 100);
-        return {
+        return Object.assign({}, this.miraHead("TAX INVOICE", (ord.at ? this.fmtInvoiceDT(new Date(ord.at)) : (ord.time || "")), ord.customerName || ""), {
           modalTitle: "Receipt " + (ord.no || ""), modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
-          rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
-          rcpNo: ord.no || "", rcpTime: ord.time || "",
+          rcpOutlet: o.name, rcpAddr: o.addr || this.fiscal().address || "",
+          rcpNo: ord.no || "",
           rcpLines: items.map((it) => ({ n: (it.q || 1) + "x " + String(it.n || "Item").slice(0, 24), v: MVRc(it.amount || 0) })),
           rcpTotals: [
             { n: "Subtotal", v: MVRc(sub), style: "display:flex;justify-content:space-between;padding:2px 0" },
@@ -3185,7 +3230,7 @@ class Component extends DCLogic {
           ],
           rcpFoot: this.brandOf().receiptFoot || "Thank you",
           settledDone: () => this.setState({ modal: null }),
-        };
+        });
       }
       // No stored lines (older orders / channels without a cart) → show the real
       // total with tax extracted from the inclusive figure, no invented dishes.
@@ -3193,10 +3238,10 @@ class Component extends DCLogic {
       const goodsWithSvc = total - tax;
       const svc = svcR ? Math.round(goodsWithSvc - goodsWithSvc / (1 + svcR / 100)) : 0;
       acc = goodsWithSvc - svc;
-      return {
+      return Object.assign({}, this.miraHead("TAX INVOICE", (ord.at ? this.fmtInvoiceDT(new Date(ord.at)) : (ord.time || "")), ord.customerName || ""), {
         modalTitle: "Receipt " + (ord.no || ""), modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
-        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
-        rcpNo: ord.no || "", rcpTime: ord.time || "",
+        rcpOutlet: o.name, rcpAddr: o.addr || this.fiscal().address || "",
+        rcpNo: ord.no || "",
         rcpLines: [{ n: "Order total", v: MVRc(acc) }],
         rcpTotals: [
           { n: "Subtotal", v: MVRc(acc), style: "display:flex;justify-content:space-between;padding:2px 0" },
@@ -3206,7 +3251,7 @@ class Component extends DCLogic {
         ],
         rcpFoot: "Line detail not stored for this order · " + (this.brandOf().receiptFoot || "Thank you"),
         settledDone: () => this.setState({ modal: null }),
-      };
+      });
     }
     const rnd = this.rng(ord.total || 1);
     for (let i = 0; i < 3 + Math.floor(rnd() * 3); i++) {
@@ -3216,10 +3261,10 @@ class Component extends DCLogic {
       lines.push({ n: q + "x " + dish.name.slice(0, 22), v: MVRc(dish.price * q) });
     }
     const svc = acc * ((o.sc || 0) / 100), tax = (acc + svc) * (o.rate / 100);
-    return {
+    return Object.assign({}, this.miraHead("TAX INVOICE", (ord.time || this.fmtInvoiceDT(s.now)), ""), {
       modalTitle: "Receipt " + ord.no, modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
-      rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
-      rcpNo: ord.no || "", rcpTime: ord.time || "",
+      rcpOutlet: o.name, rcpAddr: o.addr || this.fiscal().address || "",
+      rcpNo: ord.no || "",
       rcpLines: lines,
       rcpTotals: [
         { n: "Subtotal", v: MVRc(acc), style: "display:flex;justify-content:space-between;padding:2px 0" },
@@ -3240,7 +3285,7 @@ class Component extends DCLogic {
       doRefund: () => (this.state.refunds || {})[ord.no]
         ? this.toast("Already refunded — a second refund would need a new authorisation", "warn")
         : this.openForm("refund", { no: ord.no, max: acc + svc + tax, tender: ord.tender || "cash", table: ord.table })
-    };
+    });
   }
 
   detailVals(m) {
