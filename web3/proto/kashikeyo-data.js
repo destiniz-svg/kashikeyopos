@@ -587,6 +587,8 @@
       R.inv = REAL.inventory.inv || [];
       R.cats = REAL.inventory.cats || [];
       R.ledger = REAL.inventory.ledger || [];
+      R.vendors = REAL.inventory.vendors || [];
+      R.purch = REAL.inventory.purch || [];
     }
     OPEX = []; ASSETS = [];
     // The HR/payroll roster is the real sign-in staff. Contract wage fields are

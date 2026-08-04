@@ -3715,6 +3715,21 @@ if (fs.existsSync(protoFile)) {
           (recByProduct[String(rl.product_id)] = recByProduct[String(rl.product_id)] || []).push([nid, Number(rl.qty) || 0]);
         }
         menu.forEach((it) => { it.recipe = recByProduct[String(it.id)] || []; });
+        // Vendors (suppliers) and received GRNs (purchase_invoices). A stable
+        // numeric vendor id links the two, matching the terminal's shape; money
+        // is laari→MVR and every GRN attributes to the primary outlet (id 3).
+        const supRows = (await c.query(
+          "SELECT id, name FROM suppliers WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+        const vendNumId = {};
+        const invVendors = supRows.map((sup, i) => { vendNumId[sup.id] = i + 1; return { id: i + 1, name: sup.name || "Vendor" }; });
+        const grnRows = (await c.query(
+          "SELECT id, supplier_id, invoice_no, total, received_at FROM purchase_invoices WHERE org_id=$1 ORDER BY received_at DESC LIMIT 200", [orgId])).rows;
+        const invPurch = grnRows.map((g, i) => ({
+          no: g.invoice_no || ("GRN-" + String(g.id).slice(-6).toUpperCase()),
+          vendor: vendNumId[g.supplier_id] || 0, branch: 3,
+          inv: g.invoice_no || "", total: Math.round((Number(g.total) || 0) / 100),
+          status: "posted", by: "", notes: "",
+        }));
         // Today's clock punches (time_entries) → the terminal's labour engine.
         // Persisted by clockIn/clockOut on the till; only today's shifts feed
         // the labour cost and prime-cost figures.
@@ -3747,7 +3762,7 @@ if (fs.existsSync(protoFile)) {
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), customers, staff, clock,
-          inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger },
+          inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch },
         };
       });
     };
