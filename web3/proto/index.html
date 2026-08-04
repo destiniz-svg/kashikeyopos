@@ -5935,7 +5935,10 @@ class Component extends DCLogic {
     if (this.state.aiRunning) return;
     const s = this.state, o = this.outlet();
     if (!s.online) { this.toast("The builder needs the network — it prices against the live item master", "warn"); return; }
-    if (!(window.claude && window.claude.complete)) { this.aiFallback("Model unreachable — showing the last cost-engineered proposal"); return; }
+    // Real mode calls the store's own backend (/api/inv/menu-engineer → the
+    // configured AI); the window.claude shim is only the token-less preview.
+    const useReal = !!(window.KPOS_REAL && window.KPOS_REAL.token);
+    if (!useReal && !(window.claude && window.claude.complete)) { this.aiFallback("This terminal isn't signed in — showing a sample proposal. Sign in to build from your live pantry."); return; }
     this.setState({ aiRunning: true, aiResult: null });
     const pantry = this.aiPantry();
     const cats = (K().MENU_CATEGORIES || []).map((c) => c.name).join(", ");
@@ -5949,7 +5952,19 @@ class Component extends DCLogic {
       + "Brief: " + s.aiPrompt + "\n\nPantry (id · item · category · base unit · MVR per one base unit · on hand):\n"
       + pantry.map((p) => p.id + " · " + p.name + " · " + p.cat + " · " + p.base + " · " + p.costPerBase.toFixed(4) + " · " + p.onHand.toFixed(1) + p.unit).join("\n");
     try {
-      const txt = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 4000, system: sys, messages: [{ role: "user", content: body }] });
+      let txt;
+      if (useReal) {
+        const r = await fetch("/api/inv/menu-engineer", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+          body: JSON.stringify({ brief: s.aiPrompt || "", context: body }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j && j.error ? j.error : "HTTP " + r.status);
+        if (j && j.configured === false) { this.aiFallback(j.message || "The AI menu builder isn't switched on — showing a sample proposal."); return; }
+        txt = (j && j.answer) || "";
+      } else {
+        txt = await window.claude.complete({ model: "claude-sonnet-4-5", max_tokens: 4000, system: sys, messages: [{ role: "user", content: body }] });
+      }
       const a = txt.indexOf("{"), b = txt.lastIndexOf("}");
       if (a < 0 || b < a) throw new Error("no json");
       const parsed = JSON.parse(txt.slice(a, b + 1));
