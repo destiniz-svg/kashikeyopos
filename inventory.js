@@ -1253,6 +1253,9 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      provider actually answers — returns the provider/model and a one-word ping,
      never the key. */
   router.get("/ai-selftest", authAny, requireBackOffice(1), wrap(async (req, res) => res.json(await aiSelfTest())));
+  /* Heavier on-demand check: runs every AI feature's real model call once
+     (menu/OCR/assistant/agent) and returns a compact per-feature result. */
+  router.get("/ai-smoketest", authAny, requireBackOffice(1), wrap(async (req, res) => res.json(await aiSmokeTest())));
 
   const OCR_SCHEMA = {
     type: "object", additionalProperties: false,
@@ -2792,15 +2795,98 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(out);
   }));
 
+  /* Full AI smoke test (AI_SMOKE=1) — exercises each AI feature's REAL model
+     call end to end on the running server: the menu builder (JSON schema),
+     OCR (vision + schema, against a bundled delivery-note fixture), the
+     assistant (grounded free text) and the plain-English agent (JSON schema).
+     Reuses the exact in-module schemas + aiClient the endpoints use, so it
+     proves the live provider handles structured output, vision and long text —
+     not just a bare ping. Results (never the key) go to the deploy logs. */
+  async function aiSmokeTest() {
+    const cfg = aiConfig();
+    const out = { config: cfg, results: {} };
+    if (!cfg.configured) { out.error = "no AI key set"; return out; }
+    const client = aiClient();
+    const catalogue = [
+      "c1 | Chicken Breast | base unit g | packs: Case",
+      "c2 | Basmati Rice | base unit g | packs: Bag",
+      "c3 | Cooking Oil | base unit ml | packs: Jerry",
+      "c4 | Tomatoes | base unit g | packs: Crate",
+    ].join("\n");
+
+    // 1) Menu builder — JSON schema + text (+ SVG)
+    try {
+      const msg = await client.messages.create({
+        model: "", max_tokens: 3000, thinking: { type: "adaptive" },
+        system: "You are a menu writer for a Maldivian café. Create one appetising menu item. Prices in whole MVR (tax-inclusive). Write Dhivehi (Thaana) for dv/descDv when you can. For svg draw a simple flat illustration (viewBox 0 0 150 100, no text/script/external refs).",
+        output_config: { format: { type: "json_schema", schema: MENU_ITEM_SCHEMA } },
+        messages: [{ role: "user", content: [{ type: "text", text: "Create a menu item.\nName: Mango Sticky Rice\nWhat it is: Thai coconut sticky rice dessert with fresh mango slices" }] }],
+      });
+      const d = JSON.parse((msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join(""));
+      out.results.menuBuilder = { ok: true, en: d.en, dv: d.dv, cat: d.cat, price: d.priceLow + "-" + d.priceHigh + " MVR", tags: (d.tags || []).join(","), svg: d.svg ? d.svg.length + "b" : "none", stop: msg.stop_reason };
+    } catch (e) { out.results.menuBuilder = { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+
+    // 2) OCR — vision + JSON schema, against the bundled fixture
+    try {
+      const fs = require("fs"), path = require("path");
+      const b64 = fs.readFileSync(path.join(__dirname, "test", "fixtures", "delivery-note.png")).toString("base64");
+      const msg = await client.messages.create({
+        model: "", max_tokens: 4096, thinking: { type: "adaptive" },
+        system: "You read a photographed supplier delivery note and return its line items as data. Only report what is printed. Match each line to the single best ingredient from the catalogue using that ingredient's exact id, or empty if none matches. Put the matching pack name in unitName when a line is sold by a pack, else empty.",
+        output_config: { format: { type: "json_schema", schema: OCR_SCHEMA } },
+        messages: [{ role: "user", content: [
+          { type: "text", text: "Ingredient catalogue (id | name | base unit | packs):\n" + catalogue + "\n\nRead this delivery note:" },
+          { type: "image", source: { type: "base64", media_type: "image/png", data: b64 } },
+        ] }],
+      });
+      const d = JSON.parse((msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join(""));
+      out.results.ocr = { ok: true, supplier: d.supplier, invoiceNo: d.invoiceNo, date: d.date, lines: (d.lines || []).map((l) => l.qty + "x " + (l.unitName || "base") + " " + l.description + " →" + (l.ingredientId || "?") + " @" + l.lineTotal), stop: msg.stop_reason };
+    } catch (e) { out.results.ocr = { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+
+    // 3) Assistant — grounded free text (no schema)
+    try {
+      const digest = { currency: "MVR", stockValueOnHand: "MVR 0.00", ingredientCount: 4,
+        reorderSoon: [{ name: "Chicken Breast", coverDays: 0, suggestOrder: "2 Case", estCost: "MVR 1,800.00" }, { name: "Basmati Rice", coverDays: 0, suggestOrder: "1 Bag", estCost: "MVR 640.00" }],
+        watch: ["Cooking Oil: below minimum", "Tomatoes: below minimum"] };
+      const msg = await client.messages.create({
+        model: "", max_tokens: 1024, thinking: { type: "adaptive" },
+        system: "You are the inventory assistant for a small café. Answer using ONLY the JSON data provided. Never invent numbers. Be brief and practical. Money is already formatted; don't recompute it.",
+        messages: [{ role: "user", content: "Here is my current inventory data as JSON:\n\n" + JSON.stringify(digest) + "\n\nQuestion: Which items should I reorder first, and roughly how much?" }],
+      });
+      out.results.assistant = { ok: true, answer: (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim().slice(0, 300), stop: msg.stop_reason };
+    } catch (e) { out.results.assistant = { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+
+    // 4) Agent — plain-English instruction → structured action (JSON schema)
+    try {
+      const menu = "m1 | Grilled Reef Fish | Grill | MVR 180.00\nm2 | Mango Juice | Drinks | MVR 45.00";
+      const msg = await client.messages.create({
+        model: "", max_tokens: 1200, thinking: { type: "adaptive" },
+        system: "You turn a café owner's plain-English instruction into ONE structured action against their menu. Use exact ids. 'eightysix'/'86' = mark sold out (sold:true). Fill summary with exactly what you will do.\n\nMenu (id | name | category | price):\n" + menu,
+        output_config: { format: { type: "json_schema", schema: AGENT_SCHEMA } },
+        messages: [{ role: "user", content: [{ type: "text", text: "eighty-six the grilled reef fish, we're out" }] }],
+      });
+      const d = JSON.parse((msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join(""));
+      out.results.agent = { ok: true, action: d.action, productId: d.productId, sold: d.sold, summary: d.summary, stop: msg.stop_reason };
+    } catch (e) { out.results.agent = { ok: false, error: String((e && e.message) || e).slice(0, 200) }; }
+
+    return out;
+  }
+
   /* Boot diagnostics: log the resolved AI provider/model once (no secrets), and
      — when AI_SELFTEST is set — make one real call so a bad key or wrong model
-     id shows up in the deploy logs immediately. */
+     id shows up in the deploy logs immediately. AI_SMOKE runs the full
+     per-feature smoke test instead (menu/OCR/assistant/agent). */
   try { console.log("AI:", JSON.stringify(aiConfig())); } catch { /* non-fatal */ }
   if (process.env.AI_SELFTEST) {
     setTimeout(() => { aiSelfTest()
       .then((r) => console.log("AI self-test:", JSON.stringify(r)))
       .catch((e) => console.log("AI self-test threw:", (e && e.message) || e)); }, 4000);
   }
+  if (process.env.AI_SMOKE) {
+    setTimeout(() => { aiSmokeTest()
+      .then((r) => console.log("AI smoke-test:", JSON.stringify(r)))
+      .catch((e) => console.log("AI smoke-test threw:", (e && e.message) || e)); }, 4000);
+  }
 
-  return { router, processSales, recomputeAvailability, aiConfig, aiSelfTest };
+  return { router, processSales, recomputeAvailability, aiConfig, aiSelfTest, aiSmokeTest };
 };
