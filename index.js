@@ -3714,7 +3714,7 @@ if (fs.existsSync(protoFile)) {
           const costPerStock = Math.round((Number(g.avg_cost) || 0) * cf / 100 * 100) / 100; // MVR/stock unit
           invItems.push([id, 1, g.name || "Item", stockU, costPerStock, "raw",
             g.sku || ("IT-" + String(id).padStart(4, "0")), baseU, stockU,
-            Number(g.min_stock) || 0, 100, 0, 0]);
+            Number(g.min_stock) || 0, 100, 0, 0, g.id]);   // [13] = the real ingredient uuid, for recipe writes
           invRows.push([3, id, Number(g.current_stock) || 0]);   // location = primary outlet, base units
         });
         const invCats = invItems.length ? [{ id: 1, name: "Ingredients", icon: "dry", storage: "daily", freq: "" }] : [];

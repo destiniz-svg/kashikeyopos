@@ -4924,6 +4924,36 @@ class Component extends DCLogic {
     if (sid) this.patchRows("vendors", [sid], body, "Vendor updated · " + body.name, "vendors");
     else this.insertRow("vendors", Object.assign({ id: this.nextId("vendors") }, body), "Vendor created · " + body.name, "vendors");
   }
+  // Create an inventory item. Real mode persists to /api/inv/ingredients (base
+  // unit, purchase-unit conversion and an opening cost); demo mode keeps it
+  // local. Optimistically appends to the item master so it shows at once.
+  saveIngredient(v) {
+    const uMap = { GRM: "g", ML: "ml", PCS: "pcs" };
+    const baseUnit = uMap[v.base] || "g";
+    const factor = ((v.base === "GRM" && v.stock === "KG") || (v.base === "ML" && v.stock === "LTR")) ? 1000 : 1;
+    const avgCost = Math.round(v.cost * 100 / factor);           // laari per base unit
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const body = { name: v.name, baseUnit: baseUnit, minStock: 0, location: "Dry", avgCost: avgCost };
+      if (factor !== 1) body.units = [{ name: v.stock, factor: factor }];
+      fetch("/api/inv/ingredients", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          if (j && j.error) { this.toast(j.error, "warn"); return; }
+          const raw = window.KPOS_RAW || (window.KPOS_RAW = {}); const arr = raw.items || (raw.items = []);
+          const id = arr.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
+          const code = "IT-" + String(id).padStart(4, "0");
+          arr.unshift([id, v.cat, v.name, v.stock, v.cost, "raw", code, v.base, v.stock, 0, 100, 0, 0]);
+          (raw.inv || (raw.inv = [])).push([3, id, 0]);
+          this.setState({ modal: null });
+          this.toast("Item created · " + v.name + " · " + code);
+        }).catch(() => this.toast("Could not save the item — check the connection", "warn"));
+      this.setState({ modal: null });
+      return;
+    }
+    const items = (window.KPOS_RAW || {}).items || [];
+    const id = items.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
+    const code = "IT-" + String(id).padStart(4, "0");
+    this.insertRow("items", [id, v.cat, v.name, v.stock, v.cost, "raw", code, v.base, v.stock, String(v.shelf || 180), 100, 0, 0], "Item created · " + v.name + " · " + code, "items");
+  }
   g_vendors() {
     const raw = window.KPOS_RAW || {};
     return {
@@ -5557,11 +5587,7 @@ class Component extends DCLogic {
           const base = v.base || "GRM", stock = v.stock || "KG";
           const ok = base === stock || (base === "GRM" && stock === "KG") || (base === "ML" && stock === "LTR");
           if (!ok) return this.toast("No conversion exists from " + base + " to " + stock + " — pick grams/kg, ml/litre, or the same unit on both", "warn");
-          const items = (raw.items || []);
-          const id = items.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
-          const code = "IT-" + String(id).padStart(4, "0");
-          const row = [id, +v.cat || 1, v.name.toUpperCase(), stock, cost, "raw", code, base, stock, String(+v.shelf || 180), 100, 0, 0];
-          this.insertRow("items", row, "Item created · " + v.name.toUpperCase() + " · " + code + " · " + MVR(cost) + "/" + stock, "items");
+          this.saveIngredient({ name: v.name.toUpperCase(), cat: +v.cat || 1, base: base, stock: stock, cost: cost, shelf: +v.shelf || 180 });
         }
       },
       recipe: {
@@ -5580,8 +5606,23 @@ class Component extends DCLogic {
           if (!dish || !it) return this.toast("Pick a dish and an item", "warn");
           const next = (dish.recipe || []).filter((r) => +r[0] !== +v.item).concat([[+v.item, qty]]);
           const lineCost = this.costPerBase(it) * qty;
-          this.patchRows("menu", [dish.id], { recipe: next },
-            dish.name + " · " + this.itemName(+v.item) + " " + qty + " " + (it[7] || "g").toLowerCase() + " · " + MVR(lineCost) + " a portion", "recipes");
+          const label = dish.name + " · " + this.itemName(+v.item) + " " + qty + " " + (it[7] || "g").toLowerCase() + " · " + MVR(lineCost) + " a portion";
+          // Real mode: persist the whole recipe for this dish through the backend
+          // (which recomputes food cost + availability), mapping each line's
+          // numeric item id back to the real ingredient uuid it carries at [13].
+          if (window.KPOS_REAL && window.KPOS_REAL.token) {
+            const lines = next.map((r) => { const iit = this.item(+r[0]) || []; return { ingredientId: iit[13], qty: r[1] }; }).filter((l) => l.ingredientId);
+            fetch("/api/inv/recipes/" + encodeURIComponent(dish.id), { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ lines: lines }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                dish.recipe = next;                          // optimistic; the poll reconciles cost/availability
+                this.setState({ modal: null });
+                this.toast(label);
+              }).catch(() => this.toast("Could not save the recipe — check the connection", "warn"));
+            this.setState({ modal: null });
+            return;
+          }
+          this.patchRows("menu", [dish.id], { recipe: next }, label, "recipes");
         }
       },
       adjust: {

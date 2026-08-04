@@ -846,15 +846,20 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const willSell = sellable === true && num(sellPrice) > 0;
     const cleanPrep = Array.isArray(prepLines) ? prepLines.filter((l) => l && l.ingredientId && String(l.ingredientId) !== String(ingId) && num(l.qty) > 0) : [];
     const willPrep = producible === true && cleanPrep.length > 0;
+    // Optional opening cost (laari per base unit). Cost normally comes from the
+    // first GRN's weighted average, but the terminal's item form lets an owner
+    // seed a starting cost so food-cost maths work before any delivery. Only
+    // applied when creating a new item, never overwriting a GRN-earned average.
+    const openCost = Math.max(0, Math.round(num(req.body && req.body.avgCost)));
     const out = await withOrg(req.orgId, async (client) => {
       await client.query(
-        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price, producible)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price, producible, avg_cost)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
          ON CONFLICT (org_id, id) DO UPDATE SET
            name=excluded.name, sku=excluded.sku, min_stock=excluded.min_stock,
            location=excluded.location, sellable=excluded.sellable, sell_price=excluded.sell_price,
            producible=excluded.producible, active=true, updated_at=now()`,
-        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice)), willPrep]);
+        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice)), willPrep, openCost]);
       if (Array.isArray(units)) {
         await client.query("DELETE FROM ingredient_units WHERE org_id=$1 AND ingredient_id=$2", [req.orgId, ingId]);
         for (const u of units) {
