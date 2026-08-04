@@ -1978,6 +1978,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const id = uid();
     const data = { id, no: "EXP-" + id.slice(0, 6).toUpperCase(), t: Date.now(), cat, supplier, amount,
       note: String(b.note || "").slice(0, 120) || (cat + " · back office"), paidFrom, userName: "Back office", shiftId: null, img: "", srcRef: "manual:" + id };
+    // Optional operating-cost metadata (from the terminal's cost form): whether
+    // it recurs, on what day, which expense account and outlet it belongs to.
+    // Stored so the P&L and the Operating Costs view read them back; absent for
+    // a plain one-off spend.
+    if (b.freq === "monthly" || b.freq === "annual") data.freq = b.freq;
+    if (b.due != null) data.due = Math.min(28, Math.max(1, Math.round(num(b.due)) || 1));
+    if (b.acct != null) data.acct = String(b.acct).slice(0, 8);
+    if (b.outlet != null) data.outlet = Math.round(num(b.outlet)) || 0;
     const rowver = await withOrg(req.orgId, (client) => client.query(
       "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'expenses',$2,$3) RETURNING rowver",
       [req.orgId, id, JSON.stringify(data)]).then((r) => Number(r.rows[0].rowver)));

@@ -5719,26 +5719,55 @@ class Component extends DCLogic {
       },
       opex: {
         title: "Add an operating cost", sub: "Everything below gross profit", save: "Add cost",
-        foot: "Recurring costs post to their expense account on the due day, so the P&L is complete without anyone re-keying a utility bill.",
+        foot: "Booked to the expense ledger straight away, so it lands in the P&L and the CFO panel — rent, utilities, marketing, staff transport, licences and one-off spend alike.",
         fields: [
-          { k: "cat", label: "Category", v: "" },
+          { k: "cat", label: "Category", options: [
+            { v: "Rent", l: "Rent" }, { v: "Utilities", l: "Utilities (power/water)" }, { v: "Gas", l: "Cooking gas" },
+            { v: "Salaries", l: "Salaries & wages" }, { v: "Marketing", l: "Marketing & promotion" },
+            { v: "Staff transport", l: "Staff transport / trips" }, { v: "Repairs", l: "Repairs & maintenance" },
+            { v: "Cleaning", l: "Cleaning & consumables" }, { v: "Licences", l: "Licences & permits" },
+            { v: "Internet & phone", l: "Internet & phone" }, { v: "Freight", l: "Freight & delivery" },
+            { v: "Bank charges", l: "Bank charges" }, { v: "Insurance", l: "Insurance" }, { v: "General", l: "Other / general" }
+          ], full: 1 },
           { k: "vendor", label: "Paid to", v: "", full: 1 },
-          { k: "outlet", label: "Outlet", options: [{ v: "0", l: "Chain-wide" }].concat(outletOpts), full: 1 },
           { k: "amt", label: "Amount MVR", v: "0" },
-          { k: "freq", label: "Frequency", options: [{ v: "monthly", l: "Monthly" }, { v: "annual", l: "Annual" }] },
+          { k: "paidFrom", label: "Paid from", options: [{ v: "transfer", l: "Bank transfer" }, { v: "cash", l: "Cash" }, { v: "card", l: "Card" }, { v: "other", l: "Other / on account" }] },
+          { k: "outlet", label: "Outlet", options: [{ v: "0", l: "Chain-wide" }].concat(outletOpts) },
+          { k: "freq", label: "Frequency", options: [{ v: "monthly", l: "Monthly recurring" }, { v: "annual", l: "Annual" }, { v: "oneoff", l: "One-off" }] },
           { k: "due", label: "Due day of month", v: "1" },
-          { k: "acct", label: "Expense account", options: (K0.ACCOUNTS || []).filter((a) => a.code >= "6000" || a.code === "5400").map((a) => ({ v: a.code, l: a.code + " " + a.name })) }
+          { k: "acct", label: "Expense account", options: (K0.ACCOUNTS || []).filter((a) => a.code >= "6000" || a.code === "5400").map((a) => ({ v: a.code, l: a.code + " " + a.name })) },
+          { k: "note", label: "Note", v: "", full: 1 }
         ],
         editSave: "Save changes",
         onEdit: (v, e) => {
-          if (!v.cat || !v.vendor) return this.toast("Category and vendor are required", "warn");
+          if (!v.cat || !v.vendor) return this.toast("Category and who was paid are required", "warn");
           const amt = +v.amt || 0;
           this.patchRows("opex", [e.id], { cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: amt, freq: v.freq, due: Math.min(28, Math.max(1, +v.due || 1)), acct: v.acct },
             e.cat + " updated" + (amt !== e.amt ? " · " + MVRc(e.amt) + " to " + MVRc(amt) : ""), "operating_costs");
         },
         onSave: (v) => {
-          if (!v.cat || !v.vendor) return this.toast("Category and vendor are required", "warn");
-          const row = { id: "e" + Date.now(), cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: +v.amt || 0, freq: v.freq || "monthly", due: Math.min(28, Math.max(1, +v.due || 1)), acct: v.acct || "6300" };
+          if (!v.cat || !v.vendor) return this.toast("Category and who was paid are required", "warn");
+          const amt = +v.amt || 0;
+          if (amt <= 0) return this.toast("Enter an amount", "warn");
+          const freq = v.freq === "annual" ? "annual" : (v.freq === "oneoff" ? "monthly" : "monthly");
+          const due = Math.min(28, Math.max(1, +v.due || 1));
+          // Real mode: book a real expense entity through the backend so it hits
+          // the P&L. Optimistically show it in the list; the poll reconciles.
+          if (window.KPOS_REAL && window.KPOS_REAL.token) {
+            const body = { amount: Math.round(amt * 100), cat: v.cat, vendor: v.vendor, paidFrom: v.paidFrom || "transfer",
+              note: (v.note || "").trim() || (v.cat + " · " + v.vendor), freq: freq, due: due, acct: v.acct || "6300", outlet: +v.outlet || 0 };
+            fetch("/api/inv/expenses", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                const row = { id: j.id || ("e" + Date.now()), cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: amt, freq: freq, due: due, acct: v.acct || "6300" };
+                const local = Object.assign({}, this.state.local, { opex: (this.state.local.opex || []).concat([row]) });
+                this.setState({ local: local });
+                this.toast(v.cat + " booked · " + MVRc(amt) + " to " + v.vendor);
+              }).catch(() => this.toast("Could not save the cost — check the connection", "warn"));
+            this.setState({ modal: null });
+            return;
+          }
+          const row = { id: "e" + Date.now(), cat: v.cat, vendor: v.vendor, outlet: +v.outlet || 0, amt: amt, freq: freq, due: due, acct: v.acct || "6300" };
           const local = Object.assign({}, this.state.local, { opex: (this.state.local.opex || []).concat([row]) });
           this.setState({ local: local, modal: null });
           this.queue("opex_insert", v.cat + " · " + v.vendor + " · " + MVRc(row.amt) + " " + row.freq, "operating_costs");
@@ -6457,14 +6486,47 @@ class Component extends DCLogic {
         .map((c) => [c.name, c.phone || "", m2(c.credit || 0), m2(c.used || 0), m2(Math.max(0, (c.credit || 0) - (c.used || 0))), c.last || ""]);
       return { header: ["Customer", "Phone", "Credit limit", "Balance used", "Available", "Last visit"], rows };
     }
+    if (key === "pnl") {
+      // Profit & loss, month to date — the real derived statement from the
+      // accounting API (sales − COGS = gross profit, less opex = net profit),
+      // plus the GST net payable. Fetched lazily into state.pnlData by g_reports.
+      const d = this.state.pnlData;
+      if (!d || !d.pnl) return { header: ["Line", "MVR"], rows: [] };
+      const p = d.pnl, L = (n) => m2((Number(n) || 0) / 100), rows = [];
+      rows.push(["Revenue (net of GST)", L(p.revenue)]);
+      if (p.discounts) rows.push(["Less discounts", "-" + L(p.discounts)]);
+      if (p.refunds) rows.push(["Less refunds", "-" + L(p.refunds)]);
+      rows.push(["Cost of goods sold", "-" + L(p.cogs)]);
+      rows.push(["GROSS PROFIT", L(p.grossProfit)]);
+      rows.push(["Gross margin %", (Number(p.grossMarginPct) || 0).toFixed(1) + "%"]);
+      Object.keys(p.opexByCat || {}).sort((a, b) => p.opexByCat[b] - p.opexByCat[a]).forEach((c) => rows.push(["  " + c, "-" + L(p.opexByCat[c])]));
+      rows.push(["Total operating cost", "-" + L(p.opex)]);
+      if (p.wastage) rows.push(["Wastage & variance", "-" + L(p.wastage)]);
+      rows.push(["NET PROFIT", L(p.netProfit)]);
+      rows.push(["Net margin %", (Number(p.netMarginPct) || 0).toFixed(1) + "%"]);
+      if (d.gstReturn) {
+        rows.push(["", ""]);
+        rows.push(["GST output tax (collected)", L(d.gstReturn.outputTax)]);
+        rows.push(["GST input tax (on purchases)", L(d.gstReturn.inputTax)]);
+        rows.push(["GST net payable to MIRA", L(d.gstReturn.netPayable)]);
+      }
+      return { header: ["Line", "MVR"], rows };
+    }
     return { header: ["Report"], rows: [] };
   }
 
   g_reports() {
+    // Real P&L comes from the accounting API; fetch it once when the reports
+    // screen opens so the financial statement has data to export.
+    if (window.KPOS_REAL && window.KPOS_REAL.token && !this._pnlReq) {
+      this._pnlReq = 1;
+      fetch("/api/inv/accounting", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.pnl) this.setState({ pnlData: j }); }).catch(() => { this._pnlReq = 0; });
+    }
     // [key, title, description, cadence]. The row count shown per report is the
     // live figure from reportRows, so an owner sees at a glance which packs have
     // data behind them tonight and which are still empty.
     const rep = [
+      ["pnl", "Profit & loss", "Revenue − COGS − operating cost = net profit, month to date, plus GST payable", "Monthly"],
       ["z", "Z-report", "End-of-shift cash-up per tender, declared against expected drawer", "Per shift"],
       ["gst", "GST return", "GGST/TGST split for the month, in the format MIRA expects", "Monthly"],
       ["cos", "Cost of sales", "Theoretical food cost by dish, from the live recipe cost", "Weekly"],

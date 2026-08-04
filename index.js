@@ -3785,6 +3785,20 @@ if (fs.existsSync(protoFile)) {
           .filter((d) => (Number(d.in) || 0) >= t0)
           .map((d) => ({ id: d.id, staff: d.staffId, outlet: Number(d.outlet) || 3,
             in: Number(d.in) || 0, out: Number(d.out) || 0, late: Number(d.late) || 0 }));
+        // Operating costs / expenses — real 'expenses' entities mapped to the
+        // terminal's opex row shape (money laari→MVR). Recurring metadata
+        // (freq/due/acct/outlet) rides on the entity when the cost form set it;
+        // a plain spend defaults to a one-off monthly line on the general
+        // expense account.
+        const expRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false ORDER BY (data->>'t')::numeric DESC NULLS LAST LIMIT 200", [orgId])).rows;
+        const expenses = expRows.map((r) => {
+          const d = r.data || {}; const at = Number(d.t) || 0; const dd = at ? new Date(at) : null;
+          return { id: r.id, cat: d.cat || "General", vendor: d.supplier || d.vendor || "—",
+            outlet: Number(d.outlet) || 0, amt: Math.round((Number(d.amount) || 0) / 100),
+            freq: d.freq === "annual" ? "annual" : "monthly", due: Number(d.due) || (dd ? dd.getDate() : 1),
+            acct: d.acct || "6300", note: d.note || "", paidFrom: d.paidFrom || "other", at: at };
+        });
         // Reservations booked from the guest portal (or the till) — the store's
         // real reservation entities, newest first. The till's Reservations inbox
         // approves/declines these and the floor reflects confirmed ones. Cancelled
@@ -3828,7 +3842,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), customers, staff, clock, reservations,
+          orders: orders.slice(0, 200), customers, staff, clock, reservations, expenses,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });
