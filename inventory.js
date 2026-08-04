@@ -2340,11 +2340,65 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     };
   }
 
+  /* Derived financial statements — a balance sheet and a cash-flow statement
+     built from the same source rows as the P&L (the app keeps derived books, so
+     there is no posted GL to read; these are computed the same honest way).
+     All-time / as-of-now: inventory at moving average, receivables = the sum of
+     outstanding customer tabs, cash & bank from collected tenders less paid
+     expenses, GST + service charge accrued as liabilities. Equity is the
+     balancing figure (accumulated retained earnings), so the sheet always
+     balances by construction. */
+  async function computeStatements(client, orgId, storeId) {
+    const now = Date.now();
+    const acct = await computeAccounting(client, orgId, 0, now, storeId);
+    // Floor each item at zero: an oversold item shows negative physical stock in
+    // the ledger, but you never carry negative inventory as an asset.
+    const invR = (await client.query(
+      "SELECT COALESCE(SUM(GREATEST(0,current_stock)*avg_cost),0) AS v FROM ingredients WHERE org_id=$1 AND active", [orgId])).rows[0];
+    const inventory = Math.round(Number(invR.v) || 0);
+    const arR = (await client.query(
+      "SELECT COALESCE(SUM(GREATEST(0,(data->>'balance')::numeric)),0) AS ar FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false AND (data->>'balance') ~ '^[0-9.]+$'", [orgId])).rows[0];
+    const ar = Math.round(Number(arR.ar) || 0);
+    const setlR = (await client.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settlements' AND deleted=false" + (storeId ? " AND COALESCE(data->>'storeId','global')=$2" : ""), storeId ? [orgId, storeId] : [orgId])).rows;
+    let setlCash = 0, setlBank = 0;
+    for (const s of setlR) { const d = s.data || {}; const a = num(d.amount); if (/cash/i.test(d.method || "")) setlCash += a; else setlBank += a; }
+    const T = acct.cash.tenders || {};
+    const tk = (re) => Object.keys(T).reduce((x, k) => (re.test(k) ? x + T[k] : x), 0);
+    const cashSalesAll = tk(/^cash$/i);
+    const bankSalesAll = tk(/card|transfer|wallet|bml|bank/i);   // credit/tab is receivable, not cash
+    const expR = (await client.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false" + (storeId ? " AND COALESCE(data->>'storeId','global')=$2" : ""), storeId ? [orgId, storeId] : [orgId])).rows;
+    let expCash = 0, expBank = 0, apUnpaid = 0;
+    for (const e of expR) { const d = e.data || {}; const a = num(d.amount); const pf = String(d.paidFrom || "other");
+      if (/cash/i.test(pf)) expCash += a; else if (/card|transfer|bank/i.test(pf)) expBank += a; else apUnpaid += a; }
+    const paidOut = acct.cash.paidOut || 0;
+    const cashOnHand = Math.max(0, cashSalesAll + setlCash - expCash - paidOut);
+    const bank = bankSalesAll + setlBank - expBank;
+    const gstPayable = Math.max(0, acct.gstReturn.netPayable);
+    const svcPayable = acct.pnl.serviceCharge || 0;             // collected, owed to staff
+    const assets = { cash: cashOnHand, bank, accountsReceivable: ar, inventory, total: cashOnHand + bank + ar + inventory };
+    const liabilities = { gstPayable, serviceChargePayable: svcPayable, accountsPayable: apUnpaid, total: gstPayable + svcPayable + apUnpaid };
+    const retainedEarnings = assets.total - liabilities.total;
+    const balanceSheet = { asOf: now, assets, liabilities,
+      equity: { retainedEarnings, total: retainedEarnings }, balances: true };
+    const opNet = (cashSalesAll + bankSalesAll) + (setlCash + setlBank) - (expCash + expBank) - paidOut;
+    const cashFlow = { period: "all-time", operating: {
+      fromSalesCollected: cashSalesAll + bankSalesAll, fromSettlements: setlCash + setlBank,
+      lessExpensesPaid: -(expCash + expBank), lessPaidOut: -paidOut, net: opNet },
+      netChange: opNet };
+    return { asOf: now, currency: "laari", balanceSheet, cashFlow };
+  }
+
   router.get("/accounting", authAny, wrap(async (req, res) => {
     const storeId = req.query.storeId ? String(req.query.storeId) : null;
     const from = Number(req.query.from) || 0;
     const to = Number(req.query.to) || Date.now();
-    const out = await withOrg(req.orgId, (client) => computeAccounting(client, req.orgId, from, to, storeId));
+    const out = await withOrg(req.orgId, async (client) => {
+      const acct = await computeAccounting(client, req.orgId, from, to, storeId);
+      const stmt = await computeStatements(client, req.orgId, storeId);
+      return Object.assign({}, acct, { balanceSheet: stmt.balanceSheet, cashFlow: stmt.cashFlow });
+    });
     res.json(Object.assign({ ok: true }, out));
   }));
 

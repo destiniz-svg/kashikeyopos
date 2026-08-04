@@ -6728,6 +6728,41 @@ class Component extends DCLogic {
       }
       return { header: ["Line", "MVR"], rows };
     }
+    if (key === "balsheet") {
+      const d = this.state.pnlData;
+      if (!d || !d.balanceSheet) return { header: ["Line", "MVR"], rows: [] };
+      const bs = d.balanceSheet, L = (n) => m2((Number(n) || 0) / 100), rows = [];
+      rows.push(["ASSETS", ""]);
+      rows.push(["  Cash on hand", L(bs.assets.cash)]);
+      rows.push(["  Bank", L(bs.assets.bank)]);
+      rows.push(["  Accounts receivable (customer tabs)", L(bs.assets.accountsReceivable)]);
+      rows.push(["  Inventory at cost", L(bs.assets.inventory)]);
+      rows.push(["  TOTAL ASSETS", L(bs.assets.total)]);
+      rows.push(["", ""]);
+      rows.push(["LIABILITIES", ""]);
+      rows.push(["  GST payable to MIRA", L(bs.liabilities.gstPayable)]);
+      rows.push(["  Service charge payable to staff", L(bs.liabilities.serviceChargePayable)]);
+      rows.push(["  Accounts payable (unpaid bills)", L(bs.liabilities.accountsPayable)]);
+      rows.push(["  Total liabilities", L(bs.liabilities.total)]);
+      rows.push(["EQUITY", ""]);
+      rows.push(["  Retained earnings", L(bs.equity.retainedEarnings)]);
+      rows.push(["  LIABILITIES + EQUITY", L(bs.liabilities.total + bs.equity.total)]);
+      return { header: ["Line", "MVR"], rows };
+    }
+    if (key === "cashflow") {
+      const d = this.state.pnlData;
+      if (!d || !d.cashFlow) return { header: ["Line", "MVR"], rows: [] };
+      const cf = d.cashFlow, L = (n) => m2((Number(n) || 0) / 100), rows = [];
+      rows.push(["OPERATING ACTIVITIES", ""]);
+      rows.push(["  Cash collected from sales", L(cf.operating.fromSalesCollected)]);
+      rows.push(["  Received from tab settlements", L(cf.operating.fromSettlements)]);
+      rows.push(["  Less: expenses paid", L(cf.operating.lessExpensesPaid)]);
+      rows.push(["  Less: cash paid out", L(cf.operating.lessPaidOut)]);
+      rows.push(["  Net operating cash flow", L(cf.operating.net)]);
+      rows.push(["", ""]);
+      rows.push(["NET CHANGE IN CASH", L(cf.netChange)]);
+      return { header: ["Line", "MVR"], rows };
+    }
     return { header: ["Report"], rows: [] };
   }
 
@@ -6743,6 +6778,8 @@ class Component extends DCLogic {
     // data behind them tonight and which are still empty.
     const rep = [
       ["pnl", "Profit & loss", "Revenue − COGS − operating cost = net profit, month to date, plus GST payable", "Monthly"],
+      ["balsheet", "Balance sheet", "Assets, liabilities and equity as of now — derived from the books", "On demand"],
+      ["cashflow", "Cash flow", "Operating cash in and out, all-time — derived from the books", "On demand"],
       ["z", "Z-report", "End-of-shift cash-up per tender, declared against expected drawer", "Per shift"],
       ["gst", "GST return", "GGST/TGST split for the month, in the format MIRA expects", "Monthly"],
       ["cos", "Cost of sales", "Theoretical food cost by dish, from the live recipe cost", "Weekly"],
