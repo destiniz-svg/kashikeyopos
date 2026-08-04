@@ -2466,7 +2466,13 @@ class Component extends DCLogic {
       fire: () => {
         if (!unfired) { this.toast("Nothing new to fire", "warn"); return; }
         const t0 = this.ticket() || {};
-        const going = (t0.lines || []).filter((l) => !l.fired).map((l) => ({ qty: l.qty, name: l.name, note: l.note || "" }));
+        // Ticket lines carry only the product id — the name is resolved from the
+        // menu for display. Resolve it here too, or the KOT docket renders an
+        // undefined name and crashes on toUpperCase().
+        const going = (t0.lines || []).filter((l) => !l.fired).map((l) => {
+          const mi = (K0.MENU || []).find((x) => x.id === l.id) || {};
+          return { qty: l.qty, name: mi.name || l.name || "Item", note: l.note || "" };
+        });
         this.mutate(undefined, (t) => { t.lines = t.lines.map((l) => l.fired ? l : Object.assign({}, l, { fired: true, since: 0, firedAt: Date.now() })); });
         this.queue("fire_course", unfired + " item" + (unfired > 1 ? "s" : "") + " fired to KDS · T" + pad(s.activeTable), "order_lines");
         if (this.prefs().kotPrint === false) { this.toast(unfired + " item" + (unfired > 1 ? "s" : "") + " sent to the kitchen"); return; }
@@ -2875,7 +2881,7 @@ class Component extends DCLogic {
       const d = new Date(m.at || Date.now());
       // Station is derived from what is actually on the docket: a cold-only
       // fire should not print to the hot pass and have a chef hunt for it.
-      const hot = lines.some((l) => !/salad|juice|water|soda|coffee|tea|lassi|smoothie|ice/i.test(l.name));
+      const hot = lines.some((l) => !/salad|juice|water|soda|coffee|tea|lassi|smoothie|ice/i.test(l.name || ""));
       return Object.assign({}, this.brandVals(), {
         modalTitle: "Kitchen ticket", modalSub: "Printed to " + (hot ? "the hot pass" : "the cold station") + " · " + o.name,
         kotOutlet: o.name,
@@ -2885,7 +2891,7 @@ class Component extends DCLogic {
         kotServer: this.me(),
         kotTime: d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
         kotLines: lines.map((l) => ({
-          qty: String(l.qty), name: l.name.toUpperCase(), note: l.note ? "** " + l.note.toUpperCase() + " **" : "",
+          qty: String(l.qty), name: String(l.name || "Item").toUpperCase(), note: l.note ? "** " + l.note.toUpperCase() + " **" : "",
           noteStyle: l.note ? "font-size:13px;font-weight:800;margin-top:3px;letter-spacing:.02em" : "display:none"
         })),
         kotFoot: lines.reduce((a, l) => a + l.qty, 0) + " items · fired " + d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
