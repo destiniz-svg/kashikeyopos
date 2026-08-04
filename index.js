@@ -3586,6 +3586,10 @@ if (fs.existsSync(protoFile)) {
         let netMonth = 0, gstMonth = 0, txMonth = 0;
         const pad2 = (n) => String(n).padStart(2, "0");
         const chanMap = { v2: "dine_in", dine_in: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
+        // pid → display name, so a real sale's stored line items can carry the
+        // dish name the receipt and menu-engineering report need.
+        const nameById = {};
+        menu.forEach((mm) => { nameById[String(mm.id)] = mm.name; });
         const orders = [];
         for (const r of salesRows) {
           const d = r.data || {};
@@ -3594,11 +3598,22 @@ if (fs.existsSync(protoFile)) {
           if (at >= t0) { net += Number(d.total) || 0; covers += 1; }
           if (at >= m0) { netMonth += Number(d.total) || 0; gstMonth += Number(d.gst) || 0; txMonth += 1; }
           const dt = at ? new Date(at) : null;
+          // Real line detail: the sale entity persists lines[{pid,qty,price,amount}]
+          // (all laari). Project them with the dish name so the terminal receipt
+          // and analytics read real items instead of a header-only total.
+          const lineItems = Array.isArray(d.lines) ? d.lines.map((l) => ({
+            pid: l.pid != null ? l.pid : l.id, q: Number(l.qty) || 0,
+            n: nameById[String(l.pid != null ? l.pid : l.id)] || l.name || "Item",
+            price: Math.round((Number(l.price) || 0) / 100),
+            amount: Math.round((Number(l.amount != null ? l.amount : (Number(l.price) || 0) * (Number(l.qty) || 0))) / 100),
+          })) : [];
           orders.push({
             no: d.no || r.id, table: d.table != null ? "T" + pad2(d.table) : "—",
             channel: chanMap[d.channel] || "dine_in", total: Math.round((Number(d.total) || 0) / 100),
             tender: d.tender || "cash", status: d.open ? "open" : "closed", server: d.server || "",
             time: dt ? pad2(dt.getHours()) + ":" + pad2(dt.getMinutes()) : "", at: at,
+            items: lineItems, subtotal: Math.round((Number(d.subtotal) || 0) / 100),
+            svc: Math.round((Number(d.svcCharge) || 0) / 100), gst: Math.round((Number(d.gst) || 0) / 100),
           });
         }
         orders.sort((a, b) => b.at - a.at);

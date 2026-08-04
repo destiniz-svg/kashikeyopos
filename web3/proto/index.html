@@ -3140,12 +3140,32 @@ class Component extends DCLogic {
     const lines = [];
     let acc = 0;
     if (REAL) {
-      // Real orders are header-only (no per-line detail captured yet), so the
-      // receipt shows the real total and tender without inventing dishes. The
-      // tax shown is extracted from the total at the outlet's rate.
       const total = Number(ord.total) || 0;
       const svcR = o.sc || 0, rateR = o.rate || 0;
-      // total (GST-inclusive) → back out GST and service on the goods.
+      const items = Array.isArray(ord.items) ? ord.items : [];
+      if (items.length) {
+        // Real line detail persisted with the sale — show the actual dishes,
+        // and the real subtotal/service/GST stored on the order.
+        const sub = ord.subtotal != null ? ord.subtotal : items.reduce((a, it) => a + (it.amount || 0), 0);
+        const svc = ord.svc != null ? ord.svc : (svcR ? Math.round(sub * svcR / 100) : 0);
+        const tax = ord.gst != null ? ord.gst : Math.round((sub + svc) * rateR / 100);
+        return {
+          modalTitle: "Receipt " + (ord.no || ""), modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
+          rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
+          rcpNo: ord.no || "", rcpTime: ord.time || "",
+          rcpLines: items.map((it) => ({ n: (it.q || 1) + "x " + String(it.n || "Item").slice(0, 24), v: MVRc(it.amount || 0) })),
+          rcpTotals: [
+            { n: "Subtotal", v: MVRc(sub), style: "display:flex;justify-content:space-between;padding:2px 0" },
+            { n: "Service " + svcR + "%", v: MVRc(svc), style: (svcR ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none") },
+            { n: o.tax + " " + rateR + "%", v: MVRc(tax), style: "display:flex;justify-content:space-between;padding:2px 0" },
+            { n: "Total", v: MVRc(total), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13px;padding-top:5px;border-top:1px solid var(--line-soft);margin-top:3px" },
+          ],
+          rcpFoot: this.brandOf().receiptFoot || "Thank you",
+          settledDone: () => this.setState({ modal: null }),
+        };
+      }
+      // No stored lines (older orders / channels without a cart) → show the real
+      // total with tax extracted from the inclusive figure, no invented dishes.
       const tax = Math.round(total - total / (1 + rateR / 100));
       const goodsWithSvc = total - tax;
       const svc = svcR ? Math.round(goodsWithSvc - goodsWithSvc / (1 + svcR / 100)) : 0;
@@ -3161,7 +3181,7 @@ class Component extends DCLogic {
           { n: o.tax + " " + rateR + "%", v: MVRc(tax), style: "display:flex;justify-content:space-between;padding:2px 0" },
           { n: "Total", v: MVRc(total), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13px;padding-top:5px;border-top:1px solid var(--line-soft);margin-top:3px" },
         ],
-        rcpFoot: "Line detail is not stored for this order · " + (this.brandOf().receiptFoot || "Thank you"),
+        rcpFoot: "Line detail not stored for this order · " + (this.brandOf().receiptFoot || "Thank you"),
         settledDone: () => this.setState({ modal: null }),
       };
     }
@@ -4095,12 +4115,16 @@ class Component extends DCLogic {
 
     const REAL = !!window.KPOS_REAL;
     const menu = (K().MENU || []).filter((m) => m.cat !== "drinks");
+    // Real sold-volume per dish, summed from the line items on real orders.
+    const volById = {};
+    if (REAL) (window.KPOS_REAL.orders || []).forEach((ord) => (ord.items || []).forEach((it) => {
+      const k = String(it.pid); volById[k] = (volById[k] || 0) + (Number(it.q) || 0);
+    }));
     const scored = menu.map((m) => {
       const r = this.rng(2200 + (m.id || 0) * 7); r();
       const price = this.menuPrice(m), cost = this.foodCost(m);
-      // Real orders are header-only (no per-line detail), so sold-volume has no
-      // real source yet — 0 rather than an invented count.
-      return { name: m.name, margin: price - cost, vol: REAL ? 0 : Math.round(4 + r() * 46) };
+      // Volume is real (from order lines) in live mode, seeded in demo mode.
+      return { name: m.name, margin: price - cost, vol: REAL ? (volById[String(m.id)] || 0) : Math.round(4 + r() * 46) };
     });
     const mMed = scored.slice().sort((a, b) => a.margin - b.margin)[Math.floor(scored.length / 2)] || { margin: 0 };
     const vMed = scored.slice().sort((a, b) => a.vol - b.vol)[Math.floor(scored.length / 2)] || { vol: 0 };
@@ -4112,7 +4136,7 @@ class Component extends DCLogic {
         style: "background:var(--bg);border:1px solid " + (tone === "g" ? "rgba(107,191,123,.28)" : tone === "r" ? "var(--red-line)" : "var(--line)") + ";border-radius:10px;padding:11px 12px;min-width:0",
         titleStyle: "font-size:11.5px;font-weight:800;letter-spacing:-0.01em;color:" + (tone === "g" ? "var(--green)" : tone === "r" ? "var(--red-bright)" : "var(--text)"),
         cntStyle: chip(tone),
-        dishes: list.slice(0, 3).map((x) => "· " + x.name + " — " + MVR(x.margin) + (REAL ? " margin" : " × " + x.vol))
+        dishes: list.slice(0, 3).map((x) => "· " + x.name + " — " + MVR(x.margin) + " × " + x.vol)
       };
     };
 
