@@ -271,6 +271,8 @@ button:active:not(:disabled){transform:scale(.975)}
                 <span><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--amber)"></span>Occupied</span>
                 <span><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--blue)"></span>Reserved</span>
               </div>
+              <button onClick="{{ startTakeaway }}" style="{{ newOrderBtnStyle }}" title="Start a takeaway order — no table needed">＋ Takeaway</button>
+              <button onClick="{{ startDelivery }}" style="{{ newOrderBtnStyle }}" title="Start a delivery order — no table needed">＋ Delivery</button>
               <button onClick="{{ openHeld }}" style="{{ heldBtnStyle }}">
                 <span style="display:flex;align-items:center;gap:7px">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6v12M15 6v12"></path></svg>
@@ -278,6 +280,15 @@ button:active:not(:disabled){transform:scale(.975)}
                 </span>
               </button>
             </div>
+          </div>
+
+          <div style="{{ openSlotsStyle }}">
+            <sc-for list="{{ openSlots }}" as="o2" hint-placeholder-count="0">
+              <button onClick="{{ o2.go }}" style="{{ o2.style }}">
+                <span style="font-weight:700">{{ o2.label }}</span>
+                <span style="opacity:.7;margin-left:7px">{{ o2.meta }}</span>
+              </button>
+            </sc-for>
           </div>
 
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:9px">
@@ -1576,7 +1587,36 @@ class Component extends DCLogic {
     }
     return g.name;
   }
-  blankTicket() { return { guests: [this.newGuest(0)], lines: [], waiter: "", channel: "dine_in", opened: 0, party: 2, status: "occupied" }; }
+  blankTicket(channel) { return { guests: [this.newGuest(0)], lines: [], waiter: "", channel: channel || "dine_in", opened: 0, party: 2, status: "occupied" }; }
+  // A ticket is keyed by a slot id. Dine-in slots are the numeric table; an
+  // off-floor order (takeaway/delivery/counter) uses a prefixed token (TA1/DL2/
+  // CO1) so it doesn't have to occupy a physical table. slotLabel turns either
+  // into a human label.
+  slotLabel(id) {
+    if (id == null) return "—";
+    const str = String(id);
+    if (/^\d+$/.test(str)) return "T" + pad(Number(str));
+    const map = { TA: "Takeaway", DL: "Delivery", CO: "Counter" };
+    return (map[str.slice(0, 2)] || "Order") + " " + (str.slice(2) || "1");
+  }
+  isTableSlot(id) { return id != null && /^\d+$/.test(String(id)); }
+  // Start an off-floor order: mint the next free slot token for its channel,
+  // open a blank ticket on it and make it active — no table consumed.
+  startOrder(kind) {
+    if (!this.registerOpen()) { this.openForm("regopen"); return; }
+    const s = this.state;
+    const pfx = kind === "delivery" ? "DL" : kind === "counter" ? "CO" : "TA";
+    const chan = kind === "delivery" ? "delivery" : "takeaway";
+    const keyPre = s.outletId + ":" + pfx;
+    const used = Object.keys(s.tickets).filter((k) => k.indexOf(keyPre) === 0)
+      .map((k) => Number(k.slice(keyPre.length))).filter((x) => x);
+    let n = 1; while (used.indexOf(n) >= 0) n++;
+    const token = pfx + n;
+    const tickets = Object.assign({}, s.tickets);
+    tickets[s.outletId + ":" + token] = Object.assign(this.blankTicket(chan), { noTable: true });
+    this.setState({ tickets: tickets, activeTable: token, activeSplit: 0, view: "pos", modal: null });
+    this.toast(this.slotLabel(token) + " started — add items, then settle");
+  }
 
   ticketKey(n) { return this.state.outletId + ":" + (n === undefined ? this.state.activeTable : n); }
   ticket(n) { return this.state.tickets[this.ticketKey(n)] || null; }
@@ -1755,7 +1795,7 @@ class Component extends DCLogic {
       grabberStyle: isM ? "width:100%;padding:11px 0 7px;flex-shrink:0;display:block;background:transparent" : "display:none",
       showCartBar: isM && s.view === "pos",
       cartBarStyle: "position:fixed;left:0;right:0;bottom:0;z-index:50;display:flex;align-items:center;gap:12px;padding:11px 14px calc(11px + env(safe-area-inset-bottom));background:var(--bg-1);border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(0,0,0,.4)",
-      cartCountText: s.activeTable ? ("T" + pad(s.activeTable) + " · " + cartCount + " item" + (cartCount === 1 ? "" : "s")) : "No table selected",
+      cartCountText: s.activeTable ? (this.slotLabel(s.activeTable) + " · " + cartCount + " item" + (cartCount === 1 ? "" : "s")) : "No table selected",
       cartTotalText: cartTotal ? MVR(cartTotal) : "—",
       openCart: () => s.activeTable ? this.setState({ cart: true }) : this.toast("Pick a table first", "warn"),
       closeCart: () => this.setState({ cart: false }),
@@ -2251,7 +2291,7 @@ class Component extends DCLogic {
       kds: list.map((tk) => {
         const late = tk.wait >= 18, warn = tk.wait >= 12;
         return {
-          table: "T" + pad(tk.num),
+          table: this.slotLabel(tk.num),
           meta: (tk.t.waiter || "Unassigned") + " · " + tk.t.party + " covers",
           wait: tk.wait,
           style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--amber-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
@@ -2271,7 +2311,7 @@ class Component extends DCLogic {
           }),
           serveLabel: "Bump all · T" + pad(tk.num),
           serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--bg-2);border-top:1px solid var(--line);color:var(--amber-bright)",
-          serve: () => { const t = Object.assign({}, this.state.tickets); const cur = Object.assign({}, t[tk.key]); cur.lines = cur.lines.map((l) => l.fired ? Object.assign({}, l, { done: true }) : l); t[tk.key] = cur; this.setState({ tickets: t }); this.queue("kds_bump_all", "Ticket bumped · T" + pad(tk.num), "orders"); this.toast("T" + pad(tk.num) + " away"); }
+          serve: () => { const t = Object.assign({}, this.state.tickets); const cur = Object.assign({}, t[tk.key]); cur.lines = cur.lines.map((l) => l.fired ? Object.assign({}, l, { done: true }) : l); t[tk.key] = cur; this.setState({ tickets: t }); this.queue("kds_bump_all", "Ticket bumped · T" + pad(tk.num), "orders"); this.toast(this.slotLabel(tk.num) + " away"); }
         };
       })
     };
@@ -2284,6 +2324,15 @@ class Component extends DCLogic {
     const tight = this.effBp() !== "m" && s.vh < 660;
     const heldN = s.held.filter((h) => h.outletId === s.outletId).length;
     const tk = this.ticket();
+    // Open off-floor tickets (takeaway/delivery/counter) for this outlet — the
+    // tappable chips above the floor, so a table-less order is reachable after
+    // it's started, the way a table tile reaches a dine-in ticket.
+    const slotPre = s.outletId + ":";
+    const openSlotList = Object.keys(s.tickets)
+      .filter((k) => k.indexOf(slotPre) === 0 && /^(TA|DL|CO)\d+$/.test(k.slice(slotPre.length)))
+      .map((k) => { const token = k.slice(slotPre.length), t = s.tickets[k]; const items = (t.lines || []).length;
+        return { token: token, label: this.slotLabel(token), meta: items + (items === 1 ? " item · " : " items · ") + MVRc(this.totals(t).total) }; })
+      .sort((a, b) => a.token < b.token ? -1 : 1);
     const nT = o.tables || 0;
     const tables = [];
     for (let i = 1; i <= nT; i++) {
@@ -2433,8 +2482,8 @@ class Component extends DCLogic {
       // mobile — not only via a long-press on the table tile. Highlighted amber
       // when the ticket has lines to park, muted otherwise.
       parkBtnStyle: "padding:8px;border-radius:7px;font-size:11px;font-weight:700;text-align:center;border:1px solid " + (canPay ? "var(--amber-dim)" : "var(--line)") + ";background:" + (canPay ? "rgba(242,164,58,.10)" : "var(--bg-2)") + ";color:" + (canPay ? "var(--amber-bright)" : "var(--text-faint)"),
-      ticketLabel: s.activeTable ? "Ticket · " + (tk && tk.channel === "qr" ? "QR session" : "Dine-in") : "No table selected",
-      ticketNum: s.activeTable ? "T" + pad(s.activeTable) + " / " + o.code : "—",
+      ticketLabel: s.activeTable ? "Ticket · " + ({ qr: "QR session", takeaway: "Takeaway", delivery: "Delivery" }[tk && tk.channel] || "Dine-in") : "No table selected",
+      ticketNum: s.activeTable ? this.slotLabel(s.activeTable) + " / " + o.code : "—",
       ticketChip: s.activeTable ? "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:5px;background:rgba(242,164,58,.12);color:var(--amber-bright);white-space:nowrap" : "display:none",
       ticketChipText: tk ? this.tkAge(tk) + "m open" : "",
       hasTicket: !!s.activeTable,
@@ -2477,6 +2526,17 @@ class Component extends DCLogic {
       openHeld: () => this.setState({ modal: { kind: "held" } }),
       heldBtnLabel: heldN ? "Parked bills · " + heldN : "Parked bills · 0",
       heldBtnStyle: "padding:6px 13px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--amber-line)" : "var(--line)") + ";background:" + (heldN ? "rgba(242,164,58,.10)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--amber-bright)" : "var(--text-dim)"),
+      // Off-floor order entry — takeaway/delivery start their own ticket without
+      // occupying a table (§ order-type-first). Open ones show as tappable chips.
+      startTakeaway: () => this.startOrder("takeaway"),
+      startDelivery: () => this.startOrder("delivery"),
+      newOrderBtnStyle: "padding:6px 13px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)",
+      openSlots: openSlotList.map((sl) => ({
+        label: sl.label, meta: sl.meta,
+        go: () => this.setState({ activeTable: sl.token, activeSplit: 0 }),
+        style: "padding:7px 12px;border-radius:8px;font-size:11px;text-align:left;border:1px solid " + (s.activeTable === sl.token ? "var(--amber)" : "var(--line)") + ";background:" + (s.activeTable === sl.token ? "rgba(242,164,58,.10)" : "var(--bg-1)") + ";color:var(--text)"
+      })),
+      openSlotsStyle: openSlotList.length ? "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" : "display:none",
       fire: () => {
         if (!unfired) { this.toast("Nothing new to fire", "warn"); return; }
         const t0 = this.ticket() || {};
@@ -2605,7 +2665,7 @@ class Component extends DCLogic {
       const canConfirm = m.tender === "cash" ? given >= due : (m.tender === "credit" ? !!cust && (cust.credit - cust.used) >= T.total : true);
       return {
         modalTitle: "Settle · " + this.guestLabel(gAll[gIdx]),
-        modalSub: "T" + pad(s.activeTable) + " · " + o.name + " · " + o.tax + " " + o.rate + "%" + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : ""),
+        modalSub: this.slotLabel(s.activeTable) + " · " + o.name + " · " + o.tax + " " + o.rate + "%" + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : ""),
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
           return { n: l.qty + "× " + mi.name, v: MVRc(this.menuPrice(mi) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--amber-bright);margin-top:2px" : "display:none" };
@@ -2668,7 +2728,7 @@ class Component extends DCLogic {
           const snapshot = {
             no: "KO-" + (o.code.split("-")[1] || o.code || "01") + "-" + (2450 + Math.floor(Math.random() * 90)),
             time: pad(s.now.getHours()) + ":" + pad(s.now.getMinutes()),
-            table: "T" + pad(s.activeTable), guest: gname, tender: m.tender, cust: cust,
+            table: this.slotLabel(s.activeTable), guest: gname, tender: m.tender, cust: cust,
             lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
               const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
               return { n: l.qty + "× " + mi.name, v: MVRc(this.menuPrice(mi) * l.qty) };
@@ -2687,7 +2747,7 @@ class Component extends DCLogic {
           try {
             if (window.__v2PushSale) window.__v2PushSale({
               lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => ({ id: l.id, qty: l.qty })),
-              tender: m.tender, table: s.activeTable, no: snapshot.no, given: given, change: change,
+              tender: m.tender, table: this.isTableSlot(s.activeTable) ? s.activeTable : null, no: snapshot.no, given: given, change: change,
               channel: (tk && tk.channel) || "dine_in",
               customerId: linkedCustId || null,
               customerName: linkedCust ? linkedCust.name : "",
@@ -2703,7 +2763,7 @@ class Component extends DCLogic {
             cur.guests = gAll.filter((_, i) => i !== gIdx);
             tables[this.ticketKey()] = cur;
           }
-          this.queue("close_ticket", (last ? "Ticket closed · " : "Guest settled · " + gname + " · ") + "T" + pad(s.activeTable) + " · " + MVR(T.total) + " · " + m.tender, "orders");
+          this.queue("close_ticket", (last ? "Ticket closed · " : "Guest settled · " + gname + " · ") + this.slotLabel(s.activeTable) + " · " + MVR(T.total) + " · " + m.tender, "orders");
           this.queue("post_journal", "Journal posted · Dr " + (m.tender === "cash" ? "1010" : m.tender === "credit" ? "1040" : "1030") + " · Cr 4000/2200", "journal_entries");
           this.queue("consume_recipe", "Recipe consumption deducted from " + o.code, "stock_ledger");
           this.setState({
@@ -2848,7 +2908,7 @@ class Component extends DCLogic {
         { label: "Clear table", sub: "Discard the ticket and free the table", go: p.clearT, on: st0 !== "free" }
       ].filter((a) => a.on);
       return {
-        modalTitle: "Table actions", modalSub: "T" + pad(s.activeTable) + " · " + o.name + " · " + (st0 === "free" ? "free" : st0),
+        modalTitle: "Table actions", modalSub: this.slotLabel(s.activeTable) + " · " + o.name + " · " + (st0 === "free" ? "free" : st0),
         moreActions: acts.map((a) => ({
           label: a.label, sub: a.sub, style: btn,
           go: () => { this.setState({ modal: null }); setTimeout(a.go, 0); }
@@ -3015,7 +3075,7 @@ class Component extends DCLogic {
     if (m.kind === "guest") {
       const tk2 = this.ticket(), gs = this.guestsOf(tk2), g = gs[m.idx] || this.newGuest(m.idx);
       return {
-        modalTitle: "Guest " + (m.idx + 1), modalSub: "T" + pad(s.activeTable) + " · who is this bill for?",
+        modalTitle: "Guest " + (m.idx + 1), modalSub: this.slotLabel(s.activeTable) + " · who is this bill for?",
         guestKind: g.type,
         guestNameVal: g.name,
         onGuestName: (e) => { const v = e.target.value; this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { name: v }); }); },
