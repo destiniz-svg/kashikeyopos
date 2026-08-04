@@ -3585,10 +3585,26 @@ if (fs.existsSync(protoFile)) {
           return { id: r.id, name: nm, user: user, role: roleMap[String(d.role || "").toLowerCase()] || "Cashier",
             outlet: null, outlets: [], pin: pin, status: d.suspended ? "Suspended" : "Active", last: "" };
         });
+        // Real outlets — the org's own stores (a company can run several).
+        // The primary/first store keeps outlet id 3, which is the terminal's
+        // default outletId and the id the POS stat couplings key off, so the
+        // whole ticket/floor engine works unchanged; further stores get their
+        // own ids. Tax/service-charge come from settings; seats/tables are a
+        // sensible default until per-store layout config exists.
+        const storeRows = (await c.query(
+          "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
+        const tax = gstBp >= 1600 ? "TGST" : "GGST", rate = Math.round(gstBp / 100), sc = Math.round(scBp / 100);
+        const outlets = storeRows.map((sr, i) => ({
+          id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
+          name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0,
+          region: "", tax: tax, rate: rate, sc: sc, addr: sr.address || "", mgr: "",
+          pos: true, seats: 48, tables: 12,
+        }));
         return {
           hasSession: true, token,
-          outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
-            rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
+          outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
+            currency: st.currency === "USD" ? "USD" : "MVR" },
+          outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth },
           orders: orders.slice(0, 200), customers, staff,
         };

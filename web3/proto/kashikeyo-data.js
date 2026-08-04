@@ -580,10 +580,14 @@
     ["items", "inv", "cats", "batches", "vendors", "purch", "reqs", "disp", "prod"]
       .forEach(function (k) { if (R && typeof R === "object") R[k] = []; });
     OPEX = []; ASSETS = []; STAFF = [];
-    if (REAL.outlet) {
-      CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
-      // Rename + retax the active trading outlet (Chaandhanee, id 3 — the POS
-      // default) to the real store so the header, tax line and ticket math are live.
+    if (REAL.outlet) CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
+    if (REAL.outlets && REAL.outlets.length) {
+      // Real chain: the org's own stores replace the seeded outlet list. The
+      // primary store carries id 3 (the terminal default), so the floor, ticket
+      // engine and stat couplings keep working against real outlets.
+      OUTLETS = REAL.outlets;
+    } else if (REAL.outlet) {
+      // Fallback (no stores row): rename + retax the default trading outlet.
       OUTLETS.forEach(function (o) {
         if (o.id === 3) {
           o.name = REAL.outlet.name || o.name;
