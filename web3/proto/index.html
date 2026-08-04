@@ -6072,15 +6072,24 @@ class Component extends DCLogic {
     if (tab === 2) {
       let rows = [];
       if (window.KPOS_REAL) {
-        // Real journal: one auto-posted "Ticket closed" line per real order —
-        // debit the tender account, credit revenue. No fabricated entries; an
-        // empty day is an empty journal.
+        // Real journal, posted the way the auto-posting rule describes: each
+        // closed ticket debits the tender account and credits revenue, GST and
+        // service charge as separate legs, so the entry balances and reconciles
+        // to the till instead of lumping tax into sales. Legs sum to the total.
+        // Orders that predate the component split fall back to one revenue leg.
         const tenderAcct = { cash: "1010", card: "1030", credit: "1040", tab: "1040", transfer: "1020", bank: "1020" };
-        rows = (window.KPOS_REAL.orders || []).map((o, i) => ({
-          ref: "JE-" + (o.no || (i + 1)), src: "Ticket closed · " + (o.no || ""),
-          dr: tenderAcct[String(o.tender || "cash").toLowerCase()] || "1010", cr: "4000",
-          amt: Number(o.total) || 0, t: o.time || "",
-        }));
+        (window.KPOS_REAL.orders || []).forEach((o, i) => {
+          const dr = tenderAcct[String(o.tender || "cash").toLowerCase()] || "1010";
+          const ref = "JE-" + (o.no || (i + 1)), t = o.time || "";
+          const sub = Number(o.subtotal) || 0, gst = Number(o.gst) || 0, svc = Number(o.svc) || 0;
+          if (sub || gst || svc) {
+            rows.push({ ref: ref, src: "Ticket closed · " + (o.no || ""), dr: dr, cr: "4000", amt: sub, t: t });
+            if (svc) rows.push({ ref: ref, src: "Service charge · " + (o.no || ""), dr: dr, cr: "2300", amt: svc, t: t });
+            if (gst) rows.push({ ref: ref, src: "GST on sale · " + (o.no || ""), dr: dr, cr: "2200", amt: gst, t: t });
+          } else {
+            rows.push({ ref: ref, src: "Ticket closed · " + (o.no || ""), dr: dr, cr: "4000", amt: Number(o.total) || 0, t: t });
+          }
+        });
       } else {
         const rnd = this.rng(51);
         const kinds = [["Ticket closed", "4000", "1010"], ["Card settlement", "1030", "4000"], ["GRN received", "1200", "2100"], ["Recipe consumption", "5000", "1200"], ["GST on sale", "1010", "2200"], ["Count variance", "5100", "1200"], ["Credit charge", "1040", "4000"]];
