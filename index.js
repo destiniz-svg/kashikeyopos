@@ -3560,11 +3560,32 @@ if (fs.existsSync(protoFile)) {
             last: lastAt ? new Date(lastAt).toISOString().slice(0, 10) : "",
           };
         });
+        // Real staff roster for the sign-in lock. The till PIN is a djb2 hash;
+        // a 4-digit PIN has only 10k pre-images, so we reverse it for the demo
+        // roster badge (the reference shows it, and a 4-digit hash offers no
+        // real secrecy anyway — production would gate the badge behind a flag).
+        const userRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [orgId])).rows;
+        const pinRev = {};
+        for (let i = 0; i < 10000; i++) { const p = String(i).padStart(4, "0"); pinRev[hashTillPin(p)] = p; }
+        const roleMap = { owner: "SuperAdmin", admin: "ChainAdmin", manager: "OutletManager",
+          cashier: "Cashier", waiter: "Cashier", kitchen: "KitchenManager", kitchenmanager: "KitchenManager",
+          storekeeper: "StoreKeeper", accountant: "Accountant" };
+        const seenUser = {};
+        const staff = userRows.map((r) => {
+          const d = r.data || {}, nm = d.name || "Staff";
+          let user = nm.toLowerCase().replace(/[^a-z0-9]+/g, "") || "staff";
+          if (seenUser[user] != null) { seenUser[user]++; user += seenUser[user]; } else seenUser[user] = 0;
+          const sp = String(d.pin || "");
+          const pin = /^\d{4}$/.test(sp) ? sp : (pinRev[sp] || "");
+          return { id: r.id, name: nm, user: user, role: roleMap[String(d.role || "").toLowerCase()] || "Cashier",
+            outlet: null, outlets: [], pin: pin, status: d.suspended ? "Suspended" : "Active", last: "" };
+        });
         return {
           hasSession: true, token,
           outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
             rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-          categories, menu, stats: { net: net, covers: covers }, orders: orders.slice(0, 200), customers,
+          categories, menu, stats: { net: net, covers: covers }, orders: orders.slice(0, 200), customers, staff,
         };
       });
     };

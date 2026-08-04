@@ -570,6 +570,7 @@
         veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
     });
     if (REAL.customers) CUSTOMERS = REAL.customers;   // Customers & credit — real accounts
+    if (REAL.staff && REAL.staff.length) USERS = REAL.staff;  // Sign-in roster — real staff (real PINs)
 
     /* Real mode carries NO seeded back-office data. Inventory, vendors,
        purchases, indents, dispatches, production, batches, operating costs,
