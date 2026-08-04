@@ -4519,6 +4519,9 @@ class Component extends DCLogic {
   }
   // ── Front of house back-office ───────────────────────────────────────────
   todayOrders() {
+    // Real mode: the store's actual sales (from the sales entities), newest first.
+    // Empty until the till has closed a ticket — no fabricated order log.
+    if (window.KPOS_REAL) return (window.KPOS_REAL.orders || []);
     const K0 = K(), s = this.state, rnd = this.rng(4242);
     const out = [];
     const chans = ["dine_in", "dine_in", "dine_in", "qr", "takeaway", "delivery"];

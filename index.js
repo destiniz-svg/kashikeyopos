@@ -3527,16 +3527,28 @@ if (fs.existsSync(protoFile)) {
         const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
         const t0 = startOfDay.getTime();
         let net = 0, covers = 0;
+        const pad2 = (n) => String(n).padStart(2, "0");
+        const chanMap = { v2: "dine_in", dine_in: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
+        const orders = [];
         for (const r of salesRows) {
           const d = r.data || {};
           if ((d.type && d.type !== "sale") || d.void) continue;
-          if (Number(d.at) >= t0) { net += Number(d.total) || 0; covers += 1; }
+          const at = Number(d.at) || 0;
+          if (at >= t0) { net += Number(d.total) || 0; covers += 1; }
+          const dt = at ? new Date(at) : null;
+          orders.push({
+            no: d.no || r.id, table: d.table != null ? "T" + pad2(d.table) : "—",
+            channel: chanMap[d.channel] || "dine_in", total: Math.round((Number(d.total) || 0) / 100),
+            tender: d.tender || "cash", status: d.open ? "open" : "closed", server: d.server || "",
+            time: dt ? pad2(dt.getHours()) + ":" + pad2(dt.getMinutes()) : "", at: at,
+          });
         }
+        orders.sort((a, b) => b.at - a.at);
         return {
           hasSession: true, token,
           outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
             rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-          categories, menu, stats: { net: net, covers: covers },
+          categories, menu, stats: { net: net, covers: covers }, orders: orders.slice(0, 200),
         };
       });
     };
