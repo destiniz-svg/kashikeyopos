@@ -570,6 +570,15 @@
         veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
     });
     if (REAL.customers) CUSTOMERS = REAL.customers;   // Customers & credit — real accounts
+
+    /* Real mode carries NO seeded back-office data. Inventory, vendors,
+       purchases, indents, dispatches, production, batches, operating costs,
+       assets and payroll-staff all start from the real backend — empty for a
+       store that hasn't entered them yet, and filled only from actual records
+       (via /api/inv and /api/ops). This is what removes the demo dataset. */
+    ["items", "inv", "cats", "batches", "vendors", "purch", "reqs", "disp", "prod"]
+      .forEach(function (k) { if (R && typeof R === "object") R[k] = []; });
+    OPEX = []; ASSETS = []; STAFF = [];
     if (REAL.outlet) {
       CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
       // Rename + retax the active trading outlet (Chaandhanee, id 3 — the POS

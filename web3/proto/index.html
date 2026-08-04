@@ -1901,6 +1901,18 @@ class Component extends DCLogic {
     }
     if (v === "inventory" || v === "counts" || v === "batches" || v === "ledger") {
       const val = (raw.inv || []).reduce((a, r) => { const it = (raw.items || []).find((i) => i[0] === r[1]); return a + (it ? it[4] * this.stockQty(it, r[2]) : 0); }, 0);
+      const REAL = window.KPOS_REAL;
+      if (REAL) {
+        const rows = (raw.inv || []).length;
+        const below = (raw.inv || []).filter((r) => { const it = (raw.items || []).find((i) => i[0] === r[1]); return it && this.stockQty(it, r[2]) < (it[10] || 0); }).length;
+        const exp = (raw.batches || []).filter((b) => b[8] === "active").length;
+        return [
+          card("Stock on hand", MVRc(val), rows + " item/location row" + (rows === 1 ? "" : "s"), amber),
+          card("Below par", String(below), below ? "Reorder suggested" : "Nothing below minimum"),
+          card("Expiring ≤ 7 days", String(exp), exp ? "FEFO picking enforced at dispatch" : "No batches tracked yet"),
+          card("Last cycle count", "—", "No counts posted yet")
+        ];
+      }
       return [
         card("Stock on hand", MVRc(val), (raw.inv || []).length + " item/location rows", amber),
         card("Below par", "14", "Auto-indent drafted for 9 of them"),
