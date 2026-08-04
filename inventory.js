@@ -850,7 +850,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     // first GRN's weighted average, but the terminal's item form lets an owner
     // seed a starting cost so food-cost maths work before any delivery. Only
     // applied when creating a new item, never overwriting a GRN-earned average.
-    const openCost = Math.max(0, Math.round(num(req.body && req.body.avgCost)));
+    const openCost = Math.max(0, Math.round(num(req.body && req.body.avgCost) * 1e6) / 1e6);
     const out = await withOrg(req.orgId, async (client) => {
       await client.query(
         `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price, producible, avg_cost)
@@ -889,6 +889,43 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     if (out && poke) poke(req.orgId, out);
     if (willSell) await recomputeAvailability(req.orgId, [String(ingId)]);
     res.json({ ok: true, id: ingId });
+  }));
+
+  /* Bulk item import — onboard a whole pantry at once instead of one modal per
+     ingredient. Accepts rows {name, baseUnit(g/ml/pcs), purchaseUnit, cost
+     (MVR per purchase unit), minStock, location}; each becomes an ingredient
+     with the right base→purchase conversion and an opening weighted cost. Rows
+     with no name are skipped; a bad row never aborts the batch. */
+  router.post("/ingredients/bulk", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const rows = Array.isArray(req.body && req.body.items) ? req.body.items.slice(0, 500) : null;
+    if (!rows || !rows.length) return res.status(400).json({ error: "no items to import" });
+    const unitOf = (b) => { const s = String(b || "").toLowerCase(); return s === "ml" || s === "l" || s === "ltr" ? "ml" : s === "pcs" || s === "pc" || s === "each" ? "pcs" : "g"; };
+    let created = 0; const skipped = [];
+    const ids = await withOrg(req.orgId, async (client) => {
+      const made = [];
+      for (const r of rows) {
+        const name = String((r && r.name) || "").trim();
+        if (!name) { skipped.push("(blank name)"); continue; }
+        const base = unitOf(r.baseUnit || r.base);
+        const pu = String(r.purchaseUnit || r.stock || "").toUpperCase();
+        const factor = ((base === "g" && pu === "KG") || (base === "ml" && (pu === "LTR" || pu === "L"))) ? 1000 : 1;
+        const openCost = Math.max(0, Math.round(num(r.cost) * 100 / factor * 1e6) / 1e6);   // laari per base unit (keep decimals)
+        const ingId = uid();
+        try {
+          await client.query(
+            `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, avg_cost)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [req.orgId, ingId, name, "", base, num(r.minStock), String(r.location || "Dry"), openCost]);
+          if (factor !== 1) await client.query(
+            "INSERT INTO ingredient_units (org_id, id, ingredient_id, name, factor) VALUES ($1,$2,$3,$4,$5)",
+            [req.orgId, uid(), ingId, pu, factor]);
+          made.push(ingId); created++;
+        } catch (e) { skipped.push(name); }
+      }
+      return made;
+    });
+    if (ids.length && poke) poke(req.orgId, Date.now());
+    res.json({ ok: true, created, skipped });
   }));
 
   router.delete("/ingredients/:id", authAny, requireBackOffice(1), wrap(async (req, res) => {

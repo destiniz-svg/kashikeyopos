@@ -4683,7 +4683,7 @@ class Component extends DCLogic {
     return {
       tabs: [{ label: "All locations" }].concat((K().OUTLETS || []).filter((o) => o.parent || !o.pos).map((o) => ({ label: o.code }))).map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { inv: i }) }) })),
       guideTitle: "Adding stock", guide: ["Create the item here — it defines its recipe unit, purchase unit and cost", "Receive quantity against a vendor invoice in Purchases & GRN", "Consumption deducts itself by recipe on every closed ticket", "Cycle counts and adjustments record variance, never a new balance"],
-      actions: [{ label: "Add item", primary: true, go: () => this.openForm("item") }, { label: "New category", go: () => this.openForm("category") }, { label: "Auto-indent below par", go: () => {
+      actions: [{ label: "Add item", primary: true, go: () => this.openForm("item") }, { label: "Bulk import", go: () => this.bulkImportItems() }, { label: "New category", go: () => this.openForm("category") }, { label: "Auto-indent below par", go: () => {
         const lowPct = (this.prefs().lowStock || 50) / 100;
         const short = rows.filter((r) => { const it = this.item(r[1]) || []; return this.stockQty(it, r[2]) < par(r[1]) * lowPct; });
         if (!short.length) return this.toast("Nothing is below half par in this view", "warn");
@@ -4931,7 +4931,7 @@ class Component extends DCLogic {
     const uMap = { GRM: "g", ML: "ml", PCS: "pcs" };
     const baseUnit = uMap[v.base] || "g";
     const factor = ((v.base === "GRM" && v.stock === "KG") || (v.base === "ML" && v.stock === "LTR")) ? 1000 : 1;
-    const avgCost = Math.round(v.cost * 100 / factor);           // laari per base unit
+    const avgCost = Math.round(v.cost * 100 / factor * 1e6) / 1e6; // laari per base unit (keep decimals for cheap-per-gram items)
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
       const body = { name: v.name, baseUnit: baseUnit, minStock: 0, location: "Dry", avgCost: avgCost };
       if (factor !== 1) body.units = [{ name: v.stock, factor: factor }];
@@ -4953,6 +4953,38 @@ class Component extends DCLogic {
     const id = items.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
     const code = "IT-" + String(id).padStart(4, "0");
     this.insertRow("items", [id, v.cat, v.name, v.stock, v.cost, "raw", code, v.base, v.stock, String(v.shelf || 180), 100, 0, 0], "Item created · " + v.name + " · " + code, "items");
+  }
+  // Onboard a whole pantry from a CSV in one go, so a new store isn't hand-keyed
+  // one modal at a time. Columns: name, base unit (g/ml/pcs), purchase unit
+  // (KG/LTR/PCS), cost per purchase unit MVR, min stock, location. A header row
+  // is detected and skipped.
+  bulkImportItems() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to import to the item master", "warn"); return; }
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".csv,text/csv,text/plain";
+    input.onchange = () => {
+      const f = input.files && input.files[0]; if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const lines = String(reader.result || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (!lines.length) { this.toast("That file is empty", "warn"); return; }
+        const start = (/name/i.test(lines[0]) && /cost|unit|base/i.test(lines[0])) ? 1 : 0;
+        const items = lines.slice(start).map((l) => {
+          const c = l.split(",").map((x) => x.trim());
+          return { name: c[0], baseUnit: c[1] || "g", purchaseUnit: c[2] || "", cost: parseFloat(c[3]) || 0, minStock: parseFloat(c[4]) || 0, location: c[5] || "Dry" };
+        }).filter((x) => x.name);
+        if (!items.length) { this.toast("No item rows found — expected: name, base unit, purchase unit, cost, min stock, location", "warn"); return; }
+        this.toast("Importing " + items.length + " item" + (items.length === 1 ? "" : "s") + "…");
+        fetch("/api/inv/ingredients/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ items: items }) })
+          .then((r) => r.json().catch(() => ({}))).then((j) => {
+            if (j && j.error) { this.toast(j.error, "warn"); return; }
+            const sk = (j.skipped && j.skipped.length) ? " · " + j.skipped.length + " skipped" : "";
+            this.toast((j.created || 0) + " item" + (j.created === 1 ? "" : "s") + " imported" + sk + " — reload to see them in the master");
+          }).catch(() => this.toast("Import failed — check the connection", "warn"));
+      };
+      reader.readAsText(f);
+    };
+    input.click();
   }
   g_vendors() {
     const raw = window.KPOS_RAW || {};
