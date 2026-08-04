@@ -1089,6 +1089,10 @@ button:active:not(:disabled){transform:scale(.975)}
                 </div>
               </sc-for>
             </div>
+            <sc-if value="{{ formAiVis }}">
+              <button onClick="{{ formAiGo }}" style="{{ formAiBtnStyle }}">{{ formAiLabel }}</button>
+              <div style="{{ formAiMsgStyle }}">{{ formAiMsg }}</div>
+            </sc-if>
             <button onClick="{{ formSave }}" style="margin-top:14px;width:100%;padding:12px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">{{ formSaveLabel }}</button>
             <div style="margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.6">{{ formFoot }}</div>
           </sc-if>
@@ -2975,6 +2979,14 @@ class Component extends DCLogic {
           onChange: (e) => { const v = e.target.value; this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: v }) })); }
         })),
         formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save, formFoot: spec.foot,
+        // Optional AI "fill this in" — only forms that declare aiFill (New dish)
+        // show it. Types the name, one tap drafts the rest from the store's menu.
+        formAiVis: !!spec.aiFill && !m.edit,
+        formAiLabel: s.formAiBusy ? "Designing the dish…" : "✨ Generate with AI",
+        formAiBtnStyle: "margin-top:12px;width:100%;padding:11px;border-radius:8px;font-size:12px;font-weight:700;text-align:center;background:var(--bg-2);border:1px solid var(--amber-line);color:" + (s.formAiBusy ? "var(--text-dim)" : "var(--amber-bright)"),
+        formAiGo: () => this.aiDish(),
+        formAiMsg: s.formAiMsg || "",
+        formAiMsgStyle: s.formAiMsg ? "margin-top:8px;font-size:11px;line-height:1.6;color:var(--text-dim)" : "display:none",
         formSave: () => {
           const vals = Object.assign({}, this.state.formVals);
           if (m.edit && spec.onEdit) return spec.onEdit(vals, m.edit);
@@ -5033,7 +5045,47 @@ class Component extends DCLogic {
       v[f.k] = has ? String(row[f.k]) : dflt;
     });
     if (row && spec.pre) Object.assign(v, spec.pre(row));
-    this.setState({ modal: { kind: "form", form: name, edit: row || null }, formVals: v });
+    this.setState({ modal: { kind: "form", form: name, edit: row || null }, formVals: v, formAiBusy: false, formAiMsg: "", formAiImg: "" });
+  }
+  // AI single-dish helper on the New-dish form: reads the name the user typed,
+  // asks the backend (/api/inv/menu/generate → the configured model) for a full
+  // draft, and prefills description, category, price and the tile illustration
+  // for review. Falls back with a clear message when there's no session/key.
+  async aiDish() {
+    const s = this.state;
+    if (s.formAiBusy) return;
+    const vals = s.formVals || {};
+    const name = (vals.name || "").trim();
+    if (!name) { this.toast("Type a dish name first, then generate", "warn"); return; }
+    if (!s.online) { this.toast("The builder needs the network", "warn"); return; }
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.setState({ formAiMsg: "Sign in to this store to generate — it drafts from your real menu." }); return; }
+    this.setState({ formAiBusy: true, formAiMsg: "" });
+    try {
+      const r = await fetch("/api/inv/menu/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ name: name, hint: (vals.desc || "").trim() }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j && j.error ? j.error : "HTTP " + r.status);
+      if (j && j.configured === false) { this.setState({ formAiBusy: false, formAiMsg: j.message || "The AI builder isn't switched on yet." }); return; }
+      const d = (j && j.draft) || {};
+      const lo = Number(d.priceLow) || 0, hi = Number(d.priceHigh) || 0, price = hi ? Math.round((lo + hi) / 2) : lo;
+      const cats = K().MENU_CATEGORIES || [];
+      const match = cats.find((c) => (c.name || "").toLowerCase() === String(d.cat || "").toLowerCase());
+      this.setState((st) => ({
+        formAiBusy: false, formAiMsg: "Drafted by AI — review the details, then Create dish.",
+        formAiImg: d.img || "",                              // backend already sanitised the SVG into a data URI
+        formVals: Object.assign({}, st.formVals, {
+          name: d.en || name,
+          desc: d.desc || st.formVals.desc || "",
+          cat: match ? match.id : st.formVals.cat,
+          price: price ? String(price) : st.formVals.price,
+        }),
+      }));
+      this.queue("ai_dish_draft", "AI dish drafted · " + (d.en || name), "menu_items");
+    } catch (e) {
+      this.setState({ formAiBusy: false, formAiMsg: (e && e.message ? e.message + " " : "") + "Try again in a moment." });
+    }
   }
   downloadCsv(name, rows) {
     const esc = (v) => '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
@@ -5570,6 +5622,7 @@ class Component extends DCLogic {
       dish: {
         title: "New dish", sub: "Chain master price · outlet overrides apply on top", save: "Create dish",
         foot: "Recipe lines are added from the item master after the dish exists; until then food cost falls back to 30% of price.",
+        aiFill: 1,
         fields: [
           { k: "name", label: "Dish name", v: "", full: 1 },
           { k: "desc", label: "Menu description", v: "", full: 1 },
@@ -5593,7 +5646,7 @@ class Component extends DCLogic {
           if (price <= 0) return this.toast("Price must be greater than zero", "warn");
           this.insertRow("menu", {
             id: this.nextId("menu", "m"), cat: v.cat, name: v.name,
-            desc: v.desc || "House dish", price: price, veg: v.veg === "yes", img: "", recipe: []
+            desc: v.desc || "House dish", price: price, veg: v.veg === "yes", img: this.state.formAiImg || "", recipe: []
           }, "Dish created · " + v.name + " at " + MVRc(price), "menu_items");
         }
       },
