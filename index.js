@@ -3492,9 +3492,54 @@ if (fs.existsSync(protoFile)) {
     ].join("; ");
     app.use("/v2", (req, res, next) => { res.set("Content-Security-Policy", V2_CSP); next(); });
     app.use("/v2", express.static(proto3Dir, { index: false, redirect: false, maxAge: "5m" }));
-    app.get(/^\/v2(\/.*)?$/, (req, res) => {
+    /* When a back-office/till cookie session is present, hydrate the reference
+       terminal with the store's REAL data instead of the seeded demo set:
+       window.KPOS_REAL carries the live menu, its categories, the outlet's real
+       tax + service-charge + name, and an ops bearer token so the till can
+       persist sales to /api/ops. kashikeyo-data.js consumes it (and falls back
+       to seeds when absent, so the page still previews without a session). */
+    const buildV2Real = async (req) => {
+      const orgId = await resolveAppSession(req);
+      if (!orgId) return null;
+      const token = sign(orgId, req.appRegister || "R1", req.appStoreId || DEFAULT_STORE_ID);
+      return await withOrg(orgId, async (c) => {
+        const prodRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+        const items = liveMenu(prodRows);
+        const photo = {};
+        for (const r of prodRows) {
+          const im = r.data && r.data.img; if (!im) continue;
+          photo[r.id] = /^https?:\/\//i.test(String(im)) ? String(im)
+            : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+        }
+        const catName = {};
+        items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
+        const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
+        const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
+          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, veg: false, recipe: [] }));
+        const st = ((await c.query(
+          "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
+        const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
+        return {
+          hasSession: true, token,
+          outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
+            rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
+          categories, menu,
+        };
+      });
+    };
+    app.get(/^\/v2(\/.*)?$/, async (req, res) => {
       res.set("Content-Security-Policy", V2_CSP);
-      res.sendFile(path.join(proto3Dir, "index.html"), { headers: { "Cache-Control": "no-cache" } });
+      res.set("Cache-Control", "no-cache");
+      let inject = "";
+      try {
+        const real = await buildV2Real(req);
+        if (real) inject = "\n<script>window.KPOS_REAL=" +
+          JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
+      } catch (e) { recordError("v2 hydrate", e); }
+      let html = fs.readFileSync(path.join(proto3Dir, "index.html"), "utf8");
+      if (inject) html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject);
+      res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
   }
   serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)

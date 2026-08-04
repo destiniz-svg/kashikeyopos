@@ -553,6 +553,37 @@
     { code: "6400", name: "Licences & insurance", type: "Expense" }
   );
 
+  /* ── Live hydration ───────────────────────────────────────────────────────
+     When the server injects window.KPOS_REAL (a real back-office session), the
+     seeded menu / categories / outlet tax are replaced with the store's actual
+     data. Everything else (roles, module map, chain spec) stays as the platform
+     definition. With no session the seeds render, so the design still previews. */
+  var REAL = window.KPOS_REAL;
+  if (REAL && REAL.menu && REAL.menu.length) {
+    var CAT_ICON = { starters: "starter", mains: "main", grill: "grill", rice: "rice",
+      sides: "side", desserts: "dessert", drinks: "drink", coffee: "drink", beverages: "drink" };
+    MENU_CATEGORIES = (REAL.categories || []).map(function (c) {
+      return { id: c.id, name: c.name, icon: CAT_ICON[c.id] || "main" };
+    });
+    MENU = REAL.menu.map(function (m) {
+      return { id: m.id, cat: m.cat, name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
+        veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
+    });
+    if (REAL.outlet) {
+      CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
+      // Rename + retax the active trading outlet (Chaandhanee, id 3 — the POS
+      // default) to the real store so the header, tax line and ticket math are live.
+      OUTLETS.forEach(function (o) {
+        if (o.id === 3) {
+          o.name = REAL.outlet.name || o.name;
+          o.tax = REAL.outlet.tax || o.tax;
+          if (REAL.outlet.rate != null) o.rate = REAL.outlet.rate;
+          if (REAL.outlet.sc != null) o.sc = REAL.outlet.sc;
+        }
+      });
+    }
+  }
+
   window.KPOS = {
     CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU, MENU_CATEGORIES: MENU_CATEGORIES,
     MODULES: MODULES, ROLES: ROLES, USERS: USERS, CUSTOMERS: CUSTOMERS,
