@@ -2582,6 +2582,41 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
   res.json({ storeId, orders: mine });
 }));
 
+/* Guest customer account — look up a loyalty/credit account by phone (public,
+   throttled, RLS-scoped by slug). Returns the real profile the QR portal's
+   account tab renders: points, tier, credit limit/left, visits, spend. Match on
+   the last 9 digits so a guest can enter the local number with or without the
+   +960 prefix. Returns {found:false} rather than an error for an unknown number
+   so the portal shows a clean "not a member yet" state. */
+app.get("/p/:slug/account", pubThrottle(20, "acct"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const phone = String(req.query.phone || "").replace(/[^\d+]/g, "");
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 5) return res.status(400).json({ error: "Enter your phone number" });
+  const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
+  const custs = await kindAll(org.id, "customers", storeId);
+  // Compare local numbers: strip a leading Maldives country code (960) and
+  // match on the last 7 digits (a local mobile number), so "+960 777 4821",
+  // "777 4821" and "7774821" all resolve to the same account.
+  const local = (p) => { let d = String(p || "").replace(/\D/g, ""); if (d.length > 7 && d.slice(0, 3) === "960") d = d.slice(3); return d.slice(-7); };
+  const want = local(phone);
+  const c = want.length >= 6 ? custs.find((x) => local(x.phone) && local(x.phone) === want) : null;
+  if (!c) return res.json({ found: false });
+  const pts = Number(c.points || c.loyaltyPoints || 0);
+  const limit = Math.round((Number(c.creditLimit || c.credit || 0)) / 100);
+  const bal = Math.round((Number(c.balance || c.used || 0)) / 100);
+  res.json({
+    found: true,
+    account: {
+      id: c.id, name: c.name || "Guest", phone: c.phone || "",
+      points: pts, tier: c.tier || (pts >= 7500 ? "Platinum" : pts >= 2500 ? "Gold" : "Silver"),
+      creditLimit: limit, creditUsed: bal, creditLeft: Math.max(0, limit - bal),
+      visits: Number(c.visits || 0), spent: Math.round((Number(c.spent || c.totalSpent || 0)) / 100),
+    },
+  });
+}));
+
 app.post("/p/:slug/call", pubThrottle(20, "call"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
