@@ -4528,9 +4528,29 @@ class Component extends DCLogic {
     const raw = window.KPOS_RAW || {}, s = this.state;
     const cats = raw.cats || [];
     const rnd = this.rng(913);
+    const baseActions = [{ label: "New blind count", primary: true, go: () => this.setState({ modal: { kind: "count" } }) }];
+    if (window.KPOS_REAL) {
+      // Real audit sessions — one card each. No fabricated per-category
+      // variance; an empty history is an honest empty state.
+      const audits = (window.KPOS_REAL.inventory || {}).audits || [];
+      return {
+        guideTitle: "Counting stock", guide: ["Start a blind count — the expected figure stays hidden until you submit", "Enter what you physically counted, line by line", "Variance is the difference, posted to 5100 with your name against it", "A count only needs a human when a line exceeds tolerance"],
+        actions: baseActions,
+        cardMin: 232,
+        cards: audits.map((a) => ({
+          title: a.label, sub: (a.status === "closed" ? "Closed" : "Open") + (a.startedAt ? " · " + new Date(a.startedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : ""),
+          chip: a.status, chipBg: a.status === "closed" ? "rgba(107,191,123,.13)" : "rgba(242,164,58,.13)", chipFg: a.status === "closed" ? "var(--green)" : "var(--amber-bright)",
+          big: a.lines + " line" + (a.lines === 1 ? "" : "s"), bigColor: "var(--text)", bigSize: 20,
+          rows: [["Flagged for review", String(a.flagged), a.flagged ? "var(--red-bright)" : "var(--green)"], ["Closing value", MVRc(a.closing)], ["Cost of sales", MVRc(a.cogs)]],
+          foot: "Variance posts automatically to 5100 Wastage & variance"
+        })),
+        empty: "No stock counts yet — start a blind count to record one.",
+        notes: [["How a count works", "Start a blind count, enter what you physically counted, and the system computes variance against theoretical stock and posts the journal. A line only needs a reason code when its variance exceeds the category tolerance."]]
+      };
+    }
     return {
       guideTitle: "Counting stock", guide: ["The sheet is generated per category from its count frequency", "Count blind — the expected figure is hidden until you submit", "Variance posts to 5100 with the counter's name against it", "Recurring variance on one line is a process problem, not arithmetic"],
-      actions: [{ label: "Schedule", go: () => this.info("Count schedule", "Generated from count_freq on each category", (raw.cats || []).map((c) => [c.name, (c.freq || c.storage || "weekly") + " · " + (c.storage || "") + " storage", "t"])) }, { label: "New blind count", primary: true, go: () => this.setState({ modal: { kind: "count" } }) }],
+      actions: [{ label: "Schedule", go: () => this.info("Count schedule", "Generated from count_freq on each category", (raw.cats || []).map((c) => [c.name, (c.freq || c.storage || "weekly") + " · " + (c.storage || "") + " storage", "t"])) }].concat(baseActions),
       cardMin: 232,
       cards: cats.slice(0, 8).map((c) => {
         const varPct = Math.round((rnd() * 4 - 1.2) * 10) / 10;

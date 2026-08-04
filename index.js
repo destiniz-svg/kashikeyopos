@@ -3730,6 +3730,21 @@ if (fs.existsSync(protoFile)) {
           inv: g.invoice_no || "", total: Math.round((Number(g.total) || 0) / 100),
           status: "posted", by: "", notes: "",
         }));
+        // Stock counts: real audit sessions with a line count and how many lines
+        // flagged for review. The terminal renders one card per session.
+        const auditRows = (await c.query(
+          `SELECT s.id, s.label, s.status, s.started_at, s.closed_at, s.closing_value, s.cogs,
+             (SELECT COUNT(*) FROM audit_lines l WHERE l.org_id=s.org_id AND l.session_id=s.id) AS lines,
+             (SELECT COUNT(*) FROM audit_lines l WHERE l.org_id=s.org_id AND l.session_id=s.id AND l.flag='review') AS flagged
+           FROM audit_sessions s WHERE s.org_id=$1 ORDER BY s.started_at DESC LIMIT 12`, [orgId])).rows;
+        const invAudits = auditRows.map((a) => ({
+          id: a.id, label: a.label || "Stock count", status: a.status,
+          startedAt: a.started_at ? new Date(a.started_at).getTime() : 0,
+          closedAt: a.closed_at ? new Date(a.closed_at).getTime() : 0,
+          lines: Number(a.lines) || 0, flagged: Number(a.flagged) || 0,
+          closing: Math.round((Number(a.closing_value) || 0) / 100),
+          cogs: Math.round((Number(a.cogs) || 0) / 100),
+        }));
         // Today's clock punches (time_entries) → the terminal's labour engine.
         // Persisted by clockIn/clockOut on the till; only today's shifts feed
         // the labour cost and prime-cost figures.
@@ -3762,7 +3777,7 @@ if (fs.existsSync(protoFile)) {
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), customers, staff, clock,
-          inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch },
+          inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });
     };
