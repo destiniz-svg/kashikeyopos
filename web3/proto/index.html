@@ -3693,7 +3693,7 @@ class Component extends DCLogic {
           title: st.name, sub: st.job + " · " + this.locName(c.outlet),
           chip: c.late ? c.late + "m late" : "On time", chipBg: c.late ? "rgba(226,96,96,.12)" : "rgba(107,191,123,.12)", chipFg: c.late ? "var(--red-bright)" : "var(--green)",
           big: h.toFixed(2) + "h", bigSize: 22, bigColor: h > 8 ? "var(--red-bright)" : "var(--amber-bright)",
-          rows: [["Clocked in", this.hhmm(c.in)], ["Contract", this.staffType(st)[0]], ["Rate", MVR(this.rate(st)) + "/h"], ["Cost so far", MVRc(h * this.rate(st)), "var(--amber-bright)"], ["Pension", st.mrps ? "MRPS 7+7%" : "Voluntary (expat)"]],
+          rows: [["Clocked in", this.hhmm(c.in)], ["Contract", this.staffType(st)[0]], ["Rate", MVR(this.rate(st)) + "/h"], ["Cost so far", MVRc(h * this.rate(st)), "var(--amber-bright)"], ["Pension", st.mrps ? "MRPS 7+7%" : (st.kind === "expat" ? "Not mandated (foreign)" : "Not enrolled")]],
           foot: h > 8 ? "Past the daily regular hours — every further hour is at 1.25×." : "Tap the row below to clock out."
         };
       });
