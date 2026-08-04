@@ -3626,6 +3626,7 @@ if (fs.existsSync(protoFile)) {
             time: dt ? pad2(dt.getHours()) + ":" + pad2(dt.getMinutes()) : "", at: at,
             items: lineItems, subtotal: Math.round((Number(d.subtotal) || 0) / 100),
             svc: Math.round((Number(d.svcCharge) || 0) / 100), gst: Math.round((Number(d.gst) || 0) / 100),
+            customerId: d.customerId || null, customerName: d.customerName || "",
           });
         }
         orders.sort((a, b) => b.at - a.at);

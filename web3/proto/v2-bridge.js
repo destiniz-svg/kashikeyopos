@@ -120,14 +120,22 @@
     var tender = sale.tender || "cash";
     var id = "s_v2_" + (sale.no || "sale") + "_" + Date.now();
     var lamport = Date.now();
+    // Real channel from the ticket (dine_in/qr/takeaway/delivery), not a fixed
+    // "v2" tag — otherwise the Orders/Delivery/QR boards can never see anything
+    // but dine-in. A sale also records the customer it belongs to when one is
+    // linked (credit account or loyalty member), which is what makes the
+    // customer's purchase history and any credit charge real.
+    var CHANS = { dine_in: 1, qr: 1, takeaway: 1, delivery: 1 };
+    var channel = CHANS[sale.channel] ? sale.channel : "dine_in";
     var data = {
       type: "sale", no: sale.no || id, table: sale.table != null ? sale.table : null,
-      tender: tender, at: Date.now(), channel: "v2",
+      tender: tender, at: Date.now(), channel: channel,
       lines: lines, subtotal: subtotal, billDisc: 0, svcCharge: svcCharge, gst: gst, total: total,
       payments: [{ method: tender, amount: total,
         given: sale.given != null ? Math.round(num(sale.given) * 100) : total,
         change: sale.change != null ? Math.round(num(sale.change) * 100) : 0 }],
     };
+    if (sale.customerId) { data.customerId = sale.customerId; data.customerName = sale.customerName || ""; }
     var op = { id: id, lamport: lamport, state: "queued", attempts: 0, total: total,
       body: { ops: [{ opId: id, puts: [{ kind: "sales", id: id, data: data }] }] } };
 
