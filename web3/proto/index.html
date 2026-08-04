@@ -454,7 +454,8 @@ var S = {
   order: null,            // open order no (receipt)
   refunded: {},           // { [orderNo]: true }
   // Inventory
-  inv: null, invTab: 0
+  inv: null, invTab: 0,
+  menuTab: 0
 };
 function cart(){ if(!S.carts[S.table]) S.carts[S.table] = []; return S.carts[S.table]; }
 function money(n){ return n.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -597,6 +598,9 @@ function renderShell(){
            : (S.view==="reports") ? reportsView(out)
            : (S.view==="reservations") ? reservationsView(out)
            : (S.view==="delivery") ? deliveryView(out)
+           : (S.view==="menu") ? menuView(out)
+           : (S.view==="users") ? usersView()
+           : (S.view==="logs") ? auditView(out)
            : moduleView(cur, u);
 
   var h = '<div class="shell">'
@@ -1152,6 +1156,114 @@ function deliveryView(out){
   h += '</div>';
   return h;
 }
+/* ── Menu master — chain price list, per-outlet override, food cost, GP. ──── */
+function foodCost(m){ var r = rng(m.id.charCodeAt(1)*7 + m.id.length); return Math.round(m.price*(0.26 + r()*0.10)); }
+function priceHere(out,m){ return out.rate===16 ? Math.round(m.price*1.12/5)*5 : m.price; } // tourism uplift +12%, rounded to MVR 5
+function menuView(out){
+  var cats = ["All"].concat(MENU_CATS.map(function(c){return c.name;}));
+  var cat = cats[S.menuTab] || "All";
+  var catId = (MENU_CATS.filter(function(c){return c.name===cat;})[0]||{}).id;
+  var list = MENU.filter(function(m){ return cat==="All" || m.cat===catId; });
+  var gps = MENU.map(function(m){ var ph=priceHere(out,m); return Math.round((ph-foodCost(m))/ph*100); });
+  var avgGp = Math.round(gps.reduce(function(a,x){return a+x;},0)/gps.length);
+  var over = out.rate===16;
+  var h = '<div class="floor-title" style="margin-bottom:2px">Menu master</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Chain price list'+(over?' · this outlet applies the tourism-zone override (+12%)':' · '+esc(out.name)+' takes chain prices')+'</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Dishes</div><div class="stat-v">'+MENU.length+'</div><div class="stat-s">across '+MENU_CATS.length+' categories</div></div>'
+     + '<div class="stat"><div class="stat-l">Average GP</div><div class="stat-v" style="color:var(--green-soft)">'+avgGp+'%</div><div class="stat-s">gross profit after food cost</div></div>'
+     + '<div class="stat"><div class="stat-l">86’d today</div><div class="stat-v">0</div><div class="stat-s">all dishes on sale</div></div></div>';
+  h += '<div class="tabs">';
+  cats.forEach(function(c,i){ h += '<button class="tab'+(S.menuTab===i?' on':'')+'" data-menutab="'+i+'">'+esc(c)+'</button>'; });
+  h += '</div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 110px 110px 100px 90px 70px"><span>Dish</span><span>Category</span><span class="oright">Chain price</span><span class="oright">Price here</span><span class="oright">Food cost</span><span class="oright">GP</span></div>';
+  list.forEach(function(m){
+    var ph = priceHere(out,m), fc = foodCost(m), gp = Math.round((ph-fc)/ph*100), diff = ph!==m.price;
+    h += '<div class="orow" style="grid-template-columns:1fr 110px 110px 100px 90px 70px;cursor:default">'
+       + '<span class="cname">'+esc(m.name)+(m.veg?' <span class="veg" style="display:inline-block;vertical-align:middle;margin-left:5px"></span>':'')+'</span>'
+       + '<span class="dim" style="font-size:11px">'+esc((MENU_CATS.filter(function(c){return c.id===m.cat;})[0]||{}).name)+'</span>'
+       + '<span class="oright mono" style="font-size:11.5px">'+money(m.price)+'</span>'
+       + '<span class="oright mono" style="font-size:11.5px'+(diff?';color:var(--amber-bright)':'')+'">'+money(ph)+'</span>'
+       + '<span class="oright dim" style="font-size:11px">'+money(fc)+'</span>'
+       + '<span class="oright mono" style="color:'+(gp>=65?'var(--green-soft)':(gp>=55?'var(--amber-bright)':'var(--red-bright)'))+'">'+gp+'%</span></div>';
+  });
+  h += '</div>';
+  return h;
+}
+/* ── Users & roles — the staff roster + the access matrix behind the lock. ── */
+var WRITES_MONEY = { SuperAdmin:1, ChainAdmin:1, OutletManager:1, Cashier:1, KitchenManager:0, StoreKeeper:0, Accountant:0 };
+function roleGroups(role){ var v = VIEW[role]||{}; return GROUPS.filter(function(g){ return MODULES.some(function(m){ return m.group===g && v[m.key]; }); }); }
+function usersView(){
+  var h = '<div class="floor-title" style="margin-bottom:2px">Users & roles</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Per-person access — the same model that gates the lock screen</div>';
+  var active = USERS.filter(function(u){return u.status==="Active";}).length;
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Users</div><div class="stat-v">'+USERS.length+'</div><div class="stat-s">'+active+' active · '+(USERS.length-active)+' suspended</div></div>'
+     + '<div class="stat"><div class="stat-l">Roles</div><div class="stat-v">'+Object.keys(ROLE).length+'</div><div class="stat-s">across '+MODULES.length+' modules</div></div>'
+     + '<div class="stat"><div class="stat-l">Can ring sales</div><div class="stat-v">'+USERS.filter(function(u){return WRITES_MONEY[u.role];}).length+'</div><div class="stat-s">write access to the till</div></div></div>';
+  // Access matrix
+  h += '<div class="sect" style="margin:2px 0 10px;color:var(--text-dim);font-size:11px">Access matrix — role × module group</div>';
+  h += '<div class="ctable" style="margin-bottom:20px;overflow-x:auto"><div class="orow head" style="grid-template-columns:150px repeat('+GROUPS.length+',1fr) 80px">'
+     + '<span>Role</span>'+GROUPS.map(function(g){return '<span style="font-size:8.5px">'+esc(g)+'</span>';}).join('')+'<span style="font-size:8.5px">Money</span></div>';
+  Object.keys(ROLE).forEach(function(rk){
+    var gs = roleGroups(rk);
+    h += '<div class="orow" style="grid-template-columns:150px repeat('+GROUPS.length+',1fr) 80px;cursor:default">'
+       + '<span style="display:flex;align-items:center;gap:7px"><span style="width:8px;height:8px;border-radius:2px;background:'+ROLE[rk].color+'"></span><span class="cname" style="font-size:11.5px">'+esc(ROLE[rk].label)+'</span></span>'
+       + GROUPS.map(function(g){ return '<span style="font-size:13px;color:'+(gs.indexOf(g)>=0?'var(--green-soft)':'var(--text-faint)')+'">'+(gs.indexOf(g)>=0?'●':'○')+'</span>'; }).join('')
+       + '<span style="font-size:13px;color:'+(WRITES_MONEY[rk]?'var(--amber-bright)':'var(--text-faint)')+'">'+(WRITES_MONEY[rk]?'●':'○')+'</span></div>';
+  });
+  h += '</div>';
+  // Users table
+  h += '<div class="sect" style="margin:0 0 10px;color:var(--text-dim);font-size:11px">People</div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:1fr 150px 160px 90px 90px"><span>Name</span><span>Role</span><span>Home outlet</span><span>Status</span><span>Last seen</span></div>';
+  USERS.forEach(function(u){
+    var out = outletOf(u.outlet);
+    h += '<div class="orow" style="grid-template-columns:1fr 150px 160px 90px 90px;cursor:default">'
+       + '<span class="cwho"><span class="avatar" style="'+avatarStyle(u.role)+';width:30px;height:30px;font-size:11px">'+esc(initials(u.name))+'</span><span class="cname" style="font-size:12px">'+esc(u.name)+'</span></span>'
+       + '<span><span class="tier" style="background:'+ROLE[u.role].color+'">'+esc(ROLE[u.role].label)+'</span></span>'
+       + '<span class="dim" style="font-size:11px">'+esc(out.name)+'</span>'
+       + '<span><span class="ost '+(u.status==="Active"?"closed":"refunded")+'">'+esc(u.status)+'</span></span>'
+       + '<span class="dim" style="font-size:11px">'+esc(u.last||"—")+'</span></div>';
+  });
+  h += '</div>';
+  return h;
+}
+/* ── Audit log — append-only trail of sensitive events. ──────────────────── */
+function buildAudit(out){
+  var r = rng(out.id*23+5);
+  var actors = USERS.filter(function(u){return u.status==="Active";}).map(function(u){return u.name;});
+  var evs = [["sign_in","signed in","dim"],["sale.closed","closed a sale","green"],["sale.void","voided a ticket","red"],["sale.refund","refunded a sale","red"],["discount.over","applied a discount over limit","amber"],["journal.post","posted a journal entry","dim"],["stock.adjust","adjusted stock","amber"],["price.change","changed a menu price","amber"],["device.approve","approved a device","blue"],["cash.drop","recorded a cash drop","dim"],["credit.over","customer went over credit limit","red"]];
+  var list = [];
+  for(var i=0;i<16;i++){
+    var e = evs[Math.floor(r()*evs.length)];
+    list.push({ time:pad2(11+Math.floor(r()*11))+":"+pad2(Math.floor(r()*60)), actor:actors[Math.floor(r()*actors.length)],
+      action:e[0], text:e[1], tone:e[2],
+      ref: e[0].indexOf("sale")>=0 ? "KO-CHA-"+(2418+Math.floor(r()*28)) : (e[0]==="stock.adjust" ? "IT-"+pad2(1+Math.floor(r()*24)) : "—") });
+  }
+  return list.sort(function(a,b){ return a.time<b.time?1:-1; });
+}
+function auditView(out){
+  var list = buildAudit(out);
+  var tone = { dim:"var(--text-dim)", green:"var(--green-soft)", red:"var(--red-bright)", amber:"var(--amber-bright)", blue:"var(--blue-bright)" };
+  var sensitive = list.filter(function(x){ return x.tone==="red"||x.tone==="amber"; }).length;
+  var h = '<div class="floor-title" style="margin-bottom:2px">Audit log</div>'
+        + '<div class="crumb-sub" style="margin-bottom:14px">Append-only trail · every sensitive action is attributable to a person</div>';
+  h += '<div class="stats">'
+     + '<div class="stat"><div class="stat-l">Events today</div><div class="stat-v">'+list.length+'</div><div class="stat-s">this outlet</div></div>'
+     + '<div class="stat"><div class="stat-l">Sensitive</div><div class="stat-v" style="color:var(--amber-bright)">'+sensitive+'</div><div class="stat-s">voids, refunds, discounts, stock</div></div>'
+     + '<div class="stat"><div class="stat-l">Sign-ins</div><div class="stat-v">'+list.filter(function(x){return x.action==="sign_in";}).length+'</div><div class="stat-s">PIN-attributed sessions</div></div></div>';
+  h += '<div class="ctable"><div class="orow head" style="grid-template-columns:70px 1fr 170px 130px"><span>Time</span><span>Event</span><span>Actor</span><span>Reference</span></div>';
+  list.forEach(function(x){
+    h += '<div class="orow" style="grid-template-columns:70px 1fr 170px 130px;cursor:default">'
+       + '<span class="mono dim" style="font-size:11px">'+esc(x.time)+'</span>'
+       + '<span style="min-width:0"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:8px;background:'+(tone[x.tone]||'var(--text-dim)')+'"></span>'
+         + '<span class="cname" style="font-size:12px">'+esc(x.text)+'</span> <span class="dim" style="font-size:10px;font-family:JetBrains Mono,monospace">'+esc(x.action)+'</span></span>'
+       + '<span style="font-size:11.5px">'+esc(x.actor)+'</span>'
+       + '<span class="mono dim" style="font-size:11px">'+esc(x.ref)+'</span></div>';
+  });
+  h += '</div>';
+  return h;
+}
 function rrow(l,v){ return '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);padding:3px 0"><span>'+esc(l)+'</span><span class="mono">'+v+'</span></div>'; }
 function rrowB(l,v,c){ return '<div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;padding:7px 0 2px;margin-top:5px;border-top:1px solid var(--line-2)"><span>'+esc(l)+'</span><span class="mono" style="color:'+(c||'var(--text)')+'">'+v+'</span></div>'; }
 function moduleView(m, u){
@@ -1238,8 +1350,9 @@ root.addEventListener("click", function(e){
   if(d.order){ S.order = d.order; render(); return; }
   if(d.ordclose){ S.order = null; render(); return; }
   if(d.refund){ S.refunded[d.refund] = true; render(); return; }
-  // ── Inventory ──
+  // ── Inventory / Menu ──
   if(d.invtab){ S.invTab = Number(d.invtab); render(); return; }
+  if(d.menutab){ S.menuTab = Number(d.menutab); render(); return; }
   // ── Reports export ──
   if(d.export){ toast(d.export==="gst" ? "GST return exported — kashikeyo-gst-return.csv" : "Z-report exported — kashikeyo-z-report.csv"); return; }
 });
