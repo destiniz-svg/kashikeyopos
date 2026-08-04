@@ -1216,6 +1216,44 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     };
   }
 
+  /* Diagnostics — which provider/model the running instance will use, derived
+     from env only (never returns the key). aiSelfTest() makes ONE tiny real
+     call so a bad key / wrong model id surfaces plainly instead of only failing
+     the first time a manager scans a note. */
+  function aiConfig() {
+    const gem = !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
+    const ant = !!process.env.ANTHROPIC_API_KEY;
+    const pref = (process.env.AI_PROVIDER || "").toLowerCase();
+    let provider = "none";
+    if (gem && ant) provider = pref === "gemini" ? "gemini" : "anthropic";
+    else if (gem) provider = "gemini";
+    else if (ant) provider = "anthropic";
+    const model = provider === "gemini" ? (process.env.GEMINI_MODEL || "gemini-2.5-flash")
+      : provider === "anthropic" ? (process.env.OCR_MODEL || "claude-opus-4-8") : "";
+    return { provider, model, configured: provider !== "none", failover: gem && ant };
+  }
+  async function aiSelfTest() {
+    const cfg = aiConfig();
+    if (!cfg.configured) return Object.assign({ ok: false, error: "no AI key set" }, cfg);
+    const client = aiClient();
+    try {
+      const msg = await client.messages.create({
+        model: process.env.OCR_MODEL || "claude-opus-4-8", // ignored by the Gemini shim (uses GEMINI_MODEL)
+        max_tokens: 64,
+        messages: [{ role: "user", content: [{ type: "text", text: "Reply with exactly: pong" }] }],
+      });
+      const sample = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim().slice(0, 80);
+      return Object.assign({ ok: true, sample, stopReason: msg.stop_reason }, cfg);
+    } catch (e) {
+      return Object.assign({ ok: false, error: String((e && e.message) || e).slice(0, 240) }, cfg);
+    }
+  }
+
+  /* On-demand check a manager (or an ops probe) can hit to confirm the live AI
+     provider actually answers — returns the provider/model and a one-word ping,
+     never the key. */
+  router.get("/ai-selftest", authAny, requireBackOffice(1), wrap(async (req, res) => res.json(await aiSelfTest())));
+
   const OCR_SCHEMA = {
     type: "object", additionalProperties: false,
     properties: {
@@ -2754,5 +2792,15 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(out);
   }));
 
-  return { router, processSales, recomputeAvailability };
+  /* Boot diagnostics: log the resolved AI provider/model once (no secrets), and
+     — when AI_SELFTEST is set — make one real call so a bad key or wrong model
+     id shows up in the deploy logs immediately. */
+  try { console.log("AI:", JSON.stringify(aiConfig())); } catch { /* non-fatal */ }
+  if (process.env.AI_SELFTEST) {
+    setTimeout(() => { aiSelfTest()
+      .then((r) => console.log("AI self-test:", JSON.stringify(r)))
+      .catch((e) => console.log("AI self-test threw:", (e && e.message) || e)); }, 4000);
+  }
+
+  return { router, processSales, recomputeAvailability, aiConfig, aiSelfTest };
 };
