@@ -569,6 +569,7 @@
       return { id: m.id, cat: m.cat, name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
         veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
     });
+    if (REAL.customers) CUSTOMERS = REAL.customers;   // Customers & credit — real accounts
     if (REAL.outlet) {
       CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
       // Rename + retax the active trading outlet (Chaandhanee, id 3 — the POS

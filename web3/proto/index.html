@@ -1998,9 +1998,23 @@ class Component extends DCLogic {
       ];
     }
     if (v === "customers" || v === "delivery") {
+      const custs = K0.CUSTOMERS || [];
+      const REAL = window.KPOS_REAL;
+      if (REAL) {
+        const ords = REAL.orders || [];
+        const qr = ords.filter((o) => o.channel === "qr").length;
+        const deliv = ords.filter((o) => o.channel === "delivery").length;
+        const withBal = custs.filter((c) => c.used > 0).length;
+        return [
+          card("Registered customers", String(custs.length), "Loyalty + credit accounts", amber),
+          card("Credit outstanding", MVRc(custs.reduce((a, c) => a + c.used, 0)), withBal + " account" + (withBal === 1 ? "" : "s") + " with a balance"),
+          card("QR table sessions", String(qr), qr ? "Orders via the QR portal" : "No QR orders yet"),
+          card("Delivery orders", String(deliv), deliv ? "Delivery & aggregator orders" : "No delivery orders yet")
+        ];
+      }
       return [
-        card("Registered customers", String((K0.CUSTOMERS || []).length * 214), "Portal sign-ups this month: 89", amber),
-        card("Credit outstanding", MVRc((K0.CUSTOMERS || []).reduce((a, c) => a + c.used, 0)), "3 accounts over 30 days"),
+        card("Registered customers", String(custs.length * 214), "Portal sign-ups this month: 89", amber),
+        card("Credit outstanding", MVRc(custs.reduce((a, c) => a + c.used, 0)), "3 accounts over 30 days"),
         card("QR table sessions", "38", "Live now: 6 tables ordering"),
         card("Delivery orders", "127", "Own fleet 71 · aggregators 56")
       ];

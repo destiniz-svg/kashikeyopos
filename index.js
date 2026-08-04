@@ -3544,11 +3544,27 @@ if (fs.existsSync(protoFile)) {
           });
         }
         orders.sort((a, b) => b.at - a.at);
+        // Real customers → the reference CUSTOMERS shape (money laari→MVR).
+        const custRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false ORDER BY (data->>'lastOrderAt')::numeric DESC NULLS LAST LIMIT 500", [orgId])).rows;
+        const tierOf = (pts) => pts >= 2000 ? "Platinum" : pts >= 1000 ? "Gold" : pts >= 300 ? "Silver" : "Bronze";
+        const customers = custRows.map((r) => {
+          const d = r.data || {}, pts = Number(d.points || d.loyaltyPoints || 0);
+          const lastAt = Number(d.lastOrderAt || 0);
+          return {
+            id: r.id, name: d.name || "Guest", phone: d.phone || "",
+            visits: Number(d.visits || d.orders || 0), spent: Math.round((Number(d.spent || d.totalSpent || 0)) / 100),
+            points: pts, tier: d.tier || tierOf(pts),
+            credit: Math.round((Number(d.creditLimit || d.credit || 0)) / 100),
+            used: Math.round((Number(d.balance || d.used || 0)) / 100),
+            last: lastAt ? new Date(lastAt).toISOString().slice(0, 10) : "",
+          };
+        });
         return {
           hasSession: true, token,
           outlet: { name: st.storeName || "My Store", tax: gstBp >= 1600 ? "TGST" : "GGST",
             rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-          categories, menu, stats: { net: net, covers: covers }, orders: orders.slice(0, 200),
+          categories, menu, stats: { net: net, covers: covers }, orders: orders.slice(0, 200), customers,
         };
       });
     };
