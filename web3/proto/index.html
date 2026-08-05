@@ -3672,9 +3672,15 @@ class Component extends DCLogic {
     // "KASHIKEYO" fascia. Default the trading name to the store name and drop
     // the sample tagline unless the owner has set an explicit brand override.
     if (window.KPOS_REAL) {
-      const storeName = (window.KPOS_REAL.outlet && window.KPOS_REAL.outlet.name) || merged.name;
-      if (!local.name) merged.name = storeName;
-      if (!local.tagline) merged.tagline = "";
+      // Seed from the store's SAVED branding (KPOS_REAL.brand), with any local
+      // edit taking precedence for immediate feedback before the next reload.
+      const rb = window.KPOS_REAL.brand || {};
+      merged.name = local.name || rb.name || (window.KPOS_REAL.outlet && window.KPOS_REAL.outlet.name) || merged.name;
+      merged.tagline = local.tagline != null ? local.tagline : (rb.tagline || "");
+      merged.receiptFoot = local.receiptFoot != null ? local.receiptFoot : (rb.footer || "");
+      merged.mark = local.mark != null ? local.mark : (rb.logo || merged.mark || "");
+      merged.accent = local.accent != null ? local.accent : (rb.accent || "");
+      merged.poweredBy = local.poweredBy != null ? local.poweredBy : !rb.whiteLabel;
     }
     return merged;
   }
@@ -4241,6 +4247,13 @@ class Component extends DCLogic {
     const order = ["starters", "mains", "grill", "rice", "sides", "desserts", "drinks"];
     const cats = (K().MENU_CATEGORIES || []); const i = Math.max(0, cats.findIndex((c) => String(c.id).toLowerCase() === s || String(c.name).toLowerCase() === s));
     return "var(--cat-" + order[i % order.length] + ")";
+  }
+  // Friendly label for a stored brand-colour value (a named swatch key or a hex),
+  // for the Branding card summary.
+  accentLabel(key) {
+    if (typeof key === "string" && key.charAt(0) === "#") return key.toUpperCase();
+    const m = { keyo: "Ember amber", green: "Palm green", blue: "Lagoon blue", terracotta: "Terracotta", red: "Coral red", amber: "Deep amber", pink: "Hibiscus pink", orange: "Orange" };
+    return m[key] || "Ember amber";
   }
 
   STAFF_TYPES() {
@@ -6471,37 +6484,63 @@ class Component extends DCLogic {
         }
       },
       brand: {
-        title: "Merchant branding", sub: "Receipts, KOT and the QR portal", save: "Save branding",
-        foot: "This is the trading brand a guest sees. It is stored per chain with an optional per-outlet override, so a franchised or airport unit can carry its own fascia while every outlet shares one terminal, one menu master and one ledger.",
+        title: "Merchant branding", sub: "What a guest sees — receipts, KOT and the QR storefront", save: "Save branding",
+        foot: "The trading brand a guest sees. The name, logo, tagline, brand colour and receipt footer are stored on the store record, so the QR/guest storefront wears the store's identity — not the vendor's. White label additionally drops the \"Powered by KashikeyoPOS\" line for guests.",
         fields: [
           { k: "name", label: "Trading name on receipts", v: this.brandOf().name || "", full: 1 },
-          { k: "tagline", label: "Tagline", v: this.brandOf().tagline || "", full: 1 },
+          { k: "tagline", label: "Tagline (shows on the storefront)", v: this.brandOf().tagline || "", full: 1 },
+          { k: "accent", label: "Brand colour", options: [
+            { v: "keyo", l: "Ember amber (default)" }, { v: "green", l: "Palm green" }, { v: "blue", l: "Lagoon blue" },
+            { v: "terracotta", l: "Terracotta" }, { v: "red", l: "Coral red" }, { v: "amber", l: "Deep amber" }, { v: "pink", l: "Hibiscus pink" }
+          ] },
           { k: "receiptFoot", label: "Receipt footer", v: this.brandOf().receiptFoot || "", full: 1 },
-          { k: "mark", label: "Logo file", v: this.brandOf().mark || "", full: 1 },
+          { k: "mark", label: "Logo URL or data-URI", v: this.brandOf().mark || "", full: 1 },
           { k: "scope", label: "Applies to", options: [{ v: "chain", l: "Whole chain" }, { v: "outlet", l: "This outlet only" }] },
           { k: "poweredBy", label: "Powered-by line", options: [{ v: "yes", l: "Show — included tier" }, { v: "no", l: "Hide — white label" }] }
         ],
+        pre: () => ({ accent: this.brandOf().accent || "keyo", poweredBy: this.brandOf().poweredBy === false ? "no" : "yes" }),
         onSave: (v) => {
           if (!v.name) return this.toast("A trading name is required", "warn");
-          const next = { name: v.name.toUpperCase(), tagline: v.tagline, receiptFoot: v.receiptFoot, mark: v.mark, poweredBy: v.poweredBy !== "no" };
-          // Real mode: the trading name and receipt footer are store settings, so
-          // they show on the till, the guest portal and the receipt everywhere.
-          // Tagline, logo and the powered-by toggle stay a local preference (the
-          // backend doesn't model them yet).
+          const whiteLabel = v.poweredBy === "no";
+          const next = { name: v.name.toUpperCase(), tagline: v.tagline, receiptFoot: v.receiptFoot, mark: v.mark, accent: v.accent || "", poweredBy: !whiteLabel };
+          // Real mode: name, tagline, brand colour, footer, logo and the
+          // white-label flag are all store settings, so the till, the receipt AND
+          // the guest storefront read one source. A per-outlet scope stays a local
+          // override (the backend keeps one chain-level brand record).
           if (window.KPOS_REAL && window.KPOS_REAL.token && v.scope !== "outlet") {
             fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ cfg: { store: { name: v.name, footer: v.receiptFoot || "" } } }) })
+              body: JSON.stringify({ cfg: { store: { name: v.name, footer: v.receiptFoot || "", tagline: v.tagline || "", accent: v.accent || "", whiteLabel: whiteLabel, logo: v.mark || "" } } }) })
               .then((r) => r.json().catch(() => ({}))).then((j) => {
                 if (j && j.error) { this.toast(j.error, "warn"); return; }
                 this.setState({ brandOverride: next });
-                this.toast("Branding saved — every outlet" + (next.poweredBy ? "" : " · white label"));
+                this.toast("Branding saved — the storefront now wears it" + (whiteLabel ? " · white label" : ""));
               }).catch(() => this.toast("Could not save — check the connection", "warn"));
             this.setState({ modal: null });
             return;
           }
           this.setState({ brandOverride: next, modal: null });
           this.queue("brand_update", "Merchant branding · " + v.name + " · " + (v.scope === "outlet" ? this.outlet().code : "chain-wide"), "settings");
-          this.toast("Branding saved — " + (v.scope === "outlet" ? "this outlet only" : "every outlet") + (next.poweredBy ? "" : " · white label"));
+          this.toast("Branding saved — " + (v.scope === "outlet" ? "this outlet only" : "every outlet") + (whiteLabel ? " · white label" : ""));
+        }
+      },
+      handle: {
+        title: "Store handle", sub: "Your QR / storefront address", save: "Save handle",
+        foot: "The address customers reach your online menu at — kashikeyopos.com/?s=<handle> today, and <handle>.kashikeyopos.com once the subdomain is live. Letters, digits and hyphens, 3–24 characters. Changing it re-points your storefront, so QR codes already printed with the old handle stop working — reprint them afterwards.",
+        fields: [
+          { k: "handle", label: "Handle", v: ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || ""), full: 1 }
+        ],
+        onSave: (v) => {
+          const h = String(v.handle || "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+          if (h.length < 3) return this.toast("A handle needs at least 3 characters — letters, digits and hyphens", "warn");
+          if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.setState({ modal: null }); return this.toast("The store handle is set on the live store", "warn"); }
+          fetch("/api/app2/handle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ handle: h }) })
+            .then((r) => r.json().catch(() => ({}))).then((j) => {
+              if (j && j.error) { this.toast(j.error, "warn"); return; }
+              if (window.KPOS_REAL && window.KPOS_REAL.brand) window.KPOS_REAL.brand.handle = j.handle;
+              this.toast("Handle saved — your storefront is now /?s=" + j.handle);
+              this.forceUpdate();
+            }).catch(() => this.toast("Could not save — check the connection", "warn"));
+          this.setState({ modal: null });
         }
       },
       staffedit: {
@@ -7781,9 +7820,13 @@ class Component extends DCLogic {
           rows: [["Mode", mode === "light" ? "Light" : "Dark"], ["Accent", acc[key].label], ["Tokens", "38 CSS custom properties"], ["Applied at", ":root — no reload"]],
           foot: "Dark is the reference palette, unchanged. The whole app reads these tokens, so an accent change re-skins every screen at once." },
         { title: "Merchant branding", sub: "What the guest sees", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
-          rows: [["Trading name", this.brandOf().name], ["Tagline", this.brandOf().tagline || "—"], ["Receipt footer", this.brandOf().receiptFoot || "—"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden" : "shown"]],
-          foot: "The trading name a guest sees on receipts, the KOT and the QR portal. Separate from the registered company below — an outlet may override this while the legal entity stays the same.",
+          rows: [["Trading name", this.brandOf().name], ["Tagline", this.brandOf().tagline || "—"], ["Brand colour", this.accentLabel(this.brandOf().accent || "keyo")], ["Receipt footer", this.brandOf().receiptFoot || "—"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden · white label" : "shown"]],
+          foot: "The name, tagline, brand colour, logo and footer the guest sees on the QR storefront, receipts and the KOT — stored on the store record so the storefront wears your identity. Separate from the registered company below.",
           go: gate(() => this.openForm("brand")) },
+        { title: "Store handle", sub: "Your QR / storefront address", chip: "Editable", chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)",
+          rows: [["Handle", (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "—"], ["Order link", "kashikeyopos.com/?s=" + ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…")], ["Subdomain (planned)", ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…") + ".kashikeyopos.com"]],
+          foot: "The address customers reach your online menu at. Changing it re-points your storefront — reprint any QR codes afterwards.",
+          go: gate(() => this.openForm("handle")) },
         { title: "Software branding", sub: "KashikeyoPOS™", rows: [["Applies to", "app chrome only"], ["Sidebar mark", "KashikeyoPOS"], ["Licensed to", CH.name]],
           toggles: [{ label: "Show the powered-by line", sub: "Off is white label — the guest sees only your brand", on: this.brandOf().poweredBy !== false, go: gate(() => {
             const b = Object.assign({}, this.brandOf(), { poweredBy: this.brandOf().poweredBy === false });
