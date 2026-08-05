@@ -261,23 +261,24 @@ button:active:not(:disabled){transform:scale(.975)}
           </sc-if>
 
           <div style="margin-bottom:11px">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px 18px;flex-wrap:wrap">
-              <div style="min-width:0">
-                <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;white-space:nowrap">Floor plan</div>
-                <div style="font-size:11px;color:var(--text-dim);margin-top:2px;text-wrap:pretty">{{ floorSub }}</div>
-              </div>
-              <div style="display:flex;gap:13px;font-size:11px;color:var(--text-dim);flex-wrap:wrap;align-items:center;padding-top:2px">
-                <span style="display:inline-flex;align-items:center"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--line-3)"></span>Available</span>
-                <span style="display:inline-flex;align-items:center"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--amber)"></span>Occupied</span>
-                <span style="display:inline-flex;align-items:center"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--blue)"></span>Reserved</span>
+            <!-- Title and the status legend share the top row, so the header
+                 stays compact on a phone. The legend can shrink but not wrap. -->
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="font-size:15px;font-weight:700;letter-spacing:-0.02em;white-space:nowrap;flex-shrink:0">Floor plan</div>
+              <div style="display:flex;gap:9px;font-size:10.5px;color:var(--text-dim);align-items:center;min-width:0;overflow:hidden">
+                <span style="display:inline-flex;align-items:center;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--line-3);flex-shrink:0"></span>Available</span>
+                <span style="display:inline-flex;align-items:center;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--amber);flex-shrink:0"></span>Occupied</span>
+                <span style="display:inline-flex;align-items:center;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px;background:var(--blue);flex-shrink:0"></span>Reserved</span>
               </div>
             </div>
-            <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px">
+            <div style="font-size:11px;color:var(--text-dim);margin-top:2px;text-wrap:pretty">{{ floorSub }}</div>
+            <!-- All three actions on one row, equal width, so they never wrap. -->
+            <div style="display:flex;gap:8px;margin-top:11px">
               <button onClick="{{ startTakeaway }}" style="{{ newOrderBtnStyle }}" title="Start a takeaway order — no table needed"><span style="font-size:14px;line-height:1;margin-top:-1px">＋</span>Takeaway</button>
               <button onClick="{{ startDelivery }}" style="{{ newOrderBtnStyle }}" title="Start a delivery order — no table needed"><span style="font-size:14px;line-height:1;margin-top:-1px">＋</span>Delivery</button>
               <button onClick="{{ openHeld }}" style="{{ heldBtnStyle }}">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 6v12M15 6v12"></path></svg>
-                <span>{{ heldBtnLabel }}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0"><path d="M9 6v12M15 6v12"></path></svg>
+                <span style="overflow:hidden;text-overflow:ellipsis">{{ heldBtnLabel }}</span>
               </button>
             </div>
           </div>
@@ -2586,13 +2587,13 @@ class Component extends DCLogic {
         this.toast("Parked as " + ref + " — table freed");
       },
       openHeld: () => this.setState({ modal: { kind: "held" } }),
-      heldBtnLabel: heldN ? "Parked bills · " + heldN : "Parked bills · 0",
-      heldBtnStyle: "display:inline-flex;align-items:center;justify-content:center;gap:7px;height:32px;padding:0 14px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--amber-line)" : "var(--line)") + ";background:" + (heldN ? "rgba(242,164,58,.10)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--amber-bright)" : "var(--text-dim)"),
+      heldBtnLabel: "Parked · " + (heldN || 0),
+      heldBtnStyle: "flex:1 1 0;min-width:0;max-width:230px;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:32px;padding:0 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--amber-line)" : "var(--line)") + ";background:" + (heldN ? "rgba(242,164,58,.10)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--amber-bright)" : "var(--text-dim)"),
       // Off-floor order entry — takeaway/delivery start their own ticket without
       // occupying a table (§ order-type-first). Open ones show as tappable chips.
       startTakeaway: () => this.startOrder("takeaway"),
       startDelivery: () => this.startOrder("delivery"),
-      newOrderBtnStyle: "display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 14px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)",
+      newOrderBtnStyle: "flex:1 1 0;min-width:0;max-width:230px;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)",
       openSlots: openSlotList.map((sl) => ({
         label: sl.label, meta: sl.meta,
         go: () => this.setState({ activeTable: sl.token, activeSplit: 0 }),
