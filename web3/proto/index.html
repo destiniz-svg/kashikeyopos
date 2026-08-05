@@ -6894,6 +6894,19 @@ class Component extends DCLogic {
       rows.push(["  LIABILITIES + EQUITY", L(bs.liabilities.total + bs.equity.total)]);
       return { header: ["Line", "MVR"], rows };
     }
+    if (key === "trialbalance") {
+      // The working trial balance from the accounting API: every ledger account
+      // with its debit or credit balance, proving Dr = Cr. Derived from the same
+      // sources as the P&L and balance sheet, so it can never disagree with them.
+      const d = this.state.tbData;
+      if (!d || !d.rows) return { header: ["Code", "Account", "Debit MVR", "Credit MVR"], rows: [] };
+      const L = (n) => (Number(n) || 0) ? m2((Number(n) || 0) / 100) : "";
+      const rows = d.rows.map((r) => [r.code, r.name, L(r.debit), L(r.credit)]);
+      const t = d.totals || { debit: 0, credit: 0, balanced: true };
+      rows.push(["", "TOTALS", m2(t.debit / 100), m2(t.credit / 100)]);
+      rows.push(["", t.balanced ? "In balance — Dr = Cr" : "OUT OF BALANCE", "", ""]);
+      return { header: ["Code", "Account", "Debit MVR", "Credit MVR"], rows };
+    }
     if (key === "cashflow") {
       const d = this.state.pnlData;
       if (!d || !d.cashFlow) return { header: ["Line", "MVR"], rows: [] };
@@ -6917,6 +6930,7 @@ class Component extends DCLogic {
     if (window.KPOS_REAL && window.KPOS_REAL.token && !this._pnlReq) {
       this._pnlReq = 1;
       fetch("/api/inv/accounting", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.pnl) this.setState({ pnlData: j }); }).catch(() => { this._pnlReq = 0; });
+      fetch("/api/inv/trial-balance", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.rows) this.setState({ tbData: j }); }).catch(() => {});
     }
     // [key, title, description, cadence]. The row count shown per report is the
     // live figure from reportRows, so an owner sees at a glance which packs have
@@ -6925,6 +6939,7 @@ class Component extends DCLogic {
       ["pnl", "Profit & loss", "Revenue − COGS − operating cost = net profit, month to date, plus GST payable", "Monthly"],
       ["balsheet", "Balance sheet", "Assets, liabilities and equity as of now — derived from the books", "On demand"],
       ["cashflow", "Cash flow", "Operating cash in and out, all-time — derived from the books", "On demand"],
+      ["trialbalance", "Trial balance", "Every ledger account with its debit or credit balance, proving Dr = Cr", "On demand"],
       ["z", "Z-report", "End-of-shift cash-up per tender, declared against expected drawer", "Per shift"],
       ["gst", "GST return", "GGST/TGST split for the month, in the format MIRA expects", "Monthly"],
       ["cos", "Cost of sales", "Theoretical food cost by dish, from the live recipe cost", "Weekly"],

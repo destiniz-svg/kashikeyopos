@@ -2452,6 +2452,65 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     return { asOf: now, currency: "laari", balanceSheet, cashFlow };
   }
 
+  /* Trial balance — the working list of every ledger account with its debit or
+     credit balance, proving Dr = Cr before the statements are drawn. It is
+     derived from the same sources as the P&L and balance sheet, so it can never
+     disagree with them. Balance-sheet accounts are stated as of now; the P&L
+     accounts carry the period's activity. Owner's equity brought forward is the
+     balancing figure — for an all-time view it nets to ~zero, because every
+     rufiyaa of net worth this entity holds is accumulated profit (there is no
+     separately keyed capital account in the derived books). */
+  const OPEX_CODE = { "Depreciation": "5500", "Repairs": "5400", "Cash over / short": "5200",
+    "Rent": "5300", "Utilities": "5310", "Salaries": "5600", "Wages": "5600", "Payroll": "5600",
+    "Marketing": "5700", "Freight": "5320", "Transport": "5320", "Paid out": "5900" };
+  async function computeTrialBalance(client, orgId, from, to, storeId) {
+    const now = Date.now();
+    const stmt = await computeStatements(client, orgId, storeId);
+    const acct = await computeAccounting(client, orgId, from, to, storeId);
+    const assetRec = await computeAssets(client, orgId, storeId);
+    const bs = stmt.balanceSheet, pnl = acct.pnl;
+    const rows = [];
+    // A signed amount on the natural side: Dr helper puts a positive on debit
+    // (a negative flips to credit, e.g. a bank overdraft); Cr is the mirror.
+    const Dr = (code, name, amt) => { amt = Math.round(amt); if (!amt) return; rows.push({ code, name, debit: amt > 0 ? amt : 0, credit: amt < 0 ? -amt : 0 }); };
+    const Cr = (code, name, amt) => { amt = Math.round(amt); if (!amt) return; rows.push({ code, name, debit: amt < 0 ? -amt : 0, credit: amt > 0 ? amt : 0 }); };
+    // Assets
+    Dr("1000", "Cash on hand", bs.assets.cash);
+    Dr("1010", "Cash at bank", bs.assets.bank);
+    Dr("1100", "Accounts receivable", bs.assets.accountsReceivable);
+    Dr("1200", "Inventory", bs.assets.inventory);
+    Dr("1500", "Fixed assets at cost", assetRec.totals.cost);
+    Cr("1510", "Accumulated depreciation", assetRec.totals.accumulated); // contra-asset
+    // Liabilities
+    Cr("2100", "Accounts payable", bs.liabilities.accountsPayable);
+    Cr("2200", "GST payable", bs.liabilities.gstPayable);
+    Cr("2300", "Service charge payable", bs.liabilities.serviceChargePayable);
+    // Income
+    Cr("4000", "Sales revenue", pnl.revenue);
+    // Cost of sales & expenses
+    Dr("5000", "Cost of goods sold", pnl.cogs);
+    if (pnl.wastage > 0) Dr("5100", "Wastage", pnl.wastage);
+    Object.keys(pnl.opexByCat || {}).sort().forEach((cat) => {
+      Dr(OPEX_CODE[cat] || "5800", cat, pnl.opexByCat[cat]);
+    });
+    // Owner's equity brought forward is the balancing figure.
+    const dr = rows.reduce((a, r) => a + r.debit, 0), cr = rows.reduce((a, r) => a + r.credit, 0);
+    Cr("3000", "Owner's equity / retained earnings b/f", dr - cr);
+    rows.sort((a, b) => a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+    const totalDebit = rows.reduce((a, r) => a + r.debit, 0), totalCredit = rows.reduce((a, r) => a + r.credit, 0);
+    return { asOf: now, from, to, currency: "laari", rows,
+      totals: { debit: totalDebit, credit: totalCredit, balanced: totalDebit === totalCredit },
+      netProfit: pnl.netProfit };
+  }
+
+  router.get("/trial-balance", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const from = Number(req.query.from) || 0;
+    const to = Number(req.query.to) || Date.now();
+    const out = await withOrg(req.orgId, (c) => computeTrialBalance(c, req.orgId, from, to, storeId));
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
   router.get("/accounting", authAny, wrap(async (req, res) => {
     const storeId = req.query.storeId ? String(req.query.storeId) : null;
     const from = Number(req.query.from) || 0;
