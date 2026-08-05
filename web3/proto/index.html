@@ -6232,18 +6232,19 @@ class Component extends DCLogic {
           { k: "name", label: "Registered name", v: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName) : this.chainOf().name), full: 1 },
           { k: "tin", label: "Taxpayer identification number", v: (window.KPOS_REAL ? this.fiscal().tin : this.chainOf().tin) },
           { k: "regNo", label: "Company registration", v: (window.KPOS_REAL ? this.fiscal().gstNo : this.chainOf().regNo) },
+          { k: "phone", label: "Phone", v: (window.KPOS_REAL ? (this.fiscal().phone || "") : (this.chainOf().phone || "")) },
           { k: "hq", label: "Registered address", v: (window.KPOS_REAL ? this.fiscal().address : this.chainOf().hq), full: 1 },
           { k: "currency", label: "Currency", options: [{ v: "MVR", l: "MVR — Maldivian rufiyaa" }, { v: "USD", l: "USD — United States dollar" }] }
         ],
         onSave: (v) => {
           if (!v.name || !v.tin) return this.toast("Registered name and TIN are required", "warn");
-          const next = Object.assign({}, this.state.chainOverride || {}, { name: v.name, tin: v.tin, regNo: v.regNo, hq: v.hq, currency: v.currency });
+          const next = Object.assign({}, this.state.chainOverride || {}, { name: v.name, tin: v.tin, regNo: v.regNo, phone: v.phone, hq: v.hq, currency: v.currency });
           // Real mode: the legal identity persists to the store settings, so the
           // TIN/GST-registration/legal-name on every receipt and the GST return
           // are the real ones — not a device-local override.
           if (window.KPOS_REAL && window.KPOS_REAL.token) {
             fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ cfg: { store: { legal: v.name, tin: v.tin, greg: v.regNo, addr: v.hq, currency: v.currency } } }) })
+              body: JSON.stringify({ cfg: { store: { legal: v.name, tin: v.tin, greg: v.regNo, phone: v.phone, addr: v.hq, currency: v.currency } } }) })
               .then((r) => r.json().catch(() => ({}))).then((j) => {
                 if (j && j.error) { this.toast(j.error, "warn"); return; }
                 this.setState({ chainOverride: next });
@@ -6489,7 +6490,7 @@ class Component extends DCLogic {
           // backend doesn't model them yet).
           if (window.KPOS_REAL && window.KPOS_REAL.token && v.scope !== "outlet") {
             fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ cfg: { store: { name: v.name } } }) })
+              body: JSON.stringify({ cfg: { store: { name: v.name, footer: v.receiptFoot || "" } } }) })
               .then((r) => r.json().catch(() => ({}))).then((j) => {
                 if (j && j.error) { this.toast(j.error, "warn"); return; }
                 this.setState({ brandOverride: next });
@@ -6771,6 +6772,44 @@ class Component extends DCLogic {
             parent: 0, region: v.region, tax: v.tax, rate: v.tax === "TGST" ? 16 : 8, sc: +v.sc || 0,
             addr: v.addr, mgr: v.mgr || "—", pos: restaurant, seats: +v.seats || 0, tables: restaurant ? (+v.tables || 0) : 0
           }, "Outlet created · " + v.code.toUpperCase() + " " + v.name, "outlets");
+        }
+      },
+      taxprofile: {
+        title: "Tax profile", sub: "GST class and service charge — prints on every receipt", save: "Save tax profile",
+        editSave: "Save tax profile",
+        foot: "GGST 8% general, TGST 17% tourism zone. The rate and the service charge are extracted from every bill for the GST return, so they belong to the store record, not the device — changing them here changes what every receipt and the return use.",
+        fields: [
+          { k: "tax", label: "GST class", options: [{ v: "GGST", l: "GGST — general 8%" }, { v: "TGST", l: "TGST — tourism 17%" }] },
+          { k: "sc", label: "Service charge %", v: String(this.outlet().sc || 0) }
+        ],
+        pre: (o) => ({ tax: ((o && o.tax) || this.outlet().tax || "GGST"), sc: String((o && o.sc != null ? o.sc : this.outlet().sc) || 0) }),
+        onSave: (v, o) => {
+          const scPct = Math.max(0, Math.min(50, Math.round(+v.sc || 0)));
+          const isT = v.tax === "TGST";
+          const taxRate = isT ? "tgst" : "ggst", rate = isT ? 17 : 8;
+          const oid = (o && o.id != null) ? o.id : this.outlet().id;
+          // Real mode: GST class and service charge live in the store settings
+          // (gstBp / svcChargeBp), the same row /admin writes and the server
+          // derives the terminal's rate from — so post them there, then patch
+          // the local outlet so the card and the till reflect it at once.
+          if (window.KPOS_REAL && window.KPOS_REAL.token) {
+            fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+              body: JSON.stringify({ cfg: { taxRate: taxRate, svcChargeBp: scPct * 100 } }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                this.toast("Tax profile saved — " + v.tax + " " + rate + "% · service " + scPct + "%");
+              }).catch(() => this.toast("Could not save — check the connection", "warn"));
+            // Reflect it on the in-memory outlet so the card and the till's tax
+            // maths update at once, rather than waiting for the next page load.
+            const arr = (K() && K().OUTLETS) || [];
+            const row = arr.find((x) => x.id === oid);
+            if (row) { row.tax = v.tax; row.rate = rate; row.sc = scPct; }
+            this.setState({ modal: null });
+            return;
+          }
+          this.patchRows("outlets", [oid], { tax: v.tax, rate: rate, sc: scPct },
+            "Tax profile updated · " + v.tax + " " + rate + "% · service " + scPct + "% · by " + this.me(), "outlets");
+          this.setState({ modal: null });
         }
       },
       dish: {
@@ -7757,10 +7796,10 @@ class Component extends DCLogic {
           rows: [["Country", CH.country], ["Currency", (window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency)], ["TIN", (window.KPOS_REAL ? (this.fiscal().tin || "— set it") : CH.tin)], ["GST reg.", (window.KPOS_REAL ? (this.fiscal().gstNo || "—") : CH.regNo)]],
           foot: (window.KPOS_REAL ? (this.fiscal().address || "Address not set — tap to add it") : CH.hq) + " — the registered taxpayer. Prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN.",
           go: gate(() => this.openForm("chain")) },
-        { title: "Tax profile", sub: o.name, chip: o.tax, chipBg: "rgba(242,164,58,.12)", chipFg: "var(--amber-bright)",
+        { title: "Tax profile", sub: o.name, chip: o.tax, chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)",
           rows: [["Class", o.tax], ["Rate", o.rate + "%"], ["Service charge", (o.sc || 0) + "%"], ["Applied to", "Subtotal + service charge"]],
-          foot: "GGST 8% general, TGST 17% tourism zone — stored per outlet, never in the terminal. Opens the outlet record.",
-          go: () => this.can("branches", "e") ? this.openForm("outlet", o) : this.toast("Tax profile is set on the outlet record — you need branch edit rights", "warn") },
+          foot: "GGST 8% general, TGST 17% tourism zone. Stored on the store record — the same figures /admin uses and the GST return files.",
+          go: gate(() => this.openForm("taxprofile", o)) },
         { title: "Receipt & printing", sub: P.paper + " mm · " + (P.copies > 1 ? "two copies" : "one copy"),
           toggles: [
             { label: "Print the receipt automatically", sub: "Off asks the guest first — less paper, and most decline", on: !!P.autoPrint, go: () => tog("autoPrint") },
