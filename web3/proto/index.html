@@ -5996,11 +5996,38 @@ class Component extends DCLogic {
           { k: "cost", label: "Purchase cost MVR", v: "0" },
           { k: "bought", label: "Purchased (YYYY-MM-DD)", v: new Date().toISOString().slice(0, 10) },
           { k: "life", label: "Useful life (years)", v: "8" },
-          { k: "svcDays", label: "Service every (days)", v: "90" }
+          { k: "svcDays", label: "Service every (days)", v: "90" },
+          { k: "retire", label: "Status", options: [{ v: "active", l: "In service" }, { v: "dispose", l: "Dispose / write off now" }] }
         ],
         editSave: "Save changes",
         onEdit: (v, a) => {
           if (!v.name) return this.toast("Give the equipment a name", "warn");
+          // Real mode: persist the change to the backend register instead of an
+          // in-memory overlay that a reload would drop. Disposing writes off the
+          // asset (removes its net book value); otherwise the edit upserts by id.
+          if (window.KPOS_REAL && window.KPOS_REAL.token) {
+            if (v.retire === "dispose") {
+              this.setState({ modal: null });
+              fetch("/api/inv/assets/" + encodeURIComponent(a.id) + "/dispose", { method: "POST", credentials: "same-origin" })
+                .then((r) => r.json()).then((j) => {
+                  if (j && j.error) return this.toast(j.error, "warn");
+                  window.KPOS.ASSETS = (K().ASSETS || []).filter((x) => x.id !== a.id);
+                  this.setState({}); this.toast(a.name + " disposed / written off");
+                }).catch(() => this.toast("Could not dispose the asset — check the connection", "warn"));
+              return;
+            }
+            const boughtMs = (function () { const t = Date.parse((v.bought || "") + "T00:00:00"); return isNaN(t) ? (Date.parse(a.bought) || Date.now()) : Math.min(t, Date.now()); })();
+            this.setState({ modal: null });
+            fetch("/api/inv/assets", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+              body: JSON.stringify({ id: a.id, name: v.name, kind: v.kind || a.kind, outlet: +v.outlet || a.outlet, cost: Math.round((+v.cost || a.cost) * 100), life: +v.life || a.life, svcDays: +v.svcDays || a.svcDays, bought: boughtMs }) })
+              .then((r) => r.json()).then((j) => {
+                if (j && j.error) return this.toast(j.error, "warn");
+                const list = K().ASSETS || []; const ix = list.findIndex((x) => x.id === a.id);
+                if (ix >= 0) list[ix] = Object.assign({}, list[ix], { name: v.name, kind: v.kind || a.kind, outlet: +v.outlet || a.outlet, cost: +v.cost || a.cost, life: +v.life || a.life, svcDays: +v.svcDays || a.svcDays, bought: new Date(boughtMs).toISOString().slice(0, 10) });
+                this.setState({}); this.toast(v.name + " updated");
+              }).catch(() => this.toast("Could not save the change — check the connection", "warn"));
+            return;
+          }
           const st = Object.assign({}, this.state.assetState || {});
           st[a.id] = Object.assign({}, st[a.id] || {}, {
             name: v.name, outlet: +v.outlet || a.outlet, kind: v.kind,
