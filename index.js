@@ -3692,6 +3692,7 @@ if (fs.existsSync(protoFile)) {
             items: lineItems, subtotal: Math.round((Number(d.subtotal) || 0) / 100),
             svc: Math.round((Number(d.svcCharge) || 0) / 100), gst: Math.round((Number(d.gst) || 0) / 100),
             customerId: d.customerId || null, customerName: d.customerName || "",
+            buyerName: d.buyerName || "", buyerTin: d.buyerTin || "", docType: d.docType || "",
             refunded: (refundedRefs[String(d.no || "")] || refundedRefs[String(r.id)] || 0) > 0,
             refundAmt: Math.round((refundedRefs[String(d.no || "")] || refundedRefs[String(r.id)] || 0) / 100),
           });

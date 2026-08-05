@@ -145,6 +145,14 @@
         change: sale.change != null ? Math.round(num(sale.change) * 100) : 0 }],
     };
     if (sale.customerId) { data.customerId = sale.customerId; data.customerName = sale.customerName || ""; }
+    // MIRA tax invoice: when the cashier issued the receipt in a B2B customer's
+    // name, persist the buyer block + docType so the permanent record — and any
+    // reprint — is a valid tax invoice they can claim input tax against.
+    if (sale.buyerName) {
+      data.buyerName = String(sale.buyerName);
+      if (sale.buyerTin) data.buyerTin = String(sale.buyerTin);
+      data.docType = "taxinvoice";
+    }
     // A credit/tab sale is money owed: raise the customer's balance the way the
     // register does (deltas.cust → the server's FIN-02 accrual, which also does
     // the over-limit check). Idempotent — the op is deduped by opId, so a replay
