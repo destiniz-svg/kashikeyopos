@@ -15,15 +15,35 @@
 /* Palette as the reference defined it — :root custom properties, dark by
    default. ThemeMode / CustomColors on the Users table select the variant. */
 :root{
-  --bg:#0e0f11; --bg-0:#121417; --bg-1:#15171a; --bg-2:#1b1e22; --bg-3:#24282e;
-  --line-soft:#22262b; --line:#2a2f36; --line-2:#363c44; --line-3:#3d4249;
-  --text:#f2ede2; --text-dim:#a8a79f; --text-muted:#6b6e74; --text-faint:#585b61;
-  --code-text:#c9c6bd;
+  /* Charcoal neutral ramp (design rev 2): #121212 shell up to #282828 raised.
+     The warm-cool bias is gone so the categorical hues are the only chroma. */
+  --bg:#121212; --bg-0:#161616; --bg-1:#1a1a1a; --bg-2:#1e1e1e; --bg-3:#282828;
+  --line-soft:#242424; --line:#2e2e2e; --line-2:#3a3a3a; --line-3:#4a4a4a;
+  /* Every tier clears 7:1 against bg…bg-2 — a till is read off-axis across a
+     counter under downlights. Subdued means smaller/lighter, never lower. */
+  --text:#f7f7f5; --text-dim:#cfcfcb; --text-muted:#b8b8b4; --text-faint:#adada9;
+  --code-text:#d4d4d0;
+  /* --amber-* is the BRAND ACCENT, rewritten inline on <html> by the accent
+     picker (window.__kpal), so it must never carry meaning. --warn-* is the
+     fixed warning tier the accent picker never touches. */
   --amber:#f2a43a; --amber-bright:#ffb84a; --amber-dim:#3a2a12; --amber-line:#6b4a1f; --amber-deep:#c4761e;
+  --warn:#f2a43a; --warn-bright:#ffc14a; --warn-dim:rgba(242,164,58,.14); --warn-line:#6b4a1f; --on-warn:#1a0f00;
+  /* Status tints resolve per theme so a chip's tint, border and label move together. */
+  --ok-dim:rgba(107,191,123,.12); --bad-dim:rgba(226,96,96,.12);
+  --info-dim:rgba(103,162,217,.13); --violet-dim:rgba(168,138,217,.13);
+  --brand-dim:rgba(152,32,48,.13);
   --brand-red:#982030; --brand-red-bright:#c4485a; --brand-olive:#8a9440; --brand-olive-bright:#a8b354;
   --brand-cream:#f0e2c0; --brand-grey:#b0b0b0;
   --brand-plate:#ffffff; --brand-plate-line:#4a2b32;
   --on-amber:#1a0f00;
+  /* Semantic action tiers. A filled background always means "this does
+     something": green commits money, blue advances the order, red destroys. */
+  --go:#3cb95b; --go-bright:#6fdb8c; --go-dim:rgba(60,185,91,.13); --go-line:#2f6b3d; --on-go:#04180a;
+  --fwd:#5aa8ee; --fwd-bright:#93c8f5; --fwd-dim:rgba(90,168,238,.13); --fwd-line:#2b5c8c; --on-fwd:#03121f;
+  --danger:#e8563a; --danger-bright:#ff9077; --danger-dim:rgba(232,86,58,.13); --danger-line:#7a3524; --on-danger:#1a0400;
+  /* Categorical menu-section hues — swatches, dots and rails only, never a fill. */
+  --cat-starters:#4fd6c0; --cat-mains:#8fb4ff; --cat-grill:#ff9a5c; --cat-rice:#f5d76e;
+  --cat-sides:#b8e069; --cat-desserts:#f58ad0; --cat-drinks:#c9a3ff; --cat-all:#cfcfcb;
   --green:#6bbf7b; --green-line:#2d5a35; --green-soft:#9fd0aa;
   --red:#e2603f; --red-bright:#ff7a55; --red-line:#6b3a2a; --red-line-2:#3a2a22;
   --red-dim:#7a5040; --red-dim-2:#c08060; --red-soft:#f0b095;
@@ -34,13 +54,24 @@
 [data-theme="light"]{
   --bg:#f6f2ea; --bg-0:#efe9de; --bg-1:#fffdf9; --bg-2:#f1ece2; --bg-3:#e4dccd;
   --line-soft:#eee7db; --line:#e0d8c8; --line-2:#cec4b0; --line-3:#b9ae98;
-  --text:#1f1c17; --text-dim:#6b6459; --text-muted:#8d857a; --text-faint:#a89f92;
-  --code-text:#3a352c;
+  /* Light tiers vs --bg-1 #fffdf9: 12.1 / 9.3 / 7.5:1; muted also clears 7:1 on --bg-3. */
+  --text:#1f1c17; --text-dim:#38342c; --text-muted:#454036; --text-faint:#575249;
+  --code-text:#332f28;
   --amber:#d1841c; --amber-bright:#a8630f; --amber-dim:#fbeed6; --amber-line:#e0bc7e; --amber-deep:#8a5210;
+  --warn:#6d3f0c; --warn-bright:#6b4a05; --warn-dim:rgba(109,63,12,.11); --warn-line:#d9b98a; --on-warn:#fffdf9;
+  --ok-dim:rgba(31,122,56,.10); --bad-dim:rgba(181,48,26,.09);
+  --info-dim:rgba(29,107,176,.10); --violet-dim:rgba(93,63,150,.10);
+  --brand-dim:rgba(152,32,48,.10);
   --brand-red:#982030; --brand-red-bright:#7d1826; --brand-olive:#6d7638; --brand-olive-bright:#5a6129;
   --brand-cream:#f6ecd2; --brand-grey:#8e8e8e;
   --brand-plate:#ffffff; --brand-plate-line:#e2cdc6;
   --on-amber:#fffdf9;
+  /* Fills carry white ink, dark enough for it to clear 7:1 (go 7.5 / fwd 8.6 / danger 7.6). */
+  --go:#14602b; --go-bright:#0e4a20; --go-dim:rgba(20,96,43,.10); --go-line:#8cc39c; --on-go:#fffdf9;
+  --fwd:#0f4c80; --fwd-bright:#0a3a63; --fwd-dim:rgba(15,76,128,.10); --fwd-line:#8fb4d6; --on-fwd:#fffdf9;
+  --danger:#9c2412; --danger-bright:#87200f; --danger-dim:rgba(156,36,18,.10); --danger-line:#d9a396; --on-danger:#fffdf9;
+  --cat-starters:#085548; --cat-mains:#24408a; --cat-grill:#7a3a10; --cat-rice:#5f4610;
+  --cat-sides:#384e0f; --cat-desserts:#7a2460; --cat-drinks:#4b2c85; --cat-all:#4d4941;
   --green:#3f8a4f; --green-line:#a9cfb1; --green-soft:#2f6b3c;
   --red:#c2452a; --red-bright:#a33418; --red-line:#e6b8a6; --red-line-2:#eed2c6;
   --red-dim:#b06a50; --red-dim-2:#98452a; --red-soft:#8a3818;
@@ -48,12 +79,16 @@
   --scrim:rgba(60,52,40,.42); --shadow-lg:0 24px 70px rgba(90,75,50,.22);
 }
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100%;overflow:hidden}
+/* Tabular figures everywhere, inherited (rev 2): a total that reflows its width
+   as digits change reads as a glitch. Form controls don't inherit features, so
+   they carry the second rule explicitly. */
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100%;overflow:hidden;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+input,select,textarea,button{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;text-align:left}
 input,select,textarea{font-family:inherit}
-a{color:var(--amber-bright);text-decoration:none}
-a:hover{color:var(--amber);text-decoration:underline}
-::selection{background:var(--amber);color:#000}
+a{color:var(--fwd-bright);text-decoration:none}
+a:hover{color:var(--fwd);text-decoration:underline}
+::selection{background:var(--fwd);color:var(--on-fwd)}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
@@ -67,19 +102,38 @@ a:hover{color:var(--amber);text-decoration:underline}
 @keyframes ksheet{from{transform:translateY(100%)}to{transform:none}}
 @keyframes kshake{0%,100%{transform:translateX(0)}18%{transform:translateX(-6px)}36%{transform:translateX(5px)}54%{transform:translateX(-3px)}72%{transform:translateX(2px)}}
 @keyframes ktoastshake{0%,100%{transform:translate(-50%,0)}18%{transform:translate(calc(-50% - 6px),0)}36%{transform:translate(calc(-50% + 5px),0)}54%{transform:translate(calc(-50% - 3px),0)}72%{transform:translate(calc(-50% + 2px),0)}}
-@keyframes kaddline{from{opacity:0;transform:translateX(14px);background:var(--amber-dim)}to{opacity:1;transform:none}}
+@keyframes kaddline{from{opacity:0;transform:translateX(14px);background:var(--warn-dim)}to{opacity:1;transform:none}}
 @keyframes kcheck{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
 @keyframes kpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes kdraw{to{stroke-dashoffset:0}}
+@keyframes kshimmer{from{background-position:-160% 0}to{background-position:260% 0}}
 /* A till is tapped thousands of times a shift. The press must answer instantly
    or the operator taps again and rings the item twice — so this is a duplicate
    charge control, not decoration. Kept off inputs and selects, which have
-   their own native affordance. */
-button{transition:transform .09s cubic-bezier(.2,.8,.3,1),background .12s ease-out,border-color .12s ease-out,color .12s ease-out}
-button:active:not(:disabled){transform:scale(.975)}
+   their own native affordance. Disabled stays a visible button. */
+button{transition:transform .09s cubic-bezier(.2,.8,.3,1),background .08s ease-out,border-color .08s ease-out,color .08s ease-out}
+button:active:not(:disabled){transform:scale(.97)}
+button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.35)}
+/* Reduced motion: swap MOVEMENT for a FADE, never strip the feedback. Each
+   keyframe is redefined under the same name so inline "animation:kmodal .2s"
+   keeps working; only large positional movement is removed. */
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+  @keyframes kmodal{from{opacity:0}to{opacity:1}}
+  @keyframes ksheet{from{opacity:0}to{opacity:1}}
+  @keyframes kslide{from{opacity:0}to{opacity:1}}
+  @keyframes kpop{from{opacity:0}to{opacity:1}}
+  @keyframes kaddline{from{opacity:0;background:var(--warn-dim)}to{opacity:1}}
+  @keyframes ktoast{from{opacity:0;transform:translate(-50%,0)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes kshake{0%,100%{opacity:1}25%,75%{opacity:.45}}
+  @keyframes ktoastshake{0%,100%{opacity:1;transform:translate(-50%,0)}25%,75%{opacity:.45;transform:translate(-50%,0)}}
+  @keyframes kspin{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes kshimmer{0%,100%{opacity:1}50%{opacity:.55}}
+  @keyframes kcheck{from{stroke-dashoffset:0}to{stroke-dashoffset:0}}
+  @keyframes kdraw{from{stroke-dashoffset:0}to{stroke-dashoffset:0}}
+  [style*="kshimmer"]{background-image:none !important;background:var(--bg-2) !important}
 }
+/* Mono helper — every number in a tabular context. */
+.mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
 </style>
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-data.js"></script>
