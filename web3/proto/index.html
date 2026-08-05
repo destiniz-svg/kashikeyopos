@@ -2406,8 +2406,26 @@ class Component extends DCLogic {
       const accent = st === "occupied" ? "var(--amber)" : st === "reserved" ? "var(--blue)" : "var(--line-3)";
       tables.push({
         label: label,
-        go: () => { if (this._lp) { this._lp = 0; return; } if (resv) { this.setState({ modal: { kind: "resv", id: resv.id } }); return; } this.setState({ activeTable: i, activeSplit: 0 }); if (!t) this.ensure(i); },
-        hint: resv ? (resv.name + " · " + resv.party + " covers · tap to seat") : st === "free" ? "Tap to open · hold or right-click for table actions" : "Tap to open T" + pad(i) + " · hold or right-click for table actions",
+        go: () => {
+          if (this._lp) { this._lp = 0; return; }
+          if (resv) { this.setState({ modal: { kind: "resv", id: resv.id } }); return; }
+          // Tap the selected table again to deselect it. If its ticket is still
+          // empty (the tap is all that opened it), drop the ticket so the table
+          // goes back to free — a clean undo of an accidental tap.
+          if (this.state.activeTable === i) {
+            const key = this.ticketKey(i), cur = this.state.tickets[key];
+            if (cur && (!cur.lines || !cur.lines.length)) {
+              const nt = Object.assign({}, this.state.tickets); delete nt[key];
+              this.setState({ tickets: nt, activeTable: null, activeSplit: 0 });
+            } else {
+              this.setState({ activeTable: null, activeSplit: 0 });
+            }
+            return;
+          }
+          this.setState({ activeTable: i, activeSplit: 0 });
+          if (!t) this.ensure(i);
+        },
+        hint: resv ? (resv.name + " · " + resv.party + " covers · tap to seat") : (on ? "Tap again to close" : st === "free" ? "Tap to open · hold or right-click for table actions" : "Tap to open T" + pad(i) + " · hold or right-click for table actions"),
         ctx: (e) => { e.preventDefault(); this.tableMenu(i); },
         press: () => { clearTimeout(this._lpT); this._lpT = setTimeout(() => { this._lp = 1; this.tableMenu(i); }, 420); },
         release: () => { clearTimeout(this._lpT); },
