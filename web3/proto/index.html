@@ -2736,9 +2736,9 @@ class Component extends DCLogic {
         const title = x.kind === "assist" ? "T" + x.table + " is asking for a server"
           : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
             : (isTable ? "T" + x.table + " ordered from the QR menu" : "New QR order" + (x.table ? " · " + x.table : ""));
-        // Real QR orders clear by accepting them on the server (clears everywhere);
-        // demo signals clear through the localStorage bridge.
-        const clear = () => { if (x.real) this.acceptOrder(x.id); else this.ackSignal(x.id); };
+        // A real waiter/bill call clears by acking it on the server; a real QR
+        // order clears by accepting it; a demo signal clears via localStorage.
+        const clear = () => { if (x.call) this.ackCall(x.id); else if (x.real) this.acceptOrder(x.id); else this.ackSignal(x.id); };
         return {
           title: title,
           sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
@@ -4156,14 +4156,21 @@ class Component extends DCLogic {
   // this browser's localStorage, so on a real store nothing ever showed. In real
   // mode the alerts come from the same server orders the KDS already polls: an
   // unaccepted, still-new QR order is a call until a cashier takes it.
+  liveCalls() { return this.state.liveCalls || (window.KPOS_REAL && window.KPOS_REAL.calls) || []; }
   posCalls() {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.signals();
     const acked = this._ackedCalls || (this._ackedCalls = {});
-    return (this.liveOrders() || [])
+    const orders = (this.liveOrders() || [])
       .filter((o) => o.source === "qr" && o.status === "new" && !o.accepted && !acked[o.id])
       .map((o) => { const n = (o.items || []).reduce((a, it) => a + (Number(it.q) || 1), 0);
         return { id: o.id, real: true, kind: "order", table: o.table, at: o.at || Date.now(),
           detail: n + " item" + (n === 1 ? "" : "s") + (o.no ? " · " + o.no : "") }; });
+    // Guest waiter/bill calls come from the same server feed (kind assist|bill).
+    const calls = (this.liveCalls() || [])
+      .filter((cl) => !acked[cl.id])
+      .map((cl) => ({ id: cl.id, real: true, call: true, kind: cl.kind === "bill" ? "bill" : "assist",
+        table: cl.table, at: cl.t || Date.now(), detail: cl.name || "" }));
+    return calls.concat(orders);   // a raised hand sits above a new order
   }
   // Accept a real QR order into the kitchen queue: the server sets accepted, so
   // it clears from the floor alerts on every device while staying on the KDS.
@@ -4171,6 +4178,14 @@ class Component extends DCLogic {
     (this._ackedCalls || (this._ackedCalls = {}))[id] = 1;   // clear this device instantly
     this.forceUpdate();
     fetch("/api/app2/order/" + encodeURIComponent(id) + "/accept", { method: "POST", credentials: "same-origin" })
+      .then((r) => r.json()).then(() => this.refreshLiveOrders()).catch(() => {});
+  }
+  // Acknowledge a guest waiter/bill call: soft-deletes the call on the server so
+  // it clears from the floor on every device.
+  ackCall(id) {
+    (this._ackedCalls || (this._ackedCalls = {}))[id] = 1;
+    this.forceUpdate();
+    fetch("/api/app2/call/" + encodeURIComponent(id) + "/ack", { method: "POST", credentials: "same-origin" })
       .then((r) => r.json()).then(() => this.refreshLiveOrders()).catch(() => {});
   }
   pullSignals() {
@@ -4215,7 +4230,8 @@ class Component extends DCLogic {
         const holds = this._bumped || {}, now = Date.now();
         const orders = (j.orders || []).map((o) => ({ ...o, items: (o.items || []).map((it) =>
           (holds[o.id + ":" + it.idx] > now && !it.done) ? { ...it, done: true } : it) }));
-        this.setState({ liveOrders: orders });
+        const calls = j.calls || [];
+        this.setState({ liveOrders: orders, liveCalls: calls });
         // Toast a real QR order the first time it appears. The initial poll only
         // seeds the "seen" set (no alert for orders already on the board); later
         // polls announce genuinely new ones.
@@ -4226,6 +4242,13 @@ class Component extends DCLogic {
             this.toast((/^\d+$/.test(String(o.table || "")) ? "T" + o.table : "A guest") + " ordered from the QR menu");
             this.queue("guest_order", (o.no || "order") + " · " + (o.table || "QR"), "guest_signals"); } });
         } else { fresh.forEach((o) => { seenQr[o.id] = 1; }); this._seenQrInit = true; }
+        // Same for guest waiter/bill calls, so the cashier hears a real raised hand.
+        const seenCall = this._seenCall || (this._seenCall = {});
+        if (this._seenCallInit) {
+          calls.forEach((cl) => { if (!seenCall[cl.id]) { seenCall[cl.id] = 1;
+            const where = /^\d+$/.test(String(cl.table || "")) ? "T" + cl.table : (cl.name || "A guest");
+            this.toast(cl.kind === "bill" ? where + " has asked for the bill" : where + " is asking for a server", "warn"); } });
+        } else { calls.forEach((cl) => { seenCall[cl.id] = 1; }); this._seenCallInit = true; }
         this.forceUpdate();  // dc setState is lazy; flush so KDS/Orders repaint now
       }).catch(() => {});
   }

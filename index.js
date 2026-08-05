@@ -2663,11 +2663,13 @@ app.get("/p/:slug/account", pubThrottle(20, "acct"), wrap(async (req, res) => {
 app.post("/p/:slug/call", pubThrottle(20, "call"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
-  const { table, custId } = req.body || {};
+  const { table, custId, kind } = req.body || {};
   const storeId = cleanStoreId(req.body?.storeId || req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   let name = null;
   if (custId) name = ((await kindAll(org.id, "customers", storeId)).find((c) => idEq(c.id, custId)) || {}).name || null;
-  const call = { id: uid(), storeId, table: table || (name ? "Pickup" : "-"), name, t: Date.now() };
+  // "bill" = the guest asked for their cheque; anything else is a waiter call.
+  const ck = kind === "bill" ? "bill" : "assist";
+  const call = { id: uid(), storeId, table: table || (name ? "Pickup" : "-"), name, kind: ck, t: Date.now() };
   const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true });
@@ -3756,6 +3758,11 @@ if (fs.existsSync(protoFile)) {
         const ordEntRows = (await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId])).rows;
         const liveOrders = liveOrdersV2(ordEntRows.map((r) => r.data || {}));
+        // Open guest calls (waiter / bill) so the floor shows them from load,
+        // not only after the first live poll. A real guest posts these to the
+        // server (/p/:slug/call); the demo localStorage bridge never reaches here.
+        const liveCalls = (await c.query(
+          "SELECT data FROM entities WHERE org_id=$1 AND kind='waiterCalls' AND deleted=false ORDER BY (data->>'t')::numeric DESC LIMIT 40", [orgId])).rows.map((r) => r.data || {});
         // Real customers → the reference CUSTOMERS shape (money laari→MVR).
         const custRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false ORDER BY (data->>'lastOrderAt')::numeric DESC NULLS LAST LIMIT 500", [orgId])).rows;
@@ -3967,7 +3974,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), liveOrders, customers, staff, clock, reservations, expenses, settlements, assets,
+          orders: orders.slice(0, 200), liveOrders, calls: liveCalls, customers, staff, clock, reservations, expenses, settlements, assets,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });
@@ -4173,10 +4180,31 @@ if (fs.existsSync(protoFile)) {
   app.get("/api/app2/live", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
-    const rows = await withOrg(orgId, (c) => c.query(
-      "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId]));
+    const { rows, calls } = await withOrg(orgId, async (c) => {
+      const rows = (await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId])).rows;
+      const calls = (await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='waiterCalls' AND deleted=false ORDER BY (data->>'t')::numeric DESC LIMIT 40", [orgId])).rows.map((r) => r.data || {});
+      return { rows, calls };
+    });
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, orders: liveOrdersV2(rows.rows.map((r) => r.data || {})) });
+    res.json({ ok: true, orders: liveOrdersV2(rows.map((r) => r.data || {})), calls });
+  }));
+  // Acknowledge a guest call (waiter / bill): clears it from the floor on every
+  // device by soft-deleting the waiterCalls entity. (Stale calls also auto-expire
+  // via the timed-kinds sweep.)
+  app.post("/api/app2/call/:id/ack", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const id = String(req.params.id || "");
+    const rowver = await withOrg(orgId, async (c) => {
+      const r = await c.query(
+        "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='waiterCalls' AND id=$2 AND deleted=false RETURNING rowver", [orgId, id]);
+      return r.rowCount ? Number(r.rows[0].rowver) : null;
+    });
+    if (rowver == null) return res.status(404).json({ error: "call not found" });
+    poke(orgId, rowver);
+    res.json({ ok: true });
   }));
 
   /* Kitchen tickets from the register (audit C-H5). sendKot wrote LOCAL STATE
