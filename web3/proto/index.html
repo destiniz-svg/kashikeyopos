@@ -2799,7 +2799,11 @@ class Component extends DCLogic {
         }
         (cur && cur.kotIds || []).forEach((id) => this.setOrderStatus(id, "cancelled"));
         const t = Object.assign({}, s.tickets); delete t[this.ticketKey()];
-        this.setState({ tickets: t, activeTable: null });
+        // Clearing an order returns the POS to its default: no table selected,
+        // the mobile ticket sheet closed, and the column slid back to the floor
+        // plan — the mirror of the slide-to-menu when an order starts.
+        this.setState({ tickets: t, activeTable: null, cart: false });
+        this.revealFloor();
         this.queue("void_order", "Cleared T" + pad(s.activeTable) + (fired ? " · fired items voided by " + this.me() : ""), "orders");
         this.toast(fired ? "Table cleared — kitchen order voided" : "Table cleared");
       }
