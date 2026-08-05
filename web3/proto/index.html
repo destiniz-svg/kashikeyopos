@@ -411,6 +411,7 @@ button:active:not(:disabled){transform:scale(.975)}
                   </div>
                   <span style="{{ l.stateStyle }}">{{ l.stateText }}</span>
                   <button onClick="{{ l.note }}" style="font-size:10.5px;color:var(--text-muted);padding:3px 7px;border-radius:5px;border:1px solid var(--line)">Note</button>
+                  <button onClick="{{ l.disc }}" style="{{ l.discStyle }}">{{ l.discLbl }}</button>
                   <button onClick="{{ l.del }}" style="font-size:10.5px;color:var(--red-dim);padding:3px 7px;border-radius:5px;border:1px solid var(--red-line-2)">Void</button>
                 </div>
                 <div style="{{ l.noteStyle }}">{{ l.noteText }}</div>
@@ -427,6 +428,7 @@ button:active:not(:disabled){transform:scale(.975)}
               <button onClick="{{ pay }}" style="{{ payStyle }}">{{ payLabel }}</button>
             </div>
             <div style="{{ secondaryRowStyle }}">
+              <button onClick="{{ billDiscGo }}" style="{{ billDiscStyle }}">{{ billDiscLbl }}</button>
               <button onClick="{{ parkBill }}" style="{{ parkBtnStyle }}">Park bill</button>
               <button onClick="{{ printBill }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Print bill</button>
               <button onClick="{{ qrOrder }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Table QR</button>
@@ -906,6 +908,14 @@ button:active:not(:disabled){transform:scale(.975)}
               </div>
               <input value="{{ addonNote }}" onChange="{{ onAddonNote }}" placeholder="Anything else for the kitchen…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               <button onClick="{{ addAddon }}" style="margin-top:14px;width:100%;padding:12px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Add to ticket</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mDisc }}">
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <sc-for list="{{ discOpts }}" as="d" hint-placeholder-count="6">
+                <button onClick="{{ d.pick }}" style="{{ d.style }}">{{ d.label }}</button>
+              </sc-for>
             </div>
           </sc-if>
 
@@ -1688,15 +1698,23 @@ class Component extends DCLogic {
   }
   totals(tk, split) {
     const o = this.outlet();
+    // Menu prices are GST-EXCLUSIVE here (the "++" model): service charge and
+    // GST are added on top of the goods. A per-line discount (l.disc %) reduces
+    // its line; a bill discount (tk.discountPct %) reduces the whole goods
+    // subtotal. Service and GST are charged on the discounted goods, and the
+    // invariant subtotal − discount + service + GST = total holds.
     let sub = 0;
     (tk ? tk.lines : []).forEach((l) => {
       if (split !== undefined && split !== null && l.split !== split) return;
       const m = (K().MENU || []).find((x) => x.id === l.id);
-      if (m) sub += this.menuPrice(m) * l.qty;
+      if (m) sub += this.menuPrice(m) * l.qty * (1 - (Number(l.disc) || 0) / 100);
     });
-    const svc = sub * ((o.sc || 0) / 100);
-    const tax = (sub + svc) * ((o.rate || 0) / 100);
-    return { sub: sub, svc: svc, tax: tax, total: sub + svc + tax };
+    const dp = (tk && Number(tk.discountPct) || 0) / 100;
+    const disc = sub * dp;
+    const goods = sub - disc;
+    const svc = goods * ((o.sc || 0) / 100);
+    const tax = (goods + svc) * ((o.rate || 0) / 100);
+    return { sub: sub, disc: disc, dp: dp, goods: goods, svc: svc, tax: tax, total: goods + svc + tax };
   }
   foodCost(m) {
     const raw = window.KPOS_RAW || {}; let c = 0;
@@ -2499,8 +2517,12 @@ class Component extends DCLogic {
     const lines = tk ? tk.lines.filter((l) => guests.length < 2 || (l.split || 0) === gi).map((l, idx) => {
       const m = K0.MENU.find((x) => x.id === l.id) || { name: "?", price: 0 };
       const i = tk.lines.indexOf(l);
+      const ld = Number(l.disc) || 0;
       return {
-        name: m.name, qty: l.qty, amount: MVR(this.menuPrice(m) * l.qty),
+        name: m.name, qty: l.qty, amount: MVR(this.menuPrice(m) * l.qty * (1 - ld / 100)),
+        disc: () => this.openDisc(i),
+        discLbl: ld ? "−" + ld + "%" : "Disc",
+        discStyle: "font-size:10.5px;padding:3px 7px;border-radius:5px;border:1px solid " + (ld ? "var(--amber)" : "var(--line)") + ";background:" + (ld ? "rgba(242,164,58,.12)" : "transparent") + ";color:" + (ld ? "var(--amber-bright)" : "var(--text-muted)"),
         rowStyle: "padding:9px 16px;border-bottom:1px solid var(--line);animation:" + ((s.lastAdd && s.lastAdd.id === l.id && Date.now() - s.lastAdd.at < 700) ? "kaddline .2s cubic-bezier(.2,.8,.3,1)" : "kfade .16s"),
         inc: () => this.mutate(undefined, (t) => { t.lines[i] = Object.assign({}, t.lines[i], { qty: t.lines[i].qty + 1, fired: false }); }),
         dec: () => this.mutate(undefined, (t) => { if (t.lines[i].qty > 1) t.lines[i] = Object.assign({}, t.lines[i], { qty: t.lines[i].qty - 1 }); else t.lines.splice(i, 1); }),
@@ -2524,10 +2546,12 @@ class Component extends DCLogic {
       };
     }) : [];
 
-    const T = tk ? this.totals(tk, guests.length > 1 ? gi : undefined) : { sub: 0, svc: 0, tax: 0, total: 0 };
+    const T = tk ? this.totals(tk, guests.length > 1 ? gi : undefined) : { sub: 0, disc: 0, dp: 0, svc: 0, tax: 0, total: 0 };
     const rowS = "display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-dim);padding:3px 0";
+    const discS = "display:flex;justify-content:space-between;font-size:11.5px;color:var(--amber-bright);font-weight:700;padding:3px 0";
     const totalRows = [
       { label: "Subtotal", value: MVR(T.sub), style: rowS },
+      { label: "Discount " + Math.round((T.dp || 0) * 100) + "%", value: "−" + MVR(T.disc), style: (T.disc ? discS : "display:none") },
       { label: "Service charge " + (o.sc || 0) + "%", value: MVR(T.svc), style: (o.sc ? rowS : "display:none") },
       { label: o.tax + " " + o.rate + "%", value: MVR(T.tax), style: rowS },
       { label: "Total", value: MVR(T.total), style: "display:flex;justify-content:space-between;font-size:" + (tight ? 15 : 17) + "px;font-weight:700;padding:" + (tight ? "6px 0 1px" : "9px 0 2px") + ";margin-top:" + (tight ? 4 : 6) + "px;border-top:1px solid var(--line);color:var(--text);letter-spacing:-0.02em" }
@@ -2588,6 +2612,9 @@ class Component extends DCLogic {
       // mobile — not only via a long-press on the table tile. Highlighted amber
       // when the ticket has lines to park, muted otherwise.
       parkBtnStyle: "padding:8px;border-radius:7px;font-size:11px;font-weight:700;text-align:center;border:1px solid " + (canPay ? "var(--amber-dim)" : "var(--line)") + ";background:" + (canPay ? "rgba(242,164,58,.10)" : "var(--bg-2)") + ";color:" + (canPay ? "var(--amber-bright)" : "var(--text-faint)"),
+      billDiscGo: () => this.openDisc("bill"),
+      billDiscLbl: (tk && tk.discountPct) ? "Discount · " + tk.discountPct + "%" : "Discount",
+      billDiscStyle: "padding:8px;border-radius:7px;font-size:11px;font-weight:700;text-align:center;border:1px solid " + ((tk && tk.discountPct) ? "var(--amber)" : "var(--line)") + ";background:" + ((tk && tk.discountPct) ? "rgba(242,164,58,.10)" : "var(--bg-2)") + ";color:" + ((tk && tk.discountPct) ? "var(--amber-bright)" : "var(--text-dim)"),
       ticketLabel: s.activeTable ? "Ticket · " + ({ qr: "QR session", takeaway: "Takeaway", delivery: "Delivery" }[tk && tk.channel] || "Dine-in") : "No table selected",
       ticketNum: s.activeTable ? this.slotLabel(s.activeTable) + " / " + o.code : "—",
       ticketChip: s.activeTable ? "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:5px 9px;border-radius:5px;background:rgba(242,164,58,.12);color:var(--amber-bright);white-space:nowrap" : "display:none",
@@ -2677,7 +2704,24 @@ class Component extends DCLogic {
       payStyle: "padding:11px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;transition:.12s;" + (canPay ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
       printBill: () => { if (!canPay) return this.toast("Nothing to print", "warn"); this.queue("print_bill", "Bill printed · T" + pad(s.activeTable), "orders"); this.toast("Bill sent to the counter printer"); },
       qrOrder: () => s.activeTable ? this.setState({ modal: { kind: "qr" } }) : this.toast("Select a table first", "warn"),
-      clearT: () => { if (!s.activeTable) return; const t = Object.assign({}, s.tickets); delete t[this.ticketKey()]; this.setState({ tickets: t, activeTable: null }); this.toast("Table cleared"); }
+      clearT: () => {
+        if (!s.activeTable) return;
+        const cur = s.tickets[this.ticketKey()];
+        const fired = cur && (cur.lines || []).some((l) => l.fired);
+        // Discarding a table that has already fired to the kitchen is a void of
+        // committed food — needs a manager, and must reach the kitchen: cancel
+        // the persisted KOT order(s) so the item leaves the KDS on every screen.
+        if (fired && this.prefs().voidPin !== false && !this.canApprove()) {
+          this.toast("This table has fired items — a manager must void it", "err");
+          this.queue("void_refused", this.me() + " attempted to clear T" + pad(s.activeTable) + " with fired items", "orders");
+          return;
+        }
+        (cur && cur.kotIds || []).forEach((id) => this.setOrderStatus(id, "cancelled"));
+        const t = Object.assign({}, s.tickets); delete t[this.ticketKey()];
+        this.setState({ tickets: t, activeTable: null });
+        this.queue("void_order", "Cleared T" + pad(s.activeTable) + (fired ? " · fired items voided by " + this.me() : ""), "orders");
+        this.toast(fired ? "Table cleared — kitchen order voided" : "Table cleared");
+      }
     };
   }
 
@@ -2751,6 +2795,29 @@ class Component extends DCLogic {
     this.setState({ lastAdd: { id: m.id, at: Date.now() } });
     this.toast(m.name + " × " + qty + " added");
   }
+  // Discounts (ported from the /app register). "bill" discounts the whole
+  // ticket; a line index discounts one item. Both are percentages; the goods
+  // are reduced and service charge + GST recompute on the discounted amount, so
+  // the bill invariant still holds and the backend money audit passes.
+  openDisc(target) {
+    if (!this.guardRegister()) return;
+    if (!this.state.activeTable) { this.toast("Pick a table first", "warn"); return; }
+    if (!this.can("orders", "e")) { this.toast("You don't have permission to discount", "warn"); return; }
+    this.setState({ modal: { kind: "disc", target: target } });
+  }
+  applyDisc(pct) {
+    const m = this.state.modal || {}, s = this.state;
+    const p = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    if (m.target === "bill") {
+      this.mutate(undefined, (t) => { t.discountPct = p; });
+      this.queue("bill_discount", (p ? p + "% off the bill" : "bill discount cleared") + " · T" + pad(s.activeTable) + " · " + this.me(), "orders");
+    } else if (typeof m.target === "number") {
+      this.mutate(undefined, (t) => { if (t.lines[m.target]) t.lines[m.target] = Object.assign({}, t.lines[m.target], { disc: p }); });
+      this.queue("line_discount", (p ? p + "% off a line" : "line discount cleared") + " · T" + pad(s.activeTable) + " · " + this.me(), "order_lines");
+    }
+    this.setState({ modal: null });
+    this.toast(p ? p + "% discount applied" : "Discount removed");
+  }
   overlayVals() {
     const s = this.state, K0 = K(), o = this.outlet();
     const m = s.modal || {};
@@ -2766,7 +2833,7 @@ class Component extends DCLogic {
         : "width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;font-size:15px;line-height:1",
       stop: (e) => e.stopPropagation(),
       payGridStyle: this.effBp() === "m" ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
-      mPay: m.kind === "pay", mNote: m.kind === "note", mAddons: m.kind === "addons", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
+      mPay: m.kind === "pay", mNote: m.kind === "note", mAddons: m.kind === "addons", mDisc: m.kind === "disc", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
       mKot: m.kind === "kot",
       mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm" || m.kind === "resv",
       mLock: m.kind === "lock",
@@ -2818,7 +2885,8 @@ class Component extends DCLogic {
         modalSub: this.slotLabel(s.activeTable) + " · " + o.name + " · " + o.tax + " " + o.rate + "%" + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : ""),
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
-          return { n: l.qty + "× " + mi.name, v: MVRc(this.menuPrice(mi) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--amber-bright);margin-top:2px" : "display:none" };
+          const ld = Number(l.disc) || 0;
+          return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.menuPrice(mi) * l.qty * (1 - ld / 100)), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--amber-bright);margin-top:2px" : "display:none" };
         }),
         tenders: [
           { k: "cash", label: "Cash", sub: "Drawer opens" },
@@ -2840,6 +2908,7 @@ class Component extends DCLogic {
         creditInfoStyle: cust ? "margin-top:10px;font-size:11.5px;line-height:1.6;padding:10px 12px;border-radius:8px;background:" + (cust.credit - cust.used >= T.total ? "rgba(107,191,123,.07);border:1px solid rgba(107,191,123,.22);color:var(--green-soft)" : "rgba(226,96,96,.07);border:1px solid rgba(226,96,96,.25);color:var(--red-soft)") : "display:none",
         payRows: [
           { label: "Subtotal", value: MVR(T.sub), style: rowS },
+          { label: "Discount " + Math.round((T.dp || 0) * 100) + "%", value: "−" + MVR(T.disc || 0), style: (T.disc ? "display:flex;justify-content:space-between;font-size:11.5px;color:var(--amber-bright);font-weight:700;padding:3px 0" : "display:none") },
           { label: "Service charge " + (o.sc || 0) + "%", value: MVR(T.svc), style: o.sc ? rowS : "display:none" },
           { label: o.tax + " " + o.rate + "%", value: MVR(T.tax), style: rowS },
           { label: "Total", value: MVR(T.total), style: "display:flex;justify-content:space-between;font-size:17px;font-weight:700;padding:9px 0;margin-top:6px;border-top:1px solid var(--line);color:var(--text)" },
@@ -2896,9 +2965,10 @@ class Component extends DCLogic {
           const linkedCust = (K0.CUSTOMERS || []).find((c) => c.id === linkedCustId);
           try {
             if (window.__v2PushSale) window.__v2PushSale({
-              lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => ({ id: l.id, qty: l.qty })),
+              lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => ({ id: l.id, qty: l.qty, disc: Number(l.disc) || 0 })),
               tender: m.tender, table: this.isTableSlot(s.activeTable) ? s.activeTable : null, no: snapshot.no, given: given, change: change,
               channel: (tk && tk.channel) || "dine_in",
+              discountPct: (tk && Number(tk.discountPct)) || 0,
               customerId: linkedCustId || null,
               customerName: linkedCust ? linkedCust.name : "",
             });
@@ -3190,6 +3260,25 @@ class Component extends DCLogic {
         addonNote: m.note || "",
         onAddonNote: (e) => setM({ note: e.target.value }),
         addAddon: () => { this.addLineMod(it, qty, noteStr); this.setState({ modal: null }); }
+      };
+    }
+
+    if (m.kind === "disc") {
+      const tk2 = this.ticket();
+      const cur = m.target === "bill"
+        ? (tk2 && Number(tk2.discountPct) || 0)
+        : ((tk2 && tk2.lines[m.target] || {}).disc || 0);
+      const opts = [0, 5, 10, 15, 20, 25].map((p) => ({
+        label: p === 0 ? "None" : p + "%",
+        style: "flex:1 1 60px;border-radius:12px;padding:12px 4px;font-size:13.5px;font-weight:700;font-family:'JetBrains Mono',monospace;border:1px solid " + (cur === p ? "var(--amber)" : "var(--line)") + ";background:" + (cur === p ? "rgba(242,164,58,.12)" : "var(--bg)") + ";color:" + (cur === p ? "var(--amber-bright)" : "var(--text)"),
+        pick: () => this.applyDisc(p)
+      }));
+      const lineName = (typeof m.target === "number" && tk2 && tk2.lines[m.target])
+        ? ((K0.MENU || []).find((x) => x.id === tk2.lines[m.target].id) || {}).name : "";
+      return {
+        modalTitle: m.target === "bill" ? "Discount the bill" : ("Discount · " + (lineName || "item")),
+        modalSub: "Comes off the goods — service charge and GST recompute on the discounted amount",
+        discOpts: opts
       };
     }
 

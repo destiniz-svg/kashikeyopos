@@ -109,15 +109,23 @@
     var lines = [], subtotal = 0;
     (sale.lines || []).forEach(function (l) {
       var m = byId[l.id]; if (!m) return;
-      var unit = unitLaari(m, outlet), qty = num(l.qty), amount = unit * qty;
+      // Per-line discount reduces the line, rounded once from the line itself.
+      var unit = unitLaari(m, outlet), qty = num(l.qty), disc = num(l.disc);
+      var amount = Math.round(unit * qty * (1 - disc / 100));
       subtotal += amount;
-      lines.push({ pid: l.id, qty: qty, price: unit, amount: amount });
+      lines.push({ pid: l.id, qty: qty, price: unit, amount: amount, discPct: disc || 0 });
     });
     if (!lines.length) return;
 
-    var svcCharge = Math.round(subtotal * sc / 100);
-    var gst = Math.round((subtotal + svcCharge) * rate / 100);
-    var total = subtotal + svcCharge + gst;
+    // Bill discount comes off the goods subtotal; service charge and GST are
+    // charged on the discounted goods, so subtotal − billDisc + svc + gst =
+    // total holds — the exact invariant the server's money audit re-checks.
+    var billDiscPct = num(sale.discountPct);
+    var billDisc = Math.round(subtotal * billDiscPct / 100);
+    var goods = subtotal - billDisc;
+    var svcCharge = Math.round(goods * sc / 100);
+    var gst = Math.round((goods + svcCharge) * rate / 100);
+    var total = goods + svcCharge + gst;
     var tender = sale.tender || "cash";
     var id = "s_v2_" + (sale.no || "sale") + "_" + Date.now();
     var lamport = Date.now();
@@ -131,7 +139,7 @@
     var data = {
       type: "sale", no: sale.no || id, table: sale.table != null ? sale.table : null,
       tender: tender, at: Date.now(), channel: channel,
-      lines: lines, subtotal: subtotal, billDisc: 0, svcCharge: svcCharge, gst: gst, total: total,
+      lines: lines, subtotal: subtotal, billDisc: billDisc, billDiscPct: billDiscPct, svcCharge: svcCharge, gst: gst, total: total,
       payments: [{ method: tender, amount: total,
         given: sale.given != null ? Math.round(num(sale.given) * 100) : total,
         change: sale.change != null ? Math.round(num(sale.change) * 100) : 0 }],
