@@ -1945,7 +1945,7 @@ class Component extends DCLogic {
       searchInputStyle: "background:transparent;border:none;outline:none;color:var(--text);font-size:12px;min-width:0;" + (s.searchOpen ? "flex:1;width:auto" : "width:0;flex:0 0 0;padding:0"),
       netTitle: s.online ? "Online — tap to simulate a network drop" : "Offline — tap to restore the link",
       netDotBtnStyle: "display:flex;align-items:center;padding:7px 10px 7px 12px;flex-shrink:0",
-      linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:20px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--amber-line)" : "var(--line)") + ";background:" + (!s.online ? "rgba(226,96,96,.09)" : queued ? "rgba(242,164,58,.08)" : "var(--bg-2)"),
+      linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:20px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
       searchStyle: isM ? "display:none" : "display:flex;align-items:center;gap:" + (s.searchOpen ? "8px" : "0") + ";background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--amber-line)" : "var(--line)") + ";border-radius:8px;padding:" + (s.searchOpen ? "7px 10px" : "0") + ";flex-shrink:0;color:var(--text-dim);" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;height:32px;justify-content:center;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
       _searchStyleOld: isM ? "display:none" : "display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:clamp(112px,14vw,180px);color:var(--text-muted)",
       shiftStyle: (isM || rail) ? "display:none" : "padding:6px 11px;border-radius:20px;font-size:10px;font-weight:700;background:var(--amber-dim);color:var(--amber-bright);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap",
@@ -2024,7 +2024,7 @@ class Component extends DCLogic {
       markBlend: "normal",
       goSync: () => this.setState({ view: "sync" }),
       outboxLabel: queued ? queued + " queued" : (s.syncing ? "Syncing" : (s.online ? "Synced" : "Offline")),
-      outboxStyle: "display:flex;align-items:center;gap:6px;padding:7px 12px 7px 8px;font-size:11px;font-weight:600;flex-shrink:0;white-space:nowrap;border-left:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--amber-line)" : "var(--line)") + ";color:" + (!s.online ? "var(--red-bright)" : queued ? "var(--amber-bright)" : "var(--text-dim)"),
+      outboxStyle: "display:flex;align-items:center;gap:6px;padding:7px 12px 7px 8px;font-size:11px;font-weight:600;flex-shrink:0;white-space:nowrap;border-left:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";color:" + (!s.online ? "var(--red-bright)" : queued ? "var(--warn-bright)" : "var(--text-dim)"),
       _outboxStyleOld: "display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid " + (queued ? "var(--amber-line)" : "var(--line)") + ";background:" + (queued ? "rgba(242,164,58,.10)" : "var(--bg-2)") + ";color:" + (queued ? "var(--amber-bright)" : "var(--text-dim)"),
       spinStyle: s.syncing ? "animation:kspin 1s linear infinite" : "",
       shift: this.shiftLabel(),
@@ -2508,9 +2508,9 @@ class Component extends DCLogic {
             table: head,
             meta: (o.server || o.customerName || (o.source === "qr" ? "QR order" : "Counter")) + " · " + (o.items || []).reduce((a, it) => a + (it.q || 1), 0) + " items",
             wait: tk.wait,
-            style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--amber-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
+            style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--warn-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
             headBg: late ? "background:rgba(226,96,96,.07)" : warn ? "background:rgba(242,164,58,.06)" : "",
-            timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--amber-bright)" : "var(--green)"),
+            timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
             items: tk.items.map((l) => ({
               name: l.n || "Item", q: "×" + (l.q || 1), note: "",
               style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px;cursor:pointer",
@@ -2530,9 +2530,9 @@ class Component extends DCLogic {
           table: this.slotLabel(tk.num),
           meta: (tk.t.waiter || "Unassigned") + " · " + tk.t.party + " covers",
           wait: tk.wait,
-          style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--amber-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
+          style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--warn-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
           headBg: late ? "background:rgba(226,96,96,.07)" : warn ? "background:rgba(242,164,58,.06)" : "",
-          timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--amber-bright)" : "var(--green)"),
+          timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--warn-bright)" : "var(--green)"),
           items: tk.items.map((l) => {
             const m = K0.MENU.find((x) => x.id === l.id) || { name: "?" };
             const i = this.state.tickets[tk.key].lines.indexOf(l);
@@ -2540,7 +2540,7 @@ class Component extends DCLogic {
               name: m.name, q: "×" + l.qty, note: l.note || "",
               style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px;transition:.1s",
               qty: "font-size:12px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace;min-width:22px;flex-shrink:0;padding-top:1px",
-              noteStyle: l.note ? "display:block;font-size:10.5px;color:var(--amber-bright);margin-top:3px" : "display:none",
+              noteStyle: l.note ? "display:block;font-size:10.5px;color:var(--warn-bright);margin-top:3px" : "display:none",
               check: "font-size:13px;color:var(--line-3);flex-shrink:0",
               bump: () => { const t = Object.assign({}, this.state.tickets); const cur = Object.assign({}, t[tk.key]); cur.lines = cur.lines.slice(); cur.lines[i] = Object.assign({}, cur.lines[i], { done: true }); t[tk.key] = cur; this.setState({ tickets: t }); this.queue("kds_bump", m.name + " bumped · T" + pad(tk.num), "order_lines"); }
             };
@@ -2687,7 +2687,7 @@ class Component extends DCLogic {
         note: () => this.setState({ modal: { kind: "note", idx: i, val: l.note || "" } }),
         stateStyle: "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:4px;margin-right:auto;" + (l.fired ? "background:rgba(107,191,123,.10);color:var(--green)" : "background:rgba(242,164,58,.12);color:var(--amber-bright)"),
         stateText: l.fired ? "Fired · " + this.lineAge(l) + "m" : "Not sent",
-        noteStyle: l.note ? "margin-top:6px;font-size:10.5px;color:var(--amber-bright);background:rgba(242,164,58,.07);border-left:2px solid var(--amber);padding:4px 8px;border-radius:0 4px 4px 0" : "display:none",
+        noteStyle: l.note ? "margin-top:6px;font-size:10.5px;color:var(--warn-bright);background:var(--warn-dim);border-left:2px solid var(--warn);padding:4px 8px;border-radius:0 4px 4px 0" : "display:none",
         noteText: l.note || ""
       };
     }) : [];
@@ -2804,7 +2804,7 @@ class Component extends DCLogic {
       },
       openHeld: () => this.setState({ modal: { kind: "held" } }),
       heldBtnLabel: "Parked · " + (heldN || 0),
-      heldBtnStyle: "flex:1 1 0;min-width:0;max-width:230px;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:32px;padding:0 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--amber-line)" : "var(--line)") + ";background:" + (heldN ? "rgba(242,164,58,.10)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--amber-bright)" : "var(--text-dim)"),
+      heldBtnStyle: "flex:1 1 0;min-width:0;max-width:230px;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:32px;padding:0 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--warn-line)" : "var(--line)") + ";background:" + (heldN ? "var(--warn-dim)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--warn-bright)" : "var(--text-dim)"),
       // Off-floor order entry — takeaway/delivery start their own ticket without
       // occupying a table (§ order-type-first). Open ones show as tappable chips.
       startTakeaway: () => this.startOrder("takeaway"),
@@ -3023,7 +3023,7 @@ class Component extends DCLogic {
     const base = {
       hasToast: !!s.toast,
       toastMsg: s.toast ? s.toast.msg : "",
-      toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;padding:11px 20px;border-radius:24px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--red);color:#fff" : s.toast && s.toast.tone === "warn" ? "var(--amber-dim);color:var(--amber-bright);border:1px solid var(--amber-line)" : "var(--amber);color:var(--on-amber)"),
+      toastStyle: "position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:80;padding:11px 20px;border-radius:24px;font-size:12.5px;font-weight:600;animation:" + (s.toast && s.toast.tone === "err" ? "ktoast .18s, ktoastshake .38s .1s" : "ktoast .18s") + ";box-shadow:0 8px 30px rgba(0,0,0,.5);background:" + (s.toast && s.toast.tone === "err" ? "var(--danger);color:var(--on-danger)" : s.toast && s.toast.tone === "warn" ? "var(--warn-dim);color:var(--warn-bright);border:1px solid var(--warn-line)" : "var(--amber);color:var(--on-amber)"),
       hasModal: !!s.modal,
       // A lock is not a modal: it has no close, no scrim dismissal and no
       // escape. Anything else makes the PIN decorative.
@@ -3092,7 +3092,7 @@ class Component extends DCLogic {
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
           const ld = Number(l.disc) || 0;
-          return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.menuPrice(mi) * l.qty * (1 - ld / 100)), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--amber-bright);margin-top:2px" : "display:none" };
+          return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.menuPrice(mi) * l.qty * (1 - ld / 100)), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
         }),
         tenders: [
           { k: "cash", label: "Cash", sub: "Drawer opens" },
@@ -4691,7 +4691,7 @@ class Component extends DCLogic {
       cards: [
         { title: "Equipment at cost", sub: scoped.length + " assets", big: MVRc(val), rows: [["Net book value", MVRc(nbv)], ["Depreciation to date", MVRc(val - nbv), "var(--red-bright)"], ["Monthly depreciation", MVRc(scoped.reduce((a, x) => a + x.cost / ((x.life || 10) * 12), 0))]], foot: "Straight line over each asset's life. Posts Dr 5500, Cr 1510." },
         { title: "Down right now", sub: down.length ? down.map((a) => a.name).join(", ") : "Everything running", big: String(down.length), bigColor: down.length ? "var(--red-bright)" : "var(--green)", rows: down.slice(0, 3).map((a) => [a.name, this.locName(a.outlet)]), foot: down.length ? "A dead chiller is a maintenance cost and a stock write-off at the same time. Log the breakdown so both post together." : "No open breakdowns." },
-        { title: "Service overdue", sub: "Past the interval", big: String(due.length), bigColor: due.length ? "var(--amber-bright)" : "var(--green)", rows: due.slice(0, 3).map((a) => [a.name, nextDue(a).toLocaleDateString("en-GB", { day: "numeric", month: "short" })]), foot: "Preventive service is a tenth the cost of a failure during service." },
+        { title: "Service overdue", sub: "Past the interval", big: String(due.length), bigColor: due.length ? "var(--warn-bright)" : "var(--green)", rows: due.slice(0, 3).map((a) => [a.name, nextDue(a).toLocaleDateString("en-GB", { day: "numeric", month: "short" })]), foot: "Preventive service is a tenth the cost of a failure during service." },
         { title: "Repairs year to date", sub: "Charged to 5400", big: MVRc(scoped.reduce((a, x) => a + x.ytd, 0)), bigColor: "var(--amber-bright)", rows: scoped.slice().sort((a, b) => b.ytd - a.ytd).slice(0, 3).map((a) => [a.name, MVRc(a.ytd)]), foot: "An asset costing more in repairs than a replacement amortises is telling you something." }
       ],
       cols: [{ label: "Equipment", w: "1.3fr" }, { label: "Outlet", w: "1fr" }, { label: "Type", w: ".9fr" }, { label: "Cost", w: ".9fr", a: "right", mono: 1 }, { label: "Next service", w: "1fr", mono: 1 }, { label: "Repairs YTD", w: ".9fr", a: "right", mono: 1 }, { label: "Status", w: ".8fr" }],
@@ -5907,7 +5907,7 @@ class Component extends DCLogic {
       cols: [{ label: "Time", w: ".7fr", mono: 1 }, { label: "Guest", w: "1.5fr" }, { label: "Party", w: ".5fr", a: "right", mono: 1 }, { label: "Table", w: ".7fr", mono: 1 }, { label: "Note", w: "1.7fr" }, { label: "Status", w: "1fr", a: "right" }],
       rows: list.map((r) => ({
         go: () => real ? this.setState({ modal: { kind: "resv", id: r.id } }) : this.seatRes(r),
-        cells: [{ t: r.t || "—", mono: 1 }, { t: r.name, sub: r.phone || "" }, String(r.party), { t: r.table || "—", mono: 1 }, { t: r.note || "—", c: r.note ? "var(--amber-bright)" : "var(--text-faint)" }, { t: String(r.status || "").replace("_", " "), chip: this.chip(this.statusTone(r.status)) }]
+        cells: [{ t: r.t || "—", mono: 1 }, { t: r.name, sub: r.phone || "" }, String(r.party), { t: r.table || "—", mono: 1 }, { t: r.note || "—", c: r.note ? "var(--warn-bright)" : "var(--text-faint)" }, { t: String(r.status || "").replace("_", " "), chip: this.chip(this.statusTone(r.status)) }]
       })),
       empty: tab === 1 ? "No pending requests — you're all caught up." : "No reservations in the book yet.",
       notes: [["From portal to table", real ? "A guest's booking arrives as Pending and pokes this screen live. Approve holds a table (the smallest free one that fits, unless you set it), the floor shows it reserved, and Seat opens the ticket with their covers and note already on it. Every step writes back so the guest's portal shows the current status." : "Tap any confirmed row to seat it. The reservation flips to seated and the ticket opens with their covers and note already on it."]]
