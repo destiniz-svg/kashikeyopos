@@ -494,7 +494,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
               <button onClick="{{ parkBill }}" style="{{ parkBtnStyle }}">Park bill</button>
               <button onClick="{{ printBill }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Print bill</button>
               <button onClick="{{ qrOrder }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Table QR</button>
-              <button onClick="{{ clearT }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);text-align:center">Clear</button>
+              <button onClick="{{ clearT }}" style="padding:8px;border-radius:7px;font-size:11px;font-weight:600;color:var(--danger-bright);background:var(--bg-2);border:1px solid var(--danger-line);text-align:center">Clear</button>
             </div>
           </div>
         </div>
@@ -2445,10 +2445,14 @@ class Component extends DCLogic {
   }
 
   chip(kind) {
+    // Status chips use the theme-resolving -dim tint tokens (rev 2 §6) so a
+    // chip's tint, border and label move together across light/dark. warn reads
+    // the fixed --warn tier, never the brand accent — so a pending chip can
+    // never take on the crimson of a custom accent.
     const m = {
-      ok: ["rgba(107,191,123,.13)", "var(--green)"], warn: ["rgba(242,164,58,.14)", "var(--amber-bright)"],
-      err: ["rgba(226,96,96,.13)", "var(--red-bright)"], info: ["rgba(103,162,217,.14)", "var(--blue-bright)"],
-      mute: ["rgba(255,255,255,.05)", "var(--text-faint)"], purple: ["rgba(168,138,217,.14)", "var(--violet-bright)"]
+      ok: ["var(--ok-dim)", "var(--green)"], warn: ["var(--warn-dim)", "var(--warn-bright)"],
+      err: ["var(--bad-dim)", "var(--red-bright)"], info: ["var(--info-dim)", "var(--blue-bright)"],
+      mute: ["rgba(255,255,255,.05)", "var(--text-faint)"], purple: ["var(--violet-dim)", "var(--violet-bright)"]
     };
     return m[kind] || m.mute;
   }
@@ -2518,7 +2522,7 @@ class Component extends DCLogic {
               bump: () => { this.bumpLine(o.id, l.idx, true); this.toast((l.n || "Item") + " up"); }
             })),
             serveLabel: starting ? "Start cooking · " + head : "Bump all · Ready · " + head,
-            serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--bg-2);border-top:1px solid var(--line);color:var(--amber-bright)",
+            serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--fwd-dim);border-top:1px solid var(--fwd-line);color:var(--fwd-bright)",
             serve: () => { this.setOrderStatus(o.id, starting ? "preparing" : "ready"); this.toast(starting ? head + " started" : head + " ready to serve"); }
           };
         }
@@ -2542,7 +2546,7 @@ class Component extends DCLogic {
             };
           }),
           serveLabel: "Bump all · T" + pad(tk.num),
-          serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--bg-2);border-top:1px solid var(--line);color:var(--amber-bright)",
+          serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--fwd-dim);border-top:1px solid var(--fwd-line);color:var(--fwd-bright)",
           serve: () => { const t = Object.assign({}, this.state.tickets); const cur = Object.assign({}, t[tk.key]); cur.lines = cur.lines.map((l) => l.fired ? Object.assign({}, l, { done: true }) : l); t[tk.key] = cur; this.setState({ tickets: t }); this.queue("kds_bump_all", "Ticket bumped · T" + pad(tk.num), "orders"); this.toast(this.slotLabel(tk.num) + " away"); }
         };
       })
@@ -2840,7 +2844,7 @@ class Component extends DCLogic {
         this.setState({ modal: { kind: "kot", lines: going, table: s.activeTable, at: Date.now() } });
       },
       fireLabel: unfired ? "Fire " + unfired + " to KDS" : "All fired",
-      fireStyle: "padding:11px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;transition:.12s;" + (unfired ? "background:var(--bg-2);border:1px solid var(--amber-line);color:var(--amber-bright)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
+      fireStyle: "padding:11px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;transition:.12s;" + (unfired ? "background:var(--fwd-dim);border:1px solid var(--fwd-line);color:var(--fwd-bright)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
       pay: () => { if (!this.guardRegister()) return; canPay ? this.setState({ modal: { kind: "pay", tender: "cash", cust: "", given: "" } }) : this.toast("Add items before taking payment", "warn"); },
       payLabel: canPay ? "Pay " + MVRc(T.total) : "Pay",
       payStyle: "padding:11px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;transition:.12s;" + (canPay ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
@@ -3138,7 +3142,7 @@ class Component extends DCLogic {
         approving: m.approving || 0,
         spinStyle: m.approving === 1 ? "width:15px;height:15px;flex-shrink:0;animation:kspin .8s linear infinite" : "display:none",
         checkStyle: m.approving === 2 ? "width:16px;height:16px;flex-shrink:0;animation:kpop .22s cubic-bezier(.2,.8,.3,1)" : "display:none",
-        confirmStyle: "width:100%;padding:12px;border-radius:9px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:9px;" + (m.approving === 2 ? "background:var(--green);color:#062f10" : canConfirm ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
+        confirmStyle: "width:100%;padding:12px;border-radius:9px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:9px;" + (m.approving === 2 ? "background:var(--go);color:var(--on-go)" : canConfirm ? "background:var(--go);color:var(--on-go)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
         confirmPay: () => {
           if (!canConfirm) return this.toast(m.tender === "credit" ? "Pick a customer with enough headroom" : "Not enough tendered", "warn");
           // Cash is instant — the drawer is right there. Card and wallet go to
