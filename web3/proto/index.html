@@ -6325,8 +6325,8 @@ class Component extends DCLogic {
         }
       },
       chain: {
-        title: "Chain details", sub: "Legal identity on every tax document", save: "Save chain",
-        editSave: "Save chain",
+        title: "Company details", sub: "Legal identity on every tax document", save: "Save company details",
+        editSave: "Save company details",
         foot: "The TIN and registration number print on every receipt and appear on the GST return. They belong to the company, not to an outlet, so changing them here changes them everywhere at once.",
         fields: [
           { k: "name", label: "Registered name", v: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName) : this.chainOf().name), full: 1 },
@@ -7922,10 +7922,10 @@ class Component extends DCLogic {
             this.toast(b.poweredBy ? "Powered-by line shown" : "White label — powered-by hidden");
           }) }],
           foot: "The vendor brand stays in the terminal. Guests see the restaurant, which is how every serious POS separates the two." },
-        { title: "Chain", sub: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName || CH.name) : CH.name), chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
+        { title: "Company details", sub: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName || CH.name) : CH.name), chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
           rows: [["Country", CH.country], ["Currency", (window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency)], ["TIN", (window.KPOS_REAL ? (this.fiscal().tin || "— set it") : CH.tin)], ["GST reg.", (window.KPOS_REAL ? (this.fiscal().gstNo || "—") : CH.regNo)]],
-          foot: (window.KPOS_REAL ? (this.fiscal().address || "Address not set — tap to add it") : CH.hq) + " — the registered taxpayer. Prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN.",
-          go: gate(() => this.openForm("chain")) },
+          foot: (window.KPOS_REAL ? (this.fiscal().address || "Address not set — tap Edit to add it") : CH.hq) + " — the registered company / taxpayer. Prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN.",
+          goLabel: "Edit company details", go: gate(() => this.openForm("chain")) },
         { title: "Tax profile", sub: o.name, chip: o.tax, chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)",
           rows: [["Class", o.tax], ["Rate", o.rate + "%"], ["Service charge", (o.sc || 0) + "%"], ["Applied to", "Subtotal + service charge"]],
           foot: "GGST 8% general, TGST 17% tourism zone. Stored on the store record — the same figures /admin uses and the GST return files.",
