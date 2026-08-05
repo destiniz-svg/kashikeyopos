@@ -20,6 +20,14 @@ Every UI is now plain HTML/JS in this repo, served by `serveProto()` in
 `index.js`. **There is no build step and no bundle to bake.** Edit the file,
 restart, reload.
 
+**Post-auth landing is `/v2`** (`web3/proto/index.html`, the current terminal —
+POS, KDS, orders, accounting, inventory, branding). Owner login, onboarding
+finish (`/api/onboard/finish`), the authed `/login`·`/signup`·`/welcome` bounce
+and the landing "dashboard" button all send staff to `/v2`. `/app` (the legacy
+offline register) is **not** redirected — installed offline tills still fetch it
+directly — but nothing routes new users there. Staff-PIN sign-in still opens
+`/admin`.
+
 1. **Register / till** (`/app` → `web2/proto/index.html`) — PIN-gated,
    offline-first. Syncs via `/api/ops` push, `/api/pull`, the cookie-auth
    snapshot `/api/app2/pull` (5s poll, ETag/304) and SSE `/api/events`.

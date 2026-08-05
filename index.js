@@ -906,7 +906,7 @@ const requireAppSession = (req, res, next) => {
     .catch(() => res.redirect(302, "/login"));
 };
 const redirectIfAppSession = (req, res, next) => {
-  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/app") : next()).catch(() => next());
+  resolveAppSession(req).then((orgId) => orgId ? res.redirect(302, "/v2") : next()).catch(() => next());
 };
 
 /* Developer-panel sessions are a separate credential namespace from store
@@ -1809,7 +1809,10 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
     await c.query("UPDATE orgs SET onboarded=true, setup_step='done', skip_default_menu=$2 WHERE id=$1", [orgId, menu !== "sample"]);
   });
   if (menu === "sample") { try { await ensureDefaultMenu(orgId); } catch (e) { console.warn("starter-menu seed skipped:", e.message); } }
-  res.json({ ok: true, next: menu === "ai" ? "/admin" : "/app" });
+  // Land a freshly-onboarded store on the v2 terminal — the current build —
+  // rather than the legacy /app register. (/app stays reachable for installed
+  // offline tills that fetch it directly.)
+  res.json({ ok: true, next: "/v2" });
 }));
 
 app.post("/api/login", wrap(async (req, res) => {
@@ -5144,7 +5147,7 @@ if (fs.existsSync(protoFile)) {
 app.get("/welcome", (req, res) => {
   resolveAppSession(req).then((orgId) => {
     if (!orgId) return res.redirect(302, "/login");
-    if (req.kOnboarded) return res.redirect(302, "/app");
+    if (req.kOnboarded) return res.redirect(302, "/v2");
     res.sendFile(path.join(siteDir, "welcome.html"));
   }).catch(() => res.redirect(302, "/login"));
 });

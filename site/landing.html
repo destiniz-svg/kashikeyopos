@@ -865,7 +865,7 @@
   try {
     if (localStorage.getItem("kashikeyo-cloud")) {
       document.querySelectorAll('a[href="/login"], a[href="/signup"]').forEach(function (a) {
-        a.href = "/app";
+        a.href = "/v2";
         a.textContent = a.classList.contains("btn-primary") ? "Go to your dashboard" : "Dashboard";
       });
     }

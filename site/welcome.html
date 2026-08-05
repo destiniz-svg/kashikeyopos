@@ -136,7 +136,7 @@
     // Prefill + resume at the right stage
     fetch("/api/onboard/state", { credentials:"same-origin" }).then(function(r){ return r.ok?r.json():null; }).then(function(d){
       if(!d) return;
-      if(d.setupStep==="done"){ location.href="/app"; return; }
+      if(d.setupStep==="done"){ location.href="/v2"; return; }
       if(d.email) $("email2").value=d.email;
       if(d.storeName) $("storeName").value=d.storeName;
       if(d.ownerName) $("ownerName").value=d.ownerName;
@@ -196,7 +196,7 @@
       var btn=$("finishBtn"); btn.disabled=true; btn.textContent="Opening…";
       fetch("/api/onboard/finish",{ method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin", body: JSON.stringify({ pin:pin, users:users, menu:menu }) })
         .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {ok:r.ok, j:j}; }); })
-        .then(function(x){ if(!x.ok){ btn.disabled=false; btn.textContent="Open my store"; return showErr("err2",x.j.error||"Could not finish."); } location.href=x.j.next||"/app"; })
+        .then(function(x){ if(!x.ok){ btn.disabled=false; btn.textContent="Open my store"; return showErr("err2",x.j.error||"Could not finish."); } location.href=x.j.next||"/v2"; })
         .catch(function(){ btn.disabled=false; btn.textContent="Open my store"; showErr("err2","Network error — try again."); });
     });
 
