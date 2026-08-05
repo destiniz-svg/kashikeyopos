@@ -730,6 +730,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   </div>
                 </sc-for>
                 <div style="{{ c.footStyle }}">{{ c.foot }}</div>
+                <button onClick="{{ c.go }}" style="{{ c.goStyle }}">{{ c.goLabel }}</button>
               </div>
             </sc-for>
           </div>
@@ -2384,7 +2385,13 @@ class Component extends DCLogic {
       cardGrid: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (bp === "m" ? "min(100%," + (g.cardMin || 260) + "px)" : (g.cardMin || 260) + "px") + ",1fr));gap:11px;margin-bottom:" + (g.cols && g.cols.length ? "16px" : "0"),
       cards: (g.cards || []).map((c) => ({
         title: c.title, sub: c.sub || "", chip: c.chip || "", big: c.big || "", foot: c.foot || "",
-        style: "background:var(--bg-1);border:1px solid " + (c.accent ? c.accent : "var(--line)") + ";border-radius:11px;padding:14px 15px;display:flex;flex-direction:column;gap:4px;" + (c.go ? "cursor:pointer;" : "") + (c.style || ""),
+        style: "background:var(--bg-1);border:1px solid " + (c.accent ? c.accent : "var(--line)") + ";border-radius:11px;padding:14px 15px;display:flex;flex-direction:column;gap:4px;" + (c.style || ""),
+        // A card-level `go` (Settings → branding, chain, handle, tax…) opens its
+        // editor. It rides on an explicit button rather than a whole-card click so
+        // it can't fire when a guest taps a toggle or pick inside the same card.
+        go: c.go || (() => {}),
+        goLabel: c.goLabel || "Edit",
+        goStyle: c.go ? "align-self:flex-start;margin-top:11px;font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:8px 14px;border-radius:8px;border:none;cursor:pointer" : "display:none",
         chipStyle: c.chip ? "font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:20px;white-space:nowrap;background:" + (c.chipBg || "rgba(242,164,58,.12)") + ";color:" + (c.chipFg || "var(--amber-bright)") : "display:none",
         bigStyle: c.big ? "font-size:" + (c.bigSize || 24) + "px;font-weight:700;letter-spacing:-0.03em;font-family:'JetBrains Mono',monospace;margin:8px 0 2px;color:" + (c.bigColor || "var(--amber-bright)") : "display:none",
         barWrap: c.pct === undefined ? "display:none" : "height:5px;border-radius:3px;background:var(--line-soft);overflow:hidden;margin:8px 0 4px",
