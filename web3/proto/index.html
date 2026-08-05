@@ -1396,6 +1396,17 @@ class Component extends DCLogic {
     // honest without re-rendering the whole floor every second.
     this._t = setInterval(() => { this.setState({ now: new Date() }); this.checkIdle(); }, 15000);
     this._sig = setInterval(() => this.pullSignals(), 3000);
+    // Faster live-order refresh while the kitchen display is open, so a bump on
+    // another screen (or a new fired KOT) shows within ~1s instead of the 3s
+    // signal cadence. The synchronous forceUpdate() in this interval is what
+    // actually repaints — a forceUpdate inside the fetch's promise callback does
+    // not flush in this runtime, so we refresh state here and paint it on the
+    // next tick. Only runs on the KDS view, real mode, tab visible.
+    this._kds = setInterval(() => {
+      if (this.state.view !== "kds" || document.hidden || !(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+      this.refreshLiveOrders();
+      this.forceUpdate();
+    }, 900);
     this._onSig = (e) => { if (!e.key || e.key === "kashikeyo.bridge.v1") this.pullSignals(); };
     window.addEventListener("storage", this._onSig);
     this.pullSignals();
@@ -1410,7 +1421,7 @@ class Component extends DCLogic {
     if (!Object.keys(this.state.tickets).length) this.seed();
   }
   componentWillUnmount() {
-    clearInterval(this._t); clearInterval(this._sig); clearTimeout(this._ps);
+    clearInterval(this._t); clearInterval(this._sig); clearInterval(this._kds); clearTimeout(this._ps);
     if (this._onSig) window.removeEventListener("storage", this._onSig);
     if (this._touch) ["pointerdown", "keydown"].forEach((e) => window.removeEventListener(e, this._touch));
     window.removeEventListener("resize", this._onResize);
