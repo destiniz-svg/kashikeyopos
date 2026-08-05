@@ -2827,7 +2827,7 @@ class Component extends DCLogic {
           { k: "credit", label: "Customer credit", sub: "Registered accounts" }
         ].map((t) => ({
           label: t.label, sub: t.sub, pick: () => this.setState({ modal: Object.assign({}, m, { tender: t.k }) }),
-          style: "display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px;border-radius:9px;border:1px solid " + (m.tender === t.k ? "var(--amber)" : "var(--line)") + ";background:" + (m.tender === t.k ? "rgba(242,164,58,.10)" : "var(--on-amber)") + ";color:" + (m.tender === t.k ? "var(--amber-bright)" : "var(--text-dim)")
+          style: "display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px;border-radius:9px;border:1px solid " + (m.tender === t.k ? "var(--amber)" : "var(--line)") + ";background:" + (m.tender === t.k ? "rgba(242,164,58,.10)" : "var(--bg)") + ";color:" + (m.tender === t.k ? "var(--amber-bright)" : "var(--text)")
         })),
         keypadWrap: m.tender === "cash" ? "" : "display:none",
         creditWrap: m.tender === "credit" ? "" : "display:none",
@@ -2991,7 +2991,7 @@ class Component extends DCLogic {
 
     if (m.kind === "switch") {
       const btn = "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px";
-      const on = "width:100%;padding:12px 14px;border-radius:10px;background:var(--amber-dim);border:1px solid var(--amber-line);min-height:44px";
+      const on = "width:100%;padding:12px 14px;border-radius:10px;background:rgba(242,164,58,.12);border:1px solid var(--amber-line);min-height:44px;color:var(--amber-bright)";
       const acts = [];
       const sess = s.session;
       if (!sess) {
@@ -3236,7 +3236,7 @@ class Component extends DCLogic {
         countCats: (raw.cats || []).slice(0, 8).map((c) => ({
           name: c.name, sub: c.storage + " · " + c.freq,
           pick: () => { const n = sel.indexOf(c.id) >= 0 ? sel.filter((x) => x !== c.id) : sel.concat([c.id]); this.setState({ modal: Object.assign({}, m, { cats: n }) }); },
-          style: "display:flex;flex-direction:column;align-items:flex-start;padding:11px 13px;border-radius:9px;border:1px solid " + (sel.indexOf(c.id) >= 0 ? "var(--amber)" : "var(--line)") + ";background:" + (sel.indexOf(c.id) >= 0 ? "rgba(242,164,58,.09)" : "var(--on-amber)")
+          style: "display:flex;flex-direction:column;align-items:flex-start;padding:11px 13px;border-radius:9px;color:var(--text);border:1px solid " + (sel.indexOf(c.id) >= 0 ? "var(--amber)" : "var(--line)") + ";background:" + (sel.indexOf(c.id) >= 0 ? "rgba(242,164,58,.09)" : "var(--bg)")
         })),
         startCountLabel: sel.length ? "Start blind count · " + sel.length + " categor" + (sel.length > 1 ? "ies" : "y") : "Pick at least one category",
         startCount: () => { if (!sel.length) return this.toast("Pick a category", "warn"); this.queue("count_open", "Blind count opened · " + sel.length + " categories · " + o.code, "stock_counts"); this.setState({ modal: null, view: "counts" }); this.toast("Count sheet sent to the store keeper's phone"); }
@@ -3281,8 +3281,8 @@ class Component extends DCLogic {
         onGuestName: (e) => { const v = e.target.value; this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { name: v }); }); },
         pickWalkin: () => this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { type: "walkin", custId: null }); }),
         pickMember: () => this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { type: "member" }); }),
-        walkinStyle: "flex:1;padding:11px;border-radius:9px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "walkin" ? "var(--amber)" : "var(--line)") + ";background:" + (g.type === "walkin" ? "rgba(242,164,58,.10)" : "var(--on-amber)") + ";color:" + (g.type === "walkin" ? "var(--amber-bright)" : "var(--text-dim)"),
-        memberStyle: "flex:1;padding:11px;border-radius:9px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "member" ? "var(--amber)" : "var(--line)") + ";background:" + (g.type === "member" ? "rgba(242,164,58,.10)" : "var(--on-amber)") + ";color:" + (g.type === "member" ? "var(--amber-bright)" : "var(--text-dim)"),
+        walkinStyle: "flex:1;padding:11px;border-radius:9px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "walkin" ? "var(--amber)" : "var(--line)") + ";background:" + (g.type === "walkin" ? "rgba(242,164,58,.10)" : "var(--bg)") + ";color:" + (g.type === "walkin" ? "var(--amber-bright)" : "var(--text)"),
+        memberStyle: "flex:1;padding:11px;border-radius:9px;text-align:center;font-size:12.5px;font-weight:700;border:1px solid " + (g.type === "member" ? "var(--amber)" : "var(--line)") + ";background:" + (g.type === "member" ? "rgba(242,164,58,.10)" : "var(--bg)") + ";color:" + (g.type === "member" ? "var(--amber-bright)" : "var(--text)"),
         nameWrapStyle: g.type === "walkin" ? "margin-top:14px" : "display:none",
         memberWrapStyle: g.type === "member" ? "margin-top:14px" : "display:none",
         guestCust: g.custId || "",
