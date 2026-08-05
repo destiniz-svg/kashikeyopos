@@ -5576,6 +5576,8 @@ class Component extends DCLogic {
     const roleOpts = sel((K0.ROLES || []).map((r) => ({ v: r.key, l: r.label })));
     const staffOpts = sel((K0.STAFF || []).map((x) => ({ v: x.id, l: x.name + " · " + x.job })));
     const assetOpts = sel(this.assetList().map((a) => ({ v: a.id, l: a.name + " · " + this.locName(a.outlet) })));
+    const closedPeriodOpts = [{ v: "live", l: "Live · as of now" }].concat(
+      (((this.state.periodsData || {}).periods) || []).filter((p) => p.status === "closed").map((p) => ({ v: p.id, l: p.id + " · as filed" })));
     const F = {
       category: {
         title: "New category", sub: "Menu section or stock category", save: "Create category",
@@ -6081,6 +6083,12 @@ class Component extends DCLogic {
               this.toast(p + " closed and locked"); this._periodsReq = 0; this.periodsRefresh();
             }).catch(() => this.toast("Could not close the period — check the connection", "warn"));
         }
+      },
+      reportperiod: {
+        title: "View period", sub: "Live figures or a filed month", save: "View",
+        foot: "Live shows the books as of now. A closed month shows the P&L, balance sheet, cash flow and trial balance exactly as they were filed at close — those figures do not move when a later document is corrected.",
+        fields: [{ k: "period", label: "Period", options: closedPeriodOpts, full: 1 }],
+        onSave: (v) => { this.setState({ modal: null }); this.reportFetch(v.period === "live" ? null : v.period); }
       },
       breakdown: {
         title: "Log a breakdown", sub: "Repair cost and any stock lost with it", save: "Log and post",
@@ -6834,6 +6842,10 @@ class Component extends DCLogic {
     const ords = this.todayOrders().filter((r) => r.status !== "open");
     const menu = (K0.MENU || []);
     const m2 = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
+    // Which period the financial statements below are showing: the live books,
+    // or a closed month served exactly as it was filed at close.
+    const _per = this.state.reportPeriod, _filed = this.state.reportFiled;
+    const periodBanner = _per ? (_filed ? "AS FILED · " + _per + " (frozen at close)" : "LIVE VIEW · " + _per + " (not a closed month)") : "LIVE · as of now";
     // Units sold per dish today. Real orders carry lines[{pid,q,n}]; demo orders
     // are header-only, so in demo mode this simply stays empty (honest zero).
     const soldByPid = {}, soldByName = {};
@@ -6944,6 +6956,7 @@ class Component extends DCLogic {
       const d = this.state.pnlData;
       if (!d || !d.pnl) return { header: ["Line", "MVR"], rows: [] };
       const p = d.pnl, L = (n) => m2((Number(n) || 0) / 100), rows = [];
+      rows.push([periodBanner, ""]);
       rows.push(["Revenue (net of GST)", L(p.revenue)]);
       if (p.discounts) rows.push(["Less discounts", "-" + L(p.discounts)]);
       if (p.refunds) rows.push(["Less refunds", "-" + L(p.refunds)]);
@@ -6967,6 +6980,7 @@ class Component extends DCLogic {
       const d = this.state.pnlData;
       if (!d || !d.balanceSheet) return { header: ["Line", "MVR"], rows: [] };
       const bs = d.balanceSheet, L = (n) => m2((Number(n) || 0) / 100), rows = [];
+      rows.push([periodBanner, ""]);
       rows.push(["ASSETS", ""]);
       rows.push(["  Cash on hand", L(bs.assets.cash)]);
       rows.push(["  Bank", L(bs.assets.bank)]);
@@ -6992,7 +7006,7 @@ class Component extends DCLogic {
       const d = this.state.tbData;
       if (!d || !d.rows) return { header: ["Code", "Account", "Debit MVR", "Credit MVR"], rows: [] };
       const L = (n) => (Number(n) || 0) ? m2((Number(n) || 0) / 100) : "";
-      const rows = d.rows.map((r) => [r.code, r.name, L(r.debit), L(r.credit)]);
+      const rows = [["", periodBanner, "", ""]].concat(d.rows.map((r) => [r.code, r.name, L(r.debit), L(r.credit)]));
       const t = d.totals || { debit: 0, credit: 0, balanced: true };
       rows.push(["", "TOTALS", m2(t.debit / 100), m2(t.credit / 100)]);
       rows.push(["", t.balanced ? "In balance — Dr = Cr" : "OUT OF BALANCE", "", ""]);
@@ -7002,6 +7016,7 @@ class Component extends DCLogic {
       const d = this.state.pnlData;
       if (!d || !d.cashFlow) return { header: ["Line", "MVR"], rows: [] };
       const cf = d.cashFlow, L = (n) => m2((Number(n) || 0) / 100), rows = [];
+      rows.push([periodBanner, ""]);
       rows.push(["OPERATING ACTIVITIES", ""]);
       rows.push(["  Cash collected from sales", L(cf.operating.fromSalesCollected)]);
       rows.push(["  Received from tab settlements", L(cf.operating.fromSettlements)]);
@@ -7015,13 +7030,26 @@ class Component extends DCLogic {
     return { header: ["Report"], rows: [] };
   }
 
+  // Fetch the financial statements for a period — null/"live" means the live
+  // books as of now; a closed month's id (YYYY-MM) serves the frozen figures
+  // exactly as they were filed at close. Used by the reports period picker.
+  reportFetch(period) {
+    const q = period ? ("?period=" + encodeURIComponent(period)) : "";
+    this.setState({ reportPeriod: period || null, reportFiled: false });
+    fetch("/api/inv/accounting" + q, { credentials: "same-origin" }).then((r) => r.json())
+      .then((j) => { if (j && j.pnl) this.setState({ pnlData: j, reportFiled: !!j.filed }); }).catch(() => {});
+    fetch("/api/inv/trial-balance" + q, { credentials: "same-origin" }).then((r) => r.json())
+      .then((j) => { if (j && j.rows) this.setState({ tbData: j }); }).catch(() => {});
+  }
   g_reports() {
     // Real P&L comes from the accounting API; fetch it once when the reports
-    // screen opens so the financial statement has data to export.
-    if (window.KPOS_REAL && window.KPOS_REAL.token && !this._pnlReq) {
-      this._pnlReq = 1;
-      fetch("/api/inv/accounting", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.pnl) this.setState({ pnlData: j }); }).catch(() => { this._pnlReq = 0; });
-      fetch("/api/inv/trial-balance", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.rows) this.setState({ tbData: j }); }).catch(() => {});
+    // screen opens so the financial statement has data to export. The list of
+    // closed periods drives the "view a filed month" picker.
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      if (!this._pnlReq) { this._pnlReq = 1; this.reportFetch(this.state.reportPeriod || null); }
+      // Load the closed-period list for the "view a filed month" picker,
+      // independently of the statement fetch so it is ready when the picker opens.
+      if (!this._periodsReq2 && !this.state.periodsData) { this._periodsReq2 = 1; this.periodsRefresh(); }
     }
     // [key, title, description, cadence]. The row count shown per report is the
     // live figure from reportRows, so an owner sees at a glance which packs have
@@ -7043,8 +7071,11 @@ class Component extends DCLogic {
     ];
     const fname = (label) => "kashikeyo-" + (this.outlet().code || "OUT") + "-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-") + ".csv";
     const exportOne = (key, label) => { const d = this.reportRows(key); this.downloadCsv(fname(label), [d.header].concat(d.rows)); };
+    const per = this.state.reportPeriod, filed = this.state.reportFiled;
+    const perLabel = per ? (filed ? "Period: " + per + " (filed)" : "Period: " + per) : "Period: Live";
     return {
       actions: [
+        { label: perLabel, go: () => this.openForm("reportperiod") },
         { label: "Schedule email", go: () => this.info("Scheduled reports", "Delivered 06:00 local to the outlet manager", rep.map((r) => [r[1], r[3], "t"])) },
         { label: "Export all as CSV", primary: true, go: () => {
           const all = [["KashikeyoPOS report pack", this.outlet().name || "", new Date().toISOString().slice(0, 16).replace("T", " ")], []];

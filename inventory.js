@@ -2513,9 +2513,22 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
   router.get("/trial-balance", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const storeId = req.query.storeId ? String(req.query.storeId) : null;
-    const from = Number(req.query.from) || 0;
-    const to = Number(req.query.to) || Date.now();
-    const out = await withOrg(req.orgId, (c) => computeTrialBalance(c, req.orgId, from, to, storeId));
+    const period = req.query.period ? String(req.query.period) : null;
+    const out = await withOrg(req.orgId, async (c) => {
+      // A closed period serves its filed trial balance verbatim, so a later
+      // correction to a source document never moves the number that was filed.
+      if (period) {
+        const snap = await closedSnapshot(c, req.orgId, period);
+        if (snap) return { filed: true, period, asOf: snap.closedAt, from: snap.from, to: snap.to,
+          currency: "laari", rows: snap.journal, totals: snap.totals, netProfit: (snap.pnl || {}).netProfit };
+        const b = periodBounds(period);
+        if (!b) { const e = new Error("period must be YYYY-MM"); e.status = 400; throw e; }
+        return Object.assign({ filed: false, period }, await computeTrialBalance(c, req.orgId, b.from, b.to, storeId));
+      }
+      const from = Number(req.query.from) || 0;
+      const to = Number(req.query.to) || Date.now();
+      return Object.assign({ filed: false }, await computeTrialBalance(c, req.orgId, from, to, storeId));
+    });
     res.json(Object.assign({ ok: true }, out));
   }));
 
@@ -2551,6 +2564,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       e.status = 409; throw e;
     }
   }
+  // The frozen snapshot for a period, only if it is currently closed (a reopened
+  // period has no filed figures — it reverts to a live recompute).
+  async function closedSnapshot(client, orgId, period) {
+    const r = (await client.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='gl_periods' AND id=$2 AND deleted=false", [orgId, period])).rows[0];
+    const d = r && r.data;
+    return (d && d.status === "closed") ? d : null;
+  }
 
   router.get("/periods", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const out = await withOrg(req.orgId, async (c) => ({
@@ -2571,10 +2592,16 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       if (cur && cur.data && cur.data.status === "closed") { const e = new Error("That month is already closed."); e.status = 409; throw e; }
       const tb = await computeTrialBalance(client, req.orgId, bounds.from, bounds.to, storeId);
       const acct = await computeAccounting(client, req.orgId, bounds.from, bounds.to, storeId);
+      // Freeze the balance sheet and cash flow as computed at close — a filed
+      // position can't be reconstructed later (historical stock value and
+      // customer balances aren't cheaply replayable), which is the whole point
+      // of capturing it now.
+      const stmt = await computeStatements(client, req.orgId, storeId);
       const data = { id: bounds.label, from: bounds.from, to: bounds.to, lockDate: bounds.to,
         closedAt: Date.now(), closedBy: (req.appStaff && req.appStaff.name) || "Back office",
         status: "closed", currency: "laari", storeId: storeId || "all",
-        journal: tb.rows, totals: tb.totals, pnl: acct.pnl, gstReturn: acct.gstReturn };
+        journal: tb.rows, totals: tb.totals, pnl: acct.pnl, gstReturn: acct.gstReturn,
+        balanceSheet: stmt.balanceSheet, cashFlow: stmt.cashFlow };
       const r = await client.query(
         `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'gl_periods',$2,$3)
          ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$3, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver`,
@@ -2600,12 +2627,27 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
   router.get("/accounting", authAny, wrap(async (req, res) => {
     const storeId = req.query.storeId ? String(req.query.storeId) : null;
-    const from = Number(req.query.from) || 0;
-    const to = Number(req.query.to) || Date.now();
+    const period = req.query.period ? String(req.query.period) : null;
     const out = await withOrg(req.orgId, async (client) => {
+      // A closed period returns the figures exactly as filed at close — the P&L,
+      // GST return, balance sheet and cash flow are read from the frozen
+      // snapshot, not recomputed, so they never drift.
+      if (period) {
+        const snap = await closedSnapshot(client, req.orgId, period);
+        if (snap) return { filed: true, period, closedAt: snap.closedAt, closedBy: snap.closedBy,
+          from: snap.from, to: snap.to, currency: "laari",
+          pnl: snap.pnl, gstReturn: snap.gstReturn, balanceSheet: snap.balanceSheet, cashFlow: snap.cashFlow };
+        const b = periodBounds(period);
+        if (!b) { const e = new Error("period must be YYYY-MM"); e.status = 400; throw e; }
+        const acct = await computeAccounting(client, req.orgId, b.from, b.to, storeId);
+        const stmt = await computeStatements(client, req.orgId, storeId);
+        return Object.assign({ filed: false, period }, acct, { balanceSheet: stmt.balanceSheet, cashFlow: stmt.cashFlow });
+      }
+      const from = Number(req.query.from) || 0;
+      const to = Number(req.query.to) || Date.now();
       const acct = await computeAccounting(client, req.orgId, from, to, storeId);
       const stmt = await computeStatements(client, req.orgId, storeId);
-      return Object.assign({}, acct, { balanceSheet: stmt.balanceSheet, cashFlow: stmt.cashFlow });
+      return Object.assign({ filed: false }, acct, { balanceSheet: stmt.balanceSheet, cashFlow: stmt.cashFlow });
     });
     res.json(Object.assign({ ok: true }, out));
   }));
