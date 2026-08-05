@@ -4731,8 +4731,13 @@ if (fs.existsSync(protoFile)) {
     const patch = (req.body && req.body.cfg && typeof req.body.cfg === "object") ? req.body.cfg : null;
     if (!patch) return res.status(400).json({ error: "no config" });
     const out = await withOrg(orgId, async (c) => {
-      const cur = (await c.query(
-        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
+      // Read the CANONICAL settings row (id='settings') — the one every reader
+      // uses (buildV2Real, buildGuestReal, liveStoreP). The old path took "most
+      // recently updated", which could diverge from 'settings' if a second
+      // settings row ever existed, sending a rename to a row nobody displays.
+      const allSet = (await c.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY (id='settings') DESC, updated_at DESC", [orgId])).rows;
+      const cur = allSet[0];
       const data = Object.assign({}, cur ? cur.data : {});
       data.adminCfg = Object.assign({}, data.adminCfg || {}, patch);
       /* The sector selector used to change a LABEL only. data.gstBp stayed at
@@ -4837,11 +4842,17 @@ if (fs.existsSync(protoFile)) {
           if (r > 0) data.usdRate = Math.min(1000000, r);
         }
       }
-      let r;
-      if (cur) {
-        r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id=$2 RETURNING rowver", [orgId, cur.id, JSON.stringify(data)]);
-      } else {
-        r = await c.query("INSERT INTO entities (org_id, kind, id, data, rowver) VALUES ($1,'settings','settings',$2,nextval('entities_rowver_seq')) RETURNING rowver", [orgId, JSON.stringify(data)]);
+      // Always persist to the canonical id='settings' row (upsert) — never to a
+      // stray duplicate — so a rename lands exactly where the storefront, terminal
+      // and admin read it back.
+      const r = await c.query(
+        `INSERT INTO entities (org_id, kind, id, data, rowver) VALUES ($1,'settings','settings',$2,nextval('entities_rowver_seq'))
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver`,
+        [orgId, JSON.stringify(data)]);
+      // Diagnostic (no secrets): reveals a settings-row split and confirms the name
+      // actually written, so a "rename didn't take" report is answered from logs.
+      if (patch.store) {
+        try { console.log("app2/config store", JSON.stringify({ org: orgId, settingsRows: allSet.length, curId: (cur && cur.id) || null, nameIn: (patch.store.name != null ? String(patch.store.name) : null), storeName: data.storeName || null })); } catch (e) { /* non-fatal */ }
       }
       return { rowver: Number(r.rows[0].rowver), adminCfg: data.adminCfg };
     });
