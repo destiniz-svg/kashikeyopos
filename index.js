@@ -4753,7 +4753,16 @@ if (fs.existsSync(protoFile)) {
       if (patch.store && typeof patch.store === "object") {
         const st = patch.store;
         const nm = String(st.name || "").trim();
-        if (nm) data.storeName = nm.slice(0, 80);
+        if (nm) {
+          data.storeName = nm.slice(0, 80);
+          // Keep the PRIMARY store's row in step with the trading name. The guest
+          // storefront maps stores → outlets (outlet line, picker, receipt outlet)
+          // and /admin + reports read stores.name too, so without this a rename in
+          // Merchant branding updated the header brand but stranded the outlet name
+          // on the old value. Only the default store follows the brand; named
+          // branches in a chain keep their own names.
+          await c.query("UPDATE stores SET name=$3 WHERE org_id=$1 AND id=$2", [orgId, DEFAULT_STORE_ID, data.storeName]);
+        }
         /* Changing the store currency used to relabel every price without
            converting it: a MVR 100 dish silently became a USD 100 dish, a
            15.42x overcharge, because the stored value is just an integer in the

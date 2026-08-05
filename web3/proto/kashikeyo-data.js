@@ -629,6 +629,15 @@
       // primary store carries id 3 (the terminal default), so the floor, ticket
       // engine and stat couplings keep working against real outlets.
       OUTLETS = REAL.outlets;
+      // The primary outlet wears the trading name, so a Merchant-branding rename
+      // shows on the storefront's outlet line / picker immediately — even before
+      // the stores-table row has caught up. Named branches keep their own names.
+      if (REAL.outlet && REAL.outlet.name) {
+        var primaryO = null;
+        for (var oi = 0; oi < OUTLETS.length; oi++) { if (OUTLETS[oi].id === 3) { primaryO = OUTLETS[oi]; break; } }
+        if (!primaryO) primaryO = OUTLETS[0];
+        if (primaryO) primaryO.name = REAL.outlet.name;
+      }
     } else if (REAL.outlet) {
       // Fallback (no stores row): rename + retax the default trading outlet.
       OUTLETS.forEach(function (o) {
