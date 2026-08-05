@@ -2853,6 +2853,15 @@ const GUEST_V3_CSP = [
 ].join("; ");
 const guestV3File = path.join(__dirname, "web3", "proto", "guest.html");
 const hasGuestV3 = () => { try { return fs.existsSync(guestV3File); } catch (e) { return false; } };
+// Cache-bust the /v2 logic assets per deploy. The HTML is served no-cache, but
+// /v2/*.js is cached (5m browser + longer at a CDN/Cloudflare edge), so after a
+// deploy a browser could keep running an OLD kashikeyo-data.js — which ignores the
+// freshly-injected KPOS_REAL.brand and renders the demo "KASHIKEYO". A per-deploy
+// version query gives each release a fresh URL, so it self-heals on the next load.
+const ASSET_VER = String(process.env.RAILWAY_GIT_COMMIT_SHA || process.env.RAILWAY_GIT_COMMIT || Date.now()).slice(0, 12);
+const bustV2Assets = (html) => html.replace(
+  /(<(?:script|link)\b[^>]*?\b(?:src|href)=")((?:\.\/)?[\w./-]+\.(?:js|css))(")/gi,
+  (m, pre, url, post) => /^https?:/i.test(url) ? m : pre + url + (url.indexOf("?") >= 0 ? "&" : "?") + "v=" + ASSET_VER + post);
 // Render the v2 storefront for a resolved org: real menu + branding, the slug
 // (for /p/:slug/* on a subdomain with no ?s=), the table (?t=) and customer (?c=).
 const serveGuestV3 = async (req, res, org, opts = {}) => {
@@ -2874,6 +2883,7 @@ const serveGuestV3 = async (req, res, org, opts = {}) => {
   const inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
   html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject)
     .replace(/<title>[^<]*<\/title>/i, "<title>" + safeTitle + "</title>");
+  html = bustV2Assets(html);   // per-deploy ?v= so a cached kashikeyo-data.js can't strand the store on demo branding
   res.set("Content-Security-Policy", GUEST_V3_CSP);
   res.set("Cache-Control", "no-cache");
   res.set("Content-Type", "text/html; charset=utf-8").send(html);
@@ -4067,6 +4077,7 @@ if (fs.existsSync(protoFile)) {
       } catch (e) { recordError("v2 hydrate", e); }
       let html = fs.readFileSync(path.join(proto3Dir, "index.html"), "utf8");
       if (inject) html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject);
+      html = bustV2Assets(html);   // per-deploy ?v= so the terminal never runs a stale cached bundle
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
 
