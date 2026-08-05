@@ -2719,7 +2719,48 @@ app.get("/version", (req, res) => {
   });
 });
 
+// ---- Store subdomains: the storefront on <handle>.<PORTAL_BASE_DOMAIN> ----
+// Everything here is gated on PORTAL_BASE_DOMAIN (comma-separated apex domains,
+// e.g. "kashikeyopos.com"). Until it is set every function is inert and routing
+// is byte-for-byte what it was, so this ships safely ahead of the wildcard
+// DNS + TLS being provisioned. The apex and www stay the platform app; a short
+// reserved list (app/api/admin/…) never maps to a store.
+const PORTAL_BASE_DOMAINS = String(process.env.PORTAL_BASE_DOMAIN || "").split(",")
+  .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/[/:].*$/, "")).filter(Boolean);
+const RESERVED_SUBDOMAINS = new Set(["www", "app", "api", "staging", "test", "admin", "portal", "dashboard", "assets", "static", "cdn", "mail", "kashikeyo", "kashikeyopos"]);
+// The store slug a request's Host header implies, or null when the host is the
+// platform apex/www, a reserved label, or subdomains aren't configured at all.
+function portalSlugFromHost(req) {
+  if (!PORTAL_BASE_DOMAINS.length) return null;
+  const host = String((req.headers && req.headers.host) || "").toLowerCase().split(":")[0];
+  if (!host) return null;
+  for (const base of PORTAL_BASE_DOMAINS) {
+    if (host === base || host === "www." + base) return null;          // the platform app
+    if (host.length > base.length + 1 && host.endsWith("." + base)) {
+      const label = host.slice(0, host.length - base.length - 1);
+      if (!label || label.indexOf(".") >= 0) return null;              // single-label subdomains only
+      if (RESERVED_SUBDOMAINS.has(label)) return null;
+      return label;
+    }
+  }
+  return null;
+}
+// The public origin a store's storefront links (QR codes, share links) should
+// use: the branded subdomain when configured, else PUBLIC_ORIGIN or the request.
+function portalOriginForSlug(slug, req) {
+  if (PORTAL_BASE_DOMAINS.length && slug) {
+    const xfp = req && req.headers && String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+    const proto = xfp || (req && req.protocol) || "https";
+    return proto + "://" + slug + "." + PORTAL_BASE_DOMAINS[0];
+  }
+  return process.env.PUBLIC_ORIGIN || (req.protocol + "://" + req.get("host"));
+}
+
 app.get("/", wrap(async (req, res, next) => {
+  // A branded store subdomain (<handle>.<domain>) resolves to that store's guest
+  // storefront: adopt its slug as ?s= so the guest-portal route below serves it.
+  const subSlug = portalSlugFromHost(req);
+  if (subSlug && !req.query.s) req.query.s = subSlug;
   if ((req.query.c || req.query.t) && !req.query.s) {
     const r = await withSystem((client) => client.query("SELECT slug FROM orgs"));
     if (r.rowCount === 1) {
@@ -4987,8 +5028,12 @@ if (fs.existsSync(protoFile)) {
     const org = (await withOrg(orgId, (c) => c.query("SELECT slug FROM orgs WHERE id=$1", [orgId]))).rows[0];
     if (!org || !org.slug) return res.status(404).json({ error: "no portal link yet" });
     const table = String(req.query.t || "").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 12);
-    const base = (process.env.PUBLIC_ORIGIN || (req.protocol + "://" + req.get("host")));
-    const link = base + "/?s=" + encodeURIComponent(org.slug) + (table ? "&t=" + encodeURIComponent(table) : "");
+    // On a branded subdomain the host itself carries the store, so the QR needs
+    // no ?s= — just the table. Off it, keep the ?s=<slug> query link.
+    const base = portalOriginForSlug(org.slug, req);
+    const link = PORTAL_BASE_DOMAINS.length
+      ? base + "/" + (table ? "?t=" + encodeURIComponent(table) : "")
+      : base + "/?s=" + encodeURIComponent(org.slug) + (table ? "&t=" + encodeURIComponent(table) : "");
     try {
       const svg = await QR.toString(link, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
       res.set("Content-Type", "image/svg+xml").set("Cache-Control", "private, max-age=300").send(svg);

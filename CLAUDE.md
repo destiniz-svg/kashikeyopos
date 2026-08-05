@@ -128,7 +128,31 @@ that raises stock + re-averages cost + books an expense entity), `audits`
   deterministic and works with **no key**.
 - Env vars: `ANTHROPIC_API_KEY` (set in Railway → service → Variables),
   optional `OCR_MODEL`. Also: `DATABASE_URL`/PG*, `JWT_SECRET`,
-  `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`, `PLATFORM_ADMIN_*`.
+  `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`, `PLATFORM_ADMIN_*`, `PUBLIC_ORIGIN`,
+  `PORTAL_BASE_DOMAIN`.
+
+## Store storefront branding + subdomains
+
+A store shapes its customer-facing (QR/guest) storefront from the v2 terminal
+Settings → **Merchant branding** (name, tagline, brand colour, logo, receipt
+footer, white-label) and **Store handle** cards. All persist on the settings
+entity via `POST /api/app2/config` (`store.{tagline,accent,whiteLabel,logo,…}`)
+except the handle, which renames `orgs.slug` via `POST /api/app2/handle`
+(slugified, ≥3 chars, reserved-word blocked, unique). `serveGuestPortal` +
+`liveStoreP` carry these; `buildV2Real` exposes `KPOS_REAL.brand`. The guest
+portal (`web2/proto/index.html`) repaints to `storeP.accent` (a named swatch key
+OR a `#rrggbb` — `accentVars()` synthesises the palette from a hex), prints the
+tagline, and hides "Powered by KashikeyoPOS" when white-labelled.
+
+**Subdomains** (`PORTAL_BASE_DOMAIN`, comma-separated apexes e.g.
+`kashikeyopos.com`): when set, `<handle>.<domain>` serves that store's guest
+storefront — `portalSlugFromHost()` maps the Host header's label to `?s=<slug>`
+in the root handler; apex/www and a reserved-label set (`app`/`api`/`admin`/…)
+stay the platform app; an unknown label falls back to the app. QR codes
+(`/api/app2/qr.svg`) then encode `https://<handle>.<domain>/` (via
+`portalOriginForSlug()`, honouring `x-forwarded-proto`). **All of this is inert
+until `PORTAL_BASE_DOMAIN` is set** — routing is unchanged otherwise — so the
+code ships ahead of the wildcard DNS + TLS being provisioned on Railway.
 
 ## Deploy (staging → production flow)
 
