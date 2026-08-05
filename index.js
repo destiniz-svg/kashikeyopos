@@ -2885,7 +2885,17 @@ const serveGuestV3 = async (req, res, org, opts = {}) => {
     .replace(/<title>[^<]*<\/title>/i, "<title>" + safeTitle + "</title>");
   html = bustV2Assets(html);   // per-deploy ?v= so a cached kashikeyo-data.js can't strand the store on demo branding
   res.set("Content-Security-Policy", GUEST_V3_CSP);
-  res.set("Cache-Control", "no-cache");
+  // The storefront HTML carries the store's live identity (name, brand, menu)
+  // injected as KPOS_REAL. It MUST reflect a rename immediately, so never cache
+  // it — not in the browser, not at the Railway/CDN edge. `no-cache` still let a
+  // conditional request 304 against a stale copy (a rename would then not show
+  // until the cache expired). `no-store` + a CDN directive stop every layer from
+  // holding a copy, and with no-store the browser makes no conditional request,
+  // so there is no 304-against-stale. Vary:Host keeps one store's page off
+  // another store's slug at any shared cache.
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.set("CDN-Cache-Control", "no-store");
+  res.set("Vary", "Host");
   res.set("Content-Type", "text/html; charset=utf-8").send(html);
 };
 if (fs.existsSync(protoFile)) {
