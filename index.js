@@ -4906,10 +4906,13 @@ if (fs.existsSync(protoFile)) {
         `INSERT INTO entities (org_id, kind, id, data, rowver) VALUES ($1,'settings','settings',$2,nextval('entities_rowver_seq'))
          ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver`,
         [orgId, JSON.stringify(data)]);
-      // Diagnostic (no secrets): reveals a settings-row split and confirms the name
-      // actually written, so a "rename didn't take" report is answered from logs.
+      // Diagnostic (no secrets): reveals a settings-row split, confirms the name
+      // actually written, and prints the org's current handle (slug) so its live
+      // storefront link — kashikeyopos.com/?s=<slug> — is answerable from logs.
       if (patch.store) {
-        try { console.log("app2/config store", JSON.stringify({ org: orgId, settingsRows: allSet.length, curId: (cur && cur.id) || null, nameIn: (patch.store.name != null ? String(patch.store.name) : null), storeName: data.storeName || null })); } catch (e) { /* non-fatal */ }
+        let slug = null;
+        try { slug = ((await withSystem((sc) => sc.query("SELECT slug FROM orgs WHERE id=$1", [orgId]))).rows[0] || {}).slug || null; } catch (e) { /* non-fatal */ }
+        try { console.log("app2/config store", JSON.stringify({ org: orgId, slug: slug, settingsRows: allSet.length, curId: (cur && cur.id) || null, nameIn: (patch.store.name != null ? String(patch.store.name) : null), storeName: data.storeName || null })); } catch (e) { /* non-fatal */ }
       }
       return { rowver: Number(r.rows[0].rowver), adminCfg: data.adminCfg };
     });
@@ -5311,6 +5314,22 @@ for (const p of ["docs", "api", "status", "privacy", "terms"]) {
   app.get("/" + p, (req, res) => res.sendFile(path.join(siteDir, p + ".html")));
 }
 
+/* Shown when a storefront URL (…/?s=<handle> or <handle>.<domain>) matches no
+   live store — a stale QR or a handle that was changed. Deliberately plain and
+   self-contained (no external assets) so it can never be mistaken for a real
+   store the way the old demo-till fallback was. */
+const STOREFRONT_NOT_FOUND_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Storefront not found</title>
+<style>:root{color-scheme:light dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;
+font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f4f1;color:#1c1917;padding:24px}
+@media(prefers-color-scheme:dark){body{background:#14110f;color:#f5f3f0}.card{background:#1e1a17;border-color:#2c2622}}
+.card{max-width:420px;width:100%;background:#fff;border:1px solid #eee7e0;border-radius:18px;padding:34px 28px;text-align:center;
+box-shadow:0 12px 40px rgba(0,0,0,.08)}h1{font-size:20px;margin:0 0 10px}p{font-size:14.5px;line-height:1.6;color:#78716c;margin:0 0 6px}
+.mark{width:52px;height:52px;border-radius:14px;background:#C7431D;color:#fff;display:grid;place-items:center;margin:0 auto 18px;
+font-weight:800;font-size:22px}</style></head><body><div class="card"><div class="mark">K</div>
+<h1>This storefront isn't available</h1><p>The ordering link you opened doesn't match a store — it may have been changed, or the QR code is out of date.</p>
+<p>Please ask the store for their current ordering link.</p></div></body></html>`;
+
 const webDir = path.join(__dirname, "web", "dist");
 if (fs.existsSync(webDir)) {
   const noCacheShell = { setHeaders: (res, file) => { if (file.endsWith(".html") || file.endsWith("sw.js")) res.set("Cache-Control", "no-cache"); } };
@@ -5366,8 +5385,21 @@ if (fs.existsSync(webDir)) {
     mods: gMods(p.addons),
     soldOut: !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)) }));
   const serveGuestPortal = async (req, res) => {
-    const org = await orgBySlug(String(req.query.s || ""));
-    if (!org) return sendTill(req, res);
+    const slugReq = String(req.query.s || "");
+    const org = await orgBySlug(slugReq);
+    /* No-secret diagnostic: which storefront slug was asked for, on which host,
+       and whether it resolved (plus the org id + its registered name). Answers
+       "my storefront shows the demo / the wrong name" straight from the logs —
+       the slug and host are public and the org id is opaque. */
+    try { console.log("guest portal", JSON.stringify({ slug: slugReq, host: (req.headers && req.headers.host) || "", resolved: !!org, org: org ? org.id : null, storeName: org ? (org.store_name || "") : null })); } catch (e) { /* non-fatal */ }
+    if (!org) {
+      /* A storefront address that matches no live store must NOT fall back to the
+         demo till — that renders the placeholder "Kashikeyo Cafe" and reads as a
+         real (wrong) store, so an owner whose handle changed thinks their rename
+         failed. Show an unmistakable "storefront not found" instead. */
+      return res.status(404).set("Content-Type", "text/html; charset=utf-8")
+        .set("Cache-Control", "no-store").send(STOREFRONT_NOT_FOUND_HTML);
+    }
     // The storefront now renders the v2 design (web3/proto/guest.html) through the
     // shared serveGuestV3. The legacy web2 guest render below stays only as a
     // fallback if that page is ever missing.
