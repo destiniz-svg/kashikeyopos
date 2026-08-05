@@ -2044,6 +2044,20 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, id });
   }));
 
+  // Mark an on-account (unpaid) bill as paid: records how it was paid and when,
+  // so it leaves accounts payable and — if paid from the bank — becomes an
+  // outstanding payment on the next reconciliation until it clears.
+  router.post("/expenses/:id/pay", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const pf = String((req.body || {}).method || "bank").toLowerCase();
+    const method = ["cash", "card", "transfer", "bank"].indexOf(pf) >= 0 ? pf : "bank";
+    const r = await withOrg(req.orgId, (client) => client.query(
+      "UPDATE entities SET data = data || $3::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='expenses' AND id=$2 AND deleted=false RETURNING rowver",
+      [req.orgId, req.params.id, JSON.stringify({ paidFrom: method, paidAt: Date.now() })]));
+    if (!r.rowCount) return res.status(404).json({ error: "bill not found" });
+    if (poke) poke(req.orgId, Number(r.rows[0].rowver));
+    res.json({ ok: true, method });
+  }));
+
   /* ── Bridge 2: purchase orders raised at the till ───────────────────────
      POs live as "pords" entities in the till's own sync stream. The back
      office lists the open ones and can receive one as a pre-filled delivery:
