@@ -1434,7 +1434,9 @@ class Component extends DCLogic {
       // The status chip has to follow the fulfilment mode, or a takeaway order
       // is headed "Takeaway" and badged "Table open" in the same row.
       modeChip: this.fulfil().chip,
-      outletLine: o.name + " · beach deck",
+      // Real store: just the outlet name (a live merchant isn't a demo "beach
+      // deck"). The reference prototype keeps its flavour label.
+      outletLine: window.KPOS_REAL ? (o.name + (o.addr ? " · " + o.addr : "")) : (o.name + " · beach deck"),
       scLabel: (o.sc || 0) + "%", taxName: (o.tax || "GST") + (o.tax === "TGST" ? " — tourism zone" : ""),
       taxLabel: (o.rate || 0) + "%",
       heroImgStyle: "position:absolute;inset:0;display:block;background:url('" + ((this.menu()[0] || {}).img || "img/photo_1544025162_d76694265947.jpg") + "') center/cover no-repeat",
