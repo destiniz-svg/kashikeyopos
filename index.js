@@ -2883,6 +2883,11 @@ if (fs.existsSync(protoFile)) {
     address: (settings && settings.address) || "",
     footer: (settings && (settings.receiptFooter || settings.footer)) || "",
     logo: (settings && settings.logo) || "",
+    /* Storefront branding — the trading tagline, the accent that repaints the
+       guest portal, and the white-label switch. */
+    tagline: (settings && settings.tagline) || "",
+    accent: (settings && settings.accent) || "",
+    whiteLabel: !!(settings && settings.whiteLabel),
   });
   const liveSalesLog = (saleRows, refundedIds) => saleRows.map((s) => ({
     id: String(s.id || ""), fullNo: String(s.no || ""), at: Number(s.at) || Number(s.t) || 0,
@@ -3625,6 +3630,9 @@ if (fs.existsSync(protoFile)) {
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
         const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
+        // The store handle (orgs.slug) is the QR-portal address; the Branding
+        // panel shows and edits it. orgs is system-scoped, so read it with withSystem.
+        const slug = ((await withSystem((sc) => sc.query("SELECT slug FROM orgs WHERE id=$1", [orgId]))).rows[0] || {}).slug || "";
         // Today's real trading, for the POS stats strip (net sales + covers).
         // Empty for a store that hasn't sold yet — the honest zero, not a seed.
         const salesRows = (await c.query(
@@ -3905,7 +3913,13 @@ if (fs.existsSync(protoFile)) {
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
             currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr },
           fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "",
-            address: fiscalAddr, storeName: st.storeName || "" },
+            address: fiscalAddr, storeName: st.storeName || "", phone: st.phone || "" },
+          // Storefront branding the terminal's Branding panel edits and the guest
+          // portal renders — logo, tagline, accent, footer, white-label + the
+          // store handle (the QR-portal slug).
+          brand: { name: st.storeName || "", logo: st.logo || "", tagline: st.tagline || "",
+            accent: st.accent || "", footer: st.receiptFooter || st.footer || "",
+            whiteLabel: !!st.whiteLabel, handle: slug },
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
@@ -4682,6 +4696,13 @@ if (fs.existsSync(protoFile)) {
         if (st.addr != null) data.address = String(st.addr).slice(0, 200);
         if (st.footer != null) data.receiptFooter = String(st.footer).slice(0, 200);
         if (st.logo !== undefined) data.logo = st.logo || "";
+        // Storefront branding the guest/QR portal renders in the store's own
+        // identity: tagline under the name, an accent that repaints the portal
+        // (a named palette key OR a #rrggbb the client resolves), and a
+        // white-label switch that drops the "Powered by KashikeyoPOS" line.
+        if (st.tagline != null) data.tagline = String(st.tagline).slice(0, 120);
+        if (st.accent != null) data.accent = String(st.accent).slice(0, 24);
+        if (st.whiteLabel !== undefined) data.whiteLabel = !!st.whiteLabel;
         if (st.usdRate != null && st.usdRate !== "") {
           const r = Math.round(parseFloat(st.usdRate) * 100);
           if (r > 0) data.usdRate = Math.min(1000000, r);
@@ -4697,6 +4718,33 @@ if (fs.existsSync(protoFile)) {
     });
     poke(orgId, out.rowver);
     res.json({ ok: true, adminCfg: out.adminCfg });
+  }));
+  // Store handle (orgs.slug): the address of the QR/guest storefront — the
+  // `?s=<handle>` param today and the `<handle>.<domain>` subdomain later. An
+  // admin can rename it; it is slugified, length- and reserved-word checked,
+  // and unique per platform (the DB UNIQUE constraint is the real guard).
+  // Changing it re-points the storefront, so printed QR codes with the old
+  // handle stop resolving — the client warns before saving.
+  const RESERVED_HANDLES = new Set(["www", "app", "admin", "api", "p", "v2", "back", "welcome", "signup", "login", "logout", "assets", "static", "vendor", "img", "mail", "smtp", "ftp", "ns", "cdn", "status", "help", "support", "docs", "blog", "store", "shop", "portal", "order", "kashikeyo", "kashikeyopos"]);
+  app.post("/api/app2/handle", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Changing the store handle needs an admin or the owner.")) return;
+    const handle = String((req.body && req.body.handle) || "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+    if (handle.length < 3) return res.status(400).json({ error: "A handle needs at least 3 characters — letters, digits and hyphens." });
+    if (RESERVED_HANDLES.has(handle)) return res.status(400).json({ error: "That handle is reserved — pick another." });
+    const result = await withSystem(async (c) => {
+      try {
+        const r = await c.query("UPDATE orgs SET slug=$1 WHERE id=$2 RETURNING slug", [handle, orgId]);
+        return { ok: true, handle: r.rows[0] && r.rows[0].slug };
+      } catch (e) {
+        if (String(e && e.code) === "23505") return { taken: true };
+        throw e;
+      }
+    });
+    if (result.taken) return res.status(409).json({ error: "That handle is already taken — try another." });
+    logActivity(orgId, { actor: "admin", action: "store.handle", ref: handle, requestId: req.id, detail: {} });
+    res.json({ ok: true, handle: result.handle });
   }));
   // Telegram alert test-send. Mirrors the AI features' graceful-degrade
   // contract: with no TELEGRAM_BOT_TOKEN in the environment it reports
@@ -5131,6 +5179,9 @@ if (fs.existsSync(webDir)) {
        charge a hardcoded 10%. Keep the two in step. */
     const storeP = { name: st.storeName || org.store_name, currency: st.currency || "MVR", usdRate: Number(st.usdRate) || 1542,
       tin: st.tin || "", address: st.address || "", footer: st.receiptFooter || st.footer || "", logo: st.logo || "",
+      // Storefront branding: the guest portal repaints to the store's accent,
+      // prints its tagline, and drops the vendor line when white-labelled.
+      tagline: st.tagline || "", accent: st.accent || "", whiteLabel: !!st.whiteLabel,
       taxRate: (st.adminCfg && st.adminCfg.taxRate) === "tgst" ? "tgst" : "ggst",
       tableCount: Number(st.tableCount) > 0 ? Number(st.tableCount) : 12 };
     const catGroups = Array.isArray(st.catGroups) ? st.catGroups : [];
