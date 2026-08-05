@@ -3652,6 +3652,20 @@ if (fs.existsSync(protoFile)) {
         // dish name the receipt and menu-engineering report need.
         const nameById = {};
         menu.forEach((mm) => { nameById[String(mm.id)] = mm.name; });
+        // Which sales already have a refund against them, and for how much. The
+        // terminal reads this so a refunded ticket shows "Refunded" — and its
+        // refund button is disabled — even after a reload, when the till's own
+        // local refunds map is empty. A refund links by refundOf; the register
+        // (/app) stores the original id there, the terminal stores the order no,
+        // so we key the set on both and match an order by either.
+        const refundedRefs = {};
+        for (const r of salesRows) {
+          const d = r.data || {};
+          if (d.type === "refund" && d.refundOf) {
+            const k = String(d.refundOf);
+            refundedRefs[k] = (refundedRefs[k] || 0) + Math.abs(Number(d.total) || 0);
+          }
+        }
         const orders = [];
         for (const r of salesRows) {
           const d = r.data || {};
@@ -3678,6 +3692,8 @@ if (fs.existsSync(protoFile)) {
             items: lineItems, subtotal: Math.round((Number(d.subtotal) || 0) / 100),
             svc: Math.round((Number(d.svcCharge) || 0) / 100), gst: Math.round((Number(d.gst) || 0) / 100),
             customerId: d.customerId || null, customerName: d.customerName || "",
+            refunded: (refundedRefs[String(d.no || "")] || refundedRefs[String(r.id)] || 0) > 0,
+            refundAmt: Math.round((refundedRefs[String(d.no || "")] || refundedRefs[String(r.id)] || 0) / 100),
           });
         }
         orders.sort((a, b) => b.at - a.at);
