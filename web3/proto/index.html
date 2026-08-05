@@ -318,21 +318,22 @@ button:active:not(:disabled){transform:scale(.975)}
             </div>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px">
               <sc-for list="{{ dishes }}" as="m" hint-placeholder-count="0">
-                <button onClick="{{ m.add }}" style="{{ m.style }}">
-                  <span style="position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0">
+                <div style="{{ m.style }}">
+                  <button onClick="{{ m.addons }}" title="Tap the photo to choose add-ons" style="position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0;border:none;padding:0;cursor:pointer">
                     <span style="{{ m.photoStyle }}"></span>
                     <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
                     <span style="{{ m.vegStyle }}"></span>
-                  </span>
-                  <span style="padding:9px 11px 10px;display:flex;flex-direction:column;gap:2px;flex:1">
+                    <span style="{{ m.addonsHintStyle }}">＋ Add-ons</span>
+                  </button>
+                  <button onClick="{{ m.add }}" title="Tap to add — tap the photo for add-ons" style="padding:9px 11px 10px;display:flex;flex-direction:column;gap:2px;flex:1;border:none;background:none;text-align:left;cursor:pointer;width:100%">
                     <span style="font-size:12.5px;font-weight:600;line-height:1.3">{{ m.name }}</span>
                     <span style="font-size:10.5px;color:var(--text-dim);line-height:1.35;flex:1;margin-bottom:7px">{{ m.desc }}</span>
-                    <span style="display:flex;justify-content:space-between;align-items:baseline;gap:6px">
+                    <span style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;width:100%">
                       <span style="font-size:13px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace">{{ m.price }}</span>
                       <span style="font-size:9.5px;color:var(--text-faint);font-weight:600;letter-spacing:.04em;text-transform:uppercase">{{ m.foot }}</span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                </div>
               </sc-for>
             </div>
           </div>
@@ -883,6 +884,28 @@ button:active:not(:disabled){transform:scale(.975)}
               </div>
               <input value="{{ noteVal }}" onChange="{{ onNoteChange }}" placeholder="Allergy, doneness, course order…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
               <button onClick="{{ saveNote }}" style="margin-top:12px;width:100%;padding:11px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Attach to the line and re-fire</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mAddons }}">
+            <div>
+              <div style="display:flex;gap:13px;align-items:center;margin-bottom:16px">
+                <span style="width:60px;height:60px;border-radius:10px;flex-shrink:0;{{ addonImg }}"></span>
+                <div style="display:flex;align-items:center;gap:10px;flex:1">
+                  <button onClick="{{ addonDec }}" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:19px;font-weight:700;line-height:1">−</button>
+                  <span style="font-size:16px;font-weight:700;font-family:'JetBrains Mono',monospace;min-width:24px;text-align:center">{{ addonQty }}</span>
+                  <button onClick="{{ addonInc }}" style="width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:18px;font-weight:700;line-height:1">+</button>
+                  <span style="margin-left:auto;font-size:15px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace">{{ addonTotal }}</span>
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:9px">Add-ons &amp; modifiers</div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px">
+                <sc-for list="{{ addonOpts }}" as="a" hint-placeholder-count="10">
+                  <button onClick="{{ a.pick }}" style="{{ a.style }}">{{ a.label }}</button>
+                </sc-for>
+              </div>
+              <input value="{{ addonNote }}" onChange="{{ onAddonNote }}" placeholder="Anything else for the kitchen…" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:11px 13px;font-size:13px;color:var(--text);outline:none"/>
+              <button onClick="{{ addAddon }}" style="margin-top:14px;width:100%;padding:12px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Add to ticket</button>
             </div>
           </sc-if>
 
@@ -2461,6 +2484,8 @@ class Component extends DCLogic {
           name: m.name, desc: m.desc, price: MVRc(price),
           photoStyle: "position:absolute;inset:0;background-image:url(" + m.img + ");background-size:cover;background-position:center;" + (off ? "filter:grayscale(1) brightness(.5);" : ""),
           add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
+          addons: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.openAddons(m),
+          addonsHintStyle: off ? "display:none" : "position:absolute;bottom:6px;right:6px;font-size:9px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:rgba(0,0,0,.55);color:#fff",
           style: "display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;opacity:" + (off ? ".62" : "1"),
           tag: off ? "86'd" : (m.recipe && m.recipe.length ? "" : ""),
           tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff" : "display:none",
@@ -2693,6 +2718,39 @@ class Component extends DCLogic {
     // real question — did that land? — without the operator reading the list.
     this.setState({ lastAdd: { id: m.id, at: Date.now() } });
   }
+  // Tapping a dish photo opens the add-ons sheet (quantity + modifiers + a
+  // kitchen note) instead of the one-tap quick add on the price/body.
+  openAddons(m) {
+    if (!this.guardRegister()) return;
+    if (!this.state.activeTable) { this.toast("Pick a table first", "warn"); return; }
+    this.setState({ modal: { kind: "addons", item: m, qty: 1, mods: [], note: "" } });
+  }
+  // Add a line with an explicit quantity and modifier note. A modified line
+  // stays distinct (its note prints on the KOT / shows on the KDS); a plain add
+  // still merges with a matching unfired line, exactly like the quick add. The
+  // note carries the modifiers only — pricing is unchanged, so the bill maths
+  // stay untouched.
+  addLineMod(m, qty, note) {
+    const s = this.state;
+    if (!this.guardRegister()) return;
+    if (!s.activeTable) { this.toast("Pick a table first", "warn"); return; }
+    qty = Math.max(1, Math.round(qty) || 1);
+    this.mutate(undefined, (t) => {
+      const gi = Math.min(s.activeSplit, Math.max(0, this.guestsOf(t).length - 1));
+      if (!note) {
+        const ex = t.lines.find((l) => l.id === m.id && (l.split || 0) === gi && !l.fired && !l.note);
+        if (ex) { const i = t.lines.indexOf(ex); t.lines[i] = Object.assign({}, ex, { qty: ex.qty + qty }); }
+        else t.lines.push({ id: m.id, qty: qty, note: "", split: gi, fired: false, since: 0, firedAt: 0 });
+      } else {
+        t.lines.push({ id: m.id, qty: qty, note: note, split: gi, fired: false, since: 0, firedAt: 0 });
+      }
+      t.status = "occupied";
+      if (!t.openedAt) t.openedAt = Date.now() - (t.opened || 0) * 60000;
+    });
+    this.queue("add_line", m.name + " × " + qty + (note ? " (" + note + ")" : "") + " · T" + pad(s.activeTable), "order_lines");
+    this.setState({ lastAdd: { id: m.id, at: Date.now() } });
+    this.toast(m.name + " × " + qty + " added");
+  }
   overlayVals() {
     const s = this.state, K0 = K(), o = this.outlet();
     const m = s.modal || {};
@@ -2708,7 +2766,7 @@ class Component extends DCLogic {
         : "width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--text-dim);background:var(--bg-2);border:1px solid var(--line);flex-shrink:0;font-size:15px;line-height:1",
       stop: (e) => e.stopPropagation(),
       payGridStyle: this.effBp() === "m" ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
-      mPay: m.kind === "pay", mNote: m.kind === "note", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
+      mPay: m.kind === "pay", mNote: m.kind === "note", mAddons: m.kind === "addons", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
       mKot: m.kind === "kot",
       mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm" || m.kind === "resv",
       mLock: m.kind === "lock",
@@ -3107,6 +3165,31 @@ class Component extends DCLogic {
         noteVal: m.val || "",
         onNoteChange: (e) => this.setState({ modal: Object.assign({}, m, { val: e.target.value }) }),
         saveNote: () => { const i = m.idx; this.mutate(undefined, (t) => { t.lines[i] = Object.assign({}, t.lines[i], { note: m.val, fired: false }); }); this.queue("line_note", "Note on line " + (i + 1) + " · T" + pad(s.activeTable), "order_lines"); this.setState({ modal: null }); this.toast("Note attached — re-fire to send it"); }
+      };
+    }
+
+    if (m.kind === "addons") {
+      const it = m.item || {};
+      const qty = Math.max(1, m.qty || 1);
+      const mods = m.mods || [];
+      const OPTS = ["Extra spicy", "Mild", "No onion", "No garlic", "Less salt", "Well done", "Sauce on side", "Extra sauce", "Extra cheese", "No ice"];
+      const unit = this.menuPrice(it);
+      const setM = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
+      const noteStr = mods.concat(m.note ? [m.note] : []).join(", ");
+      return {
+        modalTitle: it.name || "Add-ons",
+        modalSub: MVRc(unit) + " each · choose options, then add",
+        addonImg: it.img ? ("background-image:url(" + it.img + ");background-size:cover;background-position:center") : "background:var(--bg-2)",
+        addonQty: String(qty),
+        addonDec: () => setM({ qty: Math.max(1, qty - 1) }),
+        addonInc: () => setM({ qty: qty + 1 }),
+        addonTotal: MVRc(unit * qty),
+        addonOpts: OPTS.map((o) => ({ label: o,
+          style: "font-size:11.5px;padding:7px 13px;border-radius:20px;font-weight:600;border:1px solid " + (mods.indexOf(o) >= 0 ? "var(--amber)" : "var(--line)") + ";background:" + (mods.indexOf(o) >= 0 ? "rgba(242,164,58,.12)" : "var(--bg)") + ";color:" + (mods.indexOf(o) >= 0 ? "var(--amber-bright)" : "var(--text-dim)"),
+          pick: () => setM({ mods: mods.indexOf(o) >= 0 ? mods.filter((x) => x !== o) : mods.concat([o]) }) })),
+        addonNote: m.note || "",
+        onAddonNote: (e) => setM({ note: e.target.value }),
+        addAddon: () => { this.addLineMod(it, qty, noteStr); this.setState({ modal: null }); }
       };
     }
 
