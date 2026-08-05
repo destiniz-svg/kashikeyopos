@@ -606,6 +606,24 @@
         status: u.status || "Active" };
     });
     if (REAL.outlet) CHAIN.currency = REAL.outlet.currency || CHAIN.currency;
+    // Real merchant branding → the chain brand the guest storefront + receipts
+    // read, so the QR page wears the store's own name/tagline/logo/footer and
+    // white-label, not the demo "KASHIKEYO" fascia. whiteLabel drops the
+    // powered-by line (poweredBy=false).
+    if (REAL.brand) {
+      CHAIN.brand = Object.assign({}, CHAIN.brand, {
+        name: REAL.brand.name || CHAIN.brand.name,
+        tagline: REAL.brand.tagline || "",
+        logo: REAL.brand.logo || "",
+        accent: REAL.brand.accent || "",
+        receiptFoot: REAL.brand.footer || CHAIN.brand.receiptFoot,
+        poweredBy: !REAL.brand.whiteLabel,
+      });
+    }
+    if (REAL.fiscal) {
+      CHAIN.name = REAL.fiscal.legalName || (REAL.brand && REAL.brand.name) || CHAIN.name;
+      CHAIN.tin = REAL.fiscal.tin || "";
+    }
     if (REAL.outlets && REAL.outlets.length) {
       // Real chain: the org's own stores replace the seeded outlet list. The
       // primary store carries id 3 (the terminal default), so the floor, ticket

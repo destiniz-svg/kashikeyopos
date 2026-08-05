@@ -6,7 +6,9 @@
  * store's real rates and returns the order ref. No auth — guests are anonymous. */
 (function () {
   function slug() {
-    try { return new URLSearchParams(location.search).get("s") || ""; } catch (e) { return ""; }
+    // ?s=<slug> on a query link, else the injected store slug (a branded
+    // subdomain has no ?s= — the host carries the store).
+    try { return new URLSearchParams(location.search).get("s") || (window.KPOS_REAL && window.KPOS_REAL.slug) || ""; } catch (e) { return (window.KPOS_REAL && window.KPOS_REAL.slug) || ""; }
   }
   function placeOrder(items, table, note) {
     var s = slug();
@@ -33,4 +35,17 @@
       .catch(function () { if (cb) cb(null); });
   }
   window.__vgAccount = account;
+
+  // Waiter call / bill request → the store's public /p/:slug/call endpoint, so it
+  // reaches the terminal floor (the localStorage bridge is demo-only and never
+  // leaves the guest's own device).
+  function callStaff(kind, table) {
+    var s = slug();
+    if (!s) return;                                          // demo mode → no-op
+    fetch("/p/" + encodeURIComponent(s) + "/call", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: kind === "bill" ? "bill" : "assist", table: table || "" }),
+    }).catch(function () { /* never block the guest on a call */ });
+  }
+  window.__vgCall = callStaff;
 })();

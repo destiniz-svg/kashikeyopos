@@ -2801,6 +2801,83 @@ const catSlug = (c) => {
   if (/snack|bakery|hedhika|croissant|muffin|gulha|bajiya|roshi|cutlet|samosa|pastr/.test(s)) return "hedhikaa";
   return "mains";
 };
+
+// ── Guest storefront (the v2 QR page: web3/proto/guest.html) ────────────────
+// Module scope so BOTH the /v2 route block and the web2 guest entry (which are
+// in separate `if (fs.existsSync(...))` blocks) can render the SAME page. Uses
+// catSlug (module) rather than the block-scoped liveMenu.
+const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
+  const prodRows = (await c.query(
+    "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+  const photo = {};
+  for (const r of prodRows) {
+    const im = r.data && r.data.img; if (!im) continue;
+    photo[r.id] = /^https?:\/\//i.test(String(im)) ? String(im)
+      : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+  }
+  const menu = prodRows.map((r) => ({ id: r.id, d: r.data || {} }))
+    .filter((x) => x.d.name && !x.d.hidden)
+    .map((x) => { const p = x.d;
+      const soldOut = !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0));
+      return { id: x.id, cat: catSlug(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
+        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut, veg: false, recipe: [] }; });
+  const catName = {};
+  menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
+  const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
+  const st = ((await c.query(
+    "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
+  const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
+  const storeRows = (await c.query(
+    "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
+  const outlets = storeRows.map((sr, i) => ({ id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
+    name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0, region: "",
+    tax: tax, rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), addr: sr.address || "", mgr: "", pos: true, seats: 48, tables: 12 }));
+  // The store's own identity — same brand block the v2 terminal edits, so the QR
+  // page wears the store's brand, not the demo "KASHIKEYO" fascia.
+  const brand = { name: st.storeName || "Store", logo: st.logo || "", tagline: st.tagline || "",
+    accent: st.accent || "", footer: st.receiptFooter || st.footer || "", whiteLabel: !!st.whiteLabel };
+  const fiscalAddr = [st.address, st.island, st.atoll].filter(Boolean).join(", ");
+  return {
+    guest: true, outlet: { name: st.storeName || "Store", tax: tax, rate: Math.round(gstBp / 100),
+      sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
+    outlets: outlets.length ? outlets : null, categories, menu, brand,
+    fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "", address: fiscalAddr, phone: st.phone || "" },
+  };
+});
+const GUEST_V3_CSP = [
+  "default-src 'self'", "base-uri 'self'", "object-src 'none'",
+  "img-src 'self' data: blob: https:", "font-src 'self' data: https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+  "connect-src 'self' blob: data:", "frame-ancestors 'none'",
+].join("; ");
+const guestV3File = path.join(__dirname, "web3", "proto", "guest.html");
+const hasGuestV3 = () => { try { return fs.existsSync(guestV3File); } catch (e) { return false; } };
+// Render the v2 storefront for a resolved org: real menu + branding, the slug
+// (for /p/:slug/* on a subdomain with no ?s=), the table (?t=) and customer (?c=).
+const serveGuestV3 = async (req, res, org, opts = {}) => {
+  const storeId = cleanStoreId(opts.storeId || DEFAULT_STORE_ID);
+  try { await ensureDefaultStore(org.id, org.store_name); } catch (e) { /* best effort */ }
+  const real = await buildGuestReal(org.id);
+  real.slug = org.slug;
+  const table = String(opts.table || "").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 20);
+  if (table) real.table = table;
+  if (opts.custId) {
+    try {
+      const cust = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, opts.custId));
+      if (cust) real.customer = { id: cust.id, name: cust.name || "", points: Number(cust.points) || 0,
+        balance: Number(cust.balance) || 0, memberNo: cust.memberNo || "", address: cust.address || "" };
+    } catch (e) { /* the account tab is optional */ }
+  }
+  const safeTitle = String((real.brand && real.brand.name) || org.store_name || "Order online").replace(/[<>&"]/g, "") + " · Order online";
+  let html = fs.readFileSync(guestV3File, "utf8");
+  const inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
+  html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject)
+    .replace(/<title>[^<]*<\/title>/i, "<title>" + safeTitle + "</title>");
+  res.set("Content-Security-Policy", GUEST_V3_CSP);
+  res.set("Cache-Control", "no-cache");
+  res.set("Content-Type", "text/html; charset=utf-8").send(html);
+};
 if (fs.existsSync(protoFile)) {
   const protoDir = path.join(__dirname, "web2", "proto");
   const protoCache = {};
@@ -3999,52 +4076,19 @@ if (fs.existsSync(protoFile)) {
        injected — the menu, categories and outlet tax. No ops token, staff,
        customers or sales ever reach a guest. Orders are placed through the
        existing /p/:slug guest order API. */
-    const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
-      const prodRows = (await c.query(
-        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
-      const items = liveMenu(prodRows);
-      const photo = {};
-      for (const r of prodRows) {
-        const im = r.data && r.data.img; if (!im) continue;
-        photo[r.id] = /^https?:\/\//i.test(String(im)) ? String(im)
-          : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
-      }
-      const catName = {};
-      items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
-      const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
-      const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
-        price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, veg: false, recipe: [] }));
-      const st = ((await c.query(
-        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
-      const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
-      const storeRows = (await c.query(
-        "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
-      const outlets = storeRows.map((sr, i) => ({ id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
-        name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0, region: "",
-        tax: tax, rate: Math.round(gstBp / 100), sc: Math.round(scBp / 100), addr: sr.address || "", mgr: "", pos: true, seats: 48, tables: 12 }));
-      return {
-        guest: true, outlet: { name: st.storeName || "Store", tax: tax, rate: Math.round(gstBp / 100),
-          sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-        outlets: outlets.length ? outlets : null, categories, menu,
-      };
-    });
+    // /vg — preview/entry for the v2 storefront. Uses the shared serveGuestV3
+    // (same page the live /?s= + subdomain now render). No store → design preview.
     app.get(/^\/vg(\/.*)?$/, async (req, res) => {
-      res.set("Content-Security-Policy", V2_CSP);
-      res.set("Cache-Control", "no-cache");
-      let inject = "";
       try {
-        const slug = String(req.query.s || (req.path.split("/")[2] || "")).trim().toLowerCase();
-        if (slug) {
-          const org = await orgBySlug(slug);
-          if (org) {
-            const real = await buildGuestReal(org.id);
-            if (real) inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
-          }
+        const slug = String(req.query.s || portalSlugFromHost(req) || (req.path.split("/")[2] || "")).trim().toLowerCase();
+        const org = slug ? await orgBySlug(slug) : null;
+        if (!org) {
+          res.set("Content-Security-Policy", GUEST_V3_CSP);
+          res.set("Cache-Control", "no-cache");
+          return res.set("Content-Type", "text/html; charset=utf-8").send(fs.readFileSync(guestV3File, "utf8"));
         }
-      } catch (e) { recordError("vg hydrate", e); }
-      let html = fs.readFileSync(path.join(proto3Dir, "guest.html"), "utf8");
-      if (inject) html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject);
-      res.set("Content-Type", "text/html; charset=utf-8").send(html);
+        return await serveGuestV3(req, res, org, { table: req.query.t, custId: req.query.c, storeId: req.query.storeId || req.query.store || req.query.st });
+      } catch (e) { recordError("vg", e); res.status(500).send("Storefront error"); }
     });
 
     /* V2_SELFTEST=1 — a boot-time verification that the /v2 real-data injection
@@ -5242,7 +5286,15 @@ if (fs.existsSync(webDir)) {
     soldOut: !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)) }));
   const serveGuestPortal = async (req, res) => {
     const org = await orgBySlug(String(req.query.s || ""));
-    if (!org || !fs.existsSync(path.join(gProtoDir, "index.html"))) return sendTill(req, res);
+    if (!org) return sendTill(req, res);
+    // The storefront now renders the v2 design (web3/proto/guest.html) through the
+    // shared serveGuestV3. The legacy web2 guest render below stays only as a
+    // fallback if that page is ever missing.
+    if (hasGuestV3()) {
+      try { return await serveGuestV3(req, res, org, { table: req.query.t, custId: req.query.c, storeId: req.query.storeId || req.query.store || req.query.st }); }
+      catch (e) { recordError("guest v3 serve", e); /* fall through to legacy render */ }
+    }
+    if (!fs.existsSync(path.join(gProtoDir, "index.html"))) return sendTill(req, res);
     const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
     await ensureDefaultStore(org.id, org.store_name);
     const [settingsArr, products] = await Promise.all([

@@ -975,7 +975,7 @@ const modDefaults = (cat) => { const o = {}; modsFor(cat).forEach((g) => { o[g.k
 class Component extends DCLogic {
   state = Object.assign({
     app: "qr", screen: "landing", cat: "all", q: "", lang: "en", vegOnly: 0, flag: "",
-    orderCtx: "table", outletId: 0, mode: "dinein", table: "04", slot: "asap", addr: "", visits: 11, promoOn: null, upsellOff: 0,
+    orderCtx: "table", outletId: 0, mode: "dinein", table: ((window.KPOS_REAL && window.KPOS_REAL.table) ? String(window.KPOS_REAL.table) : "04"), slot: "asap", addr: "", visits: 11, promoOn: null, upsellOff: 0,
     basket: {}, notes: {}, holds: {},
     dish: null, dQty: 1, dNote: "", dChip: "", dMods: {}, mods: {}, otab: "prog",
     dExtras: {}, extras: {}, code: "", codeOk: 0,
@@ -1043,6 +1043,11 @@ class Component extends DCLogic {
         mode: this.state.mode, detail: detail || "", at: Date.now(), ack: 0 });
       localStorage.setItem(K, JSON.stringify(list.slice(-40)));
     } catch (e) { /* a full quota must never block the guest's order */ }
+    // A waiter call or bill request must also reach the real terminal floor, not
+    // just this device's localStorage bridge (which is demo-only).
+    try {
+      if ((kind === "assist" || kind === "bill") && window.__vgCall) window.__vgCall(kind, this.state.table);
+    } catch (e) { /* never block the guest */ }
   }
   say(msg, bad) {
     clearTimeout(this._toast);
@@ -1422,7 +1427,7 @@ class Component extends DCLogic {
     const V = {
       poweredVis: powered ? "" : "display:none",
       brandName: brand.name || "KASHIKEYO",
-      tagline: brand.tagline || "Reef to table, since 2021",
+      tagline: window.KPOS_REAL ? (brand.tagline || "") : (brand.tagline || "Reef to table, since 2021"),
       outletName: o.name, outletAddr: o.addr || "", legalName: CH.name || "",
       tin: CH.tin || "", receiptFoot: brand.receiptFoot || "Thank you",
       tableLabel: this.fulfil().label,
