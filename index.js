@@ -4070,26 +4070,9 @@ if (fs.existsSync(protoFile)) {
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
 
-    /* Guest / QR portal (reference KashikeyoGuest.dc.html), served under the same
-       vendored /v2 asset mount (base href="/v2/"). It is customer-facing: the
-       store is identified by its public slug (?s=<slug>), and only PUBLIC data is
-       injected — the menu, categories and outlet tax. No ops token, staff,
-       customers or sales ever reach a guest. Orders are placed through the
-       existing /p/:slug guest order API. */
-    // /vg — preview/entry for the v2 storefront. Uses the shared serveGuestV3
-    // (same page the live /?s= + subdomain now render). No store → design preview.
-    app.get(/^\/vg(\/.*)?$/, async (req, res) => {
-      try {
-        const slug = String(req.query.s || portalSlugFromHost(req) || (req.path.split("/")[2] || "")).trim().toLowerCase();
-        const org = slug ? await orgBySlug(slug) : null;
-        if (!org) {
-          res.set("Content-Security-Policy", GUEST_V3_CSP);
-          res.set("Cache-Control", "no-cache");
-          return res.set("Content-Type", "text/html; charset=utf-8").send(fs.readFileSync(guestV3File, "utf8"));
-        }
-        return await serveGuestV3(req, res, org, { table: req.query.t, custId: req.query.c, storeId: req.query.storeId || req.query.store || req.query.st });
-      } catch (e) { recordError("vg", e); res.status(500).send("Storefront error"); }
-    });
+    /* The customer-facing guest/QR storefront (web3/proto/guest.html) is served
+       by serveGuestV3 at the live /?s= + subdomain entry (see serveGuestPortal).
+       The old /vg preview route is retired now that those render the same page. */
 
     /* V2_SELFTEST=1 — a boot-time verification that the /v2 real-data injection
        works against the deployment's OWN Postgres, logged to the deploy log
