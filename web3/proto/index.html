@@ -1667,7 +1667,10 @@ class Component extends DCLogic {
     if (REAL) {
       const sales = this.outletSales(o);
       const covers = (REAL.stats && o.id === 3) ? (REAL.stats.covers || 0) : 0;
-      return { sales: sales, covers: covers, fc: 30, avg: covers ? sales / covers : 0, growth: 0 };
+      // Real blended food cost from live recipes (not a hardcoded 30). blendedCost
+      // still returns its 30%-of-price estimate until recipes exist; displays that
+      // surface fc guard on anyRecipe() and show "—" in that case.
+      return { sales: sales, covers: covers, fc: +this.blendedCost().toFixed(1), avg: covers ? sales / covers : 0, growth: 0 };
     }
     const r = this.rng(1000 + o.id * 7); r(); r();
     const sales = this.outletSales(o);
@@ -1848,6 +1851,11 @@ class Component extends DCLogic {
     (K0.MENU || []).forEach((m) => { if (m.cat === "drinks") return; p += this.menuPrice(m); c += this.foodCost(m); });
     return p ? (c / p) * 100 : 0;
   }
+  // Does any menu item carry a real recipe? Until one does, foodCost() falls back
+  // to a flat 30%-of-price estimate — so the blended food-cost figure is a
+  // placeholder, not a measured number. The stat cards show "—" in that case
+  // rather than presenting the 30% constant as if it came from live recipes.
+  anyRecipe() { return (K().MENU || []).some((m) => m.recipe && m.recipe.length); }
 
   renderVals() {
     const s = this.state, K0 = K();
@@ -2137,7 +2145,7 @@ class Component extends DCLogic {
         card("Chain net sales · today", MVRc(tot), REAL ? "Net of tax, across all outlets" : "+12.4% vs same day last week", amber),
         card("Trading outlets", String(this.posOutlets().length) + " / " + (K0.OUTLETS || []).length, nonPos ? nonPos + " non-trading (store / kitchen)" : "All outlets sell"),
         card("Average cheque", MVR(tot / (cov || 1)), "Highest: " + (best.name || "—").replace("Kashikeyo ", "")),
-        card("Chain food cost", this.blendedCost().toFixed(1) + "%", "Theoretical, from live recipes · target 30%")
+        card("Chain food cost", this.anyRecipe() ? this.blendedCost().toFixed(1) + "%" : "—", this.anyRecipe() ? "Theoretical, from live recipes · target 30%" : "Set recipes to see food cost")
       ];
     }
     if (v === "inventory" || v === "counts" || v === "batches" || v === "ledger") {
@@ -2220,8 +2228,10 @@ class Component extends DCLogic {
       return [
         card("Chain net sales · today", MVRc(d.tot), (d.growth >= 0 ? "+" : "") + d.growth.toFixed(1) + "% week on week", amber),
         card("Average cheque", MVR(d.tot / (d.cov || 1)), d.cov + " covers across " + d.rows.length + " outlets"),
-        card("Prime cost", d.prime.toFixed(1) + "%", "Food " + d.fc.toFixed(1) + "% + labour " + d.labour.toFixed(1) + "% · target under 60%",
-          d.prime <= 60 ? big + ";color:var(--green)" : d.prime <= 65 ? big + ";color:var(--amber-bright)" : big + ";color:var(--red-bright)"),
+        this.anyRecipe()
+          ? card("Prime cost", d.prime.toFixed(1) + "%", "Food " + d.fc.toFixed(1) + "% + labour " + d.labour.toFixed(1) + "% · target under 60%",
+              d.prime <= 60 ? big + ";color:var(--green)" : d.prime <= 65 ? big + ";color:var(--amber-bright)" : big + ";color:var(--red-bright)")
+          : card("Prime cost", "—", "Set recipes for food cost · add staff wages for labour"),
         card("Health score", f.score + " / 100", f.act.length ? f.act.length + " item" + (f.act.length > 1 ? "s" : "") + " need action" : "Nothing urgent this week",
           f.score >= 85 ? big + ";color:var(--green)" : f.score >= 70 ? big + ";color:var(--amber-bright)" : big + ";color:var(--red-bright)")
       ];
@@ -2232,11 +2242,15 @@ class Component extends DCLogic {
         const st = REAL.stats, o0 = this.outlet();
         const gst = Math.round((st.gstMonth || 0) / 100);
         const netM = Math.round((st.netMonth || 0) / 100);
-        const cogs = Math.round(netM * 0.3);
+        // Cost of sales derived from the blended food-cost % of ACTUAL recipes,
+        // not a hardcoded 30%. With no recipe there is nothing to derive it from,
+        // so the card shows "—" rather than inventing a figure.
+        const fcPct = this.anyRecipe() ? this.blendedCost() : null;
+        const cogs = (fcPct != null && netM) ? Math.round(netM * fcPct / 100) : null;
         return [
           card("GST collected · month", MVRc(gst), (o0.tax || "GGST") + " " + (o0.rate || 0) + "% · extracted per sale", amber),
           card("Sales posted · month", String(st.txMonth || 0), st.txMonth ? "Auto-posted from closed tickets" : "No sales yet this month"),
-          card("Cost of sales · MTD", MVRc(cogs), netM ? "≈30% of net sales · set recipes to refine" : "No sales yet"),
+          card("Cost of sales · MTD", cogs != null ? MVRc(cogs) : "—", !netM ? "No sales yet" : (fcPct != null ? "≈" + fcPct.toFixed(0) + "% of net sales, from live recipes" : "Set recipes to see cost of sales")),
           card("Unreconciled", "0", "Nothing pending")
         ];
       }
@@ -2259,11 +2273,16 @@ class Component extends DCLogic {
     }
     if (v === "kds") {
       const t = this.kdsTickets();
+      const sla = this.prefs().kdsSla || 18;
+      const items = t.reduce((a, x) => a + x.items.length, 0);
+      // Live "within SLA" = the share of OPEN tickets still under the SLA clock,
+      // computed from real ticket waits — not a hardcoded 94%.
+      const inSla = t.length ? Math.round(t.filter((x) => x.wait <= sla).length / t.length * 100) : 100;
       return [
         card("Open tickets", String(t.length), "Fire order, oldest first", amber),
-        card("Longest wait", (t.length ? t[0].wait : 0) + "m", "SLA " + (this.prefs().kdsSla || 18) + "m for mains"),
-        card("Items in the pass", String(t.reduce((a, x) => a + x.items.length, 0)), "Grill 4 · Fry 3 · Cold 2"),
-        card("On-time tonight", "94%", "Target 92%")
+        card("Longest wait", (t.length ? t[0].wait : 0) + "m", "SLA " + sla + "m for mains"),
+        card("Items in the pass", String(items), t.length ? "Across " + t.length + " open ticket" + (t.length === 1 ? "" : "s") : "Kitchen is clear"),
+        card("Within SLA now", t.length ? inSla + "%" : "—", t.length ? "Open tickets under " + sla + "m" : "No open tickets")
       ];
     }
     if (v === "customers" || v === "delivery") {
@@ -2323,7 +2342,7 @@ class Component extends DCLogic {
       card("Net sales · today", MVRc(netSales), o.tax + " " + o.rate + "% excluded", amber),
       card("Open tables", open.length + " / " + (o.tables || 0), Math.round((open.length / (o.tables || 1)) * 100) + "% full · " + MVRc(openVal) + " on the floor"),
       card("Covers", String(covers), "Avg cheque " + MVR(netSales / (covers || 1))),
-      card("Food cost", this.blendedCost().toFixed(1) + "%", "Theoretical, from live recipes")
+      card("Food cost", this.anyRecipe() ? this.blendedCost().toFixed(1) + "%" : "—", this.anyRecipe() ? "Theoretical, from live recipes" : "Set recipes to see food cost")
     ];
   }
   viewVals() {
@@ -4830,7 +4849,8 @@ class Component extends DCLogic {
     else if (d.growth <= -3) { score -= 14; push(act, "Sales trending down", d.growth.toFixed(1) + "%", "Week on week. Check covers before blaming price — average cheque is " + MVR(d.tot / (d.cov || 1)) + ".", "r"); }
     else push(watch, "Sales flat", (d.growth >= 0 ? "+" : "") + d.growth.toFixed(1) + "%", "Within noise week on week. Nothing to react to yet.", "a");
 
-    if (d.fc <= d.target) push(work, "Food cost inside target", d.fc.toFixed(1) + "%", "Blended, from live recipes against a " + d.target + "% target.", "g");
+    if (!this.anyRecipe()) push(watch, "Food cost not tracked yet", "—", "No recipes set, so food cost can't be measured. Add recipes to the menu to track it against a " + d.target + "% target.", "a");
+    else if (d.fc <= d.target) push(work, "Food cost inside target", d.fc.toFixed(1) + "%", "Blended, from live recipes against a " + d.target + "% target.", "g");
     else if (d.fc <= d.target + 3) { score -= 8; push(watch, "Food cost above target", d.fc.toFixed(1) + "%", "Drifting " + (d.fc - d.target).toFixed(1) + " points over. Recost the ten highest-volume dishes.", "a"); }
     else { score -= 20; push(act, "Food cost well over target", d.fc.toFixed(1) + "%", "That is " + MVRc(d.tot * (d.fc - d.target) / 100) + " a day of margin at today's volume.", "r"); }
 

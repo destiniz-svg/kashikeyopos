@@ -559,13 +559,17 @@
      data. Everything else (roles, module map, chain spec) stays as the platform
      definition. With no session the seeds render, so the design still previews. */
   var REAL = window.KPOS_REAL;
-  if (REAL && REAL.menu && REAL.menu.length) {
+  // Gate the real-data overlay on the SESSION, not on the menu being non-empty.
+  // A freshly-onboarded store with no menu yet still gets its real (empty) data —
+  // otherwise the whole baked demo dataset (menu, customers, inventory, KDS)
+  // leaked onto a real empty store and every stat read off fake numbers.
+  if (REAL) {
     var CAT_ICON = { starters: "starter", mains: "main", grill: "grill", rice: "rice",
       sides: "side", desserts: "dessert", drinks: "drink", coffee: "drink", beverages: "drink" };
     MENU_CATEGORIES = (REAL.categories || []).map(function (c) {
       return { id: c.id, name: c.name, icon: CAT_ICON[c.id] || "main" };
     });
-    MENU = REAL.menu.map(function (m) {
+    MENU = (REAL.menu || []).map(function (m) {
       return { id: m.id, cat: m.cat, name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
         veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
     });
