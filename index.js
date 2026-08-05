@@ -1361,7 +1361,7 @@ const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 
    either vocabulary, so rows already written in the old one still read right. */
 const asOtype = (v) => {
   const s = String(v || "").toLowerCase();
-  if (s === "dine" || s === "dinein" || s === "dine-in" || s === "eatin") return "dinein";
+  if (s === "dine" || s === "dinein" || s === "dine-in" || s === "dine_in" || s === "eatin") return "dinein";
   if (s === "delivery") return "delivery";
   return "takeaway";
 };
@@ -1404,6 +1404,30 @@ const normalizeOrder = (o, settings = {}) => ({
   updatedAt: o.updatedAt || o.settledAt || o.completedAt || o.createdAt || Date.now(),
 });
 const finalStatuses = new Set(["completed", "settled", "paid", "closed"]);
+/* Project raw `orders` entity data → the shape the /v2 terminal's KDS and
+   Orders board read. Open orders only (still in the kitchen/service pipeline);
+   completed/paid/cancelled drop off. Money laari→MVR. Shared by the page inject
+   and the live-refresh poll so the two never disagree. */
+const V2_CHAN = { v2: "dine_in", dine_in: "dine_in", dinein: "dine_in", dine: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
+function liveOrdersV2(dataRows) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return dataRows
+    .filter((o) => o && o.id && !finalStatuses.has(String(o.status || "new").toLowerCase()) && String(o.status || "") !== "cancelled")
+    .map((o) => {
+      const at = Number(o.createdAt || o.at || o.t) || 0, dt = at ? new Date(at) : null;
+      const items = (o.items || []).map((it) => ({ pid: String(it.pid || it.id || ""), n: it.name || it.n || "Item",
+        q: Number(it.qty || it.q) || 1, station: it.station || "", price: Math.round((Number(it.price) || 0) / 100), done: !!it.done }));
+      const ot = V2_CHAN[o.otype] || "dine_in";
+      const channel = ot === "delivery" ? "delivery" : ot === "takeaway" ? "takeaway" : (o.source === "qr" ? "qr" : "dine_in");
+      return { id: o.id, no: o.no || o.id, status: String(o.status || "new"), otype: asOtype(o.otype),
+        channel: channel, table: o.table || "", station: o.station || "hot",
+        source: o.source || "qr", accepted: !!o.accepted, server: o.userName || o.server || "",
+        customerId: o.customerId || null, customerName: o.customerName || "",
+        items: items, at: at, time: dt ? p2(dt.getHours()) + ":" + p2(dt.getMinutes()) : "",
+        total: Math.round((o.items || []).reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty || it.q) || 1), 0) / 100) };
+    })
+    .sort((a, b) => b.at - a.at);
+}
 async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
   const orders = await kindAll(orgId, "orders", storeId);
   const customerId = selector.customerId;
@@ -3657,6 +3681,12 @@ if (fs.existsSync(protoFile)) {
           });
         }
         orders.sort((a, b) => b.at - a.at);
+        // Live open orders (POS KOTs fired to the kitchen + QR/guest orders),
+        // so the terminal's KDS and Orders board show real tickets across every
+        // device instead of one screen's memory. Closed/paid/cancelled drop off.
+        const ordEntRows = (await c.query(
+          "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId])).rows;
+        const liveOrders = liveOrdersV2(ordEntRows.map((r) => r.data || {}));
         // Real customers → the reference CUSTOMERS shape (money laari→MVR).
         const custRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false ORDER BY (data->>'lastOrderAt')::numeric DESC NULLS LAST LIMIT 500", [orgId])).rows;
@@ -3862,7 +3892,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), customers, staff, clock, reservations, expenses, settlements, assets,
+          orders: orders.slice(0, 200), liveOrders, customers, staff, clock, reservations, expenses, settlements, assets,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });
@@ -4059,6 +4089,19 @@ if (fs.existsSync(protoFile)) {
     const token = jwt.sign({ k: "till", o: orgId, u: row.rows[0].id }, SECRET, { expiresIn: "30d" });
     res.set("Cache-Control", "no-store");
     res.json({ ok: true, user: { id: row.rows[0].id, name: d.name || "Staff", role: d.role || "cashier" }, token });
+  }));
+
+  /* Live open orders for the /v2 terminal's KDS and Orders board — polled a few
+     seconds apart so a KOT fired on the till appears on the kitchen screen (a
+     different device) and status changes propagate both ways. Same projection
+     the page inject uses, so the poll and the first paint agree. */
+  app.get("/api/app2/live", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const rows = await withOrg(orgId, (c) => c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId]));
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, orders: liveOrdersV2(rows.rows.map((r) => r.data || {})) });
   }));
 
   /* Kitchen tickets from the register (audit C-H5). sendKot wrote LOCAL STATE

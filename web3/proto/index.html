@@ -2267,8 +2267,8 @@ class Component extends DCLogic {
   }
   statusTone(v) {
     const x = String(v || "").toLowerCase();
-    if (/completed|approved|received|active|posted|paid|closed|synced|delivered|online|ok/.test(x)) return "ok";
-    if (/pending|draft|partial|preparing|in_transit|transit|queued|open|counting/.test(x)) return "warn";
+    if (/completed|approved|received|active|posted|paid|closed|synced|delivered|online|ready|ok/.test(x)) return "ok";
+    if (/pending|draft|partial|preparing|in_transit|transit|queued|open|counting|new/.test(x)) return "warn";
     if (/rejected|cancelled|failed|expired|conflict|offline|void/.test(x)) return "err";
     return "info";
   }
@@ -2276,6 +2276,18 @@ class Component extends DCLogic {
   // ── KDS ──────────────────────────────────────────────────────────────────
   kdsTickets() {
     const s = this.state, K0 = window.KPOS; if (!K0) return [];
+    // Real mode: the kitchen queue is the open orders still cooking (new or
+    // preparing), from the server — so a KOT fired on the till or a QR order
+    // shows here on any device, and bumping it clears it everywhere.
+    if (window.KPOS_REAL) {
+      return this.liveOrders()
+        .filter((o) => o.status === "new" || o.status === "preparing")
+        .map((o) => ({ real: true, id: o.id, key: o.id, order: o,
+          items: (o.items || []).filter((it) => !it.done),
+          wait: Math.max(0, Math.round((Date.now() - (o.at || Date.now())) / 60000)) }))
+        .filter((tk) => tk.items.length)
+        .sort((a, b) => b.wait - a.wait);
+    }
     const out = [];
     Object.keys(s.tickets).forEach((key) => {
       const parts = key.split(":"), oid = +parts[0], num = +parts[1];
@@ -2294,6 +2306,32 @@ class Component extends DCLogic {
       kdsEmpty: !list.length,
       kds: list.map((tk) => {
         const late = tk.wait >= 18, warn = tk.wait >= 12;
+        // Real ticket: a server-side order. Items are display-only (the kitchen
+        // bumps the whole ticket through the status machine: new → preparing →
+        // ready), so cooking state is shared across every screen.
+        if (tk.real) {
+          const o = tk.order, otLabel = { dine_in: "Dine-in", qr: "QR", takeaway: "Takeaway", delivery: "Delivery" };
+          const head = o.table ? (this.isTableSlot(o.table) ? "T" + pad(o.table) : String(o.table)) : (otLabel[o.channel] || "Order") + " " + (o.no || "");
+          const starting = o.status === "new";
+          return {
+            table: head,
+            meta: (o.server || o.customerName || (o.source === "qr" ? "QR order" : "Counter")) + " · " + (o.items || []).reduce((a, it) => a + (it.q || 1), 0) + " items",
+            wait: tk.wait,
+            style: "background:var(--bg-1);border:1px solid " + (late ? "var(--red-line)" : warn ? "var(--amber-line)" : "var(--line)") + ";border-radius:11px;overflow:hidden;display:flex;flex-direction:column",
+            headBg: late ? "background:rgba(226,96,96,.07)" : warn ? "background:rgba(242,164,58,.06)" : "",
+            timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--amber-bright)" : "var(--green)"),
+            items: tk.items.map((l) => ({
+              name: l.n || "Item", q: "×" + (l.q || 1), note: "",
+              style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px",
+              qty: "font-size:12px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace;min-width:22px;flex-shrink:0;padding-top:1px",
+              noteStyle: "display:none", check: "font-size:13px;color:var(--line-3);flex-shrink:0",
+              bump: () => this.toast("Bump the whole ticket when it's " + (starting ? "started" : "ready"))
+            })),
+            serveLabel: starting ? "Start cooking · " + head : "Bump · Ready · " + head,
+            serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--bg-2);border-top:1px solid var(--line);color:var(--amber-bright)",
+            serve: () => { this.setOrderStatus(o.id, starting ? "preparing" : "ready"); this.toast(starting ? head + " started" : head + " ready to serve"); }
+          };
+        }
         return {
           table: this.slotLabel(tk.num),
           meta: (tk.t.waiter || "Unassigned") + " · " + tk.t.party + " covers",
@@ -2555,12 +2593,23 @@ class Component extends DCLogic {
         // undefined name and crashes on toUpperCase().
         const going = (t0.lines || []).filter((l) => !l.fired).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || {};
-          return { qty: l.qty, name: mi.name || l.name || "Item", note: l.note || "" };
+          return { pid: l.id, qty: l.qty, name: mi.name || l.name || "Item", note: l.note || "", price: this.menuPrice(mi) };
         });
         this.mutate(undefined, (t) => { t.lines = t.lines.map((l) => l.fired ? l : Object.assign({}, l, { fired: true, since: 0, firedAt: Date.now() })); });
-        this.queue("fire_course", unfired + " item" + (unfired > 1 ? "s" : "") + " fired to KDS · T" + pad(s.activeTable), "order_lines");
+        this.queue("fire_course", unfired + " item" + (unfired > 1 ? "s" : "") + " fired to KDS · " + this.slotLabel(s.activeTable), "order_lines");
+        // Real mode: persist the KOT as an order so the kitchen display on any
+        // other device shows it, it survives a reload, and bumping it there
+        // clears it here. Remember the order id on the ticket so paying it later
+        // marks the order completed and it leaves the board. Demo mode keeps the
+        // local docket only.
+        const keyAtFire = this.ticketKey();
+        this.pushKot(going, this.isTableSlot(s.activeTable) ? s.activeTable : "", (t0.channel || t0.otype || "dine_in"), t0.no || "").then((j) => {
+          if (!j || !j.id) return;
+          const t = Object.assign({}, this.state.tickets);
+          if (t[keyAtFire]) { t[keyAtFire] = Object.assign({}, t[keyAtFire], { kotIds: (t[keyAtFire].kotIds || []).concat(j.id) }); this.setState({ tickets: t }); }
+        });
         if (this.prefs().kotPrint === false) { this.toast(unfired + " item" + (unfired > 1 ? "s" : "") + " sent to the kitchen"); return; }
-        this.queue("print_kot", "KOT to hot pass · T" + pad(s.activeTable) + " · " + going.length + " lines", "print_jobs");
+        this.queue("print_kot", "KOT to pass · " + this.slotLabel(s.activeTable) + " · " + going.length + " lines", "print_jobs");
         this.setState({ modal: { kind: "kot", lines: going, table: s.activeTable, at: Date.now() } });
       },
       fireLabel: unfired ? "Fire " + unfired + " to KDS" : "All fired",
@@ -2764,6 +2813,9 @@ class Component extends DCLogic {
             });
           } catch (e) { /* never block closing the ticket on a sync attempt */ }
           const last = gAll.length < 2;
+          // Closing the ticket completes its fired KOT orders on the server, so a
+          // paid table leaves the kitchen display and the open-orders board.
+          if (last) (tk && tk.kotIds || []).forEach((id) => this.setOrderStatus(id, "completed"));
           const tables = Object.assign({}, s.tickets);
           if (last) { delete tables[this.ticketKey()]; }
           else {
@@ -3631,6 +3683,9 @@ class Component extends DCLogic {
     });
     const all = this.allSignals();
     if (all.length !== (this._sigN || 0)) { this._sigN = all.length; this.forceUpdate(); }
+    // Keep the KDS and Orders board live across devices: pull open orders on the
+    // same 3s cadence as guest signals (real mode only).
+    if (window.KPOS_REAL && window.KPOS_REAL.token) this.refreshLiveOrders();
   }
   ackSignal(id) {
     try {
@@ -3639,6 +3694,33 @@ class Component extends DCLogic {
       localStorage.setItem(K, JSON.stringify(list.map((x) => x.id === id ? Object.assign({}, x, { ack: 1 }) : x)));
     } catch (e) { /* ignore */ }
     this.forceUpdate();
+  }
+  // ── Live orders (real, cross-device) ──────────────────────────────────────
+  // KOTs fired on the till and QR/guest orders that are still in the kitchen or
+  // service pipeline. Seeded from the page inject, refreshed by the signal poll,
+  // so a ticket fired on one device lands on the kitchen screen on another.
+  liveOrders() { return this.state.liveOrders || (window.KPOS_REAL && window.KPOS_REAL.liveOrders) || []; }
+  refreshLiveOrders() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    fetch("/api/app2/live", { credentials: "same-origin" }).then((r) => r.json())
+      .then((j) => { if (j && j.ok) this.setState({ liveOrders: j.orders || [] }); }).catch(() => {});
+  }
+  stationOf(name) { return /salad|juice|water|soda|coffee|tea|lassi|smoothie|\bice\b|mocktail|cola|sprite/i.test(String(name || "")) ? "cold" : "hot"; }
+  // Persist a fired KOT as a real order so the kitchen (another device) sees it.
+  pushKot(lines, table, otype, billNo) {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve(null);
+    const items = lines.map((l) => ({ pid: l.pid || l.id || "", name: l.name || "Item", qty: l.qty || 1,
+      price: Math.round((Number(l.price) || 0) * 100), station: this.stationOf(l.name) }));
+    const hot = items.some((it) => it.station === "hot");
+    return fetch("/api/app2/kot", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+      body: JSON.stringify({ items, table: String(table == null ? "" : table), otype: otype || "dine_in", station: hot ? "hot" : "cold", billNo: billNo || "", userName: this.me() }) })
+      .then((r) => r.json()).then((j) => { this.refreshLiveOrders(); return j; }).catch(() => null);
+  }
+  // Advance an order's status on the server (KDS bump / Orders board).
+  setOrderStatus(id, status) {
+    if (!id || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
+    return fetch("/api/app2/order/" + encodeURIComponent(id) + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ status }) })
+      .then((r) => r.json()).then((j) => { this.refreshLiveOrders(); return j; }).catch(() => null);
   }
   // One stroke glyph per menu section, drawn in the same language as the nav.
   CAT_ICONS() {
@@ -5109,18 +5191,37 @@ class Component extends DCLogic {
     const s = this.state, q = s.search.toLowerCase();
     const tab = s.tab.ord || 0;
     const chan = [null, "dine_in", "qr", "takeaway", "delivery"][tab];
-    const list = this.todayOrders().filter((o) => !chan || o.channel === chan).filter((o) => !q || o.no.toLowerCase().indexOf(q) >= 0);
     const label = { dine_in: "Dine-in", qr: "QR table", takeaway: "Takeaway", delivery: "Delivery" };
+    // Real mode: open orders still in the pipeline (fired KOTs + QR orders) are
+    // live tickets — show them first, tender "Open", with a tap-through to
+    // advance their status. Closed sales follow, exactly as before.
+    const live = window.KPOS_REAL ? this.liveOrders().map((o) => ({
+      no: o.no, time: o.time, table: o.table ? (this.isTableSlot(o.table) ? "T" + pad(o.table) : String(o.table)) : "—",
+      channel: o.channel, server: o.server || (o.source === "qr" ? "QR order" : ""), tender: "", total: o.total,
+      status: o.status, items: (o.items || []).map((it) => ({ pid: it.pid, q: it.q, n: it.n })), at: o.at, live: true, id: o.id,
+    })) : [];
+    const all = live.concat(this.todayOrders());
+    const list = all.filter((o) => !chan || o.channel === chan).filter((o) => !q || String(o.no || "").toLowerCase().indexOf(q) >= 0);
+    // Advance a live order along the kitchen/service path from the Orders board.
+    const nextOf = { new: ["preparing", "Start preparing"], preparing: ["ready", "Mark ready"], ready: ["completed", "Mark served & done"] };
+    const openLive = (o) => {
+      const nx = nextOf[o.status];
+      this.info("Order " + o.no, (o.live ? "Open · " : "") + (o.table !== "—" ? o.table + " · " : "") + (label[o.channel] || o.channel) + (o.server ? " · " + o.server : ""),
+        (o.items || []).map((it) => ["  " + (it.q || 1) + "× " + (it.n || "Item"), ""]).concat([["Status", String(o.status || "")], ["Total", MVRc(o.total)]]),
+        o.live ? "This order is still open. Advance it as the kitchen and floor work through it; it closes when the ticket is paid on the till." : "",
+        (o.live && nx) ? { label: nx[1], go: () => { this.setOrderStatus(o.id, nx[0]); this.setState({ modal: null }); this.toast("Order " + o.no + " → " + nx[0]); } } : null);
+    };
     return {
       tabs: ["All", "Dine-in", "QR table", "Takeaway", "Delivery"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { ord: i }) }) })),
       actions: [
         { label: "Z-report", go: () => this.setState({ modal: { kind: "z" } }) },
-        { label: "Export day", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.outlet().code + "-orders.csv", [["Ticket", "Time", "Table", "Channel", "Server", "Tender", "Total MVR", "Status"]].concat(list.map((o) => [o.no, o.time, o.table, o.channel, o.server, this.tenderName(o.tender), o.total, o.status]))) }
+        { label: "Export day", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.outlet().code + "-orders.csv", [["Ticket", "Time", "Table", "Channel", "Server", "Tender", "Total MVR", "Status"]].concat(list.map((o) => [o.no, o.time, o.table, o.channel, o.server, o.live ? "OPEN" : this.tenderName(o.tender), o.total, o.status]))) }
       ],
       cols: [{ label: "Ticket", w: "1.2fr", mono: 1 }, { label: "Time", w: ".7fr", mono: 1 }, { label: "Table", w: ".7fr", mono: 1 }, { label: "Channel", w: "1fr" }, { label: "Server", w: "1.2fr" }, { label: "Tender", w: "1fr" }, { label: "Total", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: ".8fr", a: "right" }],
       rows: list.map((o) => ({
-        go: () => this.setState({ modal: { kind: "receipt", ord: o } }),
-        cells: [{ t: o.no, mono: 1 }, { t: o.time, mono: 1 }, { t: o.table, mono: 1 }, { t: label[o.channel], chip: this.chip(o.channel === "delivery" ? "purple" : o.channel === "qr" ? "info" : "mute") }, o.server, this.tenderName(o.tender), { t: MVRc(o.total), c: "var(--amber-bright)", w: 600 }, { t: o.status, chip: this.chip(this.statusTone(o.status)) }]
+        on: !!o.live,
+        go: () => o.live ? openLive(o) : this.setState({ modal: { kind: "receipt", ord: o } }),
+        cells: [{ t: o.no, mono: 1 }, { t: o.time, mono: 1 }, { t: o.table, mono: 1 }, { t: label[o.channel], chip: this.chip(o.channel === "delivery" ? "purple" : o.channel === "qr" ? "info" : "mute") }, o.server, o.live ? "Open" : this.tenderName(o.tender), { t: MVRc(o.total), c: "var(--amber-bright)", w: 600 }, { t: o.status, chip: this.chip(this.statusTone(o.status)) }]
       }))
     };
   }
