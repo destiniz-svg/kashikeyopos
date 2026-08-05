@@ -294,6 +294,46 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
       }
       if (staleSettings.rowCount) console.log(`backfilled multi-currency defaults for ${staleSettings.rowCount} settings entity(s)`);
     } catch (e) { console.warn("currency backfill skipped:", e.message); }
+    /* Collapse duplicate settings rows onto the canonical id='settings' row.
+       Early builds could leave an org with more than one settings row, and the
+       /api/app2/config writer used to update "most recently updated" rather than
+       id='settings'. With a duplicate present, a rename saved to id='settings'
+       while the terminal's read path still read the other row — the classic
+       "save succeeds, nothing shows" split-brain. The canonical row is where
+       every post-fix write lands (and what the storefront already displays), so
+       it wins every key it defines; the strays only backfill keys the canonical
+       row is missing (a newer stray beats an older one for those). Write the
+       merged blob to id='settings' and soft-delete the strays so clients drop
+       them on the next pull. Guarded by HAVING count(*)>1, so it is a no-op once
+       an org is clean. */
+    try {
+      const dupOrgs = await bootPool.query(
+        `SELECT org_id FROM entities WHERE kind='settings' AND deleted=false
+           GROUP BY org_id HAVING count(*) > 1`);
+      let collapsed = 0;
+      for (const { org_id } of dupOrgs.rows) {
+        // Strays first (oldest→newest), canonical last, so a plain per-row
+        // Object.assign lets the canonical row's keys win and newer strays beat
+        // older strays for anything the canonical row doesn't define.
+        const rows = (await bootPool.query(
+          `SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false
+             ORDER BY (id='settings') ASC, updated_at ASC`, [org_id])).rows;
+        const merged = {};
+        for (const r of rows) Object.assign(merged, r.data || {});
+        await bootPool.query(
+          `INSERT INTO entities (org_id, kind, id, data, rowver) VALUES ($1,'settings','settings',$2,nextval('entities_rowver_seq'))
+             ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$2, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
+          [org_id, JSON.stringify(merged)]);
+        for (const r of rows) {
+          if (r.id === "settings") continue;
+          await bootPool.query(
+            `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+               WHERE org_id=$1 AND kind='settings' AND id=$2`, [org_id, r.id]);
+        }
+        collapsed++;
+      }
+      if (collapsed) console.log(`collapsed duplicate settings rows for ${collapsed} org(s)`);
+    } catch (e) { console.warn("settings-dedupe skipped:", e.message); }
     /* Waiter calls are ephemeral notifications, but nothing on the server
        ever expired them — every call ever raised sat deleted=false forever
        and re-appeared on the till whenever it reloaded. Soft-delete any
@@ -1351,6 +1391,23 @@ async function kindAll(orgId, kind, storeId = DEFAULT_STORE_ID) {
   return rows.map((row) => row.data).filter((data) => isVisibleInStore(data, storeId));
 }
 
+/* The store's canonical settings row (id='settings') — the ONE row the config
+   writer upserts and the terminal, storefront and receipt all display. Reading
+   settings any other way (kindAll's arbitrary first row, "most recently
+   updated", a bare LIMIT 1) can land on a stray duplicate row, which is how a
+   rename "saved" but never showed. Returns the row's data, or null. Callers that
+   want the array shape use `(await loadSettings(id)) ? [data] : []`. */
+async function loadSettings(orgId) {
+  return withOrg(orgId, async (client) =>
+    ((await client.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1",
+      [orgId])).rows[0] || {}).data || null);
+}
+async function loadSettingsArr(orgId) {
+  const d = await loadSettings(orgId);
+  return d ? [d] : [];
+}
+
 const lineTotal = (l) => Math.round(Number(l.price || 0) * Number(l.qty || 1) * (1 - (Number(l.discPct || 0)) / 100));
 const orderSubtotal = (o) => (o.items || []).reduce((x, l) => x + lineTotal(l), 0) + (Number(o.fee) || 0);
 /* Two vocabularies grew up for the same three ideas: a sale carries
@@ -2132,7 +2189,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
     let moneyCtx = null;
     if (ops.some((o) => (o.puts || []).some((p) => p.kind === "sales"))) {
       const [setRes, prodRes] = await Promise.all([
-        client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [req.org.o]),
+        client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [req.org.o]),
         client.query("SELECT data->>'id' AS id, data->>'price' AS price, data->>'openPrice' AS op FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.org.o]),
       ]);
       const st = setRes.rows[0] ? setRes.rows[0].data : {};
@@ -2487,7 +2544,7 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
   const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
   await ensureDefaultStore(org.id, org.store_name);
   const [settingsArr, products, zones, tables, stores, recipeRows] = await Promise.all([
-    kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "tables", storeId),
+    loadSettingsArr(org.id), kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "tables", storeId),
     withOrg(org.id, (client) => client.query("SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active=true ORDER BY created_at ASC", [org.id])),
     /* Products tracked by the Inventory module carry their availability in
        ingredient stock, not the product-level `stock` field (which defaults
@@ -2531,7 +2588,7 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
      work) and the total quantity after normalisation, so one order can't be
      used to bloat the kitchen ticket or the DB row. */
   if (items.length > 40) return res.status(400).json({ error: "That's too many different items for one order — please split it into more than one." });
-  const [products, zones, customers, settingsArr] = await Promise.all([kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "customers", storeId), kindAll(org.id, "settings", storeId)]);
+  const [products, zones, customers, settingsArr] = await Promise.all([kindAll(org.id, "products", storeId), kindAll(org.id, "zones", storeId), kindAll(org.id, "customers", storeId), loadSettingsArr(org.id)]);
   /* The confirmation the guest sees has to be priced with THIS store's rates.
      It was normalised with no settings at all, so it quoted 0% service charge
      and the house rate on every order — a dine-in guest confirmed MVR 135.00
@@ -2601,7 +2658,7 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
   const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
-  const settingsArr = await kindAll(org.id, "settings", storeId);
+  const settingsArr = await loadSettingsArr(org.id);
   const settings = settingsArr[0]
     ? { usdRate: 1542, ...settingsArr[0] }
     : { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
@@ -2636,7 +2693,7 @@ app.get("/p/:slug/account", pubThrottle(20, "acct"), wrap(async (req, res) => {
   // Real order history for the account's Receipts and Statement tabs — the
   // same source the terminal reads, priced by the store's own rates (money
   // laari→MVR). No fabricated ledger: the statement is built from these.
-  const settingsArr = await kindAll(org.id, "settings", storeId);
+  const settingsArr = await loadSettingsArr(org.id);
   const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
   const hist = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
   const orders = hist.map((o) => ({
@@ -3139,7 +3196,7 @@ if (fs.existsSync(protoFile)) {
   const collectRegData = async (c, orgId, register, storeId) => {
     const out = {};
     const setRow = (await c.query(
-      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
     out.storeP = Object.assign(liveStoreP(setRow ? setRow.data : {}), {
       // The till printed a hardcoded "R1" on receipts and a hardcoded "Malé"
       // chip in its header; both now come from the session's real register and
@@ -3475,7 +3532,7 @@ if (fs.existsSync(protoFile)) {
               // Persisted cockpit config (Configurations / Payments / Notifications
               // / System / Store / Kitchen toggles) + the store profile it lives on.
               const setRow = (await c.query(
-                "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
+                "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0];
               const setData = setRow ? (setRow.data || {}) : {};
               adminData.cfg = setData.adminCfg || {};
               adminData.catGroups = Array.isArray(setData.catGroups) ? setData.catGroups : [];
@@ -5269,7 +5326,7 @@ if (fs.existsSync(webDir)) {
     const org = await orgBySlug(slug);
     if (!org) return null;
     const row = await withOrg(org.id, (c) => c.query(
-      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [org.id]));
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [org.id]));
     const d = (row.rows[0] && row.rows[0].data) || {};
     const seo = (d.adminCfg && d.adminCfg.seo) || {};
     const name = d.storeName || d.name || org.name || "Kashikeyo";
@@ -5322,7 +5379,7 @@ if (fs.existsSync(webDir)) {
     const storeId = cleanStoreId(req.query.storeId || req.query.store || req.query.st || DEFAULT_STORE_ID);
     await ensureDefaultStore(org.id, org.store_name);
     const [settingsArr, products] = await Promise.all([
-      kindAll(org.id, "settings", storeId), kindAll(org.id, "products", storeId)]);
+      loadSettingsArr(org.id), kindAll(org.id, "products", storeId)]);
     const recipeRows = await withOrg(org.id, (c) => c.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [org.id]));
     const hasRecipe = new Set(recipeRows.rows.map((r) => String(r.product_id)));
     const st = settingsArr[0] || { storeName: org.store_name, currency: "MVR", usdRate: 1542 };
