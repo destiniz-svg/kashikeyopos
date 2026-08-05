@@ -590,7 +590,7 @@
       R.vendors = REAL.inventory.vendors || [];
       R.purch = REAL.inventory.purch || [];
     }
-    OPEX = (REAL.expenses || []); ASSETS = [];
+    OPEX = (REAL.expenses || []); ASSETS = (REAL.assets || []);
     // The HR/payroll roster is the real sign-in staff. Contract wage fields are
     // left unset (basic 0) until an admin configures them — so labour HOURS are
     // real from clock punches while labour COST stays an honest zero, and each

@@ -2334,6 +2334,10 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const key = type === "paidout" ? (d.reason || "Paid out") : cat;
       opexByCat[key] = (opexByCat[key] || 0) + amt;
     }
+    // Depreciation is a real non-cash operating cost — charge the period's
+    // depreciation to the P&L so net profit and the balance sheet agree.
+    const depreciation = await depreciationForPeriod(client, orgId, from, to, storeId);
+    if (depreciation > 0) { opex += depreciation; opexByCat["Depreciation"] = (opexByCat["Depreciation"] || 0) + depreciation; }
     const grossProfit = netSales - cogs;
     const netProfit = grossProfit - wastage - opex;
     /* Tender keys arrive lower-case from the till (`cash`), so the old
@@ -2344,7 +2348,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       pnl: { revenue: netSales, grossSales, discounts, refunds, serviceCharge: svc, cogs, grossProfit,
         grossMarginPct: netSales > 0 ? Math.round((grossProfit / netSales) * 100) : 0,
         foodCostPct: netSales > 0 ? Math.round((cogs / netSales) * 100) : 0,
-        wastage, opex, opexByCat, purchases, netProfit,
+        wastage, opex, opexByCat, purchases, depreciation, netProfit,
         netMarginPct: netSales > 0 ? Math.round((netProfit / netSales) * 100) : 0, saleCount },
       gstReturn: { outputTax: gst, inputTax, netPayable: gst - inputTax,
         note: inputTax > 0 ? "Input tax is the GST recorded on purchase invoices in this period." : "Add the GST amount when you book a purchase invoice to claim input tax." },
@@ -2354,16 +2358,56 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     };
   }
 
+  /* Fixed-asset register with straight-line depreciation. Each asset
+     capitalises its cost and depreciates (cost − salvage) evenly over its
+     useful life; accumulated depreciation and net book value are derived as of
+     now, and the depreciation that falls in any [from,to] window is the change
+     in accumulated depreciation across it — so the P&L and the balance sheet
+     read the same asset once. */
+  const MONTHMS = 30.436875 * 86400000;
+  function assetDep(d, at) {
+    const cost = num(d.cost), salvage = num(d.salvage), life = Math.max(1, num(d.life) || 8);
+    const bought = Number(d.bought) || at;
+    if (d.disposedAt) return { cost, monthlyDep: 0, accumAt: cost - salvage, nbv: 0 };
+    const months = Math.max(0, (at - bought) / MONTHMS);
+    const monthlyDep = (cost - salvage) / life / 12;
+    const accumAt = Math.min(cost - salvage, months * monthlyDep);
+    return { cost, monthlyDep, accumAt, nbv: cost - accumAt };
+  }
+  async function computeAssets(client, orgId, storeId) {
+    const now = Date.now();
+    const rows = (await client.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='assets' AND deleted=false" + (storeId ? " AND COALESCE(data->>'storeId','global')=$2" : "") + " ORDER BY (data->>'bought')::numeric DESC NULLS LAST", storeId ? [orgId, storeId] : [orgId])).rows;
+    let cost = 0, nbv = 0, accum = 0, monthly = 0;
+    const list = rows.map((r) => { const d = r.data || {}; const a = assetDep(d, now);
+      cost += a.cost; nbv += a.nbv; accum += a.accumAt; monthly += a.monthlyDep;
+      return { id: r.id, name: d.name || "Asset", kind: d.kind || "", outlet: num(d.outlet), bought: Number(d.bought) || now,
+        cost: Math.round(a.cost), life: num(d.life) || 8, salvage: Math.round(num(d.salvage)),
+        monthlyDep: Math.round(a.monthlyDep), accumulated: Math.round(a.accumAt), nbv: Math.round(a.nbv), disposed: !!d.disposedAt }; });
+    return { list, totals: { cost: Math.round(cost), nbv: Math.round(nbv), accumulated: Math.round(accum), monthlyDep: Math.round(monthly) } };
+  }
+  // Depreciation charged within [from,to] = the change in accumulated
+  // depreciation across the window (exact, per asset).
+  async function depreciationForPeriod(client, orgId, from, to, storeId) {
+    const rows = (await client.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='assets' AND deleted=false" + (storeId ? " AND COALESCE(data->>'storeId','global')=$2" : ""), storeId ? [orgId, storeId] : [orgId])).rows;
+    let dep = 0;
+    for (const r of rows) { const d = r.data || {}; dep += (assetDep(d, to).accumAt - assetDep(d, Math.max(from, Number(d.bought) || 0)).accumAt); }
+    return Math.round(Math.max(0, dep));
+  }
+
   /* Derived financial statements — a balance sheet and a cash-flow statement
      built from the same source rows as the P&L (the app keeps derived books, so
      there is no posted GL to read; these are computed the same honest way).
      All-time / as-of-now: inventory at moving average, receivables = the sum of
      outstanding customer tabs, cash & bank from collected tenders less paid
-     expenses, GST + service charge accrued as liabilities. Equity is the
-     balancing figure (accumulated retained earnings), so the sheet always
-     balances by construction. */
+     expenses, GST + service charge accrued as liabilities, fixed assets at net
+     book value (their cost reduces bank, since equipment is bought from it).
+     Equity is the balancing figure (accumulated retained earnings), so the
+     sheet always balances by construction. */
   async function computeStatements(client, orgId, storeId) {
     const now = Date.now();
+    const assetRec = await computeAssets(client, orgId, storeId);
     const acct = await computeAccounting(client, orgId, 0, now, storeId);
     // Floor each item at zero: an oversold item shows negative physical stock in
     // the ledger, but you never carry negative inventory as an asset.
@@ -2388,10 +2432,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       if (/cash/i.test(pf)) expCash += a; else if (/card|transfer|bank/i.test(pf)) expBank += a; else apUnpaid += a; }
     const paidOut = acct.cash.paidOut || 0;
     const cashOnHand = Math.max(0, cashSalesAll + setlCash - expCash - paidOut);
-    const bank = bankSalesAll + setlBank - expBank;
+    // Equipment is bought from the bank, so its cost leaves cash-at-bank and
+    // reappears as a fixed asset at net book value; the difference (accumulated
+    // depreciation) has flowed through the P&L into retained earnings.
+    const fixedAssets = assetRec.totals.nbv;
+    const bank = bankSalesAll + setlBank - expBank - assetRec.totals.cost;
     const gstPayable = Math.max(0, acct.gstReturn.netPayable);
     const svcPayable = acct.pnl.serviceCharge || 0;             // collected, owed to staff
-    const assets = { cash: cashOnHand, bank, accountsReceivable: ar, inventory, total: cashOnHand + bank + ar + inventory };
+    const assets = { cash: cashOnHand, bank, accountsReceivable: ar, inventory, fixedAssets, accumulatedDepreciation: assetRec.totals.accumulated, total: cashOnHand + bank + ar + inventory + fixedAssets };
     const liabilities = { gstPayable, serviceChargePayable: svcPayable, accountsPayable: apUnpaid, total: gstPayable + svcPayable + apUnpaid };
     const retainedEarnings = assets.total - liabilities.total;
     const balanceSheet = { asOf: now, assets, liabilities,
@@ -2634,6 +2682,38 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='bankTxns' AND deleted=false", [req.orgId]));
     if (poke) poke(req.orgId, Date.now());
     res.json({ ok: true, cleared: r.rowCount });
+  }));
+
+  /* ── Fixed-asset register ───────────────────────────────────────────────
+     Equipment capitalises here and depreciates straight-line; the register
+     feeds the balance sheet (net book value) and the P&L (depreciation). */
+  router.get("/assets", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const out = await withOrg(req.orgId, (c) => computeAssets(c, req.orgId, storeId));
+    res.json(Object.assign({ ok: true, currency: "laari" }, out));
+  }));
+  router.post("/assets", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const b = req.body || {};
+    const name = String(b.name || "").trim(); if (!name) return res.status(400).json({ error: "asset name required" });
+    const id = b.id || uid();
+    const data = { id, name: name.slice(0, 80), kind: String(b.kind || "Cooking").slice(0, 40), outlet: Math.round(num(b.outlet)) || 0,
+      cost: Math.max(0, Math.round(num(b.cost))), life: Math.max(1, Math.min(40, Math.round(num(b.life)) || 8)),
+      salvage: Math.max(0, Math.round(num(b.salvage))), bought: Number(b.bought) || Date.now(),
+      svcDays: Math.round(num(b.svcDays)) || 0, disposedAt: b.disposed ? Date.now() : null };
+    const r = await withOrg(req.orgId, (c) => c.query(
+      `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'assets',$2,$3)
+       ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver`,
+      [req.orgId, id, JSON.stringify(data)]));
+    if (poke) poke(req.orgId, Number(r.rows[0].rowver));
+    res.json({ ok: true, id });
+  }));
+  router.post("/assets/:id/dispose", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const r = await withOrg(req.orgId, (c) => c.query(
+      "UPDATE entities SET data = data || $3::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='assets' AND id=$2 RETURNING rowver",
+      [req.orgId, req.params.id, JSON.stringify({ disposedAt: Date.now() })]));
+    if (!r.rowCount) return res.status(404).json({ error: "asset not found" });
+    if (poke) poke(req.orgId, Number(r.rows[0].rowver));
+    res.json({ ok: true });
   }));
 
   /* ── Owner Panel (P6): one screen that answers "how's my business?" ──────

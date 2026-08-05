@@ -3788,6 +3788,15 @@ if (fs.existsSync(protoFile)) {
           .filter((d) => (Number(d.in) || 0) >= t0)
           .map((d) => ({ id: d.id, staff: d.staffId, outlet: Number(d.outlet) || 3,
             in: Number(d.in) || 0, out: Number(d.out) || 0, late: Number(d.late) || 0 }));
+        // Fixed-asset register — real equipment, money laari→MVR, dates as ISO
+        // so the terminal's depreciation + service maths read them directly.
+        const assetRows = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='assets' AND deleted=false ORDER BY (data->>'bought')::numeric DESC NULLS LAST", [orgId])).rows;
+        const assets = assetRows.filter((r) => !(r.data && r.data.disposedAt)).map((r) => { const d = r.data || {};
+          const boughtIso = new Date(Number(d.bought) || Date.now()).toISOString().slice(0, 10);
+          return { id: r.id, name: d.name || "Asset", kind: d.kind || "Cooking", outlet: Number(d.outlet) || 3,
+            cost: Math.round((Number(d.cost) || 0) / 100), life: Number(d.life) || 8, bought: boughtIso,
+            lastSvc: d.lastSvc || boughtIso, svcDays: Number(d.svcDays) || 90, status: d.status || "ok", ytd: Math.round((Number(d.ytd) || 0) / 100) }; });
         // Credit settlements (payments received against a customer tab) — for
         // the customer's credit statement on the till. Money laari→MVR.
         const setlRows = (await c.query(
@@ -3853,7 +3862,7 @@ if (fs.existsSync(protoFile)) {
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
-          orders: orders.slice(0, 200), customers, staff, clock, reservations, expenses, settlements,
+          orders: orders.slice(0, 200), customers, staff, clock, reservations, expenses, settlements, assets,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
         };
       });

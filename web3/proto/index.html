@@ -5994,6 +5994,7 @@ class Component extends DCLogic {
           { k: "outlet", label: "Location", options: outletOpts, full: 1 },
           { k: "kind", label: "Type", options: [{ v: "Refrigeration", l: "Refrigeration" }, { v: "Cooking", l: "Cooking" }, { v: "Warewash", l: "Warewash" }, { v: "Beverage", l: "Beverage" }, { v: "Climate", l: "Climate" }, { v: "Power", l: "Power" }, { v: "Vehicle", l: "Vehicle" }] },
           { k: "cost", label: "Purchase cost MVR", v: "0" },
+          { k: "bought", label: "Purchased (YYYY-MM-DD)", v: new Date().toISOString().slice(0, 10) },
           { k: "life", label: "Useful life (years)", v: "8" },
           { k: "svcDays", label: "Service every (days)", v: "90" }
         ],
@@ -6012,7 +6013,27 @@ class Component extends DCLogic {
         onSave: (v) => {
           if (!v.name) return this.toast("Give the equipment a name", "warn");
           const today = new Date().toISOString().slice(0, 10);
-          const row = { id: "a" + Date.now(), name: v.name, outlet: +v.outlet || this.state.outletId, kind: v.kind || "Cooking", bought: today, cost: +v.cost || 0, life: +v.life || 8, lastSvc: today, svcDays: +v.svcDays || 90, status: "ok", ytd: 0 };
+          // Parse the entered purchase date so an existing asset carries its real
+          // acquisition date (and therefore its accumulated depreciation). Fall
+          // back to today for a blank/invalid entry.
+          const boughtMs = (function () { const t = Date.parse((v.bought || "") + "T00:00:00"); return isNaN(t) ? Date.now() : Math.min(t, Date.now()); })();
+          const boughtStr = new Date(boughtMs).toISOString().slice(0, 10);
+          const row = { id: "a" + Date.now(), name: v.name, outlet: +v.outlet || this.state.outletId, kind: v.kind || "Cooking", bought: boughtStr, cost: +v.cost || 0, life: +v.life || 8, lastSvc: today, svcDays: +v.svcDays || 90, status: "ok", ytd: 0 };
+          // Real mode: capitalise it to the backend asset register (cost in laari)
+          // so it depreciates into the P&L and shows at net book value on the
+          // balance sheet. Optimistically add it to the local register too.
+          if (window.KPOS_REAL && window.KPOS_REAL.token) {
+            fetch("/api/inv/assets", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+              body: JSON.stringify({ name: row.name, kind: row.kind, outlet: row.outlet, cost: Math.round(row.cost * 100), life: row.life, svcDays: row.svcDays, bought: boughtMs }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                (K().ASSETS || []).unshift(Object.assign({}, row, { id: j.id || row.id }));
+                this.setState({});
+                this.toast(v.name + " capitalised · " + MVRc(row.cost) + " over " + row.life + "y");
+              }).catch(() => this.toast("Could not save the asset — check the connection", "warn"));
+            this.setState({ modal: null });
+            return;
+          }
           const local = Object.assign({}, this.state.local, { assets: (this.state.local.assets || []).concat([row]) });
           this.setState({ local: local, modal: null });
           this.queue("asset_insert", v.name + " · " + this.locName(row.outlet) + " · " + MVRc(row.cost), "assets");
@@ -6860,6 +6881,7 @@ class Component extends DCLogic {
       rows.push(["  Bank", L(bs.assets.bank)]);
       rows.push(["  Accounts receivable (customer tabs)", L(bs.assets.accountsReceivable)]);
       rows.push(["  Inventory at cost", L(bs.assets.inventory)]);
+      rows.push(["  Fixed assets (net book value)", L(bs.assets.fixedAssets)]);
       rows.push(["  TOTAL ASSETS", L(bs.assets.total)]);
       rows.push(["", ""]);
       rows.push(["LIABILITIES", ""]);
