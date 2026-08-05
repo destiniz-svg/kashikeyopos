@@ -988,6 +988,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     if (mode === "correct" && amount < 0) return res.status(400).json({ error: "a stock count can't be negative" });
 
     const out = await withOrg(req.orgId, async (client) => {
+      await assertNotLocked(client, req.orgId, Date.now());
       const ing = await client.query(
         "SELECT id, name, base_unit, current_stock, avg_cost FROM ingredients WHERE org_id=$1 AND id=$2 AND active FOR UPDATE",
         [req.orgId, ingredientId]);
@@ -2003,6 +2004,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const { supplierId, invoiceNo, lines, gst } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "invoice needs at least one line" });
     const out = await withOrg(req.orgId, async (client) => {
+      await assertNotLocked(client, req.orgId, Date.now());
       let supplierName = "";
       if (supplierId) {
         const s = await client.query("SELECT name FROM suppliers WHERE org_id=$1 AND id=$2", [req.orgId, supplierId]);
@@ -2026,8 +2028,11 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const paidFrom = ["cash", "card", "transfer", "other"].indexOf(pf) >= 0 ? pf : "other";
     if (!(amount > 0)) return res.status(400).json({ error: "enter an amount" });
     if (!supplier) return res.status(400).json({ error: "who was paid?" });
+    // An expense may be dated (a bill entered late); default to now. A back-date
+    // that lands in a closed, locked period is refused below.
+    const at = b.at != null ? Math.min(Date.now(), Math.max(0, Math.round(num(b.at)))) : Date.now();
     const id = uid();
-    const data = { id, no: "EXP-" + id.slice(0, 6).toUpperCase(), t: Date.now(), cat, supplier, amount,
+    const data = { id, no: "EXP-" + id.slice(0, 6).toUpperCase(), t: at, cat, supplier, amount,
       note: String(b.note || "").slice(0, 120) || (cat + " · back office"), paidFrom, userName: "Back office", shiftId: null, img: "", srcRef: "manual:" + id };
     // Optional operating-cost metadata (from the terminal's cost form): whether
     // it recurs, on what day, which expense account and outlet it belongs to.
@@ -2037,9 +2042,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     if (b.due != null) data.due = Math.min(28, Math.max(1, Math.round(num(b.due)) || 1));
     if (b.acct != null) data.acct = String(b.acct).slice(0, 8);
     if (b.outlet != null) data.outlet = Math.round(num(b.outlet)) || 0;
-    const rowver = await withOrg(req.orgId, (client) => client.query(
-      "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'expenses',$2,$3) RETURNING rowver",
-      [req.orgId, id, JSON.stringify(data)]).then((r) => Number(r.rows[0].rowver)));
+    const rowver = await withOrg(req.orgId, async (client) => {
+      await assertNotLocked(client, req.orgId, at);
+      return client.query(
+        "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'expenses',$2,$3) RETURNING rowver",
+        [req.orgId, id, JSON.stringify(data)]).then((r) => Number(r.rows[0].rowver));
+    });
     if (poke) poke(req.orgId, rowver);
     res.json({ ok: true, id });
   }));
@@ -2509,6 +2517,85 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const to = Number(req.query.to) || Date.now();
     const out = await withOrg(req.orgId, (c) => computeTrialBalance(c, req.orgId, from, to, storeId));
     res.json(Object.assign({ ok: true }, out));
+  }));
+
+  /* ── Period close & posted general ledger (statutory-grade) ──────────────
+     The derived books recompute on demand, which is right for a live view but
+     wrong for a filed period: once a month is closed its figures must not move
+     even if a source document is later corrected. Closing a month freezes that
+     period's trial balance into an immutable gl_periods snapshot and records a
+     lock date; any dated financial document on or before the lock is then
+     refused, so a closed period cannot be back-dated into. Reopening keeps the
+     snapshot (marked reopened, for the audit trail), lifts the lock, and is an
+     admin action that is logged. */
+  function periodBounds(period) {
+    const m = /^(\d{4})-(\d{2})$/.exec(String(period || ""));
+    if (!m) return null;
+    const y = Number(m[1]), mo = Number(m[2]);
+    if (mo < 1 || mo > 12) return null;
+    return { from: Date.UTC(y, mo - 1, 1), to: Date.UTC(y, mo, 1) - 1, label: period };
+  }
+  async function closedPeriods(client, orgId) {
+    const rows = (await client.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='gl_periods' AND deleted=false ORDER BY id DESC", [orgId])).rows;
+    return rows.map((r) => r.data || {});
+  }
+  async function currentLockDate(client, orgId) {
+    const ps = await closedPeriods(client, orgId);
+    return ps.filter((p) => p.status === "closed").reduce((mx, p) => Math.max(mx, Number(p.lockDate) || 0), 0);
+  }
+  async function assertNotLocked(client, orgId, dateMs) {
+    const lock = await currentLockDate(client, orgId);
+    if (lock && Number(dateMs) <= lock) {
+      const e = new Error("This period is closed and locked (through " + new Date(lock).toISOString().slice(0, 10) + "). Reopen it before posting a back-dated entry.");
+      e.status = 409; throw e;
+    }
+  }
+
+  router.get("/periods", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const out = await withOrg(req.orgId, async (c) => ({
+      periods: await closedPeriods(c, req.orgId), lockDate: await currentLockDate(c, req.orgId),
+    }));
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
+  router.post("/periods/close", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const b = req.body || {};
+    const bounds = periodBounds(b.period);
+    if (!bounds) return res.status(400).json({ error: "period must be YYYY-MM" });
+    if (bounds.to >= Date.now()) return res.status(400).json({ error: "that month has not ended yet" });
+    const storeId = b.storeId ? String(b.storeId) : null;
+    const out = await withOrg(req.orgId, async (client) => {
+      const cur = (await client.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='gl_periods' AND id=$2 AND deleted=false", [req.orgId, bounds.label])).rows[0];
+      if (cur && cur.data && cur.data.status === "closed") { const e = new Error("That month is already closed."); e.status = 409; throw e; }
+      const tb = await computeTrialBalance(client, req.orgId, bounds.from, bounds.to, storeId);
+      const acct = await computeAccounting(client, req.orgId, bounds.from, bounds.to, storeId);
+      const data = { id: bounds.label, from: bounds.from, to: bounds.to, lockDate: bounds.to,
+        closedAt: Date.now(), closedBy: (req.appStaff && req.appStaff.name) || "Back office",
+        status: "closed", currency: "laari", storeId: storeId || "all",
+        journal: tb.rows, totals: tb.totals, pnl: acct.pnl, gstReturn: acct.gstReturn };
+      const r = await client.query(
+        `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'gl_periods',$2,$3)
+         ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$3, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver`,
+        [req.orgId, bounds.label, JSON.stringify(data)]);
+      return { rowver: Number(r.rows[0].rowver), period: data };
+    });
+    if (poke) poke(req.orgId, out.rowver);
+    await noteActivity(req.orgId, { action: "period.close", ref: bounds.label, detail: { totals: out.period.totals } });
+    res.json({ ok: true, period: out.period });
+  }));
+
+  router.post("/periods/:id/reopen", authAny, requireBackOffice(2), wrap(async (req, res) => {
+    const r = await withOrg(req.orgId, (client) => client.query(
+      `UPDATE entities SET data = data || jsonb_build_object('status','reopened','reopenedAt', $3::bigint, 'lockDate', 0),
+         rowver=nextval('entities_rowver_seq'), updated_at=now()
+       WHERE org_id=$1 AND kind='gl_periods' AND id=$2 AND deleted=false AND data->>'status'='closed' RETURNING rowver`,
+      [req.orgId, req.params.id, Date.now()]));
+    if (!r.rowCount) return res.status(404).json({ error: "no closed period with that id" });
+    if (poke) poke(req.orgId, Number(r.rows[0].rowver));
+    await noteActivity(req.orgId, { action: "period.reopen", ref: req.params.id });
+    res.json({ ok: true });
   }));
 
   router.get("/accounting", authAny, wrap(async (req, res) => {
@@ -3280,6 +3367,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
   router.post("/audits/:id/close", authAny, requireBackOffice(1), wrap(async (req, res) => {
     const out = await withOrg(req.orgId, async (client) => {
+      await assertNotLocked(client, req.orgId, Date.now());
       const s = await client.query("SELECT * FROM audit_sessions WHERE org_id=$1 AND id=$2 FOR UPDATE", [req.orgId, req.params.id]);
       if (!s.rowCount) throw Object.assign(new Error("stock check not found"), { status: 404 });
       if (s.rows[0].status !== "open") throw Object.assign(new Error("already closed"), { status: 409 });

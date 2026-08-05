@@ -6040,6 +6040,21 @@ class Component extends DCLogic {
           this.toast(v.name + " added to the register");
         }
       },
+      periodclose: {
+        title: "Close a month", sub: "Freeze the period and lock it", save: "Close & lock",
+        foot: "Closing posts the month's trial balance as an immutable record and locks the period, so no bill, count or adjustment can be back-dated into it afterwards. Reopening later is an admin action and is logged.",
+        fields: [{ k: "period", label: "Month (YYYY-MM)", v: (function () { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toISOString().slice(0, 7); })(), full: 1 }],
+        onSave: (v) => {
+          const p = String(v.period || "").trim();
+          if (!/^\d{4}-\d{2}$/.test(p)) return this.toast("Enter the month as YYYY-MM", "warn");
+          this.setState({ modal: null });
+          fetch("/api/inv/periods/close", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ period: p }) })
+            .then((r) => r.json()).then((j) => {
+              if (j && j.error) return this.toast(j.error, "warn");
+              this.toast(p + " closed and locked"); this._periodsReq = 0; this.periodsRefresh();
+            }).catch(() => this.toast("Could not close the period — check the connection", "warn"));
+        }
+      },
       breakdown: {
         title: "Log a breakdown", sub: "Repair cost and any stock lost with it", save: "Log and post",
         foot: "One action, two postings: the repair to 5400 Repairs & maintenance, and any spoiled stock to 5100 Wastage & variance with an equipment-failure reason. That is what stops a dead chiller showing up as an unexplained food-cost gap.",
@@ -6629,6 +6644,54 @@ class Component extends DCLogic {
     fetch("/api/inv/bank/clear", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: "{}" })
       .then((r) => r.json().catch(() => ({}))).then((j) => { this.toast((j.cleared || 0) + " line" + (j.cleared === 1 ? "" : "s") + " cleared"); this.bankRefresh(); }).catch(() => {});
   }
+  // ── Period close & posted general ledger ─────────────────────────────────
+  // Closing a month freezes its trial balance into an immutable snapshot and
+  // locks the period so nothing can be back-dated into it — the statutory step
+  // the derived books deliberately leave until the owner is ready to file.
+  periodsRefresh() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    fetch("/api/inv/periods", { credentials: "same-origin" }).then((r) => r.json())
+      .then((j) => { if (j && j.ok) this.setState({ periodsData: j }); }).catch(() => { this._periodsReq = 0; });
+  }
+  closeMonth() { this.openForm("periodclose"); }
+  reopenMonth(id) {
+    fetch("/api/inv/periods/" + encodeURIComponent(id) + "/reopen", { method: "POST", credentials: "same-origin" })
+      .then((r) => r.json()).then((j) => {
+        if (j && j.error) return this.toast(j.error, "warn");
+        this.toast(id + " reopened — the lock is lifted"); this._periodsReq = 0; this.setState({ modal: null }); this.periodsRefresh();
+      }).catch(() => this.toast("Could not reopen — check the connection", "warn"));
+  }
+  periodCloseView(tabs) {
+    const s = this.state;
+    if (window.KPOS_REAL && window.KPOS_REAL.token && !this._periodsReq) { this._periodsReq = 1; this.periodsRefresh(); }
+    const V = (n) => MVR((Number(n) || 0) / 100);
+    const d = s.periodsData;
+    const periods = (d && d.periods) || [];
+    const lock = (d && d.lockDate) || 0;
+    const closed = periods.filter((p) => p.status === "closed");
+    const actions = [
+      { label: "Close a month", primary: 1, go: () => this.closeMonth() },
+      { label: "Refresh", go: () => { this._periodsReq = 0; this.periodsRefresh(); } }
+    ];
+    const guide = ["The live books recompute on demand — right for a dashboard, wrong for a filed month", "Closing a month freezes its trial balance as an immutable record", "The period then locks: no bill, count or adjustment can be back-dated into it", "Reopening is possible but is an admin action and stays on the record"];
+    const cards = [
+      { title: "Lock date", sub: lock ? "Books are closed through here" : "Nothing locked yet", big: lock ? new Date(lock).toISOString().slice(0, 10) : "Open", bigColor: lock ? "var(--green)" : "var(--text-muted)", rows: [["Months closed", String(closed.length)]], foot: lock ? "Any dated entry on or before this date is refused until the period is reopened." : "Close your first completed month to start a locked audit trail." },
+      { title: "Latest close", sub: closed.length ? "Trial balance frozen" : "—", big: closed.length ? closed[0].id : "—", rows: closed.length ? [["Debits", V(closed[0].totals.debit)], ["Credits", V(closed[0].totals.credit)], ["In balance", closed[0].totals.balanced ? "Yes" : "NO"]] : [], foot: closed.length ? "Closed by " + (closed[0].closedBy || "back office") + " on " + new Date(closed[0].closedAt || 0).toISOString().slice(0, 10) + "." : "No period has been closed yet." }
+    ];
+    const rows = periods.map((p) => ({
+      go: () => this.info("Trial balance · " + p.id, (p.status === "closed" ? "Closed" : "Reopened") + " · " + new Date(p.closedAt || 0).toISOString().slice(0, 10),
+        (p.journal || []).map((r) => [r.code + "  " + r.name, (r.debit ? V(r.debit) + " Dr" : "") + (r.credit ? V(r.credit) + " Cr" : "")])
+          .concat([["TOTALS", V(p.totals.debit) + " Dr / " + V(p.totals.credit) + " Cr"]]),
+        p.totals.balanced ? "Frozen trial balance for the period — Dr = Cr. This is the filed record and does not change when a later document is corrected." : "This snapshot is OUT OF BALANCE — investigate before filing.",
+        (this.can("assets") && p.status === "closed") ? { label: "Reopen this period", go: () => this.reopenMonth(p.id) } : null),
+      cells: [{ t: p.id, mono: 1, w: 600 }, { t: new Date(p.closedAt || 0).toISOString().slice(0, 10), mono: 1 }, p.closedBy || "—", { t: V(p.totals.debit), mono: 1 }, { t: p.status === "closed" ? "Closed" : "Reopened", chip: this.chip(p.status === "closed" ? "ok" : "warn") }]
+    }));
+    return { tabs, actions, guideTitle: "Period close & posted ledger", guide: guide, cardMin: 240, cards: cards,
+      cols: [{ label: "Period", w: ".9fr", mono: 1 }, { label: "Closed on", w: "1fr", mono: 1 }, { label: "By", w: "1.2fr" }, { label: "Trial balance", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: ".9fr", a: "right" }],
+      rows: rows,
+      empty: "No month has been closed yet — tap 'Close a month' once a period has ended.",
+      notes: [["Why a close is more than a report", "A filed month must be fixed. The live statements here recompute from source rows every time they are opened, so a refund keyed today would silently change last quarter's profit. Closing freezes the trial balance as an immutable snapshot and locks the period, so the numbers you filed are the numbers that stay — and any correction to a closed month has to go through a logged reopen, exactly as an auditor expects."]] };
+  }
   bankRecView(tabs) {
     const s = this.state;
     if (window.KPOS_REAL && window.KPOS_REAL.token && !this._bankReq) { this._bankReq = 1; this.bankRefresh(); }
@@ -6669,8 +6732,9 @@ class Component extends DCLogic {
   g_accounting() {
     const K0 = K(), s = this.state;
     const tab = s.tab.acc || 0;
-    const tabs = ["Auto-posting rules", "Chart of accounts", "Today's journal", "Bank reconciliation"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { acc: i }) }) }));
+    const tabs = ["Auto-posting rules", "Chart of accounts", "Today's journal", "Bank reconciliation", "Period close"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { acc: i }) }) }));
     if (tab === 3) return this.bankRecView(tabs);
+    if (tab === 4) return this.periodCloseView(tabs);
     if (tab === 1) {
       return {
         tabs: tabs,
