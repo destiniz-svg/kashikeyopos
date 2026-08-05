@@ -366,7 +366,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
             <div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap">
               <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
                 <button onClick="{{ c.pick }}" style="{{ c.style }}">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:.9"><path d="{{ c.icon }}"></path></svg>
+                  <span style="{{ c.dotStyle }}"></span>
                   {{ c.name }}<span style="font-size:10px;opacity:.55;margin-left:2px;font-family:'JetBrains Mono',monospace">{{ c.count }}</span>
                 </button>
               </sc-for>
@@ -2617,13 +2617,20 @@ class Component extends DCLogic {
     }
 
     const q = s.search.toLowerCase();
-    const cats = [{ id: "all", name: "All", icon: "all" }].concat(K0.MENU_CATEGORIES).map((c) => ({
-      name: c.name,
-      icon: this.catIcon(c.icon || c.id),
-      count: c.id === "all" ? K0.MENU.length : K0.MENU.filter((m) => m.cat === c.id).length,
-      pick: () => this.setState({ cat: c.id }),
-      style: "display:inline-flex;align-items:center;gap:6px;padding:6px 13px 6px 10px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;border:1px solid " + (s.cat === c.id ? "var(--amber)" : "var(--line)") + ";background:" + (s.cat === c.id ? "var(--amber)" : "var(--bg-1)") + ";color:" + (s.cat === c.id ? "var(--on-amber)" : "var(--text-dim)")
-    }));
+    const cats = [{ id: "all", name: "All", icon: "all" }].concat(K0.MENU_CATEGORIES).map((c) => {
+      const hue = this.catHue(c.id === "all" ? "all" : (c.id || c.name));
+      const on = s.cat === c.id;
+      return {
+        name: c.name,
+        icon: this.catIcon(c.icon || c.id),
+        count: c.id === "all" ? K0.MENU.length : K0.MENU.filter((m) => m.cat === c.id).length,
+        pick: () => this.setState({ cat: c.id }),
+        // A hue dot carries the section (rev 2 §5). On the active pill the fill
+        // already identifies it, so the dot goes solid white to stay visible.
+        dotStyle: "width:7px;height:7px;border-radius:50%;flex-shrink:0;background:" + (on ? "var(--on-amber)" : hue),
+        style: "display:inline-flex;align-items:center;gap:7px;padding:6px 13px 6px 11px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;border:1px solid " + (on ? "var(--amber)" : "var(--line)") + ";background:" + (on ? "var(--amber)" : "var(--bg-1)") + ";color:" + (on ? "var(--on-amber)" : "var(--text-dim)")
+      };
+    });
 
     const out86 = this.eightySix();
     const dishes = K0.MENU
@@ -2639,7 +2646,7 @@ class Component extends DCLogic {
           add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
           addons: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.openAddons(m),
           addonsHintStyle: off ? "display:none" : "position:absolute;bottom:6px;right:6px;font-size:9px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:rgba(0,0,0,.55);color:#fff",
-          style: "display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-radius:10px;overflow:hidden;transition:.12s;opacity:" + (off ? ".62" : "1"),
+          style: "display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid " + this.catHue(m.cat) + ";border-radius:10px;overflow:hidden;transition:.12s;opacity:" + (off ? ".62" : "1"),
           tag: off ? "86'd" : (m.recipe && m.recipe.length ? "" : ""),
           tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff" : "display:none",
           vegStyle: m.veg ? "position:absolute;top:7px;right:7px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--green)" : "display:none",
@@ -4213,6 +4220,24 @@ class Component extends DCLogic {
     };
   }
   catIcon(key) { const I = this.CAT_ICONS(); return I[key] || I.main; }
+  // Categorical menu-section hue (design rev 2 §5): hue carries the section so a
+  // cashier lands on it without reading the label. Match a section to one of the
+  // eight --cat-* tokens by name keyword, falling back to a stable index cycle
+  // so every section still gets a distinct, repeatable hue. Swatch/dot/rail only.
+  catHue(idOrName) {
+    const s = String(idOrName || "").toLowerCase();
+    if (s === "all" || !s) return "var(--cat-all)";
+    const kw = [
+      [/start|appet|hedhik|snack|short.?eat/, "starters"], [/grill|bbq|tandoor|kebab/, "grill"],
+      [/rice|biriyan|biryani|pilau|fried.?rice|noodle|pasta/, "rice"], [/side|extra|add.?on/, "sides"],
+      [/dessert|sweet|cake|ice/, "desserts"], [/drink|bever|juice|coffee|tea|shake|soda/, "drinks"],
+      [/main|curry|dish|meal|plate|burger|roshi/, "mains"],
+    ];
+    for (const [re, tok] of kw) if (re.test(s)) return "var(--cat-" + tok + ")";
+    const order = ["starters", "mains", "grill", "rice", "sides", "desserts", "drinks"];
+    const cats = (K().MENU_CATEGORIES || []); const i = Math.max(0, cats.findIndex((c) => String(c.id).toLowerCase() === s || String(c.name).toLowerCase() === s));
+    return "var(--cat-" + order[i % order.length] + ")";
+  }
 
   STAFF_TYPES() {
     return {
