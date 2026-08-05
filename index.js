@@ -1415,7 +1415,7 @@ function liveOrdersV2(dataRows) {
     .filter((o) => o && o.id && !finalStatuses.has(String(o.status || "new").toLowerCase()) && String(o.status || "") !== "cancelled")
     .map((o) => {
       const at = Number(o.createdAt || o.at || o.t) || 0, dt = at ? new Date(at) : null;
-      const items = (o.items || []).map((it) => ({ pid: String(it.pid || it.id || ""), n: it.name || it.n || "Item",
+      const items = (o.items || []).map((it, i) => ({ idx: i, pid: String(it.pid || it.id || ""), n: it.name || it.n || "Item",
         q: Number(it.qty || it.q) || 1, station: it.station || "", price: Math.round((Number(it.price) || 0) / 100), done: !!it.done }));
       const ot = V2_CHAN[o.otype] || "dine_in";
       const channel = ot === "delivery" ? "delivery" : ot === "takeaway" ? "takeaway" : (o.source === "qr" ? "qr" : "dine_in");
@@ -4346,6 +4346,42 @@ if (fs.existsSync(protoFile)) {
     if (rowver == null) return res.status(404).json({ error: "order not found" });
     poke(orgId, rowver);
     res.json({ ok: true });
+  }));
+  // Per-line KDS bump: a cook marks one dish on a ticket done (or un-done). The
+  // line is addressed by its stable index in the order's items array. When every
+  // line is bumped the whole ticket becomes ready; the first bump moves a 'new'
+  // ticket to 'preparing', so the status reflects real kitchen progress.
+  app.post("/api/app2/order/:id/line", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.KITCHEN, "You don't have permission to bump this ticket.")) return;
+    const id = String(req.params.id || "");
+    const b = req.body || {};
+    const idx = Math.trunc(Number(b.index));
+    if (!Number.isFinite(idx) || idx < 0) return res.status(400).json({ error: "bad line index" });
+    const done = b.done !== false;
+    const out = await withOrg(orgId, async (c) => {
+      const cur = await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
+      if (!cur.rowCount) return { code: 404 };
+      const data = cur.rows[0].data || {};
+      const items = Array.isArray(data.items) ? data.items.slice() : [];
+      if (idx >= items.length) return { code: 400 };
+      items[idx] = Object.assign({}, items[idx], { done: done, doneAt: done ? Date.now() : null });
+      data.items = items;
+      data.updatedAt = Date.now();
+      const allDone = items.length > 0 && items.every((it) => it.done);
+      if (allDone) { if (data.status === "new" || data.status === "preparing") { data.status = "ready"; data.readyAt = Date.now(); } }
+      else if (data.status === "new") { data.status = "preparing"; }
+      const r = await c.query(
+        "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver",
+        [orgId, id, JSON.stringify(data)]);
+      return { code: 200, rowver: Number(r.rows[0].rowver), status: data.status, allDone };
+    });
+    if (out.code === 404) return res.status(404).json({ error: "order not found" });
+    if (out.code === 400) return res.status(400).json({ error: "line index out of range" });
+    poke(orgId, out.rowver);
+    res.json({ ok: true, status: out.status, allDone: out.allDone });
   }));
   // Register write-path: a cashier/waiter/admin accepts a live customer order,
   // which opens a bill for it on the till. Marks the order accepted (and, if it

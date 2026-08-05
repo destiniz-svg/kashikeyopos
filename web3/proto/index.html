@@ -2322,12 +2322,15 @@ class Component extends DCLogic {
             timerStyle: "font-size:19px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:-0.03em;color:" + (late ? "var(--red-bright)" : warn ? "var(--amber-bright)" : "var(--green)"),
             items: tk.items.map((l) => ({
               name: l.n || "Item", q: "×" + (l.q || 1), note: "",
-              style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px",
+              style: "width:100%;display:flex;align-items:flex-start;gap:10px;padding:8px 13px;cursor:pointer",
               qty: "font-size:12px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace;min-width:22px;flex-shrink:0;padding-top:1px",
               noteStyle: "display:none", check: "font-size:13px;color:var(--line-3);flex-shrink:0",
-              bump: () => this.toast("Bump the whole ticket when it's " + (starting ? "started" : "ready"))
+              // Tap a dish to bump it: it clears from the ticket, the order moves
+              // to preparing, and once the last line is bumped the ticket goes
+              // ready — all shared across every kitchen screen.
+              bump: () => { this.bumpLine(o.id, l.idx, true); this.toast((l.n || "Item") + " up"); }
             })),
-            serveLabel: starting ? "Start cooking · " + head : "Bump · Ready · " + head,
+            serveLabel: starting ? "Start cooking · " + head : "Bump all · Ready · " + head,
             serveStyle: "margin:0;padding:10px;text-align:center;font-size:11.5px;font-weight:700;background:var(--bg-2);border-top:1px solid var(--line);color:var(--amber-bright)",
             serve: () => { this.setOrderStatus(o.id, starting ? "preparing" : "ready"); this.toast(starting ? head + " started" : head + " ready to serve"); }
           };
@@ -3703,7 +3706,17 @@ class Component extends DCLogic {
   refreshLiveOrders() {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
     fetch("/api/app2/live", { credentials: "same-origin" }).then((r) => r.json())
-      .then((j) => { if (j && j.ok) this.setState({ liveOrders: j.orders || [] }); }).catch(() => {});
+      .then((j) => {
+        if (!j || !j.ok) return;
+        // Keep a just-bumped line marked done even if this poll was in flight
+        // before the bump reached the server — otherwise the line flickers back
+        // for a poll cycle. The hold expires once the server catches up.
+        const holds = this._bumped || {}, now = Date.now();
+        const orders = (j.orders || []).map((o) => ({ ...o, items: (o.items || []).map((it) =>
+          (holds[o.id + ":" + it.idx] > now && !it.done) ? { ...it, done: true } : it) }));
+        this.setState({ liveOrders: orders });
+        this.forceUpdate();  // dc setState is lazy; flush so KDS/Orders repaint now
+      }).catch(() => {});
   }
   stationOf(name) { return /salad|juice|water|soda|coffee|tea|lassi|smoothie|\bice\b|mocktail|cola|sprite/i.test(String(name || "")) ? "cold" : "hot"; }
   // Persist a fired KOT as a real order so the kitchen (another device) sees it.
@@ -3721,6 +3734,28 @@ class Component extends DCLogic {
     if (!id || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
     return fetch("/api/app2/order/" + encodeURIComponent(id) + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ status }) })
       .then((r) => r.json()).then((j) => { this.refreshLiveOrders(); return j; }).catch(() => null);
+  }
+  // Bump a single line on a ticket (one dish is up). The line is addressed by
+  // its stable index in the order; the server moves the ticket to preparing on
+  // the first bump and to ready once every line is done.
+  bumpLine(id, idx, done) {
+    if (!id || idx == null || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
+    // Hold this line done for a few seconds so an in-flight poll can't restore
+    // it before the server registers the bump (see refreshLiveOrders).
+    if (done !== false) { this._bumped = this._bumped || {}; this._bumped[id + ":" + idx] = Date.now() + 5000; }
+    // Optimistic: mark the line done locally so it clears immediately, then
+    // reconcile with the server's copy on the next poll.
+    const live = (this.liveOrders() || []).map((o) => {
+      if (o.id !== id) return o;
+      const items = (o.items || []).map((it) => it.idx === idx ? Object.assign({}, it, { done: done !== false }) : it);
+      return Object.assign({}, o, { items: items });
+    });
+    this.setState({ liveOrders: live });
+    this.forceUpdate();
+    // The 3s live-order poll (pullSignals) is the guaranteed repaint tick; the
+    // hold above keeps the bump from flickering back until the server catches up.
+    return fetch("/api/app2/order/" + encodeURIComponent(id) + "/line", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ index: idx, done: done !== false }) })
+      .then((r) => r.json()).then((j) => { this.refreshLiveOrders(); return j; }).catch(() => { this.refreshLiveOrders(); return null; });
   }
   // One stroke glyph per menu section, drawn in the same language as the nav.
   CAT_ICONS() {
