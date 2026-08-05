@@ -2402,6 +2402,226 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(Object.assign({ ok: true }, out));
   }));
 
+  /* ── Bank reconciliation ────────────────────────────────────────────────
+     Industry-grade, and autonomous where it can be. Card and transfer sales
+     are the money that must reach the bank, so the system DERIVES the expected
+     deposits itself — the only input it genuinely needs is the actual bank
+     statement (imported as CSV, or a card-settlement file). It then:
+       • auto-matches each bank deposit to the sales day it settles (card
+         deposits arrive net of the acquirer's MDR fee, so a small shortfall is
+         allowed and captured as a card fee);
+       • surfaces deposits-in-transit (money banked but not yet on the
+         statement — a timing difference, not a loss);
+       • classifies statement debits as bank charges vs supplier payments;
+       • produces the classic two-column reconciliation (adjusted bank balance
+         == adjusted book balance) and flags any unexplained difference;
+       • one action books every un-booked fee/charge as an expense, so the
+         books catch up to the bank without hand-keying.
+     Money is laari throughout. */
+  const bankDayKey = (ms) => { const d = new Date(Number(ms) || 0); return d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0"); };
+  const FEE_WORDS = /fee|charge|commission|mdr|service charge|sms|maintenance|levy|duty|interest paid|bank/i;
+
+  async function computeBankRec(client, orgId, storeId) {
+    const setRow = (await client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [orgId])).rows[0];
+    const opening = Math.round(num(setRow && setRow.data && setRow.data.bankOpening));
+    // Expected deposits: card + transfer sales, grouped by calendar day + kind.
+    const sales = (await client.query(
+      `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+         AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)`, [orgId, storeId])).rows;
+    const expMap = {};
+    for (const row of sales) { const d = row.data || {}; if (d.type === "refund" || d.foc) continue;
+      const at = Number(d.t) || Number(d.at) || 0; const dk = bankDayKey(at);
+      for (const p of (d.payments || [])) { const m = String(p.method || "").toLowerCase();
+        if (/card|wallet|bml/.test(m)) { const k = dk + "|card"; (expMap[k] = expMap[k] || { day: dk, at, kind: "card", amount: 0, count: 0 }); expMap[k].amount += num(p.amount); expMap[k].count++; }
+        else if (/transfer|bank/.test(m)) { const k = dk + "|transfer"; (expMap[k] = expMap[k] || { day: dk, at, kind: "transfer", amount: 0, count: 0 }); expMap[k].amount += num(p.amount); expMap[k].count++; }
+      }
+    }
+    const expected = Object.keys(expMap).map((k) => Object.assign({ key: k, matched: false, matchTxn: null, fee: 0 }, expMap[k])).sort((a, b) => a.at - b.at);
+    // Bank statement lines the owner imported.
+    const bankRows = (await client.query(
+      "SELECT id, data FROM entities WHERE org_id=$1 AND kind='bankTxns' AND deleted=false ORDER BY (data->>'date')::numeric ASC", [orgId])).rows;
+    const txns = bankRows.map((r) => Object.assign({ id: r.id }, r.data || {}, { matched: false, matchKey: null }));
+    // Auto-match: each credit line to an unmatched expected deposit. A transfer
+    // matches its exact amount; a card deposit may be net of MDR, so match the
+    // largest expected card day within a 5% shortfall and ±5 days.
+    const DAYMS = 86400000;
+    for (const t of txns) {
+      if (t.ignored || t.amount <= 0) continue;
+      let best = null, bestGap = Infinity;
+      for (const e of expected) {
+        if (e.matched) continue;
+        const gap = Math.abs((t.date || 0) - e.at);
+        if (gap > 5 * DAYMS) continue;
+        if (e.kind === "transfer") { if (Math.abs(t.amount - e.amount) <= Math.max(50, e.amount * 0.005) && gap < bestGap) { best = e; bestGap = gap; } }
+        else { if (t.amount <= e.amount + 50 && t.amount >= e.amount * 0.95 && gap < bestGap) { best = e; bestGap = gap; } } // card: net of MDR
+      }
+      if (best) { best.matched = true; best.matchTxn = t.id; best.fee = Math.max(0, best.amount - t.amount); t.matched = true; t.matchKey = best.key; }
+    }
+    // Debits: bank charges (auto-classified) vs supplier/other payments.
+    const debits = txns.filter((t) => !t.ignored && t.amount < 0).map((t) => Object.assign({}, t, { isCharge: FEE_WORDS.test(String(t.desc || "")) }));
+    // Reconciling totals.
+    const depositsInTransit = expected.filter((e) => !e.matched).reduce((a, e) => a + e.amount, 0);
+    const cardFees = expected.filter((e) => e.matched && e.fee > 0).reduce((a, e) => a + e.fee, 0);
+    const chargeDebits = debits.filter((t) => t.isCharge && !t.booked).reduce((a, t) => a + Math.abs(t.amount), 0);
+    const bookedCharges = txns.filter((t) => t.booked).reduce((a, t) => a + Math.abs(Math.min(0, t.amount)), 0);
+    // Bank-paid expenses (money already out of the bank in our books).
+    const expRows = (await client.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false", [orgId])).rows;
+    let bankPaidExp = 0, supplierPayments = 0, bookedCardFees = 0;
+    for (const e of expRows) { const d = e.data || {}; if (!/card|transfer|bank/i.test(String(d.paidFrom || ""))) continue;
+      const amt = num(d.amount); bankPaidExp += amt;
+      // Bank-charge catch-up entries booked from reconciliation are already on
+      // the statement (as a debit) or embedded in a net card deposit — they are
+      // NOT outstanding payments. Only genuine supplier payments are.
+      const sr = String(d.srcRef || "");
+      if (!sr.startsWith("bank:")) supplierPayments += amt;
+      if (sr.startsWith("bank:cardfees")) bookedCardFees += amt;   // MDR fees already booked
+    }
+    // The MDR shortfall is only a book adjustment while it hasn't been booked as
+    // an expense; once booked it lives in bookBalance and must not be subtracted
+    // again.
+    const unbookedCardFees = Math.max(0, cardFees - bookedCardFees);
+    // Supplier payments that cleared the statement (debits that aren't fees).
+    const paymentDebits = debits.filter((t) => !t.isCharge).reduce((a, t) => a + Math.abs(t.amount), 0);
+    // Payments in our books not yet on the statement (unpresented) — a timing
+    // difference on the bank side, just like deposits in transit.
+    const outstandingPayments = Math.max(0, supplierPayments - paymentDebits);
+    const unexpectedCredits = txns.filter((t) => !t.ignored && t.amount > 0 && !t.matched);
+    const unexpectedTotal = unexpectedCredits.reduce((a, t) => a + num(t.amount), 0);
+    const expectedTotal = expected.reduce((a, e) => a + e.amount, 0);
+    const bankBalance = opening + txns.filter((t) => !t.ignored).reduce((a, t) => a + num(t.amount), 0);
+    const bookBalance = opening + expectedTotal - bankPaidExp;
+    // Classic two-column reconciliation: adjust each side for timing + unbooked
+    // items; the adjusted balances must agree.
+    const adjustedBank = bankBalance + depositsInTransit - outstandingPayments;
+    const adjustedBook = bookBalance - unbookedCardFees - chargeDebits;
+    const difference = adjustedBook - adjustedBank;   // = −unexpectedTotal when fully explained
+    return {
+      opening, bankBalance, bookBalance, expectedTotal, bankPaidExp, supplierPayments,
+      expected, txns, debits, unexpectedCredits, unexpectedTotal,
+      depositsInTransit, outstandingPayments, paymentDebits, cardFees, unbookedCardFees, chargeDebits, bookedCharges,
+      adjustedBank, adjustedBook, difference,
+      reconciled: Math.abs(difference) < 100,     // within MVR 1
+      matchedCount: expected.filter((e) => e.matched).length, expectedCount: expected.length,
+      unbookedTotal: cardFees + chargeDebits,
+    };
+  }
+
+  router.get("/bank", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const storeId = req.query.storeId ? String(req.query.storeId) : null;
+    const out = await withOrg(req.orgId, (client) => computeBankRec(client, req.orgId, storeId));
+    res.json(Object.assign({ ok: true, currency: "laari" }, out));
+  }));
+
+  // Import bank statement lines. Accepts {lines:[{date, desc, amount}]} with
+  // amount in MVR (positive = deposit/credit, negative = withdrawal/debit) and
+  // date as ms or an ISO/dd-mm-yyyy string. De-dupes on date+desc+amount so a
+  // re-import of an overlapping statement never doubles a line.
+  router.post("/bank/import", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const lines = Array.isArray(req.body && req.body.lines) ? req.body.lines.slice(0, 2000) : null;
+    if (!lines || !lines.length) return res.status(400).json({ error: "no statement lines to import" });
+    const parseDate = (v) => {
+      if (v == null) return Date.now();
+      if (typeof v === "number" || /^\d+$/.test(String(v))) { const n = Number(v); return n > 1e12 ? n : n * 1000; }
+      const s = String(v).trim();
+      let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return Date.UTC(+m[1], +m[2] - 1, +m[3]);
+      m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/); if (m) { let y = +m[3]; if (y < 100) y += 2000; return Date.UTC(y, +m[2] - 1, +m[1]); }
+      const d = Date.parse(s); return isNaN(d) ? Date.now() : d;
+    };
+    const out = await withOrg(req.orgId, async (client) => {
+      let created = 0, skipped = 0;
+      const existing = new Set((await client.query(
+        "SELECT data->>'sig' AS sig FROM entities WHERE org_id=$1 AND kind='bankTxns' AND deleted=false", [req.orgId])).rows.map((r) => r.sig));
+      for (const l of lines) {
+        const amount = Math.round(num(l && l.amount) * 100);   // MVR → laari
+        if (!amount) { skipped++; continue; }
+        const date = parseDate(l.date);
+        const desc = String((l && l.desc) || "").slice(0, 120);
+        const sig = date + "|" + desc.toLowerCase().replace(/\s+/g, "") + "|" + amount;
+        if (existing.has(sig)) { skipped++; continue; }
+        existing.add(sig);
+        const id = uid();
+        await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'bankTxns',$2,$3)",
+          [req.orgId, id, JSON.stringify({ id, date, desc, amount, sig, booked: false, ignored: false, t: Date.now(), storeId: req.body.storeId || null })]);
+        created++;
+      }
+      return { created, skipped };
+    });
+    if (out.created && poke) poke(req.orgId, Date.now());
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
+  // Book every un-booked bank charge (card MDR fees + statement fee debits) as
+  // an expense so the books catch up to the bank — the autonomous "reconcile"
+  // action. Idempotent: already-booked lines are skipped and card fees are
+  // booked once against a period marker.
+  router.post("/bank/book-charges", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const storeId = req.body && req.body.storeId ? String(req.body.storeId) : null;
+    const out = await withOrg(req.orgId, async (client) => {
+      const rec = await computeBankRec(client, req.orgId, storeId);
+      let booked = 0, total = 0;
+      // Fee debit lines → one expense each, mark the line booked.
+      for (const t of rec.debits) {
+        if (t.booked || !t.isCharge) continue;
+        const amt = Math.abs(num(t.amount));
+        const id = uid();
+        await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'expenses',$2,$3)",
+          [req.orgId, id, JSON.stringify({ id, no: "EXP-" + id.slice(0, 6).toUpperCase(), t: Number(t.date) || Date.now(), cat: "Bank charges", supplier: "Bank", amount: amt, note: (t.desc || "Bank charge").slice(0, 120), paidFrom: "bank", acct: "6700", freq: "monthly", userName: "Reconciliation", srcRef: "bank:" + t.id })]);
+        await client.query("UPDATE entities SET data = data || '{\"booked\":true}'::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='bankTxns' AND id=$2", [req.orgId, t.id]);
+        booked++; total += amt;
+      }
+      // Card MDR fees → one aggregated expense (idempotent via srcRef on the sig).
+      if (rec.cardFees > 0) {
+        const feeSig = "bank:cardfees:" + rec.expected.filter((e) => e.matched && e.fee > 0).map((e) => e.matchTxn).sort().join(",");
+        const dup = await client.query("SELECT 1 FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false AND data->>'srcRef'=$2 LIMIT 1", [req.orgId, feeSig]);
+        if (!dup.rowCount) {
+          const id = uid();
+          await client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'expenses',$2,$3)",
+            [req.orgId, id, JSON.stringify({ id, no: "EXP-" + id.slice(0, 6).toUpperCase(), t: Date.now(), cat: "Bank charges", supplier: "Card acquirer (MDR)", amount: rec.cardFees, note: "Card settlement fees (MDR) from reconciliation", paidFrom: "bank", acct: "6700", freq: "monthly", userName: "Reconciliation", srcRef: feeSig })]);
+          booked++; total += rec.cardFees;
+        }
+      }
+      return { booked, total };
+    });
+    if (out.booked && poke) poke(req.orgId, Date.now());
+    res.json(Object.assign({ ok: true }, out));
+  }));
+
+  // Set the opening bank balance (MVR) once, so the reconciliation starts from a
+  // known point rather than zero.
+  router.post("/bank/opening", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const laari = Math.round(num(req.body && req.body.amount) * 100);
+    const out = await withOrg(req.orgId, async (client) => {
+      const cur = (await client.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY updated_at DESC LIMIT 1", [req.orgId])).rows[0];
+      const data = Object.assign({}, cur ? cur.data : { id: "settings" }); data.bankOpening = laari;
+      const id = cur ? cur.id : "settings";
+      const r = await client.query(
+        "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver",
+        [req.orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    if (poke) poke(req.orgId, out);
+    res.json({ ok: true, opening: laari });
+  }));
+
+  // Ignore / un-ignore a statement line (e.g. an owner transfer that isn't
+  // trading income), or clear all imported lines to re-import.
+  router.post("/bank/txn/:id/ignore", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const ig = (req.body && req.body.ignored === false) ? false : true;
+    await withOrg(req.orgId, (client) => client.query(
+      "UPDATE entities SET data = data || $3::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='bankTxns' AND id=$2",
+      [req.orgId, req.params.id, JSON.stringify({ ignored: ig })]));
+    if (poke) poke(req.orgId, Date.now());
+    res.json({ ok: true });
+  }));
+
+  router.post("/bank/clear", authAny, requireBackOffice(1), wrap(async (req, res) => {
+    const r = await withOrg(req.orgId, (client) => client.query(
+      "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='bankTxns' AND deleted=false", [req.orgId]));
+    if (poke) poke(req.orgId, Date.now());
+    res.json({ ok: true, cleared: r.rowCount });
+  }));
+
   /* ── Owner Panel (P6): one screen that answers "how's my business?" ──────
      KPIs with vs-previous deltas, the menu-engineering "Magic Quadrant"
      (popularity × contribution margin → Stars/Plowhorses/Puzzles/Dogs, the

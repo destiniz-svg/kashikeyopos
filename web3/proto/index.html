@@ -6536,10 +6536,104 @@ class Component extends DCLogic {
     this.toast(msg || "Six dishes proposed · blended food cost 27.8%", "warn");
   }
 
+  // Fetch the reconciliation (lazily on first open, and after any bank action).
+  bankRefresh() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    fetch("/api/inv/bank", { credentials: "same-origin" }).then((r) => r.json()).then((j) => { if (j && j.ok) this.setState({ bankRec: j }); }).catch(() => {});
+  }
+  // Import a bank statement CSV: date, description, amount (deposits positive,
+  // withdrawals negative). Header row auto-detected.
+  bankImport() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to reconcile", "warn"); return; }
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".csv,text/csv,text/plain";
+    input.onchange = () => {
+      const f = input.files && input.files[0]; if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const rows = String(reader.result || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+        if (!rows.length) { this.toast("That file is empty", "warn"); return; }
+        const start = (/date/i.test(rows[0]) && /amount|amt|credit|debit/i.test(rows[0])) ? 1 : 0;
+        const lines = rows.slice(start).map((l) => { const c = l.split(",").map((x) => x.trim().replace(/^"|"$/g, "")); return { date: c[0], desc: c[1] || "", amount: parseFloat(String(c[2]).replace(/[^0-9.\-]/g, "")) || 0 }; }).filter((x) => x.amount);
+        if (!lines.length) { this.toast("No statement lines found — expected columns: date, description, amount", "warn"); return; }
+        this.toast("Importing " + lines.length + " line" + (lines.length === 1 ? "" : "s") + "…");
+        fetch("/api/inv/bank/import", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ lines: lines }) })
+          .then((r) => r.json().catch(() => ({}))).then((j) => {
+            if (j && j.error) { this.toast(j.error, "warn"); return; }
+            this.toast((j.created || 0) + " line" + (j.created === 1 ? "" : "s") + " imported" + (j.skipped ? " · " + j.skipped + " duplicate" : ""));
+            this.bankRefresh();
+          }).catch(() => this.toast("Import failed — check the connection", "warn"));
+      };
+      reader.readAsText(f);
+    };
+    input.click();
+  }
+  bankBookCharges() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    fetch("/api/inv/bank/book-charges", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: "{}" })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { this.toast(j.error, "warn"); return; }
+        this.toast(j.booked ? (j.booked + " charge" + (j.booked === 1 ? "" : "s") + " booked · " + MVR((j.total || 0) / 100)) : "No unbooked charges");
+        this.bankRefresh();
+      }).catch(() => this.toast("Could not book the charges", "warn"));
+  }
+  bankSetOpening() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    const cur = this.state.bankRec ? (this.state.bankRec.opening / 100).toFixed(2) : "0";
+    const v = window.prompt("Opening bank balance (MVR) — the balance the reconciliation starts from:", cur);
+    if (v == null) return;
+    const amt = parseFloat(v) || 0;
+    fetch("/api/inv/bank/opening", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ amount: amt }) })
+      .then((r) => r.json().catch(() => ({}))).then(() => { this.toast("Opening balance set · " + MVR(amt)); this.bankRefresh(); }).catch(() => this.toast("Could not set the opening balance", "warn"));
+  }
+  bankClear() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    if (!window.confirm("Remove all imported bank statement lines so you can re-import? Expected deposits and booked charges are not affected.")) return;
+    fetch("/api/inv/bank/clear", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: "{}" })
+      .then((r) => r.json().catch(() => ({}))).then((j) => { this.toast((j.cleared || 0) + " line" + (j.cleared === 1 ? "" : "s") + " cleared"); this.bankRefresh(); }).catch(() => {});
+  }
+  bankRecView(tabs) {
+    const s = this.state;
+    if (window.KPOS_REAL && window.KPOS_REAL.token && !this._bankReq) { this._bankReq = 1; this.bankRefresh(); }
+    const b = s.bankRec;
+    const V = (n) => MVR((Number(n) || 0) / 100);
+    const actions = [
+      { label: "Import statement", primary: 1, go: () => this.bankImport() },
+      { label: "Book fees & charges", go: () => this.bankBookCharges() },
+      { label: "Opening balance", go: () => this.bankSetOpening() },
+      { label: "Clear & re-import", go: () => this.bankClear() }
+    ];
+    const guide = ["Card and transfer sales are the money that must reach the bank — the system already knows what to expect", "Import your bank statement (CSV: date, description, amount — deposits positive, withdrawals negative)", "It auto-matches deposits, allowing for the acquirer's MDR fee on card batches", "One tap books the fees and charges to the P&L, so your books catch up to the bank"];
+    if (!b) return { tabs, actions, guideTitle: "Bank reconciliation", guide: guide, cardMin: 240, cards: [{ title: "Bank reconciliation", sub: "Import a statement to begin", big: "—", rows: [], foot: "The system derives the expected card and transfer deposits from your sales; you only need to import the bank statement." }], cols: [{ label: "Date", w: ".8fr" }], rows: [] };
+    const unbooked = (b.unbookedCardFees || 0) + (b.chargeDebits || 0);
+    const cards = [
+      { title: "Reconciliation", sub: b.reconciled ? "Bank agrees with the books" : "Needs attention", big: b.reconciled ? "Balanced" : "Off by " + V(Math.abs(b.difference)), bigColor: b.reconciled ? "var(--green)" : "var(--red-bright)", rows: [["Adjusted bank", V(b.adjustedBank)], ["Adjusted books", V(b.adjustedBook)]], foot: b.reconciled ? "Every deposit is matched or explained by a timing difference, and every fee is booked." : "The difference is unexpected deposits or missing statement lines — import the latest statement." },
+      { title: "Balance per bank", sub: "From the imported statement", big: V(b.bankBalance), rows: [["Opening", V(b.opening)], ["Statement lines", String((b.txns || []).length)]], foot: "What the bank statement says you hold." },
+      { title: "Balance per books", sub: "Collected less paid", big: V(b.bookBalance), rows: [["Expected deposits", V(b.expectedTotal)], ["Paid from bank", V(b.bankPaidExp)]], foot: "What your sales say should be in the bank." },
+      { title: "Deposits in transit", sub: b.matchedCount + "/" + b.expectedCount + " deposits matched", big: V(b.depositsInTransit), bigColor: "var(--amber-bright)", rows: [["Outstanding payments", V(b.outstandingPayments)], ["Unexpected credits", V(b.unexpectedTotal)]], foot: "Sales banked but not yet on the statement — a timing difference, not a loss." },
+      { title: "Fees & charges", sub: unbooked > 0 ? "Not yet booked" : "All booked", big: V((b.cardFees || 0) + (b.chargeDebits || 0) + (b.bookedCharges || 0)), bigColor: unbooked > 0 ? "var(--red-bright)" : "var(--green)", rows: [["Card MDR fees", V(b.cardFees)], ["Bank charges", V((b.chargeDebits || 0) + (b.bookedCharges || 0))]], foot: unbooked > 0 ? "Tap 'Book fees & charges' to post " + V(unbooked) + " to the P&L." : "Every fee is booked to the P&L." }
+    ];
+    const chargeIds = {}; (b.debits || []).forEach((t) => { if (t.isCharge) chargeIds[t.id] = 1; });
+    const rows = (b.txns || []).filter((t) => !t.ignored).map((t) => {
+      const isDebit = t.amount < 0;
+      const label = isDebit ? (chargeIds[t.id] ? (t.booked ? "Charge · booked" : "Bank charge") : "Payment") : (t.matched ? "Matched" : "Unexpected");
+      const tone = isDebit ? (chargeIds[t.id] && !t.booked ? "err" : "warn") : (t.matched ? "ok" : "err");
+      return { cells: [{ t: new Date(Number(t.date) || 0).toISOString().slice(0, 10), mono: 1 }, t.desc || "—", { t: V(t.amount), mono: 1, c: isDebit ? "var(--red-bright)" : "var(--green)" }, { t: label, chip: this.chip(tone) }] };
+    });
+    (b.expected || []).filter((e) => !e.matched).sort((a, c) => c.amount - a.amount).slice(0, 25).forEach((e) => {
+      rows.push({ cells: [{ t: e.day, mono: 1 }, (e.kind === "card" ? "Card" : "Transfer") + " deposit expected (" + e.count + " sales)", { t: V(e.amount), mono: 1, c: "var(--amber-bright)" }, { t: "In transit", chip: this.chip("warn") }] });
+    });
+    return { tabs, actions, guideTitle: "Bank reconciliation", guide: guide, cardMin: 240, cards: cards,
+      cols: [{ label: "Date", w: ".8fr", mono: 1 }, { label: "Description", w: "2.2fr" }, { label: "Amount", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: "1fr", a: "right" }],
+      rows: rows,
+      empty: "No statement lines yet — tap 'Import statement' to reconcile.",
+      notes: [["Why this matters", "A POS that only totals sales can't tell an owner whether the money actually arrived. Matching every card batch and transfer against the bank — net of the acquirer's fee — is how you catch a missing settlement, a double charge or a bank error while it is still fixable."]] };
+  }
   g_accounting() {
     const K0 = K(), s = this.state;
     const tab = s.tab.acc || 0;
-    const tabs = ["Auto-posting rules", "Chart of accounts", "Today's journal"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { acc: i }) }) }));
+    const tabs = ["Auto-posting rules", "Chart of accounts", "Today's journal", "Bank reconciliation"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { acc: i }) }) }));
+    if (tab === 3) return this.bankRecView(tabs);
     if (tab === 1) {
       return {
         tabs: tabs,
