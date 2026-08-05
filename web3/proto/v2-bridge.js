@@ -164,6 +164,93 @@
     });
   }
 
+  // ── Public: persist a refund as an opposing `sales` entity (type refund) ────
+  // A refund never edits the original sale. It posts a reversal the server
+  // audits (sale.refund, with reason + amount), which the Z-report, GST return
+  // and P&L already subtract from net; a credit refund also lowers the
+  // customer's drawn balance via a negative FIN-02 accrual. Idempotent by opId.
+  //
+  // Manager approval (SEC-03): a refund is a money-out movement, so the server
+  // only stamps it approved when the batch carries a fresh /api/elevate token.
+  // When a store password is supplied we verify it, then POST the op directly
+  // with X-Elevation so the refund lands APPROVED and clears the audit flag —
+  // exactly what the register (/app) does. If that fails (wrong password, or
+  // offline) we still persist through the durable outbox so no refund is lost;
+  // it simply lands "pending review" until a manager re-approves. Returns a
+  // Promise resolving { ok, approved, error } so the till can show a result.
+  function pushRefund(refund) {
+    if (!token() || !refund) return Promise.resolve({ ok: false, error: "no session" });
+    // Money moves OUT on a refund, so every figure is stored negative — the
+    // same shape the register (/app) posts. The Z-report sums `gross += total`
+    // and `cash += payment.amount`, so a negative total nets the day's takings
+    // and drawer down; a positive one would double-count the sale. The refunds
+    // tally itself reads Math.abs, so it stays a positive number either way.
+    var mag = Math.round(num(refund.amount) * 100);         // laari, magnitude
+    if (!(mag > 0)) return Promise.resolve({ ok: false, error: "amount required" });
+    var total = -mag;                                       // signed: paid out
+    var tender = refund.tender || "cash";
+    var id = "r_v2_" + (refund.no || "refund") + "_" + Date.now();
+    var data = {
+      type: "refund", no: (refund.no || id) + "-R", refundOf: refund.no || null,
+      tender: tender, at: Date.now(), reason: refund.reason || "", note: refund.note || "",
+      lines: [], subtotal: total, fee: 0, billDisc: 0, gst: 0, svcCharge: 0,
+      total: total, userName: refund.by || "",
+      payments: [{ method: tender, amount: total }],
+    };
+    if (refund.customerId) { data.customerId = refund.customerId; data.customerName = refund.customerName || ""; }
+    var opObj = { opId: id, puts: [{ kind: "sales", id: id, data: data }] };
+    // A credit refund gives money back against the tab: lower the drawn balance
+    // (negative delta; the server floors it at zero).
+    if (refund.customerId && tender === "credit") {
+      opObj.deltas = { cust: [{ id: refund.customerId, bal: total, pts: 0 }] };
+    }
+    var op = { id: id, lamport: Date.now(), state: "queued", attempts: 0, total: mag, body: { ops: [opObj] } };
+
+    // Durable fallback: queue it so a failed/offline approval never loses the
+    // refund. It drains on the next flush and lands pending review.
+    function queueDurably() {
+      return putOp(op).then(flush).catch(function () {
+        var tk = token(); if (!tk) return;
+        return fetch("/api/ops", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk }, body: JSON.stringify(op.body) }).catch(function () {});
+      });
+    }
+
+    var tk = token();
+    var pwd = refund.password || "";
+    // No password, or offline → durable queue only (pending approval).
+    if (!pwd || navigator.onLine === false) {
+      return queueDurably().then(function () { return { ok: true, approved: false }; });
+    }
+    // Elevate with the store password, then post the refund approved in one
+    // batch. Any failure falls through to the durable queue.
+    return fetch("/api/elevate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk },
+      body: JSON.stringify({ password: pwd }),
+    }).then(function (r) {
+      return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+    }).then(function (x) {
+      if (!x.ok || !x.j || !x.j.elevation) {
+        // Wrong password → surface it; do NOT queue (the till lets them retry).
+        return { ok: false, error: (x.j && x.j.error) || "wrong password" };
+      }
+      return fetch("/api/ops", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + tk, "X-Elevation": x.j.elevation },
+        body: JSON.stringify(op.body),
+      }).then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      }).then(function (jj) {
+        try { console.log("[v2] refund posted", id, "MVR", (mag / 100).toFixed(2), "approved", "rowver", jj && jj.rowver); } catch (e) {}
+        return { ok: true, approved: true };
+      });
+    }).catch(function () {
+      // Network hiccup after a valid password: don't lose the refund.
+      return queueDurably().then(function () { return { ok: true, approved: false }; });
+    });
+  }
+
   // ── Public: persist a clock punch (a time_entries entity) ──────────────────
   // clockIn/clockOut in the terminal set local state and call this so the punch
   // survives a reload and is visible to labour, payroll and the CFO panel. The
@@ -214,6 +301,7 @@
 
   window.__v2PushClock = pushClock;
   window.__v2PushSale = pushSale;
+  window.__v2PushRefund = pushRefund;
   window.__v2PushReservation = pushReservation;
   window.__v2Outbox = { flush: flush, queued: queuedCount };
 

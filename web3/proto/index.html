@@ -1149,6 +1149,9 @@ button:active:not(:disabled){transform:scale(.975)}
                   <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
                     <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
+                  <sc-if value="{{ f.isPwd }}" hint-placeholder-val="{{ false }}">
+                    <input type="password" value="{{ f.value }}" onChange="{{ f.onChange }}" autocomplete="off" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
+                  </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
                     <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
                       <sc-for list="{{ f.options }}" as="o" hint-placeholder-count="2">
@@ -3420,7 +3423,7 @@ class Component extends DCLogic {
         formFields: spec.fields.map((f) => ({
           label: f.label, wrap: f.full ? "grid-column:1/-1" : "",
           value: vals[f.k] === undefined ? "" : String(vals[f.k]),
-          isSelect: !!f.options, isText: !f.options, options: f.options || [],
+          isSelect: !!f.options, isPwd: !f.options && !!f.pwd, isText: !f.options && !f.pwd, options: f.options || [],
           onChange: (e) => { const v = e.target.value; this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: v }) })); }
         })),
         formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save, formFoot: spec.foot,
@@ -3718,7 +3721,7 @@ class Component extends DCLogic {
           : "display:none",
       doRefund: () => (this.state.refunds || {})[ord.no]
         ? this.toast("Already refunded — a second refund would need a new authorisation", "warn")
-        : this.openForm("refund", { no: ord.no, max: acc + svc + tax, tender: ord.tender || "cash", table: ord.table })
+        : this.openForm("refund", { no: ord.no, max: acc + svc + tax, tender: ord.tender || "cash", table: ord.table, customerId: ord.customerId || null, customerName: ord.customerName || "" })
     });
   }
 
@@ -6192,7 +6195,8 @@ class Component extends DCLogic {
             { v: "goodwill", l: "Goodwill" }
           ], full: 1 },
           { k: "note", label: "What happened", v: "", full: 1 },
-          { k: "restock", label: "Stock", options: [{ v: "no", l: "Consumed or discarded — no stock back" }, { v: "yes", l: "Untouched — return to stock" }], full: 1 }
+          { k: "restock", label: "Stock", options: [{ v: "no", l: "Consumed or discarded — no stock back" }, { v: "yes", l: "Untouched — return to stock" }], full: 1 },
+          { k: "password", label: "Manager password", pwd: true, full: 1 }
         ],
         pre: (r) => ({ amt: String(Math.round(r.max)), kind: "full" }),
         onSave: (v, row) => {
@@ -6202,18 +6206,39 @@ class Component extends DCLogic {
           if (ord.max && amt > ord.max + 0.005) return this.toast("A refund cannot exceed the " + MVRc(ord.max) + " taken — issue a credit note instead", "warn");
           if (!v.note) return this.toast("A refund needs a written reason — it is the first thing an auditor reads", "warn");
           if (!this.canApprove()) return this.toast("A refund needs a manager", "warn");
-          const R = Object.assign({}, this.state.refunds || {});
-          R[ord.no] = { amt: amt, reason: v.reason, note: v.note, at: Date.now(), by: this.me() };
-          this.setState({ refunds: R, modal: null });
-          this.queue("refund", ord.no + " · " + MVRc(amt) + " · " + v.reason + " · " + v.note + " · authorised by " + this.me(), "refunds");
           const tk = ord.tender || "cash";
-          this.queue("post_journal", "Refund " + ord.no + " · Dr 4000 " + MVRc(amt) + " · Cr " + this.tenderAcct(tk), "journal_entries");
-          // A credit refund is not a payout: it has to reduce what the customer
-          // still owes, or they stay billed for food they were refunded for and
-          // the limit enforcement is working off a balance that is too high.
-          if (tk === "credit") this.queue("credit_reverse", "Refund " + ord.no + " · " + MVRc(amt) + " off the customer's drawn balance", "credit_ledger");
-          if (v.restock === "yes") this.queue("stock_return", "Refund " + ord.no + " · untouched items returned to stock", "stock_ledger");
-          this.toast("Refunded " + MVRc(amt) + " to " + this.tenderName(tk) + " · " + (tk === "credit" ? "drawn balance reduced" : "posted as a reversal"));
+          const real = !!(window.__v2PushRefund && window.KPOS_REAL);
+          // Real mode requires the store password: the server only stamps a
+          // refund APPROVED when the batch carries a fresh elevation, so without
+          // it every refund would land flagged "pending review".
+          if (real && !v.password) return this.toast("Enter the manager password to authorise this refund", "warn");
+          // Records the refund locally + in the queue log, closes the modal and
+          // toasts — shared by the real (approved) and demo paths.
+          const finish = (suffix) => {
+            const R = Object.assign({}, this.state.refunds || {});
+            R[ord.no] = { amt: amt, reason: v.reason, note: v.note, at: Date.now(), by: this.me() };
+            this.setState({ refunds: R, modal: null, formVals: {} });
+            this.queue("refund", ord.no + " · " + MVRc(amt) + " · " + v.reason + " · " + v.note + " · authorised by " + this.me(), "refunds");
+            this.queue("post_journal", "Refund " + ord.no + " · Dr 4000 " + MVRc(amt) + " · Cr " + this.tenderAcct(tk), "journal_entries");
+            if (tk === "credit") this.queue("credit_reverse", "Refund " + ord.no + " · " + MVRc(amt) + " off the customer's drawn balance", "credit_ledger");
+            if (v.restock === "yes") this.queue("stock_return", "Refund " + ord.no + " · untouched items returned to stock", "stock_ledger");
+            this.toast("Refunded " + MVRc(amt) + " to " + this.tenderName(tk) + suffix + (tk === "credit" ? " · balance reduced" : ""));
+          };
+          if (!real) return finish("");
+          // Real mode: post an opposing refund sale (negative amounts) so it
+          // nets in the Z-report, the GST return and the P&L (as sales returns),
+          // and — for a credit refund — reduces the customer's drawn balance.
+          // The original sale is never edited. The password elevates the batch
+          // so the server stamps it approved; a wrong password keeps the modal
+          // open to retry.
+          Promise.resolve(window.__v2PushRefund({
+            no: ord.no, amount: amt, tender: tk, reason: v.reason, note: v.note,
+            by: this.me(), customerId: ord.customerId || null, customerName: ord.customerName || "",
+            password: v.password,
+          })).then((res) => {
+            if (!res || res.ok === false) return this.toast((res && res.error) || "Refund not authorised", "warn");
+            finish(res.approved ? " · posted to the books" : " · queued for approval");
+          }).catch(() => this.toast("Refund could not be sent — try again", "warn"));
         }
       },
       journal: {
