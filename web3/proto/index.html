@@ -2729,22 +2729,26 @@ class Component extends DCLogic {
       tip: s.tip, dismissTip: () => this.setState({ tip: false }),
       // Guest calls sit above the 86 list and above the floor itself: a raised
       // hand outranks everything else a server is looking at.
-      calls: this.signals().map((x) => {
+      calls: this.posCalls().map((x) => {
         const mins = Math.max(0, Math.round((Date.now() - x.at) / 60000));
         const urgent = mins >= 3;
+        const isTable = /^\d+$/.test(String(x.table || ""));
         const title = x.kind === "assist" ? "T" + x.table + " is asking for a server"
           : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
-            : "T" + x.table + " ordered from the QR menu";
+            : (isTable ? "T" + x.table + " ordered from the QR menu" : "New QR order" + (x.table ? " · " + x.table : ""));
+        // Real QR orders clear by accepting them on the server (clears everywhere);
+        // demo signals clear through the localStorage bridge.
+        const clear = () => { if (x.real) this.acceptOrder(x.id); else this.ackSignal(x.id); };
         return {
           title: title,
           sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
           style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--amber-line)"),
           dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--amber-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
-          go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); this.revealMenu(); },
-          ack: () => { this.ackSignal(x.id); this.toast("Acknowledged — T" + x.table); }
+          go: () => { const t = parseInt(x.table, 10); this.setState({ view: t ? "pos" : "kds", activeTable: t || this.state.activeTable }); clear(); if (t) this.revealMenu(); },
+          ack: () => { clear(); this.toast((x.real ? "Accepted" : "Acknowledged") + (isTable ? " — T" + x.table : "")); }
         };
       }),
-      hasCalls: this.signals().length > 0 || this.elsewhere().length > 0,
+      hasCalls: this.posCalls().length > 0 || this.elsewhere().length > 0,
       elsewhereRow: (function (self) {
         const e = self.elsewhere();
         if (!e.length) return { style: "display:none", title: "", sub: "" };
@@ -4146,6 +4150,29 @@ class Component extends DCLogic {
   // Calls for other outlets are never actionable here, but silence is worse
   // than noise: an unseen call looks exactly like a broken bridge.
   elsewhere() { return this.allSignals().filter((x) => x.outlet !== this.state.outletId); }
+  // Floor alerts for real QR orders. The demo drives these off a localStorage
+  // "bridge" (allSignals), but a customer ordering from their phone on the
+  // storefront is a different origin AND a different device — they can't write
+  // this browser's localStorage, so on a real store nothing ever showed. In real
+  // mode the alerts come from the same server orders the KDS already polls: an
+  // unaccepted, still-new QR order is a call until a cashier takes it.
+  posCalls() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.signals();
+    const acked = this._ackedCalls || (this._ackedCalls = {});
+    return (this.liveOrders() || [])
+      .filter((o) => o.source === "qr" && o.status === "new" && !o.accepted && !acked[o.id])
+      .map((o) => { const n = (o.items || []).reduce((a, it) => a + (Number(it.q) || 1), 0);
+        return { id: o.id, real: true, kind: "order", table: o.table, at: o.at || Date.now(),
+          detail: n + " item" + (n === 1 ? "" : "s") + (o.no ? " · " + o.no : "") }; });
+  }
+  // Accept a real QR order into the kitchen queue: the server sets accepted, so
+  // it clears from the floor alerts on every device while staying on the KDS.
+  acceptOrder(id) {
+    (this._ackedCalls || (this._ackedCalls = {}))[id] = 1;   // clear this device instantly
+    this.forceUpdate();
+    fetch("/api/app2/order/" + encodeURIComponent(id) + "/accept", { method: "POST", credentials: "same-origin" })
+      .then((r) => r.json()).then(() => this.refreshLiveOrders()).catch(() => {});
+  }
   pullSignals() {
     const open = this.signals();
     const seen = this._seen || (this._seen = {});
@@ -4189,6 +4216,16 @@ class Component extends DCLogic {
         const orders = (j.orders || []).map((o) => ({ ...o, items: (o.items || []).map((it) =>
           (holds[o.id + ":" + it.idx] > now && !it.done) ? { ...it, done: true } : it) }));
         this.setState({ liveOrders: orders });
+        // Toast a real QR order the first time it appears. The initial poll only
+        // seeds the "seen" set (no alert for orders already on the board); later
+        // polls announce genuinely new ones.
+        const seenQr = this._seenQr || (this._seenQr = {});
+        const fresh = orders.filter((o) => o.source === "qr" && o.status === "new");
+        if (this._seenQrInit) {
+          fresh.forEach((o) => { if (!seenQr[o.id]) { seenQr[o.id] = 1;
+            this.toast((/^\d+$/.test(String(o.table || "")) ? "T" + o.table : "A guest") + " ordered from the QR menu");
+            this.queue("guest_order", (o.no || "order") + " · " + (o.table || "QR"), "guest_signals"); } });
+        } else { fresh.forEach((o) => { seenQr[o.id] = 1; }); this._seenQrInit = true; }
         this.forceUpdate();  // dc setState is lazy; flush so KDS/Orders repaint now
       }).catch(() => {});
   }
