@@ -58,12 +58,19 @@
 
   function token() { return (window.KPOS_REAL && window.KPOS_REAL.token) || null; }
 
+  // The terminal's network pill can simulate a link drop even when the browser
+  // is genuinely online (the "Try it" offline demo, and a real staff-triggered
+  // "go offline" for a flaky venue). When set, the queue holds durably in
+  // IndexedDB and nothing is POSTed until the pill is flipped back on — so a
+  // sale closed offline really does stack in the outbox, not silently sync.
+  function forcedOffline() { return window.__v2ForceOffline === true; }
+
   // ── Drain the queue. Idempotent: /api/ops de-dupes on opId, so a partial
   //    send that we retry never double-books. Backoff via attempts count. ─────
   function flush() {
     if (_flushing) return Promise.resolve();
     var tk = token();
-    if (!tk || (navigator.onLine === false)) return Promise.resolve();
+    if (!tk || forcedOffline() || (navigator.onLine === false)) return Promise.resolve();
     _flushing = true;
     return allOps().then(function (ops) {
       var pending = ops.filter(function (o) { return o.state !== "sent"; })

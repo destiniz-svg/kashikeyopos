@@ -1482,6 +1482,9 @@ class Component extends DCLogic {
     window.addEventListener("visibilitychange", this._flush);
     window.addEventListener("pagehide", this._flush);
     this._busy = this.props.busyness === undefined ? 42 : this.props.busyness;
+    // Keep the durable bridge's offline flag in step with a restored session's
+    // network pill, so a reload while "offline" still holds writes in the outbox.
+    try { window.__v2ForceOffline = this.state.online === false; } catch (e) {}
     if (!Object.keys(this.state.tickets).length) this.seed();
   }
   componentWillUnmount() {
@@ -1902,7 +1905,7 @@ class Component extends DCLogic {
         ? "background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:8px 10px;max-width:150px;min-width:110px;outline:none"
         : "display:none",
       search: s.search, onSearch: (e) => this.setState({ search: e.target.value }),
-      toggleOnline: () => { const on = !s.online; this.setState({ online: on }); if (on) this.flush(); else this.toast("Terminal offline — orders will queue locally", "warn"); },
+      toggleOnline: () => { const on = !s.online; window.__v2ForceOffline = !on; this.setState({ online: on }); if (on) { this.flush(); try { if (window.__v2Outbox) window.__v2Outbox.flush(); } catch (e) {} } else this.toast("Terminal offline — orders will queue locally", "warn"); },
       netLabel: s.online ? "Online" : "Offline",
       netStyle: "display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid " + (s.online ? "var(--green-line)" : "var(--red-line)") + ";background:" + (s.online ? "rgba(107,191,123,.10)" : "rgba(226,96,96,.12)") + ";color:" + (s.online ? "var(--green)" : "var(--red-bright)"),
       netDot: "width:6px;height:6px;border-radius:50%;background:" + (s.online ? "var(--green)" : "var(--red)") + (s.online ? ";box-shadow:0 0 8px var(--green)" : ";animation:kpulse 1.4s infinite"),
@@ -6907,9 +6910,9 @@ class Component extends DCLogic {
     }
     const tone = { queued: "warn", sent: "ok", conflict: "err" };
     return {
-      tabs: [{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => { const on = !s.online; this.setState({ online: on }); if (on) this.flush(); } }],
+      tabs: [{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => { const on = !s.online; window.__v2ForceOffline = !on; this.setState({ online: on }); if (on) { this.flush(); try { if (window.__v2Outbox) window.__v2Outbox.flush(); } catch (e) {} } } }],
       actions: [
-        { label: "Replay outbox now", go: () => { if (!s.online) return this.toast("Come back online to replay", "warn"); this.flush(); } },
+        { label: "Replay outbox now", go: () => { if (!s.online) return this.toast("Come back online to replay", "warn"); this.flush(); try { if (window.__v2Outbox) window.__v2Outbox.flush(); } catch (e) {} } },
         { label: s.conflicts.length ? "Resolve " + s.conflicts.length + " conflict" + (s.conflicts.length > 1 ? "s" : "") : "No conflicts", primary: !!s.conflicts.length, go: () => s.conflicts.length ? this.setState({ modal: { kind: "conflict" } }) : this.toast("Nothing to resolve") },
         { label: "End session on this device", go: () => this.endSession() }
       ],
