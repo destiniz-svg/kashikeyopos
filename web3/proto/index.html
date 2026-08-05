@@ -211,7 +211,7 @@ button:active:not(:disabled){transform:scale(.975)}
     <sc-if value="{{ vPos }}" hint-placeholder-val="{{ true }}">
       <div style="{{ posSplitStyle }}">
 
-        <div style="{{ floorPaneStyle }}">
+        <div style="{{ floorPaneStyle }}" ref="{{ floorPaneRef }}" onScroll="{{ onFloorScroll }}">
           <sc-if value="{{ tip }}">
             <div style="margin-bottom:14px;padding:10px 14px;background:linear-gradient(90deg,rgba(242,164,58,.12),transparent 65%);border:1px solid var(--amber-dim);border-radius:10px;display:flex;align-items:center;gap:10px;font-size:12px">
               <span style="color:var(--amber-bright);font-weight:700;flex-shrink:0">Try it</span>
@@ -308,7 +308,7 @@ button:active:not(:disabled){transform:scale(.975)}
             </sc-for>
           </div>
 
-          <div style="margin-top:24px">
+          <div style="margin-top:24px;scroll-margin-top:8px" ref="{{ menuRef }}">
             <div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap">
               <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
                 <button onClick="{{ c.pick }}" style="{{ c.style }}">
@@ -339,6 +339,13 @@ button:active:not(:disabled){transform:scale(.975)}
             </div>
           </div>
         </div>
+
+        <sc-if value="{{ showPosJump }}">
+          <button onClick="{{ posJumpGo }}" title="Jump between the floor plan and the menu" style="{{ posJumpStyle }}">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{ posJumpIcon }}"></path></svg>
+            {{ posJumpLabel }}
+          </button>
+        </sc-if>
 
         <sc-if value="{{ showCartScrim }}">
           <div onClick="{{ closeCart }}" style="position:fixed;inset:0;background:var(--scrim);z-index:58;animation:kfade .14s"></div>
@@ -1245,6 +1252,10 @@ class Component extends DCLogic {
   // Service state survives a reload: a terminal that forgets open tables on
   // refresh is a demo, not a till.
   _searchRef = React.createRef();
+  // The POS floor plan and the menu share one scrolling column. Starting an
+  // order jumps the menu to the top; a floating control jumps back to the floor.
+  _floorPaneRef = React.createRef();
+  _menuRef = React.createRef();
   _saved = this.restore();
 
   state = {
@@ -1260,6 +1271,7 @@ class Component extends DCLogic {
     tickets: this._saved.tickets || {},
     activeTable: null,
     activeSplit: 0,
+    posAtMenu: false,
     held: this._saved.held || [],
     local: this._saved.local || {},
     patches: this._saved.patches || [],
@@ -1683,6 +1695,28 @@ class Component extends DCLogic {
   isTableSlot(id) { return id != null && /^\d+$/.test(String(id)); }
   // Start an off-floor order: mint the next free slot token for its channel,
   // open a blank ticket on it and make it active — no table consumed.
+  // The floor plan and the menu live in one scrolling column. When an order
+  // starts the cashier's next move is always "add dishes", so slide the menu up
+  // to the top of that column; a floating control slides back to the floor.
+  // On the widest desktop the whole column may fit with no scroll — then there
+  // is nothing to move and this is a harmless no-op.
+  revealMenu() {
+    this.setState({ posAtMenu: true });
+    setTimeout(() => { const el = this._menuRef.current; if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "start" }); }, 70);
+  }
+  revealFloor() {
+    this.setState({ posAtMenu: false });
+    setTimeout(() => { const el = this._floorPaneRef.current; if (el && el.scrollTo) el.scrollTo({ top: 0, behavior: "smooth" }); }, 40);
+  }
+  // Keep the floating control's label honest when the cashier scrolls by hand:
+  // flip it only as the menu crosses the top of the pane, so it never re-renders
+  // on every scroll frame.
+  onFloorScroll(e) {
+    const pane = e.target, menu = this._menuRef.current;
+    if (!pane || !menu) return;
+    const atMenu = (pane.scrollTop + 90) >= menu.offsetTop;
+    if (atMenu !== this.state.posAtMenu) this.setState({ posAtMenu: atMenu });
+  }
   startOrder(kind) {
     if (!this.registerOpen()) { this.openForm("regopen"); return; }
     const s = this.state;
@@ -1696,6 +1730,7 @@ class Component extends DCLogic {
     const tickets = Object.assign({}, s.tickets);
     tickets[s.outletId + ":" + token] = Object.assign(this.blankTicket(chan), { noTable: true });
     this.setState({ tickets: tickets, activeTable: token, activeSplit: 0, view: "pos", modal: null });
+    this.revealMenu();
     this.toast(this.slotLabel(token) + " started — add items, then settle");
   }
 
@@ -1878,7 +1913,19 @@ class Component extends DCLogic {
       posSplitStyle: isM
         ? "flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0;background:var(--bg)"
         : "flex:1;display:grid;grid-template-columns:minmax(0,1fr) " + (rail ? "clamp(280px,30vw,330px)" : "clamp(300px,25vw,376px)") + ";overflow:hidden;min-height:0;gap:1px;background:var(--line)",
-      floorPaneStyle: "background:var(--bg);overflow-y:auto;min-height:0;padding:" + (isM ? "14px 14px 92px" : "16px 20px"),
+      floorPaneStyle: "position:relative;background:var(--bg);overflow-y:auto;min-height:0;padding:" + (isM ? "14px 14px 92px" : "16px 20px 76px"),
+      floorPaneRef: this._floorPaneRef,
+      menuRef: this._menuRef,
+      onFloorScroll: (e) => this.onFloorScroll(e),
+      // Floating jump between the floor plan and the menu — the two halves of the
+      // one POS scroll column. Only on the POS view; sits above the mobile cart
+      // bar, and clears the ticket pane on desktop.
+      showPosJump: s.view === "pos",
+      posJumpLabel: s.posAtMenu ? "Floor plan" : "Menu",
+      posJumpIcon: s.posAtMenu ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6",
+      posJumpGo: () => s.posAtMenu ? this.revealFloor() : this.revealMenu(),
+      posJumpStyle: "position:fixed;z-index:56;display:flex;align-items:center;gap:7px;padding:10px 15px;border-radius:22px;font-size:12px;font-weight:700;background:var(--amber);color:var(--on-amber);box-shadow:0 6px 20px rgba(0,0,0,.35);border:none;cursor:pointer;bottom:"
+        + (isM ? "84px" : "24px") + ";right:" + (isM ? "14px" : "calc(" + (rail ? "clamp(280px,30vw,330px)" : "clamp(300px,25vw,376px)") + " + 22px)"),
       ticketPaneStyle: isM
         ? "position:fixed;left:0;right:0;bottom:0;z-index:60;height:min(88dvh,680px);background:var(--bg-1);border-top:1px solid var(--line);border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 -12px 44px rgba(0,0,0,.55);transition:transform .22s cubic-bezier(.32,.72,0,1);transform:translateY(" + (s.cart ? "0" : "101%") + ")"
         : "background:var(--bg-1);display:flex;flex-direction:column;min-height:0;overflow-y:auto",
@@ -2498,6 +2545,7 @@ class Component extends DCLogic {
           }
           this.setState({ activeTable: i, activeSplit: 0 });
           if (!t) this.ensure(i);
+          this.revealMenu();
         },
         hint: resv ? (resv.name + " · " + resv.party + " covers · tap to seat") : (on ? "Tap again to close" : st === "free" ? "Tap to open · hold or right-click for table actions" : "Tap to open T" + pad(i) + " · hold or right-click for table actions"),
         ctx: (e) => { e.preventDefault(); this.tableMenu(i); },
@@ -2608,7 +2656,7 @@ class Component extends DCLogic {
           sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
           style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--amber-line)"),
           dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--amber-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
-          go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); },
+          go: () => { this.setState({ activeTable: parseInt(x.table, 10) || 1, view: "pos" }); this.ackSignal(x.id); this.revealMenu(); },
           ack: () => { this.ackSignal(x.id); this.toast("Acknowledged — T" + x.table); }
         };
       }),
@@ -2699,7 +2747,7 @@ class Component extends DCLogic {
       newOrderBtnStyle: "flex:1 1 0;min-width:0;max-width:230px;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;padding:0 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)",
       openSlots: openSlotList.map((sl) => ({
         label: sl.label, meta: sl.meta,
-        go: () => this.setState({ activeTable: sl.token, activeSplit: 0 }),
+        go: () => { this.setState({ activeTable: sl.token, activeSplit: 0 }); this.revealMenu(); },
         style: "padding:7px 12px;border-radius:8px;font-size:11px;text-align:left;border:1px solid " + (s.activeTable === sl.token ? "var(--amber)" : "var(--line)") + ";background:" + (s.activeTable === sl.token ? "rgba(242,164,58,.10)" : "var(--bg-1)") + ";color:var(--text)"
       })),
       openSlotsStyle: openSlotList.length ? "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px" : "display:none",
