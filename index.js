@@ -3290,14 +3290,37 @@ const catSlug = (c) => {
 // so two real sections never collapse into one 4-bucket keyword group the way
 // catSlug does. Used by the menu builders the v2 terminal + new QR read.
 const menuCat = (c) => String(c || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "uncategorized";
+// Which top-level GROUP a category falls under, so 20+ sections collapse to a
+// short top level (Drinks / Breakfast / Food / Desserts). A saved override
+// (settings.catGroup[name]) wins; otherwise a keyword default. Order matters:
+// breakfast + desserts are checked before the catch-all Food.
+const GROUP_ORDER = ["Drinks", "Breakfast", "Food", "Desserts"];
+const catGroupOf = (name) => {
+  const s = String(name || "").toLowerCase();
+  if (/coffee|espresso|latte|cappucc|mocha|americano|milk|cocoa|hot ?choc|\btea\b|chai|juice|\bdrink|frapp|smoothie|mocktail|shake|\bbrew\b|soda|soft ?drink|beverage|cooler|kurumba|water/.test(s)) return "Drinks";
+  if (/breakfast|brunch|morning/.test(s)) return "Breakfast";
+  if (/dessert|sweet|cake|ice.?cream|pastr|treat|pudding|foni|bondi|brownie|waffle|pancake/.test(s)) return "Desserts";
+  return "Food";
+};
 // Category list for a store: the manager-ordered saved list first (so an empty
 // or reordered section persists), then any category a product uses that isn't
-// saved yet — nothing a dish points at ever disappears.
-const mergeCategories = (catName, stored) => {
+// saved yet — nothing a dish points at ever disappears. Each carries its group
+// (a saved override wins over the keyword default).
+const mergeCategories = (catName, st) => {
+  st = st || {};
+  const stored = Array.isArray(st.menuCats) ? st.menuCats : [];
+  const cg = (st.catGroup && typeof st.catGroup === "object") ? st.catGroup : {};
   const seen = new Set(), out = [];
-  (Array.isArray(stored) ? stored : []).forEach((nm) => { const id = menuCat(nm); if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: String(nm) }); } });
-  Object.keys(catName || {}).forEach((id) => { if (!seen.has(id)) { seen.add(id); out.push({ id, name: catName[id] }); } });
+  const add = (nm) => { const id = menuCat(nm); if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: String(nm), group: String(cg[nm] || catGroupOf(nm)) }); } };
+  stored.forEach(add);
+  Object.keys(catName || {}).forEach((id) => { if (!seen.has(id)) add(catName[id]); });
   return out;
+};
+// Ordered top-level groups actually in use, canonical order first then custom.
+const menuGroupsOf = (categories) => {
+  const out = [];
+  (categories || []).forEach((c) => { if (c.group && out.indexOf(c.group) < 0) out.push(c.group); });
+  return out.sort((a, b) => { const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
 };
 
 // ── Guest storefront (the v2 QR page: web3/proto/guest.html) ────────────────
@@ -3327,7 +3350,7 @@ const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
   menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
   const st = ((await c.query(
     "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
-  const categories = mergeCategories(catName, st.menuCats);
+  const categories = mergeCategories(catName, st);
   const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
   const storeRows = (await c.query(
     "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
@@ -3342,7 +3365,7 @@ const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
   return {
     guest: true, outlet: { name: st.storeName || "Store", tax: tax, rate: Math.round(gstBp / 100),
       sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
-    outlets: outlets.length ? outlets : null, categories, menu, brand,
+    outlets: outlets.length ? outlets : null, categories, groups: menuGroupsOf(categories), menu, brand,
     fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "", address: fiscalAddr, phone: st.phone || "" },
   };
 });
@@ -4317,7 +4340,7 @@ if (fs.existsSync(protoFile)) {
           addons: (it.mods || []).map((m) => ({ name: m.en, price: m.price })), recipe: [] }));
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
-        const categories = mergeCategories(catName, st.menuCats);
+        const categories = mergeCategories(catName, st);
         const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
         // The store handle (orgs.slug) is the QR-portal address; the Branding
         // panel shows and edits it. orgs is system-scoped, so read it with withSystem.
@@ -4651,7 +4674,7 @@ if (fs.existsSync(protoFile)) {
           // Promotions the merchant edits + the guest surfaces show (handoff 08 §1).
           promos: { on: !!st.qrBanners, items: Array.isArray(st.banners) ? st.banners : [] },
           outlets: outlets.length ? outlets : null,
-          categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
+          categories, groups: menuGroupsOf(categories), menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), liveOrders, calls: liveCalls, customers, staff, clock, reservations, expenses, settlements, assets,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
@@ -5436,6 +5459,29 @@ if (fs.existsSync(protoFile)) {
       return out;
     });
     poke(orgId, rowver);
+    res.json({ ok: true });
+  }));
+  /* Assign a category to a top-level group (settings.catGroup[name] = group),
+     which is how the 20+ sections collapse to a short top level. */
+  app.post("/api/app2/category/group", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
+    const b = req.body || {};
+    const name = String(b.name || "").trim();
+    const group = String(b.group || "").trim().slice(0, 40);
+    if (!name || !group) return res.status(400).json({ error: "name and group are required" });
+    const rowver = await withOrg(orgId, async (c) => {
+      const rows = (await c.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY (id='settings') DESC, updated_at DESC", [orgId])).rows;
+      const cur = rows[0] || null;
+      const data = Object.assign({}, cur ? cur.data : {});
+      data.catGroup = Object.assign({}, data.catGroup || {}, { [name]: group });
+      const sid = cur ? cur.id : "settings";
+      const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, sid, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    poke(orgId, rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.category.group", ref: name, detail: { group } });
     res.json({ ok: true });
   }));
   // Settle a receivable: reduce the customer's outstanding balance by an amount
