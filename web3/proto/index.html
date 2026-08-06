@@ -3721,9 +3721,13 @@ class Component extends DCLogic {
   // owner fills Settings in — a receipt must never print a fake TIN.
   fiscal() {
     const F = (window.KPOS_REAL && window.KPOS_REAL.fiscal) || {};
+    const P = (window.KPOS_REAL && window.KPOS_REAL.profile) || {};
     const ch = this.chainOf();
     return { tin: F.tin || ch.tin || "", gstNo: F.gstNo || ch.regNo || "",
-      legalName: F.legalName || (window.KPOS_REAL ? "" : ch.name) || "", address: F.address || "" };
+      legalName: F.legalName || (window.KPOS_REAL ? "" : ch.name) || "", address: F.address || "",
+      storeName: F.storeName || "", phone: F.phone || (window.KPOS_REAL ? "" : (ch.phone || "")) || "",
+      email: (window.KPOS_REAL && window.KPOS_REAL.email) || "",
+      businessType: P.businessType || "", businessActivity: P.businessActivity || "" };
   }
   // Shared header fields that turn the receipt into a valid GST tax invoice:
   // the document heading, the supply date, the GST registration number and an
@@ -6359,7 +6363,7 @@ class Component extends DCLogic {
           { k: "name", label: "Registered name", v: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName) : this.chainOf().name), full: 1 },
           { k: "tin", label: "Taxpayer identification number", v: (window.KPOS_REAL ? this.fiscal().tin : this.chainOf().tin) },
           { k: "regNo", label: "Company registration", v: (window.KPOS_REAL ? this.fiscal().gstNo : this.chainOf().regNo) },
-          { k: "phone", label: "Phone", v: (window.KPOS_REAL ? (this.fiscal().phone || "") : (this.chainOf().phone || "")) },
+          { k: "phone", label: "Mobile", v: (window.KPOS_REAL ? (this.fiscal().phone || "") : (this.chainOf().phone || "")) },
           { k: "hq", label: "Registered address", v: (window.KPOS_REAL ? this.fiscal().address : this.chainOf().hq), full: 1 },
           { k: "currency", label: "Currency", options: [{ v: "MVR", l: "MVR — Maldivian rufiyaa" }, { v: "USD", l: "USD — United States dollar" }] },
           { k: "activity", label: "Business activity", full: 1,
@@ -7918,6 +7922,15 @@ class Component extends DCLogic {
     const K0 = K(), o = this.outlet();
     const acc = this.ACCENTS(), key = this.accentKey(), mode = this.themeMode();
     const P = this.prefs(), CH = this.chainOf();
+    // Everything the store told us about itself (onboarding + Company details),
+    // surfaced together so the card shows the whole record, not a slice.
+    const F = this.fiscal();
+    const bType = F.businessType || (o.tax === "TGST" ? "tourism" : o.tax === "GGST" ? "general" : "");
+    const bTypeLabel = bType === "tourism" ? "Tourism · TGST 17%" : bType === "general" ? "General · GGST 8%" : bType === "unregistered" ? "Not GST-registered" : "—";
+    const actLabel = F.businessActivity ? (F.businessActivity.charAt(0).toUpperCase() + F.businessActivity.slice(1)) : "Full terminal";
+    const tradeName = this.brandOf().name || "";
+    const bizName = F.legalName || tradeName || CH.name || "";
+    const cur = window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency;
     // Theme is a personal preference and stays open to everyone. Everything
     // that governs money, access or what prints needs edit rights.
     const mayEdit = this.can("settings", "e");
@@ -7954,9 +7967,20 @@ class Component extends DCLogic {
           foot: "The vendor brand stays in the terminal; guests see your restaurant. To hide the “Powered by KashikeyoPOS” line on the guest storefront (white label), use the powered-by switch in Merchant branding above — it's set in one place." },
         // ── Company & tax ──────────────────────────────────────────────────
         secHead("Company & tax", "The registered taxpayer and the GST that prints"),
-        { title: "Company details", sub: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName || CH.name) : CH.name), chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
-          rows: [["Country", CH.country], ["Currency", (window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency)], ["TIN", (window.KPOS_REAL ? (this.fiscal().tin || "— set it") : CH.tin)], ["GST reg.", (window.KPOS_REAL ? (this.fiscal().gstNo || "—") : CH.regNo)], ["Activity", (function (a) { return a ? a.charAt(0).toUpperCase() + a.slice(1) : "Full terminal"; })((window.KPOS_REAL && window.KPOS_REAL.profile && window.KPOS_REAL.profile.businessActivity) || "")]],
-          foot: (window.KPOS_REAL ? (this.fiscal().address || "Address not set — tap Edit to add it") : CH.hq) + " — the registered company / taxpayer. Prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN.",
+        { title: "Company details", sub: bizName || "Your registered business", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
+          rows: [
+            ["Business name", bizName || "— set it"],
+            ["Trading name", (tradeName && tradeName !== bizName) ? tradeName : "same as business"],
+            ["Mobile", (window.KPOS_REAL ? (F.phone || "— set it") : (CH.phone || "—"))],
+            ["Email", (window.KPOS_REAL ? (F.email || "—") : "—")],
+            ["Business type", bTypeLabel],
+            ["Business activity", actLabel],
+            ["GST TIN", (window.KPOS_REAL ? (F.tin || "— set it") : CH.tin)],
+            ["Registry no.", (window.KPOS_REAL ? (F.gstNo || "— set it") : CH.regNo)],
+            ["Currency", cur],
+            ["Country", CH.country]
+          ],
+          foot: "Address: " + (window.KPOS_REAL ? (F.address || "not set — tap Edit to add it") : CH.hq) + ". This is the registered company / taxpayer — it prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN. Business type is set in Tax profile; the trading name and logo in Merchant branding.",
           goLabel: "Edit company details", go: gate(() => this.openForm("chain")) },
         { title: "Tax profile", sub: o.name, chip: o.tax, chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)",
           rows: [["Class", o.tax], ["Rate", o.rate + "%"], ["Service charge", (o.sc || 0) + "%"], ["Applied to", "Subtotal + service charge"]],

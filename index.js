@@ -1829,6 +1829,7 @@ app.post("/api/onboard/profile", wrap(async (req, res) => {
   // given, else the business name itself. legalName is always the business name.
   const displayName = tradeName || businessName;
   const patch = { storeName: displayName, currency, gstBp, legalName: businessName, businessType };
+  if (phone) patch.phone = phone;
   if (gstRegNo) patch.gstRegNo = gstRegNo;
   if (tin) patch.tin = tin;
   if (address) patch.address = address;
@@ -3859,7 +3860,8 @@ if (fs.existsSync(protoFile)) {
         const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
         // The store handle (orgs.slug) is the QR-portal address; the Branding
         // panel shows and edits it. orgs is system-scoped, so read it with withSystem.
-        const slug = ((await withSystem((sc) => sc.query("SELECT slug FROM orgs WHERE id=$1", [orgId]))).rows[0] || {}).slug || "";
+        const orgRow = (await withSystem((sc) => sc.query("SELECT slug, email FROM orgs WHERE id=$1", [orgId]))).rows[0] || {};
+        const slug = orgRow.slug || "";
         // Today's real trading, for the POS stats strip (net sales + covers).
         // Empty for a store that hasn't sold yet — the honest zero, not a seed.
         const salesRows = (await c.query(
@@ -4156,6 +4158,7 @@ if (fs.existsSync(protoFile)) {
           // which modules the terminal shows: a non-F&B activity hides the
           // kitchen/menu screens that would only ever be empty for it.
           profile: { businessType: st.businessType || "", businessActivity: st.businessActivity || "" },
+          email: orgRow.email || "",
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
