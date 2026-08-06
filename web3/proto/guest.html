@@ -137,7 +137,7 @@ a:hover{color:#7d1826}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:11px;align-items:start">
             <sc-for list="{{ dishes }}" as="d" hint-placeholder-count="4">
               <div style="{{ d.cardStyle }}">
-                <span style="{{ d.imgStyle }}"></span>
+                <span onClick="{{ d.open }}" style="{{ d.imgStyle }}"></span>
                 <button onClick="{{ d.open }}" style="display:flex;flex-direction:column;gap:3px;text-align:left;align-items:flex-start;padding:10px 11px 38px">
                   <span style="font-size:12.5px;font-weight:700;color:#1c1917;line-height:1.3;letter-spacing:-0.01em">{{ d.name }}</span>
                   <span style="font-size:10.5px;color:#8c8580;line-height:1.4;text-wrap:pretty">{{ d.desc }}</span>
@@ -1653,7 +1653,7 @@ class Component extends DCLogic {
           name: m.name, desc: m.desc, img: m.img,
           price: MVR(m.price), qty: String(inB),
           cardStyle: "position:relative;display:flex;flex-direction:column;background:#fff;border:1px solid " + (inB ? "rgba(152,32,48,.32)" : "#e7e5e4") + ";border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(35,32,29,.05)" + (off ? ";opacity:.55" : ""),
-          imgStyle: "width:100%;aspect-ratio:1.12;display:block;flex-shrink:0;background:url('" + m.img + "') center/cover no-repeat" + (off ? ";filter:grayscale(1)" : ""),
+          imgStyle: "width:100%;aspect-ratio:1.12;display:block;flex-shrink:0;cursor:pointer;background:url('" + m.img + "') center/cover no-repeat" + (off ? ";filter:grayscale(1)" : ""),
           priceStyle: "font-size:14px;font-weight:700;font-family:'JetBrains Mono',monospace;" + (off ? "color:#a8a29e;text-decoration:line-through" : "color:#1c1917"),
           mins: "~" + Math.round((PREP[m.cat] || 40) / 3) + " min",
           promoTag: pr && !off ? pr.badge : "",
