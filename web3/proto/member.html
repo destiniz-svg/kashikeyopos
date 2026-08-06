@@ -314,7 +314,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
               <div style="font-size:14px;font-weight:700;color:var(--ink-2);margin-bottom:10px">This round</div>
               <sc-for list="{{ roundLines }}" as="l" hint-placeholder-count="2">
                 <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft)">
-                  <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink-2)">{{ l.name }}</div></div>
+                  <div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:600;color:var(--ink-2)">{{ l.name }}</div><div style="{{ l.noteStyle }}">{{ l.note }}</div></div>
                   <div style="display:flex;align-items:center;gap:9px">
                     <button onClick="{{ l.dec }}" style="width:28px;height:28px;border-radius:9px;border:1px solid var(--line-input);font-size:16px;color:var(--text-2)">−</button>
                     <span style="font-size:14px;font-weight:700;min-width:16px;text-align:center" class="tnum">{{ l.qty }}</span>
@@ -534,6 +534,34 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
         </div>
       </div>
     </sc-if>
+
+    <!-- Dish (order modifiers) — mirrors the till's Add-ons & modifiers -->
+    <sc-if value="{{ sheetDish }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:0;right:0;bottom:0;z-index:31;background:#fff;border-radius:26px 26px 0 0;padding:20px 22px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s cubic-bezier(.2,.8,.3,1);max-height:82vh;overflow-y:auto">
+        <div style="width:38px;height:4px;border-radius:2px;background:var(--off);margin:0 auto 16px"></div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+          <div style="font-size:18px;font-weight:800;letter-spacing:-.02em;color:var(--ink)">{{ dishName }}</div>
+          <div style="font-size:15px;font-weight:700;color:var(--coral)" class="tnum">{{ dishPrice }}</div>
+        </div>
+        <div style="font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:18px 0 10px">Add-ons &amp; modifiers</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <sc-for list="{{ dishMods }}" as="mo" hint-placeholder-count="10">
+            <button onClick="{{ mo.go }}" style="{{ mo.style }}">{{ mo.label }}</button>
+          </sc-for>
+        </div>
+        <div style="margin-top:16px;background:#fff;border:1px solid var(--line-input);border-radius:12px;padding:12px 14px">
+          <textarea value="{{ dishNote }}" onInput="{{ onDishNote }}" rows="2" placeholder="Allergies, doneness, anything else" style="font-size:13px;color:var(--ink-2);line-height:1.5;resize:none;width:100%"></textarea>
+        </div>
+        <div style="display:flex;gap:11px;align-items:center;margin-top:16px">
+          <span style="display:flex;align-items:center;gap:12px;background:var(--track);border:1px solid var(--line-input);border-radius:13px;padding:8px 10px;flex-shrink:0">
+            <button onClick="{{ dishQtyDown }}" style="width:30px;height:30px;border-radius:9px;background:#fff;border:1px solid var(--line-input);color:var(--text-2);font-size:17px;font-weight:600;line-height:1;display:grid;place-items:center">−</button>
+            <span style="font-size:15px;font-weight:800;color:var(--ink);min-width:14px;text-align:center" class="tnum">{{ dishQty }}</span>
+            <button onClick="{{ dishQtyUp }}" style="width:30px;height:30px;border-radius:9px;background:var(--coral);color:#fff;font-size:17px;font-weight:600;line-height:1;display:grid;place-items:center">+</button>
+          </span>
+          <button onClick="{{ addToRound }}" style="flex:1;height:52px;border-radius:14px;background:var(--coral);color:#fff;font-size:14.5px;font-weight:700">{{ addToRoundLabel }}</button>
+        </div>
+      </div>
+    </sc-if>
   </sc-if>
 
   <!-- Toast -->
@@ -545,15 +573,19 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 </div>
 
 <script type="text/x-dc" data-dc-script>
+// The till's modifier palette — the same flat, multi-select options the register
+// shows, so the member portal mirrors the till exactly. They ride the kitchen
+// note and never change price.
+const MOD_PALETTE = ["Extra spicy", "Mild", "No onion", "No garlic", "Less salt", "Well done", "Sauce on side", "Extra sauce", "Extra cheese", "No ice"];
 class Component extends DCLogic {
   state = {
     booted: false, signedIn: false, step: "email",
     email: "", code: "", err: "", masked: "", sending: false, verifying: false,
-    tab: "card", member: null, sheet: null, announced: false,
+    tab: "card", member: null, sheet: null, dsheet: null, announced: false,
     enrollMode: false, name: "",
     toast: "", brand: {}, slug: "", pointsPer: 10, redeemPer: 10, now: Date.now(),
     menu: [], categories: [], tables: [],
-    cart: {}, table: "", menuQ: "", menuCat: "all", sending2: false, morders: [], live: null,
+    cart: {}, cartNotes: {}, table: "", menuQ: "", menuCat: "all", sending2: false, morders: [], live: null,
     offers: [], offersOn: false,
   };
 
@@ -657,7 +689,21 @@ class Component extends DCLogic {
   cartTotal() { return this.cartLines().reduce((a, l) => a + (Number(l.d.price) || 0) * l.qty, 0); }
   addLine(id) { const d = this.dishOf(id); if (!d) return; if (d.soldOut) return this.say(d.name + " is off the menu tonight"); const c = Object.assign({}, this.state.cart); c[id] = (c[id] || 0) + 1; this.setState({ cart: c }); this.say(d.name + " added — " + this.fmt(d.price)); }
   incLine(id) { const c = Object.assign({}, this.state.cart); c[id] = (c[id] || 0) + 1; this.setState({ cart: c }); }
-  decLine(id) { const c = Object.assign({}, this.state.cart); c[id] = (c[id] || 0) - 1; if (c[id] <= 0) delete c[id]; this.setState({ cart: c }); }
+  decLine(id) { const c = Object.assign({}, this.state.cart); c[id] = (c[id] || 0) - 1; if (c[id] <= 0) { delete c[id]; const cn = Object.assign({}, this.state.cartNotes); delete cn[id]; this.setState({ cart: c, cartNotes: cn }); return; } this.setState({ cart: c }); }
+  // Open the dish sheet: quantity + the till's modifier palette + a free note.
+  openDish(id) { const d = this.dishOf(id); if (!d) return; if (d.soldOut) return this.say(d.name + " is off the menu tonight"); this.setState({ sheet: "dish", dsheet: { id: id, qty: 1, mods: [], note: "" } }); }
+  dsheetSet(patch) { this.setState({ dsheet: Object.assign({}, this.state.dsheet, patch) }); }
+  dsheetToggle(m) { const ds = this.state.dsheet; if (!ds) return; const set = (ds.mods || []).slice(); const i = set.indexOf(m); if (i >= 0) set.splice(i, 1); else set.push(m); this.dsheetSet({ mods: set }); }
+  // Add the configured dish to the round; its modifiers + note become the line
+  // note the till receives — priced at the plain dish price, exactly like the till.
+  addToRound() {
+    const ds = this.state.dsheet; if (!ds) return; const d = this.dishOf(ds.id); if (!d) return;
+    const note = (ds.mods || []).concat(ds.note ? [ds.note] : []).filter(Boolean).join(" · ");
+    const c = Object.assign({}, this.state.cart); c[ds.id] = (c[ds.id] || 0) + ds.qty;
+    const cn = Object.assign({}, this.state.cartNotes); if (note) cn[ds.id] = note; else delete cn[ds.id];
+    this.setState({ cart: c, cartNotes: cn, sheet: null, dsheet: null });
+    this.say(ds.qty + " × " + d.name + " added to your round");
+  }
   bindTable(t) { this.setState({ table: String(t) }); try { localStorage.setItem("kmember.table", String(t)); } catch (e) {} }
   unbindTable() { this.setState({ table: "" }); try { localStorage.removeItem("kmember.table"); } catch (e) {} }
   async sendOrder() {
@@ -668,11 +714,11 @@ class Component extends DCLogic {
     let ok = false, err = "";
     try {
       const r = await fetch("/p/" + encodeURIComponent(this.state.slug) + "/order", { method: "POST", headers: { "Content-Type": "application/json" },
-        credentials: "same-origin", body: JSON.stringify({ items: lines.map((l) => ({ pid: l.d.id, qty: l.qty })), table: this.state.table, gtype: "dinein" }) });
+        credentials: "same-origin", body: JSON.stringify({ items: lines.map((l) => ({ pid: l.d.id, qty: l.qty, note: (this.state.cartNotes || {})[l.d.id] || "" })), table: this.state.table, gtype: "dinein" }) });
       const j = await r.json().catch(() => ({})); ok = r.ok; err = j && j.error;
     } catch (e) { err = "offline"; }
     this.setState({ sending2: false });
-    if (ok) { this.setState({ cart: {}, tab: "orders" }); this.say("Order sent to the kitchen · " + pts + " pts pending"); this.fetchOrders(); this.fetchMe(true); }
+    if (ok) { this.setState({ cart: {}, cartNotes: {}, tab: "orders" }); this.say("Order sent to the kitchen · " + pts + " pts pending"); this.fetchOrders(); this.fetchMe(true); }
     else this.say(err === "offline" ? "Saved on this phone — it will send when you are back online" : (err || "Could not send — try again"));
   }
 
@@ -864,9 +910,10 @@ class Component extends DCLogic {
         imgStyle: "display:block;width:100%;height:118px;border-radius:12px;background:" + (it.img ? ("url('" + it.img + "') center/cover no-repeat") : "var(--img-bg)") + (it.soldOut ? ";filter:grayscale(1)" : ""),
         offStyle: it.soldOut ? "position:absolute;top:8px;left:8px;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;background:rgba(20,20,22,.72);padding:3px 8px;border-radius:8px" : "display:none",
         plusStyle: "width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:" + (it.soldOut ? "#c9c9cd" : "var(--coral)") + ";box-shadow:0 2px 6px rgba(244,85,60," + (it.soldOut ? "0" : ".35") + ")",
-        add: () => this.addLine(it.id) })),
+        add: () => this.openDish(it.id) })),
       ordEmpty: (s.menu || []).length === 0,
       roundLines: this.cartLines().map((l) => ({ name: l.d.name, qty: l.qty, amount: this.fmt((Number(l.d.price) || 0) * l.qty),
+        note: (s.cartNotes || {})[l.d.id] || "", noteStyle: (s.cartNotes || {})[l.d.id] ? "display:block;font-size:11.5px;color:var(--coral-deep);font-weight:600;margin-top:3px;line-height:1.4" : "display:none",
         inc: () => this.incLine(l.d.id), dec: () => this.decLine(l.d.id) })),
       roundHas: cartN > 0, roundSub: this.fmt(cartT), roundPts: "+" + Math.floor(cartT / (s.pointsPer || 10)) + " pts",
 
@@ -899,8 +946,20 @@ class Component extends DCLogic {
       barLine1, barLine2, barBtn, barGo,
 
       // sheets
-      sheetOpen: !!s.sheet, sheetCode: s.sheet === "code", sheetMenu: s.sheet === "menu",
-      closeSheet: () => this.setState({ sheet: null }),
+      sheetOpen: !!s.sheet, sheetCode: s.sheet === "code", sheetMenu: s.sheet === "menu", sheetDish: s.sheet === "dish",
+      closeSheet: () => this.setState({ sheet: null, dsheet: null }),
+      // dish sheet (order modifiers) — mirrors the till's Add-ons & modifiers
+      dishName: (this.dishOf((s.dsheet || {}).id) || {}).name || "",
+      dishPrice: this.fmt(((this.dishOf((s.dsheet || {}).id) || {}).price) || 0),
+      dishQty: String((s.dsheet || {}).qty || 1),
+      dishQtyUp: () => this.dsheetSet({ qty: ((s.dsheet || {}).qty || 1) + 1 }),
+      dishQtyDown: () => this.dsheetSet({ qty: Math.max(1, ((s.dsheet || {}).qty || 1) - 1) }),
+      dishNote: (s.dsheet || {}).note || "",
+      onDishNote: (e) => this.dsheetSet({ note: e.target.value }),
+      dishMods: MOD_PALETTE.map((mo) => { const sel = ((s.dsheet || {}).mods || []).indexOf(mo) >= 0; return { label: mo, go: () => this.dsheetToggle(mo),
+        style: "font-size:12px;font-weight:600;padding:8px 13px;border-radius:20px;white-space:nowrap;border:1px solid " + (sel ? "var(--coral)" : "var(--line-input)") + ";background:" + (sel ? "var(--coral)" : "#fff") + ";color:" + (sel ? "#fff" : "var(--text-2)") }; }),
+      addToRound: () => this.addToRound(),
+      addToRoundLabel: "Add to round · " + this.fmt((((this.dishOf((s.dsheet || {}).id) || {}).price) || 0) * ((s.dsheet || {}).qty || 1)),
       bars: Array.from({ length: 30 }, (_, i) => { const w = ((m.code || "x").charCodeAt(i % Math.max(1, (m.code || "x").length)) + i) % 3 + 1; return "width:" + w + "px;background:#111;display:block"; }),
       announced: s.announced, announce: () => this.announce(),
       announceLabel: s.announced ? "The till knows you are here" : "Tell the till I'm here",
