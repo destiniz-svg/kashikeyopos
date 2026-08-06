@@ -2958,7 +2958,7 @@ app.post("/p/:slug/member/redeem", pubThrottle(20, "mredeem"), wrap(async (req, 
   const voucher = { id: uid(), custId: c.id, rewardId: reward.id, name: reward.name, cost: cost, code: code, state: "pending", storeId, createdAt: Date.now() };
   await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'rewardVouchers',$2,$3)", [org.id, voucher.id, JSON.stringify(voucher)]));
   // Floor signal: a member redeemed something, by name (handoff 08 §5).
-  const call = { id: uid(), storeId, table: "Counter", name: c.name || "Member", custId: c.id, kind: "reward", reward: reward.name, code: code, t: Date.now() };
+  const call = { id: uid(), storeId, table: "Counter", name: c.name || "Member", custId: c.id, kind: "reward", reward: reward.name, code: code, voucherId: voucher.id, cost: cost, t: Date.now() };
   const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]));
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, voucher: { id: voucher.id, name: voucher.name, cost: voucher.cost, code: voucher.code, state: "pending" } });
@@ -4651,9 +4651,30 @@ if (fs.existsSync(protoFile)) {
     if (!orgId) return res.status(401).json({ error: "no session" });
     const id = String(req.params.id || "");
     const rowver = await withOrg(orgId, async (c) => {
+      // Clearing a `reward` signal is the cashier honouring the voucher: mark it
+      // redeemed and deduct the real points now (the phone only posted intent;
+      // the till moves the balance). Idempotent — a voucher already redeemed is
+      // left alone, so a double-tap can't deduct twice.
+      const cr = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='waiterCalls' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cr.rowCount) return null;
+      const call = cr.rows[0].data || {};
+      let rv = 0;
+      if (call.kind === "reward" && call.voucherId && call.custId) {
+        const vr = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='rewardVouchers' AND id=$2 AND deleted=false", [orgId, String(call.voucherId)]);
+        if (vr.rowCount && String((vr.rows[0].data || {}).state) === "pending") {
+          const cost = Math.max(0, Number((vr.rows[0].data || {}).cost) || 0);
+          const uv = await c.query("UPDATE entities SET data = data || jsonb_build_object('state','redeemed','redeemedAt',$3::bigint), rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='rewardVouchers' AND id=$2 AND (data->>'state')='pending' RETURNING rowver", [orgId, String(call.voucherId), Date.now()]);
+          if (uv.rowCount) {
+            rv = Math.max(rv, Number(uv.rows[0].rowver));
+            const uc = await c.query("UPDATE entities SET data = data || jsonb_build_object('points', GREATEST(0, COALESCE((data->>'points')::numeric,0) - $3)), rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, String(call.custId), cost]);
+            if (uc.rowCount) rv = Math.max(rv, Number(uc.rows[0].rowver));
+          }
+        }
+      }
       const r = await c.query(
         "UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='waiterCalls' AND id=$2 AND deleted=false RETURNING rowver", [orgId, id]);
-      return r.rowCount ? Number(r.rows[0].rowver) : null;
+      if (r.rowCount) rv = Math.max(rv, Number(r.rows[0].rowver));
+      return rv || null;
     });
     if (rowver == null) return res.status(404).json({ error: "call not found" });
     poke(orgId, rowver);

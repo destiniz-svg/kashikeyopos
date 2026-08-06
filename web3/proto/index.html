@@ -2743,7 +2743,9 @@ class Component extends DCLogic {
         const isTable = /^\d+$/.test(String(x.table || ""));
         const title = x.kind === "assist" ? "T" + x.table + " is asking for a server"
           : x.kind === "bill" ? "T" + x.table + " has asked for the bill"
-            : (isTable ? "T" + x.table + " ordered from the QR menu" : "New QR order" + (x.table ? " · " + x.table : ""));
+            : x.kind === "member" ? ((x.name || "A member") + " is at the counter")
+              : x.kind === "reward" ? ((x.name || "A member") + " redeemed " + (x.reward || "a reward"))
+                : (isTable ? "T" + x.table + " ordered from the QR menu" : "New QR order" + (x.table ? " · " + x.table : ""));
         // A real waiter/bill call clears by acking it on the server; a real QR
         // order clears by accepting it; a demo signal clears via localStorage.
         const clear = () => { if (x.call) this.ackCall(x.id); else if (x.real) this.acceptOrder(x.id); else this.ackSignal(x.id); };
@@ -2752,8 +2754,11 @@ class Component extends DCLogic {
           sub: (mins ? mins + " min ago" : "just now") + (x.detail ? " · " + x.detail : ""),
           style: "display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:11px;background:var(--bg-1);border:1px solid " + (urgent ? "var(--red-line)" : "var(--amber-line)"),
           dotStyle: "width:8px;height:8px;border-radius:50%;flex-shrink:0;display:block;background:" + (urgent ? "var(--red-bright)" : "var(--amber-bright)") + ";animation:kpulse 1.6s ease-in-out infinite",
-          go: () => { const t = parseInt(x.table, 10); this.setState({ view: t ? "pos" : "kds", activeTable: t || this.state.activeTable }); clear(); if (t) this.revealMenu(); },
-          ack: () => { clear(); this.toast((x.real ? "Accepted" : "Acknowledged") + (isTable ? " — T" + x.table : "")); }
+          go: () => {
+            if (x.kind === "member" || x.kind === "reward") { this.setState({ view: "customers" }); clear(); return; }
+            const t = parseInt(x.table, 10); this.setState({ view: t ? "pos" : "kds", activeTable: t || this.state.activeTable }); clear(); if (t) this.revealMenu();
+          },
+          ack: () => { clear(); this.toast(x.kind === "reward" ? ("Reward honoured — " + (x.reward || "") + (x.code ? " · " + x.code : "")) : x.kind === "member" ? ((x.name || "Member") + " noted at the counter") : ((x.real ? "Accepted" : "Acknowledged") + (isTable ? " — T" + x.table : ""))); }
         };
       }),
       hasCalls: this.posCalls().length > 0 || this.elsewhere().length > 0,
@@ -4204,11 +4209,16 @@ class Component extends DCLogic {
       .map((o) => { const n = (o.items || []).reduce((a, it) => a + (Number(it.q) || 1), 0);
         return { id: o.id, real: true, kind: "order", table: o.table, at: o.at || Date.now(),
           detail: n + " item" + (n === 1 ? "" : "s") + (o.no ? " · " + o.no : "") }; });
-    // Guest waiter/bill calls come from the same server feed (kind assist|bill).
+    // Guest signals from the same server feed: a waiter call (assist), a bill
+    // request, a member announcing at the counter, or a reward redemption. The
+    // member/reward kinds carry a name (and, for a reward, the code) so a cashier
+    // sees who it is; clearing a reward honours the voucher server-side.
     const calls = (this.liveCalls() || [])
       .filter((cl) => !acked[cl.id])
-      .map((cl) => ({ id: cl.id, real: true, call: true, kind: cl.kind === "bill" ? "bill" : "assist",
-        table: cl.table, at: cl.t || Date.now(), detail: cl.name || "" }));
+      .map((cl) => ({ id: cl.id, real: true, call: true,
+        kind: (cl.kind === "bill" || cl.kind === "member" || cl.kind === "reward") ? cl.kind : "assist",
+        table: cl.table, at: cl.t || Date.now(), name: cl.name || "", reward: cl.reward || "", code: cl.code || "",
+        detail: cl.kind === "reward" ? (cl.code || "") : cl.kind === "member" ? "" : (cl.name || "") }));
     return calls.concat(orders);   // a raised hand sits above a new order
   }
   // Accept a real QR order into the kitchen queue: the server sets accepted, so
