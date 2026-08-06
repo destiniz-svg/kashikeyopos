@@ -2825,9 +2825,15 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
     const spice = spiceOpts.includes(String(ci.spice)) ? String(ci.spice) : null;
     const comment = (p && p.comments && typeof ci.comment === "string") ? ci.comment.trim().slice(0, 140) : "";
     const noKitchen = !!(p && p.noKitchen);
+    /* A free-text modifier note — the same kind the till attaches to a line
+       (e.g. "No onion · Extra spicy"). Unlike `comment` it is not gated on the
+       product allowing comments, so the QR + member portals mirror the till's
+       always-available modifier notes. Sanitised and capped; never priced. */
+    const freeNote = (typeof ci.note === "string" ? ci.note : "").replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 160);
     const noteBits = addons.map((a) => a.name);
     if (spice) noteBits.push(spice);
     if (comment) noteBits.push("“" + comment + "”");
+    if (freeNote) noteBits.push(freeNote);
     return { pid: p ? p.id : pid || String(src.id || uid()), name: src.name || "Item", emoji: src.emoji || "", price: (Number(src.price) || 0) + addOnSum, cost: Number(src.cost) || 0, unit: src.unit || "pcs", vendor: !!src.vendor, qty: Math.max(1, Math.min(99, Number(ci.qty) || 1)), discPct: Number(src.discPct) || 0, taxable: src.taxable !== false, addons: addons.length ? addons : undefined, spice: spice || undefined, comment: comment || undefined, noKitchen: noKitchen || undefined, note: noteBits.length ? noteBits.join(" · ") : undefined };
   }).filter(Boolean);
   if (!lines.length) return res.status(400).json({ error: "those items are unavailable" });
