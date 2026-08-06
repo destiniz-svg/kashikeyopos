@@ -1375,6 +1375,15 @@ const otpEmailHtml = (code) => `<div style="font-family:system-ui,Segoe UI,Arial
   <div style="font-size:30px;font-weight:800;letter-spacing:.28em;background:#F7F1E7;border-radius:12px;padding:16px;text-align:center;color:#221a12">${code}</div>
   <p style="font-size:12.5px;color:#6b6459;line-height:1.5;margin:14px 0 0">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>
 </div>`;
+/* Invitation to the registered-customer (rewards) portal — emailed, not SMS.
+   Carries the store's brand and the sign-in link; the member signs in with this
+   same email address. */
+const portalInviteEmailHtml = (brand, link) => `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:460px;margin:0 auto;padding:28px 24px;color:#221a12">
+  <div style="font-weight:800;font-size:18px;color:#f4553c;margin-bottom:14px">${String(brand || "Kashikeyo").replace(/[<>&]/g, "")} Rewards</div>
+  <p style="font-size:14.5px;line-height:1.6;margin:0 0 16px">You're invited to ${String(brand || "our").replace(/[<>&]/g, "")} Rewards — points on every visit, your house account, and ordering from your table, all in one place.</p>
+  <a href="${link}" style="display:inline-block;background:#f4553c;color:#fff;text-decoration:none;font-weight:700;font-size:14.5px;padding:13px 22px;border-radius:26px">Open your rewards card</a>
+  <p style="font-size:12.5px;color:#6b6459;line-height:1.6;margin:18px 0 0">Sign in with this email address — we'll email you a one-time code, no password to remember. If this wasn't meant for you, you can ignore it.</p>
+</div>`;
 /* Minimal signup-safe password + email validation, reused by the staged flow. */
 const validEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || "").trim());
 const passwordProblem = (p) => (String(p || "").length < 8 ? "Password must be at least 8 characters." : null);
@@ -4296,12 +4305,13 @@ if (fs.existsSync(protoFile)) {
           const d = r.data || {}, pts = Number(d.points || d.loyaltyPoints || 0);
           const lastAt = Number(d.lastOrderAt || 0);
           return {
-            id: r.id, name: d.name || "Guest", phone: d.phone || "",
+            id: r.id, name: d.name || "Guest", phone: d.phone || "", email: d.email || "",
             visits: Number(d.visits || d.orders || 0), spent: Math.round((Number(d.spent || d.totalSpent || 0)) / 100),
             points: pts, tier: d.tier || tierOf(pts),
             credit: Math.round((Number(d.creditLimit || d.credit || 0)) / 100),
             used: Math.round((Number(d.balance || d.used || 0)) / 100),
             last: lastAt ? new Date(lastAt).toISOString().slice(0, 10) : "",
+            portal: d.portal === true, hasEmail: !!(d.email && String(d.email).indexOf("@") > 0),
           };
         });
         // Real staff roster for the sign-in lock. The till PIN is a djb2 hash;
@@ -4680,6 +4690,37 @@ if (fs.existsSync(protoFile)) {
   // Acknowledge a guest call (waiter / bill): clears it from the floor on every
   // device by soft-deleting the waiterCalls entity. (Stale calls also auto-expire
   // via the timed-kinds sweep.)
+  /* Invite customers to the rewards portal — by EMAIL (there is no SMS gateway).
+     Emails a branded sign-in link to each selected customer that has an email,
+     and marks portal=true. Reports how many were emailed and how many were
+     skipped for having no email on file, so the till can tell the operator to add
+     one. Members sign in / self-join with that same address. */
+  app.post("/api/app2/portal/invite", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const ids = Array.isArray((req.body || {}).ids) ? (req.body.ids).map(String).slice(0, 500) : [];
+    if (!ids.length) return res.status(400).json({ error: "no customers selected" });
+    const o = (await withSystem((c) => c.query("SELECT slug, store_name FROM orgs WHERE id=$1", [orgId]))).rows[0] || {};
+    const base = portalOriginForSlug(o.slug, req);
+    const link = PORTAL_BASE_DOMAINS.length ? (base + "/m") : (base + "/m?s=" + encodeURIComponent(o.slug || ""));
+    const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+    const custs = await kindAll(orgId, "customers", storeId);
+    const targets = custs.filter((c) => ids.indexOf(String(c.id)) >= 0 && c.email && String(c.email).indexOf("@") > 0);
+    let invited = 0;
+    for (const c of targets) {
+      const mail = await sendEmail({ to: c.email, subject: (o.store_name || "Kashikeyo") + " Rewards — you're invited",
+        html: portalInviteEmailHtml(o.store_name, link), text: "Open your " + (o.store_name || "Kashikeyo") + " Rewards card: " + link });
+      // Only mark them invited (portal=true) when the email actually went out, so
+      // the flag never claims an invitation the customer never received.
+      if (mail.ok) {
+        invited++;
+        const rv = await withOrg(orgId, (cl) => cl.query("UPDATE entities SET data = data || jsonb_build_object('portal',true), rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, String(c.id)]));
+        if (rv.rowCount) poke(orgId, Number(rv.rows[0].rowver));
+      }
+    }
+    res.json({ ok: true, requested: ids.length, invited, skippedNoEmail: ids.length - targets.length, configured: emailConfigured() });
+  }));
+
   app.post("/api/app2/call/:id/ack", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });

@@ -5944,9 +5944,23 @@ class Component extends DCLogic {
       actions: [
         {
           label: "Invite to portal", go: () => {
-            const keys = list.filter((c) => c.portal === false).map((c) => c.id);
-            if (!keys.length) return this.toast("Everyone shown already has portal access", "warn");
-            this.patchRows("custs", keys, { portal: true }, keys.length + " portal invite" + (keys.length > 1 ? "s" : "") + " sent by SMS", "customers");
+            // Invitations go out by EMAIL (there is no SMS gateway). Only customers
+            // with an email on file can be invited; the rest are reported so the
+            // cashier knows to add one.
+            const targets = list.filter((c) => c.portal !== true);
+            if (!targets.length) return this.toast("Everyone shown already has portal access", "warn");
+            if (!window.KPOS_REAL) return this.toast("Invitations send by email once a store is connected", "warn");
+            const ids = targets.filter((c) => c.hasEmail).map((c) => c.id);
+            const noEmail = targets.length - ids.length;
+            if (!ids.length) return this.toast("None of these customers has an email yet — add one to invite them to the rewards portal", "warn");
+            this.toast("Sending " + ids.length + " invitation" + (ids.length > 1 ? "s" : "") + " by email…");
+            fetch("/api/app2/portal/invite", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ids: ids }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) return this.toast(j.error, "warn");
+                if (j && j.configured === false) return this.toast("Email delivery isn't configured — invitations can't be sent yet", "warn");
+                this.toast((j.invited || 0) + " invited by email" + (noEmail ? " · " + noEmail + " skipped (no email on file)" : ""));
+                this.refreshData && this.refreshData();
+              }).catch(() => this.toast("Could not send invitations — check the connection", "warn"));
           }
         },
         { label: "Add customer", primary: true, go: () => this.openForm("cust") }
