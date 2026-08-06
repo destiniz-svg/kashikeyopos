@@ -1335,6 +1335,11 @@ class Component extends DCLogic {
     held: this._saved.held || [],
     local: this._saved.local || {},
     patches: this._saved.patches || [],
+    // Customer ids deleted from the back office. Persisted because the roster is
+    // rebuilt on every boot from the server projection PLUS the local overlay
+    // (state.local), and without a tombstone a locally-created or not-yet-synced
+    // customer would be re-inserted by applyLocal() and reappear after refresh.
+    deletedCusts: this._saved.deletedCusts || [],
     res: this._saved.res || [],
     seated: this._saved.seated || {},
     statsMode: this._saved.statsMode || null,
@@ -1413,7 +1418,7 @@ class Component extends DCLogic {
     this._lastWrite = Date.now();
     const body = {
       v: 3, tickets: s.tickets, held: s.held, outbox: this.trimOutbox(s.outbox), conflicts: s.conflicts,
-      local: s.local, patches: s.patches, res: s.res, seated: s.seated, statsMode: s.statsMode,
+      local: s.local, patches: s.patches, deletedCusts: s.deletedCusts, res: s.res, seated: s.seated, statsMode: s.statsMode,
       clock: s.clock, maint: s.maint, opexPaid: s.opexPaid, payrollPosted: s.payrollPosted, assetState: s.assetState, brandOverride: s.brandOverride, prefs: s.prefs, permOverride: s.permOverride, chainOverride: s.chainOverride, refunds: s.refunds, session: s.session, register: s.register,
       theme: s.theme, accent: s.accent, roleKey: s.roleKey, outletId: s.outletId, view: s.view
     };
@@ -5739,13 +5744,29 @@ class Component extends DCLogic {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Sign in to a store to manage customers", "warn");
     if (!pin || String(pin).replace(/\D/g, "").length < 4) return this.toast("Enter your 4-digit manager PIN to confirm", "warn");
     fetch("/api/app2/customer/" + encodeURIComponent(c.id) + "/delete", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pin: String(pin).trim(), force: true }) })
-      .then((r) => r.json().catch(() => ({}))).then((j) => {
-        if (j && (j.pending || j.error)) return this.toast(j.error || "Could not delete this customer", "warn");
-        const arr = K().CUSTOMERS || []; const i = arr.findIndex((x) => x.id === c.id); if (i >= 0) arr.splice(i, 1);
+      .then((r) => r.json().catch(() => ({})).then((j) => ({ status: r.status, j: j || {} })))
+      .then(({ status, j }) => {
+        // A pending customer is refused — the record stays. A bad PIN (403) or any
+        // other error keeps the row too. 404 means it was only ever a local (not-
+        // yet-synced) customer; the PIN already passed, so remove it locally.
+        if (j.pending) return this.toast(j.error || "This customer has pending items — the record stays.", "warn");
+        if (status !== 200 && status !== 404) return this.toast(j.error || "Could not delete this customer", "warn");
+        this.removeCustomerLocally(c.id);
         this.setState({ modal: null });
         this.toast(c.name + " deleted");
-        this.refreshData && this.refreshData();
       }).catch(() => this.toast("Could not delete — check the connection", "warn"));
+  }
+  // Purge a customer from every client-side copy so a browser refresh can't bring
+  // them back: the live roster array, the local insert overlay (state.local.custs),
+  // any field patches keyed to them, and a persisted tombstone that applyLocal()
+  // re-enforces on the next boot (the roster is rebuilt from server + overlay).
+  removeCustomerLocally(id) {
+    const arr = K().CUSTOMERS || []; const i = arr.findIndex((x) => x.id === id); if (i >= 0) arr.splice(i, 1);
+    const L = Object.assign({}, this.state.local || {});
+    if (L.custs) L.custs = L.custs.filter((r) => this.rowKey(r) !== id);
+    const patches = (this.state.patches || []).filter((p) => !(p.coll === "custs" && (p.keys || []).indexOf(id) >= 0));
+    const del = (this.state.deletedCusts || []).filter((x) => x !== id).concat([id]).slice(-500);
+    this.setState({ local: L, patches: patches, deletedCusts: del });
   }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
@@ -6185,7 +6206,7 @@ class Component extends DCLogic {
   // The item master is stored as arrays (id first), everything else as objects.
   rowKey(r) { return r ? (Array.isArray(r) ? r[0] : (r.no !== undefined ? r.no : r.id)) : null; }
   applyLocal() {
-    const L = this.state.local || {}, P = this.state.patches || [];
+    const L = this.state.local || {}, P = this.state.patches || [], D = this.state.deletedCusts || [];
     Object.keys(L).forEach((k) => {
       const arr = this.coll(k); if (!arr) return;
       (L[k] || []).forEach((row) => { if (!arr.some((x) => this.rowKey(x) === this.rowKey(row))) arr.unshift(row); });
@@ -6194,6 +6215,12 @@ class Component extends DCLogic {
       const arr = this.coll(p.coll); if (!arr) return;
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
     });
+    // Honour back-office deletions last, so a customer removed from the roster
+    // can't be resurrected by the server projection or the local insert overlay.
+    if (D.length) {
+      const arr = this.coll("custs");
+      if (arr) for (let i = arr.length - 1; i >= 0; i--) if (D.indexOf(this.rowKey(arr[i])) >= 0) arr.splice(i, 1);
+    }
   }
   insertRow(k, row, label, entity) {
     const arr = this.coll(k); if (arr) arr.unshift(row);
