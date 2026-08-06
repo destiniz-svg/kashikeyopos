@@ -3722,8 +3722,12 @@ class Component extends DCLogic {
       const custdelSub = dc ? (dc.hasTxn
         ? (dc.txns || 0) + " transaction" + ((dc.txns || 0) === 1 ? "" : "s") + " on file — receipts stay, the profile is removed"
         : "No transactions on file — safe to remove") : "";
+      // A staff-removal confirm names the person and their role so an admin
+      // can't remove the wrong row with one tap.
+      const sd = (m.form === "staffdel" && m.edit) ? m.edit : null;
+      const staffdelSub = sd ? (sd.name + (sd.realRole ? " · " + sd.realRole.charAt(0).toUpperCase() + sd.realRole.slice(1) : "")) : "";
       return {
-        modalTitle: spec.title, modalSub: dc ? custdelSub : spec.sub,
+        modalTitle: spec.title, modalSub: dc ? custdelSub : (sd ? staffdelSub : spec.sub),
         formSaveStyle: "margin-top:14px;width:100%;padding:12px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;" + (danger
           ? "background:var(--red-dim-2);color:#fff;border:1px solid var(--red-line-2)"
           : "background:var(--amber);color:var(--on-amber);border:1px solid var(--amber)"),
@@ -4126,7 +4130,7 @@ class Component extends DCLogic {
       // fact they sign in with a PIN, and offer Remove to an admin. The owner row
       // and your own row can't be removed.
       const removeAct = (mayManage && !self)
-        ? [{ label: "Remove from the team", go: () => this.removeStaff(u), style: "margin-top:13px;width:100%;padding:11px;border-radius:8px;background:var(--red-dim-2);border:1px solid var(--red-line-2);color:#fff;font-size:12px;font-weight:700;text-align:center" }]
+        ? [{ label: "Remove from the team", go: () => this.openForm("staffdel", u), style: "margin-top:13px;width:100%;padding:11px;border-radius:8px;background:var(--red-dim-2);border:1px solid var(--red-line-2);color:#fff;font-size:12px;font-weight:700;text-align:center" }]
         : [];
       const roleLabel = real ? (u.realRole ? u.realRole.charAt(0).toUpperCase() + u.realRole.slice(1) : (r.label || "")) : (r.label || "");
       return {
@@ -7671,11 +7675,11 @@ class Component extends DCLogic {
       // /admin cockpit writes). Demo mode keeps the illustrative chain-role form.
       user: staffReal ? {
         title: "Add team member", sub: "They sign in at the till with a 4-digit PIN", save: "Add member", editSave: "Save member",
-        foot: "A team member signs in on the terminal's lock screen with their own PIN — that is what makes every sale, void and discount attributable to a person. The owner sets the back-office password separately; staff never get one. Managers reach the back office, everyone else the till.",
+        foot: "A team member signs in on the terminal's lock screen with their own PIN — that is what makes every sale, void and discount attributable to a person. Editing someone? Leave the PIN blank to keep their current one, or type a new 4-digit PIN to reset it (useful when they forget it). The owner sets the back-office password separately; staff never get one. Managers reach the back office, everyone else the till.",
         fields: [
           { k: "name", label: "Full name", v: "", full: 1 },
           { k: "role", label: "Role", options: realRoleOpts, full: 1 },
-          { k: "pin", label: "4-digit PIN", v: "" }
+          { k: "pin", label: "4-digit PIN · blank keeps the current one", v: "" }
         ],
         pre: (u) => ({ name: u.name || "", role: u.realRole || "cashier", pin: "" }),
         onEdit: (v, u) => this.saveStaff(v, u),
@@ -7741,6 +7745,12 @@ class Component extends DCLogic {
           { k: "pin", label: "Confirm with your manager PIN", v: "", pwd: 1, full: 1 }
         ],
         onSave: (v, c) => this.deleteCustomer(c, v.pin)
+      },
+      staffdel: {
+        title: "Remove team member", sub: "", save: "Remove from the team", editSave: "Remove from the team", danger: true,
+        foot: "Their PIN stops working straight away, so they can no longer sign in. Sales, voids and shifts they already recorded stay on the books under their name — nothing in the history is lost.",
+        fields: [],
+        onSave: (v, u) => this.removeStaff(u)
       },
       rewardEdit: {
         title: "Reward", sub: "What a member redeems points for", save: "Add reward", editSave: "Save reward",
