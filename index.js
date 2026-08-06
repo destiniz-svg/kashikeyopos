@@ -2760,7 +2760,12 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
   const requestedTable = String(table || "").trim().slice(0, 40);
   if (otype === "dinein" && !requestedTable) return res.status(400).json({ error: "select your table number before ordering" });
   const zone = otype === "delivery" ? zones.find((z) => idEq(z.id, zoneId)) || null : null;
-  const cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
+  let cust = custId !== null && custId !== undefined && custId !== "" ? customers.find((c) => idEq(c.id, custId)) || null : null;
+  /* A signed-in member's order attaches to THEIR membership, taken from the
+     member cookie (trusted), never from a client-supplied custId — so points and
+     history are the real member's and a phone can't order onto someone else. */
+  const msess = readMember(req);
+  if (msess && msess.orgId === org.id) { const mc = customers.find((c) => idEq(c.id, msess.custId)); if (mc) cust = mc; }
   const upd = await withOrg(org.id, (client) => client.query("UPDATE orgs SET oseq = oseq + 1 WHERE id=$1 RETURNING oseq", [org.id]));
   /* An order made up entirely of non-kitchen items (hedhikaa, cakes, pastries,
      packaged goods) has nothing to cook, so it skips the kitchen queue and is
@@ -2903,6 +2908,38 @@ app.get("/p/:slug/member/me", pubThrottle(60, "mme"), wrap(async (req, res) => {
   const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, svcChargeBp: 0, currency: "MVR" };
   const hist = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
   res.json({ member: memberPayload(org, c, settings, hist) });
+}));
+
+/* Order status derived from the real ticket, never guessed (handoff 09). This
+   POS tracks status at the order (round) level plus a per-line `done`, so map:
+   1 accepted at the till (new) · 2 in the kitchen (preparing / some line done) ·
+   3 served (ready / completed / every line done). Stage 0 (still on the wire,
+   not yet a ticket) does not occur here — a posted QR order is a ticket at once. */
+function orderStage(o) {
+  const st = String((o && o.status) || "new").toLowerCase();
+  if (st === "completed" || st === "ready" || st === "settled" || st === "paid") return 3;
+  const items = Array.isArray(o && o.items) ? o.items : [];
+  if (items.length && items.every((it) => it && it.done)) return 3;
+  if (st === "preparing" || items.some((it) => it && it.done)) return 2;
+  return 1;
+}
+const MEMBER_OPEN = new Set(["new", "preparing", "ready"]);
+app.get("/p/:slug/member/orders", pubThrottle(60, "morders"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const sess = readMember(req);
+  if (!sess || sess.orgId !== org.id) return res.status(401).json({ error: "sign in required" });
+  const storeId = cleanStoreId(req.query.storeId || DEFAULT_STORE_ID);
+  const settings = (await loadSettingsArr(org.id))[0] || { storeName: org.store_name, gstBp: 800, svcChargeBp: 0, currency: "MVR" };
+  const all = await guestOrders(org.id, storeId, { customerId: sess.custId }, settings);
+  const orders = all.map((o) => ({
+    no: o.no || o.id, at: Number(o.createdAt || o.at) || null, table: o.table || "", status: String(o.status || "new"),
+    stage: orderStage(o), open: MEMBER_OPEN.has(String(o.status || "new").toLowerCase()),
+    total: Math.round((Number(o.total) || 0) / 100),
+    lines: (o.items || []).map((it) => ({ name: it.name || "Item", qty: Number(it.qty || it.q) || 1, done: !!it.done,
+      amount: Math.round(((Number(it.price) || 0) * (Number(it.qty || it.q) || 1)) / 100), note: it.note || "" })),
+  }));
+  res.json({ orders, live: orders.find((o) => o.open) || null });
 }));
 
 app.post("/p/:slug/member/signout", (req, res) => { res.clearCookie(MEMBER_COOKIE, { path: "/" }); res.json({ ok: true }); });
@@ -3176,7 +3213,13 @@ const serveMemberPortal = async (req, res, org) => {
   const real = await buildGuestReal(org.id);
   const settings = (await loadSettingsArr(org.id))[0] || {};
   const cfg = loyaltyConfig(settings);
-  const payload = { slug: org.slug, brand: real.brand || {}, outlet: real.outlet || {}, fiscal: real.fiscal || {}, pointsPer: cfg.pointsPer, redeemPer: cfg.redeemPer };
+  // The Order tab reads the shared POS menu (inclusive MVR prices, sold-out
+  // flags) + the outlet's table list. Cost/recipe never leave the POS.
+  let tables = [];
+  try { tables = (await kindAll(org.id, "tables", DEFAULT_STORE_ID)).map((t) => String(t.name || t.id)).filter(Boolean).slice(0, 60); } catch (e) { /* optional */ }
+  const payload = { slug: org.slug, brand: real.brand || {}, outlet: real.outlet || {}, fiscal: real.fiscal || {},
+    pointsPer: cfg.pointsPer, redeemPer: cfg.redeemPer,
+    menu: real.menu || [], categories: real.categories || [], tables: tables };
   const safeTitle = String((real.brand && real.brand.name) || org.store_name || "Rewards").replace(/[<>&"]/g, "") + " Rewards";
   let html = fs.readFileSync(memberV3File, "utf8");
   const inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(payload).replace(/</g, "\\u003c") + ";</script>";
