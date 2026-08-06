@@ -1235,6 +1235,19 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                       </sc-for>
                     </select>
                   </sc-if>
+                  <sc-if value="{{ f.isRows }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <sc-for list="{{ f.rows }}" as="r" hint-placeholder-count="2">
+                        <div style="display:flex;gap:7px;align-items:center">
+                          <input value="{{ r.name }}" onChange="{{ r.onName }}" placeholder="Add-on name" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12.5px;color:var(--text)"/>
+                          <div style="display:flex;align-items:center;gap:5px;flex-shrink:0"><span style="font-size:10.5px;color:var(--text-muted);font-weight:700">MVR</span><input value="{{ r.price }}" onChange="{{ r.onPrice }}" placeholder="free" inputmode="decimal" style="width:64px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-size:12.5px;color:var(--text);text-align:right"/></div>
+                          <button type="button" onClick="{{ r.onRemove }}" title="Remove add-on" style="flex-shrink:0;width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-dim);display:grid;place-items:center;font-size:17px;line-height:1">×</button>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{ f.empty }}"><div style="font-size:11px;color:var(--text-muted);padding:2px 1px">No add-ons yet. Guests order the dish as-is.</div></sc-if>
+                      <button type="button" onClick="{{ f.onAdd }}" style="align-self:flex-start;font-size:11.5px;font-weight:700;color:var(--text-dim);padding:8px 13px;border-radius:8px;border:1px dashed var(--line);background:var(--bg-2)" style-hover="border-color:var(--text-dim);color:var(--text)">+ Add an add-on</button>
+                    </div>
+                  </sc-if>
                 </div>
               </sc-for>
             </div>
@@ -3679,12 +3692,31 @@ class Component extends DCLogic {
         formSaveStyle: "margin-top:14px;width:100%;padding:12px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;" + (danger
           ? "background:var(--red-dim-2);color:#fff;border:1px solid var(--red-line-2)"
           : "background:var(--amber);color:var(--on-amber);border:1px solid var(--amber)"),
-        formFields: spec.fields.map((f) => ({
-          label: f.label, wrap: f.full ? "grid-column:1/-1" : "",
-          value: vals[f.k] === undefined ? "" : String(vals[f.k]),
-          isSelect: !!f.options, isPwd: !f.options && !!f.pwd, isText: !f.options && !f.pwd, options: f.options || [],
-          onChange: (e) => { const v = e.target.value; this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: v }) })); }
-        })),
+        formFields: spec.fields.map((f) => {
+          // A repeater field (e.g. add-ons): the value is an array of {name,
+          // price}. Each row carries its own change/remove handlers, and one
+          // "add" handler appends a blank row — all patch formVals[f.k].
+          if (f.rows) {
+            const list = Array.isArray(vals[f.k]) ? vals[f.k] : [];
+            const upd = (next) => this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: next }) }));
+            return {
+              label: f.label, wrap: f.full ? "grid-column:1/-1" : "", isRows: true, empty: list.length === 0,
+              rows: list.map((r, i) => ({
+                name: String((r && r.name) || ""), price: String(r && r.price != null ? r.price : ""),
+                onName: (e) => { const v = e.target.value; const n = list.slice(); n[i] = Object.assign({}, n[i], { name: v }); upd(n); },
+                onPrice: (e) => { const v = e.target.value; const n = list.slice(); n[i] = Object.assign({}, n[i], { price: v }); upd(n); },
+                onRemove: () => { const n = list.slice(); n.splice(i, 1); upd(n); }
+              })),
+              onAdd: () => upd(list.concat([{ name: "", price: "" }]))
+            };
+          }
+          return {
+            label: f.label, wrap: f.full ? "grid-column:1/-1" : "",
+            value: vals[f.k] === undefined ? "" : String(vals[f.k]),
+            isSelect: !!f.options, isPwd: !f.options && !!f.pwd, isText: !f.options && !f.pwd, options: f.options || [],
+            onChange: (e) => { const v = e.target.value; this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: v }) })); }
+          };
+        }),
         formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save, formFoot: spec.foot,
         // Optional AI "fill this in" — only forms that declare aiFill (New dish)
         // show it. Types the name, one tap drafts the rest from the store's menu.
@@ -5880,15 +5912,12 @@ class Component extends DCLogic {
     if (price <= 0) return this.toast("Price must be greater than zero", "warn");
     const cat = v.cat, desc = String(v.desc || "").trim();
     const veg = v.veg === "yes", off = v.avail === "no";
-    // Add-ons: one per line or comma-separated, "Name=price" (":" also works);
-    // a missing/zero price is a free option. Prices are MVR here; the endpoint
-    // converts to laari and the order path re-prices each by name.
-    const addons = String(v.addons || "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean).map((s) => {
-      const eq = s.search(/[=:]/);
-      const nm = (eq >= 0 ? s.slice(0, eq) : s).trim();
-      const pr = eq >= 0 ? (parseFloat(s.slice(eq + 1)) || 0) : 0;
-      return { name: nm, price: pr };
-    }).filter((a) => a.name);
+    // Add-ons come from the repeater as [{name, price}] (price a string, blank =
+    // free). Prices are MVR here; the endpoint converts to laari and the order
+    // path re-prices each add-on by name. A string value (legacy) is also parsed.
+    const rawAddons = Array.isArray(v.addons) ? v.addons
+      : String(v.addons || "").split(/[,\n]/).filter((s) => s.trim()).map((s) => { const e = s.search(/[=:]/); return { name: e >= 0 ? s.slice(0, e) : s, price: e >= 0 ? s.slice(e + 1) : "" }; });
+    const addons = rawAddons.map((a) => ({ name: String((a && a.name) || "").trim(), price: parseFloat(a && a.price) || 0 })).filter((a) => a.name);
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
       const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, addons: addons };
       if (existing && existing.id) body.id = existing.id;
@@ -7264,11 +7293,11 @@ class Component extends DCLogic {
           { k: "price", label: "Chain price MVR", v: "120" },
           { k: "veg", label: "Vegetarian", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes" }] },
           { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "no", l: "86 — off the menu tonight" }], full: 1 },
-          { k: "addons", label: "Add-ons — name=price, comma separated · leave the price off for a free option (e.g. Double shot=20, Oat milk=15, No sugar)", v: "", full: 1 }
+          { k: "addons", label: "Add-ons — a name and its MVR price · leave the price blank for a free option", rows: 1, full: 1 }
         ],
         editSave: "Save changes",
         pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: (d.off || d.soldOut) ? "no" : "yes",
-          addons: (d.addons || []).map((a) => (Number(a.price) ? a.name + "=" + a.price : a.name)).join(", ") }),
+          addons: (d.addons || []).map((a) => ({ name: a.name, price: Number(a.price) ? String(a.price) : "" })) }),
         onEdit: (v, d) => this.saveDish(v, d),
         onSave: (v) => this.saveDish(v, null)
       },
