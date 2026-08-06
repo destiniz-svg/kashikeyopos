@@ -1466,6 +1466,17 @@ class Component extends DCLogic {
     this.setState({ session: null, modal: { kind: "lock" } });
     if (n) this.queue("sign_out", n + " signed out · " + this.deviceCode(), "sessions");
   }
+  // Company-account sign out: clears the kashikeyo_session cookie on the server
+  // and returns the whole device to the login screen — the owner's email and
+  // password are needed to come back. Distinct from signOut() ("Switch user"),
+  // which only locks the till on this device. The persisted session (tickets,
+  // unsynced outbox) is flushed but NOT wiped, so queued sales survive the logout.
+  accountSignOut() {
+    if (!window.confirm("Sign out of the company account on this device?\n\nEveryone here returns to the login screen, and the owner's email and password are needed to sign back in. Queued sales are kept and will sync after signing in again.")) return;
+    try { this._flush && this._flush(); } catch (e) {}
+    const done = () => { window.location.href = "/login"; };
+    fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(done, done);
+  }
   // ── Register session ─────────────────────────────────────────────────────
   // A closed register cannot take money. Without this a till has no opening
   // float, no expected cash and therefore no over/short — the single control
@@ -3338,11 +3349,27 @@ class Component extends DCLogic {
     if (m.kind === "switch") {
       const btn = "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);min-height:44px";
       const on = "width:100%;padding:12px 14px;border-radius:10px;background:rgba(242,164,58,.12);border:1px solid var(--amber-line);min-height:44px;color:var(--amber-bright)";
+      const acctBtn = "width:100%;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--red-line-2);min-height:44px;color:var(--red-dim-2)";
+      const headStyleFor = (h) => h ? "display:block;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin:6px 2px 1px" : "display:none";
       const acts = [];
       const sess = s.session;
+      // Company-account sign out — only in a real store (demo has no account), and
+      // only for the account-holder tier (manager and above); a cashier can't log
+      // the whole business out mid-service. The owner's default role shows it.
+      const roleNow = sess ? sess.role : s.roleKey;
+      const brandName = (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.name) || "the company account";
+      const mayAccount = !!window.KPOS_REAL && ["SuperAdmin", "ChainAdmin", "OutletManager"].indexOf(roleNow) >= 0;
+      const acctAction = {
+        head: "Account", headStyle: headStyleFor("Account"),
+        label: "Sign out of " + brandName,
+        sub: "Logs this device out of the business — the owner's email and password sign back in. Queued sales are kept.",
+        style: acctBtn,
+        go: () => { this.setState({ modal: null }); setTimeout(() => this.accountSignOut(), 0); }
+      };
       if (!sess) {
-        return { modalTitle: "Terminal locked", modalSub: this.outlet().name + " · " + this.deviceCode(),
-          moreActions: [{ label: "Sign in with a PIN", sub: "Tap your name, key four digits — nothing on this till moves without it", style: on, go: () => this.setState({ modal: { kind: "lock" } }) }] };
+        const more = [{ label: "Sign in with a PIN", sub: "Tap your name, key four digits — nothing on this till moves without it", style: on, go: () => this.setState({ modal: { kind: "lock" } }) }];
+        if (mayAccount) more.push(acctAction);
+        return { modalTitle: "Terminal locked", modalSub: this.outlet().name + " · " + this.deviceCode(), moreActions: more };
       }
       acts.push({
         head: "Who is on this till",
@@ -3381,6 +3408,7 @@ class Component extends DCLogic {
           });
         });
       }
+      if (mayAccount) acts.push(acctAction);
       return {
         modalTitle: "Terminal",
         modalSub: (sess ? sess.name + " · " : "") + this.outlet().name + " · " + (this.registerOpen() ? "register open" : "register closed"),
