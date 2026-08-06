@@ -1,131 +1,93 @@
-# STACK.md — what the re-skin is landing on
+# STACK.md — how KashikeyoPOS is built (for the guest-ordering handoff)
 
-Phase 0 deliverable for the KashikeyoPOS design handoff. Written from the code,
-not from assumption. Read `docs/reskin-inventory.md` next for the screen map.
+Written for the `handoff_guest_ordering` build. Maps the production stack the two
+guest surfaces plug into, and the deployment shape decided for them.
 
-## The headline: the handoff's core premise is wrong in our favour
+## Framework / runtime
 
-`README.md` in the handoff says the prototype "runs on a bespoke prototyping
-runtime … that does not exist in your codebase and should not be introduced to
-it."
+- **Server:** Node 22 + Express, CommonJS, single `index.js` (~5.5k lines). Lean
+  deps (express, pg, jsonwebtoken, bcryptjs, jose, @anthropic-ai/sdk). Native
+  `fetch`. Deployed on Railway via Dockerfile (`npm install --omit=dev` → `npm start`).
+- **DB:** PostgreSQL with FORCE RLS. Every query runs inside `withOrg(orgId, fn)`
+  (sets `app.org_id`) or `withSystem(fn)`. Schema in `schema.sql`, applied on boot;
+  incremental migrations are idempotent `ALTER TABLE … ADD COLUMN IF NOT EXISTS`.
+- **No build step, no bundler, no framework on the client.** Every UI is
+  hand-written HTML/JS served by `serveProto()`/`serveGuestV3()` from `index.js`.
+  Edit the file, restart, reload.
 
-**It is our runtime.** `reference/support.js` and `web2/proto/support.js` are
-builds of the same `dc-runtime` — identical module list (`react`, `parse`,
-`template`, `logic`, …), same `<x-dc>` document, same `{{ }}` bindings, same
-`<sc-if>` / `<sc-for>`, same `renderVals()` contract. The prototype is a newer
-build of the same tool that produced our two front-ends.
+## Styling / component layer
 
-Consequences:
+- Plain CSS in each HTML file (no Tailwind here). Design tokens as `.ksh-*` /
+  `--*` CSS custom properties driven by `window.__kpal`.
+- The UIs use a bespoke `dc-template` runtime: `{{ x }}` bindings,
+  `<sc-if value="{{ b }}">`, `<sc-for list="{{ y }}" as="z">`, backed by a
+  `class Component extends DCLogic` logic object. This is **the production
+  pattern in this repo** (the terminal `web3/proto/index.html`, the guest
+  `web3/proto/guest.html`) — NOT the prototype's `support.js` runtime, which we
+  do not import. New guest screens are written in this same idiom.
 
-- **No framework translation.** The prototype's markup can be read structurally,
-  not just for values. The handoff's warning to "read for values and behaviour,
-  never for structure" does not apply to us.
-- **The 2–3 day "build 22 primitives in your component library" phase is not our
-  phase.** We have no component library to port to; we have one HTML file per
-  front-end with inline styles, which is what the prototype also has.
-- **The effort table in `06-INTEGRATION-PLAN.md` is calibrated for a different
-  target.** Phases 1–3 are cheaper for us. Phase 5 is more expensive, because it
-  assumes screens exist to restyle and seven of them do not.
+## Router / state / auth
 
-## Framework and runtime
+- **Routing:** Express routes in `index.js`. Guest surface today:
+  - Entry `GET /?s=<slug>` → `serveGuestPortal` → `serveGuestV3` → `buildGuestReal`.
+  - Subdomain `<handle>.<PORTAL_BASE_DOMAIN>` → `portalSlugFromHost` injects `?s`.
+  - APIs `/p/:slug/{events,boot,order,orders,account,call,reserve}` (public,
+    throttled, slug-scoped).
+- **State:** server = Postgres `entities(org_id, kind, id, data JSONB, rowver)`;
+  the till/guest business objects (products, sales, orders, waiterCalls,
+  customers, reservations, settings…) all live here. Client state is closure-scoped
+  in the logic class + `localStorage` for device-local (cart, table, prefs).
+- **Auth:**
+  - Staff/back-office: `kashikeyo_session` cookie; till ops: Bearer JWT on `/api/ops`.
+  - Guest: **anonymous** — `?s=<slug>` (store), `?t=<table>` (plain, guessable),
+    `?c=<custId>` (opaque link id). **No table token, no customer OTP today.**
 
-| Concern | What we actually use |
-|---|---|
-| Server | Node 22, Express 5, CommonJS. Single `index.js` (~4,300 lines) + `inventory.js` mounted at `/api/inv` |
-| Build tool | **None.** No bundler, no transpile, no `node_modules` in the served path |
-| Front-end framework | React 18 UMD (`web2/proto/vendor/`), driven by `dc-runtime` (`web2/proto/support.js`) — not JSX, not a build |
-| Component model | One ES class per front-end with `renderVals()` returning a flat object of bindings; the template is HTML in the same file |
-| Router | Server-side: `serveProto({base, file, …})` in `index.js`. Client-side: a `scr` string in component state, persisted to `localStorage['kashikeyo_scr']` |
-| State | Closure-scoped React component state. **Not injectable from the page** — see the testing note below |
-| Styling | Inline `style` attributes + one `<style>` block per file holding CSS custom properties. No Tailwind, no CSS modules, no styled-components |
-| Data | Postgres with FORCE RLS. `entities(org_id, kind, id, data JSONB, deleted, rowver, txid)` is the sync spine; inventory has real relational tables |
-| Deploy | Railway, Dockerfile → `npm start`. `staging` branch → test env, `main` → production |
+## Realtime transport
 
-## The three front-ends
+- SSE via `openEventStream()`: guest stream `GET /p/:slug/events`, till stream
+  `GET /api/events`. `id:` = rowver, `Last-Event-ID` honoured, `retry:` hint,
+  `X-Accel-Buffering: no`. Client `openStream()` re-opens on error with backoff.
+- Safety-net polls (5s/8s) sit under SSE. `poke(orgId, rowver)` nudges streams
+  after an entity write.
 
-| URL | File | What it is |
-|---|---|---|
-| `/app` | `web2/proto/index.html` (~227k) | Register / till. PIN-gated, offline-first |
-| `/admin` | `web2/proto/admin.html` (~171k) | Admin cockpit. MANAGER rank and above |
-| `/?s=<slug>` | **same file as `/app`**, guest mode | Customer QR portal, via `serveGuestPortal` — a different code path from `serveProto` |
+## How the POS exposes guest data today
 
-`web/dist` is a retired prebuilt bundle. It is no longer served at `/app`; it
-survives only so already-installed legacy PWAs can fetch root-relative assets.
-`npm start` still runs `guest-sync-patch.js` over it. **Do not put re-skin work
-there.**
+- `buildGuestReal(orgId)` → `{ guest, outlet, outlets, categories, menu, brand, fiscal }`;
+  `serveGuestV3` adds `slug`, `table`, `customer`, injects as `window.KPOS_REAL`.
+- Money: `orderBreakdown(order, settings)` is the guest mirror of the till's
+  `totals()` (tax-inclusive, service on goods, GST extracted). `normalizeOrder`,
+  `guestOrders`, `orderTotal` wrap it. Guarded by `test/guest-quote.test.js`.
+- Availability: `inventory.js recomputeAvailability()` writes `recipeAvail` +
+  `soldOutReason` onto product entities; sold-out rule is
+  `soldOut===true || (recipeAvail!=null ? recipeAvail<=0 : stock<=0)`.
+- Guest order ingest: `POST /p/:slug/order` re-prices server-side and writes an
+  `orders` entity `source:"qr"`; the till surfaces it via the orders stream
+  (`channel:"qr"`) and `waiterCalls` via `/api/app2/orders`.
 
-## Where global styles live
+## Gaps the handoff requires us to close (net-new)
 
-- `web2/proto/index.html` — one `<style>` block, **7** `:root` / `html[data-*]`
-  token blocks
-- `web2/proto/admin.html` — one `<style>` block, **4** token blocks
-- `site/pages.css` — the marketing/login/signup pages (separate, smaller)
+1. **Money on the phone is currently client-side demo logic** (pay/points/rewards
+   in `guest.html`). The new contract forbids this — the till must be truth.
+2. **No table QR token** — `?t=` is plain. Handoff needs a signed, short-lived,
+   per-table token that scopes reads/writes and is not guessable.
+3. **No customer OTP auth** — needed for the member portal (email OTP only).
+4. **No Promotions/Banners module**, no `qrBanners/qrOrdering/qrAutoAccept/
+   memberOrdering/tipPresets` settings, no published `/guest/promos` payload.
+5. **Order status is prep-time-guessed client-side**, not derived from real
+   `fired`/`done` KDS fields; and the **bill-merge rule** (POS lines + unaccounted
+   sent rounds) is not implemented.
 
-That is where `tokens.css` goes. There are currently **two** independent token
-sets (register and admin) that must be unified into one during Phase 1 — this is
-the "do not add a second, competing theme system" instruction, and we already
-have the problem the instruction warns about.
+## Deployment shape (decided)
 
-## Current theme mechanism
+Given no build step and the hand-written-HTML convention, the two surfaces ship
+as **routes/pages on the existing app**, not separate bundles or a monorepo:
 
-There is no `Users.ThemeMode` / `Users.CustomColors`. The handoff's Phase 6
-assumes columns we do not have.
+- **Guest QR app** → rebuild in place of `web3/proto/guest.html`, served by the
+  existing `serveGuestV3`/`serveGuestPortal` path (`/?s=<slug>`, subdomains).
+- **Member portal** → a new `web3/proto/member.html` served at its own route
+  (e.g. `/m` or the `rewards.` handle), same `dc-template` idiom + shared CSS tokens.
+- New guest endpoints added under `/p/:slug/*` (or `/guest/*` aliases) in `index.js`,
+  reusing `orderBreakdown`/availability. Contract tests live in `test/`.
 
-What exists instead:
-
-- **Mode** is an attribute on `<html>`: `data-dark`, `data-white`. Set by
-  `applyDoc()` in both front-ends from component state.
-- **Accent** is `localStorage['kashikeyo_accent']`, read at boot in the register.
-- **Nothing is persisted server-side.** Theme does not follow a user across
-  terminals; a reimaged tablet loses it.
-- The admin cockpit has a Theme panel under Hardware & Offline that writes
-  `localStorage['kashikeyo_cfg']`, which the register reads via a `storage` event.
-
-**Decision needed at Phase 6:** either add the two columns the handoff assumes
-(and persist through `/api/app2/config`), or keep it device-local and drop that
-part of the plan. Recommendation: persist it — the handoff is right that a
-reimaged terminal should pull its config back, and we already sync settings.
-
-## Design-token realities that constrain Phase 1
-
-- **Fonts are already self-hosted** (`web2/proto/fonts/`): Bricolage Grotesque,
-  Inter, Space Mono, plus MV Randhoo for Dhivehi. The handoff wants Inter +
-  **JetBrains Mono**; Space Mono is the swap candidate. Fonts are precached by
-  `web2/proto/sw.js` — any change must update `PRECACHE`.
-- **CSP has no third-party font host.** `font-src 'self' data:` and
-  `style-src 'self' 'unsafe-inline'`. Do not reintroduce `fonts.googleapis.com`;
-  self-host as the handoff itself recommends.
-- **Dhivehi and RTL are ours, not the prototype's.** The prototype is
-  English-only across 2,692 lines. **Every re-skinned screen must keep them.**
-  This is the single easiest regression to introduce.
-  Corrected count (measured, not assumed): the dictionary is **register-only** —
-  `index.html` carries a 260-key `dv` map and 8,341 Thaana characters;
-  `admin.html` has **66** Thaana characters and no dictionary at all. So the
-  translation-regression risk is concentrated entirely in `index.html`, and the
-  cockpit has no Dhivehi to lose. (An earlier draft of this file said "two full
-  dictionaries"; that was wrong.)
-- **Money is integer laari, GST-inclusive.** The prototype's ticket shows
-  GST *added on top* (515.00 + 51.50 + 45.32 = 611.82). Our menu prices include
-  GST and we extract it as the tax fraction. The panel *layout* transfers; the
-  *arithmetic* must not. Every total must keep calling `totals()`.
-
-## Testing and verification
-
-- **Syntax-check after every edit.** Extract the largest inline `<script>` and
-  `node --check` it, and confirm `<sc-if>` / `<sc-for>` open/close counts still
-  balance — an unbalanced tag renders an empty screen with no error.
-- Component state is closure-scoped. To test a method's arithmetic, slice its
-  source out of the HTML and run it with `new Function` against a stub `this`.
-  That exercises the shipped text rather than a retyped copy.
-- Local harness: Postgres 16 on a rotating port, app on `PORT=41xx`. See
-  `CLAUDE.md`.
-- `pkill -f "node index.js"` kills the shell running it. Use
-  `pkill -f "[n]ode index[.]js"`.
-
-## Out of scope, per the handoff and per us
-
-Schema, RLS, auth, JWT shape, tax calculation, rounding, receipt numbering,
-journal posting, the offline sync protocol, the audit trail. A 5-member
-production audit closed every CRITICAL/HIGH/MEDIUM/LOW finding against these
-paths and they are now in production. **If a design appears to need one of them,
-stop and raise it.**
+Reference (do not port the runtime): `handoff_guest_ordering/` in the scratchpad
+upload — docs + `reference/*.dc.html` prototypes read for values/behaviour only.
