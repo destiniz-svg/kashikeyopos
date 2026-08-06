@@ -4152,6 +4152,10 @@ if (fs.existsSync(protoFile)) {
           brand: { name: st.storeName || "", logo: st.logo || "", tagline: st.tagline || "",
             accent: st.accent || "", footer: st.receiptFooter || st.footer || "",
             whiteLabel: !!st.whiteLabel, handle: slug },
+          // Business profile chosen at onboarding (editable in Settings). Drives
+          // which modules the terminal shows: a non-F&B activity hides the
+          // kitchen/menu screens that would only ever be empty for it.
+          profile: { businessType: st.businessType || "", businessActivity: st.businessActivity || "" },
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
@@ -4908,6 +4912,13 @@ if (fs.existsSync(protoFile)) {
         if (st.tin != null) data.tin = String(st.tin).slice(0, 40);
         if (st.greg != null) data.gstRegNo = String(st.greg).slice(0, 40);
         if (st.legal != null) data.legalName = String(st.legal).slice(0, 120);
+        // Business activity chosen at onboarding, editable in Company details —
+        // drives which modules the terminal shows. Whitelisted; "" clears it.
+        if (st.activity != null) {
+          const ACT = ["", "restaurant", "cafe", "bakery", "retail", "grocery", "salon", "services", "other"];
+          const a = String(st.activity);
+          if (ACT.indexOf(a) >= 0) data.businessActivity = a;
+        }
         if (st.phone != null) data.phone = String(st.phone).slice(0, 40);
         if (st.island != null) data.island = String(st.island).slice(0, 60);
         if (st.atoll != null) data.atoll = String(st.atoll).slice(0, 60);

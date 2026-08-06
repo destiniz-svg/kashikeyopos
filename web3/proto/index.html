@@ -1873,7 +1873,7 @@ class Component extends DCLogic {
     const statsMini = s.statsMode ? s.statsMode === "mini" : ["pos", "kds"].indexOf(s.view) >= 0;
     const nav = [];
     NAVDEF.forEach((grp) => {
-      const items = grp[1].filter((it) => this.can(it[0]) && this.siteHas(it[0]));
+      const items = grp[1].filter((it) => this.can(it[0]) && this.siteHas(it[0]) && this.activityHas(it[0]));
       items.forEach((it, i) => {
         const on = s.view === it[0];
         let badge = "", bg = "", fg = "";
@@ -4032,6 +4032,33 @@ class Component extends DCLogic {
     return true;   // central kitchen: production, recipes, indents, dispatch
   }
   siteHome() { const k = this.siteKind(); return k === "restaurant" ? "pos" : k === "kitchen" ? "production" : "inventory"; }
+  // ── Business-activity awareness ──────────────────────────────────────────
+  // The business type/activity picked at onboarding (editable in Settings →
+  // Company details). A salon or a retail shop has no kitchen, no recipes and no
+  // covers, so the F&B-only screens are hidden the same way a warehouse hides
+  // front-of-house. Empty activity (or any F&B activity) changes nothing, so
+  // existing restaurants are unaffected.
+  bizActivity() { return (window.KPOS_REAL && window.KPOS_REAL.profile && window.KPOS_REAL.profile.businessActivity) || ""; }
+  bizType() { return (window.KPOS_REAL && window.KPOS_REAL.profile && window.KPOS_REAL.profile.businessType) || ""; }
+  // Modules hidden per non-F&B activity. Conservative on purpose: only the
+  // kitchen-production screens are ever hidden — never the product list (every
+  // business needs it), inventory, customers or orders. F&B activities
+  // (restaurant/cafe/bakery), "other" and an unset activity map to null → the
+  // full terminal, so existing stores are untouched.
+  activityHides(a) {
+    const KITCHEN = { kds: 1, recipes: 1, batches: 1, production: 1, aimenu: 1 };
+    switch (a) {
+      // A shop has no kitchen and takes no table bookings.
+      case "retail": case "grocery": return Object.assign({ reservations: 1 }, KITCHEN);
+      // A salon/services business keeps bookings (appointments) but has no kitchen.
+      case "salon": case "services": return Object.assign({}, KITCHEN);
+      default: return null;
+    }
+  }
+  activityHas(key) {
+    const hide = this.activityHides(this.bizActivity());
+    return !(hide && hide[key]);
+  }
   // Single derivation of "what is waiting at this location", read by the site
   // floor, its stat strip and nothing else — so a headline count can never
   // disagree with the table it sits above. Every list is the same row set the
@@ -6334,7 +6361,10 @@ class Component extends DCLogic {
           { k: "regNo", label: "Company registration", v: (window.KPOS_REAL ? this.fiscal().gstNo : this.chainOf().regNo) },
           { k: "phone", label: "Phone", v: (window.KPOS_REAL ? (this.fiscal().phone || "") : (this.chainOf().phone || "")) },
           { k: "hq", label: "Registered address", v: (window.KPOS_REAL ? this.fiscal().address : this.chainOf().hq), full: 1 },
-          { k: "currency", label: "Currency", options: [{ v: "MVR", l: "MVR — Maldivian rufiyaa" }, { v: "USD", l: "USD — United States dollar" }] }
+          { k: "currency", label: "Currency", options: [{ v: "MVR", l: "MVR — Maldivian rufiyaa" }, { v: "USD", l: "USD — United States dollar" }] },
+          { k: "activity", label: "Business activity", full: 1,
+            options: [{ v: "", l: "— not set (full terminal)" }, { v: "restaurant", l: "Restaurant / dine-in" }, { v: "cafe", l: "Café / coffee shop" }, { v: "bakery", l: "Bakery" }, { v: "retail", l: "Retail shop" }, { v: "grocery", l: "Grocery / mart" }, { v: "salon", l: "Salon & spa" }, { v: "services", l: "Services" }, { v: "other", l: "Other" }],
+            v: (window.KPOS_REAL ? ((window.KPOS_REAL.profile || {}).businessActivity || "") : "") }
         ],
         onSave: (v) => {
           if (!v.name || !v.tin) return this.toast("Registered name and TIN are required", "warn");
@@ -6344,9 +6374,11 @@ class Component extends DCLogic {
           // are the real ones — not a device-local override.
           if (window.KPOS_REAL && window.KPOS_REAL.token) {
             fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ cfg: { store: { legal: v.name, tin: v.tin, greg: v.regNo, phone: v.phone, addr: v.hq, currency: v.currency } } }) })
+              body: JSON.stringify({ cfg: { store: { legal: v.name, tin: v.tin, greg: v.regNo, phone: v.phone, addr: v.hq, currency: v.currency, activity: v.activity } } }) })
               .then((r) => r.json().catch(() => ({}))).then((j) => {
                 if (j && j.error) { this.toast(j.error, "warn"); return; }
+                // Keep the injected profile in step so the nav re-filters without a reload.
+                if (window.KPOS_REAL) { window.KPOS_REAL.profile = Object.assign({}, window.KPOS_REAL.profile || {}, { businessActivity: v.activity || "" }); }
                 this.setState({ chainOverride: next });
                 this.toast("Chain details saved");
               }).catch(() => this.toast("Could not save — check the connection", "warn"));
@@ -7923,7 +7955,7 @@ class Component extends DCLogic {
         // ── Company & tax ──────────────────────────────────────────────────
         secHead("Company & tax", "The registered taxpayer and the GST that prints"),
         { title: "Company details", sub: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName || CH.name) : CH.name), chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
-          rows: [["Country", CH.country], ["Currency", (window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency)], ["TIN", (window.KPOS_REAL ? (this.fiscal().tin || "— set it") : CH.tin)], ["GST reg.", (window.KPOS_REAL ? (this.fiscal().gstNo || "—") : CH.regNo)]],
+          rows: [["Country", CH.country], ["Currency", (window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency)], ["TIN", (window.KPOS_REAL ? (this.fiscal().tin || "— set it") : CH.tin)], ["GST reg.", (window.KPOS_REAL ? (this.fiscal().gstNo || "—") : CH.regNo)], ["Activity", (function (a) { return a ? a.charAt(0).toUpperCase() + a.slice(1) : "Full terminal"; })((window.KPOS_REAL && window.KPOS_REAL.profile && window.KPOS_REAL.profile.businessActivity) || "")]],
           foot: (window.KPOS_REAL ? (this.fiscal().address || "Address not set — tap Edit to add it") : CH.hq) + " — the registered company / taxpayer. Prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN.",
           goLabel: "Edit company details", go: gate(() => this.openForm("chain")) },
         { title: "Tax profile", sub: o.name, chip: o.tax, chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)",
