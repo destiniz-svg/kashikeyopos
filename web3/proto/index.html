@@ -692,6 +692,54 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
           </div>
         </sc-if>
 
+        <sc-for list="{{ aiPanelList }}" as="p" hint-placeholder-count="0">
+          <div style="max-width:600px;margin:2px auto 0">
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:5px">Dish name</div>
+                <input value="{{ p.name }}" onInput="{{ p.onName }}" placeholder="e.g. Mango Sticky Rice" style="{{ p.inputStyle }}"/>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:5px">Details — a line on what it is (optional)</div>
+                <input value="{{ p.details }}" onInput="{{ p.onDetails }}" placeholder="Ingredients, style, portion — anything that helps" style="{{ p.inputStyle }}"/>
+              </div>
+              <button onClick="{{ p.gen }}" style="{{ p.genStyle }}">{{ p.genLabel }}</button>
+              <sc-if value="{{ p.msg }}"><div style="font-size:11.5px;color:var(--text-dim);text-align:center;line-height:1.6">{{ p.msg }}</div></sc-if>
+            </div>
+
+            <sc-if value="{{ p.hasDraft }}">
+              <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:16px">
+                <div style="display:flex;gap:14px;align-items:flex-start">
+                  <span style="width:132px;height:88px;border-radius:12px;flex-shrink:0;background-image:url('{{ p.dImg }}');background-size:cover;background-position:center;background-color:var(--bg-2);border:1px solid var(--line)"></span>
+                  <div style="min-width:0;flex:1">
+                    <div style="font-size:15px;font-weight:700;letter-spacing:-.01em">{{ p.dName }}</div>
+                    <div style="font-size:12px;color:var(--text-dim);margin-top:4px;line-height:1.5">{{ p.dDesc }}</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:9px">
+                      <span style="{{ p.catChipStyle }}">{{ p.dCatLabel }}</span>
+                      <sc-for list="{{ p.dTags }}" as="t" hint-placeholder-count="0"><span style="font-size:10px;font-weight:600;padding:3px 8px;border-radius:20px;background:var(--bg-2);color:var(--text-dim)">{{ t }}</span></sc-for>
+                    </div>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:15px">
+                  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted)">Price MVR</div>
+                  <input value="{{ p.price }}" onInput="{{ p.onPrice }}" inputMode="decimal" style="{{ p.priceStyle }}"/>
+                  <span style="font-size:11px;color:var(--text-faint)">{{ p.priceHint }}</span>
+                </div>
+                <sc-if value="{{ p.hasAddons }}">
+                  <div style="margin-top:13px">
+                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:4px">Suggested add-ons</div>
+                    <sc-for list="{{ p.dAddons }}" as="ad" hint-placeholder-count="0"><div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:5px 0;border-top:1px solid var(--line-soft)"><span>{{ ad.name }}</span><span style="font-family:'JetBrains Mono',monospace;color:var(--text-dim)">{{ ad.priceF }}</span></div></sc-for>
+                  </div>
+                </sc-if>
+                <div style="display:flex;gap:9px;margin-top:17px">
+                  <button onClick="{{ p.save }}" style="{{ p.saveStyle }}">{{ p.saveLabel }}</button>
+                  <button onClick="{{ p.reset }}" style="{{ p.resetStyle }}">Start over</button>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+
         <sc-if value="{{ hasCards }}">
           <div style="{{ cardGrid }}">
             <sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
@@ -1390,6 +1438,10 @@ class Component extends DCLogic {
     aiPrompt: "Beachfront lunch menu for the Maafushi outlet — heavy on local reef fish and coconut, 6 dishes, target 28% food cost, two vegetarian.",
     aiRunning: false,
     aiResult: null,
+    // The "Create with AI" tab (Menu Master): a name + a line of detail →
+    // /menu/generate drafts a whole item (category, price band, tags, add-ons
+    // and a menu picture) → review → /menu/apply persists it.
+    aiCreate: { name: "", details: "", busy: false, draft: null, msg: "", price: "" },
     counting: null,
     tab: {},
     bp: typeof window === "undefined" ? "d" : (window.innerWidth < 760 ? "m" : window.innerWidth < 1180 ? "t" : "d"),
@@ -2471,6 +2523,9 @@ class Component extends DCLogic {
         style: "padding:7px 14px;border-radius:8px;font-size:11.5px;font-weight:600;white-space:nowrap;" + (a.primary ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-1);border:1px solid var(--line);color:var(--text-dim)")
       })),
       hasBar: !!((g.tabs && g.tabs.length) || (g.actions && g.actions.length)),
+      // The Create-with-AI panel rides as a single-item list so the template can
+      // reference its fields as p.x (dc-template resolves nested paths on loop vars).
+      aiPanelList: g.aiPanel ? [g.aiPanel] : [],
       hasCards: !!(g.cards && g.cards.length),
       cardGrid: "display:grid;grid-template-columns:repeat(auto-fill,minmax(" + (bp === "m" ? "min(100%," + (g.cardMin || 260) + "px)" : (g.cardMin || 260) + "px") + ",1fr));gap:11px;margin-bottom:" + (g.cols && g.cols.length ? "16px" : "0"),
       cards: (g.cards || []).map((c) => ({
@@ -5476,9 +5531,57 @@ class Component extends DCLogic {
   g_menu() {
     const K0 = K(), s = this.state, o = this.outlet();
     const q = s.search.toLowerCase();
-    const sub = s.tab.menu || 0;              // 0 = Items, 1 = Categories
+    const sub = s.tab.menu || 0;              // 0 = Items, 1 = Categories, 2 = Create with AI
     const canEdit = this.can("menu", "e");
-    const mkTabs = () => [{ label: "Items" }, { label: "Categories" }].map((t, i) => ({ label: t.label, on: sub === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) }));
+    // The AI creator is an editor-only tab; hide it (and its index) for a
+    // view-only role so the tab strip and sub-index stay consistent.
+    const tabDefs = canEdit ? [{ label: "Items" }, { label: "Categories" }, { label: "✨ Create with AI" }] : [{ label: "Items" }, { label: "Categories" }];
+    const mkTabs = () => tabDefs.map((t, i) => ({ label: t.label, on: sub === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) }));
+
+    // ── Create with AI — name + a line → a whole drafted item, reviewed then saved
+    if (sub === 2 && canEdit) {
+      const a = this.aiCreateVal();
+      const d = a.draft;
+      const cats = K0.MENU_CATEGORIES || [];
+      const matchCat = d ? cats.find((c) => (c.name || "").toLowerCase() === String(d.cat || "").toLowerCase()) : null;
+      const isNewCat = !!(d && d.cat && !matchCat);
+      const inputStyle = "width:100%;box-sizing:border-box;background:var(--bg-2);border:1px solid var(--line);border-radius:9px;padding:11px 13px;color:var(--text);font-size:13px;outline:none;min-height:44px";
+      const primaryBtn = "flex:1;padding:12px;border-radius:9px;font-size:12.5px;font-weight:700;text-align:center;border:1px solid var(--amber);background:var(--amber);color:var(--on-amber)";
+      const neutralBtn = "padding:12px 14px;border-radius:9px;font-size:12.5px;font-weight:600;text-align:center;border:1px solid var(--line);background:var(--bg-1);color:var(--text-dim)";
+      const chip = (bg, fg) => "font-size:10px;font-weight:700;padding:3px 9px;border-radius:20px;background:" + bg + ";color:" + fg;
+      const panel = {
+        name: a.name || "", details: a.details || "",
+        onName: (e) => this.aiCreateSet({ name: e.target.value }),
+        onDetails: (e) => this.aiCreateSet({ details: e.target.value }),
+        inputStyle: inputStyle,
+        gen: () => this.aiCreateGen(),
+        genLabel: a.busy ? "Designing the dish…" : (d ? "Regenerate" : "✨ Generate the item"),
+        genStyle: "width:100%;padding:13px;border-radius:9px;font-size:13px;font-weight:700;text-align:center;border:1px solid var(--amber);background:" + (a.busy ? "var(--bg-2)" : "var(--amber)") + ";color:" + (a.busy ? "var(--text-dim)" : "var(--on-amber)"),
+        msg: a.msg || "",
+        hasDraft: !!d,
+        dImg: d ? (d.img || "") : "",
+        dName: d ? (d.en || a.name) : "",
+        dDesc: d ? (d.desc || "") : "",
+        dCatLabel: d ? (isNewCat ? "New category · " + d.cat : String(d.cat || "")) : "",
+        catChipStyle: chip(isNewCat ? "rgba(242,164,58,.14)" : "var(--bg-2)", isNewCat ? "var(--amber-bright)" : "var(--text-dim)"),
+        dTags: d ? (d.tags || []).slice(0, 6) : [],
+        price: a.price || "", onPrice: (e) => this.aiCreateSet({ price: e.target.value.replace(/[^0-9.]/g, "") }),
+        priceStyle: "width:110px;box-sizing:border-box;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-weight:700;outline:none;font-family:'JetBrains Mono',monospace",
+        priceHint: d ? ("AI suggested MVR " + (d.priceLow || 0) + (d.priceHigh && d.priceHigh !== d.priceLow ? "–" + d.priceHigh : "")) : "",
+        hasAddons: !!(d && (d.addons || []).length),
+        dAddons: d ? (d.addons || []).map((x) => ({ name: x.name, priceF: Number(x.price) ? ("+ MVR " + x.price) : "free" })) : [],
+        save: () => this.aiCreateSave(), saveLabel: a.busy && d ? "Saving…" : "Add to the menu", saveStyle: primaryBtn,
+        regen: () => this.aiCreateGen(), regenStyle: neutralBtn,
+        reset: () => this.aiCreateReset(), resetStyle: neutralBtn
+      };
+      return {
+        tabs: mkTabs(),
+        aiPanel: panel,
+        guideTitle: "How this works",
+        guide: ["Type the dish name and a line about it", "AI drafts the description, category, price and a picture", "It fits the item into one of your existing categories", "Review, adjust the price, then add it to the menu"],
+        notes: [["Where the draft comes from", "The item is drafted from your own menu — your categories, your price level and your style — not a generic template. It fits the dish into an existing category where one works, and only proposes a new category when nothing fits. The picture is a simple flat illustration drawn to match the menu tile. Nothing is saved until you press Add to the menu; the price is yours to change."]]
+      };
+    }
 
     // ── Categories manager — rename, group, reorder, delete a section ────────
     if (sub === 1) {
@@ -6849,6 +6952,57 @@ class Component extends DCLogic {
       this.setState({ formAiBusy: false, formAiMsg: (e && e.message ? e.message + " " : "") + "Try again in a moment." });
     }
   }
+  // ── Create with AI (Menu Master tab) ───────────────────────────────────────
+  // A dedicated flow: the owner gives a name + one line, and /menu/generate
+  // returns a whole item drafted from THIS store's real categories + price
+  // level, including a flat SVG menu picture. They review, tweak the price, and
+  // save via /menu/apply (which persists the item + image and pokes the till).
+  aiCreateVal() { return this.state.aiCreate || { name: "", details: "", busy: false, draft: null, msg: "", price: "" }; }
+  aiCreateSet(patch) { this.setState({ aiCreate: Object.assign({}, this.aiCreateVal(), patch) }); }
+  async aiCreateGen() {
+    const a = this.aiCreateVal();
+    if (a.busy) return;
+    const name = String(a.name || "").trim();
+    if (!name) return this.toast("Give the item a name to generate", "warn");
+    if (!this.state.online) return this.toast("The builder needs the network", "warn");
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.aiCreateSet({ msg: "Sign in to this store to generate — it drafts from your real menu." });
+    this.aiCreateSet({ busy: true, msg: "" });
+    try {
+      const r = await fetch("/api/inv/menu/generate", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ name: name, hint: String(a.details || "").trim() }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j && j.error ? j.error : "HTTP " + r.status);
+      if (j && j.configured === false) return this.aiCreateSet({ busy: false, msg: j.message || "The AI builder isn't switched on yet — add an AI key to turn it on." });
+      const d = (j && j.draft) || {};
+      const price = Number(d.priceHigh) ? Math.round((Number(d.priceLow) + Number(d.priceHigh)) / 2) : (Number(d.priceLow) || 0);
+      this.aiCreateSet({ busy: false, draft: d, price: price ? String(price) : "", msg: "" });
+      this.queue("ai_create_draft", "AI item drafted · " + (d.en || name), "menu_items");
+    } catch (e) {
+      this.aiCreateSet({ busy: false, msg: (e && e.message ? e.message + " " : "") + "Try again in a moment." });
+    }
+  }
+  aiCreateSave() {
+    const a = this.aiCreateVal(), d = a.draft;
+    if (!d || a.busy) return;
+    const price = Math.max(0, Math.round(Number(a.price) || 0));
+    if (!price) return this.toast("Set a price before saving", "warn");
+    const cat = String(d.cat || "Menu").trim();
+    const draft = Object.assign({}, d, { price: price, storeId: "main" });   // /menu/apply wants price in rufiyaa
+    this.aiCreateSet({ busy: true });
+    fetch("/api/inv/menu/apply", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ draft: draft }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { this.aiCreateSet({ busy: false }); return this.toast(j.error, "warn"); }
+        // Reflect it locally at once: ensure the category exists, then prepend the
+        // dish so the Items tab, POS floor and QR menu show it without a reload.
+        const K0 = K(), id = (j && j.id) || ("ai_" + Date.now());
+        const cid = this.catId(cat);
+        if (!(K0.MENU_CATEGORIES || []).some((c) => c.id === cid)) (K0.MENU_CATEGORIES || []).push({ id: cid, name: cat, group: "", icon: "main" });
+        (K0.MENU || []).unshift({ id: id, cat: cid, group: "", name: d.en || a.name, desc: d.desc || "", price: price, veg: (d.tags || []).some((t) => /veg/.test(String(t))), img: d.img || "", recipe: [], hidden: false, addons: (d.addons || []) });
+        this.setState({ aiCreate: { name: "", details: "", busy: false, draft: null, msg: "", price: "" }, tab: Object.assign({}, this.state.tab, { menu: 0 }) });
+        this.toast((d.en || a.name) + " · added to the menu");
+        this.refreshData && this.refreshData();
+      }).catch(() => { this.aiCreateSet({ busy: false }); this.toast("Could not save — check the connection", "warn"); });
+  }
+  aiCreateReset() { this.setState({ aiCreate: { name: "", details: "", busy: false, draft: null, msg: "", price: "" } }); }
   downloadCsv(name, rows) {
     const esc = (v) => '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
     const csv = rows.map((r) => r.map(esc).join(",")).join("\r\n");
