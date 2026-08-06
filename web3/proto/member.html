@@ -162,22 +162,30 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
       <!-- MY CARD -->
       <sc-if value="{{ tabCard }}" hint-placeholder-val="{{ true }}">
         <div class="m-cap" style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
-          <!-- Membership card -->
+          <!-- Membership card (reference layout: chain · tier · balance/worth · code/since) -->
           <div style="{{ cardStyle }}">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start">
-              <div>
-                <div style="font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;opacity:.7">{{ cardBrand }}</div>
-                <div style="font-size:20px;font-weight:800;letter-spacing:-.02em;margin-top:14px">{{ memberName }}</div>
-                <div style="font-size:12.5px;opacity:.8;margin-top:2px;font-weight:500 " class="tnum">{{ memberCode }}</div>
+            <span style="position:absolute;top:-70px;right:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.07);display:block"></span>
+            <span style="position:absolute;bottom:-90px;left:-40px;width:190px;height:190px;border-radius:50%;background:rgba(255,255,255,.05);display:block"></span>
+            <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+              <div style="min-width:0">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.62);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cardBrand }}</div>
+                <div style="font-size:20px;font-weight:800;letter-spacing:-.02em;margin-top:5px">{{ tierName }} member</div>
               </div>
-              <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:18px;font-weight:800;animation:qpop .26s">{{ tierMark }}</div>
+              <div style="width:44px;height:44px;border-radius:12px;flex-shrink:0;background:rgba(255,255,255,.16);display:grid;place-items:center;font-size:18px;font-weight:800;animation:qpop .26s">{{ tierMark }}</div>
             </div>
-            <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:26px">
+            <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin-top:26px">
               <div>
-                <div style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;opacity:.7">Points</div>
-                <div style="font-size:26px;font-weight:800;letter-spacing:-.03em" class="tnum">{{ points }}</div>
+                <div style="font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.6)">Points balance</div>
+                <div style="font-size:34px;font-weight:800;letter-spacing:-.035em;margin-top:3px" class="tnum">{{ points }}</div>
               </div>
-              <div style="font-size:12.5px;font-weight:600;opacity:.85">{{ tierName }}</div>
+              <div style="text-align:right">
+                <div style="font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:rgba(255,255,255,.6)">Worth</div>
+                <div style="font-size:15px;font-weight:700;margin-top:4px" class="tnum">{{ pointsWorth }}</div>
+              </div>
+            </div>
+            <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;padding-top:16px;border-top:1px solid rgba(255,255,255,.16)">
+              <div style="font-size:13px;font-weight:600;letter-spacing:.06em;color:rgba(255,255,255,.9)" class="tnum">{{ memberCode }}</div>
+              <div style="font-size:11.5px;color:rgba(255,255,255,.6)">{{ memberSinceLine }}</div>
             </div>
           </div>
 
@@ -285,14 +293,19 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
           <sc-if value="{{ ordEmpty }}" hint-placeholder-val="{{ false }}"><div style="text-align:center;padding:34px 12px;color:var(--muted);font-size:13px">The menu is loading, or this outlet has no dishes yet.</div></sc-if>
           <div class="m-dishgrid">
             <sc-for list="{{ ordItems }}" as="it" hint-placeholder-count="6">
-              <div style="{{ it.cardStyle }}">
-                <div style="{{ it.imgStyle }}"></div>
-                <div style="padding:11px 12px;display:flex;flex-direction:column;gap:5px;flex:1">
-                  <div style="font-size:14px;font-weight:600;color:var(--ink-2);line-height:1.25">{{ it.name }}</div>
-                  <div style="font-size:13.5px;font-weight:700;color:var(--coral)" class="tnum">{{ it.price }}</div>
-                  <button onClick="{{ it.add }}" style="{{ it.addStyle }}">{{ it.addLabel }}</button>
-                </div>
-              </div>
+              <button onClick="{{ it.add }}" style="{{ it.cardStyle }}">
+                <span style="position:relative;display:block">
+                  <span style="{{ it.imgStyle }}"></span>
+                  <span style="{{ it.offStyle }}">Sold out</span>
+                </span>
+                <span style="display:block;padding:0 4px;font-size:14px;font-weight:600;color:var(--ink-2);letter-spacing:-.01em;line-height:1.25">{{ it.name }}</span>
+                <span style="margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px">
+                  <span style="font-size:14px;font-weight:700;color:var(--coral);white-space:nowrap" class="tnum">{{ it.price }}</span>
+                  <span style="{{ it.plusStyle }}">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </span>
+                </span>
+              </button>
             </sc-for>
           </div>
 
@@ -770,10 +783,14 @@ class Component extends DCLogic {
       // card
       showCode: () => this.setState({ sheet: "code", announced: false }),
       signOut: () => this.signOut(),
-      cardStyle: "border-radius:22px;padding:20px;color:#fff;background:" + this.tierGrad(tier.key) + ";box-shadow:0 14px 34px rgba(30,16,12,.32)",
+      cardStyle: "position:relative;overflow:hidden;border-radius:22px;padding:20px;color:#fff;background:" + this.tierGrad(tier.key) + ";box-shadow:0 14px 34px rgba(30,16,12,.32)",
       cardBrand: s.brand.name || "Kashikeyo",
       memberCode: m.code || "", tierMark: tier.mark || "★", tierName: tier.name || "Member",
       points: pts.toLocaleString(),
+      // Points value in rufiyaa (redeemPer points = MVR 1) + join year, matching
+      // the reference membership card's WORTH and "Member since" lines.
+      pointsWorth: this.money(pts / (s.redeemPer || 10)),
+      memberSinceLine: (function (v) { if (!v) return ""; var n = Number(v); var y = n > 9999 ? new Date(n).getFullYear() : n; return y ? ("Member since " + y) : ""; })(m.memberSince),
       nextTierTitle: next ? ("Next: " + next.name) : "Top tier reached",
       nextTierAmt: next ? (this.fmt(Math.max(0, next.at - spent)) + " to go") : "",
       tierBarStyle: "height:100%;width:" + pct + "%;border-radius:5px;background:linear-gradient(90deg,#f4553c,#f6b81c)",
@@ -842,10 +859,12 @@ class Component extends DCLogic {
         style: "flex-shrink:0;padding:7px 13px;border-radius:20px;font-size:13.5px;font-weight:600;white-space:nowrap;border:1px solid " + (s.menuCat === c.id ? "var(--coral)" : "var(--line-input)") + ";background:" + (s.menuCat === c.id ? "var(--coral-tint)" : "#fff") + ";color:" + (s.menuCat === c.id ? "var(--coral-deep)" : "var(--ink-3)") })),
       ordItems: (s.menu || []).filter((it) => (s.menuCat === "all" || it.cat === s.menuCat) && (!s.menuQ || (it.name + " " + it.desc).toLowerCase().indexOf(s.menuQ.toLowerCase()) >= 0)).map((it) => ({
         name: it.name, desc: it.desc || "", price: this.fmt(it.price), soldOut: !!it.soldOut,
-        cardStyle: "display:flex;flex-direction:column;background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.04)" + (it.soldOut ? ";opacity:.6" : ""),
-        imgStyle: "height:104px;background:" + (it.img ? ("url('" + it.img + "') center/cover no-repeat") : "var(--img-bg)") + (it.soldOut ? ";filter:grayscale(.7)" : ""),
-        add: () => this.addLine(it.id), addLabel: it.soldOut ? "Sold out" : "Add",
-        addStyle: "margin-top:auto;height:34px;border-radius:10px;font-size:12.5px;font-weight:700;" + (it.soldOut ? "background:var(--track);color:var(--muted-2)" : "background:var(--coral);color:#fff") })),
+        // Photo-forward card with a compact round + (reference Order dish card).
+        cardStyle: "text-align:left;display:flex;flex-direction:column;gap:8px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045)" + (it.soldOut ? ";opacity:.55" : ""),
+        imgStyle: "display:block;width:100%;height:118px;border-radius:12px;background:" + (it.img ? ("url('" + it.img + "') center/cover no-repeat") : "var(--img-bg)") + (it.soldOut ? ";filter:grayscale(1)" : ""),
+        offStyle: it.soldOut ? "position:absolute;top:8px;left:8px;font-size:10.5px;font-weight:700;letter-spacing:.04em;color:#fff;background:rgba(20,20,22,.72);padding:3px 8px;border-radius:8px" : "display:none",
+        plusStyle: "width:28px;height:28px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;background:" + (it.soldOut ? "#c9c9cd" : "var(--coral)") + ";box-shadow:0 2px 6px rgba(244,85,60," + (it.soldOut ? "0" : ".35") + ")",
+        add: () => this.addLine(it.id) })),
       ordEmpty: (s.menu || []).length === 0,
       roundLines: this.cartLines().map((l) => ({ name: l.d.name, qty: l.qty, amount: this.fmt((Number(l.d.price) || 0) * l.qty),
         inc: () => this.incLine(l.d.id), dec: () => this.decLine(l.d.id) })),
