@@ -57,6 +57,9 @@
     { id: "desserts", name: "Desserts", icon: "dessert" },
     { id: "drinks", name: "Drinks", icon: "drink" }
   ];
+  // Top-level groups the 20+ real categories collapse under (Drinks/Breakfast/
+  // Food/Desserts). Empty in the demo seed; filled from REAL.groups in real mode.
+  var MENU_GROUPS = [];
 
   // price = chain master price in MVR. recipe = [rawItemId, qty in base unit]
   // price = chain master price in MVR (targets 30% food cost against the item master)
@@ -567,11 +570,14 @@
     var CAT_ICON = { starters: "starter", mains: "main", grill: "grill", rice: "rice",
       sides: "side", desserts: "dessert", drinks: "drink", coffee: "drink", beverages: "drink" };
     MENU_CATEGORIES = (REAL.categories || []).map(function (c) {
-      return { id: c.id, name: c.name, icon: CAT_ICON[c.id] || "main" };
+      return { id: c.id, name: c.name, group: c.group || "", icon: CAT_ICON[c.id] || "main" };
     });
+    MENU_GROUPS = (REAL.groups || []);
+    var CAT_GROUP = {};
+    MENU_CATEGORIES.forEach(function (c) { CAT_GROUP[c.id] = c.group; });
     MENU = (REAL.menu || []).map(function (m) {
-      return { id: m.id, cat: m.cat, name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
-        veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
+      return { id: m.id, cat: m.cat, group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
+        veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], hidden: !!m.hidden, addons: m.addons || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
     });
     if (REAL.customers) CUSTOMERS = REAL.customers;   // Customers & credit — real accounts
     if (REAL.staff && REAL.staff.length) USERS = REAL.staff;  // Sign-in roster — real staff (real PINs)
@@ -652,7 +658,7 @@
   }
 
   window.KPOS = {
-    CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU, MENU_CATEGORIES: MENU_CATEGORIES,
+    CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU, MENU_CATEGORIES: MENU_CATEGORIES, MENU_GROUPS: MENU_GROUPS,
     MODULES: MODULES, ROLES: ROLES, USERS: USERS, CUSTOMERS: CUSTOMERS,
     STAFF: STAFF, PAYROLL_RULES: PAYROLL_RULES, OPEX: OPEX, ASSETS: ASSETS,
     ROLE_PINS: ROLE_PINS,

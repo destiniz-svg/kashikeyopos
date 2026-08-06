@@ -2723,13 +2723,21 @@ class Component extends DCLogic {
     }
 
     const q = s.search.toLowerCase();
-    const cats = [{ id: "all", name: "All", icon: "all" }].concat(K0.MENU_CATEGORIES).map((c) => {
+    // Top level = the store's few real GROUPS (Drinks/Breakfast/Food/Desserts)
+    // when it has them, so the strip isn't 20+ category tabs. Falls back to the
+    // category list (demo, or a store with no groups). `inTab` and `activeCat`
+    // keep the dish grid + the active pill in step with whichever level is shown.
+    const GRP_ICON = { Drinks: "drink", Breakfast: "coffee", Food: "main", Desserts: "dessert" };
+    const grpNames = (K0.MENU_GROUPS && K0.MENU_GROUPS.length) ? K0.MENU_GROUPS : null;
+    const inTab = (m, id) => id === "all" || (grpNames ? (m.group === id) : (m.cat === id));
+    const activeCat = (grpNames && s.cat !== "all" && grpNames.indexOf(s.cat) < 0) ? "all" : s.cat;
+    const cats = [{ id: "all", name: "All", icon: "all" }].concat(grpNames ? grpNames.map((g) => ({ id: g, name: g, icon: GRP_ICON[g] || "main" })) : K0.MENU_CATEGORIES).map((c) => {
       const hue = this.catHue(c.id === "all" ? "all" : (c.id || c.name));
-      const on = s.cat === c.id;
+      const on = activeCat === c.id;
       return {
         name: c.name,
         icon: this.catIcon(c.icon || c.id),
-        count: c.id === "all" ? K0.MENU.length : K0.MENU.filter((m) => m.cat === c.id).length,
+        count: c.id === "all" ? K0.MENU.length : K0.MENU.filter((m) => inTab(m, c.id)).length,
         pick: () => this.setState({ cat: c.id }),
         // The icon carries the section hue (rev 2 §5) so hue and glyph identify
         // the section together. On the active amber pill both go to on-amber.
@@ -2740,7 +2748,7 @@ class Component extends DCLogic {
 
     const out86 = this.eightySix();
     const dishes = K0.MENU
-      .filter((m) => s.cat === "all" || m.cat === s.cat)
+      .filter((m) => inTab(m, activeCat))
       .filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0 || m.desc.toLowerCase().indexOf(q) >= 0)
       .map((m) => {
         const off = out86.indexOf(m.id) >= 0;
