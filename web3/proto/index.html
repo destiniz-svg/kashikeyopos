@@ -1310,7 +1310,6 @@ const NAVDEF = [
     ["chain", "Chain Overview", "M3 3v18h18M7 15l4-5 3 3 5-7"],
     ["branches", "Outlets", "M3 21h18M5 21V8l7-5 7 5v13M10 21v-6h4v6"],
     ["menu", "Menu Master", "M4 5h16M4 12h16M4 19h10"],
-    ["aimenu", "AI Menu Builder", "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 17l.9 2.1L22 20l-2.1.9L19 23l-.9-2.1L16 20l2.1-.9z"],
     ["users", "Users & Roles", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M12.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0zM17 11l2 2 4-4"],
     ["logs", "Audit Log", "M14 2H6v20h12V8zM14 2v6h6M9 13h6M9 17h4"]
   ]],
@@ -1367,7 +1366,7 @@ class Component extends DCLogic {
     // settings screen, because it teaches staff the controls are decorative.
     prefs: Object.assign({
       autoLock: 5, voidPin: true, cashRound: true, kotPrint: true,
-      kdsSound: true, showCost: true, blindClose: true,
+      kdsSound: true, showCost: false, blindClose: true,
       paper: 80, copies: 1, autoPrint: false, lang: "en",
       pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false
     }, this._saved.prefs || {}),
@@ -2153,8 +2152,7 @@ class Component extends DCLogic {
       reservations: ["Reservations", "Tonight's book for " + o.name],
       chain: ["Chain Overview", "Consolidated across " + this.posOutlets().length + " trading outlets"],
       branches: ["Outlets", "Locations, tax profiles, printers and stock sub-locations"],
-      menu: ["Menu Master", "Chain price list with per-outlet overrides"],
-      aimenu: ["AI Menu Builder", "Cost-engineered menus from the live item master"],
+      menu: ["Menu Master", "Your dishes and the categories they sit in"],
       users: ["Users & Roles", "Role matrix enforced by Postgres RLS"],
       logs: ["Audit Log", "Append-only. Insert allowed, update and delete revoked"],
       inventory: ["Inventory", "On-hand by stock location"],
@@ -4199,7 +4197,7 @@ class Component extends DCLogic {
     // Selling-only screens are meaningless at a store or a kitchen.
     const sellOnly = ["kds", "orders", "delivery", "reservations", "customers"];
     if (sellOnly.indexOf(key) >= 0) return false;
-    if (k === "store") return ["production", "recipes", "menu", "aimenu"].indexOf(key) < 0;
+    if (k === "store") return ["production", "recipes", "menu"].indexOf(key) < 0;
     return true;   // central kitchen: production, recipes, indents, dispatch
   }
   siteHome() { const k = this.siteKind(); return k === "restaurant" ? "pos" : k === "kitchen" ? "production" : "inventory"; }
@@ -4217,7 +4215,7 @@ class Component extends DCLogic {
   // (restaurant/cafe/bakery), "other" and an unset activity map to null → the
   // full terminal, so existing stores are untouched.
   activityHides(a) {
-    const KITCHEN = { kds: 1, recipes: 1, batches: 1, production: 1, aimenu: 1 };
+    const KITCHEN = { kds: 1, recipes: 1, batches: 1, production: 1 };
     switch (a) {
       // A shop has no kitchen and takes no table bookings.
       case "retail": case "grocery": return Object.assign({ reservations: 1 }, KITCHEN);
@@ -4343,6 +4341,10 @@ class Component extends DCLogic {
   staffFor(id) { return this.staffAll().find((x) => x.id === id) || {}; }
   rules() { return (K().PAYROLL_RULES || {}); }
   prefs() { return this.state.prefs || {}; }
+  // Flip a single terminal preference (e.g. Show costs on the menu page). Prefs
+  // are personal to this terminal and persist in the local snapshot; no server
+  // round-trip. Used by the quick toggles that live outside the Settings tab.
+  setPref(k, v) { const P = Object.assign({}, this.state.prefs || {}); P[k] = v; this.setState({ prefs: P }); }
   // Written by KashikeyoGuest. Unacknowledged rows for THIS outlet only — a
   // server at Maafushi must never see a raised hand at Velana.
   allSignals() {
@@ -5476,36 +5478,43 @@ class Component extends DCLogic {
 
     // ── Items — the dish list ────────────────────────────────────────────────
     const list = K0.MENU.filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0);
-    const showCost = this.can("recipes") && this.prefs().showCost !== false;
+    // Costs are off by default now — the menu page reads as a plain menu, not a
+    // costing sheet — and a recipe-capable role opts in with the Show costs
+    // button, which just flips the personal pref.
+    const canCost = this.can("recipes");
+    const showCost = canCost && this.prefs().showCost === true;
+    const costToggle = canCost ? [{ label: showCost ? "Hide costs" : "Show costs", go: () => this.setPref("showCost", !showCost) }] : [];
     return {
       tabs: mkTabs(),
       guideTitle: "Putting a dish on sale", guide: ["Create the dish with its chain master price", "Add recipe lines in Recipes & Costing so food cost is real", "An outlet may override the price; the master stays the default", "Tourism-zone outlets apply their uplift on top automatically"],
-      actions: canEdit ? [{ label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) }, { label: "New dish", primary: true, go: () => this.openForm("dish") }] : [],
-      cols: [
-        { label: "Dish", w: "2fr" }, { label: "Category", w: ".9fr" }, { label: "Chain price", w: ".9fr", a: "right", mono: 1 },
-        { label: o.code + " price", w: ".9fr", a: "right", mono: 1 }, { label: "Food cost", w: ".9fr", a: "right", mono: 1 },
-        { label: "GP %", w: ".7fr", a: "right", mono: 1 }, { label: "Recipe", w: ".8fr", a: "right" }, { label: "Here", w: ".7fr", a: "right" }
-      ],
+      actions: (canEdit ? [{ label: "New dish", primary: true, go: () => this.openForm("dish") }] : []).concat(costToggle),
+      // Plain menu by default: Dish, Category, Price, Status. The costing
+      // columns (food cost, GP %, recipe) only appear when Show costs is on, so
+      // a newcomer reads a menu, not a spreadsheet.
+      cols: [{ label: "Dish", w: "2fr" }, { label: "Category", w: "1fr" }, { label: "Price", w: ".9fr", a: "right", mono: 1 }]
+        .concat(showCost ? [{ label: "Food cost", w: ".9fr", a: "right", mono: 1 }, { label: "GP %", w: ".7fr", a: "right", mono: 1 }, { label: "Recipe", w: ".8fr", a: "right" }] : [])
+        .concat([{ label: "Status", w: ".8fr", a: "right" }]),
       rows: list.map((m) => {
         const local = this.menuPrice(m), cost = this.foodCost(m);
-        const gp = Math.round(((local - cost) / local) * 100);
+        const gp = local ? Math.round(((local - cost) / local) * 100) : 0;
         const off = this.eightySix().indexOf(m.id) >= 0;
         const hid = !!m.hidden;
-        return {
-          go: () => this.setState({ modal: { kind: "dish", id: m.id } }),
-          cells: [
-            m.name,
-            (K0.MENU_CATEGORIES.find((c) => c.id === m.cat) || {}).name,
-            MVRc(m.price),
-            { t: MVRc(local), c: local !== m.price ? "var(--amber-bright)" : "var(--text-dim)", w: local !== m.price ? 600 : 400 },
-            { t: showCost ? MVR(cost) : "hidden", c: showCost ? "var(--text-dim)" : "var(--text-faint)" },
-            { t: showCost ? gp + "%" : "—", c: gp >= 68 ? "var(--green)" : gp >= 62 ? "var(--amber-bright)" : "var(--red-bright)" },
-            { t: (m.recipe || []).length ? (m.recipe.length + " lines") : "none", chip: this.chip((m.recipe || []).length ? "info" : "mute") },
-            { t: hid ? "Hidden" : (off ? "86'd" : "Live"), chip: this.chip(hid ? "mute" : (off ? "err" : "ok")) }
-          ]
-        };
+        const cells = [
+          m.name,
+          (K0.MENU_CATEGORIES.find((c) => c.id === m.cat) || {}).name || "Uncategorised",
+          { t: MVRc(local), c: local !== m.price ? "var(--amber-bright)" : "var(--text)", w: local !== m.price ? 600 : 400 }
+        ];
+        if (showCost) cells.push(
+          { t: MVR(cost), c: "var(--text-dim)" },
+          { t: gp + "%", c: gp >= 68 ? "var(--green)" : gp >= 62 ? "var(--amber-bright)" : "var(--red-bright)" },
+          { t: (m.recipe || []).length ? (m.recipe.length + " lines") : "none", chip: this.chip((m.recipe || []).length ? "info" : "mute") }
+        );
+        cells.push({ t: hid ? "Hidden" : (off ? "86'd" : "Live"), chip: this.chip(hid ? "mute" : (off ? "err" : "ok")) });
+        return { go: () => this.setState({ modal: { kind: "dish", id: m.id } }), cells: cells };
       }),
-      notes: showCost ? [["Per-outlet overrides", "Tourism-zone outlets carry a +12% price override, rounded to MVR 5. The override lives in kpos.menu_overrides keyed by (menu_item_id, outlet_id); the terminal reads a view that coalesces override price over master price."]] : [["Cost prices hidden", "Your role reads kpos.menu_for_terminal, a security_invoker view that nulls food_cost for Cashier. The column is not filtered in the client — Postgres never sends it."]]
+      notes: showCost
+        ? [["Costs are on", "Food cost is the theoretical cost from the dish's recipe lines, and GP % is the gross margin on the selling price. A price shown in amber is an outlet override sitting on top of the chain master price. Show costs is a personal setting — turning it off here hides these three columns for you only."]]
+        : [["A plain menu", "Costs, margins and recipes are hidden so this reads as the menu a guest would recognise. A manager can turn on Show costs to reveal food cost, GP % and recipe status. Prices in amber are an outlet override on the chain master."]]
     };
   }
 
