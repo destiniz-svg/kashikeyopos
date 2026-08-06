@@ -2074,6 +2074,7 @@ class Component extends DCLogic {
       orders: ["Orders & Tickets", "Every ticket written by this outlet today"],
       delivery: ["Delivery & QR Orders", "Table QR sessions, aggregator and own-fleet delivery"],
       customers: ["Customers & Credit", "Chain-wide profiles, loyalty tiers and credit ledger"],
+      loyalty: ["Rewards & Loyalty", "The earn rate, tiers and the reward catalogue members redeem in the app"],
       reservations: ["Reservations", "Tonight's book for " + o.name],
       chain: ["Chain Overview", "Consolidated across " + this.posOutlets().length + " trading outlets"],
       branches: ["Outlets", "Locations, tax profiles, printers and stock sub-locations"],
@@ -7071,6 +7072,41 @@ class Component extends DCLogic {
           }, "Customer created · " + v.name, "customers");
         }
       },
+      rewardEdit: {
+        title: "Reward", sub: "What a member redeems points for", save: "Add reward", editSave: "Save reward",
+        foot: "Members redeem in the app; the till receives the code and honours it at the counter. 10 points is worth about MVR 1, so a 500-point reward is roughly MVR 50 of value. A tier requirement gates it to that tier and above.",
+        fields: [
+          { k: "name", label: "Reward name", v: "", full: 1 },
+          { k: "sub", label: "Short description", v: "", full: 1 },
+          { k: "cost", label: "Cost (points)", v: "500" },
+          { k: "tierRequired", label: "Requires tier", options: [{ v: "", l: "Any tier" }].concat((this.loy().tiers || []).map((t) => ({ v: t.key, l: t.name }))) },
+          { k: "active", label: "Status", options: [{ v: "yes", l: "Live — members can redeem" }, { v: "no", l: "Off — hidden from the app" }], full: 1 },
+          { k: "remove", label: "Remove", options: [{ v: "no", l: "Keep this reward" }, { v: "yes", l: "Delete it from the catalogue" }], full: 1 }
+        ],
+        pre: (r) => ({ active: r.active === false ? "no" : "yes", remove: "no", tierRequired: r.tierRequired || "" }),
+        onSave: (v) => {
+          if (!v.name) return this.toast("A reward name is required", "warn");
+          const L = this.loy(); const rewards = (L.rewards || []).slice();
+          rewards.push({ id: "rw_" + Math.random().toString(36).slice(2, 9), name: v.name, sub: v.sub || "", cost: Math.max(0, +v.cost || 0), tierRequired: v.tierRequired || "", active: v.active !== "no" });
+          this.saveLoy(Object.assign({}, L, { rewards })); this.setState({ modal: null }); this.toast("Reward added · " + v.name);
+        },
+        onEdit: (v, r) => {
+          const L = this.loy(); let rewards = (L.rewards || []).slice();
+          if (v.remove === "yes") { rewards = rewards.filter((x) => String(x.id) !== String(r.id)); this.saveLoy(Object.assign({}, L, { rewards })); this.setState({ modal: null }); return this.toast("Reward removed"); }
+          if (!v.name) return this.toast("A reward name is required", "warn");
+          rewards = rewards.map((x) => String(x.id) === String(r.id) ? Object.assign({}, x, { name: v.name, sub: v.sub || "", cost: Math.max(0, +v.cost || 0), tierRequired: v.tierRequired || "", active: v.active !== "no" }) : x);
+          this.saveLoy(Object.assign({}, L, { rewards })); this.setState({ modal: null }); this.toast(v.name + " updated");
+        }
+      },
+      earnRate: {
+        title: "Earn rate", sub: "How fast members earn points", save: "Save earn rate", editSave: "Save earn rate",
+        foot: "One point for every this many rufiyaa a member spends. 10 points is worth MVR 1 at redemption, so a lower number here is a more generous programme.",
+        fields: [{ k: "pointsPer", label: "MVR spent per point earned", v: String(this.loy().pointsPer) }],
+        onSave: (v) => {
+          const n = Math.max(1, Math.min(1000, Math.round(+v.pointsPer || 10)));
+          this.saveLoy(Object.assign({}, this.loy(), { pointsPer: n })); this.setState({ modal: null }); this.toast("Earn rate saved · 1 pt per MVR " + n);
+        }
+      },
       res: {
         title: "New reservation", sub: this.outlet().name, save: "Book table",
         foot: "Reservations hold the table but do not open a ticket; seating the guest is what creates the order.",
@@ -7919,6 +7955,54 @@ class Component extends DCLogic {
     };
   }
 
+  // ── Loyalty / rewards editor ──────────────────────────────────────────────
+  // The reward catalogue, tiers and earn rate the rewards portal reads. Live
+  // values come from KPOS_REAL.loyalty (server, from the settings entity); a
+  // local draft holds unsaved edits and is written back through /api/app2/config.
+  loy() {
+    if (this.state.loyDraft) return this.state.loyDraft;
+    const L = (window.KPOS_REAL && window.KPOS_REAL.loyalty) || {};
+    const tiers = (Array.isArray(L.tiers) && L.tiers.length) ? L.tiers
+      : [{ key: "bronze", name: "Bronze", mark: "III", from: 0 }, { key: "silver", name: "Silver", mark: "II", from: 3000 }, { key: "gold", name: "Gold", mark: "I", from: 7000 }, { key: "platinum", name: "Platinum", mark: "★", from: 15000 }];
+    return { pointsPer: Number(L.pointsPer) || 10, redeemPer: Number(L.redeemPer) || 10, tiers: tiers, rewards: Array.isArray(L.rewards) ? L.rewards : [] };
+  }
+  saveLoy(next) {
+    this.setState({ loyDraft: next });
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ cfg: { pointsPer: next.pointsPer, loyalty: { redeemPer: next.redeemPer, tiers: next.tiers, rewards: next.rewards } } }) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => { if (j && j.error) this.toast(j.error, "warn"); else { if (window.KPOS_REAL) window.KPOS_REAL.loyalty = { pointsPer: next.pointsPer, redeemPer: next.redeemPer, tiers: next.tiers, rewards: next.rewards }; this.toast("Rewards saved"); } })
+        .catch(() => this.toast("Could not save — check the connection", "warn"));
+    }
+  }
+  g_loyalty() {
+    const L = this.loy(); const rewards = L.rewards || []; const mayEdit = this.can("customers", "e") || this.can("settings", "e");
+    const gate = (fn) => () => mayEdit ? fn() : this.toast("Ask a chain administrator for rights to edit rewards", "warn");
+    const tierName = (k) => (L.tiers.find((t) => t.key === k) || {}).name || "";
+    return {
+      actions: [{ label: "Set earn rate", go: gate(() => this.openForm("earnRate")) }, { label: "Add reward", primary: true, go: gate(() => this.openForm("rewardEdit")) }],
+      guideTitle: "How rewards work",
+      guide: ["Members earn 1 point per MVR " + L.pointsPer + " spent, set here", "10 points is worth MVR 1 at redemption", "Tiers unlock by lifetime spend — thresholds are yours to set", "A member redeems in the app; the till receives the code and honours it"],
+      cardMin: 250,
+      cards: [
+        { title: "Earn rate", sub: "Points on every visit", chip: "1 pt / MVR " + L.pointsPer, chipBg: "rgba(242,164,58,.12)", chipFg: "var(--amber-bright)",
+          rows: [["Earn", "1 point per MVR " + L.pointsPer + " spent"], ["Redeem", (L.redeemPer || 10) + " points = MVR 1 off"], ["Catalogue", rewards.length + " reward" + (rewards.length === 1 ? "" : "s")]],
+          foot: "A lower spend-per-point is a more generous programme. Points post to a member's card when the till settles their bill.", goLabel: "Edit earn rate", go: gate(() => this.openForm("earnRate")) },
+        { title: "Tiers", sub: L.tiers.length + " tiers by lifetime spend", rows: L.tiers.map((t) => [t.name + " · " + t.mark, t.from > 0 ? ("from MVR " + Number(t.from).toLocaleString()) : "from MVR 0"]),
+          foot: "A member's tier is the highest threshold their lifetime spend has passed. The gradients and marks are fixed design; the thresholds are data." },
+      ],
+      cols: [{ label: "Reward", w: "1.8fr" }, { label: "Cost", w: ".8fr", a: "right", mono: 1 }, { label: "Requires", w: "1fr" }, { label: "Status", w: ".8fr", a: "right" }],
+      rows: rewards.map((r) => ({
+        go: gate(() => this.openForm("rewardEdit", r)),
+        cells: [r.name, (Number(r.cost) || 0).toLocaleString() + " pts", r.tierRequired ? (tierName(r.tierRequired) + "+") : "Any tier",
+          { t: r.active === false ? "Off" : "Live", chip: r.active === false ? ["var(--bg-2)", "var(--text-muted)"] : ["rgba(107,191,123,.14)", "var(--green)"] }],
+      })),
+      empty: "No rewards yet. Tap Add reward to build the catalogue members redeem points for.",
+      notes: [["Where this lives", "The earn rate, tiers and rewards are stored on the store settings the till already syncs, so a change here reaches the rewards portal within seconds — no app update."],
+        ["The till is the truth", "A member redeems in the app, which files the code on the floor. The points are only deducted when a cashier honours it — the phone never moves a balance itself."]],
+    };
+  }
+
   g_settings() {
     const K0 = K(), o = this.outlet();
     const acc = this.ACCENTS(), key = this.accentKey(), mode = this.themeMode();
@@ -8027,7 +8111,11 @@ class Component extends DCLogic {
             { label: "Points per MVR spent", opts: [5, 10, 20].map((n) => ({ label: "1 per " + n, on: P.pointsPer === n, go: () => set("pointsPer", n) })) },
             { label: "Low-stock warning at", opts: [30, 50, 70].map((n) => ({ label: n + "% of par", on: P.lowStock === n, go: () => set("lowStock", n) })) }
           ],
-          foot: "Credit limits are per customer; these are the chain defaults applied to a new account." }
+          foot: "Credit limits are per customer; these are the chain defaults applied to a new account." },
+        { title: "Rewards & loyalty", sub: "The rewards members redeem in the app", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
+          rows: [["Earn rate", "1 pt / MVR " + this.loy().pointsPer], ["Tiers", (this.loy().tiers || []).length + " by lifetime spend"], ["Reward catalogue", (this.loy().rewards || []).length + " reward" + ((this.loy().rewards || []).length === 1 ? "" : "s")]],
+          foot: "Set the earn rate, tier thresholds and the reward catalogue the registered-customer (rewards) portal shows. A change reaches every member's phone within seconds.",
+          goLabel: "Open rewards & loyalty", go: gate(() => this.setState({ view: "loyalty" })) }
       ],
       notes: [
         ["Where settings live", "Nothing here is on the device. Settings are rows in chain- and outlet-scoped tables, so a reimaged terminal pulls its whole configuration back from its device registration."],

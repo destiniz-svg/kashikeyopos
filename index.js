@@ -4469,6 +4469,10 @@ if (fs.existsSync(protoFile)) {
           // kitchen/menu screens that would only ever be empty for it.
           profile: { businessType: st.businessType || "", businessActivity: st.businessActivity || "" },
           email: orgRow.email || "",
+          // Loyalty config the rewards-portal reads (earn rate, tiers, reward
+          // catalogue), so the terminal's Loyalty editor shows and edits the live
+          // values. loyaltyConfig() supplies documented defaults until a merchant sets them.
+          loyalty: (function (L) { return { pointsPer: L.pointsPer, redeemPer: L.redeemPer, tiers: L.tiers, rewards: L.rewards }; })(loyaltyConfig(st)),
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
