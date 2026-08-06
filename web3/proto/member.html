@@ -335,7 +335,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
           <div style="background:var(--coral-tint);border:1px solid var(--coral-line);border-radius:16px;padding:16px;display:flex;justify-content:space-between;align-items:center">
             <div>
               <div style="font-size:10.5px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--coral-ink)">Available</div>
-              <div style="font-size:22px;font-weight:800;color:var(--coral-deep);margin-top:5px" class="tnum">{{ points }}</div>
+              <div style="font-size:22px;font-weight:800;color:var(--coral-deep);margin-top:5px" class="tnum">{{ availPoints }}</div>
             </div>
             <div style="font-size:12px;font-weight:600;color:var(--coral-ink);text-align:right" class="tnum">{{ earnRate }}</div>
           </div>
@@ -604,6 +604,15 @@ class Component extends DCLogic {
     else this.say(err === "offline" ? "Saved on this phone — it will send when you are back online" : (err || "Could not send — try again"));
   }
 
+  async redeem(r) {
+    if (r.locked) return this.say((r.tierRequired ? (r.tierRequired.charAt(0).toUpperCase() + r.tierRequired.slice(1)) : "A higher") + " tier only");
+    const avail = (this.state.member && this.state.member.availablePoints != null ? this.state.member.availablePoints : (this.state.member || {}).points) || 0;
+    if (avail < r.cost) return this.say("You need " + (r.cost - avail).toLocaleString() + " more points");
+    const { ok, j } = await this.post("redeem", { rewardId: r.id });
+    if (ok) { this.say(r.name + " ready — show " + ((j.voucher && j.voucher.code) || "your code") + " at the till"); this.fetchMe(true); }
+    else this.say((j && j.error) || "Could not redeem — try again");
+  }
+
   // ── Formatters / helpers ───────────────────────────────────────────────────
   fmt(n) { return "MVR " + Math.round(Number(n) || 0).toLocaleString("en-US"); }
   money(n) { return "MVR " + (Math.round((Number(n) || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -642,6 +651,7 @@ class Component extends DCLogic {
     const vouchers = Array.isArray(m.vouchers) ? m.vouchers : [];
     const activity = Array.isArray(m.activity) ? m.activity : [];
     const pts = Number(m.points || 0);
+    const avail = Number(m.availablePoints != null ? m.availablePoints : pts);
     const credit = m.credit || { limit: 0, used: 0 };
     const creditLeft = Math.max(0, (credit.limit || 0) - (credit.used || 0));
 
@@ -716,15 +726,16 @@ class Component extends DCLogic {
       // rewards
       earnBlurb: "Earn 1 point for every " + this.fmt(s.pointsPer) + " you spend. " + (s.redeemPer || 10) + " points is worth MVR 1 off.",
       earnRate: "1 pt per " + this.fmt(s.pointsPer) + " spent",
+      availPoints: avail.toLocaleString(),
       hasRewards: rewards.length > 0, noRewards: rewards.length === 0,
       rewards: rewards.map((r) => {
-        const cost = Number(r.cost || 0), can = pts >= cost, locked = false;
-        return { name: r.name, sub: r.sub || "",
+        const cost = Number(r.cost || 0), locked = !!r.locked, can = !locked && avail >= cost;
+        return { name: r.name, sub: locked ? ((r.tierRequired ? (r.tierRequired.charAt(0).toUpperCase() + r.tierRequired.slice(1)) : "Higher") + " tier only") : (r.sub || ""),
           rowStyle: "display:flex;gap:13px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:15px;padding:13px;box-shadow:0 2px 8px rgba(0,0,0,.04)" + (locked ? ";opacity:.62" : ""),
-          imgStyle: "width:58px;height:58px;border-radius:12px;flex-shrink:0;background:" + (r.img ? ("url('" + r.img + "') center/cover no-repeat") : "var(--img-bg)"),
-          disabled: !can, btn: can ? "Redeem" : ((cost - pts).toLocaleString() + " pts"),
+          imgStyle: "width:58px;height:58px;border-radius:12px;flex-shrink:0;background:" + (r.img ? ("url('" + r.img + "') center/cover no-repeat") : "var(--img-bg)") + (locked ? ";filter:grayscale(.7)" : ""),
+          disabled: !can, btn: locked ? "Locked" : (can ? "Redeem" : ((cost - avail).toLocaleString() + " pts")),
           btnStyle: "flex-shrink:0;font-size:12.5px;font-weight:700;padding:9px 14px;border-radius:11px;" + (can ? "background:var(--coral);color:#fff" : "background:var(--track);color:var(--muted-2)"),
-          go: () => this.say(can ? (r.name + " — redemption ships in the next update") : ("You need " + (cost - pts).toLocaleString() + " more points")) };
+          go: () => this.redeem({ id: r.id, cost: cost, name: r.name, locked: locked, tierRequired: r.tierRequired }) };
       }),
       hasVouchers: vouchers.length > 0,
       vouchers: vouchers.map((v) => ({ name: v.name, sub: (Number(v.cost || 0)).toLocaleString() + " pts", code: v.code || "" })),

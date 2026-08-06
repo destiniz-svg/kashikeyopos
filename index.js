@@ -1552,7 +1552,7 @@ async function findCustomerByEmail(orgId, storeId, email) {
 /* Build the member payload (handoff 07/A4) from the REAL customer row + loyalty
    config + real order history. Everything is server-computed; the app formats,
    it never derives. Absent data → empty arrays / null, never a fabricated value. */
-function memberPayload(org, c, settings, orders) {
+function memberPayload(org, c, settings, orders, vouchers) {
   const cfg = loyaltyConfig(settings);
   const points = Math.max(0, Math.round(Number(c.points || c.loyaltyPoints || 0)));
   const spent = Math.round((Number(c.spent || c.totalSpent || 0)) / 100);
@@ -1572,15 +1572,30 @@ function memberPayload(org, c, settings, orders) {
       at: o.createdAt || o.at || null };
   });
   const lastVisit = c.lastOrderAt || (hist[0] && (hist[0].createdAt || hist[0].at)) || null;
+  // Redeemed-but-not-yet-cleared vouchers subtract from the DISPLAYED balance now,
+  // so the member never sees a flattering number (handoff 05). The till awards/
+  // deducts the real points at settlement; the app only ever displays.
+  const vlist = Array.isArray(vouchers) ? vouchers : [];
+  const pending = vlist.filter((v) => String(v.state || "pending") === "pending");
+  const pendingSpend = pending.reduce((a, v) => a + (Number(v.cost) || 0), 0);
+  const availablePoints = Math.max(0, points - pendingSpend);
+  // Tier rank for reward gating (higher index = higher tier).
+  const tierRank = {}; cfg.tiers.forEach((t, i) => { tierRank[t.key] = i; });
+  const myRank = tierRank[tier.key] || 0;
+  const rewards = cfg.rewards.filter((r) => r.active !== false).map((r) => ({
+    id: r.id, name: r.name, sub: r.sub || "", cost: Number(r.cost) || 0, img: r.img || "",
+    tierRequired: r.tierRequired || "", locked: r.tierRequired ? ((tierRank[r.tierRequired] || 0) > myRank) : false }));
   return {
     id: c.id, name: c.name || "Member", email: c.email || "", phone: c.phone || "",
     memberSince: c.memberSince || c.since || (c.createdAt ? Number(c.createdAt) : null),
     code, barcode: code,
-    points, pointsPending: 0, spentLifetime: spent, visits: Math.max(0, Math.round(Number(c.visits || 0))), lastVisit,
+    points, availablePoints, pointsPending: 0, spentLifetime: spent, visits: Math.max(0, Math.round(Number(c.visits || 0))), lastVisit,
     credit: { limit, used },
     tier: { key: tier.key, name: tier.name, mark: tier.mark, from: Number(tier.from || 0), to: upper ? Number(upper.from) : null },
     nextTier: upper ? { name: upper.name, at: Number(upper.from) } : null,
-    rewards: cfg.rewards, vouchers: [], activity,
+    rewards,
+    vouchers: vlist.map((v) => ({ id: v.id, name: v.name, cost: Number(v.cost) || 0, code: v.code || "", state: v.state || "pending", redeemedAt: Number(v.createdAt) || null })),
+    activity,
     pointsPer: cfg.pointsPer, redeemPer: cfg.redeemPer,
     homeOutlet: org.store_name || "",
   };
@@ -2907,7 +2922,46 @@ app.get("/p/:slug/member/me", pubThrottle(60, "mme"), wrap(async (req, res) => {
   const settingsArr = await loadSettingsArr(org.id);
   const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, svcChargeBp: 0, currency: "MVR" };
   const hist = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
-  res.json({ member: memberPayload(org, c, settings, hist) });
+  const vouchers = (await kindAll(org.id, "rewardVouchers", storeId)).filter((v) => idEq(v.custId, c.id))
+    .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+  res.json({ member: memberPayload(org, c, settings, hist, vouchers) });
+}));
+
+/* Redeem a reward. The app posts an intent; the till honours it (handoff CLAUDE
+   brief). We write a `pending` voucher — which immediately subtracts from the
+   member's displayed balance — and file a `reward` signal on the floor so a
+   cashier can apply it. The till awards/deducts real points at settlement; a
+   phone never moves a point balance itself. */
+app.post("/p/:slug/member/redeem", pubThrottle(20, "mredeem"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const sess = readMember(req);
+  if (!sess || sess.orgId !== org.id) return res.status(401).json({ error: "sign in required" });
+  const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+  const [custs, settingsArr, vouchers] = await Promise.all([
+    kindAll(org.id, "customers", storeId), loadSettingsArr(org.id), kindAll(org.id, "rewardVouchers", storeId)]);
+  const c = custs.find((x) => idEq(x.id, sess.custId));
+  if (!c) return res.status(401).json({ error: "membership not found" });
+  const cfg = loyaltyConfig(settingsArr[0] || {});
+  const reward = cfg.rewards.find((r) => String(r.id) === String((req.body || {}).rewardId) && r.active !== false);
+  if (!reward) return res.status(404).json({ error: "That reward is not available." });
+  // Tier gate.
+  const spent = Math.round((Number(c.spent || c.totalSpent || 0)) / 100);
+  let ti = 0; for (let i = 0; i < cfg.tiers.length; i++) { if (spent >= Number(cfg.tiers[i].from || 0)) ti = i; }
+  if (reward.tierRequired) { const need = cfg.tiers.findIndex((t) => t.key === reward.tierRequired); if (need > ti) return res.status(403).json({ error: reward.tierRequired + " tier only." }); }
+  // Affordability against points minus already-pending redemptions.
+  const points = Math.max(0, Math.round(Number(c.points || c.loyaltyPoints || 0)));
+  const pendingSpend = vouchers.filter((v) => idEq(v.custId, c.id) && String(v.state || "pending") === "pending").reduce((a, v) => a + (Number(v.cost) || 0), 0);
+  const cost = Number(reward.cost) || 0;
+  if ((points - pendingSpend) < cost) return res.status(400).json({ error: "You need " + (cost - (points - pendingSpend)).toLocaleString() + " more points" });
+  const code = "RW-" + String(crypto.randomInt(1000, 10000));
+  const voucher = { id: uid(), custId: c.id, rewardId: reward.id, name: reward.name, cost: cost, code: code, state: "pending", storeId, createdAt: Date.now() };
+  await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'rewardVouchers',$2,$3)", [org.id, voucher.id, JSON.stringify(voucher)]));
+  // Floor signal: a member redeemed something, by name (handoff 08 §5).
+  const call = { id: uid(), storeId, table: "Counter", name: c.name || "Member", custId: c.id, kind: "reward", reward: reward.name, code: code, t: Date.now() };
+  const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]));
+  poke(org.id, Number(r.rows[0].rowver));
+  res.json({ ok: true, voucher: { id: voucher.id, name: voucher.name, cost: voucher.cost, code: voucher.code, state: "pending" } });
 }));
 
 /* Order status derived from the real ticket, never guessed (handoff 09). This
@@ -5108,6 +5162,23 @@ if (fs.existsSync(protoFile)) {
       if (patch.svcChargeBp !== undefined) {
         const bp = Math.round(Number(patch.svcChargeBp));
         if (bp >= 0 && bp <= 5000) data.svcChargeBp = bp;
+      }
+      /* Loyalty configuration for the registered-customer portal: the earn rate,
+         tier thresholds/marks and the reward catalogue are DATA, not code
+         (handoff 08 §9). Stored on the settings entity so /member/me + the portal
+         rewards read them; the gradients and the four-tier visual language stay
+         client-side design tokens. */
+      if (patch.pointsPer !== undefined) { const n = Math.round(Number(patch.pointsPer)); if (n >= 1 && n <= 1000) data.pointsPer = n; }
+      if (patch.loyalty && typeof patch.loyalty === "object") {
+        const L = Object.assign({}, data.loyalty || {});
+        if (Array.isArray(patch.loyalty.tiers)) {
+          L.tiers = patch.loyalty.tiers.slice(0, 8).map((t) => ({ key: String((t && t.key) || "tier").slice(0, 24), name: String((t && t.name) || "Tier").slice(0, 40), mark: String((t && t.mark) || "").slice(0, 4), from: Math.max(0, Math.round(Number(t && t.from) || 0)) })).sort((a, b) => a.from - b.from);
+        }
+        if (Array.isArray(patch.loyalty.rewards)) {
+          L.rewards = patch.loyalty.rewards.slice(0, 40).map((r) => ({ id: String((r && r.id) || uid()).slice(0, 40), name: String((r && r.name) || "Reward").slice(0, 80), sub: String((r && r.sub) || "").slice(0, 120), cost: Math.max(0, Math.round(Number(r && r.cost) || 0)), img: String((r && r.img) || "").slice(0, 400), tierRequired: (r && r.tierRequired) ? String(r.tierRequired).slice(0, 24) : "", active: !(r && r.active === false) }));
+        }
+        if (patch.loyalty.redeemPer !== undefined) { const n = Math.round(Number(patch.loyalty.redeemPer)); if (n >= 1 && n <= 1000) L.redeemPer = n; }
+        data.loyalty = L;
       }
       // Promote store identity to the top-level settings fields the register
       // (liveStoreP) and the admin store card actually read, so a rename in the
