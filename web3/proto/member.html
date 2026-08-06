@@ -30,6 +30,19 @@ input::placeholder{color:var(--placeholder)}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 ::-webkit-scrollbar{width:0;height:0}*{scrollbar-width:none}
 .tnum{font-variant-numeric:tabular-nums}
+/* Responsive shell — the screen is white to the edge and its content column is
+   min(viewport, 720px). Below the cap the viewport IS the column, so plain
+   viewport media queries reproduce the prototype's screen-width breakpoints
+   (pad 16 <360, greeting/name shrink <380, dishes 3-up ≥600, card caps 460). */
+.m-page{min-height:100dvh;background:#fff;display:flex;flex-direction:column}
+.m-frame{width:100%;max-width:600px;margin:0 auto;min-height:100dvh;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden}
+/* Header and every tab column share the frame width, so they stay aligned; the
+   membership card caps a touch narrower and centres as a hero. */
+.m-cap{width:100%}
+.m-dishgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.m-rewgrid{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:560px){.m-rewgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:379px){.m-greet{font-size:16px !important}.m-name{font-size:20px !important}}
 @keyframes qup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes qpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes qsheet{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
@@ -44,8 +57,8 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 </style>
 </helmet>
 
-<div style="min-height:100dvh;display:flex;flex-direction:column;background:#8e3226">
-<div style="width:100%;max-width:480px;margin:0 auto;min-height:100dvh;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden">
+<div class="m-page">
+<div class="m-frame">
 
   <!-- ══════════ SIGN IN ══════════ -->
   <sc-if value="{{ signedOut }}" hint-placeholder-val="{{ true }}">
@@ -121,8 +134,8 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
     <div style="flex-shrink:0;padding:18px 22px 12px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
         <div style="min-width:0">
-          <div style="font-size:13px;color:var(--text-3);font-weight:500">{{ greeting }}</div>
-          <div style="font-size:23px;font-weight:800;letter-spacing:-.03em;color:var(--ink);line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ memberName }}</div>
+          <div class="m-greet" style="font-size:13px;color:var(--text-3);font-weight:500">{{ greeting }}</div>
+          <div class="m-name" style="font-size:23px;font-weight:800;letter-spacing:-.03em;color:var(--ink);line-height:1.15;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ memberName }}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-top:4px;color:var(--coral);font-size:13px;font-weight:600">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6.1 6.6.7-4.9 4.5 1.4 6.5L12 17.4 5.9 20.8l1.4-6.5L2.5 9.3l6.6-.7L12 2.5z"/></svg>
             <span class="tnum">{{ tierLine }}</span>
@@ -148,7 +161,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 
       <!-- MY CARD -->
       <sc-if value="{{ tabCard }}" hint-placeholder-val="{{ true }}">
-        <div style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
+        <div class="m-cap" style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
           <!-- Membership card -->
           <div style="{{ cardStyle }}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -270,7 +283,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
           </div>
 
           <sc-if value="{{ ordEmpty }}" hint-placeholder-val="{{ false }}"><div style="text-align:center;padding:34px 12px;color:var(--muted);font-size:13px">The menu is loading, or this outlet has no dishes yet.</div></sc-if>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px">
+          <div class="m-dishgrid">
             <sc-for list="{{ ordItems }}" as="it" hint-placeholder-count="6">
               <div style="{{ it.cardStyle }}">
                 <div style="{{ it.imgStyle }}"></div>
@@ -311,7 +324,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 
       <!-- MY ORDERS -->
       <sc-if value="{{ tabOrders }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
+        <div class="m-cap" style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
           <sc-if value="{{ ordersHas }}" hint-placeholder-val="{{ false }}">
             <div style="background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.04)">
               <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:14px">{{ trackTitle }}</div>
@@ -432,7 +445,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 
       <!-- PROFILE -->
       <sc-if value="{{ tabProfile }}" hint-placeholder-val="{{ false }}">
-        <div style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
+        <div class="m-cap" style="display:flex;flex-direction:column;gap:16px;animation:qup .2s">
           <div style="display:flex;align-items:center;gap:14px">
             <span style="{{ avatarStyle }}">{{ initials }}</span>
             <div>
