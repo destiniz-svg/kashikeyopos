@@ -13,18 +13,15 @@
 <link rel="stylesheet" href="fonts.css">
 <style>
 :root{
-  /* Reference storefront palette (guest.html): warm stone neutrals + the brand
-     deep-red accent #982030. Token names are kept from the old coral scheme so
-     every existing var(--…) reference re-points to the reference design at once. */
-  --coral:#982030;--coral-hover:#7d1826;--coral-deep:#6d1420;--coral-ink:#7d3a3f;
-  --coral-tint:#fbf2f2;--coral-tint-2:#fdf8f7;--coral-tint-3:#f8eeee;--coral-line:#ecced0;
-  --ink:#1c1917;--ink-2:#292524;--text:#44403c;--text-2:#57534e;--text-3:#78716c;
-  --muted:#a8a29e;--muted-2:#b8b2ab;--placeholder:#c4beb6;
-  --line:#eceae7;--line-input:#e7e5e4;--line-soft:#f0efec;--track:#f5f5f4;--track-2:#faf9f8;
-  --off:#e7e5e4;--img-bg:#eceae7;
+  --coral:#f4553c;--coral-hover:#d63f27;--coral-deep:#c2452f;--coral-ink:#a05a48;
+  --coral-tint:#fff5f2;--coral-tint-2:#fff8f6;--coral-tint-3:#fff2ef;--coral-line:#f7c8bd;
+  --ink:#111;--ink-2:#1a1a1a;--text:#4a4a4f;--text-2:#5a5a60;--text-3:#8a8a8f;
+  --muted:#9c9ca1;--muted-2:#a8a8ad;--placeholder:#bcbcc0;
+  --line:#efefef;--line-input:#ececef;--line-soft:#f0f0f0;--track:#f2f2f4;--track-2:#f7f7f8;
+  --off:#e2e2e5;--img-bg:#eceae7;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-body{background:#191614;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--ink)}
+body{background:#8e3226;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--ink)}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;transition:transform .09s cubic-bezier(.2,.8,.3,1)}
 button:active:not(:disabled){transform:scale(.96)}
 button:disabled{cursor:default}
@@ -32,19 +29,7 @@ input,textarea{font:inherit;color:inherit;background:none;border:none;outline:no
 input::placeholder{color:var(--placeholder)}
 a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 ::-webkit-scrollbar{width:0;height:0}*{scrollbar-width:none}
-/* Numerics use JetBrains Mono, matching the reference storefront's figure style. */
-.tnum{font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
-/* Responsive frame: full-bleed on a phone; a centered, softly-shadowed app column
-   that uses the space on tablet and desktop instead of stranding a narrow strip. */
-.gwrap{min-height:100dvh;display:flex;flex-direction:column;background:#191614}
-.gframe{width:100%;max-width:480px;margin:0 auto;min-height:100dvh;background:#fafaf9;display:flex;flex-direction:column;position:relative;overflow:hidden}
-@media (min-width:600px){
-  .gwrap{padding:28px 16px}
-  .gframe{max-width:520px;min-height:calc(100dvh - 56px);border-radius:24px;box-shadow:0 20px 60px rgba(0,0,0,.45),0 2px 8px rgba(0,0,0,.3)}
-}
-@media (min-width:1024px){
-  .gframe{max-width:560px}
-}
+.tnum{font-variant-numeric:tabular-nums}
 @keyframes qup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes qpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes qsheet{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
@@ -59,8 +44,8 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
 </style>
 </helmet>
 
-<div class="gwrap">
-<div class="gframe">
+<div style="min-height:100dvh;display:flex;flex-direction:column;background:#8e3226">
+<div style="width:100%;max-width:480px;margin:0 auto;min-height:100dvh;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden">
 
   <!-- ══════════ SIGN IN ══════════ -->
   <sc-if value="{{ signedOut }}" hint-placeholder-val="{{ true }}">
@@ -70,7 +55,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
       <sc-if value="{{ stepEmail }}" hint-placeholder-val="{{ true }}">
         <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:22px;max-width:360px;width:100%;margin:0 auto">
           <div style="display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center">
-            <span style="width:54px;height:54px;border-radius:16px;background:var(--coral);display:grid;place-items:center;box-shadow:0 8px 20px rgba(152,32,48,.32)">
+            <span style="width:54px;height:54px;border-radius:16px;background:var(--coral);display:grid;place-items:center;box-shadow:0 8px 20px rgba(244,85,60,.32)">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 2.5l2.9 6.1 6.6.7-4.9 4.5 1.4 6.5L12 17.4 5.9 20.8l1.4-6.5L2.5 9.3l6.6-.7L12 2.5z" fill="#fff"/></svg>
             </span>
             <div>
@@ -477,7 +462,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
           <div style="font-size:14px;font-weight:700;color:var(--ink-2)" class="tnum">{{ barLine1 }}</div>
           <div style="font-size:12px;color:var(--text-3);margin-top:1px" class="tnum">{{ barLine2 }}</div>
         </div>
-        <button onClick="{{ barGo }}" style="flex-shrink:0;height:46px;padding:0 22px;border-radius:26px;background:var(--coral);color:#fff;font-size:14px;font-weight:700;box-shadow:0 8px 22px rgba(152,32,48,.4)">{{ barBtn }}</button>
+        <button onClick="{{ barGo }}" style="flex-shrink:0;height:46px;padding:0 22px;border-radius:26px;background:var(--coral);color:#fff;font-size:14px;font-weight:700;box-shadow:0 8px 22px rgba(244,85,60,.4)">{{ barBtn }}</button>
       </div>
     </div>
   </sc-if>
@@ -750,14 +735,14 @@ class Component extends DCLogic {
       sendCode: () => this.sendCode(),
       enrollMode: s.enrollMode, name: s.name, onName: (e) => this.setState({ name: e.target.value, err: "" }),
       sendLabel: s.sending ? "Sending…" : (s.enrollMode ? "Join & email me a code" : "Email me a code"),
-      sendBtnStyle: "flex:1;height:52px;border-radius:26px;font-size:14.5px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(152,32,48,.35);" + (!this.emailOk() ? "opacity:.45" : ""),
+      sendBtnStyle: "flex:1;height:52px;border-radius:26px;font-size:14.5px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(244,85,60,.35);" + (!this.emailOk() ? "opacity:.45" : ""),
       back: () => { if (s.slug) location.href = "/?s=" + encodeURIComponent(s.slug); },
       masked: s.masked,
       code: s.code, onCode: (e) => { const v = String(e.target.value || "").replace(/\D/g, "").slice(0, 6); this.setState({ code: v, err: "" }); if (v.length === 6) setTimeout(() => this.verify(), 60); },
       codeBoxes,
       verify: () => this.verify(),
       codeBad: (s.code || "").length !== 6, verifyLabel: s.verifying ? "Signing in…" : "Verify & sign in",
-      verifyBtnStyle: "flex:1;height:52px;border-radius:26px;font-size:14.5px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(152,32,48,.35);" + ((s.code || "").length !== 6 ? "opacity:.45" : ""),
+      verifyBtnStyle: "flex:1;height:52px;border-radius:26px;font-size:14.5px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(244,85,60,.35);" + ((s.code || "").length !== 6 ? "opacity:.45" : ""),
       codeBack: () => this.setState({ step: "email", code: "", err: "" }),
 
       // header
@@ -778,7 +763,7 @@ class Component extends DCLogic {
       points: pts.toLocaleString(),
       nextTierTitle: next ? ("Next: " + next.name) : "Top tier reached",
       nextTierAmt: next ? (this.fmt(Math.max(0, next.at - spent)) + " to go") : "",
-      tierBarStyle: "height:100%;width:" + pct + "%;border-radius:5px;background:linear-gradient(90deg,#982030,#f6b81c)",
+      tierBarStyle: "height:100%;width:" + pct + "%;border-radius:5px;background:linear-gradient(90deg,#f4553c,#f6b81c)",
       tierBlurb: next ? ("Spend " + this.fmt(Math.max(0, next.at - spent)) + " more across any " + (s.brand.name || "Kashikeyo") + " outlet to unlock " + next.name + " — priority reservations and a higher earn rate.") : "You are on the highest tier. Chef's table invitations and priority booking are yours by default.",
       creditLeft: credit.limit > 0 ? this.fmt(creditLeft) : "None",
       creditSub: credit.limit > 0 ? ("of " + this.fmt(credit.limit) + " limit") : "No house account",
@@ -887,7 +872,7 @@ class Component extends DCLogic {
       bars: Array.from({ length: 30 }, (_, i) => { const w = ((m.code || "x").charCodeAt(i % Math.max(1, (m.code || "x").length)) + i) % 3 + 1; return "width:" + w + "px;background:#111;display:block"; }),
       announced: s.announced, announce: () => this.announce(),
       announceLabel: s.announced ? "The till knows you are here" : "Tell the till I'm here",
-      announceStyle: "width:100%;height:50px;margin-top:16px;border-radius:14px;font-size:14px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(152,32,48,.35);" + (s.announced ? "opacity:.5" : ""),
+      announceStyle: "width:100%;height:50px;margin-top:16px;border-radius:14px;font-size:14px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(244,85,60,.35);" + (s.announced ? "opacity:.5" : ""),
       menuRows: [
         { label: "Show my code", sub: "", go: () => this.setState({ sheet: "code", announced: false }) },
         { label: "Rewards", sub: pts.toLocaleString() + " pts", go: () => this.setState({ sheet: null, tab: "rewards" }) },
