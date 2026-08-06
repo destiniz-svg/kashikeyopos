@@ -3286,6 +3286,19 @@ const catSlug = (c) => {
   if (/snack|bakery|hedhika|croissant|muffin|gulha|bajiya|roshi|cutlet|samosa|pastr/.test(s)) return "hedhikaa";
   return "mains";
 };
+// Menu category id that PRESERVES each distinct category name (a plain slug),
+// so two real sections never collapse into one 4-bucket keyword group the way
+// catSlug does. Used by the menu builders the v2 terminal + new QR read.
+const menuCat = (c) => String(c || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "uncategorized";
+// Category list for a store: the manager-ordered saved list first (so an empty
+// or reordered section persists), then any category a product uses that isn't
+// saved yet — nothing a dish points at ever disappears.
+const mergeCategories = (catName, stored) => {
+  const seen = new Set(), out = [];
+  (Array.isArray(stored) ? stored : []).forEach((nm) => { const id = menuCat(nm); if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: String(nm) }); } });
+  Object.keys(catName || {}).forEach((id) => { if (!seen.has(id)) { seen.add(id); out.push({ id, name: catName[id] }); } });
+  return out;
+};
 
 // ── Guest storefront (the v2 QR page: web3/proto/guest.html) ────────────────
 // Module scope so BOTH the /v2 route block and the web2 guest entry (which are
@@ -3307,14 +3320,14 @@ const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
       const addons = (Array.isArray(p.addons) ? p.addons : [])
         .map((a) => ({ name: String((a && a.name) || "").trim(), price: (Number(a && a.price) || 0) / 100 }))
         .filter((a) => a.name);
-      return { id: x.id, cat: catSlug(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
+      return { id: x.id, cat: menuCat(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
         price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut, veg: false,
         addons: addons, comments: !!p.comments, recipe: [] }; });
   const catName = {};
   menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
-  const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
   const st = ((await c.query(
     "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
+  const categories = mergeCategories(catName, st.menuCats);
   const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
   const storeRows = (await c.query(
     "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
@@ -3476,7 +3489,7 @@ if (fs.existsSync(protoFile)) {
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, hidden: !!p.hidden, mods: liveMods(p.addons), soldOut: derivedSoldOut(p),
+    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, hidden: !!p.hidden, mods: liveMods(p.addons), soldOut: derivedSoldOut(p),
       // Why it is off, when the availability engine knows ("Out of Tuna").
       // Null for a manual off-switch or a plain stock-out; the register's 86
       // list falls back to the item name alone in that case.
@@ -3491,7 +3504,7 @@ if (fs.existsSync(protoFile)) {
   const liveMenuAll = (rows) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
     .filter((p) => p.name)
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", desc: p.desc || "", descDv: p.descDv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), stockable: !!p.stockIngredientId, mods: liveMods(p.addons) }));
+    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", desc: p.desc || "", descDv: p.descDv || "", price: (Number(p.price) || 0) / 100, hidden: !!p.hidden, soldOut: derivedSoldOut(p), custom: /^c_/.test(String(p.id)), stockable: !!p.stockIngredientId, mods: liveMods(p.addons) }));
   // Map live customer entities (+ order aggregation) into the admin cockpit's
   // custData shape. tier is derived from loyalty points; visits/spend come from
   // the customer's real orders.
@@ -4299,12 +4312,12 @@ if (fs.existsSync(protoFile)) {
         }
         const catName = {};
         items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
-        const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
         const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
           price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, hidden: !!it.hidden, veg: false,
           addons: (it.mods || []).map((m) => ({ name: m.en, price: m.price })), recipe: [] }));
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
+        const categories = mergeCategories(catName, st.menuCats);
         const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
         // The store handle (orgs.slug) is the QR-portal address; the Branding
         // panel shows and edits it. orgs is system-scoped, so read it with withSystem.
@@ -5346,6 +5359,85 @@ if (fs.existsSync(protoFile)) {
     logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.availability", ref: id, detail: set });
     res.json({ ok: true });
   }));
+  /* ── Menu categories ──────────────────────────────────────────────────────
+     Categories are persisted as an ordered name list on the settings row
+     (data.menuCats) so an empty, renamed or reordered section sticks; products
+     still key on the category NAME, so rename/delete bulk-rewrite the dishes.
+     Manager/owner only. */
+  const updateMenuCats = (orgId, mutate) => withOrg(orgId, async (c) => {
+    const rows = (await c.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY (id='settings') DESC, updated_at DESC", [orgId])).rows;
+    const cur = rows[0] || null;
+    const data = Object.assign({}, cur ? cur.data : {});
+    const cats = Array.isArray(data.menuCats) ? data.menuCats.slice() : [];
+    data.menuCats = await mutate(cats, c);
+    const sid = cur ? cur.id : "settings";
+    const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, sid, JSON.stringify(data)]);
+    return Number(r.rows[0].rowver);
+  });
+  const renameProdCat = (c, orgId, from, to) => c.query(
+    "UPDATE entities SET data=jsonb_set(data,'{cat}',to_jsonb($3::text)), rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND deleted=false AND data->>'cat'=$2", [orgId, from, to]);
+  app.post("/api/app2/category", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
+    const name = String((req.body || {}).name || "").trim().slice(0, 60);
+    if (!name) return res.status(400).json({ error: "Give the category a name." });
+    const rowver = await updateMenuCats(orgId, (cats) => {
+      if (!cats.some((x) => menuCat(x) === menuCat(name))) cats.push(name);
+      return cats;
+    });
+    poke(orgId, rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.category.create", ref: name, detail: {} });
+    res.json({ ok: true, name });
+  }));
+  app.post("/api/app2/category/rename", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
+    const b = req.body || {};
+    const from = String(b.from || "").trim(), to = String(b.to || "").trim().slice(0, 60);
+    if (!from || !to) return res.status(400).json({ error: "from and to are required" });
+    const rowver = await updateMenuCats(orgId, async (cats, c) => {
+      const next = cats.map((x) => (menuCat(x) === menuCat(from) ? to : x));
+      if (!next.some((x) => menuCat(x) === menuCat(to))) next.push(to);
+      await renameProdCat(c, orgId, from, to);
+      return next;
+    });
+    poke(orgId, rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.category.rename", ref: from, detail: { to } });
+    res.json({ ok: true });
+  }));
+  app.post("/api/app2/category/delete", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
+    const b = req.body || {};
+    const name = String(b.name || "").trim();
+    const moveTo = String(b.moveTo || "").trim().slice(0, 60);
+    if (!name) return res.status(400).json({ error: "name required" });
+    const rowver = await updateMenuCats(orgId, async (cats, c) => {
+      await renameProdCat(c, orgId, name, moveTo);   // reassign its dishes (moveTo may be "")
+      return cats.filter((x) => menuCat(x) !== menuCat(name));
+    });
+    poke(orgId, rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.category.delete", ref: name, detail: { moveTo } });
+    res.json({ ok: true });
+  }));
+  app.post("/api/app2/category/reorder", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
+    const order = Array.isArray((req.body || {}).order) ? req.body.order.map((x) => String(x).trim().slice(0, 60)).filter(Boolean) : null;
+    if (!order) return res.status(400).json({ error: "order[] required" });
+    const rowver = await updateMenuCats(orgId, (cats) => {
+      // Keep the given order, then append any saved category the client omitted.
+      const out = order.slice(), have = new Set(order.map(menuCat));
+      cats.forEach((x) => { if (!have.has(menuCat(x))) out.push(x); });
+      return out;
+    });
+    poke(orgId, rowver);
+    res.json({ ok: true });
+  }));
   // Settle a receivable: reduce the customer's outstanding balance by an amount
   // (laari), clamped at zero, and stamp the settlement.
   app.post("/api/app2/customer/:id/settle", wrap(async (req, res) => {
@@ -6145,7 +6237,7 @@ if (fs.existsSync(webDir)) {
     .map((a, i) => ({ id: "a" + i, en: String((a && a.name) || ""), price: (Number(a && a.price) || 0) / 100 })).filter((a) => a.en);
   // Map flattened product rows (kindAll) into the register/guest MENU shape.
   const gMenu = (prods) => prods.filter((p) => p.name && !p.hidden).map((p) => ({
-    id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100,
+    id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100,
     desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [],
     mods: gMods(p.addons),
     soldOut: !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)) }));
