@@ -4144,7 +4144,7 @@ class Component extends DCLogic {
       const cost = this.foodCost(d), price = this.menuPrice(d);
       const rows = [R("Chain price", MVRc(d.price)), R("Price here", MVRc(price), price !== d.price ? "var(--amber-bright)" : "var(--text)"), R("Food cost", MVR(cost)), R("Gross profit", MVR(price - cost), "var(--green)"), R("GP %", Math.round(((price - cost) / price) * 100) + "%")];
       (d.recipe || []).forEach((r) => { const it = this.item(r[0]) || []; rows.push(Rt("· " + this.itemName(r[0]), r[1] + " " + (it[7] || "g").toLowerCase() + " · " + MVR(this.costPerBase(it) * r[1]), "var(--text-dim)")); });
-      return { edit: this.can("menu") ? { label: "Edit dish, price or 86 it", go: () => this.openForm("dish", d) } : null, modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against kpos.items, so a vendor price change on the next GRN recosts this dish automatically.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
+      return { hasDetailEdit: this.can("menu"), detailEditLabel: "Edit dish, price or 86 it", detailEdit: () => this.openForm("dish", d), modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against kpos.items, so a vendor price change on the next GRN recosts this dish automatically.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
     }
     const it = this.item(m.id) || [];
     const raw = window.KPOS_RAW || {};
