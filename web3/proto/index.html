@@ -5880,8 +5880,17 @@ class Component extends DCLogic {
     if (price <= 0) return this.toast("Price must be greater than zero", "warn");
     const cat = v.cat, desc = String(v.desc || "").trim();
     const veg = v.veg === "yes", off = v.avail === "no";
+    // Add-ons: one per line or comma-separated, "Name=price" (":" also works);
+    // a missing/zero price is a free option. Prices are MVR here; the endpoint
+    // converts to laari and the order path re-prices each by name.
+    const addons = String(v.addons || "").split(/[,\n]/).map((s) => s.trim()).filter(Boolean).map((s) => {
+      const eq = s.search(/[=:]/);
+      const nm = (eq >= 0 ? s.slice(0, eq) : s).trim();
+      const pr = eq >= 0 ? (parseFloat(s.slice(eq + 1)) || 0) : 0;
+      return { name: nm, price: pr };
+    }).filter((a) => a.name);
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
-      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off };
+      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, addons: addons };
       if (existing && existing.id) body.id = existing.id;
       fetch("/api/app2/product", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
         .then((r) => r.json().catch(() => ({}))).then((j) => {
@@ -5889,7 +5898,7 @@ class Component extends DCLogic {
           const id = (j && j.id) || (existing && existing.id);
           const arr = this.coll("menu") || [];
           const row = arr.find((x) => x.id === id);
-          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off };
+          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off, addons: addons };
           if (row) Object.assign(row, patch);
           else arr.unshift(Object.assign({ img: this.state.formAiImg || "", recipe: [] }, patch));
           this.setState({ modal: null });
@@ -5900,10 +5909,10 @@ class Component extends DCLogic {
     }
     // Demo mode — local only.
     if (existing) {
-      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off },
+      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, addons: addons },
         name + " updated" + (price !== existing.price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : ""), "menu");
     } else {
-      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
+      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, addons: addons, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
     }
   }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
@@ -7254,10 +7263,12 @@ class Component extends DCLogic {
           { k: "cat", label: "Category", options: catOpts },
           { k: "price", label: "Chain price MVR", v: "120" },
           { k: "veg", label: "Vegetarian", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes" }] },
-          { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "no", l: "86 — off the menu tonight" }], full: 1 }
+          { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "no", l: "86 — off the menu tonight" }], full: 1 },
+          { k: "addons", label: "Add-ons — name=price, comma separated · leave the price off for a free option (e.g. Double shot=20, Oat milk=15, No sugar)", v: "", full: 1 }
         ],
         editSave: "Save changes",
-        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: (d.off || d.soldOut) ? "no" : "yes" }),
+        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: (d.off || d.soldOut) ? "no" : "yes",
+          addons: (d.addons || []).map((a) => (Number(a.price) ? a.name + "=" + a.price : a.name)).join(", ") }),
         onEdit: (v, d) => this.saveDish(v, d),
         onSave: (v) => this.saveDish(v, null)
       },

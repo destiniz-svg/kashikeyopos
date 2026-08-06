@@ -4297,7 +4297,8 @@ if (fs.existsSync(protoFile)) {
         items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
         const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
         const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
-          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, veg: false, recipe: [] }));
+          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, veg: false,
+          addons: (it.mods || []).map((m) => ({ name: m.en, price: m.price })), recipe: [] }));
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
         const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
