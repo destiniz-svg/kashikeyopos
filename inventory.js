@@ -1678,8 +1678,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const userText = base
         ? "Here is the current menu item as JSON:\n" + JSON.stringify(base) + "\n\nApply this change and return the full updated item: " + (instruction || "improve it")
         : "Create a menu item.\nName: " + name + (hint ? "\nWhat it is: " + hint : "") + (instruction ? "\nExtra instruction: " + instruction : "");
+      // Headroom: this item carries an SVG illustration on top of bilingual
+      // text, tags and add-ons, and a thinking Gemini model (e.g.
+      // gemini-3-flash-preview) also spends output tokens on hidden reasoning.
+      // A tight budget makes it burn the lot on reasoning and return truncated
+      // (or empty) JSON, which breaks the parse. 16k leaves room for both. On
+      // Anthropic this is only a cap — Opus uses what it needs.
       const msg = await client.messages.create({
-        model, max_tokens: 3000, thinking: { type: "adaptive" },
+        model, max_tokens: 16000, thinking: { type: "adaptive" },
         system:
           "You are a menu writer for a Maldivian café/restaurant. Create one appetising, accurate menu item from the owner's input. " +
           "Write natural Dhivehi (Thaana script) for dv/descDv when you can; use an empty string only if genuinely unsure — never transliterate into Latin letters. " +
