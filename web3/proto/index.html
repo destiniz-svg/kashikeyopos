@@ -1488,13 +1488,29 @@ class Component extends DCLogic {
     if (!/^[0-9]$/.test(ch)) return;
     const next = (entered + ch).slice(0, 4);
     if (next.length < 4) { this.setState({ modal: Object.assign({}, m, { pin: next, err: "" }) }); return; }
-    const expected = String(u.pin || (K().ROLE_PINS || {})[u.role] || "");
-    if (next !== expected) { this.setState({ modal: Object.assign({}, m, { pin: "", err: "Wrong PIN — 4 attempts left before this device locks" }) }); return; }
     if (u.status === "Suspended") {
       this.setState({ modal: Object.assign({}, m, { pin: "", err: "This account is suspended. See a chain administrator." }) });
       this.queue("sign_in_refused", u.name + " attempted sign-in while suspended · " + this.deviceCode(), "sessions");
       return;
     }
+    // Real store: the PIN is verified on the server (/api/app2/unlock) — the
+    // terminal never holds it, so a leaked page can't reveal anyone's PIN. The
+    // server rate-limits wrong attempts. Demo build falls back to a local compare.
+    if (this.staffReal()) {
+      this.setState({ modal: Object.assign({}, m, { pin: next, err: "", busy: true }) });
+      fetch("/api/app2/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ userId: u.id, pin: next }) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          const cur = this.state.modal;
+          if (!cur || cur.kind !== "lock" || cur.who !== m.who) return; // screen moved on
+          if (j && j.ok && j.user) { this.signIn(u); return; }
+          const msg = (j && j.error && j.error !== "wrong PIN") ? j.error : "Wrong PIN — try again";
+          this.setState({ modal: Object.assign({}, cur, { pin: "", err: msg, busy: false }) });
+        })
+        .catch(() => { const cur = this.state.modal; if (cur && cur.kind === "lock") this.setState({ modal: Object.assign({}, cur, { pin: "", err: "Couldn't reach the server — check the connection", busy: false }) }); });
+      return;
+    }
+    const expected = String(u.pin || (K().ROLE_PINS || {})[u.role] || "");
+    if (next !== expected) { this.setState({ modal: Object.assign({}, m, { pin: "", err: "Wrong PIN — 4 attempts left before this device locks" }) }); return; }
     this.signIn(u);
   }
   signOut() {
@@ -3366,18 +3382,24 @@ class Component extends DCLogic {
           modalTitle: this.outlet().name, modalSub: this.deviceCode() + " · " + (this.outlet().region || "") + " · " + (s.online ? "online" : "offline"),
           lockPicking: true, lockPin: false,
           lockStaff: users.slice(0, 7).map((u) => ({
-            name: u.name, role: roleOf(u).label || u.role, ini: ini(u.name),
+            name: u.name, role: (this.staffReal() ? (u.owner ? "Owner" : (u.realRole ? u.realRole.charAt(0).toUpperCase() + u.realRole.slice(1) : (roleOf(u).label || u.role))) : (roleOf(u).label || u.role)), ini: ini(u.name),
             av: av(roleOf(u).color),
-            pin: "PIN " + (u.pin || "----"),
-            pinStyle: "flex-shrink:0;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--amber-bright);background:var(--amber-dim);padding:5px 9px;border-radius:7px",
+            // Real store: the PIN is verified server-side and never shown. Demo
+            // build shows each PIN beside the name so the prototype is usable.
+            pin: this.staffReal() ? "" : ("PIN " + (u.pin || "----")),
+            pinStyle: this.staffReal() ? "display:none" : "flex-shrink:0;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--amber-bright);background:var(--amber-dim);padding:5px 9px;border-radius:7px",
             style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
             go: () => this.setState({ modal: { kind: "lock", who: u.user, pin: "" } })
           })),
-          lockHint: "Demo build — each person's own PIN is shown beside their name. In production these are hashed and never displayed: a shared or visible PIN would make every \u201cwho voided this\u201d answer in the audit log a guess. Suspended accounts are refused at the keypad rather than hidden from it."
+          lockHint: this.staffReal()
+            ? "Tap your name, then key your own 4-digit PIN. PINs are checked on the server and never shown here \u2014 a visible or shared PIN would make every \u201cwho voided this\u201d answer in the audit log a guess. A suspended account is refused at the keypad."
+            : "Demo build — each person's own PIN is shown beside their name. In production these are hashed and never displayed: a shared or visible PIN would make every \u201cwho voided this\u201d answer in the audit log a guess. Suspended accounts are refused at the keypad rather than hidden from it."
         };
       }
       const u = (K().USERS || []).find((x) => x.user === m.who) || {};
       const role = (K().ROLES || []).find((r) => r.key === u.role) || {};
+      const realMode = this.staffReal();
+      const whoRole = realMode ? (u.owner ? "Owner" : (u.realRole ? u.realRole.charAt(0).toUpperCase() + u.realRole.slice(1) : (role.label || u.role))) : (role.label || u.role);
       const demoPin = u.pin || "";
       const entered = m.pin || "";
       const key = (d) => ({
@@ -3387,10 +3409,10 @@ class Component extends DCLogic {
       return {
         modalTitle: "Enter PIN", modalSub: this.outlet().name + " · " + this.deviceCode(),
         lockPicking: false, lockPin: true,
-        lockWhoName: u.name, lockWhoRole: role.label || u.role, lockWhoIni: ini(u.name || "?"), lockWhoAv: av(role.color),
+        lockWhoName: u.name, lockWhoRole: whoRole, lockWhoIni: ini(u.name || "?"), lockWhoAv: av(role.color),
         lockBack: () => this.setState({ modal: { kind: "lock" } }),
         lockDots: [0, 1, 2, 3].map((i) => "width:13px;height:13px;border-radius:50%;background:" + (i < entered.length ? "var(--amber)" : "transparent") + ";border:1.5px solid " + (i < entered.length ? "var(--amber)" : "var(--line-3)")),
-        lockErr: m.err || ("Demo PIN " + demoPin), lockErrStyle: m.err ? "font-size:11.5px;color:var(--red-bright);text-align:center" : "font-size:11px;color:var(--text-faint);text-align:center;font-family:'JetBrains Mono',monospace;letter-spacing:.06em",
+        lockErr: m.err || (realMode ? (m.busy ? "Checking…" : "Enter your 4-digit PIN") : ("Demo PIN " + demoPin)), lockErrStyle: m.err ? "font-size:11.5px;color:var(--red-bright);text-align:center" : "font-size:11px;color:var(--text-faint);text-align:center;font-family:'JetBrains Mono',monospace;letter-spacing:.06em",
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
           { label: "", style: "visibility:hidden", go: () => {} },
           key("0"),
@@ -6225,7 +6247,7 @@ class Component extends DCLogic {
         // Optimistic local patch so the roster reflects the change at once.
         const arr = K().USERS || [], demoRole = ({ owner: "SuperAdmin", admin: "ChainAdmin", manager: "OutletManager", cashier: "Cashier", waiter: "Cashier", kitchen: "KitchenManager", rider: "Cashier" })[role] || "Cashier";
         if (existing) { const u = arr.find((x) => x.id === existing.id); if (u) { u.name = name; u.role = demoRole; u.realRole = role; } }
-        else if (j && j.id) arr.push({ id: j.id, name: name, user: name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "staff", role: demoRole, realRole: role, outlet: null, outlets: [], pin: pin, status: "Active", last: "" });
+        else if (j && j.id) arr.push({ id: j.id, name: name, user: name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "staff", role: demoRole, realRole: role, outlet: null, outlets: [], status: "Active", last: "" });
         // Keep the HR roster (STAFF) in step so Payroll/People sees the person too.
         const st = K().STAFF || []; if (!existing && j && j.id) st.push({ id: j.id, name: name, job: role, outlet: 3, kind: "local", basic: 0, ot: true, svc: true, mrps: false, joined: "", status: "Active" });
         else if (existing) { const s2 = st.find((x) => x.id === existing.id); if (s2) { s2.name = name; s2.job = role; } }

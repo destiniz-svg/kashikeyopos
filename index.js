@@ -4478,14 +4478,13 @@ if (fs.existsSync(protoFile)) {
             loggedIn: !!(d.portalLoginAt || d.portalLastLoginAt || d.lastLoginAt),
           };
         });
-        // Real staff roster for the sign-in lock. The till PIN is a djb2 hash;
-        // a 4-digit PIN has only 10k pre-images, so we reverse it for the demo
-        // roster badge (the reference shows it, and a 4-digit hash offers no
-        // real secrecy anyway — production would gate the badge behind a flag).
+        // Real staff roster for the sign-in lock. The PIN itself NEVER leaves the
+        // server — the terminal shows who works here and posts a typed PIN to
+        // /api/app2/unlock, which verifies the hash server-side. (A 4-digit PIN
+        // has only 10k pre-images, so shipping it — even hashed — would hand every
+        // PIN to anyone who reads the page; the roster carries no `pin` field.)
         const userRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [orgId])).rows;
-        const pinRev = {};
-        for (let i = 0; i < 10000; i++) { const p = String(i).padStart(4, "0"); pinRev[hashTillPin(p)] = p; }
         const roleMap = { owner: "SuperAdmin", admin: "ChainAdmin", manager: "OutletManager",
           cashier: "Cashier", waiter: "Cashier", kitchen: "KitchenManager", kitchenmanager: "KitchenManager",
           storekeeper: "StoreKeeper", accountant: "Accountant" };
@@ -4494,11 +4493,9 @@ if (fs.existsSync(protoFile)) {
           const d = r.data || {}, nm = d.name || "Staff";
           let user = nm.toLowerCase().replace(/[^a-z0-9]+/g, "") || "staff";
           if (seenUser[user] != null) { seenUser[user]++; user += seenUser[user]; } else seenUser[user] = 0;
-          const sp = String(d.pin || "");
-          const pin = /^\d{4}$/.test(sp) ? sp : (pinRev[sp] || "");
           return { id: r.id, name: nm, user: user, role: roleMap[String(d.role || "").toLowerCase()] || "Cashier",
             realRole: String(d.role || "").toLowerCase(), owner: String(d.role || "").toLowerCase() === "owner",
-            outlet: null, outlets: [], pin: pin, status: d.suspended ? "Suspended" : "Active", last: "" };
+            outlet: null, outlets: [], status: d.suspended ? "Suspended" : "Active", last: "" };
         });
         // Real ingredient stock → the terminal's inventory views. The v2 uses a
         // positional demo schema (numeric ids, MVR-per-stock-unit); the real
