@@ -2743,6 +2743,7 @@ class Component extends DCLogic {
       .filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0 || m.desc.toLowerCase().indexOf(q) >= 0)
       .map((m) => {
         const off = out86.indexOf(m.id) >= 0;
+        const hid = !!m.hidden;   // off the customer QR menu, still sellable at the till
         const cost = this.foodCost(m), price = this.menuPrice(m);
         const showCost = this.can("recipes");
         return {
@@ -2752,8 +2753,9 @@ class Component extends DCLogic {
           addons: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.openAddons(m),
           addonsHintStyle: off ? "display:none" : "position:absolute;bottom:6px;right:6px;font-size:9px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:rgba(0,0,0,.55);color:#fff",
           style: "display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid " + this.catHue(m.cat) + ";border-radius:10px;overflow:hidden;transition:.12s;opacity:" + (off ? ".62" : "1"),
-          tag: off ? "86'd" : (m.recipe && m.recipe.length ? "" : ""),
-          tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff" : "display:none",
+          tag: off ? "86'd" : (hid ? "OFF QR" : ""),
+          tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff"
+            : (hid ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--text-faint);color:var(--bg-1)" : "display:none"),
           vegStyle: m.veg ? "position:absolute;top:7px;right:7px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--green)" : "display:none",
           foot: showCost ? Math.round((cost / price) * 100) + "% cost" : (m.veg ? "Veg" : "")
         };
@@ -5424,6 +5426,7 @@ class Component extends DCLogic {
         const local = this.menuPrice(m), cost = this.foodCost(m);
         const gp = Math.round(((local - cost) / local) * 100);
         const off = this.eightySix().indexOf(m.id) >= 0;
+        const hid = !!m.hidden;
         return {
           go: () => this.setState({ modal: { kind: "dish", id: m.id } }),
           cells: [
@@ -5434,7 +5437,7 @@ class Component extends DCLogic {
             { t: showCost ? MVR(cost) : "hidden", c: showCost ? "var(--text-dim)" : "var(--text-faint)" },
             { t: showCost ? gp + "%" : "—", c: gp >= 68 ? "var(--green)" : gp >= 62 ? "var(--amber-bright)" : "var(--red-bright)" },
             { t: (m.recipe || []).length ? (m.recipe.length + " lines") : "none", chip: this.chip((m.recipe || []).length ? "info" : "mute") },
-            { t: off ? "86'd" : "Live", chip: this.chip(off ? "err" : "ok") }
+            { t: hid ? "Hidden" : (off ? "86'd" : "Live"), chip: this.chip(hid ? "mute" : (off ? "err" : "ok")) }
           ]
         };
       }),
@@ -5911,7 +5914,7 @@ class Component extends DCLogic {
     const price = +v.price || 0;
     if (price <= 0) return this.toast("Price must be greater than zero", "warn");
     const cat = v.cat, desc = String(v.desc || "").trim();
-    const veg = v.veg === "yes", off = v.avail === "no";
+    const veg = v.veg === "yes", off = v.avail === "86", hidden = v.avail === "hidden";
     // Add-ons come from the repeater as [{name, price}] (price a string, blank =
     // free). Prices are MVR here; the endpoint converts to laari and the order
     // path re-prices each add-on by name. A string value (legacy) is also parsed.
@@ -5919,7 +5922,7 @@ class Component extends DCLogic {
       : String(v.addons || "").split(/[,\n]/).filter((s) => s.trim()).map((s) => { const e = s.search(/[=:]/); return { name: e >= 0 ? s.slice(0, e) : s, price: e >= 0 ? s.slice(e + 1) : "" }; });
     const addons = rawAddons.map((a) => ({ name: String((a && a.name) || "").trim(), price: parseFloat(a && a.price) || 0 })).filter((a) => a.name);
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
-      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, addons: addons };
+      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, hidden: hidden, addons: addons };
       if (existing && existing.id) body.id = existing.id;
       fetch("/api/app2/product", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
         .then((r) => r.json().catch(() => ({}))).then((j) => {
@@ -5927,21 +5930,22 @@ class Component extends DCLogic {
           const id = (j && j.id) || (existing && existing.id);
           const arr = this.coll("menu") || [];
           const row = arr.find((x) => x.id === id);
-          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off, addons: addons };
+          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off, hidden: hidden, addons: addons };
           if (row) Object.assign(row, patch);
           else arr.unshift(Object.assign({ img: this.state.formAiImg || "", recipe: [] }, patch));
           this.setState({ modal: null });
-          this.toast(existing ? name + " updated" + (existing.price !== price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : "") : "Dish created · " + name + " at " + MVRc(price));
+          const wasHidden = !!(existing && existing.hidden);
+          this.toast(existing ? name + " updated" + (existing.price !== price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (hidden !== wasHidden ? (hidden ? " · hidden from menu" : " · back on the menu") : (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : "")) : "Dish created · " + name + " at " + MVRc(price));
           this.refreshData && this.refreshData();
         }).catch(() => this.toast("Could not save — check the connection", "warn"));
       return;
     }
     // Demo mode — local only.
     if (existing) {
-      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, addons: addons },
-        name + " updated" + (price !== existing.price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : ""), "menu");
+      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, hidden: hidden, addons: addons },
+        name + " updated" + (hidden !== !!existing.hidden ? (hidden ? " · hidden from menu" : " · back on the menu") : (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : "")), "menu");
     } else {
-      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, addons: addons, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
+      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, hidden: hidden, addons: addons, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
     }
   }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
@@ -7292,11 +7296,11 @@ class Component extends DCLogic {
           { k: "cat", label: "Category", options: catOpts },
           { k: "price", label: "Chain price MVR", v: "120" },
           { k: "veg", label: "Vegetarian", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes" }] },
-          { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "no", l: "86 — off the menu tonight" }], full: 1 },
+          { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "86", l: "Sold out (86) — shown, marked unavailable" }, { v: "hidden", l: "Hidden — off the customer menu, still on the till" }], full: 1 },
           { k: "addons", label: "Add-ons — a name and its MVR price · leave the price blank for a free option", rows: 1, full: 1 }
         ],
         editSave: "Save changes",
-        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: (d.off || d.soldOut) ? "no" : "yes",
+        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: d.hidden ? "hidden" : ((d.off || d.soldOut) ? "86" : "yes"),
           addons: (d.addons || []).map((a) => ({ name: a.name, price: Number(a.price) ? String(a.price) : "" })) }),
         onEdit: (v, d) => this.saveDish(v, d),
         onSave: (v) => this.saveDish(v, null)

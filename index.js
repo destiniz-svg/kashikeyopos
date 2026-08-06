@@ -3465,14 +3465,18 @@ if (fs.existsSync(protoFile)) {
   const liveMods = (addons) => (Array.isArray(addons) ? addons : [])
     .map((a, i) => ({ id: "a" + i, en: String((a && a.name) || ""), price: (Number(a && a.price) || 0) / 100 }))
     .filter((a) => a.en);
-  const liveMenu = (rows) => rows
+  // includeHidden: staff surfaces (the v2 terminal) pass true so a "hidden from
+  // the customer menu" dish still lists for management + till sale, carrying the
+  // `hidden` flag. Customer surfaces (guest QR, /p/:slug) never pass it and keep
+  // filtering hidden out — the default is unchanged for every existing caller.
+  const liveMenu = (rows, includeHidden) => rows
     .map((r) => ({ id: r.id, ...(r.data || {}) }))
-    .filter((p) => p.name && !p.hidden)
+    .filter((p) => p.name && (includeHidden || !p.hidden))
     // No `img` here: product photos ride once in window.__resources (art-<id>),
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, mods: liveMods(p.addons), soldOut: derivedSoldOut(p),
+    .map((p) => ({ id: p.id, cat: catSlug(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, hidden: !!p.hidden, mods: liveMods(p.addons), soldOut: derivedSoldOut(p),
       // Why it is off, when the availability engine knows ("Out of Tuna").
       // Null for a manual off-switch or a plain stock-out; the register's 86
       // list falls back to the item name alone in that case.
@@ -4286,7 +4290,7 @@ if (fs.existsSync(protoFile)) {
       return await withOrg(orgId, async (c) => {
         const prodRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
-        const items = liveMenu(prodRows);
+        const items = liveMenu(prodRows, true);   // include hidden dishes so Menu Master can manage + restore them
         const photo = {};
         for (const r of prodRows) {
           const im = r.data && r.data.img; if (!im) continue;
@@ -4297,7 +4301,7 @@ if (fs.existsSync(protoFile)) {
         items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
         const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));
         const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
-          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, veg: false,
+          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, hidden: !!it.hidden, veg: false,
           addons: (it.mods || []).map((m) => ({ name: m.en, price: m.price })), recipe: [] }));
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
@@ -4729,7 +4733,7 @@ if (fs.existsSync(protoFile)) {
       // Live menu so add-on/price/hide/86/item edits from /admin2 reach an
       // already-open register without a reload.
       d.menu = liveMenu((await c.query(
-        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows);
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows, true);
       return d;
     });
     /* Every terminal pulled the FULL snapshot every five seconds — 186 KB of
@@ -5270,6 +5274,9 @@ if (fs.existsSync(protoFile)) {
     if (b.veg !== undefined) fields.veg = !!b.veg;
     if (b.img !== undefined) fields.img = String(b.img || "").trim().slice(0, 600);
     if (b.soldOut !== undefined || b.off !== undefined) fields.soldOut = !!(b.soldOut !== undefined ? b.soldOut : b.off);
+    // Hidden = off the customer QR menu (buildGuestReal / liveStoreP filter it),
+    // still listed + sellable on the staff terminal.
+    if (b.hidden !== undefined) fields.hidden = !!b.hidden;
     if (b.comments !== undefined) fields.comments = !!b.comments;
     // Add-ons: [{name, price}] in MVR from the terminal → laari; names are the
     // key the order path re-prices against, so drop the blank ones.
