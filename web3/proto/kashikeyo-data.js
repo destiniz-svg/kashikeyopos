@@ -158,12 +158,12 @@
     {
       key: "OutletManager", label: "Outlet Manager", color: "#2e7d32", scope: "outlet",
       blurb: "One outlet. Reads chain menu master, writes local overrides.",
-      perms: perms({ pos: ALL, kds: VAE, reservations: ALL, customers: VAE, orders: VAE, delivery: VAE, chain: V, branches: V, menu: V, inventory: V, ledger: V, counts: VAE, requests: VAE, dispatches: VAE, batches: V, reports: V, accounting: V, sync: V, settings: V, logs: V, staff: VAE, costs: V, assets: VAE })
+      perms: perms({ pos: ALL, kds: VAE, reservations: ALL, customers: VAE, orders: VAE, delivery: VAE, chain: V, branches: V, menu: VAE, inventory: V, ledger: V, counts: VAE, requests: VAE, dispatches: VAE, batches: V, reports: V, accounting: V, sync: V, settings: V, logs: V, staff: VAE, costs: V, assets: VAE })
     },
     {
       key: "Cashier", label: "Cashier / Waiter", color: "#0074D9", scope: "outlet",
-      blurb: "Terminal only. Cannot see cost prices or other outlets.",
-      perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, kds: V })
+      blurb: "Terminal only. Cannot see cost prices or other outlets. Can 86 or hide a dish, but not edit prices or the menu.",
+      perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, kds: V, menu: V })
     },
     {
       key: "KitchenManager", label: "Kitchen Manager", color: "#e65100", scope: "outlet",

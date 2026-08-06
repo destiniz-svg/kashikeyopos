@@ -5320,6 +5320,32 @@ if (fs.existsSync(protoFile)) {
     logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.delete", ref: id, detail: {} });
     res.json({ ok: true });
   }));
+  /* Availability only — 86 (soldOut) or hide a dish. Allowed at TILL rank so a
+     cashier/waiter can pull a dish that's run out or take it off the customer
+     menu, WITHOUT the manager-only power to edit prices, names or delete. Only
+     soldOut/hidden are ever written here. */
+  app.post("/api/app2/product/:id/availability", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Changing availability needs a till sign-in or above.")) return;
+    const id = String(req.params.id || "");
+    const b = req.body || {};
+    const set = {};
+    if (b.soldOut !== undefined) set.soldOut = !!b.soldOut;
+    if (b.hidden !== undefined) set.hidden = !!b.hidden;
+    if (!Object.keys(set).length) return res.status(400).json({ error: "nothing to change" });
+    const out = await withOrg(orgId, async (c) => {
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cur.rowCount) return null;
+      const data = Object.assign({}, cur.rows[0].data || {}, set);
+      const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      return { rowver: Number(r.rows[0].rowver) };
+    });
+    if (!out) return res.status(404).json({ error: "dish not found" });
+    poke(orgId, out.rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.availability", ref: id, detail: set });
+    res.json({ ok: true });
+  }));
   // Settle a receivable: reduce the customer's outstanding balance by an amount
   // (laari), clamped at zero, and stamp the settlement.
   app.post("/api/app2/customer/:id/settle", wrap(async (req, res) => {

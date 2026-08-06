@@ -4146,7 +4146,20 @@ class Component extends DCLogic {
       const cost = this.foodCost(d), price = this.menuPrice(d);
       const rows = [R("Chain price", MVRc(d.price)), R("Price here", MVRc(price), price !== d.price ? "var(--amber-bright)" : "var(--text)"), R("Food cost", MVR(cost)), R("Gross profit", MVR(price - cost), "var(--green)"), R("GP %", Math.round(((price - cost) / price) * 100) + "%")];
       (d.recipe || []).forEach((r) => { const it = this.item(r[0]) || []; rows.push(Rt("· " + this.itemName(r[0]), r[1] + " " + (it[7] || "g").toLowerCase() + " · " + MVR(this.costPerBase(it) * r[1]), "var(--text-dim)")); });
-      return { hasDetailEdit: this.can("menu"), detailEditLabel: "Edit dish, price or 86 it", detailEdit: () => this.openForm("dish", d), modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against kpos.items, so a vendor price change on the next GRN recosts this dish automatically.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
+      // Availability quick-actions: a cashier/waiter (menu view only) can 86 or
+      // hide a dish without the full edit form (which needs menu-edit rights and
+      // a manager login server-side). Managers use the form's Availability field.
+      const avActs = [];
+      if (this.can("menu") && !this.can("menu", "e")) {
+        const aStyle = "margin-top:9px;width:100%;padding:10px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center";
+        if (d.hidden) avActs.push({ label: "Show on customer menu", style: aStyle, go: () => this.setDishAvail(d, { hidden: false }) });
+        else avActs.push({ label: "Hide from customer menu", style: aStyle, go: () => this.setDishAvail(d, { hidden: true }) });
+        if (this.eightySix().indexOf(d.id) >= 0) avActs.push({ label: "Put back on sale", style: aStyle, go: () => this.setDishAvail(d, { soldOut: false }) });
+        else avActs.push({ label: "Mark sold out (86)", style: aStyle, go: () => this.setDishAvail(d, { soldOut: true }) });
+      }
+      return { hasDetailEdit: this.can("menu", "e"), detailEditLabel: "Edit dish, price or 86 it", detailEdit: () => this.openForm("dish", d),
+        hasDetailActions: avActs.length > 0, detailActions: avActs,
+        modalTitle: d.name, modalSub: d.desc || "", detailRows: rows, detailNote: "Recipe lines resolve against kpos.items, so a vendor price change on the next GRN recosts this dish automatically.", detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px" };
     }
     const it = this.item(m.id) || [];
     const raw = window.KPOS_RAW || {};
@@ -5416,7 +5429,7 @@ class Component extends DCLogic {
     return {
       tabs: [{ label: "All" }].concat(K0.MENU_CATEGORIES.map((c) => ({ label: c.name }))).map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) })),
       guideTitle: "Putting a dish on sale", guide: ["Create the dish with its chain master price", "Add recipe lines in Recipes & Costing so food cost is real", "An outlet may override the price; the master stays the default", "Tourism-zone outlets apply their uplift on top automatically"],
-      actions: [{ label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) }, { label: "New section", go: () => this.openForm("category") }, { label: "New dish", primary: true, go: () => this.openForm("dish") }],
+      actions: this.can("menu", "e") ? [{ label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) }, { label: "New section", go: () => this.openForm("category") }, { label: "New dish", primary: true, go: () => this.openForm("dish") }] : [],
       cols: [
         { label: "Dish", w: "2fr" }, { label: "Category", w: ".9fr" }, { label: "Chain price", w: ".9fr", a: "right", mono: 1 },
         { label: o.code + " price", w: ".9fr", a: "right", mono: 1 }, { label: "Food cost", w: ".9fr", a: "right", mono: 1 },
@@ -5908,6 +5921,33 @@ class Component extends DCLogic {
   // local menu is MVR-priced, the server stores laari); demo mode stays local.
   // Without this a dish edit only ever touched local state and vanished on the
   // next pull — which is why "menu items cannot be edited".
+  // Cashier/waiter availability toggle — 86 or hide a dish, nothing else. Real
+  // mode hits the till-rank /availability endpoint (managers use the full form);
+  // demo mode patches locally. `change` carries { soldOut } and/or { hidden }.
+  setDishAvail(d, change) {
+    const msg = d.name + (change.hidden !== undefined
+      ? (change.hidden ? " · hidden from menu" : " · back on the menu")
+      : (change.soldOut ? " · 86'd" : " · back on sale"));
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) {
+      const set = {};
+      if (change.hidden !== undefined) set.hidden = !!change.hidden;
+      if (change.soldOut !== undefined) { set.soldOut = !!change.soldOut; set.off = !!change.soldOut; }
+      this.patchRows("menu", [d.id], set, msg, "menu");
+      return;
+    }
+    const body = {};
+    if (change.hidden !== undefined) body.hidden = !!change.hidden;
+    if (change.soldOut !== undefined) body.soldOut = !!change.soldOut;
+    fetch("/api/app2/product/" + encodeURIComponent(d.id) + "/availability", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) return this.toast(j.error, "warn");
+        const arr = this.coll("menu") || [], row = arr.find((x) => x.id === d.id);
+        if (row) { Object.assign(row, body); if (change.soldOut !== undefined) row.off = !!change.soldOut; }
+        this.setState({ modal: null });
+        this.toast(msg);
+        this.refreshData && this.refreshData();
+      }).catch(() => this.toast("Could not save — check the connection", "warn"));
+  }
   saveDish(v, existing) {
     const name = String(v.name || "").trim();
     if (!name) return this.toast("Give the dish a name", "warn");
