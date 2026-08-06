@@ -4019,15 +4019,23 @@ class Component extends DCLogic {
         if (led.length) { rows.push(Rt("— Statement —", "")); led.forEach((l) => rows.push(R(l.t, (l.dr ? "" : "− ") + MVRc(l.v), l.dr ? "var(--text)" : "var(--green)"))); }
       }
       const canSettle = this.can("customers") && (c.used || 0) > 0;
-      // Portal recovery + delete actions (managers only, real store only). Resend
-      // for the invited-but-dormant; reset for someone who has signed in. Delete
-      // is danger-styled and always routes through the PIN-gated custdel form.
+      // Portal + delete actions (managers only, real store only). One portal
+      // action is ALWAYS offered for a customer with an email, adapting to their
+      // state: never invited → send the invite; invited but never signed in →
+      // resend the link; already signed in → reset access (a fresh email code).
+      // Delete is danger-styled and routes through the PIN-gated custdel form.
       const acts = [];
       const canManage = this.can("customers") && !!window.KPOS_REAL;
       const neutralBtn = "margin-top:11px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center";
       const dangerBtn = "margin-top:11px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--red-line-2);color:var(--red-dim-2);font-size:12px;font-weight:600;text-align:center";
-      if (canManage && c.hasEmail && c.portal && !c.loggedIn) acts.push({ label: "Resend rewards link", style: neutralBtn, go: () => this.portalAction(c, "resend") });
-      if (canManage && c.hasEmail && c.loggedIn) acts.push({ label: "Reset portal access · email code", style: neutralBtn, go: () => this.portalAction(c, "reset") });
+      if (canManage && c.hasEmail) {
+        const pa = c.loggedIn ? { label: "Reset portal access · email code", mode: "reset" }
+          : c.portal ? { label: "Resend rewards link", mode: "resend" }
+          : { label: "Send rewards invite", mode: "invite" };
+        acts.push({ label: pa.label, style: neutralBtn, go: () => this.portalAction(c, pa.mode) });
+      } else if (canManage) {
+        acts.push({ label: "Add an email to invite to rewards", style: neutralBtn, go: () => this.openForm("cust", c) });
+      }
       if (canManage) acts.push({ label: c.pending ? "Delete blocked · pending items" : "Delete customer", style: dangerBtn, go: () => this.askDeleteCustomer(c) });
       return {
         hasDetailEdit: this.can("customers"), detailEditLabel: "Edit tier or credit limit", detailEdit: () => this.openForm("cust", c),
@@ -5739,19 +5747,19 @@ class Component extends DCLogic {
         this.refreshData && this.refreshData();
       }).catch(() => this.toast("Could not delete — check the connection", "warn"));
   }
-  // Email a member their portal link again: "resend" nudges an invited-but-dormant
-  // customer; "reset" walks a signed-in member back in. Both land on the same email
-  // one-time-code door — the portal has no password to reset.
+  // Email a customer their portal link: "invite" is a first send, "resend" nudges
+  // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
+  // land on the same email one-time-code door — the portal has no password to reset.
   portalAction(c, mode) {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Connect a store to send portal links", "warn");
     if (!c.hasEmail) return this.toast("Add an email to " + c.name + " first", "warn");
-    this.toast(mode === "reset" ? "Emailing a fresh sign-in link…" : "Re-sending the rewards link…");
+    this.toast(mode === "reset" ? "Emailing a fresh sign-in link…" : mode === "invite" ? "Sending the rewards invite…" : "Re-sending the rewards link…");
     fetch("/api/app2/portal/invite", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ids: [c.id], mode: mode }) })
       .then((r) => r.json().catch(() => ({}))).then((j) => {
         if (j && j.error) return this.toast(j.error, "warn");
         if (j && j.configured === false) return this.toast("Email delivery isn't configured yet — can't send", "warn");
         if (!j || !j.invited) return this.toast("Couldn't email " + c.name + " — check the address on file", "warn");
-        this.toast((mode === "reset" ? "Reset link sent to " : "Link re-sent to ") + c.name);
+        this.toast((mode === "reset" ? "Reset link sent to " : mode === "invite" ? "Invite sent to " : "Link re-sent to ") + c.name);
         this.refreshData && this.refreshData();
       }).catch(() => this.toast("Could not send — check the connection", "warn"));
   }
