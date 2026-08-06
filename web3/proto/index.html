@@ -6883,7 +6883,7 @@ class Component extends DCLogic {
         editSave: "Save changes",
         onEdit: (v, o) => {
           if (!v.name || !v.code) return this.toast("Name and code are required", "warn");
-          const rate = v.tax === "TGST" ? 16 : 8;
+          const rate = v.tax === "TGST" ? 17 : 8;
           const restaurant = v.type === "restaurant";
           this.patchRows("outlets", [o.id], {
             code: v.code.toUpperCase(), name: v.name, type: v.type, region: v.region, tax: v.tax, rate: rate,
@@ -6895,7 +6895,7 @@ class Component extends DCLogic {
           const restaurant = v.type === "restaurant";
           this.insertRow("outlets", {
             id: this.nextId("outlets"), code: v.code.toUpperCase(), name: v.name, type: v.type, loc: v.type,
-            parent: 0, region: v.region, tax: v.tax, rate: v.tax === "TGST" ? 16 : 8, sc: +v.sc || 0,
+            parent: 0, region: v.region, tax: v.tax, rate: v.tax === "TGST" ? 17 : 8, sc: +v.sc || 0,
             addr: v.addr, mgr: v.mgr || "—", pos: restaurant, seats: +v.seats || 0, tables: restaurant ? (+v.tables || 0) : 0
           }, "Outlet created · " + v.code.toUpperCase() + " " + v.name, "outlets");
         }
@@ -7898,30 +7898,30 @@ class Component extends DCLogic {
     };
     const tog = (k) => set(k, !P[k]);
     const gate = (fn) => () => mayEdit ? fn() : this.toast("You can see these settings but not change them — ask a chain administrator", "warn");
+    // A full-width band that groups the cards below it into a labelled section.
+    // It rides the same card grid (grid-column:1/-1 spans every column) so it
+    // needs no renderer or template change — just a card with no box chrome.
+    const secHead = (t, sub, first) => ({ title: t, sub: sub || "",
+      style: "grid-column:1/-1;background:transparent;border:none;border-radius:0;border-bottom:1px solid var(--line);box-shadow:none;gap:2px;padding:" + (first ? "2px" : "20px") + " 2px 8px" });
     return {
       tabs: [{ label: "Dark", on: mode === "dark", pick: () => this.setState({ theme: "dark" }) }, { label: "Light", on: mode === "light", pick: () => this.setState({ theme: "light" }) }]
         .concat(Object.keys(acc).map((k) => ({ label: acc[k].label, on: key === k, pick: () => this.setState({ accent: k }) }))),
       cardMin: 290,
       cards: [
-        { title: "Theme", sub: "Stored per user as ThemeMode + CustomColors", chip: mode, chipBg: "rgba(242,164,58,.12)", chipFg: "var(--amber-bright)",
-          rows: [["Mode", mode === "light" ? "Light" : "Dark"], ["Accent", acc[key].label], ["Tokens", "38 CSS custom properties"], ["Applied at", ":root — no reload"]],
-          foot: "Dark is the reference palette, unchanged. The whole app reads these tokens, so an accent change re-skins every screen at once." },
+        // ── Brand & storefront ─────────────────────────────────────────────
+        secHead("Brand & storefront", "What your guests see", true),
         { title: "Merchant branding", sub: "What the guest sees", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
-          rows: [["Trading name", this.brandOf().name], ["Tagline", this.brandOf().tagline || "—"], ["Brand colour", this.accentLabel(this.brandOf().accent || "keyo")], ["Receipt footer", this.brandOf().receiptFoot || "—"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden · white label" : "shown"]],
-          foot: "The name, tagline, brand colour, logo and footer the guest sees on the QR storefront, receipts and the KOT — stored on the store record so the storefront wears your identity. Separate from the registered company below.",
+          rows: [["Trading name", this.brandOf().name], ["Tagline", this.brandOf().tagline || "—"], ["Guest brand colour", this.accentLabel(this.brandOf().accent || "keyo")], ["Receipt footer", this.brandOf().receiptFoot || "—"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden · white label" : "shown"]],
+          foot: "The name, tagline, guest brand colour, logo, footer and white-label switch the guest sees on the QR storefront, receipts and the KOT — all edited here, stored on the store record. Separate from the registered company and from your app theme.",
           go: gate(() => this.openForm("brand")) },
         { title: "Store handle", sub: "Your QR / storefront address", chip: "Editable", chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)",
-          rows: [["Handle", (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "—"], ["Order link", "kashikeyopos.com/?s=" + ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…")], ["Subdomain (planned)", ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…") + ".kashikeyopos.com"]],
+          rows: [["Handle", (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "—"], ["Order link", "kashikeyopos.com/?s=" + ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…")], ["Subdomain", ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…") + ".kashikeyopos.com"]],
           foot: "The address customers reach your online menu at. Changing it re-points your storefront — reprint any QR codes afterwards.",
           go: gate(() => this.openForm("handle")) },
-        { title: "Software branding", sub: "KashikeyoPOS™", rows: [["Applies to", "app chrome only"], ["Sidebar mark", "KashikeyoPOS"], ["Licensed to", CH.name]],
-          toggles: [{ label: "Show the powered-by line", sub: "Off is white label — the guest sees only your brand", on: this.brandOf().poweredBy !== false, go: gate(() => {
-            const b = Object.assign({}, this.brandOf(), { poweredBy: this.brandOf().poweredBy === false });
-            this.setState({ brandOverride: b });
-            this.queue("brand_update", "Powered-by line " + (b.poweredBy ? "shown" : "hidden") + " · by " + this.me(), "settings");
-            this.toast(b.poweredBy ? "Powered-by line shown" : "White label — powered-by hidden");
-          }) }],
-          foot: "The vendor brand stays in the terminal. Guests see the restaurant, which is how every serious POS separates the two." },
+        { title: "Software branding", sub: "KashikeyoPOS™ — app chrome only", rows: [["Applies to", "app chrome only"], ["Sidebar mark", "KashikeyoPOS"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden · white label" : "shown"], ["Licensed to", CH.name]],
+          foot: "The vendor brand stays in the terminal; guests see your restaurant. To hide the “Powered by KashikeyoPOS” line on the guest storefront (white label), use the powered-by switch in Merchant branding above — it's set in one place." },
+        // ── Company & tax ──────────────────────────────────────────────────
+        secHead("Company & tax", "The registered taxpayer and the GST that prints"),
         { title: "Company details", sub: (window.KPOS_REAL ? (this.fiscal().legalName || this.fiscal().storeName || CH.name) : CH.name), chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
           rows: [["Country", CH.country], ["Currency", (window.KPOS_REAL ? (((window.KPOS_REAL.outlet) || {}).currency || CH.currency) : CH.currency)], ["TIN", (window.KPOS_REAL ? (this.fiscal().tin || "— set it") : CH.tin)], ["GST reg.", (window.KPOS_REAL ? (this.fiscal().gstNo || "—") : CH.regNo)]],
           foot: (window.KPOS_REAL ? (this.fiscal().address || "Address not set — tap Edit to add it") : CH.hq) + " — the registered company / taxpayer. Prints under the trading name on every receipt, because a tax invoice has to name the entity that holds the TIN.",
@@ -7930,24 +7930,20 @@ class Component extends DCLogic {
           rows: [["Class", o.tax], ["Rate", o.rate + "%"], ["Service charge", (o.sc || 0) + "%"], ["Applied to", "Subtotal + service charge"]],
           foot: "GGST 8% general, TGST 17% tourism zone. Stored on the store record — the same figures /admin uses and the GST return files.",
           go: gate(() => this.openForm("taxprofile", o)) },
-        { title: "Receipt & printing", sub: P.paper + " mm · " + (P.copies > 1 ? "two copies" : "one copy"),
+        // ── This terminal ──────────────────────────────────────────────────
+        secHead("This terminal", "Appearance, receipts and printers on this device"),
+        { title: "App theme", sub: "This device only — not the guest brand", chip: mode, chipBg: "rgba(242,164,58,.12)", chipFg: "var(--amber-bright)",
+          rows: [["Mode", mode === "light" ? "Light" : "Dark"], ["Accent", acc[key].label], ["Scope", "this terminal, per user"], ["Applied at", ":root — no reload"]],
+          foot: "Sets how the terminal app looks to you (dark/light + the accent tabs above). Stored per user on this device — it does not change the guest brand colour, which lives in Merchant branding." },
+        { title: "Receipts, printing & terminal", sub: (P.device || "this device") + " · " + P.paper + " mm · " + (P.copies > 1 ? "two copies" : "one copy"), chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
+          rows: [["App version", "4.2.1"], ["Offline cache", "IndexedDB · 42 MB"], ["Receipt printer", P.receiptPrinter || "Epson TM-m30 · USB"], ["Kitchen printer", P.kotPrinter || "Kitchen bumper · LAN"], ["Paper", P.paper + " mm · " + P.copies + " cop" + (P.copies > 1 ? "ies" : "y")]],
           toggles: [
             { label: "Print the receipt automatically", sub: "Off asks the guest first — less paper, and most decline", on: !!P.autoPrint, go: () => tog("autoPrint") },
             { label: "Tip line on card receipts", sub: "Service charge already covers this in the Maldives", on: !!P.tipLine, go: () => tog("tipLine") }
           ],
           picks: [{ label: "Receipt language", opts: [["en", "English"], ["dv", "ދިވެހި"], ["both", "Both"]].map((x) => ({ label: x[1], on: P.lang === x[0], go: () => set("lang", x[0]) })) }],
-          foot: "Paper width and copies are on the terminal card — they belong to the device, not the chain.",
+          foot: "Printers, paper width and copies are bound to this outlet by device registration; the receipt toggles and language are yours. Edit opens the terminal & printers form.",
           go: gate(() => this.openForm("terminal")) },
-        { title: "Loyalty & credit", sub: "House accounts and points",
-          picks: [
-            { label: "Points per MVR spent", opts: [5, 10, 20].map((n) => ({ label: "1 per " + n, on: P.pointsPer === n, go: () => set("pointsPer", n) })) },
-            { label: "Low-stock warning at", opts: [30, 50, 70].map((n) => ({ label: n + "% of par", on: P.lowStock === n, go: () => set("lowStock", n) })) }
-          ],
-          foot: "Credit limits are per customer; these are the chain defaults applied to a new account." },
-        { title: "Service targets", sub: "What counts as late",
-          picks: [{ label: "KDS ticket SLA", opts: [12, 18, 25].map((n) => ({ label: n + " min", on: P.kdsSla === n, go: () => set("kdsSla", n) })) }],
-          rows: [["Applies to", "mains · the pass turns amber then red"], ["Measured from", "fire, not from order"]],
-          foot: "A ticket past its SLA drives the KDS colour and the exception report." },
         { title: "Security", sub: "Applies to this terminal", chip: P.voidPin ? "Enforced" : "Relaxed", chipBg: P.voidPin ? "rgba(107,191,123,.12)" : "rgba(226,96,63,.12)", chipFg: P.voidPin ? "var(--green)" : "var(--red-bright)",
           toggles: [
             { label: "Manager PIN for voids and discounts", sub: "A void without a second person is how a till leaks", on: P.voidPin, go: () => tog("voidPin") },
@@ -7956,6 +7952,8 @@ class Component extends DCLogic {
           ],
           picks: [{ label: "Auto-lock when idle", opts: [0, 2, 5, 15].map((n) => ({ label: n ? n + " min" : "Off", on: P.autoLock === n, go: () => set("autoLock", n) })) }],
           foot: "Auto-lock returns the terminal to the PIN screen; open tickets are untouched." },
+        // ── Operations ─────────────────────────────────────────────────────
+        secHead("Operations", "Kitchen, floor, loyalty and service targets"),
         { title: "Service", sub: "Kitchen and floor behaviour",
           toggles: [
             { label: "Show the kitchen docket on fire", sub: "Turn off where the KDS screen is the only pass", on: P.kotPrint, go: () => tog("kotPrint") },
@@ -7963,10 +7961,16 @@ class Component extends DCLogic {
             { label: "Round cash to MVR 0.50", sub: "Card and transfer always take the exact figure", on: P.cashRound, go: () => tog("cashRound") }
           ],
           foot: "Rounding applies to the cash tender only, and the difference posts to 4900 so the drawer still reconciles." },
-        { title: "Terminal", sub: P.device || "dev_CHA_T1", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
-          rows: [["App version", "4.2.1"], ["Offline cache", "IndexedDB · 42 MB"], ["Receipt printer", P.receiptPrinter || "Epson TM-m30 · USB"], ["Kitchen printer", P.kotPrinter || "Kitchen bumper · LAN"], ["Paper", P.paper + " mm · " + P.copies + " cop" + (P.copies > 1 ? "ies" : "y")]],
-          foot: "Bound to this outlet by device registration.",
-          go: gate(() => this.openForm("terminal")) }
+        { title: "Service targets", sub: "What counts as late",
+          picks: [{ label: "KDS ticket SLA", opts: [12, 18, 25].map((n) => ({ label: n + " min", on: P.kdsSla === n, go: () => set("kdsSla", n) })) }],
+          rows: [["Applies to", "mains · the pass turns amber then red"], ["Measured from", "fire, not from order"]],
+          foot: "A ticket past its SLA drives the KDS colour and the exception report." },
+        { title: "Loyalty & credit", sub: "House accounts and points",
+          picks: [
+            { label: "Points per MVR spent", opts: [5, 10, 20].map((n) => ({ label: "1 per " + n, on: P.pointsPer === n, go: () => set("pointsPer", n) })) },
+            { label: "Low-stock warning at", opts: [30, 50, 70].map((n) => ({ label: n + "% of par", on: P.lowStock === n, go: () => set("lowStock", n) })) }
+          ],
+          foot: "Credit limits are per customer; these are the chain defaults applied to a new account." }
       ],
       notes: [
         ["Where settings live", "Nothing here is on the device. Settings are rows in chain- and outlet-scoped tables, so a reimaged terminal pulls its whole configuration back from its device registration."],

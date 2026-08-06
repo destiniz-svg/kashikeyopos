@@ -1784,36 +1784,63 @@ app.get("/api/onboard/state", wrap(async (req, res) => {
   const set = ((await withOrg(orgId, (c) => c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false", [orgId]))).rows[0] || {}).data || {};
   const gstBp = Number(set.gstBp);
   const taxStatus = gstBp === 1700 ? "tgst" : gstBp === 800 ? "ggst" : (set.gstBp != null ? "none" : "");
+  const displayName = (o.store_name && o.store_name !== "My Store") ? o.store_name : "";
+  // Business name prefills from the registered legalName; the trading/outlet name
+  // is the display name only when it differs from the business name.
+  const businessName = set.legalName || displayName;
   res.json({ ok: true,
     setupStep: o.onboarded ? "done" : (o.setup_step || "welcome"),
-    email: o.email || "", storeName: (o.store_name && o.store_name !== "My Store") ? o.store_name : "",
+    email: o.email || "", storeName: businessName,
+    tradeName: (displayName && displayName !== businessName) ? displayName : "",
     ownerName: o.owner_name || "", phone: o.phone || "",
+    regNo: set.gstRegNo || "", tin: set.tin || "", address: set.address || "",
+    businessActivity: set.businessActivity || "",
     currency: set.currency || "MVR", taxStatus, emailConfigured: emailConfigured() });
 }));
 
-/* Welcome stage 1: store profile. Store name + currency + tax status mandatory;
-   owner name & phone optional (editable later in the admin cockpit). */
+/* Welcome stage 1: company details. Business name, mobile and business type are
+   mandatory; the registered-entity fields (trading name, registry no., GST TIN,
+   address, business activity) are optional and all editable later in Settings →
+   Company details — they persist under the same settings keys that screen reads
+   (legalName / gstRegNo / tin / address), so onboarding and the cockpit agree.
+   Business type is the tax class (general = GGST, tourism = TGST). */
 app.post("/api/onboard/profile", wrap(async (req, res) => {
   const orgId = await resolveAppSession(req);
   if (!orgId) return res.status(401).json({ error: "sign in required" });
   const b = req.body || {};
-  const storeName = String(b.storeName || "").trim().slice(0, 80);
+  const businessName = String(b.storeName || "").trim().slice(0, 80);
+  const tradeName = String(b.tradeName || "").trim().slice(0, 80);
   const ownerName = String(b.ownerName || "").trim().slice(0, 100);
   const phone = String(b.phone || "").trim().slice(0, 30);
   const currency = b.currency === "USD" ? "USD" : "MVR";
   const taxMap = { none: 0, ggst: 800, tgst: 1700 };
   const taxStatus = String(b.taxStatus || "");
-  if (!storeName) return res.status(400).json({ error: "Give your store a name." });
-  if (!Object.prototype.hasOwnProperty.call(taxMap, taxStatus)) return res.status(400).json({ error: "Choose your tax status." });
+  const gstRegNo = String(b.regNo || "").trim().slice(0, 40);
+  const tin = String(b.tin || "").trim().slice(0, 40);
+  const address = String(b.address || "").trim().slice(0, 200);
+  const ACTIVITIES = ["restaurant", "cafe", "bakery", "retail", "grocery", "salon", "services", "other"];
+  const businessActivity = ACTIVITIES.indexOf(String(b.businessActivity || "")) >= 0 ? String(b.businessActivity) : "";
+  if (!businessName) return res.status(400).json({ error: "Enter your business name." });
+  if (!phone) return res.status(400).json({ error: "Enter a mobile number." });
+  if (!Object.prototype.hasOwnProperty.call(taxMap, taxStatus)) return res.status(400).json({ error: "Choose your business type." });
   const gstBp = taxMap[taxStatus];
+  const businessType = taxStatus === "tgst" ? "tourism" : taxStatus === "ggst" ? "general" : "unregistered";
+  // The trading name the till and storefront show: the separate outlet name if
+  // given, else the business name itself. legalName is always the business name.
+  const displayName = tradeName || businessName;
+  const patch = { storeName: displayName, currency, gstBp, legalName: businessName, businessType };
+  if (gstRegNo) patch.gstRegNo = gstRegNo;
+  if (tin) patch.tin = tin;
+  if (address) patch.address = address;
+  if (businessActivity) patch.businessActivity = businessActivity;
   await withOrg(orgId, async (c) => {
     await c.query("UPDATE orgs SET store_name=$2, owner_name=COALESCE(NULLIF($3,''),owner_name), phone=COALESCE(NULLIF($4,''),phone), setup_step=CASE WHEN setup_step='welcome' THEN 'pin' ELSE setup_step END WHERE id=$1",
-      [orgId, storeName, ownerName, phone]);
-    await c.query("UPDATE stores SET name=$3 WHERE org_id=$1 AND id=$2", [orgId, DEFAULT_STORE_ID, storeName]);
+      [orgId, displayName, ownerName, phone]);
+    await c.query("UPDATE stores SET name=$3 WHERE org_id=$1 AND id=$2", [orgId, DEFAULT_STORE_ID, displayName]);
     await c.query(
       `INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2)
        ON CONFLICT (org_id, kind, id) DO UPDATE SET data = entities.data || $3::jsonb, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
-      [orgId, JSON.stringify({ storeName, currency, gstBp, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, footer: "" }), JSON.stringify({ storeName, currency, gstBp })]);
+      [orgId, JSON.stringify(Object.assign({ loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, footer: "" }, patch)), JSON.stringify(patch)]);
   });
   res.json({ ok: true, next: "pin" });
 }));

@@ -65,29 +65,49 @@
     <img class="logo-img" src="/logo.png" alt="KashikeyoPOS" onerror="this.style.display='none'" />
     <div class="steps"><div class="dot on" id="d1"></div><div class="dot" id="d2"></div></div>
 
-    <!-- Stage 1: store profile -->
+    <!-- Stage 1: company details -->
     <form id="stage1">
-      <h1>Welcome! Let's set up your store 🎉</h1>
-      <p class="sub">A couple of essentials and your till is ready. Everything else you can add later in the admin panel.</p>
-      <label for="storeName">Store / outlet name *</label>
-      <input id="storeName" required placeholder="e.g. Kashikeyo Cafe" autofocus />
+      <h1>Your company details 🏢</h1>
+      <p class="sub">The essentials your receipts and tax invoices need. Only the starred fields are required — the rest you can add now or later in Settings → Company details.</p>
+      <label for="storeName">Business name *</label>
+      <input id="storeName" required placeholder="e.g. Island Zone Pvt Ltd" autofocus />
+      <label for="tradeName">Trading / outlet name <span style="color:var(--faint);font-weight:500">(if different)</span></label>
+      <input id="tradeName" placeholder="e.g. Kashikeyo Cafe — the name guests see" />
       <div class="row">
         <div><label for="ownerName">Your name</label><input id="ownerName" placeholder="e.g. Aisha Naeem" /></div>
-        <div><label for="phone">Phone</label><input id="phone" inputmode="tel" placeholder="e.g. 7xxxxxx" /></div>
+        <div><label for="phone">Mobile *</label><input id="phone" required inputmode="tel" placeholder="e.g. 7xxxxxx" /></div>
       </div>
-      <label for="email2">Account email</label>
+      <label for="email2">Account email *</label>
       <input id="email2" disabled />
+      <div class="row">
+        <div><label for="regNo">Business registry no. <span style="color:var(--faint);font-weight:500">(optional)</span></label><input id="regNo" placeholder="e.g. C-0912/2021" /></div>
+        <div><label for="tin">GST TIN <span style="color:var(--faint);font-weight:500">(optional)</span></label><input id="tin" placeholder="e.g. 1009xxxxGST" /></div>
+      </div>
+      <label for="address">Address <span style="color:var(--faint);font-weight:500">(optional)</span></label>
+      <input id="address" placeholder="e.g. Majeedhee Magu, Malé" />
       <label>Currency *</label>
       <div class="pick">
         <label><input type="radio" name="currency" value="MVR" checked /><span class="flag">🇲🇻</span><span><span class="cname">MVR</span><br><span class="csub">Rufiyaa</span></span></label>
         <label><input type="radio" name="currency" value="USD" /><span class="flag">🇺🇸</span><span><span class="cname">USD</span><br><span class="csub">US Dollar</span></span></label>
       </div>
-      <label>Tax status *</label>
+      <label>Business type *</label>
       <div class="pick" id="taxPick">
-        <label><input type="radio" name="tax" value="ggst" /><span><span class="cname">GGST 8%</span><br><span class="csub">General goods & services</span></span></label>
-        <label><input type="radio" name="tax" value="tgst" /><span><span class="cname">TGST 17%</span><br><span class="csub">Tourism sector</span></span></label>
-        <label><input type="radio" name="tax" value="none" /><span><span class="cname">No tax</span><br><span class="csub">Not registered</span></span></label>
+        <label><input type="radio" name="tax" value="ggst" /><span><span class="cname">General business</span><br><span class="csub">GGST 8% · goods & services</span></span></label>
+        <label><input type="radio" name="tax" value="tgst" /><span><span class="cname">Tourism sector</span><br><span class="csub">TGST 17% · resorts, guesthouses, dive & tourist F&B</span></span></label>
+        <label><input type="radio" name="tax" value="none" /><span><span class="cname">Not GST-registered</span><br><span class="csub">No GST charged</span></span></label>
       </div>
+      <label for="activity">Business activity <span style="color:var(--faint);font-weight:500">(optional)</span></label>
+      <select id="activity">
+        <option value="">Choose…</option>
+        <option value="restaurant">Restaurant / dine-in</option>
+        <option value="cafe">Café / coffee shop</option>
+        <option value="bakery">Bakery</option>
+        <option value="retail">Retail shop</option>
+        <option value="grocery">Grocery / mart</option>
+        <option value="salon">Salon & spa</option>
+        <option value="services">Services</option>
+        <option value="other">Other</option>
+      </select>
       <div class="error" id="err1"></div>
       <button class="primary" type="submit">Continue</button>
     </form>
@@ -139,8 +159,13 @@
       if(d.setupStep==="done"){ location.href="/v2"; return; }
       if(d.email) $("email2").value=d.email;
       if(d.storeName) $("storeName").value=d.storeName;
+      if(d.tradeName) $("tradeName").value=d.tradeName;
       if(d.ownerName) $("ownerName").value=d.ownerName;
       if(d.phone) $("phone").value=d.phone;
+      if(d.regNo) $("regNo").value=d.regNo;
+      if(d.tin) $("tin").value=d.tin;
+      if(d.address) $("address").value=d.address;
+      if(d.businessActivity) $("activity").value=d.businessActivity;
       var cur=document.querySelector('input[name="currency"][value="'+(d.currency||"MVR")+'"]'); if(cur) cur.checked=true;
       var tax=document.querySelector('input[name="tax"][value="'+(d.taxStatus||"")+'"]'); if(tax) tax.checked=true;
       if(d.setupStep==="pin") go(2);
@@ -149,13 +174,17 @@
     $("stage1").addEventListener("submit", function(e){
       e.preventDefault(); hideErr("err1");
       var storeName=$("storeName").value.trim();
-      if(!storeName) return showErr("err1","Give your store a name.");
+      if(!storeName) return showErr("err1","Enter your business name.");
+      var phone=$("phone").value.trim();
+      if(!phone) return showErr("err1","Enter a mobile number.");
       var tax=document.querySelector('input[name="tax"]:checked');
-      if(!tax) return showErr("err1","Choose your tax status.");
+      if(!tax) return showErr("err1","Choose your business type.");
       var cur=document.querySelector('input[name="currency"]:checked');
       var btn=e.target.querySelector("button.primary"); btn.disabled=true; btn.textContent="Saving…";
       fetch("/api/onboard/profile",{ method:"POST", headers:{"Content-Type":"application/json"}, credentials:"same-origin",
-        body: JSON.stringify({ storeName:storeName, ownerName:$("ownerName").value.trim(), phone:$("phone").value.trim(), currency:cur?cur.value:"MVR", taxStatus:tax.value }) })
+        body: JSON.stringify({ storeName:storeName, tradeName:$("tradeName").value.trim(), ownerName:$("ownerName").value.trim(), phone:phone,
+          regNo:$("regNo").value.trim(), tin:$("tin").value.trim(), address:$("address").value.trim(),
+          businessActivity:$("activity").value, currency:cur?cur.value:"MVR", taxStatus:tax.value }) })
         .then(function(r){ return r.json().catch(function(){return{};}).then(function(j){ return {ok:r.ok, j:j}; }); })
         .then(function(x){ btn.disabled=false; btn.textContent="Continue"; if(!x.ok) return showErr("err1",x.j.error||"Could not save."); go(2); })
         .catch(function(){ btn.disabled=false; btn.textContent="Continue"; showErr("err1","Network error — try again."); });

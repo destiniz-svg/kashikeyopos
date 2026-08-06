@@ -42,7 +42,7 @@
     { id: 20, code: "CHA-KIT", name: "Chaandhanee — Kitchen", type: "restaurant", loc: "kitchen", parent: 3, region: "Malé", tax: "GGST", rate: 8, sc: 0, pos: false, seats: 0 },
     { id: 21, code: "CHA-FLR", name: "Chaandhanee — Floor", type: "restaurant", loc: "floor", parent: 3, region: "Malé", tax: "GGST", rate: 8, sc: 0, pos: false, seats: 0 },
     { id: 22, code: "HUL-KIT", name: "Hulhumalé — Kitchen", type: "restaurant", loc: "kitchen", parent: 4, region: "Malé", tax: "GGST", rate: 8, sc: 0, pos: false, seats: 0 },
-    { id: 23, code: "MAA-KIT", name: "Maafushi — Kitchen", type: "restaurant", loc: "kitchen", parent: 6, region: "Atolls", tax: "TGST", rate: 16, sc: 0, pos: false, seats: 0 }
+    { id: 23, code: "MAA-KIT", name: "Maafushi — Kitchen", type: "restaurant", loc: "kitchen", parent: 6, region: "Atolls", tax: "TGST", rate: 17, sc: 0, pos: false, seats: 0 }
   ];
 
   // icon keys resolve against CAT_ICONS in the component. Stroke glyphs, not
