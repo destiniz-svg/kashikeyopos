@@ -374,6 +374,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px">
               <sc-for list="{{ dishes }}" as="m" hint-placeholder-count="0">
                 <div style="{{ m.style }}">
+                  <button onClick="{{ m.manage }}" title="Manage — availability, price, hide" aria-label="Manage dish" style="{{ m.manageStyle }}">⋮</button>
                   <button onClick="{{ m.addons }}" title="Tap the photo to choose add-ons" style="position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0;border:none;padding:0;cursor:pointer">
                     <span style="{{ m.photoStyle }}"></span>
                     <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
@@ -2752,11 +2753,15 @@ class Component extends DCLogic {
           add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
           addons: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.openAddons(m),
           addonsHintStyle: off ? "display:none" : "position:absolute;bottom:6px;right:6px;font-size:9px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:rgba(0,0,0,.55);color:#fff",
-          style: "display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid " + this.catHue(m.cat) + ";border-radius:10px;overflow:hidden;transition:.12s;opacity:" + (off ? ".62" : "1"),
+          style: "position:relative;display:flex;flex-direction:column;background:var(--bg-1);border:1px solid var(--line);border-left:3px solid " + this.catHue(m.cat) + ";border-radius:10px;overflow:hidden;transition:.12s;opacity:" + (off ? ".62" : "1"),
+          // Availability/manage — opens the dish sheet (cashiers get 86/hide, a
+          // manager gets the full editor). Only for roles that can view the menu.
+          manage: () => this.setState({ modal: { kind: "dish", id: m.id } }),
+          manageStyle: this.can("menu") ? "position:absolute;top:6px;right:6px;z-index:4;width:25px;height:25px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;display:grid;place-items:center;font-size:15px;font-weight:800;line-height:1;cursor:pointer" : "display:none",
           tag: off ? "86'd" : (hid ? "OFF QR" : ""),
           tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff"
             : (hid ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--text-faint);color:var(--bg-1)" : "display:none"),
-          vegStyle: m.veg ? "position:absolute;top:7px;right:7px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--green)" : "display:none",
+          vegStyle: m.veg ? "position:absolute;top:9px;right:" + (this.can("menu") ? "38px" : "7px") + ";width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--green)" : "display:none",
           foot: showCost ? Math.round((cost / price) * 100) + "% cost" : (m.veg ? "Veg" : "")
         };
       });
