@@ -834,6 +834,30 @@ const APP_COOKIE = "kashikeyo_session";
 const setAppCookie = (res, token) => res.cookie(APP_COOKIE, token, {
   httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 24 * 3600 * 1000, path: "/",
 });
+/* ── Member (registered-customer) sessions ───────────────────────────────────
+   The customer-facing rewards portal signs a diner in by email OTP and rides a
+   separate httpOnly cookie, distinct from staff `kashikeyo_session`. The token
+   carries only the org and the customer id (k:"member") — a member can read
+   their own card and post intent, never touch POS state. */
+const MEMBER_COOKIE = "kashikeyo_member";
+const signMember = (orgId, custId) => jwt.sign({ o: orgId, c: String(custId), k: "member" }, SECRET, { expiresIn: "60d" });
+const setMemberCookie = (res, token) => res.cookie(MEMBER_COOKIE, token, {
+  httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 60 * 24 * 3600 * 1000, path: "/",
+});
+const readMember = (req) => {
+  const raw = parseCookies(req)[MEMBER_COOKIE];
+  try { const p = jwt.verify(raw, SECRET); return (p && p.k === "member" && p.o && p.c) ? { orgId: p.o, custId: p.c } : null; }
+  catch { return null; }
+};
+/* Mask an email for the "we sent a code to …" line: keep the first and last
+   character of the local part, and the domain. `rifga@mailbox.mv` → `r•••a@mailbox.mv`. */
+const maskEmail = (e) => {
+  const s = String(e || "").trim(); const at = s.indexOf("@");
+  if (at < 1) return s;
+  const local = s.slice(0, at), dom = s.slice(at);
+  if (local.length <= 2) return local[0] + "•••" + dom;
+  return local[0] + "•••" + local[local.length - 1] + dom;
+};
 /* ── Session tracking ────────────────────────────────────────────────────────
    Each cookie session gets a row in app_sessions keyed by a hash of its token
    (sid), so the back office can list active sign-ins and revoke one. Deriving
@@ -1493,6 +1517,73 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
     .filter((o) => customerId ? idEq(o.customerId, customerId) : table ? idEq(o.table, table) : false)
     .map((o) => normalizeOrder(o, settings))
     .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
+}
+
+/* ── Loyalty / member-portal helpers ─────────────────────────────────────────
+   The registered-customer portal reads these. Loyalty configuration is DATA,
+   not code (handoff 08 §9): tier names, marks and lifetime-spend thresholds,
+   the earn rate and the reward catalogue all live on the settings entity and
+   default here only until a merchant sets them. The gradients and the four-tier
+   visual language stay client-side design tokens. */
+function loyaltyConfig(settings) {
+  const s = settings || {};
+  const L = s.loyalty || {};
+  // MVR spent per point earned (handoff default 10). Falls back to the legacy
+  // loyaltyBp (basis-points ×100) only if pointsPer was never set.
+  const pointsPer = Number(s.pointsPer) > 0 ? Number(s.pointsPer)
+    : (Number(s.loyaltyBp) > 0 ? Math.max(1, Math.round(Number(s.loyaltyBp) / 1000)) : 10);
+  const tiers = (Array.isArray(L.tiers) && L.tiers.length) ? L.tiers : [
+    { key: "bronze", name: "Bronze", mark: "III", from: 0 },
+    { key: "silver", name: "Silver", mark: "II", from: 3000 },
+    { key: "gold", name: "Gold", mark: "I", from: 7000 },
+    { key: "platinum", name: "Platinum", mark: "★", from: 15000 },
+  ];
+  const rewards = Array.isArray(L.rewards) ? L.rewards : [];   // empty → empty state, never fabricated
+  return { pointsPer, redeemPer: Number(L.redeemPer) > 0 ? Number(L.redeemPer) : 10, tiers, rewards };
+}
+
+async function findCustomerByEmail(orgId, storeId, email) {
+  const e = String(email || "").trim().toLowerCase();
+  if (!e || e.indexOf("@") < 1) return null;
+  const custs = await kindAll(orgId, "customers", storeId);
+  return custs.find((c) => String(c.email || "").trim().toLowerCase() === e) || null;
+}
+
+/* Build the member payload (handoff 07/A4) from the REAL customer row + loyalty
+   config + real order history. Everything is server-computed; the app formats,
+   it never derives. Absent data → empty arrays / null, never a fabricated value. */
+function memberPayload(org, c, settings, orders) {
+  const cfg = loyaltyConfig(settings);
+  const points = Math.max(0, Math.round(Number(c.points || c.loyaltyPoints || 0)));
+  const spent = Math.round((Number(c.spent || c.totalSpent || 0)) / 100);
+  const limit = Math.round((Number(c.creditLimit || c.credit || 0)) / 100);
+  const used = Math.round((Number(c.balance || c.used || 0)) / 100);
+  const code = c.memberNo || ("KM-" + String(c.id).replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase().padStart(8, "0"));
+  // Tier by lifetime spend against the configured thresholds.
+  let ti = 0;
+  for (let i = 0; i < cfg.tiers.length; i++) { if (spent >= Number(cfg.tiers[i].from || 0)) ti = i; }
+  const tier = cfg.tiers[ti], upper = cfg.tiers[ti + 1] || null;
+  const hist = Array.isArray(orders) ? orders : [];
+  // Activity from real orders (visits). Rewards activity is layered in later.
+  const activity = hist.map((o) => {
+    const amt = Math.round((Number(o.total) || 0) / 100);
+    return { kind: "visit", title: (asOtype(o.otype) === "dine" && o.table) ? ("Table " + o.table) : (org.store_name || "Visit"),
+      meta: o.no ? ("Order " + o.no) : "", amount: amt, points: cfg.pointsPer ? Math.floor(amt / cfg.pointsPer) : 0,
+      at: o.createdAt || o.at || null };
+  });
+  const lastVisit = c.lastOrderAt || (hist[0] && (hist[0].createdAt || hist[0].at)) || null;
+  return {
+    id: c.id, name: c.name || "Member", email: c.email || "", phone: c.phone || "",
+    memberSince: c.memberSince || c.since || (c.createdAt ? Number(c.createdAt) : null),
+    code, barcode: code,
+    points, pointsPending: 0, spentLifetime: spent, visits: Math.max(0, Math.round(Number(c.visits || 0))), lastVisit,
+    credit: { limit, used },
+    tier: { key: tier.key, name: tier.name, mark: tier.mark, from: Number(tier.from || 0), to: upper ? Number(upper.from) : null },
+    nextTier: upper ? { name: upper.name, at: Number(upper.from) } : null,
+    rewards: cfg.rewards, vouchers: [], activity,
+    pointsPer: cfg.pointsPer, redeemPer: cfg.redeemPer,
+    homeOutlet: org.store_name || "",
+  };
 }
 
 async function uniqueSlug(client, base) {
@@ -2744,6 +2835,77 @@ app.get("/p/:slug/account", pubThrottle(20, "acct"), wrap(async (req, res) => {
     },
   });
 }));
+
+/* ── Registered-customer (member) portal auth ────────────────────────────────
+   Email OTP only (handoff 08 §8) — no SMS. The OTP is scoped per org so one
+   email can be a member of two stores without collision. We never disclose
+   whether an address is registered beyond the generic {found:false} the client
+   turns into "No membership on that address". Code is 6 digits (the security
+   contract, 07/B1 + 08 §8, overrides the prototype's 4-box mock). */
+app.post("/p/:slug/member/otp", pubThrottle(8, "motp"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const email = String((req.body || {}).email || "").trim().toLowerCase();
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+  const c = await findCustomerByEmail(org.id, storeId, email);
+  if (!c) return res.json({ found: false });   // client shows "No membership on that address"
+  const purpose = "member:" + org.id;
+  const cur = await withSystem((cl) => cl.query("SELECT last_sent FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
+  if (cur.rowCount && (Date.now() - new Date(cur.rows[0].last_sent).getTime()) < 45000) return res.status(429).json({ error: "Please wait a moment before requesting another code." });
+  const code = genOtp();
+  await withSystem((cl) => cl.query(
+    `INSERT INTO otp_codes (email, purpose, code_hash, expires_at, attempts, verified, last_sent, created_at)
+     VALUES ($1,$2,$3, now() + interval '10 minutes', 0, false, now(), now())
+     ON CONFLICT (email, purpose) DO UPDATE SET code_hash=$3, expires_at=now() + interval '10 minutes', attempts=0, verified=false, last_sent=now()`,
+    [email, purpose, otpHash(email, code)]));
+  const brand = org.store_name || "Kashikeyo";
+  const mail = await sendEmail({ to: email, subject: brand + " Rewards — your sign-in code", html: otpEmailHtml(code), text: "Your " + brand + " Rewards sign-in code is " + code + " (valid for 10 minutes)." });
+  const out = { found: true, masked: maskEmail(c.email || email), configured: mail.configured };
+  if (!mail.ok && process.env.NODE_ENV !== "production") out.devCode = code;   // dev only, never in prod
+  res.json(out);
+}));
+
+app.post("/p/:slug/member/verify", pubThrottle(12, "mver"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const email = String((req.body || {}).email || "").trim().toLowerCase();
+  const code = String((req.body || {}).code || "").trim();
+  if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  const purpose = "member:" + org.id;
+  const row = await withSystem((cl) => cl.query("SELECT code_hash, expires_at, attempts FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
+  if (!row.rowCount) return res.status(400).json({ error: "Request a code first." });
+  const r = row.rows[0];
+  if (new Date(r.expires_at).getTime() < Date.now()) return res.status(400).json({ error: "That code has expired — request a new one." });
+  if (r.attempts >= 6) return res.status(429).json({ error: "Too many attempts — request a new code." });
+  if (otpHash(email, code) !== r.code_hash) {
+    await withSystem((cl) => cl.query("UPDATE otp_codes SET attempts=attempts+1 WHERE email=$1 AND purpose=$2", [email, purpose]));
+    return res.status(400).json({ error: "Incorrect code." });
+  }
+  const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+  const c = await findCustomerByEmail(org.id, storeId, email);
+  if (!c) return res.status(400).json({ error: "No membership on that address." });
+  await withSystem((cl) => cl.query("DELETE FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
+  setMemberCookie(res, signMember(org.id, c.id));
+  res.json({ ok: true });
+}));
+
+app.get("/p/:slug/member/me", pubThrottle(60, "mme"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const sess = readMember(req);
+  if (!sess || sess.orgId !== org.id) return res.status(401).json({ error: "sign in required" });
+  const storeId = cleanStoreId(req.query.storeId || DEFAULT_STORE_ID);
+  const custs = await kindAll(org.id, "customers", storeId);
+  const c = custs.find((x) => idEq(x.id, sess.custId));
+  if (!c) return res.status(401).json({ error: "membership not found" });
+  const settingsArr = await loadSettingsArr(org.id);
+  const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, svcChargeBp: 0, currency: "MVR" };
+  const hist = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
+  res.json({ member: memberPayload(org, c, settings, hist) });
+}));
+
+app.post("/p/:slug/member/signout", (req, res) => { res.clearCookie(MEMBER_COOKIE, { path: "/" }); res.json({ ok: true }); });
 
 app.post("/p/:slug/call", pubThrottle(20, "call"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);

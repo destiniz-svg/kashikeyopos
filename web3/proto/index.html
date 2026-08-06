@@ -7051,6 +7051,7 @@ class Component extends DCLogic {
         fields: [
           { k: "name", label: "Customer name", v: "", full: 1 },
           { k: "phone", label: "Phone", v: "+960 " },
+          { k: "email", label: "Email (for the rewards portal sign-in)", v: "", full: 1 },
           { k: "tier", label: "Tier", options: [{ v: "Bronze", l: "Bronze" }, { v: "Silver", l: "Silver" }, { v: "Gold", l: "Gold" }, { v: "Platinum", l: "Platinum" }] },
           { k: "credit", label: "Credit limit MVR", v: "0" }
         ],
@@ -7059,13 +7060,13 @@ class Component extends DCLogic {
           if (!v.name) return this.toast("A name is required", "warn");
           const lim = +v.credit || 0;
           if (lim < (c.used || 0)) return this.toast("Limit is below the " + MVRc(c.used) + " already drawn — settle the balance first", "warn");
-          this.patchRows("custs", [c.id], { name: v.name, phone: v.phone, tier: v.tier, credit: lim },
+          this.patchRows("custs", [c.id], { name: v.name, phone: v.phone, email: (v.email || "").trim().toLowerCase(), tier: v.tier, credit: lim },
             c.name + " updated" + (lim !== c.credit ? " · credit limit " + MVRc(c.credit) + " to " + MVRc(lim) : ""), "customers");
         },
         onSave: (v) => {
           if (!v.name || v.phone.trim().length < 8) return this.toast("Name and a full phone number are required", "warn");
           this.insertRow("custs", {
-            id: this.nextId("custs", "c"), name: v.name, phone: v.phone, visits: 0, spent: 0, points: 0,
+            id: this.nextId("custs", "c"), name: v.name, phone: v.phone, email: (v.email || "").trim().toLowerCase(), visits: 0, spent: 0, points: 0,
             tier: v.tier, credit: +v.credit || 0, used: 0, last: "never", portal: false
           }, "Customer created · " + v.name, "customers");
         }
