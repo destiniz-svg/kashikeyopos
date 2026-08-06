@@ -4097,11 +4097,24 @@ class Component extends DCLogic {
       const r = (K0.ROLES || []).find((x) => x.key === u.role) || {};
       const o = (K0.OUTLETS || []).find((x) => x.id === u.outlet);
       const mods = (K0.MODULES || []).filter((mm) => (r.perms[mm.key] || {}).v).length;
+      const real = this.staffReal();
+      const mayManage = this.can("users") && !u.owner;
+      const self = u.id === (this.state.session || {}).id;
+      // In real mode the roster is PIN-based: show the member's own role and the
+      // fact they sign in with a PIN, and offer Remove to an admin. The owner row
+      // and your own row can't be removed.
+      const removeAct = (mayManage && !self)
+        ? [{ label: "Remove from the team", go: () => this.removeStaff(u), style: "margin-top:13px;width:100%;padding:11px;border-radius:8px;background:var(--red-dim-2);border:1px solid var(--red-line-2);color:#fff;font-size:12px;font-weight:700;text-align:center" }]
+        : [];
+      const roleLabel = real ? (u.realRole ? u.realRole.charAt(0).toUpperCase() + u.realRole.slice(1) : (r.label || "")) : (r.label || "");
       return {
-        hasDetailEdit: this.can("users"), detailEditLabel: "Edit role, scope or suspend", detailEdit: () => this.openForm("user", u),
-        modalTitle: u.name, modalSub: "@" + u.user + " · " + (r.label || ""),
-        detailRows: [Rt("Role", r.label || "", r.color), Rt("Scope", r.scope || ""), Rt("Home outlet", o ? o.name : "Chain-wide"), Rt("Status", u.status), Rt("Last seen", u.last), R("Modules visible", mods + " / " + (K0.MODULES || []).length), Rt("Can write money", (r.perms.pos || {}).a ? "Yes" : "No", (r.perms.pos || {}).a ? "var(--amber-bright)" : "var(--green)"), Rt("Sees cost price", u.role === "Cashier" ? "No — column masked" : "Yes")],
-        detailNote: r.blurb || "",
+        hasDetailEdit: mayManage, detailEditLabel: real ? "Edit name, role or PIN" : "Edit role, scope or suspend", detailEdit: () => this.openForm("user", u),
+        hasDetailActions: removeAct.length > 0, detailActions: removeAct,
+        modalTitle: u.name, modalSub: real ? (u.owner ? "Owner · full access" : roleLabel + " · signs in by PIN") : ("@" + u.user + " · " + (r.label || "")),
+        detailRows: real
+          ? [Rt("Role", u.owner ? "Owner" : roleLabel, r.color), Rt("Signs in", "4-digit PIN on the lock screen"), Rt("Back office", (u.owner || u.realRole === "manager" || u.realRole === "admin") ? "Yes" : "Till only"), Rt("Status", u.status || "Active")]
+          : [Rt("Role", r.label || "", r.color), Rt("Scope", r.scope || ""), Rt("Home outlet", o ? o.name : "Chain-wide"), Rt("Status", u.status), Rt("Last seen", u.last), R("Modules visible", mods + " / " + (K0.MODULES || []).length), Rt("Can write money", (r.perms.pos || {}).a ? "Yes" : "No", (r.perms.pos || {}).a ? "var(--amber-bright)" : "var(--green)"), Rt("Sees cost price", u.role === "Cashier" ? "No — column masked" : "Yes")],
+        detailNote: real ? (u.owner ? "The owner signs in to the back office with the account email and password, and to the till with this PIN. Staff use their PIN only." : "This member signs in at the till with their PIN. Every sale, void and discount they take is recorded against their name.") : (r.blurb || ""),
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
     }
@@ -5530,7 +5543,7 @@ class Component extends DCLogic {
       const mayEdit = this.can("users", "e") && ["SuperAdmin", "ChainAdmin"].indexOf(s.roleKey) >= 0;
       const dirty = Object.keys(s.permOverride || {}).length;
       return {
-        tabs: [{ label: "Users" }, { label: "Permission matrix" }].map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { users: i }) }) })),
+        tabs: [{ label: this.staffReal() ? "Team" : "Users" }, { label: "Permission matrix" }].map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { users: i }) }) })),
         guideTitle: mayEdit ? "Changing a permission" : "Reading the matrix",
         guide: mayEdit
           ? ["Tap any cell to cycle it — hidden, read, read-write, full", "You cannot edit your own role, or grant more than you hold", "Super Admin is fixed; it is the break-glass account", "Every change is logged against your name"]
@@ -5557,6 +5570,33 @@ class Component extends DCLogic {
           ["Why you cannot edit your own row", "Every privilege-escalation bug in a back office starts the same way: an account that can widen its own permissions. Your own role is read-only to you, Super Admin is fixed as the break-glass account, and no administrator can grant a level they do not already hold. Two people are always required to widen access."],
           dirty ? ["Modified from defaults", dirty + " role" + (dirty > 1 ? "s" : "") + " differ from the shipped matrix, marked with a dot. The shipped defaults are the tested configuration — Reset returns to them, and the reset is itself logged."]
             : ["Shipped defaults", "No role has been modified. These are the tested defaults: the cashier cannot see cost or other outlets, the accountant reads everything and writes only to the books, and the store keeper never reaches the till."]
+        ]
+      };
+    }
+    const real = this.staffReal();
+    const mayManage = this.can("users", "e");
+    if (real) {
+      // Real store: a plain PIN-based team roster wired to /api/app2/staff.
+      const capRole = (rr) => rr ? rr.charAt(0).toUpperCase() + rr.slice(1) : "Cashier";
+      return {
+        tabs: [{ label: "Team" }, { label: "Permission matrix" }].map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { users: i }) }) })),
+        guideTitle: "Adding a team member",
+        guide: ["Add the person with a role and their own 4-digit PIN", "They sign in on the terminal's lock screen with that PIN", "Managers reach the back office; everyone else the till", "Every sale, void and discount is recorded against their name"],
+        actions: mayManage ? [{ label: "Add team member", primary: true, go: () => this.openForm("user") }] : [],
+        cols: [{ label: "Name", w: "1.6fr" }, { label: "Role", w: "1fr" }, { label: "Signs in", w: "1.1fr" }, { label: "Status", w: ".8fr", a: "right" }],
+        rows: (K0.USERS || []).map((u) => ({
+          go: () => this.setState({ modal: { kind: "user", id: u.id } }),
+          cells: [
+            u.name + (u.id === (this.state.session || {}).id ? " · you" : ""),
+            { t: u.owner ? "Owner" : capRole(u.realRole), c: u.owner ? "var(--amber-bright)" : "var(--text)", w: 600 },
+            { t: (u.owner || u.realRole === "manager" || u.realRole === "admin") ? "PIN · back office" : "PIN · till", c: "var(--text-dim)" },
+            { t: u.status || "Active", chip: this.chip((u.status || "Active") === "Active" ? "ok" : "err") }
+          ]
+        })),
+        notes: [
+          ["Two ways in", "The owner signs in to the back office with the account email and password, and can also open the till with a PIN. Everyone you add here is PIN-only: a manager's PIN reaches the back office, any other role reaches just the till. Nobody but the owner has a password."],
+          ["Why a personal PIN", "Every person has their own four-digit PIN, never a shared one — that is what makes a void, a discount or a drawer opening attributable to a name. A PIN must be unique in the store, so a sign-in is never ambiguous."],
+          ["Removing someone", "Open a member and Remove them — their PIN stops working immediately. You can't remove the owner or your own account. Past sales they rang stay on the record under their name."]
         ]
       };
     }
@@ -6155,6 +6195,59 @@ class Component extends DCLogic {
     this.setState({ modal: null });
     this.queue("menu_category_delete", "Category deleted · " + cat.name, "menu_categories");
     this.toast("Deleted · " + cat.name);
+  }
+  // ── Team members ───────────────────────────────────────────────────────────
+  // Create or edit a staff sign-in. Real mode persists to /api/app2/staff (name
+  // + role + 4-digit PIN, the same endpoint /admin uses); demo mode stays local.
+  // Before this, the v2 "Invite user" form only ever touched local state, so a
+  // team member added on the terminal never actually got a working sign-in.
+  staffReal() { return !!(window.KPOS_REAL && window.KPOS_REAL.token); }
+  saveStaff(v, existing) {
+    const name = String(v.name || "").trim();
+    if (!name) return this.toast("A name is required", "warn");
+    const role = String(v.role || "cashier").toLowerCase();
+    const pin = String(v.pin || "").trim();
+    if (!existing && !/^\d{4}$/.test(pin)) return this.toast("Set a 4-digit PIN for the new member", "warn");
+    if (pin && !/^\d{4}$/.test(pin)) return this.toast("PIN must be 4 digits", "warn");
+    if (existing && existing.owner) return this.toast("The owner account is managed from account settings", "warn");
+    if (!this.staffReal()) {
+      // Demo mode — local only, mirroring the old behaviour.
+      if (existing) this.patchRows("users", [existing.id], { name: name, realRole: role }, name + " updated", "users");
+      else this.insertRow("users", { id: this.nextId("users", "u"), name: name, user: name.toLowerCase().replace(/\s+/g, ""), role: "Cashier", realRole: role, status: "Active", last: "never" }, name + " added", "users");
+      return;
+    }
+    const body = { name: name, role: role };
+    if (existing && existing.id) body.id = existing.id;
+    if (pin) body.pin = pin;
+    fetch("/api/app2/staff", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) return this.toast(j.error, "warn");
+        // Optimistic local patch so the roster reflects the change at once.
+        const arr = K().USERS || [], demoRole = ({ owner: "SuperAdmin", admin: "ChainAdmin", manager: "OutletManager", cashier: "Cashier", waiter: "Cashier", kitchen: "KitchenManager", rider: "Cashier" })[role] || "Cashier";
+        if (existing) { const u = arr.find((x) => x.id === existing.id); if (u) { u.name = name; u.role = demoRole; u.realRole = role; } }
+        else if (j && j.id) arr.push({ id: j.id, name: name, user: name.toLowerCase().replace(/[^a-z0-9]+/g, "") || "staff", role: demoRole, realRole: role, outlet: null, outlets: [], pin: pin, status: "Active", last: "" });
+        // Keep the HR roster (STAFF) in step so Payroll/People sees the person too.
+        const st = K().STAFF || []; if (!existing && j && j.id) st.push({ id: j.id, name: name, job: role, outlet: 3, kind: "local", basic: 0, ot: true, svc: true, mrps: false, joined: "", status: "Active" });
+        else if (existing) { const s2 = st.find((x) => x.id === existing.id); if (s2) { s2.name = name; s2.job = role; } }
+        this.setState({ modal: null });
+        this.toast(existing ? name + " updated" : name + " added as " + role);
+        this.refreshData && this.refreshData();
+      }).catch(() => this.toast("Could not save — check the connection", "warn"));
+  }
+  removeStaff(u) {
+    if (!u || !u.id) return;
+    if (u.owner) return this.toast("The owner account can't be removed", "warn");
+    if (u.id === (this.state.session || {}).id) return this.toast("You can't remove your own account", "warn");
+    if (!this.staffReal()) { this.patchRows("users", [u.id], { deleted: true }, (u.name || "Member") + " removed", "users"); this.setState({ modal: null }); return; }
+    fetch("/api/app2/staff/" + encodeURIComponent(u.id) + "/delete", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin" })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) return this.toast(j.error, "warn");
+        const arr = K().USERS || [], i = arr.findIndex((x) => x.id === u.id); if (i >= 0) arr.splice(i, 1);
+        const st = K().STAFF || [], si = st.findIndex((x) => x.id === u.id); if (si >= 0) st.splice(si, 1);
+        this.setState({ modal: null });
+        this.toast((u.name || "Member") + " removed");
+        this.refreshData && this.refreshData();
+      }).catch(() => this.toast("Could not remove — check the connection", "warn"));
   }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
@@ -6828,6 +6921,16 @@ class Component extends DCLogic {
     const itemOpts = sel((raw.items || []).filter((i) => i[5] !== "raw" || true).slice(0, 80).map((i) => ({ v: i[0], l: i[2] })));
     const catOpts = sel((K0.MENU_CATEGORIES || []).map((c) => ({ v: c.id, l: c.name })));
     const roleOpts = sel((K0.ROLES || []).map((r) => ({ v: r.key, l: r.label })));
+    // Real mode: the team form offers the roles the backend actually assigns
+    // (/api/app2/staff) — a plain, PIN-based roster, not the demo chain roles.
+    const staffReal = !!(window.KPOS_REAL && window.KPOS_REAL.token);
+    const realRoleOpts = [
+      { v: "manager", l: "Manager — full back office & reports" },
+      { v: "cashier", l: "Cashier — the till" },
+      { v: "waiter", l: "Waiter — floor & orders" },
+      { v: "kitchen", l: "Kitchen — KDS & prep" },
+      { v: "rider", l: "Rider — deliveries" }
+    ];
     const staffOpts = sel((K0.STAFF || []).map((x) => ({ v: x.id, l: x.name + " · " + x.job })));
     const assetOpts = sel(this.assetList().map((a) => ({ v: a.id, l: a.name + " · " + this.locName(a.outlet) })));
     const closedPeriodOpts = [{ v: "live", l: "Live · as of now" }].concat(
@@ -7541,7 +7644,21 @@ class Component extends DCLogic {
         onEdit: (v, d) => this.saveDish(v, d),
         onSave: (v) => this.saveDish(v, null)
       },
-      user: {
+      // Team member. Real mode is a plain PIN-based roster: name + role + a
+      // 4-digit sign-in PIN, persisted to /api/app2/staff (the same thing the
+      // /admin cockpit writes). Demo mode keeps the illustrative chain-role form.
+      user: staffReal ? {
+        title: "Add team member", sub: "They sign in at the till with a 4-digit PIN", save: "Add member", editSave: "Save member",
+        foot: "A team member signs in on the terminal's lock screen with their own PIN — that is what makes every sale, void and discount attributable to a person. The owner sets the back-office password separately; staff never get one. Managers reach the back office, everyone else the till.",
+        fields: [
+          { k: "name", label: "Full name", v: "", full: 1 },
+          { k: "role", label: "Role", options: realRoleOpts, full: 1 },
+          { k: "pin", label: "4-digit PIN", v: "" }
+        ],
+        pre: (u) => ({ name: u.name || "", role: u.realRole || "cashier", pin: "" }),
+        onEdit: (v, u) => this.saveStaff(v, u),
+        onSave: (v) => this.saveStaff(v, null)
+      } : {
         title: "Invite user", sub: "Magic-link invite scoped to this chain", save: "Send invite",
         foot: "The invite writes a users row with status Invited; the account only becomes Active after the link is used and a device is bound.",
         fields: [

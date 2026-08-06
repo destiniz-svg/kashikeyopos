@@ -4497,6 +4497,7 @@ if (fs.existsSync(protoFile)) {
           const sp = String(d.pin || "");
           const pin = /^\d{4}$/.test(sp) ? sp : (pinRev[sp] || "");
           return { id: r.id, name: nm, user: user, role: roleMap[String(d.role || "").toLowerCase()] || "Cashier",
+            realRole: String(d.role || "").toLowerCase(), owner: String(d.role || "").toLowerCase() === "owner",
             outlet: null, outlets: [], pin: pin, status: d.suspended ? "Suspended" : "Active", last: "" };
         });
         // Real ingredient stock → the terminal's inventory views. The v2 uses a
