@@ -1272,7 +1272,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 <div style="{{ f.wrap }}">
                   <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">{{ f.label }}</div>
                   <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
-                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
+                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
                   <sc-if value="{{ f.isPwd }}" hint-placeholder-val="{{ false }}">
                     <input type="password" value="{{ f.value }}" onChange="{{ f.onChange }}" autocomplete="off" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
@@ -1295,6 +1295,18 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                       </sc-for>
                       <sc-if value="{{ f.empty }}"><div style="font-size:11px;color:var(--text-muted);padding:2px 1px">No add-ons yet. Guests order the dish as-is.</div></sc-if>
                       <button type="button" onClick="{{ f.onAdd }}" style="align-self:flex-start;font-size:11.5px;font-weight:700;color:var(--text-dim);padding:8px 13px;border-radius:8px;border:1px dashed var(--line);background:var(--bg-2)" style-hover="border-color:var(--text-dim);color:var(--text)">+ Add an add-on</button>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ f.isImage }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;gap:12px;align-items:flex-start">
+                      <span style="width:120px;height:80px;flex-shrink:0;border-radius:10px;border:1px solid var(--line);background-color:var(--bg-2);background-image:url('{{ f.imageUrl }}');background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden">
+                        <sc-if value="{{ f.noImage }}"><span style="font-size:10px;color:var(--text-faint);text-align:center;line-height:1.4;padding:0 8px">No photo yet</span></sc-if>
+                      </span>
+                      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:7px">
+                        <label style="align-self:flex-start;font-size:11.5px;font-weight:700;color:var(--text-dim);padding:8px 13px;border-radius:8px;border:1px dashed var(--line);background:var(--bg-2);cursor:pointer" style-hover="border-color:var(--text-dim);color:var(--text)">{{ f.uploadLabel }}<input type="file" accept="image/*" onChange="{{ f.onUpload }}" style="display:none"/></label>
+                        <sc-if value="{{ f.hasImage }}"><button type="button" onClick="{{ f.onClear }}" style="align-self:flex-start;font-size:11px;font-weight:600;color:var(--text-muted);padding:5px 10px;border-radius:7px;border:1px solid var(--line);background:var(--bg-2)">Remove photo</button></sc-if>
+                        <div style="font-size:10.5px;color:var(--text-muted);line-height:1.5">{{ f.imageGuide }}</div>
+                      </div>
                     </div>
                   </sc-if>
                 </div>
@@ -3804,9 +3816,23 @@ class Component extends DCLogic {
               onAdd: () => upd(list.concat([{ name: "", price: "" }]))
             };
           }
+          // An image field: a live preview (uploaded photo, AI picture, or an
+          // existing dish's photo), an upload button and a size guide. The value
+          // lives in formVals[f.k] as a data: URI (new) or the stored /api/img URL.
+          if (f.image) {
+            const cur = vals[f.k] === undefined ? "" : String(vals[f.k]);
+            return {
+              label: f.label, wrap: f.full ? "grid-column:1/-1" : "", isImage: true,
+              imageUrl: cur, noImage: !cur, hasImage: !!cur,
+              uploadLabel: cur ? "Replace photo" : "Upload a photo",
+              imageGuide: f.guide || "Landscape works best — about 3:2 (e.g. 1200×800px). JPG or PNG. Large photos are shrunk automatically.",
+              onUpload: (e) => this.formImageUpload(f.k, e),
+              onClear: () => this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: "" }) }))
+            };
+          }
           return {
             label: f.label, wrap: f.full ? "grid-column:1/-1" : "",
-            value: vals[f.k] === undefined ? "" : String(vals[f.k]),
+            value: vals[f.k] === undefined ? "" : String(vals[f.k]), placeholder: f.placeholder || "",
             isSelect: !!f.options, isPwd: !f.options && !!f.pwd, isText: !f.options && !f.pwd, options: f.options || [],
             onChange: (e) => { const v = e.target.value; this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: v }) })); }
           };
@@ -6190,8 +6216,15 @@ class Component extends DCLogic {
     const rawAddons = Array.isArray(v.addons) ? v.addons
       : String(v.addons || "").split(/[,\n]/).filter((s) => s.trim()).map((s) => { const e = s.search(/[=:]/); return { name: e >= 0 ? s.slice(0, e) : s, price: e >= 0 ? s.slice(e + 1) : "" }; });
     const addons = rawAddons.map((a) => ({ name: String((a && a.name) || "").trim(), price: parseFloat(a && a.price) || 0 })).filter((a) => a.name);
+    // Photo: a data: URI (just uploaded or AI-generated) is a new/changed image;
+    // an empty value on an existing dish clears it; the stored /api/img URL left
+    // unchanged is omitted so the server keeps the current photo.
+    const imgVal = String(v.img || "").trim();
+    const imgIsNew = imgVal.slice(0, 5) === "data:";
+    const imgCleared = !imgVal && !!(existing && existing.img);
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
       const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, hidden: hidden, addons: addons };
+      if (imgIsNew) body.img = imgVal; else if (imgCleared) body.img = "";
       if (existing && existing.id) body.id = existing.id;
       fetch("/api/app2/product", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
         .then((r) => r.json().catch(() => ({}))).then((j) => {
@@ -6200,8 +6233,9 @@ class Component extends DCLogic {
           const arr = this.coll("menu") || [];
           const row = arr.find((x) => x.id === id);
           const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off, hidden: hidden, addons: addons };
+          if (imgIsNew) patch.img = imgVal; else if (imgCleared) patch.img = "";
           if (row) Object.assign(row, patch);
-          else arr.unshift(Object.assign({ img: this.state.formAiImg || "", recipe: [] }, patch));
+          else arr.unshift(Object.assign({ img: imgIsNew ? imgVal : (this.state.formAiImg || ""), recipe: [] }, patch));
           this.setState({ modal: null });
           const wasHidden = !!(existing && existing.hidden);
           this.toast(existing ? name + " updated" + (existing.price !== price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (hidden !== wasHidden ? (hidden ? " · hidden from menu" : " · back on the menu") : (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : "")) : "Dish created · " + name + " at " + MVRc(price));
@@ -6945,6 +6979,7 @@ class Component extends DCLogic {
           desc: d.desc || st.formVals.desc || "",
           cat: match ? match.id : st.formVals.cat,
           price: price ? String(price) : st.formVals.price,
+          img: d.img || st.formVals.img || "",              // show the AI picture in the photo field
         }),
       }));
       this.queue("ai_dish_draft", "AI dish drafted · " + (d.en || name), "menu_items");
@@ -7003,6 +7038,35 @@ class Component extends DCLogic {
       }).catch(() => { this.aiCreateSet({ busy: false }); this.toast("Could not save — check the connection", "warn"); });
   }
   aiCreateReset() { this.setState({ aiCreate: { name: "", details: "", busy: false, draft: null, msg: "", price: "" } }); }
+  // Manual photo upload for a dish form. Reads the file, shrinks it to a menu-
+  // tile-friendly size (max 1000×700, JPEG) so it stores and syncs cheaply, and
+  // drops the data URI into formVals[key] where the preview + save read it.
+  formImageUpload(key, e) {
+    const file = e && e.target && e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type || "")) return this.toast("Choose an image file (JPG or PNG)", "warn");
+    const put = (uri) => this.setState((st) => ({ formVals: Object.assign({}, st.formVals, { [key]: uri }) }));
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = reader.result;
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxW = 1000, maxH = 700;
+          const scale = Math.min(1, maxW / img.width, maxH / img.height);
+          const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+          const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+          cv.getContext("2d").drawImage(img, 0, 0, w, h);
+          put(cv.toDataURL("image/jpeg", 0.82));
+          this.toast("Photo added");
+        } catch (err) { put(src); this.toast("Photo added"); }
+      };
+      img.onerror = () => { put(src); };
+      img.src = src;
+    };
+    reader.onerror = () => this.toast("Couldn't read that file", "warn");
+    reader.readAsDataURL(file);
+  }
   downloadCsv(name, rows) {
     const esc = (v) => '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
     const csv = rows.map((r) => r.map(esc).join(",")).join("\r\n");
@@ -7806,20 +7870,22 @@ class Component extends DCLogic {
         }
       },
       dish: {
-        title: "New dish", sub: "Chain master price · outlet overrides apply on top", save: "Create dish",
-        foot: "Recipe lines are added from the item master after the dish exists; until then food cost falls back to 30% of price.",
+        title: "New dish", sub: "Set a price and, if you like, a photo — or let AI draft the lot", save: "Create dish",
+        foot: "The placeholders are only examples — fill in the real name and price. A photo is optional; ✨ Generate with AI drafts the description, price and a picture for you. Recipe lines are added in Recipes & Costing after the dish exists.",
         aiFill: 1,
         fields: [
-          { k: "name", label: "Dish name", v: "", full: 1 },
-          { k: "desc", label: "Menu description", v: "", full: 1 },
+          { k: "name", label: "Dish name", v: "", placeholder: "e.g. Mango Sticky Rice", full: 1 },
+          { k: "desc", label: "Menu description", v: "", placeholder: "e.g. Coconut sticky rice with fresh mango", full: 1 },
           { k: "cat", label: "Category", options: catOpts },
-          { k: "price", label: "Chain price MVR", v: "120" },
+          { k: "price", label: "Price MVR", v: "", placeholder: "e.g. 120" },
+          { k: "img", label: "Photo (optional)", image: 1, full: 1, guide: "Landscape works best — about 3:2 (e.g. 1200×800px). JPG or PNG. Big photos are shrunk automatically. Or use ✨ Generate with AI below to draw one." },
           { k: "veg", label: "Vegetarian", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes" }] },
           { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "86", l: "Sold out (86) — shown, marked unavailable" }, { v: "hidden", l: "Hidden — off the customer menu, still on the till" }], full: 1 },
           { k: "addons", label: "Add-ons — a name and its MVR price · leave the price blank for a free option", rows: 1, full: 1 }
         ],
         editSave: "Save changes",
         pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: d.hidden ? "hidden" : ((d.off || d.soldOut) ? "86" : "yes"),
+          img: d.img || "",
           addons: (d.addons || []).map((a) => ({ name: a.name, price: Number(a.price) ? String(a.price) : "" })) }),
         onEdit: (v, d) => this.saveDish(v, d),
         onSave: (v) => this.saveDish(v, null)

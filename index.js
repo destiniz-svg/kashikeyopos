@@ -2740,6 +2740,29 @@ app.get("/p/:slug/events", pubThrottle(30, "events"), wrap(async (req, res) => {
   openEventStream(org.id, req, res, true);
 }));
 
+/* Public product image for the guest storefront. A dish photo stored as a data:
+   URI (uploaded or AI-drawn) is served here, scoped to the store's slug, so an
+   ANONYMOUS guest browsing the QR menu can load it — the staff /api/img needs a
+   session a guest doesn't have. Only the image bytes are exposed, nothing else. */
+const PUB_DATA_URI_RE = /^data:([\w.+-]+\/[\w.+-]+)?(?:;[\w.+=-]+)*?(;base64)?,([\s\S]*)$/;
+app.get("/p/:slug/img/:id", pubThrottle(120, "pimg"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).end();
+  const row = await withOrg(org.id, (c) => c.query(
+    "SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false LIMIT 1",
+    [org.id, String(req.params.id || "")]));
+  const im = row.rows[0] && row.rows[0].data && row.rows[0].data.img;
+  const m = im && String(im).match(PUB_DATA_URI_RE);
+  if (!m) return res.status(404).end();
+  const etag = '"' + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 16) + '"';
+  if (req.headers["if-none-match"] === etag) return res.status(304).end();
+  const body = m[2] ? Buffer.from(m[3], "base64") : Buffer.from(decodeURIComponent(m[3]), "utf8");
+  res.set("Content-Type", m[1] || "application/octet-stream");
+  res.set("Cache-Control", "public, max-age=31536000, immutable");
+  res.set("ETag", etag);
+  res.send(body);
+}));
+
 app.get("/p/:slug/boot", wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
@@ -3335,14 +3358,19 @@ const menuGroupPalette = (categories) => {
 // Module scope so BOTH the /v2 route block and the web2 guest entry (which are
 // in separate `if (fs.existsSync(...))` blocks) can render the SAME page. Uses
 // catSlug (module) rather than the block-scoped liveMenu.
-const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
+const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
   const prodRows = (await c.query(
     "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
   const photo = {};
   for (const r of prodRows) {
     const im = r.data && r.data.img; if (!im) continue;
+    // A stored data: URI (uploaded photo / AI picture) is served by a PUBLIC,
+    // slug-scoped route so an anonymous guest can load it; an external http(s)
+    // URL is used verbatim. (The staff /api/img needs a session, which a guest
+    // doesn't have — so the customer menu must use /p/:slug/img.)
     photo[r.id] = /^https?:\/\//i.test(String(im)) ? String(im)
-      : "/api/img/" + encodeURIComponent(r.id) + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
+      : (slug ? "/p/" + encodeURIComponent(slug) + "/img/" + encodeURIComponent(r.id) : "/api/img/" + encodeURIComponent(r.id))
+        + "?v=" + crypto.createHash("sha1").update(String(im)).digest("hex").slice(0, 12);
   }
   const menu = prodRows.map((r) => ({ id: r.id, d: r.data || {} }))
     .filter((x) => x.d.name && !x.d.hidden)
@@ -3400,7 +3428,7 @@ const bustV2Assets = (html) => html.replace(
 const serveGuestV3 = async (req, res, org, opts = {}) => {
   const storeId = cleanStoreId(opts.storeId || DEFAULT_STORE_ID);
   try { await ensureDefaultStore(org.id, org.store_name); } catch (e) { /* best effort */ }
-  const real = await buildGuestReal(org.id);
+  const real = await buildGuestReal(org.id, org.slug);
   real.slug = org.slug;
   const table = String(opts.table || "").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 20);
   if (table) real.table = table;
@@ -3441,7 +3469,7 @@ const serveGuestV3 = async (req, res, org, opts = {}) => {
 const memberV3File = path.join(__dirname, "web3", "proto", "member.html");
 const hasMemberV3 = () => { try { return fs.existsSync(memberV3File); } catch (e) { return false; } };
 const serveMemberPortal = async (req, res, org) => {
-  const real = await buildGuestReal(org.id);
+  const real = await buildGuestReal(org.id, org.slug);
   const settings = (await loadSettingsArr(org.id))[0] || {};
   const cfg = loyaltyConfig(settings);
   // The Order tab reads the shared POS menu (inclusive MVR prices, sold-out
@@ -5314,7 +5342,17 @@ if (fs.existsSync(protoFile)) {
     if (b.cat !== undefined) fields.cat = String(b.cat || "").trim().slice(0, 60);
     if (b.desc !== undefined) fields.desc = String(b.desc || "").trim().slice(0, 400);
     if (b.veg !== undefined) fields.veg = !!b.veg;
-    if (b.img !== undefined) fields.img = String(b.img || "").trim().slice(0, 600);
+    // Dish photo: a data:image URI (uploaded photo, resized client-side, or the
+    // AI's SVG) is stored inline and served from /api/img/<id>; an existing
+    // /api/img or http(s) URL is kept as-is; empty clears it. An oversized or
+    // unsupported value is ignored, leaving any existing photo untouched. The
+    // 500 KB ceiling matches what the client resize targets well under.
+    if (b.img !== undefined) {
+      const raw = String(b.img || "").trim();
+      if (!raw) fields.img = "";
+      else if (/^data:image\/(png|jpe?g|webp|gif|svg\+xml)[;,]/i.test(raw) && raw.length <= 500000) fields.img = raw;
+      else if (/^(\/api\/img\/|https?:\/\/)/i.test(raw)) fields.img = raw.slice(0, 600);
+    }
     if (b.soldOut !== undefined || b.off !== undefined) fields.soldOut = !!(b.soldOut !== undefined ? b.soldOut : b.off);
     // Hidden = off the customer QR menu (buildGuestReal / liveStoreP filter it),
     // still listed + sellable on the staff terminal.
