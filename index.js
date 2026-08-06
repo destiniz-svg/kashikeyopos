@@ -2998,6 +2998,21 @@ app.get("/p/:slug/member/orders", pubThrottle(60, "morders"), wrap(async (req, r
 
 app.post("/p/:slug/member/signout", (req, res) => { res.clearCookie(MEMBER_COOKIE, { path: "/" }); res.json({ ok: true }); });
 
+/* Promotions the guest surfaces read (handoff 07/A3). `on` is the merchant's slot
+   switch — off → the client renders nothing and collapses the space. Items are
+   the active banners for this outlet (outlet "0" = chain-wide). Cacheable. */
+app.get("/p/:slug/promos", pubThrottle(60, "promos"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const settings = (await loadSettingsArr(org.id))[0] || {};
+  const on = !!settings.qrBanners;
+  const outlet = String(req.query.outlet || "0");
+  const items = on ? (Array.isArray(settings.banners) ? settings.banners : [])
+    .filter((b) => b && b.active !== false && (String(b.outlet || "0") === "0" || String(b.outlet) === outlet))
+    .map((b) => ({ id: b.id, outlet: b.outlet || "0", title: b.title || "", sub: b.sub || "", code: b.code || "", img: b.img || "" })) : [];
+  res.json({ on, items });
+}));
+
 /* "Tell the till I'm here" (show-code sheet). A member announcing at the counter
    is a person, not a table (handoff 08 §5): file it under the floor's calls,
    titled by name, so a cashier can attach the next bill to the membership. */
@@ -4473,6 +4488,8 @@ if (fs.existsSync(protoFile)) {
           // catalogue), so the terminal's Loyalty editor shows and edits the live
           // values. loyaltyConfig() supplies documented defaults until a merchant sets them.
           loyalty: (function (L) { return { pointsPer: L.pointsPer, redeemPer: L.redeemPer, tiers: L.tiers, rewards: L.rewards }; })(loyaltyConfig(st)),
+          // Promotions the merchant edits + the guest surfaces show (handoff 08 §1).
+          promos: { on: !!st.qrBanners, items: Array.isArray(st.banners) ? st.banners : [] },
           outlets: outlets.length ? outlets : null,
           categories, menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
@@ -5204,6 +5221,14 @@ if (fs.existsSync(protoFile)) {
         }
         if (patch.loyalty.redeemPer !== undefined) { const n = Math.round(Number(patch.loyalty.redeemPer)); if (n >= 1 && n <= 1000) L.redeemPer = n; }
         data.loyalty = L;
+      }
+      /* Promotions & banners (handoff 08 §1). qrBanners is the merchant's slot
+         switch (default off — a QR menu that opens with an advert nobody asked
+         for is worse than one that opens with food). The banners array is the
+         drafts; turning the slot off empties every phone without deleting them. */
+      if (patch.qrBanners !== undefined) data.qrBanners = !!patch.qrBanners;
+      if (Array.isArray(patch.banners)) {
+        data.banners = patch.banners.slice(0, 40).map((b) => ({ id: String((b && b.id) || uid()).slice(0, 40), title: String((b && b.title) || "").slice(0, 80), sub: String((b && b.sub) || "").slice(0, 140), code: String((b && b.code) || "").slice(0, 24), img: String((b && b.img) || "").slice(0, 400), outlet: String((b && b.outlet) || "0").slice(0, 40), active: !(b && b.active === false) }));
       }
       // Promote store identity to the top-level settings fields the register
       // (liveStoreP) and the admin store card actually read, so a rename in the

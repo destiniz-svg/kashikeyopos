@@ -202,6 +202,25 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
               <div style="font-size:11.5px;color:var(--coral-ink);margin-top:8px;line-height:1.5;text-wrap:pretty">{{ liveStripFoot }}</div>
             </div>
           </sc-if>
+
+          <!-- Offers for you -->
+          <sc-if value="{{ hasOffers }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:11px">Offers for you</div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ offers }}" as="o" hint-placeholder-count="1">
+                  <div style="{{ o.style }}">
+                    <div style="{{ o.imgStyle }}"></div>
+                    <div style="padding:14px 15px">
+                      <div style="font-size:14.5px;font-weight:700;color:var(--coral-deep)">{{ o.title }}</div>
+                      <div style="font-size:12.5px;color:var(--coral-ink);margin-top:3px;line-height:1.5;text-wrap:pretty">{{ o.sub }}</div>
+                      <sc-if value="{{ o.hasCode }}"><div style="display:inline-block;margin-top:9px;font-size:11px;font-weight:800;letter-spacing:.06em;color:#fff;background:var(--coral);padding:4px 10px;border-radius:7px" class="tnum">{{ o.code }}</div></sc-if>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
         </div>
       </sc-if>
 
@@ -499,6 +518,7 @@ class Component extends DCLogic {
     toast: "", brand: {}, slug: "", pointsPer: 10, redeemPer: 10, now: Date.now(),
     menu: [], categories: [], tables: [],
     cart: {}, table: "", menuQ: "", menuCat: "all", sending2: false, morders: [], live: null,
+    offers: [], offersOn: false,
   };
 
   componentDidMount() {
@@ -513,7 +533,14 @@ class Component extends DCLogic {
     try { this.state.table = localStorage.getItem("kmember.table") || ""; } catch (e) {}
     // A returning member has a cookie — try to resume the session silently.
     this.fetchMe(true);
+    this.fetchPromos();
     this._t = setInterval(() => this.setState({ now: Date.now() }), 20000);
+  }
+  async fetchPromos() {
+    try {
+      const r = await fetch("/p/" + encodeURIComponent(this.state.slug) + "/promos", { credentials: "same-origin" });
+      if (r.ok) { const j = await r.json(); this.setState({ offersOn: !!j.on, offers: Array.isArray(j.items) ? j.items : [] }); }
+    } catch (e) {}
   }
 
   api(path) { return "/p/" + encodeURIComponent(this.state.slug) + "/member/" + path; }
@@ -764,6 +791,12 @@ class Component extends DCLogic {
       liveStrip: live ? ("You are at table " + (live.table || "—")) : "",
       liveStripSub: live ? ((s.brand.name || "Kashikeyo") + " · " + this.money(live.total) + " so far") : "",
       liveStripFoot: live ? ("This visit will earn about " + Math.floor(live.total / (s.pointsPer || 10)) + " points when the till settles it.") : "",
+
+      // Offers for you (the merchant's active banners; the slot switch gates it)
+      hasOffers: s.offersOn && (s.offers || []).length > 0,
+      offers: (s.offers || []).map((o) => ({ title: o.title || "", sub: o.sub || "", code: o.code || "", hasCode: !!o.code,
+        style: "border-radius:16px;overflow:hidden;border:1px solid var(--coral-line);background:var(--coral-tint)",
+        imgStyle: o.img ? ("height:120px;background:url('" + o.img + "') center/cover no-repeat") : "display:none" })),
 
       // ── Order tab ──────────────────────────────────────────────────────────
       ordHasTable: !!s.table, ordNoTable: !s.table, ordTable: s.table, ordChangeTable: () => this.unbindTable(),

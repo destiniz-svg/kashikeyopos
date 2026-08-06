@@ -2075,6 +2075,7 @@ class Component extends DCLogic {
       delivery: ["Delivery & QR Orders", "Table QR sessions, aggregator and own-fleet delivery"],
       customers: ["Customers & Credit", "Chain-wide profiles, loyalty tiers and credit ledger"],
       loyalty: ["Rewards & Loyalty", "The earn rate, tiers and the reward catalogue members redeem in the app"],
+      promos: ["Promotions & Banners", "The banners the QR menu and members' cards show — publish, target and toggle the slot"],
       reservations: ["Reservations", "Tonight's book for " + o.name],
       chain: ["Chain Overview", "Consolidated across " + this.posOutlets().length + " trading outlets"],
       branches: ["Outlets", "Locations, tax profiles, printers and stock sub-locations"],
@@ -7117,6 +7118,33 @@ class Component extends DCLogic {
           this.saveLoy(Object.assign({}, this.loy(), { pointsPer: n })); this.setState({ modal: null }); this.toast("Earn rate saved · 1 pt per MVR " + n);
         }
       },
+      banner: {
+        title: "Banner", sub: "A promotion on the guest menu and members' cards", save: "Publish banner", editSave: "Save banner",
+        foot: "Banners rotate on the guest's phone, newest first. A code is optional and is verified by the till at settlement — publishing a banner never discounts a bill on its own.",
+        fields: [
+          { k: "title", label: "Headline", v: "", full: 1 },
+          { k: "sub", label: "Supporting line", v: "", full: 1 },
+          { k: "code", label: "Promo code (optional)", v: "" },
+          { k: "outlet", label: "Where it runs", options: [{ v: "0", l: "Every outlet" }].concat(outletOpts) },
+          { k: "img", label: "Image URL (optional)", v: "", full: 1 },
+          { k: "active", label: "Status", options: [{ v: "yes", l: "Live" }, { v: "no", l: "Off — keep as a draft" }] },
+          { k: "remove", label: "Remove", options: [{ v: "no", l: "Keep this banner" }, { v: "yes", l: "Delete it" }], full: 1 }
+        ],
+        pre: (b) => ({ active: b.active === false ? "no" : "yes", remove: "no", outlet: String(b.outlet || "0") }),
+        onSave: (v) => {
+          if (!v.title) return this.toast("A headline is required", "warn");
+          const P = this.promos(); const items = (P.items || []).slice();
+          items.unshift({ id: "bn_" + Math.random().toString(36).slice(2, 9), title: v.title, sub: v.sub || "", code: (v.code || "").toUpperCase(), img: v.img || "", outlet: v.outlet || "0", active: v.active !== "no" });
+          this.savePromos(Object.assign({}, P, { items })); this.setState({ modal: null }); this.toast("Banner published · " + v.title);
+        },
+        onEdit: (v, b) => {
+          const P = this.promos(); let items = (P.items || []).slice();
+          if (v.remove === "yes") { items = items.filter((x) => String(x.id) !== String(b.id)); this.savePromos(Object.assign({}, P, { items })); this.setState({ modal: null }); return this.toast("Banner removed"); }
+          if (!v.title) return this.toast("A headline is required", "warn");
+          items = items.map((x) => String(x.id) === String(b.id) ? Object.assign({}, x, { title: v.title, sub: v.sub || "", code: (v.code || "").toUpperCase(), img: v.img || "", outlet: v.outlet || "0", active: v.active !== "no" }) : x);
+          this.savePromos(Object.assign({}, P, { items })); this.setState({ modal: null }); this.toast(v.title + " updated");
+        }
+      },
       res: {
         title: "New reservation", sub: this.outlet().name, save: "Book table",
         foot: "Reservations hold the table but do not open a ticket; seating the guest is what creates the order.",
@@ -8013,6 +8041,47 @@ class Component extends DCLogic {
     };
   }
 
+  // ── Promotions & banners editor ───────────────────────────────────────────
+  promos() {
+    if (this.state.promoDraft) return this.state.promoDraft;
+    const P = (window.KPOS_REAL && window.KPOS_REAL.promos) || {};
+    return { on: !!P.on, items: Array.isArray(P.items) ? P.items : [] };
+  }
+  savePromos(next) {
+    this.setState({ promoDraft: next });
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ cfg: { qrBanners: next.on, banners: next.items } }) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => { if (j && j.error) this.toast(j.error, "warn"); else { if (window.KPOS_REAL) window.KPOS_REAL.promos = { on: next.on, items: next.items }; this.toast("Promotions saved"); } })
+        .catch(() => this.toast("Could not save — check the connection", "warn"));
+    }
+  }
+  g_promos() {
+    const P = this.promos(); const items = P.items || []; const mayEdit = this.can("settings", "e");
+    const gate = (fn) => () => mayEdit ? fn() : this.toast("Ask a chain administrator for rights to publish banners", "warn");
+    const scopeName = (o) => (String(o || "0") === "0") ? "Every outlet" : ((this.outlet(+o) || {}).name || "One outlet");
+    return {
+      actions: [{ label: P.on ? "Banner slot: on" : "Banner slot: off", go: gate(() => this.savePromos(Object.assign({}, P, { on: !P.on }))) }, { label: "New banner", primary: true, go: gate(() => this.openForm("banner")) }],
+      guideTitle: "How banners work",
+      guide: ["Turn the slot on to show banners on the QR menu and members' cards", "Banners rotate on the guest's phone, newest first", "A code is optional and is verified by the till at settlement", "Publishing a banner never discounts a bill on its own"],
+      cardMin: 250,
+      cards: [
+        { title: "Banner slot", sub: P.on ? "On — showing on guest surfaces" : "Off — the space is collapsed", chip: P.on ? "Live" : "Off", chipBg: P.on ? "rgba(107,191,123,.12)" : "var(--bg-2)", chipFg: P.on ? "var(--green)" : "var(--text-muted)",
+          toggles: [{ label: "Show banners to guests", sub: "Off empties the slot on every phone without deleting your drafts", on: P.on, go: gate(() => this.savePromos(Object.assign({}, P, { on: !P.on }))) }],
+          foot: "The slot is off by default — a QR menu that opens with an advert nobody asked for is worse than one that opens with food. The grid still lists drafts; they go live when the slot comes back on." },
+      ],
+      cols: [{ label: "Banner", w: "2fr" }, { label: "Scope", w: "1.1fr" }, { label: "Code", w: ".9fr", mono: 1 }, { label: "Status", w: ".8fr", a: "right" }],
+      rows: items.map((b) => ({
+        go: gate(() => this.openForm("banner", b)),
+        cells: [b.title || "(untitled)", scopeName(b.outlet), b.code || "—",
+          { t: b.active === false ? "Off" : (P.on ? "Live" : "Slot off"), chip: b.active === false ? ["var(--bg-2)", "var(--text-muted)"] : (P.on ? ["rgba(107,191,123,.14)", "var(--green)"] : ["var(--warn-dim)", "var(--warn-bright)"]) }],
+      })),
+      empty: "No banners yet. Tap New banner to create one — it publishes to the guest surfaces the moment the slot is on.",
+      notes: [["Where this shows", "A published banner appears on the QR menu carousel and, for a signed-in member, in \"Offers for you\" on their card — within seconds, no app update."],
+        ["A banner is not a discount", "A code on a banner is only an offer. The till validates it at settlement; publishing a banner never takes money off a bill on its own."]],
+    };
+  }
+
   g_settings() {
     const K0 = K(), o = this.outlet();
     const acc = this.ACCENTS(), key = this.accentKey(), mode = this.themeMode();
@@ -8058,6 +8127,10 @@ class Component extends DCLogic {
           rows: [["Handle", (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "—"], ["Order link", "kashikeyopos.com/?s=" + ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…")], ["Subdomain", ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…") + ".kashikeyopos.com"]],
           foot: "The address customers reach your online menu at. Changing it re-points your storefront — reprint any QR codes afterwards.",
           go: gate(() => this.openForm("handle")) },
+        { title: "Promotions & banners", sub: "Offers on the QR menu and members' cards", chip: (this.promos().on ? "Slot on" : "Slot off"), chipBg: this.promos().on ? "rgba(107,191,123,.12)" : "var(--bg-2)", chipFg: this.promos().on ? "var(--green)" : "var(--text-muted)",
+          rows: [["Banner slot", this.promos().on ? "On" : "Off"], ["Banners", (this.promos().items || []).length + " · " + (this.promos().items || []).filter((b) => b.active !== false).length + " live"]],
+          foot: "Publish banners that rotate on the guest storefront and appear in \"Offers for you\" on a member's card. The slot is off by default; a code on a banner is only an offer, validated by the till.",
+          goLabel: "Open promotions & banners", go: gate(() => this.setState({ view: "promos" })) },
         { title: "Software branding", sub: "KashikeyoPOS™ — app chrome only", rows: [["Applies to", "app chrome only"], ["Sidebar mark", "KashikeyoPOS"], ["Powered-by line", this.brandOf().poweredBy === false ? "hidden · white label" : "shown"], ["Licensed to", CH.name]],
           foot: "The vendor brand stays in the terminal; guests see your restaurant. To hide the “Powered by KashikeyoPOS” line on the guest storefront (white label), use the powered-by switch in Merchant branding above — it's set in one place." },
         // ── Company & tax ──────────────────────────────────────────────────
