@@ -5869,6 +5869,43 @@ class Component extends DCLogic {
       this.insertRow("custs", { id: this.nextId("custs", "c"), name: name, phone: phone, email: email, hasEmail: this.custHasEmail({ email: email }), visits: 0, spent: 0, points: 0, tier: tier, credit: lim, used: 0, last: "never", portal: false }, "Customer created · " + name, "customers");
     }
   }
+  // Create or edit a menu item. Real mode persists to /api/app2/product (the
+  // local menu is MVR-priced, the server stores laari); demo mode stays local.
+  // Without this a dish edit only ever touched local state and vanished on the
+  // next pull — which is why "menu items cannot be edited".
+  saveDish(v, existing) {
+    const name = String(v.name || "").trim();
+    if (!name) return this.toast("Give the dish a name", "warn");
+    const price = +v.price || 0;
+    if (price <= 0) return this.toast("Price must be greater than zero", "warn");
+    const cat = v.cat, desc = String(v.desc || "").trim();
+    const veg = v.veg === "yes", off = v.avail === "no";
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off };
+      if (existing && existing.id) body.id = existing.id;
+      fetch("/api/app2/product", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          if (j && j.error) return this.toast(j.error, "warn");
+          const id = (j && j.id) || (existing && existing.id);
+          const arr = this.coll("menu") || [];
+          const row = arr.find((x) => x.id === id);
+          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off };
+          if (row) Object.assign(row, patch);
+          else arr.unshift(Object.assign({ img: this.state.formAiImg || "", recipe: [] }, patch));
+          this.setState({ modal: null });
+          this.toast(existing ? name + " updated" + (existing.price !== price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : "") : "Dish created · " + name + " at " + MVRc(price));
+          this.refreshData && this.refreshData();
+        }).catch(() => this.toast("Could not save — check the connection", "warn"));
+      return;
+    }
+    // Demo mode — local only.
+    if (existing) {
+      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off },
+        name + " updated" + (price !== existing.price ? " · " + MVRc(existing.price) + " to " + MVRc(price) : "") + (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : ""), "menu");
+    } else {
+      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
+    }
+  }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
   // land on the same email one-time-code door — the portal has no password to reset.
@@ -7220,23 +7257,9 @@ class Component extends DCLogic {
           { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "no", l: "86 — off the menu tonight" }], full: 1 }
         ],
         editSave: "Save changes",
-        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: d.off ? "no" : "yes" }),
-        onEdit: (v, d) => {
-          const price = +v.price || 0;
-          if (price <= 0) return this.toast("Price must be greater than zero", "warn");
-          const off = v.avail === "no";
-          this.patchRows("menu", [d.id], { name: v.name, cat: v.cat, desc: v.desc, price: price, veg: v.veg === "yes", off: off },
-            d.name + " updated" + (price !== d.price ? " · " + MVRc(d.price) + " to " + MVRc(price) : "") + (off !== !!d.off ? (off ? " · 86'd" : " · back on sale") : ""), "menu");
-        },
-        onSave: (v) => {
-          if (!v.name) return this.toast("Give the dish a name", "warn");
-          const price = +v.price || 0;
-          if (price <= 0) return this.toast("Price must be greater than zero", "warn");
-          this.insertRow("menu", {
-            id: this.nextId("menu", "m"), cat: v.cat, name: v.name,
-            desc: v.desc || "House dish", price: price, veg: v.veg === "yes", img: this.state.formAiImg || "", recipe: []
-          }, "Dish created · " + v.name + " at " + MVRc(price), "menu_items");
-        }
+        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: (d.off || d.soldOut) ? "no" : "yes" }),
+        onEdit: (v, d) => this.saveDish(v, d),
+        onSave: (v) => this.saveDish(v, null)
       },
       user: {
         title: "Invite user", sub: "Magic-link invite scoped to this chain", save: "Send invite",

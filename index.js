@@ -5249,6 +5249,69 @@ if (fs.existsSync(protoFile)) {
     poke(orgId, out.rowver);
     res.json({ ok: true, id: out.id, email: out.email, hasEmail: !!(out.email && out.email.indexOf("@") > 0) });
   }));
+  /* Create or edit a menu item (dish). The terminal talks in MVR; the entity
+     stores laari, so price + add-on prices are ×100 here. An update MERGES onto
+     the existing product row so recipe lines, stock and any field the form
+     doesn't touch survive. `soldOut` is the canonical 86 flag (derivedSoldOut
+     reads it); `off` is accepted as an alias for older callers. */
+  app.post("/api/app2/product", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
+    const b = req.body || {};
+    const name = String(b.name || "").trim().slice(0, 120);
+    if (!name) return res.status(400).json({ error: "Give the dish a name." });
+    const priceLaari = Math.round((Number(b.price) || 0) * 100);
+    if (!(priceLaari > 0)) return res.status(400).json({ error: "Price must be greater than zero." });
+    const fields = { name, price: priceLaari };
+    if (b.cat !== undefined) fields.cat = String(b.cat || "").trim().slice(0, 60);
+    if (b.desc !== undefined) fields.desc = String(b.desc || "").trim().slice(0, 400);
+    if (b.veg !== undefined) fields.veg = !!b.veg;
+    if (b.img !== undefined) fields.img = String(b.img || "").trim().slice(0, 600);
+    if (b.soldOut !== undefined || b.off !== undefined) fields.soldOut = !!(b.soldOut !== undefined ? b.soldOut : b.off);
+    if (b.comments !== undefined) fields.comments = !!b.comments;
+    // Add-ons: [{name, price}] in MVR from the terminal → laari; names are the
+    // key the order path re-prices against, so drop the blank ones.
+    if (Array.isArray(b.addons)) {
+      fields.addons = b.addons.map((a) => ({ name: String((a && a.name) || "").trim().slice(0, 60),
+        price: Math.round((Number(a && a.price) || 0) * 100) })).filter((a) => a.name);
+    }
+    let id = String(b.id || "").trim();
+    const out = await withOrg(orgId, async (c) => {
+      if (id) {
+        const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false", [orgId, id]);
+        if (cur.rowCount) {
+          const data = Object.assign({}, cur.rows[0].data || {}, fields);
+          const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+          return { id, rowver: Number(r.rows[0].rowver), created: false };
+        }
+      }
+      if (!id) id = "m_" + Math.random().toString(36).slice(2, 9);
+      const data = Object.assign({ id, recipe: [] }, fields);
+      const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      return { id, rowver: Number(r.rows[0].rowver), created: true };
+    });
+    poke(orgId, out.rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: out.created ? "menu.create" : "menu.update", ref: out.id,
+      detail: { name, price: priceLaari } });
+    res.json({ ok: true, id: out.id, created: out.created });
+  }));
+  /* Remove a dish from the menu (tombstone). It stops showing on the till and
+     the QR portal; past orders that referenced it are unaffected. */
+  app.post("/api/app2/product/:id/delete", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Removing a dish needs a manager or the owner.")) return;
+    const id = String(req.params.id || "");
+    const out = await withOrg(orgId, async (c) => {
+      const r = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver", [orgId, id]);
+      return r.rowCount ? { rowver: Number(r.rows[0].rowver) } : null;
+    });
+    if (!out) return res.status(404).json({ error: "dish not found" });
+    poke(orgId, out.rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.delete", ref: id, detail: {} });
+    res.json({ ok: true });
+  }));
   // Settle a receivable: reduce the customer's outstanding balance by an amount
   // (laari), clamped at zero, and stamp the settlement.
   app.post("/api/app2/customer/:id/settle", wrap(async (req, res) => {
