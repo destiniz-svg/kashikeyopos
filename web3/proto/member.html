@@ -72,6 +72,15 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
             <div style="font-size:11.5px;color:var(--muted-2);margin-top:7px">The address on your membership.</div>
             <sc-if value="{{ errVis }}"><div style="font-size:12.5px;color:#d64545;font-weight:600;margin-top:8px">{{ err }}</div></sc-if>
           </div>
+          <sc-if value="{{ enrollMode }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <label style="display:block;font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:7px">Your name</label>
+              <div style="display:flex;align-items:center;height:54px;padding:0 15px;border:1px solid var(--line-input);border-radius:14px;background:#fff">
+                <input value="{{ name }}" onInput="{{ onName }}" placeholder="e.g. Aishath Rifga" autocomplete="name" style="font-size:16px;font-weight:500"/>
+              </div>
+              <div style="font-size:11.5px;color:var(--muted-2);margin-top:7px">We'll create your rewards card and start counting points on your next visit.</div>
+            </div>
+          </sc-if>
         </div>
         <div style="display:flex;gap:10px;padding-top:16px">
           <button onClick="{{ back }}" style="flex:0 0 auto;padding:0 20px;height:52px;border:1px solid var(--line-input);border-radius:26px;font-size:14.5px;font-weight:600;color:var(--text-2)">Back</button>
@@ -515,6 +524,7 @@ class Component extends DCLogic {
     booted: false, signedIn: false, step: "email",
     email: "", code: "", err: "", masked: "", sending: false, verifying: false,
     tab: "card", member: null, sheet: null, announced: false,
+    enrollMode: false, name: "",
     toast: "", brand: {}, slug: "", pointsPer: 10, redeemPer: 10, now: Date.now(),
     menu: [], categories: [], tables: [],
     cart: {}, table: "", menuQ: "", menuCat: "all", sending2: false, morders: [], live: null,
@@ -580,19 +590,20 @@ class Component extends DCLogic {
   emailOk() { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test((this.state.email || "").trim()); }
   async sendCode() {
     if (!this.emailOk() || this.state.sending) return;
+    if (this.state.enrollMode && !(this.state.name || "").trim()) return this.setState({ err: "Enter your name to join." });
     this.setState({ sending: true, err: "" });
-    const { ok, j } = await this.post("otp", { email: this.state.email.trim().toLowerCase() });
+    const { ok, j } = await this.post("otp", { email: this.state.email.trim().toLowerCase(), enroll: this.state.enrollMode });
     this.setState({ sending: false });
-    if (ok && j.found) { this.setState({ step: "code", masked: j.masked || this.state.email, code: "", err: "" }); if (j.devCode) this.say("Dev code " + j.devCode); }
-    else if (ok && j.found === false) this.setState({ err: "No membership on that address — ask your server to sign you up." });
+    if (ok && (j.found || j.enroll)) { this.setState({ step: "code", masked: j.masked || this.state.email, code: "", err: "", isEnroll: !!j.enroll }); if (j.devCode) this.say("Dev code " + j.devCode); }
+    else if (ok && j.found === false) this.setState({ enrollMode: true, err: "No membership on that address. New to " + (this.state.brand.name || "Kashikeyo") + " Rewards? Add your name to join." });
     else this.setState({ err: (j && j.error) || "Could not send a code. Try again." });
   }
   async verify() {
     if ((this.state.code || "").length !== 6 || this.state.verifying) return;
     this.setState({ verifying: true, err: "" });
-    const { ok, j } = await this.post("verify", { email: this.state.email.trim().toLowerCase(), code: this.state.code });
+    const { ok, j } = await this.post("verify", { email: this.state.email.trim().toLowerCase(), code: this.state.code, name: this.state.name, existing: !this.state.isEnroll });
     this.setState({ verifying: false });
-    if (ok) { this.setState({ code: "" }); await this.fetchMe(); }
+    if (ok) { const joined = !!j.enrolled; this.setState({ code: "", enrollMode: false, name: "" }); await this.fetchMe(); this.fetchOrders(); if (joined) this.say("Welcome to " + (this.state.brand.name || "Kashikeyo") + " Rewards"); }
     else this.setState({ err: (j && j.error) || "Incorrect code." });
   }
   async signOut() { try { await this.post("signout", {}); } catch (e) {} this.setState({ signedIn: false, member: null, step: "email", email: "", code: "", tab: "card", sheet: null }); }
@@ -714,7 +725,8 @@ class Component extends DCLogic {
       emailBad: !this.emailOk(),
       err: s.err, errVis: !!s.err,
       sendCode: () => this.sendCode(),
-      sendLabel: s.sending ? "Sending…" : "Email me a code",
+      enrollMode: s.enrollMode, name: s.name, onName: (e) => this.setState({ name: e.target.value, err: "" }),
+      sendLabel: s.sending ? "Sending…" : (s.enrollMode ? "Join & email me a code" : "Email me a code"),
       sendBtnStyle: "flex:1;height:52px;border-radius:26px;font-size:14.5px;font-weight:700;color:#fff;background:var(--coral);box-shadow:0 4px 14px rgba(244,85,60,.35);" + (!this.emailOk() ? "opacity:.45" : ""),
       back: () => { if (s.slug) location.href = "/?s=" + encodeURIComponent(s.slug); },
       masked: s.masked,

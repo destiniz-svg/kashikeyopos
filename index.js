@@ -2868,8 +2868,13 @@ app.post("/p/:slug/member/otp", pubThrottle(8, "motp"), wrap(async (req, res) =>
   const email = String((req.body || {}).email || "").trim().toLowerCase();
   if (!validEmail(email)) return res.status(400).json({ error: "Enter a valid email address." });
   const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+  // `enroll` = the guest chose "Join rewards" after we told them there was no
+  // membership. Then we DO email a code to the address they typed (it's theirs),
+  // and the verify step creates a fresh member on success. Without enroll we
+  // still never disclose whether an address is registered ({found:false}).
+  const enroll = !!(req.body || {}).enroll;
   const c = await findCustomerByEmail(org.id, storeId, email);
-  if (!c) return res.json({ found: false });   // client shows "No membership on that address"
+  if (!c && !enroll) return res.json({ found: false });
   const purpose = "member:" + org.id;
   const cur = await withSystem((cl) => cl.query("SELECT last_sent FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
   if (cur.rowCount && (Date.now() - new Date(cur.rows[0].last_sent).getTime()) < 45000) return res.status(429).json({ error: "Please wait a moment before requesting another code." });
@@ -2880,8 +2885,9 @@ app.post("/p/:slug/member/otp", pubThrottle(8, "motp"), wrap(async (req, res) =>
      ON CONFLICT (email, purpose) DO UPDATE SET code_hash=$3, expires_at=now() + interval '10 minutes', attempts=0, verified=false, last_sent=now()`,
     [email, purpose, otpHash(email, code)]));
   const brand = org.store_name || "Kashikeyo";
-  const mail = await sendEmail({ to: email, subject: brand + " Rewards — your sign-in code", html: otpEmailHtml(code), text: "Your " + brand + " Rewards sign-in code is " + code + " (valid for 10 minutes)." });
-  const out = { found: true, masked: maskEmail(c.email || email), configured: mail.configured };
+  const subj = c ? (brand + " Rewards — your sign-in code") : (brand + " Rewards — confirm your email");
+  const mail = await sendEmail({ to: email, subject: subj, html: otpEmailHtml(code), text: "Your " + brand + " Rewards code is " + code + " (valid for 10 minutes)." });
+  const out = { found: !!c, enroll: !c, masked: maskEmail((c && c.email) || email), configured: mail.configured };
   if (!mail.ok && process.env.NODE_ENV !== "production") out.devCode = code;   // dev only, never in prod
   res.json(out);
 }));
@@ -2903,11 +2909,22 @@ app.post("/p/:slug/member/verify", pubThrottle(12, "mver"), wrap(async (req, res
     return res.status(400).json({ error: "Incorrect code." });
   }
   const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
-  const c = await findCustomerByEmail(org.id, storeId, email);
-  if (!c) return res.status(400).json({ error: "No membership on that address." });
+  let c = await findCustomerByEmail(org.id, storeId, email);
+  if (!c) {
+    // Enrollment: the email is now verified, so create a fresh rewards member.
+    // A new record (not linked to any phone customer) — no account can be taken
+    // over by knowing someone's number; staff link history on the till if asked.
+    const name = String((req.body || {}).name || "").trim().slice(0, 60) || email.split("@")[0];
+    const phone = String((req.body || {}).phone || "").replace(/[^\d+ ]/g, "").slice(0, 30);
+    const id = "cm_" + crypto.randomBytes(6).toString("hex");
+    const cust = { id, name, email, phone, points: 0, visits: 0, spent: 0, tier: "Bronze", credit: 0, used: 0, portal: true, storeId, source: "rewards-portal", createdAt: Date.now(), lastOrderAt: Date.now() };
+    const r = await withOrg(org.id, (cl) => cl.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'customers',$2,$3) RETURNING rowver", [org.id, id, JSON.stringify(cust)]));
+    poke(org.id, Number(r.rows[0].rowver));
+    c = cust;
+  }
   await withSystem((cl) => cl.query("DELETE FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
   setMemberCookie(res, signMember(org.id, c.id));
-  res.json({ ok: true });
+  res.json({ ok: true, enrolled: !((req.body || {}).existing) });
 }));
 
 app.get("/p/:slug/member/me", pubThrottle(60, "mme"), wrap(async (req, res) => {
