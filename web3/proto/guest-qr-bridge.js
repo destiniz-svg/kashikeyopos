@@ -36,14 +36,22 @@
     addr: fiscal.address || "", pos: true, tables: 20
   };
 
-  var CATS = (R.categories || []).map(function (c) { return { id: c.id, name: c.name }; });
+  /* Categories carry a parent `group` (Drinks/Food/Desserts/…). A store with
+     21 categories collapses to a handful of groups so the guest sees a short,
+     legible tab row instead of a wall of sections — the till floor does the
+     same. `groups` is the ordered group list; CAT_GROUP maps each category id
+     to its group so a menu item can inherit its category's group. */
+  var CATS = (R.categories || []).map(function (c) { return { id: c.id, name: c.name, group: c.group || "" }; });
+  var GROUPS = (R.groups || []).slice();
+  var CAT_GROUP = {};
+  CATS.forEach(function (c) { CAT_GROUP[c.id] = c.group || ""; });
 
   /* Real products → the app's menu-item shape. Price is already in MVR (major
      units) from buildGuestReal. Images are absolute ("/api/img/…" or a full
      URL), so imageBase is "" and the value is used verbatim. */
   var MENU = (R.menu || []).map(function (m) {
     return {
-      id: m.id, cat: m.cat, name: m.name, desc: m.desc || "",
+      id: m.id, cat: m.cat, group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "",
       price: Number(m.price) || 0, veg: !!m.veg, img: m.img || "",
       best: !!m.bestSeller,
       /* per-product add-ons (name + MVR price) drive the dish modal's Add Ons
@@ -78,7 +86,7 @@
     showBrowserChrome: false,   // this is a real page, not a device mock
     imageBase: "",              // real image URLs are already absolute
     data: {
-      CHAIN: CHAIN, OUTLETS: [OUTLET], MENU_CATEGORIES: CATS,
+      CHAIN: CHAIN, OUTLETS: [OUTLET], MENU_CATEGORIES: CATS, MENU_GROUPS: GROUPS,
       MENU: MENU, MODIFIERS: [], BANNERS: []
     },
     adapter: {
