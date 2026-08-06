@@ -1461,6 +1461,29 @@ class Component extends DCLogic {
     this.toast("Signed in — " + u.name);
     if (!this.registerOpen() && u.role !== "Accountant") setTimeout(() => this.openForm("regopen"), 400);
   }
+  // Enter one PIN character on the sign-in lock screen. Shared by the on-screen
+  // keypad and the physical-keyboard handler (_pinKey), so a terminal with a real
+  // keyboard can type its PIN instead of only tapping the pad. `ch` is "0".."9" or
+  // "back" (delete the last digit). Submits automatically on the 4th digit — the
+  // single source of truth for both input paths.
+  lockType(ch) {
+    const m = this.state.modal;
+    if (!m || m.kind !== "lock" || !m.who) return;
+    const u = (K().USERS || []).find((x) => x.user === m.who) || {};
+    const entered = m.pin || "";
+    if (ch === "back") { this.setState({ modal: Object.assign({}, m, { pin: entered.slice(0, -1), err: "" }) }); return; }
+    if (!/^[0-9]$/.test(ch)) return;
+    const next = (entered + ch).slice(0, 4);
+    if (next.length < 4) { this.setState({ modal: Object.assign({}, m, { pin: next, err: "" }) }); return; }
+    const expected = String(u.pin || (K().ROLE_PINS || {})[u.role] || "");
+    if (next !== expected) { this.setState({ modal: Object.assign({}, m, { pin: "", err: "Wrong PIN — 4 attempts left before this device locks" }) }); return; }
+    if (u.status === "Suspended") {
+      this.setState({ modal: Object.assign({}, m, { pin: "", err: "This account is suspended. See a chain administrator." }) });
+      this.queue("sign_in_refused", u.name + " attempted sign-in while suspended · " + this.deviceCode(), "sessions");
+      return;
+    }
+    this.signIn(u);
+  }
   signOut() {
     const n = (this.state.session || {}).name;
     this.setState({ session: null, modal: { kind: "lock" } });
@@ -1566,6 +1589,21 @@ class Component extends DCLogic {
     // never causes a render storm on a busy floor.
     this._touch = () => this.touch();
     ["pointerdown", "keydown"].forEach((e) => window.addEventListener(e, this._touch, { passive: true }));
+    // Physical keyboard on the sign-in lock screen: a terminal with a real
+    // keyboard types its PIN instead of hunting for the on-screen pad. Digits and
+    // Backspace route through the same lockType() as the pad; Esc goes back to the
+    // staff picker. Non-passive because it preventDefaults the handled keys.
+    this._pinKey = (e) => {
+      const m = this.state.modal;
+      if (!m || m.kind !== "lock" || !m.who) return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^[0-9]$/.test(e.key)) { e.preventDefault(); this.lockType(e.key); }
+      else if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); this.lockType("back"); }
+      else if (e.key === "Escape") { e.preventDefault(); this.setState({ modal: { kind: "lock" } }); }
+    };
+    window.addEventListener("keydown", this._pinKey);
     this._flush = () => { clearTimeout(this._ps); this.writeSession(); };
     window.addEventListener("visibilitychange", this._flush);
     window.addEventListener("pagehide", this._flush);
@@ -1579,6 +1617,7 @@ class Component extends DCLogic {
     clearInterval(this._t); clearInterval(this._sig); clearInterval(this._kds); clearTimeout(this._ps);
     if (this._onSig) window.removeEventListener("storage", this._onSig);
     if (this._touch) ["pointerdown", "keydown"].forEach((e) => window.removeEventListener(e, this._touch));
+    if (this._pinKey) window.removeEventListener("keydown", this._pinKey);
     window.removeEventListener("resize", this._onResize);
     if (this._flush) { window.removeEventListener("visibilitychange", this._flush); window.removeEventListener("pagehide", this._flush); }
   }
@@ -3292,7 +3331,6 @@ class Component extends DCLogic {
     // rush — and it is what makes every void, discount and drawer opening
     // attributable to a person rather than to "the terminal".
     if (m.kind === "lock") {
-      const PINS = K().ROLE_PINS || {};
       const av = (c) => "width:34px;height:34px;flex-shrink:0;border-radius:9px;display:grid;place-items:center;font-size:11px;font-weight:800;letter-spacing:.02em;background:var(--amber-dim);color:" + (c || "var(--amber-bright)");
       const ini = (n) => n.split(" ").map((x) => x[0]).slice(0, 2).join("");
       if (!m.who) {
@@ -3318,18 +3356,7 @@ class Component extends DCLogic {
       const entered = m.pin || "";
       const key = (d) => ({
         label: d, style: "display:grid;place-items:center;padding:0;height:50px;border-radius:11px;background:var(--bg-2);border:1px solid var(--line);font-size:19px;font-weight:600;font-family:'JetBrains Mono',monospace;text-align:center;line-height:1",
-        go: () => {
-          const next = (entered + d).slice(0, 4);
-          if (next.length < 4) { this.setState({ modal: Object.assign({}, m, { pin: next, err: "" }) }); return; }
-          const expected = String(u.pin || PINS[u.role] || "");
-          if (next !== expected) { this.setState({ modal: Object.assign({}, m, { pin: "", err: "Wrong PIN — 4 attempts left before this device locks" }) }); return; }
-          if (u.status === "Suspended") {
-            this.setState({ modal: Object.assign({}, m, { pin: "", err: "This account is suspended. See a chain administrator." }) });
-            this.queue("sign_in_refused", u.name + " attempted sign-in while suspended · " + this.deviceCode(), "sessions");
-            return;
-          }
-          this.signIn(u);
-        }
+        go: () => this.lockType(d)
       });
       return {
         modalTitle: "Enter PIN", modalSub: this.outlet().name + " · " + this.deviceCode(),
@@ -3341,7 +3368,7 @@ class Component extends DCLogic {
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
           { label: "", style: "visibility:hidden", go: () => {} },
           key("0"),
-          { label: "⌫", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:11px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.setState({ modal: Object.assign({}, m, { pin: entered.slice(0, -1), err: "" }) }) }
+          { label: "⌫", style: "display:grid;place-items:center;padding:0;height:50px;border-radius:11px;background:var(--bg);border:1px solid var(--line);font-size:17px;color:var(--text-dim);text-align:center;line-height:1", go: () => this.lockType("back") }
         ])
       };
     }

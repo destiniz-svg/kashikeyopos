@@ -101,7 +101,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
                 <div style="{{ b.style }}">{{ b.ch }}</div>
               </sc-for>
             </div>
-            <input value="{{ code }}" onInput="{{ onCode }}" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+            <input value="{{ code }}" onInput="{{ onCode }}" inputmode="numeric" autocomplete="one-time-code" maxlength="6" autofocus="{{ true }}"
               style="position:absolute;inset:0;opacity:0;letter-spacing:0;cursor:pointer"/>
           </div>
           <sc-if value="{{ errVis }}"><div style="text-align:center;font-size:12.5px;color:#d64545;font-weight:600">{{ err }}</div></sc-if>
