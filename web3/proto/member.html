@@ -603,7 +603,15 @@ class Component extends DCLogic {
     this.setState({ verifying: true, err: "" });
     const { ok, j } = await this.post("verify", { email: this.state.email.trim().toLowerCase(), code: this.state.code, name: this.state.name, existing: !this.state.isEnroll });
     this.setState({ verifying: false });
-    if (ok) { const joined = !!j.enrolled; this.setState({ code: "", enrollMode: false, name: "" }); await this.fetchMe(); this.fetchOrders(); if (joined) this.say("Welcome to " + (this.state.brand.name || "Kashikeyo") + " Rewards"); }
+    if (ok) {
+      const joined = !!j.enrolled;
+      // Sign in straight from the verify response — no second /member/me round-trip to
+      // race the just-set cookie (see server note). Fall back to fetchMe only if the
+      // card didn't ride along.
+      if (j.member) { this.setState({ signedIn: true, member: j.member, booted: true, code: "", enrollMode: false, name: "" }); this.startPoll(); this.fetchOrders(); }
+      else { this.setState({ code: "", enrollMode: false, name: "" }); await this.fetchMe(); this.fetchOrders(); }
+      if (joined) this.say("Welcome to " + (this.state.brand.name || "Kashikeyo") + " Rewards");
+    }
     else this.setState({ err: (j && j.error) || "Incorrect code." });
   }
   async signOut() { try { await this.post("signout", {}); } catch (e) {} this.setState({ signedIn: false, member: null, step: "email", email: "", code: "", tab: "card", sheet: null }); }

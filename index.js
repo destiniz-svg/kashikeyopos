@@ -3000,7 +3000,22 @@ app.post("/p/:slug/member/verify", pubThrottle(12, "mver"), wrap(async (req, res
   }
   await withSystem((cl) => cl.query("DELETE FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
   setMemberCookie(res, signMember(org.id, c.id));
-  res.json({ ok: true, enrolled: !((req.body || {}).existing) });
+  // Return the full member card inline so the client signs in from THIS response and
+  // never depends on a second /member/me round-trip. That refetch reads the cookie we
+  // just set, and a Set-Cookie-then-immediately-refetch race (notably iOS Safari, where
+  // a cookie from a fetch() POST isn't always visible to the next fetch) would otherwise
+  // strand a diner on the code screen after a *correct* code — they resend and resend.
+  // Best-effort: on any hiccup we still return ok and the client falls back to fetchMe().
+  let member = null;
+  try {
+    const settingsArr = await loadSettingsArr(org.id);
+    const settings = settingsArr[0] || { storeName: org.store_name, gstBp: 800, svcChargeBp: 0, currency: "MVR" };
+    const hist = (await guestOrders(org.id, storeId, { customerId: c.id }, settings)).slice(0, 25);
+    const vouchers = (await kindAll(org.id, "rewardVouchers", storeId)).filter((v) => idEq(v.custId, c.id))
+      .sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0));
+    member = memberPayload(org, c, settings, hist, vouchers);
+  } catch (e) { recordError("member/verify payload", e); }
+  res.json({ ok: true, enrolled: !((req.body || {}).existing), member });
 }));
 
 app.get("/p/:slug/member/me", pubThrottle(60, "mme"), wrap(async (req, res) => {
