@@ -1381,13 +1381,23 @@ const otpEmailHtml = (code) => `<div style="font-family:system-ui,Segoe UI,Arial
 </div>`;
 /* Invitation to the registered-customer (rewards) portal — emailed, not SMS.
    Carries the store's brand and the sign-in link; the member signs in with this
-   same email address. */
-const portalInviteEmailHtml = (brand, link) => `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:460px;margin:0 auto;padding:28px 24px;color:#221a12">
-  <div style="font-weight:800;font-size:18px;color:#f4553c;margin-bottom:14px">${String(brand || "Kashikeyo").replace(/[<>&]/g, "")} Rewards</div>
-  <p style="font-size:14.5px;line-height:1.6;margin:0 0 16px">You're invited to ${String(brand || "our").replace(/[<>&]/g, "")} Rewards — points on every visit, your house account, and ordering from your table, all in one place.</p>
-  <a href="${link}" style="display:inline-block;background:#f4553c;color:#fff;text-decoration:none;font-weight:700;font-size:14.5px;padding:13px 22px;border-radius:26px">Open your rewards card</a>
-  <p style="font-size:12.5px;color:#6b6459;line-height:1.6;margin:18px 0 0">Sign in with this email address — we'll email you a one-time code, no password to remember. If this wasn't meant for you, you can ignore it.</p>
+   same email address. `mode` shapes the copy: a first "invite", a "resend" for
+   someone who never opened it, or a "reset" that walks an existing member back
+   in (the portal itself does the email one-time-code — there is no password). */
+const portalInviteEmailHtml = (brand, link, mode) => {
+  const b = String(brand || "Kashikeyo").replace(/[<>&]/g, "");
+  const copy = mode === "reset"
+    ? { lead: `Here's the link back to your ${b} Rewards card. We'll email you a one-time code to sign in — no password to remember.`, cta: "Sign back in", foot: "You asked to get back into your rewards card (or the store did it for you). If it wasn't you, you can ignore this — nothing changes until the code is used." }
+    : mode === "resend"
+    ? { lead: `A quick reminder — your ${b} Rewards card is ready. Points on every visit, your house account, and ordering from your table.`, cta: "Open your rewards card", foot: "Sign in with this email address — we'll email you a one-time code, no password to remember. If this wasn't meant for you, you can ignore it." }
+    : { lead: `You're invited to ${b} Rewards — points on every visit, your house account, and ordering from your table, all in one place.`, cta: "Open your rewards card", foot: "Sign in with this email address — we'll email you a one-time code, no password to remember. If this wasn't meant for you, you can ignore it." };
+  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:460px;margin:0 auto;padding:28px 24px;color:#221a12">
+  <div style="font-weight:800;font-size:18px;color:#f4553c;margin-bottom:14px">${b} Rewards</div>
+  <p style="font-size:14.5px;line-height:1.6;margin:0 0 16px">${copy.lead}</p>
+  <a href="${link}" style="display:inline-block;background:#f4553c;color:#fff;text-decoration:none;font-weight:700;font-size:14.5px;padding:13px 22px;border-radius:26px">${copy.cta}</a>
+  <p style="font-size:12.5px;color:#6b6459;line-height:1.6;margin:18px 0 0">${copy.foot}</p>
 </div>`;
+};
 /* Minimal signup-safe password + email validation, reused by the staged flow. */
 const validEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e || "").trim());
 const passwordProblem = (p) => (String(p || "").length < 8 ? "Password must be at least 8 characters." : null);
@@ -2975,10 +2985,18 @@ app.post("/p/:slug/member/verify", pubThrottle(12, "mver"), wrap(async (req, res
     const name = String((req.body || {}).name || "").trim().slice(0, 60) || email.split("@")[0];
     const phone = String((req.body || {}).phone || "").replace(/[^\d+ ]/g, "").slice(0, 30);
     const id = "cm_" + crypto.randomBytes(6).toString("hex");
-    const cust = { id, name, email, phone, points: 0, visits: 0, spent: 0, tier: "Bronze", credit: 0, used: 0, portal: true, storeId, source: "rewards-portal", createdAt: Date.now(), lastOrderAt: Date.now() };
+    const cust = { id, name, email, phone, points: 0, visits: 0, spent: 0, tier: "Bronze", credit: 0, used: 0, portal: true, storeId, source: "rewards-portal", createdAt: Date.now(), lastOrderAt: Date.now(), portalLoginAt: Date.now() };
     const r = await withOrg(org.id, (cl) => cl.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'customers',$2,$3) RETURNING rowver", [org.id, id, JSON.stringify(cust)]));
     poke(org.id, Number(r.rows[0].rowver));
     c = cust;
+  } else {
+    // Stamp the sign-in so the back office can tell an invited-but-dormant member
+    // (never signed in) from an active one — the roster offers "resend link" vs
+    // "reset access" accordingly. Marks portal=true too: signing in IS access.
+    const rv = await withOrg(org.id, (cl) => cl.query(
+      "UPDATE entities SET data = data || jsonb_build_object('portal',true,'portalLoginAt',$3::bigint), rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver",
+      [org.id, String(c.id), Date.now()]));
+    if (rv.rowCount) poke(org.id, Number(rv.rows[0].rowver));
   }
   await withSystem((cl) => cl.query("DELETE FROM otp_codes WHERE email=$1 AND purpose=$2", [email, purpose]));
   setMemberCookie(res, signMember(org.id, c.id));
@@ -4349,18 +4367,41 @@ if (fs.existsSync(protoFile)) {
         // Real customers → the reference CUSTOMERS shape (money laari→MVR).
         const custRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='customers' AND deleted=false ORDER BY (data->>'lastOrderAt')::numeric DESC NULLS LAST LIMIT 500", [orgId])).rows;
+        // Per-customer footprint the roster needs to gate deletion (three cheap
+        // GROUP BYs, not a query per row): how many sales/orders reference them,
+        // how many orders are still open, how many rewards are still pending.
+        // customerId (guest/portal orders) and custId (till/reward links) both
+        // point at a customer, so coalesce them.
+        const custKey = "COALESCE(NULLIF(data->>'customerId',''),NULLIF(data->>'custId',''))";
+        const rowsToMap = (rows) => { const m = {}; rows.forEach((r) => { if (r.cid) m[r.cid] = Number(r.n); }); return m; };
+        const txnByCust = rowsToMap((await c.query(
+          `SELECT ${custKey} AS cid, count(*)::int n FROM entities WHERE org_id=$1 AND kind IN ('sales','orders') AND deleted=false AND ${custKey} IS NOT NULL GROUP BY 1`, [orgId])).rows);
+        const openByCust = rowsToMap((await c.query(
+          `SELECT ${custKey} AS cid, count(*)::int n FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false AND ${custKey} IS NOT NULL AND lower(COALESCE(data->>'status','new')) NOT IN ('completed','settled','paid','closed','cancelled','void','refunded','declined') GROUP BY 1`, [orgId])).rows);
+        const pendRwdByCust = rowsToMap((await c.query(
+          `SELECT NULLIF(data->>'custId','') AS cid, count(*)::int n FROM entities WHERE org_id=$1 AND kind='rewardVouchers' AND deleted=false AND lower(COALESCE(data->>'state','pending'))='pending' AND NULLIF(data->>'custId','') IS NOT NULL GROUP BY 1`, [orgId])).rows);
         const tierOf = (pts) => pts >= 2000 ? "Platinum" : pts >= 1000 ? "Gold" : pts >= 300 ? "Silver" : "Bronze";
         const customers = custRows.map((r) => {
           const d = r.data || {}, pts = Number(d.points || d.loyaltyPoints || 0);
           const lastAt = Number(d.lastOrderAt || 0);
+          const usedLaari = Number(d.balance || d.used || 0);
+          const txns = txnByCust[r.id] || 0, openOrders = openByCust[r.id] || 0, pendingRewards = pendRwdByCust[r.id] || 0;
           return {
             id: r.id, name: d.name || "Guest", phone: d.phone || "", email: d.email || "",
             visits: Number(d.visits || d.orders || 0), spent: Math.round((Number(d.spent || d.totalSpent || 0)) / 100),
             points: pts, tier: d.tier || tierOf(pts),
             credit: Math.round((Number(d.creditLimit || d.credit || 0)) / 100),
-            used: Math.round((Number(d.balance || d.used || 0)) / 100),
+            used: Math.round(usedLaari / 100),
             last: lastAt ? new Date(lastAt).toISOString().slice(0, 10) : "",
             portal: d.portal === true, hasEmail: !!(d.email && String(d.email).indexOf("@") > 0),
+            // Deletion controls: whether the customer has any transaction history
+            // (roster warns before removing), whether something is still pending
+            // (roster keeps the record), and whether they've ever signed in to the
+            // portal (resend-invite vs reset-access).
+            txns, openOrders, pendingRewards,
+            hasTxn: txns > 0 || Number(d.visits || 0) > 0 || Number(d.spent || 0) > 0,
+            pending: usedLaari > 0 || openOrders > 0 || pendingRewards > 0,
+            loggedIn: !!(d.portalLoginAt || d.portalLastLoginAt || d.lastLoginAt),
           };
         });
         // Real staff roster for the sign-in lock. The till PIN is a djb2 hash;
@@ -4749,16 +4790,23 @@ if (fs.existsSync(protoFile)) {
     if (!orgId) return res.status(401).json({ error: "no session" });
     const ids = Array.isArray((req.body || {}).ids) ? (req.body.ids).map(String).slice(0, 500) : [];
     if (!ids.length) return res.status(400).json({ error: "no customers selected" });
+    // invite (default) = first send · resend = nudge someone who never opened it ·
+    // reset = walk an existing member back in (both re-use the same OTP door).
+    const mode = ["invite", "resend", "reset"].indexOf(String((req.body || {}).mode || "")) >= 0 ? String(req.body.mode) : "invite";
     const o = (await withSystem((c) => c.query("SELECT slug, store_name FROM orgs WHERE id=$1", [orgId]))).rows[0] || {};
     const base = portalOriginForSlug(o.slug, req);
     const link = PORTAL_BASE_DOMAINS.length ? (base + "/m") : (base + "/m?s=" + encodeURIComponent(o.slug || ""));
     const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
     const custs = await kindAll(orgId, "customers", storeId);
     const targets = custs.filter((c) => ids.indexOf(String(c.id)) >= 0 && c.email && String(c.email).indexOf("@") > 0);
+    const brand = o.store_name || "Kashikeyo";
+    const subject = mode === "reset" ? (brand + " Rewards — sign back in")
+      : mode === "resend" ? (brand + " Rewards — your card is waiting")
+      : (brand + " Rewards — you're invited");
     let invited = 0;
     for (const c of targets) {
-      const mail = await sendEmail({ to: c.email, subject: (o.store_name || "Kashikeyo") + " Rewards — you're invited",
-        html: portalInviteEmailHtml(o.store_name, link), text: "Open your " + (o.store_name || "Kashikeyo") + " Rewards card: " + link });
+      const mail = await sendEmail({ to: c.email, subject,
+        html: portalInviteEmailHtml(brand, link, mode), text: "Open your " + brand + " Rewards card: " + link });
       // Only mark them invited (portal=true) when the email actually went out, so
       // the flag never claims an invitation the customer never received.
       if (mail.ok) {
@@ -5197,6 +5245,63 @@ if (fs.existsSync(protoFile)) {
     logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "customer.settle", ref: id,
       detail: { amount, method: String((req.body || {}).method || "cash").slice(0, 16), balance: out.balance, settlementId: out.settlementId } });
     res.json({ ok: true, balance: out.balance, settlementId: out.settlementId });
+  }));
+  /* Delete (tombstone) a customer. Three guards, all re-checked server-side so
+     the terminal's flags can't be trusted into a bad delete:
+       1. A manager+ PIN must be entered (the same till PIN staff already hold),
+          on top of the manager-rank session — a destructive, confirmable action.
+       2. If anything is still pending — an unsettled credit balance, an open
+          order, or an unredeemed reward voucher — the record STAYS and we say so.
+       3. If the customer has transaction history but nothing pending, we ask the
+          caller to confirm (`force`) before removing; with no history it deletes
+          straight away.
+     Delete is a soft tombstone (deleted=true), never a hard row removal: past
+     sales and receipts reference this id and must stay intact for the accounts,
+     and the sync protocol propagates the tombstone so clients drop the row. */
+  app.post("/api/app2/customer/:id/delete", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Deleting a customer needs a manager or the owner.")) return;
+    const id = String(req.params.id || "");
+    const force = !!(req.body || {}).force;
+    const want = hashTillPin(String((req.body || {}).pin || ""));
+    // The PIN must belong to a manager-or-above staff member of THIS org.
+    const okPin = await withOrg(orgId, async (c) => {
+      const us = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [orgId]);
+      const RANK = { owner: 3, admin: 2, manager: 1 };
+      return us.rows.map((r) => r.data).some((u) => u && u.pin && String(u.pin) === want && RANK[String(u.role || "").toLowerCase()]);
+    });
+    if (!okPin) return res.status(403).json({ error: "That PIN doesn't match a manager or owner. Deleting a customer needs a manager PIN." });
+    const out = await withOrg(orgId, async (c) => {
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='customers' AND id=$2 AND deleted=false", [orgId, id]);
+      if (!cur.rowCount) return { notFound: true };
+      const d = cur.rows[0].data || {};
+      const bal = Number(d.balance || d.used || 0);
+      const custKey = "COALESCE(NULLIF(data->>'customerId',''),NULLIF(data->>'custId',''))";
+      const openO = Number((await c.query(
+        `SELECT count(*)::int n FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false AND ${custKey}=$2 AND lower(COALESCE(data->>'status','new')) NOT IN ('completed','settled','paid','closed','cancelled','void','refunded','declined')`, [orgId, id])).rows[0].n);
+      const openV = Number((await c.query(
+        `SELECT count(*)::int n FROM entities WHERE org_id=$1 AND kind='rewardVouchers' AND deleted=false AND NULLIF(data->>'custId','')=$2 AND lower(COALESCE(data->>'state','pending'))='pending'`, [orgId, id])).rows[0].n);
+      if (bal > 0 || openO > 0 || openV > 0) {
+        const bits = [];
+        if (bal > 0) bits.push("an unsettled balance of MVR " + (bal / 100).toFixed(2));
+        if (openO > 0) bits.push(openO + " open order" + (openO > 1 ? "s" : ""));
+        if (openV > 0) bits.push(openV + " unredeemed reward" + (openV > 1 ? "s" : ""));
+        return { pending: true, reason: bits.join(", ") };
+      }
+      const txns = Number((await c.query(
+        `SELECT count(*)::int n FROM entities WHERE org_id=$1 AND kind IN ('sales','orders') AND deleted=false AND ${custKey}=$2`, [orgId, id])).rows[0].n);
+      const hasTxn = txns > 0 || Number(d.visits || 0) > 0 || Number(d.spent || 0) > 0;
+      if (hasTxn && !force) return { needsConfirm: true, txns };
+      const r = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, id]);
+      return { ok: true, rowver: Number(r.rows[0].rowver), hadTxn: hasTxn, name: d.name || "" };
+    });
+    if (out.notFound) return res.status(404).json({ error: "customer not found" });
+    if (out.pending) return res.status(409).json({ pending: true, error: "This customer has " + out.reason + " — settle or clear it first. The record stays." });
+    if (out.needsConfirm) return res.status(409).json({ needsConfirm: true, txns: out.txns, error: "This customer has " + out.txns + " transaction" + (out.txns > 1 ? "s" : "") + " on file." });
+    poke(orgId, out.rowver);
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "customer.delete", ref: id, detail: { name: out.name, hadTransactions: !!out.hadTxn } });
+    res.json({ ok: true });
   }));
   /* Cashier shift + drawer cash-up (persisted). The till had an open/close
      drawer flow that only lived in localStorage; persist it as a `shifts`

@@ -1119,6 +1119,11 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
               <sc-if value="{{ hasDetailEdit }}">
                 <button onClick="{{ detailEdit }}" style="margin-top:13px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center">{{ detailEditLabel }}</button>
               </sc-if>
+              <sc-if value="{{ hasDetailActions }}">
+                <sc-for list="{{ detailActions }}" as="a" hint-placeholder-count="2">
+                  <button onClick="{{ a.go }}" style="{{ a.style }}">{{ a.label }}</button>
+                </sc-for>
+              </sc-if>
             </div>
           </sc-if>
 
@@ -1237,7 +1242,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
               <button onClick="{{ formAiGo }}" style="{{ formAiBtnStyle }}">{{ formAiLabel }}</button>
               <div style="{{ formAiMsgStyle }}">{{ formAiMsg }}</div>
             </sc-if>
-            <button onClick="{{ formSave }}" style="margin-top:14px;width:100%;padding:12px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">{{ formSaveLabel }}</button>
+            <button onClick="{{ formSave }}" style="{{ formSaveStyle }}">{{ formSaveLabel }}</button>
             <div style="margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.6">{{ formFoot }}</div>
           </sc-if>
 
@@ -3602,8 +3607,18 @@ class Component extends DCLogic {
       const spec = this.formSpec(m.form);
       if (!spec) return { modalTitle: "Form", modalSub: "", formFields: [] };
       const vals = s.formVals || {};
+      // A danger form (delete) paints its confirm button red and, for custdel,
+      // carries a customer-specific sub line built from the live footprint flags.
+      const danger = !!spec.danger;
+      const dc = (m.form === "custdel" && m.edit) ? m.edit : null;
+      const custdelSub = dc ? (dc.hasTxn
+        ? (dc.txns || 0) + " transaction" + ((dc.txns || 0) === 1 ? "" : "s") + " on file — receipts stay, the profile is removed"
+        : "No transactions on file — safe to remove") : "";
       return {
-        modalTitle: spec.title, modalSub: spec.sub,
+        modalTitle: spec.title, modalSub: dc ? custdelSub : spec.sub,
+        formSaveStyle: "margin-top:14px;width:100%;padding:12px;border-radius:8px;font-size:12.5px;font-weight:700;text-align:center;" + (danger
+          ? "background:var(--red-dim-2);color:#fff;border:1px solid var(--red-line-2)"
+          : "background:var(--amber);color:var(--on-amber);border:1px solid var(--amber)"),
         formFields: spec.fields.map((f) => ({
           label: f.label, wrap: f.full ? "grid-column:1/-1" : "",
           value: vals[f.k] === undefined ? "" : String(vals[f.k]),
@@ -3987,7 +4002,13 @@ class Component extends DCLogic {
     }
     if (m.kind === "customer") {
       const c = (K0.CUSTOMERS || []).find((x) => x.id === m.id) || {};
-      const rows = [R("Lifetime spend", MVRc(c.spent), "var(--amber-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.portal === false ? "Not invited" : "Registered · order tracking on")];
+      // Portal state drives which recovery action we offer: never invited →
+      // invite from the roster; invited but never signed in → resend; signed in
+      // → reset access. loggedIn/pending/hasTxn come from the live projection.
+      const portalTxt = c.portal === false ? "Not invited"
+        : c.loggedIn ? "Registered · signed in" : "Invited · not signed in yet";
+      const rows = [R("Lifetime spend", MVRc(c.spent), "var(--amber-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", portalTxt)];
+      if (c.pending) rows.push(Rt("Pending", [(c.used > 0 ? "balance " + MVRc(c.used) : ""), (c.openOrders ? c.openOrders + " open order" + (c.openOrders > 1 ? "s" : "") : ""), (c.pendingRewards ? c.pendingRewards + " reward" + (c.pendingRewards > 1 ? "s" : "") : "")].filter(Boolean).join(" · "), "var(--amber-bright)"));
       // Credit statement: the customer's own charges (credit-tender orders) and
       // settlements, newest first — the ledger, not just the net balance.
       const REAL = window.KPOS_REAL;
@@ -3998,9 +4019,20 @@ class Component extends DCLogic {
         if (led.length) { rows.push(Rt("— Statement —", "")); led.forEach((l) => rows.push(R(l.t, (l.dr ? "" : "− ") + MVRc(l.v), l.dr ? "var(--text)" : "var(--green)"))); }
       }
       const canSettle = this.can("customers") && (c.used || 0) > 0;
+      // Portal recovery + delete actions (managers only, real store only). Resend
+      // for the invited-but-dormant; reset for someone who has signed in. Delete
+      // is danger-styled and always routes through the PIN-gated custdel form.
+      const acts = [];
+      const canManage = this.can("customers") && !!window.KPOS_REAL;
+      const neutralBtn = "margin-top:11px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center";
+      const dangerBtn = "margin-top:11px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--red-line-2);color:var(--red-dim-2);font-size:12px;font-weight:600;text-align:center";
+      if (canManage && c.hasEmail && c.portal && !c.loggedIn) acts.push({ label: "Resend rewards link", style: neutralBtn, go: () => this.portalAction(c, "resend") });
+      if (canManage && c.hasEmail && c.loggedIn) acts.push({ label: "Reset portal access · email code", style: neutralBtn, go: () => this.portalAction(c, "reset") });
+      if (canManage) acts.push({ label: c.pending ? "Delete blocked · pending items" : "Delete customer", style: dangerBtn, go: () => this.askDeleteCustomer(c) });
       return {
         hasDetailEdit: this.can("customers"), detailEditLabel: "Edit tier or credit limit", detailEdit: () => this.openForm("cust", c),
         hasDetailAction2: canSettle, detailAction2Label: "Settle balance · " + MVRc(c.used || 0), detailAction2: () => this.openForm("settle", c),
+        hasDetailActions: acts.length > 0, detailActions: acts,
         modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier",
         detailRows: rows,
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
@@ -5684,6 +5716,45 @@ class Component extends DCLogic {
       }).catch(() => this.toast("Could not record the settlement — check the connection", "warn"));
     this.setState({ modal: null });
   }
+  // Open the PIN-gated delete form. Blocks up front when the customer still has
+  // something pending — the server refuses too, but stopping here spares the
+  // manager typing a PIN only to be told the record stays.
+  askDeleteCustomer(c) {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Sign in to a store to manage customers", "warn");
+    if (c.pending) return this.toast(c.name + " has a pending balance, order or reward — settle or clear it first. The record stays.", "warn");
+    this.openForm("custdel", c);
+  }
+  // Delete (tombstone) a customer, confirmed by a manager PIN. force:true because
+  // the operator has already seen the transaction warning on the form; the server
+  // still refuses if anything is pending and re-checks the PIN and the history.
+  deleteCustomer(c, pin) {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Sign in to a store to manage customers", "warn");
+    if (!pin || String(pin).replace(/\D/g, "").length < 4) return this.toast("Enter your 4-digit manager PIN to confirm", "warn");
+    fetch("/api/app2/customer/" + encodeURIComponent(c.id) + "/delete", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ pin: String(pin).trim(), force: true }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && (j.pending || j.error)) return this.toast(j.error || "Could not delete this customer", "warn");
+        const arr = K().CUSTOMERS || []; const i = arr.findIndex((x) => x.id === c.id); if (i >= 0) arr.splice(i, 1);
+        this.setState({ modal: null });
+        this.toast(c.name + " deleted");
+        this.refreshData && this.refreshData();
+      }).catch(() => this.toast("Could not delete — check the connection", "warn"));
+  }
+  // Email a member their portal link again: "resend" nudges an invited-but-dormant
+  // customer; "reset" walks a signed-in member back in. Both land on the same email
+  // one-time-code door — the portal has no password to reset.
+  portalAction(c, mode) {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Connect a store to send portal links", "warn");
+    if (!c.hasEmail) return this.toast("Add an email to " + c.name + " first", "warn");
+    this.toast(mode === "reset" ? "Emailing a fresh sign-in link…" : "Re-sending the rewards link…");
+    fetch("/api/app2/portal/invite", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ids: [c.id], mode: mode }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) return this.toast(j.error, "warn");
+        if (j && j.configured === false) return this.toast("Email delivery isn't configured yet — can't send", "warn");
+        if (!j || !j.invited) return this.toast("Couldn't email " + c.name + " — check the address on file", "warn");
+        this.toast((mode === "reset" ? "Reset link sent to " : "Link re-sent to ") + c.name);
+        this.refreshData && this.refreshData();
+      }).catch(() => this.toast("Could not send — check the connection", "warn"));
+  }
   // Mark an on-account bill as paid: records how it was paid, so it leaves
   // accounts payable (and, if paid from the bank, becomes an outstanding
   // payment on the next reconciliation until it clears).
@@ -7096,6 +7167,14 @@ class Component extends DCLogic {
             tier: v.tier, credit: +v.credit || 0, used: 0, last: "never", portal: false
           }, "Customer created · " + v.name, "customers");
         }
+      },
+      custdel: {
+        title: "Delete customer", sub: "", save: "Delete customer", danger: true,
+        foot: "A manager PIN confirms the deletion. Past receipts and ledger rows are kept for your accounts — the customer is removed from the roster. A customer with an unsettled balance, an open order or an unredeemed reward can't be deleted; settle or clear it first.",
+        fields: [
+          { k: "pin", label: "Confirm with your manager PIN", v: "", pwd: 1, full: 1 }
+        ],
+        onSave: (v, c) => this.deleteCustomer(c, v.pin)
       },
       rewardEdit: {
         title: "Reward", sub: "What a member redeems points for", save: "Add reward", editSave: "Save reward",
