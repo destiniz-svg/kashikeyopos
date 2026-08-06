@@ -4061,7 +4061,7 @@ class Component extends DCLogic {
       const canManage = this.can("customers") && !!window.KPOS_REAL;
       const neutralBtn = "margin-top:11px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12px;font-weight:600;text-align:center";
       const dangerBtn = "margin-top:11px;width:100%;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--red-line-2);color:var(--red-dim-2);font-size:12px;font-weight:600;text-align:center";
-      if (canManage && c.hasEmail) {
+      if (canManage && this.custHasEmail(c)) {
         const pa = c.loggedIn ? { label: "Reset portal access · email code", mode: "reset" }
           : c.portal ? { label: "Resend rewards link", mode: "resend" }
           : { label: "Send rewards invite", mode: "invite" };
@@ -5796,12 +5796,58 @@ class Component extends DCLogic {
     const del = (this.state.deletedCusts || []).filter((x) => x !== id).concat([id]).slice(-500);
     this.setState({ local: L, patches: patches, deletedCusts: del });
   }
+  // Does a customer row have a usable email? The server projection sets hasEmail,
+  // but a just-created row (before the next refresh) only carries `email`.
+  custHasEmail(c) { return !!(c && (c.hasEmail || (c.email && String(c.email).indexOf("@") > 0))); }
+  // Create or edit a customer. In a REAL store this persists to /api/app2/customer
+  // so the row is a true server entity — its email reaches the rewards portal, a
+  // credit limit opens the ledger, and it survives a browser refresh (the old
+  // local-only insertRow/patchRows never reached the server, which is why an
+  // entered email "wasn't there" at invite time and created rows vanished/lingered).
+  // Demo mode (no store connected) keeps the local-only behaviour.
+  saveCustomer(v, existing) {
+    const name = String(v.name || "").trim();
+    if (!name) return this.toast("A name is required", "warn");
+    const phone = String(v.phone || "").trim();
+    if (!existing && phone.length < 8) return this.toast("Name and a full phone number are required", "warn");
+    const email = String(v.email || "").trim().toLowerCase();
+    if (email && email.indexOf("@") < 1) return this.toast("That email doesn't look right", "warn");
+    const lim = Math.max(0, +v.credit || 0);
+    if (existing && lim < (existing.used || 0)) return this.toast("Limit is below the " + MVRc(existing.used) + " already drawn — settle the balance first", "warn");
+    const tier = v.tier || "Bronze";
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const body = { name: name, phone: phone, email: email, tier: tier, creditLimit: Math.round(lim * 100) };
+      if (existing && existing.id) body.id = existing.id;
+      fetch("/api/app2/customer", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          if (j && j.error) return this.toast(j.error, "warn");
+          const id = (j && j.id) || (existing && existing.id);
+          const arr = K().CUSTOMERS || [];
+          const row = arr.find((x) => x.id === id);
+          const patch = { id: id, name: name, phone: phone, email: email, hasEmail: this.custHasEmail({ email: email }), tier: tier, credit: lim };
+          if (row) Object.assign(row, patch);
+          else arr.unshift(Object.assign({ visits: 0, spent: 0, points: 0, used: 0, last: "never", portal: false, loggedIn: false, pending: false, hasTxn: false }, patch));
+          // Re-creating an id that was tombstoned must un-hide it.
+          const del = (this.state.deletedCusts || []).filter((x) => x !== id);
+          this.setState({ modal: null, deletedCusts: del });
+          this.toast(existing ? name + " updated" : "Customer created · " + name);
+        }).catch(() => this.toast("Could not save — check the connection", "warn"));
+      return;
+    }
+    // Demo mode — local only.
+    if (existing) {
+      this.patchRows("custs", [existing.id], { name: name, phone: phone, email: email, hasEmail: this.custHasEmail({ email: email }), tier: tier, credit: lim },
+        name + " updated" + (lim !== existing.credit ? " · credit limit " + MVRc(existing.credit) + " to " + MVRc(lim) : ""), "customers");
+    } else {
+      this.insertRow("custs", { id: this.nextId("custs", "c"), name: name, phone: phone, email: email, hasEmail: this.custHasEmail({ email: email }), visits: 0, spent: 0, points: 0, tier: tier, credit: lim, used: 0, last: "never", portal: false }, "Customer created · " + name, "customers");
+    }
+  }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
   // land on the same email one-time-code door — the portal has no password to reset.
   portalAction(c, mode) {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Connect a store to send portal links", "warn");
-    if (!c.hasEmail) return this.toast("Add an email to " + c.name + " first", "warn");
+    if (!this.custHasEmail(c)) return this.toast("Add an email to " + c.name + " first", "warn");
     this.toast(mode === "reset" ? "Emailing a fresh sign-in link…" : mode === "invite" ? "Sending the rewards invite…" : "Re-sending the rewards link…");
     fetch("/api/app2/portal/invite", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ids: [c.id], mode: mode }) })
       .then((r) => r.json().catch(() => ({}))).then((j) => {
@@ -6078,7 +6124,7 @@ class Component extends DCLogic {
             const targets = list.filter((c) => c.portal !== true);
             if (!targets.length) return this.toast("Everyone shown already has portal access", "warn");
             if (!window.KPOS_REAL) return this.toast("Invitations send by email once a store is connected", "warn");
-            const ids = targets.filter((c) => c.hasEmail).map((c) => c.id);
+            const ids = targets.filter((c) => this.custHasEmail(c)).map((c) => c.id);
             const noEmail = targets.length - ids.length;
             if (!ids.length) return this.toast("None of these customers has an email yet — add one to invite them to the rewards portal", "warn");
             this.toast("Sending " + ids.length + " invitation" + (ids.length > 1 ? "s" : "") + " by email…");
@@ -7216,20 +7262,8 @@ class Component extends DCLogic {
           { k: "credit", label: "Credit limit MVR", v: "0" }
         ],
         editSave: "Save changes",
-        onEdit: (v, c) => {
-          if (!v.name) return this.toast("A name is required", "warn");
-          const lim = +v.credit || 0;
-          if (lim < (c.used || 0)) return this.toast("Limit is below the " + MVRc(c.used) + " already drawn — settle the balance first", "warn");
-          this.patchRows("custs", [c.id], { name: v.name, phone: v.phone, email: (v.email || "").trim().toLowerCase(), tier: v.tier, credit: lim },
-            c.name + " updated" + (lim !== c.credit ? " · credit limit " + MVRc(c.credit) + " to " + MVRc(lim) : ""), "customers");
-        },
-        onSave: (v) => {
-          if (!v.name || v.phone.trim().length < 8) return this.toast("Name and a full phone number are required", "warn");
-          this.insertRow("custs", {
-            id: this.nextId("custs", "c"), name: v.name, phone: v.phone, email: (v.email || "").trim().toLowerCase(), visits: 0, spent: 0, points: 0,
-            tier: v.tier, credit: +v.credit || 0, used: 0, last: "never", portal: false
-          }, "Customer created · " + v.name, "customers");
-        }
+        onEdit: (v, c) => this.saveCustomer(v, c),
+        onSave: (v) => this.saveCustomer(v, null)
       },
       custdel: {
         title: "Delete customer", sub: "", save: "Delete customer", danger: true,

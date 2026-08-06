@@ -5193,6 +5193,19 @@ if (fs.existsSync(protoFile)) {
     if (b.allergy !== undefined) fields.allergy = String(b.allergy).slice(0, 120);
     if (b.diet !== undefined) fields.diet = String(b.diet).slice(0, 120);
     if (b.note !== undefined) fields.note = String(b.note).slice(0, 300);
+    // Email is what links a customer to the rewards portal — persist it (lower-
+    // cased, validated when non-empty) so "Invite to portal" and member sign-in
+    // can find them. An empty string clears it.
+    if (b.email !== undefined) {
+      const email = String(b.email || "").trim().toLowerCase().slice(0, 120);
+      if (email && !validEmail(email)) return res.status(400).json({ error: "That email doesn't look right." });
+      fields.email = email;
+    }
+    // Credit limit in laari (creditLimit is the field the projection reads); the
+    // terminal sends laari. `credit` (MVR) is accepted as a fallback for callers
+    // that still send rupees.
+    if (b.creditLimit !== undefined) fields.creditLimit = Math.max(0, Math.round(Number(b.creditLimit) || 0));
+    else if (b.credit !== undefined) fields.creditLimit = Math.max(0, Math.round((Number(b.credit) || 0) * 100));
     let id = String(b.id || "").trim();
     const out = await withOrg(orgId, async (c) => {
       if (id) {
@@ -5200,16 +5213,16 @@ if (fs.existsSync(protoFile)) {
         if (cur.rowCount) {
           const data = Object.assign({}, cur.rows[0].data || {}, fields);
           const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='customers' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
-          return { id, rowver: Number(r.rows[0].rowver) };
+          return { id, rowver: Number(r.rows[0].rowver), email: data.email || "" };
         }
       }
       if (!id) id = "c_" + Math.random().toString(36).slice(2, 9);
       const data = Object.assign({ id, points: 0, balance: 0 }, fields);
       const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'customers',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, id, JSON.stringify(data)]);
-      return { id, rowver: Number(r.rows[0].rowver) };
+      return { id, rowver: Number(r.rows[0].rowver), email: data.email || "" };
     });
     poke(orgId, out.rowver);
-    res.json({ ok: true, id: out.id });
+    res.json({ ok: true, id: out.id, email: out.email, hasEmail: !!(out.email && out.email.indexOf("@") > 0) });
   }));
   // Settle a receivable: reduce the customer's outstanding balance by an amount
   // (laari), clamped at zero, and stamp the settlement.
