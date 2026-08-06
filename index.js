@@ -2907,6 +2907,24 @@ app.get("/p/:slug/member/me", pubThrottle(60, "mme"), wrap(async (req, res) => {
 
 app.post("/p/:slug/member/signout", (req, res) => { res.clearCookie(MEMBER_COOKIE, { path: "/" }); res.json({ ok: true }); });
 
+/* "Tell the till I'm here" (show-code sheet). A member announcing at the counter
+   is a person, not a table (handoff 08 §5): file it under the floor's calls,
+   titled by name, so a cashier can attach the next bill to the membership. */
+app.post("/p/:slug/member/announce", pubThrottle(12, "mann"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const sess = readMember(req);
+  if (!sess || sess.orgId !== org.id) return res.status(401).json({ error: "sign in required" });
+  const storeId = cleanStoreId((req.body || {}).storeId || DEFAULT_STORE_ID);
+  const c = (await kindAll(org.id, "customers", storeId)).find((x) => idEq(x.id, sess.custId));
+  if (!c) return res.status(401).json({ error: "membership not found" });
+  const table = String((req.body || {}).table || "").replace(/[^A-Za-z0-9 _-]/g, "").slice(0, 20);
+  const call = { id: uid(), storeId, table: table || "Counter", name: c.name || "Member", custId: c.id, kind: "member", t: Date.now() };
+  const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'waiterCalls',$2,$3) RETURNING rowver", [org.id, call.id, JSON.stringify(call)]));
+  poke(org.id, Number(r.rows[0].rowver));
+  res.json({ ok: true });
+}));
+
 app.post("/p/:slug/call", pubThrottle(20, "call"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
@@ -3145,6 +3163,39 @@ const serveGuestV3 = async (req, res, org, opts = {}) => {
   res.set("Vary", "Host");
   res.set("Content-Type", "text/html; charset=utf-8").send(html);
 };
+
+/* ── Registered-customer (rewards) portal page ───────────────────────────────
+   The member portal (web3/proto/member.html) is a separate surface from the QR
+   storefront: a person with a history, not a table. The page needs only the
+   store's brand + slug + earn rate injected; the member's own data is fetched
+   live from /p/:slug/member/me once they sign in. Served at /m?s=<slug> (a
+   dedicated rewards.<domain> host can point here later). */
+const memberV3File = path.join(__dirname, "web3", "proto", "member.html");
+const hasMemberV3 = () => { try { return fs.existsSync(memberV3File); } catch (e) { return false; } };
+const serveMemberPortal = async (req, res, org) => {
+  const real = await buildGuestReal(org.id);
+  const settings = (await loadSettingsArr(org.id))[0] || {};
+  const cfg = loyaltyConfig(settings);
+  const payload = { slug: org.slug, brand: real.brand || {}, outlet: real.outlet || {}, fiscal: real.fiscal || {}, pointsPer: cfg.pointsPer, redeemPer: cfg.redeemPer };
+  const safeTitle = String((real.brand && real.brand.name) || org.store_name || "Rewards").replace(/[<>&"]/g, "") + " Rewards";
+  let html = fs.readFileSync(memberV3File, "utf8");
+  const inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(payload).replace(/</g, "\\u003c") + ";</script>";
+  html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject)
+    .replace(/<title>[^<]*<\/title>/i, "<title>" + safeTitle + "</title>");
+  html = bustV2Assets(html);
+  res.set("Content-Security-Policy", GUEST_V3_CSP);
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.set("CDN-Cache-Control", "no-store");
+  res.set("Vary", "Host");
+  res.set("Content-Type", "text/html; charset=utf-8").send(html);
+};
+app.get("/m", wrap(async (req, res) => {
+  const subSlug = portalSlugFromHost(req);
+  const slug = String(req.query.s || subSlug || "").trim();
+  const org = slug ? await orgBySlug(slug) : null;
+  if (!org || !hasMemberV3()) return res.status(404).set("Content-Type", "text/html; charset=utf-8").set("Cache-Control", "no-store").send(STOREFRONT_NOT_FOUND_HTML);
+  return serveMemberPortal(req, res, org);
+}));
 if (fs.existsSync(protoFile)) {
   const protoDir = path.join(__dirname, "web2", "proto");
   const protoCache = {};
