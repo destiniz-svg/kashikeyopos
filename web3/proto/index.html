@@ -5435,14 +5435,52 @@ class Component extends DCLogic {
   g_menu() {
     const K0 = K(), s = this.state, o = this.outlet();
     const q = s.search.toLowerCase();
-    const tab = s.tab.menu || 0;
-    const catList = ["all"].concat(K0.MENU_CATEGORIES.map((c) => c.id));
-    const list = K0.MENU.filter((m) => (tab === 0 || m.cat === catList[tab])).filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0);
+    const sub = s.tab.menu || 0;              // 0 = Items, 1 = Categories
+    const canEdit = this.can("menu", "e");
+    const mkTabs = () => [{ label: "Items" }, { label: "Categories" }].map((t, i) => ({ label: t.label, on: sub === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) }));
+
+    // ── Categories manager — rename, group, reorder, delete a section ────────
+    if (sub === 1) {
+      const cats = (K0.MENU_CATEGORIES || []);
+      const palette = (K0.MENU_GROUP_PALETTE && K0.MENU_GROUP_PALETTE.length) ? K0.MENU_GROUP_PALETTE : (K0.MENU_GROUPS || []);
+      const count = (id) => (K0.MENU || []).filter((m) => m.cat === id).length;
+      return {
+        tabs: mkTabs(),
+        guideTitle: "Organising the menu",
+        guide: ["A category is a section guests browse and the till tabs across", "Put each one under a top-level group so the menu stays short", "Rename or reorder freely — dishes follow their category", "Deleting a category moves its dishes elsewhere; nothing is lost"],
+        actions: canEdit ? [{ label: "New category", primary: true, go: () => this.openForm("catnew") }] : [],
+        cardMin: 300,
+        cards: cats.length ? cats.map((c) => {
+          const n = count(c.id);
+          return {
+            title: c.name,
+            chip: n + (n === 1 ? " dish" : " dishes"), chipBg: "var(--bg-2)", chipFg: "var(--text-dim)",
+            picks: canEdit ? [
+              { label: "Show under", opts: (palette.length ? palette : [c.group || "Food"]).map((g) => ({ label: g, on: c.group === g, go: () => this.catSetGroup(c, g) })) },
+              { label: "Order & actions", opts: [
+                { label: "↑ Up", on: false, go: () => this.catMove(c, -1) },
+                { label: "↓ Down", on: false, go: () => this.catMove(c, 1) },
+                { label: "Delete", on: false, go: () => this.openForm("catdelete", c) }
+              ] }
+            ] : [{ label: "Group", opts: [{ label: c.group || "—", on: true, go: () => {} }] }],
+            go: canEdit ? () => this.openForm("catrename", c) : null,
+            goLabel: "Rename"
+          };
+        }) : [],
+        notes: [
+          ["How categories persist", "Categories are saved on the store settings and ordered exactly as you arrange them here, so an empty, renamed or reordered section sticks. Dishes key on the category name, so a rename carries every dish with it in one step, and a delete reassigns them before the section is removed — a dish never loses its home."],
+          !cats.length ? ["No categories yet", "Add your first section with New category. Until then dishes fall under Uncategorised, and the till and QR menu show a single flat list."] : ["Grouping keeps it short", "Twenty sections collapse to a handful of top-level groups (Drinks, Food, Desserts…) on the POS floor and the customer's QR menu. Assigning a group here is what does the collapsing."]
+        ]
+      };
+    }
+
+    // ── Items — the dish list ────────────────────────────────────────────────
+    const list = K0.MENU.filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0);
     const showCost = this.can("recipes") && this.prefs().showCost !== false;
     return {
-      tabs: [{ label: "All" }].concat(K0.MENU_CATEGORIES.map((c) => ({ label: c.name }))).map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { menu: i }) }) })),
+      tabs: mkTabs(),
       guideTitle: "Putting a dish on sale", guide: ["Create the dish with its chain master price", "Add recipe lines in Recipes & Costing so food cost is real", "An outlet may override the price; the master stays the default", "Tourism-zone outlets apply their uplift on top automatically"],
-      actions: this.can("menu", "e") ? [{ label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) }, { label: "New section", go: () => this.openForm("category") }, { label: "New dish", primary: true, go: () => this.openForm("dish") }] : [],
+      actions: canEdit ? [{ label: "AI menu builder", go: () => this.setState({ view: "aimenu" }) }, { label: "New dish", primary: true, go: () => this.openForm("dish") }] : [],
       cols: [
         { label: "Dish", w: "2fr" }, { label: "Category", w: ".9fr" }, { label: "Chain price", w: ".9fr", a: "right", mono: 1 },
         { label: o.code + " price", w: ".9fr", a: "right", mono: 1 }, { label: "Food cost", w: ".9fr", a: "right", mono: 1 },
@@ -6000,6 +6038,114 @@ class Component extends DCLogic {
     } else {
       this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, hidden: hidden, addons: addons, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
     }
+  }
+  // ── Category manager ───────────────────────────────────────────────────────
+  // The Menu Master "Categories" tab. Real mode persists to /api/app2/category*
+  // (create / rename / group / reorder / delete — manager or owner only); demo
+  // mode patches local state and queues an op. Every method keeps K().MENU_*
+  // coherent optimistically, the same way saveDish does, because there is no
+  // live re-pull hook — the screen reflects the change immediately.
+  catReal() { return !!(window.KPOS_REAL && window.KPOS_REAL.token); }
+  catId(name) { return String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
+  catPost(path, body, onOk, okMsg) {
+    fetch("/api/app2/category" + path, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body || {}) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) return this.toast(j.error, "warn");
+        if (onOk) onOk(j);
+        if (okMsg) this.toast(okMsg);
+        this.refreshData && this.refreshData();
+      }).catch(() => this.toast("Could not save — check the connection", "warn"));
+  }
+  catCreate(name, group) {
+    name = String(name || "").trim().slice(0, 60);
+    if (!name) return this.toast("Give the category a name", "warn");
+    const K0 = K(), id = this.catId(name);
+    if ((K0.MENU_CATEGORIES || []).some((c) => c.id === id)) return this.toast("That category already exists", "warn");
+    const addLocal = () => {
+      const row = { id: id, name: name, group: group || "", icon: "main" };
+      (K0.MENU_CATEGORIES || []).push(row);
+      if ((K0.MENU_GROUPS || []).length && group && K0.MENU_GROUPS.indexOf(group) < 0) K0.MENU_GROUPS.push(group);
+    };
+    if (this.catReal()) {
+      this.catPost("", { name: name }, () => {
+        // Assign the chosen group in a follow-up call, then reflect locally.
+        const finish = () => { addLocal(); this.setState({ modal: null }); this.toast("Category created · " + name); };
+        if (group) this.catPost("/group", { name: name, group: group }, finish);
+        else finish();
+      });
+      return;
+    }
+    addLocal();
+    const L = Object.assign({}, this.state.local || {}); L.menucats = (L.menucats || []).concat([{ id: id, name: name }]);
+    this.setState({ local: L, modal: null });
+    this.queue("menu_category_insert", "Menu category · " + name, "menu_categories");
+    this.toast("Category created · " + name);
+  }
+  catRename(cat, to) {
+    to = String(to || "").trim().slice(0, 60);
+    if (!to) return this.toast("Give the category a name", "warn");
+    if (to === cat.name) { this.setState({ modal: null }); return; }
+    const K0 = K(), nid = this.catId(to);
+    const patchLocal = () => {
+      (K0.MENU || []).forEach((m) => { if (m.cat === cat.id) m.cat = nid; });
+      const c = (K0.MENU_CATEGORIES || []).find((x) => x.id === cat.id);
+      if (c) { c.name = to; c.id = nid; }
+    };
+    if (this.catReal()) {
+      this.catPost("/rename", { from: cat.name, to: to }, () => { patchLocal(); this.setState({ modal: null }); this.toast("Renamed to " + to); });
+      return;
+    }
+    patchLocal();
+    this.setState({ modal: null });
+    this.queue("menu_category_rename", "Category renamed · " + cat.name + " → " + to, "menu_categories");
+    this.toast("Renamed to " + to);
+  }
+  catSetGroup(cat, group) {
+    group = String(group || "").trim();
+    if (!group || group === cat.group) return;
+    const K0 = K();
+    const patchLocal = () => {
+      const c = (K0.MENU_CATEGORIES || []).find((x) => x.id === cat.id);
+      if (c) c.group = group;
+      (K0.MENU || []).forEach((m) => { if (m.cat === cat.id) m.group = group; });
+      if ((K0.MENU_GROUPS || []).indexOf(group) < 0) (K0.MENU_GROUPS || []).push(group);
+    };
+    if (this.catReal()) {
+      this.catPost("/group", { name: cat.name, group: group }, () => { patchLocal(); this.setState({}); this.toast(cat.name + " → " + group); });
+      return;
+    }
+    patchLocal();
+    this.setState({});
+    this.queue("menu_category_group", "Category grouped · " + cat.name + " → " + group, "menu_categories");
+    this.toast(cat.name + " → " + group);
+  }
+  catMove(cat, dir) {
+    const K0 = K(), cats = (K0.MENU_CATEGORIES || []);
+    const i = cats.findIndex((c) => c.id === cat.id), j = i + dir;
+    if (i < 0 || j < 0 || j >= cats.length) return;
+    const tmp = cats[i]; cats[i] = cats[j]; cats[j] = tmp;
+    this.setState({});
+    if (this.catReal()) this.catPost("/reorder", { order: cats.map((c) => c.name) }, null);
+    else this.queue("menu_category_reorder", "Categories reordered", "menu_categories");
+  }
+  catDelete(cat, moveTo) {
+    // moveTo === "" leaves dishes uncategorised; self-target is coerced to that.
+    moveTo = String(moveTo || "").trim();
+    if (moveTo === cat.name) moveTo = "";
+    const K0 = K(), toId = moveTo ? this.catId(moveTo) : "";
+    const patchLocal = () => {
+      (K0.MENU || []).forEach((m) => { if (m.cat === cat.id) m.cat = toId || "uncategorized"; });
+      const idx = (K0.MENU_CATEGORIES || []).findIndex((x) => x.id === cat.id);
+      if (idx >= 0) K0.MENU_CATEGORIES.splice(idx, 1);
+    };
+    if (this.catReal()) {
+      this.catPost("/delete", { name: cat.name, moveTo: moveTo }, () => { patchLocal(); this.setState({ modal: null }); this.toast("Deleted · " + cat.name); });
+      return;
+    }
+    patchLocal();
+    this.setState({ modal: null });
+    this.queue("menu_category_delete", "Category deleted · " + cat.name, "menu_categories");
+    this.toast("Deleted · " + cat.name);
   }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
@@ -6719,6 +6865,34 @@ class Component extends DCLogic {
           this.queue("category_insert", "Stock category · " + v.name + " · " + v.storage + " · counted " + v.freq, "categories");
           this.toast("Stock category created · " + v.name);
         }
+      },
+      // The plain-language menu-category forms the Categories tab uses. Separate
+      // from the combined menu/stock `category` form above so a newcomer only
+      // ever sees the two fields that matter: a name and which group it shows under.
+      catnew: {
+        title: "New category", sub: "A menu section guests browse", save: "Create category",
+        foot: "The group keeps a long menu short — the till floor and the QR menu show the handful of top-level groups, and open the sections inside. Leave it on Auto and it is grouped by its name.",
+        fields: [
+          { k: "name", label: "Category name", v: "", full: 1 },
+          { k: "group", label: "Show under group", full: 1,
+            options: [{ v: "", l: "Auto — group it by its name" }].concat(((K().MENU_GROUP_PALETTE && K().MENU_GROUP_PALETTE.length ? K().MENU_GROUP_PALETTE : (K().MENU_GROUPS || [])) || []).map((g) => ({ v: g, l: g }))) }
+        ],
+        onSave: (v) => this.catCreate(v.name, v.group)
+      },
+      catrename: {
+        title: "Rename category", sub: "Renames it everywhere — every dish moves with it", save: "Save name", editSave: "Save name",
+        foot: "Dishes are filed under the category name, so renaming it here carries all of them across in one step. The section keeps its place in the order and its group.",
+        fields: [{ k: "name", label: "Category name", full: 1 }],
+        onSave: (v, edit) => this.catRename(edit, v.name)
+      },
+      catdelete: {
+        title: "Delete category", sub: "Move its dishes first, then remove the empty section", save: "Delete category", editSave: "Delete category", danger: true,
+        foot: "A category is only removed once its dishes have somewhere to go. Choose another section to move them into, or leave them uncategorised — either way no dish is deleted.",
+        fields: [
+          { k: "moveTo", label: "Move its dishes to", full: 1,
+            options: [{ v: "", l: "Leave them uncategorised" }].concat((K().MENU_CATEGORIES || []).map((c) => ({ v: c.name, l: c.name }))) }
+        ],
+        onSave: (v, edit) => this.catDelete(edit, v.moveTo)
       },
       chain: {
         title: "Company details", sub: "Legal identity on every tax document", save: "Save company details",

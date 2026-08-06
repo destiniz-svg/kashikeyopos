@@ -60,6 +60,9 @@
   // Top-level groups the 20+ real categories collapse under (Drinks/Breakfast/
   // Food/Desserts). Empty in the demo seed; filled from REAL.groups in real mode.
   var MENU_GROUPS = [];
+  // Groups the category manager can assign to (canonical four + any custom in
+  // use). Empty in the demo seed; filled from REAL.groupPalette in real mode.
+  var MENU_GROUP_PALETTE = [];
 
   // price = chain master price in MVR. recipe = [rawItemId, qty in base unit]
   // price = chain master price in MVR (targets 30% food cost against the item master)
@@ -573,6 +576,9 @@
       return { id: c.id, name: c.name, group: c.group || "", icon: CAT_ICON[c.id] || "main" };
     });
     MENU_GROUPS = (REAL.groups || []);
+    // Full group palette for the category manager (the four canonical groups
+    // plus any custom in use), so a section can move to a group nothing sits in.
+    MENU_GROUP_PALETTE = (REAL.groupPalette && REAL.groupPalette.length) ? REAL.groupPalette : (REAL.groups || []);
     var CAT_GROUP = {};
     MENU_CATEGORIES.forEach(function (c) { CAT_GROUP[c.id] = c.group; });
     MENU = (REAL.menu || []).map(function (m) {
@@ -658,7 +664,7 @@
   }
 
   window.KPOS = {
-    CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU, MENU_CATEGORIES: MENU_CATEGORIES, MENU_GROUPS: MENU_GROUPS,
+    CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU, MENU_CATEGORIES: MENU_CATEGORIES, MENU_GROUPS: MENU_GROUPS, MENU_GROUP_PALETTE: MENU_GROUP_PALETTE,
     MODULES: MODULES, ROLES: ROLES, USERS: USERS, CUSTOMERS: CUSTOMERS,
     STAFF: STAFF, PAYROLL_RULES: PAYROLL_RULES, OPEX: OPEX, ASSETS: ASSETS,
     ROLE_PINS: ROLE_PINS,

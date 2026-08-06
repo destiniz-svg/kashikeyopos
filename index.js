@@ -3322,6 +3322,14 @@ const menuGroupsOf = (categories) => {
   (categories || []).forEach((c) => { if (c.group && out.indexOf(c.group) < 0) out.push(c.group); });
   return out.sort((a, b) => { const ia = GROUP_ORDER.indexOf(a), ib = GROUP_ORDER.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
 };
+// The full palette the category manager offers when assigning a group: the four
+// canonical groups always, plus any custom group a category already uses — so a
+// manager can move a section to Drinks even when nothing sits there yet.
+const menuGroupPalette = (categories) => {
+  const out = GROUP_ORDER.slice();
+  (categories || []).forEach((c) => { if (c.group && out.indexOf(c.group) < 0) out.push(c.group); });
+  return out;
+};
 
 // ── Guest storefront (the v2 QR page: web3/proto/guest.html) ────────────────
 // Module scope so BOTH the /v2 route block and the web2 guest entry (which are
@@ -4674,7 +4682,7 @@ if (fs.existsSync(protoFile)) {
           // Promotions the merchant edits + the guest surfaces show (handoff 08 §1).
           promos: { on: !!st.qrBanners, items: Array.isArray(st.banners) ? st.banners : [] },
           outlets: outlets.length ? outlets : null,
-          categories, groups: menuGroupsOf(categories), menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
+          categories, groups: menuGroupsOf(categories), groupPalette: menuGroupPalette(categories), menu, stats: { net: net, covers: covers, netMonth: netMonth, gstMonth: gstMonth, txMonth: txMonth,
             daily: dayKeys.map((dk) => ({ at: dk.at, net: Math.round(dayNet[dk.key] / 100) })) },
           orders: orders.slice(0, 200), liveOrders, calls: liveCalls, customers, staff, clock, reservations, expenses, settlements, assets,
           inventory: { items: invItems, inv: invRows, cats: invCats, ledger: invLedger, vendors: invVendors, purch: invPurch, audits: invAudits },
