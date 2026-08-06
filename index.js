@@ -575,6 +575,10 @@ app.use((req, res, next) => {
 
 const uid = () => crypto.randomUUID();
 const slugify = (s) => (s || "shop").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "shop";
+// Handles (orgs.slug) that must stay the platform's own — the guest storefront's
+// `?s=<handle>` / `<handle>.<domain>` address can't be one of these. Used both by
+// the manual rename endpoint and when a handle is auto-derived from the store name.
+const RESERVED_HANDLES = new Set(["www", "app", "admin", "api", "p", "v2", "back", "welcome", "signup", "login", "logout", "assets", "static", "vendor", "img", "mail", "smtp", "ftp", "ns", "cdn", "status", "help", "support", "docs", "blog", "store", "shop", "portal", "order", "kashikeyo", "kashikeyopos"]);
 const errDetail = (e) => [e && e.message, e && e.code, e && e.address, e && e.port].filter(Boolean).join(" ") || String(e || "unknown error");
 const idEq = (a, b) => a !== null && a !== undefined && b !== null && b !== undefined && String(a) === String(b);
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -1620,6 +1624,24 @@ async function uniqueSlug(client, base) {
   return slug;
 }
 
+// Like uniqueSlug, but ignores the caller's own org row (so re-deriving a
+// handle for an org that already holds `base` keeps it) and never lands on a
+// reserved platform handle. Used when the handle is auto-generated from the
+// store name during onboarding.
+async function uniqueSlugFor(client, base, exceptOrgId) {
+  let root = slugify(base);
+  if (root.length < 3 || RESERVED_HANDLES.has(root)) root = (root + "-shop").slice(0, 24);
+  let slug = root;
+  for (let i = 0; i < 6; i++) {
+    if (!RESERVED_HANDLES.has(slug)) {
+      const hit = await client.query("SELECT 1 FROM orgs WHERE slug=$1 AND id<>$2", [slug, exceptOrgId]);
+      if (!hit.rowCount) return slug;
+    }
+    slug = root + "-" + crypto.randomBytes(2).toString("hex");
+  }
+  return slug;
+}
+
 /* Google and Apple both hand back a verified email (and, once, a name) - not
    a password - so signing in and signing up are the same operation here:
    find the org already linked to this provider's subject id, else adopt an
@@ -1641,7 +1663,10 @@ async function findOrCreateOAuthOrg({ provider, sub, email, name }) {
         return upd.rows[0];
       }
     }
-    const base = slugify(name || (cleanEmail ? cleanEmail.split("@")[0] : provider + "-store"));
+    // Provisional handle only — the person's name is deliberately NOT used
+    // (the store handle is the outlet's address, not the owner's). It is
+    // re-derived from the store name at the /welcome onboarding step.
+    const base = slugify(cleanEmail ? cleanEmail.split("@")[0] : provider + "-store");
     const slug = await uniqueSlug(client, base);
     const id = uid();
     const placeholderHash = bcrypt.hashSync(crypto.randomBytes(24).toString("hex"), 10);
@@ -1949,6 +1974,30 @@ app.post("/api/onboard/profile", wrap(async (req, res) => {
   if (tin) patch.tin = tin;
   if (address) patch.address = address;
   if (businessActivity) patch.businessActivity = businessActivity;
+  // First time through the welcome wizard, the store handle is still the
+  // provisional one minted at register/OAuth (from the email local part). Now
+  // that we know the outlet name, derive the handle from IT — the handle is the
+  // storefront's address, not the owner's. Only on the initial welcome step, so
+  // a later handle the owner deliberately set is never clobbered. Uniqueness is
+  // platform-wide, so it must run under withSystem (RLS hides other orgs).
+  let handle = null;
+  const firstSetup = await withOrg(orgId, async (c) =>
+    (await c.query("SELECT setup_step FROM orgs WHERE id=$1", [orgId])).rows[0]?.setup_step === "welcome");
+  if (firstSetup) {
+    handle = await withSystem(async (c) => {
+      for (let i = 0; i < 3; i++) {
+        const slug = await uniqueSlugFor(c, displayName, orgId);
+        try {
+          const r = await c.query("UPDATE orgs SET slug=$1 WHERE id=$2 RETURNING slug", [slug, orgId]);
+          return r.rows[0]?.slug || slug;
+        } catch (e) {
+          if (String(e && e.code) === "23505") continue; // lost a race for this slug; recompute
+          throw e;
+        }
+      }
+      return null;
+    });
+  }
   await withOrg(orgId, async (c) => {
     await c.query("UPDATE orgs SET store_name=$2, owner_name=COALESCE(NULLIF($3,''),owner_name), phone=COALESCE(NULLIF($4,''),phone), setup_step=CASE WHEN setup_step='welcome' THEN 'pin' ELSE setup_step END WHERE id=$1",
       [orgId, displayName, ownerName, phone]);
@@ -1958,7 +2007,7 @@ app.post("/api/onboard/profile", wrap(async (req, res) => {
        ON CONFLICT (org_id, kind, id) DO UPDATE SET data = entities.data || $3::jsonb, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()`,
       [orgId, JSON.stringify(Object.assign({ loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, footer: "" }, patch)), JSON.stringify(patch)]);
   });
-  res.json({ ok: true, next: "pin" });
+  res.json({ ok: true, next: "pin", handle });
 }));
 
 /* Welcome stage 2: the admin till PIN (mandatory) + any extra users (optional).
@@ -5400,8 +5449,8 @@ if (fs.existsSync(protoFile)) {
   // admin can rename it; it is slugified, length- and reserved-word checked,
   // and unique per platform (the DB UNIQUE constraint is the real guard).
   // Changing it re-points the storefront, so printed QR codes with the old
-  // handle stop resolving — the client warns before saving.
-  const RESERVED_HANDLES = new Set(["www", "app", "admin", "api", "p", "v2", "back", "welcome", "signup", "login", "logout", "assets", "static", "vendor", "img", "mail", "smtp", "ftp", "ns", "cdn", "status", "help", "support", "docs", "blog", "store", "shop", "portal", "order", "kashikeyo", "kashikeyopos"]);
+  // handle stop resolving — the client warns before saving. RESERVED_HANDLES is
+  // defined at module scope (shared with the auto-derive-from-store-name path).
   app.post("/api/app2/handle", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
