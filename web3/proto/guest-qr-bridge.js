@@ -45,7 +45,10 @@
     return {
       id: m.id, cat: m.cat, name: m.name, desc: m.desc || "",
       price: Number(m.price) || 0, veg: !!m.veg, img: m.img || "",
-      best: !!m.bestSeller
+      best: !!m.bestSeller,
+      /* per-product add-ons (name + MVR price) drive the dish modal's Add Ons
+         group; the server re-prices each by name at order time */
+      addons: Array.isArray(m.addons) ? m.addons : [], comments: !!m.comments
     };
   });
   var SOLD = (R.menu || []).filter(function (m) { return m.soldOut; }).map(function (m) { return m.id; });
@@ -101,7 +104,11 @@
         if (!intent) return false;
         if (intent.kind === "order") {
           var items = (intent.lines || []).map(function (l) {
-            return { pid: l.id, qty: Number(l.qty) || 1, note: l.note || "" };
+            /* addons ride as structured picks (server prices each by name);
+               the guest's free-text note rides as `note`. The server builds the
+               kitchen line note (add-on names · note) itself. */
+            return { pid: l.id, qty: Number(l.qty) || 1,
+              addons: Array.isArray(l.addons) ? l.addons : [], note: l.comment || "" };
           });
           if (!items.length) return false;
           return post("/order", { items: items, table: TABLE, gtype: "dinein", note: "" });

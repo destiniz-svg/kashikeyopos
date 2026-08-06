@@ -3304,8 +3304,12 @@ const buildGuestReal = async (orgId) => withOrg(orgId, async (c) => {
     .filter((x) => x.d.name && !x.d.hidden)
     .map((x) => { const p = x.d;
       const soldOut = !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0));
+      const addons = (Array.isArray(p.addons) ? p.addons : [])
+        .map((a) => ({ name: String((a && a.name) || "").trim(), price: (Number(a && a.price) || 0) / 100 }))
+        .filter((a) => a.name);
       return { id: x.id, cat: catSlug(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
-        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut, veg: false, recipe: [] }; });
+        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut, veg: false,
+        addons: addons, comments: !!p.comments, recipe: [] }; });
   const catName = {};
   menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
   const categories = Object.keys(catName).map((id) => ({ id, name: catName[id] }));

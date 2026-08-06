@@ -870,9 +870,9 @@ window.KashikeyoGuestQR = (function () {
   /* A tourism-tax outlet carries a different shelf price, rounded to the
      nearest 5 rufiyaa — mirrors KashikeyoPOS.menuPrice exactly. */
   App.prototype.price = function (m) {
-    var p = m.price;
-    if (this.outlet().tax === 'TGST') p = Math.round(p * 1.12 / 5) * 5;
-    return p;
+    /* The store's menu price is already the shelf price the till charges — no
+       chain re-pricing. (The demo re-marked TGST outlets; a real store doesn't.) */
+    return m.price;
   };
   /* Menu and line prices are whole rufiyaa by construction, so they read clean. */
   App.prototype.fmt = function (n) { return 'MVR ' + Math.round(n || 0).toLocaleString('en-US'); };
@@ -881,14 +881,24 @@ window.KashikeyoGuestQR = (function () {
   App.prototype.money = function (n) {
     return 'MVR ' + (Math.round((n || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
-  /* Service charge on the subtotal, tax on subtotal + service. */
+  /* GST-inclusive, to the laari — the same math the till runs (orderBreakdown):
+     menu prices already include GST; the service charge is added on the goods
+     and is itself GST-inclusive; GST is then EXTRACTED as rate/(1+rate) of the
+     inclusive total, never grossed on top. All arithmetic is in laari so the
+     preview matches the terminal exactly. Rows still add up: sub + svc + tax
+     = total. */
   App.prototype.bill = function (sub) {
     var o = this.outlet();
-    var svc = sub * ((o.sc || 0) / 100);
-    var tax = (sub + svc) * ((o.rate || 0) / 100);
-    var gross = sub + svc + tax;
-    var disc = this.promoOk() ? gross * 0.05 : 0;
-    return { sub: sub, svc: svc, tax: tax, disc: disc, total: gross - disc };
+    var r = (o.rate || 0) / 100, sp = (o.sc || 0) / 100;
+    var TF = function (v) { return Math.round(v * r / (1 + r)); };
+    var L = Math.round((sub || 0) * 100);                 // goods, GST-inclusive, laari
+    var disc = this.promoOk() ? Math.round(L * 0.05) : 0; // promo rides the inclusive goods
+    var goods = L - disc;
+    var svcIncl = Math.round(goods * sp);                 // service on goods, itself inclusive
+    var total = goods + svcIncl;
+    var gst = TF(total);
+    var svc = svcIncl - TF(svcIncl);
+    return { sub: (total - gst - svc) / 100, svc: svc / 100, tax: gst / 100, disc: disc / 100, total: total / 100 };
   };
   App.prototype.promoOk = function () { return this.s.applied && this.s.promo.trim().length > 2; };
 
@@ -907,8 +917,11 @@ window.KashikeyoGuestQR = (function () {
     return manual.concat(host);
   };
   App.prototype.addonsFor = function (m) {
-    return (this.D.MODIFIERS || []).filter(function (x) { return (x.cats || []).indexOf(m.cat) >= 0; })
-      .map(function (x) { return { k: x.id, n: x.name, p: x.price }; });
+    /* Add-ons are per-product (the store defines them on each menu item in the
+       terminal). Keyed by name — the server re-prices each by name from the
+       product's own list, so a tampered cart can never set its own price. */
+    return (m && Array.isArray(m.addons) ? m.addons : [])
+      .map(function (x) { return { k: x.name, n: x.name, p: Number(x.price) || 0 }; });
   };
   App.prototype.addonLabel = function (m, sel) {
     var list = this.addonsFor(m);
@@ -1206,7 +1219,15 @@ window.KashikeyoGuestQR = (function () {
     var lines = s.cart.map(function (l) {
       var m = self.item(l.id);
       var bits = [self.addonLabel(m, l.addons), l.note].filter(Boolean).join(' · ');
-      return { id: l.id, qty: l.qty, note: 'QR' + (bits ? ' · ' + bits : '') };
+      /* Structured picks so the till prices each add-on itself (one entry per
+         unit chosen); the free-text note rides alongside. `disp` keeps the
+         "QR · …" label the local round list shows while a round is in flight. */
+      var picks = [];
+      Object.keys(l.addons || {}).forEach(function (k) {
+        for (var i = 0; i < (l.addons[k] || 0); i++) picks.push({ name: k });
+      });
+      return { id: l.id, qty: l.qty, addons: picks, comment: (l.note || '').trim(),
+        note: 'QR' + (bits ? ' · ' + bits : ''), disp: bits };
     });
     var n = s.cart.reduce(function (a, l) { return a + l.qty; }, 0);
     /* The discount is part of the order, not a display trick: it rides the same
@@ -1664,8 +1685,8 @@ window.KashikeyoGuestQR = (function () {
         (ok ? '<div class="q-row"><span>Promo ' + esc(s.promo.trim().toUpperCase() || 'code') + ' (5%)</span><b>−' + this.money(T.disc) + '</b></div>' : '') +
         '<div class="q-row" style="font-size:14.5px;border-top:1px solid var(--k-line-3);padding-top:12px"><span>Total Payment</span>' +
           '<span style="color:' + C + ';font-weight:700;font-size:15.5px;letter-spacing:-.02em">' + this.money(T.total) + '</span></div>' +
-        '<div class="q-foot">' + esc('Menu prices exclude ' + o.tax + ' and the ' + (o.sc || 0) +
-          '% service charge. The service charge is shared with the team — tipping on top is not expected.' +
+        '<div class="q-foot">' + esc('Menu prices include ' + o.tax + '. ' + ((o.sc || 0) ? 'A ' + o.sc +
+          '% service charge is added and is shared with the team — tipping on top is not expected.' : 'No service charge is added.') +
           (ok ? ' Your promo code travels with the order and is confirmed by the till at settlement.' : '')) + '</div>' +
       '</div>';
 
