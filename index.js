@@ -2757,7 +2757,7 @@ app.get("/p/:slug/events", pubThrottle(30, "events"), wrap(async (req, res) => {
    ANONYMOUS guest browsing the QR menu can load it — the staff /api/img needs a
    session a guest doesn't have. Only the image bytes are exposed, nothing else. */
 const PUB_DATA_URI_RE = /^data:([\w.+-]+\/[\w.+-]+)?(?:;[\w.+=-]+)*?(;base64)?,([\s\S]*)$/;
-app.get("/p/:slug/img/:id", pubThrottle(120, "pimg"), wrap(async (req, res) => {
+app.get("/p/:slug/img/:id", pubThrottle(1200, "pimg"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).end();
   const row = await withOrg(org.id, (c) => c.query(

@@ -648,6 +648,7 @@ svg{display:block}
 .q-chrome-home{height:24px;display:grid;place-items:center}
 .q-chrome-home>span{width:138px;height:5px;border-radius:3px;background:var(--k-ink);display:block}
 </style>
+<script src="menu-art.js"></script>
 <script src="guest-qr-bridge.js"></script>
 </head>
 <body>
@@ -1048,6 +1049,15 @@ window.KashikeyoGuestQR = (function () {
     if (/^(https?:|\/|data:)/.test(p)) return p;
     var b = this.imageBase;
     return (b && p.indexOf(b) === 0) ? p : b + p;
+  };
+  /* A dish tile's background: the real photo layered OVER a category placeholder,
+     so a photo that fails to load falls through to branded art, never a blank. */
+  App.prototype.thumbBg = function (m) {
+    var art = window.kposCatArt ? window.kposCatArt((m && (m.cat || m.group)) || (m && m.name) || '') : '';
+    var photo = m && m.img ? this.img(m.img) : '';
+    if (photo && art) return "url('" + photo + "'), url('" + art + "')";
+    if (photo) return "url('" + photo + "')";
+    return art ? "url('" + art + "')" : 'none';
   };
 
   /* ── money. Same rules as the till, to the laari. ────────────────────────── */
@@ -1708,7 +1718,7 @@ window.KashikeyoGuestQR = (function () {
       h += '<div style="margin-top:18px">' +
         '<button ' + (b.code ? 'data-act="promo-take" data-code="' + attr(b.code) + '"' : 'data-act="banner-info" data-title="' + attr(b.title) + '"') +
           ' style="position:relative;display:flex;align-items:stretch;width:100%;min-height:112px;border-radius:18px;overflow:hidden;background:var(--k-hero-bg);box-shadow:0 6px 18px rgba(94,32,22,.22)">' +
-          '<span style="position:absolute;inset:0;display:block;background-image:url(\'' + attr(this.img(b.img)) + '\');background-size:cover;background-position:center"></span>' +
+          '<span style="position:absolute;inset:0;display:block;background-image:' + this.thumbBg(b) + ';background-size:cover;background-position:center"></span>' +
           '<span style="position:absolute;inset:0;background:linear-gradient(96deg,rgba(24,10,8,.88) 0%,rgba(24,10,8,.62) 48%,rgba(24,10,8,.12) 100%);display:block"></span>' +
           '<span style="position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:16px 18px;width:100%">' +
             '<span style="display:flex;align-items:center;gap:8px">' +
@@ -1766,7 +1776,7 @@ window.KashikeyoGuestQR = (function () {
           ' style="text-align:left;background:var(--k-white);border:1px solid ' + (n ? 'var(--k-accent-line)' : 'var(--k-line-2)') +
           ';border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px;opacity:' + (sold ? '.55' : '1') + '">' +
           '<span style="position:relative;display:block">' +
-            '<span style="display:block;width:100%;height:132px;border-radius:12px;background-image:url(\'' + attr(self.img(m.img)) + '\');background-size:cover;background-position:center;background-color:var(--k-photo-bg)' + (sold ? ';filter:grayscale(1)' : '') + '"></span>' +
+            '<span style="display:block;width:100%;height:132px;border-radius:12px;background-image:' + self.thumbBg(m) + ';background-size:cover;background-position:center;background-color:var(--k-photo-bg)' + (sold ? ';filter:grayscale(1)' : '') + '"></span>' +
             (n ? '<span style="position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:' + C + ';color:var(--k-accent-ink);font-size:12.5px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.28);display:grid;place-items:center;animation:qpop .18s">' + n + '</span>' : '') +
             (sold ? '<span style="position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:block">Sold out</span>'
                   : (dh ? '<span class="q-heat on-photo" style="position:absolute;bottom:8px;left:8px">' +
