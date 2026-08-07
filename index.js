@@ -1113,10 +1113,19 @@ async function seedSampleCategories(orgId) {
   const catGroup = {};
   (CAT_GROUPS || []).forEach((g) => (g.subs || []).forEach((s) => { catGroup[s] = g.name; }));
   const patch = { menuCats: (CAT_ORDER || []).slice(), catGroup, catGroups: CAT_GROUPS, catOrder: (CAT_ORDER || []).slice() };
-  await withOrg(orgId, (c) => c.query(
-    "UPDATE entities SET data = COALESCE(data,'{}'::jsonb) || $2::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings'",
-    [orgId, JSON.stringify(patch)]));
-  poke(orgId, Date.now());
+  // UPSERT, not a bare UPDATE: a store whose settings entity was never created
+  // (or was tombstoned) would silently keep zero categories on an UPDATE-only
+  // path — the row simply isn't there to update. Insert it if missing, and merge
+  // the sample categories onto whatever data already exists otherwise.
+  const mx = await withOrg(orgId, async (c) => {
+    const r = await c.query(
+      "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) " +
+      "ON CONFLICT (org_id, kind, id) DO UPDATE SET data = COALESCE(entities.data,'{}'::jsonb) || $2::jsonb, " +
+      "deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver",
+      [orgId, JSON.stringify(patch)]);
+    return r.rows[0] ? Number(r.rows[0].rowver) : 0;
+  });
+  if (mx) poke(orgId, mx);
   return (CAT_ORDER || []).length;
 }
 
