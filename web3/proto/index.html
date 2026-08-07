@@ -6210,6 +6210,9 @@ class Component extends DCLogic {
     if (price <= 0) return this.toast("Price must be greater than zero", "warn");
     const cat = v.cat, desc = String(v.desc || "").trim();
     const veg = v.veg === "yes", off = v.avail === "86", hidden = v.avail === "hidden";
+    // Item tags for the QR menu: spice 0-3 (fixed level, shown as a tag) and
+    // heat = the guest may pick how hot the kitchen makes it.
+    const spice = Math.max(0, Math.min(3, Math.round(Number(v.spice) || 0))), heat = v.heat === "yes";
     // Add-ons come from the repeater as [{name, price}] (price a string, blank =
     // free). Prices are MVR here; the endpoint converts to laari and the order
     // path re-prices each add-on by name. A string value (legacy) is also parsed.
@@ -6223,7 +6226,7 @@ class Component extends DCLogic {
     const imgIsNew = imgVal.slice(0, 5) === "data:";
     const imgCleared = !imgVal && !!(existing && existing.img);
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
-      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, hidden: hidden, addons: addons };
+      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, spice: spice, heat: heat, off: off, hidden: hidden, addons: addons };
       if (imgIsNew) body.img = imgVal; else if (imgCleared) body.img = "";
       if (existing && existing.id) body.id = existing.id;
       fetch("/api/app2/product", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
@@ -6232,7 +6235,7 @@ class Component extends DCLogic {
           const id = (j && j.id) || (existing && existing.id);
           const arr = this.coll("menu") || [];
           const row = arr.find((x) => x.id === id);
-          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, soldOut: off, hidden: hidden, addons: addons };
+          const patch = { id: id, name: name, cat: cat, desc: desc, price: price, veg: veg, spice: spice, heat: heat, off: off, soldOut: off, hidden: hidden, addons: addons };
           if (imgIsNew) patch.img = imgVal; else if (imgCleared) patch.img = "";
           if (row) Object.assign(row, patch);
           else arr.unshift(Object.assign({ img: imgIsNew ? imgVal : (this.state.formAiImg || ""), recipe: [] }, patch));
@@ -6245,10 +6248,10 @@ class Component extends DCLogic {
     }
     // Demo mode — local only.
     if (existing) {
-      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, off: off, hidden: hidden, addons: addons },
+      this.patchRows("menu", [existing.id], { name: name, cat: cat, desc: desc, price: price, veg: veg, spice: spice, heat: heat, off: off, hidden: hidden, addons: addons },
         name + " updated" + (hidden !== !!existing.hidden ? (hidden ? " · hidden from menu" : " · back on the menu") : (off !== !!existing.off ? (off ? " · 86'd" : " · back on sale") : "")), "menu");
     } else {
-      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, hidden: hidden, addons: addons, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
+      this.insertRow("menu", { id: this.nextId("menu", "m"), cat: cat, name: name, desc: desc || "House dish", price: price, veg: veg, spice: spice, heat: heat, hidden: hidden, addons: addons, img: this.state.formAiImg || "", recipe: [] }, "Dish created · " + name + " at " + MVRc(price), "menu_items");
     }
   }
   // ── Category manager ───────────────────────────────────────────────────────
@@ -7880,11 +7883,14 @@ class Component extends DCLogic {
           { k: "price", label: "Price MVR", v: "", placeholder: "e.g. 120" },
           { k: "img", label: "Photo (optional)", image: 1, full: 1, guide: "Landscape works best — about 3:2 (e.g. 1200×800px). JPG or PNG. Big photos are shrunk automatically. Or use ✨ Generate with AI below to draw one." },
           { k: "veg", label: "Vegetarian", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes" }] },
+          { k: "spice", label: "Spice level", options: [{ v: "0", l: "None" }, { v: "1", l: "Mild" }, { v: "2", l: "Medium" }, { v: "3", l: "Hot" }] },
+          { k: "heat", label: "Guest can pick the heat", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes — offer a heat choice" }] },
           { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "86", l: "Sold out (86) — shown, marked unavailable" }, { v: "hidden", l: "Hidden — off the customer menu, still on the till" }], full: 1 },
           { k: "addons", label: "Add-ons — a name and its MVR price · leave the price blank for a free option", rows: 1, full: 1 }
         ],
         editSave: "Save changes",
-        pre: (d) => ({ veg: d.veg ? "yes" : "no", avail: d.hidden ? "hidden" : ((d.off || d.soldOut) ? "86" : "yes"),
+        pre: (d) => ({ veg: d.veg ? "yes" : "no", spice: String(Math.max(0, Math.min(3, Math.round(Number(d.spice) || 0)))), heat: d.heat ? "yes" : "no",
+          avail: d.hidden ? "hidden" : ((d.off || d.soldOut) ? "86" : "yes"),
           img: d.img || "",
           addons: (d.addons || []).map((a) => ({ name: a.name, price: Number(a.price) ? String(a.price) : "" })) }),
         onEdit: (v, d) => this.saveDish(v, d),

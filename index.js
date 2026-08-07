@@ -3380,7 +3380,10 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
         .map((a) => ({ name: String((a && a.name) || "").trim(), price: (Number(a && a.price) || 0) / 100 }))
         .filter((a) => a.name);
       return { id: x.id, cat: menuCat(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
-        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut, veg: false,
+        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut,
+        // Item tags for the QR menu: vegetarian flag, the fixed spice level
+        // (0-3, 0 = shown as nothing) and whether the pass can vary the heat.
+        veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat,
         addons: addons, comments: !!p.comments, recipe: [] }; });
   const catName = {};
   menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
@@ -5342,6 +5345,11 @@ if (fs.existsSync(protoFile)) {
     if (b.cat !== undefined) fields.cat = String(b.cat || "").trim().slice(0, 60);
     if (b.desc !== undefined) fields.desc = String(b.desc || "").trim().slice(0, 400);
     if (b.veg !== undefined) fields.veg = !!b.veg;
+    // Item tags shown on the QR menu (the guest design renders these):
+    //   spice 0-3 = how the kitchen cooks it (a fact — 0 shows nothing);
+    //   heat true = the pass can vary it, so the guest is offered a heat choice.
+    if (b.spice !== undefined) fields.spice = Math.max(0, Math.min(3, Math.round(Number(b.spice) || 0)));
+    if (b.heat !== undefined) fields.heat = !!b.heat;
     // Dish photo: a data:image URI (uploaded photo, resized client-side, or the
     // AI's SVG) is stored inline and served from /api/img/<id>; an existing
     // /api/img or http(s) URL is kept as-is; empty clears it. An oversized or

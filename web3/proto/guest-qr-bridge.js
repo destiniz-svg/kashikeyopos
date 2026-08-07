@@ -54,11 +54,24 @@
       id: m.id, cat: m.cat, group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "",
       price: Number(m.price) || 0, veg: !!m.veg, img: m.img || "",
       best: !!m.bestSeller,
+      /* Item tags the guest design renders: `spice` 0-3 is a read-only fact
+         (0 shows nothing); `heat` true offers a single-select heat choice from
+         the chain-wide HEAT scale below. */
+      spice: Math.max(0, Math.min(3, Math.round(Number(m.spice) || 0))), heat: !!m.heat,
       /* per-product add-ons (name + MVR price) drive the dish modal's Add Ons
          group; the server re-prices each by name at order time */
       addons: Array.isArray(m.addons) ? m.addons : [], comments: !!m.comments
     };
   });
+  /* One chain-wide heat scale — the words the card badge, the dish tag and the
+     "vary the heat" choice all print. Never per-dish, never chilli glyphs alone. */
+  var HEAT = [
+    { id: "none", name: "Not spicy", level: 0 },
+    { id: "mild", name: "Mild", level: 1 },
+    { id: "med", name: "Medium", level: 2 },
+    { id: "hot", name: "Hot", level: 3 },
+    { id: "xhot", name: "Extra hot", level: 4 }
+  ];
   var SOLD = (R.menu || []).filter(function (m) { return m.soldOut; }).map(function (m) { return m.id; });
 
   var CHAIN = {
@@ -87,7 +100,7 @@
     imageBase: "",              // real image URLs are already absolute
     data: {
       CHAIN: CHAIN, OUTLETS: [OUTLET], MENU_CATEGORIES: CATS, MENU_GROUPS: GROUPS,
-      MENU: MENU, MODIFIERS: [], BANNERS: []
+      MENU: MENU, MODIFIERS: [], BANNERS: [], HEAT: HEAT
     },
     adapter: {
       /* The store's real fiscal rates + brand drive the bill and the fascia. */
