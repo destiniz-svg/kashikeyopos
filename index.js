@@ -420,6 +420,45 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
         [JSON.stringify(CAT_GROUPS), JSON.stringify(CAT_ORDER)]);
       if (g.rowCount) console.log(`migrated ${g.rowCount} outlet(s) to the new menu categories`);
     } catch (e) { console.warn("legacy starter-menu cleanup skipped:", e.message); }
+    /* One-time platform reset (owner request, "every store including existing
+       users"): clear EVERY store's dishes and lay down the sample category
+       sections, so existing stores match the new default — a clean, empty,
+       categorised menu — not only newly-onboarded ones. Guarded by a claim row
+       in app_migrations so it runs EXACTLY ONCE across all instances and is never
+       repeated (a store that later adds its own dishes is never re-wiped). The
+       claim + the wipe + the seed share one transaction, so a crash mid-run rolls
+       the claim back and a later boot retries cleanly rather than leaving stores
+       half-cleared with the flag already set. Past orders keep their own line
+       snapshots; only the live `products` menu is tombstoned. */
+    try {
+      await bootPool.query("CREATE TABLE IF NOT EXISTS app_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())");
+      const mc = await bootPool.connect();
+      try {
+        await mc.query("BEGIN");
+        const claim = await mc.query("INSERT INTO app_migrations (id) VALUES ('menu_reset_all_v1') ON CONFLICT DO NOTHING RETURNING id");
+        if (claim.rowCount) {
+          const wiped = await mc.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE kind='products' AND deleted=false");
+          const catGroup = {};
+          (CAT_GROUPS || []).forEach((grp) => (grp.subs || []).forEach((s) => { catGroup[s] = grp.name; }));
+          const patch = JSON.stringify({ menuCats: (CAT_ORDER || []).slice(), catGroup, catGroups: CAT_GROUPS, catOrder: (CAT_ORDER || []).slice() });
+          // One statement seeds/merges the sample categories onto every org's
+          // settings — inserting the row where a store never had one, reviving a
+          // tombstoned one, and overwriting catOrder/catGroups/menuCats/catGroup
+          // where one exists (the reset intent: every store → sample categories).
+          const seeded = await mc.query(
+            "INSERT INTO entities (org_id, kind, id, data, rowver) " +
+            "SELECT o.id, 'settings', 'settings', $1::jsonb, nextval('entities_rowver_seq') FROM orgs o " +
+            "ON CONFLICT (org_id, kind, id) DO UPDATE " +
+            "SET data = COALESCE(entities.data,'{}'::jsonb) || $1::jsonb, deleted=false, " +
+            "rowver=nextval('entities_rowver_seq'), updated_at=now()", [patch]);
+          await mc.query("COMMIT");
+          console.log(`menu_reset_all_v1: cleared ${wiped.rowCount} dish(es), seeded sample categories on ${seeded.rowCount} store(s)`);
+        } else {
+          await mc.query("ROLLBACK");
+        }
+      } catch (e) { try { await mc.query("ROLLBACK"); } catch (_) { /* already unwound */ } throw e; }
+      finally { mc.release(); }
+    } catch (e) { console.warn("menu_reset_all_v1 migration skipped:", e.message); }
     /* Ensure every existing outlet carries the shared starter menu with its
        photos. Idempotent (ensureDefaultMenu only writes when an image is
        missing or changed), so this is a no-op on subsequent boots. New outlets
