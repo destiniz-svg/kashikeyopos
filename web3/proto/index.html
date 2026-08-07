@@ -1401,10 +1401,10 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 <div style="{{ f.wrap }}">
                   <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.09em;font-weight:700;margin-bottom:6px">{{ f.label }}</div>
                   <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}">
-                    <input value="{{ f.value }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
+                    <input value="{{ f.value }}" onInput="{{ f.onChange }}" onChange="{{ f.onChange }}" placeholder="{{ f.placeholder }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
                   <sc-if value="{{ f.isPwd }}" hint-placeholder-val="{{ false }}">
-                    <input type="password" value="{{ f.value }}" onChange="{{ f.onChange }}" autocomplete="off" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
+                    <input type="password" value="{{ f.value }}" onInput="{{ f.onChange }}" onChange="{{ f.onChange }}" autocomplete="off" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)"/>
                   </sc-if>
                   <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}">
                     <select value="{{ f.value }}" onChange="{{ f.onChange }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--text)">
@@ -6344,14 +6344,25 @@ class Component extends DCLogic {
     return {
       tabs: [{ label: "All locations" }].concat((K().OUTLETS || []).filter((o) => o.parent || !o.pos).map((o) => ({ label: o.code }))).map((t, i) => ({ label: t.label, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { inv: i }) }) })),
       guideTitle: "Adding stock", guide: ["Create the item here — it defines its recipe unit, purchase unit and cost", "Receive quantity against a vendor invoice in Purchases & GRN", "Consumption deducts itself by recipe on every closed ticket", "Cycle counts and adjustments record variance, never a new balance"],
-      actions: [{ label: "Add item", primary: true, go: () => this.openForm("item") }, { label: "Bulk import", go: () => this.bulkImportItems() }, { label: "New category", go: () => this.openForm("category") }, { label: "Auto-indent below par", go: () => {
+      actions: (window.KPOS_REAL && window.KPOS_REAL.token
+        // Real mode: stock categories aren't an editable concept (the catalogue is
+        // one list), so "New category" is dropped; "Reorder below par" opens the
+        // real reorder desk (derived from stock cover) instead of a fake indent.
+        ? [
+          { label: "Add item", primary: true, go: () => this.openForm("item") },
+          { label: "Bulk import", go: () => this.bulkImportItems() },
+          { label: "Reorder below par", go: () => this.setState({ view: "requests" }) },
+          { label: "Stock adjustment", go: () => this.openForm("adjust") },
+          { label: "Start stock check", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }
+        ]
+        : [{ label: "Add item", primary: true, go: () => this.openForm("item") }, { label: "Bulk import", go: () => this.bulkImportItems() }, { label: "New category", go: () => this.openForm("category") }, { label: "Auto-indent below par", go: () => {
         const lowPct = (this.prefs().lowStock || 50) / 100;
         const short = rows.filter((r) => { const it = this.item(r[1]) || []; return this.stockQty(it, r[2]) < par(r[1]) * lowPct; });
         if (!short.length) return this.toast("Nothing is below half par in this view", "warn");
         const to = ((K().OUTLETS || []).find((o) => o.type === "main_store") || { id: 1 }).id;
         const no = this.nextNo("reqs", "PR-2026-");
         this.insertRow("reqs", { no: no, from: short[0][0] || this.state.outletId, to: to, status: "pending", by: this.me(), appr: "", notes: "auto-indent · " + short.length + " items below par", priority: "normal", reject: "" }, "Draft indent " + no + " · " + short.length + " below-par items", "requests");
-      } }, { label: "Stock adjustment", go: () => this.openForm("adjust") }, { label: "Start cycle count", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }],
+      } }, { label: "Stock adjustment", go: () => this.openForm("adjust") }, { label: "Start cycle count", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }]),
       cols: [{ label: "Item", w: "2.2fr" }, { label: "Code", w: ".9fr", mono: 1 }, { label: "Location", w: "1.4fr" }, { label: "On hand", w: ".9fr", a: "right", mono: 1 }, { label: "Par", w: ".7fr", a: "right", mono: 1 }, { label: "Unit cost", w: ".9fr", a: "right", mono: 1 }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "State", w: ".9fr", a: "right" }],
       rows: rows.map((r) => {
         const it = this.item(r[1]) || [];
