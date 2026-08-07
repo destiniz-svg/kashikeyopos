@@ -3340,6 +3340,102 @@ const catSlug = (c) => {
 // so two real sections never collapse into one 4-bucket keyword group the way
 // catSlug does. Used by the menu builders the v2 terminal + new QR read.
 const menuCat = (c) => String(c || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "uncategorized";
+
+/* ── Menu import/export (CSV) ─────────────────────────────────────────────────
+   One template carries every field a dish holds, so a store can export its menu,
+   edit it in a spreadsheet, and import it back — or start a new store from a
+   filled-in template. csvCell/toCsv/parseCsv are a minimal RFC-4180 pair
+   (quotes, embedded commas + newlines), and menuFields is the single normaliser
+   both the single-item save and the bulk import run through, so they never
+   drift. */
+const csvCell = (v) => { v = v == null ? "" : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+const toCsv = (rows) => rows.map((r) => (r || []).map(csvCell).join(",")).join("\r\n") + "\r\n";
+function parseCsv(text) {
+  const rows = []; let row = [], cell = "", q = false; const s = String(text || "");
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (q) {
+      if (ch === '"') { if (s[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cell); cell = ""; }
+    else if (ch === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+    else if (ch !== "\r") cell += ch;
+  }
+  if (cell.length || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+// The template's columns, in order. Header names are human, not the raw keys.
+const MENU_CSV_COLS = [
+  ["id", "id"], ["name", "name"], ["name_dhivehi", "dv"], ["category", "cat"],
+  ["price_mvr", "price"], ["description", "desc"], ["description_dhivehi", "descDv"],
+  ["veg", "veg"], ["spice_level_0_3", "spice"], ["heat_choice", "heat"],
+  ["best_seller", "bestSeller"], ["allow_comments", "comments"], ["no_kitchen", "noKitchen"],
+  ["hidden_from_qr", "hidden"], ["sold_out", "soldOut"], ["add_ons", "addons"], ["photo_url", "img"],
+];
+const csvBool = (v) => /^(y|yes|true|1|x)$/i.test(String(v == null ? "" : v).trim());
+// "Name:Price;Name2:Price2" (price in MVR, blank = free) → [{name, price}]
+const parseAddonsCell = (v) => String(v || "").split(/[;|]/).map((s) => s.trim()).filter(Boolean).map((s) => {
+  const e = s.lastIndexOf(":"); return { name: (e >= 0 ? s.slice(0, e) : s).trim(), price: e >= 0 ? parseFloat(s.slice(e + 1)) || 0 : 0 };
+}).filter((a) => a.name);
+const fmtAddonsCell = (addons) => (Array.isArray(addons) ? addons : []).map((a) => String((a && a.name) || "").trim() + ":" + ((Number(a && a.price) || 0) / 100)).filter((s) => s !== ":0" && s[0] !== ":").join("; ");
+/* The one place a dish's editable fields are validated + coerced. Takes a loose
+   input object (from the single-item form OR one CSV row already mapped to keys)
+   and returns {fields} to merge onto the product, or {error}. */
+function menuFields(b) {
+  b = b || {};
+  const name = String(b.name || "").trim().slice(0, 120);
+  if (!name) return { error: "a name is required" };
+  const priceLaari = Math.round((Number(b.price) || 0) * 100);
+  if (!(priceLaari > 0)) return { error: "price must be greater than zero" };
+  const f = { name, price: priceLaari };
+  if (b.cat !== undefined) f.cat = String(b.cat || "").trim().slice(0, 60);
+  if (b.dv !== undefined) f.dv = String(b.dv || "").trim().slice(0, 120);
+  if (b.desc !== undefined) f.desc = String(b.desc || "").trim().slice(0, 400);
+  if (b.descDv !== undefined) f.descDv = String(b.descDv || "").trim().slice(0, 400);
+  if (b.veg !== undefined) f.veg = !!b.veg;
+  if (b.spice !== undefined) f.spice = Math.max(0, Math.min(3, Math.round(Number(b.spice) || 0)));
+  if (b.heat !== undefined) f.heat = !!b.heat;
+  if (b.bestSeller !== undefined) f.bestSeller = !!b.bestSeller;
+  if (b.comments !== undefined) f.comments = !!b.comments;
+  if (b.noKitchen !== undefined) f.noKitchen = !!b.noKitchen;
+  if (b.soldOut !== undefined || b.off !== undefined) f.soldOut = !!(b.soldOut !== undefined ? b.soldOut : b.off);
+  if (b.hidden !== undefined) f.hidden = !!b.hidden;
+  if (Array.isArray(b.tags)) f.tags = b.tags.map((t) => String(t || "").trim()).filter(Boolean).slice(0, 3);
+  if (b.img !== undefined) {
+    const raw = String(b.img || "").trim();
+    if (!raw) f.img = "";
+    else if (/^data:image\/(png|jpe?g|webp|gif|svg\+xml)[;,]/i.test(raw) && raw.length <= 500000) f.img = raw;
+    else if (/^https?:\/\//i.test(raw)) f.img = raw.slice(0, 600);
+    // a self-referential "/api/img/<id>" (from an export) is ignored → keep the stored photo
+  }
+  if (Array.isArray(b.addons)) {
+    f.addons = b.addons.map((a) => ({ name: String((a && a.name) || "").trim().slice(0, 60), price: Math.round((Number(a && a.price) || 0) * 100) })).filter((a) => a.name);
+  }
+  return { fields: f };
+}
+// One product's stored data → a CSV row (values in the MENU_CSV_COLS order).
+const menuCsvRow = (p) => [
+  p.id || "", p.name || "", p.dv || "", p.cat || "", (Number(p.price) || 0) / 100,
+  p.desc || "", p.descDv || "", p.veg ? "yes" : "no", Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))),
+  p.heat ? "yes" : "no", p.bestSeller ? "yes" : "no", p.comments ? "yes" : "no", p.noKitchen ? "yes" : "no",
+  p.hidden ? "yes" : "no", p.soldOut ? "yes" : "no", fmtAddonsCell(p.addons), p.img ? ("/api/img/" + (p.id || "")) : "",
+];
+// One CSV row (mapped by header) → the loose input object menuFields expects.
+function menuCsvRowToInput(rec) {
+  const b = { name: rec.name, price: rec.price, cat: rec.cat, dv: rec.dv, desc: rec.desc, descDv: rec.descDv };
+  if (rec.veg !== undefined) b.veg = csvBool(rec.veg);
+  if (rec.spice !== undefined && String(rec.spice).trim() !== "") b.spice = rec.spice;
+  if (rec.heat !== undefined) b.heat = csvBool(rec.heat);
+  if (rec.bestSeller !== undefined) b.bestSeller = csvBool(rec.bestSeller);
+  if (rec.comments !== undefined) b.comments = csvBool(rec.comments);
+  if (rec.noKitchen !== undefined) b.noKitchen = csvBool(rec.noKitchen);
+  if (rec.hidden !== undefined) b.hidden = csvBool(rec.hidden);
+  if (rec.soldOut !== undefined) b.soldOut = csvBool(rec.soldOut);
+  if (rec.addons !== undefined && String(rec.addons).trim() !== "") b.addons = parseAddonsCell(rec.addons);
+  if (rec.img !== undefined && String(rec.img).trim() !== "") b.img = rec.img;
+  return b;
+}
 // Which top-level GROUP a category falls under, so 20+ sections collapse to a
 // short top level (Drinks / Breakfast / Food / Desserts). A saved override
 // (settings.catGroup[name]) wins; otherwise a keyword default. Order matters:
@@ -5536,41 +5632,11 @@ if (fs.existsSync(protoFile)) {
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.MANAGER, "Editing the menu needs a manager or the owner.")) return;
     const b = req.body || {};
-    const name = String(b.name || "").trim().slice(0, 120);
-    if (!name) return res.status(400).json({ error: "Give the dish a name." });
-    const priceLaari = Math.round((Number(b.price) || 0) * 100);
-    if (!(priceLaari > 0)) return res.status(400).json({ error: "Price must be greater than zero." });
-    const fields = { name, price: priceLaari };
-    if (b.cat !== undefined) fields.cat = String(b.cat || "").trim().slice(0, 60);
-    if (b.desc !== undefined) fields.desc = String(b.desc || "").trim().slice(0, 400);
-    if (b.veg !== undefined) fields.veg = !!b.veg;
-    // Item tags shown on the QR menu (the guest design renders these):
-    //   spice 0-3 = how the kitchen cooks it (a fact — 0 shows nothing);
-    //   heat true = the pass can vary it, so the guest is offered a heat choice.
-    if (b.spice !== undefined) fields.spice = Math.max(0, Math.min(3, Math.round(Number(b.spice) || 0)));
-    if (b.heat !== undefined) fields.heat = !!b.heat;
-    // Dish photo: a data:image URI (uploaded photo, resized client-side, or the
-    // AI's SVG) is stored inline and served from /api/img/<id>; an existing
-    // /api/img or http(s) URL is kept as-is; empty clears it. An oversized or
-    // unsupported value is ignored, leaving any existing photo untouched. The
-    // 500 KB ceiling matches what the client resize targets well under.
-    if (b.img !== undefined) {
-      const raw = String(b.img || "").trim();
-      if (!raw) fields.img = "";
-      else if (/^data:image\/(png|jpe?g|webp|gif|svg\+xml)[;,]/i.test(raw) && raw.length <= 500000) fields.img = raw;
-      else if (/^(\/api\/img\/|https?:\/\/)/i.test(raw)) fields.img = raw.slice(0, 600);
-    }
-    if (b.soldOut !== undefined || b.off !== undefined) fields.soldOut = !!(b.soldOut !== undefined ? b.soldOut : b.off);
-    // Hidden = off the customer QR menu (buildGuestReal / liveStoreP filter it),
-    // still listed + sellable on the staff terminal.
-    if (b.hidden !== undefined) fields.hidden = !!b.hidden;
-    if (b.comments !== undefined) fields.comments = !!b.comments;
-    // Add-ons: [{name, price}] in MVR from the terminal → laari; names are the
-    // key the order path re-prices against, so drop the blank ones.
-    if (Array.isArray(b.addons)) {
-      fields.addons = b.addons.map((a) => ({ name: String((a && a.name) || "").trim().slice(0, 60),
-        price: Math.round((Number(a && a.price) || 0) * 100) })).filter((a) => a.name);
-    }
+    // menuFields is the shared normaliser (single-item save + CSV import) — it
+    // validates name/price and coerces every dish field the same way for both.
+    const nf = menuFields(b);
+    if (nf.error) return res.status(400).json({ error: nf.error === "a name is required" ? "Give the dish a name." : nf.error === "price must be greater than zero" ? "Price must be greater than zero." : nf.error });
+    const fields = nf.fields, name = fields.name, priceLaari = fields.price;
     let id = String(b.id || "").trim();
     const out = await withOrg(orgId, async (c) => {
       if (id) {
@@ -5590,6 +5656,86 @@ if (fs.existsSync(protoFile)) {
     logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: out.created ? "menu.create" : "menu.update", ref: out.id,
       detail: { name, price: priceLaari } });
     res.json({ ok: true, id: out.id, created: out.created });
+  }));
+
+  /* ── Menu import / export (CSV template) ────────────────────────────────────
+     Export the whole menu as one spreadsheet carrying every editable field, or
+     import that same shape back — so a store can bulk-edit in Excel/Sheets, seed
+     a brand-new store, or move a menu between stores. The `id` column round-trips:
+     keep it to UPDATE a dish, blank it to CREATE one. Manager+ (same gate as a
+     single edit). */
+  app.get("/api/app2/menu/export", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Exporting the menu needs a manager or the owner.")) return;
+    const storeId = cleanStoreId(req.appStoreId || DEFAULT_STORE_ID);
+    const prods = (await kindAll(orgId, "products", storeId)).filter((p) => p && p.name);
+    prods.sort((a, b) => String(a.cat || "").localeCompare(String(b.cat || "")) || String(a.name || "").localeCompare(String(b.name || "")));
+    const header = MENU_CSV_COLS.map((c) => c[0]);
+    let rows = prods.map(menuCsvRow);
+    // An empty menu still returns a usable template: the header plus one example
+    // row (marked EXAMPLE) that shows the format, so a new store can fill it in.
+    if (!rows.length) rows = [["", "EXAMPLE — Margherita Pizza", "", "Pizza", 120, "Tomato, mozzarella, basil", "", "yes", 0, "no", "yes", "yes", "no", "no", "no", "Extra cheese:15; Mushrooms:10", ""]];
+    const csv = toCsv([header].concat(rows));
+    res.set("Content-Type", "text/csv; charset=utf-8");
+    res.set("Content-Disposition", 'attachment; filename="kashikeyo-menu.csv"');
+    res.set("Cache-Control", "no-store");
+    res.send("﻿" + csv);   // BOM so Excel opens UTF-8 (Dhivehi) correctly
+  }));
+  app.post("/api/app2/menu/import", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Importing the menu needs a manager or the owner.")) return;
+    const text = String((req.body || {}).csv || "").replace(/^﻿/, "");
+    const grid = parseCsv(text).filter((r) => r.some((c) => String(c || "").trim() !== ""));
+    if (grid.length < 2) return res.status(400).json({ error: "That file has no dish rows. Export the template first, fill it in, then import." });
+    // Map the header to our keys by fuzzy name, so column order / minor renames
+    // (spaces, case, "price" vs "price_mvr") still line up.
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const head = grid[0].map(norm);
+    const colIndex = {};
+    MENU_CSV_COLS.forEach(([label, key]) => {
+      let i = head.indexOf(norm(label));
+      if (i < 0 && key === "price") i = head.findIndex((h) => h.indexOf("price") >= 0);
+      if (i < 0 && key === "hidden") i = head.findIndex((h) => h.indexOf("hidden") >= 0);
+      if (i < 0 && key === "spice") i = head.findIndex((h) => h.indexOf("spice") >= 0);
+      if (i < 0) i = head.indexOf(norm(key));
+      colIndex[key] = i;
+    });
+    if (colIndex.name < 0 || colIndex.price < 0) return res.status(400).json({ error: "Couldn't find the name and price columns. Use the exported template's header row." });
+    const dataRows = grid.slice(1).slice(0, 1000);   // cap a single import
+    const cell = (row, key) => { const i = colIndex[key]; return i >= 0 && i < row.length ? row[i] : undefined; };
+    let created = 0, updated = 0; const skipped = [];
+    await withOrg(orgId, async (c) => {
+      for (let r = 0; r < dataRows.length; r++) {
+        const row = dataRows[r];
+        const rec = {}; MENU_CSV_COLS.forEach(([, key]) => { rec[key] = cell(row, key); });
+        // EXAMPLE rows from the blank template are guidance, not data — skip them.
+        if (/^example\b/i.test(String(rec.name || "").trim())) continue;
+        const nf = menuFields(menuCsvRowToInput(rec));
+        if (nf.error) { skipped.push({ row: r + 2, name: String(rec.name || "").trim(), reason: nf.error }); continue; }
+        const wantId = String(rec.id || "").trim();
+        let existing = null;
+        if (wantId) {
+          const cur = await c.query("SELECT id FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false", [orgId, wantId]);
+          if (cur.rowCount) existing = wantId;
+        }
+        if (existing) {
+          const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing]);
+          const data = Object.assign({}, cur.rows[0].data || {}, nf.fields);
+          await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing, JSON.stringify(data)]);
+          updated++;
+        } else {
+          const id = wantId || ("m_" + Math.random().toString(36).slice(2, 9));
+          const data = Object.assign({ id, recipe: [] }, nf.fields);
+          await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()", [orgId, id, JSON.stringify(data)]);
+          created++;
+        }
+      }
+    });
+    poke(orgId, Date.now());
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.import", ref: "", detail: { created, updated, skipped: skipped.length } });
+    res.json({ ok: true, created, updated, skipped });
   }));
   /* Remove a dish from the menu (tombstone). It stops showing on the till and
      the QR portal; past orders that referenced it are unaffected. */

@@ -6124,7 +6124,9 @@ class Component extends DCLogic {
           .map((so) => ({ label: so.label, on: sortKey === so.key, pick: () => this.setState({ menuSort: so.key }) }))
       },
       guideTitle: "Putting a dish on sale", guide: ["Create the dish with its chain master price", "Add recipe lines in Recipes & Costing so food cost is real", "An outlet may override the price; the master stays the default", "Tourism-zone outlets apply their uplift on top automatically"],
-      actions: (canEdit ? [{ label: "New dish", primary: true, go: () => this.openForm("dish") }] : []).concat(costToggle),
+      actions: (canEdit ? [{ label: "New dish", primary: true, go: () => this.openForm("dish") },
+        { label: "Export / template", go: () => this.exportMenuCsv() },
+        { label: "Import CSV", go: () => this.importMenuCsv() }] : []).concat(costToggle),
       // Plain menu by default: Dish, Category, Price, Status. The costing
       // columns (food cost, GP %, recipe) only appear when Show costs is on, so
       // a newcomer reads a menu, not a spreadsheet.
@@ -7229,6 +7231,54 @@ class Component extends DCLogic {
   // one modal at a time. Columns: name, base unit (g/ml/pcs), purchase unit
   // (KG/LTR/PCS), cost per purchase unit MVR, min stock, location. A header row
   // is detected and skipped.
+  // Download the whole menu as a CSV that carries every dish field — a store's
+  // export and its import template are the same file. Auth is the cookie, so we
+  // fetch the blob (rather than navigate) to keep the terminal in place.
+  exportMenuCsv() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to export its menu", "warn"); return; }
+    this.toast("Preparing the menu template…");
+    fetch("/api/app2/menu/export", { credentials: "same-origin" })
+      .then((r) => r.ok ? r.text() : Promise.reject(r.status))
+      .then((csv) => {
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "kashikeyo-menu.csv"; document.body.appendChild(a); a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+        this.toast("Menu template downloaded — edit it, then Import CSV to apply");
+      })
+      .catch(() => this.toast("Could not export the menu — check the connection", "warn"));
+  }
+  // Upload a filled-in menu CSV. Rows with an `id` update that dish; blank-id rows
+  // create one. The server parses + validates each row and reports the tally.
+  importMenuCsv() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to import a menu", "warn"); return; }
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".csv,text/csv,text/plain";
+    input.onchange = () => {
+      const f = input.files && input.files[0]; if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const csv = String(reader.result || "");
+        if (!csv.trim()) { this.toast("That file is empty", "warn"); return; }
+        this.toast("Importing menu…");
+        fetch("/api/app2/menu/import", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ csv }) })
+          .then((r) => r.json().catch(() => ({}))).then((j) => {
+            if (j && j.error) { this.toast(j.error, "warn"); return; }
+            const parts = [];
+            if (j.created) parts.push(j.created + " added");
+            if (j.updated) parts.push(j.updated + " updated");
+            const sk = (j.skipped && j.skipped.length) ? " · " + j.skipped.length + " skipped" : "";
+            this.toast((parts.join(" · ") || "No changes") + sk + " — reload to see the menu", parts.length ? "" : "warn");
+            if (j.skipped && j.skipped.length) { try { console.warn("Menu import skipped rows:", j.skipped); } catch (e) {} }
+            this.refreshMenu && this.refreshMenu();
+          })
+          .catch(() => this.toast("Import failed — check the connection", "warn"));
+      };
+      reader.readAsText(f);
+    };
+    input.click();
+  }
   bulkImportItems() {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to import to the item master", "warn"); return; }
     const input = document.createElement("input");
