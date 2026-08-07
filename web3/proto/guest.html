@@ -1740,12 +1740,15 @@ window.KashikeyoGuestQR = (function () {
     /* categories */
     var q = s.q.trim().toLowerCase();
     var list = this.D.MENU.filter(function (m) {
-      if (s.cat !== 'all' && m.cat !== s.cat) return false;
+      if (s.cat === 'popular') { if (!m.best) return false; }
+      else if (s.cat !== 'all' && m.cat !== s.cat) return false;
       if (s.vegOnly && !m.veg) return false;
       if (s.noHeat && (Number(m.spice) || 0) > 0) return false;
       if (!q) return true;
       return (m.name + ' ' + m.desc).toLowerCase().indexOf(q) >= 0;
     });
+    // Popular = what people actually order (usage-ranked), most-ordered first.
+    if (s.cat === 'popular') list.sort(function (a, b) { return (Number(b.soldQty) || 0) - (Number(a.soldQty) || 0); });
 
     h += '<div style="margin-top:22px;display:flex;align-items:center;justify-content:space-between">' +
       '<span class="q-h">Categories</span>' +
@@ -1754,9 +1757,9 @@ window.KashikeyoGuestQR = (function () {
       '</span></div>';
 
     h += '<div style="margin:14px -22px 0;padding:4px 22px 8px;display:flex;gap:10px;overflow-x:auto">' +
-      [{ id: 'all', name: 'All dishes' }].concat(this.D.MENU_CATEGORIES).map(function (c) {
+      [{ id: 'all', name: 'All dishes' }].concat(this.D.MENU.some(function (m) { return m.best; }) ? [{ id: 'popular', name: '★ Popular' }] : []).concat(this.D.MENU_CATEGORIES).map(function (c) {
         var on = s.cat === c.id;
-        var pic = self.D.MENU.filter(function (m) { return c.id === 'all' || m.cat === c.id; })[0];
+        var pic = self.D.MENU.filter(function (m) { return c.id === 'all' || (c.id === 'popular' ? m.best : m.cat === c.id); })[0];
         return '<button data-act="cat" data-id="' + attr(c.id) + '" style="flex-shrink:0;display:flex;align-items:center;gap:9px;padding:6px 16px 6px 6px;border-radius:26px;background:' +
           (on ? 'var(--k-accent-tint-2)' : 'var(--k-white)') + ';border:1px solid ' + (on ? C : 'var(--k-line-2)') +
           ';box-shadow:0 2px 7px rgba(0,0,0,' + (on ? '.07' : '.045') + ')">' +

@@ -1137,6 +1137,49 @@ async function applyMenuItems(orgId, items, catGroups, catOrder, opts = {}) {
   return out;
 }
 
+/* Usage-based popularity: tally units sold per dish over a recent window and mark
+   the top sellers `trending` (with a running `soldQty`), so the portals can rank
+   and feature what people actually order — not just a hand-set flag. Throttled
+   per org so a busy till doesn't recompute on every sale. */
+const POP_WINDOW_MS = 45 * 86400000;   // 45 days
+const _popAt = new Map();
+async function recomputeMenuPopularity(orgId) {
+  return await withOrg(orgId, async (c) => {
+    const since = Date.now() - POP_WINDOW_MS;
+    const sales = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId])).rows.map((r) => r.data || {});
+    const tally = {};
+    for (const s of sales) {
+      const at = Number(s.at || s.createdAt || s.t) || 0;
+      if (at && at < since) continue;
+      for (const l of (s.lines || [])) { const pid = String(l.pid || l.id || ""); if (!pid) continue; tally[pid] = (tally[pid] || 0) + (Number(l.qty != null ? l.qty : l.q) || 0); }
+    }
+    const ranked = Object.keys(tally).map((k) => [k, tally[k]]).filter((x) => x[1] > 0).sort((a, b) => b[1] - a[1]);
+    // Featured = the top ~12% of sold dishes (at least 6, at most 24).
+    const topN = Math.min(24, Math.max(6, Math.ceil(ranked.length * 0.12)));
+    const top = new Set(ranked.slice(0, topN).map((x) => x[0]));
+    const prods = (await c.query("SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
+    let mx = 0;
+    for (const p of prods) {
+      const pid = String(p.id), qty = tally[pid] || 0, trending = top.has(pid), d = p.data || {};
+      if ((Number(d.soldQty) || 0) === qty && !!d.trending === trending) continue;   // no change
+      d.soldQty = qty; if (trending) d.trending = true; else delete d.trending;
+      const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2 RETURNING rowver", [orgId, pid, JSON.stringify(d)]);
+      if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
+    }
+    return { ranked: ranked.length, featured: top.size, mx };
+  });
+}
+// Fire-and-forget, throttled to once per 10 min per org. Safe to call from any
+// hot path (a settle, a menu build) — it never blocks and never throws outward.
+function maybeRecomputePopularity(orgId) {
+  try {
+    const now = Date.now(), last = _popAt.get(orgId) || 0;
+    if (now - last < 600000) return;
+    _popAt.set(orgId, now);
+    recomputeMenuPopularity(orgId).then((r) => { if (r && r.mx) poke(orgId, r.mx); }).catch((e) => recordError("popularity " + orgId, e));
+  } catch (e) { /* never let ranking break a sale */ }
+}
+
 /* Same DJB2-ish hash the till bundle itself uses for till-PIN staff entries
    (see Xo() in web/dist/index.html) - reimplemented here so a PIN chosen (or
    generated) at signup can be seeded server-side as a real "users" entity
@@ -3594,7 +3637,7 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
         .map((a) => ({ name: String((a && a.name) || "").trim(), price: (Number(a && a.price) || 0) / 100 }))
         .filter((a) => a.name);
       return { id: x.id, cat: menuCat(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
-        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!p.bestSeller, soldOut: soldOut,
+        price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!(p.bestSeller || p.trending), trending: !!p.trending, soldQty: Number(p.soldQty) || 0, soldOut: soldOut,
         // Item tags for the QR menu: vegetarian flag, the fixed spice level
         // (0-3, 0 = shown as nothing) and whether the pass can vary the heat.
         veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat,
@@ -3765,7 +3808,7 @@ if (fs.existsSync(protoFile)) {
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, hidden: !!p.hidden, mods: liveMods(p.addons), veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat, soldOut: derivedSoldOut(p),
+    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!(p.bestSeller || p.trending), trending: !!p.trending, soldQty: Number(p.soldQty) || 0, hidden: !!p.hidden, mods: liveMods(p.addons), veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat, soldOut: derivedSoldOut(p),
       // Why it is off, when the availability engine knows ("Out of Tuna").
       // Null for a manual off-switch or a plain stock-out; the register's 86
       // list falls back to the item name alone in that case.
@@ -5112,6 +5155,7 @@ if (fs.existsSync(protoFile)) {
   app.get("/api/app2/live", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    maybeRecomputePopularity(orgId);   // keep usage ranking fresh for open terminals (throttled)
     const { rows, calls } = await withOrg(orgId, async (c) => {
       const rows = (await c.query(
         "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId])).rows;
@@ -5582,6 +5626,7 @@ if (fs.existsSync(protoFile)) {
     if (out.firstBooking && out.sale) {
       inventory.processSales(orgId, [out.sale]).catch((e) => recordError("settle processSales", e));
       logActivity(orgId, { action: out.flagged ? "sale.flagged" : "sale.qr_settled", ref: out.sale.no, detail: { total: out.total, tender, source: "qr" }, requestId: req.id });
+      maybeRecomputePopularity(orgId);   // a fresh sale can change what's trending
     }
     res.json({ ok: true, total: out.total });
   }));
