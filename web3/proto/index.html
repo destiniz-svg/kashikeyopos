@@ -1167,6 +1167,39 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
             </div>
           </sc-if>
 
+          <sc-if value="{{ mOrdTrack }}">
+            <sc-if value="{{ ordGone }}">
+              <div style="padding:30px 20px;text-align:center">
+                <div style="font-size:13px;color:var(--text-dim);line-height:1.6">{{ ordDoneMsg }}</div>
+                <button onClick="{{ closeTrack }}" style="margin-top:16px;padding:10px 22px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700">Done</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ordLive }}">
+              <div>
+                <div style="display:flex;align-items:flex-start;margin-bottom:18px">
+                  <sc-for list="{{ ordSteps }}" as="st" hint-placeholder-count="4">
+                    <div onClick="{{ st.pick }}" style="display:flex;flex-direction:column;align-items:center;flex-shrink:0">
+                      <div style="{{ st.dotStyle }}">{{ st.num }}</div>
+                      <div style="{{ st.labelStyle }}">{{ st.label }}</div>
+                    </div>
+                    <div style="{{ st.barStyle }}"></div>
+                  </sc-for>
+                </div>
+                <sc-if value="{{ ordHasItems }}">
+                  <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:9px">Items — tap to mark prepared</div>
+                  <sc-for list="{{ ordItems }}" as="it" hint-placeholder-count="0">
+                    <button onClick="{{ it.toggle }}" style="{{ it.rowStyle }}">
+                      <span style="{{ it.boxStyle }}">✓</span>
+                      <span style="{{ it.labelStyle }}">{{ it.label }}</span>
+                    </button>
+                  </sc-for>
+                </sc-if>
+                <button onClick="{{ doAdvance }}" style="{{ ordAdvanceStyle }}">{{ ordAdvanceLabel }}</button>
+                <button onClick="{{ cancelTrack }}" style="width:100%;margin-top:9px;padding:10px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;font-weight:600">Cancel order</button>
+              </div>
+            </sc-if>
+          </sc-if>
+
           <sc-if value="{{ mConflict }}">
             <div>
               <div style="padding:12px 14px;background:rgba(226,96,96,.07);border:1px solid rgba(226,96,96,.25);border-radius:10px;font-size:12.5px;color:var(--text);line-height:1.6;margin-bottom:14px">{{ conflictBody }}</div>
@@ -3326,7 +3359,7 @@ class Component extends DCLogic {
       stop: (e) => e.stopPropagation(),
       payGridStyle: this.effBp() === "m" ? "display:grid;grid-template-columns:1fr;gap:14px" : "display:grid;grid-template-columns:minmax(0,1fr) minmax(220px,260px);gap:18px",
       mPay: m.kind === "pay", mNote: m.kind === "note", mAddons: m.kind === "addons", mDisc: m.kind === "disc", mQr: m.kind === "qr", mConflict: m.kind === "conflict",
-      mKot: m.kind === "kot",
+      mKot: m.kind === "kot", mOrdTrack: m.kind === "ordtrack",
       mActions: m.kind === "actions" || m.kind === "switch" || m.kind === "perm" || m.kind === "resv",
       mLock: m.kind === "lock",
       mDetail: ["outletDetail", "user", "customer", "dish", "item", "info"].indexOf(m.kind) >= 0,
@@ -3891,6 +3924,50 @@ class Component extends DCLogic {
         openQr: () => { if (link) { try { window.open(link, "_blank", "noopener"); } catch (e) {} } },
         printQr: () => { if (sel) this.printTableQr(sel); }
       });
+    }
+
+    // Order progress tracker — the cashier drives a live order along
+    // New → Preparing → Ready → Served, and can tick each dish as it's prepared.
+    // Keyed by id so it re-reads the live order on every 3s poll; when the order
+    // completes/cancels it leaves the live board and this shows a done panel.
+    if (m.kind === "ordtrack") {
+      const label = { dine_in: "Dine-in", qr: "QR table", takeaway: "Takeaway", delivery: "Delivery" };
+      const ord = (this.liveOrders() || []).find((x) => x.id === m.id);
+      if (!ord) {
+        return { modalTitle: "Order updated", modalSub: "Off the live board",
+          ordGone: true, ordLive: false,
+          ordDoneMsg: "This order is complete — it has moved off the live board.",
+          closeTrack: () => this.setState({ modal: null }) };
+      }
+      const tableLabel = ord.table ? (this.isTableSlot(ord.table) ? "T" + pad(ord.table) : String(ord.table)) : "—";
+      const STAGES = [["new", "New"], ["preparing", "Preparing"], ["ready", "Ready"], ["completed", "Served"]];
+      let curIdx = STAGES.findIndex((st) => st[0] === ord.status); if (curIdx < 0) curIdx = 0;
+      const steps = STAGES.map((st, i) => {
+        const done = i < curIdx, on = i === curIdx;
+        return { label: st[1], num: done ? "✓" : String(i + 1),
+          dotStyle: "width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0;cursor:pointer;" + (done ? "background:var(--go);color:var(--on-go)" : on ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-faint)"),
+          labelStyle: "font-size:10.5px;font-weight:700;margin-top:5px;text-align:center;color:" + (on ? "var(--amber-bright)" : done ? "var(--text-dim)" : "var(--text-faint)"),
+          barStyle: i === STAGES.length - 1 ? "display:none" : "flex:1;height:2px;margin:14px 2px 0;background:" + (i < curIdx ? "var(--go)" : "var(--line)"),
+          pick: () => { this.setOrderStatus(ord.id, st[0]); this.toast("Order " + ord.no + " → " + st[1]); } };
+      });
+      const nextOf = { new: ["preparing", "Start preparing"], preparing: ["ready", "Mark ready"], ready: ["completed", "Mark served & done"] };
+      const nx = nextOf[ord.status];
+      const items = (ord.items || []).map((it) => ({
+        label: (it.q || 1) + "× " + (it.n || "Item"),
+        rowStyle: "display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;border:1px solid var(--line);margin-bottom:7px;width:100%;cursor:pointer;background:" + (it.done ? "rgba(107,191,123,.07)" : "var(--bg)"),
+        boxStyle: "width:22px;height:22px;flex-shrink:0;border-radius:6px;display:grid;place-items:center;font-size:13px;font-weight:800;" + (it.done ? "background:var(--go);color:var(--on-go)" : "background:var(--bg-2);border:1px solid var(--line);color:transparent"),
+        labelStyle: "flex:1;text-align:left;font-size:12.5px;font-weight:600;" + (it.done ? "color:var(--text-dim);text-decoration:line-through" : "color:var(--text)"),
+        toggle: () => this.bumpLine(ord.id, it.idx, !it.done) }));
+      return {
+        modalTitle: "Order " + ord.no,
+        modalSub: tableLabel + " · " + (label[ord.channel] || ord.channel) + (ord.server ? " · " + ord.server : "") + (ord.customerName ? " · " + ord.customerName : ""),
+        ordGone: false, ordLive: true,
+        ordSteps: steps, ordItems: items, ordHasItems: items.length > 0,
+        ordAdvanceLabel: nx ? nx[1] : "Served — all done",
+        ordAdvanceStyle: "width:100%;margin-top:16px;padding:13px;border-radius:9px;font-size:13px;font-weight:700;text-align:center;border:none;" + (nx ? "background:var(--go);color:var(--on-go);cursor:pointer" : "background:var(--bg-2);color:var(--text-faint)"),
+        doAdvance: () => { if (nx) { this.setOrderStatus(ord.id, nx[0]); this.toast("Order " + ord.no + " → " + nx[1]); } },
+        cancelTrack: () => { this.setOrderStatus(ord.id, "cancelled"); this.setState({ modal: null }); this.toast("Order " + ord.no + " cancelled", "warn"); }
+      };
     }
 
     if (m.kind === "conflict") {
@@ -6770,15 +6847,9 @@ class Component extends DCLogic {
     })) : [];
     const all = live.concat(this.todayOrders());
     const list = all.filter((o) => !chan || o.channel === chan).filter((o) => !q || String(o.no || "").toLowerCase().indexOf(q) >= 0);
-    // Advance a live order along the kitchen/service path from the Orders board.
-    const nextOf = { new: ["preparing", "Start preparing"], preparing: ["ready", "Mark ready"], ready: ["completed", "Mark served & done"] };
-    const openLive = (o) => {
-      const nx = nextOf[o.status];
-      this.info("Order " + o.no, (o.live ? "Open · " : "") + (o.table !== "—" ? o.table + " · " : "") + (label[o.channel] || o.channel) + (o.server ? " · " + o.server : ""),
-        (o.items || []).map((it) => ["  " + (it.q || 1) + "× " + (it.n || "Item"), ""]).concat([["Status", String(o.status || "")], ["Total", MVRc(o.total)]]),
-        o.live ? "This order is still open. Advance it as the kitchen and floor work through it; it closes when the ticket is paid on the till." : "",
-        (o.live && nx) ? { label: nx[1], go: () => { this.setOrderStatus(o.id, nx[0]); this.setState({ modal: null }); this.toast("Order " + o.no + " → " + nx[0]); } } : null);
-    };
+    // Tapping a live order opens the progress tracker (a status stepper the
+    // cashier drives + per-line done toggles); by id so it reflects live polls.
+    const openLive = (o) => this.setState({ modal: { kind: "ordtrack", id: o.id } });
     return {
       tabs: ["All", "Dine-in", "QR table", "Takeaway", "Delivery"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { ord: i }) }) })),
       actions: [
