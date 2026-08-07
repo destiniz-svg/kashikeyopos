@@ -52,7 +52,16 @@
       + '<rect width="400" height="300" fill="url(#g)"/>'
       + '<g transform="translate(200 150) scale(4.6)" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(-12 -12)">' + icon + '</g></g>'
       + '</svg>';
-    var uri = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+    // Fully percent-encode and drop the ";utf8" media param, so the URI carries
+    // no ";", raw "(", ")", or quote. The till binds this through dc-template,
+    // which drops the quotes around url('...') — an unquoted url() then truncates
+    // at the first ";" (the ";utf8") or "(" (an SVG transform), stranding every
+    // tile on its bare dark background. A quote-free, paren-free URI renders the
+    // same quoted or unquoted, so all three portals paint the artwork.
+    var enc = encodeURIComponent(svg)
+      .replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/'/g, '%27')
+      .replace(/!/g, '%21').replace(/\*/g, '%2A');
+    var uri = 'data:image/svg+xml,' + enc;
     CACHE[key] = uri;
     return uri;
   };
