@@ -3371,14 +3371,21 @@ const MENU_CSV_COLS = [
   ["price_mvr", "price"], ["description", "desc"], ["description_dhivehi", "descDv"],
   ["veg", "veg"], ["spice_level_0_3", "spice"], ["heat_choice", "heat"],
   ["best_seller", "bestSeller"], ["allow_comments", "comments"], ["no_kitchen", "noKitchen"],
-  ["hidden_from_qr", "hidden"], ["sold_out", "soldOut"], ["add_ons", "addons"], ["photo_url", "img"],
+  ["hidden_from_qr", "hidden"], ["sold_out", "soldOut"], ["tags", "tags"], ["add_ons", "addons"], ["photo_url", "img"],
 ];
 const csvBool = (v) => /^(y|yes|true|1|x)$/i.test(String(v == null ? "" : v).trim());
-// "Name:Price;Name2:Price2" (price in MVR, blank = free) → [{name, price}]
+// Add-ons in a cell, "|"- or ";"-separated. Each is a name with an optional
+// price suffixed as " +15" or ":15" (MVR); no suffix = a free choice/size (e.g.
+// "3 pcs"). Round-trips the "Name +Price | Name" style menus are written in.
 const parseAddonsCell = (v) => String(v || "").split(/[;|]/).map((s) => s.trim()).filter(Boolean).map((s) => {
-  const e = s.lastIndexOf(":"); return { name: (e >= 0 ? s.slice(0, e) : s).trim(), price: e >= 0 ? parseFloat(s.slice(e + 1)) || 0 : 0 };
+  const m = s.match(/\s*[:+]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  return m ? { name: s.slice(0, m.index).trim(), price: parseFloat(m[1]) || 0 } : { name: s, price: 0 };
 }).filter((a) => a.name);
-const fmtAddonsCell = (addons) => (Array.isArray(addons) ? addons : []).map((a) => String((a && a.name) || "").trim() + ":" + ((Number(a && a.price) || 0) / 100)).filter((s) => s !== ":0" && s[0] !== ":").join("; ");
+const fmtAddonsCell = (addons) => (Array.isArray(addons) ? addons : []).map((a) => {
+  const n = String((a && a.name) || "").trim(), p = (Number(a && a.price) || 0) / 100;
+  return n ? (p ? n + " +" + p : n) : "";
+}).filter(Boolean).join(" | ");
+const parseTagsCell = (v) => String(v || "").split(/[;|]/).map((s) => s.trim()).filter(Boolean).slice(0, 3);
 /* The one place a dish's editable fields are validated + coerced. Takes a loose
    input object (from the single-item form OR one CSV row already mapped to keys)
    and returns {fields} to merge onto the product, or {error}. */
@@ -3419,7 +3426,11 @@ const menuCsvRow = (p) => [
   p.id || "", p.name || "", p.dv || "", p.cat || "", (Number(p.price) || 0) / 100,
   p.desc || "", p.descDv || "", p.veg ? "yes" : "no", Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))),
   p.heat ? "yes" : "no", p.bestSeller ? "yes" : "no", p.comments ? "yes" : "no", p.noKitchen ? "yes" : "no",
-  p.hidden ? "yes" : "no", p.soldOut ? "yes" : "no", fmtAddonsCell(p.addons), p.img ? ("/api/img/" + (p.id || "")) : "",
+  p.hidden ? "yes" : "no", p.soldOut ? "yes" : "no", (Array.isArray(p.tags) ? p.tags : []).join("; "),
+  fmtAddonsCell(p.addons),
+  // Keep an external photo URL verbatim so it round-trips; a stored/generated
+  // image exports as its /api/img reference (re-import redraws the placeholder).
+  p.img ? (/^https?:/i.test(p.img) ? p.img : ("/api/img/" + (p.id || ""))) : "",
 ];
 // One CSV row (mapped by header) → the loose input object menuFields expects.
 function menuCsvRowToInput(rec) {
@@ -3432,10 +3443,62 @@ function menuCsvRowToInput(rec) {
   if (rec.noKitchen !== undefined) b.noKitchen = csvBool(rec.noKitchen);
   if (rec.hidden !== undefined) b.hidden = csvBool(rec.hidden);
   if (rec.soldOut !== undefined) b.soldOut = csvBool(rec.soldOut);
+  if (rec.tags !== undefined && String(rec.tags).trim() !== "") b.tags = parseTagsCell(rec.tags);
   if (rec.addons !== undefined && String(rec.addons).trim() !== "") b.addons = parseAddonsCell(rec.addons);
   if (rec.img !== undefined && String(rec.img).trim() !== "") b.img = rec.img;
   return b;
 }
+
+/* ── Menu artwork (category-aware placeholder) ────────────────────────────────
+   When a dish has no photo — on import, or a create with no upload — it still
+   gets a branded tile instead of a blank square: an icon keyed to its category
+   over a matching colour, with the dish name. It's a self-contained SVG data
+   URI, so it needs no upload, no external host, and can never 404. Line icons
+   are drawn on a 24×24 grid (lucide-style), centred + scaled on the tile. */
+const ART_ICONS = {
+  coffee: '<path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/><path d="M6 2v2M10 2v2M14 2v2"/>',
+  cup: '<path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4Z"/><path d="M6 1v3M10 1v3"/>',
+  glass: '<path d="M5 3h14l-1.4 8a4 4 0 0 1-3.95 3.3h-3.3A4 4 0 0 1 6.4 11Z"/><path d="M12 14.3V21M8 21h8"/>',
+  pizza: '<path d="m2 16 20 6-6-20A20 20 0 0 0 2 16"/><path d="M5.7 17.1a17 17 0 0 1 11.4-11.4"/><path d="M15 11h.01M11 15h.01"/>',
+  burger: '<path d="M3 8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/><path d="M3 12h18M3 16h18"/><path d="M4 16a4 4 0 0 0 4 4h8a4 4 0 0 0 4-4"/>',
+  fish: '<path d="M6.5 12c.94-3.46 4.94-6 8.5-6 3.56 0 6.06 2.54 7 6-.94 3.47-3.44 6-7 6s-7.56-2.53-8.5-6Z"/><path d="M18 12v.01"/><path d="M2.5 6C4 8 4 16 2.5 18"/>',
+  bowl: '<path d="M2 12h20a10 10 0 0 1-20 0Z"/><path d="M4 9c1.5-2 5-2 6.5 0M13 9c1.5-2 5-2 6.5 0"/>',
+  egg: '<path d="M12 3c4.5 0 7 7 7 11a7 7 0 0 1-14 0c0-4 2.5-11 7-11Z"/>',
+  cake: '<path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20M12 4v7M12 4h.01"/>',
+  utensils: '<path d="M3 2v7a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V2M6 2v20"/><path d="M18 2a4 4 0 0 0-4 4v5a2 2 0 0 0 2 2h2Zm0 0v20"/>',
+  plate: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>',
+};
+const menuArtTheme = (cat) => {
+  const s = String(cat || "").toLowerCase();
+  const t = (re) => re.test(s);
+  if (t(/coffee|espresso|lavazza|illy|nescaf|crema|latte|cappucc|americano|macchiato|mocha/)) return { i: "coffee", a: "#3f2617", b: "#7a4a26" };
+  if (t(/\btea\b/)) return { i: "cup", a: "#5a4a1e", b: "#94793a" };
+  if (t(/juice|smoothie|shake|milkshake|mojito|mocktail|frappe|soft|soda|water|drink/)) return { i: "glass", a: "#155e50", b: "#2fa07f" };
+  if (t(/pizza/)) return { i: "pizza", a: "#9a3d1a", b: "#cf6a2c" };
+  if (t(/burger|sandwich|submarine|panini|wrap/)) return { i: "burger", a: "#6f4218", b: "#a86e2c" };
+  if (t(/fish|seafood|grill/)) return { i: "fish", a: "#175066", b: "#2f86a8" };
+  if (t(/rice|noodle|biryani|nasi|bami|kottu|pasta/)) return { i: "bowl", a: "#7a4e18", b: "#b3812c" };
+  if (t(/curry|special/)) return { i: "bowl", a: "#8a3418", b: "#bf5e2c" };
+  if (t(/breakfast/)) return { i: "egg", a: "#7a5c16", b: "#c19a2c" };
+  if (t(/sweet|dessert|treat|cake|pastr|bakery/)) return { i: "cake", a: "#8a2450", b: "#c74a86" };
+  if (t(/savory|savoury|baked|fried|snack|side|condiment/)) return { i: "utensils", a: "#6f5218", b: "#a8862c" };
+  return { i: "plate", a: "#4a3a2a", b: "#836a4e" };
+};
+const menuArtifact = (cat, name) => {
+  const th = menuArtTheme(cat);
+  const icon = ART_ICONS[th.i] || ART_ICONS.plate;
+  const label = String(name || "").replace(/[<>&"]/g, "").trim().slice(0, 30);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">'
+    + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + th.a + '"/><stop offset="1" stop-color="' + th.b + '"/></linearGradient></defs>'
+    + '<rect width="400" height="300" fill="url(#g)"/>'
+    + '<g transform="translate(200 118) scale(4)" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(-12 -12)">' + icon + '</g></g>'
+    + (label ? '<text x="200" y="252" text-anchor="middle" font-family="Georgia, \'Times New Roman\', serif" font-size="21" fill="#fff" fill-opacity=".95">' + label + '</text>' : '')
+    + '</svg>';
+  return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+};
+// True when a photo value is a real image we should keep (an uploaded data: image
+// or an external URL) vs. a placeholder reference we should redraw as artwork.
+const hasRealPhoto = (v) => { v = String(v || "").trim(); return /^data:image\//i.test(v) || /^https?:\/\//i.test(v); };
 // Which top-level GROUP a category falls under, so 20+ sections collapse to a
 // short top level (Drinks / Breakfast / Food / Desserts). A saved override
 // (settings.catGroup[name]) wins; otherwise a keyword default. Order matters:
@@ -5649,6 +5712,9 @@ if (fs.existsSync(protoFile)) {
       }
       if (!id) id = "m_" + Math.random().toString(36).slice(2, 9);
       const data = Object.assign({ id, recipe: [] }, fields);
+      // A new dish with no photo gets a category-keyed placeholder tile, so it
+      // never shows a blank square on the till or the QR menu.
+      if (!data.img) data.img = menuArtifact(data.cat, data.name);
       const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, id, JSON.stringify(data)]);
       return { id, rowver: Number(r.rows[0].rowver), created: true };
     });
@@ -5703,10 +5769,17 @@ if (fs.existsSync(protoFile)) {
       colIndex[key] = i;
     });
     if (colIndex.name < 0 || colIndex.price < 0) return res.status(400).json({ error: "Couldn't find the name and price columns. Use the exported template's header row." });
-    const dataRows = grid.slice(1).slice(0, 1000);   // cap a single import
+    const dataRows = grid.slice(1).slice(0, 2000);   // cap a single import
     const cell = (row, key) => { const i = colIndex[key]; return i >= 0 && i < row.length ? row[i] : undefined; };
-    let created = 0, updated = 0; const skipped = [];
+    // "Replace" wipes the current menu first, so an import is the whole menu, not
+    // an add-on to it. Categories/order are re-derived from what's imported.
+    const replace = !!(req.body || {}).replace;
+    let created = 0, updated = 0, purged = 0; const skipped = []; const catSeen = [];
     await withOrg(orgId, async (c) => {
+      if (replace) {
+        const del = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]);
+        purged = del.rowCount || 0;
+      }
       for (let r = 0; r < dataRows.length; r++) {
         const row = dataRows[r];
         const rec = {}; MENU_CSV_COLS.forEach(([, key]) => { rec[key] = cell(row, key); });
@@ -5714,28 +5787,46 @@ if (fs.existsSync(protoFile)) {
         if (/^example\b/i.test(String(rec.name || "").trim())) continue;
         const nf = menuFields(menuCsvRowToInput(rec));
         if (nf.error) { skipped.push({ row: r + 2, name: String(rec.name || "").trim(), reason: nf.error }); continue; }
+        const f = nf.fields;
+        // Tags default to the dish's own facts when the column is blank, so the
+        // menu tiles carry a chip or two without hand-tagging 300 dishes.
+        if (!Array.isArray(f.tags) || !f.tags.length) {
+          const dt = []; if (f.bestSeller) dt.push("Popular"); if (f.veg) dt.push("Veg"); if (Number(f.spice) >= 2) dt.push("Spicy");
+          if (dt.length) f.tags = dt.slice(0, 3);
+        }
+        if (f.cat && catSeen.indexOf(f.cat) < 0) catSeen.push(f.cat);
         const wantId = String(rec.id || "").trim();
         let existing = null;
-        if (wantId) {
+        if (wantId && !replace) {
           const cur = await c.query("SELECT id FROM entities WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false", [orgId, wantId]);
           if (cur.rowCount) existing = wantId;
         }
         if (existing) {
           const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing]);
-          const data = Object.assign({}, cur.rows[0].data || {}, nf.fields);
-          await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing, JSON.stringify(data)]);
+          const data = Object.assign({}, cur.rows[0].data || {}, f);
+          if (!data.img) data.img = menuArtifact(data.cat, data.name);   // no photo → branded tile
+          await c.query("UPDATE entities SET data=$3, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing, JSON.stringify(data)]);
           updated++;
         } else {
           const id = wantId || ("m_" + Math.random().toString(36).slice(2, 9));
-          const data = Object.assign({ id, recipe: [] }, nf.fields);
+          const data = Object.assign({ id, recipe: [] }, f);
+          if (!data.img) data.img = menuArtifact(data.cat, data.name);   // no photo → branded tile
           await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()", [orgId, id, JSON.stringify(data)]);
           created++;
         }
       }
+      // On a full replace, pin the category order + a sensible top-level group
+      // for each, so every portal reads the menu in the order it was imported.
+      if (replace && catSeen.length) {
+        const catGroups = catSeen.map((nm) => ({ name: nm, group: catGroupOf(nm) }));
+        await c.query(
+          "UPDATE entities SET data = COALESCE(data,'{}'::jsonb) || $2::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings'",
+          [orgId, JSON.stringify({ catOrder: catSeen, catGroups })]);
+      }
     });
     poke(orgId, Date.now());
-    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.import", ref: "", detail: { created, updated, skipped: skipped.length } });
-    res.json({ ok: true, created, updated, skipped });
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.import", ref: "", detail: { created, updated, purged, skipped: skipped.length } });
+    res.json({ ok: true, created, updated, purged, categories: catSeen.length, skipped });
   }));
   /* Remove a dish from the menu (tombstone). It stops showing on the till and
      the QR portal; past orders that referenced it are unaffected. */
