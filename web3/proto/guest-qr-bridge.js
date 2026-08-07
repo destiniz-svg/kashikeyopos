@@ -104,7 +104,7 @@
      A poll (every 5s) keeps it live even without SSE, and calls subscribers on
      any change so the app repaints. */
   var liveTicket = null, tSubs = [], tPoll = 0, tLast = "";
-  function buildTicket(orders) {
+  function buildTicket(orders, calls) {
     var lines = [], anyBillAck = false, hadOrder = false, allSettled = true;
     (orders || []).forEach(function (o) {
       var st = String((o && o.status) || "new");
@@ -136,9 +136,20 @@
         });
       });
     });
+    // A cashier can acknowledge a floor call ("On my way") without clearing it.
+    // An acked BILL call is the same promise as an order-level billAck; an acked
+    // ASSIST call ("call a server") shows its own "a server is on the way".
+    var assistAck = false, billCallAck = false;
+    (calls || []).forEach(function (cl) {
+      if (!cl || !cl.acked) return;
+      if (cl.kind === "assist") assistAck = true;
+      else if (cl.kind === "bill") billCallAck = true;
+    });
+    var settled = hadOrder && allSettled;
     // settled = every open order for this table has been paid off at the till;
-    // billAck = a cashier acknowledged a bill request and is on the way.
-    return { lines: lines, settled: hadOrder && allSettled, billAck: anyBillAck && !(hadOrder && allSettled) };
+    // billAck = a cashier acknowledged a bill request (from an order OR a bill
+    // call) and is on the way; assistAck = a server acknowledged a waiter call.
+    return { lines: lines, settled: settled, billAck: (anyBillAck || billCallAck) && !settled, assistAck: assistAck && !settled };
   }
   function pollTicket() {
     if (!SLUG || !TABLE) return;
@@ -146,7 +157,7 @@
       .then(function (r) { return r && r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j) return;
-        var tk = buildTicket(j.orders || []);
+        var tk = buildTicket(j.orders || [], j.calls || []);
         var sig = JSON.stringify(tk);
         if (sig === tLast) return;                       // unchanged → don't churn the UI
         tLast = sig; liveTicket = tk;

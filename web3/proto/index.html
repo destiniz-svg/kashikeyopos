@@ -293,7 +293,13 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                     <span style="display:block;font-size:10.5px;color:var(--text-dim);margin-top:2px">{{ c.sub }}</span>
                   </span>
                   <button onClick="{{ c.go }}" style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-dim);padding:7px 11px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2)">Open table</button>
-                  <button onClick="{{ c.ack }}" style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:7px 12px;border-radius:8px">On my way</button>
+                  <sc-if value="{{ c.canCome }}">
+                    <button onClick="{{ c.coming }}" style="flex-shrink:0;font-size:11px;font-weight:700;color:#fff;background:var(--blue);padding:7px 12px;border-radius:8px">On my way</button>
+                  </sc-if>
+                  <sc-if value="{{ c.acked }}">
+                    <span style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--go-bright)">Notified ✓</span>
+                  </sc-if>
+                  <button onClick="{{ c.ack }}" style="flex-shrink:0;font-size:11px;font-weight:700;color:var(--on-amber);background:var(--amber);padding:7px 12px;border-radius:8px">{{ c.ackLabel }}</button>
                 </div>
               </sc-for>
               <button onClick="{{ elsewhereRow.go }}" style="{{ elsewhereRow.style }}">
@@ -3060,7 +3066,16 @@ class Component extends DCLogic {
             if (x.kind === "member" || x.kind === "reward") { this.setState({ view: "customers" }); clear(); return; }
             const t = parseInt(x.table, 10); this.setState({ view: t ? "pos" : "kds", activeTable: t || this.state.activeTable }); clear(); if (t) this.revealMenu();
           },
-          ack: () => { clear(); this.toast(x.kind === "reward" ? ("Reward honoured — " + (x.reward || "") + (x.code ? " · " + x.code : "")) : x.kind === "member" ? ((x.name || "Member") + " noted at the counter") : ((x.real ? "Accepted" : "Acknowledged") + (isTable ? " — T" + x.table : ""))); }
+          ack: () => { clear(); this.toast(x.kind === "reward" ? ("Reward honoured — " + (x.reward || "") + (x.code ? " · " + x.code : "")) : x.kind === "member" ? ((x.name || "Member") + " noted at the counter") : ((x.real ? "Accepted" : "Acknowledged") + (isTable ? " — T" + x.table : ""))); },
+          // "On my way": tell the guest a server is coming WITHOUT clearing the
+          // call (it stays on the floor until actually served). Only for an
+          // unacked assist/bill call from a real guest.
+          canCome: x.call && (x.kind === "assist" || x.kind === "bill") && !x.acked,
+          acked: !!x.acked,
+          coming: () => { this.callComing(x.id); this.toast("Guest told a server is on the way" + (isTable ? " — T" + x.table : "")); },
+          // The clearing button's verb depends on the kind: an order is accepted,
+          // a reward honoured, a member noted, a raised hand simply cleared.
+          ackLabel: x.kind === "reward" ? "Honour" : x.kind === "member" ? "Noted" : x.kind === "order" ? "Accept" : "Clear"
         };
       }),
       hasCalls: this.posCalls().length > 0 || this.elsewhere().length > 0,
@@ -4772,7 +4787,7 @@ class Component extends DCLogic {
     // sees who it is; clearing a reward honours the voucher server-side.
     const calls = (this.liveCalls() || [])
       .filter((cl) => !acked[cl.id])
-      .map((cl) => ({ id: cl.id, real: true, call: true,
+      .map((cl) => ({ id: cl.id, real: true, call: true, acked: !!cl.acked,
         kind: (cl.kind === "bill" || cl.kind === "member" || cl.kind === "reward") ? cl.kind : "assist",
         table: cl.table, at: cl.t || Date.now(), name: cl.name || "", reward: cl.reward || "", code: cl.code || "",
         detail: cl.kind === "reward" ? (cl.code || "") : cl.kind === "member" ? "" : (cl.name || "") }));
@@ -4792,6 +4807,12 @@ class Component extends DCLogic {
     (this._ackedCalls || (this._ackedCalls = {}))[id] = 1;
     this.forceUpdate();
     fetch("/api/app2/call/" + encodeURIComponent(id) + "/ack", { method: "POST", credentials: "same-origin" })
+      .then((r) => r.json()).then(() => this.refreshLiveOrders()).catch(() => {});
+  }
+  // "On my way" on a floor call: flags it acked (so the guest's portal shows a
+  // server is coming) but leaves it on the floor until it's actually served.
+  callComing(id) {
+    fetch("/api/app2/call/" + encodeURIComponent(id) + "/coming", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ack: true }) })
       .then((r) => r.json()).then(() => this.refreshLiveOrders()).catch(() => {});
   }
   pullSignals() {

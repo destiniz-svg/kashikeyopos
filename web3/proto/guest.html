@@ -525,7 +525,13 @@
 /* ── resets ──────────────────────────────────────────────────────────────── */
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
 html,body{height:100%}
-body{background:var(--k-desk);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--k-ink-1)}
+/* Lock the page to the VISIBLE viewport on a phone. `100dvh` tracks the area
+   left after the browser's URL bar, so the bottom action bar can never sit
+   behind it (the old `100vh` measured the tall viewport and pushed the bar off
+   the bottom). overscroll-behavior kills the rubber-band that let the whole
+   shell bounce and the address bar flicker while scrolling a round list. */
+body{background:var(--k-desk);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:var(--k-ink-1);
+  overscroll-behavior-y:none}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;transition:var(--k-press)}
 button:active:not(:disabled){transform:scale(.96)}
 button:disabled{cursor:not-allowed}
@@ -557,10 +563,10 @@ svg{display:block}
    draws its own status bar and browser chrome); a desk-sized window shows the
    handset, because that is what the guest is actually holding.
    ═══════════════════════════════════════════════════════════════════════════ */
-.q-page{min-height:100vh;background:var(--k-white);display:block}
+.q-page{min-height:100vh;min-height:100dvh;background:var(--k-white);display:block}
 .q-page.is-framed{padding:40px 20px 48px;display:flex;align-items:center;justify-content:center;
   background:linear-gradient(178deg,#1b1e11 0%,#333a1e 26%,var(--k-desk) 62%,#7f8a52 100%)}
-.q-frame{width:100%;margin:0 auto;height:100vh;position:relative;background:var(--k-white);display:block}
+.q-frame{width:100%;margin:0 auto;height:100vh;height:100dvh;position:relative;background:var(--k-white);display:block}
 .is-framed .q-frame{height:auto;flex-shrink:0;border-radius:56px;padding:11px;
   background:linear-gradient(148deg,#4a4a4d,var(--k-bezel) 42%,#424245);
   box-shadow:0 44px 90px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.4)}
@@ -1281,8 +1287,11 @@ window.KashikeyoGuestQR = (function () {
       if (f === 'promo') { self.s.promo = e.target.value; self.s.applied = false; self.s.promoErr = ''; self.render(); }
     });
     this._unsub = this.A.subscribe ? this.A.subscribe(function () { self.pull(); }) : null;
-    /* The wait clock keeps counting even when nothing on the till moves. */
-    this._tock = setInterval(function () { self.s.tick++; self.render(); }, 20000);
+    /* The wait clock keeps counting even when nothing on the till moves — but
+       only the status screen shows elapsed time, so a tick anywhere else would
+       just rebuild an identical menu/bill string every 20s and burn a phone's
+       battery. Render on tick only when it can change something. */
+    this._tock = setInterval(function () { if (self.s.screen !== 'sent') return; self.s.tick++; self.render(); }, 20000);
     this._rot = setInterval(function () {
       var n = self.banners().length;
       if (n > 1 && self.s.screen === 'menu' && !self.s.sheet) { self.s.banner = (self.s.banner + 1) % n; self.render(); }
@@ -1290,7 +1299,15 @@ window.KashikeyoGuestQR = (function () {
     this._onSize = function () {
       if (self._rs) return;
       self._rs = setTimeout(function () {
-        self._rs = null; self.s.vw = window.innerWidth; self.s.vh = window.innerHeight; self.render();
+        self._rs = null;
+        var pw = self.s.vw;
+        self.s.vw = window.innerWidth; self.s.vh = window.innerHeight;
+        /* Only a WIDTH change can flip the layout (framed↔bare, 2↔3 columns).
+           A height-only change is the mobile browser hiding/showing its URL bar
+           as the guest scrolls — re-rendering on that stutters the scroll for
+           no visual gain, so skip it. The shell height is CSS `100dvh` now, so
+           it tracks the URL bar without any JS help. */
+        if (self.s.vw !== pw) self.render();
       }, 120);
     };
     window.addEventListener('resize', this._onSize);
@@ -1313,6 +1330,18 @@ window.KashikeyoGuestQR = (function () {
         this.s.settling = null; this.s.cart = []; this.s.sent = [];
       }
     }
+    /* Notify the guest the moment a server acknowledges a call — on ANY screen,
+       not just the status page, since a waiter/bill call is usually made from
+       the menu. Toast on the rising edge only (was off, now on) so it fires once
+       per acknowledgement, not on every 5s poll. */
+    var t2 = this.A.ticket ? (this.A.ticket() || {}) : {};
+    var was = this._ackWas;
+    if (was) {   // skip the first pull — seed the baseline silently, no toast on load
+      if (t2.assistAck && !was.assist) this.toast('A server is on the way to your table');
+      else if (t2.billAck && !was.bill) this.toast('A cashier is on the way with your bill');
+      else if (t2.settled && !was.settled) this.toast('Bill settled — thank you');
+    }
+    this._ackWas = { assist: !!t2.assistAck, bill: !!t2.billAck, settled: !!t2.settled };
     this.render();
   };
 
@@ -1978,6 +2007,8 @@ window.KashikeyoGuestQR = (function () {
           '<span style="font-size:13.5px;font-weight:700;color:var(--k-go-ink-2)">Settled — thank you. Your bill has been paid at the till.</span></div>';
         if (tk.billAck) return '<div style="margin:6px 0 2px;display:flex;align-items:center;gap:10px;padding:13px 15px;border-radius:14px;background:var(--k-info-bg);border:1px solid var(--k-info-line);animation:qpulse 1.8s ease-in-out infinite">' +
           '<span style="font-size:13.5px;font-weight:700;color:var(--k-info-ink)">A cashier is on the way with your bill.</span></div>';
+        if (tk.assistAck) return '<div style="margin:6px 0 2px;display:flex;align-items:center;gap:10px;padding:13px 15px;border-radius:14px;background:var(--k-info-bg);border:1px solid var(--k-info-line);animation:qpulse 1.8s ease-in-out infinite">' +
+          '<span style="font-size:13.5px;font-weight:700;color:var(--k-info-ink)">A server is on the way to your table.</span></div>';
         return '';
       })() +
       '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0 4px">' +

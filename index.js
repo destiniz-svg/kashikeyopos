@@ -2900,7 +2900,20 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
     ? { usdRate: 1542, ...settingsArr[0] }
     : { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
   const mine = (await guestOrders(org.id, storeId, { customerId: req.query.c, table: req.query.t }, settings)).slice(0, 25);
-  res.json({ storeId, orders: mine });
+  // Also surface this table's open floor calls (assist/bill) so the portal can
+  // show "a server is on the way" once a cashier acknowledges one. Only the
+  // fields the portal needs, only for this table — never the whole floor.
+  const table = req.query.t;
+  let calls = [];
+  if (table) {
+    const raw = await kindAll(org.id, "waiterCalls", storeId);
+    calls = raw
+      .filter((cl) => cl && (cl.kind === "assist" || cl.kind === "bill") && idEq(cl.table, table))
+      .map((cl) => ({ id: cl.id, kind: cl.kind, acked: !!cl.acked, t: cl.t || 0 }))
+      .sort((a, b) => Number(b.t) - Number(a.t))
+      .slice(0, 8);
+  }
+  res.json({ storeId, orders: mine, calls });
 }));
 
 /* Guest customer account — look up a loyalty/credit account by phone (public,
@@ -4965,6 +4978,27 @@ if (fs.existsSync(protoFile)) {
     res.json({ ok: true });
   }));
 
+  // Acknowledge a floor call WITHOUT clearing it — the cashier taps "On my way"
+  // so the guest's portal shows a server is coming. Unlike /ack (which redeems +
+  // soft-deletes), this leaves the call on the floor until it's actually served,
+  // and just stamps `acked`/`ackedAt` so the flag can reach the portal feed.
+  app.post("/api/app2/call/:id/coming", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Only till staff can respond to a call.")) return;
+    const id = String(req.params.id || "");
+    const on = (req.body || {}).ack !== false;
+    const rowver = await withOrg(orgId, async (c) => {
+      const r = await c.query(
+        "UPDATE entities SET data = data || jsonb_build_object('acked',$3::boolean,'ackedAt',$4::bigint), rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='waiterCalls' AND id=$2 AND deleted=false RETURNING rowver",
+        [orgId, id, on, on ? Date.now() : null]);
+      return r.rowCount ? Number(r.rows[0].rowver) : null;
+    });
+    if (rowver == null) return res.status(404).json({ error: "call not found" });
+    poke(orgId, rowver);
+    res.json({ ok: true });
+  }));
+
   /* Kitchen tickets from the register (audit C-H5). sendKot wrote LOCAL STATE
      ONLY: a POS kitchen ticket never reached the server, so a second kitchen
      display never saw it, a refresh lost it, and bumping it on screen A did not
@@ -5238,6 +5272,15 @@ if (fs.existsSync(protoFile)) {
   // (so QR revenue lands in the Z-report + books) and stamps `settled` — the
   // guest portal reads that as paid and shows a receipt. Idempotent: a second
   // settle is refused rather than double-booking.
+  //
+  // A QR/portal settle must land in the books exactly like a till sale. The
+  // `sales` entity already feeds revenue/GST/service/tenders/AR and the Orders
+  // & Tickets closed row (all derived from it at read time). This handler also
+  // does what the /api/ops sale path does around that entity, so the settle is
+  // not a second-class sale: it stamps a money-integrity audit, decrements
+  // product-level stock, accrues the member's loyalty points, and (post-commit)
+  // runs the recipe/ingredient COGS ledger so gross margin is right immediately
+  // instead of waiting up to 30 min for the reconcile sweep.
   app.post("/api/app2/order/:id/settle", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
@@ -5245,6 +5288,16 @@ if (fs.existsSync(protoFile)) {
     const id = String(req.params.id || "");
     const tender = ["cash", "card", "wallet", "transfer", "credit"].includes(String((req.body || {}).tender)) ? String(req.body.tender) : "cash";
     const settings = (await loadSettingsArr(orgId))[0] || {};
+    // Catalogue prices + GST rate for the money-integrity check (same ctx the
+    // /api/ops path builds), so a mispriced/tampered QR line gets flagged too.
+    let moneyCtx = null;
+    try {
+      const prods = await kindAll(orgId, "products", cleanStoreId(DEFAULT_STORE_ID));
+      const prices = new Map();
+      for (const p of prods) prices.set(String(p.id), { price: Number(p.price) || 0, open: !!p.open });
+      moneyCtx = { gstBp: Number(settings.gstBp || 800), prices };
+    } catch (e) { moneyCtx = { gstBp: Number(settings.gstBp || 800) }; }
+    const cfg = loyaltyConfig(settings);
     const out = await withOrg(orgId, async (c) => {
       const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
       if (!cur.rowCount) return { code: 404 };
@@ -5254,23 +5307,60 @@ if (fs.existsSync(protoFile)) {
       data.status = "settled"; data.settledAt = Date.now(); data.paidAt = Date.now(); data.tender = tender; data.billAck = false; data.updatedAt = Date.now();
       const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
       // A `sales` entity keyed off the order id, so the QR sale reaches the
-      // Z-report / GST return / P&L and a replay can't book it twice.
+      // Z-report / GST return / P&L and a replay can't book it twice. `id` on
+      // the DATA (not just the entity key) is what processSales + the reconcile
+      // sweep key their COGS ledger ref off — without it, COGS never posts.
       const saleId = "s_ord_" + id;
       const sale = {
-        type: "sale", no: data.no || saleId, table: data.table || null, tender: tender, at: Date.now(),
+        id: saleId, type: "sale", no: data.no || saleId, table: data.table || null, tender: tender, at: Date.now(),
+        otype: asOtype(data.otype), storeId: cleanStoreId(data.storeId || DEFAULT_STORE_ID),
         channel: data.otype === "delivery" ? "delivery" : data.otype === "takeaway" ? "takeaway" : "qr",
-        lines: (data.items || []).map((it) => ({ pid: it.pid, qty: Number(it.qty) || 1, price: Number(it.price) || 0, amount: (Number(it.price) || 0) * (Number(it.qty) || 1), discPct: 0, addons: it.addons })),
+        lines: (data.items || []).map((it) => ({ pid: it.pid, name: it.name, qty: Number(it.qty) || 1, price: Number(it.price) || 0, amount: (Number(it.price) || 0) * (Number(it.qty) || 1), discPct: 0, taxable: it.taxable !== false, addons: it.addons })),
         subtotal: bd.excl, svcCharge: bd.svc, gst: bd.gst, billDisc: 0, billDiscPct: 0, total: bd.total,
         payments: [{ method: tender, amount: bd.total, given: bd.total, change: 0 }],
-        orderId: id, source: "qr",
+        orderId: id, source: "qr", userName: "QR portal",
       };
       if (data.customerId) { sale.customerId = data.customerId; sale.customerName = data.customerName || ""; }
-      await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'sales',$2,$3) ON CONFLICT (org_id, kind, id) DO NOTHING", [orgId, saleId, JSON.stringify(sale)]);
-      return { code: 200, rowver: Number(r.rows[0].rowver), total: bd.total };
+      // Money integrity: re-derive and stamp a flag on a mismatch (never reject —
+      // the guest has paid). Surfaces in the Payments > Review tab like any sale.
+      const money = auditSaleMoney(sale, moneyCtx);
+      if (money) sale.serverAudit = money;
+      const ins = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'sales',$2,$3) ON CONFLICT (org_id, kind, id) DO NOTHING RETURNING rowver", [orgId, saleId, JSON.stringify(sale)]);
+      const firstBooking = ins.rowCount > 0;   // ON CONFLICT → 0 rows means it was already booked
+      // Product-level stock: decrement stock-counted menu items (the /api/ops
+      // path does this from client deltas; a QR settle has no client, so do it
+      // here). Recipe-tracked items are handled by processSales post-commit.
+      // Only on the first booking, so a retried settle can't double-deduct.
+      if (firstBooking) {
+        for (const it of (data.items || [])) {
+          const q = Number(it.qty) || 1; if (!it.pid || q <= 0) continue;
+          await c.query(
+            `UPDATE entities SET data = jsonb_set(data, '{stock}', to_jsonb(GREATEST(0, (data->>'stock')::numeric - $4)), true),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+             WHERE org_id=$1 AND kind='products' AND id=$2 AND COALESCE(data->>'storeId',$3) IN ('global',$3)
+               AND jsonb_typeof(data->'stock') = 'number'`, [orgId, String(it.pid), sale.storeId, q]);
+        }
+        // Loyalty: award points to a member-attributed order (spend/visits are
+        // derived from the sales entity, so only stored points need moving).
+        const pts = data.customerId && cfg.pointsPer > 0 ? Math.floor((bd.total / 100) / cfg.pointsPer) : 0;
+        if (pts > 0) {
+          await c.query(
+            `UPDATE entities SET data = data || jsonb_build_object('points', COALESCE((data->>'points')::numeric,0) + $3),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+             WHERE org_id=$1 AND kind='customers' AND id=$2`, [orgId, String(data.customerId), pts]);
+        }
+      }
+      return { code: 200, rowver: Number(r.rows[0].rowver), total: bd.total, sale, firstBooking, flagged: !!money };
     });
     if (out.code === 404) return res.status(404).json({ error: "order not found" });
     if (out.code === 409) return res.status(409).json({ error: "this order is already closed" });
     poke(orgId, out.rowver);
+    // Post-commit (never blocks the settle): recipe/ingredient COGS ledger +
+    // availability recompute, and an activity-log entry. Idempotent by sale id.
+    if (out.firstBooking && out.sale) {
+      inventory.processSales(orgId, [out.sale]).catch((e) => recordError("settle processSales", e));
+      logActivity(orgId, { action: out.flagged ? "sale.flagged" : "sale.qr_settled", ref: out.sale.no, detail: { total: out.total, tender, source: "qr" }, requestId: req.id });
+    }
     res.json({ ok: true, total: out.total });
   }));
   // Per-line KDS bump: a cook marks one dish on a ticket done (or un-done). The
