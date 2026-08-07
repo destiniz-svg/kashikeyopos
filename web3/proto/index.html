@@ -4117,21 +4117,17 @@ class Component extends DCLogic {
       // posts variance on close — it isn't category-scoped, so there's no picker.
       if (real) {
         const nItems = (raw.items || []).length;
+        // Read audits straight from the real payload (KPOS_RAW.audits isn't always
+        // hydrated at boot — the same reason g_counts reads it here too).
+        const openAudit = (((window.KPOS_REAL && window.KPOS_REAL.inventory && window.KPOS_REAL.inventory.audits) || raw.audits || []).find((a) => a && a.status === "open"));
         return {
-          modalTitle: "New stock check", modalSub: o.name + " · counts every item, variance posts on close",
-          countIntro: "This opens a blind stock check over all " + nItems + " item" + (nItems === 1 ? "" : "s") + ": it snapshots the system on-hand now, you enter what you physically counted, and closing posts the variance to the ledger as a signed adjustment (never a blind overwrite). Only one check can be open at a time.",
+          modalTitle: openAudit ? "Resume stock check" : "New stock check", modalSub: o.name + (openAudit ? " · a count is already in progress" : " · counts every item, variance posts on close"),
+          countIntro: openAudit
+            ? "A stock check is already in progress" + (openAudit.label ? " (" + openAudit.label + ")" : "") + ". Resume it to keep entering counts where you left off, then close it to post the variance. Only one check can be open at a time."
+            : "This opens a blind stock check over all " + nItems + " item" + (nItems === 1 ? "" : "s") + ": it snapshots the system on-hand now, you enter what you physically counted, and closing posts the variance to the ledger as a signed adjustment (never a blind overwrite). Only one check can be open at a time.",
           countCats: [],
-          startCountLabel: "Open stock check",
-          startCount: () => {
-            this.setState({ modal: null });
-            fetch("/api/inv/audits", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ label: "Stock check " + new Date().toISOString().slice(0, 10), startedBy: this.me() }) })
-              .then((r) => r.json().catch(() => ({}))).then((j) => {
-                if (j && j.error) { this.toast(j.error, "warn"); return; }
-                this.refreshInventory();
-                this.openCountSheet(j.id);
-                this.toast("Stock check opened · " + (j.lines || nItems) + " items to count");
-              }).catch(() => this.toast("Could not open the stock check — check the connection", "warn"));
-          }
+          startCountLabel: openAudit ? "Resume the count in progress" : "Open stock check",
+          startCount: () => this.openOrResumeCount()
         };
       }
       return {
@@ -6251,6 +6247,29 @@ class Component extends DCLogic {
     raw.purch = R.purch || [];
     raw.audits = R.audits || [];
     raw.reqs = []; raw.disp = []; raw.prod = []; raw.batches = [];
+  }
+  // Open a stock check, or resume the one already in progress. Only one check can
+  // be open at a time, so instead of failing (or opening a blank sheet) when one
+  // exists, this resumes it — the counter picks up where they left off. Handles
+  // the race where another device opens one between the check and the create.
+  openOrResumeCount() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    this.setState({ modal: null });
+    const nItems = ((window.KPOS_RAW || {}).items || []).length;
+    const resume = (id) => { this.openCountSheet(id); this.toast("Resuming the stock check already in progress"); };
+    const findOpen = () => fetch("/api/inv/audits", { credentials: "same-origin" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => ((j && j.audits) || []).find((a) => a && a.status === "open"));
+    findOpen().then((open) => {
+      if (open) return resume(open.id);
+      return fetch("/api/inv/audits", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ label: "Stock check " + new Date().toISOString().slice(0, 10), startedBy: this.me() }) })
+        .then((r) => r.json().catch(() => ({}))).then((k) => {
+          if (k && k.error) { return findOpen().then((o2) => o2 ? resume(o2.id) : this.toast(k.error, "warn")); }
+          this.refreshInventory();
+          this.openCountSheet(k.id);
+          this.toast("Stock check opened · " + (k.lines || nItems) + " items to count");
+        });
+    }).catch(() => this.toast("Could not open the stock check — check the connection", "warn"));
   }
   // Load an open stock-check session's lines and open the count sheet. Blind by
   // default — the system on-hand is hidden while counting so the counter records
