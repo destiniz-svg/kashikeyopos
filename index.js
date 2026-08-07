@@ -5017,7 +5017,16 @@ if (fs.existsSync(protoFile)) {
     };
     app.get(/^\/v2(\/.*)?$/, async (req, res) => {
       res.set("Content-Security-Policy", V2_CSP);
-      res.set("Cache-Control", "no-cache");
+      // The terminal HTML is per-session (it carries this store's injected
+      // KPOS_REAL) and references the per-deploy ?v= asset bundle. A bare
+      // `no-cache` lets Cloudflare hold a copy and serve it without revalidating
+      // to origin, so after a deploy a till kept running the OLD bundle ("nothing
+      // changed") — and one store's injected data could be served to another at a
+      // shared edge. Match the guest/member pages: no-store at every layer, and a
+      // CDN directive + Vary:Host so the edge never caches or cross-serves it.
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      res.set("CDN-Cache-Control", "no-store");
+      res.set("Vary", "Cookie, Host");
       let inject = "";
       try {
         const real = await buildV2Real(req);
