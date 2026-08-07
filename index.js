@@ -4760,7 +4760,8 @@ if (fs.existsSync(protoFile)) {
       try {
         const real = await buildV2Real(req);
         if (real) inject = "\n<script>window.KPOS_REAL=" +
-          JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
+          JSON.stringify(real).replace(/</g, "\\u003c") + ";window.KPOS_BUILD=" +
+          JSON.stringify(ASSET_VER) + ";</script>";
       } catch (e) { recordError("v2 hydrate", e); }
       let html = fs.readFileSync(path.join(proto3Dir, "index.html"), "utf8");
       if (inject) html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject);
@@ -4925,7 +4926,9 @@ if (fs.existsSync(protoFile)) {
       return { rows, calls };
     });
     res.set("Cache-Control", "no-store");
-    res.json({ ok: true, orders: liveOrdersV2(rows.map((r) => r.data || {})), calls });
+    // Stamp the running build so an already-open terminal notices a new deploy
+    // and refreshes itself (see maybeReloadForUpdate on the client).
+    res.json({ ok: true, build: ASSET_VER, orders: liveOrdersV2(rows.map((r) => r.data || {})), calls });
   }));
   // Acknowledge a guest call (waiter / bill): clears it from the floor on every
   // device by soft-deleting the waiterCalls entity. (Stale calls also auto-expire

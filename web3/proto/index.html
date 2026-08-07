@@ -4956,11 +4956,34 @@ class Component extends DCLogic {
   // service pipeline. Seeded from the page inject, refreshed by the signal poll,
   // so a ticket fired on one device lands on the kitchen screen on another.
   liveOrders() { return this.state.liveOrders || (window.KPOS_REAL && window.KPOS_REAL.liveOrders) || []; }
+  // A single-page terminal keeps running the code it loaded with, so a deploy
+  // never reaches a tab that stays open. The 3s live poll now carries the running
+  // build; when the server's build is newer than the one this tab booted with, we
+  // refresh to pick up the new code — but never mid-sale, mid-form, or with
+  // unsynced work, so nothing in progress is lost. It retries on the next tick
+  // once the terminal is idle. The HTML is served no-store, so the reload fetches
+  // the new build rather than a cached copy.
+  maybeReloadForUpdate(serverBuild) {
+    if (!serverBuild || !window.KPOS_BUILD || serverBuild === window.KPOS_BUILD) return;
+    const s = this.state;
+    // Don't yank the page out from under an open order (cart drawer), an open
+    // form/dialog, or unsynced work. Tickets and the outbox persist across a
+    // reload, so those aren't lost; this guard is about not interrupting.
+    const busy = s.cart ||
+      (s.modal && s.modal.kind !== "lock") ||
+      (s.outbox && s.outbox.some((x) => x.state === "queued"));
+    if (busy) {
+      if (!this._updateReady) { this._updateReady = true; this.toast("An update is ready — it'll apply when you're free", "warn"); }
+      return;
+    }
+    try { window.location.reload(); } catch (e) { /* ignore */ }
+  }
   refreshLiveOrders() {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
     fetch("/api/app2/live", { credentials: "same-origin" }).then((r) => r.json())
       .then((j) => {
         if (!j || !j.ok) return;
+        this.maybeReloadForUpdate(j.build);
         // Keep a just-bumped line marked done even if this poll was in flight
         // before the bump reached the server — otherwise the line flickers back
         // for a poll cycle. The hold expires once the server catches up.
