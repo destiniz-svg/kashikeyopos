@@ -135,6 +135,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
 /* Mono helper — every number in a tabular context. */
 .mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
 </style>
+<script src="./menu-art.js"></script>
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-data.js"></script>
 </helmet>
@@ -3046,9 +3047,11 @@ class Component extends DCLogic {
         const hid = !!m.hidden;   // off the customer QR menu, still sellable at the till
         const cost = this.foodCost(m), price = this.menuPrice(m);
         const showCost = this.can("recipes");
+        const _art = window.kposCatArt ? window.kposCatArt(m.cat || m.sub || m.name) : "";
+        const _bg = m.img ? (_art ? "url(" + m.img + "), url('" + _art + "')" : "url(" + m.img + ")") : (_art ? "url('" + _art + "')" : "none");
         return {
           name: m.name, desc: m.desc, price: MVRc(price),
-          photoStyle: "position:absolute;inset:0;background-image:url(" + m.img + ");background-size:cover;background-position:center;" + (off ? "filter:grayscale(1) brightness(.5);" : ""),
+          photoStyle: "position:absolute;inset:0;background-image:" + _bg + ";background-size:cover;background-position:center;" + (off ? "filter:grayscale(1) brightness(.5);" : ""),
           add: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.addLine(m),
           addons: () => off ? this.toast(m.name + " is 86'd — stock is out", "err") : this.openAddons(m),
           addonsHintStyle: off ? "display:none" : "position:absolute;bottom:6px;right:6px;font-size:9px;font-weight:700;letter-spacing:.03em;padding:3px 8px;border-radius:20px;background:rgba(0,0,0,.55);color:#fff",
@@ -6963,6 +6966,13 @@ class Component extends DCLogic {
     // Item tags for the QR menu: spice 0-3 (fixed level, shown as a tag) and
     // heat = the guest may pick how hot the kitchen makes it.
     const spice = Math.max(0, Math.min(3, Math.round(Number(v.spice) || 0))), heat = v.heat === "yes";
+    // Dhivehi name, kitchen routing (no_kitchen inverted), popularity, and free
+    // tags — all optional. Tags default (server-side) to the dish's own facts
+    // when left blank, so a quick create still shows a chip.
+    const dv = String(v.dv || "").trim();
+    const noKitchen = v.kitchen === "no";
+    const bestSeller = v.popular === "yes";
+    const tags = String(v.tags || "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 3);
     // Add-ons come from the repeater as [{name, price}] (price a string, blank =
     // free). Prices are MVR here; the endpoint converts to laari and the order
     // path re-prices each add-on by name. A string value (legacy) is also parsed.
@@ -6976,7 +6986,7 @@ class Component extends DCLogic {
     const imgIsNew = imgVal.slice(0, 5) === "data:";
     const imgCleared = !imgVal && !!(existing && existing.img);
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
-      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, spice: spice, heat: heat, off: off, hidden: hidden, addons: addons };
+      const body = { name: name, cat: cat, desc: desc, price: price, veg: veg, spice: spice, heat: heat, off: off, hidden: hidden, addons: addons, dv: dv, noKitchen: noKitchen, bestSeller: bestSeller, tags: tags };
       if (imgIsNew) body.img = imgVal; else if (imgCleared) body.img = "";
       if (existing && existing.id) body.id = existing.id;
       fetch("/api/app2/product", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
@@ -7261,13 +7271,18 @@ class Component extends DCLogic {
       reader.onload = () => {
         const csv = String(reader.result || "");
         if (!csv.trim()) { this.toast("That file is empty", "warn"); return; }
-        this.toast("Importing menu…");
-        fetch("/api/app2/menu/import", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ csv }) })
+        // Replace = this file IS the menu (remove anything not in it). Cancel =
+        // add/update only. A blank menu skips the question — nothing to replace.
+        const hasMenu = ((this.coll("menu") || []).length > 0);
+        const replace = hasMenu ? window.confirm("Replace the ENTIRE current menu with this file?\n\nOK — Replace: dishes not in the file are removed.\nCancel — Merge: add new dishes and update matches, keep the rest.") : false;
+        this.toast(replace ? "Replacing menu…" : "Importing menu…");
+        fetch("/api/app2/menu/import", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ csv, replace }) })
           .then((r) => r.json().catch(() => ({}))).then((j) => {
             if (j && j.error) { this.toast(j.error, "warn"); return; }
             const parts = [];
             if (j.created) parts.push(j.created + " added");
             if (j.updated) parts.push(j.updated + " updated");
+            if (j.purged) parts.push(j.purged + " removed");
             const sk = (j.skipped && j.skipped.length) ? " · " + j.skipped.length + " skipped" : "";
             this.toast((parts.join(" · ") || "No changes") + sk + " — reload to see the menu", parts.length ? "" : "warn");
             if (j.skipped && j.skipped.length) { try { console.warn("Menu import skipped rows:", j.skipped); } catch (e) {} }
@@ -8704,18 +8719,24 @@ class Component extends DCLogic {
         aiFill: 1,
         fields: [
           { k: "name", label: "Dish name", v: "", placeholder: "e.g. Mango Sticky Rice", full: 1 },
+          { k: "dv", label: "Dhivehi name (optional)", v: "", placeholder: "ދިވެހި ނަން", full: 1 },
           { k: "desc", label: "Menu description", v: "", placeholder: "e.g. Coconut sticky rice with fresh mango", full: 1 },
           { k: "cat", label: "Category", options: catOpts },
           { k: "price", label: "Price MVR", v: "", placeholder: "e.g. 120" },
-          { k: "img", label: "Photo (optional)", image: 1, full: 1, guide: "Landscape works best — about 3:2 (e.g. 1200×800px). JPG or PNG. Big photos are shrunk automatically. Or use ✨ Generate with AI below to draw one." },
+          { k: "img", label: "Photo (optional)", image: 1, full: 1, guide: "Landscape works best — about 3:2 (e.g. 1200×800px). JPG or PNG. Big photos are shrunk automatically. No photo? A category tile is drawn for you. Or use ✨ Generate with AI below." },
+          { k: "kitchen", label: "Made in the kitchen", options: [{ v: "yes", l: "Yes — fires a kitchen ticket" }, { v: "no", l: "No — packaged / ready to serve" }] },
+          { k: "popular", label: "Popular", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes — feature it & tag it" }] },
           { k: "veg", label: "Vegetarian", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes" }] },
           { k: "spice", label: "Spice level", options: [{ v: "0", l: "None" }, { v: "1", l: "Mild" }, { v: "2", l: "Medium" }, { v: "3", l: "Hot" }] },
           { k: "heat", label: "Guest can pick the heat", options: [{ v: "no", l: "No" }, { v: "yes", l: "Yes — offer a heat choice" }] },
+          { k: "tags", label: "Tags — up to 3, comma-separated (blank = drawn from Popular / Veg / Spicy)", v: "", full: 1 },
           { k: "avail", label: "Availability", options: [{ v: "yes", l: "On sale" }, { v: "86", l: "Sold out (86) — shown, marked unavailable" }, { v: "hidden", l: "Hidden — off the customer menu, still on the till" }], full: 1 },
           { k: "addons", label: "Add-ons — a name and its MVR price · leave the price blank for a free option", rows: 1, full: 1 }
         ],
         editSave: "Save changes",
         pre: (d) => ({ veg: d.veg ? "yes" : "no", spice: String(Math.max(0, Math.min(3, Math.round(Number(d.spice) || 0)))), heat: d.heat ? "yes" : "no",
+          dv: d.dv || "", kitchen: d.noKitchen ? "no" : "yes", popular: d.bestSeller ? "yes" : "no",
+          tags: (d.tags || []).join(", "),
           avail: d.hidden ? "hidden" : ((d.off || d.soldOut) ? "86" : "yes"),
           img: d.img || "",
           addons: (d.addons || []).map((a) => ({ name: a.name, price: Number(a.price) ? String(a.price) : "" })) }),
