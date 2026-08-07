@@ -7615,7 +7615,12 @@ class Component extends DCLogic {
     const spec = this.formSpec(name); if (!spec) return;
     const v = {};
     spec.fields.forEach((f) => {
-      const dflt = f.v === undefined ? (f.options ? f.options[0].v : "") : String(f.v);
+      // An empty array is truthy, so `f.options[0].v` threw when a select field
+      // had zero options (e.g. the GRN vendor list or an item/category list on a
+      // brand-new store) — which crashed openForm and the button did nothing.
+      // Guard on length so the form always opens; an empty select just has no
+      // default and the onSave handlers already fall back (e.g. cat -> 1).
+      const dflt = f.v === undefined ? ((f.options && f.options.length) ? f.options[0].v : "") : String(f.v);
       const has = row && row[f.k] !== undefined && row[f.k] !== null;
       v[f.k] = has ? String(row[f.k]) : dflt;
     });
@@ -7988,7 +7993,7 @@ class Component extends DCLogic {
         foot: "This is where inventory starts. An item defines the unit it is bought in, the unit it is stored in, and the conversion between them — which is what lets a recipe ask for 180 grams of a fish bought by the kilo. Stock quantity arrives later, through a GRN.",
         fields: [
           { k: "name", label: "Item name", v: "", full: 1 },
-          { k: "cat", label: "Category", options: sel((raw.cats || []).map((c) => ({ v: c.id, l: c.name }))), full: 1 },
+          { k: "cat", label: "Category", options: sel((((raw.cats && raw.cats.length) ? raw.cats : [{ id: 1, name: "Ingredients" }]).map((c) => ({ v: c.id, l: c.name })))), full: 1 },
           { k: "base", label: "Recipe unit", options: [{ v: "GRM", l: "GRM — grams" }, { v: "ML", l: "ML — millilitres" }, { v: "PCS", l: "PCS — pieces" }] },
           { k: "stock", label: "Purchase unit", options: [{ v: "KG", l: "KG — kilogram" }, { v: "LTR", l: "LTR — litre" }, { v: "PCS", l: "PCS — pieces" }, { v: "GRM", l: "GRM — grams" }] },
           { k: "cost", label: "Cost per purchase unit MVR", v: "0" },
