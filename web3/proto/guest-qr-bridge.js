@@ -105,18 +105,24 @@
      any change so the app repaints. */
   var liveTicket = null, tSubs = [], tPoll = 0, tLast = "";
   function buildTicket(orders) {
-    var lines = [];
+    var lines = [], anyBillAck = false, hadOrder = false, allSettled = true;
     (orders || []).forEach(function (o) {
       var st = String((o && o.status) || "new");
       if (st === "cancelled") return;
+      hadOrder = true;
+      var settledOne = st === "settled" || st === "completed";
+      if (!settledOne) allSettled = false;
+      if (o.billAck) anyBillAck = true;
       // Drive every line from the ORDER status so the guest's stage matches the
       // till exactly: new → received, preparing → preparing, ready → ready,
-      // completed → served. (We deliberately don't read per-line `done`: the
-      // kitchen sets all lines done when it marks a ticket ready, which would
-      // otherwise read as "served" before it actually is.)
-      var fired = st === "preparing" || st === "ready";
+      // served/settled → served. (We deliberately don't read per-line `done`:
+      // the kitchen sets all lines done when it marks a ticket ready, which
+      // would otherwise read as "served" before it actually is.) A settled order
+      // stays on the ticket as done so the bill never vanishes mid-service — it
+      // is the `settled` flag below (not the lines going away) that closes it.
+      var fired = st === "preparing" || st === "ready" || st === "served" || settledOne;
       var ready = st === "ready";
-      var done = st === "completed";
+      var done = st === "served" || settledOne;
       var firedAt = Number(o.readyAt || o.updatedAt || o.createdAt) || 0;
       (o.items || []).forEach(function (it) {
         if (!it) return;
@@ -130,7 +136,9 @@
         });
       });
     });
-    return { lines: lines };
+    // settled = every open order for this table has been paid off at the till;
+    // billAck = a cashier acknowledged a bill request and is on the way.
+    return { lines: lines, settled: hadOrder && allSettled, billAck: anyBillAck && !(hadOrder && allSettled) };
   }
   function pollTicket() {
     if (!SLUG || !TABLE) return;

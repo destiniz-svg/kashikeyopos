@@ -501,6 +501,7 @@
   --k-warn-line:#f0dfc0;
   --k-info-ink:#1f4f9c;
   --k-info-bg:#eef3fd;
+  --k-info-line:#cfe0f6;
   --k-bad:#c9453c;
   --k-bad-ink:#a83a32;
   --k-bad-bg:#fbeeec;
@@ -1968,6 +1969,17 @@ window.KashikeyoGuestQR = (function () {
         '<span style="font-size:13.5px;font-weight:700;color:var(--k-ink);letter-spacing:-.01em">Your order · Table ' + esc(this.table()) + '</span>' +
         '<button class="q-round" data-act="sheet" title="Table options">' + svg(I.burger, { s: 19, c: C, w: 2.2 }) + '</button>' +
       '</div>' +
+      /* Settlement banner: a cashier acknowledging the bill request, or the bill
+         being paid off at the till, both surface here (read from the live ticket). */
+      (function () {
+        var tk = self.A.ticket ? (self.A.ticket() || {}) : {};
+        if (tk.settled) return '<div style="margin:6px 0 2px;display:flex;align-items:center;gap:10px;padding:13px 15px;border-radius:14px;background:var(--k-go-bg);border:1px solid var(--k-go-line)">' +
+          '<span style="width:30px;height:30px;border-radius:50%;background:var(--k-go);display:grid;place-items:center;flex-shrink:0">' + svg(I.tick, { s: 17, c: '#fff', w: 3.2 }) + '</span>' +
+          '<span style="font-size:13.5px;font-weight:700;color:var(--k-go-ink-2)">Settled — thank you. Your bill has been paid at the till.</span></div>';
+        if (tk.billAck) return '<div style="margin:6px 0 2px;display:flex;align-items:center;gap:10px;padding:13px 15px;border-radius:14px;background:var(--k-info-bg);border:1px solid var(--k-info-line);animation:qpulse 1.8s ease-in-out infinite">' +
+          '<span style="font-size:13.5px;font-weight:700;color:var(--k-info-ink)">A cashier is on the way with your bill.</span></div>';
+        return '';
+      })() +
       '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0 4px">' +
         '<span style="width:64px;height:64px;border-radius:50%;background:' + C + ';display:grid;place-items:center;box-shadow:0 8px 22px var(--k-accent-glow);animation:qpop .26s">' +
           svg(I.tick, { s: 32, c: 'var(--k-accent-ink)', w: 3 }) + '</span>' +

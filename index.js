@@ -1527,6 +1527,7 @@ function liveOrdersV2(dataRows) {
         channel: channel, table: o.table || "", station: o.station || "hot",
         source: o.source || "qr", accepted: !!o.accepted, server: o.userName || o.server || "",
         customerId: o.customerId || null, customerName: o.customerName || "",
+        billAck: !!o.billAck, billRequested: !!o.billRequested,
         items: items, at: at, time: dt ? p2(dt.getHours()) + ":" + p2(dt.getMinutes()) : "",
         total: Math.round((o.items || []).reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty || it.q) || 1), 0) / 100) };
     })
@@ -5172,13 +5173,17 @@ if (fs.existsSync(protoFile)) {
   // advance). Server-side read-modify-write preserves every other order field,
   // bumps rowver and pokes SSE so the till, back office and other /app2 polls
   // all see it. Cookie-authed (same session as the page).
-  const ORDER_STATUSES = new Set(["new", "preparing", "ready", "completed", "cancelled"]);
+  // Fulfilment: new → preparing → ready → served (served is NOT final — the bill
+  // stays open on the till, floor and guest portal). Settlement is a separate,
+  // money step (/settle) that stamps `settled` and records the sale. `completed`
+  // is kept for older rows and treated as final. `cancelled` voids.
+  const ORDER_STATUSES = new Set(["new", "preparing", "ready", "served", "completed", "settled", "cancelled"]);
   /* Kitchen work (preparing/ready) is kitchen-rank; closing or cancelling an
      order is money, so it needs till rank. This was the one app2 write endpoint
      with no rank check at all, and it accepts "completed" — which stamps
      settledAt and drops the order off the register's open list. An unpaid order
      could be closed from a kitchen screen. */
-  const ORDER_STATUS_RANK = { preparing: APP_RANK.KITCHEN, ready: APP_RANK.KITCHEN, new: APP_RANK.KITCHEN, completed: APP_RANK.TILL, cancelled: APP_RANK.TILL };
+  const ORDER_STATUS_RANK = { preparing: APP_RANK.KITCHEN, ready: APP_RANK.KITCHEN, new: APP_RANK.KITCHEN, served: APP_RANK.KITCHEN, completed: APP_RANK.TILL, settled: APP_RANK.TILL, cancelled: APP_RANK.TILL };
   app.post("/api/app2/order/:id/status", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
@@ -5197,6 +5202,7 @@ if (fs.existsSync(protoFile)) {
       data.status = status;
       data.updatedAt = Date.now();
       if (status === "ready") data.readyAt = Date.now();
+      if (status === "served") data.servedAt = Date.now();     // fulfilled — bill still open, not final
       if (status === "completed") { data.completedAt = Date.now(); data.settledAt = Date.now(); }
       const r = await c.query(
         "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver",
@@ -5206,6 +5212,66 @@ if (fs.existsSync(protoFile)) {
     if (rowver == null) return res.status(404).json({ error: "order not found" });
     poke(orgId, rowver);
     res.json({ ok: true });
+  }));
+  // Acknowledge a bill request: the cashier taps "On my way" so the guest's
+  // portal shows a server is coming to settle. A flag, not a status change —
+  // the order stays open until it is actually settled.
+  app.post("/api/app2/order/:id/billack", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Only till staff can respond to a bill request.")) return;
+    const id = String(req.params.id || "");
+    const on = (req.body || {}).ack !== false;
+    const rowver = await withOrg(orgId, async (c) => {
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
+      if (!cur.rowCount) return null;
+      const data = cur.rows[0].data || {};
+      data.billAck = on; data.billAckAt = on ? Date.now() : null; data.updatedAt = Date.now();
+      const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      return Number(r.rows[0].rowver);
+    });
+    if (rowver == null) return res.status(404).json({ error: "order not found" });
+    poke(orgId, rowver);
+    res.json({ ok: true });
+  }));
+  // Settle a served/open order: the money step that closes it. Records the sale
+  // (so QR revenue lands in the Z-report + books) and stamps `settled` — the
+  // guest portal reads that as paid and shows a receipt. Idempotent: a second
+  // settle is refused rather than double-booking.
+  app.post("/api/app2/order/:id/settle", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.TILL, "Settling a bill needs a cashier, waiter or manager.")) return;
+    const id = String(req.params.id || "");
+    const tender = ["cash", "card", "wallet", "transfer", "credit"].includes(String((req.body || {}).tender)) ? String(req.body.tender) : "cash";
+    const settings = (await loadSettingsArr(orgId))[0] || {};
+    const out = await withOrg(orgId, async (c) => {
+      const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
+      if (!cur.rowCount) return { code: 404 };
+      const data = cur.rows[0].data || {};
+      if (["settled", "completed", "cancelled"].includes(String(data.status || ""))) return { code: 409 };
+      const bd = orderBreakdown(data, settings);
+      data.status = "settled"; data.settledAt = Date.now(); data.paidAt = Date.now(); data.tender = tender; data.billAck = false; data.updatedAt = Date.now();
+      const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
+      // A `sales` entity keyed off the order id, so the QR sale reaches the
+      // Z-report / GST return / P&L and a replay can't book it twice.
+      const saleId = "s_ord_" + id;
+      const sale = {
+        type: "sale", no: data.no || saleId, table: data.table || null, tender: tender, at: Date.now(),
+        channel: data.otype === "delivery" ? "delivery" : data.otype === "takeaway" ? "takeaway" : "qr",
+        lines: (data.items || []).map((it) => ({ pid: it.pid, qty: Number(it.qty) || 1, price: Number(it.price) || 0, amount: (Number(it.price) || 0) * (Number(it.qty) || 1), discPct: 0, addons: it.addons })),
+        subtotal: bd.excl, svcCharge: bd.svc, gst: bd.gst, billDisc: 0, billDiscPct: 0, total: bd.total,
+        payments: [{ method: tender, amount: bd.total, given: bd.total, change: 0 }],
+        orderId: id, source: "qr",
+      };
+      if (data.customerId) { sale.customerId = data.customerId; sale.customerName = data.customerName || ""; }
+      await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'sales',$2,$3) ON CONFLICT (org_id, kind, id) DO NOTHING", [orgId, saleId, JSON.stringify(sale)]);
+      return { code: 200, rowver: Number(r.rows[0].rowver), total: bd.total };
+    });
+    if (out.code === 404) return res.status(404).json({ error: "order not found" });
+    if (out.code === 409) return res.status(409).json({ error: "this order is already closed" });
+    poke(orgId, out.rowver);
+    res.json({ ok: true, total: out.total });
   }));
   // Per-line KDS bump: a cook marks one dish on a ticket done (or un-done). The
   // line is addressed by its stable index in the order's items array. When every

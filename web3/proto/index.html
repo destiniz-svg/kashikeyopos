@@ -1194,8 +1194,29 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                     </button>
                   </sc-for>
                 </sc-if>
-                <button onClick="{{ doAdvance }}" style="{{ ordAdvanceStyle }}">{{ ordAdvanceLabel }}</button>
-                <button onClick="{{ cancelTrack }}" style="width:100%;margin-top:9px;padding:10px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;font-weight:600">Cancel order</button>
+                <sc-if value="{{ ordBillReq }}">
+                  <div style="display:flex;align-items:center;gap:10px;margin:14px 0 4px;padding:11px 13px;border-radius:9px;background:rgba(103,162,217,.10);border:1px solid rgba(103,162,217,.28)">
+                    <span style="flex:1;font-size:12px;font-weight:700;color:var(--blue-bright)">Guest asked for the bill</span>
+                    <sc-if value="{{ ordBillAck }}">
+                      <span style="font-size:11.5px;font-weight:700;color:var(--go-bright)">Guest notified ✓</span>
+                    </sc-if>
+                    <sc-if value="{{ ordBillNotAck }}">
+                      <button onClick="{{ ackBill }}" style="padding:8px 13px;border-radius:8px;font-size:11.5px;font-weight:700;border:1px solid var(--blue);background:var(--blue);color:#fff;cursor:pointer">On my way</button>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ ordAdvanceShow }}">
+                  <button onClick="{{ doAdvance }}" style="{{ ordAdvanceStyle }};margin-top:16px">{{ ordAdvanceLabel }}</button>
+                </sc-if>
+                <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+                  <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:9px">{{ ordTotalLabel }}</div>
+                  <div style="display:flex;gap:7px;flex-wrap:wrap">
+                    <sc-for list="{{ ordTenders }}" as="t" hint-placeholder-count="4">
+                      <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+                <button onClick="{{ cancelTrack }}" style="width:100%;margin-top:12px;padding:10px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;font-weight:600">Cancel order</button>
               </div>
             </sc-if>
           </sc-if>
@@ -2113,6 +2134,9 @@ class Component extends DCLogic {
         let badge = "", bg = "", fg = "";
         if (it[0] === "sync" && s.outbox.filter((x) => x.state === "queued").length) { badge = String(s.outbox.filter((x) => x.state === "queued").length); bg = "var(--red)"; fg = "#fff"; }
         if (it[0] === "kds") { const n = this.kdsTickets().length; if (n) { badge = String(n); bg = "var(--amber-dim)"; fg = "var(--amber-bright)"; } }
+        // Orders board: badge the count of live orders still in the pipeline
+        // (QR + fired tickets), the same way the kitchen display is badged.
+        if (it[0] === "orders") { const n = (this.liveOrders() || []).length; if (n) { badge = String(n); bg = "var(--amber-dim)"; fg = "var(--amber-bright)"; } }
         const badgeStyle = badge ? "font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;background:" + bg + ";color:" + fg + ";font-family:'JetBrains Mono',monospace" : "display:none";
         const railMode = rail && !s.drawer;
         const label = it[0] === "pos" ? this.siteFloorLabel() : it[1];
@@ -3954,7 +3978,7 @@ class Component extends DCLogic {
           closeTrack: () => this.setState({ modal: null }) };
       }
       const tableLabel = ord.table ? (this.isTableSlot(ord.table) ? "T" + pad(ord.table) : String(ord.table)) : "—";
-      const STAGES = [["new", "New"], ["preparing", "Preparing"], ["ready", "Ready"], ["completed", "Served"]];
+      const STAGES = [["new", "New"], ["preparing", "Preparing"], ["ready", "Ready"], ["served", "Served"]];
       let curIdx = STAGES.findIndex((st) => st[0] === ord.status); if (curIdx < 0) curIdx = 0;
       const steps = STAGES.map((st, i) => {
         const done = i < curIdx, on = i === curIdx;
@@ -3964,8 +3988,11 @@ class Component extends DCLogic {
           barStyle: i === STAGES.length - 1 ? "display:none" : "flex:1;height:2px;margin:14px 2px 0;background:" + (i < curIdx ? "var(--go)" : "var(--line)"),
           pick: () => { this.setOrderStatus(ord.id, st[0]); this.toast("Order " + ord.no + " → " + st[1]); } };
       });
-      const nextOf = { new: ["preparing", "Start preparing"], preparing: ["ready", "Mark ready"], ready: ["completed", "Mark served & done"] };
+      const nextOf = { new: ["preparing", "Start preparing"], preparing: ["ready", "Mark ready"], ready: ["served", "Mark served"] };
       const nx = nextOf[ord.status];
+      // A pending bill request for this table (guest tapped "Ask for the bill").
+      const billReq = !!ord.billRequested || (this.liveCalls() || []).some((c) => c.kind === "bill" && String(c.table) === String(ord.table));
+      const tenders = [["cash", "Cash"], ["card", "Card"], ["wallet", "BML Pay"], ["transfer", "Transfer"]];
       const items = (ord.items || []).map((it) => ({
         label: (it.q || 1) + "× " + (it.n || "Item"),
         rowStyle: "display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;border:1px solid var(--line);margin-bottom:7px;width:100%;cursor:pointer;background:" + (it.done ? "rgba(107,191,123,.07)" : "var(--bg)"),
@@ -3977,9 +4004,21 @@ class Component extends DCLogic {
         modalSub: tableLabel + " · " + (label[ord.channel] || ord.channel) + (ord.server ? " · " + ord.server : "") + (ord.customerName ? " · " + ord.customerName : ""),
         ordGone: false, ordLive: true,
         ordSteps: steps, ordItems: items, ordHasItems: items.length > 0,
-        ordAdvanceLabel: nx ? nx[1] : "Served — all done",
-        ordAdvanceStyle: "width:100%;margin-top:16px;padding:13px;border-radius:9px;font-size:13px;font-weight:700;text-align:center;border:none;" + (nx ? "background:var(--go);color:var(--on-go);cursor:pointer" : "background:var(--bg-2);color:var(--text-faint)"),
+        ordAdvanceLabel: nx ? nx[1] : "Served",
+        ordAdvanceShow: !!nx,
+        ordAdvanceStyle: "width:100%;padding:13px;border-radius:9px;font-size:13px;font-weight:700;text-align:center;border:none;background:var(--go);color:var(--on-go);cursor:pointer",
         doAdvance: () => { if (nx) { this.setOrderStatus(ord.id, nx[0]); this.toast("Order " + ord.no + " → " + nx[1]); } },
+        // Bill-request banner + acknowledge ("On my way" → the guest sees it).
+        ordBillReq: billReq,
+        ordBillAck: !!ord.billAck,
+        ordBillNotAck: !ord.billAck,
+        ackBill: () => { this.setBillAck(ord.id); this.toast("Guest told you're on the way"); },
+        // Settle: the money step. Records the sale + closes the order; the guest
+        // portal then shows a receipt. Tender is chosen here.
+        ordTotalLabel: "Settle bill · " + MVRc(ord.total),
+        ordTenders: tenders.map((t) => ({ label: t[1],
+          style: "flex:1;min-width:72px;padding:10px;border-radius:8px;font-size:12px;font-weight:700;text-align:center;border:1px solid var(--go-line);background:var(--go-dim);color:var(--go-bright);cursor:pointer",
+          pick: () => this.settleOrder(ord.id, t[0], ord.no) })),
         cancelTrack: () => { this.setOrderStatus(ord.id, "cancelled"); this.setState({ modal: null }); this.toast("Order " + ord.no + " cancelled", "warn"); }
       };
     }
@@ -4835,6 +4874,26 @@ class Component extends DCLogic {
     if (!id || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
     return fetch("/api/app2/order/" + encodeURIComponent(id) + "/status", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ status }) })
       .then((r) => r.json()).then((j) => { this.refreshLiveOrders(); return j; }).catch(() => null);
+  }
+  // Acknowledge a guest's bill request — the portal then shows "a cashier is on
+  // the way". Doesn't change the order status; it stays open until settled.
+  setBillAck(id) {
+    if (!id || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
+    return fetch("/api/app2/order/" + encodeURIComponent(id) + "/billack", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ack: true }) })
+      .then((r) => r.json()).then((j) => { this.refreshLiveOrders(); return j; }).catch(() => null);
+  }
+  // Settle a QR/live order: records the sale and closes it. The guest portal
+  // reads the settlement and flips to a receipt. Closes the tracker on success.
+  settleOrder(id, tender, no) {
+    if (!id || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
+    return fetch("/api/app2/order/" + encodeURIComponent(id) + "/settle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ tender }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { this.toast(j.error, "warn"); return j; }
+        this.refreshLiveOrders();
+        this.setState({ modal: null });
+        this.toast("Order " + (no || "") + " settled · " + this.tenderName(tender));
+        return j;
+      }).catch(() => { this.toast("Could not settle — check the connection", "warn"); return null; });
   }
   // Bump a single line on a ticket (one dish is up). The line is addressed by
   // its stable index in the order; the server moves the ticket to preparing on
