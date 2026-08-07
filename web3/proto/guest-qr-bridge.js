@@ -84,6 +84,17 @@
     try {
       fetch("/p/" + encodeURIComponent(SLUG) + path, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          /* A server rejection (e.g. sold out, bad table, too large) used to be
+             swallowed here, so the guest saw "order sent" while the till got
+             nothing. Surface it so the app can tell the guest it didn't send. A
+             network failure stays silent — the app already queued it optimistically
+             and says it will send when the connection returns. */
+          if (!r.ok || (j && j.error)) {
+            try { window.dispatchEvent(new CustomEvent("kpos-post-error", { detail: { path: path, error: (j && j.error) || ("Couldn't reach the store (" + r.status + ")") } })); } catch (e) {}
+          }
+        });
       }).catch(function () {});
       return true;
     } catch (e) { return false; }
@@ -209,7 +220,12 @@
               addons: Array.isArray(l.addons) ? l.addons : [], note: l.comment || "" };
           });
           if (!items.length) return false;
-          return post("/order", { items: items, table: TABLE, gtype: "dinein", note: "" });
+          /* Order type follows the QR: a table QR (?t=) is dine-in; a table-less
+             link (general menu / pickup QR) is takeaway. Sending "dinein" with no
+             table is rejected by the server ("select your table"), which is why a
+             table-less QR order never reached the till. */
+          var gtype = TABLE ? "dinein" : "pickup";
+          return post("/order", { items: items, table: TABLE, gtype: gtype, note: "" });
         }
         return post("/call", { kind: intent.kind === "bill" ? "bill" : "assist", table: TABLE });
       }

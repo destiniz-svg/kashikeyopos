@@ -1311,12 +1311,20 @@ window.KashikeyoGuestQR = (function () {
       }, 120);
     };
     window.addEventListener('resize', this._onSize);
+    /* If the store rejects an order/call (sold out, bad table, too large), the
+       bridge fires this so the guest is told rather than left thinking it sent. */
+    this._onPostErr = function (e) {
+      var msg = (e && e.detail && e.detail.error) ? String(e.detail.error) : "That didn't go through — please try again";
+      self.toast(msg);
+    };
+    window.addEventListener('kpos-post-error', this._onPostErr);
     this.pull();
   };
   App.prototype.destroy = function () {
     if (this._unsub) this._unsub();
     clearInterval(this._tock); clearInterval(this._rot); clearTimeout(this._tt); clearTimeout(this._rs);
     window.removeEventListener('resize', this._onSize);
+    if (this._onPostErr) window.removeEventListener('kpos-post-error', this._onPostErr);
     this.root.innerHTML = '';
   };
   /* Settlement is the till's call, and the till says so by closing the ticket:
