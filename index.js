@@ -424,15 +424,11 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
        photos. Idempotent (ensureDefaultMenu only writes when an image is
        missing or changed), so this is a no-op on subsequent boots. New outlets
        get the same menu at registration. */
-    try {
-      // Only outlets that didn't opt out of the starter menu (skip_default_menu
-      // is set when onboarding chose an empty or AI-built menu) — so an empty
-      // menu stays empty across deploys instead of being re-seeded here.
-      const orgs = (await bootPool.query("SELECT id FROM orgs WHERE COALESCE(skip_default_menu,false)=false")).rows;
-      let touched = 0;
-      for (const o of orgs) { if (await ensureDefaultMenu(o.id)) touched++; }
-      if (touched) console.log(`default menu applied/refreshed for ${touched} of ${orgs.length} outlet(s)`);
-    } catch (e) { console.warn("default-menu backfill skipped:", e.message); }
+    /* The starter menu is now OPT-IN, not force-applied. New stores get it at
+       registration (the sample-menu choice); an existing store adds or resets to
+       it on demand from Menu Master → "Load default menu". We deliberately do NOT
+       backfill every outlet on boot any more — that would inject the full
+       300-dish catalogue into stores that run their own menu. */
   } catch (e) { console.error("schema init failed:", e.message); }
   finally { bootClient.release(); }
   /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,
@@ -1107,6 +1103,38 @@ async function ensureDefaultMenu(orgId) {
   });
   if (maxRowver) poke(orgId, maxRowver);
   return maxRowver;
+}
+
+/* Apply a set of menu items (e.g. DEFAULT_MENU) to a store — the engine behind
+   "Load default menu". replace=true wipes the current menu first so the store
+   resets to exactly this menu; otherwise it merges (add/update). Items with no
+   photo get category artwork, and on a replace the category order + groups are
+   pinned, so it lands identically to a CSV import. */
+async function applyMenuItems(orgId, items, catGroups, catOrder, opts = {}) {
+  const replace = !!opts.replace;
+  const out = await withOrg(orgId, async (c) => {
+    let created = 0, purged = 0, mx = 0;
+    if (replace) {
+      const d = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]);
+      purged = d.rowCount || 0;
+    }
+    for (const it of (items || [])) {
+      if (!it || !it.name) continue;
+      const data = Object.assign({ recipe: [] }, it);
+      if (!data.id) data.id = "m_" + Math.random().toString(36).slice(2, 9);
+      if (!data.img) data.img = menuArtifact(data.cat, data.name);
+      const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, data.id, JSON.stringify(data)]);
+      if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
+      created++;
+    }
+    if (replace && Array.isArray(catOrder) && catOrder.length) {
+      await c.query("UPDATE entities SET data = COALESCE(data,'{}'::jsonb) || $2::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings'",
+        [orgId, JSON.stringify({ catOrder, catGroups: catGroups || [] })]);
+    }
+    return { created, purged, mx };
+  });
+  if (out.mx) poke(orgId, out.mx);
+  return out;
 }
 
 /* Same DJB2-ish hash the till bundle itself uses for till-PIN staff entries
@@ -5827,6 +5855,32 @@ if (fs.existsSync(protoFile)) {
     poke(orgId, Date.now());
     logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.import", ref: "", detail: { created, updated, purged, skipped: skipped.length } });
     res.json({ ok: true, created, updated, purged, categories: catSeen.length, skipped });
+  }));
+
+  /* Download the bundled starter menu as a ready-to-edit CSV — a fully worked
+     example (every column filled) a store can download, tweak and re-import. */
+  app.get("/api/app2/menu/sample", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "The sample menu is for a manager or the owner.")) return;
+    const header = MENU_CSV_COLS.map((c) => c[0]);
+    const rows = (DEFAULT_MENU || []).map(menuCsvRow);
+    res.set("Content-Type", "text/csv; charset=utf-8");
+    res.set("Content-Disposition", 'attachment; filename="kashikeyo-sample-menu.csv"');
+    res.set("Cache-Control", "no-store");
+    res.send("﻿" + toCsv([header].concat(rows)));
+  }));
+  /* Load the bundled starter menu into this store. replace=true resets the store
+     to exactly the starter menu; otherwise it adds/updates the starter dishes and
+     keeps the rest. Same result as importing the sample CSV, one click. */
+  app.post("/api/app2/menu/default", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.MANAGER, "Loading the starter menu needs a manager or the owner.")) return;
+    const replace = !!(req.body || {}).replace;
+    const r = await applyMenuItems(orgId, DEFAULT_MENU, CAT_GROUPS, CAT_ORDER, { replace });
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.default", ref: "", detail: { created: r.created, purged: r.purged, replace } });
+    res.json({ ok: true, created: r.created, purged: r.purged, categories: (CAT_ORDER || []).length });
   }));
   /* Remove a dish from the menu (tombstone). It stops showing on the till and
      the QR portal; past orders that referenced it are unaffected. */
