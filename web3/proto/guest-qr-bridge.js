@@ -93,7 +93,11 @@
              and says it will send when the connection returns. */
           if (!r.ok || (j && j.error)) {
             try { window.dispatchEvent(new CustomEvent("kpos-post-error", { detail: { path: path, error: (j && j.error) || ("Couldn't reach the store (" + r.status + ")") } })); } catch (e) {}
+            return;
           }
+          // Remember a placed order so a table-less portal can follow it to
+          // settlement (a table QR follows the table feed instead).
+          if (path === "/order" && j && j.order && j.order.id) trackOrder(j.order.id);
         });
       }).catch(function () {});
       return true;
@@ -101,6 +105,16 @@
   }
 
   var SKEY = "kashikeyo.qr." + (SLUG || "x");
+
+  /* Order ids this phone has placed. A table QR tracks by table; a table-less
+     (takeaway) order has no table, so we remember the ids we placed and ask the
+     till about them by id — that's how the portal learns the bill was settled and
+     can close its own screen. Persisted so a reload keeps tracking. */
+  var TKEY = SKEY + ".ids";
+  function loadTrack() { try { return JSON.parse(localStorage.getItem(TKEY) || "[]") || []; } catch (e) { return []; } }
+  function saveTrack(a) { try { localStorage.setItem(TKEY, JSON.stringify(a.slice(-12))); } catch (e) {} }
+  var TRACK = loadTrack();
+  function trackOrder(id) { id = String(id || ""); if (!id) return; if (TRACK.indexOf(id) < 0) { TRACK.push(id); saveTrack(TRACK); } ensurePoll(); }
 
   /* ── Live order status from the till ─────────────────────────────────────────
      The app reads adapter.ticket() to show each round's progress (sent → at the
@@ -163,21 +177,38 @@
     return { lines: lines, settled: settled, billAck: (anyBillAck || billCallAck) && !settled, assistAck: assistAck && !settled };
   }
   function pollTicket() {
-    if (!SLUG || !TABLE) return;
-    fetch("/p/" + encodeURIComponent(SLUG) + "/orders?t=" + encodeURIComponent(TABLE), { headers: { "Accept": "application/json" }, credentials: "same-origin" })
+    if (!SLUG) return;
+    // Table QR → follow the table feed; table-less → follow the ids we placed.
+    var qs = TABLE ? "t=" + encodeURIComponent(TABLE)
+      : (TRACK.length ? "o=" + encodeURIComponent(TRACK.join(",")) : "");
+    if (!qs) return;
+    fetch("/p/" + encodeURIComponent(SLUG) + "/orders?" + qs, { headers: { "Accept": "application/json" }, credentials: "same-origin" })
       .then(function (r) { return r && r.ok ? r.json() : null; })
       .then(function (j) {
         if (!j) return;
         var tk = buildTicket(j.orders || [], j.calls || []);
         var sig = JSON.stringify(tk);
-        if (sig === tLast) return;                       // unchanged → don't churn the UI
-        tLast = sig; liveTicket = tk;
-        for (var i = 0; i < tSubs.length; i++) { try { tSubs[i](); } catch (e) {} }
+        if (sig !== tLast) {                              // changed → repaint
+          tLast = sig; liveTicket = tk;
+          for (var i = 0; i < tSubs.length; i++) { try { tSubs[i](); } catch (e) {} }
+        }
+        // Once a table-less order is finalised at the till (settled/served/
+        // cancelled), stop tracking it so polling winds down and the next order
+        // starts clean. The settled ticket was delivered to subscribers above.
+        if (!TABLE && TRACK.length) {
+          var st = {};
+          (j.orders || []).forEach(function (o) { if (o) st[String(o.id)] = String(o.status || ""); });
+          var open = TRACK.filter(function (id) { var s = st[id]; return !(s === "settled" || s === "completed" || s === "cancelled"); });
+          if (open.length !== TRACK.length) {
+            TRACK = open; saveTrack(TRACK);
+            if (!TRACK.length && tPoll) { clearInterval(tPoll); tPoll = 0; }
+          }
+        }
       })
       .catch(function () {});
   }
-  function ensurePoll() { if (!tPoll && TABLE) { pollTicket(); tPoll = setInterval(pollTicket, 5000); } }
-  if (TABLE) ensurePoll();
+  function ensurePoll() { if (!tPoll && (TABLE || TRACK.length)) { pollTicket(); tPoll = setInterval(pollTicket, 5000); } }
+  if (TABLE || TRACK.length) ensurePoll();
 
   window.KASHIKEYO_QR = {
     outletId: OUTLET_ID,

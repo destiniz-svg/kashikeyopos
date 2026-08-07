@@ -1330,13 +1330,20 @@ window.KashikeyoGuestQR = (function () {
   /* Settlement is the till's call, and the till says so by closing the ticket:
      once the table's lines are gone, the bill is paid. */
   App.prototype.pull = function () {
+    var tk = this.A.ticket ? (this.A.ticket() || null) : null;
     var st = this.s.settling;
-    if (st && !this.s.paid) {
-      var tk = this.A.ticket ? this.A.ticket() : null;
-      if (!tk || !(tk.lines || []).length) {
-        this.s.paid = { ref: st.ref, total: st.total, tender: st.tender, at: Date.now() };
-        this.s.settling = null; this.s.cart = []; this.s.sent = [];
-      }
+    /* The bill is paid when the till says so — it reports the ticket `settled`
+       (a cashier closed it at the terminal) — OR the guest ran their own settle
+       and the table's lines have gone. Either path closes our screen so the home
+       doesn't stay stuck on a placed order after it's been paid. */
+    if (!this.s.paid && ((tk && tk.settled) || (st && (!tk || !(tk.lines || []).length)))) {
+      this.s.paid = {
+        ref: (st && st.ref) || this.billRef(),
+        total: (st && st.total) || this.billTotal(),
+        tender: (st && st.tender) || '',
+        at: Date.now()
+      };
+      this.s.settling = null; this.s.cart = []; this.s.sent = [];
     }
     /* Notify the guest the moment a server acknowledges a call — on ANY screen,
        not just the status page, since a waiter/bill call is usually made from

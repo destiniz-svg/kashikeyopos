@@ -1537,8 +1537,13 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
   const orders = await kindAll(orgId, "orders", storeId);
   const customerId = selector.customerId;
   const table = selector.table;
+  // A table-less (takeaway/pickup) order has no table to key on, so the portal
+  // tracks the order id(s) it placed and asks for them by id — that's how it
+  // learns the till has settled/served the order and can close its own screen.
+  const orderIds = Array.isArray(selector.orderIds) ? selector.orderIds : null;
   return orders
-    .filter((o) => customerId ? idEq(o.customerId, customerId) : table ? idEq(o.table, table) : false)
+    .filter((o) => (orderIds && orderIds.length) ? orderIds.some((id) => idEq(o.id, id))
+      : customerId ? idEq(o.customerId, customerId) : table ? idEq(o.table, table) : false)
     .map((o) => normalizeOrder(o, settings))
     .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
 }
@@ -2905,7 +2910,9 @@ app.get("/p/:slug/orders", wrap(async (req, res) => {
   const settings = settingsArr[0]
     ? { usdRate: 1542, ...settingsArr[0] }
     : { storeName: org.store_name, gstBp: 800, loyaltyBp: 10000, svcChargeBp: 0, usdRate: 1542, currency: "MVR" };
-  const mine = (await guestOrders(org.id, storeId, { customerId: req.query.c, table: req.query.t }, settings)).slice(0, 25);
+  const oParam = String(req.query.o || "").trim();
+  const orderIds = oParam ? oParam.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 12) : null;
+  const mine = (await guestOrders(org.id, storeId, { customerId: req.query.c, table: req.query.t, orderIds }, settings)).slice(0, 25);
   // Also surface this table's open floor calls (assist/bill) so the portal can
   // show "a server is on the way" once a cashier acknowledges one. Only the
   // fields the portal needs, only for this table — never the whole floor.
