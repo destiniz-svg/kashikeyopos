@@ -6069,7 +6069,8 @@ class Component extends DCLogic {
         tabs: mkTabs(),
         guideTitle: "Organising the menu",
         guide: ["A category is a section guests browse and the till tabs across", "Put each one under a top-level group so the menu stays short", "Rename or reorder freely — dishes follow their category", "Deleting a category moves its dishes elsewhere; nothing is lost"],
-        actions: canEdit ? [{ label: "New category", primary: true, go: () => this.openForm("catnew") }] : [],
+        actions: canEdit ? [{ label: "New category", primary: true, go: () => this.openForm("catnew") },
+          { label: "Reset to sample categories", go: () => this.resetMenuToSample() }] : [],
         cardMin: 300,
         cards: cats.length ? cats.map((c) => {
           const n = count(c.id);
@@ -7276,20 +7277,27 @@ class Component extends DCLogic {
       })
       .catch(() => this.toast("Could not download the sample — check the connection", "warn"));
   }
-  // Load the built-in starter menu. Replace = reset this store to the starter
-  // menu; Merge = add/update the starter dishes and keep the rest.
-  loadDefaultMenu() {
+  // Start fresh: clear every dish and lay down the sample category sections, so
+  // a store still carrying old starter dishes lands on a clean, empty,
+  // categorised menu — the state a brand-new store onboards into. Destructive,
+  // so it asks first, and only when there is actually a menu to clear.
+  resetMenuToSample() {
     if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store first", "warn"); return; }
-    const hasMenu = ((this.coll("menu") || []).length > 0);
-    const replace = hasMenu ? window.confirm("Load the built-in starter menu.\n\nOK — Replace: reset this store to the starter menu (removes your current dishes).\nCancel — Merge: add the starter dishes and keep yours.") : true;
-    this.toast(replace ? "Resetting to the starter menu…" : "Adding the starter menu…");
-    fetch("/api/app2/menu/default", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ replace }) })
+    const n = (this.coll("menu") || []).length;
+    const ok = window.confirm(
+      (n ? "Remove all " + n + " current dishes" : "Reset the menu") +
+      " and start fresh with the sample category sections?\n\nThe categories are laid out empty — add your own dishes, or download the sample menu and import it. Past orders are unaffected. This cannot be undone.");
+    if (!ok) return;
+    this.toast("Clearing the menu and laying down the sample categories…");
+    fetch("/api/app2/menu/reset", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: "{}" })
       .then((r) => r.json().catch(() => ({}))).then((j) => {
         if (j && j.error) { this.toast(j.error, "warn"); return; }
-        const parts = []; if (j.created) parts.push(j.created + " dishes"); if (j.purged) parts.push(j.purged + " removed");
-        this.toast("Starter menu loaded · " + (parts.join(" · ") || "no change") + " — reload to see it");
+        const parts = []; if (j.purged) parts.push(j.purged + " dishes removed"); if (j.categories) parts.push(j.categories + " categories");
+        this.toast("Fresh start · " + (parts.join(" · ") || "done") + " — reloading…");
+        this.refreshMenu && this.refreshMenu();
+        setTimeout(() => { try { location.reload(); } catch (e) {} }, 900);
       })
-      .catch(() => this.toast("Could not load the starter menu — check the connection", "warn"));
+      .catch(() => this.toast("Could not reset the menu — check the connection", "warn"));
   }
   // Upload a filled-in menu CSV. Rows with an `id` update that dish; blank-id rows
   // create one. The server parses + validates each row and reports the tally.

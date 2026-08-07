@@ -6719,6 +6719,29 @@ if (fs.existsSync(protoFile)) {
     } catch (e) { recordError("store.seed-menu", e); res.status(500).json({ error: "Add menu failed: " + ((e && e.message) || "error") }); }
   }));
 
+  /* Start fresh: clear EVERY dish (tombstone) and lay down the sample category
+     sections, so a store that was seeded with the old starter dishes lands on a
+     clean, empty, categorised menu — the same state a brand-new store onboards
+     into. Destructive (removes all products), so it's owner/admin only. Past
+     orders keep their line snapshots; only the live menu is cleared. */
+  app.post("/api/app2/menu/reset", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Resetting the menu needs an admin or the owner.")) return;
+    try {
+      const purged = await withOrg(orgId, async (c) => {
+        const d = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]);
+        return d.rowCount || 0;
+      });
+      await withOrg(orgId, (c) => c.query("UPDATE orgs SET skip_default_menu=false WHERE id=$1", [orgId]));
+      const cats = await seedSampleCategories(orgId);
+      logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.reset", ref: "", detail: { purged, cats } });
+      const mx = (await withOrg(orgId, (c) => c.query("SELECT COALESCE(MAX(rowver),0) AS m FROM entities WHERE org_id=$1", [orgId]))).rows[0].m;
+      poke(orgId, Number(mx));
+      res.json({ ok: true, purged, categories: cats });
+    } catch (e) { recordError("store.menu-reset", e); res.status(500).json({ error: "Reset failed: " + ((e && e.message) || "error") }); }
+  }));
+
   // Sessions: list active cookie sessions for this org, and revoke one (or all
   // but the current). Admin+; the current device is flagged and can't be
   // revoked here (use Sign out for that).
