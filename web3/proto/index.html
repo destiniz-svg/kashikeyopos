@@ -363,6 +363,10 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
           </div>
 
           <div style="margin-top:24px;scroll-margin-top:8px" ref="{{ menuRef }}">
+            <div style="display:flex;align-items:center;gap:7px;background:var(--bg-1);border:1px solid var(--line);border-radius:9px;padding:9px 12px;margin-bottom:12px">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="color:var(--text-muted);flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+              <input value="{{ posQ }}" onInput="{{ onPosQ }}" placeholder="Search the menu…" style="background:transparent;border:none;outline:none;color:var(--text);font-size:13px;flex:1;min-width:0"/>
+            </div>
             <div style="display:flex;gap:5px;margin-bottom:12px;flex-wrap:wrap">
               <sc-for list="{{ cats }}" as="c" hint-placeholder-count="7">
                 <button onClick="{{ c.pick }}" style="{{ c.style }}">
@@ -379,7 +383,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                     <span style="{{ m.photoStyle }}"></span>
                     <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
                     <span style="{{ m.vegStyle }}"></span>
-                    <span style="{{ m.addonsHintStyle }}">＋ Add-ons</span>
+                    <span style="{{ m.addonsHintStyle }}">＋ Options</span>
                   </button>
                   <button onClick="{{ m.add }}" title="Tap to add — tap the photo for add-ons" style="padding:9px 11px 10px;display:flex;flex-direction:column;gap:2px;flex:1;border:none;background:none;text-align:left;cursor:pointer;width:100%">
                     <span style="font-size:12.5px;font-weight:600;line-height:1.3">{{ m.name }}</span>
@@ -785,6 +789,20 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
           </div>
         </sc-if>
 
+        <sc-if value="{{ hasListTools }}">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:7px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:8px 11px;flex:1 1 180px;max-width:340px">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="color:var(--text-muted);flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+              <input value="{{ listQ }}" onInput="{{ onListQ }}" placeholder="{{ listQPlaceholder }}" style="background:transparent;border:none;outline:none;color:var(--text);font-size:12.5px;flex:1;min-width:0"/>
+            </div>
+            <div style="flex:1"></div>
+            <span style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700">Sort</span>
+            <sc-for list="{{ sortOpts }}" as="so" hint-placeholder-count="0">
+              <button onClick="{{ so.pick }}" style="{{ so.style }}">{{ so.label }}</button>
+            </sc-for>
+          </div>
+        </sc-if>
+
         <sc-if value="{{ hasTable }}">
           <div style="{{ tableWrapStyle }}">
             <div style="{{ tableHeadStyle }}">
@@ -1031,7 +1049,16 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   <span style="margin-left:auto;font-size:15px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace">{{ addonTotal }}</span>
                 </div>
               </div>
-              <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:9px">Add-ons &amp; modifiers</div>
+              <div style="{{ spiceInfoStyle }}">{{ spiceInfo }}</div>
+              <div style="{{ heatWrapStyle }}">
+                <div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:9px">Heat</div>
+                <div style="display:flex;flex-wrap:wrap;gap:7px">
+                  <sc-for list="{{ heatOpts }}" as="h" hint-placeholder-count="0">
+                    <button onClick="{{ h.pick }}" style="{{ h.style }}">{{ h.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="{{ addonHdrStyle }}">Add-ons &amp; modifiers</div>
               <div style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px">
                 <sc-for list="{{ addonOpts }}" as="a" hint-placeholder-count="10">
                   <button onClick="{{ a.pick }}" style="{{ a.style }}">{{ a.label }}</button>
@@ -2537,6 +2564,16 @@ class Component extends DCLogic {
         style: "padding:7px 14px;border-radius:8px;font-size:11.5px;font-weight:600;white-space:nowrap;" + (a.primary ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-1);border:1px solid var(--line);color:var(--text-dim)")
       })),
       hasBar: !!((g.tabs && g.tabs.length) || (g.actions && g.actions.length)),
+      // Optional per-view search + sort toolbar (Menu Master uses it). A view
+      // supplies g.listTools = { q, onQ, placeholder, sort:[{label,on,pick}] }.
+      hasListTools: !!(g.listTools),
+      listQ: (g.listTools && g.listTools.q) || "",
+      onListQ: (g.listTools && g.listTools.onQ) || (() => {}),
+      listQPlaceholder: (g.listTools && g.listTools.placeholder) || "Search…",
+      sortOpts: ((g.listTools && g.listTools.sort) || []).map((so) => ({
+        label: so.label, pick: so.pick,
+        style: "padding:6px 12px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid " + (so.on ? "var(--amber)" : "var(--line)") + ";background:" + (so.on ? "var(--amber)" : "var(--bg-1)") + ";color:" + (so.on ? "var(--on-amber)" : "var(--text-dim)")
+      })),
       // The Create-with-AI panel rides as a single-item list so the template can
       // reference its fields as p.x (dc-template resolves nested paths on loop vars).
       aiPanelList: g.aiPanel ? [g.aiPanel] : [],
@@ -2805,7 +2842,10 @@ class Component extends DCLogic {
       });
     }
 
-    const q = s.search.toLowerCase();
+    // The till's own always-visible menu search (posQ), falling back to the
+    // header search so the desktop magnifier still filters the grid. On a tablet
+    // the header search is hidden, so this box is how a cashier finds a dish fast.
+    const q = ((s.posQ || s.search) || "").toLowerCase();
     // Top level = the store's few real GROUPS (Drinks/Breakfast/Food/Desserts)
     // when it has them, so the strip isn't 20+ category tabs. Falls back to the
     // category list (demo, or a store with no groups). `inTab` and `activeCat`
@@ -2951,6 +2991,8 @@ class Component extends DCLogic {
       floorSub: o.seats + " covers · " + nT + " tables · " + tables.filter((t) => t.chipText === "Open").length + " open"
         + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + " · manager " + o.mgr,
       tables: tables, cats: cats, dishes: dishes, lines: lines, totalRows: totalRows,
+      posQ: s.posQ || "", onPosQ: (e) => this.setState({ posQ: e.target.value }),
+      dishesEmpty: !dishes.length,
       // Tight: the lines list absorbs the squeeze (floor 0) so Fire/Pay can
       // never be pushed out of the pane; the pane itself scrolls as a backstop.
       ticketLinesStyle: "flex:1 1 0%;overflow-y:auto;min-height:" + (tight ? 0 : 110) + "px",
@@ -3700,8 +3742,19 @@ class Component extends DCLogic {
       const addonEach = picks.reduce((a, x) => a + x.price, 0);
       const unit = this.menuPrice(it) + addonEach;
       const setM = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
+      // Spice + heat, the same model the QR menu uses. `spice` (0-3) is a fixed
+      // fact shown as a tag; `heat` = the kitchen can vary it, so the cashier
+      // picks the level the guest wants. The chosen heat is free — it only leads
+      // the kitchen note (the pass reads heat first), it never changes the price.
+      const HEAT = [{ id: "none", name: "Not spicy" }, { id: "mild", name: "Mild" }, { id: "med", name: "Medium" }, { id: "hot", name: "Hot" }, { id: "xhot", name: "Extra hot" }];
+      const spiceLv = Math.max(0, Math.min(3, Math.round(Number(it.spice) || 0)));
+      const spiceName = spiceLv ? HEAT[spiceLv].name : "";
+      const canHeat = !!it.heat;
+      const chosenHeat = m.heat || "";                               // "" = as the kitchen makes it
+      const heatName = canHeat && chosenHeat ? (HEAT.filter((h) => h.id === chosenHeat)[0] || {}).name || "" : "";
       const optText = picks.map((x) => x.name + (x.price ? " +" + MVRc(x.price) : "")).join(", ");
-      const noteStr = [optText, (m.note || "").trim()].filter(Boolean).join(" · ");
+      const noteStr = [heatName, optText, (m.note || "").trim()].filter(Boolean).join(" · ");
+      const chipStyle = (on) => "font-size:11.5px;padding:7px 13px;border-radius:20px;font-weight:600;border:1px solid " + (on ? "var(--amber)" : "var(--line)") + ";background:" + (on ? "rgba(242,164,58,.12)" : "var(--bg)") + ";color:" + (on ? "var(--amber-bright)" : "var(--text-dim)");
       return {
         modalTitle: it.name || "Add-ons",
         modalSub: MVRc(unit) + " each · choose options, then add",
@@ -3710,9 +3763,19 @@ class Component extends DCLogic {
         addonDec: () => setM({ qty: Math.max(1, qty - 1) }),
         addonInc: () => setM({ qty: qty + 1 }),
         addonTotal: MVRc(unit * qty),
-        // No add-ons defined → the row is empty and only the kitchen note shows.
+        // Spice tag — shown only when the dish carries a level (0 = silence).
+        spiceInfo: spiceLv ? ("Spice · " + spiceName) : "",
+        spiceInfoStyle: spiceLv ? "display:inline-block;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(226,96,96,.12);color:var(--red-bright);margin-bottom:14px" : "display:none",
+        // Heat single-select — only when the pass can vary it. "As it comes" is
+        // the default so a signature dish isn't silently re-cooked.
+        heatWrapStyle: canHeat ? "margin-bottom:14px" : "display:none",
+        heatOpts: canHeat ? [{ id: "", name: "As it comes" }].concat(HEAT).map((h) => ({ label: h.name,
+          style: chipStyle(chosenHeat === h.id),
+          pick: () => setM({ heat: chosenHeat === h.id ? "" : h.id }) })) : [],
+        // Hide the add-ons header + chips when the dish defines none.
+        addonHdrStyle: catalog.length ? "font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:9px" : "display:none",
         addonOpts: catalog.map((a) => ({ label: a.name + (a.price ? " · +" + MVRc(a.price) : ""),
-          style: "font-size:11.5px;padding:7px 13px;border-radius:20px;font-weight:600;border:1px solid " + (chosen.indexOf(a.name) >= 0 ? "var(--amber)" : "var(--line)") + ";background:" + (chosen.indexOf(a.name) >= 0 ? "rgba(242,164,58,.12)" : "var(--bg)") + ";color:" + (chosen.indexOf(a.name) >= 0 ? "var(--amber-bright)" : "var(--text-dim)"),
+          style: chipStyle(chosen.indexOf(a.name) >= 0),
           pick: () => setM({ mods: chosen.indexOf(a.name) >= 0 ? chosen.filter((x) => x !== a.name) : chosen.concat([a.name]) }) })),
         addonNote: m.note || "",
         onAddonNote: (e) => setM({ note: e.target.value }),
@@ -5656,7 +5719,22 @@ class Component extends DCLogic {
     }
 
     // ── Items — the dish list ────────────────────────────────────────────────
-    const list = K0.MENU.filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0);
+    // A dedicated search (name or category) + a sort the manager picks, so a
+    // long menu is quick to scan; both live in local state so they persist while
+    // the tab is open and never leak into other screens' global search.
+    const mq = (s.menuQ || "").toLowerCase().trim();
+    const catNameOf = (m) => ((K0.MENU_CATEGORIES || []).find((c) => c.id === m.cat) || {}).name || "Uncategorised";
+    const sortKey = s.menuSort || "name";
+    const statusRank = (m) => (m.hidden ? 2 : (this.eightySix().indexOf(m.id) >= 0 ? 1 : 0));
+    const list = K0.MENU
+      .filter((m) => !mq || m.name.toLowerCase().indexOf(mq) >= 0 || catNameOf(m).toLowerCase().indexOf(mq) >= 0)
+      .slice()
+      .sort((a, b) => {
+        if (sortKey === "cat") return catNameOf(a).localeCompare(catNameOf(b)) || a.name.localeCompare(b.name);
+        if (sortKey === "price") return this.menuPrice(b) - this.menuPrice(a);
+        if (sortKey === "status") return statusRank(a) - statusRank(b) || a.name.localeCompare(b.name);
+        return a.name.localeCompare(b.name);
+      });
     // Costs are off by default now — the menu page reads as a plain menu, not a
     // costing sheet — and a recipe-capable role opts in with the Show costs
     // button, which just flips the personal pref.
@@ -5665,6 +5743,12 @@ class Component extends DCLogic {
     const costToggle = canCost ? [{ label: showCost ? "Hide costs" : "Show costs", go: () => this.setPref("showCost", !showCost) }] : [];
     return {
       tabs: mkTabs(),
+      listTools: {
+        q: s.menuQ || "", onQ: (e) => this.setState({ menuQ: e.target.value }),
+        placeholder: "Search dishes or categories…",
+        sort: [{ label: "Name", key: "name" }, { label: "Category", key: "cat" }, { label: "Price", key: "price" }, { label: "Status", key: "status" }]
+          .map((so) => ({ label: so.label, on: sortKey === so.key, pick: () => this.setState({ menuSort: so.key }) }))
+      },
       guideTitle: "Putting a dish on sale", guide: ["Create the dish with its chain master price", "Add recipe lines in Recipes & Costing so food cost is real", "An outlet may override the price; the master stays the default", "Tourism-zone outlets apply their uplift on top automatically"],
       actions: (canEdit ? [{ label: "New dish", primary: true, go: () => this.openForm("dish") }] : []).concat(costToggle),
       // Plain menu by default: Dish, Category, Price, Status. The costing

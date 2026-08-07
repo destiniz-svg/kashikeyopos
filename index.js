@@ -3551,7 +3551,7 @@ if (fs.existsSync(protoFile)) {
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, hidden: !!p.hidden, mods: liveMods(p.addons), soldOut: derivedSoldOut(p),
+    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!p.bestSeller, hidden: !!p.hidden, mods: liveMods(p.addons), veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat, soldOut: derivedSoldOut(p),
       // Why it is off, when the availability engine knows ("Out of Tuna").
       // Null for a manual off-switch or a plain stock-out; the register's 86
       // list falls back to the item name alone in that case.
@@ -4375,7 +4375,8 @@ if (fs.existsSync(protoFile)) {
         const catName = {};
         items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
         const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
-          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, hidden: !!it.hidden, veg: false,
+          price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, hidden: !!it.hidden,
+          veg: !!it.veg, spice: Math.max(0, Math.min(3, Math.round(Number(it.spice) || 0))), heat: !!it.heat,
           addons: (it.mods || []).map((m) => ({ name: m.en, price: m.price })), recipe: [] }));
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
