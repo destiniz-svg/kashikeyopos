@@ -3047,7 +3047,7 @@ class Component extends DCLogic {
         const hid = !!m.hidden;   // off the customer QR menu, still sellable at the till
         const cost = this.foodCost(m), price = this.menuPrice(m);
         const showCost = this.can("recipes");
-        const _art = window.kposCatArt ? window.kposCatArt(m.cat || m.sub || m.name) : "";
+        const _art = window.kposCatArt ? window.kposCatArt(m.cat || m.sub || "", m.name) : "";
         const _bg = m.img ? (_art ? "url(" + m.img + "), url('" + _art + "')" : "url(" + m.img + ")") : (_art ? "url('" + _art + "')" : "none");
         return {
           name: m.name, desc: m.desc, price: MVRc(price),
@@ -6128,8 +6128,7 @@ class Component extends DCLogic {
       },
       guideTitle: "Putting a dish on sale", guide: ["Create the dish with its chain master price", "Add recipe lines in Recipes & Costing so food cost is real", "An outlet may override the price; the master stays the default", "Tourism-zone outlets apply their uplift on top automatically"],
       actions: (canEdit ? [{ label: "New dish", primary: true, go: () => this.openForm("dish") },
-        { label: "Load starter menu", go: () => this.loadDefaultMenu() },
-        { label: "Sample menu", go: () => this.downloadSampleMenu() },
+        { label: "Download sample menu", go: () => this.downloadSampleMenu() },
         { label: "Import CSV", go: () => this.importMenuCsv() },
         { label: "Export / template", go: () => this.exportMenuCsv() }] : []).concat(costToggle),
       // Plain menu by default: Dish, Category, Price, Status. The costing

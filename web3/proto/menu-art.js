@@ -35,13 +35,20 @@
     if (t(/savory|savoury|baked|fried|snack|side|condiment/)) return { i: 'utensils', a: '#6f5218', b: '#a8862c' };
     return { i: 'plate', a: '#4a3a2a', b: '#836a4e' };
   }
+  // A hue derived from the dish's own name, so every dish gets a distinct tile
+  // colour (its category still reads from the icon). Same DJB2 hash the server
+  // uses, so the client and server draw the same art.
+  function hue(name) { var h = 5381, s = String(name || ''); for (var i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h % 360; }
   var CACHE = {};
-  window.kposCatArt = function (cat) {
-    var key = String(cat || '').toLowerCase();
+  // kposCatArt(category, dishName) — icon by category, colour by dish.
+  window.kposCatArt = function (cat, name) {
+    var key = String(cat || '') + '|' + String(name || '');
     if (CACHE[key]) return CACHE[key];
-    var th = theme(cat), icon = ICONS[th.i] || ICONS.plate;
+    var icon = ICONS[theme(cat).i] || ICONS.plate;
+    var hh = hue(name || cat);
+    var a = 'hsl(' + hh + ',48%,25%)', b = 'hsl(' + hh + ',56%,44%)';
     var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">'
-      + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + th.a + '"/><stop offset="1" stop-color="' + th.b + '"/></linearGradient></defs>'
+      + '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a + '"/><stop offset="1" stop-color="' + b + '"/></linearGradient></defs>'
       + '<rect width="400" height="300" fill="url(#g)"/>'
       + '<g transform="translate(200 150) scale(4.6)" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><g transform="translate(-12 -12)">' + icon + '</g></g>'
       + '</svg>';

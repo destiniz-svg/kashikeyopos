@@ -1053,7 +1053,7 @@ window.KashikeyoGuestQR = (function () {
   /* A dish tile's background: the real photo layered OVER a category placeholder,
      so a photo that fails to load falls through to branded art, never a blank. */
   App.prototype.thumbBg = function (m) {
-    var art = window.kposCatArt ? window.kposCatArt((m && (m.cat || m.group)) || (m && m.name) || '') : '';
+    var art = window.kposCatArt ? window.kposCatArt((m && (m.cat || m.group)) || '', (m && m.name) || '') : '';
     var photo = m && m.img ? this.img(m.img) : '';
     if (photo && art) return "url('" + photo + "'), url('" + art + "')";
     if (photo) return "url('" + photo + "')";

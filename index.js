@@ -1105,6 +1105,21 @@ async function ensureDefaultMenu(orgId) {
   return maxRowver;
 }
 
+/* Seed just the SAMPLE CATEGORIES onto a store (no dishes) — the starter shape a
+   new store begins with. Saved as settings.menuCats so the sections show on the
+   till + QR menu even while empty; the full sample dish list is a separate,
+   downloadable CSV the owner fills in and imports. */
+async function seedSampleCategories(orgId) {
+  const catGroup = {};
+  (CAT_GROUPS || []).forEach((g) => (g.subs || []).forEach((s) => { catGroup[s] = g.name; }));
+  const patch = { menuCats: (CAT_ORDER || []).slice(), catGroup, catGroups: CAT_GROUPS, catOrder: (CAT_ORDER || []).slice() };
+  await withOrg(orgId, (c) => c.query(
+    "UPDATE entities SET data = COALESCE(data,'{}'::jsonb) || $2::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings'",
+    [orgId, JSON.stringify(patch)]));
+  poke(orgId, Date.now());
+  return (CAT_ORDER || []).length;
+}
+
 /* Apply a set of menu items (e.g. DEFAULT_MENU) to a store — the engine behind
    "Load default menu". replace=true wipes the current menu first so the store
    resets to exactly this menu; otherwise it merges (add/update). Items with no
@@ -1122,7 +1137,6 @@ async function applyMenuItems(orgId, items, catGroups, catOrder, opts = {}) {
       if (!it || !it.name) continue;
       const data = Object.assign({ recipe: [] }, it);
       if (!data.id) data.id = "m_" + Math.random().toString(36).slice(2, 9);
-      if (!data.img) data.img = menuArtifact(data.cat, data.name);
       const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, data.id, JSON.stringify(data)]);
       if (r.rows[0]) mx = Math.max(mx, Number(r.rows[0].rowver));
       created++;
@@ -1859,7 +1873,7 @@ app.post("/api/register", wrap(async (req, res) => {
   /* Unless the owner asked to start empty (or build with AI), seed the shared
      starter menu (same items + photos as every other outlet), on the till and
      the guest portal. Non-fatal. */
-  if (!skipMenu) { try { await ensureDefaultMenu(id); } catch (e) { console.warn("default-menu seed on register skipped:", e.message); } }
+  if (!skipMenu) { try { await seedSampleCategories(id); } catch (e) { console.warn("sample-categories seed on register skipped:", e.message); } }
   const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
   const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
   const token = sign(id, "R1", DEFAULT_STORE_ID);
@@ -2144,7 +2158,7 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
        reappears on the next deploy and their empty menu won't stay empty. */
     await c.query("UPDATE orgs SET onboarded=true, setup_step='done', skip_default_menu=$2 WHERE id=$1", [orgId, menu !== "sample"]);
   });
-  if (menu === "sample") { try { await ensureDefaultMenu(orgId); } catch (e) { console.warn("starter-menu seed skipped:", e.message); } }
+  if (menu === "sample") { try { await seedSampleCategories(orgId); } catch (e) { console.warn("sample-categories seed skipped:", e.message); } }
   // Land a freshly-onboarded store on the v2 terminal — the current build —
   // rather than the legacy /app register. (/app stays reachable for installed
   // offline tills that fetch it directly.)
@@ -3516,7 +3530,9 @@ function menuCsvRowToInput(rec) {
   if (rec.soldOut !== undefined) b.soldOut = csvBool(rec.soldOut);
   if (rec.tags !== undefined && String(rec.tags).trim() !== "") b.tags = parseTagsCell(rec.tags);
   if (rec.addons !== undefined && String(rec.addons).trim() !== "") b.addons = parseAddonsCell(rec.addons);
-  if (rec.img !== undefined && String(rec.img).trim() !== "") b.img = rec.img;
+  // Only an embedded photo (data: URI) is kept; external URLs and /api/img
+  // references are dropped — the portals draw a dish-coloured artwork tile.
+  if (rec.img !== undefined && /^data:image\//i.test(String(rec.img).trim())) b.img = rec.img;
   return b;
 }
 
@@ -5787,7 +5803,6 @@ if (fs.existsSync(protoFile)) {
       const data = Object.assign({ id, recipe: [] }, fields);
       // A new dish with no photo gets a category-keyed placeholder tile, so it
       // never shows a blank square on the till or the QR menu.
-      if (!data.img) data.img = menuArtifact(data.cat, data.name);
       const r = await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() RETURNING rowver", [orgId, id, JSON.stringify(data)]);
       return { id, rowver: Number(r.rows[0].rowver), created: true };
     });
@@ -5877,13 +5892,11 @@ if (fs.existsSync(protoFile)) {
         if (existing) {
           const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing]);
           const data = Object.assign({}, cur.rows[0].data || {}, f);
-          if (!data.img) data.img = menuArtifact(data.cat, data.name);   // no photo → branded tile
           await c.query("UPDATE entities SET data=$3, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND id=$2", [orgId, existing, JSON.stringify(data)]);
           updated++;
         } else {
           const id = wantId || ("m_" + Math.random().toString(36).slice(2, 9));
           const data = Object.assign({ id, recipe: [] }, f);
-          if (!data.img) data.img = menuArtifact(data.cat, data.name);   // no photo → branded tile
           await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'products',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()", [orgId, id, JSON.stringify(data)]);
           created++;
         }
@@ -6699,7 +6712,7 @@ if (fs.existsSync(protoFile)) {
     if (denyAppRole(req, res, APP_RANK.ADMIN, "Adding the menu needs an admin or the owner.")) return;
     try {
       await withOrg(orgId, (c) => c.query("UPDATE orgs SET skip_default_menu=false WHERE id=$1", [orgId]));
-      await ensureDefaultMenu(orgId);
+      await seedSampleCategories(orgId);
       const mx = (await withOrg(orgId, (c) => c.query("SELECT COALESCE(MAX(rowver),0) AS m FROM entities WHERE org_id=$1", [orgId]))).rows[0].m;
       poke(orgId, Number(mx));
       res.json({ ok: true });
