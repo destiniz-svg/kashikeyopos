@@ -6398,7 +6398,7 @@ class Component extends DCLogic {
           { label: "Add item", primary: true, go: () => this.openForm("item") },
           { label: "Bulk import", go: () => this.bulkImportItems() },
           { label: "Reorder below par", go: () => this.setState({ view: "requests" }) },
-          { label: "Stock adjustment", go: () => this.openForm("adjust") },
+          { label: "Record waste", go: () => this.openForm("adjust") },
           { label: "Start stock check", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }
         ]
         : [{ label: "Add item", primary: true, go: () => this.openForm("item") }, { label: "Bulk import", go: () => this.bulkImportItems() }, { label: "New category", go: () => this.openForm("category") }, { label: "Auto-indent below par", go: () => {
@@ -6408,7 +6408,7 @@ class Component extends DCLogic {
         const to = ((K().OUTLETS || []).find((o) => o.type === "main_store") || { id: 1 }).id;
         const no = this.nextNo("reqs", "PR-2026-");
         this.insertRow("reqs", { no: no, from: short[0][0] || this.state.outletId, to: to, status: "pending", by: this.me(), appr: "", notes: "auto-indent · " + short.length + " items below par", priority: "normal", reject: "" }, "Draft indent " + no + " · " + short.length + " below-par items", "requests");
-      } }, { label: "Stock adjustment", go: () => this.openForm("adjust") }, { label: "Start cycle count", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }]),
+      } }, { label: "Record waste", go: () => this.openForm("adjust") }, { label: "Start cycle count", go: () => this.setState({ view: "counts", modal: { kind: "count" } }) }]),
       cols: [{ label: "Item", w: "2.2fr" }, { label: "Code", w: ".9fr", mono: 1 }, { label: "Location", w: "1.4fr" }, { label: "On hand", w: ".9fr", a: "right", mono: 1 }, { label: "Par", w: ".7fr", a: "right", mono: 1 }, { label: "Unit cost", w: ".9fr", a: "right", mono: 1 }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "State", w: ".9fr", a: "right" }],
       rows: rows.map((r) => {
         const it = this.item(r[1]) || [];
@@ -8109,7 +8109,7 @@ class Component extends DCLogic {
         }
       },
       adjust: {
-        title: "Stock adjustment", sub: "Write stock off or on with a reason", save: "Post adjustment",
+        title: "Record waste / adjust stock", sub: "Write off spoilage or waste (or write on found stock), with a reason", save: "Record",
         foot: "Every adjustment posts a reversing-safe ledger row and lands in the variance account, so a count that comes up short is explained by a named reason and a named person rather than appearing as an unexplained food-cost gap.",
         fields: [
           { k: "item", label: "Item", options: sel((raw.items || []).slice(0, 220).map((it) => ({ v: it[0], l: it[2] + " · " + MVR(it[4]) + "/" + (it[8] || "kg") }))), full: 1 },
