@@ -2848,20 +2848,33 @@ class Component extends DCLogic {
     // every device, so an approved booking is reflected on the floor end-to-end.
     const resByTable = {};
     if (window.KPOS_REAL) this.resBook().forEach((r) => { if (r.status === "confirmed" && r.table) resByTable[String(r.table)] = r; });
+    // Live QR orders placed from a table's own code — so a scan-to-order table
+    // shows as busy on the floor (not "Free") and a cashier can open its order.
+    const qrByTable = {};
+    if (window.KPOS_REAL) (this.liveOrders() || []).forEach((qo) => {
+      if (qo.channel === "qr" && String(qo.status) !== "completed" && qo.table && this.isTableSlot(qo.table)) {
+        (qrByTable[String(qo.table)] = qrByTable[String(qo.table)] || []).push(qo);
+      }
+    });
     const tables = [];
     for (let i = 1; i <= nT; i++) {
       const t = s.tickets[s.outletId + ":" + i];
       const label = "T" + pad(i);
       const resv = !t ? resByTable[label] : null;                 // a confirmed booking holding this table
-      const st = t ? t.status : (resv ? "reserved" : "free");
+      const qrOrders = !t ? (qrByTable[String(i)] || []) : [];    // guest QR orders with no till ticket yet
+      const qrOrd = qrOrders[0] || null;
+      const st = t ? t.status : (qrOrd ? "qr" : (resv ? "reserved" : "free"));
       const on = s.activeTable === i;
-      const tot = t && t.lines.length ? this.totals(t).total : 0;
-      const accent = st === "occupied" ? "var(--amber)" : st === "reserved" ? "var(--blue)" : "var(--line-3)";
+      const tot = t && t.lines.length ? this.totals(t).total : (qrOrd ? qrOrders.reduce((a, o) => a + (Number(o.total) || 0), 0) : 0);
+      const accent = st === "occupied" ? "var(--amber)" : st === "qr" ? "var(--go)" : st === "reserved" ? "var(--blue)" : "var(--line-3)";
       tables.push({
         label: label,
         go: () => {
           if (this._lp) { this._lp = 0; return; }
           if (resv) { this.setState({ modal: { kind: "resv", id: resv.id } }); return; }
+          // A table with a live QR order (no till ticket yet) opens that order's
+          // progress tracker, so the cashier sees + advances what the guest sent.
+          if (qrOrd) { this.setState({ modal: { kind: "ordtrack", id: qrOrd.id } }); return; }
           // Tap the selected table again to deselect it. If its ticket is still
           // empty (the tap is all that opened it), drop the ticket so the table
           // goes back to free — a clean undo of an accidental tap.
@@ -2884,10 +2897,11 @@ class Component extends DCLogic {
         press: () => { clearTimeout(this._lpT); this._lpT = setTimeout(() => { this._lp = 1; this.tableMenu(i); }, 420); },
         release: () => { clearTimeout(this._lpT); },
         style: "display:flex;flex-direction:column;justify-content:space-between;padding:11px 12px;border-radius:10px;min-height:88px;background:" + (on ? "rgba(242,164,58,.13)" : "var(--bg-1)") + ";border:1px solid " + (on ? "var(--amber)" : "var(--line)") + ";border-left:3px solid " + accent + ";transition:.12s",
-        chip: "font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (st === "occupied" ? "rgba(242,164,58,.14);color:var(--amber-bright)" : st === "reserved" ? "rgba(103,162,217,.14);color:var(--blue-bright)" : "rgba(255,255,255,.04);color:var(--text-faint)"),
-        chipText: st === "occupied" ? "Open" : st === "reserved" ? "Res" : "Free",
+        chip: "font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (st === "occupied" ? "rgba(242,164,58,.14);color:var(--amber-bright)" : st === "qr" ? "rgba(107,191,123,.14);color:var(--green)" : st === "reserved" ? "rgba(103,162,217,.14);color:var(--blue-bright)" : "rgba(255,255,255,.04);color:var(--text-faint)"),
+        chipText: st === "occupied" ? "Open" : st === "qr" ? "QR order" : st === "reserved" ? "Res" : "Free",
         meta: st === "reserved" ? (t ? (t.resName + " · " + t.resAt) : (resv.name + " · " + resv.t))
           : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
+          : st === "qr" ? (qrOrders.length + " QR order" + (qrOrders.length === 1 ? "" : "s") + " · tap to view")
           : (i % 3 === 0 ? "4 seats" : "2 seats"),
         total: tot ? MVRc(tot) : "",
         totalStyle: "font-size:12px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace"

@@ -1223,7 +1223,9 @@ window.KashikeyoGuestQR = (function () {
       r.lines.forEach(function (l, i) {
         var hit = (pool[l.id] || []).shift();
         map[r.id + '|' + i] = {
-          stage: hit ? (hit.done ? 3 : (hit.fired ? 2 : 1)) : 0,
+          // 0 sent · 1 received at the till · 2 preparing · 3 ready · 4 served —
+          // the same four states the till moves an order through.
+          stage: hit ? (hit.done ? 4 : hit.ready ? 3 : hit.fired ? 2 : 1) : 0,
           firedAt: hit ? (hit.firedAt || 0) : 0
         };
       });
@@ -1231,7 +1233,7 @@ window.KashikeyoGuestQR = (function () {
     return map;
   };
   App.prototype.stageName = function (n) {
-    return ['Sent to the floor', 'Accepted at the till', 'In the kitchen', 'Served'][n] || 'Sent to the floor';
+    return ['Sent to the floor', 'Received at the till', 'Preparing', 'Ready', 'Served'][n] || 'Sent to the floor';
   };
 
   /* ── persistence ─────────────────────────────────────────────────────────── */
@@ -1945,7 +1947,7 @@ window.KashikeyoGuestQR = (function () {
        each at its own stage. The headline stays conservative (the slowest
        item); each step reports how many items have passed it. */
     var stageNow = total ? Math.min.apply(null, all.map(function (x) { return x.stage; })) : 0;
-    var reached = [0, 1, 2, 3].map(function (i) { return all.filter(function (x) { return x.stage >= i; }).length; });
+    var reached = [0, 1, 2, 3, 4].map(function (i) { return all.filter(function (x) { return x.stage >= i; }).length; });
     var cooking = all.filter(function (x) { return x.stage === 2 && x.firedAt; });
     var waited = cooking.length ? Math.max.apply(null, cooking.map(function (x) { return (Date.now() - x.firedAt) / 60000; })) : 0;
     var left = Math.max(0, Math.ceil(this.sla() - waited));
@@ -1966,25 +1968,26 @@ window.KashikeyoGuestQR = (function () {
       '</div>';
 
     if (s.sent.length) {
-      var etaLabel = reached[3] === total && total ? 'Complete' : cooking.length ? (late ? 'Any minute now' : '~' + left + ' min') : 'Confirming';
-      var etaTint = reached[3] === total && total ? 'background:var(--k-go-bg);color:var(--k-go-ink)'
+      var etaLabel = reached[4] === total && total ? 'Complete' : cooking.length ? (late ? 'Any minute now' : '~' + left + ' min') : 'Confirming';
+      var etaTint = reached[4] === total && total ? 'background:var(--k-go-bg);color:var(--k-go-ink)'
         : cooking.length ? (late ? 'background:var(--k-bad-bg);color:var(--k-bad-ink)' : 'background:var(--k-warn-bg);color:var(--k-warn-ink)')
         : 'background:var(--k-neutral-bg);color:var(--k-neutral-ink)';
       var steps = [
         { label: 'Sent from your table', sub: (total + ' item' + (total === 1 ? '' : 's')) + (s.sent[0] ? ' · ' + hhmm(s.sent[0].at) : '') },
-        { label: 'Accepted at the till', sub: reached[1] ? nOf(reached[1]) + ' on the ticket' : 'Waiting for the floor terminal' },
-        { label: 'In the kitchen', sub: cooking.length
+        { label: 'Received at the till', sub: reached[1] ? nOf(reached[1]) + ' on the ticket' : 'Waiting for the floor terminal' },
+        { label: 'Preparing', sub: cooking.length
             ? nOf(cooking.length) + ' cooking · ' + Math.round(waited) + ' min in · target ' + this.sla() + ' min'
-            : reached[2] ? nOf(reached[2]) + ' have been through the pass' : 'Fires once the till accepts it' },
-        { label: 'Served', sub: reached[3] ? nOf(reached[3]) + ' at your table' : 'Brought to table ' + this.table() }
+            : reached[2] ? nOf(reached[2]) + ' in the kitchen' : 'Starts once the till accepts it' },
+        { label: 'Ready', sub: reached[3] ? nOf(reached[3]) + ' ready to serve' : 'The kitchen marks each dish ready' },
+        { label: 'Served', sub: reached[4] ? nOf(reached[4]) + ' at your table' : 'Brought to table ' + this.table() }
       ];
       h += '<div class="q-card" style="margin-top:22px;border-radius:16px;padding:16px 16px 4px">' +
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">' +
           '<span style="display:block">' +
             '<span style="display:block;font-size:15px;font-weight:700;color:var(--k-ink);letter-spacing:-.02em">' +
-              (reached[3] === total && total ? 'Everything is served'
+              (reached[4] === total && total ? 'Everything is served'
                 : cooking.length ? 'Cooking now'
-                : ['On its way to the floor', 'Your server has the ticket', 'Cooking now', 'Everything is served'][stageNow]) + '</span>' +
+                : ['On its way to the floor', 'Your server has the ticket', 'Cooking now', 'Ready to serve', 'Everything is served'][stageNow]) + '</span>' +
             '<span style="display:block;font-size:12.5px;color:var(--k-mute);margin-top:3px">' +
               total + ' item' + (total === 1 ? '' : 's') + ' in this order · slowest is ' + this.stageName(stageNow).toLowerCase() + '</span>' +
           '</span>' +
@@ -1998,7 +2001,7 @@ window.KashikeyoGuestQR = (function () {
             '<span style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:18px">' +
               '<span style="width:14px;height:14px;border-radius:50%;flex-shrink:0;display:block;background:' + (full ? C : 'var(--k-white)') +
                 ';border:2.5px solid ' + col + (part ? ';box-shadow:0 0 0 4px rgba(127,174,60,.16);animation:qpulse 1.8s ease-in-out infinite' : '') + '"></span>' +
-              (i === 3 ? '' : '<span style="flex:1;width:2.5px;min-height:28px;margin:3px 0;border-radius:2px;display:block;background:' +
+              (i === steps.length - 1 ? '' : '<span style="flex:1;width:2.5px;min-height:28px;margin:3px 0;border-radius:2px;display:block;background:' +
                 (reached[i + 1] ? C : 'var(--k-line-6)') + '"></span>') +
             '</span>' +
             '<span style="display:block;padding-bottom:15px">' +

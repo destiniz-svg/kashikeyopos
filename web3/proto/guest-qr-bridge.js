@@ -109,8 +109,14 @@
     (orders || []).forEach(function (o) {
       var st = String((o && o.status) || "new");
       if (st === "cancelled") return;
-      var fired = st !== "new";
-      var doneAll = st === "completed";
+      // Drive every line from the ORDER status so the guest's stage matches the
+      // till exactly: new → received, preparing → preparing, ready → ready,
+      // completed → served. (We deliberately don't read per-line `done`: the
+      // kitchen sets all lines done when it marks a ticket ready, which would
+      // otherwise read as "served" before it actually is.)
+      var fired = st === "preparing" || st === "ready";
+      var ready = st === "ready";
+      var done = st === "completed";
       var firedAt = Number(o.readyAt || o.updatedAt || o.createdAt) || 0;
       (o.items || []).forEach(function (it) {
         if (!it) return;
@@ -120,7 +126,7 @@
           // Prefix "QR" so the app credits it to this phone's own rounds (it keys
           // its own lines off a leading "QR"); the till's own added lines won't.
           note: "QR" + (it.note ? " · " + it.note : ""),
-          fired: fired, firedAt: firedAt, done: doneAll || !!it.done
+          fired: fired, ready: ready, firedAt: firedAt, done: done
         });
       });
     });
