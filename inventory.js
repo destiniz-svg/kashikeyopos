@@ -55,6 +55,20 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     if (req.authSource !== "cookie") return res.status(403).json({ error: "Sign in to the back office to manage inventory." });
     return rankOf(req.appRole) >= min ? next() : res.status(403).json({ error: "This needs a manager or the owner." });
   };
+  /* Receiving & day-to-day stock operations (receive a delivery/GRN, receive a
+     PO, add an item so a new supply can be received, record waste/adjustment,
+     make a batch, transfer between locations, run a stock count, add a vendor,
+     raise a reorder) are front-line work a cashier does on shift — the person who
+     signs for the bread delivery. So these allow cashier/waiter and above, unlike
+     the manager-only catalogue/finance writes. The attributable-COOKIE rule from
+     SEC-2 still holds (a shared till BEARER token can never mutate stock), so the
+     action is always tied to a named staff login, not an anonymous terminal. */
+  const RECEIVING_RANK = { owner: 5, admin: 4, manager: 3, cashier: 2, waiter: 2 };
+  const requireReceiving = (req, res, next) => {
+    if (req.authSource !== "cookie") return res.status(403).json({ error: "Sign in with your staff account to receive or adjust stock." });
+    const rank = RECEIVING_RANK[req.appRole] || (req.appRole ? 0 : 5); // absent role = legacy owner cookie
+    return rank >= 2 ? next() : res.status(403).json({ error: "Receiving stock needs a cashier, manager or the owner." });
+  };
 
   /* Who am I — lets /back gate its tabs to the signed-in role (owner/admin see
      all; manager gets operational tabs, not the Owner dashboard or Settings). */
@@ -640,7 +654,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      items go back to always-available (stock-untracked). Handy to recover a whole
      menu that has been driven to "sold out". Writes onto the products entities so
      it rides the sync stream to the till tiles and guest menu. */
-  router.post("/products/restock", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/products/restock", authAny, requireReceiving, wrap(async (req, res) => {
     const body = req.body || {};
     const clear = body.clear === true;
     const qty = clear ? null : Math.max(0, Math.round(num(body.qty)));
@@ -838,7 +852,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ingredients: rows });
   }));
 
-  router.post("/ingredients", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/ingredients", authAny, requireReceiving, wrap(async (req, res) => {
     const { id, name, sku, baseUnit, minStock, location, units, sellable, sellPrice, sellEmoji, sellCat, producible, prepLines } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ error: "ingredient name required" });
     const base = ["g", "ml", "pcs"].includes(baseUnit) ? baseUnit : "g";
@@ -979,7 +993,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
        mode "correct" — staff type the true amount now on the shelf; we work
                         out the difference and record it. Enter what you SEE,
                         not a delta, so there's nothing to get backwards. */
-  router.post("/adjust", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/adjust", authAny, requireReceiving, wrap(async (req, res) => {
     const { ingredientId, mode, qty, unitName, reason } = req.body || {};
     if (!ingredientId) return res.status(400).json({ error: "which ingredient?" });
     if (mode !== "waste" && mode !== "correct") return res.status(400).json({ error: "mode must be waste or correct" });
@@ -1046,7 +1060,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(out);
   }));
 
-  router.post("/transfer", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/transfer", authAny, requireReceiving, wrap(async (req, res) => {
     const { ingredientId, fromLoc, toLoc, qty, unitName, reason } = req.body || {};
     if (!ingredientId) return res.status(400).json({ error: "which ingredient?" });
     if (!fromLoc || !toLoc) return res.status(400).json({ error: "pick where it's moving from and to" });
@@ -1087,7 +1101,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      cost into the prep item's weighted-average cost — the same number recipes
      and COGS already trust. The build recipe is stored in recipe_lines keyed
      by the prep item's own id, with qty = components per ONE base unit made. */
-  router.post("/produce", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/produce", authAny, requireReceiving, wrap(async (req, res) => {
     const { ingredientId, qty, unitName } = req.body || {};
     if (!ingredientId) return res.status(400).json({ error: "which item are you making?" });
     if (!(num(qty) > 0)) return res.status(400).json({ error: "enter how much you made" });
@@ -1324,7 +1338,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     required: ["supplier", "invoiceNo", "date", "lines"],
   };
 
-  router.post("/ocr", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/ocr", authAny, requireReceiving, wrap(async (req, res) => {
     const client = aiClient();
     if (!client) {
       return res.json({ ok: true, configured: false, message: "Scanning isn't set up yet. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) to turn it on — or enter this delivery by hand below." });
@@ -1881,7 +1895,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ suppliers: r.rows });
   }));
 
-  router.post("/suppliers", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/suppliers", authAny, requireReceiving, wrap(async (req, res) => {
     const b = req.body || {};
     const { id, name, phone, email, notes } = b;
     if (!name || !String(name).trim()) return res.status(400).json({ error: "supplier name required" });
@@ -1975,7 +1989,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     return { id: invId, total, lines: posted, rowver: exp.rowCount ? Number(exp.rows[0].rowver) : 0 };
   }
 
-  router.post("/invoices", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/invoices", authAny, requireReceiving, wrap(async (req, res) => {
     const { supplierId, invoiceNo, lines, gst } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "invoice needs at least one line" });
     const out = await withOrg(req.orgId, async (client) => {
@@ -2095,7 +2109,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, currency: out.currency, count: out.reorder.length, drafts });
   }));
 
-  router.post("/reorder/approve", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/reorder/approve", authAny, requireReceiving, wrap(async (req, res) => {
     const drafts = Array.isArray(req.body && req.body.drafts) ? req.body.drafts : [];
     if (!drafts.length) return res.status(400).json({ error: "nothing to order" });
     const result = await withOrg(req.orgId, async (client) => {
@@ -3227,7 +3241,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true });
   }));
 
-  router.post("/pos/:id/receive", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/pos/:id/receive", authAny, requireReceiving, wrap(async (req, res) => {
     const { lines, invoiceNo } = req.body || {};
     if (!Array.isArray(lines) || !lines.length) return res.status(400).json({ error: "map the PO lines to ingredients first" });
     const out = await withOrg(req.orgId, async (client) => {
@@ -3316,7 +3330,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      close → variance per line (>5% flagged "review" with a plain-language
              reason), stock snapped to counted via ledgered audit moves, and
              period COGS = opening + purchases − ending. */
-  router.post("/audits", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/audits", authAny, requireReceiving, wrap(async (req, res) => {
     const out = await withOrg(req.orgId, async (client) => {
       const open = await client.query("SELECT id FROM audit_sessions WHERE org_id=$1 AND status='open'", [req.orgId]);
       if (open.rowCount) throw Object.assign(new Error("a stock check is already in progress"), { status: 409 });
@@ -3371,7 +3385,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json(out);
   }));
 
-  router.put("/audits/:id/counts", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.put("/audits/:id/counts", authAny, requireReceiving, wrap(async (req, res) => {
     const counts = Array.isArray(req.body && req.body.counts) ? req.body.counts : [];
     await withOrg(req.orgId, async (client) => {
       const s = await client.query("SELECT status FROM audit_sessions WHERE org_id=$1 AND id=$2", [req.orgId, req.params.id]);
@@ -3388,7 +3402,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true });
   }));
 
-  router.post("/audits/:id/close", authAny, requireBackOffice(1), wrap(async (req, res) => {
+  router.post("/audits/:id/close", authAny, requireReceiving, wrap(async (req, res) => {
     const out = await withOrg(req.orgId, async (client) => {
       await assertNotLocked(client, req.orgId, Date.now());
       const s = await client.query("SELECT * FROM audit_sessions WHERE org_id=$1 AND id=$2 FOR UPDATE", [req.orgId, req.params.id]);

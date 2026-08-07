@@ -2120,8 +2120,14 @@ app.post("/api/back/login", wrap(async (req, res) => {
     client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [org.id]));
   const me = users.rows.map((r) => r.data).find((u) => u && String(u.pin) === want);
   if (!me) return bad();
-  const RANK = { owner: 3, admin: 2, manager: 1 };
-  if (!RANK[me.role]) { rlFail(keys); return res.status(403).json({ error: "The back office is for managers and above — use the till app for your role." }); }
+  /* Who may hold a terminal (back-office) session. Managers/admins get the full
+     cockpit; cashiers and waiters get a scoped session so they can run the POS
+     AND receive deliveries / count / adjust stock on shift — the front-line jobs
+     a cashier actually does — while the server still enforces every manager-only
+     write per endpoint. Kitchen/rider stay on their own apps. Owner uses the
+     email + password route below. */
+  const TERMINAL_ROLES = { admin: 1, manager: 1, cashier: 1, waiter: 1 };
+  if (me.role !== "owner" && !TERMINAL_ROLES[me.role]) { rlFail(keys); return res.status(403).json({ error: "This role signs in on the till app, not the terminal." }); }
   /* An owner session is the keys to the business, and this form asks only for a
      public slug plus a four-digit PIN that every shift-worker device knows. The
      owner already has a first-class route in (email + password, which is what
@@ -4237,6 +4243,9 @@ if (fs.existsSync(protoFile)) {
                 role: roleLabel(req.appRole || (ownerRow && ownerRow.role) || "owner"),
                 // Machine-readable, for gating owner-only actions in the UI.
                 isOwner: appRankOf(req.appRole || (ownerRow && ownerRow.role) || "owner") >= APP_RANK.OWNER,
+                // Machine-readable role key so the terminal can scope a cashier's
+                // view to what they may do (owner/manager keep the full cockpit).
+                roleKey: String(req.appRole || (ownerRow && ownerRow.role) || "owner").toLowerCase(),
               };
             }
           });
@@ -4373,9 +4382,10 @@ if (fs.existsSync(protoFile)) {
       const orgId = await resolveAppSession(req);
       if (!orgId) return null;
       const token = sign(orgId, req.appRegister || "R1", req.appStoreId || DEFAULT_STORE_ID);
-      return buildV2RealForOrg(orgId, token);
+      return buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name });
     };
-    const buildV2RealForOrg = async (orgId, token) => {
+    const buildV2RealForOrg = async (orgId, token, viewer) => {
+      viewer = viewer || {};
       return await withOrg(orgId, async (c) => {
         const prodRows = (await c.query(
           "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows;
@@ -4710,6 +4720,9 @@ if (fs.existsSync(protoFile)) {
         const portalBase = portalSubBase || process.env.PUBLIC_ORIGIN || "";
         return {
           hasSession: true, token, slug,
+          // The signed-in operator, so the terminal can scope a cashier/waiter to
+          // their permission set. Absent role = the owner's own (password) login.
+          me: { roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner" },
           portal: { slug, base: portalBase, sub: !!portalSubBase },
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
             currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr },

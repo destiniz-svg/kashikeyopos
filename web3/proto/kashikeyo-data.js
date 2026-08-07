@@ -168,8 +168,9 @@
     },
     {
       key: "Cashier", label: "Cashier / Waiter", color: "#0074D9", scope: "outlet",
-      blurb: "Terminal only. Cannot see cost prices or other outlets. Can 86 or hide a dish, but not edit prices or the menu.",
-      perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, kds: V, menu: V })
+      blurb: "Runs the till and receives stock on shift — take orders and payments, receive deliveries / premade foods / supplies, add items and vendors, count stock, record waste, transfer and reorder. Cannot edit prices or the menu, delete anything, or see finance, payroll, settings or other outlets.",
+      perms: perms({ pos: VAE, reservations: VAE, customers: VA, orders: VA, delivery: VA, kds: V, menu: V,
+        inventory: VA, purchases: VA, counts: VAE, ledger: V, batches: V, requests: VA, dispatches: V, vendors: VA })
     },
     {
       key: "KitchenManager", label: "Kitchen Manager", color: "#e65100", scope: "outlet",

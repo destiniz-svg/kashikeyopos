@@ -1523,7 +1523,7 @@ class Component extends DCLogic {
   state = {
     ready: !!window.KPOS,
     view: this.props.startView || this._saved.view || "pos",
-    roleKey: (this._saved.session && this._saved.session.role) || this.props.startRole || this._saved.roleKey || "ChainAdmin",
+    roleKey: this.initialRoleKey(),
     outletId: this._saved.outletId || 3,
     now: new Date(),
     online: true,
@@ -1981,6 +1981,19 @@ class Component extends DCLogic {
   }
 
   // ── helpers ──────────────────────────────────────────────────────────────
+  // The role the terminal opens as. In the real terminal the backend session is
+  // authoritative: a cashier/waiter login is scoped to the Cashier permission set
+  // (POS + receiving/stock, no finance/admin), which the server also enforces per
+  // endpoint. Owner/admin/manager keep the full cockpit. Demo/preview falls back
+  // to a saved session, the startRole prop, or ChainAdmin.
+  initialRoleKey() {
+    const me = window.KPOS_REAL && window.KPOS_REAL.me;
+    if (me && me.roleKey) {
+      const rk = String(me.roleKey).toLowerCase();
+      if (rk === "cashier" || rk === "waiter") return "Cashier";
+    }
+    return (this._saved.session && this._saved.session.role) || this.props.startRole || this._saved.roleKey || "ChainAdmin";
+  }
   roleFor(key) {
     const base = (K().ROLES || []).find((r) => r.key === key);
     if (!base) return { perms: {}, label: "" };
