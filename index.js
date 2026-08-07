@@ -459,6 +459,36 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
       } catch (e) { try { await mc.query("ROLLBACK"); } catch (_) { /* already unwound */ } throw e; }
       finally { mc.release(); }
     } catch (e) { console.warn("menu_reset_all_v1 migration skipped:", e.message); }
+    /* One-time platform seed (owner request, follow-up to the reset): populate
+       every store's now-empty sample categories with the 300-dish sample menu, so
+       the till isn't blank — owners edit or delete what they don't want. Same
+       once-only claim guard + single transaction as the reset. Each dish carries a
+       stable id, so it lands as one row per store; a tombstoned copy from the
+       reset is revived (deleted=false) rather than duplicated. Dish `cat` names
+       match the seeded CAT_ORDER exactly, so every dish lands in an existing
+       section. */
+    try {
+      const mc2 = await bootPool.connect();
+      try {
+        await mc2.query("BEGIN");
+        const claim = await mc2.query("INSERT INTO app_migrations (id) VALUES ('menu_seed_all_v1') ON CONFLICT DO NOTHING RETURNING id");
+        if (claim.rowCount) {
+          // recipe:[] is guaranteed on every sample item; store each verbatim.
+          const menuJson = JSON.stringify((DEFAULT_MENU || []).map((d) => Object.assign({ recipe: [] }, d)));
+          const seeded = await mc2.query(
+            "INSERT INTO entities (org_id, kind, id, data, rowver) " +
+            "SELECT o.id, 'products', d->>'id', d, nextval('entities_rowver_seq') " +
+            "FROM orgs o, jsonb_array_elements($1::jsonb) AS d " +
+            "ON CONFLICT (org_id, kind, id) DO UPDATE " +
+            "SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()", [menuJson]);
+          await mc2.query("COMMIT");
+          console.log(`menu_seed_all_v1: loaded ${DEFAULT_MENU.length}-dish sample menu (${seeded.rowCount} row(s) across all stores)`);
+        } else {
+          await mc2.query("ROLLBACK");
+        }
+      } catch (e) { try { await mc2.query("ROLLBACK"); } catch (_) { /* already unwound */ } throw e; }
+      finally { mc2.release(); }
+    } catch (e) { console.warn("menu_seed_all_v1 migration skipped:", e.message); }
     /* Ensure every existing outlet carries the shared starter menu with its
        photos. Idempotent (ensureDefaultMenu only writes when an image is
        missing or changed), so this is a no-op on subsequent boots. New outlets
