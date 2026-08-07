@@ -1949,9 +1949,15 @@ app.post("/api/register", wrap(async (req, res) => {
     "INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings','settings',$2) ON CONFLICT (org_id, kind, id) DO NOTHING",
     [id, JSON.stringify(initSettings)]));
   /* Unless the owner asked to start empty (or build with AI), seed the shared
-     starter menu (same items + photos as every other outlet), on the till and
-     the guest portal. Non-fatal. */
-  if (!skipMenu) { try { await seedSampleCategories(id); } catch (e) { console.warn("sample-categories seed on register skipped:", e.message); } }
+     starter menu — BOTH the category sections AND the sample dishes that fill
+     them — same items + photos as every other outlet, on the till and the guest
+     portal. seedSampleCategories only lays down the empty sections; without the
+     applyMenuItems call the store opened with 36 named-but-empty categories and
+     no dishes. Non-fatal. */
+  if (!skipMenu) {
+    try { await seedSampleCategories(id); } catch (e) { console.warn("sample-categories seed on register skipped:", e.message); }
+    try { await applyMenuItems(id, DEFAULT_MENU, CAT_GROUPS, CAT_ORDER, {}); } catch (e) { console.warn("sample-menu seed on register skipped:", e.message); }
+  }
   const validPin = /^\d{4}$/.test(String(pin || "")) ? String(pin) : null;
   const seededPin = await ensureOwnerSeed({ id, owner_name: cleanOwnerName, email }, validPin);
   const token = sign(id, "R1", DEFAULT_STORE_ID);
@@ -2236,7 +2242,10 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
        reappears on the next deploy and their empty menu won't stay empty. */
     await c.query("UPDATE orgs SET onboarded=true, setup_step='done', skip_default_menu=$2 WHERE id=$1", [orgId, menu !== "sample"]);
   });
-  if (menu === "sample") { try { await seedSampleCategories(orgId); } catch (e) { console.warn("sample-categories seed skipped:", e.message); } }
+  if (menu === "sample") {
+    try { await seedSampleCategories(orgId); } catch (e) { console.warn("sample-categories seed skipped:", e.message); }
+    try { await applyMenuItems(orgId, DEFAULT_MENU, CAT_GROUPS, CAT_ORDER, {}); } catch (e) { console.warn("sample-menu seed skipped:", e.message); }
+  }
   // Land a freshly-onboarded store on the v2 terminal — the current build —
   // rather than the legacy /app register. (/app stays reachable for installed
   // offline tills that fetch it directly.)
