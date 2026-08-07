@@ -1884,9 +1884,26 @@ class Component extends DCLogic {
   componentDidUpdate() {
     if (this.syncThemeProps()) return;
     this.applyTheme();
+    // Lazy-load the real data a supply-chain document view needs the first time
+    // it's opened (reorder drafts, expiring lots). Guarded so it fires once per
+    // navigation, not on every render.
+    if (this.state.view !== this._scView) { this._scView = this.state.view; this.loadSc(this.state.view); }
     const b = this.props.busyness === undefined ? 42 : this.props.busyness;
     if (b !== this._busy) { this._busy = b; this.seed(); return; }
     this.persist();
+  }
+  // Fetch the backend data a repurposed document view renders from. Only the
+  // reorder (indents) and expiring (batches) views need a round trip — the
+  // transfers and production views read the already-hydrated ledger/stock.
+  loadSc(view) {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    const pull = (url, key) => fetch(url, { credentials: "same-origin" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (j) this.setState((st) => ({ scData: Object.assign({}, st.scData, { [key]: j }) })); })
+      .catch(() => {});
+    if (view === "requests") { pull("/api/inv/reorder/draft", "reorder"); pull("/api/inv/pos", "pos"); }
+    else if (view === "batches") { pull("/api/inv/expiring", "expiring"); }
+    else if (view === "purchases") { pull("/api/inv/invoices", "invoices"); }
   }
 
   // ── seed a plausible live service ────────────────────────────────────────
@@ -6404,6 +6421,29 @@ class Component extends DCLogic {
 
   g_purchases() {
     const raw = window.KPOS_RAW || {};
+    // Real mode: the real received-delivery history (GET /invoices, posted by the
+    // GRN path). "Scan invoice" runs the photo through the OCR endpoint; "New GRN"
+    // posts a real delivery; "Generate POs" exports reorder POs from stock cover.
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const inv = (this.state.scData && this.state.scData.invoices && this.state.scData.invoices.invoices) || [];
+      const when = (ts) => { const dt = new Date(ts); return isNaN(dt) ? "—" : dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }); };
+      return {
+        actions: [
+          { label: "Generate POs", go: () => this.generatePOs() },
+          { label: "Scan invoice", go: () => this.scanInvoice() },
+          { label: "New GRN", primary: true, go: () => this.openForm("grn") }
+        ],
+        guideTitle: "Receiving goods", guide: ["Raise the GRN against the vendor invoice as the delivery lands", "Stock moves in and the price you paid becomes the new moving-average cost", "A Purchases expense is booked against the vendor at the same time", "Every dish using that item is recosted automatically"],
+        cols: [{ label: "Received", w: "1fr", a: "left", mono: 1 }, { label: "Vendor", w: "1.8fr" }, { label: "Invoice", w: "1.2fr", mono: 1 }, { label: "Total", w: "1.1fr", a: "right", mono: 1 }],
+        rows: inv.map((p) => ({ cells: [
+          { t: when(p.received_at), mono: 1 },
+          p.supplier || "—",
+          { t: p.invoice_no || "—", mono: 1 },
+          { t: MVRc(p.total), c: "var(--amber-bright)", w: 600 }
+        ] })),
+        notes: [["Received deliveries", inv.length ? inv.length + " GRN" + (inv.length > 1 ? "s" : "") + " on file — each raised stock and re-averaged cost when posted." : "No deliveries received yet. Post one with “New GRN”, or scan a supplier invoice to pre-fill it."]]
+      };
+    }
     return {
       actions: [
         { label: "Generate POs", go: () => this.generatePOs() },
@@ -6417,7 +6457,7 @@ class Component extends DCLogic {
         { label: "New GRN", primary: true, go: () => this.openForm("grn") }
       ],
       guideTitle: "Receiving goods", guide: ["Raise the GRN against the vendor invoice as the delivery lands", "Stock moves into the receiving location and stamps a batch", "The vendor price of the day becomes the new moving-average cost", "Every dish using that item is recosted automatically"],
-      
+
       cols: [{ label: "GRN", w: "1fr", mono: 1 }, { label: "Vendor", w: "1.6fr" }, { label: "Receiving location", w: "1.5fr" }, { label: "Vendor invoice", w: "1.1fr", mono: 1 }, { label: "Received by", w: "1fr" }, { label: "Total", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: ".9fr", a: "right" }],
       rows: (raw.purch || []).map((p) => {
         const v = (raw.vendors || []).find((x) => x.id === p.vendor) || {};
@@ -6425,9 +6465,73 @@ class Component extends DCLogic {
       })
     };
   }
+  // Photograph a supplier invoice and let the OCR endpoint read its lines. Without
+  // an AI key the endpoint says so plainly (configured:false) and we fall back to
+  // manual entry — never a fake draft. With a key, the read lines are surfaced so
+  // the owner can post them through the normal GRN path.
+  scanInvoice() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.toast("Sign in to a store to scan invoices", "warn"); return; }
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "image/*";
+    input.onchange = () => {
+      const f = input.files && input.files[0]; if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        this.toast("Reading the invoice…");
+        fetch("/api/inv/ocr", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ image: String(reader.result || "") }) })
+          .then((r) => r.json().catch(() => ({}))).then((j) => {
+            if (j && j.error) { this.toast(j.error, "warn"); return; }
+            if (j && j.configured === false) { this.toast(j.message || "Scanning isn't set up — enter the delivery by hand", "warn"); this.openForm("grn"); return; }
+            const lines = (j && j.lines) || [];
+            this.info("Scanned invoice", (j.supplier ? j.supplier + " · " : "") + (j.invoiceNo || "") + " · " + lines.length + " line" + (lines.length === 1 ? "" : "s") + " read",
+              lines.length ? lines.map((l) => [l.name || l.raw || "line", (l.qty != null ? l.qty + " " + (l.unitName || "") : "") + (l.lineTotal != null ? " · " + MVRc(Math.round(l.lineTotal * 100)) : "")]) : [["Nothing read", "try a clearer photo, or enter it by hand", "t"]]);
+          }).catch(() => this.toast("Could not read the invoice — check the connection", "warn"));
+      };
+      reader.readAsDataURL(f);
+    };
+    input.click();
+  }
 
   g_requests() {
     const raw = window.KPOS_RAW || {};
+    // Real mode: this is the reorder desk. The server derives what to buy from
+    // stock cover vs consumption velocity (/reorder/draft, grouped by each item's
+    // usual supplier) and approving raises real purchase orders (/reorder/approve)
+    // that land in the same PO list the till raises.
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const sc = this.state.scData || {};
+      const drafts = (sc.reorder && sc.reorder.drafts) || [];
+      const pos = (sc.pos && sc.pos.pos) || [];
+      const lines = drafts.flatMap((d) => (d.items || []).map((it) => ({ d: d, it: it })));
+      const totalCost = drafts.reduce((a, d) => a + (d.total || 0), 0);
+      return {
+        actions: [
+          { label: "Refresh", go: () => this.loadSc("requests") },
+          { label: lines.length ? "Approve — raise " + drafts.length + " PO" + (drafts.length > 1 ? "s" : "") : "Nothing to reorder", primary: true, go: () => {
+            if (!drafts.length) return this.toast("Nothing is below its reorder point", "warn");
+            fetch("/api/inv/reorder/approve", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ drafts: drafts }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                this.toast("Raised " + ((j.created || []).length) + " purchase order" + ((j.created || []).length === 1 ? "" : "s"));
+                this.loadSc("requests");
+              }).catch(() => this.toast("Could not raise the orders — check the connection", "warn"));
+          } }
+        ],
+        guideTitle: "Reordering stock", guide: ["The list is built from each item's cover — days of stock left at its recent usage rate", "Anything under a week of cover is suggested for reorder, topped back up to about three weeks", "Each line is grouped under the supplier you last bought it from", "Approving raises a purchase order; receive it later as a pre-filled GRN"],
+        cols: [{ label: "Item", w: "1.6fr" }, { label: "Supplier", w: "1.4fr" }, { label: "Cover", w: ".8fr", a: "right", mono: 1 }, { label: "Suggested order", w: "1.1fr", a: "right", mono: 1 }, { label: "Est. cost", w: "1fr", a: "right", mono: 1 }],
+        rows: lines.map(({ d, it }) => ({ cells: [
+          it.desc,
+          { t: d.supplier || "Unassigned", chip: d.supplierId ? null : this.chip("mute") },
+          { t: (it.daysCover != null ? it.daysCover + "d" : "—"), c: (it.daysCover != null && it.daysCover < 3) ? "var(--red-bright)" : "var(--amber-bright)" },
+          { t: it.qty + " " + (it.unit || ""), mono: 1 },
+          { t: MVRc(it.lineCost), w: 600 }
+        ] })),
+        notes: [
+          ["Estimated order value", lines.length ? MVRc(totalCost) + " across " + drafts.length + " supplier" + (drafts.length > 1 ? "s" : "") + " — nothing is committed until you approve." : "Every item has more than a week of cover — nothing to reorder right now."],
+          ["Purchase orders open", pos.length ? pos.length + " PO" + (pos.length > 1 ? "s" : "") + " awaiting receipt: " + pos.slice(0, 6).map((p) => p.no).join(", ") : "No open purchase orders — approved reorders and till-raised POs appear here."]
+        ]
+      };
+    }
     return {
       actions: [
         {
@@ -6440,7 +6544,7 @@ class Component extends DCLogic {
         { label: "New indent", primary: true, go: () => this.openForm("indent") }
       ],
       guideTitle: "Moving stock between locations", guide: ["The outlet raises an indent for what it needs", "A manager approves it — nothing moves on the request alone", "The store picks and dispatches against the approved indent", "The receiving outlet confirms, which is when its stock rises"],
-      
+
       cols: [{ label: "Request", w: "1fr", mono: 1 }, { label: "From", w: "1.5fr" }, { label: "To", w: "1.5fr" }, { label: "Requested by", w: "1.1fr" }, { label: "Priority", w: ".9fr", a: "center" }, { label: "Approved by", w: "1.1fr" }, { label: "Status", w: ".9fr", a: "right" }],
       rows: (raw.reqs || []).map((r) => ({
         cells: [{ t: r.no, mono: 1 }, this.locName(r.from), this.locName(r.to), r.by, { t: r.priority, chip: this.chip(r.priority === "urgent" ? "err" : "mute") }, r.appr || "—", { t: r.status, chip: this.chip(this.statusTone(r.status)) }]
@@ -6451,6 +6555,29 @@ class Component extends DCLogic {
 
   g_dispatches() {
     const raw = window.KPOS_RAW || {};
+    // Real mode: where stock physically sits. A store's on-hand is held per
+    // storage location, and stock is moved between locations with a net-zero
+    // transfer (total stock never changes). This shows the real distribution;
+    // inter-location moves activate once a second location holds stock.
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const byLoc = {};
+      (raw.inv || []).forEach((r) => { const L = this.locName(r[0]); (byLoc[L] = byLoc[L] || []).push(r); });
+      const locNames = Object.keys(byLoc);
+      const rows = (raw.inv || []).filter((r) => Number(r[2]) !== 0).map((r) => { const it = this.item(r[1]) || []; return { cells: [
+        this.itemName(r[1]),
+        this.locName(r[0]),
+        { t: (Math.round(this.stockQty(it, r[2]) * 100) / 100) + " " + (it[8] || it[7] || ""), mono: 1, c: "var(--amber-bright)", w: 600 }
+      ] }; });
+      return {
+        actions: [{ label: "Refresh", go: () => this.refreshInventory() }],
+        guideTitle: "Where stock sits", guide: ["On-hand is tracked per storage location, not as one lump", "Moving stock between locations is a net-zero transfer — total stock is unchanged", "The sending location is debited and the receiving one credited on the same move", "Transfers between locations open up once a second location holds stock"],
+        cols: [{ label: "Item", w: "2.2fr" }, { label: "Location", w: "1.6fr" }, { label: "On hand", w: "1.2fr", a: "right", mono: 1 }],
+        rows: rows,
+        notes: [[locNames.length > 1 ? "Multiple locations" : "One storage location", locNames.length > 1
+          ? "Stock is spread across " + locNames.join(", ") + ". Move between them with a transfer from the item's detail."
+          : "All stock currently sits in " + (locNames[0] || "one location") + ". Inter-location transfers appear here once stock is held in more than one place."]]
+      };
+    }
     return {
       actions: [
         {
@@ -6463,7 +6590,7 @@ class Component extends DCLogic {
         { label: "New dispatch", primary: true, go: () => this.openForm("dispatch") }
       ],
       guideTitle: "Issuing stock", guide: ["Dispatch debits the sending location the moment you save", "Stock sits in transit — owned by neither side — until confirmed", "The receiver accepts, which credits their location", "A discrepancy at acceptance opens a variance, not a silent edit"],
-      
+
       cols: [{ label: "Invoice", w: "1fr", mono: 1 }, { label: "From", w: "1.6fr" }, { label: "To", w: "1.6fr" }, { label: "Dispatched by", w: "1.1fr" }, { label: "Received by", w: "1.1fr" }, { label: "Value", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: "1fr", a: "right" }],
       rows: (raw.disp || []).map((d) => ({ cells: [{ t: d.no, mono: 1 }, this.locName(d.from), this.locName(d.to), d.by, d.rcv || "—", { t: MVRc(d.total), c: "var(--amber-bright)", w: 600 }, { t: d.status, chip: this.chip(this.statusTone(d.status)) }] }))
     };
@@ -6471,6 +6598,26 @@ class Component extends DCLogic {
 
   g_production() {
     const raw = window.KPOS_RAW || {};
+    // Real mode: "Make a batch" builds a producible item (dough, sauce, cold brew)
+    // from its component recipe via /produce — consuming the inputs, stocking the
+    // output, and rolling the input cost into the item's weighted-average cost.
+    // The list is the real produce ledger (stock_moves kind='produce').
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const made = (raw.ledger || []).filter((l) => l[2] === "produce").slice(0, 60);
+      const when = (ts) => { const dt = new Date(Number(ts) || 0); return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); };
+      return {
+        actions: [{ label: "Make a batch", primary: true, go: () => this.openForm("prodbatch") }],
+        guideTitle: "Producing in-house", guide: ["A producible item is one built from other stock — give it a recipe of its components first", "Making a batch consumes those components from stock (a 'prep' draw) and stocks the finished item (a 'produce' entry)", "Its unit cost is set from what the batch actually consumed — the same figure recipes and COGS trust", "Everything posts to the ledger; nothing is a paper document"],
+        cols: [{ label: "Made", w: "1fr", a: "left", mono: 1 }, { label: "Item", w: "2.4fr" }, { label: "Quantity", w: "1.2fr", a: "right", mono: 1 }, { label: "Batch cost", w: "1.2fr", a: "right", mono: 1 }],
+        rows: made.map((l) => { const it = this.item(l[1]) || []; const qty = Number(l[3]) || 0; return { cells: [
+          { t: when(l[6]), mono: 1 },
+          this.itemName(l[1]),
+          { t: (Math.round(this.stockQty(it, qty) * 100) / 100) + " " + (it[8] || it[7] || ""), mono: 1, c: "var(--amber-bright)" },
+          { t: "—", mono: 1 }
+        ] }; }),
+        notes: [["Nothing produced yet", made.length ? made.length + " batch" + (made.length > 1 ? "es" : "") + " on the ledger. Use “Make a batch” on any item that has a build recipe." : "No production on the ledger. Give an item a recipe of what it's made from, then “Make a batch” to build it from stock."]]
+      };
+    }
     return {
       actions: [
         {
@@ -6486,7 +6633,7 @@ class Component extends DCLogic {
         { label: "New batch", primary: true, go: () => this.openForm("prodbatch") }
       ],
       guideTitle: "Producing in the kitchen", guide: ["Start the batch with its output item and expected quantity", "Inputs are consumed from the kitchen's own stock by recipe", "Completing the batch sets the true unit cost from what it consumed", "Yield below recipe posts the difference as a variance"],
-      
+
       cols: [{ label: "Batch", w: "1.1fr", mono: 1 }, { label: "Kitchen", w: "1.6fr" }, { label: "Output item", w: "2fr" }, { label: "Qty", w: ".8fr", a: "right", mono: 1 }, { label: "Unit cost", w: "1fr", a: "right", mono: 1 }, { label: "Produced by", w: "1.1fr" }, { label: "Status", w: ".9fr", a: "right" }],
       rows: (raw.prod || []).map((p) => ({ cells: [{ t: p.no, mono: 1 }, this.locName(p.branch), this.itemName(p.item), String(p.qty), MVR(p.cost), p.by, { t: p.status, chip: this.chip(this.statusTone(p.status)) }] }))
     };
@@ -6528,6 +6675,28 @@ class Component extends DCLogic {
   g_batches() {
     const raw = window.KPOS_RAW || {};
     const d = (n) => { const dt = new Date(Date.UTC(1899, 11, 30) + n * 86400000); return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }); };
+    // Real mode: the live expiry ledger. A GRN with a use-by date records a lot;
+    // consumption is allocated FEFO (earliest expiry eaten first) so what's shown
+    // is the stock still on hand and nearing its date. Read-only over the lots.
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      const sc = this.state.scData || {};
+      const items = (sc.expiring && sc.expiring.items) || [];
+      const within = (sc.expiring && sc.expiring.within) || 14;
+      const tone = (t) => t === "expired" ? "err" : t === "today" || t === "soon" ? "warn" : "mute";
+      const label = (t, days) => t === "expired" ? "Expired" : t === "today" ? "Today" : days + "d left";
+      return {
+        actions: [{ label: "Refresh", go: () => this.loadSc("batches") }],
+        guideTitle: "Shelf life & rotation", guide: ["Receive perishable stock with a use-by date on the GRN to track its lot", "Consumption is allocated FEFO — the earliest-dated stock is treated as used first", "This list shows lots still on hand and within " + within + " days of their date", "Pull the earliest first; anything expired should be written off in Adjustments"],
+        cols: [{ label: "Item", w: "2fr" }, { label: "Use-by", w: "1.1fr", a: "right", mono: 1 }, { label: "On hand", w: "1.1fr", a: "right", mono: 1 }, { label: "Status", w: "1fr", a: "right" }],
+        rows: items.map((x) => ({ cells: [
+          x.name,
+          { t: x.expiry, mono: 1, c: x.daysLeft < 0 ? "var(--red-bright)" : "var(--amber-bright)" },
+          { t: (Math.round(x.qty * 100) / 100) + " " + (x.baseUnit || ""), mono: 1 },
+          { t: label(x.tier, x.daysLeft), chip: this.chip(tone(x.tier)) }
+        ] })),
+        notes: [["FEFO is automatic", items.length ? items.length + " lot" + (items.length > 1 ? "s" : "") + " within " + within + " days. Sales already consume oldest-first — this is your prompt to use or write off what's dated." : "No lots within " + within + " days. Lots appear once you receive perishable stock with a use-by date on the GRN."]]
+      };
+    }
     return {
       actions: [
         {
@@ -8669,22 +8838,29 @@ class Component extends DCLogic {
         }
       },
       prodbatch: {
-        title: "New production batch", sub: "Central kitchen output", save: "Start batch",
-        foot: "Output quantity is in the item base unit; unit cost is computed from the consumed inputs when the batch is completed.",
+        title: "Make a batch", sub: "Build a producible item from its component recipe", save: "Make batch",
+        foot: "The item must already have a recipe of what it's made from. Making a batch consumes those components from stock and stocks the finished item, setting its unit cost from what the batch actually consumed. Quantity is in the item's own stock unit.",
         fields: [
-          { k: "branch", label: "Kitchen", options: storeOpts, full: 1 },
-          { k: "item", label: "Output item", options: itemOpts, full: 1 },
-          { k: "qty", label: "Qty (base unit)", v: "10000" },
-          { k: "cost", label: "Unit cost MVR", v: "0" }
+          { k: "item", label: "Item to make", options: itemOpts, full: 1 },
+          { k: "qty", label: "Quantity made (in the item's stock unit)", v: "1", full: 1 }
         ],
         onSave: (v) => {
           const qty = +v.qty || 0;
-          if (qty <= 0) return this.toast("Output quantity is required", "warn");
+          if (qty <= 0) return this.toast("How much did you make?", "warn");
+          const it = this.item(+v.item);
+          if (!it) return this.toast("Pick the item you made", "warn");
+          if (window.KPOS_REAL && window.KPOS_REAL.token && it[13]) {
+            this.setState({ modal: null });
+            fetch("/api/inv/produce", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ ingredientId: it[13], qty: qty, unitName: this.unitArgFor(it) }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                this.refreshInventory();
+                this.toast("Made " + qty + " " + (it[8] || "") + " of " + this.itemName(it[0]) + (j.batchCost != null ? " · batch cost " + MVRc(j.batchCost) : ""));
+              }).catch(() => this.toast("Could not make the batch — check the connection", "warn"));
+            return;
+          }
           const no = this.nextNo("prod", "PRD-2026-");
-          this.insertRow("prod", {
-            no: no, branch: +v.branch, item: +v.item, qty: qty, status: "in_progress",
-            by: this.me(), cost: +v.cost || 0, notes: "batch started"
-          }, "Batch started · " + no, "production");
+          this.insertRow("prod", { no: no, branch: 3, item: +v.item, qty: qty, status: "in_progress", by: this.me(), cost: 0, notes: "batch started" }, "Batch started · " + no, "production");
         }
       },
       settle: {
