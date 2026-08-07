@@ -4688,8 +4688,15 @@ if (fs.existsSync(protoFile)) {
         // (in Settings), never a demo placeholder, so the receipt never prints a
         // fake TIN.
         const fiscalAddr = [st.address, st.island, st.atoll].filter(Boolean).join(", ");
+        // The store's branded portal address — the same link the QR encodes, so
+        // the terminal shows a URL that carries the store's own handle
+        // (<handle>.<domain> once subdomains are live, else <origin>/?s=<handle>),
+        // never a generic "order.*" demo host. `base` empty = use the page origin.
+        const portalSubBase = PORTAL_BASE_DOMAINS.length && slug ? ("https://" + slug + "." + PORTAL_BASE_DOMAINS[0]) : "";
+        const portalBase = portalSubBase || process.env.PUBLIC_ORIGIN || "";
         return {
-          hasSession: true, token,
+          hasSession: true, token, slug,
+          portal: { slug, base: portalBase, sub: !!portalSubBase },
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
             currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr },
           fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "",
@@ -6150,7 +6157,9 @@ if (fs.existsSync(protoFile)) {
       ? base + "/" + (table ? "?t=" + encodeURIComponent(table) : "")
       : base + "/?s=" + encodeURIComponent(org.slug) + (table ? "&t=" + encodeURIComponent(table) : "");
     try {
-      const svg = await QR.toString(link, { type: "svg", margin: 1, errorCorrectionLevel: "M" });
+      // A 4-module quiet zone is what the QR spec requires; the old margin:1
+      // rendered a code many phone cameras refused to lock onto.
+      const svg = await QR.toString(link, { type: "svg", margin: 4, errorCorrectionLevel: "M" });
       res.set("Content-Type", "image/svg+xml").set("Cache-Control", "private, max-age=300").send(svg);
     } catch (e) { recordError("qr.svg", e); res.status(500).json({ error: "Couldn't build that QR code." }); }
   }));

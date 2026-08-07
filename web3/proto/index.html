@@ -1124,11 +1124,16 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 <div role="img" aria-label="{{ brandName }}" style="{{ brandMarkQrStyle }}"></div>
                 <div style="font-size:13px;font-weight:800;letter-spacing:.11em;color:#1f1c17;margin-top:-2px">{{ brandName }}</div>
                 <div style="width:100%;aspect-ratio:1">
-                  <div style="{{ qrGrid }}">
-                    <sc-for list="{{ qrCells }}" as="c" hint-placeholder-count="0">
-                      <span style="{{ c }}"></span>
-                    </sc-for>
-                  </div>
+                  <sc-if value="{{ qrReal }}">
+                    <img src="{{ qrSrc }}" alt="Scan to order" style="{{ qrImgStyle }}"/>
+                  </sc-if>
+                  <sc-if value="{{ qrDemo }}">
+                    <div style="{{ qrGrid }}">
+                      <sc-for list="{{ qrCells }}" as="c" hint-placeholder-count="0">
+                        <span style="{{ c }}"></span>
+                      </sc-for>
+                    </div>
+                  </sc-if>
                 </div>
                 <div style="text-align:center;line-height:1.35">
                   <div style="font-size:13px;font-weight:800;color:#1f1c17;letter-spacing:-0.01em">{{ qrTable }}</div>
@@ -1141,8 +1146,8 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 <div style="font-size:12.5px;color:var(--text-dim);line-height:1.7">Guests scan this to open the table's own ordering session in their browser. No app, no login — the scan mints a short-lived anonymous token scoped to this one table, at this one outlet.</div>
                 <div style="margin-top:12px;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--amber-bright);overflow-x:auto;white-space:nowrap">{{ qrUrl }}</div>
                 <div style="display:flex;gap:8px;margin-top:12px">
-                  <button onClick="{{ closeModal }}" style="padding:9px 16px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Print QR card</button>
-                  <button onClick="{{ closeModal }}" style="padding:9px 16px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Rotate token</button>
+                  <button onClick="{{ copyQr }}" style="padding:9px 16px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Copy link</button>
+                  <button onClick="{{ openQr }}" style="padding:9px 16px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Open portal</button>
                 </div>
               </div>
             </div>
@@ -3803,6 +3808,7 @@ class Component extends DCLogic {
     }
 
     if (m.kind === "qr") {
+      // Demo fallback only — a decorative grid when there's no signed-in store.
       const rnd = this.rng(s.activeTable ? s.activeTable * 31 : 7);
       const cells = [];
       for (let i = 0; i < 169; i++) {
@@ -3811,15 +3817,33 @@ class Component extends DCLogic {
         const on = finder || rnd() > 0.52;
         cells.push("background:" + (on ? "var(--qr-ink)" : "transparent") + ";border-radius:1px");
       }
+      // Real mode: a genuinely scannable QR from the server (/api/app2/qr.svg),
+      // encoding the store's OWN branded link — <handle>.<domain> once subdomains
+      // are live, otherwise <origin>/?s=<handle> — never a generic demo host.
+      const R = window.KPOS_REAL || {};
+      const P = R.portal || {};
+      const slug = P.slug || R.slug || (this.brandOf().handle) || "";
+      const real = !!(R.token && slug);
+      const tbl = s.activeTable ? String(s.activeTable) : "";
+      const origin = P.base || (typeof location !== "undefined" ? location.origin : "");
+      const link = !slug ? "" : (P.sub
+        ? origin + "/" + (tbl ? "?t=" + encodeURIComponent(tbl) : "")
+        : origin + "/?s=" + encodeURIComponent(slug) + (tbl ? "&t=" + encodeURIComponent(tbl) : ""));
       return Object.assign({}, this.brandVals(), {
-        modalTitle: "Table QR · T" + pad(s.activeTable || 1), modalSub: o.name + " · scan-to-order session",
+        modalTitle: tbl ? "Table QR · T" + pad(s.activeTable) : "Menu QR", modalSub: o.name + " · scan to order",
+        qrReal: real, qrDemo: !real,
+        qrSrc: "/api/app2/qr.svg" + (tbl ? "?t=" + encodeURIComponent(tbl) : ""),
+        qrImgStyle: "width:100%;aspect-ratio:1;display:block",
         qrGrid: "display:grid;grid-template-columns:repeat(13,1fr);gap:2px;width:100%;aspect-ratio:1",
         qrCells: cells,
-        qrTable: "Table " + pad(s.activeTable || 1),
+        qrTable: tbl ? "Table " + pad(s.activeTable) : "Whole menu",
         qrOutlet: o.name,
         qrPoweredStyle: this.brandOf().poweredBy === false ? "display:none"
           : "font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px",
-        qrUrl: "https://order.kashikeyo.mv/t/" + o.code.toLowerCase() + "/" + pad(s.activeTable || 1) + "?k=8f3a91c2e7"
+        qrUrl: link || "Set a store handle in Branding to get your link",
+        qrHasLink: !!link,
+        copyQr: () => { if (!link) return this.toast("Set a store handle in Branding first", "warn"); try { navigator.clipboard.writeText(link); this.toast("Link copied"); } catch (e) { this.toast("Copy failed", "warn"); } },
+        openQr: () => { if (link) { try { window.open(link, "_blank", "noopener"); } catch (e) {} } }
       });
     }
 
