@@ -2977,6 +2977,20 @@ app.get("/p/:slug/boot", wrap(async (req, res) => {
     cust });
 }));
 
+/* Menu data version for a store: the max rowver across products + settings, so
+   any menu change — a dish, a price, a category, branding — moves it. The guest
+   and customer portals poll this and reload when it changes, so an edit at the
+   till reaches an open QR/member page within one poll (the HTML is no-store, so
+   the reload pulls the fresh menu). Deliberately tiny + generously throttled. */
+app.get("/p/:slug/ver", pubThrottle(240, "ver"), wrap(async (req, res) => {
+  const org = await orgBySlug(req.params.slug);
+  if (!org) return res.status(404).json({ error: "unknown workspace" });
+  const ver = Number(((await withOrg(org.id, (c) => c.query(
+    "SELECT COALESCE(MAX(rowver),0) AS v FROM entities WHERE org_id=$1 AND kind IN ('products','settings')", [org.id]))).rows[0] || {}).v) || 0;
+  res.set("Cache-Control", "no-store");
+  res.json({ ver });
+}));
+
 app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
   const org = await orgBySlug(req.params.slug);
   if (!org) return res.status(404).json({ error: "unknown workspace" });
@@ -3752,8 +3766,15 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
   const brand = { name: st.storeName || "Store", logo: st.logo || "", tagline: st.tagline || "",
     accent: st.accent || "", footer: st.receiptFooter || st.footer || "", whiteLabel: !!st.whiteLabel };
   const fiscalAddr = [st.address, st.island, st.atoll].filter(Boolean).join(", ");
+  // A single data version for the menu surface: the max rowver across products +
+  // settings (dishes, categories, prices, branding all bump it). The page ships
+  // it as KPOS_REAL.ver; the portal polls /p/:slug/ver and reloads when it moves,
+  // so a menu edit reaches an open QR/customer page within one poll — no manual
+  // refresh. The HTML is no-store, so the reload pulls the fresh menu.
+  const ver = Number(((await c.query(
+    "SELECT COALESCE(MAX(rowver),0) AS v FROM entities WHERE org_id=$1 AND kind IN ('products','settings')", [orgId])).rows[0] || {}).v) || 0;
   return {
-    guest: true, outlet: { name: st.storeName || "Store", tax: tax, rate: Math.round(gstBp / 100),
+    guest: true, ver, outlet: { name: st.storeName || "Store", tax: tax, rate: Math.round(gstBp / 100),
       sc: Math.round(scBp / 100), currency: st.currency === "USD" ? "USD" : "MVR" },
     outlets: outlets.length ? outlets : null, categories, groups: menuGroupsOf(categories), menu, brand,
     fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "", address: fiscalAddr, phone: st.phone || "" },
@@ -3830,7 +3851,7 @@ const serveMemberPortal = async (req, res, org) => {
   // flags) + the outlet's table list. Cost/recipe never leave the POS.
   let tables = [];
   try { tables = (await kindAll(org.id, "tables", DEFAULT_STORE_ID)).map((t) => String(t.name || t.id)).filter(Boolean).slice(0, 60); } catch (e) { /* optional */ }
-  const payload = { slug: org.slug, brand: real.brand || {}, outlet: real.outlet || {}, fiscal: real.fiscal || {},
+  const payload = { slug: org.slug, ver: real.ver || 0, brand: real.brand || {}, outlet: real.outlet || {}, fiscal: real.fiscal || {},
     pointsPer: cfg.pointsPer, redeemPer: cfg.redeemPer,
     menu: real.menu || [], categories: real.categories || [], tables: tables };
   const safeTitle = String((real.brand && real.brand.name) || org.store_name || "Rewards").replace(/[<>&"]/g, "") + " Rewards";

@@ -1569,6 +1569,11 @@ window.KashikeyoGuestQR = (function () {
      ═══════════════════════════════════════════════════════════════════════════ */
   App.prototype.render = function () {
     var M = this.metrics(), s = this.s;
+    /* Tell the live-menu poller (guest-qr-bridge.js) when it must NOT reload: a
+       dish is being configured (its qty/add-ons aren't saved until added), the
+       actions sheet is open, or a payment is being confirmed. Everything else —
+       browsing, a filled cart — survives a reload via the saved session. */
+    window.__kposBusy = !!(s.screen === 'dish' || s.sheet || s.settling);
     var frameStyle = M.framed
       ? 'width:' + (M.scr + 22) + 'px;height:' + (M.h + 22) + 'px'
       : 'max-width:' + M.scr + 'px';

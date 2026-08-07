@@ -210,6 +210,38 @@
   function ensurePoll() { if (!tPoll && (TABLE || TRACK.length)) { pollTicket(); tPoll = setInterval(pollTicket, 5000); } }
   if (TABLE || TRACK.length) ensurePoll();
 
+  /* Live menu version. The store's menu surface carries a single version
+     (R.ver = max rowver across products + settings). We poll /p/:slug/ver and,
+     when it moves — a dish, price, category, sold-out flag or branding changed at
+     the till — reload so the guest sees it without knowing to refresh. The cart,
+     screen and even the payment sheet persist in localStorage and restore on the
+     same table, so a reload is non-destructive; we still hold off while an overlay
+     sheet is open (a dish being configured isn't saved until it's added), retrying
+     the moment it closes. The page is served no-store, so the reload pulls the
+     fresh menu, categories and artwork. */
+  (function () {
+    if (!SLUG) return;
+    var VER0 = Number(R && R.ver) || 0;
+    if (!VER0) return;
+    var pending = false;
+    function safe() { return !window.__kposBusy; }
+    function reloadNow() { try { location.reload(); } catch (e) {} }
+    function tick() {
+      if (pending) { if (safe()) reloadNow(); return; }
+      if (document.hidden) return;
+      fetch("/p/" + encodeURIComponent(SLUG) + "/ver", { headers: { "Accept": "application/json" }, credentials: "same-origin" })
+        .then(function (r) { return r && r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j || !j.ver || Number(j.ver) === VER0) return;
+          pending = true;               // a change landed — reload as soon as it's safe
+          if (safe()) reloadNow();
+        })
+        .catch(function () {});
+    }
+    setInterval(tick, 12000);
+    document.addEventListener("visibilitychange", function () { if (!document.hidden) tick(); });
+  })();
+
   window.KASHIKEYO_QR = {
     outletId: OUTLET_ID,
     table: TABLE,

@@ -604,6 +604,29 @@ class Component extends DCLogic {
     this.fetchMe(true);
     this.fetchPromos();
     this._t = setInterval(() => this.setState({ now: Date.now() }), 20000);
+    /* Live menu version: poll /p/:slug/ver and reload when the store changes the
+       menu (R.ver = max rowver across products + settings). The member cart isn't
+       persisted, so we only reload when it's empty and no sheet/checkout is open —
+       otherwise we mark it pending and reload the moment it's safe. The page is
+       no-store, so the reload pulls the fresh menu, categories and artwork. */
+    this._ver0 = Number(R.ver) || 0;
+    this._verPending = false;
+    if (this._ver0 && this.state.slug) {
+      this._verPoll = setInterval(() => this.checkVer(), 12000);
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") this.checkVer(); });
+    }
+  }
+  verSafe() { return this.cartCount() === 0 && !this.state.sheet && !this.state.dsheet && !this.state.sending2; }
+  async checkVer() {
+    if (this._verPending) { if (this.verSafe()) { try { location.reload(); } catch (e) {} } return; }
+    if (document.visibilityState === "hidden") return;
+    try {
+      const r = await fetch("/p/" + encodeURIComponent(this.state.slug) + "/ver", { credentials: "same-origin" });
+      if (!r.ok) return; const j = await r.json();
+      if (!j || !j.ver || Number(j.ver) === this._ver0) return;
+      this._verPending = true;
+      if (this.verSafe()) { try { location.reload(); } catch (e) {} }
+    } catch (e) {}
   }
   async fetchPromos() {
     try {
