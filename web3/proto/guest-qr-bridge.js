@@ -91,6 +91,58 @@
 
   var SKEY = "kashikeyo.qr." + (SLUG || "x");
 
+  /* ── Live order status from the till ─────────────────────────────────────────
+     The app reads adapter.ticket() to show each round's progress (sent → at the
+     till → in the kitchen → served). We mirror the store's own open orders for
+     THIS table from the public /p/:slug/orders?t= feed and shape them into the
+     ticket the app expects: one line per order item, carrying the till's status
+     as fired/done so the tracker moves the moment a cashier advances the order.
+       new       → on the ticket, not fired          (Accepted at the till)
+       preparing → fired                             (In the kitchen)
+       ready     → fired                             (In the kitchen)
+       completed → done, or a per-line KDS bump      (Served)
+     A poll (every 5s) keeps it live even without SSE, and calls subscribers on
+     any change so the app repaints. */
+  var liveTicket = null, tSubs = [], tPoll = 0, tLast = "";
+  function buildTicket(orders) {
+    var lines = [];
+    (orders || []).forEach(function (o) {
+      var st = String((o && o.status) || "new");
+      if (st === "cancelled") return;
+      var fired = st !== "new";
+      var doneAll = st === "completed";
+      var firedAt = Number(o.readyAt || o.updatedAt || o.createdAt) || 0;
+      (o.items || []).forEach(function (it) {
+        if (!it) return;
+        lines.push({
+          id: it.pid || it.id,
+          qty: Number(it.qty || it.q) || 1,
+          // Prefix "QR" so the app credits it to this phone's own rounds (it keys
+          // its own lines off a leading "QR"); the till's own added lines won't.
+          note: "QR" + (it.note ? " · " + it.note : ""),
+          fired: fired, firedAt: firedAt, done: doneAll || !!it.done
+        });
+      });
+    });
+    return { lines: lines };
+  }
+  function pollTicket() {
+    if (!SLUG || !TABLE) return;
+    fetch("/p/" + encodeURIComponent(SLUG) + "/orders?t=" + encodeURIComponent(TABLE), { headers: { "Accept": "application/json" }, credentials: "same-origin" })
+      .then(function (r) { return r && r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j) return;
+        var tk = buildTicket(j.orders || []);
+        var sig = JSON.stringify(tk);
+        if (sig === tLast) return;                       // unchanged → don't churn the UI
+        tLast = sig; liveTicket = tk;
+        for (var i = 0; i < tSubs.length; i++) { try { tSubs[i](); } catch (e) {} }
+      })
+      .catch(function () {});
+  }
+  function ensurePoll() { if (!tPoll && TABLE) { pollTicket(); tPoll = setInterval(pollTicket, 5000); } }
+  if (TABLE) ensurePoll();
+
   window.KASHIKEYO_QR = {
     outletId: OUTLET_ID,
     table: TABLE,
@@ -112,11 +164,11 @@
       soldOut: function () { return SOLD; },
       banners: function () { return []; },
       promoCodes: null,
-      /* No public "read the till's open ticket" endpoint yet, so the app tracks
-         the rounds this phone has sent (its own `sent` list) rather than a live
-         till mirror — it degrades to "on this phone" exactly as designed. */
-      ticket: function () { return null; },
-      subscribe: function (fn) { var t = setInterval(fn, 10000); return function () { clearInterval(t); }; },
+      /* The live till mirror for this table (built above from /p/:slug/orders):
+         null until the first poll answers, then the real order lines with their
+         status, so the app's progress tracker reflects the cashier's updates. */
+      ticket: function () { return liveTicket; },
+      subscribe: function (fn) { tSubs.push(fn); ensurePoll(); return function () { tSubs = tSubs.filter(function (x) { return x !== fn; }); }; },
       saveSession: function (d) { try { localStorage.setItem(SKEY, JSON.stringify(d)); } catch (e) {} },
       loadSession: function () { try { return JSON.parse(localStorage.getItem(SKEY) || "null"); } catch (e) { return null; } },
       /* order → /p/:slug/order (lands on KDS + Orders); assist/bill → /call

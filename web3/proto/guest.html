@@ -1174,17 +1174,18 @@ window.KashikeyoGuestQR = (function () {
         mine: mine, fired: !!l.fired, source: 'pos'
       };
     });
+    // Credit the phone's sent rounds against till lines by product id (see
+    // lineStages): a line the till has already taken isn't also shown pending.
     var credit = {};
-    posRows.forEach(function (r) { if (r.mine) credit[r.id + '|' + r.note] = (credit[r.id + '|' + r.note] || 0) + r.qty; });
+    posRows.forEach(function (r) { if (r.mine) credit[r.id] = (credit[r.id] || 0) + r.qty; });
     var pending = [];
     this.s.sent.forEach(function (r) {
       r.lines.forEach(function (l) {
+        var have = credit[l.id] || 0;
+        if (have >= l.qty) { credit[l.id] = have - l.qty; return; }
+        credit[l.id] = 0;
         var bits = [l.opt, l.note].filter(Boolean).join(' · ');
-        var key = l.id + '|' + ('QR' + (bits ? ' · ' + bits : ''));
-        var have = credit[key] || 0;
-        if (have >= l.qty) { credit[key] = have - l.qty; return; }
-        credit[key] = 0;
-        pending.push({ id: l.id, qty: l.qty - have, note: key, opt: bits, mine: true, fired: false, source: 'guest' });
+        pending.push({ id: l.id, qty: l.qty - have, note: 'QR' + (bits ? ' · ' + bits : ''), opt: bits, mine: true, fired: false, source: 'guest' });
       });
     });
     return posRows.concat(pending);
@@ -1208,16 +1209,19 @@ window.KashikeyoGuestQR = (function () {
      progress the kitchen never reported. */
   App.prototype.sla = function () { return (this.A.prefs && this.A.prefs().kdsSla) || 18; };
   App.prototype.lineStages = function () {
+    /* Match each sent line to a live till line by PRODUCT ID (consuming one per
+       match). The till rebuilds the kitchen note from add-ons/heat/comment, so
+       an exact note-key match is fragile — the id + quantity of a QR table's
+       lines are exactly this phone's rounds, so id-matching reflects status
+       reliably. */
     var tk = this.A.ticket ? this.A.ticket() : null, pool = {};
     ((tk && tk.lines) || []).forEach(function (l) {
-      var key = l.id + '|' + (l.note || '');
-      (pool[key] = pool[key] || []).push(l);
+      (pool[l.id] = pool[l.id] || []).push(l);
     });
     var map = {};
     this.s.sent.forEach(function (r) {
       r.lines.forEach(function (l, i) {
-        var bits = [l.opt, l.note].filter(Boolean).join(' · ');
-        var hit = (pool[l.id + '|' + ('QR' + (bits ? ' · ' + bits : ''))] || []).shift();
+        var hit = (pool[l.id] || []).shift();
         map[r.id + '|' + i] = {
           stage: hit ? (hit.done ? 3 : (hit.fired ? 2 : 1)) : 0,
           firedAt: hit ? (hit.firedAt || 0) : 0
