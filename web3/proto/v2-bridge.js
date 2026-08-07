@@ -116,11 +116,24 @@
     var lines = [], subtotal = 0;
     (sale.lines || []).forEach(function (l) {
       var m = byId[l.id]; if (!m) return;
+      // Chosen add-ons are re-priced by name from the product master (the same
+      // trust model as the base price — the client never sets its own price),
+      // and their laari price is added into the line unit so the whole bill —
+      // subtotal, service, GST, total — includes them and the invariant holds.
+      var addonEach = 0, addonList = [];
+      (l.addons || []).forEach(function (a) {
+        var match = (m.addons || []).filter(function (x) { return x.name === a.name; })[0];
+        var p = Math.round(num(match ? match.price : a.price) * 100);
+        if (!a.name) return;
+        addonEach += p; addonList.push({ name: a.name, price: p });
+      });
       // Per-line discount reduces the line, rounded once from the line itself.
-      var unit = unitLaari(m, outlet), qty = num(l.qty), disc = num(l.disc);
+      var unit = unitLaari(m, outlet) + addonEach, qty = num(l.qty), disc = num(l.disc);
       var amount = Math.round(unit * qty * (1 - disc / 100));
       subtotal += amount;
-      lines.push({ pid: l.id, qty: qty, price: unit, amount: amount, discPct: disc || 0 });
+      var line = { pid: l.id, qty: qty, price: unit, amount: amount, discPct: disc || 0 };
+      if (addonList.length) line.addons = addonList;
+      lines.push(line);
     });
     if (!lines.length) return;
 

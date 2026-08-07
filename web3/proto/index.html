@@ -1972,6 +1972,11 @@ class Component extends DCLogic {
     // (GST was then added again on top) and assumed a 12% rate that isn't TGST.
     return m.price;
   }
+  // A ticket line can carry chosen add-ons [{name, price(MVR)}] the dish defines
+  // in Menu Master. Their prices add to the line's goods, so every place that
+  // prices a line adds this on and the bill invariant still holds.
+  lineAddonSum(l) { return (((l && l.addons) || []).reduce((a, x) => a + (Number(x && x.price) || 0), 0)); }
+  lineUnit(l, m) { return this.menuPrice(m) + this.lineAddonSum(l); }
   totals(tk, split) {
     const o = this.outlet();
     // Menu prices are GST-EXCLUSIVE here (the "++" model): service charge and
@@ -1983,7 +1988,7 @@ class Component extends DCLogic {
     (tk ? tk.lines : []).forEach((l) => {
       if (split !== undefined && split !== null && l.split !== split) return;
       const m = (K().MENU || []).find((x) => x.id === l.id);
-      if (m) sub += this.menuPrice(m) * l.qty * (1 - (Number(l.disc) || 0) / 100);
+      if (m) sub += this.lineUnit(l, m) * l.qty * (1 - (Number(l.disc) || 0) / 100);
     });
     const dp = (tk && Number(tk.discountPct) || 0) / 100;
     const disc = sub * dp;
@@ -2859,7 +2864,7 @@ class Component extends DCLogic {
       const i = tk.lines.indexOf(l);
       const ld = Number(l.disc) || 0;
       return {
-        name: m.name, qty: l.qty, amount: MVR(this.menuPrice(m) * l.qty * (1 - ld / 100)),
+        name: m.name, qty: l.qty, amount: MVR(this.lineUnit(l, m) * l.qty * (1 - ld / 100)),
         disc: () => this.openDisc(i),
         discLbl: ld ? "−" + ld + "%" : "Disc",
         discStyle: "font-size:10.5px;padding:3px 7px;border-radius:5px;border:1px solid " + (ld ? "var(--amber)" : "var(--line)") + ";background:" + (ld ? "rgba(242,164,58,.12)" : "transparent") + ";color:" + (ld ? "var(--amber-bright)" : "var(--text-muted)"),
@@ -3027,7 +3032,7 @@ class Component extends DCLogic {
         // undefined name and crashes on toUpperCase().
         const going = (t0.lines || []).filter((l) => !l.fired).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || {};
-          return { pid: l.id, qty: l.qty, name: mi.name || l.name || "Item", note: l.note || "", price: this.menuPrice(mi) };
+          return { pid: l.id, qty: l.qty, name: mi.name || l.name || "Item", note: l.note || "", price: this.lineUnit(l, mi) };
         });
         this.mutate(undefined, (t) => { t.lines = t.lines.map((l) => l.fired ? l : Object.assign({}, l, { fired: true, since: 0, firedAt: Date.now() })); });
         this.queue("fire_course", unfired + " item" + (unfired > 1 ? "s" : "") + " fired to KDS · " + this.slotLabel(s.activeTable), "order_lines");
@@ -3127,19 +3132,22 @@ class Component extends DCLogic {
   // still merges with a matching unfired line, exactly like the quick add. The
   // note carries the modifiers only — pricing is unchanged, so the bill maths
   // stay untouched.
-  addLineMod(m, qty, note) {
+  addLineMod(m, qty, addons, note) {
     const s = this.state;
     if (!this.guardRegister()) return;
     if (!s.activeTable) { this.toast("Pick a table first", "warn"); return; }
     qty = Math.max(1, Math.round(qty) || 1);
+    const picks = (Array.isArray(addons) ? addons : []).map((a) => ({ name: String((a && a.name) || ""), price: Number(a && a.price) || 0 })).filter((a) => a.name);
     this.mutate(undefined, (t) => {
       const gi = Math.min(s.activeSplit, Math.max(0, this.guestsOf(t).length - 1));
-      if (!note) {
-        const ex = t.lines.find((l) => l.id === m.id && (l.split || 0) === gi && !l.fired && !l.note);
+      // A plain line (no add-ons, no note) still merges with a matching unfired
+      // line; a modified line stays distinct so its add-ons + note are its own.
+      if (!note && !picks.length) {
+        const ex = t.lines.find((l) => l.id === m.id && (l.split || 0) === gi && !l.fired && !l.note && !((l.addons || []).length));
         if (ex) { const i = t.lines.indexOf(ex); t.lines[i] = Object.assign({}, ex, { qty: ex.qty + qty }); }
-        else t.lines.push({ id: m.id, qty: qty, note: "", split: gi, fired: false, since: 0, firedAt: 0 });
+        else t.lines.push({ id: m.id, qty: qty, note: "", addons: [], split: gi, fired: false, since: 0, firedAt: 0 });
       } else {
-        t.lines.push({ id: m.id, qty: qty, note: note, split: gi, fired: false, since: 0, firedAt: 0 });
+        t.lines.push({ id: m.id, qty: qty, note: note || "", addons: picks, split: gi, fired: false, since: 0, firedAt: 0 });
       }
       t.status = "occupied";
       if (!t.openedAt) t.openedAt = Date.now() - (t.opened || 0) * 60000;
@@ -3295,7 +3303,7 @@ class Component extends DCLogic {
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
           const ld = Number(l.disc) || 0;
-          return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.menuPrice(mi) * l.qty * (1 - ld / 100)), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
+          return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.lineUnit(l, mi) * l.qty * (1 - ld / 100)), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
         }),
         tenders: [
           { k: "cash", label: "Cash", sub: "Drawer opens" },
@@ -3377,7 +3385,7 @@ class Component extends DCLogic {
             lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
               const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
               const ld = Number(l.disc) || 0;
-              return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.menuPrice(mi) * l.qty * (1 - ld / 100)) };
+              return { n: l.qty + "× " + mi.name + (ld ? " (−" + ld + "%)" : ""), v: MVRc(this.lineUnit(l, mi) * l.qty * (1 - ld / 100)), note: l.note || "" };
             }),
             T: T, given: given, change: change, server: tk ? tk.waiter : ""
           };
@@ -3392,7 +3400,7 @@ class Component extends DCLogic {
           const linkedCust = (K0.CUSTOMERS || []).find((c) => c.id === linkedCustId);
           try {
             if (window.__v2PushSale) window.__v2PushSale({
-              lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => ({ id: l.id, qty: l.qty, disc: Number(l.disc) || 0 })),
+              lines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => ({ id: l.id, qty: l.qty, disc: Number(l.disc) || 0, addons: (l.addons || []).map((a) => ({ name: a.name, price: Number(a.price) || 0 })) })),
               tender: m.tender, table: this.isTableSlot(s.activeTable) ? s.activeTable : null, no: snapshot.no, given: given, change: change,
               channel: (tk && tk.channel) || "dine_in",
               discountPct: (tk && Number(tk.discountPct)) || 0,
@@ -3684,11 +3692,16 @@ class Component extends DCLogic {
     if (m.kind === "addons") {
       const it = m.item || {};
       const qty = Math.max(1, m.qty || 1);
-      const mods = m.mods || [];
-      const OPTS = ["Extra spicy", "Mild", "No onion", "No garlic", "Less salt", "Well done", "Sauce on side", "Extra sauce", "Extra cheese", "No ice"];
-      const unit = this.menuPrice(it);
+      const chosen = m.mods || [];                                   // selected add-on names
+      // The dish's OWN add-ons (name + MVR price), set in Menu Master → New dish.
+      // No hardcoded list any more, so what a cashier sees is what the dish sells.
+      const catalog = (Array.isArray(it.addons) ? it.addons : []).map((a) => ({ name: String((a && a.name) || ""), price: Number(a && a.price) || 0 })).filter((a) => a.name);
+      const picks = catalog.filter((a) => chosen.indexOf(a.name) >= 0);
+      const addonEach = picks.reduce((a, x) => a + x.price, 0);
+      const unit = this.menuPrice(it) + addonEach;
       const setM = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
-      const noteStr = mods.concat(m.note ? [m.note] : []).join(", ");
+      const optText = picks.map((x) => x.name + (x.price ? " +" + MVRc(x.price) : "")).join(", ");
+      const noteStr = [optText, (m.note || "").trim()].filter(Boolean).join(" · ");
       return {
         modalTitle: it.name || "Add-ons",
         modalSub: MVRc(unit) + " each · choose options, then add",
@@ -3697,12 +3710,13 @@ class Component extends DCLogic {
         addonDec: () => setM({ qty: Math.max(1, qty - 1) }),
         addonInc: () => setM({ qty: qty + 1 }),
         addonTotal: MVRc(unit * qty),
-        addonOpts: OPTS.map((o) => ({ label: o,
-          style: "font-size:11.5px;padding:7px 13px;border-radius:20px;font-weight:600;border:1px solid " + (mods.indexOf(o) >= 0 ? "var(--amber)" : "var(--line)") + ";background:" + (mods.indexOf(o) >= 0 ? "rgba(242,164,58,.12)" : "var(--bg)") + ";color:" + (mods.indexOf(o) >= 0 ? "var(--amber-bright)" : "var(--text-dim)"),
-          pick: () => setM({ mods: mods.indexOf(o) >= 0 ? mods.filter((x) => x !== o) : mods.concat([o]) }) })),
+        // No add-ons defined → the row is empty and only the kitchen note shows.
+        addonOpts: catalog.map((a) => ({ label: a.name + (a.price ? " · +" + MVRc(a.price) : ""),
+          style: "font-size:11.5px;padding:7px 13px;border-radius:20px;font-weight:600;border:1px solid " + (chosen.indexOf(a.name) >= 0 ? "var(--amber)" : "var(--line)") + ";background:" + (chosen.indexOf(a.name) >= 0 ? "rgba(242,164,58,.12)" : "var(--bg)") + ";color:" + (chosen.indexOf(a.name) >= 0 ? "var(--amber-bright)" : "var(--text-dim)"),
+          pick: () => setM({ mods: chosen.indexOf(a.name) >= 0 ? chosen.filter((x) => x !== a.name) : chosen.concat([a.name]) }) })),
         addonNote: m.note || "",
         onAddonNote: (e) => setM({ note: e.target.value }),
-        addAddon: () => { this.addLineMod(it, qty, noteStr); this.setState({ modal: null }); }
+        addAddon: () => { this.addLineMod(it, qty, picks, noteStr); this.setState({ modal: null }); }
       };
     }
 
