@@ -4755,6 +4755,18 @@ if (fs.existsSync(protoFile)) {
       res.set("Content-Type", "text/html; charset=utf-8").send(html);
     });
 
+    /* Fresh inventory block for the v2 terminal's Supply-chain panel, so a write
+       (new item, GRN, count, adjustment, transfer, produce, recipe) can re-pull
+       real data without a full page reload. Returns the SAME shape the page
+       inject ships as window.KPOS_REAL.inventory. */
+    app.get("/api/app2/inventory", async (req, res) => {
+      try {
+        const real = await buildV2Real(req);
+        if (!real) return res.status(401).json({ error: "no session" });
+        res.json({ ok: true, inventory: real.inventory || {} });
+      } catch (e) { recordError("app2 inventory", e); res.status(500).json({ error: "inventory unavailable" }); }
+    });
+
     /* The customer-facing guest/QR storefront (web3/proto/guest.html) is served
        by serveGuestV3 at the live /?s= + subdomain entry (see serveGuestPortal).
        The old /vg preview route is retired now that those render the same page. */

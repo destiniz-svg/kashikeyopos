@@ -1761,6 +1761,11 @@ class Component extends DCLogic {
   }
 
   _mountRest() {
+    // Supply-chain reads from window.KPOS_RAW. In real mode, replace the static
+    // demo dataset (kashikeyo-raw.js) with the store's REAL inventory shipped as
+    // window.KPOS_REAL.inventory, so every Supply-chain view shows live data
+    // instead of the fabricated "BEEF BECON" seed. Called again after any write.
+    this.hydrateInventory();
     if (!this.state.ready) window.addEventListener("kpos-data-ready", () => { this.applyLocal(); this.setState({ ready: true }); });
     else this.applyLocal();
     // Ages and the top-bar clock are minute-resolution; a 15s tick keeps them
@@ -6134,6 +6139,33 @@ class Component extends DCLogic {
     };
   }
   // ── Supply chain ─────────────────────────────────────────────────────────
+  // Overwrite the static demo KPOS_RAW with the store's REAL inventory (shipped
+  // as KPOS_REAL.inventory in the same positional shape). Demo-only document
+  // concepts that have no backend (indents/dispatches/production-orders/batch
+  // records) are cleared — their views are repurposed to real analogues. In demo
+  // mode (no KPOS_REAL) the seed dataset is left untouched so the design previews.
+  hydrateInventory() {
+    const R = window.KPOS_REAL && window.KPOS_REAL.inventory;
+    if (!R) return;
+    const raw = window.KPOS_RAW || (window.KPOS_RAW = {});
+    raw.items = R.items || [];
+    raw.inv = R.inv || [];
+    raw.cats = R.cats || [];
+    raw.ledger = R.ledger || [];
+    raw.vendors = R.vendors || [];
+    raw.purch = R.purch || [];
+    raw.audits = R.audits || [];
+    raw.reqs = []; raw.disp = []; raw.prod = []; raw.batches = [];
+  }
+  // Re-pull real inventory after a write and repaint, so the panel reflects the
+  // change without a full reload. Falls back silently offline.
+  refreshInventory() {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
+    return fetch("/api/app2/inventory", { credentials: "same-origin" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((j) => { if (j && j.inventory) { window.KPOS_REAL.inventory = j.inventory; this.hydrateInventory(); this.forceUpdate(); } })
+      .catch(() => {});
+  }
   itemName(id) { const raw = window.KPOS_RAW || {}; const it = (raw.items || []).find((i) => i[0] === id); return it ? it[2] : "Item #" + id; }
   item(id) { const raw = window.KPOS_RAW || {}; return (raw.items || []).find((i) => i[0] === id); }
   convFactor(it) {
@@ -6797,26 +6829,26 @@ class Component extends DCLogic {
   // Create an inventory item. Real mode persists to /api/inv/ingredients (base
   // unit, purchase-unit conversion and an opening cost); demo mode keeps it
   // local. Optimistically appends to the item master so it shows at once.
-  saveIngredient(v) {
+  saveIngredient(v, editId, keepMin) {
     const uMap = { GRM: "g", ML: "ml", PCS: "pcs" };
     const baseUnit = uMap[v.base] || "g";
     const factor = ((v.base === "GRM" && v.stock === "KG") || (v.base === "ML" && v.stock === "LTR")) ? 1000 : 1;
     const avgCost = Math.round(v.cost * 100 / factor * 1e6) / 1e6; // laari per base unit (keep decimals for cheap-per-gram items)
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
-      const body = { name: v.name, baseUnit: baseUnit, minStock: 0, location: "Dry", avgCost: avgCost };
+      // Upsert against the real backend; editId is the ingredient uuid (carried at
+      // item[13]) so an edit updates in place instead of creating a duplicate.
+      // minStock is preserved on edit (the v2 form doesn't expose it) so a cost
+      // edit can't silently zero the reorder par.
+      const body = { name: v.name, baseUnit: baseUnit, minStock: keepMin != null ? keepMin : 0, location: "Dry", avgCost: avgCost };
+      if (editId) body.id = editId;
       if (factor !== 1) body.units = [{ name: v.stock, factor: factor }];
+      this.setState({ modal: null });
       fetch("/api/inv/ingredients", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
         .then((r) => r.json().catch(() => ({}))).then((j) => {
           if (j && j.error) { this.toast(j.error, "warn"); return; }
-          const raw = window.KPOS_RAW || (window.KPOS_RAW = {}); const arr = raw.items || (raw.items = []);
-          const id = arr.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
-          const code = "IT-" + String(id).padStart(4, "0");
-          arr.unshift([id, v.cat, v.name, v.stock, v.cost, "raw", code, v.base, v.stock, 0, 100, 0, 0]);
-          (raw.inv || (raw.inv = [])).push([3, id, 0]);
-          this.setState({ modal: null });
-          this.toast("Item created · " + v.name + " · " + code);
+          this.refreshInventory();   // pull the real row (with its uuid) so recipes/adjustments can address it
+          this.toast(editId ? ("Saved · " + v.name) : ("Item created · " + v.name));
         }).catch(() => this.toast("Could not save the item — check the connection", "warn"));
-      this.setState({ modal: null });
       return;
     }
     const items = (window.KPOS_RAW || {}).items || [];
@@ -7668,6 +7700,13 @@ class Component extends DCLogic {
           const cost = +v.cost || 0;
           if (cost <= 0) return this.toast("A cost is required", "warn");
           if (v.base !== it[7] || v.stock !== it[8]) return this.toast("Units cannot change once an item exists — every recipe and ledger row is denominated in them. Create a new item instead.", "warn");
+          // Real mode: persist through the ingredient upsert (item[13] = uuid),
+          // preserving the item's min_stock (item[9], base units). Demo mode keeps
+          // the in-memory patch.
+          if (window.KPOS_REAL && window.KPOS_REAL.token && it[13]) {
+            this.saveIngredient({ name: v.name.toUpperCase(), cat: +v.cat || it[1], base: v.base, stock: v.stock, cost: cost }, it[13], Number(it[9]) || 0);
+            return;
+          }
           const next = it.slice();
           next[2] = v.name.toUpperCase(); next[1] = +v.cat || it[1]; next[4] = cost; next[9] = String(+v.shelf || 180);
           this.patchRowsArr("items", it[0], next,
@@ -7735,6 +7774,28 @@ class Component extends DCLogic {
           const it = this.item(+v.item);
           if (!it) return this.toast("Pick an item", "warn");
           const val = (it[4] || 0) * qty, out = v.dir !== "in";
+          // Real mode: post to the ledger via /api/inv/adjust. Write-off = a `waste`
+          // move (subtract at avg cost); write-on ("found stock") has no add-delta
+          // mode server-side, so it's a `correct` to (current + found) in stock
+          // units — a signed `manual` variance move, never a blind overwrite.
+          if (window.KPOS_REAL && window.KPOS_REAL.token && it[13]) {
+            const stockU = it[8] || it[3] || "";
+            let body;
+            if (out) { body = { ingredientId: it[13], mode: "waste", qty: qty, unitName: stockU, reason: v.reason }; }
+            else {
+              const invRow = ((window.KPOS_RAW || {}).inv || []).find((r) => r[1] === it[0]);
+              const nowStockU = invRow ? this.stockQty(it, invRow[2]) : 0;
+              body = { ingredientId: it[13], mode: "correct", qty: Math.round((nowStockU + qty) * 1000) / 1000, unitName: stockU, reason: v.reason };
+            }
+            this.setState({ modal: null });
+            fetch("/api/inv/adjust", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                this.refreshInventory();
+                this.toast((out ? "Written off " : "Written on ") + qty + " " + stockU + " · " + this.itemName(it[0]) + " · " + v.reason);
+              }).catch(() => this.toast("Could not post the adjustment — check the connection", "warn"));
+            return;
+          }
           this.setState({ modal: null });
           this.queue("stock_adjust", (out ? "Write-off" : "Write-on") + " · " + this.itemName(+v.item) + " " + qty + " " + (it[8] || "kg") + " · " + v.reason + " · " + MVRc(val), "stock_ledger");
           this.queue("post_journal", out ? "Dr 5100 Cr 1200 " + MVRc(val) : "Dr 1200 Cr 5100 " + MVRc(val), "journal_entries");
