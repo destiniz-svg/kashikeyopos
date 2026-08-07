@@ -1372,6 +1372,29 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
             </div>
           </sc-if>
 
+          <sc-if value="{{ mCountSheet }}">
+            <div>
+              <div style="font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:10px">Enter what you physically counted, in each item's unit. The system figure is hidden. Leave an item blank to keep its current figure. Save to pause; Close posts the variance to the ledger.</div>
+              <sc-if value="{{ csEmpty }}">
+                <div style="padding:20px;text-align:center;font-size:12px;color:var(--text-muted)">No items to count.</div>
+              </sc-if>
+              <div style="max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
+                <sc-for list="{{ csRows }}" as="r" hint-placeholder-count="0">
+                  <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg)">
+                    <span style="flex:1;font-size:12.5px;font-weight:600;color:var(--text)">{{ r.name }}</span>
+                    <input value="{{ r.val }}" onInput="{{ r.onInput }}" inputmode="decimal" placeholder="count" style="width:96px;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:var(--bg-2);color:var(--text);font-size:12.5px;text-align:right;font-family:'JetBrains Mono',monospace" />
+                    <span style="width:36px;font-size:11px;color:var(--text-muted)">{{ r.unit }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="display:flex;gap:9px;margin-top:14px">
+                <button onClick="{{ csCancel }}" style="flex:0 0 auto;padding:11px 16px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--text-muted);font-size:12px;font-weight:600">Later</button>
+                <button onClick="{{ csSave }}" style="flex:1;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-weight:700">Save progress</button>
+                <button onClick="{{ csClose }}" style="flex:1;padding:11px;border-radius:8px;background:var(--go);color:var(--on-go);border:none;font-size:12.5px;font-weight:700">Close &amp; post variance</button>
+              </div>
+            </div>
+          </sc-if>
+
           <sc-if value="{{ mForm }}">
             <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:11px">
               <sc-for list="{{ formFields }}" as="f" hint-placeholder-count="6">
@@ -3422,7 +3445,7 @@ class Component extends DCLogic {
       mLock: m.kind === "lock",
       mDetail: ["outletDetail", "user", "customer", "dish", "item", "info"].indexOf(m.kind) >= 0,
       mReceipt: m.kind === "receipt" || m.kind === "z" || m.kind === "settled",
-      mCount: m.kind === "count", mForm: m.kind === "form",
+      mCount: m.kind === "count", mForm: m.kind === "form", mCountSheet: m.kind === "countsheet",
       mGuest: m.kind === "guest", mHeld: m.kind === "held",
       hasPaidFx: !!s.paidFx,
       paidFxTitle: s.paidFx ? (s.paidFx.tender === "credit" ? "Charged" : "Paid") : "",
@@ -3435,7 +3458,7 @@ class Component extends DCLogic {
         + (this.effBp() === "m" ? "align-items:flex-end;justify-content:stretch;padding:0" : "align-items:center;justify-content:center;padding:28px"),
       modalStyle: this.effBp() === "m"
         ? "background:var(--bg-1);border-top:1px solid var(--line);border-radius:16px 16px 0 0;box-shadow:0 -14px 50px rgba(0,0,0,.6);width:100%;max-height:92dvh;display:flex;flex-direction:column;animation:ksheet .2s"
-        : "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:" + (m.kind === "pay" ? "740px" : m.kind === "receipt" || m.kind === "z" ? "400px" : m.kind === "conflict" || m.kind === "count" || m.kind === "outlet" ? "620px" : "520px") + ";max-height:88vh;display:flex;flex-direction:column;animation:kmodal .18s"
+        : "background:var(--bg-1);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-lg);width:100%;max-width:" + (m.kind === "pay" ? "740px" : m.kind === "receipt" || m.kind === "z" ? "400px" : m.kind === "conflict" || m.kind === "count" || m.kind === "outlet" || m.kind === "countsheet" ? "620px" : "520px") + ";max-height:88vh;display:flex;flex-direction:column;animation:kmodal .18s"
     };
     if (!s.modal) return base;
     return Object.assign(base, this.modalVals(m));
@@ -4059,6 +4082,28 @@ class Component extends DCLogic {
     if (m.kind === "count") {
       const raw = window.KPOS_RAW || {};
       const sel = m.cats || [];
+      const real = !!(window.KPOS_REAL && window.KPOS_REAL.token);
+      // Real mode: a stock check snapshots EVERY active item (whole-store) and
+      // posts variance on close — it isn't category-scoped, so there's no picker.
+      if (real) {
+        const nItems = (raw.items || []).length;
+        return {
+          modalTitle: "New stock check", modalSub: o.name + " · counts every item, variance posts on close",
+          countIntro: "This opens a blind stock check over all " + nItems + " item" + (nItems === 1 ? "" : "s") + ": it snapshots the system on-hand now, you enter what you physically counted, and closing posts the variance to the ledger as a signed adjustment (never a blind overwrite). Only one check can be open at a time.",
+          countCats: [],
+          startCountLabel: "Open stock check",
+          startCount: () => {
+            this.setState({ modal: null });
+            fetch("/api/inv/audits", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ label: "Stock check " + new Date().toISOString().slice(0, 10), startedBy: this.me() }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                this.refreshInventory();
+                this.openCountSheet(j.id);
+                this.toast("Stock check opened · " + (j.lines || nItems) + " items to count");
+              }).catch(() => this.toast("Could not open the stock check — check the connection", "warn"));
+          }
+        };
+      }
       return {
         modalTitle: "New cycle count", modalSub: o.name + " · blind count, variance posts automatically",
         countIntro: "Pick the categories to count. The sheet is generated from count_freq, the app hides on-hand figures while counting, and anything within category tolerance posts without a human ever seeing it.",
@@ -4069,6 +4114,26 @@ class Component extends DCLogic {
         })),
         startCountLabel: sel.length ? "Start blind count · " + sel.length + " categor" + (sel.length > 1 ? "ies" : "y") : "Pick at least one category",
         startCount: () => { if (!sel.length) return this.toast("Pick a category", "warn"); this.queue("count_open", "Blind count opened · " + sel.length + " categories · " + o.code, "stock_counts"); this.setState({ modal: null, view: "counts" }); this.toast("Count sheet sent to the store keeper's phone"); }
+      };
+    }
+
+    // Blind count sheet: one row per item with a count input (system on-hand
+    // hidden). Save is incremental; Close posts variance to the ledger.
+    if (m.kind === "countsheet") {
+      const cs = this.state.countSheet || { lines: [], session: {} };
+      const vals = this.state.countVals || {};
+      const entered = cs.lines.filter((l) => vals[l.ingredientId] !== undefined && vals[l.ingredientId] !== "").length;
+      return {
+        modalTitle: "Stock check", modalSub: (cs.session && cs.session.label ? cs.session.label + " · " : "") + entered + " of " + cs.lines.length + " counted",
+        csRows: cs.lines.map((l) => ({
+          name: l.name, unit: (l.units && l.units[0]) ? l.units[0].name : (l.baseUnit || ""),
+          val: vals[l.ingredientId] === undefined ? "" : String(vals[l.ingredientId]),
+          onInput: (e) => { const v = e.target.value; this.setState((st) => ({ countVals: Object.assign({}, st.countVals, { [l.ingredientId]: v }) })); }
+        })),
+        csEmpty: !cs.lines.length,
+        csSave: () => this.saveCounts(false),
+        csClose: () => this.saveCounts(true),
+        csCancel: () => this.setState({ modal: null })
       };
     }
 
@@ -6157,6 +6222,53 @@ class Component extends DCLogic {
     raw.audits = R.audits || [];
     raw.reqs = []; raw.disp = []; raw.prod = []; raw.batches = [];
   }
+  // Load an open stock-check session's lines and open the count sheet. Blind by
+  // default — the system on-hand is hidden while counting so the counter records
+  // what they actually see, not what the app expects.
+  openCountSheet(id) {
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return;
+    fetch("/api/inv/audits/" + encodeURIComponent(id), { credentials: "same-origin" })
+      .then((r) => r.ok ? r.json() : null).then((j) => {
+        if (!j || !j.session) { this.toast("Could not open the count sheet", "warn"); return; }
+        const lines = [];
+        Object.keys(j.byLocation || {}).forEach((loc) => (j.byLocation[loc] || []).forEach((l) => lines.push(l)));
+        this.setState({ countSheet: { id: id, session: j.session, lines: lines }, countVals: {}, modal: { kind: "countsheet", id: id } });
+      }).catch(() => this.toast("Could not open the count sheet — check the connection", "warn"));
+  }
+  // Save the counts entered so far (incremental — a big count can be saved and
+  // resumed). Counts are in each item's stock unit.
+  saveCounts(close) {
+    const cs = this.state.countSheet; if (!cs) return;
+    const vals = this.state.countVals || {};
+    const counts = cs.lines.map((l) => {
+      const raw = vals[l.ingredientId];
+      if (raw === undefined || raw === "") return null;
+      // Count in the item's stock/pack unit when it has one (natural to count KG,
+      // not grams); the base unit's own name is not a valid factorFor arg — send
+      // the literal "base" for same-unit items.
+      const unitName = (l.units && l.units[0]) ? l.units[0].name : "base";
+      return { ingredientId: l.ingredientId, qty: Number(raw) || 0, unitName: unitName };
+    }).filter(Boolean);
+    if (!counts.length && !close) return this.toast("Enter at least one count", "warn");
+    fetch("/api/inv/audits/" + encodeURIComponent(cs.id) + "/counts", { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ counts: counts }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { this.toast(j.error, "warn"); return; }
+        if (close) { this.closeCount(); return; }
+        this.toast(counts.length + " count" + (counts.length === 1 ? "" : "s") + " saved");
+      }).catch(() => this.toast("Could not save counts — check the connection", "warn"));
+  }
+  // Close the check: posts variance to the ledger (signed adjustment moves) and
+  // shows the shrinkage summary. Uncounted lines keep the system figure.
+  closeCount() {
+    const cs = this.state.countSheet; if (!cs) return;
+    fetch("/api/inv/audits/" + encodeURIComponent(cs.id) + "/close", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin" })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { this.toast(j.error, "warn"); return; }
+        this.setState({ modal: null, countSheet: null, countVals: {} });
+        this.refreshInventory();
+        this.toast("Stock check closed · " + (j.flaggedForReview || 0) + " flagged for review");
+      }).catch(() => this.toast("Could not close the check — check the connection", "warn"));
+  }
   // Re-pull real inventory after a write and repaint, so the panel reflects the
   // change without a full reload. Falls back silently offline.
   refreshInventory() {
@@ -6166,6 +6278,14 @@ class Component extends DCLogic {
       .then((j) => { if (j && j.inventory) { window.KPOS_REAL.inventory = j.inventory; this.hydrateInventory(); this.forceUpdate(); } })
       .catch(() => {});
   }
+  // Map a vendor's positional numeric id (what the forms carry) to its real
+  // supplier uuid (sid), which /api/inv/invoices wants as supplierId.
+  vendorSid(numId) { const v = ((window.KPOS_RAW || {}).vendors || []).find((x) => x.id === numId); return v ? (v.sid || "") : ""; }
+  // The unitName the /api/inv endpoints expect for a quantity entered in an
+  // item's STOCK unit. factorFor accepts only "base" (the literal) or a REGISTERED
+  // pack unit — never the base unit's own name. So a packed item (base≠stock, e.g.
+  // g bought by the KG) sends its stock unit; a same-unit item sends "base".
+  unitArgFor(it) { return this.convFactor(it) > 1 ? (it[8] || "base") : "base"; }
   itemName(id) { const raw = window.KPOS_RAW || {}; const it = (raw.items || []).find((i) => i[0] === id); return it ? it[2] : "Item #" + id; }
   item(id) { const raw = window.KPOS_RAW || {}; return (raw.items || []).find((i) => i[0] === id); }
   convFactor(it) {
@@ -7779,13 +7899,13 @@ class Component extends DCLogic {
           // mode server-side, so it's a `correct` to (current + found) in stock
           // units — a signed `manual` variance move, never a blind overwrite.
           if (window.KPOS_REAL && window.KPOS_REAL.token && it[13]) {
-            const stockU = it[8] || it[3] || "";
+            const stockU = it[8] || it[3] || "", uArg = this.unitArgFor(it);
             let body;
-            if (out) { body = { ingredientId: it[13], mode: "waste", qty: qty, unitName: stockU, reason: v.reason }; }
+            if (out) { body = { ingredientId: it[13], mode: "waste", qty: qty, unitName: uArg, reason: v.reason }; }
             else {
               const invRow = ((window.KPOS_RAW || {}).inv || []).find((r) => r[1] === it[0]);
               const nowStockU = invRow ? this.stockQty(it, invRow[2]) : 0;
-              body = { ingredientId: it[13], mode: "correct", qty: Math.round((nowStockU + qty) * 1000) / 1000, unitName: stockU, reason: v.reason };
+              body = { ingredientId: it[13], mode: "correct", qty: Math.round((nowStockU + qty) * 1000) / 1000, unitName: uArg, reason: v.reason };
             }
             this.setState({ modal: null });
             fetch("/api/inv/adjust", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
@@ -8477,23 +8597,39 @@ class Component extends DCLogic {
         }
       },
       grn: {
-        title: "New GRN", sub: "Goods received against a vendor invoice", save: "Post GRN",
-        foot: "Posting a GRN moves stock into the receiving location and stamps a batch with the vendor price of the day.",
+        title: "Receive a delivery (GRN)", sub: "Raises stock, re-averages the item's cost, and books the expense", save: "Post GRN",
+        foot: "Posting a GRN is the one path that moves real stock in: it raises the received quantity into the ledger, re-averages the item's moving-average cost with the price you paid, and books a Purchases expense against the vendor. Enter one item per delivery line; add another GRN for each further item.",
         fields: [
           { k: "vendor", label: "Vendor", options: vendorOpts, full: 1 },
-          { k: "branch", label: "Receiving location", options: storeOpts, full: 1 },
-          { k: "inv", label: "Vendor invoice", v: "VND-" },
-          { k: "total", label: "Invoice total MVR", v: "0" },
+          { k: "item", label: "Item received", options: itemOpts, full: 1 },
+          { k: "qty", label: "Quantity received (in the item's purchase unit)", v: "1", full: 1 },
+          { k: "cost", label: "Line total paid MVR (GST-inclusive)", v: "0" },
+          { k: "gst", label: "of which GST MVR (0 if unregistered)", v: "0" },
+          { k: "inv", label: "Vendor invoice no.", v: "" },
+          { k: "expiry", label: "Use-by date (optional)", v: "", type: "date" },
           { k: "notes", label: "Notes", v: "", full: 1 }
         ],
         onSave: (v) => {
-          const total = +v.total || 0;
-          if (total <= 0) return this.toast("An invoice total is required", "warn");
+          const qty = +v.qty || 0, total = +v.cost || 0;
+          if (qty <= 0) return this.toast("Quantity received is required", "warn");
+          if (total <= 0) return this.toast("A line total is required", "warn");
+          const it = this.item(+v.item);
+          if (!it) return this.toast("Pick the item received", "warn");
+          if (window.KPOS_REAL && window.KPOS_REAL.token && it[13]) {
+            const line = { ingredientId: it[13], qty: qty, cost: Math.round(total * 100), unitName: this.unitArgFor(it) };
+            if (/^\d{4}-\d{2}-\d{2}$/.test(String(v.expiry || ""))) line.expiry = v.expiry;
+            const body = { supplierId: (this.vendorSid && this.vendorSid(+v.vendor)) || "", invoiceNo: v.inv || "", lines: [line], gst: Math.round((+v.gst || 0) * 100) };
+            this.setState({ modal: null });
+            fetch("/api/inv/invoices", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify(body) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                this.refreshInventory();
+                this.toast("GRN posted · " + this.itemName(it[0]) + " " + qty + " " + (it[8] || "") + " · " + MVRc(total * 100));
+              }).catch(() => this.toast("Could not post the GRN — check the connection", "warn"));
+            return;
+          }
           const no = this.nextNo("purch", "GRN-2026-");
-          this.insertRow("purch", {
-            no: no, vendor: +v.vendor, branch: +v.branch, inv: v.inv, total: total,
-            status: "received", by: this.me(), notes: v.notes || "manual entry"
-          }, "GRN posted · " + no + " " + MVRc(total), "purchases");
+          this.insertRow("purch", { no: no, vendor: +v.vendor, branch: 3, inv: v.inv, total: total, status: "received", by: this.me(), notes: v.notes || "manual entry" }, "GRN posted · " + no + " " + MVRc(total * 100), "purchases");
         }
       },
       indent: {
