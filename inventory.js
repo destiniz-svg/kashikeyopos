@@ -1566,43 +1566,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     res.json({ ok: true, configured: true, answer: answer || "I don't have enough posted data to answer that yet." });
   }));
 
-  /* ── Menu engineer (v2 terminal "AI Menu Builder") ───────────────────────
-     Distinct from /menu/generate (which builds ONE item from a name): this
-     designs a whole cost-engineered menu from the store's live ingredient
-     pantry. The terminal builds that pantry + brief client-side and sends it
-     as `context`; the server owns the menu-engineer prompt and returns the raw
-     JSON text the panel parses. Degrades to configured:false without a key. */
-  router.post("/menu-engineer", authAny, requireBackOffice(1), wrap(async (req, res) => {
-    const client = aiClient();
-    const brief = String((req.body && req.body.brief) || "").trim().slice(0, 600);
-    const context = String((req.body && req.body.context) || "").trim().slice(0, 12000);
-    if (!context) return res.status(400).json({ error: "no pantry to build from yet — add ingredients first" });
-    if (!client) return res.json({ ok: true, configured: false, message: "The AI menu builder isn't switched on. Add an AI key (ANTHROPIC_API_KEY or GEMINI_API_KEY) in the service settings — you can still add dishes by hand." });
-
-    let answer;
-    try {
-      const model = process.env.OCR_MODEL || "claude-opus-4-8";
-      const msg = await client.messages.create({
-        model, max_tokens: 4000, thinking: { type: "adaptive" },
-        system:
-          "You are a restaurant menu engineer for a Maldivian chain. You design dishes only from the pantry given. " +
-          "Reply with JSON only, no prose, no code fences. Shape: " +
-          '{"rationale":"2-3 sentences on the trade-offs you made","dishes":[{"name":"","cat":"one of the given categories","price":<MVR integer>,"lines":[{"item":<pantry id>,"qty":<integer>}],"why":"one sentence tying this dish to cost or stock"}]}. ' +
-          "Use pantry ids exactly. qty is per single portion, in THAT item's own base unit as given in the pantry (GRM = grams, ML = millilitres, PCS = whole pieces) — never convert. " +
-          "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit. " +
-          "The context lists the dishes already on the menu — do NOT propose any dish that duplicates one of those; design genuinely new or complementary dishes that fill gaps instead.",
-        messages: [{ role: "user", content: context + (brief ? "\n\nBrief: " + brief : "") }],
-      });
-      if (msg.stop_reason === "refusal") throw Object.assign(new Error("I can't build that one."), { status: 422 });
-      answer = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    } catch (e) {
-      recordError("menu engineer", e);
-      return res.status(e.status === 422 ? 422 : 502).json({ error: e.status === 422 ? e.message : "The menu builder couldn't finish just now — try again in a moment." });
-    }
-    res.json({ ok: true, configured: true, answer: answer || "" });
-  }));
-
-  /* ── AI Menu Builder (P2) ────────────────────────────────────────────────
+  /* ── AI dish creator (P2) ────────────────────────────────────────────────
      Owner types an item name + one line of what it is; Claude returns a whole
      menu item — bilingual name/description, tags, add-ons, allergens, a price
      band and a flat SVG illustration — which the UI previews and applies in one
