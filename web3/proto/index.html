@@ -1560,7 +1560,7 @@ class Component extends DCLogic {
       pointsPer: 10, lowStock: 50, kdsSla: 18, tipLine: false
     }, this._saved.prefs || {}),
     lastTouch: Date.now(),
-    session: this._saved.session || null,
+    session: this.initialSession(),
     register: this._saved.register || null,
     assetState: this._saved.assetState || {},
     // Clocked shifts. An entry with out:0 is someone still on the floor, so
@@ -1993,6 +1993,20 @@ class Component extends DCLogic {
       if (rk === "cashier" || rk === "waiter") return "Cashier";
     }
     return (this._saved.session && this._saved.session.role) || this.props.startRole || this._saved.roleKey || "ChainAdmin";
+  }
+  // The real terminal is reached only after a backend sign-in (owner password, or
+  // a staff PIN via /api/back/login), so the operator is already authenticated —
+  // establish their session from that identity instead of forcing a second lock
+  // screen that dims every panel. They can still lock or switch user from the
+  // identity menu. Demo/preview keeps the saved-session-or-lock behaviour.
+  initialSession() {
+    const me = window.KPOS_REAL && window.KPOS_REAL.me;
+    if (me && me.roleKey) {
+      const rk = String(me.roleKey);
+      const nm = me.name || (me.isOwner ? "Owner" : (rk.charAt(0).toUpperCase() + rk.slice(1)));
+      return { id: me.id || "self", user: nm, name: nm, role: this.initialRoleKey(), outlet: this._saved.outletId || 3, outlets: [], at: Date.now() };
+    }
+    return this._saved.session || null;
   }
   roleFor(key) {
     const base = (K().ROLES || []).find((r) => r.key === key);

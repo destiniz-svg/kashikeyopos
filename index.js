@@ -4382,7 +4382,7 @@ if (fs.existsSync(protoFile)) {
       const orgId = await resolveAppSession(req);
       if (!orgId) return null;
       const token = sign(orgId, req.appRegister || "R1", req.appStoreId || DEFAULT_STORE_ID);
-      return buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name });
+      return buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name, id: req.appStaff && req.appStaff.id });
     };
     const buildV2RealForOrg = async (orgId, token, viewer) => {
       viewer = viewer || {};
@@ -4722,7 +4722,7 @@ if (fs.existsSync(protoFile)) {
           hasSession: true, token, slug,
           // The signed-in operator, so the terminal can scope a cashier/waiter to
           // their permission set. Absent role = the owner's own (password) login.
-          me: { roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner" },
+          me: { id: viewer.id || "", roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner" },
           portal: { slug, base: portalBase, sub: !!portalSubBase },
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
             currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr },
