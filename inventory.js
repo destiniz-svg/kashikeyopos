@@ -1956,7 +1956,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       [orgId, invId, String(supplierId || ""), String(invoiceNo || ""), total]);
     const expense = {
       id: uid(), no: "EXP-" + (invoiceNo || invId.slice(0, 6).toUpperCase()), t: Date.now(),
-      cat: "Purchases", supplier: String(supplierName || ""), amount: total, gst: Math.max(0, Math.round(Number(gst) || 0)),
+      /* Input GST is what the supplier charged (0 if unregistered) — it is NOT
+         derived from the store's own sales rate. But a component can never exceed
+         the inclusive line total, so clamp to [0, total]: an out-of-range client
+         value would otherwise flow straight into gstReturn.netPayable as bogus
+         reclaimable input tax. */
+      cat: "Purchases", supplier: String(supplierName || ""), amount: total, gst: Math.min(total, Math.max(0, Math.round(Number(gst) || 0))),
       note: expenseNote || `${invoiceNo || "Delivery"} · ${posted.length} line${posted.length === 1 ? "" : "s"} · back office`,
       paidFrom: "other", userName: "Back office", shiftId: null, img: "",
       srcRef: expenseRef || "invoice:" + invId,
@@ -2208,8 +2213,10 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
          AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
          AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $3 AND $4`, [req.orgId, storeId, from, to]));
     const cogs = await withOrg(req.orgId, (client) => client.query(
+      /* Net refunds out of COGS too (see computeAccounting) — a restocked refund
+         is a positive-qty `refund` move that must reduce COGS, matching revenue. */
       `SELECT COALESCE(-SUM(qty*unit_cost),0) AS cogs FROM stock_moves
-       WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to]));
+       WHERE org_id=$1 AND kind IN ('sale','refund') AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [req.orgId, from, to]));
     const j = { grossSales: 0, discounts: 0, gst: 0, serviceCharge: 0, tips: 0, refunds: 0, foc: 0, netSales: 0, tenders: {}, accountsReceivable: 0, cogs: Math.round(Number(cogs.rows[0].cogs) || 0), saleCount: 0, refundCount: 0 };
     /* Payments-decision A+: per-line detail for the external non-cash tenders
        (Card/QR/Transfer), each with the reference the cashier captured at the
@@ -2273,8 +2280,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
          AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
          AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
     const cogsR = (await client.query(
+      /* COGS must net refunds: a restocked refund writes a positive-qty `refund`
+         move, so including it here (−SUM) subtracts that cost back out — mirroring
+         the revenue side, which already subtracts refunds. Summing 'sale' alone
+         left refunded goods' cost stuck in COGS while their revenue was removed. */
       `SELECT COALESCE(-SUM(qty*unit_cost),0) AS c FROM stock_moves
-         WHERE org_id=$1 AND kind='sale' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [orgId, from, to])).rows[0];
+         WHERE org_id=$1 AND kind IN ('sale','refund') AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [orgId, from, to])).rows[0];
     const wasteR = (await client.query(
       `SELECT COALESCE(-SUM(qty*unit_cost),0) AS w FROM stock_moves
          WHERE org_id=$1 AND kind='waste' AND (EXTRACT(EPOCH FROM created_at)*1000) BETWEEN $2 AND $3`, [orgId, from, to])).rows[0];
@@ -3396,8 +3407,19 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
         /* Skipped lines (never counted) keep the system figure — the owner
            only pays attention to what they actually walked past. */
         const counted = l.counted === null ? expected : Number(l.counted);
-        const variance = round3(counted - expected);
-        const pct = Math.abs(expected) > 0 ? Math.round(Math.abs(variance) / Math.abs(expected) * 10000) / 100 : (variance !== 0 ? 100 : 0);
+        /* Reconcile against the LIVE balance, not the open-time snapshot. If a
+           sale/purchase/waste landed while the count was open, `expected` (frozen
+           at open) is stale — writing an `audit` move of counted−expected while
+           force-setting current_stock=counted would leave current_stock ≠ Σ moves
+           by exactly the intervening movement, and would also report legitimate
+           sales as shrinkage. Read the live figure under a row lock (same tx) and
+           make the move the true correction counted−live, so Σ moves stays == the
+           cache and the variance shown is real unexplained shrinkage. */
+        const liveRow = await client.query(
+          "SELECT current_stock FROM ingredients WHERE org_id=$1 AND id=$2 FOR UPDATE", [req.orgId, l.ingredient_id]);
+        const live = liveRow.rowCount ? Number(liveRow.rows[0].current_stock) : expected;
+        const variance = round3(counted - live);
+        const pct = Math.abs(live) > 0 ? Math.round(Math.abs(variance) / Math.abs(live) * 10000) / 100 : (variance !== 0 ? 100 : 0);
         const flag = pct > 5 ? "review" : "ok";
         if (flag === "review") review += 1;
         closingValue += counted * avg;
@@ -3405,12 +3427,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
           "UPDATE audit_lines SET counted=$4, variance=$5, variance_pct=$6, flag=$7 WHERE org_id=$1 AND id=$2 AND session_id=$3",
           [req.orgId, l.id, req.params.id, counted, variance, pct, flag]);
         if (variance !== 0) {
-          await client.query(
+          const ins = await client.query(
             `INSERT INTO stock_moves (org_id, id, ingredient_id, kind, qty, unit_cost, ref, note)
              VALUES ($1,$2,$3,'audit',$4,$5,$6,'stock check adjustment')
-             ON CONFLICT (org_id, ref, ingredient_id) WHERE ref <> '' DO NOTHING`,
+             ON CONFLICT (org_id, ref, ingredient_id) WHERE ref <> '' DO NOTHING RETURNING 1`,
             [req.orgId, uid(), l.ingredient_id, variance, avg, "audit:" + req.params.id]);
-          await client.query(
+          /* Only move the cache to `counted` when THIS close wrote the move; a
+             replayed close (ref already present) must not re-stamp the balance. */
+          if (ins.rowCount) await client.query(
             "UPDATE ingredients SET current_stock=$3, updated_at=now() WHERE org_id=$1 AND id=$2",
             [req.orgId, l.ingredient_id, counted]);
         }
