@@ -1335,10 +1335,13 @@ window.KashikeyoGuestQR = (function () {
       case 'order': s.screen = 'order'; break;
       case 'sent': s.screen = 'sent'; s.sheet = false; break;
       case 'bill':
-        /* Asking for the bill opens the bill, it does not summon anyone: the
-           guest reads the figure first, picks how they want to pay, and only
-           then is a server called. Nobody likes a waiter arriving mid-arithmetic. */
-        s.screen = 'bill'; s.sheet = false; break;
+        /* Asking for the bill opens the bill AND flags the floor terminal so a
+           server knows this table wants to settle (the guest still picks how to
+           pay on the next screen, which sends the tender). */
+        if (this.s.sent.length) this.push('bill', 'Table ' + this.table() + ' asked for the bill · ' + this.money(this.billTotal()));
+        s.screen = 'bill'; s.sheet = false;
+        if (this.s.sent.length) this.toast('Your bill is ready — a server has been notified');
+        break;
       case 'back-bill': s.screen = s.sent.length ? 'sent' : 'menu'; break;
       case 'sheet': s.sheet = true; break;
       case 'sheet-close': s.sheet = false; break;
@@ -1957,7 +1960,15 @@ window.KashikeyoGuestQR = (function () {
     var T = this.bill(this.tableSub() + this.cartSub());
 
     var h = '<div class="q-body pad">' +
-      '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:18px 0 4px">' +
+      /* Top bar so the status screen has a way back to the menu and to the
+         table options (call a server, ask for the bill, language) — the burger
+         used to live only on the menu screen. */
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:2px 0 4px">' +
+        '<button class="q-round" data-act="menu" title="Back to the menu"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="' + C + '" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg></button>' +
+        '<span style="font-size:13.5px;font-weight:700;color:var(--k-ink);letter-spacing:-.01em">Your order · Table ' + esc(this.table()) + '</span>' +
+        '<button class="q-round" data-act="sheet" title="Table options">' + svg(I.burger, { s: 19, c: C, w: 2.2 }) + '</button>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:8px 0 4px">' +
         '<span style="width:64px;height:64px;border-radius:50%;background:' + C + ';display:grid;place-items:center;box-shadow:0 8px 22px var(--k-accent-glow);animation:qpop .26s">' +
           svg(I.tick, { s: 32, c: 'var(--k-accent-ink)', w: 3 }) + '</span>' +
         '<span class="q-h2" style="text-align:center">' + (s.sent.length ? 'Order sent' : 'Nothing sent yet') + '</span>' +
@@ -2012,9 +2023,9 @@ window.KashikeyoGuestQR = (function () {
         }).join('') + '</div></div>';
     }
 
-    /* rounds */
+    /* rounds — one tint per stage (sent · received · preparing · ready · served) */
     var tint = [['var(--k-neutral-bg)', 'var(--k-neutral-ink)'], ['var(--k-info-bg)', 'var(--k-info-ink)'],
-      ['var(--k-warn-bg)', 'var(--k-warn-ink)'], ['var(--k-go-bg)', 'var(--k-go-ink)']];
+      ['var(--k-warn-bg)', 'var(--k-warn-ink)'], ['var(--k-go-bg)', 'var(--k-go-ink)'], ['var(--k-go-bg)', 'var(--k-go-ink)']];
     h += '<div style="margin-top:20px;display:flex;flex-direction:column;gap:14px">' +
       s.sent.slice().reverse().map(function (r, ri) {
         return '<div class="q-card" style="border-radius:16px;overflow:hidden">' +
@@ -2032,7 +2043,7 @@ window.KashikeyoGuestQR = (function () {
               '<span style="flex:1;min-width:0;display:block">' +
                 '<span style="display:block;font-size:14px;font-weight:600;color:var(--k-ink-1)">' + esc(m.name) + '</span>' +
                 (opt ? '<span style="display:block;font-size:12.5px;color:var(--k-mute);margin-top:2px">' + esc(opt) + '</span>' : '') +
-                '<span class="q-chip" style="background:' + tint[st.stage][0] + ';color:' + tint[st.stage][1] + '">' + self.stageName(st.stage) + '</span>' +
+                '<span class="q-chip" style="background:' + (tint[st.stage] || tint[0])[0] + ';color:' + (tint[st.stage] || tint[0])[1] + '">' + self.stageName(st.stage) + '</span>' +
               '</span>' +
               '<span style="display:block;text-align:right;flex-shrink:0">' +
                 '<span style="display:block;font-size:12.5px;color:var(--k-mute)">×' + l.qty + '</span>' +
