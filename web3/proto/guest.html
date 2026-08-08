@@ -1349,8 +1349,18 @@ window.KashikeyoGuestQR = (function () {
        matched at all), which declared the table paid with no till confirmation
        whatsoever. A settled order stays ON the ticket (see buildTicket) rather
        than disappearing, so `!tk.lines.length` was never really a "till closed
-       it" signal to begin with — `tk.settled` is the one true source. */
-    if (!this.s.paid && tk && tk.settled) {
+       it" signal to begin with — `tk.settled` is the one true source.
+       tk.settled reflects the TABLE's whole shared ticket, not this phone's own
+       activity — right for a second phone at the same table checking in on a
+       bill it helped run up, wrong for a guest who has done NOTHING yet. A
+       table turns over constantly on a real, busy store: scan a table minutes
+       after the last party paid and settled is already true from THEIR receipt,
+       with nothing to do with the new party's meal that hasn't started. Require
+       this phone to have actually taken part this session — sent a round, or
+       be waiting on its own "confirm & pay" — before trusting the table's
+       settled flag applies to it. This is independent of any recency window on
+       the server; it closes the gap outright rather than narrowing it. */
+    if (!this.s.paid && tk && tk.settled && (this.s.sent.length || st)) {
       this.s.paid = {
         ref: (st && st.ref) || this.billRef(),
         total: (st && st.total) || this.billTotal(),
@@ -1368,7 +1378,7 @@ window.KashikeyoGuestQR = (function () {
     if (was) {   // skip the first pull — seed the baseline silently, no toast on load
       if (t2.assistAck && !was.assist) this.toast('A server is on the way to your table');
       else if (t2.billAck && !was.bill) this.toast('A cashier is on the way with your bill');
-      else if (t2.settled && !was.settled) this.toast('Bill settled — thank you');
+      else if (t2.settled && !was.settled && (this.s.sent.length || st)) this.toast('Bill settled — thank you');
       /* A resumed session (restore(), from localStorage — possibly hours or
          days old) can point at a round the till's feed no longer has any
          record of at all: never marked paid locally (so restore() didn't
