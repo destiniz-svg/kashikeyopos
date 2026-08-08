@@ -211,6 +211,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      Refund sales put the ingredients back under a distinct ref. */
   async function processSales(orgId, sales) {
     const touched = new Set();
+    let maxRowver = 0;
     for (const sale of sales || []) {
       if (!sale || !Array.isArray(sale.lines) || !sale.id) continue;
       const isRefund = sale.type === "refund";
@@ -236,6 +237,13 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
               perIngredient.set(rl.ingredient_id, prev + Number(rl.qty) * sold);
             }
           }
+          // AUDIT-CRIT-OVERSELL: a till sale must never be rejected for insufficient
+          // stock (offline resilience — see the /api/ops comment on that), so this
+          // can legitimately drive current_stock negative. That's accepted, but
+          // silent — nothing told a manager it happened. Flag it onto the sale via
+          // the same serverAudit mechanism the money check already uses, so it
+          // surfaces in Payments > Review like any other unreconciled sale.
+          const oversold = [];
           for (const [ingredientId, baseQty] of perIngredient) {
             const ins = await client.query(
               `INSERT INTO stock_moves (org_id, id, ingredient_id, store_id, kind, qty, unit_cost, ref)
@@ -245,15 +253,34 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
                RETURNING 1`,
               [orgId, uid(), ingredientId, sale.storeId || "main", isRefund ? "refund" : "sale", round3(sign * baseQty), ref]);
             if (ins.rowCount) {
-              await client.query(
-                "UPDATE ingredients SET current_stock = current_stock + $3, updated_at = now() WHERE org_id=$1 AND id=$2",
+              const upd = await client.query(
+                "UPDATE ingredients SET current_stock = current_stock + $3, updated_at = now() WHERE org_id=$1 AND id=$2 RETURNING current_stock, name, base_unit",
                 [orgId, ingredientId, round3(sign * baseQty)]);
               touched.add(ingredientId);
+              if (!isRefund && upd.rowCount && Number(upd.rows[0].current_stock) < 0) {
+                oversold.push(`Oversold ${upd.rows[0].name} by ${round3(-Number(upd.rows[0].current_stock))} ${upd.rows[0].base_unit}`);
+              }
+            }
+          }
+          if (oversold.length) {
+            const cur = await client.query(
+              "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND id=$2 AND deleted=false FOR UPDATE", [orgId, sale.id]);
+            if (cur.rowCount) {
+              const data = cur.rows[0].data || {};
+              const prevAudit = (data.serverAudit && data.serverAudit.flagged) ? data.serverAudit
+                : { flagged: true, at: Date.now(), claimedTotal: Number(data.total) || 0, computedTotal: Number(data.total) || 0, reasons: [] };
+              const prevReasons = Array.isArray(prevAudit.reasons) ? prevAudit.reasons : [];
+              data.serverAudit = Object.assign({}, prevAudit, { flagged: true, reasons: [...new Set([...prevReasons, ...oversold])] });
+              const r = await client.query(
+                "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='sales' AND id=$2 RETURNING rowver",
+                [orgId, sale.id, JSON.stringify(data)]);
+              maxRowver = Math.max(maxRowver, Number(r.rows[0].rowver));
             }
           }
         });
       } catch (e) { recordError("inventory deduction " + ref, e); }
     }
+    if (maxRowver && poke) poke(orgId, maxRowver);
     if (touched.size) await recomputeAvailability(orgId, [...touched]);
     if ((sales || []).some((s) => s && Array.isArray(s.lines) && s.lines.length)) await recomputeBestSellers(orgId);
   }

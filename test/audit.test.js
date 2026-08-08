@@ -218,6 +218,60 @@ describe("stock ledger", () => {
     await H.until(async () => (await stockOf("s-milk")) === 1000);
     assert.equal(await stockOf("s-milk"), 1000, "refund restores stock");
   });
+
+  /* AUDIT-CRIT-OVERSELL gap fix: a till sale is never rejected for
+     insufficient stock (offline resilience — the till can't do real-time
+     locking either), so it can legitimately drive current_stock negative.
+     That's accepted, but was previously silent. Prove it now surfaces via
+     the same serverAudit/flags mechanism the money check already uses. */
+  test("a till sale that oversells an ingredient is flagged for manager review, not silently allowed through", async () => {
+    const o = await H.registerOrg({ tag: "oversell" });
+    await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "ov-bean", name: "Beans", baseUnit: "g", location: "Dry" });
+    await H.invPost({ cookie: o.cookie }, "/adjust", { ingredientId: "ov-bean", mode: "correct", qty: 5 }); // only 5g on hand
+    await H.ops(o.token, [{ opId: "ov-p", puts: [{ kind: "products", id: "ov-coffee", data: { id: "ov-coffee", name: "Coffee", price: 4000 } }] }]);
+    await H.invPut({ cookie: o.cookie }, "/recipes/ov-coffee", { lines: [{ ingredientId: "ov-bean", qty: 10 }] }); // needs 10g/cup
+    const saleData = { id: "ov-sale", type: "sale", no: "INV-OV", lines: [{ pid: "ov-coffee", qty: 1, price: 4000, taxable: true }], subtotal: 4000, gst: 320, total: 4320, payments: [{ method: "Cash", amount: 4320 }] };
+    const push = await H.ops(o.token, [{ opId: "ov-op", puts: [{ kind: "sales", id: "ov-sale", data: saleData }] }]);
+    assert.equal(push.status, 200, "the sale is accepted despite insufficient stock");
+    const flagged = await H.until(async () => {
+      const f = ((await H.invGet(o.token, "/flags")).json || {}).sales || [];
+      const hit = f.find((s) => s.id === "ov-sale");
+      return (hit && Array.isArray(hit.reasons) && hit.reasons.some((r) => /Oversold/.test(r))) ? hit : null;
+    });
+    assert.ok(flagged, "the oversold sale is flagged with an Oversold reason for the Payments > Review tab");
+  });
+});
+
+/* ── AUDIT-MED-CONFLICT gap fix: a client is told when its own write lost a
+   conflict, instead of the staleness guard silently keeping the newer stored
+   copy with no signal — see the /api/ops handler's droppedWrites tracking. */
+describe("conflict visibility (AUDIT-MED-CONFLICT)", () => {
+  test("a stale push (older updatedAt) is reported back as dropped, not silently reverted", async () => {
+    const o = await H.registerOrg({ tag: "conflict" });
+    await H.ops(o.token, [{ opId: "cf-1", puts: [{ kind: "products", id: "cf-item", data: { id: "cf-item", name: "New Name", price: 1000, updatedAt: 2000 } }] }]);
+    const r2 = await H.ops(o.token, [{ opId: "cf-2", puts: [{ kind: "products", id: "cf-item", data: { id: "cf-item", name: "Stale Name", price: 999, updatedAt: 1000 } }] }]);
+    assert.equal(r2.status, 200);
+    assert.ok(r2.json.dropped && r2.json.dropped.some((d) => d.kind === "products" && d.id === "cf-item"), "the stale push is reported as dropped");
+    const cur = await H.pullEntity(o.token, "products", (e) => e.id === "cf-item");
+    assert.equal(cur.data.name, "New Name", "the newer data is what's actually stored — the stale push never applied");
+  });
+
+  test("a normal (non-conflicting) push reports no drops", async () => {
+    const o = await H.registerOrg({ tag: "conflict-ok" });
+    const r = await H.ops(o.token, [{ opId: "cfo-1", puts: [{ kind: "products", id: "cfo-item", data: { id: "cfo-item", name: "Item", price: 500, updatedAt: 1000 } }] }]);
+    assert.equal(r.status, 200);
+    assert.equal(r.json.dropped, undefined, "no dropped field when nothing was overridden");
+  });
+
+  test("either side missing updatedAt still lets the incoming write through (unchanged fallback, not reported as dropped)", async () => {
+    const o = await H.registerOrg({ tag: "conflict-nots" });
+    await H.ops(o.token, [{ opId: "cfn-1", puts: [{ kind: "products", id: "cfn-item", data: { id: "cfn-item", name: "First" } }] }]);
+    const r2 = await H.ops(o.token, [{ opId: "cfn-2", puts: [{ kind: "products", id: "cfn-item", data: { id: "cfn-item", name: "Second" } }] }]);
+    assert.equal(r2.status, 200);
+    assert.equal(r2.json.dropped, undefined, "the no-timestamp fallback always applies the incoming write, so there's nothing to report");
+    const cur = await H.pullEntity(o.token, "products", (e) => e.id === "cfn-item");
+    assert.equal(cur.data.name, "Second", "incoming still wins when neither side can be compared");
+  });
 });
 
 /* ── Guest / QR orders + counter-modify linkage ──────────────────────── */

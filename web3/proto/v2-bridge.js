@@ -88,6 +88,13 @@
           }).then(function (j) {
             // Confirmed by the server → drop from the outbox.
             try { console.log("[v2] sale synced", o.id, "MVR", (o.total / 100).toFixed(2), "rowver", j && j.rowver); } catch (e) {}
+            // AUDIT-MED-CONFLICT: the server's staleness guard can keep the
+            // stored (newer) copy over this device's push with no other
+            // signal — tell the terminal so it can flag it instead of the
+            // local copy quietly diverging until the next scheduled pull.
+            if (j && Array.isArray(j.dropped) && j.dropped.length) {
+              try { window.dispatchEvent(new CustomEvent("ks-write-superseded", { detail: j.dropped })); } catch (e) {}
+            }
             return delOp(o.id);
           }).catch(function (e) {
             o.attempts = (o.attempts || 0) + 1; o.error = String(e && e.message || e);

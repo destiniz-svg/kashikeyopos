@@ -2803,7 +2803,13 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     /* Persist on a short debounce rather than every keystroke. */
     this._cartIv=setInterval(function(){me.saveCart();},1500);
 
-    try{if(typeof window!=='undefined'&&window.__ksOutbox){var apply=function(st){me.setState({outbox:st.pending,syncErr:(st.pending&&st.lastErr)?st.lastErr:''});};this._obUnsub=window.__ksOutbox.subscribe(apply);apply(window.__ksOutbox.status());}}catch(e){}
+    try{if(typeof window!=='undefined'&&window.__ksOutbox){var apply=function(st){me.setState({outbox:st.pending,syncErr:(st.pending&&st.lastErr)?st.lastErr:''});
+      /* AUDIT-MED-CONFLICT: the server's staleness guard can keep the stored
+         (newer) copy over one of this till's pushes with no other signal —
+         tell the cashier instead of letting the local copy quietly revert on
+         the next pull with no explanation. */
+      if(st.dropped&&st.dropped.length){me.toast((st.dropped.length===1?'A change':st.dropped.length+' changes')+' were overridden by a more recent update');try{window.__ksOutbox.clearDropped();}catch(e){}}
+    };this._obUnsub=window.__ksOutbox.subscribe(apply);apply(window.__ksOutbox.status());}}catch(e){}
     try{var setNet=function(){var on=(typeof navigator==='undefined')||navigator.onLine!==false;me.setState({online:on});if(on){try{if(window.__ksOutbox)window.__ksOutbox.flush();}catch(e){}me.drawSeq(20);}};window.addEventListener('online',setNet);window.addEventListener('offline',setNet);this._netH=setNet;setNet();}catch(e){}
     this.restoreSeqBlock();this.drawSeq(20);}
   devId(){try{var d=localStorage.getItem('kashikeyo_dev');if(!d){d=Math.random().toString(36).slice(2,5).toUpperCase();localStorage.setItem('kashikeyo_dev',d);}return d;}catch(e){return 'X';}}

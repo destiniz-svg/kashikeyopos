@@ -1879,6 +1879,14 @@ class Component extends DCLogic {
       };
       this._pollOutboxCount();
       this._v2OutboxIv = setInterval(this._pollOutboxCount, 4000);
+      // AUDIT-MED-CONFLICT: v2-bridge.js fires this when the server's
+      // staleness guard kept its own (newer) copy over one of this device's
+      // pushes — tell the operator instead of letting it silently revert.
+      this._v2Dropped = (ev) => {
+        const n = (ev && ev.detail && ev.detail.length) || 0;
+        if (n) this.toast(n === 1 ? "A change was overridden by a more recent update" : n + " changes were overridden by more recent updates", "warn");
+      };
+      window.addEventListener("ks-write-superseded", this._v2Dropped);
     }
     if (!Object.keys(this.state.tickets).length) this.seed();
   }
@@ -1890,6 +1898,7 @@ class Component extends DCLogic {
     window.removeEventListener("resize", this._onResize);
     if (this._flush) { window.removeEventListener("visibilitychange", this._flush); window.removeEventListener("pagehide", this._flush); }
     if (this._v2NetH) { window.removeEventListener("online", this._v2NetH); window.removeEventListener("offline", this._v2NetH); }
+    if (this._v2Dropped) window.removeEventListener("ks-write-superseded", this._v2Dropped);
     clearInterval(this._v2OutboxIv);
   }
 
