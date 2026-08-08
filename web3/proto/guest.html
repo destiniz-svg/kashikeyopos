@@ -2279,16 +2279,21 @@ window.KashikeyoGuestQR = (function () {
     var nCart = s.cart.reduce(function (a, l) { return a + l.qty; }, 0);
 
     if (s.screen === 'menu') {
-      /* A just-settled order deliberately stays ON the till's ticket for a
-         while (so the receipt/thank-you screen has something to show) — see
-         buildTicket() and guestOrders()'s recency window. That's right for
-         the bill screen, but on the HOME screen it meant a paid table kept
-         showing "View order · All served" with nothing left to do. Once
-         paid, this bar has nothing to add — order history is still one tap
-         away via the menu sheet's "My orders". */
-      if (s.paid) return '';
       var tl = this.tableLines();
-      if (!nCart && !tl.length) return '';
+      /* Whether this bar has anything to show is a LIVE question, not a
+         sticky one — the guest can add a fresh round to the cart at any
+         time, including right after paying (dessert, one more drink), and
+         that must bring the bar straight back. So the hide check reads the
+         CURRENT ticket (tk.settled) rather than s.paid, which — once set —
+         persists for the rest of the session and would otherwise keep this
+         bar hidden forever even with new, unsent items sitting in the cart.
+         A just-settled order deliberately stays ON the ticket for a while
+         (buildTicket()/guestOrders()'s recency window — right for the bill/
+         receipt screen), so "nothing to view" here specifically means: no
+         cart, AND (nothing on the ticket at all, OR the ticket confirms
+         everything on it is settled). */
+      var tk = this.A.ticket ? this.A.ticket() : null;
+      if (!nCart && (!tl.length || (tk && tk.settled))) return '';
       var T = this.bill(this.tableSub() + this.cartSub());
       /* One line each, no wrapping: this bar sits over the menu and must never
          grow. The exact bill to the laari lives on the order screen. */
