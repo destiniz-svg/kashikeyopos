@@ -1544,6 +1544,15 @@ const NAVDEF = [
 
 class Component extends DCLogic {
   SKEY = "kashikeyo.session.v3";
+  // AUDIT: the lock screen (modal.kind==='lock' — manual Lock, idle auto-lock,
+  // sign-out, the Escape shortcut) was pure in-memory state. initialSession()
+  // re-derives its session from window.KPOS_REAL.me — the server-authenticated
+  // identity — on every boot, with no regard for whatever was showing before a
+  // reload. A refresh while "locked" landed straight back in the fully signed-in
+  // terminal: no PIN, no second tab needed, just F5. This tiny dedicated key
+  // (not the big debounced SKEY blob, which could still be mid-write when a
+  // refresh lands) is the one thing checked before anything else boots.
+  LOCK_KEY = "kashikeyo.v2.locked";
   // Service state survives a reload: a terminal that forgets open tables on
   // refresh is a demo, not a till.
   _searchRef = React.createRef();
@@ -1552,6 +1561,7 @@ class Component extends DCLogic {
   _floorPaneRef = React.createRef();
   _menuRef = React.createRef();
   _saved = this.restore();
+  _locked = (() => { try { return localStorage.getItem(this.LOCK_KEY) === "1"; } catch (e) { return false; } })();
 
   state = {
     ready: !!window.KPOS,
@@ -1606,7 +1616,7 @@ class Component extends DCLogic {
     cat: "all",
     search: "",
     toast: null,
-    modal: null,
+    modal: this._locked ? { kind: "lock" } : null,
     tip: this.props.showHint !== false,
     sel: null,
     // The "Create with AI" tab (Menu Master): a name + a line of detail →
@@ -1682,9 +1692,20 @@ class Component extends DCLogic {
   tkAge(t) { return t ? this.ageMin(t.openedAt, t.opened || 0) : 0; }
   lineAge(l) { return l ? this.ageMin(l.firedAt, l.since || 0) : 0; }
   deviceCode() { return "POS-1 · " + (this.outlet().code || ""); }
+  // Every path that shows the lock screen routes through here so LOCK_KEY is
+  // always written before the modal is — synchronously, not on the debounced
+  // SKEY snapshot, so a refresh a moment later can't land in the gap and boot
+  // straight past the lock (see LOCK_KEY's own comment).
+  lockScreen(extra, clearSession) {
+    try { localStorage.setItem(this.LOCK_KEY, "1"); } catch (e) {}
+    const patch = { modal: Object.assign({ kind: "lock" }, extra || {}) };
+    if (clearSession) patch.session = null;
+    this.setState(patch);
+  }
   // Signing in switches the acting role too — a shared till has one identity at
   // a time, and it is the person, not the browser, that the audit log names.
   signIn(u) {
+    try { localStorage.removeItem(this.LOCK_KEY); } catch (e) {}
     const first = NAVDEF.reduce((a, g) => a.concat(g[1]), []).find((it) => {
       const r = (K().ROLES || []).find((x) => x.key === u.role) || { perms: {} };
       const p = r.perms[it[0]]; return p && p.v && this.siteHas(it[0]);
@@ -1738,7 +1759,7 @@ class Component extends DCLogic {
   }
   signOut() {
     const n = (this.state.session || {}).name;
-    this.setState({ session: null, modal: { kind: "lock" } });
+    this.lockScreen(null, true);
     if (n) this.queue("sign_out", n + " signed out · " + this.deviceCode(), "sessions");
   }
   // Company-account sign out: clears the kashikeyo_session cookie on the server
@@ -1767,7 +1788,7 @@ class Component extends DCLogic {
   guardRegister() {
     // Session first: a register left open by the previous person is the normal
     // state all shift, so checking it first made the session test unreachable.
-    if (!this.state.session) { this.setState({ modal: { kind: "lock" } }); this.toast("Sign in before ringing a sale", "warn"); return false; }
+    if (!this.state.session) { this.lockScreen(); this.toast("Sign in before ringing a sale", "warn"); return false; }
     if (this.registerOpen()) return true;
     this.openForm("regopen");
     this.toast("Register is closed — open it before taking an order", "warn");
@@ -1799,7 +1820,7 @@ class Component extends DCLogic {
 
   // A terminal with nobody signed in is a locked terminal.
   requireSignIn() {
-    if (!this.state.session && !this.state.modal) this.setState({ modal: { kind: "lock" } });
+    if (!this.state.session && !this.state.modal) this.lockScreen();
   }
   componentDidMount() {
     this._onResize = () => {
@@ -1858,7 +1879,7 @@ class Component extends DCLogic {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (/^[0-9]$/.test(e.key)) { e.preventDefault(); this.lockType(e.key); }
       else if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); this.lockType("back"); }
-      else if (e.key === "Escape") { e.preventDefault(); this.setState({ modal: { kind: "lock" } }); }
+      else if (e.key === "Escape") { e.preventDefault(); this.lockScreen(); }
     };
     window.addEventListener("keydown", this._pinKey);
     this._flush = () => { clearTimeout(this._ps); this.writeSession(); };
@@ -2070,6 +2091,8 @@ class Component extends DCLogic {
   // screen that dims every panel. They can still lock or switch user from the
   // identity menu. Demo/preview keeps the saved-session-or-lock behaviour.
   initialSession() {
+    // A persisted lock outranks the ambient server identity — see LOCK_KEY.
+    if (this._locked) return null;
     const me = window.KPOS_REAL && window.KPOS_REAL.me;
     if (me && me.roleKey) {
       const rk = String(me.roleKey);
@@ -3795,7 +3818,7 @@ class Component extends DCLogic {
             pin: this.staffReal() ? "" : ("PIN " + (u.pin || "----")),
             pinStyle: this.staffReal() ? "display:none" : "flex-shrink:0;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;color:var(--amber-bright);background:var(--amber-dim);padding:5px 9px;border-radius:7px",
             style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
-            go: () => this.setState({ modal: { kind: "lock", who: u.user, pin: "" } })
+            go: () => this.lockScreen({ who: u.user, pin: "" })
           })),
           lockHint: this.staffReal()
             ? "Tap your name, then key your own 4-digit PIN. PINs are checked on the server and never shown here \u2014 a visible or shared PIN would make every \u201cwho voided this\u201d answer in the audit log a guess. A suspended account is refused at the keypad."
@@ -3816,7 +3839,7 @@ class Component extends DCLogic {
         modalTitle: "Enter PIN", modalSub: this.outlet().name + " · " + this.deviceCode(),
         lockPicking: false, lockPin: true,
         lockWhoName: u.name, lockWhoRole: whoRole, lockWhoIni: ini(u.name || "?"), lockWhoAv: av(role.color),
-        lockBack: () => this.setState({ modal: { kind: "lock" } }),
+        lockBack: () => this.lockScreen(),
         lockDots: [0, 1, 2, 3].map((i) => "width:13px;height:13px;border-radius:50%;background:" + (i < entered.length ? "var(--amber)" : "transparent") + ";border:1.5px solid " + (i < entered.length ? "var(--amber)" : "var(--line-3)")),
         lockErr: m.err || (realMode ? (m.busy ? "Checking…" : "Enter your 4-digit PIN") : ("Demo PIN " + demoPin)), lockErrStyle: m.err ? "font-size:11.5px;color:var(--red-bright);text-align:center" : "font-size:11px;color:var(--text-faint);text-align:center;font-family:'JetBrains Mono',monospace;letter-spacing:.06em",
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
@@ -3848,7 +3871,7 @@ class Component extends DCLogic {
         go: () => { this.setState({ modal: null }); setTimeout(() => this.accountSignOut(), 0); }
       };
       if (!sess) {
-        const more = [{ label: "Sign in with a PIN", sub: "Tap your name, key four digits — nothing on this till moves without it", style: on, go: () => this.setState({ modal: { kind: "lock" } }) }];
+        const more = [{ label: "Sign in with a PIN", sub: "Tap your name, key four digits — nothing on this till moves without it", style: on, go: () => this.lockScreen() }];
         if (mayAccount) more.push(acctAction);
         return { modalTitle: "Terminal locked", modalSub: this.outlet().name + " · " + this.deviceCode(), moreActions: more };
       }
@@ -5273,7 +5296,7 @@ class Component extends DCLogic {
     if (this.state.modal && this.state.modal.kind === "lock") return;
     if (Date.now() - (this.state.lastTouch || 0) < mins * 60000) return;
     this.queue("auto_lock", this.me() + " · terminal locked after " + mins + " minutes idle", "sessions");
-    this.setState({ session: null, modal: { kind: "lock" } });
+    this.lockScreen(null, true);
     this.toast("Locked after " + mins + " minutes idle", "warn");
   }
   touch() { if (Date.now() - (this.state.lastTouch || 0) > 20000) this.setState({ lastTouch: Date.now() }); }
