@@ -3958,9 +3958,40 @@ const GUEST_V3_CSP = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
   "connect-src 'self' blob: data:", "frame-ancestors 'none'",
+  // The per-store web-app manifest (see portalManifestLink) is a data: URI, not
+  // a route — default-src alone would block the browser's manifest fetch.
+  "manifest-src data:",
 ].join("; ");
 const guestV3File = path.join(__dirname, "web3", "proto", "guest.html");
 const hasGuestV3 = () => { try { return fs.existsSync(guestV3File); } catch (e) { return false; } };
+// A store's own guest/member portal is installable — "Add to Home Screen" on a
+// phone launches it standalone (no browser chrome), icon and name matching the
+// STORE, not the generic platform. The manifest is built per-request (not a
+// static file) so the name is always the store's current one and start_url
+// matches however this guest actually reached the page — the branded
+// subdomain when PORTAL_BASE_DOMAIN routing is live, else the ?s= link — so
+// relaunching from the home-screen icon returns to the same door they used.
+// Kept as a data: URI rather than a new route: these pages are already
+// rendered fresh per request with no caching, so a real file would either go
+// stale or need its own no-store route for no benefit.
+function portalManifestLink(req, org, brandName, basePath) {
+  basePath = basePath || "/";
+  const name = String(brandName || org.store_name || "Order online").slice(0, 45);
+  const onSubdomain = portalSlugFromHost(req) === org.slug;
+  const startUrl = onSubdomain ? basePath : basePath + "?s=" + encodeURIComponent(org.slug);
+  const manifest = {
+    name: name, short_name: name.slice(0, 20), start_url: startUrl, scope: "/",
+    display: "standalone", background_color: "#fffdf6", theme_color: "#fffdf6",
+    icons: [
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { src: "/icon-512-maskable.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+    ],
+  };
+  const href = "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifest));
+  return '<link rel="icon" href="/icon-192.png"><link rel="apple-touch-icon" href="/icon-180.png">' +
+    '<link rel="manifest" href="' + href + '">';
+}
 // Cache-bust the /v2 logic assets per deploy. The HTML is served no-cache, but
 // /v2/*.js is cached (5m browser + longer at a CDN/Cloudflare edge), so after a
 // deploy a browser could keep running an OLD kashikeyo-data.js — which ignores the
@@ -3988,7 +4019,8 @@ const serveGuestV3 = async (req, res, org, opts = {}) => {
   }
   const safeTitle = String((real.brand && real.brand.name) || org.store_name || "Order online").replace(/[<>&"]/g, "") + " · Order online";
   let html = fs.readFileSync(guestV3File, "utf8");
-  const inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
+  const inject = portalManifestLink(req, org, real.brand && real.brand.name) +
+    "\n<script>window.KPOS_REAL=" + JSON.stringify(real).replace(/</g, "\\u003c") + ";</script>";
   html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject)
     .replace(/<title>[^<]*<\/title>/i, "<title>" + safeTitle + "</title>");
   html = bustV2Assets(html);   // per-deploy ?v= so a cached kashikeyo-data.js can't strand the store on demo branding
@@ -4028,7 +4060,8 @@ const serveMemberPortal = async (req, res, org) => {
     menu: real.menu || [], categories: real.categories || [], tables: tables };
   const safeTitle = String((real.brand && real.brand.name) || org.store_name || "Rewards").replace(/[<>&"]/g, "") + " Rewards";
   let html = fs.readFileSync(memberV3File, "utf8");
-  const inject = "\n<script>window.KPOS_REAL=" + JSON.stringify(payload).replace(/</g, "\\u003c") + ";</script>";
+  const inject = portalManifestLink(req, org, real.brand && real.brand.name, "/m") +
+    "\n<script>window.KPOS_REAL=" + JSON.stringify(payload).replace(/</g, "\\u003c") + ";</script>";
   html = html.replace('<base href="/v2/">', '<base href="/v2/">' + inject)
     .replace(/<title>[^<]*<\/title>/i, "<title>" + safeTitle + "</title>");
   html = bustV2Assets(html);
