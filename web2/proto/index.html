@@ -2477,7 +2477,13 @@ const a=(typeof s.accent==='string'&&s.accent.charAt(0)==='#'&&s.accent.length>=
     upd.statement=stmt;upd.stmtOpen=true;upd.stmtSeq=(s.stmtSeq||0)+1;
     const nh=Object.assign({},s.stmtHist);nh[cid]=hist;upd.stmtHist=nh;
     const ptl=Object.assign({},s.tabLog);ptl[cid]=[{type:'payment',method:m,methodLbl:this.t(mk),amt:pay,at:Date.now(),date:rec.date,time:rec.time}].concat(ptl[cid]||[]).slice(0,40);upd.tabLog=ptl;
-    try{const store={ts:Date.now(),customers:s.recv.map(c=>({id:c.id,name:c.name,dv:c.dv,bal:c.id===cid?remain:c.bal})),statements:[stmt].concat((JSON.parse(localStorage.getItem('kashikeyo_statements')||'{}').statements)||[]).slice(0,40),history:nh};localStorage.setItem('kashikeyo_statements',JSON.stringify(store));}catch(e){}
+    /* AUDIT-HIGH-PII: this is the most sensitive of the till's browser-storage
+       caches (customer names + balances + full payment history) and nothing
+       in this app ever reads it back — it's written, never re-read into
+       state. sessionStorage instead of localStorage costs nothing (still
+       there for the rest of this tab session) but clears the moment the
+       browser closes, so a lost/stolen device stops carrying it indefinitely. */
+    try{const store={ts:Date.now(),customers:s.recv.map(c=>({id:c.id,name:c.name,dv:c.dv,bal:c.id===cid?remain:c.bal})),statements:[stmt].concat((JSON.parse(sessionStorage.getItem('kashikeyo_statements')||'{}').statements)||[]).slice(0,40),history:nh};sessionStorage.setItem('kashikeyo_statements',JSON.stringify(store));}catch(e){}
     this.setState(upd);const nm=s.lang==='dv'?cust.dv:cust.name;var me=this;
     try{fetch('/api/app2/customer/'+encodeURIComponent(cid)+'/settle',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:Math.round(pay*100),method:m})})
       .then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});})
