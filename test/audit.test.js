@@ -619,3 +619,90 @@ describe("security", () => {
     assert.equal((await H.ops(o.token, [{ opId: "az-1", puts: [{ kind: "products", id: "az-p", data: { id: "az-p", name: "X", price: 100 } }] }])).status, 200, "till sync still works");
   });
 });
+
+/* ── Production-readiness audit fixes (2026-08-08) ──────────────────────
+   Regression coverage for the findings closed in that pass. Each test name
+   carries the finding's id so a future regression points straight back here. */
+const jwt = require("jsonwebtoken");
+const FORGE_SECRET = "test-secret"; // matches helpers.js childEnv.JWT_SECRET
+
+describe("shift close is not re-closeable (AUDIT-C1)", () => {
+  test("re-posting close against an already-closed shift id 404s instead of overwriting the true variance", async () => {
+    const o = await H.registerOrg({ tag: "shiftreclose" });
+    const open = await H.req("POST", "/api/app2/shift", { cookie: o.cookie, body: { action: "open", float: 10000 } });
+    assert.equal(open.status, 200, "shift opens");
+    const shiftId = open.json.id;
+    const close1 = await H.req("POST", "/api/app2/shift", { cookie: o.cookie, body: { action: "close", id: shiftId, counted: 5000 } });
+    assert.equal(close1.status, 200, "first close succeeds");
+    // A shortage was recorded honestly: expected = float(100) + 0 cash sales = 100, counted 50 → variance -50.
+    assert.equal(close1.json.shift.variance, -50, "true shortage recorded on first close");
+    // Re-posting the SAME shift id — previously skipped the status='open' guard
+    // that only the id-less fallback lookup enforced, silently re-running the
+    // whole computation and overwriting counted/expected/variance.
+    const close2 = await H.req("POST", "/api/app2/shift", { cookie: o.cookie, body: { action: "close", id: shiftId, counted: 10000 } });
+    assert.equal(close2.status, 404, "a second close on the same shift id is refused, not silently re-applied");
+  });
+});
+
+describe("sales are immutable once settled (AUDIT-C2)", () => {
+  test("re-pushing an existing sale id with a different total does not overwrite the stored money", async () => {
+    const o = await H.registerOrg({ tag: "saleimmut" });
+    const original = { id: "immut-sale", type: "sale", no: "INV-IMMUT", lines: [{ pid: "x", qty: 1, price: 10800 }], subtotal: 10000, gst: 800, total: 10800, payments: [{ method: "cash", amount: 10800 }] };
+    assert.equal((await H.ops(o.token, [{ opId: "im-1", puts: [{ kind: "sales", id: "immut-sale", data: original }] }])).status, 200);
+    // Re-push the same id with a slashed, internally-self-consistent total and
+    // a NEWER updatedAt so the pre-existing staleness guard alone would have
+    // let it through — this is exactly the "resubmit with a different total"
+    // attack the money-audit's own internal-consistency check cannot catch.
+    const tampered = { id: "immut-sale", type: "sale", no: "INV-IMMUT", lines: [{ pid: "x", qty: 1, price: 100 }], subtotal: 93, gst: 7, total: 100, payments: [{ method: "cash", amount: 100 }], updatedAt: Date.now() + 60000 };
+    assert.equal((await H.ops(o.token, [{ opId: "im-2", puts: [{ kind: "sales", id: "immut-sale", data: tampered } ] }])).status, 200, "the resubmit itself still syncs (offline-safe)");
+    const stored = await H.pullEntity(o.token, "sales", (e) => e.id === "immut-sale");
+    assert.equal(stored.data.total, 10800, "stored total is unchanged by the resubmit");
+    assert.equal(stored.data.payments[0].amount, 10800, "stored payment is unchanged by the resubmit");
+  });
+
+  test("a brand-new sale id still inserts normally (the guard only protects an existing settled row)", async () => {
+    const o = await H.registerOrg({ tag: "saleimmutnew" });
+    const fresh = { id: "fresh-sale", type: "sale", lines: [{ pid: "x", qty: 1, price: 500 }], subtotal: 463, gst: 37, total: 500 };
+    assert.equal((await H.ops(o.token, [{ opId: "fn-1", puts: [{ kind: "sales", id: "fresh-sale", data: fresh }] }])).status, 200);
+    const stored = await H.pullEntity(o.token, "sales", (e) => e.id === "fresh-sale");
+    assert.equal(stored.data.total, 500, "first insert of a new sale id is untouched by the immutability guard");
+  });
+});
+
+describe("cash payouts count against shift-close expected cash (AUDIT-C3)", () => {
+  test("a cash paidout expense during the shift reduces expected cash, not just sales/settlements", async () => {
+    const o = await H.registerOrg({ tag: "shiftpayout" });
+    const open = await H.req("POST", "/api/app2/shift", { cookie: o.cookie, body: { action: "open", float: 20000 } });
+    assert.equal(open.status, 200);
+    await H.ops(o.token, [{ opId: "po-1", puts: [{ kind: "expenses", id: "po-exp", data: { id: "po-exp", type: "paidout", amount: 5000, reason: "petty cash", t: Date.now() } }] }]);
+    const close = await H.req("POST", "/api/app2/shift", { cookie: o.cookie, body: { action: "close", id: open.json.id, counted: 15000 } });
+    assert.equal(close.status, 200);
+    // expected = float(200) - paidOut(50) = 150; counted 150 → variance 0, not -50.
+    assert.equal(close.json.shift.expected, 150, "expected cash nets off the payout");
+    assert.equal(close.json.shift.variance, 0, "a fully-accounted payout does not manufacture a false shortage");
+  });
+});
+
+describe("privileged app2 actions require rank (AUDIT-S1/S2)", () => {
+  test("/api/app2/void rejects a below-till-rank session and accepts a till-rank one", async () => {
+    const o = await H.registerOrg({ tag: "voidrbac" });
+    // Forge a validly-signed session cookie for this real org at KITCHEN rank —
+    // exercises the server-side gate itself, independent of which issuance
+    // flow can produce such a cookie today.
+    const orgId = jwt.decode(o.cookie.split("=")[1])?.o;
+    const kitchenCookie = "kashikeyo_session=" + jwt.sign({ o: orgId, role: "kitchen" }, FORGE_SECRET);
+    const tillCookie = "kashikeyo_session=" + jwt.sign({ o: orgId, role: "cashier" }, FORGE_SECRET);
+    const blocked = await H.req("POST", "/api/app2/void", { cookie: kitchenCookie, body: { kind: "bill", ref: "T1", reason: "test", amount: 1000 } });
+    assert.equal(blocked.status, 403, "below-till-rank session is refused (previously had no rank check at all)");
+    const allowed = await H.req("POST", "/api/app2/void", { cookie: tillCookie, body: { kind: "bill", ref: "T1", reason: "test", amount: 1000 } });
+    assert.equal(allowed.status, 200, "till-rank session (cashier) is still allowed");
+  });
+
+  test("/api/app2/call/:id/ack rejects a below-till-rank session", async () => {
+    const o = await H.registerOrg({ tag: "ackrbac" });
+    const orgId = jwt.decode(o.cookie.split("=")[1])?.o;
+    const kitchenCookie = "kashikeyo_session=" + jwt.sign({ o: orgId, role: "kitchen" }, FORGE_SECRET);
+    const r = await H.req("POST", "/api/app2/call/nonexistent/ack", { cookie: kitchenCookie });
+    assert.equal(r.status, 403, "below-till-rank session is refused before the call is even looked up");
+  });
+});

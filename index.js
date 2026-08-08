@@ -15,14 +15,6 @@ const { DEFAULT_MENU, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
 const PORT = process.env.PORT || 4000;
 const DEV_SECRET = "kashikeyo-dev-secret-change-me";
 const SECRET = process.env.JWT_SECRET || DEV_SECRET;
-/* SEC-1: JWT_SECRET signs every session/elevation/dev token AND derives the
-   restricted DB-role password. A production boot on the public dev fallback (or
-   a too-short secret) would let anyone forge tokens for any org, so refuse to
-   start rather than run wide open. Dev/test still use the fallback silently. */
-if (process.env.NODE_ENV === "production" && (SECRET === DEV_SECRET || SECRET.length < 16)) {
-  console.error("FATAL: JWT_SECRET must be set to a strong value (≥16 chars) in production. Refusing to boot.");
-  process.exit(1);
-}
 const MIN_PASSWORD_LEN = Number(process.env.MIN_PASSWORD_LEN) || 8; // store-owner password floor (audit §3.5)
 const DEFAULT_STORE_ID = "main";
 
@@ -51,6 +43,23 @@ const SHARED_KINDS = new Set(["settings", "customers", "units", "categories", "v
 const TIMED_KINDS = new Set(["sales", "expenses", "pords", "waiterCalls", "shifts", "settlements"]);
 const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.RAILWAY_DATABASE_URL || "";
 const hasPgEnv = !!(process.env.PGHOST || process.env.PGUSER || process.env.PGDATABASE);
+/* AUDIT-S5/SEC-1: JWT_SECRET signs every session/elevation/dev token AND
+   derives the restricted DB-role password. A boot on the public dev fallback
+   (or a too-short secret) would let anyone forge tokens for any org, so
+   refuse to start rather than run wide open. Originally gated on
+   NODE_ENV==="production" alone — safe on the documented Dockerfile path
+   (which hardcodes it), but a deploy that reaches this process any other way
+   and forgets to export NODE_ENV would boot silently on the well-known
+   default. A real Postgres target (a DATABASE_URL, or PGHOST pointed
+   somewhere other than localhost) is a second, independent signal that this
+   is not the local dev/test harness — trip the guard on either signal, not
+   NODE_ENV alone. The local harness always uses 127.0.0.1 and no
+   DATABASE_URL, so it is unaffected. */
+const looksLikeRealDeploy = !!databaseUrl || (hasPgEnv && !/localhost|127\.0\.0\.1/.test(String(process.env.PGHOST || "")));
+if ((process.env.NODE_ENV === "production" || looksLikeRealDeploy) && (SECRET === DEV_SECRET || SECRET.length < 16)) {
+  console.error("FATAL: JWT_SECRET must be set to a strong value (≥16 chars) before this can boot against a real database. Refusing to boot.");
+  process.exit(1);
+}
 const localDatabaseUrl = process.env.NODE_ENV === "production" ? "" : "postgres://kash:kash@127.0.0.1:5432/kash";
 const connectionString = databaseUrl || (hasPgEnv ? "" : localDatabaseUrl);
 const poolConfig = connectionString ? { connectionString } : {};
@@ -615,9 +624,21 @@ app.use(express.json({ limit: "4mb" }));
    origins instead. The cookie-gated pages (/app, /back, /dev, /login…) are
    navigated to directly and deliberately get no CORS headers at all. */
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+/* AUDIT-S4: the "cookie-gated pages get no CORS headers" reasoning above
+   describes /app, /back, /dev, /login (full-page navigations, never under
+   /api) — it does NOT cover /api/app2/*, /api/back/*, /api/onboard/*, which
+   ARE under /api and ARE cookie-authenticated (resolveAppSession reads
+   APP_COOKIE). Those got the wildcard fallback too whenever ALLOWED_ORIGINS
+   was unset, contradicting the stated "both authenticate with a Bearer
+   token" safety claim for exactly that surface. Only same-origin sending the
+   session cookie is safe today via SameSite=Lax, but the DEFAULT posture
+   should not depend on that alone — never wildcard for the cookie-gated API
+   prefixes, regardless of ALLOWED_ORIGINS. */
+const COOKIE_AUTH_PREFIXES = ["/api/app2", "/api/back", "/api/onboard"];
 app.use((req, res, next) => {
   if (!req.path.startsWith("/api") && !req.path.startsWith("/p/")) return next();
   const origin = req.headers.origin;
+  const cookieGated = COOKIE_AUTH_PREFIXES.some((p) => req.path.startsWith(p));
   if (allowedOrigins.length) {
     if (origin && allowedOrigins.includes(origin)) {
       res.set("Access-Control-Allow-Origin", origin);
@@ -625,9 +646,11 @@ app.use((req, res, next) => {
     }
     /* origin absent or not on the list → no ACAO header, so a browser blocks
        the cross-origin read while same-origin calls are unaffected. */
-  } else {
+  } else if (!cookieGated) {
     res.set("Access-Control-Allow-Origin", "*");
   }
+  // else: ALLOWED_ORIGINS unset AND this is a cookie-authenticated API prefix
+  // → no ACAO header at all, same as the cookie-gated pages already get.
   res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
   res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   if (req.method === "OPTIONS") return res.sendStatus(204);
@@ -1653,14 +1676,26 @@ const asOtype = (v) => {
 const orderBreakdown = (o, settings = {}) => {
   const r = Number(settings.gstBp || 800) / 10000;
   const sp = String(o.otype || "dinein") === "dinein" ? Number(settings.svcChargeBp || 0) / 10000 : 0;
+  /* AUDIT-F1: totals() (the till) supports a bill-level discount (discountPct)
+     and folds it through every downstream figure BEFORE service/GST; this had
+     no equivalent input at all, so the "must match totals() to the laari"
+     invariant only held in the always-zero-discount subset of cases — a
+     latent divergence, not currently reachable (nothing sets a discount on an
+     order today) but real the moment one is wired up. Mirrors totals()'s
+     dp/discIncl/goodsIncl shape exactly; with dp=0 every intermediate value
+     below is algebraically identical to the previous implementation. */
+  const dp = Math.max(0, Math.min(100, Number(o.discPct != null ? o.discPct : o.billDiscPct) || 0)) / 100;
   const TF = (v) => Math.round(v * r / (1 + r));
   const fee = Number(o.fee) || 0;
-  const goodsIncl = orderSubtotal(o);
-  const svcIncl = Math.round((goodsIncl - fee) * sp);  // service is on the goods, never the delivery fee
-  const total = goodsIncl + svcIncl;
+  const itemsIncl = orderSubtotal(o) - fee;
+  const discIncl = Math.round(itemsIncl * dp);
+  const goodsIncl = itemsIncl - discIncl;
+  const svcIncl = Math.round(goodsIncl * sp);  // service is on the discounted goods, never the delivery fee
+  const total = goodsIncl + fee + svcIncl;
   const gst = TF(total);
   const svc = svcIncl - TF(svcIncl);
-  return { excl: total - gst - svc, svc, gst, total };
+  const disc = discIncl - TF(discIncl);
+  return { excl: total - gst - svc, svc, gst, total, disc, discPct: dp * 100 };
 };
 const orderTotal = (o, settings = {}) => orderBreakdown(o, settings).total;
 const normalizeOrder = (o, settings = {}) => ({
@@ -2714,7 +2749,24 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
                   " || CASE WHEN NOT (excluded.data ? 'catGroups') AND entities.data ? 'catGroups' THEN jsonb_build_object('catGroups', entities.data->'catGroups') ELSE '{}'::jsonb END" +
                   " || CASE WHEN NOT (excluded.data ? 'defaultsUntracked') AND entities.data ? 'defaultsUntracked' THEN jsonb_build_object('defaultsUntracked', entities.data->'defaultsUntracked') ELSE '{}'::jsonb END" +
                   " || CASE WHEN NOT (excluded.data ? 'outletPrefs') AND entities.data ? 'outletPrefs' THEN jsonb_build_object('outletPrefs', entities.data->'outletPrefs') ELSE '{}'::jsonb END"
-                : "";
+                : p.kind === "sales"
+                  /* AUDIT-C2: a settled sale's money must be immutable once
+                     synced — nothing in this codebase legitimately rewrites
+                     total/lines/payments/tender for an id that already has a
+                     total (void goes through op.dels as a soft-delete; a
+                     refund is its own new id; the discount/refund-approval
+                     stamping above only adds managerApproved/serverAudit).
+                     Without this, the staleness guard above is the ONLY
+                     defense, and a client trivially wins it by declaring a
+                     newer updatedAt — so a re-push of the same sale id with a
+                     different total silently overwrote the original, with
+                     auditSaleMoney only checking the incoming payload's own
+                     internal math, never the record's prior state. Pin the
+                     money fields to whatever is already stored once a total
+                     exists; first-time inserts are untouched (this only
+                     applies inside DO UPDATE, never the initial INSERT). */
+                  ? " || CASE WHEN entities.data ? 'total' THEN jsonb_build_object('total', entities.data->'total', 'lines', entities.data->'lines', 'payments', entities.data->'payments', 'tender', entities.data->'tender') ELSE '{}'::jsonb END"
+                  : "";
         /* Staleness guard (audit A-M1). The upsert was pure last-write-wins: an
            OLDER push overwrote a newer one. That is why the preserve-clause
            chain above exists at all — it is a per-field patch for the same
@@ -5345,6 +5397,10 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/call/:id/ack", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    /* AUDIT-S2: this can redeem a pending reward voucher and deduct real
+       customer loyalty points — the sibling /call/:id/coming gates on rank,
+       this one didn't. */
+    if (denyAppRole(req, res, APP_RANK.TILL, "Only till staff can acknowledge a call.")) return;
     const id = String(req.params.id || "");
     const rowver = await withOrg(orgId, async (c) => {
       // Clearing a `reward` signal is the cashier honouring the voucher: mark it
@@ -5561,6 +5617,12 @@ if (fs.existsSync(protoFile)) {
   app.post("/api/app2/void", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    /* AUDIT-S1: this writes the one record meant to help a manager investigate
+       a cash discrepancy — it must not be forgeable by the person being
+       investigated. Every sibling privileged mutation in this file gates on
+       rank; this one didn't, so any authenticated staff (down to kitchen)
+       could POST an arbitrary reason/amount straight into the audit trail. */
+    if (denyAppRole(req, res, APP_RANK.TILL, "Voiding needs a till sign-in or above.")) return;
     const b = req.body || {};
     const kind = VOID_KINDS.has(String(b.kind)) ? String(b.kind) : "bill";
     const id = "vd-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
@@ -5715,7 +5777,7 @@ if (fs.existsSync(protoFile)) {
         otype: asOtype(data.otype), storeId: cleanStoreId(data.storeId || DEFAULT_STORE_ID),
         channel: data.otype === "delivery" ? "delivery" : data.otype === "takeaway" ? "takeaway" : "qr",
         lines: (data.items || []).map((it) => ({ pid: it.pid, name: it.name, qty: Number(it.qty) || 1, price: Number(it.price) || 0, amount: (Number(it.price) || 0) * (Number(it.qty) || 1), discPct: 0, taxable: it.taxable !== false, addons: it.addons })),
-        subtotal: bd.excl, svcCharge: bd.svc, gst: bd.gst, billDisc: 0, billDiscPct: 0, total: bd.total,
+        subtotal: bd.excl, svcCharge: bd.svc, gst: bd.gst, billDisc: bd.disc, billDiscPct: bd.discPct, total: bd.total,
         payments: [{ method: tender, amount: bd.total, given: bd.total, change: 0 }],
         orderId: id, source: "qr", userName: "QR portal",
       };
@@ -6322,7 +6384,16 @@ if (fs.existsSync(protoFile)) {
       const counted = Math.max(0, Math.round(Number(b.counted) || 0));
       const out = await withOrg(orgId, async (c) => {
         let cur;
-        if (b.id) cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND id=$2 AND deleted=false", [orgId, String(b.id)])).rows[0];
+        /* AUDIT-C1: the id-supplied lookup used to skip the status check the
+           fallback lookup enforces, so re-posting action:"close" against an
+           already-closed shift's id re-ran the whole computation and silently
+           overwrote its counted/expected/variance — a cashier could close once
+           honestly (recording a real shortage) then "close" again with a
+           friendlier counted figure and the true variance was gone with no
+           trace beyond a second activity_log line nobody reviews by default.
+           Require status='open' on both lookup paths so only a genuinely open
+           shift can be closed; a second close attempt now 404s. */
+        if (b.id) cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND id=$2 AND deleted=false AND data->>'status'='open'", [orgId, String(b.id)])).rows[0];
         if (!cur) cur = (await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='shifts' AND deleted=false AND data->>'status'='open' AND COALESCE(data->>'storeId',$2)=$2 ORDER BY (data->>'openedAt')::numeric DESC LIMIT 1", [orgId, storeId])).rows[0];
         if (!cur) return null;
         const data = Object.assign({}, cur.data || {});
@@ -6351,9 +6422,19 @@ if (fs.existsSync(protoFile)) {
           [orgId, sinceOpen, data.storeId || storeId])).rows.map((r) => r.data || {});
         let cashSettled = 0;
         for (const st of settleRows) if (/^cash$/i.test(String(st.method || "cash"))) cashSettled += Number(st.amount) || 0;
+        /* AUDIT-C3: cash pulled from the drawer mid-shift (a petty-cash spend,
+           a till-to-safe drop — an `expenses` row with type:'paidout') never
+           left the drawer through a sale, so it must come off expected the
+           same way a cash refund does — otherwise every payout manufactures a
+           "shortage" the cashier is blamed for. */
+        const payoutRows = (await c.query(
+          "SELECT data FROM entities WHERE org_id=$1 AND kind='expenses' AND deleted=false AND data->>'type'='paidout' AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) >= $2 AND COALESCE(data->>'storeId',$3)=$3",
+          [orgId, sinceOpen, data.storeId || storeId])).rows.map((r) => r.data || {});
+        let cashPaidOut = 0;
+        for (const po of payoutRows) cashPaidOut += Number(po.amount) || 0;
         const float = Number(data.float) || 0;
-        const expected = float + cashSales + cashSettled, variance = counted - expected;
-        Object.assign(data, { status: "closed", closedAt: Date.now(), counted, cashSales, cashSettled, cashRefunds, refunds, expected, variance, grossSales: gross, closedBy: staffName || data.staffName || "" });
+        const expected = float + cashSales + cashSettled - cashPaidOut, variance = counted - expected;
+        Object.assign(data, { status: "closed", closedAt: Date.now(), counted, cashSales, cashSettled, cashPaidOut, cashRefunds, refunds, expected, variance, grossSales: gross, closedBy: staffName || data.staffName || "" });
         const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='shifts' AND id=$2 RETURNING rowver", [orgId, data.id, JSON.stringify(data)]);
         return { rowver: Number(r.rows[0].rowver), data };
       });
