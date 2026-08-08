@@ -1218,11 +1218,21 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 </sc-if>
                 <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
                   <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:9px">{{ ordTotalLabel }}</div>
-                  <div style="display:flex;gap:7px;flex-wrap:wrap">
-                    <sc-for list="{{ ordTenders }}" as="t" hint-placeholder-count="4">
-                      <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
-                    </sc-for>
-                  </div>
+                  <sc-if value="{{ ordTenderStep }}">
+                    <div style="display:flex;gap:7px;flex-wrap:wrap">
+                      <sc-for list="{{ ordTenders }}" as="t" hint-placeholder-count="4">
+                        <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ ordRefStep }}">
+                    <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:8px">{{ ordRefTenderLabel }} · transaction reference (optional)</div>
+                    <input value="{{ ordRefVal }}" onInput="{{ onOrdRef }}" placeholder="Auth code, transfer ref, QR receipt no." style="width:100%;padding:11px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace;box-sizing:border-box;margin-bottom:10px;outline:none"/>
+                    <div style="display:flex;gap:8px">
+                      <button onClick="{{ ordRefBack }}" style="flex:1;padding:11px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--text-dim);font-size:12.5px;font-weight:700;cursor:pointer">Back</button>
+                      <button onClick="{{ ordRefSettle }}" style="flex:2;padding:11px;border-radius:8px;border:none;background:var(--go);color:var(--on-go);font-size:12.5px;font-weight:700;cursor:pointer">Settle · {{ ordRefTenderLabel }}</button>
+                    </div>
+                  </sc-if>
                 </div>
                 <button onClick="{{ cancelTrack }}" style="width:100%;margin-top:12px;padding:10px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;font-weight:600">Cancel order</button>
               </div>
@@ -4163,7 +4173,15 @@ class Component extends DCLogic {
       const nx = nextOf[ord.status];
       // A pending bill request for this table (guest tapped "Ask for the bill").
       const billReq = !!ord.billRequested || (this.liveCalls() || []).some((c) => c.kind === "bill" && String(c.table) === String(ord.table));
-      const tenders = [["cash", "Cash"], ["card", "Card"], ["wallet", "BML Pay"], ["transfer", "Transfer"]];
+      const tenders = [["cash", "Cash"], ["card", "Card"], ["wallet", "QR"], ["transfer", "Transfer"]];
+      // Card/QR/Transfer settle in two steps: pick the tender, then an optional
+      // reference (the terminal's auth code, or the number off a bank transfer/
+      // QR receipt) before it actually closes the order — cash never needs one
+      // and still settles in one tap. The reference is never required: a
+      // cashier who doesn't have one, or is mid-rush, can settle with it blank.
+      const pendingTender = m.pendingTender || "";
+      const pendingLabel = (tenders.filter((t) => t[0] === pendingTender)[0] || [])[1] || "";
+      const setRef = (patch) => this.setState({ modal: Object.assign({}, m, patch) });
       const items = (ord.items || []).map((it) => ({
         label: (it.q || 1) + "× " + (it.n || "Item"),
         rowStyle: "display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:8px;border:1px solid var(--line);margin-bottom:7px;width:100%;cursor:pointer;background:" + (it.done ? "rgba(107,191,123,.07)" : "var(--bg)"),
@@ -4187,9 +4205,16 @@ class Component extends DCLogic {
         // Settle: the money step. Records the sale + closes the order; the guest
         // portal then shows a receipt. Tender is chosen here.
         ordTotalLabel: "Settle bill · " + MVRc(ord.total),
+        ordTenderStep: !pendingTender,
         ordTenders: tenders.map((t) => ({ label: t[1],
           style: "flex:1;min-width:72px;padding:10px;border-radius:8px;font-size:12px;font-weight:700;text-align:center;border:1px solid var(--go-line);background:var(--go-dim);color:var(--go-bright);cursor:pointer",
-          pick: () => this.settleOrder(ord.id, t[0], ord.no) })),
+          pick: () => t[0] === "cash" ? this.settleOrder(ord.id, "cash", ord.no, "") : setRef({ pendingTender: t[0], txnRef: "" }) })),
+        ordRefStep: !!pendingTender,
+        ordRefTenderLabel: pendingLabel,
+        ordRefVal: m.txnRef || "",
+        onOrdRef: (e) => setRef({ txnRef: e.target.value }),
+        ordRefBack: () => setRef({ pendingTender: "", txnRef: "" }),
+        ordRefSettle: () => this.settleOrder(ord.id, pendingTender, ord.no, (m.txnRef || "").trim()),
         cancelTrack: () => { this.setOrderStatus(ord.id, "cancelled"); this.setState({ modal: null }); this.toast("Order " + ord.no + " cancelled", "warn"); }
       };
     }
@@ -5122,9 +5147,11 @@ class Component extends DCLogic {
   }
   // Settle a QR/live order: records the sale and closes it. The guest portal
   // reads the settlement and flips to a receipt. Closes the tracker on success.
-  settleOrder(id, tender, no) {
+  // ref is the transaction/reference number for a non-cash tender — optional,
+  // never required to close the bill.
+  settleOrder(id, tender, no, ref) {
     if (!id || !(window.KPOS_REAL && window.KPOS_REAL.token)) return Promise.resolve();
-    return fetch("/api/app2/order/" + encodeURIComponent(id) + "/settle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ tender }) })
+    return fetch("/api/app2/order/" + encodeURIComponent(id) + "/settle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ tender, ref: ref || "" }) })
       .then((r) => r.json().catch(() => ({}))).then((j) => {
         if (j && j.error) { this.toast(j.error, "warn"); return j; }
         this.refreshLiveOrders();

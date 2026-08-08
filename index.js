@@ -1759,7 +1759,11 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
   // dine-in visit is never anywhere near this long, so past it an unsettled
   // order reads as forgotten, not live — but never so short it could cut off
   // an ordinary, unusually long sitting.
-  const SETTLED_RECENT_MS = 90 * 60 * 1000; // matches the guest app's own paid-session staleness window
+  // 15 min is generous for "check the receipt while paying and leaving" — the
+  // one legitimate reason a settled order needs to stay visible at all — and
+  // short enough that the next party (or a QA pass re-scanning the same table
+  // minutes later) doesn't inherit someone else's already-closed bill.
+  const SETTLED_RECENT_MS = 15 * 60 * 1000;
   const OPEN_MAX_MS = 6 * 60 * 60 * 1000;
   const now = Date.now();
   return orders
@@ -5880,6 +5884,11 @@ if (fs.existsSync(protoFile)) {
     if (denyAppRole(req, res, APP_RANK.TILL, "Settling a bill needs a cashier, waiter or manager.")) return;
     const id = String(req.params.id || "");
     const tender = ["cash", "card", "wallet", "transfer", "credit"].includes(String((req.body || {}).tender)) ? String(req.body.tender) : "cash";
+    // Transaction/reference number for a non-cash tender — the terminal's auth
+    // code, a bank transfer's reference, a QR payment's receipt number. Purely
+    // for reconciliation: never required, never validated against a gateway
+    // (there isn't one wired up), just carried onto the sale for the books.
+    const ref = String((req.body || {}).ref || "").trim().slice(0, 64);
     const settings = (await loadSettingsArr(orgId))[0] || {};
     // Catalogue prices + GST rate for the money-integrity check (same ctx the
     // /api/ops path builds), so a mispriced/tampered QR line gets flagged too.
@@ -5897,7 +5906,7 @@ if (fs.existsSync(protoFile)) {
       const data = cur.rows[0].data || {};
       if (["settled", "completed", "cancelled"].includes(String(data.status || ""))) return { code: 409 };
       const bd = orderBreakdown(data, settings);
-      data.status = "settled"; data.settledAt = Date.now(); data.paidAt = Date.now(); data.tender = tender; data.billAck = false; data.updatedAt = Date.now();
+      data.status = "settled"; data.settledAt = Date.now(); data.paidAt = Date.now(); data.tender = tender; data.tenderRef = ref; data.billAck = false; data.updatedAt = Date.now();
       const r = await c.query("UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='orders' AND id=$2 RETURNING rowver", [orgId, id, JSON.stringify(data)]);
       // A `sales` entity keyed off the order id, so the QR sale reaches the
       // Z-report / GST return / P&L and a replay can't book it twice. `id` on
@@ -5910,7 +5919,7 @@ if (fs.existsSync(protoFile)) {
         channel: data.otype === "delivery" ? "delivery" : data.otype === "takeaway" ? "takeaway" : "qr",
         lines: (data.items || []).map((it) => ({ pid: it.pid, name: it.name, qty: Number(it.qty) || 1, price: Number(it.price) || 0, amount: (Number(it.price) || 0) * (Number(it.qty) || 1), discPct: 0, taxable: it.taxable !== false, addons: it.addons })),
         subtotal: bd.excl, svcCharge: bd.svc, gst: bd.gst, billDisc: bd.disc, billDiscPct: bd.discPct, total: bd.total,
-        payments: [{ method: tender, amount: bd.total, given: bd.total, change: 0 }],
+        payments: [{ method: tender, amount: bd.total, given: bd.total, change: 0, ref: ref || undefined }],
         orderId: id, source: "qr", userName: "QR portal",
       };
       if (data.customerId) { sale.customerId = data.customerId; sale.customerName = data.customerName || ""; }
