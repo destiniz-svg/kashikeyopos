@@ -1342,11 +1342,15 @@ window.KashikeyoGuestQR = (function () {
   App.prototype.pull = function () {
     var tk = this.A.ticket ? (this.A.ticket() || null) : null;
     var st = this.s.settling;
-    /* The bill is paid when the till says so — it reports the ticket `settled`
-       (a cashier closed it at the terminal) — OR the guest ran their own settle
-       and the table's lines have gone. Either path closes our screen so the home
-       doesn't stay stuck on a placed order after it's been paid. */
-    if (!this.s.paid && ((tk && tk.settled) || (st && (!tk || !(tk.lines || []).length)))) {
+    /* The bill is paid when the till says so, and ONLY then — it reports the
+       ticket `settled` once a cashier actually closes it at the terminal. This
+       used to also fire from a missing/empty poll while a guest's own "confirm
+       & pay" was pending (tk null before the first poll resolves, or no orders
+       matched at all), which declared the table paid with no till confirmation
+       whatsoever. A settled order stays ON the ticket (see buildTicket) rather
+       than disappearing, so `!tk.lines.length` was never really a "till closed
+       it" signal to begin with — `tk.settled` is the one true source. */
+    if (!this.s.paid && tk && tk.settled) {
       this.s.paid = {
         ref: (st && st.ref) || this.billRef(),
         total: (st && st.total) || this.billTotal(),

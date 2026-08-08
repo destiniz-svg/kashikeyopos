@@ -1747,9 +1747,28 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
   // tracks the order id(s) it placed and asks for them by id — that's how it
   // learns the till has settled/served the order and can close its own screen.
   const orderIds = Array.isArray(selector.orderIds) ? selector.orderIds : null;
+  // A table QR deliberately shows the WHOLE table's shared bill — any phone at
+  // the table sees every order on it, not just the one it placed itself. But a
+  // table is reused all day, and orders are never purged, so an unbounded
+  // `table` match hands the guest the LAST party's already-settled order the
+  // moment they scan a table someone else just paid off — the portal read that
+  // as "your bill is settled" before this party had ordered anything. Once an
+  // order is settled it stays visible only briefly (long enough to show the
+  // receipt right after paying); older ones drop off so the next seating starts
+  // clean. Anything still open counts regardless of age — this never hides a
+  // live order.
+  const RECENT_MS = 90 * 60 * 1000; // matches the guest app's own paid-session staleness window
+  const now = Date.now();
   return orders
-    .filter((o) => (orderIds && orderIds.length) ? orderIds.some((id) => idEq(o.id, id))
-      : customerId ? idEq(o.customerId, customerId) : table ? idEq(o.table, table) : false)
+    .filter((o) => {
+      if (orderIds && orderIds.length) return orderIds.some((id) => idEq(o.id, id));
+      if (customerId) return idEq(o.customerId, customerId);
+      if (!table || !idEq(o.table, table)) return false;
+      const st = String(o.status || "new");
+      if (st !== "settled" && st !== "completed") return true;
+      const at = Number(o.updatedAt || o.settledAt || o.completedAt || o.createdAt) || 0;
+      return at > 0 && (now - at) < RECENT_MS;
+    })
     .map((o) => normalizeOrder(o, settings))
     .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
 }
