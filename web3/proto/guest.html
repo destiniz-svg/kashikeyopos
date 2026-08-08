@@ -2279,6 +2279,14 @@ window.KashikeyoGuestQR = (function () {
     var nCart = s.cart.reduce(function (a, l) { return a + l.qty; }, 0);
 
     if (s.screen === 'menu') {
+      /* A just-settled order deliberately stays ON the till's ticket for a
+         while (so the receipt/thank-you screen has something to show) — see
+         buildTicket() and guestOrders()'s recency window. That's right for
+         the bill screen, but on the HOME screen it meant a paid table kept
+         showing "View order · All served" with nothing left to do. Once
+         paid, this bar has nothing to add — order history is still one tap
+         away via the menu sheet's "My orders". */
+      if (s.paid) return '';
       var tl = this.tableLines();
       if (!nCart && !tl.length) return '';
       var T = this.bill(this.tableSub() + this.cartSub());
