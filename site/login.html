@@ -144,6 +144,22 @@
       <a href="#" id="toOwner">&larr; Owner sign-in</a>
     </div>
 
+    <!-- First PIN sign-in from a new browser: the PIN alone is no longer
+         enough to reach the back office (AUDIT-SEC-PIN) — the owner's email
+         + password proves this device once, then the PIN sign-in that was
+         just attempted is retried automatically. -->
+    <form id="pairForm" style="display:none">
+      <label for="pairEmail">Owner's email</label>
+      <input id="pairEmail" type="email" autocomplete="email" required />
+      <label for="pairPassword">Owner's password</label>
+      <input id="pairPassword" type="password" autocomplete="current-password" required />
+      <div class="error" id="pairErr"></div>
+      <button id="pairSubmit" type="submit">Pair this device</button>
+    </form>
+    <div class="foot" id="pairFoot" style="display:none">
+      <a href="#" id="toStaffFromPair">&larr; Back</a>
+    </div>
+
     <form id="fgForm" style="display:none">
       <label for="fgEmail">Email</label>
       <input id="fgEmail" type="email" autocomplete="email" required />
@@ -219,16 +235,40 @@
         var st = qs.get("store") || localStorage.getItem("kback-store");
         if (st) document.getElementById("storeSlug").value = st;
       } catch (e) {}
+      var pairForm = document.getElementById("pairForm");
+      var pairFoot = document.getElementById("pairFoot");
+      var pairErr = document.getElementById("pairErr");
+      var pairBtn = document.getElementById("pairSubmit");
+      // Remembered across the pairing round-trip so a successful pairing can
+      // silently retry the exact sign-in the staff member just attempted,
+      // instead of making them re-type the PIN a second time.
+      var pendingStaffLogin = null;
       function showStaff(on) {
         form.style.display = on ? "none" : "";
         ownerFoot.style.display = on ? "none" : "";
         staffForm.style.display = on ? "" : "none";
         staffFoot.style.display = on ? "" : "none";
+        pairForm.style.display = "none";
+        pairFoot.style.display = "none";
         h1.textContent = on ? "Staff sign-in" : "Sign in";
         sub.textContent = on ? "Managers and admins — enter your store and till PIN. Owners sign in with email and password." : "Welcome back — sign in to your workspace.";
       }
+      function showPair(on) {
+        staffForm.style.display = on ? "none" : "";
+        staffFoot.style.display = on ? "none" : "";
+        pairForm.style.display = on ? "" : "none";
+        pairFoot.style.display = on ? "" : "none";
+        if (on) {
+          h1.textContent = "Pair this device";
+          sub.textContent = "New browser — sign in once with the owner's email and password to let PIN sign-in work here from now on.";
+        } else {
+          h1.textContent = "Staff sign-in";
+          sub.textContent = "Managers and admins — enter your store and till PIN. Owners sign in with email and password.";
+        }
+      }
       document.getElementById("toStaff").addEventListener("click", function (e) { e.preventDefault(); showStaff(true); });
       document.getElementById("toOwner").addEventListener("click", function (e) { e.preventDefault(); showStaff(false); });
+      document.getElementById("toStaffFromPair").addEventListener("click", function (e) { e.preventDefault(); pendingStaffLogin = null; showPair(false); });
 
       /* ---- Forgot password ------------------------------------------------
          Two steps on the same card: ask for the email, then take the emailed
@@ -249,6 +289,9 @@
         ownerFoot.style.display = on ? "none" : "";
         staffForm.style.display = "none";
         staffFoot.style.display = "none";
+        pairForm.style.display = "none";
+        pairFoot.style.display = "none";
+        pendingStaffLogin = null;
         fgForm.style.display = step === 1 ? "" : "none";
         rsForm.style.display = step === 2 ? "" : "none";
         fgFoot.style.display = on ? "" : "none";
@@ -327,34 +370,81 @@
         }
         rsBtn.disabled = false; rsBtn.textContent = "Set new password";
       });
+      /* Shared by the initial PIN submit and the automatic retry right after
+         a successful pairing, so the two paths can't drift. */
+      async function attemptStaffLogin(slug, pin) {
+        var res = await fetch("/api/back/login", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: slug, pin: pin }),
+        });
+        var data = await res.json().catch(function () { return {}; });
+        return { ok: res.ok, data: data };
+      }
       staffForm.addEventListener("submit", async function (e) {
         e.preventDefault();
         staffErr.style.display = "none";
         staffBtn.disabled = true; staffBtn.textContent = "Signing in…";
         try {
           var slug = document.getElementById("storeSlug").value.trim().toLowerCase();
-          var res = await fetch("/api/back/login", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ slug: slug, pin: document.getElementById("staffPin").value }),
-          });
-          var data = await res.json().catch(function () { return {}; });
+          var pin = document.getElementById("staffPin").value;
+          var r = await attemptStaffLogin(slug, pin);
           /* An owner PIN no longer opens the back office. Bounce them to the
              email + password form with the reason showing, rather than leaving
              them stuck on a form that can never succeed. */
-          if (!res.ok && data.ownerUsePassword) {
+          if (!r.ok && r.data.ownerUsePassword) {
             showStaff(false);
             var oe = document.getElementById("err");
-            if (oe) { oe.textContent = data.error; oe.style.display = "block"; }
+            if (oe) { oe.textContent = r.data.error; oe.style.display = "block"; }
             staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
             return;
           }
-          if (!res.ok) throw new Error(data.error || "Sign in failed");
+          /* AUDIT-SEC-PIN: this browser hasn't proven itself to this store yet.
+             Remember exactly what was being attempted and swap to the pairing
+             form; a successful pairing retries this same login automatically. */
+          if (!r.ok && r.data.needsPairing) {
+            pendingStaffLogin = { slug: slug, pin: pin };
+            document.getElementById("pairEmail").value = "";
+            document.getElementById("pairPassword").value = "";
+            pairErr.style.display = "none";
+            showPair(true);
+            staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
+            return;
+          }
+          if (!r.ok) throw new Error(r.data.error || "Sign in failed");
           try { localStorage.setItem("kback-store", slug); } catch (e3) {}
           location.href = "/admin";
         } catch (e2) {
           staffErr.textContent = e2.message || "Something went wrong — please try again";
           staffErr.style.display = "block";
           staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
+        }
+      });
+      pairForm.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        pairErr.style.display = "none";
+        pairBtn.disabled = true; pairBtn.textContent = "Pairing…";
+        try {
+          if (!pendingStaffLogin) throw new Error("Start over — enter your store and PIN again.");
+          var res = await fetch("/api/back/pair", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              slug: pendingStaffLogin.slug,
+              email: document.getElementById("pairEmail").value.trim(),
+              password: document.getElementById("pairPassword").value,
+            }),
+          });
+          var data = await res.json().catch(function () { return {}; });
+          if (!res.ok) throw new Error(data.error || "Couldn't pair this device");
+          // Paired — retry the exact PIN sign-in the staff member already typed.
+          var retry = await attemptStaffLogin(pendingStaffLogin.slug, pendingStaffLogin.pin);
+          if (!retry.ok) throw new Error(retry.data.error || "Device paired, but the PIN sign-in failed — try again.");
+          try { localStorage.setItem("kback-store", pendingStaffLogin.slug); } catch (e3) {}
+          pendingStaffLogin = null;
+          location.href = "/admin";
+        } catch (e2) {
+          pairErr.textContent = e2.message || "Something went wrong — please try again";
+          pairErr.style.display = "block";
+          pairBtn.disabled = false; pairBtn.textContent = "Pair this device";
         }
       });
     })();

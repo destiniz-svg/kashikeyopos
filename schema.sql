@@ -436,6 +436,35 @@ CREATE POLICY tenant_isolation ON app_sessions
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
 
+-- ── Device pairing (AUDIT-SEC-PIN, second factor for /api/back/login) ─────
+-- The 4-digit till PIN is deliberately a fast, offline-capable operator
+-- switch (djb2 hash, verified client-side too — see web2/proto/index.html's
+-- xo()) and must stay that way. Its OTHER use — POST /api/back/login
+-- granting a real back-office (manager/admin/cashier/waiter) session off the
+-- PIN alone — is a more sensitive credential than a leaked/exported PIN
+-- hash deserves to satisfy by itself. A browser must now also carry a
+-- device cookie previously proven by the owner's email + password (POST
+-- /api/back/pair) before PIN login is even attempted. One row per paired
+-- browser; the owner/admin can list and revoke from the back office, same
+-- shape as app_sessions. RLS + grant mirror it. Idempotent.
+CREATE TABLE IF NOT EXISTS paired_devices (
+  org_id     TEXT NOT NULL,
+  device_id  TEXT NOT NULL,
+  name       TEXT,
+  ip         TEXT,
+  paired_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_seen  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  revoked    BOOLEAN NOT NULL DEFAULT false,
+  PRIMARY KEY (org_id, device_id)
+);
+CREATE INDEX IF NOT EXISTS paired_devices_org ON paired_devices (org_id, revoked);
+ALTER TABLE paired_devices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE paired_devices FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON paired_devices;
+CREATE POLICY tenant_isolation ON paired_devices
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
 -- ── Email OTP for signup verification ──────────────────────────────────────
 -- Global (NOT tenant-scoped): verifies an email before an org exists, so it is
 -- accessed via withSystem, not withOrg. Codes are stored hashed; one active

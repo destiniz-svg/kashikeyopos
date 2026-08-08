@@ -164,7 +164,7 @@ async function ensureAppRole() {
     END $do$;
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
-  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, otp_codes, store_backups, receipt_seq TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, paired_devices, otp_codes, store_backups, receipt_seq TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
@@ -925,6 +925,14 @@ const parseCookies = (req) => Object.fromEntries((req.headers.cookie || "").spli
 const APP_COOKIE = "kashikeyo_session";
 const setAppCookie = (res, token) => res.cookie(APP_COOKIE, token, {
   httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 365 * 24 * 3600 * 1000, path: "/",
+});
+/* AUDIT-SEC-PIN: an opaque, unauthenticated device identifier — it carries no
+   org or secret, just proves "this browser was here before". PIN login
+   checks it against paired_devices (org-scoped); it means nothing on its
+   own. Long-lived (2y) since re-pairing is a real interruption for staff. */
+const DEVICE_COOKIE = "kashikeyo_device";
+const setDeviceCookie = (res, deviceId) => res.cookie(DEVICE_COOKIE, deviceId, {
+  httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", maxAge: 2 * 365 * 24 * 3600 * 1000, path: "/",
 });
 /* ── Member (registered-customer) sessions ───────────────────────────────────
    The customer-facing rewards portal signs a diner in by email OTP and rides a
@@ -2327,6 +2335,23 @@ app.post("/api/back/login", wrap(async (req, res) => {
   const org = await orgBySlug(cleanSlug);
   if (!org) return bad();
   if (org.status && org.status !== "active") return res.status(403).json({ error: "This workspace is " + org.status + " — contact support." });
+  /* AUDIT-SEC-PIN: PIN login now needs a second factor — this browser must
+     already be paired (POST /api/back/pair, gated on the owner's email +
+     password) — because the PIN alone is a 4-digit, djb2-hashed, offline-
+     verifiable-by-design credential (see web2/proto/index.html's xo()), and
+     doubles here as a real back-office session grant. Checked before the PIN
+     lookup: it doesn't depend on the PIN, so failing fast here also skips a
+     pointless users-table fetch. Doesn't count against the rate limiter — an
+     unpaired device isn't a guessing attempt. */
+  const deviceId = parseCookies(req)[DEVICE_COOKIE];
+  const paired = deviceId && (await withOrg(org.id, (client) => client.query(
+    "SELECT 1 FROM paired_devices WHERE org_id=$1 AND device_id=$2 AND revoked=false", [org.id, deviceId]))).rowCount;
+  if (!paired) {
+    return res.status(403).json({
+      error: "This device isn't paired with " + (org.store_name || cleanSlug) + " yet. Sign in with the owner's email and password once to pair it.",
+      needsPairing: true,
+    });
+  }
   const want = pinHash(String(pin || ""));
   const users = await withOrg(org.id, (client) =>
     client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='users' AND deleted=false", [org.id]));
@@ -2354,7 +2379,37 @@ app.post("/api/back/login", wrap(async (req, res) => {
   await ensureDefaultStore(org.id, org.store_name);
   const storeId = cleanStoreId(me.storeId || DEFAULT_STORE_ID);
   { const btok = sign(org.id, "BACK", storeId, { role: me.role, staff: { id: me.id, name: me.name } }); setAppCookieTracked(req, res, btok, { orgId: org.id, role: me.role, register: "BACK", name: me.name, staffId: me.id }); }
+  withOrg(org.id, (client) => client.query("UPDATE paired_devices SET last_seen=now() WHERE org_id=$1 AND device_id=$2", [org.id, deviceId])).catch(() => {});
   res.json({ ok: true, role: me.role, name: me.name, slug: org.slug });
+}));
+
+/* AUDIT-SEC-PIN: proves this browser to a store ONCE, with the owner's real
+   credential (email + password — the same check /api/login makes), so a
+   subsequent PIN login from it can be trusted with a real back-office
+   session. Deliberately does NOT itself grant a session — pairing and
+   signing in are separate actions, so a device can be pre-paired by the
+   owner without that act alone letting the pairing browser into the books. */
+app.post("/api/back/pair", wrap(async (req, res) => {
+  const { slug, email, password } = req.body || {};
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+  const keys = rlKeys(req, "pair:" + cleanSlug + ":" + String(email || "").toLowerCase());
+  const blocked = rlBlockedFor(keys);
+  if (blocked) return rlDeny(res, blocked);
+  const org = await orgBySlug(cleanSlug);
+  const bad = () => { rlFail(keys); return res.status(401).json({ error: "Wrong store, email or password." }); };
+  if (!org) return bad();
+  if (String(org.email || "").toLowerCase() !== String(email || "").toLowerCase() || !bcrypt.compareSync(password || "", org.pass_hash)) return bad();
+  rlClear(keys);
+  if (org.status && org.status !== "active") return res.status(403).json({ error: "This workspace is " + org.status + " — contact support." });
+  let deviceId = parseCookies(req)[DEVICE_COOKIE];
+  if (!deviceId) deviceId = crypto.randomUUID();
+  setDeviceCookie(res, deviceId);
+  await withOrg(org.id, (client) => client.query(
+    `INSERT INTO paired_devices (org_id, device_id, name, ip) VALUES ($1,$2,$3,$4)
+     ON CONFLICT (org_id, device_id) DO UPDATE SET revoked=false, last_seen=now(), name=EXCLUDED.name, ip=EXCLUDED.ip`,
+    [org.id, deviceId, deviceOf(req), req.ip || ""]));
+  logActivity(org.id, { actor: org.owner_name || "owner", action: "device.paired", requestId: req.id, detail: { device: deviceOf(req) } });
+  res.json({ ok: true });
 }));
 
 /* A browser can hold a valid app-session cookie without ever having gone
@@ -6988,6 +7043,32 @@ if (fs.existsSync(protoFile)) {
     if (sid === curSid) return res.status(400).json({ error: "That's this device — use Sign out instead." });
     await withOrg(orgId, (c) => c.query("UPDATE app_sessions SET revoked=true WHERE org_id=$1 AND sid=$2", [orgId, sid]));
     logActivity(orgId, { actor, action: "session.revoked", ref: sid.slice(0, 8), requestId: req.id, detail: {} });
+    res.json({ ok: true });
+  }));
+  /* AUDIT-SEC-PIN: the flip side of pairing — an admin/owner needs to see
+     which devices can reach the back office on a PIN alone, and revoke one
+     that's lost or no longer trusted (a permanent grant with no revoke path
+     would be a one-way ratchet). Same shape as /api/app2/sessions. */
+  app.get("/api/app2/devices", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing paired devices needs an admin or the owner.")) return;
+    const curDeviceId = parseCookies(req)[DEVICE_COOKIE] || "";
+    const rows = (await withOrg(orgId, (c) => c.query(
+      "SELECT device_id, name, ip, paired_at, last_seen FROM paired_devices WHERE org_id=$1 AND revoked=false ORDER BY last_seen DESC LIMIT 50", [orgId]))).rows;
+    res.json({ devices: rows.map((r) => ({
+      deviceId: r.device_id, current: r.device_id === curDeviceId, name: r.name || "—", ip: r.ip || "",
+      pairedAt: Number(new Date(r.paired_at)), lastSeen: Number(new Date(r.last_seen)) })) });
+  }));
+  app.post("/api/app2/devices/revoke", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Managing paired devices needs an admin or the owner.")) return;
+    const deviceId = String((req.body || {}).deviceId || "");
+    if (!deviceId) return res.status(400).json({ error: "which device?" });
+    const actor = (req.appStaff && req.appStaff.name) || "admin";
+    await withOrg(orgId, (c) => c.query("UPDATE paired_devices SET revoked=true WHERE org_id=$1 AND device_id=$2", [orgId, deviceId]));
+    logActivity(orgId, { actor, action: "device.revoked", ref: deviceId.slice(0, 8), requestId: req.id, detail: {} });
     res.json({ ok: true });
   }));
   // Outlets: CRUD on the real stores table (multi-store). Admin+. The default

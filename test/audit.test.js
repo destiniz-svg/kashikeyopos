@@ -9,6 +9,8 @@
 const { test, describe, before, after } = require("node:test");
 const assert = require("node:assert/strict");
 const H = require("./helpers");
+const jwt = require("jsonwebtoken");
+const FORGE_SECRET = "test-secret"; // matches helpers.js childEnv.JWT_SECRET
 
 before(async () => { await H.startServer(); });
 after(() => { H.stopServer(); });
@@ -537,6 +539,87 @@ describe("multi-terminal concurrency (LOAD)", () => {
   });
 });
 
+/* ── Device pairing: second factor for PIN back-office login (AUDIT-SEC-PIN) ─
+   Issue #30. PIN login (/api/back/login) is a real back-office session grant,
+   not just the offline till's fast operator switch — a browser must now also
+   carry a device cookie previously proven with the owner's email + password
+   (/api/back/pair) before a PIN is even checked. Runs BEFORE the security
+   suite below, which deliberately exhausts and leaves blocked the shared
+   per-IP login throttle these endpoints also use — see that suite's comment. */
+describe("device pairing (AUDIT-SEC-PIN)", () => {
+  const setCookieVal = (r, name) => {
+    const raw = r.headers.get("set-cookie") || "";
+    const m = raw.match(new RegExp(name + "=([^;]+)"));
+    return m ? name + "=" + m[1] : null;
+  };
+  let o, staffPin;
+  before(async () => {
+    o = await H.registerOrg({ tag: "pairing" });
+    staffPin = "5566";
+    const st = await H.req("POST", "/api/app2/staff", { cookie: o.cookie, body: { name: "Manager Mo", role: "manager", pin: staffPin } });
+    assert.equal(st.status, 200, "test setup: staff member created");
+  });
+
+  test("PIN login from an unpaired browser is refused with needsPairing, before the PIN is even checked", async () => {
+    const r = await H.req("POST", "/api/back/login", { body: { slug: o.slug, pin: staffPin } });
+    assert.equal(r.status, 403);
+    assert.equal(r.json.needsPairing, true);
+    // A WRONG pin from the same unpaired browser gets the identical response —
+    // pairing is checked first, so no PIN-guessing signal leaks either way.
+    const r2 = await H.req("POST", "/api/back/login", { body: { slug: o.slug, pin: "0000" } });
+    assert.equal(r2.status, 403);
+    assert.equal(r2.json.needsPairing, true);
+  });
+
+  test("pairing requires the real owner password, not just a valid-looking one", async () => {
+    const bad = await H.req("POST", "/api/back/pair", { body: { slug: o.slug, email: o.email, password: "totally-wrong" } });
+    assert.equal(bad.status, 401);
+    assert.equal(setCookieVal(bad, "kashikeyo_device"), null, "no device cookie minted on a failed pair attempt");
+  });
+
+  test("full flow: pair with the owner password, then PIN login succeeds and is remembered", async () => {
+    const pair = await H.req("POST", "/api/back/pair", { body: { slug: o.slug, email: o.email, password: o.password } });
+    assert.equal(pair.status, 200);
+    const deviceCookie = setCookieVal(pair, "kashikeyo_device");
+    assert.ok(deviceCookie, "device cookie minted on successful pairing");
+
+    // Same browser (device cookie), correct PIN → real back-office session.
+    const login = await H.req("POST", "/api/back/login", { cookie: deviceCookie, body: { slug: o.slug, pin: staffPin } });
+    assert.equal(login.status, 200, "paired device + correct PIN succeeds");
+    assert.equal(login.json.role, "manager");
+    const sessionCookie = setCookieVal(login, "kashikeyo_session");
+    assert.ok(sessionCookie, "back-office session cookie issued");
+
+    // A DIFFERENT (unpaired) browser with the SAME PIN is still refused —
+    // pairing is per-device, not a store-wide unlock.
+    const otherBrowser = await H.req("POST", "/api/back/login", { body: { slug: o.slug, pin: staffPin } });
+    assert.equal(otherBrowser.status, 403);
+    assert.equal(otherBrowser.json.needsPairing, true, "pairing does not leak across browsers");
+
+    // The paired device shows up in the admin's device list — managing
+    // pairings needs ADMIN rank (same threshold as /api/app2/sessions), so
+    // this uses the owner's own session (o.cookie), not the manager's.
+    const list = await H.req("GET", "/api/app2/devices", { cookie: o.cookie + "; " + deviceCookie });
+    assert.equal(list.status, 200);
+    assert.equal(list.json.devices.length, 1);
+    assert.equal(list.json.devices[0].current, true);
+
+    // …and revoking it locks the device back out, requiring re-pairing.
+    const revoke = await H.req("POST", "/api/app2/devices/revoke", { cookie: o.cookie, body: { deviceId: list.json.devices[0].deviceId } });
+    assert.equal(revoke.status, 200);
+    const afterRevoke = await H.req("POST", "/api/back/login", { cookie: deviceCookie, body: { slug: o.slug, pin: staffPin } });
+    assert.equal(afterRevoke.status, 403);
+    assert.equal(afterRevoke.json.needsPairing, true, "a revoked device must re-pair, even with the right PIN");
+  });
+
+  test("listing/revoking paired devices needs admin rank, not just any back-office session", async () => {
+    const orgId = jwt.decode(o.cookie.split("=")[1])?.o;
+    const cashierCookie = "kashikeyo_session=" + jwt.sign({ o: orgId, role: "cashier" }, FORGE_SECRET);
+    const r = await H.req("GET", "/api/app2/devices", { cookie: cashierCookie });
+    assert.equal(r.status, 403, "cashier rank cannot manage paired devices");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {
@@ -623,8 +706,6 @@ describe("security", () => {
 /* ── Production-readiness audit fixes (2026-08-08) ──────────────────────
    Regression coverage for the findings closed in that pass. Each test name
    carries the finding's id so a future regression points straight back here. */
-const jwt = require("jsonwebtoken");
-const FORGE_SECRET = "test-secret"; // matches helpers.js childEnv.JWT_SECRET
 
 describe("shift close is not re-closeable (AUDIT-C1)", () => {
   test("re-posting close against an already-closed shift id 404s instead of overwriting the true variance", async () => {
@@ -706,3 +787,4 @@ describe("privileged app2 actions require rank (AUDIT-S1/S2)", () => {
     assert.equal(r.status, 403, "below-till-rank session is refused before the call is even looked up");
   });
 });
+
