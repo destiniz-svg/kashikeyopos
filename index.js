@@ -5505,6 +5505,23 @@ if (fs.existsSync(protoFile)) {
     res.set("Cache-Control", "no-store");
     res.json({ current: req.appStoreId || DEFAULT_STORE_ID, outlets: rows.rows.map((r) => ({ id: r.id, name: r.name || r.id, code: r.code || "" })) });
   }));
+  /* AUDIT-Q4: none of the three UIs reported a client-side exception anywhere
+     — a crash mid-shift on an unattended till was invisible to the operator
+     AND to the business until someone noticed the register frozen. This is
+     the landing spot the till/admin/v2 error handlers below POST to;
+     best-effort only (an error report is not money — losing one during an
+     outage is fine, unlike a sale) and folds into the SAME bounded
+     recentErrors buffer /api/dev/health already surfaces, so this adds no
+     new state or storage. */
+  app.post("/api/app2/client-error", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).end();
+    const b = req.body || {};
+    const where = String(b.where || "client").slice(0, 60);
+    const message = String(b.message || "").slice(0, 500);
+    recordError(`client:${where} · org ${orgId} · ${(req.appStaff && req.appStaff.name) || req.appRole || ""}`, new Error(message || "(no message)"));
+    res.status(204).end();
+  }));
   app.post("/api/app2/outlet", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });

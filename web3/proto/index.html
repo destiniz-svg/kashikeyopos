@@ -489,6 +489,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   <button onClick="{{ l.del }}" style="font-size:10.5px;color:var(--red-dim);padding:3px 7px;border-radius:5px;border:1px solid var(--red-line-2)">Void</button>
                 </div>
                 <div style="{{ l.noteStyle }}">{{ l.noteText }}</div>
+                <div style="{{ l.soldOutTagStyle }}">{{ l.soldOutTag }}</div>
               </div>
             </sc-for>
           </div>
@@ -1459,6 +1460,23 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
 
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;amber&quot;,&quot;lagoon&quot;,&quot;coral&quot;,&quot;palm&quot;],&quot;default&quot;:&quot;amber&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;mobile&quot;,&quot;tablet&quot;,&quot;desktop&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;startRole&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;SuperAdmin&quot;,&quot;ChainAdmin&quot;,&quot;OutletManager&quot;,&quot;Cashier&quot;,&quot;KitchenManager&quot;,&quot;StoreKeeper&quot;,&quot;Accountant&quot;],&quot;default&quot;:&quot;ChainAdmin&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;startView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;pos&quot;,&quot;kds&quot;,&quot;chain&quot;,&quot;branches&quot;,&quot;menu&quot;,&quot;inventory&quot;,&quot;counts&quot;,&quot;purchases&quot;,&quot;requests&quot;,&quot;dispatches&quot;,&quot;production&quot;,&quot;recipes&quot;,&quot;batches&quot;,&quot;customers&quot;,&quot;delivery&quot;,&quot;accounting&quot;,&quot;reports&quot;,&quot;sync&quot;,&quot;users&quot;,&quot;logs&quot;,&quot;architecture&quot;],&quot;default&quot;:&quot;pos&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;busyness&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0,&quot;max&quot;:90,&quot;step&quot;:5,&quot;default&quot;:42,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;showHint&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo state&quot;}}">
+/* AUDIT-Q4: see the matching block in web2/proto/index.html — same
+   rationale, same shape, distinct 'where' tag so /api/dev/health can tell
+   which surface a report came from. */
+(function(){
+  var sent={},count=0;
+  function report(where,message){
+    try{
+      var key=where+'|'+message;var now=Date.now();
+      if(sent[key]&&now-sent[key]<30000)return;
+      if(count>=20)return;
+      sent[key]=now;count++;
+      fetch('/api/app2/client-error',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({where:where,message:String(message||'').slice(0,500)})}).catch(function(){});
+    }catch(e){}
+  }
+  window.addEventListener('error',function(ev){report('v2:window.onerror',(ev&&ev.message)||'error');});
+  window.addEventListener('unhandledrejection',function(ev){var r=ev&&ev.reason;report('v2:unhandledrejection',(r&&r.message)||String(r||'rejection'));});
+})();
 const K = () => window.KPOS || {};
 const MVR = (n) => "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MVRc = (n) => "MVR " + Math.round(n || 0).toLocaleString("en-US");
@@ -1836,6 +1854,32 @@ class Component extends DCLogic {
     // Keep the durable bridge's offline flag in step with a restored session's
     // network pill, so a reload while "offline" still holds writes in the outbox.
     try { window.__v2ForceOffline = this.state.online === false; } catch (e) {}
+    /* AUDIT-C4/H1: in real mode the online pill and the "Synced/queued" label
+       were driven by a simulated in-memory queue (this.state.outbox) with a
+       fake 1400ms timer — completely disconnected from the actual durable
+       IndexedDB outbox in v2-bridge.js (window.__v2Outbox), which is what
+       genuinely holds an unsynced sale. The terminal could show "Synced"
+       while real sales sat queued indefinitely. Only wire this up in real
+       mode — window.KPOS_REAL absent means the design-preview/demo build,
+       where the existing simulated pill is harmless and unchanged. */
+    if (window.KPOS_REAL) {
+      this._v2NetH = () => {
+        const on = (typeof navigator === "undefined" || navigator.onLine !== false) && !window.__v2ForceOffline;
+        this.setState({ online: on });
+        if (on) { try { if (window.__v2Outbox) window.__v2Outbox.flush(); } catch (e) {} }
+      };
+      window.addEventListener("online", this._v2NetH);
+      window.addEventListener("offline", this._v2NetH);
+      this._v2NetH();
+      this._pollOutboxCount = () => {
+        try {
+          if (!window.__v2Outbox) return;
+          window.__v2Outbox.queued().then((n) => this.setState({ outboxCount: n })).catch(() => {});
+        } catch (e) {}
+      };
+      this._pollOutboxCount();
+      this._v2OutboxIv = setInterval(this._pollOutboxCount, 4000);
+    }
     if (!Object.keys(this.state.tickets).length) this.seed();
   }
   componentWillUnmount() {
@@ -1845,6 +1889,8 @@ class Component extends DCLogic {
     if (this._pinKey) window.removeEventListener("keydown", this._pinKey);
     window.removeEventListener("resize", this._onResize);
     if (this._flush) { window.removeEventListener("visibilitychange", this._flush); window.removeEventListener("pagehide", this._flush); }
+    if (this._v2NetH) { window.removeEventListener("online", this._v2NetH); window.removeEventListener("offline", this._v2NetH); }
+    clearInterval(this._v2OutboxIv);
   }
 
   // CustomColors from the Users table: re-point the amber triad only.
@@ -2211,7 +2257,8 @@ class Component extends DCLogic {
       items.forEach((it, i) => {
         const on = s.view === it[0];
         let badge = "", bg = "", fg = "";
-        if (it[0] === "sync" && s.outbox.filter((x) => x.state === "queued").length) { badge = String(s.outbox.filter((x) => x.state === "queued").length); bg = "var(--red)"; fg = "#fff"; }
+        const navQueued = window.KPOS_REAL ? (s.outboxCount || 0) : s.outbox.filter((x) => x.state === "queued").length;
+        if (it[0] === "sync" && navQueued) { badge = String(navQueued); bg = "var(--red)"; fg = "#fff"; }
         if (it[0] === "kds") { const n = this.kdsTickets().length; if (n) { badge = String(n); bg = "var(--amber-dim)"; fg = "var(--amber-bright)"; } }
         // Orders board: badge the count of live orders still in the pipeline
         // (QR + fired tickets), the same way the kitchen display is badged.
@@ -2240,7 +2287,10 @@ class Component extends DCLogic {
       });
     });
 
-    const queued = s.outbox.filter((x) => x.state === "queued").length;
+    // AUDIT-C4: real mode reads the actual IndexedDB outbox count (polled into
+    // s.outboxCount — see _mountRest); the simulated s.outbox array only
+    // drives the demo-mode Sync tab experience when there is no real session.
+    const queued = window.KPOS_REAL ? (s.outboxCount || 0) : s.outbox.filter((x) => x.state === "queued").length;
     const u = (K0.USERS || []).find((x) => x.role === s.roleKey) || { name: "—" };
 
     const tkNow = this.ticket();
@@ -3074,8 +3124,14 @@ class Component extends DCLogic {
       const m = K0.MENU.find((x) => x.id === l.id) || { name: "?", price: 0 };
       const i = tk.lines.indexOf(l);
       const ld = Number(l.disc) || 0;
+      // AUDIT-M1: only the forward-looking menu grid showed a sold-out badge —
+      // a line already in the cart when its item goes 86'd elsewhere gave no
+      // signal at all and checked out normally. Same out86 check the grid uses.
+      const wentSoldOut = out86.indexOf(l.id) >= 0;
       return {
         name: m.name, qty: l.qty, amount: MVR(this.lineUnit(l, m) * l.qty * (1 - ld / 100)),
+        soldOutTag: wentSoldOut ? "Sold out — remove or confirm with a manager" : "",
+        soldOutTagStyle: wentSoldOut ? "margin-top:6px;font-size:10.5px;font-weight:700;color:#fff;background:var(--red);padding:3px 8px;border-radius:4px;display:inline-block" : "display:none",
         disc: () => this.openDisc(i),
         discLbl: ld ? "−" + ld + "%" : "Disc",
         discStyle: "font-size:10.5px;padding:3px 7px;border-radius:5px;border:1px solid " + (ld ? "var(--amber)" : "var(--line)") + ";background:" + (ld ? "rgba(242,164,58,.12)" : "transparent") + ";color:" + (ld ? "var(--amber-bright)" : "var(--text-muted)"),
@@ -3615,6 +3671,18 @@ class Component extends DCLogic {
             }, 780);
             return;
           }
+          /* AUDIT-H1: settlement (pushSale + closing the ticket) must run at
+             most once per ticket. A rapid double-tap on "Close ticket"
+             (cash), or the card/wallet path above landing here twice in
+             close succession, could otherwise reach this point twice before
+             the setState below re-renders the button/modal away — and
+             v2-bridge.js's pushSale() keys its sale id off Date.now(), so two
+             calls this close together mint two DIFFERENT ids, producing two
+             sales entities for one physical settlement. Mirrors the same
+             re-entrancy latch the older till's finishPay() already uses. */
+          if (this._paySettling) return;
+          this._paySettling = true;
+          setTimeout(() => { this._paySettling = false; }, 3000);
           const gname = this.guestLabel(gAll[gIdx]);
           // Tax-invoice buyer details, if the cashier chose to issue one.
           const buyerName = (m.taxInvName || "").trim();
@@ -9093,6 +9161,23 @@ class Component extends DCLogic {
   }
 
   flush() {
+    // AUDIT-C4: real mode drains the actual durable outbox (window.__v2Outbox,
+    // v2-bridge.js) instead of running the demo's fabricated "1 conflict"
+    // simulation against a fake device name — that simulation never touched
+    // a real queued sale, so a manual "replay" here used to report success
+    // regardless of whether anything real was ever pushed.
+    if (window.KPOS_REAL) {
+      if (!window.__v2Outbox) return;
+      this.setState({ syncing: true });
+      window.__v2Outbox.flush()
+        .then(() => window.__v2Outbox.queued())
+        .then((n) => {
+          this.setState({ syncing: false, outboxCount: n });
+          this.toast(n ? n + " still queued — will keep retrying" : "Synced", n ? "warn" : "ok");
+        })
+        .catch(() => this.setState({ syncing: false }));
+      return;
+    }
     const s = this.state;
     const queued = s.outbox.filter((x) => x.state === "queued");
     if (!queued.length) { this.toast("Back online — nothing to replay"); return; }

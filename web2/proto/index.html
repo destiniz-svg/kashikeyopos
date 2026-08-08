@@ -878,6 +878,7 @@ button[disabled],button:disabled{cursor:not-allowed}
                 <div onClick="{{ ln.edit }}" style="flex:1;min-width:0;{{ ln.editCursor }}" title="Tap to modify — add-ons & notes">
                   <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:5px">{{ ln.name }}<sc-if value="{{ ln.canEdit }}" hint-placeholder-val="{{ true }}"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="var(--ink3)" stroke-width="1.6" style="flex:none"><path d="M11.5 2.5l2 2L6 12l-2.5.5L4 10z" stroke-linecap="round" stroke-linejoin="round"></path></svg></sc-if></div>
                   <sc-if value="{{ ln.hasMods }}" hint-placeholder-val="{{ false }}"><div style="font-size:11px;color:var(--ink2);margin-top:2px">{{ ln.modsTxt }}</div></sc-if>
+                  <sc-if value="{{ ln.wentSoldOut }}" hint-placeholder-val="{{ false }}"><div style="font-size:10.5px;font-weight:700;color:#fff;background:var(--red);padding:2px 7px;border-radius:4px;margin-top:4px;display:inline-block">{{ ln.soldOutTag }}</div></sc-if>
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:6px;flex:none">
                   <div style="text-align:end">
@@ -2054,6 +2055,26 @@ button[disabled],button:disabled{cursor:not-allowed}
 </sc-if>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;outletName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Kashikeyo Café&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Outlet&quot;},&quot;tin&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Outlet&quot;},&quot;serviceChargePct&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:10,&quot;min&quot;:0,&quot;max&quot;:15,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Tax&quot;},&quot;gstGeneral&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:8,&quot;min&quot;:0,&quot;max&quot;:20,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Tax&quot;},&quot;gstTourism&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:17,&quot;min&quot;:0,&quot;max&quot;:25,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Tax&quot;}}">
+/* AUDIT-Q4: no client-side error reporting existed anywhere in this app —
+   a JS exception that froze the till mid-shift was invisible to the operator
+   and the business until someone noticed the register frozen. Best-effort,
+   fire-and-forget (an error report is not money — losing one during an
+   outage is fine); de-duped per message for 30s and hard-capped per page
+   life so a tight error loop can't flood the network or the server log. */
+(function(){
+  var sent={},count=0;
+  function report(where,message){
+    try{
+      var key=where+'|'+message;var now=Date.now();
+      if(sent[key]&&now-sent[key]<30000)return;
+      if(count>=20)return;
+      sent[key]=now;count++;
+      fetch('/api/app2/client-error',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({where:where,message:String(message||'').slice(0,500)})}).catch(function(){});
+    }catch(e){}
+  }
+  window.addEventListener('error',function(ev){report('till:window.onerror',(ev&&ev.message)||'error');});
+  window.addEventListener('unhandledrejection',function(ev){var r=ev&&ev.reason;report('till:unhandledrejection',(r&&r.message)||String(r||'rejection'));});
+})();
 class Component extends DCLogic {
   constructor(p){
     super(p);
@@ -2249,7 +2270,15 @@ fetch('/api/app2/pull',{credentials:'same-origin',cache:'no-store',headers:_h}).
   readStore(){try{const r=localStorage.getItem('kashikeyo_store');if(r)this.setState({storeP:JSON.parse(r)});}catch(e){}}
   readMenu(){try{const r=localStorage.getItem('kashikeyo_menu');const o=r?JSON.parse(r):{off:{},hidden:{},price:{}};const sig=JSON.stringify(o);if(sig!==this._menuSig){this._menuSig=sig;this.setState({menuOv:o});}}catch(e){}}
   seedParked(){const mk=(billNo,orderType,tableNo,custId,items,agoMin,kot,status)=>{const cart=items.map(([id,qty],ix)=>{const m=this.MENU.find(x=>x.id===id)||this.MENU[ix%Math.max(1,this.MENU.length)];return m?{key:m.id+'|',id:m.id,mods:[],unit:m.price,qty}:null;}).filter(Boolean);const r=this.rate(),sp=this.scPct();let incl=0;cart.forEach(l=>incl+=l.unit*l.qty);const excl=incl/(1+r);const svc=orderType==='dine'?excl*sp:0;const gst=(excl+svc)*r;const total=excl+svc+gst;const ts=Date.now()-agoMin*60000;return {id:'seed'+billNo,billNo,cart,orderType,tableNo,custId,discountPct:0,kotSent:kot,status:status||(kot?'kitchen':'open'),readyAt:status==='ready'?ts:null,at:ts,startedAt:ts,total,count:cart.reduce((a,l)=>a+l.qty,0),totalF:this.fm(total)};};const rv=this.state.recv;this.setState({held:[mk(11,'dine',6,null,[['mashuni',2],['garudhiya',1],['kalhusai',2]],14,true,'ready'),mk(10,'dine',2,(rv[0]&&rv[0].id)||null,[['friedrice',1],['coffee',2]],27,true,'kitchen'),mk(9,'takeaway',null,null,[['gulha',6],['bajiya',4]],8,false,'open')]});}
-  componentWillUnmount(){clearInterval(this._iv);clearTimeout(this._tt);clearInterval(this._ai);clearInterval(this._menuIv);clearInterval(this._regIv);/* The guest poll and the SSE connection were both left running on unmount. */clearInterval(this._gpIv);this.closeStream();window.removeEventListener('resize',this._rs);if(this._onCfg)window.removeEventListener('storage',this._onCfg);}
+  componentWillUnmount(){clearInterval(this._iv);clearTimeout(this._tt);clearInterval(this._ai);clearInterval(this._menuIv);clearInterval(this._regIv);/* The guest poll and the SSE connection were both left running on unmount. */clearInterval(this._gpIv);this.closeStream();window.removeEventListener('resize',this._rs);if(this._onCfg)window.removeEventListener('storage',this._onCfg);
+    /* AUDIT-Q3: _cartIv, the online/offline listeners and the outbox subscription
+       were left running past unmount — latent today since this is a root
+       component mounted once for the tab's life, but a future remount (e.g. a
+       keyed re-render on a guest-mode toggle) would leak one of each per
+       remount. Tear them down alongside everything else above. */
+    clearInterval(this._cartIv);
+    if(this._netH){window.removeEventListener('online',this._netH);window.removeEventListener('offline',this._netH);}
+    if(this._obUnsub)this._obUnsub();}
   componentDidUpdate(){this.applyDoc();this.publish();try{if(this.state.scr!==this._lastScr){this._lastScr=this.state.scr;localStorage.setItem('kashikeyo_scr',this.state.scr);}if(this.state.accent!==this._lastAccent){this._lastAccent=this.state.accent;localStorage.setItem('kashikeyo_accent',this.state.accent);}}catch(e){}}
   applyDoc(){const d=document.documentElement,s=this.state;const dir=s.lang==='dv'?'rtl':'ltr';if(d.dir!==dir)d.dir=dir;if(d.lang!==s.lang){d.lang=s.lang;try{localStorage.setItem('kashikeyo_lang',s.lang);}catch(e){}}const dk=d.hasAttribute('data-dark');if(s.dark&&!dk)d.setAttribute('data-dark','');if(!s.dark&&dk)d.removeAttribute('data-dark');const wt=d.hasAttribute('data-white');if(s.white&&!wt)d.setAttribute('data-white','');if(!s.white&&wt)d.removeAttribute('data-white');}
   t(k){const l=this.T[this.state.lang];return (l&&l[k])||this.T.en[k]||k;}
@@ -2872,10 +2901,18 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
   verifyTillToken(){var me=this;var raw=null;try{raw=localStorage.getItem('kashikeyo_till_user');}catch(e){}
     if(!raw)return;var saved=null;try{saved=JSON.parse(raw);}catch(e){}
     if(!saved||!saved.token){this.relock();return;}
+    /* AUDIT-Q2: a stale/forged handle only relocked on an explicit non-ok
+       response — a network failure (the till booting before WiFi associates,
+       an ordinary event on an offline-first register) hit the bare
+       .catch(function(){}) and did nothing: no relock, no retry, ever. That
+       is exactly the boot condition this check exists for. On a network
+       failure, queue exactly one retry for the next 'online' event instead
+       of abandoning the check silently. */
     try{fetch('/api/app2/unlock',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:saved.token})})
       .then(function(r){return r.ok?r.json():null;})
       .then(function(d2){if(!d2||!d2.ok||!d2.user){me.relock();return;}me.setState({curUser:d2.user,myRole:d2.user.role||'cashier'});})
-      .catch(function(){});}catch(e){}}
+      .catch(function(){me._queueVerifyRetry();});}catch(e){me._queueVerifyRetry();}}
+  _queueVerifyRetry(){if(this._vttRetryQueued)return;this._vttRetryQueued=true;var me=this;var retry=function(){me._vttRetryQueued=false;window.removeEventListener('online',retry);me.verifyTillToken();};window.addEventListener('online',retry);}
   relock(){try{localStorage.removeItem('kashikeyo_till_user');}catch(e){}
     var can=(this.state.users||[]).some(function(u){return u&&u.hasPin;});
     if(can)this.setState({locked:true,lockPick:null,pinEntry:'',pinErr:false,pinBusy:false,curUser:null});}
@@ -2987,7 +3024,13 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     const _cartQty={};s.cart.forEach(function(l){_cartQty[l.id]=(_cartQty[l.id]||0)+l.qty;});
     const items=_shown.map(m=>{const n=_cartQty[m.id]||0;const soldOut=!!ovOff[m.id]||!!m.soldOut;const pr=(m.id in ovPr)?ovPr[m.id]:m.price;const disp='flex';const ai=me.assetInfo(m);const ti=me.catTint(m.cat);return {disp,name:me.itemName(m),gl:m.en[0],tint:m.tint,tc:m.tc,photo:'qrph-'+m.id,src:ai.src,hasImg:ai.hasImg,noImg:!ai.hasImg,glyph:me.tileGlyph(m),tileBg:ti[0],tileTc:ti[1],desc:(s.lang==='dv'?(m.descDv||m.desc):m.desc)||(me.QRINFO[m.id]||{}).desc||'',tags:(Array.isArray(m.tags)?m.tags:[]).slice(0,2),hasTags:!!(m.tags&&m.tags.length),bestSeller:!!m.bestSeller,priceF:me.fm(pr),n,hasN:n>0,hasMods:!!m.mods,soldOut,cardOp:soldOut?0.5:1,bc:soldOut?'var(--line)':(n>0?'var(--coral)':'var(--line)'),showAdd:n===0&&!soldOut,barOn:(n>0)||!soldOut,addLbl:me.t('addToOrder'),add:()=>{if(soldOut){me.toast(me.itemName(m)+' · '+me.t('soldOut'));return;}if(m.mods)me.setState({mod:Object.assign({},m,{price:pr}),modQty:1,modSel:{},modNote:'',modFresh:true,modEditIdx:null});else me.pushLine(Object.assign({},m,{price:pr}),[],1);},note:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();if(soldOut)return;me.setState({mod:Object.assign({},m,{price:pr}),modQty:1,modSel:{},modNote:'',modFresh:true,modEditIdx:null});},showNote:!m.mods&&!soldOut,incStop:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();if(soldOut)return;me.pushLine(Object.assign({},m,{price:pr}),[],1);},decStop:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();const c=s.cart.slice();for(let i=c.length-1;i>=0;i--){if(c[i].id===m.id){if(c[i].qty<=1)c.splice(i,1);else c[i]=Object.assign({},c[i],{qty:c[i].qty-1});break;}}me.setState({cart:c});}};});
     const posted=s.activeBill!=null||s.kotSent;
-    const lines=s.cart.map((l,i)=>{const m=me.MENU.find(x=>x.id===l.id);const d=l.disc||0;const gross=l.unit*l.qty;const net=gross*(1-d/100);return {name:me.itemName(m),gl:({hedhikaa:'🥟',mains:'🍛',drinks:'🥤',sweets:'🍮'}[m.cat])||m.en[0],tint:m.tint||'var(--sur2)',tc:m.tc||'var(--ink2)',qty:l.qty,unitF:me.fm(l.unit),amtF:me.fm(net),grossF:me.fm(gross),hasDisc:d>0,discLbl:d>0?('−'+d+'%'):me.t('discChip'),discBg:d>0?'var(--coral)':'var(--sur)',discC:d>0?'var(--coralink)':'var(--ink2)',discBc:d>0?'var(--coral)':'var(--line)',hasMods:l.mods.length>0||!!l.note,modsTxt:l.mods.map(x=>me.itemName(x)).concat(l.note?['“'+l.note+'”']:[]).join(' · '),openDisc:()=>me.setState({discOpen:i}),canEdit:!posted,editCursor:posted?'':'cursor:pointer',edit:()=>{if(posted)return;var it=fullMenu.find(function(x){return x.id===l.id;})||me.MENU.find(function(x){return x.id===l.id;});if(!it)return;var sel={};(l.mods||[]).forEach(function(x){sel[x.id]=true;});var bp=l.unit-((l.mods||[]).reduce(function(a,x){return a+(x.price||0);},0));me.setState({mod:Object.assign({},it,{price:bp}),modQty:l.qty,modSel:sel,modNote:l.note||'',modFresh:false,modEditIdx:i});},remove:()=>{if(posted)me.setState({rmOpen:i,rmReason:'rGuest'});else{const c=s.cart.slice();c.splice(i,1);me.setState({cart:c});}},inc:()=>{const c=s.cart.slice();c[i]=Object.assign({},c[i],{qty:c[i].qty+1});me.setState({cart:c});},dec:()=>{let c=s.cart.slice();if(c[i].qty<=1)c.splice(i,1);else c[i]=Object.assign({},c[i],{qty:c[i].qty-1});me.setState({cart:c});}};});
+    const lines=s.cart.map((l,i)=>{const m=me.MENU.find(x=>x.id===l.id);const d=l.disc||0;const gross=l.unit*l.qty;const net=gross*(1-d/100);
+      /* AUDIT-M1: only the forward-looking menu grid (soldOut above) showed a
+         sold-out badge — a line already in the cart when its item goes 86'd
+         elsewhere gave no signal at all and checked out normally. Same flag
+         the grid tiles use, just read for this line's item. */
+      const wentSoldOut=!!ovOff[l.id]||!!(m&&m.soldOut);
+      return {name:me.itemName(m),gl:({hedhikaa:'🥟',mains:'🍛',drinks:'🥤',sweets:'🍮'}[m.cat])||m.en[0],tint:m.tint||'var(--sur2)',tc:m.tc||'var(--ink2)',qty:l.qty,unitF:me.fm(l.unit),amtF:me.fm(net),grossF:me.fm(gross),hasDisc:d>0,discLbl:d>0?('−'+d+'%'):me.t('discChip'),discBg:d>0?'var(--coral)':'var(--sur)',discC:d>0?'var(--coralink)':'var(--ink2)',discBc:d>0?'var(--coral)':'var(--line)',hasMods:l.mods.length>0||!!l.note,modsTxt:l.mods.map(x=>me.itemName(x)).concat(l.note?['“'+l.note+'”']:[]).join(' · '),wentSoldOut,soldOutTag:wentSoldOut?'Sold out — remove or confirm with a manager':'',openDisc:()=>me.setState({discOpen:i}),canEdit:!posted,editCursor:posted?'':'cursor:pointer',edit:()=>{if(posted)return;var it=fullMenu.find(function(x){return x.id===l.id;})||me.MENU.find(function(x){return x.id===l.id;});if(!it)return;var sel={};(l.mods||[]).forEach(function(x){sel[x.id]=true;});var bp=l.unit-((l.mods||[]).reduce(function(a,x){return a+(x.price||0);},0));me.setState({mod:Object.assign({},it,{price:bp}),modQty:l.qty,modSel:sel,modNote:l.note||'',modFresh:false,modEditIdx:i});},remove:()=>{if(posted)me.setState({rmOpen:i,rmReason:'rGuest'});else{const c=s.cart.slice();c.splice(i,1);me.setState({cart:c});}},inc:()=>{const c=s.cart.slice();c[i]=Object.assign({},c[i],{qty:c[i].qty+1});me.setState({cart:c});},dec:()=>{let c=s.cart.slice();if(c[i].qty<=1)c.splice(i,1);else c[i]=Object.assign({},c[i],{qty:c[i].qty-1});me.setState({cart:c});}};});
     const mod=s.mod;const modMods=mod?(mod.mods||[]).filter(x=>s.modSel[x.id]):[];
     const modUnit=mod?mod.price+modMods.reduce((a,x)=>a+x.price,0):0;
     const net=s.syncing?{label:me.t('syncing')+(s.outbox?' '+s.outbox:'')+'…',bg:'var(--ambersoft)',c:'var(--amber)',anim:'spin 1s linear infinite'}:s.outbox?{label:s.outbox+' '+me.t('outboxWarn'),bg:'var(--ambersoft)',c:'var(--amber)',anim:'pulse 1.6s infinite'}:s.online?{label:me.t('online'),bg:'var(--greensoft)',c:'var(--green)',anim:'pulse 1.6s ease-in-out infinite'}:{label:me.t('offline'),bg:'var(--ambersoft)',c:'var(--amber)',anim:'pulse 1.6s infinite'};

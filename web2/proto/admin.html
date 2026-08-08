@@ -1955,8 +1955,28 @@ button[disabled],button:disabled{cursor:not-allowed}
 <sc-if value="{{ toastOn }}" hint-placeholder-val="{{ false }}">
   <div style="position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:99;background:var(--ink);color:var(--bg);border-radius:12px;padding:11px 18px;font-size:12.5px;font-weight:700;box-shadow:var(--shadow);animation:pop .3s">{{ toastMsg }}</div>
 </sc-if>
+<sc-if value="{{ toastErrOn }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:100;background:var(--red);color:#fff;border-radius:12px;padding:11px 18px;font-size:12.5px;font-weight:700;box-shadow:var(--shadow);animation:pop .3s;max-width:min(90vw,420px);text-align:center">{{ toastErrMsg }}</div>
+</sc-if>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1320,&quot;height&quot;:880}}">
+/* AUDIT-Q4: see the matching block in web2/proto/index.html — same rationale,
+   same shape, distinct 'where' tag so /api/dev/health can tell which surface
+   a report came from. */
+(function(){
+  var sent={},count=0;
+  function report(where,message){
+    try{
+      var key=where+'|'+message;var now=Date.now();
+      if(sent[key]&&now-sent[key]<30000)return;
+      if(count>=20)return;
+      sent[key]=now;count++;
+      fetch('/api/app2/client-error',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({where:where,message:String(message||'').slice(0,500)})}).catch(function(){});
+    }catch(e){}
+  }
+  window.addEventListener('error',function(ev){report('admin:window.onerror',(ev&&ev.message)||'error');});
+  window.addEventListener('unhandledrejection',function(ev){var r=ev&&ev.reason;report('admin:unhandledrejection',(r&&r.message)||String(r||'rejection'));});
+})();
 class Component extends DCLogic {
   constructor(p){
     super(p);
@@ -2024,8 +2044,8 @@ class Component extends DCLogic {
   openMdl(kind,seed){this.setState({mdl:Object.assign({kind:kind},seed||{})});}
   closeMdl(){this.setState({mdl:null});}
   setMF(k,v){this.setState({mdl:Object.assign({},this.state.mdl,{[k]:v})});}
-  adjustStock(id,mode,qty,reason){if(!id)return;try{fetch('/api/inv/adjust',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({ingredientId:id,mode:mode,qty:qty,unitName:'',reason:reason||''})}).catch(function(){});}catch(e){}}
-  receiveInvoice(id,qty,costLaari,gstLaari){try{fetch('/api/inv/invoices',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:[{ingredientId:id,qty:qty,cost:costLaari,unitName:''}],gst:Math.max(0,Math.round(gstLaari||0))})}).catch(function(){});}catch(e){}}
+  adjustStock(id,mode,qty,reason){if(!id)return;var me=this;try{fetch('/api/inv/adjust',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({ingredientId:id,mode:mode,qty:qty,unitName:'',reason:reason||''})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.apiFail('the stock adjustment',err);});}catch(e){me.apiFail('the stock adjustment',e);}}
+  receiveInvoice(id,qty,costLaari,gstLaari){var me=this;try{fetch('/api/inv/invoices',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:[{ingredientId:id,qty:qty,cost:costLaari,unitName:''}],gst:Math.max(0,Math.round(gstLaari||0))})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.apiFail('the delivery receipt',err);});}catch(e){me.apiFail('the delivery receipt',e);}}
   receiveStock(){const m=this.state.mdl;if(!m)return;const qty=parseFloat(m.qty);if(!(qty>0)){this.setState({mdl:Object.assign({},m,{err:'Enter a quantity greater than 0'})});return;}const cost=parseFloat(m.cost)||0;const gst=Math.max(0,parseFloat(m.gst)||0);const it=this.state.stock.find(x=>x.n===m.itemName);const newOh=it?Math.round((it.oh+qty)*100)/100:qty;const upd={oh:newOh};if(cost>0&&it&&qty>0)upd.cost=Math.round((it.oh*it.cost+cost)/(it.oh+qty));const stock=this.state.stock.map(x=>x.n===m.itemName?Object.assign({},x,upd):x);this.setState({stock,mdl:null});this.toast(m.itemName+' · received '+qty+' '+(m.unit||'')+(cost>0?(' · MVR '+cost):'')+(gst>0?(' · GST '+gst):''));if(it&&it.id){if(cost>0)this.receiveInvoice(it.id,qty,Math.round(cost*100),Math.round(gst*100));else this.adjustStock(it.id,'correct',newOh,'received');}}
   _baseUnit(u){u=(u||'').toLowerCase();return (u==='l'||u==='ml')?'ml':(u==='pcs'||u==='box')?'pcs':'g';}
   _factor(u){u=(u||'').toLowerCase();return (u==='kg'||u==='l')?1000:1;}
@@ -2039,7 +2059,7 @@ class Component extends DCLogic {
   logWaste(){const m=this.state.mdl;const qty=parseFloat(m.qty);if(!(qty>0)){this.setState({mdl:Object.assign({},m,{err:'Enter a quantity greater than 0'})});return;}const it=this.state.stock.find(x=>x.n===m.itemName);const cost=Math.round((it?it.cost:20)*qty);const stock=this.state.stock.map(x=>x.n===m.itemName?Object.assign({},x,{oh:Math.max(0,Math.round((x.oh-qty)*100)/100)}):x);const waste=[{d:'Today',n:m.itemName,qty,unit:(it?it.unit:m.unit||''),rs:(m.reason||'Expiry'),cost}].concat(this.state.waste);this.setState({stock,waste,mdl:null});this.toast('Wastage logged · '+m.itemName+' (−'+qty+') · stock adjusted');if(it&&it.id)this.adjustStock(it.id,'waste',qty,m.reason||'');}
   approveExp(idx){const expenses=this.state.expenses.map((e,i)=>i===idx?Object.assign({},e,{ap:'Approved'}):e);this.setState({expenses});this.toast('Expense approved · '+this.state.expenses[idx].v);}
   _pf(method){var m=(method||'').toLowerCase();return m==='cash'?'cash':m==='card'?'card':m==='transfer'?'transfer':'other';}
-  bookExpense(body){try{fetch('/api/inv/expenses',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
+  bookExpense(body){var me=this;try{fetch('/api/inv/expenses',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.apiFail('the expense',err);});}catch(e){me.apiFail('the expense',e);}}
   addExpense(){const m=this.state.mdl;const amt=parseFloat(m.amt);const v=(m.v||'').trim();if(!v||!(amt>0)){this.setState({mdl:Object.assign({},m,{err:'Vendor and amount are required'})});return;}const d=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short'});const expenses=[{d,cat:(m.cat||'General'),v,m:(m.method||'Cash'),amt,ap:'Pending'}].concat(this.state.expenses);this.setState({expenses,mdl:null});this.toast('Expense recorded · '+v+' · pending approval');this.bookExpense({cat:(m.cat||'General'),vendor:v,amount:Math.round(amt*100),paidFrom:this._pf(m.method)});}
   payBill(idx){const b=this.state.bills[idx];const bills=this.state.bills.map((x,i)=>i===idx?Object.assign({},x,{st:'Paid',due:'—'}):x);const d=new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short'});const expenses=[{d,cat:'Vendor bill',v:b.v,m:'Transfer',amt:b.amt,ap:'Approved'}].concat(this.state.expenses);this.setState({bills,expenses,mdl:null});this.toast(b.v+' · bill '+b.inv+' paid');this.bookExpense({cat:'Vendor bill',vendor:b.v,amount:Math.round(b.amt*100),paidFrom:'transfer',note:'Bill '+b.inv});}
   actTransfer(idx){const t=this.state.transfers[idx];const next=t.st==='Pending'?'Approved':t.st==='In transit'?'Received':t.st;const transfers=this.state.transfers.map((x,i)=>i===idx?Object.assign({},x,{st:next}):x);this.setState({transfers});this.toast(t.no+' · '+next);}
@@ -2203,13 +2223,13 @@ class Component extends DCLogic {
   saveSupplier(){const m=this.state.mdl;const n=(m.sn||'').trim();if(!n){this.setMF('err','Supplier name is required');return;}const contact=(m.sc||'').trim(),cat=(m.scat||'').trim();const supNew=[{n,c:contact||'—',cat:cat||'General',terms:'—',out:0,k:'ok'}].concat(this.state.supNew||[]);this.setState({supNew,mdl:null});this.toast(n+' · supplier added');const isEmail=/@/.test(contact);const body={name:n,phone:isEmail?'':contact,email:isEmail?contact:'',notes:cat};try{fetch('/api/inv/suppliers',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
   openSettle(r){this.openMdl('settle',{cid:r.id,cn:r.n,bal:r.bal,balF:this.fm(r.bal),amt:String(r.bal),title:'Settle balance'});}
   setSettleAmt(v){const m=this.state.mdl;this.setState({mdl:Object.assign({},m,{amt:v,err:''})});}
-  doSettle(){const m=this.state.mdl;const amt=parseFloat(m.amt);if(isNaN(amt)||amt<=0){this.setState({mdl:Object.assign({},m,{err:'Enter an amount'})});return;}if(amt>m.bal+0.001){this.setState({mdl:Object.assign({},m,{err:'Amount exceeds balance'})});return;}const newBal=Math.max(0,Math.round((m.bal-amt)*100)/100);const recvOv=Object.assign({},this.state.recvOv||{},{[m.cid]:newBal});this.setState({recvOv,mdl:null});this.toast('Settled '+this.fm(amt)+' · '+m.cn);const me=this;try{fetch('/api/app2/customer/'+encodeURIComponent(m.cid)+'/settle',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({amount:Math.round(amt*100)})}).catch(function(){});}catch(e){}}
+  doSettle(){const m=this.state.mdl;const amt=parseFloat(m.amt);if(isNaN(amt)||amt<=0){this.setState({mdl:Object.assign({},m,{err:'Enter an amount'})});return;}if(amt>m.bal+0.001){this.setState({mdl:Object.assign({},m,{err:'Amount exceeds balance'})});return;}const newBal=Math.max(0,Math.round((m.bal-amt)*100)/100);const prevOv=this.state.recvOv||{};const recvOv=Object.assign({},prevOv,{[m.cid]:newBal});this.setState({recvOv,mdl:null});this.toast('Settled '+this.fm(amt)+' · '+m.cn);const me=this;try{fetch('/api/app2/customer/'+encodeURIComponent(m.cid)+'/settle',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({amount:Math.round(amt*100)})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.setState({recvOv:prevOv});me.apiFail('the settlement for '+m.cn+' — the balance shown has been restored',err);});}catch(e){me.setState({recvOv:prevOv});me.apiFail('the settlement for '+m.cn+' — the balance shown has been restored',e);}}
   signOutSession(sid){var me=this;if(!sid)return;var cur=(this.state.sessions||[]).find(function(x){return x.sid===sid;});if(cur&&cur.current){this.toast('This is your current device — use Account · Sign out.');return;}try{fetch('/api/app2/sessions/revoke',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({sid:sid})}).then(function(r){return r.json().catch(function(){return{};});}).then(function(j){if(j&&j.error){me.toast(j.error);return;}me.toast('Device signed out');me.loadSessions();}).catch(function(){});}catch(e){}}
   openRecipe(id){const mi=this.MENU.find(x=>x.id===id);this.setState({mdl:{kind:'recipe',id,lines:(this.state.recipes[id]||[]).map(l=>Object.assign({},l)),title:'Recipe · '+(mi?mi.en:'')}});}
   addRecipeLine(ing){const m=this.state.mdl;const lines=(m.lines||[]).concat([{ing,qty:0.05}]);this.setState({mdl:Object.assign({},m,{lines})});}
   removeRecipeLine(i){const m=this.state.mdl;const lines=(m.lines||[]).filter((x,ix)=>ix!==i);this.setState({mdl:Object.assign({},m,{lines})});}
   setRecipeLineQty(i,v){const m=this.state.mdl;const q=parseFloat(v);const lines=(m.lines||[]).map((x,ix)=>ix===i?Object.assign({},x,{qty:isNaN(q)?0:q}):x);this.setState({mdl:Object.assign({},m,{lines})});}
-  saveRecipe(){var me=this;const m=this.state.mdl;const lines=(m.lines||[]).filter(l=>l.qty>0);const recipes=Object.assign({},this.state.recipes,{[m.id]:lines});this.setState({recipes,mdl:null});this.toast('Recipe saved · '+((this.MENU.find(x=>x.id===m.id)||{}).en||''));var byName={};(this.state.stock||[]).forEach(function(x){if(x.id)byName[x.n]=x.id;});var apiLines=lines.map(function(l){return {ingredientId:byName[l.ing]||'',qty:Number(l.qty)};}).filter(function(l){return l.ingredientId;});try{fetch('/api/inv/recipes/'+encodeURIComponent(m.id),{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:apiLines})}).catch(function(){});}catch(e){}}
+  saveRecipe(){var me=this;const m=this.state.mdl;const lines=(m.lines||[]).filter(l=>l.qty>0);const recipes=Object.assign({},this.state.recipes,{[m.id]:lines});this.setState({recipes,mdl:null});this.toast('Recipe saved · '+((this.MENU.find(x=>x.id===m.id)||{}).en||''));var byName={};(this.state.stock||[]).forEach(function(x){if(x.id)byName[x.n]=x.id;});var apiLines=lines.map(function(l){return {ingredientId:byName[l.ing]||'',qty:Number(l.qty)};}).filter(function(l){return l.ingredientId;});try{fetch('/api/inv/recipes/'+encodeURIComponent(m.id),{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({lines:apiLines})}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.apiFail('the recipe',err);});}catch(e){me.apiFail('the recipe',e);}}
   componentDidMount(){this.applyDoc();this.animate();this._rs=()=>this.setState({vw:window.innerWidth});window.addEventListener('resize',this._rs);this._readLive=()=>{try{const r=localStorage.getItem('kashikeyo_live');if(r===this._liveSig)return;this._liveSig=r;this.setState({live:r?JSON.parse(r):null});}catch(e){}};this._readLive();try{const rs=localStorage.getItem('kashikeyo_store');if(rs)this.setState({store:Object.assign({},this.state.store,JSON.parse(rs))});}catch(e){}this._onStore=(e)=>{if(!e||e.key==='kashikeyo_live'||e.key===null)this._readLive();};window.addEventListener('storage',this._onStore);this._liveIv=setInterval(this._readLive,3000);this.loadInsights();this.loadFlags();this.loadPnl();this.loadExpiring();this.loadOnb();this.loadSessions();this.loadBackups();}
   loadSessions(){var me=this;try{fetch('/api/app2/sessions',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&Array.isArray(d.sessions))me.setState({sessions:d.sessions});}).catch(function(){});}catch(e){}}
   loadOnb(){var me=this;try{fetch('/api/inv/onboarding',{credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.ok)me.setState({onb:d});}).catch(function(){});}catch(e){}}
@@ -2265,8 +2285,8 @@ class Component extends DCLogic {
   saveMeta(id,patch){if(!id||!(this.MENU||[]).find(x=>x.id===id))return;try{fetch('/api/inv/products/'+encodeURIComponent(id)+'/meta',{method:'PUT',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(patch)}).catch(function(){});}catch(e){}}
   togMenuOff(id){const m=Object.assign({},this.state.menuOff);if(m[id])delete m[id];else m[id]=true;this.setState({menuOff:m});this.saveMeta(id,{soldOut:!!m[id]});const it=this.MENU.find(x=>x.id===id);this.toast((it?it.en:'Item')+(m[id]?' · marked 86 (sold out)':' · back on menu'));}
   togMenuHidden(id){const m=Object.assign({},this.state.menuHidden);if(m[id])delete m[id];else m[id]=true;this.setState({menuHidden:m});this.saveMeta(id,{hidden:!!m[id]});const it=this.MENU.find(x=>x.id===id);this.toast((it?it.en:'Item')+(m[id]?' · hidden from menu':' · shown on menu'));}
-  saveProduct(body){try{fetch('/api/inv/products',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).catch(function(){});}catch(e){}}
-  deleteProduct(id){if(!id)return;try{fetch('/api/inv/products/'+encodeURIComponent(id)+'/delete',{method:'POST',credentials:'same-origin'}).catch(function(){});}catch(e){}}
+  saveProduct(body){var me=this;try{fetch('/api/inv/products',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.apiFail('the menu item',err);});}catch(e){me.apiFail('the menu item',e);}}
+  deleteProduct(id){if(!id)return;var me=this;try{fetch('/api/inv/products/'+encodeURIComponent(id)+'/delete',{method:'POST',credentials:'same-origin'}).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);}).catch(function(err){me.apiFail('removing that item',err);});}catch(e){me.apiFail('removing that item',e);}}
   bumpMenuPrice(id,base,d){const m=Object.assign({},this.state.menuPrice);const cur=(id in m)?m[id]:base;const nv=Math.max(0,Math.round((cur+d)*100)/100);if(nv===base)delete m[id];else m[id]=nv;this.setState({menuPrice:m});this.saveMeta(id,{price:Math.round(nv*100)});}
   pubMenu(){try{const o=JSON.stringify({off:this.state.menuOff,hidden:this.state.menuHidden,price:this.state.menuPrice,added:this.state.menuNew});if(o!==this._lastMenu){this._lastMenu=o;localStorage.setItem('kashikeyo_menu',o);}}catch(e){}}
   openAddItem(){var defCat=this._catGroups().length?this._firstSub():'hedhikaa';this.setState({menuDraft:{id:'',en:'',dv:'',desc:'',descDv:'',cat:defCat,price:'',isNew:true,mods:[]}});}
@@ -2316,6 +2336,14 @@ class Component extends DCLogic {
   fm(n,dec){return 'MVR '+Number(n).toLocaleString('en-US',{minimumFractionDigits:dec===0?0:2,maximumFractionDigits:dec===0?0:2});}
   fi(n){return Math.round(n).toLocaleString('en-US');}
   toast(m){clearTimeout(this._tt);this.setState({toast:m});this._tt=setTimeout(()=>this.setState({toast:null}),2200);}
+  /* AUDIT-Q1: several back-office writes below update local state and toast
+     success optimistically, then fire the real save with a bare
+     .catch(function(){}) — a failed save (network blip, a 500) was invisible:
+     the admin believed money/stock/recipe changes had persisted when they
+     hadn't. Route those fetches' failure path through here instead, so a
+     non-2xx response or a network error surfaces a clear, separate,
+     longer-lived error toast rather than silently vanishing. */
+  apiFail(action,err){clearTimeout(this._tt2);this.setState({toastErr:"Didn't save — "+action+". Check your connection and try again."});this._tt2=setTimeout(()=>this.setState({toastErr:null}),4500);try{console.error('[admin] '+action+' failed',err);}catch(e){}}
   path(vals,mode){const W=1000,H=290,PT=10,max=Math.max.apply(null,vals),min=Math.min.apply(null,vals);const n=vals.length;
     const x=i=>(i*(W/(n-1)));const y=v=>H-PT-((v-min)/(max-min||1))*(H-2*PT);
     let d='M'+x(0).toFixed(1)+' '+y(vals[0]).toFixed(1);
@@ -2894,7 +2922,7 @@ class Component extends DCLogic {
       attention,attnCount:String(attn.length),prime,
       primePctF:_pc!=null?_pc+'%':'—',primeHealth:_pc==null?'No data yet':_pc<35?'Healthy':_pc<45?'Watch':'High',primeHealthC:_pcC,
       primeCaption:_pc==null?'book purchases to see food cost':'of revenue spent on purchases',
-      toastOn:!!s.toast,toastMsg:s.toast
+      toastOn:!!s.toast,toastMsg:s.toast,toastErrOn:!!s.toastErr,toastErrMsg:s.toastErr
     };
   }
 }
