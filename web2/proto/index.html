@@ -2145,8 +2145,20 @@ class Component extends DCLogic {
        the till doesn't re-prompt for a PIN every reload. The saved user is only
        honoured while PIN lock is enabled and the user still exists with a
        matching PIN; it's cleared on explicit Lock / Sign out, so the PIN screen
-       shows only when switching user or signing in fresh. */
-    const __ksRestoreTillUser=function(){try{var users=(typeof window!=='undefined'&&window.__ksReg&&Array.isArray(window.__ksReg.users))?window.__ksReg.users:[];if(!users.some(function(u){return u&&u.hasPin;}))return null;var raw=localStorage.getItem('kashikeyo_till_user');if(!raw)return null;var saved=JSON.parse(raw);/* A saved device handle is a server-signed token, not a name. Matching on
+       shows only when switching user or signing in fresh.
+       AUDIT: "across a plain refresh" was the intent, but the saved handle lived
+       in localStorage — shared by every tab/window on the origin, with no
+       expiry. A DIFFERENT tab sitting on the PIN screen, having verified
+       nothing itself, silently inherited whoever last signed in anywhere on
+       the device (another tab, or an earlier session nobody ever locked) the
+       moment IT refreshed — no PIN entered in that tab at all. sessionStorage
+       is the fix: it's genuinely per-tab and dies with the tab, so it can only
+       ever say "this specific tab already verified a PIN this session" — never
+       "some tab on this device did, at some point." Stamped alongside the
+       localStorage handle on a real PIN entry (pinPress), cleared with it on
+       Lock/Sign out; a still-open tab surviving its own refresh is unaffected,
+       a fresh or different tab always lands back on the PIN screen. */
+    const __ksRestoreTillUser=function(){try{var users=(typeof window!=='undefined'&&window.__ksReg&&Array.isArray(window.__ksReg.users))?window.__ksReg.users:[];if(!users.some(function(u){return u&&u.hasPin;}))return null;if(sessionStorage.getItem('kashikeyo_till_tab')!=='1')return null;var raw=localStorage.getItem('kashikeyo_till_user');if(!raw)return null;var saved=JSON.parse(raw);/* A saved device handle is a server-signed token, not a name. Matching on
    the name alone let anyone with devtools write {name:'<owner>'} into
    localStorage and hold the owner role without ever knowing a PIN; the
    token is re-verified against the server on boot (verifyTillToken). */
@@ -2905,14 +2917,19 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     try{fetch('/api/app2/unlock',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:u.id,pin:entry})})
       .then(function(r){return r.ok?r.json():null;})
       .then(function(d2){if(!d2||!d2.ok||!d2.user){bad();return;}
-        try{localStorage.setItem('kashikeyo_till_user',JSON.stringify({id:d2.user.id,name:d2.user.name,role:d2.user.role||'cashier',token:d2.token}));}catch(e){}
+        try{localStorage.setItem('kashikeyo_till_user',JSON.stringify({id:d2.user.id,name:d2.user.name,role:d2.user.role||'cashier',token:d2.token}));sessionStorage.setItem('kashikeyo_till_tab','1');}catch(e){}
         var st={locked:false,lockPick:null,pinEntry:'',pinErr:false,pinBusy:false,curUser:d2.user,myRole:d2.user.role||'cashier',acct:false,lockShield:true};
         if(d2.user.role==='kitchen'){st.scr='orders';st.ordTab='kitchen';}
         me.setState(st);setTimeout(function(){me.setState({lockShield:false});},500);})
       .catch(bad);}catch(e){bad();}}
   /* Re-check a restored device handle on boot: a stale or forged one relocks
-     the till rather than silently granting the saved role. */
-  verifyTillToken(){var me=this;var raw=null;try{raw=localStorage.getItem('kashikeyo_till_user');}catch(e){}
+     the till rather than silently granting the saved role. Nothing to
+     re-check in a tab that never restored one in the first place (no
+     kashikeyo_till_tab marker — see __ksRestoreTillUser): don't touch the
+     shared localStorage handle at all here, or a fresh/different tab would
+     relock (and sign out) a session that's legitimately still open elsewhere
+     on the same device. */
+  verifyTillToken(){var me=this;try{if(sessionStorage.getItem('kashikeyo_till_tab')!=='1')return;}catch(e){return;}var raw=null;try{raw=localStorage.getItem('kashikeyo_till_user');}catch(e){}
     if(!raw)return;var saved=null;try{saved=JSON.parse(raw);}catch(e){}
     if(!saved||!saved.token){this.relock();return;}
     /* AUDIT-Q2: a stale/forged handle only relocked on an explicit non-ok
@@ -2927,7 +2944,7 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
       .then(function(d2){if(!d2||!d2.ok||!d2.user){me.relock();return;}me.setState({curUser:d2.user,myRole:d2.user.role||'cashier'});})
       .catch(function(){me._queueVerifyRetry();});}catch(e){me._queueVerifyRetry();}}
   _queueVerifyRetry(){if(this._vttRetryQueued)return;this._vttRetryQueued=true;var me=this;var retry=function(){me._vttRetryQueued=false;window.removeEventListener('online',retry);me.verifyTillToken();};window.addEventListener('online',retry);}
-  relock(){try{localStorage.removeItem('kashikeyo_till_user');}catch(e){}
+  relock(){try{localStorage.removeItem('kashikeyo_till_user');sessionStorage.removeItem('kashikeyo_till_tab');}catch(e){}
     var can=(this.state.users||[]).some(function(u){return u&&u.hasPin;});
     if(can)this.setState({locked:true,lockPick:null,pinEntry:'',pinErr:false,pinBusy:false,curUser:null});}
   pinBack(){this.setState({pinEntry:this.state.pinEntry.slice(0,-1),pinErr:false});}
@@ -3282,7 +3299,7 @@ if(_visible.length>_shown.length&&el.scrollTop+el.clientHeight>el.scrollHeight-3
           shiftExpectedF:me.fm((s.shiftFloat||0)+Math.max(0,s.cash-(s.shiftCashOpen||0))),
           ...(()=>{var counted=s.shiftModal?(Math.max(0,parseFloat(s.shiftModal.counted)||0)):0;var expected=(s.shiftFloat||0)+Math.max(0,s.cash-(s.shiftCashOpen||0));var vr=Math.round((counted-expected)*100)/100;var bal=Math.abs(vr)<0.5;return {shiftVarF:(vr>0?'+':vr<0?'−':'')+me.fm(Math.abs(vr)),shiftVarC:bal?'var(--green)':'var(--coral)',shiftVarLbl:bal?'Balanced':(vr>0?'Over':'Short'),shiftCountedEntered:!!(s.shiftModal&&String(s.shiftModal.counted||'').length)};})(),
           toggleSound:()=>me.setState({sound:!s.sound}),acctSoundLabel:s.sound?'Alert sounds on':'Alert sounds off',soundBg:s.sound?'var(--coral)':'var(--ink3)',soundX:s.sound?'16px':'2px',
-          acctLock:()=>{var can=(me.state.users||[]).some(function(u){return u&&u.hasPin;});if(can){try{localStorage.removeItem('kashikeyo_till_user');}catch(e){}me.setState({acct:false,locked:true,lockPick:null,pinEntry:'',pinErr:false,curUser:null});}else{me.setState({acct:false});me.toast('Set staff PINs in the back office to lock the till');}},acctSignOut:()=>{try{localStorage.removeItem('kashikeyo_till_user');}catch(e){}var can=(me.state.users||[]).some(function(u){return u&&u.hasPin;});me.setState(can?{acct:false,locked:true,lockPick:null,pinEntry:'',pinErr:false,curUser:null}:{acct:false});me.toast('Signed out');},
+          acctLock:()=>{var can=(me.state.users||[]).some(function(u){return u&&u.hasPin;});if(can){try{localStorage.removeItem('kashikeyo_till_user');sessionStorage.removeItem('kashikeyo_till_tab');}catch(e){}me.setState({acct:false,locked:true,lockPick:null,pinEntry:'',pinErr:false,curUser:null});}else{me.setState({acct:false});me.toast('Set staff PINs in the back office to lock the till');}},acctSignOut:()=>{try{localStorage.removeItem('kashikeyo_till_user');sessionStorage.removeItem('kashikeyo_till_tab');}catch(e){}var can=(me.state.users||[]).some(function(u){return u&&u.hasPin;});me.setState(can?{acct:false,locked:true,lockPick:null,pinEntry:'',pinErr:false,curUser:null}:{acct:false});me.toast('Signed out');},
           accents:['keyo','blue','green','terracotta','red','amber','pink'].map(k=>{const on=s.accent===k;return {color:cmap[k],bd:'transparent',sh:on?'0 0 0 2px var(--sur),0 0 0 4px '+cmap[k]:'none',tap:()=>me.setState({accent:k})};}),
           langOpts:[['en','English'],['dv','ދިވެހި']].map(l=>{const on=s.lang===l[0];return {label:l[1],on,bg:on?'var(--coral)':'transparent',co:on?'var(--coralink)':'var(--ink2)',tap:()=>me.setState({lang:l[0]})};}),
           acctRoleOutlet:me.t(s.myRole)+' · '+((s.outletName)||(s.storeP&&s.storeP.name)||'Kashikeyo'),hasOutlets:(s.outlets||[]).length>1,outletList:(s.outlets||[]).map(function(o){var on=o.id===s.outletId;return {name:o.name,bg:on?'var(--ink)':'var(--sur2)',co:on?'var(--bg)':'var(--ink2)',bc:on?'var(--ink)':'var(--line)',tap:function(){me.switchOutlet(o);}};}),
