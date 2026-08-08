@@ -1750,14 +1750,17 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
   // A table QR deliberately shows the WHOLE table's shared bill — any phone at
   // the table sees every order on it, not just the one it placed itself. But a
   // table is reused all day, and orders are never purged, so an unbounded
-  // `table` match hands the guest the LAST party's already-settled order the
-  // moment they scan a table someone else just paid off — the portal read that
-  // as "your bill is settled" before this party had ordered anything. Once an
-  // order is settled it stays visible only briefly (long enough to show the
-  // receipt right after paying); older ones drop off so the next seating starts
-  // clean. Anything still open counts regardless of age — this never hides a
-  // live order.
-  const RECENT_MS = 90 * 60 * 1000; // matches the guest app's own paid-session staleness window
+  // `table` match hands the guest the LAST party's order the moment they scan
+  // a table someone else already dealt with — settled, or (just as bad) simply
+  // left "served" and never explicitly closed out at the till, which reappears
+  // on every future guest's phone at that table forever. Once an order is
+  // settled it stays visible only briefly (long enough to show the receipt
+  // right after paying). A still-open order gets a much longer leash — a real
+  // dine-in visit is never anywhere near this long, so past it an unsettled
+  // order reads as forgotten, not live — but never so short it could cut off
+  // an ordinary, unusually long sitting.
+  const SETTLED_RECENT_MS = 90 * 60 * 1000; // matches the guest app's own paid-session staleness window
+  const OPEN_MAX_MS = 6 * 60 * 60 * 1000;
   const now = Date.now();
   return orders
     .filter((o) => {
@@ -1765,9 +1768,9 @@ async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
       if (customerId) return idEq(o.customerId, customerId);
       if (!table || !idEq(o.table, table)) return false;
       const st = String(o.status || "new");
-      if (st !== "settled" && st !== "completed") return true;
       const at = Number(o.updatedAt || o.settledAt || o.completedAt || o.createdAt) || 0;
-      return at > 0 && (now - at) < RECENT_MS;
+      if (st === "settled" || st === "completed") return at > 0 && (now - at) < SETTLED_RECENT_MS;
+      return at === 0 || (now - at) < OPEN_MAX_MS;
     })
     .map((o) => normalizeOrder(o, settings))
     .sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));

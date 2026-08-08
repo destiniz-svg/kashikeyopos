@@ -1369,6 +1369,22 @@ window.KashikeyoGuestQR = (function () {
       if (t2.assistAck && !was.assist) this.toast('A server is on the way to your table');
       else if (t2.billAck && !was.bill) this.toast('A cashier is on the way with your bill');
       else if (t2.settled && !was.settled) this.toast('Bill settled — thank you');
+      /* A resumed session (restore(), from localStorage — possibly hours or
+         days old) can point at a round the till's feed no longer has any
+         record of at all: never marked paid locally (so restore() didn't
+         expire it — see restore()'s own comment), yet also long since aged
+         off the server (see guestOrders on the server). Without this, a
+         guest reopening the portal on that table lands straight back on the
+         "sent" screen showing an order that, as far as the till is
+         concerned, doesn't exist — indistinguishable from one just placed.
+         Once a real poll (not the seed poll above) confirms nothing matches,
+         the session is done: stop showing it and start clean. Gated on
+         tk (a poll actually returned) so a dropped/slow request can never
+         be mistaken for "gone". */
+      if (!this.s.paid && this.s.sent.length && tk && !tk.lines.length) {
+        this.s.sent = [];
+        if (this.s.screen === 'sent' || this.s.screen === 'bill') this.s.screen = 'menu';
+      }
     }
     this._ackWas = { assist: !!t2.assistAck, bill: !!t2.billAck, settled: !!t2.settled };
     this.render();
