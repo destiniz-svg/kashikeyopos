@@ -269,6 +269,66 @@ describe("guest orders & counter-modify", () => {
     assert.equal((await H.req("POST", "/p/no-such-slug-xyz/order", { body: { items: [{ pid: "g-tea", qty: 1 }], gtype: "pickup" } })).status, 404);
   });
 
+  /* issue #31: the sold-out check above reads a menu snapshot that can be
+     stale by the time the request lands, so two guests can both pass it for
+     the last unit. These prove the server now actually reserves stock (not
+     just checks it) for the guest QR path, and frees the hold once the order
+     is off the board — without touching the till's own never-reject-a-sale
+     behaviour. */
+  test("two concurrent QR orders for the last unit: only one succeeds (real reservation, not a snapshot check)", async () => {
+    await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "g-milk", name: "Milk", baseUnit: "ml", location: "Fridge" });
+    await H.invPost({ cookie: o.cookie }, "/adjust", { ingredientId: "g-milk", mode: "correct", qty: 100 });
+    await H.ops(o.token, [{ opId: "gl", puts: [{ kind: "products", id: "g-latte", data: { id: "g-latte", name: "Latte", price: 5000 } }] }]);
+    await H.invPut({ cookie: o.cookie }, "/recipes/g-latte", { lines: [{ ingredientId: "g-milk", qty: 100 }] }); // exactly 1 serving in stock
+    const [a, b] = await Promise.all([
+      order({ items: [{ pid: "g-latte", qty: 1 }], gtype: "pickup" }),
+      order({ items: [{ pid: "g-latte", qty: 1 }], gtype: "pickup" }),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    assert.deepEqual(statuses, [200, 409], "exactly one of the two racing orders is accepted");
+  });
+
+  test("a direct-stock (no-recipe) product is also protected from oversell", async () => {
+    await H.ops(o.token, [{ opId: "gc2", puts: [{ kind: "products", id: "g-cake", data: { id: "g-cake", name: "Cake Slice", price: 2000, stock: 1 } }] }]);
+    const [a, b] = await Promise.all([
+      order({ items: [{ pid: "g-cake", qty: 1 }], gtype: "pickup" }),
+      order({ items: [{ pid: "g-cake", qty: 1 }], gtype: "pickup" }),
+    ]);
+    const statuses = [a.status, b.status].sort();
+    assert.deepEqual(statuses, [200, 409], "exactly one of the two racing orders for the last direct-stock unit is accepted");
+  });
+
+  test("settling a QR order frees its reservation for the next guest", async () => {
+    await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "g-egg", name: "Egg", baseUnit: "pcs", location: "Fridge" });
+    await H.invPost({ cookie: o.cookie }, "/adjust", { ingredientId: "g-egg", mode: "correct", qty: 1 });
+    await H.ops(o.token, [{ opId: "ge", puts: [{ kind: "products", id: "g-omelette", data: { id: "g-omelette", name: "Omelette", price: 3500 } }] }]);
+    await H.invPut({ cookie: o.cookie }, "/recipes/g-omelette", { lines: [{ ingredientId: "g-egg", qty: 1 }] });
+    const first = await order({ items: [{ pid: "g-omelette", qty: 1 }], gtype: "pickup" });
+    assert.equal(first.status, 200);
+    // the single egg is now held — a second order for it must be refused
+    assert.equal((await order({ items: [{ pid: "g-omelette", qty: 1 }], gtype: "pickup" })).status, 409);
+    const settle = await H.req("POST", `/api/app2/order/${first.json.order.id}/settle`, { cookie: o.cookie, body: { tender: "cash" } });
+    assert.equal(settle.status, 200);
+    // settle deducts real stock (down to 0), so a third order is still refused —
+    // but by the real ingredient balance now, not a leftover hold.
+    assert.equal((await order({ items: [{ pid: "g-omelette", qty: 1 }], gtype: "pickup" })).status, 409);
+  });
+
+  test("cancelling a QR order frees its reservation for the next guest", async () => {
+    await H.invPost({ cookie: o.cookie }, "/ingredients", { id: "g-mango", name: "Mango", baseUnit: "pcs", location: "Fridge" });
+    await H.invPost({ cookie: o.cookie }, "/adjust", { ingredientId: "g-mango", mode: "correct", qty: 1 });
+    await H.ops(o.token, [{ opId: "gm", puts: [{ kind: "products", id: "g-smoothie", data: { id: "g-smoothie", name: "Mango Smoothie", price: 4500 } }] }]);
+    await H.invPut({ cookie: o.cookie }, "/recipes/g-smoothie", { lines: [{ ingredientId: "g-mango", qty: 1 }] });
+    const first = await order({ items: [{ pid: "g-smoothie", qty: 1 }], gtype: "pickup" });
+    assert.equal(first.status, 200);
+    assert.equal((await order({ items: [{ pid: "g-smoothie", qty: 1 }], gtype: "pickup" })).status, 409);
+    const cancel = await H.req("POST", `/api/app2/order/${first.json.order.id}/status`, { cookie: o.cookie, body: { status: "cancelled" } });
+    assert.equal(cancel.status, 200);
+    // the mango is untouched (never actually deducted), so releasing the hold
+    // lets a new order for it succeed again.
+    assert.equal((await order({ items: [{ pid: "g-smoothie", qty: 1 }], gtype: "pickup" })).status, 200);
+  });
+
   test("settling a modified order links the sale (srcOrderId) and completes the order", async () => {
     // Guest places an order…
     const placed = await order({ items: [{ pid: "g-tea", qty: 1 }], gtype: "pickup" });

@@ -465,6 +465,44 @@ CREATE POLICY tenant_isolation ON paired_devices
   USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
   WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
 
+-- ── Stock reservations (AUDIT-UX-STOCK, issue #31) ─────────────────────────
+-- Nothing decrements availability at order-creation time anywhere else in
+-- this system — stock deduction is deferred to settlement, matching the
+-- till's own "never reject a sale for stock" philosophy (a network-partition
+-- resilience choice, not an oversight). A guest QR order is the one place
+-- that CAN afford a real check (the guest is online, submitting to the
+-- server directly), so it gets a real, short-lived hold instead of just a
+-- snapshot read: reserve the recipe-exploded ingredient quantities (or the
+-- product's own direct stock, for a non-recipe stockable item) for the few
+-- minutes it takes staff to accept the order, so a second concurrent order
+-- for the last unit sees it as unavailable rather than racing to the same
+-- stock. Exactly one of ingredient_id/product_id is set per row. A hold is
+-- "active" while released=false AND expires_at is in the future — expiry is
+-- enforced by every reader (WHERE expires_at > now()), so a row past its
+-- expiry stops counting immediately even before the sweep below marks it
+-- released. RLS + grant mirror the other tenant tables. Idempotent.
+CREATE TABLE IF NOT EXISTS stock_reservations (
+  org_id        TEXT NOT NULL,
+  id            TEXT NOT NULL,
+  order_id      TEXT NOT NULL,
+  ingredient_id TEXT,
+  product_id    TEXT,
+  qty           NUMERIC NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at    TIMESTAMPTZ NOT NULL,
+  released      BOOLEAN NOT NULL DEFAULT false,
+  PRIMARY KEY (org_id, id)
+);
+CREATE INDEX IF NOT EXISTS stock_reservations_ing ON stock_reservations (org_id, ingredient_id, released, expires_at);
+CREATE INDEX IF NOT EXISTS stock_reservations_prod ON stock_reservations (org_id, product_id, released, expires_at);
+CREATE INDEX IF NOT EXISTS stock_reservations_order ON stock_reservations (org_id, order_id);
+ALTER TABLE stock_reservations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE stock_reservations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON stock_reservations;
+CREATE POLICY tenant_isolation ON stock_reservations
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
 -- ── Email OTP for signup verification ──────────────────────────────────────
 -- Global (NOT tenant-scoped): verifies an email before an org exists, so it is
 -- accessed via withSystem, not withOrg. Codes are stored hashed; one active

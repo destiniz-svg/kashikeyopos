@@ -308,6 +308,118 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     } catch (e) { recordError("availability recompute", e); }
   }
 
+  /* Stock reservations (AUDIT-UX-STOCK, issue #31): a short-lived hold so two
+     guests submitting near-simultaneously for the last unit of a limited item
+     can't both succeed. Deliberately scoped to the guest QR order path only —
+     the till still never rejects a sale for stock (see the /api/ops comment
+     on that), by design, for offline resilience. A guest is online and
+     submitting straight to the server, so it can afford a real check.
+
+     Reserves the recipe-exploded ingredient quantities for a recipe-tracked
+     product, or the product's own `data.stock` for a direct-stock item with
+     no recipe; an item with neither is untracked and always available
+     (matches the existing soldOut check's exact two branches). Both ingredient
+     and product locks are taken in sorted-id order so two concurrent
+     reservations touching an overlapping item set can't deadlock each other. */
+  const RESERVE_MINUTES = 25;
+  async function reserveOrderStock(orgId, orderId, lines) {
+    const pids = Array.from(new Set((lines || []).map((l) => String(l.pid)))).filter(Boolean);
+    if (!pids.length) return { ok: true };
+    return withOrg(orgId, async (client) => {
+      // Self-cleaning: expire this org's stale holds as a side effect of every
+      // reservation attempt, so no separate cross-org sweep job is needed.
+      await client.query(
+        "UPDATE stock_reservations SET released=true WHERE org_id=$1 AND released=false AND expires_at < now()", [orgId]);
+      const prodRows = (await client.query(
+        `SELECT id, data->>'name' AS name, data->'stock' AS stock FROM entities
+         WHERE org_id=$1 AND kind='products' AND id = ANY($2) AND deleted=false`, [orgId, pids])).rows;
+      const productInfo = new Map(prodRows.map((r) => [r.id, { name: r.name || "That item", stock: r.stock === null ? null : Number(r.stock) }]));
+
+      const rc = await client.query(
+        `SELECT rl.product_id, rl.ingredient_id, rl.qty FROM recipe_lines rl
+         JOIN ingredients i ON i.org_id=rl.org_id AND i.id=rl.ingredient_id
+         WHERE rl.org_id=$1 AND rl.product_id = ANY($2) AND i.active`, [orgId, pids]);
+      const recipeByProduct = new Map();
+      for (const row of rc.rows) {
+        if (!recipeByProduct.has(row.product_id)) recipeByProduct.set(row.product_id, []);
+        recipeByProduct.get(row.product_id).push(row);
+      }
+
+      const neededByIngredient = new Map();      // ingredientId -> qty
+      const ingredientBlamesProduct = new Map();  // ingredientId -> product name, for a readable error
+      const neededByProduct = new Map();          // productId (direct-stock, no recipe) -> qty
+      for (const l of lines) {
+        const pid = String(l.pid); const qty = Number(l.qty) || 0; if (qty <= 0) continue;
+        const recipe = recipeByProduct.get(pid);
+        const pname = (productInfo.get(pid) || {}).name || "That item";
+        if (recipe && recipe.length) {
+          for (const r of recipe) {
+            const need = (Number(r.qty) || 0) * qty;
+            neededByIngredient.set(r.ingredient_id, (neededByIngredient.get(r.ingredient_id) || 0) + need);
+            if (!ingredientBlamesProduct.has(r.ingredient_id)) ingredientBlamesProduct.set(r.ingredient_id, pname);
+          }
+        } else {
+          const info = productInfo.get(pid);
+          if (info && info.stock != null) neededByProduct.set(pid, (neededByProduct.get(pid) || 0) + qty);
+          // else: no recipe and no direct stock field — untracked, always available.
+        }
+      }
+      if (!neededByIngredient.size && !neededByProduct.size) return { ok: true };
+
+      if (neededByIngredient.size) {
+        const ingIds = Array.from(neededByIngredient.keys()).sort();
+        const lock = await client.query(
+          `SELECT id, current_stock FROM ingredients WHERE org_id=$1 AND id = ANY($2) ORDER BY id FOR UPDATE`, [orgId, ingIds]);
+        const stockById = new Map(lock.rows.map((r) => [r.id, Number(r.current_stock) || 0]));
+        const held = await client.query(
+          `SELECT ingredient_id, COALESCE(SUM(qty),0) AS q FROM stock_reservations
+           WHERE org_id=$1 AND ingredient_id = ANY($2) AND released=false AND expires_at > now() GROUP BY ingredient_id`,
+          [orgId, ingIds]);
+        const heldById = new Map(held.rows.map((r) => [r.ingredient_id, Number(r.q) || 0]));
+        for (const [ingId, need] of neededByIngredient) {
+          const available = (stockById.get(ingId) || 0) - (heldById.get(ingId) || 0);
+          if (available < need) return { ok: false, itemName: ingredientBlamesProduct.get(ingId) || "That item" };
+        }
+      }
+      if (neededByProduct.size) {
+        const prodIds = Array.from(neededByProduct.keys()).sort();
+        const lock = await client.query(
+          `SELECT id, (data->>'stock')::numeric AS stock FROM entities
+           WHERE org_id=$1 AND kind='products' AND id = ANY($2) AND deleted=false ORDER BY id FOR UPDATE`, [orgId, prodIds]);
+        const stockById = new Map(lock.rows.map((r) => [r.id, Number(r.stock) || 0]));
+        const held = await client.query(
+          `SELECT product_id, COALESCE(SUM(qty),0) AS q FROM stock_reservations
+           WHERE org_id=$1 AND product_id = ANY($2) AND released=false AND expires_at > now() GROUP BY product_id`,
+          [orgId, prodIds]);
+        const heldById = new Map(held.rows.map((r) => [r.product_id, Number(r.q) || 0]));
+        for (const [pid, need] of neededByProduct) {
+          const available = (stockById.get(pid) || 0) - (heldById.get(pid) || 0);
+          if (available < need) return { ok: false, itemName: (productInfo.get(pid) || {}).name || "That item" };
+        }
+      }
+
+      const expiresAt = new Date(Date.now() + RESERVE_MINUTES * 60000);
+      const inserts = [];
+      for (const [ingId, qty] of neededByIngredient) inserts.push(client.query(
+        `INSERT INTO stock_reservations (org_id, id, order_id, ingredient_id, qty, expires_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [orgId, uid(), orderId, ingId, qty, expiresAt]));
+      for (const [pid, qty] of neededByProduct) inserts.push(client.query(
+        `INSERT INTO stock_reservations (org_id, id, order_id, product_id, qty, expires_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+        [orgId, uid(), orderId, pid, qty, expiresAt]));
+      await Promise.all(inserts);
+      return { ok: true };
+    });
+  }
+  /* Release every active hold for an order — called when it settles (real
+     stock deduction takes over from here) or is cancelled. Best-effort/
+     non-fatal: a release that fails just leaves the hold to expire on its
+     own (RESERVE_MINUTES), never blocks the caller's own transaction. */
+  async function releaseOrderReservations(orgId, orderId) {
+    try {
+      await withOrg(orgId, (client) => client.query(
+        "UPDATE stock_reservations SET released=true WHERE org_id=$1 AND order_id=$2 AND released=false", [orgId, String(orderId)]));
+    } catch (e) { recordError("release reservations", e); }
+  }
   /* Best-sellers (§4 menu polish): the top movers over the trailing 30 days,
      flagged onto the product entity (data.bestSeller) so the till menu can
      badge them — the same "annotate the entity, let sync carry it" pattern the
@@ -3582,5 +3694,5 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       .catch((e) => console.log("AI smoke-test threw:", (e && e.message) || e)); }, 4000);
   }
 
-  return { router, processSales, recomputeAvailability, aiConfig, aiSelfTest, aiSmokeTest };
+  return { router, processSales, recomputeAvailability, reserveOrderStock, releaseOrderReservations, aiConfig, aiSelfTest, aiSmokeTest };
 };

@@ -166,7 +166,7 @@ async function ensureAppRole() {
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, paired_devices, otp_codes, store_backups, receipt_seq TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
-    audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots TO ${APP_DB_ROLE}`);
+    audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots, stock_reservations TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
      deleted even by the app role (FIN-03). */
   await bootPool.query(`GRANT SELECT, INSERT ON activity_log TO ${APP_DB_ROLE}`);
@@ -3189,8 +3189,23 @@ app.post("/p/:slug/order", pubThrottle(40, "order"), wrap(async (req, res) => {
      "ready" to hand over / settle straight away. Mixed orders stay "new" and
      the kitchen display just hides the non-kitchen lines. */
   const allNoKitchen = lines.length > 0 && lines.every((l) => l.noKitchen);
-  const order = { id: uid(), no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, customerDv: cust ? (cust.dv || cust.name || null) : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
-  const r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
+  const orderId = uid();
+  /* Close the snapshot-vs-reservation race (issue #31): the soldOut check just
+     above reads a menu snapshot that may be stale by the time this request
+     lands, so two guests can both pass it for the last unit. Actually reserve
+     the stock now, inside the DB, before the order is created — the till's
+     own "never reject a sale for stock" behaviour is untouched; this only
+     applies to the online guest QR path. */
+  const resv = await inventory.reserveOrderStock(org.id, orderId, lines);
+  if (!resv.ok) return res.status(409).json({ error: `${resv.itemName} just sold out — please remove it and try again.` });
+  const order = { id: orderId, no: "ORD-" + upd.rows[0].oseq, storeId, table: requestedTable || (otype === "delivery" ? "Delivery" : "Pickup"), items: lines, status: allNoKitchen ? "ready" : "new", noKitchen: allNoKitchen || undefined, createdAt: Date.now(), updatedAt: Date.now(), call: false, source: "qr", otype, covers: 1, customerId: cust ? cust.id : null, customerName: cust ? cust.name : null, customerDv: cust ? (cust.dv || cust.name || null) : null, zone: zone ? zone.name : null, fee: zone ? zone.fee : 0, note: String(note || "").slice(0, 200) || (otype === "delivery" && cust ? cust.address || "" : "") };
+  let r;
+  try {
+    r = await withOrg(org.id, (client) => client.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'orders',$2,$3) RETURNING rowver", [org.id, order.id, JSON.stringify(order)]));
+  } catch (e) {
+    inventory.releaseOrderReservations(org.id, orderId).catch(() => {});
+    throw e;
+  }
   poke(org.id, Number(r.rows[0].rowver));
   res.json({ ok: true, order: normalizeOrder(order, settings) });
 }));
@@ -5778,6 +5793,14 @@ if (fs.existsSync(protoFile)) {
     });
     if (rowver == null) return res.status(404).json({ error: "order not found" });
     poke(orgId, rowver);
+    // A guest QR order's stock hold (issue #31) is done once the order is off
+    // the open board — release it here too, not just at /settle, so a
+    // kitchen/till cancel or an old-style "completed" close frees the hold
+    // immediately instead of waiting for it to expire. A no-op for orders that
+    // were never reserved (till-originated orders, or none of these statuses).
+    if (status === "completed" || status === "settled" || status === "cancelled") {
+      inventory.releaseOrderReservations(orgId, id).catch(() => {});
+    }
     res.json({ ok: true });
   }));
   // Acknowledge a bill request: the cashier taps "On my way" so the guest's
@@ -5888,6 +5911,8 @@ if (fs.existsSync(protoFile)) {
     if (out.code === 404) return res.status(404).json({ error: "order not found" });
     if (out.code === 409) return res.status(409).json({ error: "this order is already closed" });
     poke(orgId, out.rowver);
+    // Real stock deduction has now taken over from the reservation (issue #31).
+    inventory.releaseOrderReservations(orgId, id).catch(() => {});
     // Post-commit (never blocks the settle): recipe/ingredient COGS ledger +
     // availability recompute, and an activity-log entry. Idempotent by sale id.
     if (out.firstBooking && out.sale) {
