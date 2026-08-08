@@ -4036,7 +4036,11 @@ class Component extends DCLogic {
       return {
         modalTitle: it.name || "Add-ons",
         modalSub: MVRc(unit) + " each · choose options, then add",
-        addonImg: it.img ? ("background-image:url(" + it.img + ");background-size:cover;background-position:center") : "background:var(--bg-2)",
+        addonImg: (function () {
+          const art = window.kposCatArt ? window.kposCatArt(it.cat || it.sub || "", it.name) : "";
+          const bg = it.img ? (art ? "url(" + it.img + "), url('" + art + "')" : "url(" + it.img + ")") : (art ? "url('" + art + "')" : "");
+          return bg ? ("background-image:" + bg + ";background-size:cover;background-position:center") : "background:var(--bg-2)";
+        })(),
         addonQty: String(qty),
         addonDec: () => setM({ qty: Math.max(1, qty - 1) }),
         addonInc: () => setM({ qty: qty + 1 }),

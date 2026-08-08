@@ -1821,7 +1821,7 @@ window.KashikeyoGuestQR = (function () {
 
     var h = '<div class="q-body">' +
       '<div style="height:410px;position:relative;background:var(--k-hero-bg);flex-shrink:0">' +
-        '<span style="position:absolute;inset:0;display:block;background-image:url(\'' + attr(this.img(d.img)) + '\');background-size:cover;background-position:center"></span>' +
+        '<span style="position:absolute;inset:0;display:block;background-image:' + this.thumbBg(d) + ';background-size:cover;background-position:center"></span>' +
         '<div style="position:absolute;top:66px;left:20px;right:20px;display:flex;align-items:center;justify-content:space-between">' +
           '<button class="q-round on-photo" data-act="menu">' + svg(I.back, { s: 19, c: C, w: 2.4 }) + '</button>' +
           '<button class="q-round on-photo" data-act="sheet"><svg viewBox="0 0 24 24" width="19" height="19" fill="' + C + '"><circle cx="6" cy="12" r="1.9"></circle><circle cx="12" cy="12" r="1.9"></circle><circle cx="18" cy="12" r="1.9"></circle></svg></button>' +
@@ -1849,7 +1849,7 @@ window.KashikeyoGuestQR = (function () {
         '<div style="margin:16px -22px 0;height:1px;background:var(--k-line-2)"></div>' +
 
         '<div style="margin-top:16px;display:flex;align-items:center;gap:14px">' +
-          '<span class="q-thumb" style="width:64px;height:64px;background-image:url(\'' + attr(this.img(d.img)) + '\')"></span>' +
+          '<span class="q-thumb" style="width:64px;height:64px;background-image:' + this.thumbBg(d) + '"></span>' +
           '<span style="display:flex;align-items:center;gap:12px">' +
             '<button class="q-step lg" data-act="qty" data-d="-1" aria-label="One less">' + svg(I.minus, { s: 15, c: 'var(--k-ink-2)', w: 2.9 }) + '</button>' +
             '<span class="q-num" style="font-size:19px;font-weight:700;color:var(--k-ink);min-width:16px;text-align:center">' + s.dQty + '</span>' +

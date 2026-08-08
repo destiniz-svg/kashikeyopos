@@ -540,9 +540,12 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
     <sc-if value="{{ sheetDish }}" hint-placeholder-val="{{ false }}">
       <div style="position:absolute;left:0;right:0;bottom:0;z-index:31;background:#fff;border-radius:26px 26px 0 0;padding:20px 22px calc(22px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s cubic-bezier(.2,.8,.3,1);max-height:82vh;overflow-y:auto">
         <div style="width:38px;height:4px;border-radius:2px;background:var(--off);margin:0 auto 16px"></div>
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
-          <div style="font-size:18px;font-weight:800;letter-spacing:-.02em;color:var(--ink)">{{ dishName }}</div>
-          <div style="font-size:15px;font-weight:700;color:var(--coral)" class="tnum">{{ dishPrice }}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="display:block;flex-shrink:0;width:56px;height:56px;border-radius:12px;background:{{ dishImgBg }}"></span>
+          <div style="flex:1;display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+            <div style="font-size:18px;font-weight:800;letter-spacing:-.02em;color:var(--ink)">{{ dishName }}</div>
+            <div style="font-size:15px;font-weight:700;color:var(--coral)" class="tnum">{{ dishPrice }}</div>
+          </div>
         </div>
         <div style="font-size:10.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:18px 0 10px">Add-ons &amp; modifiers</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -975,6 +978,12 @@ class Component extends DCLogic {
       // dish sheet (order modifiers) — mirrors the till's Add-ons & modifiers
       dishName: (this.dishOf((s.dsheet || {}).id) || {}).name || "",
       dishPrice: this.fmt(((this.dishOf((s.dsheet || {}).id) || {}).price) || 0),
+      dishImgBg: (() => {
+        const it = this.dishOf((s.dsheet || {}).id) || {};
+        const art = window.kposCatArt ? window.kposCatArt(it.cat || "", it.name || "") : "";
+        if (it.img) return "url('" + it.img + "') center/cover no-repeat" + (art ? ", url('" + art + "') center/cover no-repeat" : "");
+        return art ? "url('" + art + "') center/cover no-repeat" : "var(--img-bg)";
+      })(),
       dishQty: String((s.dsheet || {}).qty || 1),
       dishQtyUp: () => this.dsheetSet({ qty: ((s.dsheet || {}).qty || 1) + 1 }),
       dishQtyDown: () => this.dsheetSet({ qty: Math.max(1, ((s.dsheet || {}).qty || 1) - 1) }),
