@@ -36,7 +36,7 @@ a{color:var(--coral);text-decoration:none}a:hover{color:var(--coral-hover)}
    viewport media queries reproduce the prototype's screen-width breakpoints
    (pad 16 <360, greeting/name shrink <380, dishes 3-up ≥600, card caps 460). */
 .m-page{min-height:100dvh;background:#fff;display:flex;flex-direction:column}
-.m-frame{width:100%;max-width:600px;margin:0 auto;min-height:100dvh;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden}
+.m-frame{width:100%;max-width:600px;margin:0 auto;min-height:100dvh;background:#fff;display:flex;flex-direction:column;position:relative;overflow:hidden;padding-top:env(safe-area-inset-top)}
 /* Header and every tab column share the frame width, so they stay aligned; the
    membership card caps a touch narrower and centres as a hero. */
 .m-cap{width:100%}

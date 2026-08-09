@@ -570,7 +570,7 @@ svg{display:block}
 .is-framed .q-frame{height:auto;flex-shrink:0;border-radius:56px;padding:11px;
   background:linear-gradient(148deg,#4a4a4d,var(--k-bezel) 42%,#424245);
   box-shadow:0 44px 90px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.4)}
-.q-screen{width:100%;height:100%;background:var(--k-white);overflow:hidden;display:flex;flex-direction:column;position:relative}
+.q-screen{width:100%;height:100%;background:var(--k-white);overflow:hidden;display:flex;flex-direction:column;position:relative;padding-top:env(safe-area-inset-top)}
 .is-framed .q-screen{border-radius:46px}
 .q-island{display:none}
 .q-cam{display:none}
@@ -593,7 +593,7 @@ svg{display:block}
 .q-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .q-body.anim{animation:qup .2s}
 .q-body.pad{padding:6px 22px 20px}
-.q-bar{flex-shrink:0;border-top:1px solid var(--k-line-3);padding:14px 20px;display:flex;align-items:center;gap:12px;background:var(--k-white)}
+.q-bar{flex-shrink:0;border-top:1px solid var(--k-line-3);padding:14px 20px calc(14px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:12px;background:var(--k-white)}
 
 /* ── primitives ──────────────────────────────────────────────────────────── */
 .q-round{width:44px;height:44px;border-radius:50%;background:var(--k-white);display:grid;place-items:center;flex-shrink:0;box-shadow:0 3px 12px rgba(0,0,0,.10)}
@@ -633,7 +633,7 @@ svg{display:block}
 /* overlays */
 .q-scrim{position:absolute;inset:0;background:rgba(15,10,9,.42);z-index:14;animation:qup .16s}
 .q-sheet{position:absolute;left:0;right:0;bottom:0;z-index:15;background:var(--k-white);border-radius:26px 26px 0 0;
-  padding:20px 22px 30px;box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s var(--k-sheet-ease)}
+  padding:20px 22px calc(30px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s var(--k-sheet-ease)}
 .is-framed .q-sheet{border-radius:26px 26px 46px 46px}
 .q-sheet-act{display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;border:1px solid var(--k-line-2);background:var(--k-white);text-align:left;width:100%}
 .q-sheet-ico{width:34px;height:34px;border-radius:50%;background:var(--k-accent-tint);display:grid;place-items:center;flex-shrink:0;color:var(--k-accent-text)}
