@@ -1701,7 +1701,7 @@ class Component extends DCLogic {
     aiCreate: { name: "", details: "", busy: false, draft: null, msg: "", price: "" },
     counting: null,
     tab: {},
-    bp: typeof window === "undefined" ? "d" : (window.innerWidth < 760 ? "m" : window.innerWidth < 1180 ? "t" : "d"),
+    bp: typeof window === "undefined" ? "d" : this.bpOf(window.innerWidth),
     drawer: false,
     cart: false,
     vh: typeof window === "undefined" ? 900 : window.innerHeight,
@@ -1884,7 +1884,14 @@ class Component extends DCLogic {
     return h < 11 ? "Morning shift" : h < 16 ? "Day shift" : h < 23 ? "Evening shift" : "Night shift";
   }
 
-  bpOf(w) { return w < 760 ? "m" : w < 1180 ? "t" : "d"; }
+  // A tablet held in landscape (iPad Air/Pro: 1180-1366px) is wider than the
+  // plain 1180px cutoff below, so it fell into the "d" (desktop) bucket and
+  // lost the icons-only rail sidebar. `pointer:coarse` reflects the PRIMARY
+  // pointing device — true for a tablet with no mouse, false for a touchscreen
+  // laptop whose primary input is still a trackpad/mouse — so this widens the
+  // tablet range only for devices that are actually touch-first.
+  isTouchPrimary() { try { return typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } }
+  bpOf(w) { const tabletMax = this.isTouchPrimary() ? 1400 : 1180; return w < 760 ? "m" : w < tabletMax ? "t" : "d"; }
   // Real breakpoint, unless the Tweaks panel pins one for preview.
   effBp() {
     const f = this.props.layout;
