@@ -10230,12 +10230,9 @@ class Component extends DCLogic {
           picks: [{ label: "KDS ticket SLA", opts: [12, 18, 25].map((n) => ({ label: n + " min", on: P.kdsSla === n, go: () => set("kdsSla", n) })) }],
           rows: [["Applies to", "mains · the pass turns amber then red"], ["Measured from", "fire, not from order"]],
           foot: "A ticket past its SLA drives the KDS colour and the exception report." },
-        { title: "Loyalty & credit", sub: "House accounts and points",
-          picks: [
-            { label: "Points per MVR spent", opts: [5, 10, 20].map((n) => ({ label: "1 per " + n, on: P.pointsPer === n, go: () => set("pointsPer", n) })) },
-            { label: "Low-stock warning at", opts: [30, 50, 70].map((n) => ({ label: n + "% of par", on: P.lowStock === n, go: () => set("lowStock", n) })) }
-          ],
-          foot: "Credit limits are per customer; these are the chain defaults applied to a new account." },
+        { title: "Low-stock warning", sub: "When an ingredient counts as running low",
+          picks: [{ label: "Warn at", opts: [30, 50, 70].map((n) => ({ label: n + "% of par", on: P.lowStock === n, go: () => set("lowStock", n) })) }],
+          foot: "Drives the low-stock badge in Inventory. The earn rate for points is set in Rewards & loyalty below, not here." },
         { title: "Rewards & loyalty", sub: "The rewards members redeem in the app", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
           rows: [["Earn rate", "1 pt / MVR " + this.loy().pointsPer], ["Tiers", (this.loy().tiers || []).length + " by lifetime spend"], ["Reward catalogue", (this.loy().rewards || []).length + " reward" + ((this.loy().rewards || []).length === 1 ? "" : "s")]],
           foot: "Set the earn rate, tier thresholds and the reward catalogue the registered-customer (rewards) portal shows. A change reaches every member's phone within seconds.",
