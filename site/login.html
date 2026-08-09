@@ -138,7 +138,7 @@
       <label for="staffPin">Your PIN</label>
       <input id="staffPin" type="password" inputmode="numeric" autocomplete="off" placeholder="4-digit PIN" required />
       <div class="error" id="staffErr"></div>
-      <button id="staffSubmit" type="submit">Open admin panel</button>
+      <button id="staffSubmit" type="submit">Open terminal</button>
     </form>
     <div class="foot" id="staffFoot" style="display:none">
       <a href="#" id="toOwner">&larr; Owner sign-in</a>
@@ -222,7 +222,7 @@
         }
       });
 
-      /* Staff sign-in: store slug + till PIN -> back office (managers/admins).
+      /* Staff sign-in: store slug + till PIN -> the /v2 terminal (managers/admins).
          Reuses the existing till PIN; the server enforces role from here on. */
       var staffForm = document.getElementById("staffForm");
       var ownerFoot = document.getElementById("ownerFoot");
@@ -395,7 +395,7 @@
             showStaff(false);
             var oe = document.getElementById("err");
             if (oe) { oe.textContent = r.data.error; oe.style.display = "block"; }
-            staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
+            staffBtn.disabled = false; staffBtn.textContent = "Open terminal";
             return;
           }
           /* AUDIT-SEC-PIN: this browser hasn't proven itself to this store yet.
@@ -407,16 +407,16 @@
             document.getElementById("pairPassword").value = "";
             pairErr.style.display = "none";
             showPair(true);
-            staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
+            staffBtn.disabled = false; staffBtn.textContent = "Open terminal";
             return;
           }
           if (!r.ok) throw new Error(r.data.error || "Sign in failed");
           try { localStorage.setItem("kback-store", slug); } catch (e3) {}
-          location.href = "/admin";
+          location.href = "/v2";
         } catch (e2) {
           staffErr.textContent = e2.message || "Something went wrong — please try again";
           staffErr.style.display = "block";
-          staffBtn.disabled = false; staffBtn.textContent = "Open admin panel";
+          staffBtn.disabled = false; staffBtn.textContent = "Open terminal";
         }
       });
       pairForm.addEventListener("submit", async function (e) {
@@ -440,7 +440,7 @@
           if (!retry.ok) throw new Error(retry.data.error || "Device paired, but the PIN sign-in failed — try again.");
           try { localStorage.setItem("kback-store", pendingStaffLogin.slug); } catch (e3) {}
           pendingStaffLogin = null;
-          location.href = "/admin";
+          location.href = "/v2";
         } catch (e2) {
           pairErr.textContent = e2.message || "Something went wrong — please try again";
           pairErr.style.display = "block";

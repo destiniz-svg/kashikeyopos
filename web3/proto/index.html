@@ -1038,6 +1038,77 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
             </div>
           </sc-if>
 
+          <sc-if value="{{ mBackups }}">
+            <div>
+              <button onClick="{{ createBackup }}" style="width:100%;margin-bottom:12px;padding:11px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-weight:700;text-align:center">Create backup now</button>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ backupRows }}" as="b" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
+                    <span style="flex:1;min-width:0">
+                      <span style="display:block;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.label }}</span>
+                      <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ b.meta }}</span>
+                    </span>
+                    <sc-if value="{{ b.canManage }}">
+                      <button onClick="{{ b.restore }}" style="flex-shrink:0;padding:7px 12px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--amber-bright);font-size:11px;font-weight:700">Restore</button>
+                      <button onClick="{{ b.del }}" aria-label="Delete backup" style="flex-shrink:0;width:30px;height:30px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:15px;line-height:1">×</button>
+                    </sc-if>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ backupsEmpty }}">
+                  <div style="padding:26px 16px;text-align:center;color:var(--text-faint);font-size:12.5px;line-height:1.6">No backups yet — create one before any big change.</div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mBackupConfirm }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="font-size:12.5px;color:var(--text);font-weight:600;line-height:1.55">{{ rbWarn }}</div>
+              <div>
+                <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--text-dim);margin-bottom:6px">OWNER ACCOUNT PASSWORD</div>
+                <input value="{{ rbPw }}" onInput="{{ setRbPw }}" type="password" autocomplete="current-password" placeholder="Your account password" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--bg);color:var(--text);font-size:14px;font-weight:700;outline:none"/>
+              </div>
+              <sc-if value="{{ hasRbErr }}"><div style="color:var(--red-bright);font-size:12px;font-weight:700">{{ rbErr }}</div></sc-if>
+              <button onClick="{{ doRb }}" style="{{ rbStyle }}">{{ rbLabel }}</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mReset }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="background:rgba(226,96,63,.1);border:1px solid rgba(226,96,63,.25);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--text);font-weight:600;line-height:1.55">Erases the menu, sales, orders, customers &amp; inventory across your account and starts fresh. Your login, staff &amp; outlet profiles stay. This can't be undone.</div>
+              <label style="display:flex;align-items:center;gap:11px;cursor:pointer;border:1px solid var(--line);border-radius:12px;padding:11px 13px">
+                <span onClick="{{ toggleRBackup }}" style="flex-shrink:0;width:38px;height:22px;border-radius:99px;background:{{ rBackupTrackBg }};position:relative;transition:background .2s;cursor:pointer">
+                  <span style="position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transform:{{ rBackupKnobX }};transition:transform .2s"></span>
+                </span>
+                <span style="flex:1;font-size:12.5px;font-weight:700">Back up my data first<span style="display:block;font-size:10.5px;color:var(--text-muted);font-weight:600">Recommended — you can restore it later</span></span>
+              </label>
+              <div>
+                <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--text-dim);margin-bottom:6px">OWNER ACCOUNT PASSWORD</div>
+                <input value="{{ rPw }}" onInput="{{ setRPw }}" type="password" autocomplete="current-password" placeholder="Your account password" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--bg);color:var(--text);font-size:14px;font-weight:700;outline:none"/>
+              </div>
+              <sc-if value="{{ hasRErr }}"><div style="color:var(--red-bright);font-size:12px;font-weight:700">{{ rErr }}</div></sc-if>
+              <button onClick="{{ doReset }}" style="border:0;border-radius:10px;padding:13px;background:var(--red-dim-2);border:1px solid var(--red-line-2);color:#fff;font-size:13px;font-weight:700;text-align:center">{{ resetLabel }}</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ mDevices }}">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <sc-for list="{{ deviceRows }}" as="d" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;background:var(--bg);border:1px solid var(--line)">
+                  <span style="width:7px;height:7px;border-radius:99px;background:{{ d.dotC }};flex-shrink:0"></span>
+                  <span style="flex:1;min-width:0">
+                    <span style="display:block;font-size:12.5px;font-weight:700">{{ d.name }}</span>
+                    <span style="display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px">{{ d.meta }}</span>
+                  </span>
+                  <button onClick="{{ d.revoke }}" style="flex-shrink:0;padding:7px 12px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--red-bright);font-size:11px;font-weight:700">Revoke</button>
+                </div>
+              </sc-for>
+              <sc-if value="{{ devicesEmpty }}">
+                <div style="padding:26px 16px;text-align:center;color:var(--text-faint);font-size:12.5px;line-height:1.6">No devices paired yet — the first PIN sign-in from a new browser will prompt for the owner's email and password.</div>
+              </sc-if>
+            </div>
+          </sc-if>
+
           <sc-if value="{{ mNote }}">
             <div>
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
@@ -1578,6 +1649,11 @@ class Component extends DCLogic {
     activeSplit: 0,
     posAtMenu: false,
     held: this._saved.held || [],
+    // Admin-surface lists ported from the retired /admin cockpit. Server-fetched
+    // on demand when their Settings card is opened — never persisted, same as
+    // `modal` itself, since a reload should re-fetch rather than resume stale data.
+    backups: [],
+    pairedDevices: [],
     local: this._saved.local || {},
     patches: this._saved.patches || [],
     // Customer ids deleted from the back office. Persisted because the roster is
@@ -3596,6 +3672,8 @@ class Component extends DCLogic {
       mReceipt: m.kind === "receipt" || m.kind === "z" || m.kind === "settled",
       mCount: m.kind === "count", mForm: m.kind === "form", mCountSheet: m.kind === "countsheet",
       mGuest: m.kind === "guest", mHeld: m.kind === "held",
+      mBackups: m.kind === "backups", mBackupConfirm: m.kind === "restoreBackup" || m.kind === "deleteBackup",
+      mReset: m.kind === "reset", mDevices: m.kind === "devices",
       hasPaidFx: !!s.paidFx,
       paidFxTitle: s.paidFx ? (s.paidFx.tender === "credit" ? "Charged" : "Paid") : "",
       paidFxSub: s.paidFx ? MVR(s.paidFx.amount) : "",
@@ -4437,6 +4515,66 @@ class Component extends DCLogic {
             this.toast(h.ref + " resumed on " + h.table);
           }
         }))
+      };
+    }
+
+    if (m.kind === "backups") {
+      const canManage = this.isOwnerNow();
+      const rows = (s.backups || []).map((b) => {
+        const c = b.counts || {};
+        return {
+          id: b.id, label: b.label || "Backup",
+          meta: this.relAge(b.createdAt) + " · " + (c.products || 0) + " items · " + (c.sales || 0) + " sales · " + (c.customers || 0) + " customers",
+          canManage: canManage,
+          restore: () => this.openRestoreBackup(b),
+          del: () => this.openDeleteBackup(b)
+        };
+      });
+      return {
+        modalTitle: "Data & backups", modalSub: rows.length ? rows.length + " kept · newest 20" : "No backups yet",
+        backupRows: rows, backupsEmpty: !rows.length,
+        createBackup: () => this.createBackup()
+      };
+    }
+
+    if (m.kind === "restoreBackup" || m.kind === "deleteBackup") {
+      const isDel = m.kind === "deleteBackup";
+      return {
+        modalTitle: isDel ? "Delete backup" : "Restore backup",
+        modalSub: (isDel ? "Delete " : "Restore ") + (m.label || "this backup") + "?",
+        rbWarn: isDel ? "A deleted backup can't be recovered. If this is the copy taken before a reset, it is your only way back."
+                      : "This replaces all current store data.",
+        rbPw: m.pw || "", setRbPw: (e) => this.setModalPw(e.target.value),
+        rbErr: m.err || "", hasRbErr: !!m.err,
+        rbLabel: isDel ? (m.busy ? "Deleting…" : "Delete backup") : (m.busy ? "Restoring…" : "Restore this backup"),
+        rbStyle: isDel
+          ? "border:0;border-radius:10px;padding:13px;background:var(--red-dim-2);border:1px solid var(--red-line-2);color:#fff;font-size:13px;font-weight:700;text-align:center"
+          : "border:0;border-radius:10px;padding:13px;background:var(--amber);color:var(--on-amber);font-size:13px;font-weight:700;text-align:center",
+        doRb: isDel ? () => this.doDeleteBackup() : () => this.doRestoreBackup()
+      };
+    }
+
+    if (m.kind === "reset") {
+      return {
+        modalTitle: "Reset store", modalSub: "Erases menu, sales, orders, customers & inventory — starts fresh",
+        rPw: m.pw || "", setRPw: (e) => this.setModalPw(e.target.value),
+        rBackupOn: !!m.backup, toggleRBackup: () => this.toggleResetBackup(),
+        rBackupTrackBg: m.backup ? "var(--amber)" : "var(--line)", rBackupKnobX: m.backup ? "translateX(16px)" : "translateX(0)",
+        rErr: m.err || "", hasRErr: !!m.err,
+        resetLabel: m.busy ? "Resetting…" : "Reset store now"
+      };
+    }
+
+    if (m.kind === "devices") {
+      const rows = (s.pairedDevices || []).map((d) => ({
+        name: d.name || "—",
+        meta: (d.current ? "This device · " : "") + "paired " + this.relAge(d.pairedAt) + " · last seen " + this.relAge(d.lastSeen),
+        dotC: d.current ? "var(--blue-bright)" : "var(--green)",
+        revoke: () => this.revokeDevice(d.deviceId)
+      }));
+      return {
+        modalTitle: "Paired devices", modalSub: rows.length ? rows.length + " paired" : "No devices paired yet",
+        deviceRows: rows, devicesEmpty: !rows.length
       };
     }
 
@@ -7312,6 +7450,126 @@ class Component extends DCLogic {
         this.refreshData && this.refreshData();
       }).catch(() => this.toast("Could not remove — check the connection", "warn"));
   }
+  // ── Data & security (ported from the retired /admin cockpit) ──────────────
+  // Real-mode role gates. The demo permission matrix (can()/role()) only
+  // distinguishes till roles from a catch-all admin bucket, but these actions
+  // are gated server-side on the actual injected role — owner for anything
+  // destructive (reset, restore, delete a backup), admin+ for everything else
+  // (list/create backups, manage paired devices) — so the client check mirrors
+  // that exactly instead of going through the demo matrix.
+  isOwnerNow() { return window.KPOS_REAL ? !!(window.KPOS_REAL.me && window.KPOS_REAL.me.isOwner) : true; }
+  isAdminNow() {
+    if (!window.KPOS_REAL) return true;
+    if (this.isOwnerNow()) return true;
+    const rk = (window.KPOS_REAL.me && window.KPOS_REAL.me.roleKey) || "";
+    return rk === "admin";
+  }
+  relAge(ts) {
+    if (!ts) return "—";
+    const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m ago";
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return hrs + "h ago";
+    return Math.floor(hrs / 24) + "d ago";
+  }
+  loadBackups() {
+    const me = this;
+    fetch("/api/app2/backups", { credentials: "same-origin" }).then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d && Array.isArray(d.backups)) me.setState({ backups: d.backups }); }).catch(() => {});
+  }
+  loadPairedDevices() {
+    const me = this;
+    fetch("/api/app2/devices", { credentials: "same-origin" }).then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d && Array.isArray(d.devices)) me.setState({ pairedDevices: d.devices }); }).catch(() => {});
+  }
+  openBackups() {
+    if (!this.isAdminNow()) return this.toast("Backups need an admin or the owner", "warn");
+    this.loadBackups();
+    this.setState({ modal: { kind: "backups" } });
+  }
+  openDevices() {
+    if (!this.isAdminNow()) return this.toast("Paired devices need an admin or the owner", "warn");
+    this.loadPairedDevices();
+    this.setState({ modal: { kind: "devices" } });
+  }
+  openResetStore() {
+    if (!this.isOwnerNow()) return this.toast("Only the account owner can reset the store", "warn");
+    this.setState({ modal: { kind: "reset", pw: "", err: "", busy: false, backup: true } });
+  }
+  createBackup() {
+    const me = this;
+    me.toast("Creating backup…");
+    fetch("/api/app2/backup", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: "{}" })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.ok) { me.toast("Backup saved · " + ((j.counts && j.counts.products) || 0) + " items, " + ((j.counts && j.counts.sales) || 0) + " sales"); me.loadBackups(); }
+        else me.toast((j && j.error) || "Backup failed", "warn");
+      }).catch(() => me.toast("Backup failed — check your connection.", "warn"));
+  }
+  openRestoreBackup(b) {
+    if (!this.isOwnerNow()) return this.toast("Only the account owner can restore a backup", "warn");
+    this.setState({ modal: { kind: "restoreBackup", id: b.id, label: b.label, pw: "", err: "", busy: false } });
+  }
+  openDeleteBackup(b) {
+    if (!this.isOwnerNow()) return this.toast("Only the account owner can delete a backup", "warn");
+    this.setState({ modal: { kind: "deleteBackup", id: b.id, label: b.label || "this backup", pw: "", err: "", busy: false } });
+  }
+  setModalPw(v) {
+    const m = this.state.modal; if (!m) return;
+    this.setState({ modal: Object.assign({}, m, { pw: String(v), err: "" }) });
+  }
+  toggleResetBackup() {
+    const m = this.state.modal; if (!m) return;
+    this.setState({ modal: Object.assign({}, m, { backup: !m.backup }) });
+  }
+  doRestoreBackup() {
+    const me = this, m = this.state.modal;
+    if (!m || m.kind !== "restoreBackup") return;
+    if (!(m.pw || "").length) { this.setState({ modal: Object.assign({}, m, { err: "Enter the owner account password." }) }); return; }
+    this.setState({ modal: Object.assign({}, m, { busy: true, err: "" }) });
+    fetch("/api/app2/restore", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ id: m.id, password: m.pw }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        const cur = me.state.modal; if (!cur || cur.kind !== "restoreBackup" || cur.id !== m.id) return;
+        if (j && j.ok) { me.setState({ modal: null }); me.toast("Backup restored — reloading…"); setTimeout(() => { try { location.reload(); } catch (e) {} }, 700); }
+        else me.setState({ modal: Object.assign({}, me.state.modal || {}, { busy: false, err: (j && j.error) || "Restore failed." }) });
+      }).catch(() => { const cur = me.state.modal; if (cur && cur.kind === "restoreBackup") me.setState({ modal: Object.assign({}, cur, { busy: false, err: "Network error — try again." }) }); });
+  }
+  doDeleteBackup() {
+    const me = this, m = this.state.modal;
+    if (!m || m.kind !== "deleteBackup") return;
+    if (!(m.pw || "").length) { this.setState({ modal: Object.assign({}, m, { err: "Enter the owner account password." }) }); return; }
+    this.setState({ modal: Object.assign({}, m, { busy: true, err: "" }) });
+    fetch("/api/app2/backup/" + encodeURIComponent(m.id) + "/delete", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ password: m.pw }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        const cur = me.state.modal; if (!cur || cur.kind !== "deleteBackup" || cur.id !== m.id) return;
+        if (j && j.ok) { me.setState({ modal: null }); me.toast("Backup deleted"); me.loadBackups(); }
+        else me.setState({ modal: Object.assign({}, me.state.modal || {}, { busy: false, err: (j && j.error) || "Delete failed." }) });
+      }).catch(() => { const cur = me.state.modal; if (cur && cur.kind === "deleteBackup") me.setState({ modal: Object.assign({}, cur, { busy: false, err: "Network error — try again." }) }); });
+  }
+  doResetStore() {
+    const me = this, m = this.state.modal;
+    if (!m || m.kind !== "reset") return;
+    if (!(m.pw || "").length) { this.setState({ modal: Object.assign({}, m, { err: "Enter the owner account password." }) }); return; }
+    this.setState({ modal: Object.assign({}, m, { busy: true, err: "" }) });
+    fetch("/api/app2/reset", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ password: m.pw, backup: !!m.backup, storeId: "*" }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        const cur = me.state.modal; if (!cur || cur.kind !== "reset") return;
+        if (j && j.ok) { me.setState({ modal: null }); me.toast("Store reset · starting fresh"); setTimeout(() => { try { location.reload(); } catch (e) {} }, 700); }
+        else me.setState({ modal: Object.assign({}, me.state.modal || {}, { busy: false, err: (j && j.error) || "Reset failed." }) });
+      }).catch(() => { const cur = me.state.modal; if (cur && cur.kind === "reset") me.setState({ modal: Object.assign({}, cur, { busy: false, err: "Network error — try again." }) }); });
+  }
+  revokeDevice(deviceId) {
+    const me = this;
+    if (!deviceId) return;
+    const cur = (this.state.pairedDevices || []).find((x) => x.deviceId === deviceId);
+    if (cur && cur.current) { this.toast("This is your current device — revoking it would lock you out here.", "warn"); return; }
+    fetch("/api/app2/devices/revoke", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ deviceId: deviceId }) })
+      .then((r) => r.json().catch(() => ({}))).then((j) => {
+        if (j && j.error) { me.toast(j.error, "warn"); return; }
+        me.toast("Device pairing revoked");
+        me.loadPairedDevices();
+      }).catch(() => me.toast("Could not revoke — check the connection", "warn"));
+  }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
   // land on the same email one-time-code door — the portal has no password to reset.
@@ -9864,9 +10122,11 @@ class Component extends DCLogic {
   }
 
   g_settings() {
+    const s = this.state;
     const K0 = K(), o = this.outlet();
     const acc = this.ACCENTS(), key = this.accentKey(), mode = this.themeMode();
     const P = this.prefs(), CH = this.chainOf();
+    const isOwner = this.isOwnerNow(), isAdmin = this.isAdminNow();
     // Everything the store told us about itself (onboarding + Company details),
     // surfaced together so the card shows the whole record, not a slice.
     const F = this.fiscal();
@@ -9979,7 +10239,21 @@ class Component extends DCLogic {
         { title: "Rewards & loyalty", sub: "The rewards members redeem in the app", chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
           rows: [["Earn rate", "1 pt / MVR " + this.loy().pointsPer], ["Tiers", (this.loy().tiers || []).length + " by lifetime spend"], ["Reward catalogue", (this.loy().rewards || []).length + " reward" + ((this.loy().rewards || []).length === 1 ? "" : "s")]],
           foot: "Set the earn rate, tier thresholds and the reward catalogue the registered-customer (rewards) portal shows. A change reaches every member's phone within seconds.",
-          goLabel: "Open rewards & loyalty", go: gate(() => this.setState({ view: "loyalty" })) }
+          goLabel: "Open rewards & loyalty", go: gate(() => this.setState({ view: "loyalty" })) },
+        // ── Data & security ───────────────────────────────────────────────
+        secHead("Data & security", "Backups, paired devices and the danger zone"),
+        { title: "Data & backups", sub: (s.backups || []).length ? (s.backups || []).length + " kept · newest 20" : "Snapshots of your whole store", chip: isAdmin ? "Manage" : "Admin only", chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)",
+          rows: [["Coverage", "Menu, sales, customers & inventory"], ["Restore, delete", "Owner account password"]],
+          foot: "Take a full snapshot any time and restore it later. Restoring or deleting a backup needs the owner's account password — a snapshot is your way back from a mistake, so removing one is treated the same as a reset.",
+          goLabel: "Manage backups", go: () => this.openBackups() },
+        { title: "Paired devices", sub: "Browsers that can staff-PIN sign in", chip: isAdmin ? "Manage" : "Admin only", chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)",
+          rows: [["What this is", "A 4-digit PIN alone only works from a browser the owner has paired with their email and password"]],
+          foot: "Revoke a lost or untrusted device here — it needs the owner's email and password again before a PIN works there.",
+          goLabel: "Manage paired devices", go: () => this.openDevices() },
+        { title: "Reset store", sub: isOwner ? "Starts your account completely fresh" : "Owner only", chip: "Danger zone", chipBg: "rgba(226,96,63,.12)", chipFg: "var(--red-bright)",
+          rows: [["Erases", "Menu, sales, orders, customers & inventory"], ["Keeps", "Your login, staff & outlet profiles"]],
+          foot: isOwner ? "Needs the owner account password. Backing up first is on by default." : "Only the account owner can reset the store.",
+          goLabel: "Reset store…", go: () => this.openResetStore() }
       ],
       notes: [
         ["Where settings live", "Nothing here is on the device. Settings are rows in chain- and outlet-scoped tables, so a reimaged terminal pulls its whole configuration back from its device registration."],

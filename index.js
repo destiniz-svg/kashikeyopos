@@ -5373,11 +5373,11 @@ if (fs.existsSync(protoFile)) {
   serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)
   // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
   app.get(/^\/app2(\/.*)?$/, (req, res) => res.redirect(301, "/app"));
-  if (fs.existsSync(path.join(protoDir, "admin.html"))) {
-    serveProto({ base: "/admin", file: "admin.html", withMenu: true, withAdmin: true, minRank: APP_RANK.MANAGER }); // Back-office cockpit (canonical URL)
-    // Legacy /admin2 links (old redirects, bookmarks) → the /admin URL.
-    app.get(/^\/admin2(\/.*)?$/, (req, res) => res.redirect(301, "/admin"));
-  }
+  /* /admin is retired — every module it carried (inventory, staff, reports,
+     settings, and now Data & backups, paired devices and Reset store) lives
+     in /v2's own sidebar. Old links, bookmarks and /admin2 redirects all 301
+     to /v2, same as /back and /app2 do for their retired routes. */
+  app.get(/^\/admin2?(\/.*)?$/, (req, res) => res.redirect(301, "/v2"));
   /* Product tile images served as their own cacheable responses (see menuImg
      above). The register HTML references /api/img/<id>?v=<hash>; each hit decodes
      the product's stored data-URI once and serves it immutable, so photos download
