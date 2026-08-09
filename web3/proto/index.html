@@ -15,6 +15,28 @@
 <helmet>
 <link rel="stylesheet" href="fonts.css">
 <script src="v2-bridge.js"></script>
+<script src="v2-offline-cache.js"></script>
+<script>
+/* Offline shell (audit parity with /app's register worker): a reload during a
+   dropout used to hit the browser's own error page, with no path back to
+   selling until the link returned. Registered here (not server-injected —
+   this page has no per-request reason to vary it) so any browser that loads
+   /v2 picks it up; it is a no-op where service workers aren't supported. */
+try {
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      // Root scope: this same page is also reached at /app (see index.js's
+      // combined /v2|/app route), and one worker instance has to cover both
+      // — sw.js's own inScope() is the real filter, ignoring everything
+      // outside /v2 and /app (login, signup, the guest/member portals).
+      // The server grants this scope via Service-Worker-Allowed on the
+      // sw.js response (its own directory, /v2/, wouldn't otherwise cover
+      // either bare prefix, let alone /app).
+      navigator.serviceWorker.register("/v2/sw.js", { scope: "/" }).catch(function () {});
+    });
+  }
+} catch (e) {}
+</script>
 <style>
 /* Palette as the reference defined it — :root custom properties, dark by
    default. ThemeMode / CustomColors on the Users table select the variant. */
@@ -238,6 +260,10 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
         </div>
       </div>
     </div>
+
+    <sc-if value="{{ hasOfflineBanner }}">
+      <div style="{{ offlineBannerStyle }}">{{ offlineBannerMsg }}</div>
+    </sc-if>
 
     <div style="{{ statsWrapStyle }}">
       <sc-if value="{{ statsMini }}">
@@ -1654,6 +1680,10 @@ class Component extends DCLogic {
     // `modal` itself, since a reload should re-fetch rather than resume stale data.
     backups: [],
     pairedDevices: [],
+    // Set once componentDidMount() finishes trying to rebuild a lost
+    // window.KPOS_REAL from the offline cache (see _loadOfflineCache()) —
+    // never true on a normal online load, so these stay false/null there.
+    offlineCached: false, offlineCachedAt: null, offlineNoCache: false,
     local: this._saved.local || {},
     patches: this._saved.patches || [],
     // Customer ids deleted from the back office. Persisted because the roster is
@@ -1817,6 +1847,16 @@ class Component extends DCLogic {
     // terminal never holds it, so a leaked page can't reveal anyone's PIN. The
     // server rate-limits wrong attempts. Demo build falls back to a local compare.
     if (this.staffReal()) {
+      // Switching to a DIFFERENT staff member's PIN always needs the server —
+      // unlike /app, the roster shipped to this page carries no `pin` field
+      // (see buildV2RealForOrg in index.js), by design, so there is nothing
+      // to check locally. Fail fast and honestly instead of hanging on a
+      // request that can't succeed; the CURRENT session itself still works
+      // fine offline (see _loadOfflineCache) — this only affects switching.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        this.setState({ modal: Object.assign({}, m, { pin: "", err: "No connection — you need one to switch users. The signed-in session here still works offline." }) });
+        return;
+      }
       this.setState({ modal: Object.assign({}, m, { pin: next, err: "", busy: true }) });
       fetch("/api/app2/unlock", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ userId: u.id, pin: next }) })
         .then((r) => r.json().catch(() => ({}))).then((j) => {
@@ -2005,8 +2045,37 @@ class Component extends DCLogic {
         if (n) this.toast(n === 1 ? "A change was overridden by a more recent update" : n + " changes were overridden by more recent updates", "warn");
       };
       window.addEventListener("ks-write-superseded", this._v2Dropped);
+      // Bank a copy of the real catalogue/staff/tax data this visit just
+      // received, so a future cold reload with no network can rebuild the
+      // terminal from it instead of the demo build's fabricated menu.
+      // Fire-and-forget — a cache-write hiccup must never affect this session.
+      if (window.__v2Cache) window.__v2Cache.save(window.KPOS_REAL).catch(() => {});
+      // One-time sweep for a sale stranded in the OLD /app register's own
+      // localStorage outbox (see v2-offline-cache.js) — relevant on a device
+      // that used to run that build, now hitting this terminal instead.
+      if (window.__v2Cache && window.__v2Cache.migrateLegacyOutbox) window.__v2Cache.migrateLegacyOutbox(window.KPOS_REAL.token).catch(() => {});
+    } else if (window.__v2FromCache) {
+      // The service worker served the offline shell (a genuine network
+      // failure, not the design-tool's own demo/preview build — that path
+      // never sets this flag), so window.KPOS_REAL is absent. Try to
+      // reconstruct it from the last snapshot this device banked above.
+      this._loadOfflineCache();
     }
     if (!Object.keys(this.state.tickets).length) this.seed();
+  }
+  _loadOfflineCache() {
+    if (!window.__v2Cache) { this.setState({ offlineNoCache: true }); return; }
+    window.__v2Cache.load().then((cached) => {
+      if (!cached) { this.setState({ offlineNoCache: true }); return; }
+      window.KPOS_REAL = cached;
+      // Re-derive the fields that were read from window.KPOS_REAL at
+      // construction time, now that it exists — everything else in real mode
+      // already reads window.KPOS_REAL.xxx live off each render.
+      this.setState({
+        session: this.initialSession(), roleKey: this.initialRoleKey(),
+        offlineCached: true, offlineCachedAt: cached.cachedAt || null
+      });
+    }).catch(() => this.setState({ offlineNoCache: true }));
   }
   componentWillUnmount() {
     clearInterval(this._t); clearInterval(this._sig); clearInterval(this._kds); clearTimeout(this._ps);
@@ -2428,6 +2497,13 @@ class Component extends DCLogic {
 
     return {
       isMobile: isM, isRail: rail,
+      hasOfflineBanner: s.offlineCached || s.offlineNoCache,
+      offlineBannerMsg: s.offlineNoCache
+        ? "No connection, and this device has no offline copy yet — connect once online to set it up."
+        : s.offlineCached
+          ? "Working offline since " + (s.offlineCachedAt ? new Date(s.offlineCachedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "the last connection") + " — menu, staff and prices may be out of date. Sales still queue and sync once reconnected."
+          : "",
+      offlineBannerStyle: "flex-shrink:0;padding:8px 18px;font-size:11.5px;font-weight:600;text-align:center;color:" + (s.offlineNoCache ? "var(--red-bright)" : "var(--amber-bright)") + ";background:" + (s.offlineNoCache ? "var(--red-dim-2)" : "var(--amber-dim)") + ";border-bottom:1px solid var(--line)",
       shellStyle: "height:100dvh;display:" + (isM ? "flex;flex-direction:column" : "grid;grid-template-columns:" + (rail ? "60px" : "clamp(178px,15vw,212px)") + " 1fr")
         + ";background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;overflow:hidden",
       asideStyle: isM

@@ -4923,7 +4923,18 @@ if (fs.existsSync(protoFile)) {
       "frame-ancestors 'none'",
     ].join("; ");
     app.use("/v2", (req, res, next) => { res.set("Content-Security-Policy", V2_CSP); next(); });
-    app.use("/v2", express.static(proto3Dir, { index: false, redirect: false, maxAge: "5m" }));
+    app.use("/v2", express.static(proto3Dir, { index: false, redirect: false, maxAge: "5m",
+      /* The worker script itself must never be served from cache, or a fleet
+         can be stuck on an old worker with no way to replace it. */
+      setHeaders: (res, file) => { if (file.endsWith("sw.js")) {
+        res.set("Cache-Control", "no-cache");
+        /* This same terminal is also served at /app (the combined /v2|/app
+           route below), and one worker instance has to cover both prefixes
+           — its own directory, /v2/, wouldn't otherwise cover either bare
+           path, let alone the other prefix entirely. sw.js's own inScope()
+           is the real filter; this just grants the reach to register there. */
+        res.set("Service-Worker-Allowed", "/");
+      } } }));
     /* When a back-office/till cookie session is present, hydrate the reference
        terminal with the store's REAL data instead of the seeded demo set:
        window.KPOS_REAL carries the live menu, its categories, the outlet's real
@@ -5305,7 +5316,66 @@ if (fs.existsSync(protoFile)) {
         };
       });
     };
-    app.get(/^\/v2(\/.*)?$/, async (req, res) => {
+    /* A device that already had /app installed as a PWA also has its OLD
+       register worker (web2/proto/sw.js) active with scope /app — it would
+       keep intercepting /app navigations, and since it caches whatever a
+       navigation fetch returns with no notion of "strip the injected data
+       first", it would freeze a stale, un-sanitized copy of this terminal's
+       per-org data the first time it refetches after the cutover below.
+       Registered ahead of the combined /v2|/app route (more specific path,
+       and Express takes the first match), this replaces that worker's own
+       script with a kill switch: it clears every cache this origin's SW
+       storage holds and unregisters itself, so the browser's normal SW
+       update check (roughly every 24h, or on the next few navigations)
+       retires it cleanly and this terminal's own /v2/sw.js — registered at
+       root scope below — takes over instead. */
+    app.get(/^\/app\/sw\.js$/, (req, res) => {
+      res.set("Cache-Control", "no-cache").set("Content-Type", "application/javascript").send(
+        "self.addEventListener('install',()=>self.skipWaiting());" +
+        "self.addEventListener('activate',(event)=>{event.waitUntil((async()=>{" +
+        "try{const keys=await caches.keys();await Promise.all(keys.map((k)=>caches.delete(k)));}catch(e){}" +
+        "try{await self.registration.unregister();}catch(e){}" +
+        "try{const cs=await self.clients.matchAll({type:'window'});cs.forEach((c)=>c.navigate(c.url));}catch(e){}" +
+        "})());});"
+      );
+    });
+    /* /app now serves this same terminal (the legacy till, web2/proto/index.html,
+       is retired — see the removed serveProto({ base: "/app", ... }) call this
+       replaced). Kept as one route, not a redirect, so /app's own already-
+       installed PWAs (start_url baked in at install time) keep working with no
+       re-install. /app has always required a real signed-in session and never
+       fell back to a demo preview ("must only ever load for someone who has
+       actually signed in... not fall back to a standalone/offline mode" — the
+       historical fix this route's own comment below still describes); /v2 was
+       built to double as a public design preview with no session, and keeps
+       that — so only requests under /app get the stricter gate. */
+    app.get(/^\/(v2|app)(\/.*)?$/, async (req, res) => {
+      /* Not every request under /v2 or /app wants the page. Unresolved dc-
+         template bindings ship in the markup as attribute values like
+         "{{ qrSrc }}" before the client JS has run; the browser dutifully
+         requests them as sub-resources, this catch-all would otherwise match,
+         and each one would return the full multi-hundred-KB terminal page AND
+         re-run its data build. Ported verbatim from serveProto's own guard
+         (see appshell.test.js) — this tests for what a sub-resource POSITIVELY
+         IS, not for what a document positively is, because a service-worker-
+         reissued navigation (this page's own /v2/sw.js, or the legacy /app
+         one on an unretired device) can arrive as Sec-Fetch-Dest: empty in
+         WebKit, and an allow-list of "document" destinations cannot be kept in
+         step with what engines actually send. */
+      const dest = String(req.get("Sec-Fetch-Dest") || "");
+      const SUB_RESOURCE = new Set([
+        "image", "style", "script", "font", "audio", "video", "track",
+        "object", "embed", "manifest", "worker", "serviceworker",
+        "sharedworker", "paintworklet", "audioworklet", "xslt", "report",
+      ]);
+      const wantsPage = req.method === "GET" && !SUB_RESOURCE.has(dest);
+      if (!wantsPage || /\.[a-z0-9]{2,5}$/i.test(req.path) || /[{}]/.test(decodeURIComponent(req.path))) {
+        return res.status(404).type("text/plain").send("not found");
+      }
+      if (/^\/app(\/|$)/.test(req.path)) {
+        const orgId = await resolveAppSession(req);
+        if (!orgId) return res.redirect(302, "/login");
+      }
       res.set("Content-Security-Policy", V2_CSP);
       // The terminal HTML is per-session (it carries this store's injected
       // KPOS_REAL) and references the per-deploy ?v= asset bundle. A bare
@@ -5370,8 +5440,8 @@ if (fs.existsSync(protoFile)) {
       }, 5000);
     }
   }
-  serveProto({ base: "/app", file: "index.html", withMenu: true });   // Register / till (canonical URL)
-  // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL.
+  // Legacy /app2 links (old redirects, bookmarks, installed PWAs) → the /app URL
+  // (now the /v2 terminal — see the combined route above).
   app.get(/^\/app2(\/.*)?$/, (req, res) => res.redirect(301, "/app"));
   /* /admin is retired — every module it carried (inventory, staff, reports,
      settings, and now Data & backups, paired devices and Reset store) lives
@@ -7416,10 +7486,10 @@ if (fs.existsSync(webDir)) {
     return sendTill(req, res);
   }));
 
-  /* The register (new /app front-end) is served earlier via serveProto({base:"/app"}).
-     The legacy baked till bundle is retired from /app; it stays reachable only as
-     the guest portal at "/?s=slug" (sendTill above) and its root-relative assets
-     below. */
+  /* /app is served earlier via the combined /v2|/app route. The legacy baked
+     till bundle (web2/proto/index.html) is retired from /app; it stays
+     reachable only as the guest portal at "/?s=slug" (sendTill above) and its
+     root-relative assets below. */
 
   /* Assets the bundle references with root-relative paths (offline-bridge.js,
      manifest, icons, sw.js) stay reachable at "/" too, for already-installed
