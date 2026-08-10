@@ -5268,11 +5268,13 @@ if (fs.existsSync(protoFile)) {
         // so the two never disagree about one store's own floor plan.
         const primaryTables = Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12;
         const primarySeats = Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48;
+        const primaryTableSeats = (st.tableSeats && typeof st.tableSeats === "object") ? st.tableSeats : {};
         const outlets = storeRows.map((sr, i) => ({
           id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
           name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0,
           region: "", tax: tax, rate: rate, sc: sc, addr: sr.address || "", mgr: "",
           pos: true, seats: i === 0 ? primarySeats : 48, tables: i === 0 ? primaryTables : 12,
+          tableSeats: i === 0 ? primaryTableSeats : {},
         }));
         // Fiscal identity for a MIRA-compliant tax invoice — the registered
         // taxpayer's TIN, GST registration number, legal name and address, from
@@ -5299,7 +5301,10 @@ if (fs.existsSync(protoFile)) {
             // subtitle) fell back to a hardcoded 12/48, so the Settings
             // "Tables & seats" editor below had nothing real to change.
             tables: Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12,
-            seats: Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48 },
+            seats: Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48,
+            // Per-table capacity overrides (T01: 2, T02: 4, ...) — a table with
+            // no entry here falls back to the terminal's own default pattern.
+            tableSeats: (st.tableSeats && typeof st.tableSeats === "object") ? st.tableSeats : {} },
           fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "",
             address: fiscalAddr, storeName: st.storeName || "", phone: st.phone || "" },
           // Storefront branding the terminal's Branding panel edits and the guest
@@ -6738,6 +6743,22 @@ if (fs.existsSync(protoFile)) {
       if (patch.seatCount !== undefined) {
         const n = Math.round(Number(patch.seatCount));
         if (n > 0 && n <= 2000) data.seatCount = n;
+      }
+      /* Per-table seat capacity (T01: 2, T02: 4, ...) — a sparse override map,
+         table number → seats. Any table without an entry falls back to the
+         terminal's own default pattern (see posVals()), so shrinking
+         tableCount or never opening this editor at all is harmless: nothing
+         downstream needs every table to have an explicit row. */
+      if (patch.tableSeats && typeof patch.tableSeats === "object" && !Array.isArray(patch.tableSeats)) {
+        const cleanTS = {};
+        let count = 0;
+        for (const k of Object.keys(patch.tableSeats)) {
+          if (count >= 200) break;
+          const tno = Math.round(Number(k));
+          const seats = Math.round(Number(patch.tableSeats[k]));
+          if (tno > 0 && tno <= 200 && seats > 0 && seats <= 30) { cleanTS[String(tno)] = seats; count++; }
+        }
+        data.tableSeats = cleanTS;
       }
       if (Array.isArray(patch.hotCats)) data.hotCats = patch.hotCats.map((x) => String(x).slice(0, 40)).slice(0, 40);
       if (patch.svcChargeBp !== undefined) {

@@ -1135,6 +1135,35 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
             </div>
           </sc-if>
 
+          <sc-if value="{{ mTablesSeats }}">
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;gap:10px">
+                <div style="flex:1">
+                  <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--text-dim);margin-bottom:6px">TABLES</div>
+                  <input value="{{ tsTables }}" onInput="{{ setTsTables }}" type="number" min="1" max="200" inputmode="numeric" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--bg);color:var(--text);font-size:14px;font-weight:700;outline:none"/>
+                </div>
+                <div style="flex:1">
+                  <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--text-dim);margin-bottom:6px">TOTAL SEATS</div>
+                  <input value="{{ tsSeats }}" onInput="{{ setTsSeats }}" type="number" min="1" max="2000" inputmode="numeric" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--bg);color:var(--text);font-size:14px;font-weight:700;outline:none"/>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--text-dim);margin-bottom:6px">PER-TABLE CAPACITY</div>
+                <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Overrides the default pattern for individual tables — used to split checks by seat and to pick the smallest free table for a party.</div>
+                <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;padding-right:2px">
+                  <sc-for list="{{ tsRows }}" as="r" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line)">
+                      <span style="flex:1;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ r.label }}</span>
+                      <input value="{{ r.seatsVal }}" onInput="{{ r.setSeats }}" type="number" min="1" max="30" inputmode="numeric" style="width:64px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg-2);color:var(--text);font-size:13px;font-weight:700;outline:none;text-align:center"/>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <sc-if value="{{ hasTsErr }}"><div style="color:var(--red-bright);font-size:12px;font-weight:700">{{ tsErr }}</div></sc-if>
+              <button onClick="{{ doTs }}" style="border:0;border-radius:10px;padding:13px;background:var(--amber);color:var(--on-amber);font-size:13px;font-weight:700;text-align:center">{{ tsLabel }}</button>
+            </div>
+          </sc-if>
+
           <sc-if value="{{ mNote }}">
             <div>
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
@@ -3260,7 +3289,7 @@ class Component extends DCLogic {
         meta: st === "reserved" ? (t ? (t.resName + " · " + t.resAt) : (resv.name + " · " + resv.t))
           : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
           : st === "qr" ? (qrOrders.length + " QR order" + (qrOrders.length === 1 ? "" : "s") + " · tap to view")
-          : (i % 3 === 0 ? "4 seats" : "2 seats"),
+          : ((o.tableSeats && o.tableSeats[i]) || (i % 3 === 0 ? 4 : 2)) + " seats",
         total: tot ? MVRc(tot) : "",
         totalStyle: "font-size:12px;font-weight:700;color:var(--amber-bright);font-family:'JetBrains Mono',monospace"
       });
@@ -3757,6 +3786,7 @@ class Component extends DCLogic {
       mGuest: m.kind === "guest", mHeld: m.kind === "held",
       mBackups: m.kind === "backups", mBackupConfirm: m.kind === "restoreBackup" || m.kind === "deleteBackup",
       mReset: m.kind === "reset", mDevices: m.kind === "devices",
+      mTablesSeats: m.kind === "tablesSeats",
       hasPaidFx: !!s.paidFx,
       paidFxTitle: s.paidFx ? (s.paidFx.tender === "credit" ? "Charged" : "Paid") : "",
       paidFxSub: s.paidFx ? MVR(s.paidFx.amount) : "",
@@ -4658,6 +4688,25 @@ class Component extends DCLogic {
       return {
         modalTitle: "Paired devices", modalSub: rows.length ? rows.length + " paired" : "No devices paired yet",
         deviceRows: rows, devicesEmpty: !rows.length
+      };
+    }
+
+    if (m.kind === "tablesSeats") {
+      const tablesN = Math.max(1, Math.min(200, Math.round(+m.tables || 0) || 1));
+      const defaultSeats = (i) => (i % 3 === 0 ? 4 : 2);
+      const rows = [];
+      for (let i = 1; i <= tablesN; i++) {
+        const val = (m.perTable && m.perTable[i] != null) ? m.perTable[i] : defaultSeats(i);
+        rows.push({ label: "T" + pad(i), seatsVal: String(val), setSeats: (e) => this.setTableSeatRow(i, e.target.value) });
+      }
+      return {
+        modalTitle: "Tables & seats", modalSub: tablesN + " table" + (tablesN === 1 ? "" : "s"),
+        tsTables: m.tables || "", setTsTables: (e) => this.setTablesSeatsField("tables", e.target.value),
+        tsSeats: m.seats || "", setTsSeats: (e) => this.setTablesSeatsField("seats", e.target.value),
+        tsRows: rows,
+        tsErr: m.err || "", hasTsErr: !!m.err,
+        tsLabel: m.busy ? "Saving…" : "Save",
+        doTs: () => this.doSaveTablesSeats()
       };
     }
 
@@ -7653,6 +7702,50 @@ class Component extends DCLogic {
         me.loadPairedDevices();
       }).catch(() => me.toast("Could not revoke — check the connection", "warn"));
   }
+  openTablesSeats() {
+    const o = this.outlet();
+    this.setState({ modal: { kind: "tablesSeats", tables: String(o.tables || 12), seats: String(o.seats || 48), perTable: Object.assign({}, o.tableSeats || {}), err: "", busy: false } });
+  }
+  setTablesSeatsField(k, v) {
+    const m = this.state.modal; if (!m) return;
+    this.setState({ modal: Object.assign({}, m, { [k]: v, err: "" }) });
+  }
+  setTableSeatRow(i, v) {
+    const m = this.state.modal; if (!m) return;
+    const pt = Object.assign({}, m.perTable || {});
+    const n = Math.round(+v || 0);
+    if (n > 0) pt[i] = Math.min(30, n); else delete pt[i];
+    this.setState({ modal: Object.assign({}, m, { perTable: pt, err: "" }) });
+  }
+  doSaveTablesSeats() {
+    const m = this.state.modal; if (!m || m.kind !== "tablesSeats") return;
+    const tables = Math.max(1, Math.min(200, Math.round(+m.tables || 0)));
+    const seats = Math.max(1, Math.min(2000, Math.round(+m.seats || 0)));
+    if (!tables || !seats) { this.setState({ modal: Object.assign({}, m, { err: "Enter a table count and a seat count" }) }); return; }
+    // Drop any per-table override past the new table count — no point keeping
+    // a seat figure for a table that no longer exists on the floor.
+    const perTable = {};
+    Object.keys(m.perTable || {}).forEach((k) => { if (+k <= tables) perTable[k] = m.perTable[k]; });
+    const oid = this.outlet().id;
+    if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      this.setState({ modal: Object.assign({}, m, { busy: true, err: "" }) });
+      fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ cfg: { tableCount: tables, seatCount: seats, tableSeats: perTable } }) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          if (j && j.error) { this.setState({ modal: Object.assign({}, this.state.modal || {}, { busy: false, err: j.error }) }); return; }
+          this.toast("Tables & seats saved — " + tables + " tables · " + seats + " seats");
+          if (window.KPOS_REAL.outlet) { window.KPOS_REAL.outlet.tables = tables; window.KPOS_REAL.outlet.seats = seats; window.KPOS_REAL.outlet.tableSeats = perTable; }
+          const arr = (K() && K().OUTLETS) || [];
+          const row = arr.find((x) => x.id === oid);
+          if (row) { row.tables = tables; row.seats = seats; row.tableSeats = perTable; }
+          this.setState({ modal: null });
+        }).catch(() => { const cur = this.state.modal; if (cur && cur.kind === "tablesSeats") this.setState({ modal: Object.assign({}, cur, { busy: false, err: "Could not save — check the connection" }) }); });
+      return;
+    }
+    this.patchRows("outlets", [oid], { tables: tables, seats: seats },
+      "Tables & seats updated · " + tables + " tables · " + seats + " seats · by " + this.me(), "outlets");
+    this.setState({ modal: null });
+  }
   // Email a customer their portal link: "invite" is a first send, "resend" nudges
   // an invited-but-dormant customer, "reset" walks a signed-in member back in. All
   // land on the same email one-time-code door — the portal has no password to reset.
@@ -8075,12 +8168,23 @@ class Component extends DCLogic {
     const s = this.state, o = this.outlet(), nT = o.tables || 0, out = [];
     const booked = {};
     if (window.KPOS_REAL) this.resBook().forEach((r) => { if ((r.status === "confirmed" || r.status === "seated") && this.isTableSlot(String(r.table).replace(/^T/, ""))) booked[String(r.table)] = 1; });
+    const seatsFor = (i) => (o.tableSeats && o.tableSeats[i]) || (i % 3 === 0 ? 4 : 2);
     for (let i = 1; i <= nT; i++) {
       const occupied = !!s.tickets[s.outletId + ":" + i];
       const label = "T" + pad(i);
-      if (!occupied && !booked[label]) out.push(label);
+      if (!occupied && !booked[label]) out.push({ label: label, seats: seatsFor(i) });
     }
-    return out;
+    // Smallest table that still seats the party first; tables too small to
+    // fit it come last, largest-first among themselves (best available fallback).
+    const p = Number(party) || 0;
+    out.sort((a, b) => {
+      const aFits = a.seats >= p, bFits = b.seats >= p;
+      if (aFits && bFits) return a.seats - b.seats;
+      if (aFits) return -1;
+      if (bFits) return 1;
+      return b.seats - a.seats;
+    });
+    return out.map((x) => x.label);
   }
   // Approve / decline / seat / no-show a real reservation, writing the status
   // back through the sync bridge and patching local state so the change shows
@@ -9249,43 +9353,6 @@ class Component extends DCLogic {
           this.setState({ modal: null });
         }
       },
-      tablesSeats: {
-        title: "Tables & seats", sub: "How many tables the floor plan and table picker offer", save: "Save",
-        editSave: "Save",
-        foot: "Tables are numbered T01…T<n> automatically — this sets how many exist, not their names or layout. Seats drives the covers/occupancy figures only.",
-        fields: [
-          { k: "tables", label: "Tables", v: String(this.outlet().tables || 12) },
-          { k: "seats", label: "Seats", v: String(this.outlet().seats || 48) }
-        ],
-        pre: (o) => ({ tables: String((o && o.tables) || this.outlet().tables || 12), seats: String((o && o.seats) || this.outlet().seats || 48) }),
-        onSave: (v, o) => {
-          const tables = Math.max(1, Math.min(200, Math.round(+v.tables || 0)));
-          const seats = Math.max(1, Math.min(2000, Math.round(+v.seats || 0)));
-          if (!tables || !seats) return this.toast("Enter a table count and a seat count", "warn");
-          const oid = (o && o.id != null) ? o.id : this.outlet().id;
-          // Real mode: table/seat counts live in the store settings
-          // (tableCount/seatCount), the same field the guest portal's table
-          // picker already reads — so post there, then patch the in-memory
-          // outlet so the floor plan updates at once instead of on next load.
-          if (window.KPOS_REAL && window.KPOS_REAL.token) {
-            fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ cfg: { tableCount: tables, seatCount: seats } }) })
-              .then((r) => r.json().catch(() => ({}))).then((j) => {
-                if (j && j.error) { this.toast(j.error, "warn"); return; }
-                this.toast("Tables & seats saved — " + tables + " tables · " + seats + " seats");
-              }).catch(() => this.toast("Could not save — check the connection", "warn"));
-            if (window.KPOS_REAL.outlet) { window.KPOS_REAL.outlet.tables = tables; window.KPOS_REAL.outlet.seats = seats; }
-            const arr = (K() && K().OUTLETS) || [];
-            const row = arr.find((x) => x.id === oid);
-            if (row) { row.tables = tables; row.seats = seats; }
-            this.setState({ modal: null });
-            return;
-          }
-          this.patchRows("outlets", [oid], { tables: tables, seats: seats },
-            "Tables & seats updated · " + tables + " tables · " + seats + " seats · by " + this.me(), "outlets");
-          this.setState({ modal: null });
-        }
-      },
       dish: {
         title: "New dish", sub: "Set a price and, if you like, a photo — or let AI draft the lot", save: "Create dish",
         foot: "The placeholders are only examples — fill in the real name and price. A photo is optional; ✨ Generate with AI drafts the description, price and a picture for you. Recipe lines are added in Recipes & Costing after the dish exists.",
@@ -10336,9 +10403,9 @@ class Component extends DCLogic {
           foot: "GGST 8% general, TGST 17% tourism zone. Stored on the store record — the same figures /admin uses and the GST return files.",
           go: gate(() => this.openForm("taxprofile", o)) },
         { title: "Tables & seats", sub: o.name, chip: "Editable", chipBg: "rgba(152,32,48,.12)", chipFg: "var(--brand-red-bright)",
-          rows: [["Tables", String(o.tables || 12)], ["Seats", String(o.seats || 48)]],
-          foot: "Sets how many numbered tables (T01…) the floor plan and the table picker offer, and the seat count used for covers/occupancy figures.",
-          go: gate(() => this.openForm("tablesSeats", o)) },
+          rows: [["Tables", String(o.tables || 12)], ["Total seats", String(o.seats || 48)], ["Per-table capacity", Object.keys(o.tableSeats || {}).length ? Object.keys(o.tableSeats || {}).length + " customised" : "default pattern"]],
+          foot: "Sets how many numbered tables (T01…) the floor plan and the table picker offer, the seat count used for covers/occupancy figures, and — per table — how many seats each one actually has.",
+          go: gate(() => this.openTablesSeats()) },
         // ── This terminal ──────────────────────────────────────────────────
         secHead("This terminal", "Appearance, receipts and printers on this device"),
         { title: "App theme", sub: "This device only — not the guest brand", chip: mode, chipBg: "rgba(242,164,58,.12)", chipFg: "var(--amber-bright)",
