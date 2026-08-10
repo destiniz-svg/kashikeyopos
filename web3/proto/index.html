@@ -7713,8 +7713,12 @@ class Component extends DCLogic {
   setTableSeatRow(i, v) {
     const m = this.state.modal; if (!m) return;
     const pt = Object.assign({}, m.perTable || {});
-    const n = Math.round(+v || 0);
-    if (n > 0) pt[i] = Math.min(30, n); else delete pt[i];
+    // Store exactly what was typed, including "" mid-edit — parsing/rounding
+    // here would make the field snap back to its computed default the moment
+    // it's cleared, so the next keystroke lands after a phantom digit instead
+    // of replacing it (clear "4", type "8" → becomes "48"). Validated once,
+    // at save time, in doSaveTablesSeats.
+    pt[i] = v;
     this.setState({ modal: Object.assign({}, m, { perTable: pt, err: "" }) });
   }
   doSaveTablesSeats() {
@@ -7722,10 +7726,18 @@ class Component extends DCLogic {
     const tables = Math.max(1, Math.min(200, Math.round(+m.tables || 0)));
     const seats = Math.max(1, Math.min(2000, Math.round(+m.seats || 0)));
     if (!tables || !seats) { this.setState({ modal: Object.assign({}, m, { err: "Enter a table count and a seat count" }) }); return; }
-    // Drop any per-table override past the new table count — no point keeping
+    // Parse + validate each row now (rows hold raw typed strings, possibly
+    // ""). A blank, zero, or non-numeric entry means "no override" — the
+    // table falls back to the default pattern rather than saving a bogus
+    // figure. Also drop anything past the new table count — no point keeping
     // a seat figure for a table that no longer exists on the floor.
     const perTable = {};
-    Object.keys(m.perTable || {}).forEach((k) => { if (+k <= tables) perTable[k] = m.perTable[k]; });
+    Object.keys(m.perTable || {}).forEach((k) => {
+      const tno = Math.round(+k);
+      if (!(tno > 0 && tno <= tables)) return;
+      const n = Math.round(+m.perTable[k]);
+      if (n > 0) perTable[k] = Math.min(30, n);
+    });
     const oid = this.outlet().id;
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
       this.setState({ modal: Object.assign({}, m, { busy: true, err: "" }) });
