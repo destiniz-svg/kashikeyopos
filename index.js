@@ -5263,11 +5263,16 @@ if (fs.existsSync(protoFile)) {
         const storeRows = (await c.query(
           "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
         const tax = gstBp >= 1600 ? "TGST" : "GGST", rate = Math.round(gstBp / 100), sc = Math.round(scBp / 100);
+        // The primary row (i===0) IS the same store as outlet: below — give it
+        // the same real tables/seats instead of the same hardcoded default,
+        // so the two never disagree about one store's own floor plan.
+        const primaryTables = Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12;
+        const primarySeats = Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48;
         const outlets = storeRows.map((sr, i) => ({
           id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
           name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0,
           region: "", tax: tax, rate: rate, sc: sc, addr: sr.address || "", mgr: "",
-          pos: true, seats: 48, tables: 12,
+          pos: true, seats: i === 0 ? primarySeats : 48, tables: i === 0 ? primaryTables : 12,
         }));
         // Fiscal identity for a MIRA-compliant tax invoice — the registered
         // taxpayer's TIN, GST registration number, legal name and address, from
@@ -5288,7 +5293,13 @@ if (fs.existsSync(protoFile)) {
           me: { id: viewer.id || "", roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner" },
           portal: { slug, base: portalBase, sub: !!portalSubBase },
           outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
-            currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr },
+            currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr,
+            // Was missing entirely — every real-mode read of o.tables/o.seats
+            // (the floor plan's table count, its "X covers · Y tables"
+            // subtitle) fell back to a hardcoded 12/48, so the Settings
+            // "Tables & seats" editor below had nothing real to change.
+            tables: Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12,
+            seats: Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48 },
           fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "",
             address: fiscalAddr, storeName: st.storeName || "", phone: st.phone || "" },
           // Storefront branding the terminal's Branding panel edits and the guest
@@ -6723,6 +6734,10 @@ if (fs.existsSync(protoFile)) {
       if (patch.tableCount !== undefined) {
         const n = Math.round(Number(patch.tableCount));
         if (n > 0 && n <= 200) data.tableCount = n;
+      }
+      if (patch.seatCount !== undefined) {
+        const n = Math.round(Number(patch.seatCount));
+        if (n > 0 && n <= 2000) data.seatCount = n;
       }
       if (Array.isArray(patch.hotCats)) data.hotCats = patch.hotCats.map((x) => String(x).slice(0, 40)).slice(0, 40);
       if (patch.svcChargeBp !== undefined) {
