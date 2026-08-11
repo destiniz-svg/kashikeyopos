@@ -229,6 +229,65 @@ Schedule: **`TODO(owner)` — recommend quarterly.** Owner: `TODO(owner)`.
 A drill that restores cleanly and passes §4 + `npm test` is your evidence that
 the RPO/RTO targets in §2 are real.
 
+### 7a. The automated drill (runs on every suite execution)
+
+The quarterly drill above exercises the **infrastructure** path: `pg_dump` →
+`pg_restore` → a booted app. It is manual and quarterly, so between drills a
+regression in the *application's own* restore path — `POST /api/app2/backup` /
+`/api/app2/restore`, which is what a merchant actually reaches for after a bad
+reset — could ship unnoticed.
+
+`test/restore-drill.test.js` closes that window. On every run it seeds a store
+with sales, products, customers and stock, snapshots it, **destroys it with the
+account-wide reset**, restores, and asserts the business came back:
+
+- every entity returns, by kind and id;
+- the **inventory tables come back with it** — they live outside `entities`, so
+  a restore that forgot them would return a store with a menu and no stock;
+- a till holding a **pre-disaster sync cursor** is served the restored rows
+  rather than an empty delta (the reason `restoreStore()` re-stamps every row
+  above the sequence high-water mark);
+- restore stays owner-only, password-gated, and cannot resolve a backup id
+  belonging to another tenant.
+
+The two are complements, not alternatives: the automated drill proves the code
+path, the quarterly drill proves the infrastructure and the human runbook.
+
+---
+
+## 7b. Knowing you are degraded before a merchant phones
+
+`/api/health` answers up-or-down. It cannot distinguish a healthy instance from
+one whose sales are taking four seconds each or whose connection pool is
+saturated — which is how the `/api/ops` connection leak stayed invisible until
+tills started hanging.
+
+`GET /api/metrics` (platform-admin cookie only — the numbers are cross-tenant)
+is the scrape target. Counters are since process start, so a monitor differences
+them itself; they reset on deploy, which is correct for a single instance.
+
+| Field | Alert when | Why it is not inferable from `/api/health` |
+| --- | --- | --- |
+| `db.ms` | > 250 ms sustained | a database that answers slowly is not "up" |
+| `pool.waiting` | > 0 for more than a minute | requests are queuing for a connection — the exact shape of the `/api/ops` leak |
+| `http.p95Ms` / `http.slowestMs` | p95 > 1000 ms | a till feels latency long before anything 5xxs |
+| `http.status.5xx` | any sustained rate | the real error rate, not a sampled log line |
+| `ops.opsRejected` | any non-zero delta | a till that could not hand over its sales — the one number a merchant calls about |
+| `ops.moneyFlagged` | rising vs `ops.sales` | bills whose components stopped reconciling |
+| `errors.last15m` | > 0 | `recentErrors` is a 50-deep ring; a *rate* is what separates a blip from an incident |
+| `ready` / `bootMs` | `ready:false`, or `bootMs` climbing | how long each deploy is blind |
+
+Probes, for the platform's own health checks (no credentials, deliberately):
+
+- `GET /api/health` — **readiness**. 503 + `Retry-After` until boot init has
+  finished, so a deploy cannot route traffic at an instance still migrating.
+  This is what `railway.json` points at.
+- `GET /api/live` — **liveness**. Never gated on the database: a restart cannot
+  fix an unreachable Postgres, it only removes capacity.
+
+Every response carries `X-Request-Id` (echoed if the caller supplies one), so a
+support report ties to an exact request in the logs.
+
 ### Drill history
 
 **Drill #1 — 18 Jul 2026 (sandbox, production-scale dataset) — PASS**

@@ -630,6 +630,68 @@ app.use((req, res, next) => {
   res.set("X-Request-Id", req.id);
   next();
 });
+/* ── Operational metrics ───────────────────────────────────────────────────
+   The audit could not answer "how would you know this instance is degraded?"
+   — /api/health says up-or-down and nothing else, so a store whose sales were
+   taking four seconds each, or whose connection pool was saturated, looked
+   identical to a healthy one until a merchant phoned. These are the counters a
+   monitor needs to alert BEFORE that call. Scraped from /api/metrics
+   (platform-admin only; the numbers are cross-tenant).
+
+   Deliberately in-process and unlabelled by path: this is one small instance,
+   not a metrics backend. Latency is a coarse histogram rather than a sample
+   list, so the memory cost is fixed no matter the traffic. */
+const METRIC_BUCKETS = [50, 100, 250, 500, 1000, 2500, 5000];
+const metrics = {
+  requests: 0, inFlight: 0,
+  status: { "2xx": 0, "3xx": 0, "4xx": 0, "5xx": 0 },
+  /* The paths a POS actually lives or dies by, counted separately: a sale that
+     cannot be written is the incident, and it is invisible in an overall 5xx
+     rate dominated by asset requests. */
+  ops: { sales: 0, moneyFlagged: 0, opsRejected: 0 },
+  slowest: 0,
+  buckets: new Array(METRIC_BUCKETS.length + 1).fill(0),
+  durationMsTotal: 0,
+};
+function observeRequest(ms, status) {
+  metrics.requests++;
+  metrics.durationMsTotal += ms;
+  if (ms > metrics.slowest) metrics.slowest = ms;
+  let i = 0;
+  while (i < METRIC_BUCKETS.length && ms > METRIC_BUCKETS[i]) i++;
+  metrics.buckets[i]++;
+  const cls = status >= 500 ? "5xx" : status >= 400 ? "4xx" : status >= 300 ? "3xx" : "2xx";
+  metrics.status[cls]++;
+}
+/* Approximate a quantile from the histogram: report the UPPER edge of the
+   bucket the quantile falls in, which is the honest reading of bucketed data
+   ("95% of requests finished within 250ms"), not an interpolated number that
+   would imply precision the buckets do not have. */
+function metricQuantile(q) {
+  const target = metrics.requests * q;
+  let acc = 0;
+  for (let i = 0; i < metrics.buckets.length; i++) {
+    acc += metrics.buckets[i];
+    if (acc >= target) return i < METRIC_BUCKETS.length ? METRIC_BUCKETS[i] : null; // null = above the top bucket
+  }
+  return null;
+}
+app.use((req, res, next) => {
+  const t0 = Date.now();
+  metrics.inFlight++;
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    metrics.inFlight--;
+    observeRequest(Date.now() - t0, res.statusCode);
+  };
+  // "close" as well as "finish": a client that hangs up mid-response never
+  // fires "finish", and inFlight would climb forever and read as saturation.
+  res.on("finish", finish);
+  res.on("close", finish);
+  next();
+});
 /* Body-size limits (audit API-02): OCR ships a base64 photo and needs room; the
    sync and everything else are capped tightly to shrink the abuse surface. The
    per-path OCR parser runs first for its route, so the tight global one skips
@@ -2736,6 +2798,54 @@ app.get("/api/dev/health", devAuth, wrap(async (req, res) => {
   });
 }));
 
+/* Scrape target for an external monitor (D-04). Platform-admin only — the
+   numbers are cross-tenant, and an open metrics endpoint is a free traffic and
+   customer-count leak.
+
+   What to alert on, and why each is here rather than inferred from /api/health:
+     db.ms                  a database that answers slowly is not "up"
+     pool.waiting           > 0 sustained means requests are queuing for a
+                            connection — the shape the /api/ops leak took
+     http.p95Ms / slowestMs a till feels latency long before anything 5xxs
+     http.status.5xx        the actual error rate, not a sampled log line
+     ops.opsRejected        sales the sync refused: the one number a merchant
+                            would call about
+     ops.moneyFlagged       bills whose components did not reconcile
+     errors.last15m         recentErrors is a 50-deep ring; a RATE is what
+                            distinguishes a blip from an incident
+   Counters are since process start (uptimeSec), so a monitor differences them
+   itself; they reset on deploy, which is correct for a single instance. */
+app.get("/api/metrics", devAuth, wrap(async (req, res) => {
+  const t0 = Date.now();
+  let dbOk = true, dbMs = null;
+  try { await pool.query("SELECT 1"); dbMs = Date.now() - t0; } catch { dbOk = false; }
+  const mem = process.memoryUsage();
+  const cutoff = Date.now() - 15 * 60000;
+  res.set("Cache-Control", "no-store");
+  res.json({
+    ok: true,
+    ready: bootState.ready,
+    bootMs: bootState.readyAt ? bootState.readyAt - bootState.startedAt : null,
+    uptimeSec: Math.round(process.uptime()),
+    db: { ok: dbOk, ms: dbMs },
+    /* node-postgres exposes these directly; `waiting` is the saturation
+       signal — anything above zero means a request is blocked on a
+       connection, not on Postgres. */
+    pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount, max: pool.options && pool.options.max },
+    memoryMb: { rss: Math.round(mem.rss / 1048576), heapUsed: Math.round(mem.heapUsed / 1048576) },
+    http: {
+      requests: metrics.requests, inFlight: metrics.inFlight, status: metrics.status,
+      avgMs: metrics.requests ? Math.round(metrics.durationMsTotal / metrics.requests) : 0,
+      p50Ms: metricQuantile(0.5), p95Ms: metricQuantile(0.95), slowestMs: metrics.slowest,
+      buckets: METRIC_BUCKETS.map((b, i) => ({ leMs: b, n: metrics.buckets[i] }))
+        .concat([{ leMs: null, n: metrics.buckets[METRIC_BUCKETS.length] }]),
+    },
+    ops: metrics.ops,
+    errors: { total: recentErrors.length, last15m: recentErrors.filter((e) => e.t >= cutoff).length,
+      latest: recentErrors[0] || null },
+  });
+}));
+
 app.get("/api/stores", auth, wrap(async (req, res) => {
   await ensureDefaultStore(req.org.o);
   const r = await withOrg(req.org.o, (client) => client.query("SELECT id, code, name, address, active, created_at FROM stores WHERE org_id=$1 ORDER BY created_at ASC", [req.org.o]));
@@ -2769,11 +2879,15 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
      batches up front rather than trusting the shape downstream. Individual
      missing fields are still tolerated (offline clients vary), but the outer
      shape and sizes are enforced. */
-  if (!Array.isArray(ops)) return res.status(400).json({ error: "ops must be an array" });
-  if (ops.length > 1000) return res.status(413).json({ error: "too many ops in one request (max 1000)" });
+  /* A rejected batch is a till that could not hand over its sales — the one
+     failure a merchant actually calls about — so it is counted for the metrics
+     scrape rather than only landing in a log line. */
+  const rejectOps = (status, error) => { metrics.ops.opsRejected++; return res.status(status).json({ error }); };
+  if (!Array.isArray(ops)) return rejectOps(400, "ops must be an array");
+  if (ops.length > 1000) return rejectOps(413, "too many ops in one request (max 1000)");
   for (const op of ops) {
-    if (op && Array.isArray(op.puts) && op.puts.length > 2000) return res.status(413).json({ error: "too many puts in one op (max 2000)" });
-    if (op && Array.isArray(op.dels) && op.dels.length > 2000) return res.status(413).json({ error: "too many dels in one op (max 2000)" });
+    if (op && Array.isArray(op.puts) && op.puts.length > 2000) return rejectOps(413, "too many puts in one op (max 2000)");
+    if (op && Array.isArray(op.dels) && op.dels.length > 2000) return rejectOps(413, "too many dels in one op (max 2000)");
   }
   /* SEC-03: a valid short-lived elevation token (store password verified via
      POST /api/elevate) marks this batch as manager-authorised; refund puts
@@ -2856,6 +2970,8 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
              carried into the audit reasons rather than swallowed. */
           const coerced = sanitizeSaleMoney(data);
           const money = auditSaleMoney(data, moneyCtx);
+          metrics.ops.sales++;
+          if (coerced.length || money) metrics.ops.moneyFlagged++;
           if (coerced.length || money) {
             const m = money || { flagged: true, at: Date.now(), claimedTotal: Number(data.total) || 0, computedTotal: Number(data.total) || 0, reasons: [] };
             if (coerced.length) m.reasons = coerced.concat(m.reasons);
@@ -3079,6 +3195,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
   } catch (e) {
     try { await client.query("ROLLBACK"); } catch { /* connection may be gone; release still runs */ }
     recordError("ops[" + req.id + "]", e);
+    metrics.ops.opsRejected++;
     return res.status(500).json({ error: "ops failed: " + errDetail(e), requestId: req.id });
   } finally {
     /* CRIT: the success path fell out of the try with no release, leaking one

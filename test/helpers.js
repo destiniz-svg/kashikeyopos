@@ -26,6 +26,13 @@ const childEnv = {
   PGDATABASE: process.env.PGDATABASE || "kash",
   PGUSER: process.env.PGUSER || "postgres",
   PGPASSWORD: process.env.PGPASSWORD || "",
+  /* Seed a platform-admin account so the cross-tenant surfaces (the developer
+     panel, /api/metrics) can be exercised at all. Without these the server
+     provisions no admin and every one of those endpoints is permanently 401 —
+     which is the right production default, and is itself pinned in
+     metrics.test.js, but leaves the payloads untested. */
+  PLATFORM_ADMIN_EMAIL: "ops@test.mv",
+  PLATFORM_ADMIN_PASSWORD: "platform-admin-test-pw",
 };
 
 let child = null;
@@ -134,4 +141,14 @@ async function pullEntity(token, kind, pred = () => true) {
   });
 }
 
-module.exports = { BASE, startServer, stopServer, req, registerOrg, ops, pull, invGet, invPost, invPut, until, pullEntity, uniqEmail };
+/* Sign in to the platform-admin panel (see PLATFORM_ADMIN_* above) and return
+   its session cookie, for the cross-tenant endpoints. */
+async function platformAdminCookie() {
+  const r = await req("POST", "/api/dev/login", {
+    body: { email: childEnv.PLATFORM_ADMIN_EMAIL, password: childEnv.PLATFORM_ADMIN_PASSWORD },
+  });
+  if (r.status !== 200) throw new Error("platform admin login failed: " + JSON.stringify(r.json));
+  return ((r.headers.get("set-cookie") || "").match(/kdev_session=[^;]+/) || [""])[0];
+}
+
+module.exports = { BASE, startServer, stopServer, req, registerOrg, ops, pull, invGet, invPost, invPut, until, pullEntity, uniqEmail, platformAdminCookie };
