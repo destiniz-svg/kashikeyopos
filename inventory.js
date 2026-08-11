@@ -1614,7 +1614,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
       const watch = [];
       items.forEach((it) => {
-        if (it.minStock > 0 && it.stock <= it.minStock) watch.push({ id: it.id, name: it.name, type: "low", detail: `Below your alert level (${qtyStr(it.stock, it.baseUnit)} left, alert at ${qtyStr(it.minStock, it.baseUnit)})` });
+        /* Negative on hand: more has been sold than was ever received. The till
+           never blocks a sale for stock by design, so this is where that shows
+           up — and until now it showed up nowhere. It outranks "running low",
+           because the cause is a missing delivery or a wrong recipe, not a
+           reorder. Negative stock also carries into valuation as negative
+           inventory value, so it needs correcting, not topping up. */
+        if (it.stock < 0) watch.push({ id: it.id, name: it.name, type: "negative", detail: `Sold ${qtyStr(Math.abs(it.stock), it.baseUnit)} more than was received — book the missing delivery or fix the recipe, then recount` });
+        else if (it.minStock > 0 && it.stock <= it.minStock) watch.push({ id: it.id, name: it.name, type: "low", detail: `Below your alert level (${qtyStr(it.stock, it.baseUnit)} left, alert at ${qtyStr(it.minStock, it.baseUnit)})` });
         else if (it.wastePct >= 15 && it.wasted > 0) watch.push({ id: it.id, name: it.name, type: "wastage", detail: `${it.wastePct}% of what you used was thrown out this month` });
         if (it.stock > 0 && it.dailyRate === 0 && (it.idleDays == null || it.idleDays >= 21)) watch.push({ id: it.id, name: it.name, type: "dead", detail: `${qtyStr(it.stock, it.baseUnit)} sitting unused${it.idleDays ? ` for ${it.idleDays} days` : ""}` });
       });
@@ -3641,7 +3648,20 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
          JOIN ingredients i ON i.org_id = al.org_id AND i.id = al.ingredient_id
          WHERE al.org_id=$1 AND al.flag='review' AND al.reason='' AND a.status='closed'
          ORDER BY a.closed_at DESC LIMIT 25`, [req.orgId]);
-      return { lowStock: low.rows, needsReview: rev.rows };
+      /* Stock that has gone NEGATIVE. The till deliberately never blocks a sale
+         for stock (a network-partition resilience choice), so overselling drives
+         current_stock below zero and simply stays there — the ledger is
+         consistent, but nothing ever says so. Negative on-hand then flows into
+         stock valuation as negative inventory value and into availability maths
+         with no floor. This is the count-me signal: an item here has sold more
+         than was ever received, so either a delivery was never booked or a
+         recipe is wrong. Separate from lowStock, which is an item that is merely
+         running down. */
+      const neg = await client.query(
+        `SELECT id, name, base_unit, current_stock, location FROM ingredients
+          WHERE org_id=$1 AND active AND current_stock < 0 ORDER BY current_stock ASC LIMIT 50`,
+        [req.orgId]);
+      return { lowStock: low.rows, needsReview: rev.rows, negativeStock: neg.rows };
     });
     res.json(out);
   }));
