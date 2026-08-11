@@ -10,6 +10,33 @@ rules: nothing is called working because code for it exists, no failing result
 is omitted, and anything unproven is marked **NOT TESTED** with the specific
 missing access rather than assumed to pass.
 
+## Score — 8.0 / 10
+
+Weighted across ten dimensions, each scored on **evidence**, not on the existence
+of code. Three dimensions are held below their earned score because the evidence
+that would lift them needs access this review did not have.
+
+| Dimension | Weight | Score | Note |
+| --- | ---: | ---: | --- |
+| Money & tax correctness | 15 | 9 | One `billTotals()`; 1,080-combination parity test |
+| Tenancy & data integrity | 15 | 9 | FORCE RLS everywhere; cross-tenant restore refused |
+| Offline & sync resilience | 12 | 8 | Durable outbox; a mid-sync till provably converges after restore |
+| Security & access control | 12 | 8 | Fail-fast on weak `JWT_SECRET`; no external penetration test |
+| Disaster recovery | 10 | 7 | **Capped** — managed-backup layer unverified |
+| Observability | 10 | 7 | **Capped** — nothing scrapes `/api/metrics`, so nothing alerts |
+| Performance & capacity | 8 | 7 | **Capped** — 2×/5×/10× modelled locally, never measured |
+| Testing & verification | 8 | 8 | 117 cold-database tests reading the *shipped* files |
+| Release & deploy process | 5 | 8 | ff-only staging→main, CI on both, `npm ci` reproducibility |
+| Restaurant operations fit | 5 | 8 | Some flows verified by screenshot rather than by test |
+
+**Weighted total: 8.02 → 8.0**
+
+**This is not a score of the running system.** Nothing has confirmed the
+production deployment (§4.1). That is a binary gate, so it is deliberately left
+out of the number rather than averaged into it: read 8.0 as *ready to deploy*,
+never as *deployed and well*. Closing steps 1–4 of §5 — none of which is a code
+change — would put it near 8.8.
+
 ## Where things stand
 
 | | |
@@ -165,7 +192,18 @@ Anthropic key is also present), but **no call has been observed resolving**.
 `GET /api/inv/ai-selftest` makes one real call and reports the provider, model
 and a sample; setting `AI_SELFTEST=1` prints the same into the deploy log at boot.
 
-### 4.5 Capacity at 2× / 5× / 10× — PARTIALLY MODELLED
+### 4.5 The repository is public — CONFIRM INTENT
+
+Noticed during this review; not part of the original audit. `destiniz-svg/kashikeyopos`
+is publicly readable. Scoped honestly: **no secrets are committed** (the only
+credential-shaped string is a localhost DSN gated on `NODE_ENV !== "production"`,
+no `.env` is tracked) and the app refuses to boot against a real database without
+a strong `JWT_SECRET`. So this is disclosure of implementation detail, not
+credential exposure — it lowers an attacker's cost of finding a logic flaw in a
+payment-handling system. This may be deliberate; it is flagged as a decision to
+confirm, not a defect.
+
+### 4.6 Capacity at 2× / 5× / 10× — PARTIALLY MODELLED
 
 The 100 transactions/hour floor is met with headroom in sandbox measurement. The
 multiples were modelled locally, not measured against production hardware —
@@ -183,4 +221,5 @@ same Railway access as §4.1.
 3. Read the managed-backup configuration (§4.2) and record it in
    `docs/disaster-recovery.md` §2 so RPO/RTO stop being aspirational.
 4. Point a monitor at `/api/metrics` (§4.3) using the §7b thresholds.
-5. Re-run the capacity model against real service metrics (§4.5).
+5. Re-run the capacity model against real service metrics (§4.6).
+6. Confirm the repository's public visibility is intended (§4.5).
