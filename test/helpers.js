@@ -37,16 +37,33 @@ async function startServer() {
   let log = "";
   child.stdout.on("data", (d) => { log += d; });
   child.stderr.on("data", (d) => { log += d; });
-  // Wait for /api/health to report db:true, up to ~20s.
-  const deadline = Date.now() + 20000;
+  /* Wait for READINESS, not just a live socket. /api/health used to answer
+     ok:true the moment SELECT 1 worked — which on a brand-new database is
+     before schema apply, role grants and seeding have run. The harness then
+     registered an org against a schema that did not exist, the failure landed
+     in a top-level before() hook, and node:test cancelled every test in the
+     file with "cancelledByParent". On a cold database that silently reported
+     78/95 passing instead of 95/95 — and in CI, where the database is always
+     fresh, that was the normal path. /api/health now 503s until boot init
+     finishes, so this simply waits for it.
+
+     60s because a cold boot applies the whole schema and seeds a 300-dish
+     starter menu; a warm one is milliseconds. */
+  const deadline = Date.now() + 60000;
+  let last = "";
   while (Date.now() < deadline) {
     try {
       const r = await fetch(BASE + "/api/health");
-      if (r.ok) { const j = await r.json(); if (j.ok && j.db) return; }
-    } catch { /* not up yet */ }
-    await new Promise((res) => setTimeout(res, 300));
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.ok && j.db && j.ready) return;
+      last = `HTTP ${r.status} ${JSON.stringify(j)}`;
+      if (j.phase === "boot-failed") throw new Error("server boot failed: " + j.error + "\nLog:\n" + log);
+    } catch (e) {
+      if (/boot failed/.test(e.message)) throw e;   // real failure, not "not up yet"
+    }
+    await new Promise((res) => setTimeout(res, 200));
   }
-  throw new Error("server did not become healthy in time. Log:\n" + log);
+  throw new Error(`server did not become ready in 60s (last: ${last}). Log:\n` + log);
 }
 
 function stopServer() {

@@ -252,6 +252,21 @@ const withSystem = (fn) => withScope(
 );
 
 const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init across instances
+/* READINESS. app.listen() runs synchronously at module load while boot init —
+   schema apply, role + grant DDL, backfills, starter-menu seeding — runs in the
+   detached async IIFE below. The process therefore accepts traffic BEFORE the
+   database it needs is ready, and /api/health only proved the connection with
+   SELECT 1, which succeeds against a schemaless database in milliseconds.
+
+   That is a readiness-probe bug, not just a test annoyance: during a deploy the
+   platform sees a healthy instance and routes real requests at it while the
+   migration is still running. It is also what silently cancelled 17 tests on a
+   cold database — the harness waited on the same too-eager signal, then failed
+   registering an org against a schema that did not exist yet.
+
+   bootReady flips once boot init has finished (successfully or not — a failed
+   migration still stops pretending to be ready, and records why). */
+const bootState = { ready: false, error: null, startedAt: Date.now(), readyAt: 0 };
 (async () => {
   /* Serialise the whole boot init across instances (ARCH-01): two nodes booting
      against one database used to race on catalog updates ("tuple concurrently
@@ -510,13 +525,15 @@ const BOOT_LOCK = 918273645; // advisory-lock key that serialises boot init acro
        it on demand from Menu Master → "Load default menu". We deliberately do NOT
        backfill every outlet on boot any more — that would inject the full
        300-dish catalogue into stores that run their own menu. */
-  } catch (e) { console.error("schema init failed:", e.message); }
+  } catch (e) { console.error("schema init failed:", e.message); bootState.error = String(e && e.message || e); }
   finally { bootClient.release(); }
   /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,
      and independent of it, so a node still relays pokes even if a backfill hiccups. */
   if (!pool) { pool = new Pool(appPoolConfig()); pool.on("error", (e) => console.error("app pool error:", errDetail(e))); }
   if (!bgPool) { bgPool = new Pool(bgPoolConfig()); bgPool.on("error", (e) => console.error("bg pool error:", errDetail(e))); }
   startPokeListener();
+  bootState.ready = true; bootState.readyAt = Date.now();
+  console.log(`ready to serve traffic (boot init ${bootState.readyAt - bootState.startedAt}ms)`);
 })();
 
 const app = express();
@@ -3604,11 +3621,28 @@ app.post("/p/:slug/reserve", pubThrottle(10, "reserve"), wrap(async (req, res) =
   res.json({ ok: true, id: resv.id });
 }));
 
+/* READINESS probe — gates traffic. 503 until boot init has finished, so a
+   deploy cannot route requests at an instance that is still migrating. Point
+   the platform healthcheck here (railway.json), NOT at "/", which is a static
+   page that answers 200 no matter what state the database is in. */
 app.get("/api/health", wrap(async (req, res) => {
   const dbEnv = { databaseUrl: !!databaseUrl, pgEnv: hasPgEnv };
-  try { await pool.query("SELECT 1"); res.json({ ok: true, service: "kashikeyo-cloud", db: true, dbEnv }); }
-  catch (e) { res.status(500).json({ ok: false, service: "kashikeyo-cloud", db: false, dbEnv, error: errDetail(e) }); }
+  const base = { service: "kashikeyo-cloud", dbEnv, ready: bootState.ready };
+  if (!bootState.ready) {
+    res.set("Retry-After", "5");
+    return res.status(503).json({ ...base, ok: false, db: false,
+      phase: bootState.error ? "boot-failed" : "starting",
+      bootMs: Date.now() - bootState.startedAt,
+      ...(bootState.error ? { error: bootState.error } : {}) });
+  }
+  try { await pool.query("SELECT 1"); res.json({ ...base, ok: true, db: true }); }
+  catch (e) { res.status(503).json({ ...base, ok: false, db: false, error: errDetail(e) }); }
 }));
+
+/* LIVENESS probe — "is this process alive", never gated on the database, so a
+   database blip restarts nothing. Separate from readiness on purpose: a
+   restart cannot fix an unreachable database, it only removes capacity. */
+app.get("/api/live", (req, res) => res.json({ ok: true, service: "kashikeyo-cloud", uptimeSec: Math.round(process.uptime()) }));
 
 app.get("/version", (req, res) => {
   const g = process.env; // Railway injects RAILWAY_* at build/deploy time
