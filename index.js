@@ -4993,13 +4993,38 @@ if (fs.existsSync(protoFile)) {
         const slug = orgRow.slug || "";
         // Today's real trading, for the POS stats strip (net sales + covers).
         // Empty for a store that hasn't sold yet — the honest zero, not a seed.
-        const salesRows = (await c.query(
-          "SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false", [orgId])).rows;
         const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
         const t0 = startOfDay.getTime();
         let net = 0, covers = 0;
         const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
         const m0 = monthStart.getTime();
+        /* PERF: this used to read EVERY sale the org had ever made, on every
+           terminal boot, to compute three windowed figures (today, month to
+           date, a 14-day trend) and then keep only `orders.slice(0, 200)`.
+           Measured 66ms at 1k sales → 587ms at 100k, growing linearly with no
+           archival strategy, and every device pays it on each reload, after a
+           deploy and on offline recovery.
+
+           Now bounded by two indexed reads against entities_kind_ts: everything
+           inside the reporting window, plus the 200 most recent sales for the
+           receipts list (a quiet store's list is not truncated by the window).
+           The timestamp expression is spelled EXACTLY as the index defines it —
+           a near-identical form silently gets a sequential scan instead. */
+        const TS = "COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0)";
+        const DAYS_BACK = 14;
+        const windowFrom = Math.min(m0, t0 - DAYS_BACK * 86400000);
+        const windowed = (await c.query(
+          `SELECT id, data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false AND ${TS} >= $2`,
+          [orgId, windowFrom])).rows;
+        const recent = (await c.query(
+          `SELECT id, data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false ORDER BY ${TS} DESC LIMIT 200`,
+          [orgId])).rows;
+        const seenSale = new Set();
+        const salesRows = [];
+        for (const r of windowed.concat(recent)) {
+          if (seenSale.has(r.id)) continue;
+          seenSale.add(r.id); salesRows.push(r);
+        }
         let netMonth = 0, gstMonth = 0, txMonth = 0;
         const pad2 = (n) => String(n).padStart(2, "0");
         // 14-day net-sales history for the analytics trend chart + week-on-week.
@@ -5158,6 +5183,31 @@ if (fs.existsSync(protoFile)) {
           invRows.push([3, id, Number(g.current_stock) || 0]);   // location = primary outlet, base units
         });
         const invCats = invItems.length ? [{ id: 1, name: "Ingredients", icon: "dry", storage: "daily", freq: "" }] : [];
+        /* Real recipes onto the injected menu. The terminal reads m.recipe as
+           [[numericItemId, qtyPerSoldUnit], …] — the same numeric ids invItems
+           uses — for the Recipes & Costing screen and every food-cost figure.
+           This used to be a hardcoded `recipe: []`, so a recipe saved through
+           PUT /api/inv/recipes/:productId persisted but never came back: the
+           screen was empty after any reload, anyRecipe() stayed false, and
+           foodCost() fell back to a flat 30%-of-price constant that the
+           Cost-of-Sales report, Menu-engineering report, the food-cost stat and
+           the AI CFO all inherited as if it were measured.
+           Keyed by product_id, so the prep-item build recipes that share this
+           table (product_id = the ingredient's own uuid) never match a dish. */
+        if (invItems.length) {
+          const recipeRows = (await c.query(
+            "SELECT product_id, ingredient_id, qty FROM recipe_lines WHERE org_id=$1", [orgId])).rows;
+          if (recipeRows.length) {
+            const byProduct = new Map();
+            for (const r of recipeRows) {
+              const nid = ingNumId[r.ingredient_id];
+              if (!nid) continue;                       // ingredient deleted or inactive
+              if (!byProduct.has(r.product_id)) byProduct.set(r.product_id, []);
+              byProduct.get(r.product_id).push([nid, Number(r.qty) || 0]);
+            }
+            menu.forEach((m) => { const rl = byProduct.get(m.id); if (rl) m.recipe = rl; });
+          }
+        }
         // Stock ledger: the immutable stock_moves, oldest→newest so each row's
         // running balance is correct, then reversed for a newest-first view. In
         // and out are base-unit magnitudes (the terminal converts for display).
