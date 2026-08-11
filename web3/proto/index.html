@@ -14,6 +14,9 @@
 <x-dc>
 <helmet>
 <link rel="stylesheet" href="fonts.css">
+<!-- money.js first: v2-bridge.js and the terminal's own totals() both price
+     bills through window.KPOS_MONEY, and neither will price without it. -->
+<script src="money.js"></script>
 <script src="v2-bridge.js"></script>
 <script src="v2-offline-cache.js"></script>
 <script>
@@ -2431,23 +2434,38 @@ class Component extends DCLogic {
   lineUnit(l, m) { return this.menuPrice(m) + this.lineAddonSum(l); }
   totals(tk, split) {
     const o = this.outlet();
-    // Menu prices are GST-EXCLUSIVE here (the "++" model): service charge and
-    // GST are added on top of the goods. A per-line discount (l.disc %) reduces
-    // its line; a bill discount (tk.discountPct %) reduces the whole goods
-    // subtotal. Service and GST are charged on the discounted goods, and the
-    // invariant subtotal − discount + service + GST = total holds.
-    let sub = 0;
+    /* Menu prices are GST-INCLUSIVE: a dish priced 100 means the guest pays 100
+       for the goods, and GST is EXTRACTED as rate/(1+rate) of the inclusive
+       amount. This delegates to money.js — the same function the guest portal
+       (orderBreakdown) and the settlement path (v2-bridge.js pushSale) run — so
+       what the cashier reads on screen, what the customer is charged, and what
+       is persisted can no longer disagree. This used to add GST on top, which
+       made the counter 8% (GGST) or 17% (TGST) dearer than the guest's phone
+       for the same dish.
+
+       Figures come back in integer laari and are divided once for display; the
+       payment path uses the laari directly via pushSale so nothing is ever
+       re-derived from a rounded rufiyaa figure. */
+    const M = window.KPOS_MONEY;
+    const lines = [];
     (tk ? tk.lines : []).forEach((l) => {
       if (split !== undefined && split !== null && l.split !== split) return;
       const m = (K().MENU || []).find((x) => x.id === l.id);
-      if (m) sub += this.lineUnit(l, m) * l.qty * (1 - (Number(l.disc) || 0) / 100);
+      if (!m) return;
+      const addons = ((l && l.addons) || []).map((a) => Number(a && a.price) || 0);
+      lines.push({ unit: M ? M.unitLaari(this.menuPrice(m), addons) : 0,
+                   qty: l.qty, disc: Number(l.disc) || 0 });
     });
-    const dp = (tk && Number(tk.discountPct) || 0) / 100;
-    const disc = sub * dp;
-    const goods = sub - disc;
-    const svc = goods * ((o.sc || 0) / 100);
-    const tax = (goods + svc) * ((o.rate || 0) / 100);
-    return { sub: sub, disc: disc, dp: dp, goods: goods, svc: svc, tax: tax, total: goods + svc + tax };
+    const dp = (tk && Number(tk.discountPct)) || 0;
+    if (!M) return { sub: 0, disc: 0, dp: dp / 100, goods: 0, svc: 0, tax: 0, total: 0, L: null };
+    const b = M.billTotals({
+      lines: lines, billDiscPct: dp,
+      gstBp: Math.round((o.rate || 0) * 100), svcBp: Math.round((o.sc || 0) * 100),
+      serviceApplies: !tk || (tk.channel || "dine_in") === "dine_in",
+      feeLaari: 0,
+    });
+    return { sub: b.items / 100, disc: b.disc / 100, dp: dp / 100, goods: b.excl / 100,
+             svc: b.svc / 100, tax: b.gst / 100, total: b.total / 100, L: b };
   }
   foodCost(m) {
     const raw = window.KPOS_RAW || {}; let c = 0;

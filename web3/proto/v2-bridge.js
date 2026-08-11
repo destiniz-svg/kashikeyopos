@@ -107,52 +107,61 @@
   }
 
   // ── Public: enqueue a completed settlement, then try to drain immediately ──
-  function unitLaari(m, outlet) {
-    // GST-exclusive menu price in laari; service charge and GST are added once
-    // below. No TGST uplift here — that double-taxed tourist outlets and is gone
-    // from menuPrice() too.
-    return Math.round(num(m.price) * 100);
-  }
   function pushSale(sale) {
     if (!token()) return;                                   // no session → demo only
+    var M = window.KPOS_MONEY;
+    if (!M) { try { console.error("[v2] money.js not loaded — refusing to price a sale"); } catch (e) {} return; }
     var outlet = (window.KPOS_REAL && window.KPOS_REAL.outlet) || {};
-    var rate = num(outlet.rate), sc = num(outlet.sc);
+    // rate/sc arrive as percentages on the injected outlet; money.js works in
+    // basis points, the same unit the settings entity stores.
+    var gstBp = Math.round(num(outlet.rate) * 100), svcBp = Math.round(num(outlet.sc) * 100);
     var MENU = (window.KPOS && window.KPOS.MENU) || [];
     var byId = {}; MENU.forEach(function (m) { byId[m.id] = m; });
 
-    var lines = [], subtotal = 0;
+    var billLines = [], meta = [];
     (sale.lines || []).forEach(function (l) {
       var m = byId[l.id]; if (!m) return;
       // Chosen add-ons are re-priced by name from the product master (the same
       // trust model as the base price — the client never sets its own price),
-      // and their laari price is added into the line unit so the whole bill —
-      // subtotal, service, GST, total — includes them and the invariant holds.
-      var addonEach = 0, addonList = [];
+      // and their laari price is added into the line unit so the whole bill
+      // includes them and the invariant holds.
+      var addonPrices = [], addonList = [];
       (l.addons || []).forEach(function (a) {
-        var match = (m.addons || []).filter(function (x) { return x.name === a.name; })[0];
-        var p = Math.round(num(match ? match.price : a.price) * 100);
         if (!a.name) return;
-        addonEach += p; addonList.push({ name: a.name, price: p });
+        var match = (m.addons || []).filter(function (x) { return x.name === a.name; })[0];
+        var mvr = num(match ? match.price : a.price);
+        addonPrices.push(mvr);
+        addonList.push({ name: a.name, price: Math.round(mvr * 100) });
       });
-      // Per-line discount reduces the line, rounded once from the line itself.
-      var unit = unitLaari(m, outlet) + addonEach, qty = num(l.qty), disc = num(l.disc);
-      var amount = Math.round(unit * qty * (1 - disc / 100));
-      subtotal += amount;
-      var line = { pid: l.id, qty: qty, price: unit, amount: amount, discPct: disc || 0 };
-      if (addonList.length) line.addons = addonList;
-      lines.push(line);
+      var unit = M.unitLaari(m.price, addonPrices), qty = num(l.qty), disc = num(l.disc);
+      billLines.push({ unit: unit, qty: qty, disc: disc });
+      meta.push({ pid: l.id, qty: qty, price: unit, discPct: disc || 0, addons: addonList });
     });
-    if (!lines.length) return;
+    if (!billLines.length) return;
 
-    // Bill discount comes off the goods subtotal; service charge and GST are
-    // charged on the discounted goods, so subtotal − billDisc + svc + gst =
-    // total holds — the exact invariant the server's money audit re-checks.
-    var billDiscPct = num(sale.discountPct);
-    var billDisc = Math.round(subtotal * billDiscPct / 100);
-    var goods = subtotal - billDisc;
-    var svcCharge = Math.round(goods * sc / 100);
-    var gst = Math.round((goods + svcCharge) * rate / 100);
-    var total = goods + svcCharge + gst;
+    /* THE bill calculation — the same function the guest portal's
+       orderBreakdown() and the terminal's totals() run. Menu prices are
+       GST-INCLUSIVE: tax is extracted, never added on top. This used to be a
+       second hand-written copy that added GST, which is how the counter came
+       to charge 8% more than the guest's own phone for the same dish. */
+    var b = M.billTotals({
+      lines: billLines,
+      billDiscPct: num(sale.discountPct),
+      gstBp: gstBp,
+      svcBp: svcBp,
+      serviceApplies: (sale.channel || "dine_in") === "dine_in",
+      feeLaari: 0,
+    });
+    /* Line `amount` is the NET (ex-GST) share of the subtotal, so the sale's
+       own lines add up to its subtotal exactly; `price` stays the inclusive
+       per-unit figure for display. */
+    var lines = meta.map(function (mm, i) {
+      var line = { pid: mm.pid, qty: mm.qty, price: mm.price, amount: b.lines[i], discPct: mm.discPct };
+      if (mm.addons.length) line.addons = mm.addons;
+      return line;
+    });
+    var subtotal = b.items, billDisc = b.disc, billDiscPct = num(sale.discountPct);
+    var svcCharge = b.svc, gst = b.gst, total = b.total;
     var tender = sale.tender || "cash";
     var id = "s_v2_" + (sale.no || "sale") + "_" + Date.now();
     var lamport = Date.now();

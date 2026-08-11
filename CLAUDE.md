@@ -235,13 +235,27 @@ Use `pkill -f "[n]ode index[.]js"`, and run restarts as their own step.
   fraction `rate/(1+rate)` of the inclusive amount — never re-grossed off a
   rounded exclusive base, which is not a round trip. Service charge applies to
   the goods (not the fee) and is itself taxable. Round each figure exactly once,
-  from the figure itself: `totals()` in `web2/proto/index.html` returns the
-  integers in `.L` for the payment path to store verbatim. The invariant
+  from the figure itself. The invariant
   `subtotal − discount + service + GST = total` must hold on every bill.
-- Sale lines carry an explicit `amount` (the line, rounded once). `price` is the
-  per-unit figure for display only — multiplying it back out drifts by laari.
-- `orderBreakdown()` in `index.js` is the guest-portal mirror of `totals()`.
-  If you change one, change both, and check a guest quote against a till charge.
+- **There is ONE bill calculation: `web3/proto/money.js` (`billTotals`).** The
+  terminal's `totals()`, the settlement path (`v2-bridge.js pushSale`) and the
+  guest quote (`orderBreakdown()` in `index.js`) are all thin adapters onto it —
+  the browser loads it as a script, Node `require`s the same file. Do NOT write a
+  second copy. Three hand-written copies is exactly how the terminal drifted to a
+  GST-EXCLUSIVE model and charged 8% (GGST) / 17% (TGST) more at the counter than
+  the guest's own phone quoted, for months, with a green test suite —
+  `auditSaleMoney()` only checks a sale against its own components, so it had
+  nothing to compare against. `test/guest-quote.test.js` now pins the two
+  adapters against each other across the rate/service/type/discount matrix.
+- A store's GST rate must be read with `gstBpOf()`, never `Number(x || 800)` —
+  onboarding offers `none: 0` for a business that is not GST-registered, and
+  `0 || 800` silently turns that into 8%.
+- Sale lines carry an explicit `amount` (the line, rounded once, NET of GST so
+  the lines sum to the subtotal). `price` is the inclusive per-unit figure for
+  display only — multiplying it back out drifts by laari.
+- A sale's `subtotal` is goods net **before** the bill discount (plus the fee
+  net). Pairing a post-discount subtotal with `billDisc` subtracts the discount
+  twice and breaks the invariant on any discounted bill.
 - Server money-integrity: `auditSaleMoney()` re-checks every incoming sale
   against its own declared components and stamps `data.serverAudit` on a
   mismatch. It never rejects — a cashier has already taken the money.

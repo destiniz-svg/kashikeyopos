@@ -41,6 +41,7 @@ const SHELL_KEY = '/v2/__shell__';
    never actually run. */
 const PRECACHE = [
   '/v2/support.js',
+  '/v2/money.js',            // without it the terminal cannot price a bill offline
   '/v2/v2-bridge.js',
   '/v2/v2-offline-cache.js',
   '/v2/menu-art.js',

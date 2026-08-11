@@ -1,23 +1,24 @@
-/* Guard: the guest quote must equal the till charge.
+/* GUARD: the guest quote must equal the till charge.
 
-   CLAUDE.md states the rule: orderBreakdown() in index.js is the guest-portal
-   MIRROR of totals() in web2/proto/index.html. Two implementations of one tax
-   calculation, on two sides of the wire. If they drift, a customer is quoted
-   one price on their phone and charged another at the counter, and nothing in
-   the app notices.
+   This is the test that was supposed to stop the worst money bug this system
+   has had, and did not — because it compared web2/proto/index.html (a till that
+   no longer serves any route) against orderBreakdown(). Both used the inclusive
+   model, so it stayed green while the SHIPPED terminal (web3/proto/index.html)
+   priced bills GST-EXCLUSIVE. A guest was quoted MVR 11,000 on their phone and
+   charged MVR 11,880 at the counter for the identical dish — exactly the GST
+   rate apart — and nothing noticed, because auditSaleMoney() only checks a sale
+   against its own declared components, never against a canonical tax model.
 
-   A FIRST VERSION OF THIS TEST WAS THEATRE, and the way it failed is worth
-   keeping: it posted an order to /p/:slug/order and compared only `total`.
-   Prices are GST-INCLUSIVE, so total = goods + service — the GST split never
-   enters it, and with the service charge at 0 neither does the service rate.
-   Deliberately breaking orderBreakdown (GST added on top; service charged on
-   the delivery fee) left all five cases passing. Comparing totals alone is
-   blind to exactly the drift this is meant to catch.
+   So this now pins the two implementations that actually run:
+     · totals() sliced out of web3/proto/index.html   (what /v2 and /app serve)
+     · orderBreakdown() sliced out of index.js        (what a QR guest is quoted)
+   across GST rates, service charges, order types, discounts and a delivery fee,
+   comparing the WHOLE breakdown — not just `total`, which is blind to a GST
+   split that is wrong in both directions at once.
 
-   So both implementations are sliced out of the shipped files and run
-   side by side over the whole breakdown — excl, gst, svc, total — across rates
-   and order types, including a non-zero service charge and a delivery fee so
-   every term is actually exercised. No server, no database, milliseconds.
+   Both delegate to web3/proto/money.js, so this is really asserting that the
+   two adapters onto it stay honest. If someone reintroduces a second copy of
+   the maths, this fails.
 */
 const { test, describe } = require("node:test");
 const assert = require("node:assert/strict");
@@ -25,12 +26,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..");
+const M = require(path.join(ROOT, "web3", "proto", "money.js"));
 
-/* ── slice the till side out of the HTML ─────────────────────────────── */
-const html = fs.readFileSync(path.join(ROOT, "web2", "proto", "index.html"), "utf8");
-function sliceBody(src, name) {
-  const start = src.indexOf(name + "(){");
-  assert.notEqual(start, -1, `${name}() not found — renamed?`);
+/* ── the till side: the SHIPPED terminal ─────────────────────────────────── */
+const html = fs.readFileSync(path.join(ROOT, "web3", "proto", "index.html"), "utf8");
+function sliceBraces(src, sig) {
+  const start = src.indexOf(sig);
+  assert.notEqual(start, -1, `${sig} not found — renamed?`);
   let i = src.indexOf("{", start), depth = 0, j = i;
   for (;;) {
     if (src[j] === "{") depth++;
@@ -39,107 +41,93 @@ function sliceBody(src, name) {
   }
   return src.slice(i, j + 1);
 }
-const totalsFn = new Function("return function () " + sliceBody(html, "totals"))();
+const totalsFn = new Function("window", "K",
+  "return function (tk, split) " + sliceBraces(html, "totals(tk, split) {"));
 
-/* ── slice the server side out of index.js ───────────────────────────── */
+function tillQuote({ menu, gstBp, svcBp, lines, discPct, channel }) {
+  const fn = totalsFn({ KPOS_MONEY: M }, () => ({ MENU: menu }));
+  const self = { outlet: () => ({ rate: gstBp / 100, sc: svcBp / 100 }), menuPrice: (m) => m.price };
+  return fn.call(self, { lines, discountPct: discPct, channel }).L;
+}
+
+/* ── the guest side: the SHIPPED server ──────────────────────────────────── */
 const server = fs.readFileSync(path.join(ROOT, "index.js"), "utf8");
-function sliceConst(src, name) {
-  const m = new RegExp("const\\s+" + name + "\\s*=\\s*").exec(src);
-  assert.ok(m, `${name} not found in index.js — renamed?`);
-  let i = m.index + m[0].length, depth = 0, j = i, started = false;
-  for (; j < src.length; j++) {
-    const c = src[j];
-    if (c === "{" || c === "(") { depth++; started = true; }
-    else if (c === "}" || c === ")") depth--;
-    else if (c === ";" && started && depth === 0) break;
-  }
-  return src.slice(i, j);
+function sliceConst(name) {
+  const i = server.indexOf("const " + name + " = ");
+  assert.notEqual(i, -1, `${name} not found in index.js — renamed?`);
+  const j = server.indexOf("\n};", i);
+  return server.slice(i, j + 3);
 }
-const orderBreakdown = new Function(
-  "lineTotal", "orderSubtotal",
-  "return " + sliceConst(server, "orderBreakdown"),
-)(
-  (l) => Math.round(Number(l.price) * Number(l.qty) * (1 - (Number(l.discPct) || 0) / 100)),
-  null,
-);
-/* orderSubtotal is referenced inside orderBreakdown; rebuild it from the
-   shipped source too rather than paraphrasing it. */
-const orderSubtotalSrc = sliceConst(server, "orderSubtotal");
-const realBreakdown = new Function(
-  "lineTotal",
-  "const orderSubtotal = " + orderSubtotalSrc + ";\nreturn " + sliceConst(server, "orderBreakdown"),
-)((l) => Math.round(Number(l.price) * Number(l.qty) * (1 - (Number(l.discPct) || 0) / 100)));
-
-/* ── the till side, same cart ────────────────────────────────────────── */
-function tillL(cart, { gstBp, svcBp, orderType, feeMvr = 0 }) {
-  const ctx = {
-    state: {
-      cart, discountPct: 0, orderType,
-      deliveryZoneIx: feeMvr ? 0 : null,
-      storeP: { gstBp, svcChargeBp: svcBp },
-    },
-    DZONES: feeMvr ? [{ fee: feeMvr }] : [],
-    /* These mirror the SHIPPED rate()/scPct() exactly, including the fallback.
-       An earlier stub returned 0 for gstBp:0 and manufactured a divergence
-       that does not exist — the till's rate() only honours gstBp when it is
-       > 0 and otherwise falls through to the sector default, and the server's
-       `settings.gstBp || 800` lands on the same 8%. Both agree; the stub was
-       wrong. (That they agree on 8% for a store that means ZERO is a separate,
-       pre-existing limitation — neither side can express a GST-exempt store.
-       It is noted in docs/reskin-plan.md, not silently fixed here.) */
-    rate() { const sp = this.state.storeP; return sp && Number(sp.gstBp) > 0 ? Number(sp.gstBp) / 10000 : 8 / 100; },
-    scPct() { const sp = this.state.storeP; return sp && sp.svcChargeBp != null ? Math.max(0, Number(sp.svcChargeBp) || 0) / 10000 : 0; },
-  };
-  return totalsFn.call(ctx).L;
-}
-
-const OTYPE = { dine: "dinein", take: "takeaway", delivery: "delivery" };
+const orderBreakdown = new Function("KPOS_MONEY", `
+  const lineTotal = (l) => Math.round((Number(l.price) || 0) * (Number(l.qty) || Number(l.q) || 0));
+  ${sliceConst("gstBpOf")}
+  ${sliceConst("orderSubtotal")}
+  ${sliceConst("orderBreakdown")}
+  return orderBreakdown;`)(M);
 
 describe("guest quote equals till charge", () => {
-  const CARTS = [
-    [{ price: 3000, qty: 1 }],
-    [{ price: 3000, qty: 2 }, { price: 3500, qty: 1 }],
-    [{ price: 999, qty: 7 }],
-    [{ price: 4500, qty: 3 }, { price: 1500, qty: 2 }, { price: 6500, qty: 1 }],
-    [{ price: 3333, qty: 3 }],
-  ];
-  const RATES = [
-    { gstBp: 800, svcBp: 0 },
-    { gstBp: 800, svcBp: 1000 },
-    { gstBp: 1600, svcBp: 1000 },
-    { gstBp: 0, svcBp: 0 },
-    { gstBp: 1700, svcBp: 500 },
-  ];
+  test("the whole breakdown matches across the rate/service/type/discount matrix", () => {
+    const cases = [];
+    for (const gstBp of [0, 800, 1700]) {
+      for (const svcBp of [0, 500, 1000]) {
+        for (const channel of ["dine_in", "takeaway"]) {
+          for (const discPct of [0, 5, 12.5, 33.3]) {
+            for (const unit of [1, 777, 3333, 10000, 123456]) {
+              for (const qty of [1, 3, 7]) {
+                const menu = [{ id: "x", price: unit / 100 }];   // the till takes MVR
+                const till = tillQuote({ menu, gstBp, svcBp, lines: [{ id: "x", qty }], discPct, channel });
+                const guest = orderBreakdown(
+                  { items: [{ price: unit, qty }], otype: channel === "dine_in" ? "dinein" : "takeaway",
+                    discPct, fee: 0 },
+                  { gstBp, svcChargeBp: svcBp });
 
-  for (const [ci, items] of CARTS.entries()) {
-    for (const [ri, rates] of RATES.entries()) {
-      for (const otype of ["dine", "take"]) {
-        test(`cart ${ci + 1} / rates ${ri + 1} / ${otype}: full breakdown matches`, () => {
-          const settings = { gstBp: rates.gstBp, svcChargeBp: rates.svcBp };
-          const srv = realBreakdown(
-            { items: items.map((i) => ({ ...i, taxable: true })), otype: OTYPE[otype], fee: 0 },
-            settings,
-          );
-          const till = tillL(items.map((i) => ({ unit: i.price / 100, qty: i.qty })), {
-            gstBp: rates.gstBp, svcBp: rates.svcBp, orderType: otype,
-          });
-          const msg = ` server=${JSON.stringify(srv)} till=${JSON.stringify({ excl: till.excl, gst: till.gst, svc: till.svc, total: till.total })}`;
-          assert.equal(srv.total, till.total, "total drift —" + msg);
-          assert.equal(srv.gst, till.gst, "GST drift —" + msg);
-          assert.equal(srv.svc, till.svc, "service-charge drift —" + msg);
-          assert.equal(srv.excl, till.excl, "net-of-tax drift —" + msg);
-        });
+                const where = JSON.stringify({ gstBp, svcBp, channel, discPct, unit, qty });
+                assert.equal(till.total, guest.total, `total differs · ${where}`);
+                assert.equal(till.gst, guest.gst, `GST differs · ${where}`);
+                assert.equal(till.svc, guest.svc, `service differs · ${where}`);
+                assert.equal(till.disc, guest.disc, `discount differs · ${where}`);
+                assert.equal(till.items, guest.items, `subtotal differs · ${where}`);
+                cases.push(1);
+              }
+            }
+          }
+        }
       }
     }
-  }
+    assert.ok(cases.length >= 1000, `only ${cases.length} combinations compared`);
+  });
 
   test("a delivery fee is taxed but never carries the service charge", () => {
-    const items = [{ price: 10000, qty: 1, taxable: true }];
-    const settings = { gstBp: 800, svcChargeBp: 1000 };
-    const srv = realBreakdown({ items, otype: "delivery", fee: 4000 }, settings);
-    const till = tillL([{ unit: 100, qty: 1 }], { gstBp: 800, svcBp: 1000, orderType: "delivery", feeMvr: 40 });
-    assert.equal(srv.svc, 0, "delivery takes no service charge on the server");
-    assert.equal(till.svc, 0, "delivery takes no service charge on the till");
-    assert.equal(srv.total, till.total, `fee drift: server ${srv.total} vs till ${till.total}`);
+    const guest = orderBreakdown(
+      { items: [{ price: 10000, qty: 1 }], otype: "delivery", fee: 5000 },
+      { gstBp: 800, svcChargeBp: 1000 });
+    assert.equal(guest.svc, 0, "delivery takes no service charge");
+    assert.equal(guest.total, 15000, "goods 100 + fee 50, both GST-inclusive");
+    assert.ok(guest.gst > 0, "the fee is part of the taxable supply");
+    assert.equal(guest.items + guest.fee - guest.disc + guest.svc + guest.gst, guest.total);
+  });
+
+  test("a GST-unregistered store is charged no GST on either surface", () => {
+    // taxMap.none = 0 at onboarding. `Number(x || 800)` used to read that zero
+    // as "absent" and substitute 8%, so a business that is not registered to
+    // collect GST had it extracted, printed on receipts and posted to GST payable.
+    const menu = [{ id: "x", price: 100 }];
+    const till = tillQuote({ menu, gstBp: 0, svcBp: 1000, lines: [{ id: "x", qty: 1 }], discPct: 0, channel: "dine_in" });
+    const guest = orderBreakdown({ items: [{ price: 10000, qty: 1 }], otype: "dinein" },
+                                 { gstBp: 0, svcChargeBp: 1000 });
+    assert.equal(till.gst, 0, "till charged GST to an unregistered store");
+    assert.equal(guest.gst, 0, "guest portal charged GST to an unregistered store");
+    assert.equal(till.total, guest.total);
+  });
+
+  test("a discounted guest order still satisfies the sale invariant", () => {
+    // The settle path stores subtotal = items + fee alongside billDisc; pairing
+    // a post-discount subtotal with billDisc subtracted the discount twice.
+    for (const discPct of [0, 10, 25, 33.3]) {
+      const b = orderBreakdown({ items: [{ price: 10000, qty: 2 }], otype: "dinein", discPct, fee: 0 },
+                               { gstBp: 800, svcChargeBp: 1000 });
+      const subtotal = b.items + b.fee;
+      assert.equal(subtotal - b.disc + b.svc + b.gst, b.total, `discPct ${discPct}`);
+    }
   });
 });

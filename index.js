@@ -11,6 +11,9 @@ const path = require("path");
 const fs = require("fs");
 const { createRemoteJWKSet, jwtVerify } = require("jose");
 const { DEFAULT_MENU, CAT_GROUPS, CAT_ORDER } = require("./default-menu");
+/* The one bill calculation, shared with the terminal (which loads the same file
+   as a browser script). See web3/proto/money.js for why it exists. */
+const KPOS_MONEY = require("./web3/proto/money.js");
 
 const PORT = process.env.PORT || 4000;
 const DEV_SECRET = "kashikeyo-dev-secret-change-me";
@@ -1681,29 +1684,44 @@ const asOtype = (v) => {
    - GST is extracted as the tax fraction of the inclusive amount rather than
      re-grossed off a rounded exclusive base, so the parts sum to the total
      exactly and a guest's quote equals the till's charge to the laari. */
+/* A store's GST rate in basis points, preserving a legitimate ZERO.
+   `Number(x || 800)` reads 0 as "absent" and silently substitutes 8% — so a
+   business that told onboarding it is NOT GST-registered (taxMap.none = 0) had
+   8% extracted from every guest order, printed on its receipts and posted to
+   GST payable. Only a genuinely missing/blank/non-numeric value falls back to
+   the 800 legacy default; 0 means zero. */
+const gstBpOf = (v) => {
+  if (v === null || v === undefined || v === "") return 800;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 800;
+};
+/* The guest-portal quote. This no longer implements the bill maths — it
+   delegates to web3/proto/money.js, the SINGLE implementation the till
+   (totals(), v2-bridge.js) also runs. Two hand-written copies of one tax
+   calculation is what let the terminal drift to a GST-EXCLUSIVE model while
+   this stayed inclusive, so the same dish cost 8% more at the counter than on
+   the guest's phone. There is now one function; this is the adapter that maps
+   an `orders` entity onto it. */
 const orderBreakdown = (o, settings = {}) => {
-  const r = Number(settings.gstBp || 800) / 10000;
-  const sp = String(o.otype || "dinein") === "dinein" ? Number(settings.svcChargeBp || 0) / 10000 : 0;
-  /* AUDIT-F1: totals() (the till) supports a bill-level discount (discountPct)
-     and folds it through every downstream figure BEFORE service/GST; this had
-     no equivalent input at all, so the "must match totals() to the laari"
-     invariant only held in the always-zero-discount subset of cases — a
-     latent divergence, not currently reachable (nothing sets a discount on an
-     order today) but real the moment one is wired up. Mirrors totals()'s
-     dp/discIncl/goodsIncl shape exactly; with dp=0 every intermediate value
-     below is algebraically identical to the previous implementation. */
-  const dp = Math.max(0, Math.min(100, Number(o.discPct != null ? o.discPct : o.billDiscPct) || 0)) / 100;
-  const TF = (v) => Math.round(v * r / (1 + r));
   const fee = Number(o.fee) || 0;
+  /* orderSubtotal() folds the delivery fee in; money.js wants goods and fee
+     separately (service charge must never apply to the fee). */
   const itemsIncl = orderSubtotal(o) - fee;
-  const discIncl = Math.round(itemsIncl * dp);
-  const goodsIncl = itemsIncl - discIncl;
-  const svcIncl = Math.round(goodsIncl * sp);  // service is on the discounted goods, never the delivery fee
-  const total = goodsIncl + fee + svcIncl;
-  const gst = TF(total);
-  const svc = svcIncl - TF(svcIncl);
-  const disc = discIncl - TF(discIncl);
-  return { excl: total - gst - svc, svc, gst, total, disc, discPct: dp * 100 };
+  const b = KPOS_MONEY.billTotals({
+    lines: [{ unit: itemsIncl, qty: 1, disc: 0 }],
+    billDiscPct: Math.max(0, Math.min(100, Number(o.discPct != null ? o.discPct : o.billDiscPct) || 0)),
+    gstBp: gstBpOf(settings.gstBp),
+    svcBp: Number(settings.svcChargeBp) || 0,
+    serviceApplies: String(o.otype || "dinein") === "dinein",
+    feeLaari: fee,
+  });
+  /* `excl` keeps its historical meaning (goods net AFTER the discount, with the
+     fee folded in) so nothing downstream shifts. `items` and `fee` are the
+     clean decomposition: `items` is goods net BEFORE the discount, which is
+     what a sale's `subtotal` field must carry for the invariant
+     subtotal − billDisc + svc + gst = total to hold on a discounted bill. */
+  return { excl: b.excl + b.fee, items: b.items, fee: b.fee, svc: b.svc,
+           gst: b.gst, total: b.total, disc: b.disc, discPct: b.discPct };
 };
 const orderTotal = (o, settings = {}) => orderBreakdown(o, settings).total;
 const normalizeOrder = (o, settings = {}) => ({
@@ -3922,7 +3940,7 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
   const st = ((await c.query(
     "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
   const categories = mergeCategories(catName, st);
-  const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
+  const gstBp = gstBpOf(st.gstBp), scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
   const storeRows = (await c.query(
     "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
   const outlets = storeRows.map((sr, i) => ({ id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
@@ -4968,7 +4986,7 @@ if (fs.existsSync(protoFile)) {
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
         const categories = mergeCategories(catName, st);
-        const gstBp = Number(st.gstBp) || 800, scBp = Number(st.svcChargeBp) || 0;
+        const gstBp = gstBpOf(st.gstBp), scBp = Number(st.svcChargeBp) || 0;
         // The store handle (orgs.slug) is the QR-portal address; the Branding
         // panel shows and edits it. orgs is system-scoped, so read it with withSystem.
         const orgRow = (await withSystem((sc) => sc.query("SELECT slug, email FROM orgs WHERE id=$1", [orgId]))).rows[0] || {};
@@ -6011,8 +6029,8 @@ if (fs.existsSync(protoFile)) {
       const prods = await kindAll(orgId, "products", cleanStoreId(DEFAULT_STORE_ID));
       const prices = new Map();
       for (const p of prods) prices.set(String(p.id), { price: Number(p.price) || 0, open: !!p.open });
-      moneyCtx = { gstBp: Number(settings.gstBp || 800), prices };
-    } catch (e) { moneyCtx = { gstBp: Number(settings.gstBp || 800) }; }
+      moneyCtx = { gstBp: gstBpOf(settings.gstBp), prices };
+    } catch (e) { moneyCtx = { gstBp: gstBpOf(settings.gstBp) }; }
     const cfg = loyaltyConfig(settings);
     const out = await withOrg(orgId, async (c) => {
       const cur = await c.query("SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND id=$2 AND deleted=false FOR UPDATE", [orgId, id]);
@@ -6032,7 +6050,12 @@ if (fs.existsSync(protoFile)) {
         otype: asOtype(data.otype), storeId: cleanStoreId(data.storeId || DEFAULT_STORE_ID),
         channel: data.otype === "delivery" ? "delivery" : data.otype === "takeaway" ? "takeaway" : "qr",
         lines: (data.items || []).map((it) => ({ pid: it.pid, name: it.name, qty: Number(it.qty) || 1, price: Number(it.price) || 0, amount: (Number(it.price) || 0) * (Number(it.qty) || 1), discPct: 0, taxable: it.taxable !== false, addons: it.addons })),
-        subtotal: bd.excl, svcCharge: bd.svc, gst: bd.gst, billDisc: bd.disc, billDiscPct: bd.discPct, total: bd.total,
+        /* subtotal is goods net BEFORE the bill discount, plus the fee net —
+           `bd.excl` is post-discount, so pairing it with billDisc subtracted
+           the discount twice and broke subtotal − billDisc + svc + gst = total
+           on any discounted order (silently, since auditSaleMoney compares a
+           sale against its own components). */
+        subtotal: bd.items + bd.fee, svcCharge: bd.svc, gst: bd.gst, billDisc: bd.disc, billDiscPct: bd.discPct, total: bd.total,
         payments: [{ method: tender, amount: bd.total, given: bd.total, change: 0, ref: ref || undefined }],
         orderId: id, source: "qr", userName: "QR portal",
       };
