@@ -2424,8 +2424,13 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      are NOT also expensed — they sit in stock until consumed — so the P&L never
      double-counts. All amounts laari. */
   async function computeAccounting(client, orgId, from, to, storeId) {
+    /* PERF: `data - 'lines'` strips the per-line array before the row leaves
+       Postgres. This aggregation reads only scalars and `payments`; the lines
+       are the bulk of a sale document, and shipping + JSON-parsing them for
+       every sale in the period was most of the cost of this endpoint. Same
+       rows, same arithmetic, far less payload. */
     const sales = (await client.query(
-      `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+      `SELECT data - 'lines' AS data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
          AND ($2::text IS NULL OR COALESCE(data->>'storeId','global')=$2)
          AND COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0) BETWEEN $3 AND $4`, [orgId, storeId, from, to])).rows;
     const exps = (await client.query(
@@ -2547,10 +2552,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
      book value (their cost reduces bank, since equipment is bought from it).
      Equity is the balancing figure (accumulated retained earnings), so the
      sheet always balances by construction. */
-  async function computeStatements(client, orgId, storeId) {
+  /* `allTime` lets a caller that has ALREADY aggregated all of time hand the
+     result in. The /accounting endpoint used to run computeAccounting for the
+     requested window and then again, unconditionally, for all of time inside
+     here — every sale the org had ever made, aggregated twice per request. */
+  async function computeStatements(client, orgId, storeId, allTime) {
     const now = Date.now();
     const assetRec = await computeAssets(client, orgId, storeId);
-    const acct = await computeAccounting(client, orgId, 0, now, storeId);
+    const acct = allTime || await computeAccounting(client, orgId, 0, now, storeId);
     // Floor each item at zero: an oversold item shows negative physical stock in
     // the ledger, but you never carry negative inventory as an asset.
     const invR = (await client.query(
@@ -2607,8 +2616,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     "Marketing": "5700", "Freight": "5320", "Transport": "5320", "Paid out": "5900" };
   async function computeTrialBalance(client, orgId, from, to, storeId) {
     const now = Date.now();
-    const stmt = await computeStatements(client, orgId, storeId);
+    /* Aggregate the window FIRST, then reuse it for the statements when the
+       window is all of time — otherwise this ran two identical full scans per
+       request (computeStatements does its own all-time computeAccounting). */
     const acct = await computeAccounting(client, orgId, from, to, storeId);
+    const isAllTime = from === 0 && Math.abs(to - now) < 5000;
+    const stmt = await computeStatements(client, orgId, storeId, isAllTime ? acct : undefined);
     const assetRec = await computeAssets(client, orgId, storeId);
     const bs = stmt.balanceSheet, pnl = acct.pnl;
     const rows = [];
@@ -2780,7 +2793,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const from = Number(req.query.from) || 0;
       const to = Number(req.query.to) || Date.now();
       const acct = await computeAccounting(client, req.orgId, from, to, storeId);
-      const stmt = await computeStatements(client, req.orgId, storeId);
+      /* The default request (no from/to) IS the all-time aggregation the
+         statements need, so hand it straight over instead of running the same
+         scan a second time. A narrowed window still costs the extra pass —
+         a balance sheet is as-of-now by definition and cannot be windowed. */
+      const isAllTime = from === 0 && Math.abs(to - Date.now()) < 5000;
+      const stmt = await computeStatements(client, req.orgId, storeId, isAllTime ? acct : undefined);
       return Object.assign({ filed: false }, acct, { balanceSheet: stmt.balanceSheet, cashFlow: stmt.cashFlow });
     });
     res.json(Object.assign({ ok: true }, out));
