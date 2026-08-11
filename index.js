@@ -732,6 +732,44 @@ const effectiveDiscountPct = (sale) => {
   const billDisc = Math.max(0, Number(sale.billDisc) || 0);
   return Math.round(((lineDisc + billDisc) / gross) * 100);
 };
+/* Money fields must land in the database as finite integers.
+   A non-numeric or absurd value used to be stored verbatim — flagged, but
+   stored — so `SUM((data->>'total')::bigint)` then failed for the WHOLE tenant
+   ("invalid input syntax for type bigint: \"abc\""), breaking any ad-hoc SQL,
+   BI export, backup restore or migration that touched the column. The app's own
+   reports survive it because they derive from line items, which is why this went
+   unnoticed.
+
+   Coerces rather than rejects: a cashier has already taken the money, and the
+   /api/ops contract is that a sale is never refused. Whatever was unusable is
+   zeroed and named in the audit flag, so the row is queryable and the problem
+   is visible instead of silent. */
+const MONEY_FIELDS = ["subtotal", "billDisc", "svcCharge", "gst", "total", "fee"];
+const MONEY_MAX = 1e12;                                     // 10 billion MVR in laari — far above any real bill
+function sanitizeSaleMoney(sale) {
+  const bad = [];
+  const fix = (obj, field, label) => {
+    if (obj[field] === undefined || obj[field] === null) return;
+    const n = Number(obj[field]);
+    if (!Number.isFinite(n) || Math.abs(n) > MONEY_MAX) {
+      bad.push(`${label} ${JSON.stringify(obj[field])} is not a usable amount`);
+      obj[field] = 0;
+    } else obj[field] = Math.round(n);
+  };
+  if (!sale || typeof sale !== "object") return bad;
+  MONEY_FIELDS.forEach((f) => fix(sale, f, f));
+  (Array.isArray(sale.lines) ? sale.lines : []).forEach((l, i) => {
+    if (!l || typeof l !== "object") return;
+    fix(l, "price", `lines[${i}].price`);
+    fix(l, "amount", `lines[${i}].amount`);
+  });
+  (Array.isArray(sale.payments) ? sale.payments : []).forEach((p, i) => {
+    if (!p || typeof p !== "object") return;
+    ["amount", "given", "change"].forEach((f) => fix(p, f, `payments[${i}].${f}`));
+  });
+  return bad;
+}
+
 function auditSaleMoney(sale, ctx) {
   if (!sale || sale.foc) return null;                       // free-of-charge is legitimately 0
   if (sale.type && sale.type !== "sale") return null;       // refunds derive from their original; validated by linkage
@@ -772,6 +810,15 @@ function auditSaleMoney(sale, ctx) {
       }
     }
   }
+  /* A line quantity that is negative, absent or non-numeric. The money checks
+     above all reconcile on line `amount`, so a line claiming qty -5 with a
+     plausible amount balanced perfectly and passed — while the stock deduction
+     and every item-sales report derived from qty took the nonsense at face
+     value. Money can be right and the quantity still be wrong. */
+  lines.forEach((l, i) => {
+    const q = Number(l && l.qty);
+    if (!Number.isFinite(q) || q < 0) reasons.push(`line ${i} qty ${JSON.stringify(l && l.qty)} is not a valid quantity`);
+  });
   if (!reasons.length) return null;
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
 }
@@ -1754,7 +1801,7 @@ const finalStatuses = new Set(["completed", "settled", "paid", "closed"]);
    completed/paid/cancelled drop off. Money laari→MVR. Shared by the page inject
    and the live-refresh poll so the two never disagree. */
 const V2_CHAN = { v2: "dine_in", dine_in: "dine_in", dinein: "dine_in", dine: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
-function liveOrdersV2(dataRows) {
+function liveOrdersV2(dataRows, settings = {}) {
   const p2 = (n) => String(n).padStart(2, "0");
   return dataRows
     .filter((o) => o && o.id && !finalStatuses.has(String(o.status || "new").toLowerCase()) && String(o.status || "") !== "cancelled")
@@ -1770,7 +1817,13 @@ function liveOrdersV2(dataRows) {
         customerId: o.customerId || null, customerName: o.customerName || "",
         billAck: !!o.billAck, billRequested: !!o.billRequested,
         items: items, at: at, time: dt ? p2(dt.getHours()) + ":" + p2(dt.getMinutes()) : "",
-        total: Math.round((o.items || []).reduce((a, it) => a + (Number(it.price) || 0) * (Number(it.qty || it.q) || 1), 0) / 100) };
+        /* What the guest will actually be charged — the same orderBreakdown()
+           the settle path posts. This used to sum the line prices only, so an
+           order carrying a service charge (or a discount, or a delivery fee)
+           showed one figure on the Orders board and settled at another: a
+           cashier reading MVR 200 collected MVR 220. Rounded to whole rufiyaa
+           for the board, as before. */
+        total: Math.round(orderTotal(o, settings) / 100) };
     })
     .sort((a, b) => b.at - a.at);
 }
@@ -2766,8 +2819,18 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
            sale is accepted-but-quarantined for manager review rather than
            silently trusted. */
         if (p.kind === "sales" && data.lines) {
+          /* Coerce money to storable integers BEFORE auditing, so a value that
+             cannot be summed in SQL never reaches the column. Anything fixed is
+             carried into the audit reasons rather than swallowed. */
+          const coerced = sanitizeSaleMoney(data);
           const money = auditSaleMoney(data, moneyCtx);
-          if (money) { data.serverAudit = money; recordError(`sale money-check ${data.no || data.id}`, new Error(money.reasons.join("; "))); auditEvents.push({ actor: data.userName || "", action: "sale.flagged", ref: data.no || data.id, detail: { claimedTotal: money.claimedTotal, computedTotal: money.computedTotal, reasons: money.reasons } }); }
+          if (coerced.length || money) {
+            const m = money || { flagged: true, at: Date.now(), claimedTotal: Number(data.total) || 0, computedTotal: Number(data.total) || 0, reasons: [] };
+            if (coerced.length) m.reasons = coerced.concat(m.reasons);
+            data.serverAudit = m;
+            recordError(`sale money-check ${data.no || data.id}`, new Error(m.reasons.join("; ")));
+            auditEvents.push({ actor: data.userName || "", action: "sale.flagged", ref: data.no || data.id, detail: { claimedTotal: m.claimedTotal, computedTotal: m.computedTotal, reasons: m.reasons } });
+          }
         }
         /* SEC-03 (audit B3): a large discount / comp is a manager-authorised
            action just like a refund. The till gates it in the UI, but the
@@ -5128,7 +5191,7 @@ if (fs.existsSync(protoFile)) {
         // device instead of one screen's memory. Closed/paid/cancelled drop off.
         const ordEntRows = (await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId])).rows;
-        const liveOrders = liveOrdersV2(ordEntRows.map((r) => r.data || {}));
+        const liveOrders = liveOrdersV2(ordEntRows.map((r) => r.data || {}), st);
         // Open guest calls (waiter / bill) so the floor shows them from load,
         // not only after the first live poll. A real guest posts these to the
         // server (/p/:slug/call); the demo localStorage bridge never reaches here.
@@ -5668,17 +5731,22 @@ if (fs.existsSync(protoFile)) {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
     maybeRecomputePopularity(orgId);   // keep usage ranking fresh for open terminals (throttled)
-    const { rows, calls } = await withOrg(orgId, async (c) => {
+    const { rows, calls, settings } = await withOrg(orgId, async (c) => {
       const rows = (await c.query(
         "SELECT data FROM entities WHERE org_id=$1 AND kind='orders' AND deleted=false ORDER BY COALESCE((data->>'createdAt')::numeric,(data->>'at')::numeric,0) DESC LIMIT 120", [orgId])).rows;
       const calls = (await c.query(
         "SELECT data FROM entities WHERE org_id=$1 AND kind='waiterCalls' AND deleted=false ORDER BY (data->>'t')::numeric DESC LIMIT 40", [orgId])).rows.map((r) => r.data || {});
-      return { rows, calls };
+      /* The board's totals are priced through orderBreakdown(), so it needs the
+         store's tax + service profile — without it every order would quote at
+         the 8% default and no service charge. */
+      const settings = ((await c.query(
+        "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
+      return { rows, calls, settings };
     });
     res.set("Cache-Control", "no-store");
     // Stamp the running build so an already-open terminal notices a new deploy
     // and refreshes itself (see maybeReloadForUpdate on the client).
-    res.json({ ok: true, build: ASSET_VER, orders: liveOrdersV2(rows.map((r) => r.data || {})), calls });
+    res.json({ ok: true, build: ASSET_VER, orders: liveOrdersV2(rows.map((r) => r.data || {}), settings), calls });
   }));
   // Acknowledge a guest call (waiter / bill): clears it from the floor on every
   // device by soft-deleting the waiterCalls entity. (Stale calls also auto-expire
