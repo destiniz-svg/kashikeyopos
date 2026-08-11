@@ -1,8 +1,13 @@
 name: tests
 
+# `staging` is where all work lands first (CLAUDE.md → Deploy): it is the branch
+# that gets verified and then fast-forwarded onto the live `main`. Running CI
+# only on `main` meant the first cold-database run of any change happened AFTER
+# it was already promoted to production — and a fix to this workflow could not
+# be validated on the branch it was made on.
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
 
 jobs:
@@ -37,6 +42,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # No lockfile is used by the runtime image (see CLAUDE.md); install fresh.
-      - run: npm install --omit=dev
+      # Install EXACTLY what the runtime image installs. The Dockerfile copies
+      # package-lock.json and runs `npm ci --omit=dev`, so `npm install` here
+      # tested a dependency tree that could differ from the one that ships on
+      # any transitive release — which is the whole thing `npm ci` was adopted
+      # to prevent. `npm ci` also fails loudly if package.json and the lockfile
+      # drift, instead of quietly resolving something else.
+      - run: npm ci --omit=dev
       - run: npm test
