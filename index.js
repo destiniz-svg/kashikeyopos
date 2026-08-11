@@ -1827,6 +1827,38 @@ function liveOrdersV2(dataRows, settings = {}) {
     })
     .sort((a, b) => b.at - a.at);
 }
+/* The timestamp expression the sales history is ordered and paged by. It is
+   spelled EXACTLY as entities_kind_ts defines it — a near-identical form
+   silently gets a sequential scan instead of the index. */
+const SALE_TS = "COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0)";
+/* Project one `sales` entity → the receipt row the /v2 terminal's Orders &
+   Tickets list reads. Shared by the page inject and the paged history endpoint
+   so an older receipt is byte-for-byte the same object as a recent one — the
+   two used to be one inline loop, which is why there was no way to fetch page
+   two at all. Money laari→MVR, as the terminal expects. */
+function projectSaleRow(id, d, nameById, refundedRefs) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  const at = Number(d.at) || 0;
+  const dt = at ? new Date(at) : null;
+  const lineItems = Array.isArray(d.lines) ? d.lines.map((l) => ({
+    pid: l.pid != null ? l.pid : l.id, q: Number(l.qty) || 0,
+    n: nameById[String(l.pid != null ? l.pid : l.id)] || l.name || "Item",
+    price: Math.round((Number(l.price) || 0) / 100),
+    amount: Math.round((Number(l.amount != null ? l.amount : (Number(l.price) || 0) * (Number(l.qty) || 0))) / 100),
+  })) : [];
+  const refAmt = refundedRefs[String(d.no || "")] || refundedRefs[String(id)] || 0;
+  return {
+    no: d.no || id, table: d.table != null ? "T" + p2(d.table) : "—",
+    channel: V2_CHAN[d.channel] || "dine_in", total: Math.round((Number(d.total) || 0) / 100),
+    tender: d.tender || "cash", status: d.open ? "open" : "closed", server: d.server || "",
+    time: dt ? p2(dt.getHours()) + ":" + p2(dt.getMinutes()) : "", at: at,
+    items: lineItems, subtotal: Math.round((Number(d.subtotal) || 0) / 100),
+    svc: Math.round((Number(d.svcCharge) || 0) / 100), gst: Math.round((Number(d.gst) || 0) / 100),
+    customerId: d.customerId || null, customerName: d.customerName || "",
+    buyerName: d.buyerName || "", buyerTin: d.buyerTin || "", docType: d.docType || "",
+    refunded: refAmt > 0, refundAmt: Math.round(refAmt / 100),
+  };
+}
 async function guestOrders(orgId, storeId, selector = {}, settings = {}) {
   const orders = await kindAll(orgId, "orders", storeId);
   const customerId = selector.customerId;
@@ -5107,7 +5139,7 @@ if (fs.existsSync(protoFile)) {
            receipts list (a quiet store's list is not truncated by the window).
            The timestamp expression is spelled EXACTLY as the index defines it —
            a near-identical form silently gets a sequential scan instead. */
-        const TS = "COALESCE((data->>'t')::numeric,(data->>'at')::numeric,(data->>'createdAt')::numeric,0)";
+        const TS = SALE_TS;
         const DAYS_BACK = 14;
         const windowFrom = Math.min(m0, t0 - DAYS_BACK * 86400000);
         const windowed = (await c.query(
@@ -5135,7 +5167,6 @@ if (fs.existsSync(protoFile)) {
           dayKeys.push({ key, at: dd.getTime() }); dayNet[key] = 0;
         }
         const dayKeyOf = (ts) => { const dd = new Date(ts); return dd.getFullYear() + "-" + pad2(dd.getMonth() + 1) + "-" + pad2(dd.getDate()); };
-        const chanMap = { v2: "dine_in", dine_in: "dine_in", qr: "qr", takeaway: "takeaway", delivery: "delivery" };
         // pid → display name, so a real sale's stored line items can carry the
         // dish name the receipt and menu-engineering report need.
         const nameById = {};
@@ -5162,28 +5193,10 @@ if (fs.existsSync(protoFile)) {
           if (at >= t0) { net += Number(d.total) || 0; covers += 1; }
           if (at >= m0) { netMonth += Number(d.total) || 0; gstMonth += Number(d.gst) || 0; txMonth += 1; }
           if (at) { const dk = dayKeyOf(at); if (dayNet[dk] != null) dayNet[dk] += Number(d.total) || 0; }
-          const dt = at ? new Date(at) : null;
           // Real line detail: the sale entity persists lines[{pid,qty,price,amount}]
-          // (all laari). Project them with the dish name so the terminal receipt
-          // and analytics read real items instead of a header-only total.
-          const lineItems = Array.isArray(d.lines) ? d.lines.map((l) => ({
-            pid: l.pid != null ? l.pid : l.id, q: Number(l.qty) || 0,
-            n: nameById[String(l.pid != null ? l.pid : l.id)] || l.name || "Item",
-            price: Math.round((Number(l.price) || 0) / 100),
-            amount: Math.round((Number(l.amount != null ? l.amount : (Number(l.price) || 0) * (Number(l.qty) || 0))) / 100),
-          })) : [];
-          orders.push({
-            no: d.no || r.id, table: d.table != null ? "T" + pad2(d.table) : "—",
-            channel: chanMap[d.channel] || "dine_in", total: Math.round((Number(d.total) || 0) / 100),
-            tender: d.tender || "cash", status: d.open ? "open" : "closed", server: d.server || "",
-            time: dt ? pad2(dt.getHours()) + ":" + pad2(dt.getMinutes()) : "", at: at,
-            items: lineItems, subtotal: Math.round((Number(d.subtotal) || 0) / 100),
-            svc: Math.round((Number(d.svcCharge) || 0) / 100), gst: Math.round((Number(d.gst) || 0) / 100),
-            customerId: d.customerId || null, customerName: d.customerName || "",
-            buyerName: d.buyerName || "", buyerTin: d.buyerTin || "", docType: d.docType || "",
-            refunded: (refundedRefs[String(d.no || "")] || refundedRefs[String(r.id)] || 0) > 0,
-            refundAmt: Math.round((refundedRefs[String(d.no || "")] || refundedRefs[String(r.id)] || 0) / 100),
-          });
+          // (all laari). projectSaleRow is shared with GET /api/app2/orders, so an
+          // older receipt fetched by the "Load older" button is the same shape.
+          orders.push(projectSaleRow(r.id, d, nameById, refundedRefs));
         }
         orders.sort((a, b) => b.at - a.at);
         // Live open orders (POS KOTs fired to the kitchen + QR/guest orders),
@@ -5761,6 +5774,81 @@ if (fs.existsSync(protoFile)) {
     // Stamp the running build so an already-open terminal notices a new deploy
     // and refreshes itself (see maybeReloadForUpdate on the client).
     res.json({ ok: true, build: ASSET_VER, orders: liveOrdersV2(rows.map((r) => r.data || {}), settings), calls });
+  }));
+  /* Paged receipt history for Orders & Tickets.
+     The page inject carries the 200 most recent sales and nothing else — at the
+     100 transactions/hour this app is sized for that is two hours of trading,
+     so yesterday's receipt could not be opened, reprinted or refunded from the
+     terminal at all. There was no page-two to ask for: the projection lived
+     inline in the inject.
+     Cursor pagination on the sale timestamp, not OFFSET — a till writing sales
+     while an operator scrolls would make an offset skip or repeat rows. `before`
+     is exclusive, so passing back the last row's `at` never re-serves it. Ties
+     on the same millisecond are broken by id, which is also why the cursor
+     carries one. */
+  app.get("/api/app2/orders", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    const before = Number(req.query.before);
+    const beforeId = req.query.beforeId ? String(req.query.beforeId) : "";
+    const limit = Math.max(1, Math.min(200, Math.round(Number(req.query.limit) || 100)));
+    const out = await withOrg(orgId, async (c) => {
+      /* One extra row tells us whether there is another page without a second
+         count query. */
+      const args = [orgId, limit + 1];
+      let cursor = "";
+      if (isFinite(before) && before > 0) {
+        cursor = beforeId
+          ? ` AND (${SALE_TS} < $3 OR (${SALE_TS} = $3 AND id < $4))`
+          : ` AND ${SALE_TS} < $3`;
+        args.push(before);
+        if (beforeId) args.push(beforeId);
+      }
+      const rows = (await c.query(
+        `SELECT id, data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false${cursor}
+         ORDER BY ${SALE_TS} DESC, id DESC LIMIT $2`, args)).rows;
+      const more = rows.length > limit;
+      const page = more ? rows.slice(0, limit) : rows;
+      /* Dish names for the line detail. The menu is bounded (a few hundred
+         products) and this is a user-initiated fetch, not a poll. */
+      const nameById = {};
+      for (const r of (await c.query(
+        "SELECT id, data FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId])).rows) {
+        nameById[String(r.id)] = (r.data && r.data.name) || "Item";
+      }
+      /* Refunds against THIS page's receipts. The inject can read them off the
+         same window it already loaded; a page of older sales cannot, so ask for
+         exactly the ones that matter. Without this an older refunded ticket
+         would offer a second refund. */
+      const refs = [];
+      for (const r of page) { refs.push(String(r.id)); if (r.data && r.data.no) refs.push(String(r.data.no)); }
+      const refundedRefs = {};
+      if (refs.length) {
+        const rr = (await c.query(
+          `SELECT data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false
+             AND data->>'type'='refund' AND data->>'refundOf' = ANY($2)`, [orgId, refs])).rows;
+        for (const r of rr) {
+          const d = r.data || {};
+          const k = String(d.refundOf);
+          refundedRefs[k] = (refundedRefs[k] || 0) + Math.abs(Number(d.total) || 0);
+        }
+      }
+      const orders = page
+        .filter((r) => { const d = r.data || {}; return !((d.type && d.type !== "sale") || d.void); })
+        .map((r) => projectSaleRow(r.id, r.data || {}, nameById, refundedRefs));
+      const last = page[page.length - 1];
+      return {
+        orders,
+        /* The cursor is the last row SCANNED, not the last row returned — void
+           and refund rows are filtered out of `orders`, and paging from a
+           returned row would re-serve everything skipped after it, forever. */
+        nextBefore: more && last ? (Number((last.data || {}).t) || Number((last.data || {}).at) || Number((last.data || {}).createdAt) || 0) : null,
+        nextBeforeId: more && last ? last.id : null,
+        more,
+      };
+    });
+    res.set("Cache-Control", "no-store");
+    res.json({ ok: true, ...out });
   }));
   // Acknowledge a guest call (waiter / bill): clears it from the floor on every
   // device by soft-deleting the waiterCalls entity. (Stale calls also auto-expire

@@ -1712,6 +1712,14 @@ class Component extends DCLogic {
     // `modal` itself, since a reload should re-fetch rather than resume stale data.
     backups: [],
     pairedDevices: [],
+    /* Receipt history beyond the ~200 sales the page inject carries. At 100
+       transactions an hour the inject is two hours of trading, so yesterday's
+       ticket could not be opened, reprinted or refunded at all. Fetched a page
+       at a time from GET /api/app2/orders and kept OUT of window.KPOS_REAL, so
+       loading history never quietly moves an analytics figure that is defined
+       over the injected window. */
+    olderOrders: [],
+    ordPage: { busy: false, more: true, before: null, beforeId: null, err: "" },
     // Set once componentDidMount() finishes trying to rebuild a lost
     // window.KPOS_REAL from the offline cache (see _loadOfflineCache()) —
     // never true on a normal online load, so these stay false/null there.
@@ -2710,7 +2718,12 @@ class Component extends DCLogic {
         ? ["POS Floor", o.name + " · " + o.tax + " " + o.rate + "% · " + (o.sc || 0) + "% service charge"]
         : [this.siteFloorLabel(), o.name + " · no till here · " + (this.siteKind() === "store" ? "receiving, counting and dispatch" : "production and dispatch")],
       kds: ["Kitchen Display", "Live fire queue · longest ticket first"],
-      orders: ["Orders & Tickets", "Every ticket written by this outlet today"],
+      // Not "today" any more: the list opens on the recent window the page
+      // inject carries and grows a page at a time from the server's receipt
+      // history, so say how much of it is actually on screen.
+      orders: ["Orders & Tickets", (this.state.olderOrders || []).length
+        ? "Recent tickets + " + this.state.olderOrders.length + " loaded from history"
+        : "Recent tickets · load older to reach the rest of the history"],
       delivery: ["Delivery & QR Orders", "Table QR sessions, aggregator and own-fleet delivery"],
       customers: ["Customers & Credit", "Chain-wide profiles, loyalty tiers and credit ledger"],
       loyalty: ["Rewards & Loyalty", "The earn rate, tiers and the reward catalogue members redeem in the app"],
@@ -8025,10 +8038,61 @@ class Component extends DCLogic {
     };
   }
   // ── Front of house back-office ───────────────────────────────────────────
+  /* Fetch the next page of receipt history. Cursor-based (the server pages on
+     the sale timestamp, not an offset) so a till writing sales while the
+     operator scrolls can neither skip nor duplicate a row. Pages accumulate in
+     state.olderOrders and are de-duplicated by ticket number, because the first
+     page overlaps the injected window by design — the inject's cut-off is "200
+     most recent", which is not a timestamp the client knows. */
+  loadOlderOrders() {
+    const p = this.state.ordPage || {};
+    if (p.busy || !p.more) return;
+    if (!(window.KPOS_REAL && window.KPOS_REAL.token)) return this.toast("Connect a store to load older receipts", "warn");
+    // First page starts at the OLDEST receipt already on screen, so the fetch
+    // continues where the injected list stops instead of re-reading it.
+    let before = p.before, beforeId = p.beforeId;
+    if (before == null) {
+      const have = (window.KPOS_REAL.orders || []).concat(this.state.olderOrders || []);
+      before = have.reduce((m, o) => (o.at && (m == null || o.at < m) ? o.at : m), null);
+    }
+    this.setState({ ordPage: Object.assign({}, p, { busy: true, err: "" }) });
+    const seen = {};
+    (window.KPOS_REAL.orders || []).forEach((o) => { seen[String(o.no)] = 1; });
+    (this.state.olderOrders || []).forEach((o) => { seen[String(o.no)] = 1; });
+    /* A page can legitimately come back empty: voided tickets and refund rows
+       are filtered out of the projection but still consume the page, and the
+       first page overlaps the injected window. Reporting "no older receipts"
+       there would tell the operator the history had ended when it had not, so
+       keep fetching — bounded, so one tap can never turn into an unbounded
+       crawl of the whole ledger. */
+    const step = (before, beforeId, hops, acc) => {
+      const q = "?limit=100" + (before ? "&before=" + encodeURIComponent(before) + (beforeId ? "&beforeId=" + encodeURIComponent(beforeId) : "") : "");
+      return fetch("/api/app2/orders" + q, { credentials: "same-origin" })
+        .then((r) => r.json().catch(() => ({})))
+        .then((j) => {
+          if (!j || j.error) throw new Error((j && j.error) || "Could not load older receipts");
+          const fresh = (j.orders || []).filter((o) => !seen[String(o.no)]);
+          fresh.forEach((o) => { seen[String(o.no)] = 1; });
+          const got = acc.concat(fresh);
+          if (!got.length && j.more && hops < 5) return step(j.nextBefore, j.nextBeforeId, hops + 1, got);
+          this.setState({ olderOrders: (this.state.olderOrders || []).concat(got),
+            ordPage: { busy: false, more: !!j.more, before: j.nextBefore, beforeId: j.nextBeforeId, err: "" } });
+          this.toast(got.length
+            ? "Loaded " + got.length + " older receipt" + (got.length === 1 ? "" : "s") + (j.more ? "" : " · that's the whole history")
+            : j.more ? "Nothing yet — tap again to keep looking" : "That's the whole history");
+        });
+    };
+    step(before, beforeId, 0, [])
+      .catch((e) => {
+        this.setState({ ordPage: Object.assign({}, this.state.ordPage, { busy: false, err: String(e.message || "offline") }) });
+        this.toast(/Could not load older/.test(String(e.message)) ? e.message : "Could not load — check the connection", "warn");
+      });
+  }
   todayOrders() {
-    // Real mode: the store's actual sales (from the sales entities), newest first.
+    // Real mode: the store's actual sales (from the sales entities), newest first,
+    // plus any history pages the operator has pulled in (loadOlderOrders).
     // Empty until the till has closed a ticket — no fabricated order log.
-    if (window.KPOS_REAL) return (window.KPOS_REAL.orders || []);
+    if (window.KPOS_REAL) return (window.KPOS_REAL.orders || []).concat(this.state.olderOrders || []);
     const K0 = K(), s = this.state, rnd = this.rng(4242);
     const out = [];
     const chans = ["dine_in", "dine_in", "dine_in", "qr", "takeaway", "delivery"];
@@ -8063,12 +8127,20 @@ class Component extends DCLogic {
     })) : [];
     const all = live.concat(this.todayOrders());
     const list = all.filter((o) => !chan || o.channel === chan).filter((o) => !q || String(o.no || "").toLowerCase().indexOf(q) >= 0);
+    const pg = s.ordPage || { more: true, busy: false };
     // Tapping a live order opens the progress tracker (a status stepper the
     // cashier drives + per-line done toggles); by id so it reflects live polls.
     const openLive = (o) => this.setState({ modal: { kind: "ordtrack", id: o.id } });
     return {
       tabs: ["All", "Dine-in", "QR table", "Takeaway", "Delivery"].map((t, i) => ({ label: t, on: tab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { ord: i }) }) })),
       actions: [
+        // Receipt history. The inject stops at the 200 most recent sales — two
+        // hours of trading at this app's design load — so without this there is
+        // no way to open, reprint or refund yesterday's ticket.
+        ...(window.KPOS_REAL ? [{
+          label: pg.busy ? "Loading…" : pg.more ? "Load older" : "All loaded",
+          go: () => this.loadOlderOrders(),
+        }] : []),
         { label: "Z-report", go: () => this.setState({ modal: { kind: "z" } }) },
         { label: "Export day", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.outlet().code + "-orders.csv", [["Ticket", "Time", "Table", "Channel", "Server", "Tender", "Total MVR", "Status"]].concat(list.map((o) => [o.no, o.time, o.table, o.channel, o.server, o.live ? "OPEN" : this.tenderName(o.tender), o.total, o.status]))) }
       ],
