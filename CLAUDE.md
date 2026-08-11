@@ -286,6 +286,13 @@ the item-role graph, OCR delivery notes §13, AI assistant + insights §18–19)
 `ANTHROPIC_API_KEY` still needs turning on in Railway for the live model calls.
 
 A 5-member production audit (offline/sync, accounting, restaurant operations,
-ergonomics) is being worked through on `staging`: CRITICAL and HIGH findings are
-done, MEDIUM is in progress. Production `main` has not been promoted since that
-work started.
+ergonomics) has been worked through on `staging`. CRITICAL, HIGH and MEDIUM
+findings are done, including the last three: per-outlet configuration (D-09),
+paged receipt history (D-06) and the recovery/observability pair (D-04 — an
+automated restore drill plus `/api/metrics`). What remains of D-04 is
+unverifiable from here: Railway's managed-backup layer and the wiring of an
+external monitor to the scrape endpoint both need console access.
+
+`main` is behind `staging` by that audit work and needs promoting when it is
+signed off. Run the suite against a **fresh** Postgres before shipping — it is
+117 tests and a cold database is the CI path.
