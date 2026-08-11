@@ -635,3 +635,36 @@ ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS terms     TEXT NOT NULL DEFAULT '
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS contact   TEXT NOT NULL DEFAULT '';  -- contact person
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS address   TEXT NOT NULL DEFAULT '';
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS lead_days INTEGER NOT NULL DEFAULT 0;
+
+-- ── Per-outlet floor configuration ─────────────────────────────────────────
+-- A chain could create outlets but not configure them: `stores` carried only
+-- id/code/name/address/active, so every secondary outlet rendered the same
+-- hardcoded 12 tables / 48 seats and per-table seat capacity applied to the
+-- primary store alone. The floor plan, the table picker, covers/occupancy and
+-- smallest-fit table assignment all read these, so they belong on the store.
+--
+-- Tax and service charge deliberately stay ORG-level (the settings entity):
+-- every money path — the till, the guest quote, the GL, the GST return — reads
+-- one rate today, and splitting that per outlet is a tax-treatment change, not
+-- a configuration one.
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS tables      INTEGER;             -- NULL = fall back to the org default
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS seats       INTEGER;
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS table_seats JSONB NOT NULL DEFAULT '{}'::jsonb;  -- sparse {tableNo: seats}
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS region      TEXT NOT NULL DEFAULT '';
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS manager     TEXT NOT NULL DEFAULT '';
+ALTER TABLE stores ADD COLUMN IF NOT EXISTS kind        TEXT NOT NULL DEFAULT 'restaurant';  -- restaurant | central_kitchen | store
+
+-- Move the org-level floor config onto the store it actually described. The
+-- primary store IS the outlet the settings entity's tableCount/seatCount/
+-- tableSeats were always about; every other store keeps NULL and falls back
+-- until an owner configures it. Idempotent: only fills a store that has no
+-- per-outlet value yet, so a later edit is never overwritten on the next boot.
+UPDATE stores s SET
+  tables      = COALESCE(s.tables,      NULLIF((e.data->>'tableCount')::int, 0)),
+  seats       = COALESCE(s.seats,       NULLIF((e.data->>'seatCount')::int, 0)),
+  table_seats = CASE WHEN s.table_seats = '{}'::jsonb AND jsonb_typeof(e.data->'tableSeats') = 'object'
+                     THEN e.data->'tableSeats' ELSE s.table_seats END
+FROM entities e
+WHERE e.org_id = s.org_id AND e.kind = 'settings' AND e.id = 'settings' AND NOT e.deleted
+  AND s.id = (SELECT id FROM stores s2 WHERE s2.org_id = s.org_id ORDER BY s2.created_at LIMIT 1)
+  AND (s.tables IS NULL OR s.seats IS NULL OR s.table_seats = '{}'::jsonb);

@@ -79,6 +79,18 @@ back office writes entities too (e.g. deliveries book an `expenses` entity;
 availability writes onto `products`) and calls `poke(orgId, rowver)` to nudge
 SSE.
 
+**Outlets/stores:** `stores(org_id, id, code, name, address, active, …)` plus
+per-outlet configuration columns `tables`, `seats`, `table_seats JSONB`,
+`region`, `manager`, `kind`. **The store row is the authority for its own floor
+plan** — `buildV2RealForOrg` reads it per outlet, so a branch renders its own
+table count instead of the old hardcoded 12/48. A NULL column means "never
+configured": the primary store (`main`) falls back to the org settings entity's
+`tableCount`/`seatCount`/`tableSeats`, every other outlet to 12/48. Writes go
+through `POST`/`PATCH /api/app2/outlets[/:id]` (shared `outletConfigFields()`
+validation), and a PATCH of `main` mirrors the floor back onto the settings
+entity because the legacy `/app` register and the guest portal still read it
+there. `KPOS_REAL.outlet` is `outlets[0]`, never a second source.
+
 **Inventory** (`inventory.js`, mounted at `/api/inv`):
 - `ingredients` — base_unit (g/ml/pcs), current_stock (cached), avg_cost
   (weighted, laari/base-unit), min_stock, location. **Role columns:**

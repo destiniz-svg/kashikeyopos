@@ -5426,20 +5426,28 @@ if (fs.existsSync(protoFile)) {
         // own ids. Tax/service-charge come from settings; seats/tables are a
         // sensible default until per-store layout config exists.
         const storeRows = (await c.query(
-          "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
+          "SELECT id, code, name, address, tables, seats, table_seats, region, manager, kind FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
         const tax = gstBp >= 1600 ? "TGST" : "GGST", rate = Math.round(gstBp / 100), sc = Math.round(scBp / 100);
-        // The primary row (i===0) IS the same store as outlet: below — give it
-        // the same real tables/seats instead of the same hardcoded default,
-        // so the two never disagree about one store's own floor plan.
-        const primaryTables = Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12;
-        const primarySeats = Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48;
-        const primaryTableSeats = (st.tableSeats && typeof st.tableSeats === "object") ? st.tableSeats : {};
+        /* Floor config comes from the STORE row now. Every outlet used to render
+           the same hardcoded 12 tables / 48 seats because these lived only on
+           the org's settings entity, which described the primary store — so a
+           chain could create outlets but never configure them.
+           A NULL column means "never configured": fall back to the org-level
+           value for the primary store (which the boot migration also copies
+           across) and to the platform default for the rest.
+           Tax and service charge stay org-level on purpose — see schema.sql. */
+        const orgTables = Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12;
+        const orgSeats = Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48;
+        const orgTableSeats = (st.tableSeats && typeof st.tableSeats === "object") ? st.tableSeats : {};
         const outlets = storeRows.map((sr, i) => ({
           id: i === 0 ? 3 : 20 + i, storeId: sr.id, code: sr.code || ("OUT-" + (i + 1)),
-          name: sr.name || st.storeName || "Outlet", type: "restaurant", loc: "restaurant", parent: 0,
-          region: "", tax: tax, rate: rate, sc: sc, addr: sr.address || "", mgr: "",
-          pos: true, seats: i === 0 ? primarySeats : 48, tables: i === 0 ? primaryTables : 12,
-          tableSeats: i === 0 ? primaryTableSeats : {},
+          name: sr.name || st.storeName || "Outlet",
+          type: sr.kind || "restaurant", loc: sr.kind || "restaurant", parent: 0,
+          region: sr.region || "", tax: tax, rate: rate, sc: sc, addr: sr.address || "", mgr: sr.manager || "",
+          pos: (sr.kind || "restaurant") === "restaurant",
+          tables: sr.tables != null ? Number(sr.tables) : (i === 0 ? orgTables : 12),
+          seats: sr.seats != null ? Number(sr.seats) : (i === 0 ? orgSeats : 48),
+          tableSeats: (sr.table_seats && Object.keys(sr.table_seats).length) ? sr.table_seats : (i === 0 ? orgTableSeats : {}),
         }));
         // Fiscal identity for a MIRA-compliant tax invoice — the registered
         // taxpayer's TIN, GST registration number, legal name and address, from
@@ -5459,17 +5467,23 @@ if (fs.existsSync(protoFile)) {
           // their permission set. Absent role = the owner's own (password) login.
           me: { id: viewer.id || "", roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner" },
           portal: { slug, base: portalBase, sub: !!portalSubBase },
-          outlet: { name: st.storeName || "My Store", tax: tax, rate: rate, sc: sc,
+          // The active outlet the terminal bills against. It is the PRIMARY
+          // store, so its floor plan must be the same object outlets[0] carries
+          // — two sources for one store's table count is how the floor and the
+          // outlet card end up disagreeing after an edit.
+          outlet: { name: (outlets[0] && outlets[0].name) || st.storeName || "My Store",
+            storeId: (outlets[0] && outlets[0].storeId) || null,
+            tax: tax, rate: rate, sc: sc,
             currency: st.currency === "USD" ? "USD" : "MVR", addr: fiscalAddr,
             // Was missing entirely — every real-mode read of o.tables/o.seats
             // (the floor plan's table count, its "X covers · Y tables"
             // subtitle) fell back to a hardcoded 12/48, so the Settings
             // "Tables & seats" editor below had nothing real to change.
-            tables: Number(st.tableCount) > 0 ? Math.min(200, Math.round(Number(st.tableCount))) : 12,
-            seats: Number(st.seatCount) > 0 ? Math.min(2000, Math.round(Number(st.seatCount))) : 48,
+            tables: outlets[0] ? outlets[0].tables : orgTables,
+            seats: outlets[0] ? outlets[0].seats : orgSeats,
             // Per-table capacity overrides (T01: 2, T02: 4, ...) — a table with
             // no entry here falls back to the terminal's own default pattern.
-            tableSeats: (st.tableSeats && typeof st.tableSeats === "object") ? st.tableSeats : {} },
+            tableSeats: outlets[0] ? outlets[0].tableSeats : orgTableSeats },
           fiscal: { tin: st.tin || "", gstNo: st.gstRegNo || "", legalName: st.legalName || "",
             address: fiscalAddr, storeName: st.storeName || "", phone: st.phone || "" },
           // Storefront branding the terminal's Branding panel edits and the guest
@@ -7455,6 +7469,83 @@ if (fs.existsSync(protoFile)) {
   // "main" store can be renamed but never deactivated — login, the till and the
   // guest portal all fall back to it — and the org must always keep one active
   // outlet. adminData.outlets (injected into /admin) is the read side.
+  /* Per-outlet configuration, validated once for both POST and PATCH. Create
+     and edit used to disagree — you could only ever set a new outlet's name and
+     address, so a chain had to add an outlet and then immediately edit it to
+     give it a floor plan. Returns { error } or { cols, vals } holding only the
+     keys the caller actually sent. Limits match the org-level editor's, so one
+     outlet can't be configured outside the range another is held to. */
+  function outletConfigFields(b) {
+    const cols = [], vals = [];
+    const put = (c, v) => { cols.push(c); vals.push(v); };
+    if (b.tables != null) {
+      const n = Math.round(Number(b.tables));
+      if (!(n > 0 && n <= 200)) return { error: "Tables must be between 1 and 200." };
+      put("tables", n);
+    }
+    if (b.seats != null) {
+      const n = Math.round(Number(b.seats));
+      if (!(n > 0 && n <= 2000)) return { error: "Seats must be between 1 and 2000." };
+      put("seats", n);
+    }
+    if (b.tableSeats != null) {
+      if (typeof b.tableSeats !== "object" || Array.isArray(b.tableSeats)) return { error: "Per-table seats must be a map." };
+      const clean = {}; let n = 0;
+      for (const k of Object.keys(b.tableSeats)) {
+        if (n >= 200) break;
+        const tno = Math.round(Number(k)), seats = Math.round(Number(b.tableSeats[k]));
+        if (tno > 0 && tno <= 200 && seats > 0 && seats <= 30) { clean[String(tno)] = seats; n++; }
+      }
+      put("table_seats", JSON.stringify(clean));
+    }
+    if (b.region != null) put("region", String(b.region).trim().slice(0, 60));
+    if (b.manager != null) put("manager", String(b.manager).trim().slice(0, 80));
+    if (b.kind != null) {
+      // "store" is accepted as a synonym and normalised to the terminal's own
+      // token (main_store), which its outlet badge and the "transfer to main
+      // store" default both key off — two spellings for one type would render
+      // an unlabelled outlet.
+      const k = String(b.kind) === "store" ? "main_store" : String(b.kind);
+      if (!["restaurant", "central_kitchen", "main_store"].includes(k)) return { error: "Unknown outlet type." };
+      put("kind", k);
+    }
+    return { cols, vals };
+  }
+  /* The PRIMARY store's floor plan has a second reader: the org settings entity
+     (tableCount/seatCount/tableSeats), which the legacy /app register and the
+     guest portal's table picker still read. Editing the main outlet therefore
+     has to land in both places or the till would keep offering T13-T40 on a
+     floor that was just shrunk to 12. Secondary outlets have no settings mirror
+     — their store row is the only source. Best-effort: the store row is the
+     authority for /v2, so a settings hiccup must not fail the outlet edit. */
+  async function mirrorPrimaryFloorToSettings(orgId, storeId, b) {
+    if (cleanStoreId(storeId) !== cleanStoreId(DEFAULT_STORE_ID)) return;
+    if (b.tables == null && b.seats == null && b.tableSeats == null) return;
+    try {
+      const rowver = await withOrg(orgId, async (c) => {
+        const cur = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY (id='settings') DESC, updated_at DESC LIMIT 1", [orgId])).rows[0];
+        if (!cur) return 0;
+        const data = Object.assign({}, cur.data || {});
+        if (b.tables != null) data.tableCount = Math.round(Number(b.tables));
+        if (b.seats != null) data.seatCount = Math.round(Number(b.seats));
+        if (b.tableSeats != null) {
+          const clean = {}; let n = 0;
+          for (const k of Object.keys(b.tableSeats)) {
+            if (n >= 200) break;
+            const tno = Math.round(Number(k)), seats = Math.round(Number(b.tableSeats[k]));
+            if (tno > 0 && tno <= 200 && seats > 0 && seats <= 30) { clean[String(tno)] = seats; n++; }
+          }
+          data.tableSeats = clean;
+        }
+        const r = await c.query(
+          "UPDATE entities SET data=$3, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings' AND id=$2 RETURNING rowver",
+          [orgId, cur.id, JSON.stringify(data)]);
+        return r.rows.length ? Number(r.rows[0].rowver) : 0;
+      });
+      if (rowver) poke(orgId, rowver);
+    } catch (e) { recordError("outlet floor mirror", e); }
+  }
   app.post("/api/app2/outlets", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
@@ -7466,10 +7557,13 @@ if (fs.existsSync(protoFile)) {
     if (!code) code = (name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)) || ("OUT" + Date.now().toString().slice(-5));
     const id = cleanStoreId(code.toLowerCase());
     const address = String(b.address || "").trim();
+    const cfg = outletConfigFields(b);
+    if (cfg.error) return res.status(400).json({ error: cfg.error });
+    const cols = ["org_id", "id", "code", "name", "address"].concat(cfg.cols);
+    const vals = [orgId, id, code, name, address].concat(cfg.vals);
     try {
       await withOrg(orgId, (c) => c.query(
-        "INSERT INTO stores (org_id, id, code, name, address) VALUES ($1,$2,$3,$4,$5)",
-        [orgId, id, code, name, address]));
+        `INSERT INTO stores (${cols.join(", ")}) VALUES (${cols.map((_, n) => "$" + (n + 1)).join(",")})`, vals));
     } catch (e) {
       if (/duplicate|unique/i.test(String(e && e.message))) return res.status(409).json({ error: "An outlet with that code already exists." });
       recordError("outlet create", e); return res.status(500).json({ error: "Could not add outlet." });
@@ -7486,6 +7580,13 @@ if (fs.existsSync(protoFile)) {
     const sets = []; const vals = [orgId, id]; let i = 3;
     if (b.name != null) { const nm = String(b.name).trim(); if (!nm) return res.status(400).json({ error: "Outlet name can't be empty." }); sets.push(`name=$${i++}`); vals.push(nm); }
     if (b.address != null) { sets.push(`address=$${i++}`); vals.push(String(b.address).trim()); }
+    /* Per-outlet floor configuration — tables/seats/per-table capacity/region/
+       manager/kind. Every outlet used to render the same hardcoded 12 tables /
+       48 seats because these lived nowhere but the org's settings entity, which
+       described the primary store only. Validated by the same helper POST uses. */
+    const cfg = outletConfigFields(b);
+    if (cfg.error) return res.status(400).json({ error: cfg.error });
+    cfg.cols.forEach((c, n) => { sets.push(`${c}=$${i++}`); vals.push(cfg.vals[n]); });
     if (b.active != null) {
       const active = !!b.active;
       if (!active && id === cleanStoreId(DEFAULT_STORE_ID)) return res.status(400).json({ error: "The main outlet can't be deactivated." });
@@ -7498,6 +7599,7 @@ if (fs.existsSync(protoFile)) {
     if (!sets.length) return res.status(400).json({ error: "Nothing to update." });
     const r = await withOrg(orgId, (c) => c.query(`UPDATE stores SET ${sets.join(", ")} WHERE org_id=$1 AND id=$2`, vals));
     if (!r.rowCount) return res.status(404).json({ error: "Outlet not found." });
+    await mirrorPrimaryFloorToSettings(orgId, id, b);
     logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "admin", action: "outlet.updated", ref: id, requestId: req.id, detail: b });
     res.json({ ok: true });
   }));

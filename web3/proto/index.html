@@ -4581,7 +4581,11 @@ class Component extends DCLogic {
             onChange: (e) => { const v = e.target.value; this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: v }) })); }
           };
         }),
-        formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save, formFoot: spec.foot,
+        formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save,
+        // A form can carry a different footnote when it's editing an existing
+        // row — "how this outlet is created" and "what editing it changes" are
+        // not the same sentence.
+        formFoot: (m.edit && spec.editFoot) ? spec.editFoot : spec.foot,
         // Optional AI "fill this in" — only forms that declare aiFill (New dish)
         // show it. Types the name, one tap drafts the rest from the store's menu.
         formAiVis: !!spec.aiFill && !m.edit,
@@ -4718,7 +4722,9 @@ class Component extends DCLogic {
         rows.push({ label: "T" + pad(i), seatsVal: String(val), setSeats: (e) => this.setTableSeatRow(i, e.target.value) });
       }
       return {
-        modalTitle: "Tables & seats", modalSub: tablesN + " table" + (tablesN === 1 ? "" : "s"),
+        // Name the outlet being edited — the floor plan is per-outlet now, so
+        // "Tables & seats" alone doesn't say whose floor is about to change.
+        modalTitle: "Tables & seats", modalSub: (this.outlet().name ? this.outlet().name + " · " : "") + tablesN + " table" + (tablesN === 1 ? "" : "s"),
         tsTables: m.tables || "", setTsTables: (e) => this.setTablesSeatsField("tables", e.target.value),
         tsSeats: m.seats || "", setTsSeats: (e) => this.setTablesSeatsField("seats", e.target.value),
         tsRows: rows,
@@ -7756,23 +7762,34 @@ class Component extends DCLogic {
       const n = Math.round(+m.perTable[k]);
       if (n > 0) perTable[k] = Math.min(30, n);
     });
-    const oid = this.outlet().id;
+    const sel = this.outlet(), oid = sel.id;
     if (window.KPOS_REAL && window.KPOS_REAL.token) {
+      // Saves onto the SELECTED outlet's own store row, not the org settings
+      // entity — that entity describes one store, so with more than one outlet
+      // a floor edit made on a branch silently rewrote the main store's floor
+      // and the branch kept its old plan. The server mirrors the primary
+      // store's figures back onto settings for the legacy /app register.
+      if (!sel.storeId) { this.setState({ modal: Object.assign({}, m, { busy: false, err: "This outlet has no store record yet — reload and try again" }) }); return; }
       this.setState({ modal: Object.assign({}, m, { busy: true, err: "" }) });
-      fetch("/api/app2/config", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-        body: JSON.stringify({ cfg: { tableCount: tables, seatCount: seats, tableSeats: perTable } }) })
+      fetch("/api/app2/outlets/" + encodeURIComponent(sel.storeId), { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ tables: tables, seats: seats, tableSeats: perTable }) })
         .then((r) => r.json().catch(() => ({}))).then((j) => {
           if (j && j.error) { this.setState({ modal: Object.assign({}, this.state.modal || {}, { busy: false, err: j.error }) }); return; }
-          this.toast("Tables & seats saved — " + tables + " tables · " + seats + " seats");
-          if (window.KPOS_REAL.outlet) { window.KPOS_REAL.outlet.tables = tables; window.KPOS_REAL.outlet.seats = seats; window.KPOS_REAL.outlet.tableSeats = perTable; }
+          this.toast((sel.name || "Outlet") + " — " + tables + " tables · " + seats + " seats saved");
           const arr = (K() && K().OUTLETS) || [];
           const row = arr.find((x) => x.id === oid);
           if (row) { row.tables = tables; row.seats = seats; row.tableSeats = perTable; }
+          // KPOS_REAL.outlet mirrors the PRIMARY store only — leave a branch
+          // edit out of it or the terminal's own outlet card would show a
+          // floor plan belonging to a different outlet.
+          if (window.KPOS_REAL.outlet && sel.storeId === window.KPOS_REAL.outlet.storeId) {
+            window.KPOS_REAL.outlet.tables = tables; window.KPOS_REAL.outlet.seats = seats; window.KPOS_REAL.outlet.tableSeats = perTable;
+          }
           this.setState({ modal: null });
         }).catch(() => { const cur = this.state.modal; if (cur && cur.kind === "tablesSeats") this.setState({ modal: Object.assign({}, cur, { busy: false, err: "Could not save — check the connection" }) }); });
       return;
     }
-    this.patchRows("outlets", [oid], { tables: tables, seats: seats },
+    this.patchRows("outlets", [oid], { tables: tables, seats: seats, tableSeats: perTable },
       "Tables & seats updated · " + tables + " tables · " + seats + " seats · by " + this.me(), "outlets");
     this.setState({ modal: null });
   }
@@ -9292,28 +9309,36 @@ class Component extends DCLogic {
       },
       outlet: {
         title: "Add outlet", sub: "Inherits chain_id from your token", save: "Create outlet",
-        foot: "Tax, service charge, tables and seats are one store's own settings, not per-outlet yet — set them from Settings once this outlet is open (Tax profile, Tables & seats). Region/manager/type are labels only for now.",
+        foot: "Tables, seats, region, manager and type belong to this outlet. Tax class and service charge are still one setting for the whole store (Settings → Tax profile) — GST registration is per taxpayer, not per branch. Per-table seat capacity is edited from Settings → Tables & seats for whichever outlet is selected.",
         fields: [
           { k: "name", label: "Outlet name", v: "Kashikeyo Addu", full: 1 },
           { k: "code", label: "Code", v: "KO-ADD" },
           { k: "type", label: "Type", options: [{ v: "restaurant", l: "Restaurant" }, { v: "central_kitchen", l: "Central kitchen" }, { v: "main_store", l: "Main store" }] },
           { k: "region", label: "Region", v: "Atolls" },
           { k: "mgr", label: "Manager", v: "—" },
+          { k: "tables", label: "Tables", v: "12" },
+          { k: "seats", label: "Seats", v: "48" },
           { k: "addr", label: "Address", v: "Hithadhoo, Addu City", full: 1 }
         ],
         editSave: "Save changes",
+        /* Every field below the name is a real column on the store row now
+           (schema.sql: tables/seats/table_seats/region/manager/kind). They used
+           to exist only on the org's settings entity, which describes ONE
+           store, so a chain could add outlets but every one of them rendered
+           the same hardcoded 12 tables / 48 seats. `code` is still the row's
+           immutable key and is not editable. */
+        editFoot: "Tables and seats configure THIS outlet's floor. Tax class and service charge stay store-wide.",
         onEdit: (v, o) => {
           if (!v.name || !v.code) return this.toast("Name and code are required", "warn");
-          // Real mode: name and address are real columns on the store row
-          // (POST/PATCH /api/app2/outlets) — code, type, region and manager
-          // aren't columns anywhere yet, so those stay a local-only label
-          // until real multi-outlet chain support exists.
+          const tables = Math.max(1, Math.min(200, Math.round(+v.tables || 0) || 12));
+          const seats = Math.max(1, Math.min(2000, Math.round(+v.seats || 0) || 48));
           if (window.KPOS_REAL && window.KPOS_REAL.token && o && o.storeId) {
             fetch("/api/app2/outlets/" + encodeURIComponent(o.storeId), { method: "PATCH", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ name: v.name, address: v.addr }) })
+              body: JSON.stringify({ name: v.name, address: v.addr, tables: tables, seats: seats,
+                region: v.region, manager: v.mgr, kind: v.type }) })
               .then((r) => r.json().catch(() => ({}))).then((j) => {
                 if (j && j.error) { this.toast(j.error, "warn"); return; }
-                this.toast(v.name + " saved");
+                this.toast(v.name + " saved · " + tables + " tables · " + seats + " seats");
                 setTimeout(() => { try { location.reload(); } catch (e) {} }, 650);
               }).catch(() => this.toast("Could not save — check the connection", "warn"));
             this.setState({ modal: null });
@@ -9322,14 +9347,17 @@ class Component extends DCLogic {
           const restaurant = v.type === "restaurant";
           this.patchRows("outlets", [o.id], {
             code: v.code.toUpperCase(), name: v.name, type: v.type, region: v.region,
-            addr: v.addr, mgr: v.mgr, pos: restaurant
+            addr: v.addr, mgr: v.mgr, pos: restaurant, tables: tables, seats: seats
           }, o.name + " updated", "outlets");
         },
         onSave: (v) => {
           if (!v.name || !v.code) return this.toast("Name and code are required", "warn");
+          const tables = Math.max(1, Math.min(200, Math.round(+v.tables || 0) || 12));
+          const seats = Math.max(1, Math.min(2000, Math.round(+v.seats || 0) || 48));
           if (window.KPOS_REAL && window.KPOS_REAL.token) {
             fetch("/api/app2/outlets", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
-              body: JSON.stringify({ name: v.name, code: v.code, address: v.addr }) })
+              body: JSON.stringify({ name: v.name, code: v.code, address: v.addr, tables: tables, seats: seats,
+                region: v.region, manager: v.mgr, kind: v.type }) })
               .then((r) => r.json().catch(() => ({}))).then((j) => {
                 if (j && j.error) { this.toast(j.error, "warn"); return; }
                 this.toast(v.name + " added");
