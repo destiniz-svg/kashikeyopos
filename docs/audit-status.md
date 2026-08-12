@@ -332,14 +332,55 @@ sales now sit in the staging database under throwaway
 Nothing on this list is a code change. Steps 5 and 6 are the two remaining caps
 on the score; the rest are confirmations.
 
-## 6. Housekeeping from the capacity run
+## 6. Observed after the capacity run — pool exhaustion under ordinary polling
 
-- The throwaway load-generator services in the staging environment
-  (`TEMP-loadgen-DELETE-ME`, `TEMP-loadgen2-DELETE-ME`) were deleted after the
-  run. `railway.loadgen.json` stays in the repo — it is the documented way to
-  stand one up again, and it affects nothing unless a service is explicitly
-  pointed at it.
+At 03:42 UTC, roughly two minutes after a routine staging redeploy and eight
+minutes after the load test ended, the staging app logged a burst of ~30
+
+```
+request failed: GET /api/pull?since=0 timeout exceeded when trying to connect
+request failed: GET /api/pull?since=681261 timeout exceeded when trying to connect
+```
+
+That is the connection pool exhausted — requests timing out waiting for one of
+its ten slots, not Postgres refusing work.
+
+**The app handled it correctly.** Those paths answer 503 + `Retry-After`, by
+design ("saturation is temporary, not a bug"), so clients back off rather than
+hang; the burst stopped on its own and nothing has errored since.
+
+Two things make it worth recording anyway. It is the first sighting of
+`PG_POOL_MAX`'s default of 10 binding under **ordinary sync polling** rather
+than a synthetic 768-till stampede — on a database that now holds ~40,000 extra
+sales. And it is exactly the condition `pool.waiting` in `/api/metrics` exists to
+warn about, which nothing is watching yet (§4.3). Raising `PG_POOL_MAX` and
+adding replicas (§4.6) is the same lever for both.
+
+Honest limit: the client that generated those pulls cannot be identified from
+the logs available here.
+
+## 7. Housekeeping from the capacity run
+
+- **Two throwaway services still exist and need deleting by hand:**
+  `TEMP-loadgen-DELETE-ME` and `TEMP-loadgen2-DELETE-ME` in the staging
+  environment. Railway's `removeServiceTool` reports `status: applied — marked
+  for removal` but they persist; Railway's own agent concluded that finalising
+  the deletion requires confirmation in the dashboard. Both are stopped (zero
+  running replicas, restart policy `NEVER`), so they consume nothing and cannot
+  generate load again on their own.
+- `railway.loadgen.json` stays in the repo — it is the documented way to stand a
+  generator up again, and affects nothing unless a service is explicitly pointed
+  at it.
 - Roughly **40,000 synthetic sales** were written into the **staging** database
   under throwaway orgs named `load-<timestamp>@loadtest.invalid`. They are
   isolated from every real staging store by RLS and can be dropped whenever
-  convenient. Production was never touched.
+  convenient. Production was never touched. One statement clears them:
+
+  ```sql
+  DELETE FROM orgs WHERE email LIKE 'load-%@loadtest.invalid';
+  ```
+
+  (`entities`, `ops` and `stores` cascade from `orgs`.) This could not be run
+  from the review environment: egress to the app is blocked by network policy,
+  and the Railway connector returns variable *names* without values, so no
+  database credential was available.
