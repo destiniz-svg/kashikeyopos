@@ -145,14 +145,25 @@ On Railway, off-box (how the staging numbers above were produced):
    image the app builds, so the harness is already inside, and starts the
    harness instead of the server with no healthcheck and no restart.
 3. Set `LOADGEN_BASE` (comma-separated candidates; prefer
-   `http://<app>.railway.internal:8080`), `LOADGEN_LEVELS`, `LOADGEN_SECONDS`.
+   `http://<app>.railway.internal:8080`), `LOADGEN_LEVELS`, `LOADGEN_SECONDS`,
+   and `LOADGEN_ARM=yes` — without the last one the harness refuses any
+   non-loopback target and exits 0 (see below).
 4. Read the deploy logs. **Delete the service.**
 
-Two failure modes already paid for: a plain `node:*` image execs the start
-command as argv without a shell, so anything containing `;` or `&&` dies
-silently — which is why configuration goes through `LOADGEN_*` variables; and
-pointing `railwayConfigFile` at a file that does not exist fails the build
-outright rather than falling back.
+Three failure modes already paid for:
+
+- A plain `node:*` image execs the start command as argv without a shell, so
+  anything containing `;` or `&&` dies silently — which is why configuration
+  goes through `LOADGEN_*` variables.
+- Pointing `railwayConfigFile` at a file that does not exist fails the build
+  outright rather than falling back. And a start command set on the *service*
+  is overridden by the one in the config file, so the two must agree.
+- **A service built from this repo redeploys on every push to the branch it
+  tracks.** A throwaway load-test service left in place therefore re-runs the
+  harness on unrelated commits, unattended. It did, three times, writing ~120k
+  synthetic sales into staging before anyone looked. `LOADGEN_ARM=yes` now
+  gates every remote run, so a stale service starts, refuses and exits; and
+  `test/load/cleanup.js` exists to remove what such a run leaves behind.
 
 The harness refuses hosts it can identify as production, because it writes real
 sales into a real ledger. That check is a courtesy, not a guarantee — read the

@@ -52,6 +52,21 @@ const SECONDS = Number(arg("seconds", 15));
 const GST_BP = 800, SVC_BP = 1000;
 let BASE = CANDIDATES[0];
 
+/* ARMING GUARD.
+   A Railway service built from this repo redeploys itself every time the branch
+   it tracks moves — so a throwaway load-test service left in place fires the
+   harness again on the next unrelated push, unattended, writing tens of
+   thousands of synthetic sales into staging. That happened three times before
+   this guard existed. Requiring an explicit LOADGEN_ARM=yes makes a stale
+   service inert: it starts, refuses, exits 0, and costs nothing.
+   Loopback targets are exempt — a local run is deliberate by construction. */
+const REMOTE = CANDIDATES.some((c) => !/^https?:\/\/(127\.0\.0\.1|localhost|\[?::1\]?)([:/]|$)/i.test(c));
+if (REMOTE && process.env.LOADGEN_ARM !== "yes") {
+  console.log("Not armed — set LOADGEN_ARM=yes to run the harness against " + CANDIDATES.join(", ") + ".");
+  console.log("This is deliberate: it writes real sales, and a service left in place redeploys on every push.");
+  process.exit(0);
+}
+
 for (const c of CANDIDATES) {
   if (/kashikeyopos\.com/i.test(c) && !/staging/i.test(c)) {
     console.error("Refusing to run: " + c + " looks like production.\n" +
