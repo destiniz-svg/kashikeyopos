@@ -6997,10 +6997,25 @@ if (fs.existsSync(protoFile)) {
         sd.menuCats = cats;
         sd.catGroup = group;
         sd.menuSubs = subs;
-        // catOrder / catGroups are the older mirrors of the same thing; keep them
-        // in step so anything still reading them agrees with what renders.
         sd.catOrder = cats.slice();
-        sd.catGroups = cats.map((nm) => ({ name: nm, group: String(group[nm] || catGroupOf(nm)), subs: (subs[nm] || []).slice() }));
+        /* catGroups is the GUEST portal's chip model, and its shape is
+           [{ name: <group>, subs: [<category names>] }] — that is what the boot
+           seed writes and what web2/proto/index.html reads (`knownSub[cat] =
+           group`). The import used to write a row PER CATEGORY into the same
+           key ({name: "Pizza", group: "Food"}), which is a different shape
+           entirely: the QR menu then drew a chip for every category as though it
+           were a group, matched none of them against an item's `sub` (the
+           category name), and dropped the whole menu into "Other". Writing the
+           real shape fixes that, and keeps the third level out of a key that
+           already means something else — subcategories live in menuSubs. */
+        const gOut = [];
+        cats.forEach((nm) => {
+          const g = String(group[nm] || catGroupOf(nm));
+          let rowg = gOut.find((x) => x.name === g);
+          if (!rowg) gOut.push(rowg = { name: g, subs: [] });
+          rowg.subs.push(nm);
+        });
+        sd.catGroups = gOut;
         const sid = cur ? cur.id : "settings";
         await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()", [orgId, sid, JSON.stringify(sd)]);
       }
@@ -8164,7 +8179,9 @@ if (fs.existsSync(webDir)) {
     .map((a, i) => ({ id: "a" + i, en: String((a && a.name) || ""), price: (Number(a && a.price) || 0) / 100 })).filter((a) => a.en);
   // Map flattened product rows (kindAll) into the register/guest MENU shape.
   const gMenu = (prods) => prods.filter((p) => p.name && !p.hidden).map((p) => ({
-    id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100,
+    // `sub` is the CATEGORY name (the guest portal's chip model calls a category
+    // a "sub" of its group); `subcat` is the third level below it.
+    id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), subcat: String(p.subcat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100,
     desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [],
     mods: gMods(p.addons),
     soldOut: !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)) }));
@@ -8211,6 +8228,9 @@ if (fs.existsSync(webDir)) {
       tableCount: Number(st.tableCount) > 0 ? Number(st.tableCount) : 12 };
     const catGroups = Array.isArray(st.catGroups) ? st.catGroups : [];
     const catOrder = Array.isArray(st.catOrder) ? st.catOrder : [];
+    // Third taxonomy level for the QR menu: category name -> its ordered
+    // sections. Empty for a store that has never used one.
+    const catSubs = (st.menuSubs && typeof st.menuSubs === "object") ? st.menuSubs : {};
     const visible = products.filter((p) => !p.hidden && (hasRecipe.has(String(p.id)) || p.stock == null || Number(p.stock) > 0));
     const menu = gMenu(visible);
     let customer = null;
@@ -8257,7 +8277,7 @@ if (fs.existsSync(webDir)) {
     const gFixCss = `\n<style>button:not([data-tap="tight"]),[role="button"]:not([data-tap="tight"]){min-height:44px}` +
       `input:not([type=checkbox]):not([type=radio]):not([data-tap="tight"]){min-height:44px}</style>`;
     const inject = `\n<base href="/app/">\n<title>${seoEsc(seoTitle)}</title>${gFixCss}\n<script>` +
-      `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP, catGroups, catOrder })};window.__ksGuest=${gEnc(guest)};` +
+      `window.__ksMenu=${gEnc(menu)};window.__ksReg=${gEnc({ storeP, catGroups, catOrder, catSubs })};window.__ksGuest=${gEnc(guest)};` +
       `window.__resources=Object.assign(window.__resources||{},${gEnc(Object.assign({}, gVendor, gArt))});` + UIFIX_JS + `</script>\n`;
     const html = fs.readFileSync(path.join(gProtoDir, "index.html"), "utf8")
       .replace(/<title>[\s\S]*?<\/title>/i, "")

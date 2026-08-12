@@ -792,8 +792,15 @@ button[disabled],button:disabled{cursor:not-allowed}
           </div>
         </sc-if>
         <div onScroll="{{ menuScroll }}" style="flex:1;overflow-y:auto;padding-bottom:18px">
+          <sc-for list="{{ menuSecs }}" as="sec" hint-placeholder-count="1">
+          <div>
+          <div style="{{ sec.headStyle }}">
+            <span style="{{ sec.crumbStyle }}">{{ sec.crumb }} ·</span>
+            {{ sec.title }}
+            <span style="opacity:.5;font-weight:700;text-transform:none">{{ sec.count }}</span>
+          </div>
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px">
-            <sc-for list="{{ items }}" as="it" hint-placeholder-count="8">
+            <sc-for list="{{ sec.items }}" as="it" hint-placeholder-count="8">
               <div style="position:relative;border:1px solid;background:var(--sur);border-radius:16px;overflow:hidden;text-align:start;display:{{ it.disp }};flex-direction:column;box-shadow:var(--shadow);transition:transform .12s,border-color .18s;border-color:{{ it.bc }};opacity:{{ it.cardOp }}" style-hover="border-color:var(--coral);transform:translateY(-2px)">
                 <div onClick="{{ it.note }}" style="position:relative;width:100%;height:118px;background:var(--sur2);cursor:pointer" title="Tap for options & notes"><sc-if value="{{ it.hasImg }}" hint-placeholder-val="{{ true }}"><img src="{{ it.src }}" alt="" style="width:100%;height:100%;object-fit:cover;object-position:center;display:block"></sc-if><sc-if value="{{ it.noImg }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;display:grid;place-items:center;background:{{ it.tileBg }}"><div style="width:52px;height:52px;border-radius:15px;background:{{ it.tileTc }};color:#fff;display:grid;place-items:center;font-family:'Bricolage Grotesque';font-weight:800;font-size:23px;box-shadow:0 4px 12px rgba(0,0,0,.14)">{{ it.glyph }}</div></div></sc-if><sc-if value="{{ it.bestSeller }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:7px;inset-inline-start:7px;display:inline-flex;align-items:center;gap:3px;font-size:8.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;color:var(--on-amber);background:var(--coral);border-radius:999px;padding:3px 8px;box-shadow:0 2px 6px rgba(0,0,0,.22);z-index:2">★ Bestseller</span></sc-if><sc-if value="{{ it.soldOut }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:rgba(20,16,12,.42);display:grid;place-items:center"><span style="font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--on-red);background:var(--red);border-radius:999px;padding:5px 12px;box-shadow:0 2px 8px rgba(0,0,0,.25)">{{ L.soldOut }}</span></div></sc-if></div>
                 <div onClick="{{ it.note }}" style="padding:10px 11px 8px;display:flex;flex-direction:column;gap:4px;flex:1;cursor:pointer">
@@ -814,6 +821,8 @@ button[disabled],button:disabled{cursor:not-allowed}
               </div>
             </sc-for>
           </div>
+          </div>
+          </sc-for>
           <sc-if value="{{ menuMore }}" hint-placeholder-val="{{ false }}">
             <button onClick="{{ menuShowMore }}" style="width:100%;margin-top:12px;border:1px solid var(--line);background:var(--sur);color:var(--ink2);border-radius:14px;padding:14px;min-height:48px;font-size:13px;font-weight:800;cursor:pointer" style-active="transform:scale(.99)">{{ menuMoreLbl }}</button>
           </sc-if>
@@ -3054,6 +3063,31 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
     const has86=_off.length>0,more86=_off.length>20,more86F='+'+(_off.length-20),count86=String(_off.length);
     const _cartQty={};s.cart.forEach(function(l){_cartQty[l.id]=(_cartQty[l.id]||0)+l.qty;});
     const items=_shown.map(m=>{const n=_cartQty[m.id]||0;const soldOut=!!ovOff[m.id]||!!m.soldOut;const pr=(m.id in ovPr)?ovPr[m.id]:m.price;const disp='flex';const ai=me.assetInfo(m);const ti=me.catTint(m.cat);return {disp,name:me.itemName(m),gl:m.en[0],tint:m.tint,tc:m.tc,photo:'qrph-'+m.id,src:ai.src,hasImg:ai.hasImg,noImg:!ai.hasImg,glyph:me.tileGlyph(m),tileBg:ti[0],tileTc:ti[1],desc:(s.lang==='dv'?(m.descDv||m.desc):m.desc)||(me.QRINFO[m.id]||{}).desc||'',tags:(Array.isArray(m.tags)?m.tags:[]).slice(0,2),hasTags:!!(m.tags&&m.tags.length),bestSeller:!!m.bestSeller,priceF:me.fm(pr),n,hasN:n>0,hasMods:!!m.mods,soldOut,cardOp:soldOut?0.5:1,bc:soldOut?'var(--line)':(n>0?'var(--coral)':'var(--line)'),showAdd:n===0&&!soldOut,barOn:(n>0)||!soldOut,addLbl:me.t('addToOrder'),add:()=>{if(soldOut){me.toast(me.itemName(m)+' · '+me.t('soldOut'));return;}if(m.mods)me.setState({mod:Object.assign({},m,{price:pr}),modQty:1,modSel:{},modNote:'',modFresh:true,modEditIdx:null});else me.pushLine(Object.assign({},m,{price:pr}),[],1);},note:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();if(soldOut)return;me.setState({mod:Object.assign({},m,{price:pr}),modQty:1,modSel:{},modNote:'',modFresh:true,modEditIdx:null});},showNote:!m.mods&&!soldOut,incStop:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();if(soldOut)return;me.pushLine(Object.assign({},m,{price:pr}),[],1);},decStop:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();const c=s.cart.slice();for(let i=c.length-1;i>=0;i--){if(c[i].id===m.id){if(c[i].qty<=1)c.splice(i,1);else c[i]=Object.assign({},c[i],{qty:c[i].qty-1});break;}}me.setState({cart:c});}};});
+    /* Break the card grid into SUBCATEGORY runs (the third taxonomy level).
+       The chip rows above are group -> category; inside a category a store can
+       now say "Classic / Gourmet", and this is where a guest sees it. Runs are
+       taken in menu order rather than re-sorted, because the menu already
+       arrives in the store's own category order. A single run with no
+       subcategory renders bare — which is every store that has never used one,
+       so the QR menu is unchanged for them. */
+    var _secs=[];
+    _shown.forEach(function(m,i){
+      var cat=String(m.sub||''),sub=String(m.subcat||'');
+      var row=null;for(var k=0;k<_secs.length;k++){if(_secs[k].cat===cat&&_secs[k].sub===sub){row=_secs[k];break;}}
+      if(!row){row={cat:cat,sub:sub,items:[]};_secs.push(row);}
+      row.items.push(items[i]);
+    });
+    const _bareSec=_secs.length<=1&&(!_secs.length||!_secs[0].sub);
+    const menuSecs=_secs.map(function(sec){return {
+      title:sec.sub||sec.cat||'',
+      crumb:sec.sub?sec.cat:'',
+      crumbStyle:sec.sub?'opacity:.55;font-weight:700':'display:none',
+      count:String(sec.items.length),
+      items:sec.items,
+      headStyle:_bareSec?'display:none'
+        :'display:flex;align-items:center;gap:6px;margin:16px 2px 9px;font-size:11.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--ink2)'
+    };});
+
     const posted=s.activeBill!=null||s.kotSent;
     const lines=s.cart.map((l,i)=>{const m=me.MENU.find(x=>x.id===l.id);const d=l.disc||0;const gross=l.unit*l.qty;const net=gross*(1-d/100);
       /* AUDIT-M1: only the forward-looking menu grid (soldOut above) showed a
@@ -3157,7 +3191,7 @@ const _gdine=(s.guest&&s.guest.otype==='delivery')?false:((s.guest&&s.guest.otyp
       toggleOnline:()=>{if(s.syncing)return;me.goOnline();},
       net,isOffline:!s.online,
       clock:new Date(s.tick).toLocaleString(s.lang==='dv'?'en-GB':'en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),
-      cats,items,eightySix,has86,more86,more86F,count86,legacyCats:!useGroups,useGroups,grpChips,subChips,showSubRow,query:s.query,setQuery:e=>me.setState({query:e.target.value}),
+      cats,items,menuSecs,eightySix,has86,more86,more86F,count86,legacyCats:!useGroups,useGroups,grpChips,subChips,showSubRow,query:s.query,setQuery:e=>me.setState({query:e.target.value}),
       searchOpen:s.searchOpen,searchClosed:!s.searchOpen,openSearch:()=>me.setState({searchOpen:true}),closeSearchIfEmpty:()=>{if(!me.state.query)me.setState({searchOpen:false});},clearSearch:()=>me.setState({query:'',searchOpen:false}),scanBarcode:()=>me.toast(me.t('scanHint')||'Scanning barcode…'),
       lines,cartEmpty:s.cart.length===0,chargeOp:s.cart.length?1:.45,nextNo:String(s.seq).padStart(4,'0'),
       isRecalled:s.activeBill!=null,billBadge:s.activeBill!=null?String(s.activeBill).padStart(3,'0'):String(s.seq).padStart(4,'0'),newBill:()=>me.newBill(),closeBill:()=>me.closeBill(),

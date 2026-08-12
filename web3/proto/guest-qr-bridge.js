@@ -41,7 +41,9 @@
      legible tab row instead of a wall of sections — the till floor does the
      same. `groups` is the ordered group list; CAT_GROUP maps each category id
      to its group so a menu item can inherit its category's group. */
-  var CATS = (R.categories || []).map(function (c) { return { id: c.id, name: c.name, group: c.group || "" }; });
+  // `subs` = the category's ordered SUBCATEGORY names, the third taxonomy level
+  // (Pizza → Classic / Gourmet). Empty for a store that has never used one.
+  var CATS = (R.categories || []).map(function (c) { return { id: c.id, name: c.name, group: c.group || "", subs: (c.subs || []).slice() }; });
   var GROUPS = (R.groups || []).slice();
   var CAT_GROUP = {};
   CATS.forEach(function (c) { CAT_GROUP[c.id] = c.group || ""; });
@@ -51,7 +53,7 @@
      URL), so imageBase is "" and the value is used verbatim. */
   var MENU = (R.menu || []).map(function (m) {
     return {
-      id: m.id, cat: m.cat, group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "",
+      id: m.id, cat: m.cat, subcat: m.subcat || "", group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "",
       price: Number(m.price) || 0, veg: !!m.veg, img: m.img || "",
       best: !!(m.bestSeller || m.trending), soldQty: Number(m.soldQty) || 0,
       /* Item tags the guest design renders: `spice` 0-3 is a read-only fact

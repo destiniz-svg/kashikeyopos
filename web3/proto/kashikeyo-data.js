@@ -574,7 +574,10 @@
     var CAT_ICON = { starters: "starter", mains: "main", grill: "grill", rice: "rice",
       sides: "side", desserts: "dessert", drinks: "drink", coffee: "drink", beverages: "drink" };
     MENU_CATEGORIES = (REAL.categories || []).map(function (c) {
-      return { id: c.id, name: c.name, group: c.group || "", icon: CAT_ICON[c.id] || "main" };
+      // subs = the category's ordered SUBCATEGORY names (the third taxonomy
+      // level). Empty for a store that has never used one, which renders as the
+      // flat category it always was.
+      return { id: c.id, name: c.name, group: c.group || "", subs: (c.subs || []).slice(), icon: CAT_ICON[c.id] || "main" };
     });
     MENU_GROUPS = (REAL.groups || []);
     // Full group palette for the category manager (the four canonical groups
@@ -583,7 +586,7 @@
     var CAT_GROUP = {};
     MENU_CATEGORIES.forEach(function (c) { CAT_GROUP[c.id] = c.group; });
     MENU = (REAL.menu || []).map(function (m) {
-      return { id: m.id, cat: m.cat, group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
+      return { id: m.id, cat: m.cat, subcat: m.subcat || "", group: CAT_GROUP[m.cat] || "", name: m.name, desc: m.desc || "", price: Number(m.price) || 0,
         veg: !!m.veg, img: m.img || "", recipe: m.recipe || [], hidden: !!m.hidden, addons: m.addons || [], bestSeller: !!m.bestSeller, soldOut: !!m.soldOut };
     });
     if (REAL.customers) CUSTOMERS = REAL.customers;   // Customers & credit — real accounts

@@ -415,8 +415,16 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 </button>
               </sc-for>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px">
-              <sc-for list="{{ dishes }}" as="m" hint-placeholder-count="0">
+            <sc-for list="{{ menuSections }}" as="sec" hint-placeholder-count="0">
+             <div style="{{ sec.wrapStyle }}">
+              <div style="{{ sec.headStyle }}">
+                <span style="{{ sec.dotStyle }}"></span>
+                <span style="{{ sec.crumbStyle }}">{{ sec.crumb }} ·</span>
+                {{ sec.title }}
+                <span style="font-size:10px;opacity:.55;font-family:'JetBrains Mono',monospace;text-transform:none">{{ sec.count }}</span>
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:10px">
+              <sc-for list="{{ sec.dishes }}" as="m" hint-placeholder-count="0">
                 <div style="{{ m.style }}">
                   <button onClick="{{ m.manage }}" title="Manage — availability, price, hide" aria-label="Manage dish" style="{{ m.manageStyle }}">⋮</button>
                   <button onClick="{{ m.addons }}" title="Tap the photo to choose add-ons" style="position:relative;width:100%;aspect-ratio:1.55;background:var(--bg-2);overflow:hidden;display:block;border-radius:9px 9px 0 0;border:none;padding:0;cursor:pointer">
@@ -435,7 +443,9 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   </button>
                 </div>
               </sc-for>
-            </div>
+              </div>
+             </div>
+            </sc-for>
           </div>
         </div>
 
@@ -3379,9 +3389,66 @@ class Component extends DCLogic {
           tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff"
             : (hid ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--text-faint);color:var(--bg-1)" : "display:none"),
           vegStyle: m.veg ? "position:absolute;top:9px;right:" + (this.can("menu") ? "38px" : "7px") + ";width:12px;height:12px;border-radius:3px;border:1.5px solid var(--green);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--green)" : "display:none",
-          foot: showCost ? Math.round((cost / price) * 100) + "% cost" : (m.veg ? "Veg" : "")
+          foot: showCost ? Math.round((cost / price) * 100) + "% cost" : (m.veg ? "Veg" : ""),
+          _cat: m.cat, _subcat: String(m.subcat || "").trim()
         };
       });
+
+    /* Break the grid into CATEGORY → SUBCATEGORY sections.
+
+       The tab strip is the top level (groups), so under a tab a cashier was
+       looking at one undifferentiated wall of tiles — every category of Food at
+       once, with nothing marking where Pizza stopped and Pasta began. Now each
+       category is a headed run, and a category that uses subcategories splits
+       again inside it.
+
+       Order follows the store's own taxonomy: categories in menu order, and
+       inside a category its saved `subs` order, with anything not in that list
+       after it. Dishes with no subcategory sit first, directly under the
+       category heading — which is exactly where every dish sat before this
+       existed, so a store that never uses the third level sees no change.
+
+       One section with no heading worth showing (a single category, no
+       subcategories — e.g. a category tab on a store with no groups, or a
+       search that matched one section) renders bare, so the common case does
+       not grow a redundant title. */
+    const catMeta = K0.MENU_CATEGORIES || [];
+    const catRank = {}; catMeta.forEach((c, i) => { catRank[c.id] = i; });
+    const catOf = (id) => catMeta.find((c) => c.id === id) || null;
+    const buckets = new Map();
+    dishes.forEach((d) => {
+      const key = d._cat + " " + d._subcat;
+      if (!buckets.has(key)) buckets.set(key, { cat: d._cat, subcat: d._subcat, dishes: [] });
+      buckets.get(key).dishes.push(d);
+    });
+    const subRank = (catId, sub) => {
+      if (!sub) return -1;                        // un-sectioned dishes lead
+      const list = (catOf(catId) || {}).subs || [];
+      const i = list.findIndex((x) => String(x).toLowerCase() === sub.toLowerCase());
+      return i < 0 ? 9e3 : i;                     // unknown sections trail
+    };
+    const sections = Array.from(buckets.values()).sort((a, b) =>
+      ((catRank[a.cat] == null ? 9e3 : catRank[a.cat]) - (catRank[b.cat] == null ? 9e3 : catRank[b.cat])) ||
+      (subRank(a.cat, a.subcat) - subRank(b.cat, b.subcat)) ||
+      String(a.subcat).localeCompare(String(b.subcat)));
+    const bare = sections.length === 1 && !sections[0].subcat;
+    const secVals = sections.map((sec) => {
+      const cname = (catOf(sec.cat) || {}).name || sec.cat || "Uncategorised";
+      const hue = this.catHue(sec.cat);
+      return {
+        title: sec.subcat || cname,
+        // The parent category, shown only on a subcategory run so the heading
+        // reads "Pizza / Classic" rather than a bare "Classic" with no anchor.
+        crumb: sec.subcat ? cname : "",
+        crumbStyle: sec.subcat ? "color:var(--text-faint);font-weight:600" : "display:none",
+        count: sec.dishes.length,
+        dishes: sec.dishes,
+        headStyle: bare ? "display:none"
+          : "display:flex;align-items:center;gap:7px;margin:2px 0 9px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim)",
+        dotStyle: "flex-shrink:0;width:7px;height:7px;border-radius:2px;background:" + hue,
+        wrapStyle: bare ? "" : "margin-bottom:18px",
+      };
+    });
 
     const guests = this.guestsOf(tk);
     const gi = Math.min(s.activeSplit, Math.max(0, guests.length - 1));
@@ -3491,7 +3558,7 @@ class Component extends DCLogic {
       low: out86.map((id) => (K0.MENU.find((m) => m.id === id) || {}).name + " · 86"), hasLow: out86.length > 0,
       floorSub: o.seats + " covers · " + nT + " tables · " + tables.filter((t) => t.chipText === "Open").length + " open"
         + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + " · manager " + o.mgr,
-      tables: tables, cats: cats, dishes: dishes, lines: lines, totalRows: totalRows,
+      tables: tables, cats: cats, dishes: dishes, menuSections: secVals, lines: lines, totalRows: totalRows,
       posQ: s.posQ || "", onPosQ: (e) => this.setState({ posQ: e.target.value }),
       dishesEmpty: !dishes.length,
       // Tight: the lines list absorbs the squeeze (floor 0) so Fire/Pay can

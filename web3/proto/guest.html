@@ -1807,8 +1807,29 @@ window.KashikeyoGuestQR = (function () {
     var off = this.soldOut(), inCart = {};
     s.cart.forEach(function (l) { inCart[l.id] = (inCart[l.id] || 0) + l.qty; });
 
-    h += '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(' + M.cols + ',minmax(0,1fr));gap:13px">' +
-      list.map(function (m) {
+    /* Break the grid into SUBCATEGORY runs — the third taxonomy level. The chip
+       row above is the category; inside a category a store can now say
+       "Classic / Gourmet", and this is where a guest sees it.
+
+       Runs are taken in menu order rather than re-sorted, because the menu
+       already arrives in the store's own category order. A heading is drawn
+       only when it tells the guest something: a run with no subcategory, or a
+       single run covering the whole list, renders bare — which is every store
+       that has never used the third level, so their menu is unchanged. On the
+       "All dishes" / "Popular" chips the category name leads the heading, since
+       there the runs cross categories. */
+    var catNameOf = {};
+    (this.D.MENU_CATEGORIES || []).forEach(function (c) { catNameOf[c.id] = c.name; });
+    var runs = [];
+    list.forEach(function (m) {
+      var sub = String(m.subcat || ''), key = m.cat + ' ' + sub, run = null;
+      for (var i = 0; i < runs.length; i++) if (runs[i].key === key) { run = runs[i]; break; }
+      if (!run) runs.push(run = { key: key, cat: m.cat, sub: sub, items: [] });
+      run.items.push(m);
+    });
+    var crossCat = (s.cat === 'all' || s.cat === 'popular');
+    var bareRuns = runs.length <= 1 && (!runs.length || !runs[0].sub);
+    var tile = function (m) {
         var sold = off.indexOf(m.id) >= 0, n = inCart[m.id] || 0, dh = self.dishHeat(m);
         return '<button data-act="dish" data-id="' + attr(m.id) + '"' + (sold ? ' disabled' : '') +
           ' style="text-align:left;background:var(--k-white);border:1px solid ' + (n ? 'var(--k-accent-line)' : 'var(--k-line-2)') +
@@ -1830,7 +1851,18 @@ window.KashikeyoGuestQR = (function () {
               svg(I.plus, { s: 15, c: 'var(--k-accent-ink)', w: 3 }) + '</span>' +
           '</span>' +
         '</button>';
-      }).join('') + '</div>';
+    };
+    h += runs.map(function (run) {
+      var label = bareRuns ? '' : (run.sub
+        ? ((crossCat && catNameOf[run.cat]) ? catNameOf[run.cat] + ' · ' + run.sub : run.sub)
+        : (crossCat ? (catNameOf[run.cat] || '') : ''));
+      return (label
+        ? '<div style="margin:20px 2px 2px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--k-mute)">' +
+            esc(label) + '</div>'
+        : '') +
+        '<div style="margin-top:8px;display:grid;grid-template-columns:repeat(' + M.cols + ',minmax(0,1fr));gap:13px">' +
+          run.items.map(tile).join('') + '</div>';
+    }).join('');
 
     if (!list.length) h += '<div style="padding:38px 6px;text-align:center;font-size:13px;color:var(--k-mute-2);line-height:1.6">No dish matches that. Try another word, or clear the filter.</div>';
 
