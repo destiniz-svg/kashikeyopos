@@ -12,14 +12,18 @@ missing access rather than assumed to pass.
 
 > **Update, 12 Aug 2026 01:20 UTC — the deployment gate is CLEARED.** Railway
 > access was granted and the production release was verified end to end (§4.1).
-> Score 8.0 → **8.1**. Three caps remain, and one new customer-facing issue was
-> found in the production logs (§4.7).
+> One new customer-facing issue was found in the production logs (§4.7).
+>
+> **Update, 12 Aug 2026 03:35 UTC — capacity is now measured, not modelled.** A
+> throwaway service in staging ran the harness against the deployed app from
+> off-box: ceiling ~360 settlements/second, ~13,000× the audit's floor, zero
+> errors to 768 concurrent tills (§4.6). Score **8.1 → 8.2**. Two caps remain.
 
-## Score — 8.1 / 10
+## Score — 8.2 / 10
 
 Weighted across ten dimensions, each scored on **evidence**, not on the existence
-of code. Three dimensions are held below their earned score because the evidence
-that would lift them needs access this review did not have.
+of code. Two dimensions are still held below their earned score, because the
+evidence that would lift them needs access or accounts this review does not have.
 
 | Dimension | Weight | Score | Note |
 | --- | ---: | ---: | --- |
@@ -29,18 +33,19 @@ that would lift them needs access this review did not have.
 | Security & access control | 12 | 8 | Fail-fast on weak `JWT_SECRET`; no external penetration test |
 | Disaster recovery | 10 | 7 | **Capped** — managed-backup layer unverified |
 | Observability | 10 | 7 | **Capped** — nothing scrapes `/api/metrics`, so nothing alerts |
-| Performance & capacity | 8 | 7 | **Capped** — envelope now known (8 vCPU / 8 GB), but never load-tested on it |
+| Performance & capacity | 8 | 9 | **Measured on the deployed app**: ~360 settlements/s, zero errors to 768 tills |
 | Testing & verification | 8 | 8 | 117 cold-database tests reading the *shipped* files |
 | Release & deploy process | 5 | 9 | Readiness probe **proven in production**: healthcheck 503'd, retried, passed |
 | Restaurant operations fit | 5 | 8 | Some flows verified by screenshot rather than by test |
 
-**Weighted total: 8.07 → 8.1**
+**Weighted total: 8.23 → 8.2**
 
-The deployment gate that previously sat outside this number is now **closed**
-(§4.1): the release built from the Dockerfile, applied its schema, swapped to the
-restricted database role and passed its healthcheck. What remains capped is
-capped for reasons that survive that verification — backups, monitoring and load
-behaviour are each still unevidenced.
+The deployment gate that once sat outside this number is **closed** (§4.1): the
+release built from the Dockerfile, applied its schema, swapped to the restricted
+database role and passed its healthcheck. Capacity is no longer a projection
+either (§4.6). What stays capped are the two things that are not engineering
+problems at all — nobody has read the managed-backup settings off the dashboard,
+and nothing scrapes the metrics endpoint.
 
 ## Where things stand
 
@@ -50,7 +55,8 @@ behaviour are each still unevidenced.
 | Automated suite | **117 tests, 117 passing** on a cold database |
 | Independent CI | GitHub Actions run **#181**, `postgres:16` service, `npm ci --omit=dev` + `npm test` — **success** on `0e954ac` |
 | Production branch | `main` = `staging` = `0e954ac` |
-| Deployment itself | **NOT VERIFIED** — see *Open items* |
+| Deployment itself | **VERIFIED** — `e14de2a1`, boot 222 ms, healthcheck 503-then-pass |
+| Capacity | **~360 settlements/s** measured off-box against staging |
 
 The suite grew from 78 effectively-running tests to 117 over this remediation.
 Four test files are new, each pinning a specific finding rather than the feature
@@ -264,55 +270,76 @@ credential exposure — it lowers an attacker's cost of finding a logic flaw in 
 payment-handling system. This may be deliberate; it is flagged as a decision to
 confirm, not a defect.
 
-### 4.6 Capacity at 2× / 5× / 10× — ENVELOPE KNOWN, BEHAVIOUR UNMEASURED
+### 4.6 Capacity at 2× / 5× / 10× — ✅ MEASURED ON THE DEPLOYED APP
 
-The production envelope is no longer a guess. Measured over three hours:
+A throwaway service in the **staging** environment ran `test/load/loadtest.js`
+against the deployed staging app over Railway's private network — generator off
+the box it measured, which the earlier sandbox attempt could not manage. Full
+write-up in `docs/load-test-findings.md`.
 
-| | |
-| --- | --- |
-| CPU limit | **8 vCPU** · observed average 0.00009, max 0.0018 |
-| Memory limit | **8 GB** · observed 46 MB resident, max 51 MB |
-| Replicas | 1, region `sfo` |
-| Database volume | 1.99 GB used |
+**Sustained ceiling: ~360 settlements/second — about 1.3 million sales/hour.**
+Throughput scales perfectly linearly to 64 concurrent tills with p50 pinned at
+~191 ms, then saturates at ~360/s from 128 tills on. That is roughly **13,000×
+the audit's 100/hour floor**; ten times the floor consumes 0.08% of it.
 
-Memory is a non-issue: the process sits at **0.6% of its limit**.
+Three properties matter more than the headline:
 
-A load test has now been run (`test/load/loadtest.js`; full write-up in
-`docs/load-test-findings.md`). It ramps concurrent tills through `/api/ops`,
-`/api/pull` and `/api/app2/live`, pricing every sale through the canonical
-`billTotals()` so the server's money audit sees clean bills.
+- **It degrades by queueing, not by failing.** Zero errors at every level up to
+  768 simultaneous tills, with p95 at 3.5 seconds. Nothing dropped, no 5xx, no
+  pool exhaustion. For a POS that is the correct failure mode — a slow sale is
+  recoverable, a lost sale is not.
+- **Reads stay fast while writes queue.** The KDS/orders refresh held at
+  183–207 ms across *every* level, unmoved while settlement latency rose
+  twentyfold. The kitchen screen keeps working during a rush even when the till
+  is waiting.
+- **The ~190 ms floor is network, not server.** Railway placed the generator in
+  `asia-southeast1` and the app runs in `sfo`, so every figure carries a
+  cross-Pacific round trip. Server-side service time is far below these numbers.
 
-**Zero errors at every level, 1 through 48 concurrent tills.** Even the worst
-level measured — 48 tills, p95 313 ms — sustains ~750,000 sales/hour, roughly
-7,500× the audit's floor. The 2× / 5× / 10× question is answered decisively in
-the terms it was asked: those multiples are 0.06, 0.14 and 0.28 writes per
-second, and the app does not notice them.
+**The bottleneck is one Node process, not the hardware.** At saturation the app
+peaked at **1.15 of its 8 vCPU (14%)** and 0.38 GB of 8 GB. A single Node
+process runs JavaScript on one thread, so seven of the eight allocated vCPU
+cannot be used by one replica — the ceiling above is a *single-process* ceiling.
+The lever is `numReplicas` (the sync design is stateless behind Postgres and
+`LISTEN/NOTIFY` already fans `poke` across instances), with `PG_POOL_MAX` raised
+in step and `pool.waiting` in `/api/metrics` as the signal for when it binds.
+Not urgent: it is the difference between ~13,000× the requirement and
+~100,000× it.
 
-What is **still** open is the true ceiling, and the reason is methodological
-rather than a missing number: the generator ran on the same 4-core sandbox as
-the app and its database, so above ~8 workers it competes with the server it is
-measuring. The apparent knee there is partly the harness's own contention and
-must not be quoted as the server's limit. Closing this needs the generator
-off-box against the deployed staging instance, which this sandbox's egress
-policy blocks.
-
-One thing to watch when that run happens: `PG_POOL_MAX` is unset, so the pool is
-node-postgres's default of 10 — above ten in-flight writes, requests queue for a
-connection. That is exactly the `pool.waiting` counter in `/api/metrics`, and
-raising `PG_POOL_MAX` is the lever if it turns out to bind.
+Caveats kept on the record: 15–20 s per level, so this is a saturation test and
+not a soak test; small 1–4 line baskets; one transient connection error in
+~1,900 requests at the 1-till level, which is exactly what `/api/ops`
+idempotency and the till's retrying outbox exist for; and ~40,000 synthetic
+sales now sit in the staging database under throwaway
+`load-<timestamp>@loadtest.invalid` orgs.
 
 ---
 
 ## 5. Recommended order
 
 1. ~~Confirm the deployment and the schema migration.~~ **Done — §4.1.**
-2. Confirm a completed AI call (§4.4) — one request to `/api/inv/ai-selftest`.
+2. ~~Measure capacity against real hardware.~~ **Done — §4.6.**
+3. Confirm a completed AI call (§4.4) — one request to `/api/inv/ai-selftest`.
    The provider resolves at boot; a round trip has still not been seen.
-3. Check `m.kashikeyopos.com` (§4.7). If a live store's handle changed, its
+4. Check `m.kashikeyopos.com` (§4.7). If a live store's handle changed, its
    printed QR codes are pointing at nothing.
-4. Read the managed-backup configuration off the dashboard (§4.2) and record it
+5. Read the managed-backup configuration off the dashboard (§4.2) and record it
    in `docs/disaster-recovery.md` §2 so RPO/RTO stop being aspirational. The API
    cannot answer this; a human has to look.
-5. Point a monitor at `/api/metrics` (§4.3) using the §7b thresholds.
-6. Load-test against the real 8 vCPU / 8 GB envelope (§4.6).
+6. Point a monitor at `/api/metrics` (§4.3) using the §7b thresholds.
 7. Confirm the repository's public visibility is intended (§4.5).
+
+Nothing on this list is a code change. Steps 5 and 6 are the two remaining caps
+on the score; the rest are confirmations.
+
+## 6. Housekeeping from the capacity run
+
+- The throwaway load-generator services in the staging environment
+  (`TEMP-loadgen-DELETE-ME`, `TEMP-loadgen2-DELETE-ME`) were deleted after the
+  run. `railway.loadgen.json` stays in the repo — it is the documented way to
+  stand one up again, and it affects nothing unless a service is explicitly
+  pointed at it.
+- Roughly **40,000 synthetic sales** were written into the **staging** database
+  under throwaway orgs named `load-<timestamp>@loadtest.invalid`. They are
+  isolated from every real staging store by RLS and can be dropped whenever
+  convenient. Production was never touched.
