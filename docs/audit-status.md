@@ -275,11 +275,31 @@ The production envelope is no longer a guess. Measured over three hours:
 | Replicas | 1, region `sfo` |
 | Database volume | 1.99 GB used |
 
-Memory is a non-issue: the process sits at **0.6% of its limit**, so the 2×/5×/10×
-question is not a memory question. What the numbers cannot tell us is behaviour
-under load — the service is effectively idle, so this is headroom, not a
-measurement of throughput. The remaining work is a load test against production
-hardware, not more inspection.
+Memory is a non-issue: the process sits at **0.6% of its limit**.
+
+A load test has now been run (`test/load/loadtest.js`; full write-up in
+`docs/load-test-findings.md`). It ramps concurrent tills through `/api/ops`,
+`/api/pull` and `/api/app2/live`, pricing every sale through the canonical
+`billTotals()` so the server's money audit sees clean bills.
+
+**Zero errors at every level, 1 through 48 concurrent tills.** Even the worst
+level measured — 48 tills, p95 313 ms — sustains ~750,000 sales/hour, roughly
+7,500× the audit's floor. The 2× / 5× / 10× question is answered decisively in
+the terms it was asked: those multiples are 0.06, 0.14 and 0.28 writes per
+second, and the app does not notice them.
+
+What is **still** open is the true ceiling, and the reason is methodological
+rather than a missing number: the generator ran on the same 4-core sandbox as
+the app and its database, so above ~8 workers it competes with the server it is
+measuring. The apparent knee there is partly the harness's own contention and
+must not be quoted as the server's limit. Closing this needs the generator
+off-box against the deployed staging instance, which this sandbox's egress
+policy blocks.
+
+One thing to watch when that run happens: `PG_POOL_MAX` is unset, so the pool is
+node-postgres's default of 10 — above ten in-flight writes, requests queue for a
+connection. That is exactly the `pool.waiting` counter in `/api/metrics`, and
+raising `PG_POOL_MAX` is the lever if it turns out to bind.
 
 ---
 
