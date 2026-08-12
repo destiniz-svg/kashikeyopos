@@ -35,15 +35,23 @@ const arg = (name, dflt) => {
   const i = process.argv.indexOf("--" + name);
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
 };
-const BASE = (arg("base", "http://127.0.0.1:4000")).replace(/\/$/, "");
+/* --base accepts a comma-separated list of CANDIDATES, tried in order; the first
+   that answers a ready /api/health wins. That lets one command prefer Railway's
+   private network (no edge hop, so the numbers describe the server rather than
+   the proxy in front of it) and fall back to the public URL when private DNS or
+   IPv6 is not available to the runtime. */
+const CANDIDATES = arg("base", "http://127.0.0.1:4000").split(",").map((s) => s.trim().replace(/\/$/, "")).filter(Boolean);
 const LEVELS = arg("levels", "1,2,4,8,16,32").split(",").map(Number).filter((n) => n > 0);
 const SECONDS = Number(arg("seconds", 15));
 const GST_BP = 800, SVC_BP = 1000;
+let BASE = CANDIDATES[0];
 
-if (/kashikeyopos\.com/i.test(BASE) && !/staging/i.test(BASE)) {
-  console.error("Refusing to run: " + BASE + " looks like production.\n" +
-    "This harness writes real sales. Point it at staging or a local instance.");
-  process.exit(2);
+for (const c of CANDIDATES) {
+  if (/kashikeyopos\.com/i.test(c) && !/staging/i.test(c)) {
+    console.error("Refusing to run: " + c + " looks like production.\n" +
+      "This harness writes real sales. Point it at staging or a local instance.");
+    process.exit(2);
+  }
 }
 
 /* ── stats ────────────────────────────────────────────────────────────── */
@@ -114,12 +122,19 @@ function makeSale(products, register) {
 /* ── run ──────────────────────────────────────────────────────────────── */
 (async () => {
   console.log("KashikeyoPOS capacity harness");
-  console.log("  target      " + BASE);
+  console.log("  candidates  " + CANDIDATES.join("  ·  "));
+
+  let health = null;
+  for (const c of CANDIDATES) {
+    BASE = c;
+    health = await get("/api/health").then((r) => r.json()).catch((e) => ({ _err: String((e && e.message) || e) }));
+    if (health && health.ready) { console.log("  reachable   " + BASE); break; }
+    console.log("  unreachable " + c + "  (" + JSON.stringify(health) + ")");
+    health = null;
+  }
+  if (!health) { console.error("\nNo candidate answered a ready /api/health."); process.exit(1); }
   console.log("  levels      " + LEVELS.join(", ") + " concurrent tills");
   console.log("  per level   " + SECONDS + "s\n");
-
-  const health = await get("/api/health").then((r) => r.json()).catch(() => null);
-  if (!health || !health.ready) { console.error("Target is not ready: " + JSON.stringify(health)); process.exit(1); }
 
   /* One org, many registers — a chain of tills against one store's data, which
      is the shape that actually contends (same RLS scope, same rowver sequence). */
