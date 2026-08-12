@@ -105,6 +105,33 @@ there. `KPOS_REAL.outlet` is `outlets[0]`, never a second source.
   a cache = Σ moves.qty; keep them in step.
 - Money is **laari** (MVR×100), integer sub-unit. Display ÷100.
 
+## Staff roles (two lists, and they are not the same list)
+
+The **backend** roles are `owner|admin|manager|cashier|waiter|kitchen|rider`,
+ranked by `APP_ROLE_RANK` (kitchen 1 · till 2 · manager 3 · admin 4 · owner 5);
+`denyAppRole(req, res, APP_RANK.X, …)` enforces them per endpoint. Five are
+assignable (`ASSIGNABLE_ROLES`), and `TERMINAL_ROLES` decides who may hold a
+`/v2` session — admin, manager, cashier, waiter and **kitchen**; riders have no
+screen to reach.
+
+The **front-end** list is a permission catalogue in `kashikeyo-data.js` (`ROLES`
+× `MODULES`, keys like `Cashier`, `KitchenDisplay`, `OutletManager`), and it is
+what `can(mod, act)` and the nav read. `initialRoleKey()` in
+`web3/proto/index.html` maps one to the other: cashier/waiter → `Cashier`,
+kitchen → `KitchenDisplay`. **Anything unmapped falls through to `ChainAdmin`**
+— the whole cockpit — so a new backend role needs a line there or it silently
+grants everything.
+
+A kitchen session is the narrow one: one nav item (the KDS), and `kitchenScope()`
+in `index.js` trims what the page even injects — it keeps menu/orders/outlet and
+**empties** customers, staff, expenses, settlements, assets, inventory and stats.
+Empties, not deletes: `kashikeyo-data.js` only replaces a demo seed when the real
+key is *present*, so a missing key leaves the seeded demo roster on screen.
+`initialView()` opens on the first screen the role can see, never a blanket
+"pos". Covered by `kitchen display session (KDS-ROLE)` in `test/audit.test.js`,
+placed before the security suite because that one leaves the login throttle
+blocked for the IP.
+
 ## Item-role graph (§6, all implemented)
 
 One ingredient record can carry multiple roles, all on the existing tables:

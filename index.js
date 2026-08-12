@@ -2693,9 +2693,16 @@ app.post("/api/back/login", wrap(async (req, res) => {
      cockpit; cashiers and waiters get a scoped session so they can run the POS
      AND receive deliveries / count / adjust stock on shift — the front-line jobs
      a cashier actually does — while the server still enforces every manager-only
-     write per endpoint. Kitchen/rider stay on their own apps. Owner uses the
-     email + password route below. */
-  const TERMINAL_ROLES = { admin: 1, manager: 1, cashier: 1, waiter: 1 };
+     write per endpoint.
+
+     Kitchen is here because the Kitchen Display IS a terminal screen: the KDS
+     lives in /v2 and nowhere else, so refusing kitchen a terminal session told
+     the one role that exists to work the pass to "sign in on the till app",
+     where there is no pass to work. The session it gets is the narrowest of all
+     — buildV2Real ships a kitchen rank the tickets and the menu and nothing
+     else, and the terminal draws one nav item. Riders stay out: there is no
+     rider screen to reach. Owner uses the email + password route below. */
+  const TERMINAL_ROLES = { admin: 1, manager: 1, cashier: 1, waiter: 1, kitchen: 1 };
   if (me.role !== "owner" && !TERMINAL_ROLES[me.role]) { rlFail(keys); return res.status(403).json({ error: "This role signs in on the till app, not the terminal." }); }
   /* An owner session is the keys to the business, and this form asks only for a
      public slug plus a four-digit PIN that every shift-worker device knows. The
@@ -5395,7 +5402,34 @@ if (fs.existsSync(protoFile)) {
       const orgId = await resolveAppSession(req);
       if (!orgId) return null;
       const token = sign(orgId, req.appRegister || "R1", req.appStoreId || DEFAULT_STORE_ID);
-      return buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name, id: req.appStaff && req.appStaff.id });
+      const real = await buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name, id: req.appStaff && req.appStaff.id });
+      return real && appRankOf(req.appRole) < APP_RANK.TILL ? kitchenScope(real) : real;
+    };
+    /* A kitchen sign-in gets the tickets and the food, and nothing else. The
+       terminal already hides every other screen from that role, but hiding is
+       not withholding: the page injects this object into its own HTML, so a
+       screen on the pass — shared, unattended, in the least private room in the
+       building — would otherwise carry the whole customer list, the staff
+       roster with per-person sales, takings, costs and stock on it. Trim at the
+       source, so what the KDS cannot show it also never receives.
+
+       Keep: what a ticket needs to render (menu + its taxonomy, the orders
+       themselves, the outlet's identity, brand, profile and the viewer). Empty
+       the rest rather than deleting it — kashikeyo-data.js only replaces a demo
+       seed when the real key is PRESENT (`if (REAL.customers) CUSTOMERS = …`),
+       so a deleted key leaves the seeded demo roster standing in its place. An
+       empty array is the honest answer; a missing one is a fake one. Takings go
+       too: a total is still a fact about the business. */
+    const kitchenScope = (real) => {
+      const keep = ["hasSession", "token", "slug", "me", "outlet", "outlets", "brand", "profile",
+        "categories", "groups", "groupPalette", "menu", "orders", "liveOrders"];
+      const out = {};
+      keep.forEach((k) => { if (real[k] !== undefined) out[k] = real[k]; });
+      ["customers", "staff", "clock", "reservations", "calls", "expenses", "settlements", "assets"]
+        .forEach((k) => { out[k] = []; });
+      out.inventory = { items: [], inv: [], cats: [], ledger: [], vendors: [], purch: [], audits: [] };
+      out.stats = { net: 0, covers: 0, netMonth: 0, gstMonth: 0, txMonth: 0, daily: [] };
+      return out;
     };
     const buildV2RealForOrg = async (orgId, token, viewer) => {
       viewer = viewer || {};

@@ -747,6 +747,90 @@ describe("device pairing (AUDIT-SEC-PIN)", () => {
   });
 });
 
+/* ── The kitchen holds a terminal session (KDS-ROLE) ─────────────────────────
+   The Kitchen Display is a /v2 screen and exists nowhere else, so refusing the
+   kitchen role a terminal session left the one role whose whole job is the pass
+   with no way to reach it. It signs in now — and gets the narrowest session in
+   the building: the terminal draws one nav item, and the page ships that rank
+   the tickets and the food and nothing else. Placed with the pairing suite,
+   BEFORE the security suite below leaves this IP's login throttle blocked. */
+describe("kitchen display session (KDS-ROLE)", () => {
+  const setCookieVal = (r, name) => {
+    const raw = r.headers.get("set-cookie") || "";
+    const m = raw.match(new RegExp(name + "=([^;]+)"));
+    return m ? name + "=" + m[1] : null;
+  };
+  const realOf = (html) => {
+    const m = String(html).match(/window\.KPOS_REAL=(\{[\s\S]*?\});window\.KPOS_BUILD/);
+    return m ? JSON.parse(m[1]) : null;
+  };
+  let o, kitchenCookie;
+
+  before(async () => {
+    o = await H.registerOrg({ tag: "kdsrole" });
+    for (const [name, role, pin] of [["Cook Ali", "kitchen", "5150"], ["Till Sana", "cashier", "5151"]]) {
+      const st = await H.req("POST", "/api/app2/staff", { cookie: o.cookie, body: { name, role, pin } });
+      assert.equal(st.status, 200, "test setup: " + role + " created");
+    }
+    const pair = await H.req("POST", "/api/back/pair", { body: { slug: o.slug, email: o.email, password: o.password } });
+    assert.equal(pair.status, 200, "test setup: device paired");
+    const device = setCookieVal(pair, "kashikeyo_device");
+    const login = await H.req("POST", "/api/back/login", { cookie: device, body: { slug: o.slug, pin: "5150" } });
+    assert.equal(login.status, 200, "a kitchen PIN opens a terminal session");
+    assert.equal(login.json.role, "kitchen");
+    kitchenCookie = setCookieVal(login, "kashikeyo_session");
+    assert.ok(kitchenCookie, "the kitchen sign-in carries a session cookie");
+  });
+
+  test("the page ships a kitchen rank the tickets and the food, and nothing else", async () => {
+    const page = await H.req("GET", "/v2", { cookie: kitchenCookie });
+    const real = realOf(page.text);
+    assert.ok(real, "the terminal hydrates for a kitchen session");
+    // What the pass needs.
+    assert.ok(Array.isArray(real.menu), "the menu is present — a ticket names dishes");
+    assert.equal(real.me.roleKey, "kitchen");
+    // What it does not. These are not merely hidden by the UI: a shared screen
+    // in the least private room in the building never receives them at all.
+    for (const k of ["customers", "staff", "expenses", "settlements", "assets"]) {
+      assert.deepEqual(real[k], [], k + " is empty for a kitchen session");
+    }
+    assert.equal(real.stats.net, 0, "takings are not a fact a pass screen is told");
+    assert.deepEqual(real.inventory.items, [], "stock is not shipped to the pass");
+    for (const k of ["fiscal", "portal", "loyalty", "promos", "email"]) {
+      assert.equal(real[k], undefined, k + " is withheld from a kitchen session");
+    }
+    // An EMPTY array, never a missing key: kashikeyo-data.js only replaces its
+    // demo seed when the real key is present, so a deleted key would leave the
+    // seeded demo roster standing on screen in place of the real one.
+    assert.ok(Object.prototype.hasOwnProperty.call(real, "customers"), "the key is present and empty, not absent");
+  });
+
+  test("a till session is untouched by the kitchen trim", async () => {
+    const pair = await H.req("POST", "/api/back/pair", { body: { slug: o.slug, email: o.email, password: o.password } });
+    const device = setCookieVal(pair, "kashikeyo_device");
+    const login = await H.req("POST", "/api/back/login", { cookie: device, body: { slug: o.slug, pin: "5151" } });
+    assert.equal(login.status, 200);
+    const page = await H.req("GET", "/v2", { cookie: setCookieVal(login, "kashikeyo_session") });
+    const real = realOf(page.text);
+    assert.ok(real.fiscal, "a cashier still gets the fiscal block (it prints receipts)");
+    assert.ok(real.stats, "a cashier still gets the figures the till shows");
+  });
+
+  test("the kitchen can bump a ticket but cannot settle it or touch the roster", async () => {
+    const kot = await H.req("POST", "/api/app2/kot", { cookie: o.cookie, body: {
+      items: [{ pid: "p1", name: "Margherita", qty: 2, price: 11000, station: "hot" }],
+      table: "4", otype: "dine_in", station: "hot", billNo: "B-1", userName: "Owner" } });
+    assert.equal(kot.status, 200, "test setup: a ticket is fired from the till");
+    const id = kot.json.id;
+    const bump = await H.req("POST", "/api/app2/order/" + id + "/status", { cookie: kitchenCookie, body: { status: "ready" } });
+    assert.equal(bump.status, 200, "bumping a ticket is the job");
+    const settle = await H.req("POST", "/api/app2/order/" + id + "/settle", { cookie: kitchenCookie, body: { tender: "cash" } });
+    assert.equal(settle.status, 403, "taking the money is not");
+    const staff = await H.req("POST", "/api/app2/staff", { cookie: kitchenCookie, body: { name: "Sneak", role: "manager", pin: "9999" } });
+    assert.equal(staff.status, 403, "nor is minting a manager");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {

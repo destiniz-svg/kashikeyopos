@@ -178,6 +178,18 @@
       perms: perms({ kds: VAE, pos: V, production: VAE, recipes: VAE, requests: VAE, dispatches: VAE, consumption: VAE, inventory: V, ledger: V, counts: VAE, batches: VAE, menu: V, reports: V, sync: V, staff: V, assets: VAE })
     },
     {
+      /* The pass, not the office. A real `kitchen` sign-in resolves here (see
+         initialRoleKey in index.html) — Kitchen Manager is the person who runs
+         a central kitchen's production, recipes and indents, which is not what
+         a screen bolted to the wall above the range should offer. Exactly one
+         module, so the nav is one item and there is no second screen to wander
+         into mid-service. The server ships this rank nothing else anyway
+         (kitchenScope in index.js), so the two agree. */
+      key: "KitchenDisplay", label: "Kitchen Display", color: "#e65100", scope: "outlet",
+      blurb: "The pass screen. Live tickets and bumping them — nothing else.",
+      perms: perms({ kds: VAE })
+    },
+    {
       key: "StoreKeeper", label: "Store Keeper", color: "#67a2d9", scope: "outlet",
       blurb: "Main store. Receiving, dispatch, counts, vendors.",
       perms: perms({ purchases: VAE, dispatches: VAE, requests: VAE, inventory: V, ledger: V, counts: VAE, batches: VAE, vendors: VAE, reports: V, sync: V, assets: VAE })

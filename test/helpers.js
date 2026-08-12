@@ -102,9 +102,13 @@ async function req(method, path, { body, token, cookie, headers: extra } = {}) {
   const r = await fetch(BASE + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
   });
+  // Read the body ONCE as text, then try to parse it — a response can only be
+  // consumed once, and some assertions are about the HTML itself (what the /v2
+  // page injects for a given session), not about a JSON envelope.
+  const text = await r.text().catch(() => "");
   let json = null;
-  try { json = await r.json(); } catch { /* non-JSON (e.g. redirect html) */ }
-  return { status: r.status, json, headers: r.headers };
+  try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON (e.g. a page) */ }
+  return { status: r.status, json, text, headers: r.headers };
 }
 
 const uniqEmail = (tag = "t") => `${tag}-${Date.now()}-${crypto.randomBytes(3).toString("hex")}@test.mv`;
