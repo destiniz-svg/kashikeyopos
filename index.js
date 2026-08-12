@@ -786,12 +786,51 @@ const saleLineTotal = (l) => (l && Number.isFinite(Number(l.amount))
    before any discount), combining per-line discPct and the bill-level discount
    — used by the B3 large-discount backstop below. Reads only the sale's own
    declared components, so it's independent of server settings. */
-const effectiveDiscountPct = (sale) => {
+/* How much of the catalogue value was given away, as a percentage — the figure
+   the discount ceiling gates on and the one a manager sees in the review queue.
+   Both sides of the ratio must be measured the same way.
+
+   They were not. `gross` sums the line's INCLUSIVE unit price while
+   saleLineTotal() returns the NET amount, so on a tax-inclusive till the gap
+   between them contained the GST as well as the discount. Every sale read
+   rate/(1+rate) more discounted than it was: ~7.4% on GGST, ~14.5% on TGST.
+   A sale with NO discount at all reported one, and a genuine 46% discount
+   tripped a 50% ceiling — flagging honest sales for manager review and
+   quietly tightening every store's configured limit by its own tax rate.
+
+   A line written by the current till always carries `discPct` (v2-bridge sets
+   it, even at 0), so its inclusive value is reconstructable exactly. Rows
+   predating that carry no discPct, and for them the original net comparison is
+   still the right reading — an old sale was priced GST-exclusive, so its
+   `amount` and its inclusive price are the same number. Choosing on the
+   FIELD's presence, not on a non-zero value, is what keeps an undiscounted
+   modern sale out of the legacy branch. */
+const effectiveDiscountPct = (sale, gstBp) => {
   const lines = Array.isArray(sale && sale.lines) ? sale.lines : [];
-  const gross = lines.reduce((a, l) => a + (Number(l && l.price) || 0) * (Number(l && l.qty) || 0), 0);
+  const num = (v) => Number(v) || 0;
+  const gross = lines.reduce((a, l) => a + num(l && l.price) * num(l && l.qty), 0);
   if (gross <= 0) return 0;
-  const lineDisc = Math.max(0, gross - lines.reduce((a, l) => a + saleLineTotal(l), 0));
-  const billDisc = Math.max(0, Number(sale.billDisc) || 0);
+
+  const modern = lines.some((l) => l && l.discPct !== undefined);
+  if (!modern) {
+    const legacyDisc = Math.max(0, gross - lines.reduce((a, l) => a + saleLineTotal(l), 0));
+    return Math.round(((legacyDisc + Math.max(0, num(sale.billDisc))) / gross) * 100);
+  }
+
+  /* Inclusive goods value after per-line discounts — like for like with gross. */
+  const afterLine = lines.reduce((a, l) => {
+    const d = Math.max(0, Math.min(100, num(l && l.discPct)));
+    return a + Math.round(num(l && l.price) * num(l && l.qty) * (1 - d / 100));
+  }, 0);
+  const lineDisc = Math.max(0, gross - afterLine);
+
+  /* The bill discount is stored NET of GST; express it inclusively from the
+     percentage when the sale records one, and otherwise gross it back up. */
+  const billPct = Math.max(0, Math.min(100, num(sale.billDiscPct)));
+  const billDisc = billPct > 0
+    ? Math.round(afterLine * billPct / 100)
+    : Math.round(Math.max(0, num(sale.billDisc)) * (1 + num(gstBp) / 1e4));
+
   return Math.round(((lineDisc + billDisc) / gross) * 100);
 };
 /* Money fields must land in the database as finite integers.
@@ -881,7 +920,7 @@ function auditSaleMoney(sale, ctx) {
     const q = Number(l && l.qty);
     if (!Number.isFinite(q) || q < 0) reasons.push(`line ${i} qty ${JSON.stringify(l && l.qty)} is not a valid quantity`);
   });
-  const model = taxModelDivergence(sale, ctx);
+  const model = catalogueDivergence(sale, ctx);
   if (model) reasons.push(model);
   if (!reasons.length) return null;
   return { flagged: true, at: Date.now(), claimedTotal: total, computedTotal: compTotal, reasons };
@@ -889,29 +928,33 @@ function auditSaleMoney(sale, ctx) {
 
 /* THE ORACLE — the check that was missing when the tax bug shipped.
  *
- * Every other check above reconciles a sale against its OWN declared figures.
- * That is precisely why the cross-surface divergence survived for months: the
- * terminal added GST on top of a tax-inclusive catalogue price while the guest
- * portal extracted it, and each side satisfied
+ * Every other check reconciles a sale against its OWN declared figures. That is
+ * precisely why the cross-surface divergence survived for months: the terminal
+ * added GST on top of a tax-inclusive catalogue price while the guest portal
+ * extracted it, and each side satisfied
  * `subtotal − discount + service + GST = total` perfectly. Self-consistency
  * cannot catch a wrong model; only an independent recomputation can.
  *
- * So: rebuild the basket from the CATALOGUE — the one input both surfaces
- * share — price it through the canonical billTotals(), and compare. The
- * specific signature looked for is the historical bug itself: a total that
- * matches the grossed-up model (catalogue × (1 + rate)) while missing the
- * store's actual tax-inclusive model by more than rounding.
+ * So the bill is rebuilt from inputs the sale cannot influence — the catalogue
+ * price, the catalogue's own add-on prices matched by name, and the store's tax
+ * and service rates — priced through the canonical billTotals(), and compared to
+ * what was claimed.
  *
- * Deliberately NARROW. It bails out on anything it cannot price independently
- * — open-price items, unknown products, non-positive quantities — and only
- * fires on a total that matches the wrong model closely AND the right model
- * poorly. A flag lands in a manager's review queue, so a noisy check is worse
- * than none: matching one model to 1% while missing the other is not a
- * coincidence a legitimate sale produces.
+ * WHY IT CAN NOW BE GENERAL. An earlier revision only detected one signature
+ * (GST grossed up onto an inclusive price) because a modified line legitimately
+ * sits above catalogue and looked identical to an overcharge. Sale lines record
+ * `addons: [{name, price}]` and `discPct`, and products carry the same add-on
+ * list — so the expected unit price is reconstructable exactly, and ANY material
+ * divergence is now reportable rather than just the one known shape.
+ *
+ * It still abstains rather than guesses: an open-price item, an unknown product
+ * or an add-on name absent from the catalogue means the bill cannot be priced
+ * independently, and no claim is made about it. A flag lands in a manager's
+ * review queue, so silence beats a guess.
  *
  * Returns a reason string, or null.
  */
-function taxModelDivergence(sale, ctx) {
+function catalogueDivergence(sale, ctx) {
   if (!ctx || !ctx.prices || !(ctx.gstBp > 0)) return null;
   const lines = Array.isArray(sale.lines) ? sale.lines : [];
   if (!lines.length) return null;
@@ -919,38 +962,51 @@ function taxModelDivergence(sale, ctx) {
   const canon = [];
   for (const l of lines) {
     const p = ctx.prices.get(String((l && l.pid) || ""));
-    if (!p || p.open || !(p.price > 0)) return null;   // cannot price it independently
+    if (!p || p.open || !(p.price > 0)) return null;      // cannot price it independently
     const q = Number(l && l.qty);
     if (!Number.isFinite(q) || q <= 0) return null;
-    canon.push({ unit: p.price, qty: q, disc: 0 });
+
+    /* Add-ons priced from the catalogue by name, never from the line. An
+       add-on the catalogue does not list is not something to reason about. */
+    let addOn = 0;
+    for (const a of (Array.isArray(l.addons) ? l.addons : [])) {
+      const name = String((a && a.name) || "");
+      if (!p.addons || !p.addons.has(name)) return null;
+      addOn += p.addons.get(name);
+    }
+    const disc = Number(l.discPct);
+    canon.push({ unit: p.price + addOn, qty: q, disc: Number.isFinite(disc) ? disc : 0 });
   }
 
-  /* Service charge: infer from the sale whether it applied, but take the RATE
-     from the store, never from the sale — the point is to use inputs the sale
-     cannot influence. */
+  /* Service charge: whether it applied is read off the sale, but the RATE comes
+     from the store — a sale must not be able to explain away its own gap. */
   const svcClaimed = Number(sale.svcCharge) || 0;
-  const shape = {
+  const expected = KPOS_MONEY.billTotals({
     lines: canon,
     billDiscPct: Number(sale.billDiscPct) || 0,
     gstBp: Number(ctx.gstBp),
     svcBp: svcClaimed > 0 ? Number(ctx.svcBp) || 0 : 0,
     serviceApplies: svcClaimed > 0,
     feeLaari: Number(sale.fee) || 0,
-  };
-  const expected = KPOS_MONEY.billTotals(shape).total;
+  }).total;
   if (!(expected > 0)) return null;
 
-  /* The bug's shape: the same basket with GST added on top of a price that
-     already contained it — exactly (1 + rate) times the correct total. */
-  const grossed = Math.round(expected * (1 + Number(ctx.gstBp) / 1e4));
+  /* A pure rounding budget — billTotals rounds each line once — not a
+     percentage, which at a large bill would wave through a real skim. */
+  const tol = Math.max(5, canon.length * 2 + 3);
   const claimed = Number(sale.total) || 0;
-  const tol = Math.max(5, Math.round(expected * 0.01));
+  if (Math.abs(claimed - expected) <= tol) return null;
 
-  if (Math.abs(claimed - grossed) <= tol && Math.abs(claimed - expected) > tol) {
+  /* Name the known shape when it fits: a total exactly (1 + rate) times the
+     right one is the historical bug, and saying so is far more use to whoever
+     reads the review queue than "the numbers differ". */
+  const grossed = Math.round(expected * (1 + Number(ctx.gstBp) / 1e4));
+  if (Math.abs(claimed - grossed) <= Math.max(5, Math.round(expected * 0.01))) {
     return `tax model: total ${claimed} matches GST-added-on-top (${grossed}); ` +
            `this store's tax-inclusive catalogue gives ${expected}`;
   }
-  return null;
+  return `total ${claimed} != catalogue-computed ${expected} ` +
+         `(${claimed > expected ? "over" : "under"} by ${Math.abs(claimed - expected)} laari)`;
 }
 
 const UIFIX_JS = '(function(){\n/* Two things the operator could not see.\n *\n * 1. Broken product images. The starter menu ships remote photo URLs, and the\n *    tile decides whether it has an image at render time with no error path —\n *    so on a metered or dropped connection the whole grid became the browser\'s\n *    broken-image glyph, on the register and on the diner\'s phone alike. The\n *    app already has a lettered fallback tile; it just never got used. On an\n *    image error we draw that fallback in place.\n *\n * 2. No loading state anywhere: not on boot, not while a modal action ran, not\n *    on Charge or Confirm or Close day. The only recourse was to tap again. A\n *    thin progress bar shows whenever a write is in flight. */\nvar PAL=[\'#C1492A\',\'#B07714\',\'#1FA65C\',\'#0E6EC6\',\'#C43A78\',\'#7A5AF8\',\'#0F766E\'];\nfunction initial(el){\n  var alt=el.getAttribute(\'alt\')||\'\';\n  var t=(alt||el.getAttribute(\'data-name\')||\'\').trim();\n  if(!t){var card=el.closest(\'div\');var txt=card?(card.textContent||\'\').trim():\'\';t=txt;}\n  return (t.charAt(0)||\'?\').toUpperCase();\n}\nfunction swap(el){\n  if(el.getAttribute(\'data-fellback\'))return;\n  /* An unresolved template binding ("{{ d.src }}") is not a missing photo — it\n     is a slot with no data yet. Hide it rather than invent a letter tile. */\n  var raw=el.getAttribute(\'src\')||\'\';\n  if(raw.indexOf(\'{{\')>=0||raw.indexOf(\'%7B%7B\')>=0){el.setAttribute(\'data-fellback\',\'1\');el.style.display=\'none\';return;}\n  el.setAttribute(\'data-fellback\',\'1\');\n  var ch=initial(el);\n  var code=0;for(var i=0;i<ch.length;i++)code+=ch.charCodeAt(i);\n  var bg=PAL[code%PAL.length];\n  var box=document.createElement(\'div\');\n  box.setAttribute(\'aria-hidden\',\'true\');\n  box.style.cssText=\'width:100%;height:100%;display:grid;place-items:center;background:\'+bg+\'22\';\n  var glyph=document.createElement(\'div\');\n  glyph.style.cssText=\'width:52px;height:52px;border-radius:15px;background:\'+bg+\';color:#fff;display:grid;place-items:center;font-weight:800;font-size:23px\';\n  glyph.textContent=ch;\n  box.appendChild(glyph);\n  el.style.display=\'none\';\n  if(el.parentNode)el.parentNode.insertBefore(box,el);\n}\ndocument.addEventListener(\'error\',function(ev){\n  var el=ev.target;\n  if(el&&el.tagName===\'IMG\')swap(el);\n},true);\n\nvar bar=null,inflight=0,hideT=0;\nfunction show(){\n  if(!bar){\n    bar=document.createElement(\'div\');\n    bar.setAttribute(\'aria-hidden\',\'true\');\n    bar.style.cssText=\'position:fixed;top:0;left:0;height:3px;width:0;z-index:99998;background:currentColor;color:#C1492A;transition:width .25s ease,opacity .3s;pointer-events:none\';\n    document.body.appendChild(bar);\n  }\n  clearTimeout(hideT);\n  bar.style.opacity=\'1\';\n  bar.style.width=\'72%\';\n}\nfunction done(){\n  if(!bar)return;\n  bar.style.width=\'100%\';\n  hideT=setTimeout(function(){if(bar){bar.style.opacity=\'0\';bar.style.width=\'0\';}},320);\n}\nvar of=window.fetch;\nif(typeof of===\'function\'){\n  window.fetch=function(input,init){\n    var url=\'\';try{url=(typeof input===\'string\')?input:((input&&input.url)||\'\');}catch(e){}\n    var method=\'GET\';try{method=String((init&&init.method)||(input&&input.method)||\'GET\').toUpperCase();}catch(e){}\n    var track=(method!==\'GET\'&&url.indexOf(\'/api/\')===0);\n    if(track){inflight++;show();}\n    var p=of.apply(this,arguments);\n    if(track){\n      var fin=function(){inflight=Math.max(0,inflight-1);if(!inflight)done();};\n      try{p.then(fin,fin);}catch(e){fin();}\n    }\n    return p;\n  };\n}\n})();\n';
@@ -2995,11 +3051,21 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
     if (ops.some((o) => (o.puts || []).some((p) => p.kind === "sales"))) {
       const [setRes, prodRes] = await Promise.all([
         client.query("SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [req.org.o]),
-        client.query("SELECT data->>'id' AS id, data->>'price' AS price, data->>'openPrice' AS op FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.org.o]),
+        client.query("SELECT data->>'id' AS id, data->>'price' AS price, data->>'openPrice' AS op, data->'addons' AS addons FROM entities WHERE org_id=$1 AND kind='products' AND deleted=false", [req.org.o]),
       ]);
       const st = setRes.rows[0] ? setRes.rows[0].data : {};
       const prices = new Map();
-      for (const r of prodRes.rows) prices.set(String(r.id), { price: Number(r.price) || 0, open: r.op === "true" });
+      for (const r of prodRes.rows) {
+        /* Add-on prices come from the CATALOGUE, keyed by name, so the oracle
+           below can price a modified line without trusting the figure the sale
+           declared for it. A till that inflates an add-on is otherwise
+           indistinguishable from one selling a legitimately dearer variant. */
+        const addons = new Map();
+        for (const a of (Array.isArray(r.addons) ? r.addons : [])) {
+          if (a && a.name != null) addons.set(String(a.name), Number(a.price) || 0);
+        }
+        prices.set(String(r.id), { price: Number(r.price) || 0, open: r.op === "true", addons });
+      }
       const discLim = Number(st.discountLimitPct);
       /* gstBpOf, not `Number(x) || 0` — the audit has to reason with the rate
          the till actually charges, including the documented 800 default when a
@@ -3061,7 +3127,7 @@ app.post("/api/ops", auth, wrap(async (req, res) => {
            is stamped approved. Free-of-charge (foc) and refunds are exempt —
            foc is legitimately 0 and refunds have their own approval path. */
         if (p.kind === "sales" && data.type !== "refund" && !data.foc && Array.isArray(data.lines) && data.lines.length && moneyCtx) {
-          const discPct = effectiveDiscountPct(data);
+          const discPct = effectiveDiscountPct(data, moneyCtx && moneyCtx.gstBp);
           /* Flag only a discount PAST the ceiling, not one exactly AT it: a store
              that sets a 50% limit means 50% is allowed. The reason text and the
              "past the ceiling" intent both read as strictly-greater; `>=` spuriously

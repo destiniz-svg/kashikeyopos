@@ -237,4 +237,99 @@ describe("fault injection — the money path", () => {
     assert.equal(sales.size, 12, "12 distinct sales survive the storm");
     assert.equal(moneyIn(sales), expected, "and the ledger totals exactly what was rung");
   });
+
+  /* ── the two gaps that kept this dimension at 9 ──────────────────────── */
+
+  test("a SIGKILLed server loses nothing, and the replay after restart books once", async () => {
+    const org = await store("fi-kill");
+    /* The client-side abort earlier severs the CONNECTION. This severs the
+       SERVER: SIGKILL, no graceful shutdown, no unwind, no flush — the crash a
+       tablet's backend actually suffers. Anything Postgres had committed must
+       survive it, and the till's replay afterwards must not double-book. */
+    const settled = sale("kill-committed", 8800);
+    assert.equal((await H.ops(org.token, [opFor("op-kill-committed", settled)])).status, 200,
+      "this one is acknowledged before the crash — it is the sale that must survive");
+
+    /* And one whose fate is genuinely undecided: fired, then the process is
+       killed while it is in flight. Committed or not, the replay decides. */
+    const inflight = sale("kill-inflight", 9100);
+    const pending = fetch(H.BASE + "/api/ops", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + org.token },
+      body: JSON.stringify({ ops: [opFor("op-kill-inflight", inflight)] }),
+    }).catch(() => null);
+    await new Promise((r) => setTimeout(r, 12));
+    await H.killServer();
+    await pending;
+
+    await H.startServer();                       // the tablet comes back up
+
+    const after = await salesOf(org, 1);
+    assert.ok(after.has("kill-committed"), "an acknowledged sale must survive SIGKILL — it was money already taken");
+    assert.equal(after.get("kill-committed").total, settled.total, "and survive it intact, to the laari");
+
+    /* The outbox replays whatever it never saw acknowledged. */
+    assert.equal((await H.ops(org.token, [opFor("op-kill-committed", settled)])).status, 200);
+    assert.equal((await H.ops(org.token, [opFor("op-kill-inflight", inflight)])).status, 200);
+
+    const finalSales = await salesOf(org, 2);
+    assert.equal(finalSales.size, 2, "replaying both after a crash must leave exactly two sales");
+    assert.equal(moneyIn(finalSales), settled.total + inflight.total, "no sale lost to the crash, none doubled by the replay");
+  });
+
+  test("the shipped outbox survives a full storage quota and a multi-day backlog", async () => {
+    /* Runs the OUTBOX_JS the server actually injects into /app — sliced out of
+       index.js rather than retyped, the same technique money.test.js uses — so
+       this tests the shipped text, not a description of it.
+
+       Two faults at once: localStorage refuses every write (quota exceeded, the
+       classic iOS Safari failure), and the queue is three days old because the
+       venue's line was down over a long weekend. Neither may lose a sale. */
+    const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "index.js"), "utf8");
+    const m = src.match(/const OUTBOX_JS = "((?:[^"\\]|\\.)*)";/);
+    assert.ok(m, "OUTBOX_JS must still be sliceable out of index.js");
+    const outboxJs = JSON.parse('"' + m[1] + '"');
+
+    const posted = [];
+    let quotaOn = true;
+    const win = {
+      __ksToken: "t",
+      localStorage: {
+        getItem: () => null,
+        setItem: () => { if (quotaOn) { const e = new Error("QuotaExceededError"); e.name = "QuotaExceededError"; throw e; } },
+      },
+      addEventListener: () => {},
+      fetch: async (url, init) => {
+        posted.push(JSON.parse(init.body));
+        return { ok: true, status: 200, json: async () => ({ ok: true }) };
+      },
+      setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 5)),
+      setInterval: () => 0,
+      clearTimeout,
+    };
+    win.window = win;
+    require("node:vm").runInNewContext(outboxJs, win);
+    assert.ok(typeof win.__ksPushSale === "function", "the outbox must expose its push entry point");
+
+    const threeDaysAgo = Date.now() - 3 * 86400e3;
+    const ids = [];
+    for (let i = 0; i < 5; i++) {
+      const s = sale("q" + i, 3300 + i * 100, 1, threeDaysAgo + i * 60000);
+      ids.push(s.id);
+      /* Storage is refusing writes the whole time. A queue that only lives in
+         localStorage would be silently empty here. */
+      win.__ksPushSale(s);
+    }
+    await H.until(async () => posted.length >= 5, { timeout: 5000, step: 25 });
+
+    const sentIds = posted.map((b) => b.ops[0].puts[0].data.id);
+    assert.deepEqual(sentIds.sort(), ids.slice().sort(),
+      "every sale rung while storage was full must still reach the server");
+    for (const b of posted) {
+      const d = b.ops[0].puts[0].data;
+      assert.ok(d.at <= Date.now() - 2 * 86400e3, "a three-day-old sale keeps the time it was rung, not the time it flushed");
+      assert.ok(d.total > 0 && d.payments[0].amount === d.total, "and arrives with its money intact");
+    }
+    quotaOn = false;
+  });
 });

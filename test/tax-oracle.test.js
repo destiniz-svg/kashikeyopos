@@ -85,7 +85,10 @@ async function seedStore(tag) {
     { pid: "tp2", price: 4500 },
     { pid: "tp3", price: 2500 },
   ];
-  const puts = catalogue.map((p) => ({ kind: "products", id: p.pid, data: { id: p.pid, name: "Dish " + p.pid, price: p.price, cat: 1 } }));
+  /* One dish carries a real add-on catalogue, so a modified line can be priced
+     independently instead of forcing the oracle to abstain. */
+  const addons = [{ name: "Extra cheese", price: 800 }, { name: "No onion", price: 0 }];
+  const puts = catalogue.map((p) => ({ kind: "products", id: p.pid, data: { id: p.pid, name: "Dish " + p.pid, price: p.price, cat: 1, addons: p.pid === "tp2" ? addons : [] } }));
   assert.equal((await H.ops(org.token, [{ opId: tag + "-seed", puts }])).status, 200);
   return { org, catalogue };
 }
@@ -96,6 +99,9 @@ const auditOf = async (org, sale) => {
   return (e.data || {}).serverAudit || null;
 };
 const flaggedTaxModel = (audit) => !!(audit && (audit.reasons || []).some((r) => /tax model/.test(r)));
+/* Any claim the oracle makes — the named tax-model shape or a general divergence. */
+const flaggedOracle = (audit) => !!(audit && (audit.reasons || []).some((r) => /tax model|catalogue-computed/.test(r)));
+const flagged = (audit) => !!(audit && audit.flagged);
 
 describe("tax-model oracle", () => {
   test("catches the original bug: GST added on top of a tax-inclusive price", async () => {
@@ -187,5 +193,118 @@ describe("tax-model oracle", () => {
     const e = await H.pullEntity(org.token, "sales", (x) => x.id === "keep");
     assert.equal(e.data.total, 11880, "and stored exactly as the till sent it");
     assert.ok(e.data.serverAudit.flagged);
+  });
+
+  /* ── the oracle is general now, not just a signature detector ─────────── */
+
+  test("a modified line priced from the catalogue's add-ons is NOT flagged", async () => {
+    const { org } = await seedStore("orc-addon-ok");
+    /* 4500 dish + 800 add-on = 5300 per unit, priced honestly. This is the case
+       that used to force the oracle to abstain entirely. */
+    const b = M.billTotals({ lines: [{ unit: 5300, qty: 2, disc: 0 }], gstBp: GST_BP, svcBp: 0, serviceApplies: false });
+    const at = Date.now();
+    const sale = { id: "ok1", no: "ok1", at, t: at, tender: "cash",
+      subtotal: b.items, gst: b.gst, svcCharge: 0, billDisc: 0, billDiscPct: 0, total: b.total,
+      lines: [{ pid: "tp2", qty: 2, price: 5300, amount: b.lines[0], discPct: 0, addons: [{ name: "Extra cheese", price: 800 }] }],
+      payments: [{ method: "cash", amount: b.total }] };
+    const audit = await auditOf(org, sale);
+    assert.equal(flagged(audit), false,
+      "a legitimately modified line must not read as an overcharge: " + JSON.stringify(audit && audit.reasons));
+  });
+
+  test("an INFLATED add-on price is flagged (the line the old oracle had to wave through)", async () => {
+    const { org } = await seedStore("orc-addon-bad");
+    /* Same add-on name, but charged 2500 instead of the catalogue's 800. The
+       oracle prices add-ons from the catalogue by name, so the sale cannot
+       vouch for its own figure. */
+    const b = M.billTotals({ lines: [{ unit: 7000, qty: 2, disc: 0 }], gstBp: GST_BP, svcBp: 0, serviceApplies: false });
+    const at = Date.now();
+    const sale = { id: "bad1", no: "bad1", at, t: at, tender: "cash",
+      subtotal: b.items, gst: b.gst, svcCharge: 0, billDisc: 0, billDiscPct: 0, total: b.total,
+      lines: [{ pid: "tp2", qty: 2, price: 7000, amount: b.lines[0], discPct: 0, addons: [{ name: "Extra cheese", price: 2500 }] }],
+      payments: [{ method: "cash", amount: b.total }] };
+    const audit = await auditOf(org, sale);
+    assert.ok(flagged(audit), "an inflated add-on must not hide behind the modifier");
+    assert.match(audit.reasons.join(" "), /catalogue-computed|tax model/);
+  });
+
+  test("an add-on the catalogue does not list makes the oracle abstain, not guess", async () => {
+    const { org } = await seedStore("orc-addon-unknown");
+    const b = M.billTotals({ lines: [{ unit: 9000, qty: 1, disc: 0 }], gstBp: GST_BP, svcBp: 0, serviceApplies: false });
+    const at = Date.now();
+    const sale = { id: "unk1", no: "unk1", at, t: at, tender: "cash",
+      subtotal: b.items, gst: b.gst, svcCharge: 0, billDisc: 0, billDiscPct: 0, total: b.total,
+      lines: [{ pid: "tp2", qty: 1, price: 9000, amount: b.lines[0], discPct: 0, addons: [{ name: "Truffle", price: 4500 }] }],
+      payments: [{ method: "cash", amount: b.total }] };
+    const audit = await auditOf(org, sale);
+    assert.equal(flaggedOracle(audit), false, "an unpriceable line must produce no claim at all");
+  });
+
+  test("a general overcharge is caught even when it is not the known tax-model shape", async () => {
+    const { org } = await seedStore("orc-general");
+    /* Not (1 + rate) times anything — just a total quietly inflated by 22%.
+       The earlier signature-only oracle could not see this at all. */
+    const honest = honestSale("g1", [{ pid: "tp3", price: 2500, qty: 4 }]);
+    const skimmed = { ...honest, total: Math.round(honest.total * 1.22) };
+    skimmed.subtotal = skimmed.total - skimmed.gst - skimmed.svcCharge + skimmed.billDisc;
+    const audit = await auditOf(org, skimmed);
+    assert.ok(flaggedOracle(audit), "any material divergence from the catalogue must be reported");
+    assert.match(audit.reasons.join(" "), /catalogue-computed/);
+  });
+
+  test("a per-line discount recorded on the line is NOT flagged", async () => {
+    const { org } = await seedStore("orc-linedisc");
+    const b = M.billTotals({ lines: [{ unit: 4500, qty: 2, disc: 25 }], gstBp: GST_BP, svcBp: 0, serviceApplies: false });
+    const at = Date.now();
+    const sale = { id: "ld1", no: "ld1", at, t: at, tender: "cash",
+      subtotal: b.items, gst: b.gst, svcCharge: 0, billDisc: 0, billDiscPct: 0, total: b.total,
+      lines: [{ pid: "tp2", qty: 2, price: 4500, amount: b.lines[0], discPct: 25 }],
+      payments: [{ method: "cash", amount: b.total }] };
+    const audit = await auditOf(org, sale);
+    assert.equal(flaggedOracle(audit), false,
+      "a discount the line declares is legitimate pricing: " + JSON.stringify(audit && audit.reasons));
+  });
+
+  /* ── the discount ceiling, exposed by getting the fixtures right ──────── */
+
+  test("a tax-inclusive discount is measured against the inclusive price, not the net one", async () => {
+    const { org } = await seedStore("orc-disc");
+    /* 50% off a 4500 catalogue price. Before the fix this reported 54% — gross
+       measured inclusive, the remainder measured net, so the gap carried the
+       GST as well as the discount — and tripped the default 50% ceiling,
+       sending an ordinary half-price sale to the manager review queue. */
+    const b = M.billTotals({ lines: [{ unit: 4500, qty: 2, disc: 50 }], gstBp: GST_BP, svcBp: 0, serviceApplies: false });
+    const at = Date.now();
+    const sale = { id: "d50", no: "d50", at, t: at, tender: "cash",
+      subtotal: b.items, gst: b.gst, svcCharge: 0, billDisc: 0, billDiscPct: 0, total: b.total,
+      lines: [{ pid: "tp2", qty: 2, price: 4500, amount: b.lines[0], discPct: 50 }],
+      payments: [{ method: "cash", amount: b.total }] };
+    const audit = await auditOf(org, sale);
+    const reasons = (audit && audit.reasons) || [];
+    assert.equal(reasons.some((r) => /discount/.test(r)), false,
+      "a 50% discount must not read as over a 50% ceiling: " + JSON.stringify(reasons));
+  });
+
+  test("an undiscounted sale reports no discount at all", async () => {
+    const { org } = await seedStore("orc-nodisc");
+    /* The same defect made every clean sale look ~7.4% discounted (GGST) —
+       harmless only because it sat under the ceiling. */
+    const audit = await auditOf(org, honestSale("nd1", [{ pid: "tp1", price: 11000, qty: 1 }]));
+    const reasons = (audit && audit.reasons) || [];
+    assert.equal(reasons.some((r) => /discount/.test(r)), false,
+      "a full-price sale must not report a phantom discount: " + JSON.stringify(reasons));
+  });
+
+  test("the ceiling still bites a genuinely excessive discount", async () => {
+    const { org } = await seedStore("orc-overdisc");
+    const b = M.billTotals({ lines: [{ unit: 4500, qty: 2, disc: 80 }], gstBp: GST_BP, svcBp: 0, serviceApplies: false });
+    const at = Date.now();
+    const sale = { id: "d80", no: "d80", at, t: at, tender: "cash",
+      subtotal: b.items, gst: b.gst, svcCharge: 0, billDisc: 0, billDiscPct: 0, total: b.total,
+      lines: [{ pid: "tp2", qty: 2, price: 4500, amount: b.lines[0], discPct: 80 }],
+      payments: [{ method: "cash", amount: b.total }] };
+    const audit = await auditOf(org, sale);
+    assert.ok(audit && (audit.reasons || []).some((r) => /discount 80% over 50%/.test(r)),
+      "fixing the ratio must not disarm the control: " + JSON.stringify(audit && audit.reasons));
   });
 });

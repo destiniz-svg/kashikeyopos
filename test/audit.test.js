@@ -113,8 +113,13 @@ describe("money integrity (FIN-01)", () => {
     await pushSale("m-honest", { no: "INV-H", lines: [{ pid: "m-burger", qty: 1, price: 9500, amount: 8796, discPct: 0, taxable: true }], subtotal: 8796, billDisc: 0, billDiscPct: 0, gst: 704, svcCharge: 0, fee: 0, total: 9500 });
     assert.ok(!(await flaggedIds()).includes("m-honest"));
   });
+  /* Also GST-INCLUSIVE. 50% off a 9500 catalogue price is a 4750 bill containing
+     352 of GST. This fixture read total 5130 — 4750 with 8% added on top — and
+     survived the first version of the oracle only because that version ignored
+     per-line discounts and so compared against the wrong baseline. Reading
+     discPct is what exposed it. */
   test("a legitimately discounted line is NOT flagged", async () => {
-    await pushSale("m-disc", { no: "INV-D", lines: [{ pid: "m-burger", qty: 1, price: 9500, discPct: 50, taxable: true }], subtotal: 4750, billDisc: 0, billDiscPct: 0, gst: 380, svcCharge: 0, fee: 0, total: 5130 });
+    await pushSale("m-disc", { no: "INV-D", lines: [{ pid: "m-burger", qty: 1, price: 9500, amount: 4398, discPct: 50, taxable: true }], subtotal: 4398, billDisc: 0, billDiscPct: 0, gst: 352, svcCharge: 0, fee: 0, total: 4750 });
     assert.ok(!(await flaggedIds()).includes("m-disc"));
   });
   test("a free-of-charge sale (total 0) is NOT flagged", async () => {

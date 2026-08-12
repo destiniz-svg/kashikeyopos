@@ -77,6 +77,23 @@ function stopServer() {
   if (child) { child.kill("SIGTERM"); child = null; }
 }
 
+/* SIGKILL — no graceful shutdown, no in-flight request finished, no chance to
+   flush anything. Used by the fault-injection suite to model the tablet's
+   server dying mid-transaction, which SIGTERM does NOT model: SIGTERM lets
+   Node unwind, and a crash that unwinds cleanly proves nothing about a crash
+   that doesn't. Resolves once the process is actually gone, so a restart cannot
+   race the old listener for the port. */
+function killServer() {
+  return new Promise((resolve) => {
+    if (!child) return resolve();
+    const dying = child;
+    child = null;
+    dying.once("exit", () => resolve());
+    dying.kill("SIGKILL");
+    setTimeout(resolve, 3000);                 // never hang the suite on a stuck child
+  });
+}
+
 /* ── HTTP helpers ─────────────────────────────────────────────────────── */
 async function req(method, path, { body, token, cookie, headers: extra } = {}) {
   const headers = { "Content-Type": "application/json", ...(extra || {}) };
@@ -151,4 +168,4 @@ async function platformAdminCookie() {
   return ((r.headers.get("set-cookie") || "").match(/kdev_session=[^;]+/) || [""])[0];
 }
 
-module.exports = { BASE, startServer, stopServer, req, registerOrg, ops, pull, invGet, invPost, invPut, until, pullEntity, uniqEmail, platformAdminCookie };
+module.exports = { BASE, startServer, stopServer, killServer, req, registerOrg, ops, pull, invGet, invPost, invPut, until, pullEntity, uniqEmail, platformAdminCookie };
