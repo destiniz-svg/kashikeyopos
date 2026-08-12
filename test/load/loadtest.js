@@ -31,9 +31,15 @@
 const M = require("../../web3/proto/money.js");
 
 /* ── args ─────────────────────────────────────────────────────────────── */
+/* CLI flag, else environment, else default. The environment path exists because
+   a container runtime may exec the start command as argv WITHOUT a shell, so
+   anything with spaces or metacharacters is unreliable there — but
+   `node test/load/loadtest.js` plus LOADGEN_* variables always works. */
 const arg = (name, dflt) => {
   const i = process.argv.indexOf("--" + name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : dflt;
+  if (i >= 0 && process.argv[i + 1]) return process.argv[i + 1];
+  const env = process.env["LOADGEN_" + name.toUpperCase()];
+  return env || dflt;
 };
 /* --base accepts a comma-separated list of CANDIDATES, tried in order; the first
    that answers a ready /api/health wins. That lets one command prefer Railway's
