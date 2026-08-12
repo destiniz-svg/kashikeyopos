@@ -314,10 +314,15 @@ both Railway environments. Run the suite against a **fresh** Postgres before
 shipping — it is 152 tests and a cold database is the CI path.
 
 The menu carries three levels (group → category → subcategory). A CSV import is
-the authority for its own taxonomy, a manager can set a dish's section by hand,
-and both the till grid and the QR menu draw a **subcategory chip row** under the
-main category row — revealed once a category is picked, hidden where it would
-say nothing ("All"/"Popular", or a category whose dishes carry no subcategory).
+the authority for its own taxonomy, and a manager can set a dish's section by
+hand. Each surface draws a **chip row for the level below its own tab strip**,
+which is not the same level on both: the till strip is GROUPS — `catGroupOf()`
+guesses one from the category name, so every category has one and the strip is
+never categories — so its row is the group's categories, with subcategories as a
+third row once a category that uses them is picked. The guest strip is already
+categories, so its one row is subcategories. A row that would filter nothing
+(one section covering the whole tab, or none at all) is not drawn, and picking a
+level clears the levels below it.
 `settings.catGroups` is the *group* model (`[{name, subs: [<category names>]}]`);
 subcategories live in `menuSubs` — don't overload the one key with the other's
 meaning, which is what the importer used to do.
