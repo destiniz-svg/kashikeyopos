@@ -52,6 +52,23 @@ const CONFIRMED = process.env.CLEANUP_CONFIRM === "yes";
     process.exit(3);
   }
 
+  /* Connecting successfully is not the same as connecting to the right place.
+     A Railway `${{Postgres.DATABASE_URL}}` reference resolves to whichever
+     Postgres service you named, and a project can have more than one — so this
+     says which database it actually landed in rather than failing with a bare
+     "relation orgs does not exist". */
+  if (!(await client.query("SELECT to_regclass('public.orgs') AS t")).rows[0].t) {
+    console.error(`\nNo public.orgs in database '${who.db}' — this is not the app's database.`);
+    const schemas = (await client.query(
+      `SELECT table_schema, count(*)::int AS n FROM information_schema.tables
+        WHERE table_schema NOT IN ('pg_catalog','information_schema')
+        GROUP BY 1 ORDER BY 2 DESC`)).rows;
+    console.error("schemas here: " + (schemas.map((s) => `${s.table_schema} (${s.n} tables)`).join(", ") || "none"));
+    console.error("Point DATABASE_URL at the database the app writes to — inside Railway,");
+    console.error("a reference to the app service's own DATABASE_URL is the reliable way.");
+    process.exit(4);
+  }
+
   const orgs = (await client.query("SELECT id, email FROM orgs WHERE email LIKE $1 ORDER BY created_at", [PATTERN])).rows;
   console.log(`matched    ${orgs.length} org(s) against '${PATTERN}'`);
   if (!orgs.length) { console.log("nothing to do"); await client.end(); return; }
