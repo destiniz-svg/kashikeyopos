@@ -1013,7 +1013,7 @@ window.KashikeyoGuestQR = (function () {
     this.A = cfg.adapter;
     this.imageBase = cfg.imageBase == null ? 'img/' : cfg.imageBase;
     this.s = {
-      screen: 'menu', q: '', cat: 'all', vegOnly: false, noHeat: false,
+      screen: 'menu', q: '', cat: 'all', subcat: '', vegOnly: false, noHeat: false,
       dishId: null, dQty: 1, addons: {}, note: '', heat: '',
       cart: [], sent: [], promo: '', applied: false, promoErr: '',
       sheet: false, toast: null, lang: 'en', banner: 0, tick: 0,
@@ -1433,7 +1433,10 @@ window.KashikeyoGuestQR = (function () {
       case 'veg': s.vegOnly = !s.vegOnly; break;
       case 'noheat': s.noHeat = !s.noHeat; break;
       case 'heat': s.heat = (d.k === s.heat ? '' : d.k); break;
-      case 'cat': s.cat = d.id; break;
+      // Picking a category drops any subcategory filter — the old one belongs to
+      // the category you just left and would otherwise silently empty the grid.
+      case 'cat': s.cat = d.id; s.subcat = ''; break;
+      case 'subcat': s.subcat = (d.id === s.subcat ? '' : d.id); break;
       case 'banner': s.banner = Number(d.i); break;
       case 'lang':
         s.lang = s.lang === 'en' ? 'dv' : 'en';
@@ -1777,6 +1780,7 @@ window.KashikeyoGuestQR = (function () {
     var list = this.D.MENU.filter(function (m) {
       if (s.cat === 'popular') { if (!m.best) return false; }
       else if (s.cat !== 'all' && m.cat !== s.cat) return false;
+      if (s.subcat && String(m.subcat || '') !== s.subcat) return false;
       if (s.vegOnly && !m.veg) return false;
       if (s.noHeat && (Number(m.spice) || 0) > 0) return false;
       if (!q) return true;
@@ -1803,6 +1807,39 @@ window.KashikeyoGuestQR = (function () {
         '</button>';
       }).join('') + '</div>';
 
+    /* SUBCATEGORY row — the third taxonomy level, revealed under the category
+       row once a real category is picked. Hidden on "All dishes" / "★ Popular"
+       (those span categories, so there is no single set of sections to offer)
+       and hidden for a category that has none, which is every store that has
+       never used the level.
+
+       Sized for fingers, not cursors: 46px tall with 18px side padding and 10px
+       between chips, so each target clears the 44px minimum comfortably even at
+       the smallest phone width. The row scrolls sideways rather than wrapping,
+       so a long section list never pushes the dishes off the first screen. */
+    var subRow = [];
+    if (s.cat !== 'all' && s.cat !== 'popular') {
+      var catRow = (this.D.MENU_CATEGORIES || []).filter(function (c) { return c.id === s.cat; })[0];
+      var declared = (catRow && catRow.subs) ? catRow.subs.slice() : [];
+      var present = {};
+      this.D.MENU.forEach(function (m) { if (m.cat === s.cat && m.subcat) present[m.subcat] = 1; });
+      // Declared order first (the store's own), then anything a dish uses that
+      // the saved list has not caught up with — nothing a dish points at hides.
+      declared.forEach(function (n) { if (present[n]) { subRow.push(n); delete present[n]; } });
+      Object.keys(present).forEach(function (n) { subRow.push(n); });
+    }
+    if (subRow.length) {
+      h += '<div style="margin:10px -22px 0;padding:2px 22px 6px;display:flex;gap:10px;overflow-x:auto">' +
+        [''].concat(subRow).map(function (n) {
+          var on = s.subcat === n;
+          return '<button data-act="subcat" data-id="' + attr(n) + '"' +
+            ' style="flex-shrink:0;min-height:46px;padding:0 18px;border-radius:23px;font-size:14px;font-weight:600;white-space:nowrap;background:' +
+            (on ? C : 'var(--k-white)') + ';color:' + (on ? 'var(--k-accent-ink)' : 'var(--k-ink-2)') +
+            ';border:1px solid ' + (on ? C : 'var(--k-line-2)') + ';box-shadow:0 2px 7px rgba(0,0,0,.045)">' +
+            esc(n || 'All') + '</button>';
+        }).join('') + '</div>';
+    }
+
     /* grid */
     var off = this.soldOut(), inCart = {};
     s.cart.forEach(function (l) { inCart[l.id] = (inCart[l.id] || 0) + l.qty; });
@@ -1828,7 +1865,9 @@ window.KashikeyoGuestQR = (function () {
       run.items.push(m);
     });
     var crossCat = (s.cat === 'all' || s.cat === 'popular');
-    var bareRuns = runs.length <= 1 && (!runs.length || !runs[0].sub);
+    // With a subcategory chip active the row above already names the section, so
+    // an in-grid heading would just repeat it back.
+    var bareRuns = !!s.subcat || (runs.length <= 1 && (!runs.length || !runs[0].sub));
     var tile = function (m) {
         var sold = off.indexOf(m.id) >= 0, n = inCart[m.id] || 0, dh = self.dishHeat(m);
         return '<button data-act="dish" data-id="' + attr(m.id) + '"' + (sold ? ' disabled' : '') +

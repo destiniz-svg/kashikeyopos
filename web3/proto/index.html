@@ -415,6 +415,13 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 </button>
               </sc-for>
             </div>
+            <sc-if value="{{ hasSubChips }}">
+              <div style="display:flex;gap:8px;margin:-4px 0 12px;overflow-x:auto;padding-bottom:2px">
+                <sc-for list="{{ subChips }}" as="sc" hint-placeholder-count="0">
+                  <button onClick="{{ sc.pick }}" style="{{ sc.style }}">{{ sc.name }}</button>
+                </sc-for>
+              </div>
+            </sc-if>
             <sc-for list="{{ menuSections }}" as="sec" hint-placeholder-count="0">
              <div style="{{ sec.wrapStyle }}">
               <div style="{{ sec.headStyle }}">
@@ -3355,7 +3362,9 @@ class Component extends DCLogic {
         name: c.name,
         icon: this.catIcon(c.icon || c.id),
         count: c.id === "all" ? K0.MENU.length : K0.MENU.filter((m) => inTab(m, c.id)).length,
-        pick: () => this.setState({ cat: c.id }),
+        // Changing the top-level tab clears any section filter: the old one
+        // belongs to the tab you just left and would silently empty the grid.
+        pick: () => this.setState({ cat: c.id, subcat: "" }),
         // The icon carries the section hue (rev 2 §5) so hue and glyph identify
         // the section together. On the active amber pill both go to on-amber.
         iconStyle: "flex-shrink:0;color:" + (on ? "var(--on-amber)" : hue),
@@ -3363,9 +3372,47 @@ class Component extends DCLogic {
       };
     });
 
+    /* SECTION row — the subcategories reachable from the tab now selected,
+       drawn directly under the tab strip. Empty (so the row is not rendered) on
+       "All" and for any tab whose dishes carry no subcategory, which is every
+       store that has never used the level.
+
+       Order is the store's own: each category's declared `subs` in menu order,
+       then anything a dish actually uses that the saved list has not caught up
+       with — nothing a dish points at can hide behind a stale list. */
+    const subOrder = [];
+    (K0.MENU_CATEGORIES || []).forEach((c) => (c.subs || []).forEach((n) => { if (subOrder.indexOf(n) < 0) subOrder.push(n); }));
+    const subsHere = [];
+    if (activeCat !== "all") {
+      K0.MENU.filter((m) => inTab(m, activeCat)).forEach((m) => {
+        const n = String(m.subcat || "");
+        if (n && subsHere.indexOf(n) < 0) subsHere.push(n);
+      });
+      subsHere.sort((a, b) => {
+        const ia = subOrder.indexOf(a), ib = subOrder.indexOf(b);
+        return (ia < 0 ? 9e3 : ia) - (ib < 0 ? 9e3 : ib) || a.localeCompare(b);
+      });
+    }
+    const activeSub = subsHere.indexOf(s.subcat || "") >= 0 ? s.subcat : "";
+    /* FAT FINGER: a cashier hits these mid-rush with a thumb, often on a greasy
+       tablet, so the target is 48px tall with 20px of side padding and 8px
+       between chips — comfortably past the 44px minimum, and taller than the
+       category pills above precisely because this row is the one that changes
+       most often during service. */
+    const subChips = subsHere.length ? [""].concat(subsHere).map((n) => {
+      const on = activeSub === n;
+      return {
+        name: n || "All",
+        pick: () => this.setState({ subcat: on ? "" : n }),
+        style: "display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 20px;border-radius:24px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;border:1px solid " +
+          (on ? "var(--amber)" : "var(--line)") + ";background:" + (on ? "var(--amber)" : "var(--bg-1)") + ";color:" + (on ? "var(--on-amber)" : "var(--text-dim)")
+      };
+    }) : [];
+
     const out86 = this.eightySix();
     const dishes = K0.MENU
       .filter((m) => inTab(m, activeCat))
+      .filter((m) => !activeSub || String(m.subcat || "") === activeSub)
       .filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0 || m.desc.toLowerCase().indexOf(q) >= 0)
       .map((m) => {
         const off = out86.indexOf(m.id) >= 0;
@@ -3431,7 +3478,9 @@ class Component extends DCLogic {
       ((catRank[a.cat] == null ? 9e3 : catRank[a.cat]) - (catRank[b.cat] == null ? 9e3 : catRank[b.cat])) ||
       (subRank(a.cat, a.subcat) - subRank(b.cat, b.subcat)) ||
       String(a.subcat).localeCompare(String(b.subcat)));
-    const bare = sections.length === 1 && !sections[0].subcat;
+    // With a section chip active the row above already names it, so an in-grid
+    // heading would only repeat it back.
+    const bare = !!activeSub || (sections.length === 1 && !sections[0].subcat);
     const secVals = sections.map((sec) => {
       const cname = (catOf(sec.cat) || {}).name || sec.cat || "Uncategorised";
       const hue = this.catHue(sec.cat);
@@ -3558,7 +3607,8 @@ class Component extends DCLogic {
       low: out86.map((id) => (K0.MENU.find((m) => m.id === id) || {}).name + " · 86"), hasLow: out86.length > 0,
       floorSub: o.seats + " covers · " + nT + " tables · " + tables.filter((t) => t.chipText === "Open").length + " open"
         + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + " · manager " + o.mgr,
-      tables: tables, cats: cats, dishes: dishes, menuSections: secVals, lines: lines, totalRows: totalRows,
+      tables: tables, cats: cats, subChips: subChips, hasSubChips: subChips.length > 0,
+      dishes: dishes, menuSections: secVals, lines: lines, totalRows: totalRows,
       posQ: s.posQ || "", onPosQ: (e) => this.setState({ posQ: e.target.value }),
       dishesEmpty: !dishes.length,
       // Tight: the lines list absorbs the squeeze (floor 0) so Fire/Pay can
