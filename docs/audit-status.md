@@ -1,7 +1,7 @@
 # Production-readiness audit — remediation status
 
 Status of the master production-readiness, stress-test and security audit, as of
-**11 Aug 2026**, at `main` = `0e954ac`.
+**12 Aug 2026**, at `main` = `staging` = `5d1d0e7`.
 
 This is a **status record, not a re-audit**. It says what was fixed, what
 evidence backs each fix, and — the part that matters more — what is still
@@ -28,6 +28,15 @@ missing access rather than assumed to pass.
 > oracle became general rather than a signature detector, the two named offline
 > gaps closed, and re-pricing a stale fixture exposed a live defect in the
 > discount ceiling (§2c). Suite 133 → **143**. Score **8.4 → 8.7**.
+>
+> **Update, 12 Aug 2026 05:40 UTC — housekeeping closed, score unchanged at
+> 8.7.** The audit work is promoted (`main` = `staging` = `5d1d0e7`, production
+> deploy verified), the staging database is clear of load-test data (481,482
+> rows, §7) and all three stray Railway services are deleted. None of that is
+> evidence about the product, so **the score does not move**: both capped
+> dimensions — disaster recovery and observability — are capped on things nobody
+> has done yet, not on things this session could do. Cleaning up after a test
+> does not make the system more recoverable or more observable.
 
 ## Score — 8.7 / 10
 
@@ -44,7 +53,7 @@ evidence that would lift them needs access or accounts this review does not have
 | Disaster recovery | 10 | 7 | **Capped** — managed-backup layer unverified |
 | Observability | 10 | 7 | **Capped** — nothing scrapes `/api/metrics`, so nothing alerts |
 | Performance & capacity | 8 | 9 | **Measured on the deployed app**: ~360 settlements/s, zero errors to 768 tills |
-| Testing & verification | 8 | 9 | **133** cold-database tests reading the *shipped* files; CI gates dependencies |
+| Testing & verification | 8 | 9 | **143** cold-database tests reading the *shipped* files; CI gates dependencies |
 | Release & deploy process | 5 | 9 | Readiness probe **proven in production**: healthcheck 503'd, retried, passed |
 | Restaurant operations fit | 5 | 8 | Some flows verified by screenshot rather than by test |
 
@@ -78,10 +87,12 @@ and nothing scrapes the metrics endpoint.
 | --- | --- |
 | Findings closed and in production | CRITICAL, HIGH and MEDIUM |
 | Automated suite | **143 tests, 143 passing** on a cold database |
-| Independent CI | GitHub Actions run **#181**, `postgres:16` service, `npm ci --omit=dev` + `npm test` — **success** on `0e954ac` |
-| Production branch | `main` = `staging` = `0e954ac` |
-| Deployment itself | **VERIFIED** — `e14de2a1`, boot 222 ms, healthcheck 503-then-pass |
+| Independent CI | GitHub Actions, `postgres:16` service, `npm ci --omit=dev` + `npm test`, runs on `main` **and** `staging` |
+| Production branch | `main` = `staging` = `5d1d0e7`, working tree clean |
+| Deployment itself | **VERIFIED** — latest production deploy `4b362c77`, boot init 228 ms, restricted role, `LISTEN/NOTIFY` fan-out, no errors since |
 | Capacity | **~360 settlements/s** measured off-box against staging |
+| Test data | **cleared** — 11 load-test orgs and 481,482 rows removed from staging, 0 remaining (§7) |
+| Railway services | **4 remain**, all intended: `kashikeyopos`, `Postgres`, `Postgres-X8KY`, `kashikeyoledger` |
 
 The suite grew from 78 effectively-running tests to 143 over this remediation.
 Six test files are new, each pinning a specific finding rather than the feature
@@ -465,6 +476,7 @@ the run wrote into the staging database, since removed (§7).
 
 ## 5. Recommended order
 
+0. ~~Clear the load-test data and the stray Railway services.~~ **Done — §7.**
 1. ~~Confirm the deployment and the schema migration.~~ **Done — §4.1.**
 2. ~~Measure capacity against real hardware.~~ **Done — §4.6.**
 3. Confirm a completed AI call (§4.4) — one request to `/api/inv/ai-selftest`.
@@ -477,8 +489,20 @@ the run wrote into the staging database, since removed (§7).
 6. Point a monitor at `/api/metrics` (§4.3) using the §7b thresholds.
 7. Confirm the repository's public visibility is intended (§4.5).
 
-Nothing on this list is a code change. Steps 5 and 6 are the two remaining caps
-on the score; the rest are confirmations.
+Nothing on this list is a code change, and none of it can be done from this
+review environment — steps 3 and 4 need HTTP egress the network policy denies,
+steps 5 and 7 need dashboard access, step 6 needs an account somewhere. Steps 5
+and 6 are the two remaining caps on the score; the rest are confirmations.
+
+**Why the score did not move when the housekeeping closed.** Promoting the work,
+emptying the load-test data and deleting the stray services are all real, but
+none of them is evidence about the product. Disaster recovery stays at 7 until
+someone reads the managed-backup settings; observability stays at 7 until
+something scrapes `/api/metrics` and can page a human. Those two are worth
+**0.6** of weighted score between them (both at weight 10, both held at 7): if
+each reached 10, the total goes 870 → 930, i.e. **8.7 → 9.3**. Neither is a
+day's work. Getting past 9.3 then needs the engineering listed below, not
+another confirmation.
 
 Beyond it, the engineering that would move the score further — in the order I
 would spend the budget: a multi-day offline + storage-quota fault case and a real
@@ -554,22 +578,42 @@ the logs available here.
   discovers every `org_id`-bearing table from `information_schema` instead, so a
   table added later cannot be silently missed, and deletes in one transaction.
 
-- **Two throwaway services still exist and need deleting by hand:**
-  `TEMP-loadgen-DELETE-ME` and `TEMP-loadgen2-DELETE-ME` in the staging
-  environment. Railway's `removeServiceTool` reports `status: applied — marked
-  for removal` but they persist; Railway's own agent concluded this is
-  platform-side. Both now carry `LOADGEN_ARM=no` and `CLEANUP_CONFIRM=no`, and
-  `watchPatterns` that match nothing, so a redeploy is inert — but the guard in
-  the harness is what actually makes that safe, not the settings.
+- **Three stray services are now deleted** — done from the dashboard by the
+  owner, because the API could not do it. `removeServiceTool` returned
+  `status: applied — Service has been marked for removal` on four separate
+  attempts across the three services, and every one of them was still listed on
+  the next call; Railway's own agent ran it and reached the same conclusion.
+  `list-services` and `get-status` now both return four services and nothing
+  else: `kashikeyopos`, `Postgres`, `Postgres-X8KY`, `kashikeyoledger`.
+
+  **Operational note worth keeping:** that tool's success response is not
+  evidence. Verify any Railway mutation against `list-services`, and allow a few
+  minutes — after the dashboard deletion the API kept listing all three for
+  several minutes before catching up, so a stale read is not proof either.
+
+- **A third stray was found while cleaning up: `lucky-energy`.** An unnamed
+  duplicate of this app — same repo, branch `main`, **no variables at all**, no
+  domains — sitting in the staging environment. It had never once started: the
+  build succeeded and then the `JWT_SECRET` fail-fast guard (`index.js:62`)
+  refused to boot, ten crash-loops in ten seconds, healthcheck exhausted,
+  `1/1 replicas never became healthy`. Its failure history ran back through
+  every promotion (11 Aug 21:37 onward), so each push to `main` bought a wasted
+  build and a red `FAILED` that made real failures harder to spot.
+
+  Two things worth recording. The guard **worked** — with no `JWT_SECRET` set,
+  the process refused to run on the well-known dev default rather than booting
+  wide open, which is exactly the behaviour §4 asked for. And it had no
+  `DATABASE_URL`, so it never touched either Postgres. It is now deleted.
 
 - `railway.loadgen.json` and `railway.cleanup.json` stay in the repo — they are
   the documented way to stand either job up again, and affect nothing unless a
   service is explicitly pointed at one.
 
 - Honest limit on verification: the review environment's egress policy blocks
-  `kashikeyopos-staging.up.railway.app` (the proxy answers 403 to CONNECT), and
-  the Railway connector returns variable *names* without values, so no database
-  credential was available here. Everything above was driven and read through
-  Railway deploys and their logs. The staging app's deployment is `SUCCESS` with
-  no errors logged after the delete, but a functional request against it after
-  the cleanup is **NOT TESTED** from this environment.
+  **both** `kashikeyopos-staging.up.railway.app` and `kashikeyopos.com` (the
+  proxy answers 403 to CONNECT), and the Railway connector returns variable
+  *names* without values, so no database credential was available here.
+  Everything above was driven and read through Railway deploys and their logs.
+  Both apps report `SUCCESS` with clean boot logs and no errors after the
+  delete, but **a functional HTTP request against either is NOT TESTED** from
+  this environment — that includes the promoted production build.
