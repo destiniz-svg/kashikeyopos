@@ -135,21 +135,29 @@ that raises stock + re-averages cost + books an expense entity), `audits`
 `adjust` (waste/manual correction), `produce`, `products/:id/stockable`,
 `ocr` (§13 scan), `insights` + `assistant` (§18–19).
 
-## External-service features (need `ANTHROPIC_API_KEY`)
+## External-service features (need an AI key — **production runs Gemini**)
 
-- **OCR delivery notes** (`POST /ocr`) — Claude vision + structured outputs
-  reads a photo, maps lines to the ingredient catalogue, returns a draft the UI
-  posts via `/invoices`.
+- **OCR delivery notes** (`POST /ocr`) — vision + structured outputs reads a
+  photo, maps lines to the ingredient catalogue, returns a draft the UI posts
+  via `/invoices`.
 - **AI assistant** (`POST /assistant`) — answers grounded on a digest from
   `computeInsights()`.
-- Both lazily `require("@anthropic-ai/sdk")` and **degrade gracefully** without
-  the key (`configured:false` message). Model = `claude-opus-4-8`, override with
-  `OCR_MODEL`. `insights` (reorder/watch, learned from `stock_moves`) is
-  deterministic and works with **no key**.
-- Env vars: `ANTHROPIC_API_KEY` (set in Railway → service → Variables),
-  optional `OCR_MODEL`. Also: `DATABASE_URL`/PG*, `JWT_SECRET`,
-  `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`, `PLATFORM_ADMIN_*`, `PUBLIC_ORIGIN`,
-  `PORTAL_BASE_DOMAIN`.
+- **Provider-agnostic.** `aiClient()` picks Anthropic or Gemini from whichever
+  key is set (`AI_PROVIDER` decides when both are, with failover if the
+  preferred one throws). Gemini goes over its REST API through a shim built on
+  native `fetch` — no extra dependency. Everything degrades gracefully with no
+  key (`configured:false`); `insights` is deterministic and needs none.
+- **Live production config** (verified 12 Aug 2026): `provider: gemini`,
+  `model: gemini-3-flash-preview`, no Anthropic key. Note the shim's
+  thinking-budget guard keys on `/2\.5-flash/`, so a gemini-3 model correctly
+  takes the "don't send `thinkingBudget: 0`, give ≥8192 output tokens" branch.
+- Diagnostics: the boot log always prints one `AI: {...}` line;
+  `GET /api/inv/ai-selftest` makes one real call; `AI_SELFTEST=1` prints that
+  result into the deploy log.
+- Env vars: `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) + optional `GEMINI_MODEL`,
+  or `ANTHROPIC_API_KEY` + optional `OCR_MODEL`; `AI_PROVIDER` to force one.
+  Also: `DATABASE_URL`/PG*, `JWT_SECRET`, `ALLOWED_ORIGINS`, `GOOGLE_CLIENT_ID`,
+  `PLATFORM_ADMIN_*`, `PUBLIC_ORIGIN`, `PORTAL_BASE_DOMAIN`, `RESEND_API_KEY`.
 
 ## Store storefront branding + subdomains
 
@@ -170,9 +178,15 @@ storefront — `portalSlugFromHost()` maps the Host header's label to `?s=<slug>
 in the root handler; apex/www and a reserved-label set (`app`/`api`/`admin`/…)
 stay the platform app; an unknown label falls back to the app. QR codes
 (`/api/app2/qr.svg`) then encode `https://<handle>.<domain>/` (via
-`portalOriginForSlug()`, honouring `x-forwarded-proto`). **All of this is inert
-until `PORTAL_BASE_DOMAIN` is set** — routing is unchanged otherwise — so the
-code ships ahead of the wildcard DNS + TLS being provisioned on Railway.
+`portalOriginForSlug()`, honouring `x-forwarded-proto`). It is inert until
+`PORTAL_BASE_DOMAIN` is set — but **it is set in production and live**:
+`*.kashikeyopos.com` is a provisioned wildcard custom domain on the service, so
+`<handle>.kashikeyopos.com` really does serve storefronts today.
+
+Consequence to keep in mind: a handle rename silently orphans every QR code
+already printed for the old subdomain. The production log has at least one
+`guest portal {"slug":"m",…,"resolved":false}` — an unknown label falls back to
+the app rather than telling the guest the store moved.
 
 ## Deploy (staging → production flow)
 
@@ -283,7 +297,9 @@ Use `pkill -f "[n]ode index[.]js"`, and run restarts as their own step.
 The Inventory & Ingredient Management revamp is fully shipped (availability,
 guided overview, per-item timeline, wastage ledger, per-location + transfers,
 the item-role graph, OCR delivery notes §13, AI assistant + insights §18–19).
-`ANTHROPIC_API_KEY` still needs turning on in Railway for the live model calls.
+An AI key **is** live in production (Gemini — see the External-service section);
+what has not been observed is a completed round trip, which
+`GET /api/inv/ai-selftest` answers in one request.
 
 A 5-member production audit (offline/sync, accounting, restaurant operations,
 ergonomics) has been worked through on `staging`. CRITICAL, HIGH and MEDIUM

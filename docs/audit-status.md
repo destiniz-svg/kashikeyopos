@@ -10,7 +10,12 @@ rules: nothing is called working because code for it exists, no failing result
 is omitted, and anything unproven is marked **NOT TESTED** with the specific
 missing access rather than assumed to pass.
 
-## Score — 8.0 / 10
+> **Update, 12 Aug 2026 01:20 UTC — the deployment gate is CLEARED.** Railway
+> access was granted and the production release was verified end to end (§4.1).
+> Score 8.0 → **8.1**. Three caps remain, and one new customer-facing issue was
+> found in the production logs (§4.7).
+
+## Score — 8.1 / 10
 
 Weighted across ten dimensions, each scored on **evidence**, not on the existence
 of code. Three dimensions are held below their earned score because the evidence
@@ -24,18 +29,18 @@ that would lift them needs access this review did not have.
 | Security & access control | 12 | 8 | Fail-fast on weak `JWT_SECRET`; no external penetration test |
 | Disaster recovery | 10 | 7 | **Capped** — managed-backup layer unverified |
 | Observability | 10 | 7 | **Capped** — nothing scrapes `/api/metrics`, so nothing alerts |
-| Performance & capacity | 8 | 7 | **Capped** — 2×/5×/10× modelled locally, never measured |
+| Performance & capacity | 8 | 7 | **Capped** — envelope now known (8 vCPU / 8 GB), but never load-tested on it |
 | Testing & verification | 8 | 8 | 117 cold-database tests reading the *shipped* files |
-| Release & deploy process | 5 | 8 | ff-only staging→main, CI on both, `npm ci` reproducibility |
+| Release & deploy process | 5 | 9 | Readiness probe **proven in production**: healthcheck 503'd, retried, passed |
 | Restaurant operations fit | 5 | 8 | Some flows verified by screenshot rather than by test |
 
-**Weighted total: 8.02 → 8.0**
+**Weighted total: 8.07 → 8.1**
 
-**This is not a score of the running system.** Nothing has confirmed the
-production deployment (§4.1). That is a binary gate, so it is deliberately left
-out of the number rather than averaged into it: read 8.0 as *ready to deploy*,
-never as *deployed and well*. Closing steps 1–4 of §5 — none of which is a code
-change — would put it near 8.8.
+The deployment gate that previously sat outside this number is now **closed**
+(§4.1): the release built from the Dockerfile, applied its schema, swapped to the
+restricted database role and passed its healthcheck. What remains capped is
+capped for reasons that survive that verification — backups, monitoring and load
+behaviour are each still unevidenced.
 
 ## Where things stand
 
@@ -147,50 +152,106 @@ checked either.
 
 ---
 
-## 4. Open items — NOT TESTED
+## 4. Items — verified and still open
 
-Each states the exact missing access, per the audit's rules.
+### 4.1 The production deployment — ✅ VERIFIED
 
-### 4.1 The production deployment — NOT VERIFIED
+Deployment `e14de2a1`, commit `0e954ac`, branch `main`, production environment:
+**SUCCESS** (22:56:47 → 22:57:08 UTC). Boot log:
 
-`main` is at `0e954ac` on GitHub and CI is green on that SHA, but **nothing has
-confirmed the deployment**: not that the image built, not that the container
-booted, and not that this release's six new `stores` columns and their backfill
-applied to the production database.
+```
+AI: {"provider":"gemini","model":"gemini-3-flash-preview","configured":true,"failover":false}
+KashikeyoPOS Cloud on :8080
+schema ready
+connected as restricted role kashikeyo_app for request handling
+ready to serve traffic (boot init 222ms)
+poke listener connected (LISTEN/NOTIFY cross-instance fan-out)
+```
 
-Missing access, two independent blocks:
+`schema ready` is the migration: `schema.sql` is applied on every boot, so the
+six new `stores` columns and their backfill are in the live database. The
+restricted-role swap also completed, meaning RLS is enforced in production, not
+just in test. No errors logged since deploy.
 
-- Railway MCP tools return `requires approval` and never reach Railway. The grant
-  must come from the Claude Code client's permission layer.
-- Outbound HTTPS to `kashikeyopos.com` and `kashikeyopos-staging.up.railway.app`
-  is rejected at the egress proxy (`connect_rejected`, org policy denial on
-  CONNECT), so the deployed instance cannot be probed directly.
+**The readiness probe earned its place, visibly.** From the build log:
 
-Either one alone is sufficient to close this. **This is the highest-priority open
-item** — the schema migration is idempotent and was exercised against four cold
-databases, but this is its first production boot. `/api/health` reports
-`phase: "boot-failed"` with the error if it did not apply.
+```
+Starting Healthcheck · Path: /api/health · Retry window: 1m40s
+Attempt #1 failed with service unavailable. Continuing to retry for 1m39s
+[1/1] Healthcheck succeeded!
+```
 
-### 4.2 Railway managed backups — NOT TESTED
+Railway asked before boot init had finished, got the 503 the probe now returns,
+waited, and passed on the retry. Before `4e32745` that first attempt would have
+answered 200 while the schema was still being applied, and traffic would have
+been routed at an instance that was not ready. This is the fix working in
+production, not in a test.
 
-Whether the managed-backup layer is enabled, its schedule and its retention are
-unknown, so the RPO/RTO targets in `docs/disaster-recovery.md` §2 remain
-unevidenced at the infrastructure layer. The application-level restore path *is*
-now proven (§2 above). Missing: Railway console or MCP access.
+Two build facts worth recording, because the stored service config is misleading:
+the service-level builder reads `RAILPACK`, but `railway.json` overrides it at
+deploy time — the build log shows a five-step BuildKit Dockerfile build
+(`[5/5] COPY . .`) exporting a docker image, matching this repo's Dockerfile
+exactly. So the `npm ci` lockfile reproducibility **is** in effect. Likewise the
+healthcheck path is not in the stored config but is demonstrably `/api/health`.
 
-### 4.3 External monitoring — NOT WIRED
+### 4.2 Railway managed backups — STILL NOT VERIFIED
 
-`/api/metrics` exists and is tested; nothing scrapes it. This needs a third-party
+Now with a precise reason rather than an access gap: **Railway's API does not
+expose backup configuration.** Neither `get-service-config` nor Railway's own
+agent can read schedule, retention or last-backup time; the agent's own words
+were that the API "does not expose managed backup settings". It is a dashboard-only
+panel (Postgres service → Backups).
+
+So this stays open and needs a human to read it off the console. What *is* known:
+the production database is `ghcr.io/railwayapp-templates/postgres-ssl:18` on a
+persistent volume at `/var/lib/postgresql/data`, currently **1.99 GB** used,
+single replica in `sfo`.
+
+The RPO/RTO targets in `docs/disaster-recovery.md` §2 therefore remain unevidenced
+at the infrastructure layer. The application-level restore path *is* proven (§2).
+
+### 4.3 External monitoring — STILL NOT WIRED
+
+`/api/metrics` exists and is tested; nothing scrapes it. Needs a third-party
 account (Grafana, Better Stack, UptimeRobot) and its credential — not a Railway
-setting, so Railway access alone will not close it.
+setting, so Railway access does not close it.
 
-### 4.4 AI provider — CONFIGURED, UNOBSERVED
+### 4.4 AI provider — ✅ RESOLVED AT BOOT, one call still unobserved
 
-A Gemini key has reportedly been set. The code supports it (`GEMINI_API_KEY` or
-`GOOGLE_API_KEY`, model defaulting to `gemini-2.5-flash`, with failover if an
-Anthropic key is also present), but **no call has been observed resolving**.
-`GET /api/inv/ai-selftest` makes one real call and reports the provider, model
-and a sample; setting `AI_SELFTEST=1` prints the same into the deploy log at boot.
+The boot line above confirms it: `provider: gemini`, `configured: true`,
+`failover: false` (no Anthropic key set, which is consistent).
+
+**The model is `gemini-3-flash-preview`, not the `gemini-2.5-flash` default** —
+`GEMINI_MODEL` is set. That matters, and the shim handles it correctly: its
+thinking guard keys on `/2\.5-flash/`, so for a gemini-3 model it does *not* send
+`thinkingBudget: 0` (which that model may reject) and instead raises the output
+budget to at least 8,192 tokens so hidden reasoning and the answer both fit. That
+is the intended branch for a non-2.5-flash model.
+
+What is still unobserved is a **completed call**. The boot line proves the key is
+present and the provider resolves; it does not prove the model id is valid or that
+a response comes back. `GET /api/inv/ai-selftest` (back-office auth) settles it in
+one request, or `AI_SELFTEST=1` prints the result into the deploy log at boot.
+
+### 4.7 A guest-portal subdomain that resolves to nothing — NEW, customer-facing
+
+Found in the production log at 01:16:50 UTC:
+
+```
+guest portal {"slug":"m","host":"m.kashikeyopos.com","resolved":false,"org":null,"storeName":null}
+```
+
+Subdomain routing is **live**: `PORTAL_BASE_DOMAIN` is set and the wildcard
+`*.kashikeyopos.com` is a provisioned custom domain on the service. (CLAUDE.md's
+claim that this ships inert is now stale.) But a request for handle `m` matched no
+org and fell through.
+
+This is worth a look because the failure mode is customer-facing: a QR code that
+encodes `<handle>.kashikeyopos.com` keeps pointing at that subdomain after a store
+renames its handle, and the guest gets a portal with no store rather than a
+redirect or a clear message. Either this was a manual test of a handle that does
+not exist, or a store's handle changed and its printed QR codes are now dead.
+Worth confirming which before treating it as harmless.
 
 ### 4.5 The repository is public — CONFIRM INTENT
 
@@ -203,23 +264,35 @@ credential exposure — it lowers an attacker's cost of finding a logic flaw in 
 payment-handling system. This may be deliberate; it is flagged as a decision to
 confirm, not a defect.
 
-### 4.6 Capacity at 2× / 5× / 10× — PARTIALLY MODELLED
+### 4.6 Capacity at 2× / 5× / 10× — ENVELOPE KNOWN, BEHAVIOUR UNMEASURED
 
-The 100 transactions/hour floor is met with headroom in sandbox measurement. The
-multiples were modelled locally, not measured against production hardware —
-`get-service-metrics` (CPU/memory headroom) is the missing input, and it needs the
-same Railway access as §4.1.
+The production envelope is no longer a guess. Measured over three hours:
+
+| | |
+| --- | --- |
+| CPU limit | **8 vCPU** · observed average 0.00009, max 0.0018 |
+| Memory limit | **8 GB** · observed 46 MB resident, max 51 MB |
+| Replicas | 1, region `sfo` |
+| Database volume | 1.99 GB used |
+
+Memory is a non-issue: the process sits at **0.6% of its limit**, so the 2×/5×/10×
+question is not a memory question. What the numbers cannot tell us is behaviour
+under load — the service is effectively idle, so this is headroom, not a
+measurement of throughput. The remaining work is a load test against production
+hardware, not more inspection.
 
 ---
 
 ## 5. Recommended order
 
-1. Confirm the deployment and the schema migration (§4.1). Everything else can
-   wait; this cannot.
-2. Confirm the AI provider resolves (§4.4) — one endpoint call, and it also
-   proves outbound network from the container.
-3. Read the managed-backup configuration (§4.2) and record it in
-   `docs/disaster-recovery.md` §2 so RPO/RTO stop being aspirational.
-4. Point a monitor at `/api/metrics` (§4.3) using the §7b thresholds.
-5. Re-run the capacity model against real service metrics (§4.6).
-6. Confirm the repository's public visibility is intended (§4.5).
+1. ~~Confirm the deployment and the schema migration.~~ **Done — §4.1.**
+2. Confirm a completed AI call (§4.4) — one request to `/api/inv/ai-selftest`.
+   The provider resolves at boot; a round trip has still not been seen.
+3. Check `m.kashikeyopos.com` (§4.7). If a live store's handle changed, its
+   printed QR codes are pointing at nothing.
+4. Read the managed-backup configuration off the dashboard (§4.2) and record it
+   in `docs/disaster-recovery.md` §2 so RPO/RTO stop being aspirational. The API
+   cannot answer this; a human has to look.
+5. Point a monitor at `/api/metrics` (§4.3) using the §7b thresholds.
+6. Load-test against the real 8 vCPU / 8 GB envelope (§4.6).
+7. Confirm the repository's public visibility is intended (§4.5).
