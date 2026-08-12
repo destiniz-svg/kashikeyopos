@@ -367,7 +367,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
               </div>
             </div>
             <div style="font-size:11px;color:var(--text-dim);margin-top:2px;text-wrap:pretty">{{ floorSub }}</div>
-            <!-- All three actions on one row, equal width, so they never wrap. -->
+            <!-- All actions on one row, equal width, so they never wrap. -->
             <div style="display:flex;gap:8px;margin-top:11px">
               <button onClick="{{ startTakeaway }}" style="{{ newOrderBtnStyle }}" title="Start a takeaway order — no table needed"><span style="font-size:14px;line-height:1;margin-top:-1px">＋</span>Takeaway</button>
               <button onClick="{{ startDelivery }}" style="{{ newOrderBtnStyle }}" title="Start a delivery order — no table needed"><span style="font-size:14px;line-height:1;margin-top:-1px">＋</span>Delivery</button>
@@ -375,6 +375,15 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="flex-shrink:0"><path d="M9 6v12M15 6v12"></path></svg>
                 <span style="overflow:hidden;text-overflow:ellipsis">{{ heldBtnLabel }}</span>
               </button>
+              <!-- The floor is edited where the floor is looked at. It was only
+                   reachable from Settings, three screens from the plan it
+                   changes. -->
+              <sc-if value="{{ canEditFloor }}">
+                <button onClick="{{ openFloorEdit }}" style="{{ newOrderBtnStyle }}" title="Add or remove tables and set each table's seats">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+                  <span style="overflow:hidden;text-overflow:ellipsis">Edit floor</span>
+                </button>
+              </sc-if>
             </div>
           </div>
 
@@ -1174,6 +1183,11 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   <input value="{{ tsSeats }}" onInput="{{ setTsSeats }}" type="number" min="1" max="2000" inputmode="numeric" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:9px;padding:11px 13px;background:var(--bg);color:var(--text);font-size:14px;font-weight:700;outline:none"/>
                 </div>
               </div>
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ tsAdd }}" style="{{ tsAddStyle }}">{{ tsAddLabel }}</button>
+                <button onClick="{{ tsRemove }}" style="{{ tsRemoveStyle }}">{{ tsRemoveLabel }}</button>
+              </div>
+              <div style="font-size:11.5px;color:var(--text-muted);line-height:1.5;margin-top:-6px">Tables are numbered from T01 up, and a ticket, booking or QR code points at that number — so removing takes the highest-numbered table off the floor rather than renumbering the rest. A table still holding a bill, a booking or a QR order can't be removed until it's closed.</div>
               <div>
                 <div style="font-size:10px;font-weight:800;letter-spacing:.06em;color:var(--text-dim);margin-bottom:6px">PER-TABLE CAPACITY</div>
                 <div style="font-size:11.5px;color:var(--text-muted);margin-bottom:10px;line-height:1.5">Overrides the default pattern for individual tables — used to split checks by seat and to pick the smallest free table for a party.</div>
@@ -1181,6 +1195,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   <sc-for list="{{ tsRows }}" as="r" hint-placeholder-count="6">
                     <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line)">
                       <span style="flex:1;font-size:12.5px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ r.label }}</span>
+                      <span style="{{ r.chipStyle }}">{{ r.chipText }}</span>
                       <input value="{{ r.seatsVal }}" onInput="{{ r.setSeats }}" type="number" min="1" max="30" inputmode="numeric" style="width:64px;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--bg-2);color:var(--text);font-size:13px;font-weight:700;outline:none;text-align:center"/>
                     </div>
                   </sc-for>
@@ -3762,6 +3777,11 @@ class Component extends DCLogic {
         this.toast("Parked as " + ref + " — table freed");
       },
       openHeld: () => this.setState({ modal: { kind: "held" } }),
+      // Changing the floor plan writes to the outlet's own store row, which the
+      // server gates at admin rank — so the button appears for exactly the roles
+      // whose save would be accepted, rather than offering a door that 403s.
+      canEditFloor: this.can("branches", "e") && !!o.pos,
+      openFloorEdit: () => this.openTablesSeats(),
       heldBtnLabel: "Parked · " + (heldN || 0),
       heldBtnStyle: "flex:1 1 0;min-width:0;max-width:230px;display:inline-flex;align-items:center;justify-content:center;gap:7px;height:32px;padding:0 12px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;border:1px solid " + (heldN ? "var(--warn-line)" : "var(--line)") + ";background:" + (heldN ? "var(--warn-dim)" : "var(--bg-1)") + ";color:" + (heldN ? "var(--warn-bright)" : "var(--text-dim)"),
       // Off-floor order entry — takeaway/delivery start their own ticket without
@@ -4938,10 +4958,21 @@ class Component extends DCLogic {
       const tablesN = Math.max(1, Math.min(200, Math.round(+m.tables || 0) || 1));
       const defaultSeats = (i) => (i % 3 === 0 ? 4 : 2);
       const rows = [];
+      const chipFor = { occupied: ["Occupied", "var(--amber-bright)", "rgba(242,164,58,.14)"], reserved: ["Reserved", "var(--blue-bright)", "rgba(103,162,217,.14)"], qr: ["QR order", "var(--green)", "rgba(107,191,123,.14)"] };
       for (let i = 1; i <= tablesN; i++) {
         const val = (m.perTable && m.perTable[i] != null) ? m.perTable[i] : defaultSeats(i);
-        rows.push({ label: "T" + pad(i), seatsVal: String(val), setSeats: (e) => this.setTableSeatRow(i, e.target.value) });
+        // Only tables that EXIST on the floor today have a state to report; a
+        // row for a table being added in this very edit is not "free", it is
+        // not there yet, and saying "Free" about it would be a small lie.
+        const st = i <= (this.outlet().tables || 0) ? this.tableState(i) : "";
+        const chip = chipFor[st];
+        rows.push({
+          label: "T" + pad(i), seatsVal: String(val), setSeats: (e) => this.setTableSeatRow(i, e.target.value),
+          chipText: chip ? chip[0] : "",
+          chipStyle: chip ? "font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:3px 7px;border-radius:5px;white-space:nowrap;color:" + chip[1] + ";background:" + chip[2] : "display:none"
+        });
       }
+      const lastState = this.tableState(tablesN);
       return {
         // Name the outlet being edited — the floor plan is per-outlet now, so
         // "Tables & seats" alone doesn't say whose floor is about to change.
@@ -4949,6 +4980,15 @@ class Component extends DCLogic {
         tsTables: m.tables || "", setTsTables: (e) => this.setTablesSeatsField("tables", e.target.value),
         tsSeats: m.seats || "", setTsSeats: (e) => this.setTablesSeatsField("seats", e.target.value),
         tsRows: rows,
+        // Add / remove, so changing the floor is a tap rather than arithmetic in
+        // a number field. The remove button names the table it will take away —
+        // "Remove" alone leaves the operator to work out which one that is.
+        tsAdd: () => this.stepTables(1),
+        tsRemove: () => this.stepTables(-1),
+        tsAddLabel: "＋ Add T" + pad(Math.min(200, tablesN + 1)),
+        tsRemoveLabel: "－ Remove T" + pad(tablesN),
+        tsRemoveStyle: "flex:1;min-width:0;display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 12px;border-radius:9px;font-size:12px;font-weight:700;white-space:nowrap;border:1px solid " + (tablesN > 1 && lastState === "free" ? "var(--line)" : "var(--line-soft)") + ";background:var(--bg);color:" + (tablesN > 1 && lastState === "free" ? "var(--text-dim)" : "var(--text-faint)"),
+        tsAddStyle: "flex:1;min-width:0;display:inline-flex;align-items:center;justify-content:center;height:40px;padding:0 12px;border-radius:9px;font-size:12px;font-weight:700;white-space:nowrap;border:1px solid var(--line);background:var(--bg);color:var(--text-dim)",
         tsErr: m.err || "", hasTsErr: !!m.err,
         tsLabel: m.busy ? "Saving…" : "Save",
         doTs: () => this.doSaveTablesSeats()
@@ -7951,6 +7991,56 @@ class Component extends DCLogic {
     const o = this.outlet();
     this.setState({ modal: { kind: "tablesSeats", tables: String(o.tables || 12), seats: String(o.seats || 48), perTable: Object.assign({}, o.tableSeats || {}), err: "", busy: false } });
   }
+  /* What a table is doing right now, read from the same three sources the floor
+     tile reads — a till ticket, a confirmed booking, a live QR order — so the
+     floor editor can never disagree with the floor itself about which tables are
+     in use. A table you are about to delete is exactly the one worth checking. */
+  tableState(i) {
+    const s = this.state;
+    if (s.tickets[s.outletId + ":" + i]) return "occupied";
+    const label = "T" + pad(i);
+    if (window.KPOS_REAL) {
+      if (this.resBook().some((r) => r.status === "confirmed" && String(r.table) === label)) return "reserved";
+      if ((this.liveOrders() || []).some((qo) => qo.channel === "qr" && String(qo.status) !== "completed" && String(qo.table) === String(i))) return "qr";
+    }
+    return "free";
+  }
+  // The tables from `from` up to the floor's current last one that are NOT free,
+  // named. Shrinking the floor past a busy table would strand a live bill.
+  busyFrom(from) {
+    const out = [], n = this.outlet().tables || 0;
+    for (let i = from; i <= n; i++) {
+      const st = this.tableState(i);
+      if (st !== "free") out.push("T" + pad(i) + " (" + (st === "qr" ? "QR order" : st) + ")");
+    }
+    return out;
+  }
+  // Default capacity for a table that has no override — the pattern the floor
+  // plan itself draws, kept in one place so the editor and the tile agree.
+  defaultSeatsFor(i) { return i % 3 === 0 ? 4 : 2; }
+  /* Add / remove a table from the open editor. The floor is a COUNT (T01 upward,
+     and a ticket keys on that number), so removing means taking the highest
+     number off — renumbering a middle table would move every ticket, booking and
+     QR code that already points at it. The total-covers figure follows the
+     change, since a floor with a table more is a floor with seats more. */
+  stepTables(by) {
+    const m = this.state.modal; if (!m || m.kind !== "tablesSeats") return;
+    const cur = Math.max(1, Math.min(200, Math.round(+m.tables || 0) || 1));
+    const next = Math.max(1, Math.min(200, cur + by));
+    if (next === cur) return;
+    if (by < 0) {
+      const st = this.tableState(cur);
+      if (st !== "free") {
+        this.setState({ modal: Object.assign({}, m, { err: "T" + pad(cur) + " is " + (st === "qr" ? "holding a QR order" : st === "reserved" ? "reserved" : "occupied") + " — close it before taking it off the floor" }) });
+        return;
+      }
+    }
+    const seatDelta = by > 0 ? this.defaultSeatsFor(next) : -(Math.round(+((m.perTable || {})[cur])) || this.defaultSeatsFor(cur));
+    const seats = Math.max(1, Math.min(2000, (Math.round(+m.seats || 0) || 0) + seatDelta));
+    const perTable = Object.assign({}, m.perTable || {});
+    if (by < 0) delete perTable[cur];
+    this.setState({ modal: Object.assign({}, m, { tables: String(next), seats: String(seats), perTable: perTable, err: "" }) });
+  }
   setTablesSeatsField(k, v) {
     const m = this.state.modal; if (!m) return;
     this.setState({ modal: Object.assign({}, m, { [k]: v, err: "" }) });
@@ -7971,6 +8061,16 @@ class Component extends DCLogic {
     const tables = Math.max(1, Math.min(200, Math.round(+m.tables || 0)));
     const seats = Math.max(1, Math.min(2000, Math.round(+m.seats || 0)));
     if (!tables || !seats) { this.setState({ modal: Object.assign({}, m, { err: "Enter a table count and a seat count" }) }); return; }
+    /* Typing a smaller number into the field reaches here without passing the
+       remove button, so the same guard has to stand at the save. A table that
+       leaves the floor while it is holding a bill, a booking or a guest's QR
+       order takes all three with it — the ticket keys on a table number that no
+       longer renders, so nobody can reach it to settle it. */
+    const stranded = this.busyFrom(tables + 1);
+    if (stranded.length) {
+      this.setState({ modal: Object.assign({}, m, { busy: false, err: "Still in use: " + stranded.join(", ") + " — close them before shrinking the floor" }) });
+      return;
+    }
     // Parse + validate each row now (rows hold raw typed strings, possibly
     // ""). A blank, zero, or non-numeric entry means "no override" — the
     // table falls back to the default pattern rather than saving a bogus
