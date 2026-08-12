@@ -309,6 +309,15 @@ automated restore drill plus `/api/metrics`). What remains of D-04 is
 unverifiable from here: Railway's managed-backup layer and the wiring of an
 external monitor to the scrape endpoint both need console access.
 
-`main` is behind `staging` by that audit work and needs promoting when it is
-signed off. Run the suite against a **fresh** Postgres before shipping — it is
-117 tests and a cold database is the CI path.
+That audit work is promoted: `main` = `staging` = `97c832c`, deployed green to
+both Railway environments. Run the suite against a **fresh** Postgres before
+shipping — it is 152 tests and a cold database is the CI path.
+
+The menu carries three levels (group → category → subcategory). A CSV import is
+the authority for its own taxonomy, a manager can set a dish's section by hand,
+and both the till grid and the QR menu draw a **subcategory chip row** under the
+main category row — revealed once a category is picked, hidden where it would
+say nothing ("All"/"Popular", or a category whose dishes carry no subcategory).
+`settings.catGroups` is the *group* model (`[{name, subs: [<category names>]}]`);
+subcategories live in `menuSubs` — don't overload the one key with the other's
+meaning, which is what the importer used to do.
