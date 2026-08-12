@@ -1735,7 +1735,7 @@ class Component extends DCLogic {
     ready: !!window.KPOS,
     view: this.initialView(),
     roleKey: this.initialRoleKey(),
-    outletId: this._saved.outletId || 3,
+    outletId: this.initialOutletId(),
     now: new Date(),
     online: true,
     syncing: false,
@@ -2282,6 +2282,28 @@ class Component extends DCLogic {
 
   // One figure for today's net sales per outlet, shared by the POS stat card
   // and the chain roll-up so the two can never disagree.
+  /* The store id of the outlet currently being looked at. The terminal switches
+     outlet client-side (goOutlet), so every per-outlet read has to be filtered
+     against THIS, not against whichever store the session cookie was minted
+     for. `storeId` is the outlet row's own server id, carried by KPOS_REAL. */
+  outletStoreId(id) {
+    const o = this.outlet(id);
+    return String((o && o.storeId) || "");
+  }
+  // Is this row (order, sale, booking) this outlet's? Rows written before store
+  // scoping existed carry no store and belong to the PRIMARY outlet — the same
+  // reading COALESCE(data->>'storeId', <primary>) gives on the server, so an old
+  // receipt keeps showing where it always did instead of vanishing from every
+  // outlet at once. A row is never shown on two floors.
+  ofOutlet(row) {
+    const mine = this.outletStoreId();
+    const rowStore = String((row && row.store) || "");
+    if (rowStore) return rowStore === mine;
+    const outs = (K().OUTLETS || []);
+    const primary = String((outs[0] && outs[0].storeId) || "");
+    // No primary store id to compare against (demo/preview): nothing to scope by.
+    return !primary || !mine || mine === primary;
+  }
   outletSales(o) {
     if (!o || !o.pos) return 0;
     // Real mode: today's actual net sales for the active outlet (laari→MVR),
@@ -2324,6 +2346,19 @@ class Component extends DCLogic {
       if (rk === "kitchen") return "KitchenDisplay";
     }
     return (this._saved.session && this._saved.session.role) || this.props.startRole || this._saved.roleKey || "ChainAdmin";
+  }
+  /* The outlet the terminal opens on: the one this SESSION is bound to, because
+     that is the store every write will be stamped with. A saved preference from
+     a previous visit only wins when it agrees with the session — otherwise the
+     terminal would show one branch's floor while its sales banked to another,
+     which is how a new outlet reads as busy and takes MVR 0 forever. */
+  initialOutletId() {
+    const REAL = window.KPOS_REAL;
+    const outs = (REAL && REAL.outlets) || [];
+    const want = String((REAL && REAL.me && REAL.me.storeId) || "");
+    const hit = want && outs.filter((o) => String(o.storeId || "") === want)[0];
+    if (hit) return hit.id;
+    return this._saved.outletId || 3;
   }
   // The screen the terminal opens on: the first one this role can actually see.
   // "pos" as a blanket default is right for everyone who sells and wrong for
@@ -5463,6 +5498,35 @@ class Component extends DCLogic {
       this.queue("outlet_switch_denied", this.me() + " attempted " + this.locName(id), "sessions");
       return;
     }
+    /* Re-bind the SERVER session to the chosen outlet before showing it. The
+       switch used to be client-side only: the session cookie still named the
+       old store, so every KOT, sale and booking rung on the new branch was
+       stamped with the old one. The branch stayed empty forever while the
+       original's takings quietly absorbed its trade — the same defect the
+       register hit (audit A-H2), which /api/app2/outlet exists to fix and
+       nothing was calling. The page reloads because the injected payload is
+       built per store: floor config, receipts, figures, the lot. */
+    const target = this.outlet(id);
+    const REAL = window.KPOS_REAL;
+    if (REAL && target && target.storeId && String(target.storeId) !== String((REAL.me && REAL.me.storeId) || "")) {
+      // A reload drops any ticket that hasn't been sent anywhere yet, so say so
+      // rather than discarding a cashier's typing to satisfy a menu tap.
+      const open = Object.keys(this.state.tickets || {}).filter((k) => ((this.state.tickets[k] || {}).lines || []).length);
+      if (open.length) {
+        this.toast("Fire or park " + this.slotLabel(String(open[0]).split(":").pop()) + " before switching outlet", "warn");
+        return;
+      }
+      this.toast("Switching to " + (target.name || "outlet") + "…");
+      fetch("/api/app2/outlet", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ storeId: target.storeId }) })
+        .then((r) => r.json().catch(() => ({}))).then((j) => {
+          if (j && j.error) { this.toast(j.error, "warn"); return; }
+          // No need to save the choice: the re-minted cookie is the record, and
+          // initialOutletId() reads the session back on the way up.
+          window.location.reload();
+        }).catch(() => this.toast("Could not switch outlet — check the connection", "warn"));
+      return;
+    }
     this.setState({ outletId: id, activeTable: null, activeSplit: 0, modal: null }, () => {
       if (!this.siteHas(this.state.view) || !this.can(this.state.view)) {
         const home = this.siteHome();
@@ -5646,7 +5710,14 @@ class Component extends DCLogic {
   // KOTs fired on the till and QR/guest orders that are still in the kitchen or
   // service pipeline. Seeded from the page inject, refreshed by the signal poll,
   // so a ticket fired on one device lands on the kitchen screen on another.
-  liveOrders() { return this.state.liveOrders || (window.KPOS_REAL && window.KPOS_REAL.liveOrders) || []; }
+  /* Open tickets for the outlet on screen. The payload carries the whole
+     company's live orders, and a ticket names a TABLE NUMBER — so unfiltered,
+     a brand-new branch drew Male's T04 as occupied on its own floor, and its
+     KDS showed food nobody there was cooking. */
+  liveOrders() {
+    const all = this.state.liveOrders || (window.KPOS_REAL && window.KPOS_REAL.liveOrders) || [];
+    return window.KPOS_REAL ? all.filter((o) => this.ofOutlet(o)) : all;
+  }
   // A single-page terminal keeps running the code it loaded with, so a deploy
   // never reaches a tab that stays open. The 3s live poll now carries the running
   // build; when the server's build is newer than the one this tab booted with, we
@@ -8400,7 +8471,10 @@ class Component extends DCLogic {
     // Real mode: the store's actual sales (from the sales entities), newest first,
     // plus any history pages the operator has pulled in (loadOlderOrders).
     // Empty until the till has closed a ticket — no fabricated order log.
-    if (window.KPOS_REAL) return (window.KPOS_REAL.orders || []).concat(this.state.olderOrders || []);
+    // Scoped to the outlet on screen: a receipt history belongs to a till, not
+    // to a company. An outlet that has never rung a sale opens on an empty list,
+    // which is the honest answer and also the only useful one.
+    if (window.KPOS_REAL) return (window.KPOS_REAL.orders || []).concat(this.state.olderOrders || []).filter((o) => this.ofOutlet(o));
     const K0 = K(), s = this.state, rnd = this.rng(4242);
     const out = [];
     const chans = ["dine_in", "dine_in", "dine_in", "qr", "takeaway", "delivery"];
@@ -8575,7 +8649,9 @@ class Component extends DCLogic {
     // on top (state.resPatch), so an Approve feels instant and survives the poll.
     if (window.KPOS_REAL) {
       const patch = s.resPatch || {};
-      return (window.KPOS_REAL.reservations || []).map((r) => {
+      // A booking holds a table on ONE floor. Unfiltered, a branch showed the
+      // main store's confirmed bookings as blue tiles on its own tables.
+      return (window.KPOS_REAL.reservations || []).filter((r) => this.ofOutlet(r)).map((r) => {
         const o = patch[r.id] || {};
         return { id: r.id, t: r.time, date: r.date, name: r.name, phone: r.phone,
           party: r.party, table: o.table != null ? o.table : r.table,

@@ -831,6 +831,77 @@ describe("kitchen display session (KDS-ROLE)", () => {
   });
 });
 
+/* ── A new outlet trades on its own books (OUTLET-SCOPE) ─────────────────────
+   The /v2 payload is built per ORG, so it carries every outlet's live tickets
+   and receipts. Nothing said which outlet a row belonged to, so a newly created
+   branch drew the main store's QR tables as occupied on its own floor and
+   listed its receipts as its own history. Rows now carry `store`, the terminal
+   filters on it, and the paged history is scoped in SQL. */
+describe("outlet scoping (OUTLET-SCOPE)", () => {
+  const setCookieVal = (r, name) => {
+    const raw = r.headers.get("set-cookie") || "";
+    const m = raw.match(new RegExp(name + "=([^;]+)"));
+    return m ? name + "=" + m[1] : null;
+  };
+  const realOf = (html) => {
+    const m = String(html).match(/window\.KPOS_REAL=(\{[\s\S]*?\});window\.KPOS_BUILD/);
+    return m ? JSON.parse(m[1]) : null;
+  };
+  let o, branchCookie, branchStoreId;
+
+  before(async () => {
+    o = await H.registerOrg({ tag: "outletscope" });
+    // Trade at the main store: one open ticket and one settled sale.
+    const kot = await H.req("POST", "/api/app2/kot", { cookie: o.cookie, body: {
+      items: [{ pid: "p1", name: "Margherita", qty: 2, price: 11000, station: "hot" }],
+      table: "4", otype: "dine_in", station: "hot", billNo: "B-1", userName: "Owner" } });
+    assert.equal(kot.status, 200, "test setup: ticket fired at the main store");
+    await H.ops(o.token, [{ opId: "os1", puts: [{ kind: "sales", id: "sale-main", data: {
+      id: "sale-main", no: "INV-MAIN", at: Date.now(), total: 11000, subtotal: 10185, gst: 815,
+      lines: [{ pid: "p1", qty: 1, price: 11000, amount: 10185 }], payments: [{ method: "cash", amount: 11000 }], table: 4 } }] }]);
+    const mk = await H.req("POST", "/api/app2/outlets", { cookie: o.cookie,
+      body: { name: "Hulhumale Branch", code: "HUL", kind: "restaurant", tables: 6, seats: 24 } });
+    assert.equal(mk.status, 200, "test setup: second outlet created");
+    branchStoreId = mk.json.outlet.id;
+  });
+
+  test("every ticket and receipt names the outlet that rang it", async () => {
+    const page = await H.req("GET", "/v2", { cookie: o.cookie });
+    const real = realOf(page.text);
+    assert.ok(real, "the terminal hydrates");
+    assert.ok((real.liveOrders || []).length >= 1, "the fired ticket is in the payload");
+    for (const row of real.liveOrders) assert.equal(row.store, "main", "a live ticket carries its store");
+    for (const row of real.orders) assert.equal(row.store, "main", "a receipt carries its store");
+    assert.equal(real.me.storeId, "main", "the payload says which outlet the session is bound to");
+  });
+
+  test("switching outlet re-binds the session, so the next sale banks to the branch", async () => {
+    const sw = await H.req("POST", "/api/app2/outlet", { cookie: o.cookie, body: { storeId: branchStoreId } });
+    assert.equal(sw.status, 200);
+    branchCookie = setCookieVal(sw, "kashikeyo_session");
+    assert.ok(branchCookie, "the switch re-mints the session cookie");
+    const page = await H.req("GET", "/v2", { cookie: branchCookie });
+    const real = realOf(page.text);
+    assert.equal(real.me.storeId, branchStoreId, "the session now names the branch");
+    // The payload still carries the company's rows — scoping is by `store`, not
+    // by withholding — and every one of them still says "main", which is what
+    // lets the terminal keep them off the branch's floor.
+    for (const row of (real.liveOrders || [])) assert.equal(row.store, "main");
+    // The branch's own floor config, not the main store's.
+    const mine = (real.outlets || []).filter((x) => x.storeId === branchStoreId)[0];
+    assert.equal(mine.tables, 6, "the branch renders its own table count");
+  });
+
+  test("the paged receipt history is the outlet's own, not the company's", async () => {
+    const mainPage = await H.req("GET", "/api/app2/orders?limit=50", { cookie: o.cookie });
+    assert.equal(mainPage.status, 200);
+    assert.ok(mainPage.json.orders.some((x) => x.no === "INV-MAIN"), "the main store sees its own sale");
+    const branchPage = await H.req("GET", "/api/app2/orders?limit=50", { cookie: branchCookie });
+    assert.equal(branchPage.status, 200);
+    assert.equal(branchPage.json.orders.length, 0, "a branch that has never traded has no history");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {

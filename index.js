@@ -1999,6 +1999,12 @@ function liveOrdersV2(dataRows, settings = {}) {
       const channel = ot === "delivery" ? "delivery" : ot === "takeaway" ? "takeaway" : (o.source === "qr" ? "qr" : "dine_in");
       return { id: o.id, no: o.no || o.id, status: String(o.status || "new"), otype: asOtype(o.otype),
         channel: channel, table: o.table || "", station: o.station || "hot",
+        /* Which outlet's ticket this is. Blank means a row written before
+           store-scoping existed, which belongs to the primary store — the same
+           reading COALESCE(data->>'storeId', <primary>) gives on the SQL side.
+           Without this the client has no way to tell one branch's tickets from
+           another's, and a second outlet's floor lights up with Male's. */
+        store: String(o.storeId || ""),
         source: o.source || "qr", accepted: !!o.accepted, server: o.userName || o.server || "",
         customerId: o.customerId || null, customerName: o.customerName || "",
         billAck: !!o.billAck, billRequested: !!o.billRequested,
@@ -2035,6 +2041,9 @@ function projectSaleRow(id, d, nameById, refundedRefs) {
   const refAmt = refundedRefs[String(d.no || "")] || refundedRefs[String(id)] || 0;
   return {
     no: d.no || id, table: d.table != null ? "T" + p2(d.table) : "—",
+    // The outlet that rang it — blank on a pre-store-scoping sale, which reads
+    // as the primary store. A receipt history is per-till, not per-company.
+    store: String(d.storeId || ""),
     channel: V2_CHAN[d.channel] || "dine_in", total: Math.round((Number(d.total) || 0) / 100),
     tender: d.tender || "cash", status: d.open ? "open" : "closed", server: d.server || "",
     time: dt ? p2(dt.getHours()) + ":" + p2(dt.getMinutes()) : "", at: at,
@@ -5402,7 +5411,12 @@ if (fs.existsSync(protoFile)) {
       const orgId = await resolveAppSession(req);
       if (!orgId) return null;
       const token = sign(orgId, req.appRegister || "R1", req.appStoreId || DEFAULT_STORE_ID);
-      const real = await buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name, id: req.appStaff && req.appStaff.id });
+      const real = await buildV2RealForOrg(orgId, token, { role: req.appRole, name: req.appStaff && req.appStaff.name, id: req.appStaff && req.appStaff.id,
+        // WHICH OUTLET this session is bound to. Every write the terminal makes
+        // — a KOT, a settled sale, a booking — is stamped with the session's
+        // store, so the terminal has to know which one that is or it will show
+        // one outlet's floor while banking another's takings.
+        storeId: req.appStoreId || DEFAULT_STORE_ID });
       return real && appRankOf(req.appRole) < APP_RANK.TILL ? kitchenScope(real) : real;
     };
     /* A kitchen sign-in gets the tickets and the food, and nothing else. The
@@ -5767,6 +5781,9 @@ if (fs.existsSync(protoFile)) {
           return { id: r.id, status: d.status || "pending", source: d.source || "portal",
             name: d.name || "Guest", phone: d.phone || "", party: Number(d.party) || 2,
             time: d.time || "", date: d.date || "", note: d.note || "", table: d.table || "",
+            // The outlet booked. A booking holds a table on ONE floor, so it has
+            // to travel with the store that owns that floor.
+            store: String(d.storeId || ""),
             custId: d.custId || null, at: Number(d.t) || 0 };
         }).filter((r) => r.status !== "declined" && r.status !== "cancelled");
         // Real outlets — the org's own stores (a company can run several).
@@ -5815,7 +5832,8 @@ if (fs.existsSync(protoFile)) {
           hasSession: true, token, slug,
           // The signed-in operator, so the terminal can scope a cashier/waiter to
           // their permission set. Absent role = the owner's own (password) login.
-          me: { id: viewer.id || "", roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner" },
+          me: { id: viewer.id || "", roleKey: String(viewer.role || "owner").toLowerCase(), name: viewer.name || "", isOwner: !viewer.role || viewer.role === "owner",
+            storeId: String(viewer.storeId || DEFAULT_STORE_ID) },
           portal: { slug, base: portalBase, sub: !!portalSubBase },
           // The active outlet the terminal bills against. It is the PRIMARY
           // store, so its floor plan must be the same object outlets[0] carries
@@ -6141,8 +6159,17 @@ if (fs.existsSync(protoFile)) {
         args.push(before);
         if (beforeId) args.push(beforeId);
       }
+      /* Scoped to the session's own outlet. A page of 100 sales drawn from
+         every outlet, then filtered down on the client, is how "Load older"
+         reports "all loaded" after showing four rows — the rows were there,
+         they just belonged to another branch. A sale written before store
+         scoping existed has no storeId and reads as the primary store, the
+         same COALESCE reading the rest of the app uses. */
+      const storeArg = args.length + 1;
+      args.push(cleanStoreId(req.appStoreId || DEFAULT_STORE_ID), DEFAULT_STORE_ID);
       const rows = (await c.query(
         `SELECT id, data FROM entities WHERE org_id=$1 AND kind='sales' AND deleted=false${cursor}
+           AND COALESCE(NULLIF(data->>'storeId',''), $${storeArg + 1}) = $${storeArg}
          ORDER BY ${SALE_TS} DESC, id DESC LIMIT $2`, args)).rows;
       const more = rows.length > limit;
       const page = more ? rows.slice(0, limit) : rows;
