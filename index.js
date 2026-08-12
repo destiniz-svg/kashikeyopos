@@ -4112,8 +4112,16 @@ function parseCsv(text) {
   return rows;
 }
 // The template's columns, in order. Header names are human, not the raw keys.
+/* The menu taxonomy is three levels: GROUP → CATEGORY → SUBCATEGORY → dish.
+   `group` and `subcategory` are taxonomy, not dish facts — the group belongs to
+   the category (every row naming the same category should name the same group;
+   the first one wins) and the subcategory is the section a dish sits in inside
+   its category. Both are optional: a file without them still imports, the group
+   falls back to the keyword guess and the dish sits directly under its category,
+   which is exactly the two-level menu that shipped before. */
 const MENU_CSV_COLS = [
-  ["id", "id"], ["name", "name"], ["name_dhivehi", "dv"], ["category", "cat"],
+  ["id", "id"], ["name", "name"], ["name_dhivehi", "dv"],
+  ["group", "group"], ["category", "cat"], ["subcategory", "subcat"],
   ["price_mvr", "price"], ["description", "desc"], ["description_dhivehi", "descDv"],
   ["veg", "veg"], ["spice_level_0_3", "spice"], ["heat_choice", "heat"],
   ["best_seller", "bestSeller"], ["allow_comments", "comments"], ["no_kitchen", "noKitchen"],
@@ -4143,6 +4151,9 @@ function menuFields(b) {
   if (!(priceLaari > 0)) return { error: "price must be greater than zero" };
   const f = { name, price: priceLaari };
   if (b.cat !== undefined) f.cat = String(b.cat || "").trim().slice(0, 60);
+  // The section inside the category. Blank = the dish hangs directly off the
+  // category, which is every dish that existed before subcategories.
+  if (b.subcat !== undefined) f.subcat = String(b.subcat || "").trim().slice(0, 60);
   if (b.dv !== undefined) f.dv = String(b.dv || "").trim().slice(0, 120);
   if (b.desc !== undefined) f.desc = String(b.desc || "").trim().slice(0, 400);
   if (b.descDv !== undefined) f.descDv = String(b.descDv || "").trim().slice(0, 400);
@@ -4168,8 +4179,14 @@ function menuFields(b) {
   return { fields: f };
 }
 // One product's stored data → a CSV row (values in the MENU_CSV_COLS order).
-const menuCsvRow = (p) => [
-  p.id || "", p.name || "", p.dv || "", p.cat || "", (Number(p.price) || 0) / 100,
+/* `groupOf` resolves a category name to its top-level group. The export passes
+   the store's saved mapping so a manager's own "Show under" choices round-trip
+   instead of being re-guessed on the way back in; callers with no store context
+   (the bundled sample) pass nothing and fall back to the keyword default. */
+const menuCsvRow = (p, groupOf) => [
+  p.id || "", p.name || "", p.dv || "",
+  String((groupOf ? groupOf(p.cat) : "") || catGroupOf(p.cat)), p.cat || "", p.subcat || "",
+  (Number(p.price) || 0) / 100,
   p.desc || "", p.descDv || "", p.veg ? "yes" : "no", Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))),
   p.heat ? "yes" : "no", p.bestSeller ? "yes" : "no", p.comments ? "yes" : "no", p.noKitchen ? "yes" : "no",
   p.hidden ? "yes" : "no", p.soldOut ? "yes" : "no", (Array.isArray(p.tags) ? p.tags : []).join("; "),
@@ -4180,7 +4197,7 @@ const menuCsvRow = (p) => [
 ];
 // One CSV row (mapped by header) → the loose input object menuFields expects.
 function menuCsvRowToInput(rec) {
-  const b = { name: rec.name, price: rec.price, cat: rec.cat, dv: rec.dv, desc: rec.desc, descDv: rec.descDv };
+  const b = { name: rec.name, price: rec.price, cat: rec.cat, subcat: rec.subcat, dv: rec.dv, desc: rec.desc, descDv: rec.descDv };
   if (rec.veg !== undefined) b.veg = csvBool(rec.veg);
   if (rec.spice !== undefined && String(rec.spice).trim() !== "") b.spice = rec.spice;
   if (rec.heat !== undefined) b.heat = csvBool(rec.heat);
@@ -4263,14 +4280,42 @@ const catGroupOf = (name) => {
 // or reordered section persists), then any category a product uses that isn't
 // saved yet — nothing a dish points at ever disappears. Each carries its group
 // (a saved override wins over the keyword default).
-const mergeCategories = (catName, st) => {
+const mergeCategories = (catName, st, subsInUse) => {
   st = st || {};
   const stored = Array.isArray(st.menuCats) ? st.menuCats : [];
   const cg = (st.catGroup && typeof st.catGroup === "object") ? st.catGroup : {};
+  const ms = (st.menuSubs && typeof st.menuSubs === "object") ? st.menuSubs : {};
+  // Subcategories for a category: the saved order first (so an emptied section
+  // keeps its place), then any subcategory a dish actually uses that isn't saved
+  // — the same "nothing a dish points at ever disappears" rule the categories
+  // themselves follow.
+  const subsOf = (nm) => {
+    const saved = Array.isArray(ms[nm]) ? ms[nm] : [];
+    const used = (subsInUse && subsInUse[menuCat(nm)]) || [];
+    const seenS = new Set(), out = [];
+    saved.concat(used).forEach((s) => {
+      const t = String(s || "").trim(), k = t.toLowerCase();
+      if (t && !seenS.has(k)) { seenS.add(k); out.push(t); }
+    });
+    return out;
+  };
   const seen = new Set(), out = [];
-  const add = (nm) => { const id = menuCat(nm); if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: String(nm), group: String(cg[nm] || catGroupOf(nm)) }); } };
+  const add = (nm) => { const id = menuCat(nm); if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: String(nm), group: String(cg[nm] || catGroupOf(nm)), subs: subsOf(nm) }); } };
   stored.forEach(add);
   Object.keys(catName || {}).forEach((id) => { if (!seen.has(id)) add(catName[id]); });
+  return out;
+};
+// Which subcategories are actually in use, keyed by category id, in menu order.
+// Fed to mergeCategories so a dish's own section shows even when the taxonomy
+// was never saved (a merge import, or a dish edited by hand).
+const subsInUseOf = (items) => {
+  const out = {};
+  (items || []).forEach((it) => {
+    const s = String((it && it.subcat) || "").trim(); if (!s) return;
+    const k = it.cat || menuCat(it.catName || "");
+    const arr = out[k] || (out[k] = []);
+    if (!arr.some((x) => x.toLowerCase() === s.toLowerCase())) arr.push(s);
+  });
   return out;
 };
 // Ordered top-level groups actually in use, canonical order first then custom.
@@ -4313,7 +4358,7 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
       const addons = (Array.isArray(p.addons) ? p.addons : [])
         .map((a) => ({ name: String((a && a.name) || "").trim(), price: (Number(a && a.price) || 0) / 100 }))
         .filter((a) => a.name);
-      return { id: x.id, cat: menuCat(p.cat), sub: String(p.cat || ""), name: p.name, desc: p.desc || "",
+      return { id: x.id, cat: menuCat(p.cat), sub: String(p.cat || ""), subcat: String(p.subcat || ""), name: p.name, desc: p.desc || "",
         price: (Number(p.price) || 0) / 100, img: photo[x.id] || "", bestSeller: !!(p.bestSeller || p.trending), trending: !!p.trending, soldQty: Number(p.soldQty) || 0, soldOut: soldOut,
         // Item tags for the QR menu: vegetarian flag, the fixed spice level
         // (0-3, 0 = shown as nothing) and whether the pass can vary the heat.
@@ -4323,7 +4368,7 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
   menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
   const st = ((await c.query(
     "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
-  const categories = mergeCategories(catName, st);
+  const categories = mergeCategories(catName, st, subsInUseOf(menu));
   const gstBp = gstBpOf(st.gstBp), scBp = Number(st.svcChargeBp) || 0, tax = gstBp >= 1600 ? "TGST" : "GGST";
   const storeRows = (await c.query(
     "SELECT id, code, name, address FROM stores WHERE org_id=$1 AND active ORDER BY created_at", [orgId])).rows;
@@ -4525,7 +4570,10 @@ if (fs.existsSync(protoFile)) {
     // which is what the tiles' assetUrl(id) reads. Duplicating the base64 here
     // tripled the payload (this + menuAll + __resources) and made the cockpit
     // slow to load; the tiles never read this field.
-    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!(p.bestSeller || p.trending), trending: !!p.trending, soldQty: Number(p.soldQty) || 0, hidden: !!p.hidden, mods: liveMods(p.addons), veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat, soldOut: derivedSoldOut(p),
+    // `sub` is the category's DISPLAY NAME (it predates subcategories and several
+    // callers read it); `subcat` is the third taxonomy level. Different things —
+    // don't merge them.
+    .map((p) => ({ id: p.id, cat: menuCat(p.cat), sub: String(p.cat || ""), subcat: String(p.subcat || ""), en: p.name, dv: p.dv || "", price: (Number(p.price) || 0) / 100, desc: p.desc || "", descDv: p.descDv || "", tags: Array.isArray(p.tags) ? p.tags.filter(Boolean).slice(0, 3) : [], bestSeller: !!(p.bestSeller || p.trending), trending: !!p.trending, soldQty: Number(p.soldQty) || 0, hidden: !!p.hidden, mods: liveMods(p.addons), veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat, soldOut: derivedSoldOut(p),
       // Why it is off, when the availability engine knows ("Out of Tuna").
       // Null for a manual off-switch or a plain stock-out; the register's 86
       // list falls back to the item name alone in that case.
@@ -5363,13 +5411,13 @@ if (fs.existsSync(protoFile)) {
         }
         const catName = {};
         items.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
-        const menu = items.map((it) => ({ id: it.id, cat: it.cat, name: it.en, desc: it.desc || "",
+        const menu = items.map((it) => ({ id: it.id, cat: it.cat, subcat: it.subcat || "", name: it.en, desc: it.desc || "",
           price: it.price, img: photo[it.id] || "", bestSeller: !!it.bestSeller, soldOut: !!it.soldOut, hidden: !!it.hidden,
           veg: !!it.veg, spice: Math.max(0, Math.min(3, Math.round(Number(it.spice) || 0))), heat: !!it.heat,
           addons: (it.mods || []).map((m) => ({ name: m.en, price: m.price })), recipe: [] }));
         const st = ((await c.query(
           "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId])).rows[0] || {}).data || {};
-        const categories = mergeCategories(catName, st);
+        const categories = mergeCategories(catName, st, subsInUseOf(items));
         const gstBp = gstBpOf(st.gstBp), scBp = Number(st.svcChargeBp) || 0;
         // The store handle (orgs.slug) is the QR-portal address; the Branding
         // panel shows and edits it. orgs is system-scoped, so read it with withSystem.
@@ -6794,10 +6842,26 @@ if (fs.existsSync(protoFile)) {
     const prods = (await kindAll(orgId, "products", storeId)).filter((p) => p && p.name);
     prods.sort((a, b) => String(a.cat || "").localeCompare(String(b.cat || "")) || String(a.name || "").localeCompare(String(b.name || "")));
     const header = MENU_CSV_COLS.map((c) => c[0]);
-    let rows = prods.map(menuCsvRow);
+    // Export the store's OWN group assignments, so a manager's "Show under"
+    // choices survive the round trip instead of being re-guessed from keywords
+    // on the way back in.
+    const st = ((await withOrg(orgId, (c) => c.query(
+      "SELECT data FROM entities WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false LIMIT 1", [orgId]))).rows[0] || {}).data || {};
+    const cgMap = (st.catGroup && typeof st.catGroup === "object") ? st.catGroup : {};
+    const groupOf = (cat) => cgMap[String(cat || "")] || "";
+    let rows = prods.map((p) => menuCsvRow(p, groupOf));
     // An empty menu still returns a usable template: the header plus one example
     // row (marked EXAMPLE) that shows the format, so a new store can fill it in.
-    if (!rows.length) rows = [["", "EXAMPLE — Margherita Pizza", "", "Pizza", 120, "Tomato, mozzarella, basil", "", "yes", 0, "no", "yes", "yes", "no", "no", "no", "Extra cheese:15; Mushrooms:10", ""]];
+    // Built by KEY, not by hand-counted position — the hand-written array this
+    // replaces was one short, so every value from `tags` rightward sat in the
+    // wrong column and the template taught the wrong shape.
+    if (!rows.length) {
+      const eg = { id: "", name: "EXAMPLE — Margherita Pizza", dv: "", group: "Food", cat: "Pizza", subcat: "Classic",
+        price: 120, desc: "Tomato, mozzarella, basil", descDv: "", veg: "yes", spice: 0, heat: "no", bestSeller: "yes",
+        comments: "yes", noKitchen: "no", hidden: "no", soldOut: "no", tags: "Popular; Veg",
+        addons: "Extra cheese:15 | Mushrooms:10", img: "" };
+      rows = [MENU_CSV_COLS.map(([, key]) => (eg[key] === undefined ? "" : eg[key]))];
+    }
     const csv = toCsv([header].concat(rows));
     res.set("Content-Type", "text/csv; charset=utf-8");
     res.set("Content-Disposition", 'attachment; filename="kashikeyo-menu.csv"');
@@ -6831,26 +6895,50 @@ if (fs.existsSync(protoFile)) {
     // an add-on to it. Categories/order are re-derived from what's imported.
     const replace = !!(req.body || {}).replace;
     let created = 0, updated = 0, purged = 0; const skipped = []; const catSeen = [];
+    const groupOfCat = {};        // category name -> top-level group, first row wins
+    const subsOfCat = {};         // category name -> ordered subcategory names
+    /* Validate EVERY row before touching anything. Replace tombstones the whole
+       menu up front, so a file that then fails to yield a single dish (all
+       prices blank, say) used to leave the store with no menu at all and a
+       "0 added" toast. Now the import is refused before the delete. */
+    const parsed = [];
+    for (let r = 0; r < dataRows.length; r++) {
+      const row = dataRows[r];
+      const rec = {}; MENU_CSV_COLS.forEach(([, key]) => { rec[key] = cell(row, key); });
+      // EXAMPLE rows from the blank template are guidance, not data — skip them.
+      if (/^example\b/i.test(String(rec.name || "").trim())) continue;
+      const nf = menuFields(menuCsvRowToInput(rec));
+      if (nf.error) { skipped.push({ row: r + 2, name: String(rec.name || "").trim(), reason: nf.error }); continue; }
+      parsed.push({ rec, f: nf.fields });
+    }
+    if (!parsed.length) {
+      return res.status(400).json({ error: "No usable dish rows — every row was missing a name or a price above zero. Nothing was changed.", skipped });
+    }
+    // The taxonomy the FILE declares, in file order.
+    for (const { rec, f } of parsed) {
+      const catNm = String(f.cat || "").trim();
+      if (!catNm) continue;
+      if (catSeen.indexOf(catNm) < 0) catSeen.push(catNm);
+      const g = String(rec.group || "").trim().slice(0, 40);
+      if (g && !groupOfCat[catNm]) groupOfCat[catNm] = g;
+      const sub = String(f.subcat || "").trim();
+      if (sub) {
+        const arr = subsOfCat[catNm] || (subsOfCat[catNm] = []);
+        if (!arr.some((x) => x.toLowerCase() === sub.toLowerCase())) arr.push(sub);
+      }
+    }
     await withOrg(orgId, async (c) => {
       if (replace) {
         const del = await c.query("UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='products' AND deleted=false", [orgId]);
         purged = del.rowCount || 0;
       }
-      for (let r = 0; r < dataRows.length; r++) {
-        const row = dataRows[r];
-        const rec = {}; MENU_CSV_COLS.forEach(([, key]) => { rec[key] = cell(row, key); });
-        // EXAMPLE rows from the blank template are guidance, not data — skip them.
-        if (/^example\b/i.test(String(rec.name || "").trim())) continue;
-        const nf = menuFields(menuCsvRowToInput(rec));
-        if (nf.error) { skipped.push({ row: r + 2, name: String(rec.name || "").trim(), reason: nf.error }); continue; }
-        const f = nf.fields;
+      for (const { rec, f } of parsed) {
         // Tags default to the dish's own facts when the column is blank, so the
         // menu tiles carry a chip or two without hand-tagging 300 dishes.
         if (!Array.isArray(f.tags) || !f.tags.length) {
           const dt = []; if (f.bestSeller) dt.push("Popular"); if (f.veg) dt.push("Veg"); if (Number(f.spice) >= 2) dt.push("Spicy");
           if (dt.length) f.tags = dt.slice(0, 3);
         }
-        if (f.cat && catSeen.indexOf(f.cat) < 0) catSeen.push(f.cat);
         const wantId = String(rec.id || "").trim();
         let existing = null;
         if (wantId && !replace) {
@@ -6869,18 +6957,60 @@ if (fs.existsSync(protoFile)) {
           created++;
         }
       }
-      // On a full replace, pin the category order + a sensible top-level group
-      // for each, so every portal reads the menu in the order it was imported.
-      if (replace && catSeen.length) {
-        const catGroups = catSeen.map((nm) => ({ name: nm, group: catGroupOf(nm) }));
-        await c.query(
-          "UPDATE entities SET data = COALESCE(data,'{}'::jsonb) || $2::jsonb, rowver=nextval('entities_rowver_seq'), updated_at=now() WHERE org_id=$1 AND kind='settings'",
-          [orgId, JSON.stringify({ catOrder: catSeen, catGroups })]);
+      /* ── Taxonomy ──────────────────────────────────────────────────────────
+         The list every surface renders comes from settings.menuCats (order),
+         settings.catGroup (category → top-level group) and settings.menuSubs
+         (category → its sections). The old code wrote only catOrder/catGroups —
+         keys nothing rendered from — so a re-organised menu left every previous
+         category standing. That is the bug this fixes.
+
+         REPLACE: the file is the whole taxonomy. menuCats, catGroup and menuSubs
+         are rebuilt to exactly what the file declares, so a category, a group
+         assignment or a section that is no longer in the file is gone. This is
+         the same promise Replace already makes about dishes.
+         MERGE: the file's taxonomy is unioned onto the saved one — new sections
+         appear in file order at the end, nothing existing is dropped, and a
+         group named in the file updates that category's group. */
+      if (replace || catSeen.length) {
+        const cur = (await c.query(
+          "SELECT id, data FROM entities WHERE org_id=$1 AND kind='settings' AND deleted=false ORDER BY (id='settings') DESC, updated_at DESC LIMIT 1", [orgId])).rows[0] || null;
+        const sd = Object.assign({}, (cur && cur.data) || {});
+        let cats, group, subs;
+        if (replace) {
+          cats = catSeen.slice(); group = {}; subs = {};
+        } else {
+          cats = Array.isArray(sd.menuCats) ? sd.menuCats.slice() : [];
+          catSeen.forEach((nm) => { if (!cats.some((x) => menuCat(x) === menuCat(nm))) cats.push(nm); });
+          group = Object.assign({}, (sd.catGroup && typeof sd.catGroup === "object") ? sd.catGroup : {});
+          subs = Object.assign({}, (sd.menuSubs && typeof sd.menuSubs === "object") ? sd.menuSubs : {});
+        }
+        catSeen.forEach((nm) => {
+          if (groupOfCat[nm]) group[nm] = groupOfCat[nm];
+          const fileSubs = subsOfCat[nm] || [];
+          if (replace) { if (fileSubs.length) subs[nm] = fileSubs.slice(); }
+          else if (fileSubs.length) {
+            const keep = Array.isArray(subs[nm]) ? subs[nm].slice() : [];
+            fileSubs.forEach((s) => { if (!keep.some((x) => String(x).toLowerCase() === s.toLowerCase())) keep.push(s); });
+            subs[nm] = keep;
+          }
+        });
+        sd.menuCats = cats;
+        sd.catGroup = group;
+        sd.menuSubs = subs;
+        // catOrder / catGroups are the older mirrors of the same thing; keep them
+        // in step so anything still reading them agrees with what renders.
+        sd.catOrder = cats.slice();
+        sd.catGroups = cats.map((nm) => ({ name: nm, group: String(group[nm] || catGroupOf(nm)), subs: (subs[nm] || []).slice() }));
+        const sid = cur ? cur.id : "settings";
+        await c.query("INSERT INTO entities (org_id, kind, id, data) VALUES ($1,'settings',$2,$3) ON CONFLICT (org_id, kind, id) DO UPDATE SET data=excluded.data, deleted=false, rowver=nextval('entities_rowver_seq'), updated_at=now()", [orgId, sid, JSON.stringify(sd)]);
       }
     });
     poke(orgId, Date.now());
-    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.import", ref: "", detail: { created, updated, purged, skipped: skipped.length } });
-    res.json({ ok: true, created, updated, purged, categories: catSeen.length, skipped });
+    const subCount = Object.keys(subsOfCat).reduce((n, k) => n + subsOfCat[k].length, 0);
+    const groupCount = Object.keys(groupOfCat).reduce((set, k) => (set.indexOf(groupOfCat[k]) < 0 ? set.concat([groupOfCat[k]]) : set), []).length;
+    logActivity(orgId, { actor: (req.appStaff && req.appStaff.name) || "", action: "menu.import", ref: "",
+      detail: { created, updated, purged, skipped: skipped.length, categories: catSeen.length, subcategories: subCount, replace } });
+    res.json({ ok: true, created, updated, purged, categories: catSeen.length, subcategories: subCount, groups: groupCount, skipped });
   }));
 
   /* Download the bundled starter menu as a ready-to-edit CSV — a fully worked
@@ -6890,7 +7020,12 @@ if (fs.existsSync(protoFile)) {
     if (!orgId) return res.status(401).json({ error: "no session" });
     if (denyAppRole(req, res, APP_RANK.MANAGER, "The sample menu is for a manager or the owner.")) return;
     const header = MENU_CSV_COLS.map((c) => c[0]);
-    const rows = (DEFAULT_MENU || []).map(menuCsvRow);
+    // The bundled sample knows its own groups from CAT_GROUPS; note the explicit
+    // arrow — `.map(menuCsvRow)` would hand the array INDEX in as `groupOf` and
+    // then try to call a number.
+    const sampleGroup = {};
+    (CAT_GROUPS || []).forEach((g) => (g.subs || []).forEach((s) => { sampleGroup[s] = g.name; }));
+    const rows = (DEFAULT_MENU || []).map((p) => menuCsvRow(p, (cat) => sampleGroup[String(cat || "")] || ""));
     res.set("Content-Type", "text/csv; charset=utf-8");
     res.set("Content-Disposition", 'attachment; filename="kashikeyo-sample-menu.csv"');
     res.set("Cache-Control", "no-store");
