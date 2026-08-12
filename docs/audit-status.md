@@ -17,9 +17,14 @@ missing access rather than assumed to pass.
 > **Update, 12 Aug 2026 03:35 UTC — capacity is now measured, not modelled.** A
 > throwaway service in staging ran the harness against the deployed app from
 > off-box: ceiling ~360 settlements/second, ~13,000× the audit's floor, zero
-> errors to 768 concurrent tills (§4.6). Score **8.1 → 8.2**. Two caps remain.
+> errors to 768 concurrent tills (§4.6). Score **8.1 → 8.2**.
+>
+> **Update, 12 Aug 2026 04:20 UTC — the money oracle and fault injection.** The
+> structural gap behind the original tax bug is closed (§2a), and the offline
+> money path has been attacked on purpose for the first time (§2b). Suite
+> 117 → **133**. Score **8.2 → 8.4**.
 
-## Score — 8.2 / 10
+## Score — 8.4 / 10
 
 Weighted across ten dimensions, each scored on **evidence**, not on the existence
 of code. Two dimensions are still held below their earned score, because the
@@ -27,18 +32,27 @@ evidence that would lift them needs access or accounts this review does not have
 
 | Dimension | Weight | Score | Note |
 | --- | ---: | ---: | --- |
-| Money & tax correctness | 15 | 9 | One `billTotals()`; 1,080-combination parity test |
+| Money & tax correctness | 15 | 9 | One `billTotals()`; 1,080-combination parity test; **independent tax-model oracle** |
 | Tenancy & data integrity | 15 | 9 | FORCE RLS everywhere; cross-tenant restore refused |
-| Offline & sync resilience | 12 | 8 | Durable outbox; a mid-sync till provably converges after restore |
-| Security & access control | 12 | 8 | Fail-fast on weak `JWT_SECRET`; no external penetration test |
+| Offline & sync resilience | 12 | 9 | **Fault-injected**: replay, races, mid-flight abort, clock skew, cursor never skips |
+| Security & access control | 12 | 8 | Fail-fast on weak `JWT_SECRET`; `npm audit` gate in CI; no external penetration test |
 | Disaster recovery | 10 | 7 | **Capped** — managed-backup layer unverified |
 | Observability | 10 | 7 | **Capped** — nothing scrapes `/api/metrics`, so nothing alerts |
 | Performance & capacity | 8 | 9 | **Measured on the deployed app**: ~360 settlements/s, zero errors to 768 tills |
-| Testing & verification | 8 | 8 | 117 cold-database tests reading the *shipped* files |
+| Testing & verification | 8 | 9 | **133** cold-database tests reading the *shipped* files; CI gates dependencies |
 | Release & deploy process | 5 | 9 | Readiness probe **proven in production**: healthcheck 503'd, retried, passed |
 | Restaurant operations fit | 5 | 8 | Some flows verified by screenshot rather than by test |
 
-**Weighted total: 8.23 → 8.2**
+**Weighted total: 8.43 → 8.4**
+
+**Money & tax correctness stays at 9, and that is deliberate.** An earlier note
+in this document estimated that building the oracle would take it to 10. Having
+built it, that estimate was too generous: the oracle detects one specific wrong
+model — GST grossed up onto a tax-inclusive price, the historical bug — not any
+arbitrary mispricing. A fully general "does this total match the catalogue"
+check is blocked by add-on pricing, which legitimately lifts a line above
+catalogue and is indistinguishable from an overcharge at the line level. The
+risk moved a great deal; the score should not pretend the residual is gone.
 
 The deployment gate that once sat outside this number is **closed** (§4.1): the
 release built from the Dockerfile, applied its schema, swapped to the restricted
@@ -52,16 +66,16 @@ and nothing scrapes the metrics endpoint.
 | | |
 | --- | --- |
 | Findings closed and in production | CRITICAL, HIGH and MEDIUM |
-| Automated suite | **117 tests, 117 passing** on a cold database |
+| Automated suite | **133 tests, 133 passing** on a cold database |
 | Independent CI | GitHub Actions run **#181**, `postgres:16` service, `npm ci --omit=dev` + `npm test` — **success** on `0e954ac` |
 | Production branch | `main` = `staging` = `0e954ac` |
 | Deployment itself | **VERIFIED** — `e14de2a1`, boot 222 ms, healthcheck 503-then-pass |
 | Capacity | **~360 settlements/s** measured off-box against staging |
 
-The suite grew from 78 effectively-running tests to 117 over this remediation.
-Four test files are new, each pinning a specific finding rather than the feature
+The suite grew from 78 effectively-running tests to 133 over this remediation.
+Six test files are new, each pinning a specific finding rather than the feature
 in general: `outlets.test.js`, `orders-history.test.js`, `restore-drill.test.js`,
-`metrics.test.js`.
+`metrics.test.js`, `tax-oracle.test.js` and `fault-injection.test.js`.
 
 ---
 
@@ -116,6 +130,8 @@ Two further money defects found alongside it:
 | **D-09** per-outlet configuration | `48e6e6d` | 8 tests; browser-verified — a branch at 40 tables/160 seats renders its own floor while the main store keeps 12/48 |
 | **D-06** receipt history capped at 200 | `e26b376` | 5 tests; 520 sales reachable in four pages, no duplicates, cursor advances through an all-voided page |
 | **D-04** recovery + observability | `54fe611` | 4 + 5 tests; automated restore drill and `/api/metrics` |
+| Money audit could not see a wrong tax model | *(§2a)* | 7 tests; catches the exact historical bug, silent on add-ons/discounts/fees/service |
+| Offline money path never adversarially tested | *(§2b)* | 9 fault-injection tests; verified non-flaky over three consecutive runs |
 
 ### D-09 — per-outlet configuration
 
@@ -145,6 +161,82 @@ saturation, a latency histogram, status classes, error rate and POS-specific
 counters; `docs/disaster-recovery.md` §7b lists thresholds.
 
 ---
+
+## 2a. The oracle — and its first catch
+
+Every money check the server had reconciled a sale against its **own** declared
+figures. That is exactly why the tax divergence survived: both surfaces
+satisfied `subtotal − discount + service + GST = total` while disagreeing with
+each other. Self-consistency cannot detect a wrong model.
+
+`taxModelDivergence()` rebuilds the basket from the **catalogue** — the one
+input the terminal and the guest portal share — prices it through the canonical
+`billTotals()`, and flags a total that matches the grossed-up model while
+missing the store's actual one by more than rounding.
+
+It is deliberately narrow. It abstains on anything it cannot price
+independently (open-price items, unknown products, bad quantities) and only
+fires when the claimed total matches the *wrong* model closely **and** the right
+one poorly. A flag lands in a manager's review queue, so a noisy oracle is worse
+than none: most of `test/tax-oracle.test.js` is false-positive defence — add-on
+priced lines, bill discounts, delivery fees and service charges all stay silent.
+It also takes the service-charge rate from the **store**, never from the sale,
+so a sale cannot explain away its own discrepancy.
+
+Also fixed: `moneyCtx` read `Number(st.gstBp) || 0` — the same bug class as the
+`gstBpOf` fix — which silently disabled both the GST check and the new oracle for
+every store that had never explicitly set a rate.
+
+### Its first catch was this repository's own test suite
+
+Three fixtures in `audit.test.js` were priced **GST-exclusive** and had been
+passing as honest:
+
+| Fixture | Was | What it described |
+| --- | --- | --- |
+| "an honest sale is NOT flagged" | 9500 + 760 = 10260 | an 8% overcharge |
+| counter-modified order settle | 6000 + 480 = 6480 | an 8% overcharge |
+| ledger-export "honest sale" | 10000 + 800 = 10800 | an 8% overcharge |
+
+Each asserts that a sale overcharging the guest is fine. They are re-priced to
+the inclusive model, computed with `billTotals()` rather than by hand.
+
+This is recorded loudly rather than quietly, because the audit's own rules
+forbid silently correcting test data to make a test pass. The fixtures were
+wrong and the oracle was right — which is the entire argument for having it.
+
+## 2b. Fault injection on the money path
+
+Nine faults, each standing for a real one, all holding one invariant: **money in
+== money stored**.
+
+| Fault | Stands for |
+| --- | --- |
+| One op delivered four times | The ack lost to a dropout |
+| **Eight simultaneous replays of one op** | Two tills sharing a queue — the `ops` primary key under a real race |
+| A retry that regenerates its op id | Client id churn falling through to the entity key |
+| **A request aborted mid-flight, then replayed** | The tablet that died between `COMMIT` and the response |
+| An outbox flushed twice, longer the second time | Partial batch replay |
+| A queue drained backwards | A late sale keeping the time it was *rung* |
+| Clocks 36 hours fast and slow | A tablet with the wrong date — including that paged receipt history still reaches a future-dated sale |
+| **A reader advancing its cursor while 40 sales commit** | The never-skip property the offline model rests on |
+| All of the above at once | The ledger totalling exactly what was rung |
+
+The abort case walks the abort across the commit window so it lands on both
+sides of it — some iterations kill the connection *after* the server committed,
+which is where a naive design double-books.
+
+Two tests failed on the first run and the fault was the test's: `salesOf()` took
+one impatient snapshot, and a single pull can transiently miss a
+freshly-committed row while another transaction holds the cluster snapshot xmin
+down. It waits for the expected count now, and still fails if the count never
+arrives, so a genuinely lost sale cannot hide behind the wait. Verified
+non-flaky across three consecutive runs before shipping.
+
+**What is still untested in this dimension**, and why it is 9 rather than 10: a
+genuine multi-day offline period with the outbox at browser storage quota, and a
+real process kill mid-transaction rather than a client-side abort. Both are
+buildable; the second needs the harness to manage process lifecycle mid-test.
 
 ## 3. Withdrawn finding
 
@@ -331,6 +423,13 @@ sales now sit in the staging database under throwaway
 
 Nothing on this list is a code change. Steps 5 and 6 are the two remaining caps
 on the score; the rest are confirmations.
+
+Beyond it, the engineering that would move the score further — in the order I
+would spend the budget: a multi-day offline + storage-quota fault case and a real
+process kill mid-transaction (§2b); an authz matrix test covering every route ×
+every role; coverage measurement with a CI floor and a browser end-to-end run
+replacing the flows currently verified by screenshot; and an external
+penetration test, which is money and calendar rather than work.
 
 ## 6. Observed after the capacity run — pool exhaustion under ordinary polling
 
