@@ -103,8 +103,14 @@ describe("money integrity (FIN-01)", () => {
     await pushSale("m-underpriced", { no: "INV-U", lines: [{ pid: "m-burger", qty: 1, price: 1, taxable: true }], subtotal: 1, gst: 0, total: 1 });
     assert.ok((await flaggedIds()).includes("m-underpriced"));
   });
+  /* Priced GST-INCLUSIVE, which is this app's decided model: a catalogue price
+     of 9500 means the guest pays 9500, with 704 of GST contained in it.
+     This fixture used to read subtotal 9500 / gst 760 / total 10260 — GST added
+     ON TOP — and passed, because nothing checked the tax model. The oracle in
+     taxModelDivergence() flags exactly that shape now, and it was right to:
+     a sale like the old fixture overcharges the guest by 8%. */
   test("an honest sale is NOT flagged", async () => {
-    await pushSale("m-honest", { no: "INV-H", lines: [{ pid: "m-burger", qty: 1, price: 9500, discPct: 0, taxable: true }], subtotal: 9500, billDisc: 0, billDiscPct: 0, gst: 760, svcCharge: 0, fee: 0, total: 10260 });
+    await pushSale("m-honest", { no: "INV-H", lines: [{ pid: "m-burger", qty: 1, price: 9500, amount: 8796, discPct: 0, taxable: true }], subtotal: 8796, billDisc: 0, billDiscPct: 0, gst: 704, svcCharge: 0, fee: 0, total: 9500 });
     assert.ok(!(await flaggedIds()).includes("m-honest"));
   });
   test("a legitimately discounted line is NOT flagged", async () => {
@@ -393,7 +399,9 @@ describe("guest orders & counter-modify", () => {
     // money check must still run on the counter-modified sale.
     await H.ops(o.token, [
       { opId: "cm-sale", puts: [{ kind: "sales", id: "cm-sale", data: { id: "cm-sale", no: "INV-CM", type: "sale", srcOrderId: orderId,
-        lines: [{ pid: "g-tea", qty: 2, price: 3000, taxable: true }], subtotal: 6000, gst: 480, total: 6480, payments: [{ method: "Cash", amount: 6480 }] } }] },
+        // GST-inclusive, like every other priced fixture: 2 x 3000 inclusive is
+        // a 6000 bill containing 444 of GST — not 6000 + 480 on top.
+        lines: [{ pid: "g-tea", qty: 2, price: 3000, amount: 5556, taxable: true }], subtotal: 5556, gst: 444, total: 6000, payments: [{ method: "Cash", amount: 6000 }] } }] },
       { opId: "cm-ord", puts: [{ kind: "orders", id: orderId, data: { id: orderId, status: "completed", saleId: "cm-sale", settledAtTill: true } }] },
     ]);
     const sale = await H.pullEntity(o.token, "sales", (e) => e.id === "cm-sale");
@@ -744,7 +752,8 @@ describe("flagged-sale reporting (FIN-1)", () => {
       { kind: "products", id: "fb", data: { id: "fb", name: "Burger", price: 10000 } },
     ] }]);
     // an honest sale (not flagged) …
-    await H.ops(o.token, [{ opId: "fs1", puts: [{ kind: "sales", id: "fclean", data: { id: "fclean", no: "C1", type: "sale", subtotal: 10000, gst: 800, billDisc: 0, svcCharge: 0, total: 10800, lines: [{ pid: "fb", qty: 1, price: 10000 }], payments: [{ method: "cash", amount: 10800 }], gstBp: 800, t: Date.now() } }] }]);
+    // GST-inclusive: a 10000 catalogue price is a 10000 bill containing 741 of GST.
+    await H.ops(o.token, [{ opId: "fs1", puts: [{ kind: "sales", id: "fclean", data: { id: "fclean", no: "C1", type: "sale", subtotal: 9259, gst: 741, billDisc: 0, svcCharge: 0, total: 10000, lines: [{ pid: "fb", qty: 1, price: 10000, amount: 9259 }], payments: [{ method: "cash", amount: 10000 }], gstBp: 800, t: Date.now() } }] }]);
     // … and a tampered under-ring: honest lines/subtotal/gst but a total slashed
     // to 100 (vs components 10800) → server flags it, and the variance surfaces.
     await H.ops(o.token, [{ opId: "fs2", puts: [{ kind: "sales", id: "ftamper", data: { id: "ftamper", no: "T1", type: "sale", subtotal: 10000, gst: 800, billDisc: 0, svcCharge: 0, total: 100, lines: [{ pid: "fb", qty: 1, price: 10000 }], payments: [{ method: "cash", amount: 100 }], gstBp: 800, t: Date.now() } }] }]);

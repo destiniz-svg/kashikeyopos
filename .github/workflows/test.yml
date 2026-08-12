@@ -49,4 +49,9 @@ jobs:
       # to prevent. `npm ci` also fails loudly if package.json and the lockfile
       # drift, instead of quietly resolving something else.
       - run: npm ci --omit=dev
+      # Fail the build on a known-exploitable dependency rather than finding out
+      # from an advisory email. Scoped to production deps (the only ones the
+      # image ships) and to high/critical, so a dev-only moderate cannot block a
+      # release the runtime is not exposed to.
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm test
