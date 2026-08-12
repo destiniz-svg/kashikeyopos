@@ -23,8 +23,13 @@ missing access rather than assumed to pass.
 > structural gap behind the original tax bug is closed (§2a), and the offline
 > money path has been attacked on purpose for the first time (§2b). Suite
 > 117 → **133**. Score **8.2 → 8.4**.
+>
+> **Update, 12 Aug 2026 05:10 UTC — both money and sync now clear the bar.** The
+> oracle became general rather than a signature detector, the two named offline
+> gaps closed, and re-pricing a stale fixture exposed a live defect in the
+> discount ceiling (§2c). Suite 133 → **143**. Score **8.4 → 8.7**.
 
-## Score — 8.4 / 10
+## Score — 8.7 / 10
 
 Weighted across ten dimensions, each scored on **evidence**, not on the existence
 of code. Two dimensions are still held below their earned score, because the
@@ -32,9 +37,9 @@ evidence that would lift them needs access or accounts this review does not have
 
 | Dimension | Weight | Score | Note |
 | --- | ---: | ---: | --- |
-| Money & tax correctness | 15 | 9 | One `billTotals()`; 1,080-combination parity test; **independent tax-model oracle** |
+| Money & tax correctness | 15 | 10 | One `billTotals()`; 1,080-combination parity test; a **general** oracle recomputing every bill from the catalogue |
 | Tenancy & data integrity | 15 | 9 | FORCE RLS everywhere; cross-tenant restore refused |
-| Offline & sync resilience | 12 | 9 | **Fault-injected**: replay, races, mid-flight abort, clock skew, cursor never skips |
+| Offline & sync resilience | 12 | 10 | **Fault-injected**, including a real SIGKILL mid-transaction and the outbox at storage quota |
 | Security & access control | 12 | 8 | Fail-fast on weak `JWT_SECRET`; `npm audit` gate in CI; no external penetration test |
 | Disaster recovery | 10 | 7 | **Capped** — managed-backup layer unverified |
 | Observability | 10 | 7 | **Capped** — nothing scrapes `/api/metrics`, so nothing alerts |
@@ -43,16 +48,22 @@ evidence that would lift them needs access or accounts this review does not have
 | Release & deploy process | 5 | 9 | Readiness probe **proven in production**: healthcheck 503'd, retried, passed |
 | Restaurant operations fit | 5 | 8 | Some flows verified by screenshot rather than by test |
 
-**Weighted total: 8.43 → 8.4**
+**Weighted total: 8.70 → 8.7**
 
-**Money & tax correctness stays at 9, and that is deliberate.** An earlier note
-in this document estimated that building the oracle would take it to 10. Having
-built it, that estimate was too generous: the oracle detects one specific wrong
-model — GST grossed up onto a tax-inclusive price, the historical bug — not any
-arbitrary mispricing. A fully general "does this total match the catalogue"
-check is blocked by add-on pricing, which legitimately lifts a line above
-catalogue and is indistinguishable from an overcharge at the line level. The
-risk moved a great deal; the score should not pretend the residual is gone.
+**Money & tax correctness reaches 10.** The previous revision held it at 9 and
+said why: the oracle detected one wrong model, not any mispricing, because a
+modified line legitimately sits above catalogue. That reasoning turned out to be
+wrong — sale lines already record `addons[{name, price}]` and `discPct`, and
+products carry the same add-on list, so the expected price is reconstructable
+exactly. The oracle is general now (§2a). What it still declines to judge —
+open-price items, products absent from the catalogue — cannot be priced
+independently by anything, so it is not a gap that further work closes.
+
+**Offline & sync resilience reaches 10.** The two gaps named in the previous
+revision are both closed: a real `SIGKILL` mid-transaction rather than a
+client-side abort, and the shipped outbox exercised at browser storage quota
+across a multi-day backlog (§2b). What remains in this area — Postgres failover
+behaviour — belongs to disaster recovery, not to the sync model.
 
 The deployment gate that once sat outside this number is **closed** (§4.1): the
 release built from the Dockerfile, applied its schema, swapped to the restricted
@@ -66,13 +77,13 @@ and nothing scrapes the metrics endpoint.
 | | |
 | --- | --- |
 | Findings closed and in production | CRITICAL, HIGH and MEDIUM |
-| Automated suite | **133 tests, 133 passing** on a cold database |
+| Automated suite | **143 tests, 143 passing** on a cold database |
 | Independent CI | GitHub Actions run **#181**, `postgres:16` service, `npm ci --omit=dev` + `npm test` — **success** on `0e954ac` |
 | Production branch | `main` = `staging` = `0e954ac` |
 | Deployment itself | **VERIFIED** — `e14de2a1`, boot 222 ms, healthcheck 503-then-pass |
 | Capacity | **~360 settlements/s** measured off-box against staging |
 
-The suite grew from 78 effectively-running tests to 133 over this remediation.
+The suite grew from 78 effectively-running tests to 143 over this remediation.
 Six test files are new, each pinning a specific finding rather than the feature
 in general: `outlets.test.js`, `orders-history.test.js`, `restore-drill.test.js`,
 `metrics.test.js`, `tax-oracle.test.js` and `fault-injection.test.js`.
@@ -174,14 +185,24 @@ input the terminal and the guest portal share — prices it through the canonica
 `billTotals()`, and flags a total that matches the grossed-up model while
 missing the store's actual one by more than rounding.
 
-It is deliberately narrow. It abstains on anything it cannot price
-independently (open-price items, unknown products, bad quantities) and only
-fires when the claimed total matches the *wrong* model closely **and** the right
-one poorly. A flag lands in a manager's review queue, so a noisy oracle is worse
-than none: most of `test/tax-oracle.test.js` is false-positive defence — add-on
-priced lines, bill discounts, delivery fees and service charges all stay silent.
-It also takes the service-charge rate from the **store**, never from the sale,
-so a sale cannot explain away its own discrepancy.
+**It is general, not a signature detector.** An earlier revision only caught the
+grossed-up shape, because a modified line legitimately sits above catalogue and
+looked identical to an overcharge. But lines record `addons[{name, price}]` and
+`discPct`, and products carry the same add-on list — so every line is priced
+from the catalogue **by name**, the declared line discount is applied, and any
+material divergence is reported. An inflated add-on price, previously
+indistinguishable from a dearer variant, is now caught. The known tax-model
+shape is still named specifically, because "matches GST-added-on-top" is far
+more use in a review queue than "the numbers differ".
+
+It still abstains rather than guesses: an open-price item, an unknown product or
+an add-on absent from the catalogue means the bill cannot be priced
+independently, and no claim is made. The tolerance is a rounding budget — two
+laari per line — not a percentage, which at a large bill would wave through a
+real skim. It takes the service-charge rate from the **store**, never from the
+sale, so a sale cannot explain away its own discrepancy. Most of
+`test/tax-oracle.test.js` is false-positive defence: modified lines, per-line
+and bill discounts, delivery fees and service charges all stay silent.
 
 Also fixed: `moneyCtx` read `Number(st.gstBp) || 0` — the same bug class as the
 `gstBpOf` fix — which silently disabled both the GST check and the new oracle for
@@ -233,10 +254,46 @@ down. It waits for the expected count now, and still fails if the count never
 arrives, so a genuinely lost sale cannot hide behind the wait. Verified
 non-flaky across three consecutive runs before shipping.
 
-**What is still untested in this dimension**, and why it is 9 rather than 10: a
-genuine multi-day offline period with the outbox at browser storage quota, and a
-real process kill mid-transaction rather than a client-side abort. Both are
-buildable; the second needs the harness to manage process lifecycle mid-test.
+Two further faults close the gaps the previous revision named:
+
+- **A real `SIGKILL` mid-transaction.** Not `SIGTERM` — a crash that unwinds
+  cleanly proves nothing about one that doesn't. The test acknowledges a sale,
+  fires a second, kills the server while it is in flight, restarts it and
+  replays both: the acknowledged sale must survive intact and the replay must
+  not double-book.
+- **The outbox at browser storage quota, across a multi-day backlog.** It runs
+  the `OUTBOX_JS` the server actually injects — sliced out of `index.js` rather
+  than retyped — with `localStorage` throwing `QuotaExceededError` on every
+  write. Five sales rung across three days all reach the server with their
+  original timestamps and their money intact.
+
+## 2c. A live defect, found by getting a fixture right
+
+Re-pricing the fourth GST-exclusive fixture — a 50%-off line — made it fail. Not
+on the oracle, which stayed silent, but on the **discount ceiling reporting 54%**.
+
+`effectiveDiscountPct()` measured `gross` from the line's **inclusive** unit
+price and the remainder from `saleLineTotal()`'s **net** amount. The gap between
+them therefore carried the GST as well as the discount. On a tax-inclusive till:
+
+- every sale read `rate/(1+rate)` more discounted than it was — about **7.4% on
+  GGST, 14.5% on TGST**;
+- a sale with **no discount at all** reported one;
+- a genuine **46% discount tripped a 50% ceiling** — pushing honest sales into
+  the manager review queue as `sale.discount_over_limit`, and quietly tightening
+  every store's configured limit by its own tax rate.
+
+Fixed by measuring both sides inclusively, using the `discPct` the current till
+always writes. Rows predating that field keep the original net reading, because
+an old sale was priced GST-exclusive and its `amount` *is* its inclusive price.
+The branch is chosen on the field's **presence**, not on a non-zero value, so an
+undiscounted modern sale does not fall into the legacy path. Tests pin 50%
+reading 50%, an undiscounted sale reading 0%, and 80% still tripping the ceiling.
+
+This is the second time in this remediation that correcting a stale fixture
+exposed live behaviour. It is the argument for the oracle, made twice — and a
+reminder that a green suite measures agreement with its fixtures, not with
+reality.
 
 ## 3. Withdrawn finding
 
