@@ -422,6 +422,13 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 </sc-for>
               </div>
             </sc-if>
+            <sc-if value="{{ hasSubChips2 }}">
+              <div style="display:flex;gap:7px;margin:-6px 0 12px;overflow-x:auto;padding-bottom:2px">
+                <sc-for list="{{ subChips2 }}" as="sc2" hint-placeholder-count="0">
+                  <button onClick="{{ sc2.pick }}" style="{{ sc2.style }}">{{ sc2.name }}</button>
+                </sc-for>
+              </div>
+            </sc-if>
             <sc-for list="{{ menuSections }}" as="sec" hint-placeholder-count="0">
              <div style="{{ sec.wrapStyle }}">
               <div style="{{ sec.headStyle }}">
@@ -3364,7 +3371,7 @@ class Component extends DCLogic {
         count: c.id === "all" ? K0.MENU.length : K0.MENU.filter((m) => inTab(m, c.id)).length,
         // Changing the top-level tab clears any section filter: the old one
         // belongs to the tab you just left and would silently empty the grid.
-        pick: () => this.setState({ cat: c.id, subcat: "" }),
+        pick: () => this.setState({ cat: c.id, subcat: "", subcat2: "" }),
         // The icon carries the section hue (rev 2 §5) so hue and glyph identify
         // the section together. On the active amber pill both go to on-amber.
         iconStyle: "flex-shrink:0;color:" + (on ? "var(--on-amber)" : hue),
@@ -3372,47 +3379,103 @@ class Component extends DCLogic {
       };
     });
 
-    /* SECTION row — the subcategories reachable from the tab now selected,
-       drawn directly under the tab strip. Empty (so the row is not rendered) on
-       "All" and for any tab whose dishes carry no subcategory, which is every
-       store that has never used the level.
+    /* SECTION row — the level directly BELOW whatever the tab strip is showing,
+       drawn directly under it.
 
-       Order is the store's own: each category's declared `subs` in menu order,
-       then anything a dish actually uses that the saved list has not caught up
-       with — nothing a dish points at can hide behind a stale list. */
-    const subOrder = [];
-    (K0.MENU_CATEGORIES || []).forEach((c) => (c.subs || []).forEach((n) => { if (subOrder.indexOf(n) < 0) subOrder.push(n); }));
-    const subsHere = [];
-    if (activeCat !== "all") {
-      K0.MENU.filter((m) => inTab(m, activeCat)).forEach((m) => {
-        const n = String(m.subcat || "");
-        if (n && subsHere.indexOf(n) < 0) subsHere.push(n);
+       Which level that is follows the strip, because the strip is not always
+       the same thing. A store with groups puts its four GROUPS up there, so the
+       row is that group's CATEGORIES — Pizza, Pasta, Burgers — the level every
+       store already has, and the one that breaks up a 24-tile wall of Food. A
+       store with no groups already has its categories in the strip, so there the
+       row is the SUBCATEGORY level under the category picked. Reading the strip
+       instead of always reaching for `subcat` is the whole point: subcategories
+       are optional and mostly unused, so a row hard-wired to them renders for
+       almost nobody and the list stays long.
+
+       Order is the store's own — categories in menu order, subcategories in
+       their category's declared `subs` — then anything a dish actually points at
+       that the saved list has not caught up with, so nothing a dish uses can
+       hide behind a stale list. */
+    const secKind = activeCat === "all" ? "" : (grpNames ? "cat" : "sub");
+    const secOf = (m) => secKind === "cat" ? String(m.cat || "") : String(m.subcat || "");
+    const secOrder = [];
+    if (secKind === "cat") (K0.MENU_CATEGORIES || []).forEach((c) => secOrder.push(String(c.id)));
+    else if (secKind === "sub") (K0.MENU_CATEGORIES || []).forEach((c) => (c.subs || []).forEach((n) => { if (secOrder.indexOf(n) < 0) secOrder.push(n); }));
+    const inTabNow = K0.MENU.filter((m) => inTab(m, activeCat));
+    const secsHere = [];
+    if (secKind) {
+      inTabNow.forEach((m) => {
+        const n = secOf(m);
+        if (n && secsHere.indexOf(n) < 0) secsHere.push(n);
       });
-      subsHere.sort((a, b) => {
-        const ia = subOrder.indexOf(a), ib = subOrder.indexOf(b);
+      secsHere.sort((a, b) => {
+        const ia = secOrder.indexOf(a), ib = secOrder.indexOf(b);
         return (ia < 0 ? 9e3 : ia) - (ib < 0 ? 9e3 : ib) || a.localeCompare(b);
       });
     }
-    const activeSub = subsHere.indexOf(s.subcat || "") >= 0 ? s.subcat : "";
+    /* One section that every dish on the tab belongs to is a row that filters
+       nothing — it would cost a line of screen to say what the tab above says.
+       It earns its place from two sections, or from one plus dishes outside it. */
+    const secList = (secsHere.length > 1 || (secsHere.length === 1 && inTabNow.some((m) => !secOf(m)))) ? secsHere : [];
+    const activeSec = secList.indexOf(s.subcat || "") >= 0 ? s.subcat : "";
+    // Only the subcategory kind makes an in-grid section heading redundant; a
+    // category chip still wants its subcategory runs headed underneath.
+    const activeSub = secKind === "sub" ? activeSec : "";
+    const catNameOf = (id) => {
+      const c = (K0.MENU_CATEGORIES || []).filter((x) => String(x.id) === String(id))[0];
+      return c ? c.name : id;
+    };
     /* FAT FINGER: a cashier hits these mid-rush with a thumb, often on a greasy
        tablet, so the target is 48px tall with 20px of side padding and 8px
        between chips — comfortably past the 44px minimum, and taller than the
        category pills above precisely because this row is the one that changes
        most often during service. */
-    const subChips = subsHere.length ? [""].concat(subsHere).map((n) => {
-      const on = activeSub === n;
+    const subChips = secList.length ? [""].concat(secList).map((n) => {
+      const on = activeSec === n;
       return {
-        name: n || "All",
-        pick: () => this.setState({ subcat: on ? "" : n }),
+        name: n ? (secKind === "cat" ? catNameOf(n) : n) : "All",
+        // Changing the section clears the level below it, for the same reason
+        // the tab strip clears this one: it belongs to the section you just left.
+        pick: () => this.setState({ subcat: on ? "" : n, subcat2: "" }),
         style: "display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 20px;border-radius:24px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;border:1px solid " +
           (on ? "var(--amber)" : "var(--line)") + ";background:" + (on ? "var(--amber)" : "var(--bg-1)") + ";color:" + (on ? "var(--on-amber)" : "var(--text-dim)")
+      };
+    }) : [];
+
+    /* THIRD LEVEL — the picked category's own subcategories. Only a store that
+       both groups its categories AND sections one of them gets here, so this row
+       is absent for almost every store; without it the level would be
+       unreachable on the till, since the tab strip is groups whenever a store
+       has any category at all (every category is given a group, guessed from its
+       name if the manager never set one). Lower and quieter than the row above:
+       44px, unfilled when idle, so the eye reads the hierarchy top-down. */
+    const subsIn = [];
+    if (secKind === "cat" && activeSec) {
+      const dec = ((K0.MENU_CATEGORIES || []).filter((c) => String(c.id) === String(activeSec))[0] || {}).subs || [];
+      const inCat = inTabNow.filter((m) => String(m.cat || "") === activeSec);
+      inCat.forEach((m) => { const n = String(m.subcat || ""); if (n && subsIn.indexOf(n) < 0) subsIn.push(n); });
+      subsIn.sort((a, b) => {
+        const ia = dec.indexOf(a), ib = dec.indexOf(b);
+        return (ia < 0 ? 9e3 : ia) - (ib < 0 ? 9e3 : ib) || a.localeCompare(b);
+      });
+      if (!(subsIn.length > 1 || (subsIn.length === 1 && inCat.some((m) => !String(m.subcat || ""))))) subsIn.length = 0;
+    }
+    const activeSub2 = subsIn.indexOf(s.subcat2 || "") >= 0 ? s.subcat2 : "";
+    const subChips2 = subsIn.length ? [""].concat(subsIn).map((n) => {
+      const on = activeSub2 === n;
+      return {
+        name: n || "All",
+        pick: () => this.setState({ subcat2: on ? "" : n }),
+        style: "display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 17px;border-radius:22px;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;border:1px solid " +
+          (on ? "var(--amber)" : "var(--line)") + ";background:" + (on ? "rgba(242,164,58,.16)" : "transparent") + ";color:" + (on ? "var(--amber-bright)" : "var(--text-faint)")
       };
     }) : [];
 
     const out86 = this.eightySix();
     const dishes = K0.MENU
       .filter((m) => inTab(m, activeCat))
-      .filter((m) => !activeSub || String(m.subcat || "") === activeSub)
+      .filter((m) => !activeSec || secOf(m) === activeSec)
+      .filter((m) => !activeSub2 || String(m.subcat || "") === activeSub2)
       .filter((m) => !q || m.name.toLowerCase().indexOf(q) >= 0 || m.desc.toLowerCase().indexOf(q) >= 0)
       .map((m) => {
         const off = out86.indexOf(m.id) >= 0;
@@ -3480,7 +3543,7 @@ class Component extends DCLogic {
       String(a.subcat).localeCompare(String(b.subcat)));
     // With a section chip active the row above already names it, so an in-grid
     // heading would only repeat it back.
-    const bare = !!activeSub || (sections.length === 1 && !sections[0].subcat);
+    const bare = !!activeSub || !!activeSub2 || (sections.length === 1 && !sections[0].subcat);
     const secVals = sections.map((sec) => {
       const cname = (catOf(sec.cat) || {}).name || sec.cat || "Uncategorised";
       const hue = this.catHue(sec.cat);
@@ -3608,6 +3671,7 @@ class Component extends DCLogic {
       floorSub: o.seats + " covers · " + nT + " tables · " + tables.filter((t) => t.chipText === "Open").length + " open"
         + (this.nextArrival() ? " · next in " + this.nextArrival() : "") + " · manager " + o.mgr,
       tables: tables, cats: cats, subChips: subChips, hasSubChips: subChips.length > 0,
+      subChips2: subChips2, hasSubChips2: subChips2.length > 0,
       dishes: dishes, menuSections: secVals, lines: lines, totalRows: totalRows,
       posQ: s.posQ || "", onPosQ: (e) => this.setState({ posQ: e.target.value }),
       dishesEmpty: !dishes.length,
