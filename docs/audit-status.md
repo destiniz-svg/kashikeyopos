@@ -458,9 +458,8 @@ Not urgent: it is the difference between ~13,000× the requirement and
 Caveats kept on the record: 15–20 s per level, so this is a saturation test and
 not a soak test; small 1–4 line baskets; one transient connection error in
 ~1,900 requests at the 1-till level, which is exactly what `/api/ops`
-idempotency and the till's retrying outbox exist for; and ~40,000 synthetic
-sales now sit in the staging database under throwaway
-`load-<timestamp>@loadtest.invalid` orgs.
+idempotency and the till's retrying outbox exist for; and the synthetic sales
+the run wrote into the staging database, since removed (§7).
 
 ---
 
@@ -507,8 +506,8 @@ hang; the burst stopped on its own and nothing has errored since.
 
 Two things make it worth recording anyway. It is the first sighting of
 `PG_POOL_MAX`'s default of 10 binding under **ordinary sync polling** rather
-than a synthetic 768-till stampede — on a database that now holds ~40,000 extra
-sales. And it is exactly the condition `pool.waiting` in `/api/metrics` exists to
+than a synthetic 768-till stampede — on a database carrying the load run's extra
+rows at the time. And it is exactly the condition `pool.waiting` in `/api/metrics` exists to
 warn about, which nothing is watching yet (§4.3). Raising `PG_POOL_MAX` and
 adding replicas (§4.6) is the same lever for both.
 
@@ -517,26 +516,60 @@ the logs available here.
 
 ## 7. Housekeeping from the capacity run
 
+- **The throwaway service re-ran the load test three times, unattended.** The
+  claim previously recorded here — that the stopped services "cannot generate
+  load again on their own" — was **wrong**. A service built from this repo
+  redeploys whenever the branch it tracks moves, so each unrelated push to
+  `staging` started the harness again. By the time it was caught there were
+  **11** `load-<timestamp>@loadtest.invalid` orgs rather than the one intended.
+
+  Two fixes, both shipped: `LOADGEN_ARM=yes` is now required for any
+  non-loopback target, so a stale service starts, refuses and exits 0; and the
+  cleanup got its own `railway.cleanup.json`, because a start command set on the
+  *service* is overridden by config-as-code — which is why the service kept
+  running the generator after being pointed at the cleanup.
+
+- **The synthetic data has been removed.** `test/load/cleanup.js`, run as a
+  deploy against the staging database on 12 Aug 2026:
+
+  ```
+  matched    11 org(s) against '%@loadtest.invalid'
+    activity_log  39,928   app_sessions  10   entities  222,482
+    ops          219,051   stores        11
+    TOTAL       481,482  + 11 org row(s)
+  COMMITTED     remaining 0 loadtest org(s)
+  ```
+
+  Production was never touched, and no real staging merchant was in scope: the
+  pattern only ever matches `%@loadtest.invalid`, and `.invalid` is reserved by
+  RFC 2606 so it cannot collide with a live address. It ran as a dry run first
+  and the counts above are the ones that dry run predicted.
+
+- **The one-line `DELETE FROM orgs …` recorded here previously does not work**,
+  and the parenthetical claiming `entities`, `ops` and `stores` cascade from
+  `orgs` was **wrong**. `entities` references `orgs(id)` *without*
+  `ON DELETE CASCADE`, and `ops`/`activity_log`/`app_sessions` carry a bare
+  `org_id` with no foreign key at all — the statement fails on a foreign-key
+  violation, and would orphan the un-keyed tables even if it did not. The script
+  discovers every `org_id`-bearing table from `information_schema` instead, so a
+  table added later cannot be silently missed, and deletes in one transaction.
+
 - **Two throwaway services still exist and need deleting by hand:**
   `TEMP-loadgen-DELETE-ME` and `TEMP-loadgen2-DELETE-ME` in the staging
   environment. Railway's `removeServiceTool` reports `status: applied — marked
-  for removal` but they persist; Railway's own agent concluded that finalising
-  the deletion requires confirmation in the dashboard. Both are stopped (zero
-  running replicas, restart policy `NEVER`), so they consume nothing and cannot
-  generate load again on their own.
-- `railway.loadgen.json` stays in the repo — it is the documented way to stand a
-  generator up again, and affects nothing unless a service is explicitly pointed
-  at it.
-- Roughly **40,000 synthetic sales** were written into the **staging** database
-  under throwaway orgs named `load-<timestamp>@loadtest.invalid`. They are
-  isolated from every real staging store by RLS and can be dropped whenever
-  convenient. Production was never touched. One statement clears them:
+  for removal` but they persist; Railway's own agent concluded this is
+  platform-side. Both now carry `LOADGEN_ARM=no` and `CLEANUP_CONFIRM=no`, and
+  `watchPatterns` that match nothing, so a redeploy is inert — but the guard in
+  the harness is what actually makes that safe, not the settings.
 
-  ```sql
-  DELETE FROM orgs WHERE email LIKE 'load-%@loadtest.invalid';
-  ```
+- `railway.loadgen.json` and `railway.cleanup.json` stay in the repo — they are
+  the documented way to stand either job up again, and affect nothing unless a
+  service is explicitly pointed at one.
 
-  (`entities`, `ops` and `stores` cascade from `orgs`.) This could not be run
-  from the review environment: egress to the app is blocked by network policy,
-  and the Railway connector returns variable *names* without values, so no
-  database credential was available.
+- Honest limit on verification: the review environment's egress policy blocks
+  `kashikeyopos-staging.up.railway.app` (the proxy answers 403 to CONNECT), and
+  the Railway connector returns variable *names* without values, so no database
+  credential was available here. Everything above was driven and read through
+  Railway deploys and their logs. The staging app's deployment is `SUCCESS` with
+  no errors logged after the delete, but a functional request against it after
+  the cleanup is **NOT TESTED** from this environment.

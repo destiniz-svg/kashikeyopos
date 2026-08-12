@@ -105,8 +105,11 @@ and ~100,000× it.
 - One transient connection error in ~1,900 requests at the 1-till level. That is
   precisely what `/api/ops` idempotency and the till's retrying outbox exist for,
   and it is recorded rather than rounded away.
-- Roughly 40,000 synthetic sales were written into the staging database, all
-  inside throwaway orgs named `load-<timestamp>@loadtest.invalid`.
+- Synthetic sales were written into the staging database, all inside throwaway
+  orgs named `load-<timestamp>@loadtest.invalid`. The harness then fired three
+  more times unattended (see below), so eleven such orgs accumulated —
+  481,482 rows in all. `test/load/cleanup.js` removed them on 12 Aug 2026,
+  leaving zero. Production was never touched.
 
 ---
 
