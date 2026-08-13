@@ -9687,21 +9687,36 @@ class Component extends DCLogic {
       },
       handle: {
         title: "Store handle", sub: "Your QR / storefront address", save: "Save handle",
-        foot: "The address customers reach your online menu at — kashikeyopos.com/?s=<handle> today, and <handle>.kashikeyopos.com once the subdomain is live. Letters, digits and hyphens, 3–24 characters. Changing it re-points your storefront, so QR codes already printed with the old handle stop working — reprint them afterwards.",
+        foot: "The address customers reach your online menu at — kashikeyopos.com/?s=<handle> today, and <handle>.kashikeyopos.com once the subdomain is live. Letters, digits and hyphens, 3–24 characters. Changing it no longer breaks your printed QR codes: the handle you leave behind keeps answering and forwards guests to the new one. Use the second field to add a handle you used before this was true — codes already on your tables will work again.",
         fields: [
-          { k: "handle", label: "Handle", v: ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || ""), full: 1 }
+          { k: "handle", label: "Handle", v: ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || ""), full: 1 },
+          { k: "alias", label: "Also answer to a handle your old QR codes use (optional)", v: "", full: 1 }
         ],
         onSave: (v) => {
-          const h = String(v.handle || "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+          const clean = (x) => String(x || "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+          const h = clean(v.handle), alias = clean(v.alias);
+          const cur = (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "";
           if (h.length < 3) return this.toast("A handle needs at least 3 characters — letters, digits and hyphens", "warn");
           if (!(window.KPOS_REAL && window.KPOS_REAL.token)) { this.setState({ modal: null }); return this.toast("The store handle is set on the live store", "warn"); }
-          fetch("/api/app2/handle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ handle: h }) })
-            .then((r) => r.json().catch(() => ({}))).then((j) => {
-              if (j && j.error) { this.toast(j.error, "warn"); return; }
-              if (window.KPOS_REAL && window.KPOS_REAL.brand) window.KPOS_REAL.brand.handle = j.handle;
-              this.toast("Handle saved — your storefront is now /?s=" + j.handle);
-              this.forceUpdate();
-            }).catch(() => this.toast("Could not save — check the connection", "warn"));
+          // Claim the old address first: if the rename below fails, the store has
+          // still recovered the codes that are already on its tables.
+          if (alias && alias !== cur) {
+            fetch("/api/app2/handle/alias", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ handle: alias }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                this.toast(j && j.error ? j.error : ("QR codes using " + alias + " now reach this store"), j && j.error ? "warn" : "");
+              }).catch(() => this.toast("Could not save the old handle — check the connection", "warn"));
+          }
+          if (h !== cur) {
+            fetch("/api/app2/handle", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin", body: JSON.stringify({ handle: h }) })
+              .then((r) => r.json().catch(() => ({}))).then((j) => {
+                if (j && j.error) { this.toast(j.error, "warn"); return; }
+                if (window.KPOS_REAL && window.KPOS_REAL.brand) window.KPOS_REAL.brand.handle = j.handle;
+                this.toast(j.keptAnswering
+                  ? ("Handle saved — " + j.keptAnswering + " still reaches you, so printed codes keep working")
+                  : ("Handle saved — your storefront is now /?s=" + j.handle));
+                this.forceUpdate();
+              }).catch(() => this.toast("Could not save — check the connection", "warn"));
+          }
           this.setState({ modal: null });
         }
       },
@@ -11070,7 +11085,7 @@ class Component extends DCLogic {
           go: gate(() => this.openForm("brand")) },
         { title: "Store handle", sub: "Your QR / storefront address", chip: "Editable", chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)",
           rows: [["Handle", (window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "—"], ["Order link", "kashikeyopos.com/?s=" + ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…")], ["Subdomain", ((window.KPOS_REAL && window.KPOS_REAL.brand && window.KPOS_REAL.brand.handle) || "…") + ".kashikeyopos.com"]],
-          foot: "The address customers reach your online menu at. Changing it re-points your storefront — reprint any QR codes afterwards.",
+          foot: "The address customers reach your online menu at. Changing it keeps the old one answering — a printed QR code forwards to the new address instead of dying. Open this to rename, or to claim a handle your existing codes still use.",
           go: gate(() => this.openForm("handle")) },
         { title: "Promotions & banners", sub: "Offers on the QR menu and members' cards", chip: (this.promos().on ? "Slot on" : "Slot off"), chipBg: this.promos().on ? "rgba(107,191,123,.12)" : "var(--bg-2)", chipFg: this.promos().on ? "var(--green)" : "var(--text-muted)",
           rows: [["Banner slot", this.promos().on ? "On" : "Off"], ["Banners", (this.promos().items || []).length + " · " + (this.promos().items || []).filter((b) => b.active !== false).length + " live"]],

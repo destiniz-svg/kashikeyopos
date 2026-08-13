@@ -914,6 +914,62 @@ describe("outlet scoping (OUTLET-SCOPE)", () => {
   });
 });
 
+/* ── A handle a store has answered to keeps answering (HANDLE-ALIAS) ─────────
+   The handle is printed onto table QR codes and stickers that stay in the world
+   for years. Renaming used to kill every one of them at once: the old address
+   stopped resolving and the guest got "storefront not found", which is a dead
+   table in a working restaurant. The handle a store leaves is kept and forwards
+   to the current one, and a handle retired before that was true can be claimed
+   back — the only repair for a code already stuck to a table. */
+describe("store handle aliases (HANDLE-ALIAS)", () => {
+  let o;
+  before(async () => { o = await H.registerOrg({ tag: "handlealias" }); });
+
+  test("renaming keeps the old handle, and it forwards to the new one", async () => {
+    const to = "renamed-" + Math.random().toString(36).slice(2, 8);
+    const rn = await H.req("POST", "/api/app2/handle", { cookie: o.cookie, body: { handle: to } });
+    assert.equal(rn.status, 200);
+    assert.equal(rn.json.keptAnswering, o.slug, "the handle being left is reported back, not silently dropped");
+    // The old link resolves and redirects — with the table it carried. A
+    // redirect that loses ?t=7 seats the guest at the wrong table.
+    const old = await H.req("GET", "/?s=" + o.slug + "&t=7", { redirect: "manual" });
+    assert.equal(old.status, 301);
+    const loc = old.headers.get("location") || "";
+    assert.ok(loc.includes("s=" + to), "forwarded to the current handle: " + loc);
+    assert.ok(loc.includes("t=7"), "the table travels with the guest: " + loc);
+    o.slug = to;
+  });
+
+  test("a handle whose codes are already printed can be claimed back", async () => {
+    const orphan = "orphan-" + Math.random().toString(36).slice(2, 8);
+    const gone = await H.req("GET", "/?s=" + orphan, { redirect: "manual" });
+    assert.equal(gone.status, 404, "unclaimed, it is a dead end — never someone else's store");
+    const claim = await H.req("POST", "/api/app2/handle/alias", { cookie: o.cookie, body: { handle: orphan } });
+    assert.equal(claim.status, 200);
+    const back = await H.req("GET", "/?s=" + orphan, { redirect: "manual" });
+    assert.equal(back.status, 301, "claimed, it reaches the store again");
+    assert.ok((back.headers.get("location") || "").includes("s=" + o.slug));
+    const list = await H.req("GET", "/api/app2/handle/aliases", { cookie: o.cookie });
+    assert.ok(list.json.aliases.some((a) => a.handle === orphan), "and it is listed as one this store answers to");
+  });
+
+  test("no other store can take a handle this one answers to", async () => {
+    const rival = await H.registerOrg({ tag: "handlerival" });
+    const mine = (await H.req("GET", "/api/app2/handle/aliases", { cookie: o.cookie })).json.aliases[0].handle;
+    const rename = await H.req("POST", "/api/app2/handle", { cookie: rival.cookie, body: { handle: mine } });
+    assert.equal(rename.status, 409, "a retired handle is not free real estate");
+    const claim = await H.req("POST", "/api/app2/handle/alias", { cookie: rival.cookie, body: { handle: mine } });
+    assert.equal(claim.status, 409, "nor claimable as an alias — that would redirect a rival's scans");
+  });
+
+  test("changing handles needs an admin, not any signed-in session", async () => {
+    const orgId = jwt.decode(o.cookie.split("=")[1])?.o;
+    const cashier = "kashikeyo_session=" + jwt.sign({ o: orgId, role: "cashier" }, FORGE_SECRET);
+    const r = await H.req("POST", "/api/app2/handle/alias", { cookie: cashier, body: { handle: "cashier-cannot" } });
+    assert.equal(r.status, 403);
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {

@@ -95,12 +95,16 @@ function killServer() {
 }
 
 /* ── HTTP helpers ─────────────────────────────────────────────────────── */
-async function req(method, path, { body, token, cookie, headers: extra } = {}) {
+async function req(method, path, { body, token, cookie, headers: extra, redirect } = {}) {
   const headers = { "Content-Type": "application/json", ...(extra || {}) };
   if (token) headers.Authorization = "Bearer " + token;
   if (cookie) headers.Cookie = cookie;
   const r = await fetch(BASE + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+    // fetch FOLLOWS redirects by default, which turns an assertion about a 301
+    // into an assertion about whatever it landed on. Pass redirect:"manual" to
+    // test the redirect itself.
+    redirect: redirect || "follow",
   });
   // Read the body ONCE as text, then try to parse it — a response can only be
   // consumed once, and some assertions are about the HTML itself (what the /v2

@@ -216,10 +216,18 @@ stay the platform app; an unknown label falls back to the app. QR codes
 `*.kashikeyopos.com` is a provisioned wildcard custom domain on the service, so
 `<handle>.kashikeyopos.com` really does serve storefronts today.
 
-Consequence to keep in mind: a handle rename silently orphans every QR code
-already printed for the old subdomain. The production log has at least one
-`guest portal {"slug":"m",…,"resolved":false}` — an unknown label falls back to
-the app rather than telling the guest the store moved.
+**A handle a store has answered to keeps answering.** `org_slug_aliases(slug,
+org_id)` holds every handle a store leaves behind; `orgBySlugOrAlias()` tries the
+live `orgs.slug` first, then the aliases, and `serveGuestPortal` 301s an alias
+hit to the current address carrying `?t=`/`?c=` with it — so a printed QR code
+survives a rename instead of dying. A handle is owned from first use: `uniqueSlug`,
+`uniqueSlugFor` and `handleTaken()` all treat an alias as taken, or the next store
+to register could collect another business's scanned traffic. A handle retired
+*before* this existed leaves no record of who owned it, so an admin claims it back
+by hand — `POST /api/app2/handle/alias` (Settings → Store handle, second field).
+That is the only repair for a code already stuck to a table. An address no store
+has ever answered to is still a 404 (`STOREFRONT_NOT_FOUND_HTML`), never a
+fallback into the app.
 
 ## Deploy (staging → production flow)
 
