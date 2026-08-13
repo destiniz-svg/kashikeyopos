@@ -186,8 +186,11 @@
          into mid-service. The server ships this rank nothing else anyway
          (kitchenScope in index.js), so the two agree. */
       key: "KitchenDisplay", label: "Kitchen Display", color: "#e65100", scope: "outlet",
-      blurb: "The pass screen. Live tickets and bumping them — nothing else.",
-      perms: perms({ kds: VAE })
+      blurb: "The pass screen. Live tickets, the orders board, and bumping them.",
+      // The orders board is the same live pipeline the KDS shows, one step wider:
+      // takeaway and delivery tickets that never appear on a table. Its closed-
+      // sales half stays empty here — the server ships this rank no receipts.
+      perms: perms({ kds: VAE, orders: VAE })
     },
     {
       key: "StoreKeeper", label: "Store Keeper", color: "#67a2d9", scope: "outlet",

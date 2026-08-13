@@ -122,9 +122,15 @@ kitchen → `KitchenDisplay`. **Anything unmapped falls through to `ChainAdmin`*
 — the whole cockpit — so a new backend role needs a line there or it silently
 grants everything.
 
-A kitchen session is the narrow one: one nav item (the KDS), and `kitchenScope()`
-in `index.js` trims what the page even injects — it keeps menu/orders/outlet and
-**empties** customers, staff, expenses, settlements, assets, inventory and stats.
+A kitchen session is the narrow one: two nav items (the KDS and the orders board,
+which runs on the live pipeline), and `kitchenScope()` in `index.js` trims what
+the page even injects — it keeps menu/liveOrders/outlet and **empties** `orders`
+(the CLOSED sales: receipts, tenders, guest names), customers, staff, expenses,
+settlements, assets, inventory and stats. `passOnly()` in the terminal hides what
+follows from that: the register banner, the float prompt, Z-report/export/history
+actions, the settle and cancel controls, and the takings ribbon — which shows the
+pass's own figures instead. `GET /api/app2/orders` is gated at TILL rank, since
+it is the same receipt history by another door.
 Empties, not deletes: `kashikeyo-data.js` only replaces a demo seed when the real
 key is *present*, so a missing key leaves the seeded demo roster on screen.
 `initialView()` opens on the first screen the role can see, never a blanket

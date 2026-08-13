@@ -5436,10 +5436,15 @@ if (fs.existsSync(protoFile)) {
        too: a total is still a fact about the business. */
     const kitchenScope = (real) => {
       const keep = ["hasSession", "token", "slug", "me", "outlet", "outlets", "brand", "profile",
-        "categories", "groups", "groupPalette", "menu", "orders", "liveOrders"];
+        "categories", "groups", "groupPalette", "menu", "liveOrders"];
       const out = {};
       keep.forEach((k) => { if (real[k] !== undefined) out[k] = real[k]; });
-      ["customers", "staff", "clock", "reservations", "calls", "expenses", "settlements", "assets"]
+      /* `orders` is the CLOSED-sales list — receipts, totals, tenders, the guest's
+         name. `liveOrders` is the work in progress. The pass needs the second and
+         has no use for the first, and the difference matters more now that the
+         kitchen has the orders board: it shows the live pipeline, not the day's
+         takings with every bill on it. */
+      ["orders", "customers", "staff", "clock", "reservations", "calls", "expenses", "settlements", "assets"]
         .forEach((k) => { out[k] = []; });
       out.inventory = { items: [], inv: [], cats: [], ledger: [], vendors: [], purch: [], audits: [] };
       out.stats = { net: 0, covers: 0, netMonth: 0, gstMonth: 0, txMonth: 0, daily: [] };
@@ -6144,6 +6149,11 @@ if (fs.existsSync(protoFile)) {
   app.get("/api/app2/orders", wrap(async (req, res) => {
     const orgId = await resolveAppSession(req);
     if (!orgId) return res.status(401).json({ error: "no session" });
+    /* Receipt history is takings. The page inject already withholds it from a
+       kitchen rank (kitchenScope), and this endpoint is the same data by another
+       door — it only ever needed a session, so a pass screen could have asked
+       for what the page deliberately would not give it. */
+    if (denyAppRole(req, res, APP_RANK.TILL, "Receipt history needs a till sign-in or above.")) return;
     const before = Number(req.query.before);
     const beforeId = req.query.beforeId ? String(req.query.beforeId) : "";
     const limit = Math.max(1, Math.min(200, Math.round(Number(req.query.limit) || 100)));

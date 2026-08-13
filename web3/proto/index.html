@@ -1390,6 +1390,10 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                 <sc-if value="{{ ordAdvanceShow }}">
                   <button onClick="{{ doAdvance }}" style="{{ ordAdvanceStyle }};margin-top:16px">{{ ordAdvanceLabel }}</button>
                 </sc-if>
+                <!-- Taking the money, and cancelling an order, are till work. A
+                     pass screen advances the ticket and stops there; the server
+                     refuses both from a kitchen rank anyway. -->
+                <sc-if value="{{ ordCanSettle }}">
                 <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
                   <div style="font-size:11px;font-weight:700;color:var(--text-dim);margin-bottom:9px">{{ ordTotalLabel }}</div>
                   <sc-if value="{{ ordTenderStep }}">
@@ -1409,6 +1413,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                   </sc-if>
                 </div>
                 <button onClick="{{ cancelTrack }}" style="width:100%;margin-top:12px;padding:10px;border-radius:8px;background:transparent;border:1px solid var(--line);color:var(--text-muted);font-size:11.5px;font-weight:600">Cancel order</button>
+                </sc-if>
               </div>
             </sc-if>
           </sc-if>
@@ -2868,7 +2873,12 @@ class Component extends DCLogic {
     const open = Object.keys(s.tickets).filter((k) => k.indexOf(s.outletId + ":") === 0 && s.tickets[k].status === "occupied");
     const openVal = open.reduce((a, k) => a + this.totals(s.tickets[k]).total, 0);
     const netSales = this.outletSales(o) + openVal;
-    const v = s.view;
+    /* A pass screen is never shown takings. Its own figures — tickets open,
+       longest wait, items in the pass, within SLA — are the ones it can act on,
+       and they belong above the orders board as much as above the KDS. The
+       alternative is a "NET SALES · TODAY MVR 0" ribbon, which is not a blank:
+       it is a wrong number, on the screen of someone who cannot check it. */
+    const v = this.passOnly() ? "kds" : s.view;
     const card = (l, val, sub, st) => ({ label: l, value: val, sub: sub, valStyle: st || big });
 
     // A non-selling location has no covers and no cheque, on ANY screen. Every
@@ -4857,6 +4867,8 @@ class Component extends DCLogic {
         ordSteps: steps, ordItems: items, ordHasItems: items.length > 0,
         ordAdvanceLabel: nx ? nx[1] : "Served",
         ordAdvanceShow: !!nx,
+        // The pass advances the ticket; the till takes the money and cancels.
+        ordCanSettle: !this.passOnly(),
         ordAdvanceStyle: "width:100%;padding:13px;border-radius:9px;font-size:13px;font-weight:700;text-align:center;border:none;background:var(--go);color:var(--on-go);cursor:pointer",
         doAdvance: () => { if (nx) { this.setOrderStatus(ord.id, nx[0]); this.toast("Order " + ord.no + " → " + nx[1]); } },
         // Bill-request banner + acknowledge ("On my way" → the guest sees it).
@@ -8680,12 +8692,16 @@ class Component extends DCLogic {
         // Receipt history. The inject stops at the 200 most recent sales — two
         // hours of trading at this app's design load — so without this there is
         // no way to open, reprint or refund yesterday's ticket.
-        ...(window.KPOS_REAL ? [{
+        //
+        // A pass screen gets none of the three: history, the cash-up and the day
+        // export are takings, and the server refuses all of them at kitchen rank
+        // anyway. Offering a button that 403s is worse than not offering it.
+        ...((window.KPOS_REAL && !this.passOnly()) ? [{
           label: pg.busy ? "Loading…" : pg.more ? "Load older" : "All loaded",
           go: () => this.loadOlderOrders(),
         }] : []),
-        { label: "Z-report", go: () => this.setState({ modal: { kind: "z" } }) },
-        { label: "Export day", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.outlet().code + "-orders.csv", [["Ticket", "Time", "Table", "Channel", "Server", "Tender", "Total MVR", "Status"]].concat(list.map((o) => [o.no, o.time, o.table, o.channel, o.server, o.live ? "OPEN" : this.tenderName(o.tender), o.total, o.status]))) }
+        ...(this.passOnly() ? [] : [{ label: "Z-report", go: () => this.setState({ modal: { kind: "z" } }) }]),
+        ...(this.passOnly() ? [] : [{ label: "Export day", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.outlet().code + "-orders.csv", [["Ticket", "Time", "Table", "Channel", "Server", "Tender", "Total MVR", "Status"]].concat(list.map((o) => [o.no, o.time, o.table, o.channel, o.server, o.live ? "OPEN" : this.tenderName(o.tender), o.total, o.status]))) }])
       ],
       cols: [{ label: "Ticket", w: "1.2fr", mono: 1 }, { label: "Time", w: ".7fr", mono: 1 }, { label: "Table", w: ".7fr", mono: 1 }, { label: "Channel", w: "1fr" }, { label: "Server", w: "1.2fr" }, { label: "Tender", w: "1fr" }, { label: "Total", w: "1fr", a: "right", mono: 1 }, { label: "Status", w: ".8fr", a: "right" }],
       rows: list.map((o) => ({

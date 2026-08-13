@@ -791,7 +791,10 @@ describe("kitchen display session (KDS-ROLE)", () => {
     assert.equal(real.me.roleKey, "kitchen");
     // What it does not. These are not merely hidden by the UI: a shared screen
     // in the least private room in the building never receives them at all.
-    for (const k of ["customers", "staff", "expenses", "settlements", "assets"]) {
+    // `orders` is the closed-sales list: receipts, totals, tenders, guest names.
+    // The kitchen has the orders board, which runs on liveOrders — the work in
+    // progress — and must never carry the day's takings alongside it.
+    for (const k of ["orders", "customers", "staff", "expenses", "settlements", "assets"]) {
       assert.deepEqual(real[k], [], k + " is empty for a kitchen session");
     }
     assert.equal(real.stats.net, 0, "takings are not a fact a pass screen is told");
@@ -803,6 +806,15 @@ describe("kitchen display session (KDS-ROLE)", () => {
     // demo seed when the real key is present, so a deleted key would leave the
     // seeded demo roster standing on screen in place of the real one.
     assert.ok(Object.prototype.hasOwnProperty.call(real, "customers"), "the key is present and empty, not absent");
+  });
+
+  test("receipt history is refused to a kitchen rank at the endpoint too", async () => {
+    // The page inject withholds it; this endpoint is the same data by another
+    // door, and it only ever asked for a session.
+    const hist = await H.req("GET", "/api/app2/orders?limit=20", { cookie: kitchenCookie });
+    assert.equal(hist.status, 403, "the pass cannot pull the receipt history");
+    const mine = await H.req("GET", "/api/app2/orders?limit=20", { cookie: o.cookie });
+    assert.equal(mine.status, 200, "the owner still can");
   });
 
   test("a till session is untouched by the kitchen trim", async () => {
