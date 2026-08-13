@@ -1338,6 +1338,8 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                     <div style="margin-top:12px;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--amber-bright);overflow-x:auto;white-space:nowrap">{{ qrUrl }}</div>
                     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
                       <button onClick="{{ copyQr }}" style="padding:9px 16px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12px;font-weight:700">Copy link</button>
+                      <button onClick="{{ waQr }}" style="padding:9px 14px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-2.8.9.9-2.8-.2-.3A8 8 0 1 1 12 20z"/></svg>WhatsApp</button>
+                      <button onClick="{{ vbQr }}" style="padding:9px 14px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="#7360F2"><path d="M12 1.5c-3 0-5.4.3-7 1.6C3.6 4.3 3 6.4 3 9.3v2.1c0 2.9.6 5 2 6.2.5.4 1.1.7 1.9 1v3c0 .6.7.9 1.1.5l2.4-2.5h1.6c3 0 5.4-.3 7-1.6 1.4-1.2 2-3.3 2-6.2V9.3c0-2.9-.6-5-2-6.2-1.6-1.3-4-1.6-7-1.6z"/></svg>Viber</button>
                       <button onClick="{{ openQr }}" style="padding:9px 16px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Open portal</button>
                       <button onClick="{{ printQr }}" style="padding:9px 16px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12px;font-weight:600">Print</button>
                     </div>
@@ -1498,7 +1500,7 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
           </sc-if>
 
           <sc-if value="{{ mReceipt }}">
-            <div style="background:var(--paper);color:var(--paper-ink);border-radius:8px;padding:22px 20px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75">
+            <div id="kpos-receipt" style="background:var(--paper);color:var(--paper-ink);border-radius:8px;padding:22px 20px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.75">
               <div style="text-align:center;margin-bottom:14px">
                 <div role="img" aria-label="{{ brandName }}" style="{{ brandMarkStyle }}"></div>
                 <div style="font-size:15px;font-weight:700;letter-spacing:.1em">{{ brandName }}</div>
@@ -1528,15 +1530,16 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
               <div style="text-align:center;margin-top:14px;font-size:10px;border-top:1px dashed #999;padding-top:10px">{{ rcpFoot }}</div>
               <div style="{{ poweredStyle }}">Powered by KashikeyoPOS™</div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px">
-              <button onClick="{{ shareShare }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 4px;background:var(--bg-2);color:var(--text);font-size:10.5px;font-weight:700"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
-              <button onClick="{{ shareWA }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 4px;background:var(--bg-2);color:var(--text);font-size:10.5px;font-weight:700"><svg width="17" height="17" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-2.8.9.9-2.8-.2-.3A8 8 0 1 1 12 20zm4.4-5.6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.5.1-.7.3-.8.8-.9 1.9-.4 3.1a11 11 0 0 0 4.6 4.5c1.6.7 2.3.8 3.1.7.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1l-.4-.2z"/></svg>WhatsApp</button>
-              <button onClick="{{ shareCopy }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 4px;background:var(--bg-2);color:var(--text);font-size:10.5px;font-weight:700"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>Copy</button>
-              <button onClick="{{ shareImg }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 4px;background:var(--bg-2);color:var(--text);font-size:10.5px;font-weight:700"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Image</button>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+              <button onClick="{{ shareWA }}" style="flex:1 1 58px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 2px;background:var(--bg-2);color:var(--text);font-size:10px;font-weight:700;white-space:nowrap"><svg width="17" height="17" viewBox="0 0 24 24" fill="#25D366"><path d="M12 2a10 10 0 0 0-8.5 15.3L2 22l4.8-1.5A10 10 0 1 0 12 2zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-2.8.9.9-2.8-.2-.3A8 8 0 1 1 12 20zm4.4-5.6c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1l-.7.9c-.1.2-.3.2-.5.1a6.5 6.5 0 0 1-3.2-2.8c-.2-.4.2-.4.6-1.2.1-.2 0-.3 0-.5l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5c-.2 0-.5.1-.7.3-.8.8-.9 1.9-.4 3.1a11 11 0 0 0 4.6 4.5c1.6.7 2.3.8 3.1.7.5-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1l-.4-.2z"/></svg>{{ shareWALabel }}</button>
+              <button onClick="{{ shareVB }}" style="flex:1 1 58px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 2px;background:var(--bg-2);color:var(--text);font-size:10px;font-weight:700;white-space:nowrap"><svg width="17" height="17" viewBox="0 0 24 24" fill="#7360F2"><path d="M12 1.5c-3 0-5.4.3-7 1.6C3.6 4.3 3 6.4 3 9.3v2.1c0 2.9.6 5 2 6.2.5.4 1.1.7 1.9 1v3c0 .6.7.9 1.1.5l2.4-2.5h1.6c3 0 5.4-.3 7-1.6 1.4-1.2 2-3.3 2-6.2V9.3c0-2.9-.6-5-2-6.2-1.6-1.3-4-1.6-7-1.6zm0 1.7c2.7 0 4.8.3 5.9 1.2 1 .8 1.4 2.4 1.4 4.9v2.1c0 2.5-.4 4.1-1.4 4.9-1.1.9-3.2 1.2-5.9 1.2h-2c-.2 0-.4.1-.6.3l-1.6 1.7v-1.6c0-.3-.2-.6-.5-.7-.8-.2-1.4-.5-1.8-.9-1-.8-1.4-2.4-1.4-4.9V9.3c0-2.5.4-4.1 1.4-4.9 1.1-.9 3.2-1.2 5.9-1.2zM9.4 6.3c-.3 0-.6.1-.9.3l-.5.5c-.5.5-.6 1.2-.4 1.9.5 1.7 1.5 3.2 2.9 4.4 1.1.9 2.3 1.5 3.2 1.7.7.2 1.4-.1 1.8-.6l.4-.5c.4-.5.3-1.2-.2-1.6l-1.3-.9c-.4-.3-1-.2-1.4.2l-.4.5c-.7-.3-1.3-.7-1.8-1.2-.5-.5-.9-1.1-1.1-1.7l.5-.4c.4-.3.5-.9.2-1.4l-.9-1.3a1 1 0 0 0-.8-.4zm2.9-.1v1c1.6.1 2.5 1.1 2.6 2.7h1c-.1-2.2-1.4-3.6-3.6-3.7zm.1 1.9v1c.6.1.9.4 1 1h1c-.1-1.1-.8-1.9-2-2z"/></svg>Viber</button>
+              <button onClick="{{ shareShare }}" style="flex:1 1 58px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 2px;background:var(--bg-2);color:var(--text);font-size:10px;font-weight:700;white-space:nowrap"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>Share</button>
+              <button onClick="{{ shareCopy }}" style="flex:1 1 58px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 2px;background:var(--bg-2);color:var(--text);font-size:10px;font-weight:700;white-space:nowrap"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>Copy</button>
+              <button onClick="{{ shareImg }}" style="flex:1 1 58px;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);border-radius:11px;padding:10px 2px;background:var(--bg-2);color:var(--text);font-size:10px;font-weight:700;white-space:nowrap"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Image</button>
             </div>
             <div style="display:flex;gap:7px;margin-top:8px">
-              <button onClick="{{ closeModal }}" style="flex:1;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center">Email receipt</button>
-              <button onClick="{{ closeModal }}" style="flex:1;padding:11px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Print &amp; close</button>
+              <button onClick="{{ shareEmail }}" style="flex:1;padding:11px;border-radius:8px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12.5px;font-weight:600;text-align:center">{{ shareEmailLabel }}</button>
+              <button onClick="{{ sharePrint }}" style="flex:1;padding:11px;border-radius:8px;background:var(--amber);color:var(--on-amber);font-size:12.5px;font-weight:700;text-align:center">Print &amp; close</button>
             </div>
             <button onClick="{{ doRefund }}" style="{{ refundStyle }}">{{ refundLabel }}</button>
           </sc-if>
@@ -4006,26 +4009,157 @@ class Component extends DCLogic {
     this.setState({ modal: null });
     this.toast(p ? p + "% discount applied" : "Discount removed");
   }
-  // Share a settled receipt (ported from /app): native share sheet → WhatsApp
-  // deep link → clipboard, plus a rendered PNG card. Reads the receipt snapshot
-  // held on the settled modal.
-  shareBill(via) {
-    const m = this.state.modal || {}, o = this.outlet();
-    const p = m.snap; if (!p) { this.toast("Nothing to share", "warn"); return; }
-    const brand = (this.brandOf().name) || o.name || "Kashikeyo";
-    const tn = { cash: "Cash", card: "Card", wallet: "BML Pay", credit: "Customer credit" }[p.tender] || p.tender || "";
-    let txt = brand + " — Receipt\n" + (p.no || "") + " · " + (p.time || "") + "\n" + (p.table || "");
-    txt += "\n\n";
-    (p.lines || []).forEach((l) => { txt += (l.n || "") + "   " + (l.v || "") + "\n"; });
-    txt += "\nTOTAL: " + MVRc((p.T || {}).total || 0) + "\n" + (o.tax || "GST") + " incl · " + tn + "\nThank you";
-    if (via === "copy") { try { if (navigator.clipboard) navigator.clipboard.writeText(txt); } catch (e) {} this.toast("Receipt copied"); return; }
-    if (via === "share") { try { if (navigator.share) { navigator.share({ title: "Receipt " + (p.no || ""), text: txt }).catch(() => {}); return; } } catch (e) {} try { if (navigator.clipboard) navigator.clipboard.writeText(txt); } catch (e) {} this.toast("Copied — share sheet not available"); return; }
-    if (via === "whatsapp") { try { window.open("https://wa.me/?text=" + encodeURIComponent(txt), "_blank"); } catch (e) {} this.toast("Shared via WhatsApp"); return; }
-    if (via === "image") {
-      const il = (p.lines || []).map((l) => ({ l: l.n, r: l.v }));
-      il.push({ l: "TOTAL", r: MVRc((p.T || {}).total || 0), bold: 1, big: 1 });
-      this.shareImage(brand, "Receipt · " + (p.no || ""), il, "receipt-" + (p.no || ""));
+  /* ── Sharing ────────────────────────────────────────────────────────────────
+     One layer for every share in the terminal. A share is a CHANNEL plus a
+     DOCUMENT, and they were tangled: the only share that existed read the
+     settled-ticket snapshot directly, so the same four buttons on an older
+     receipt or the Z-report found no snapshot and said "Nothing to share".
+
+     WhatsApp and Viber are the two apps a Maldivian venue actually sends a bill
+     on. Both are deep links, so they work from the terminal with nothing
+     installed on the server and no share sheet required — which matters because
+     a desktop till has no share sheet at all. */
+  sharePhone(raw) {
+    const d = String(raw || "").replace(/[^\d]/g, "");
+    if (!d) return "";
+    // A local number is stored bare (7-digit Maldives mobile); wa.me needs it in
+    // full international form or it silently opens an empty chat.
+    if (d.length === 7) return "960" + d;
+    return d.replace(/^0+/, "");
+  }
+  /* Hand a document to a channel. Every caller passes the same shape:
+     { title, text, url, phone, lines, filename }. `lines` is only used by the
+     image card; `phone` addresses the message to one guest instead of opening
+     a contact picker. */
+  shareOut(channel, doc) {
+    if (!doc || (!doc.text && !doc.url)) { this.toast("Nothing to share", "warn"); return; }
+    const body = doc.url ? ((doc.text ? doc.text + "\n\n" : "") + doc.url) : doc.text;
+    const open = (href) => { try { window.open(href, "_blank", "noopener"); } catch (e) { try { window.location.href = href; } catch (e2) {} } };
+    if (channel === "whatsapp") {
+      const to = this.sharePhone(doc.phone);
+      open("https://wa.me/" + to + "?text=" + encodeURIComponent(body));
+      this.toast(to ? "Opening WhatsApp to " + doc.phone : "Opening WhatsApp");
+      return;
     }
+    if (channel === "viber") {
+      // Viber's only reliable cross-platform scheme is the forward picker; it
+      // has no addressed-with-text form, so the operator picks the chat.
+      open("viber://forward?text=" + encodeURIComponent(body));
+      this.toast("Opening Viber");
+      return;
+    }
+    if (channel === "sms") {
+      const to = this.sharePhone(doc.phone);
+      open("sms:" + (to ? "+" + to : "") + "?&body=" + encodeURIComponent(body));
+      return;
+    }
+    if (channel === "email") {
+      const sub = encodeURIComponent(doc.title || "From " + (this.brandOf().name || this.outlet().name || "us"));
+      open("mailto:" + (doc.email || "") + "?subject=" + sub + "&body=" + encodeURIComponent(body));
+      return;
+    }
+    if (channel === "copy") {
+      try {
+        if (navigator.clipboard) { navigator.clipboard.writeText(body); this.toast("Copied"); return; }
+      } catch (e) {}
+      // No clipboard API (insecure origin, old webview): put it somewhere the
+      // operator can still get at it rather than claiming success.
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = body; ta.style.position = "fixed"; ta.style.opacity = "0";
+        document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+        this.toast("Copied");
+      } catch (e) { this.toast("Could not copy on this device", "warn"); }
+      return;
+    }
+    if (channel === "image") {
+      this.shareImage(doc.brand || this.brandOf().name || this.outlet().name || "Receipt",
+        doc.title || "", doc.lines || [], doc.filename || "receipt");
+      return;
+    }
+    if (channel === "print") { this.printDoc(doc); return; }
+    // Native sheet last: it is the best option where it exists (a phone or a
+    // tablet) and simply absent on a counter PC, so it degrades to the clipboard
+    // rather than to nothing happening at all.
+    try {
+      if (navigator.share) { navigator.share({ title: doc.title || "", text: body }).catch(() => {}); return; }
+    } catch (e) {}
+    this.shareOut("copy", doc);
+    this.toast("Copied — this device has no share sheet");
+  }
+  /* The receipt currently on screen, as text — built from the SAME values the
+     modal renders (settled ticket, an older receipt, or the Z-report), so what a
+     guest is sent can never disagree with what was printed. */
+  shareDoc() {
+    const m = this.state.modal || {};
+    if (["settled", "receipt", "z"].indexOf(m.kind) < 0) return null;
+    const v = this.receiptVals(m) || {};
+    const o = this.outlet(), brand = this.brandOf().name || o.name || "Kashikeyo";
+    const lines = (v.rcpLines || []).map((l) => ({ l: l.n, r: l.v }));
+    const totals = (v.rcpTotals || []).filter((t) => String(t.style || "").indexOf("display:none") < 0);
+    let txt = brand + (v.rcpNo ? " — " + v.rcpNo : "");
+    if (v.rcpDate || v.rcpAddr) txt += "\n" + (v.rcpDate || v.rcpAddr);
+    if (v.rcpBuyer) txt += "\n" + v.rcpBuyer;
+    txt += "\n";
+    lines.forEach((l) => { txt += "\n" + l.l + "   " + l.r; });
+    if (totals.length) txt += "\n";
+    totals.forEach((t) => { txt += "\n" + t.n + "   " + t.v; });
+    const foot = String(v.rcpFoot || "").split("\n").pop();
+    if (foot) txt += "\n\n" + foot;
+    // Address it to the guest when the sale knows who they are — that is the
+    // difference between "share a bill" and "send this person their bill".
+    const cust = (m.snap && m.snap.cust) || this.custOf(m.ord && (m.ord.customerId || m.ord.customerName));
+    const imgLines = lines.concat(totals.map((t) => ({ l: t.n, r: t.v, bold: /total/i.test(t.n), big: /total/i.test(t.n) })));
+    return { title: (m.kind === "z" ? "Z-report " : "Receipt ") + (v.rcpNo || ""), text: txt,
+      brand: brand, lines: imgLines, filename: (m.kind === "z" ? "z-report-" : "receipt-") + (v.rcpNo || "kashikeyo"),
+      phone: (cust && cust.phone) || "", email: (cust && cust.email) || "" };
+  }
+  // The customer a receipt belongs to, by id or by name, so a share can be
+  // addressed. Returns null for a walk-in, which is most of them.
+  custOf(idOrName) {
+    if (!idOrName) return null;
+    const list = (K().CUSTOMERS || []);
+    return list.filter((c) => c.id === idOrName || c.name === idOrName)[0] || null;
+  }
+  shareBill(via) { this.shareOut(via === "share" ? "native" : via, this.shareDoc()); }
+  // The store's own address, as the guest would reach it. Prefers the branded
+  // subdomain the QR already encodes over a bare origin.
+  storeLink() {
+    const P = (window.KPOS_REAL && window.KPOS_REAL.portal) || {};
+    if (P.base) return P.base.replace(/\/$/, "") + "/";
+    if (P.slug) return location.origin + "/?s=" + encodeURIComponent(P.slug);
+    return location.origin + "/";
+  }
+  // The rewards-portal invitation for one customer, addressed to their phone.
+  portalDoc(c) {
+    const brand = this.brandOf().name || this.outlet().name || "us";
+    return { title: brand + " rewards", url: this.storeLink(), phone: c.phone || "", email: c.email || "",
+      text: (c.name ? c.name.split(" ")[0] + ", y" : "Y") + "our " + brand + " rewards are here — points, past receipts and order status, no app needed:" };
+  }
+  // A table's scan-to-order link, with enough words around it that the guest
+  // knows what they are being sent.
+  qrDoc(link, table) {
+    const brand = this.brandOf().name || this.outlet().name || "our menu";
+    return { title: brand + (table ? " · Table " + pad(table) : ""), url: link,
+      text: table ? ("Order from Table " + pad(table) + " at " + brand + " — tap to open the menu, no app needed:")
+                  : ("Our menu at " + brand + " — tap to order:") };
+  }
+  /* Print the document on screen. "Print & close" used to only close — on a
+     terminal whose whole job is handing someone a bill. Prints the receipt block
+     itself, so the paper matches the screen instead of the whole cockpit. */
+  printDoc(doc) {
+    try {
+      const node = document.getElementById("kpos-receipt");
+      const html = node ? node.innerHTML : "<pre>" + String((doc && doc.text) || "") + "</pre>";
+      const w = window.open("", "_blank", "width=380,height=680");
+      if (!w) { this.toast("Allow pop-ups to print", "warn"); return false; }
+      w.document.write("<html><head><title>" + String((doc && doc.title) || "Receipt") + "</title>"
+        + "<style>body{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#000;background:#fff;margin:14px}"
+        + "div{line-height:1.5}img{max-width:100%}</style></head><body>" + html + "</body></html>");
+      w.document.close(); w.focus();
+      setTimeout(() => { try { w.print(); } catch (e) {} }, 250);
+      return true;
+    } catch (e) { this.toast("Could not open the print view", "warn"); return false; }
   }
   // Render a branded receipt card to a canvas and hand it to the share sheet as
   // a PNG (falls back to a download when file-share isn't supported).
@@ -4084,10 +4218,21 @@ class Component extends DCLogic {
       hasPaidFx: !!s.paidFx,
       paidFxTitle: s.paidFx ? (s.paidFx.tender === "credit" ? "Charged" : "Paid") : "",
       paidFxSub: s.paidFx ? MVR(s.paidFx.amount) : "",
-      shareShare: () => this.shareBill("share"),
+      /* The receipt on screen, out to any channel. The label names the guest
+         when the sale knows who they are, so "WhatsApp · Ahmed" reads as sending
+         one person their bill rather than opening a contact picker and hoping. */
+      shareShare: () => this.shareBill("native"),
       shareWA: () => this.shareBill("whatsapp"),
+      shareVB: () => this.shareBill("viber"),
       shareCopy: () => this.shareBill("copy"),
       shareImg: () => this.shareBill("image"),
+      shareEmail: () => this.shareBill("email"),
+      // "& close" is a promise: close only once the print view is actually up,
+      // so a blocked pop-up doesn't take the receipt off screen with nothing to
+      // show for it.
+      sharePrint: () => { if (this.printDoc(this.shareDoc())) this.setState({ modal: null }); },
+      shareWALabel: (() => { const d = this.shareDoc(); return d && d.phone ? "WhatsApp ›" : "WhatsApp"; })(),
+      shareEmailLabel: (() => { const d = this.shareDoc(); return d && d.email ? "Email · " + d.email : "Email receipt"; })(),
       scrimStyle: "position:fixed;inset:0;background:var(--scrim);backdrop-filter:blur(3px);display:flex;z-index:60;animation:kfade .14s;"
         + (this.effBp() === "m" ? "align-items:flex-end;justify-content:stretch;padding:0" : "align-items:center;justify-content:center;padding:28px"),
       modalStyle: this.effBp() === "m"
@@ -4651,7 +4796,12 @@ class Component extends DCLogic {
         qrPoweredStyle: this.brandOf().poweredBy === false ? "display:none"
           : "font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px",
         qrUrl: link || "—",
-        copyQr: () => { if (!link) return this.toast("Pick a table first", "warn"); try { navigator.clipboard.writeText(link); this.toast("Link copied"); } catch (e) { this.toast("Copy failed", "warn"); } },
+        copyQr: () => { if (!link) return this.toast("Pick a table first", "warn"); this.shareOut("copy", this.qrDoc(link, sel)); },
+        /* A table's link is worth sending, not only printing: a guest already at
+           the table, a host putting it in a group, a reservation confirmation.
+           Same two channels as the bill. */
+        waQr: () => { if (!link) return this.toast("Pick a table first", "warn"); this.shareOut("whatsapp", this.qrDoc(link, sel)); },
+        vbQr: () => { if (!link) return this.toast("Pick a table first", "warn"); this.shareOut("viber", this.qrDoc(link, sel)); },
         openQr: () => { if (link) { try { window.open(link, "_blank", "noopener"); } catch (e) {} } },
         printQr: () => { if (sel) this.printTableQr(sel); }
       });
@@ -5385,6 +5535,17 @@ class Component extends DCLogic {
         acts.push({ label: pa.label, style: neutralBtn, go: () => this.portalAction(c, pa.mode) });
       } else if (canManage) {
         acts.push({ label: "Add an email to invite to rewards", style: neutralBtn, go: () => this.openForm("cust", c) });
+      }
+      /* The rewards portal reaches a customer by EMAIL, which a Maldivian guest
+         may well not have given. They have almost certainly given a phone, and
+         the venue already talks to them on WhatsApp or Viber — so offer the same
+         link on the channel the relationship actually lives on. The portal link
+         is the store's storefront; the guest signs in there with their email
+         code, so sending it is an invitation, not a credential. */
+      if (c.phone) {
+        const pdoc = this.portalDoc(c);
+        acts.push({ label: "WhatsApp the rewards link · " + c.phone, style: neutralBtn, go: () => this.shareOut("whatsapp", pdoc) });
+        acts.push({ label: "Viber the rewards link", style: neutralBtn, go: () => this.shareOut("viber", pdoc) });
       }
       if (canManage) acts.push({ label: c.pending ? "Delete blocked · pending items" : "Delete customer", style: dangerBtn, go: () => this.askDeleteCustomer(c) });
       return {
