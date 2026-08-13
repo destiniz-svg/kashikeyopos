@@ -64,8 +64,23 @@ directly — but nothing routes new users there. Staff-PIN sign-in still opens
 
 ## Data model
 
-**Tenancy:** Postgres FORCE RLS. Every query runs in `withOrg(orgId, fn)`
-(sets `app.org_id`) or `withSystem(fn)`. `bootPool` (postgres role) runs
+**Tenancy:** ONE Postgres database, not one per store; isolation is Postgres
+FORCE RLS, verified in `tenant isolation (TENANT-ISOLATION)` (test/audit.test.js)
+— store A writes a marker into every kind, store B reads every surface it can
+reach and finds none of it. The posture that makes it true: `kashikeyo_app` is
+neither superuser nor BYPASSRLS, and every table carrying `org_id` has FORCE RLS.
+The only cross-org reads are `/api/dev/orgs` (platform admin) and the
+`V2_SELFTEST` boot log. Every query runs in `withOrg(orgId, fn)`
+(sets `app.org_id`) or `withSystem(fn)` — a `withSystem` read of a tenant table
+is the one way this breaks, so it needs a reason.
+
+A new store shares NOTHING with another store, but it is seeded with the shared
+starter menu (`DEFAULT_MENU`, ~300 dishes + 36 sections) — the same dishes every
+store gets, which reads like carried-over data and is not. `/api/register`
+seeds it because the wizard asks the question later; `/api/onboard/finish` with
+`menu: empty|ai` therefore DELETES the starter ids again (tombstoned, so offline
+tills drop them too) and clears the sample sections. Anything the owner created
+in between is theirs and is left alone. `bootPool` (postgres role) runs
 migrations; request handling uses the restricted `kashikeyo_app` role. Schema
 in `schema.sql` is applied on every boot; add columns via idempotent
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in the "Incremental migrations"

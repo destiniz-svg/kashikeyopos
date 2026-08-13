@@ -970,6 +970,101 @@ describe("store handle aliases (HANDLE-ALIAS)", () => {
   });
 });
 
+/* ── One store cannot see another's anything (TENANT-ISOLATION) ──────────────
+   Isolation is not a feature you add, it is one you keep, and the way it breaks
+   is a single query that forgot its org filter. Store A writes a marker into
+   every kind the app stores; store B — created through the same path a real
+   owner uses — then reads every surface it can reach and must find none of it. */
+describe("tenant isolation (TENANT-ISOLATION)", () => {
+  const MARK = "ZZLEAKMARKER";
+  let A, Bz;
+
+  before(async () => {
+    A = await H.registerOrg({ tag: "isoA" });
+    await H.ops(A.token, [{ opId: "iso1", puts: [
+      { kind: "customers", id: "cA", data: { id: "cA", name: MARK + " Customer", phone: "7770001", spent: 99900 } },
+      { kind: "products", id: "pA", data: { id: "pA", name: MARK + " Dish", price: 12345 } },
+      { kind: "sales", id: "sA", data: { id: "sA", no: MARK + "-INV", at: Date.now(), total: 55500, subtotal: 51389, gst: 4111,
+        lines: [{ pid: "pA", qty: 1, price: 55500, amount: 51389 }], payments: [{ method: "cash", amount: 55500 }] } },
+      { kind: "expenses", id: "eA", data: { id: "eA", vendor: MARK + " Vendor", amt: 4200, at: Date.now() } },
+      { kind: "reservations", id: "rA", data: { id: "rA", name: MARK + " Booking", party: 4, status: "confirmed", table: "T05", t: Date.now() } },
+      { kind: "users", id: "uA", data: { id: "uA", name: MARK + " Staff", role: "manager", pin: "4321" } },
+    ] }]);
+    await H.req("POST", "/api/app2/kot", { cookie: A.cookie, body: {
+      items: [{ pid: "pA", name: MARK + " Dish", qty: 1, price: 12345, station: "hot" }],
+      table: "5", otype: "dine_in", station: "hot", billNo: MARK, userName: MARK + " Server" } });
+    await H.invPost({ cookie: A.cookie }, "/ingredients", { name: MARK + " Ingredient", base_unit: "g", min_stock: 10 });
+    Bz = await H.registerOrg({ tag: "isoB" });
+  });
+
+  test("no surface a second store can reach carries the first store's data", async () => {
+    const surfaces = [
+      ["the /v2 page inject", "/v2"],
+      ["the register snapshot", "/api/app2/pull"],
+      ["the receipt history", "/api/app2/orders?limit=100"],
+      ["the inventory block", "/api/app2/inventory"],
+      ["the ingredient list", "/api/inv/ingredients"],
+      ["the live board", "/api/app2/live"],
+      ["the outlet list", "/api/app2/outlets"],
+    ];
+    for (const [what, path] of surfaces) {
+      const r = await H.req("GET", path, { cookie: Bz.cookie });
+      assert.ok(!String(r.text || "").includes(MARK), "no leak through " + what);
+    }
+    // The offline till's own pull, on the bearer token rather than the cookie.
+    const pull = await H.req("GET", "/api/pull?since=0", { token: Bz.token });
+    assert.ok(!String(pull.text || "").includes(MARK), "no leak through the till pull");
+  });
+
+  test("a second store's own surfaces still work — the isolation is not just an empty response", async () => {
+    await H.ops(Bz.token, [{ opId: "isoB1", puts: [
+      { kind: "customers", id: "cB", data: { id: "cB", name: "Beta Own Customer", phone: "7779999" } }] }]);
+    const pull = await H.req("GET", "/api/pull?since=0", { token: Bz.token });
+    assert.ok(String(pull.text || "").includes("Beta Own Customer"), "B sees its own writes");
+  });
+
+  test("cross-org aggregates are reachable only by a platform admin", async () => {
+    const asStore = await H.req("GET", "/api/dev/orgs", { cookie: Bz.cookie });
+    assert.ok(asStore.status === 401 || asStore.status === 403, "a store session cannot list every org, got " + asStore.status);
+  });
+});
+
+/* ── "Empty" means empty (ONBOARD-EMPTY) ─────────────────────────────────────
+   The wizard asks about the starter menu AFTER the account exists, so
+   /api/register has already seeded it (it defaults to 'sample' because it
+   cannot know yet). Choosing "empty" therefore has to REMOVE what registration
+   laid down — otherwise a new store opens holding 300 dishes it declined, which
+   to an owner reads as another store's data following them around. */
+describe("onboarding menu choice (ONBOARD-EMPTY)", () => {
+  const finish = (cookie, menu) => H.req("POST", "/api/onboard/finish", { cookie,
+    body: { menu, storeName: "Onboard " + menu, currency: "MVR", pin: "8317", staff: [] } });
+  const dishes = async (cookie) => {
+    const page = await H.req("GET", "/v2", { cookie });
+    const m = String(page.text || "").match(/window\.KPOS_REAL=(\{[\s\S]*?\});window\.KPOS_BUILD/);
+    const real = m ? JSON.parse(m[1]) : {};
+    return { menu: (real.menu || []).length, cats: (real.categories || []).length };
+  };
+
+  test("choosing an empty menu leaves the store empty", async () => {
+    const o = await H.registerOrg({ tag: "onbempty" });
+    const before = await dishes(o.cookie);
+    assert.ok(before.menu > 0, "registration seeds the starter menu (it cannot know the answer yet)");
+    const f = await finish(o.cookie, "empty");
+    assert.equal(f.status, 200);
+    const after = await dishes(o.cookie);
+    assert.equal(after.menu, 0, "the dishes the owner declined are gone");
+    assert.equal(after.cats, 0, "and so are the empty sample sections");
+  });
+
+  test("choosing the sample menu keeps it", async () => {
+    const o = await H.registerOrg({ tag: "onbsample" });
+    const f = await finish(o.cookie, "sample");
+    assert.equal(f.status, 200);
+    const after = await dishes(o.cookie);
+    assert.ok(after.menu > 0, "the store that asked for a starter menu has one");
+  });
+});
+
 /* ── Security controls (run last: the throttle test blocks this IP) ───── */
 
 describe("flagged-sale reporting (FIN-1)", () => {

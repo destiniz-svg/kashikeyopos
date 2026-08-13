@@ -2667,6 +2667,36 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
   if (menu === "sample") {
     try { await seedSampleCategories(orgId); } catch (e) { console.warn("sample-categories seed skipped:", e.message); }
     try { await applyMenuItems(orgId, DEFAULT_MENU, CAT_GROUPS, CAT_ORDER, {}); } catch (e) { console.warn("sample-menu seed skipped:", e.message); }
+  } else {
+    /* "Empty" has to actually empty it. The wizard asks this question AFTER the
+       account exists, and /api/register has already seeded the starter menu by
+       then (it defaults to 'sample' because it cannot know yet) — so the flag
+       set above only stopped the boot backfill re-seeding, and the owner was
+       left with 300 dishes they had just declined. To an owner opening their
+       second store that reads as the first store's data following them around,
+       because it is the same 300 dishes either way.
+
+       Only the STARTER items are removed, by their known ids: anything the
+       owner has already created in the meantime is theirs and is left alone.
+       Tombstoned rather than hard-deleted so an offline till that pulled them
+       removes them too — a deleted row is a row the client must be told about. */
+    try {
+      const gone = await withOrg(orgId, async (c) => {
+        const r = await c.query(
+          `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+           WHERE org_id=$1 AND kind='products' AND deleted=false AND id = ANY($2::text[])
+           RETURNING rowver`, [orgId, DEFAULT_MENU.map((i) => i.id)]);
+        // The empty sample SECTIONS go with the dishes; a store that wanted no
+        // menu did not want 36 named empty shelves either.
+        await c.query(
+          `UPDATE entities SET data = data - 'menuCats' - 'catGroups' - 'menuSubs',
+             rowver = nextval('entities_rowver_seq'), updated_at = now()
+           WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false`, [orgId]);
+        return r.rows.reduce((mx, row) => Math.max(mx, Number(row.rowver)), 0);
+      });
+      if (gone) poke(orgId, gone);
+      console.log("onboard finish: starter menu cleared for " + orgId + " (menu=" + menu + ")");
+    } catch (e) { console.warn("starter-menu clear skipped:", e.message); }
   }
   // Land a freshly-onboarded store on the v2 terminal — the current build —
   // rather than the legacy /app register. (/app stays reachable for installed
