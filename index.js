@@ -525,6 +525,69 @@ const bootState = { ready: false, error: null, startedAt: Date.now(), readyAt: 0
        it on demand from Menu Master → "Load default menu". We deliberately do NOT
        backfill every outlet on boot any more — that would inject the full
        300-dish catalogue into stores that run their own menu. */
+
+    /* One-time cleanup for stores that DECLINED the starter menu and got it
+       anyway. The wizard asks about the menu after the account exists, so
+       registration had already seeded it and "empty" only stopped the backfill —
+       fixed at the source now, but stores onboarded before that are still
+       holding 300 dishes they said no to.
+
+       Three guards, because this deletes rows in someone's live store:
+         · only orgs with skip_default_menu — a store that later asked for the
+           sample menu has the flag cleared, so it is never touched;
+         · only the starter ids, and only where the row still matches the seed
+           EXACTLY (same name, same price) — an owner who renamed or repriced a
+           seeded dish is using it, and their edit is the evidence;
+         · never a dish that has been SOLD — a receipt reads its name from the
+           product row, so removing one rewrites history.
+       Tombstoned, not hard-deleted, so offline tills drop them on next pull. */
+    try {
+      const mc3 = await bootPool.connect();
+      try {
+        await mc3.query("BEGIN");
+        const claim = await mc3.query("INSERT INTO app_migrations (id) VALUES ('starter_menu_declined_cleanup_v1') ON CONFLICT DO NOTHING RETURNING id");
+        if (claim.rowCount) {
+          const seed = JSON.stringify((DEFAULT_MENU || []).map((d) => ({ id: d.id, name: d.name, price: d.price })));
+          const cleared = await mc3.query(
+            `WITH seed AS (
+               SELECT x->>'id' AS id, x->>'name' AS name, (x->>'price')::numeric AS price
+               FROM jsonb_array_elements($1::jsonb) AS x
+             ), sold AS (
+               SELECT DISTINCT e.org_id, l->>'pid' AS pid
+               FROM entities e, jsonb_array_elements(COALESCE(e.data->'lines','[]'::jsonb)) AS l
+               WHERE e.kind='sales' AND NOT e.deleted
+             )
+             UPDATE entities e SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+             FROM orgs o, seed s
+             WHERE e.org_id = o.id AND o.skip_default_menu
+               AND e.kind='products' AND NOT e.deleted
+               AND e.id = s.id
+               AND e.data->>'name' = s.name
+               AND COALESCE((e.data->>'price')::numeric, -1) = s.price
+               AND NOT EXISTS (SELECT 1 FROM sold WHERE sold.org_id = e.org_id AND sold.pid = e.id)
+             RETURNING e.org_id`, [seed]);
+          const orgs = new Set(cleared.rows.map((r) => r.org_id));
+          // The empty sample SECTIONS go too, but only for a store left with no
+          // products at all — otherwise its sections may describe its own menu.
+          let sections = 0;
+          if (orgs.size) {
+            const sec = await mc3.query(
+              `UPDATE entities e SET data = e.data - 'menuCats' - 'catGroups' - 'menuSubs',
+                 rowver = nextval('entities_rowver_seq'), updated_at = now()
+               WHERE e.kind='settings' AND e.id='settings' AND NOT e.deleted
+                 AND e.org_id = ANY($1::text[])
+                 AND NOT EXISTS (SELECT 1 FROM entities p WHERE p.org_id=e.org_id AND p.kind='products' AND NOT p.deleted)
+               RETURNING e.org_id`, [[...orgs]]);
+            sections = sec.rowCount;
+          }
+          await mc3.query("COMMIT");
+          console.log(`starter_menu_declined_cleanup_v1: removed ${cleared.rowCount} untouched, unsold starter dish(es) from ${orgs.size} store(s) that declined the menu; cleared sample sections on ${sections}`);
+        } else {
+          await mc3.query("ROLLBACK");
+        }
+      } catch (e) { try { await mc3.query("ROLLBACK"); } catch (_) { /* already unwound */ } throw e; }
+      finally { mc3.release(); }
+    } catch (e) { console.warn("starter_menu_declined_cleanup_v1 skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); bootState.error = String(e && e.message || e); }
   finally { bootClient.release(); }
   /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,

@@ -269,6 +269,24 @@ git checkout staging
 Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` +
 `Claude-Session: …`. Don't put the model id in commits/PRs.
 
+## Deploys must not touch stored data
+
+Every deploy re-applies `schema.sql` and re-runs the boot backfills against the
+live database. `test/upgrade-safety.test.js` is the guard: it fingerprints a
+real store (content hash + rowver per row, read through `/api/pull`), restarts
+the server, and asserts **nothing** changed — a rewrite producing identical bytes
+still bumps `rowver` and makes every till re-sync a phantom change, so rowver is
+part of the assertion. It restarts a second time to prove one-time migrations
+are one-time.
+
+Rules for anything that writes at boot: claim it in `app_migrations` (INSERT …
+ON CONFLICT DO NOTHING RETURNING id) so it runs once, wrap it in its own
+transaction, and never widen it to "every org" unless it genuinely is. The
+`starter_menu_declined_cleanup_v1` example shows the guard style for a migration
+that DELETES: only orgs that declined the menu (`skip_default_menu`), only rows
+still matching the seed exactly, never a dish that has been sold, tombstoned not
+hard-deleted.
+
 ## Local test harness (sandbox)
 
 Postgres 16 at `/usr/lib/postgresql/16/bin`, run as `postgres` user, TCP on
