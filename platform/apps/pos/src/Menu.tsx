@@ -43,24 +43,13 @@ export function Menu({ session }: { session: Session }) {
   const [showRetired, setShowRetired] = useState(false);
   const [q, setQ] = useState('');
 
-  const base = `/api/outlet/${session.outletId}/menu`;
-
-  const call = useCallback(async (method: string, path: string, body?: unknown) => {
-    const r = await fetch(base + path, {
-      method,
-      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + session.token },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await r.text();
-    let json: unknown = null;
-    try { json = JSON.parse(text); } catch { /* not json */ }
-    if (!r.ok) {
-      const msg = (json && typeof json === 'object' && 'error' in json)
-        ? String((json as { error: unknown }).error) : 'HTTP ' + r.status;
-      throw new api.ApiError(r.status, msg);
-    }
-    return json;
-  }, [base, session.token]);
+  /* Through api.authed, not a bare fetch — see there. This one built its own
+     absolute base string, which is why a regex looking for fetch('/api…') did
+     not find it and a static deploy 404'd on the menu and nowhere else. */
+  const authed = useMemo(() => api.authed(session), [session]);
+  const call = useCallback(
+    (method: string, path: string, body?: unknown) => authed(method, '/menu' + path, body),
+    [authed]);
 
   const load = useCallback(async () => {
     try {

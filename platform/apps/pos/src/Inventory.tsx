@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import * as outbox from './outbox';
@@ -53,20 +53,9 @@ export function Inventory({ session, onQueued }: { session: Session; onQueued: (
   const [act, setAct] = useState<{ kind: 'receive' | 'waste'; row: Row } | null>(null);
   const [counting, setCounting] = useState<Record<string, string> | null>(null);
 
-  const call = useCallback(async (method: string, path: string) => {
-    const r = await fetch(`/api/outlet/${session.outletId}${path}`, {
-      method, headers: { authorization: 'Bearer ' + session.token },
-    });
-    const text = await r.text();
-    let json: unknown = null;
-    try { json = JSON.parse(text); } catch { /* not json */ }
-    if (!r.ok) {
-      const msg = (json && typeof json === 'object' && 'error' in json)
-        ? String((json as { error: unknown }).error) : 'HTTP ' + r.status;
-      throw new api.ApiError(r.status, msg);
-    }
-    return json;
-  }, [session]);
+  /* One helper, one BASE — see api.authed. A hard-coded '/api' resolves
+     only behind the Vite proxy. */
+  const call = useMemo(() => api.authed(session), [session]);
 
   const load = useCallback(async () => {
     try {

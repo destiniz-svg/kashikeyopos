@@ -52,9 +52,17 @@ is one function, auditable, and cannot return a receipt.
    service. That connection is the owner: migrations and provisioning only, and
    `src/routes.js` never imports it.
 
-2. **New service from this repo**, root directory `backend`. `railway.json`
-   already sets the build, the start command and `/readyz` as the healthcheck,
-   so a deploy that cannot see its database does not go live.
+2. **New service from this repo**, root directory `platform` — NOT `backend`.
+   `platform/railway.json` selects `platform/Dockerfile`, which sets `/readyz`
+   as the healthcheck, so a deploy that cannot see its database never goes live.
+
+   The root directory matters and is not a preference. `backend/src/sale.js`
+   requires `../../packages/money/money`, because there is exactly ONE bill
+   calculation in this system and both the browser and the server load the same
+   file. A build context of `backend/` alone cannot see it and the container
+   dies on the first require. `backend/test/deployable.test.js` builds the tree
+   the Dockerfile builds and loads the server out of it, so this cannot regress
+   quietly again.
 
 3. **Variables** — copy from `.env.example`:
 
@@ -90,34 +98,40 @@ is one function, auditable, and cannot return a receipt.
    ```
    railway run npm run leak-test -- 3 4
    ```
-   Ten attempts to cross the boundary — direct reads of another outlet's sales,
-   tickets and ledger, catalogue probing, RLS on staff and audit, forged group
-   scope, a claimed outlet id in the context, and a DDL escalation. Any `LEAK`
-   line and the run exits non-zero. Put it in the deploy pipeline.
+   Twenty-four attempts to cross the boundary — direct reads of another outlet's
+   sales, tickets and ledger, catalogue probing, RLS on staff and audit, forged
+   group scope, a claimed outlet id in the context, attempts to rewrite or
+   delete the audit trail, erasing a closed sale, and a DDL escalation. Each
+   probe runs in its OWN transaction against planted bait; "current transaction
+   is aborted" counts against the suite rather than passing as a refusal. Any
+   `LEAK` line and the run exits non-zero. Put it in the deploy pipeline.
 
-8. **Host the front-ends.** The DC files are static. Serve them from Railway
-   static hosting or any CDN, and point `KashikeyoAPI({ baseUrl })` at the API
-   service. Keep the POS and the guest portal on different origins so a guest
-   phone's origin is never allowed to call till endpoints.
+8. **Host the front-ends.** They are Vite apps that build to static files —
+   `apps/pos` (the till and the back office) and `apps/guest` (the QR portal).
+   Deploy each as its own Railway static site, or to any CDN.
 
-## Front-end wiring
+   Build each one with the API's public origin baked in:
 
-`kashikeyo-api.js` is the seam. Load it in a DC's `<helmet>` and construct it in
-`componentDidMount`.
+   ```
+   VITE_API_ORIGIN=https://api.kashikeyo.mv npm -w @kashikeyo/pos run build
+   ```
 
-- **Reads:** `api.onSnapshot(fn)` polls `/snapshot` and calls `fn` with the same
-  shape the till already publishes today. On a failed poll it serves the local
-  cache, so the floor keeps working.
-- **Writes:** `api.queue(kind, payload)` returns instantly and syncs later. Each
-  op carries a locally generated `opId`; the server's primary key on it makes a
-  replay a no-op. `api.pending()` is the count to show in a sync badge.
-- **Namespacing:** cache keys are `kashikeyo.o<outletId>.*`, so switching sites
-  on a shared terminal cannot surface the previous site's tickets even offline.
+   `VITE_API_ORIGIN` is read in exactly one place — `apps/pos/src/api.ts` — and
+   every screen calls the API through `api.authed(session)`. A screen that
+   writes its own `fetch('/api/...')` works on a laptop and only on a laptop:
+   the Vite dev and preview servers proxy `/api`, so the absolute path resolves
+   there and 404s the moment the app is served from its own origin. Eleven
+   screens did exactly that. `deployable.test.js` now fails the build if the
+   literal `/api/` appears anywhere in `apps/pos/src` outside `api.ts`.
 
-The current build's own `localStorage` cache stays as the offline tier — that is
-the right design for a till and needs no change. Point its publish/restore at
-`api.local()` and its money-moving actions at `api.queue()` when you want the
-cloud tier live; the shapes were chosen to match what the till already writes.
+   **Keep the till and the guest portal on different origins**, and list both in
+   `ALLOWED_ORIGINS`, so a guest phone's origin is never allowed to call a till
+   endpoint. With `ALLOWED_ORIGINS` unset the server allows any origin, which is
+   right for local development and wrong everywhere else — set it.
+
+   A terminal names its outlet at install time, not at sign-in: `?o=3` on the
+   URL, or `VITE_OUTLET_ID` baked into that terminal's build. A till that can be
+   pointed at another branch is a till that can ring a sale into the wrong books.
 
 ## Things the server refuses
 

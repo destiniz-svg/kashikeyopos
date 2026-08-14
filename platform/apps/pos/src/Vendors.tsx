@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 
@@ -39,25 +39,10 @@ export function Vendors({ session }: { session: Session }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const call = useCallback(async (method: string, path: string, body?: unknown) => {
-    const r = await fetch(`/api/outlet/${session.outletId}${path}`, {
-      method,
-      headers: {
-        authorization: 'Bearer ' + session.token,
-        ...(body ? { 'content-type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const text = await r.text();
-    let json: unknown = null;
-    try { json = JSON.parse(text); } catch { /* not json */ }
-    if (!r.ok) {
-      const msg = (json && typeof json === 'object' && 'error' in json)
-        ? String((json as { error: unknown }).error) : 'HTTP ' + r.status;
-      throw new api.ApiError(r.status, msg);
-    }
-    return json;
-  }, [session]);
+  /* One helper, one BASE — see api.authed. Each of these screens used to
+     write its own fetch('/api/...'), which resolves only behind the Vite
+     proxy; deployed on its own origin every one of them would have 404'd. */
+  const call = useMemo(() => api.authed(session), [session]);
 
   const load = useCallback(async () => {
     try {

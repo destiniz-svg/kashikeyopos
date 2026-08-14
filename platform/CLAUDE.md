@@ -55,9 +55,13 @@ COGS → accounting → reconciliation → business intelligence.**
 
 ## Hosting
 
-Railway: `backend/` is the API service (Nixpacks, `/readyz` healthcheck),
-Postgres is a plugin, the three front-ends are static sites. Runbook in
-`DEPLOYMENT.md`.
+Railway: the API service builds from `platform/Dockerfile` with **root
+directory `platform`** — not `backend`, which cannot see `packages/money` and
+dies on the first require. Postgres is a plugin; the front-ends are static
+sites built with `VITE_API_ORIGIN` set to the API's public origin. Every screen
+reaches the API through `api.authed()`; a hard-coded `/api` only resolves behind
+the dev proxy. `backend/test/deployable.test.js` enforces both. Runbook in
+`docs/DEPLOYMENT.md`.
 
 ## Layout
 

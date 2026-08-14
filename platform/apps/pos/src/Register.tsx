@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import * as api from './api';
 import type { Session } from './api';
 import * as outbox from './outbox';
 
@@ -39,13 +40,12 @@ export function Register({ session, onQueued }: { session: Session; onQueued: ()
   const [note, setNote] = useState('');
   const [offline, setOffline] = useState(false);
 
+  /* Through api.authed, not a bare fetch — see there. */
+  const call = useMemo(() => api.authed(session), [session]);
+
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`/api/outlet/${session.outletId}/drawer`, {
-        headers: { authorization: 'Bearer ' + session.token },
-      });
-      if (!r.ok) throw new Error(String(r.status));
-      setD(await r.json() as Drawer);
+      setD(await call<Drawer>('GET', '/drawer'));
       setOffline(false);
     } catch {
       /* The drawer state is the server's. With no connection the last known
@@ -54,7 +54,7 @@ export function Register({ session, onQueued }: { session: Session; onQueued: ()
          "no register open", which would be a lie. */
       setOffline(true);
     }
-  }, [session]);
+  }, [call]);
 
   useEffect(() => {
     void load();

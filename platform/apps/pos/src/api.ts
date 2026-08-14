@@ -79,6 +79,25 @@ async function call<T>(method: string, path: string, body?: unknown, token?: str
   return json as T;
 }
 
+/**
+ * An authenticated call to this outlet, through the SAME base URL as everything
+ * else.
+ *
+ * It exists because nine screens each wrote their own `fetch('/api/...')`. That
+ * works on a laptop and only on a laptop: the Vite dev and preview servers proxy
+ * /api to the API process, so a hard-coded absolute path resolves. Deployed, the
+ * POS is a static site on its own origin and the API is somewhere else — every
+ * one of those nine screens would have 404'd on first load, and no test would
+ * have said so, because the tests call the API directly and the browser checks
+ * ran behind the proxy.
+ *
+ * One helper, one BASE, one place to be wrong.
+ */
+export function authed(session: { outletId: number; token: string }) {
+  return <T = unknown>(method: string, path: string, body?: unknown) =>
+    call<T>(method, `/api/outlet/${session.outletId}${path}`, body, session.token);
+}
+
 export const signIn = (outletId: number, pin: string, deviceId?: string) =>
   call<Session>('POST', '/api/auth/pin', { outletId, pin, deviceId });
 

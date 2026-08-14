@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 
@@ -51,6 +51,10 @@ export function Ledger({ session }: { session: Session }) {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState('');
 
+  /* Through api.authed, not a bare fetch — see there. A hard-coded '/api'
+     resolves only behind the Vite proxy. */
+  const call = useMemo(() => api.authed(session), [session]);
+
   const load = useCallback(async () => {
     const q = new URLSearchParams({ limit: String(PAGE), offset: String(offset) });
     if (reason) q.set('reason', reason);
@@ -58,23 +62,13 @@ export function Ledger({ session }: { session: Session }) {
     if (to) q.set('to', to);
     if (item) q.set('ingredient', item);
     try {
-      const r = await fetch(`/api/outlet/${session.outletId}/ledger?` + q.toString(), {
-        headers: { authorization: 'Bearer ' + session.token },
-      });
-      const text = await r.text();
-      let json: unknown = null;
-      try { json = JSON.parse(text); } catch { /* not json */ }
-      if (!r.ok) {
-        const msg = (json && typeof json === 'object' && 'error' in json)
-          ? String((json as { error: unknown }).error) : 'HTTP ' + r.status;
-        throw new api.ApiError(r.status, msg);
-      }
-      setData(json as Data); setError('');
+      setData(await call<Data>('GET', '/ledger?' + q.toString()));
+      setError('');
     } catch (e) {
       setError(e instanceof api.ApiError ? e.message : 'Could not read the ledger.');
       setData(null);
     }
-  }, [session, reason, from, to, item, offset]);
+  }, [call, reason, from, to, item, offset]);
 
   useEffect(() => { void load(); }, [load]);
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 
@@ -38,24 +38,19 @@ export function Today({ session, onGo }: { session: Session; onGo: (module: stri
   const [error, setError] = useState('');
   const [at, setAt] = useState<Date | null>(null);
 
+  /* Through api.authed, not a bare fetch — see there. A hard-coded '/api'
+     resolves only behind the Vite proxy. */
+  const call = useMemo(() => api.authed(session), [session]);
+
   const load = useCallback(async () => {
     try {
-      const r = await fetch(
-        `/api/outlet/${session.outletId}/today?date=${new Date().toISOString().slice(0, 10)}`,
-        { headers: { authorization: 'Bearer ' + session.token } });
-      const text = await r.text();
-      let json: unknown = null;
-      try { json = JSON.parse(text); } catch { /* not json */ }
-      if (!r.ok) {
-        const msg = (json && typeof json === 'object' && 'error' in json)
-          ? String((json as { error: unknown }).error) : 'HTTP ' + r.status;
-        throw new api.ApiError(r.status, msg);
-      }
-      setDay(json as Day); setAt(new Date()); setError('');
+      const date = new Date().toISOString().slice(0, 10);
+      setDay(await call<Day>('GET', '/today?date=' + date));
+      setAt(new Date()); setError('');
     } catch (e) {
       setError(e instanceof api.ApiError ? e.message : 'Could not read what is waiting.');
     }
-  }, [session]);
+  }, [call]);
 
   useEffect(() => {
     void load();
