@@ -169,18 +169,23 @@ async function settle(c, p, ctx, outlet) {
     cogs += l.lineCost;
   }
 
+  /* The till's own figure, when it sent one. Stored on the sale rather than
+     only logged, so "which terminal disagrees, and by how much, over what
+     period" is a query and not an archaeology exercise through the audit trail. */
+  const clientTotal = p.clientTotal == null ? null : toLaari(p.clientTotal);
+
   const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['SALE']);
   const sale = await c.query(
     'INSERT INTO sale (receipt_no, ticket_id, business_date, channel, covers,'
     + ' gross, discount, discount_reason, service, tax_code, tax_rate, tax,'
-    + ' rounding, total, cogs, member_id, server_name, closed_by, device_id)'
-    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)'
+    + ' rounding, total, cogs, member_id, server_name, closed_by, device_id, client_total)'
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)'
     + ' RETURNING id, receipt_no',
     [no.rows[0].no, p.ticketId || null, p.businessDate, p.channel || 'dine_in',
       p.covers || 1, toMVR(b.gross), toMVR(b.discount), p.discountReason || null,
       toMVR(b.service), tax.code, tax.rate, toMVR(b.tax), toMVR(b.rounding),
       toMVR(b.total), toMVR(cogs), p.memberId || null, p.server || null,
-      ctx.actor, ctx.deviceId]);
+      ctx.actor, ctx.deviceId, clientTotal == null ? null : toMVR(clientTotal)]);
   const saleId = sale.rows[0].id;
 
   for (let i = 0; i < billLines.length; i++) {
@@ -218,11 +223,10 @@ async function settle(c, p, ctx, outlet) {
   await c.query("SELECT chain.log('sale','sale',$1,NULL,$2)",
     [saleId, JSON.stringify({ no: sale.rows[0].receipt_no, total: toMVR(b.total) })]);
 
-  /* The till's own figure, when it sent one and it disagrees. Recorded rather
-     than rejected — the guest has already paid and the cashier cannot un-take
-     the money — but recorded loudly, because a till that computes a different
-     total from the server is a bug someone has to find. */
-  const clientTotal = p.clientTotal == null ? null : toLaari(p.clientTotal);
+  /* A disagreement is recorded rather than rejected — the guest has already
+     paid and the cashier cannot un-take the money — but recorded loudly,
+     because a till computing a different total from the server is a bug
+     somebody has to find. */
   if (clientTotal != null && clientTotal !== b.total) {
     await c.query("SELECT chain.log('sale_total_mismatch','sale',$1,$2,$3)",
       [saleId, JSON.stringify({ client: toMVR(clientTotal) }),

@@ -1,0 +1,316 @@
+import { useMemo, useState } from 'react';
+import type { Item, Snapshot } from './api';
+import * as outbox from './outbox';
+import { Payment } from './Payment';
+
+/* POS Floor — 02-POS-SPEC.md §3.
+ *
+ * Three columns on desktop: zones + tables → menu → ticket. Every colour, size
+ * and weight below is from the prototype and §3's own measurements.
+ *
+ * WHAT THE TICKET IS. A local basket, held in component state, that becomes a
+ * `sale` operation in the outbox when it is paid. It is deliberately NOT a
+ * server round-trip per line: a cashier ringing a burger must not wait for a
+ * network, and on a dropped connection they must not be stopped at all.
+ */
+
+const MONO = "'JetBrains Mono',monospace";
+const toLaari = (mvr: string) => Math.round(Number(mvr) * 100);
+const money = (laari: number) =>
+  (laari / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export interface Line { itemId: string; name: string; qty: number; unitPrice: number }
+
+interface Props {
+  snap: Snapshot | null;
+  now: Date;
+  onQueued: () => void | Promise<void>;
+}
+
+export function Floor({ snap, now, onQueued }: Props) {
+  const [table, setTable] = useState<string>('');
+  const [lines, setLines] = useState<Line[]>([]);
+  const [cat, setCat] = useState('all');
+  const [q, setQ] = useState('');
+  const [paying, setPaying] = useState(false);
+  const [flash, setFlash] = useState('');
+
+  const items = snap?.items ?? [];
+  const outlet = snap?.outlet ?? null;
+  const tableCount = outlet?.tables ?? 0;
+
+  const cats = useMemo(() => {
+    const out: string[] = [];
+    for (const it of items) {
+      const c = it.category || 'Other';
+      if (!out.includes(c)) out.push(c);
+    }
+    return out;
+  }, [items]);
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return items.filter((it) => {
+      if (cat !== 'all' && (it.category || 'Other') !== cat) return false;
+      if (!needle) return true;
+      return it.name.toLowerCase().includes(needle);
+    });
+  }, [items, cat, q]);
+
+  /* Which tables are busy, from the till's own open tickets. Free/Seated is
+     derived from the server's state, never from a counter this screen keeps —
+     two terminals are looking at the same floor. */
+  const openByTable = useMemo(() => {
+    const m = new Map<string, { covers: number }>();
+    for (const t of snap?.tickets ?? []) {
+      if (t.table_no) m.set(String(t.table_no), { covers: t.covers });
+    }
+    return m;
+  }, [snap]);
+
+  const add = (it: Item) => {
+    setLines((ls) => {
+      const i = ls.findIndex((l) => l.itemId === it.id);
+      if (i >= 0) {
+        const next = ls.slice();
+        next[i] = { ...next[i], qty: next[i].qty + 1 };
+        return next;
+      }
+      return ls.concat([{ itemId: it.id, name: it.name, qty: 1, unitPrice: toLaari(it.price) }]);
+    });
+  };
+
+  const step = (itemId: string, d: number) =>
+    setLines((ls) => ls
+      .map((l) => (l.itemId === itemId ? { ...l, qty: l.qty + d } : l))
+      .filter((l) => l.qty > 0));
+
+  const goods = lines.reduce((a, l) => a + l.unitPrice * l.qty, 0);
+  const servicePct = Number(outlet?.service_pct ?? 0);
+  const taxRate = Number(snap?.tax?.rate ?? 0);
+  const taxCode = snap?.tax?.code ?? 'GST';
+  /* Shown to the cashier so the bill on screen matches the one the guest is
+     handed. The SERVER computes the figures that are persisted and posted —
+     backend/src/sale.js — and refuses the sale if the tender does not match
+     what it computed. These two agree because they are the same model, not
+     because this one is trusted. */
+  const service = Math.round(goods * servicePct / 100);
+  const total = goods + service;
+  const tax = Math.round(total * (taxRate / 100) / (1 + taxRate / 100));
+
+  const settled = async (payments: { method: string; amount: number }[]) => {
+    /* One `sale` operation, queued locally. It carries what only the till knows
+       — which items, how many, which table, which tender — and nothing about
+       what they cost: the server prices it from the item master and the tax
+       version in force on the business date. */
+    await outbox.enqueue('sale', {
+      businessDate: new Date().toISOString().slice(0, 10),
+      channel: table === 'Takeaway' ? 'takeaway' : table === 'Delivery' ? 'delivery' : 'dine_in',
+      covers: openByTable.get(table)?.covers ?? 1,
+      lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+      payments: payments.map((p) => ({ method: p.method, amount: (p.amount / 100).toFixed(2) })),
+      clientTotal: (total / 100).toFixed(2),
+    });
+    setPaying(false);
+    setLines([]);
+    setFlash('Sale queued — ' + money(total));
+    setTimeout(() => setFlash(''), 2600);
+    await onQueued();
+  };
+
+  const TILE = (label: string, busy: boolean, key: string) => (
+    <button
+      key={key}
+      onClick={() => setTable(label)}
+      style={{
+        padding: '10px 9px', borderRadius: 9, minHeight: 62, textAlign: 'left',
+        background: table === label ? 'var(--bg-3)' : busy ? 'var(--amber-dim)' : 'var(--bg-1)',
+        border: '1px solid ' + (table === label ? 'var(--amber-line)' : busy ? 'var(--amber-line)' : 'var(--line)'),
+      }}
+    >
+      <span style={{ display: 'block', fontSize: 20, fontWeight: 700, letterSpacing: '-.03em', fontFamily: MONO, color: busy ? 'var(--amber-bright)' : 'var(--text)' }}>
+        {label}
+      </span>
+      <span style={{ display: 'block', marginTop: 3, fontSize: 9.5, color: 'var(--text-faint)' }}>
+        {busy ? (openByTable.get(label)?.covers ?? 1) + ' covers' : 'Free'}
+      </span>
+    </button>
+  );
+
+  return (
+    <div style={{ height: '100%', display: 'flex', minWidth: 0 }}>
+      {/* ── Column 1: floor plan (§3.1) ─────────────────────────────────── */}
+      <section style={{ width: 250, flexShrink: 0, borderRight: '1px solid var(--line-soft)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '11px 12px 8px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+          FLOOR
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignContent: 'start' }}>
+          {/* §3.1: "Two non-table slots always exist: Takeaway and Delivery." */}
+          {TILE('Takeaway', false, 'tk')}
+          {TILE('Delivery', false, 'dl')}
+          {Array.from({ length: tableCount }, (_, i) => i + 1).map((n) => {
+            const label = 'T' + (n < 10 ? '0' + n : n);
+            return TILE(label, openByTable.has(label) || openByTable.has(String(n)), label);
+          })}
+          {!tableCount && (
+            <div style={{ gridColumn: '1/-1', padding: '20px 4px', fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
+              This outlet has no tables configured. Set the table count on the outlet
+              record and they appear here.
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Column 2: menu grid (§3.2) ──────────────────────────────────── */}
+      <section style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--line-soft)' }}>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search dishes"
+            aria-label="Search dishes"
+            style={{
+              flex: 1, height: 32, padding: '0 11px', borderRadius: 7,
+              background: 'var(--bg-2)', border: '1px solid var(--line)',
+              color: 'var(--text)', fontSize: 12.5,
+            }}
+          />
+        </div>
+
+        <div className="krail" style={{ flexShrink: 0, display: 'flex', gap: 6, padding: '9px 12px', overflowX: 'auto' }}>
+          {[{ id: 'all', name: 'All' }, ...cats.map((c) => ({ id: c, name: c }))].map((c) => {
+            const on = cat === c.id;
+            return (
+              <button key={c.id} onClick={() => setCat(c.id)}
+                style={{
+                  flexShrink: 0, padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  background: on ? 'var(--amber)' : 'var(--bg-2)',
+                  color: on ? 'var(--on-amber)' : 'var(--text-muted)',
+                  border: '1px solid ' + (on ? 'var(--amber)' : 'var(--line)'),
+                }}>{c.name}</button>
+            );
+          })}
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 9, alignContent: 'start' }}>
+          {shown.map((it) => (
+            <button
+              key={it.id}
+              onClick={() => add(it)}
+              disabled={!table}
+              title={table ? undefined : 'Choose a table first'}
+              style={{
+                padding: 11, borderRadius: 9, minHeight: 74, textAlign: 'left',
+                background: 'var(--bg-1)', border: '1px solid var(--line)',
+                opacity: table ? 1 : .45,
+                // §3.2: "Off-menu dishes are visibly struck, not hidden."
+                textDecoration: it.off_menu ? 'line-through' : 'none',
+              }}
+            >
+              <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>
+                {it.name}
+              </span>
+              <span style={{ display: 'block', marginTop: 7, fontSize: 14, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>
+                {money(toLaari(it.price))}
+              </span>
+            </button>
+          ))}
+          {!shown.length && (
+            <div style={{ gridColumn: '1/-1', padding: '32px 6px', textAlign: 'center', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)' }}>
+              {!snap ? 'Loading the menu…'
+                : items.length === 0
+                  ? 'No dishes yet. Add them in Menu Master and they appear here.'
+                  : 'Nothing matches that search.'}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ── Column 3: ticket (§3.3) ─────────────────────────────────────── */}
+      <section style={{ width: 300, flexShrink: 0, borderLeft: '1px solid var(--line-soft)', background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO, letterSpacing: '-.02em', color: table ? 'var(--amber-bright)' : 'var(--text-faint)' }}>
+            {table || 'No table'}
+          </span>
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 9.5, color: 'var(--text-faint)', fontFamily: MONO }}>
+            {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 13px' }}>
+          {lines.map((l) => (
+            <div key={l.itemId} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                  {money(l.unitPrice * l.qty)}
+                </span>
+              </div>
+              <div style={{ marginTop: 7, display: 'inline-flex', alignItems: 'center', gap: 0, borderRadius: 6, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                <button onClick={() => step(l.itemId, -1)} aria-label={'One less ' + l.name}
+                  style={{ width: 26, height: 24, color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>−</button>
+                <span style={{ minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>{l.qty}</span>
+                <button onClick={() => step(l.itemId, 1)} aria-label={'One more ' + l.name}
+                  style={{ width: 26, height: 24, color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>+</button>
+              </div>
+            </div>
+          ))}
+          {!lines.length && (
+            <div style={{ padding: '30px 4px', textAlign: 'center', fontSize: 11.5, lineHeight: 1.65, color: 'var(--text-faint)' }}>
+              {table
+                ? 'Nothing on this ticket yet. Tap a dish to add it.'
+                : 'Choose a table, then tap dishes to build the ticket.'}
+            </div>
+          )}
+        </div>
+
+        {/* Foot: subtotal, service, tax, total, then Pay. §3.3 */}
+        <div style={{ flexShrink: 0, borderTop: '1px solid var(--line)', padding: 13 }}>
+          <Row label="Subtotal" value={money(goods)} />
+          {servicePct > 0 && <Row label={'Service ' + servicePct + '%'} value={money(service)} />}
+          {taxRate > 0 && <Row label={taxCode + ' ' + taxRate + '% (incl.)'} value={money(tax)} muted />}
+          <div style={{ marginTop: 9, paddingTop: 9, borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Total</span>
+            <span style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>{money(total)}</span>
+          </div>
+
+          {flash && (
+            <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 7, background: 'var(--go-dim)', color: 'var(--go-bright)', fontSize: 11.5, fontWeight: 600 }}>
+              {flash}
+            </div>
+          )}
+
+          <button
+            onClick={() => setPaying(true)}
+            disabled={!lines.length}
+            style={{
+              marginTop: 11, width: '100%', minHeight: 44, borderRadius: 9,
+              background: lines.length ? 'var(--amber)' : 'var(--bg-2)',
+              color: lines.length ? 'var(--on-amber)' : 'var(--text-faint)',
+              fontSize: 13.5, fontWeight: 700, textAlign: 'center',
+            }}
+          >Pay</button>
+        </div>
+      </section>
+
+      {paying && (
+        <Payment
+          total={total}
+          onCancel={() => setPaying(false)}
+          onConfirm={settled}
+        />
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 5 }}>
+      <span style={{ fontSize: 11.5, color: muted ? 'var(--text-faint)' : 'var(--text-muted)' }}>{label}</span>
+      <span style={{ fontSize: 12, fontFamily: MONO, color: muted ? 'var(--text-faint)' : 'var(--text-dim)' }}>{value}</span>
+    </div>
+  );
+}
