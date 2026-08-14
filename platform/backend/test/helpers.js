@@ -18,8 +18,16 @@ const { Client } = require('pg');
 const money = require('../../packages/money/money');
 
 const ROOT = path.join(__dirname, '..');
-const PORT = Number(process.env.TEST_PORT || 4611);
-const BASE = 'http://127.0.0.1:' + PORT;
+
+/* `node --test` runs each FILE in its own process, so a fixed port meant two
+   consecutive files raced for it: the first had killed its server but the
+   socket was not yet released when the second tried to bind, and the whole
+   file's tests came back "cancelled" with no failure to point at. Intermittent
+   green is worse than red — people stop believing the suite.
+   So the port is derived per process and, if it is taken anyway, startServer
+   walks to the next one. */
+let PORT = Number(process.env.TEST_PORT || (4300 + (process.pid % 600)));
+let BASE = 'http://127.0.0.1:' + PORT;
 
 const env = {
   ...process.env,
@@ -39,29 +47,59 @@ const env = {
 
 const uuid = () => crypto.randomUUID();
 
-/* A per-run outlet id. Kept well above the ids a human would provision by hand
-   so a test run cannot land on a real outlet in a shared database. */
-function pickOutletId() {
-  return 9000 + (process.pid % 900) + Math.floor(Math.random() * 90);
+/* A per-run outlet id, CLAIMED rather than guessed.
+
+   It used to be 9000 + (pid % 900) + random(90), which two test processes with
+   nearby pids could easily land on together — and then two files shared one
+   schema, so one file's sales broke another file's "nothing was written"
+   assertion. That is where the intermittent single failure came from, and it
+   only ever appeared when the whole suite ran, which is the worst way for a
+   test to be wrong.
+
+   Now the id is checked against chain.outlet and re-drawn on a collision, over
+   a range wide enough that a collision is rare and handled when it happens.
+   Kept well above the ids a human provisions by hand so a run can never land on
+   a real outlet in a shared database. */
+async function claimOutletId(owner) {
+  for (let i = 0; i < 40; i++) {
+    const id = 9000 + Math.floor(Math.random() * 90000);
+    const q = await owner.query('SELECT 1 FROM chain.outlet WHERE id = $1', [id]);
+    if (!q.rows.length) return id;
+  }
+  throw new Error('could not claim a free test outlet id');
 }
 
 let child = null;
 
 async function startServer() {
   if (child) return;
-  child = spawn(process.execPath, [path.join(ROOT, 'server.js')], { env, stdio: ['ignore', 'pipe', 'pipe'] });
-  let log = '';
-  child.stdout.on('data', (d) => { log += d; });
-  child.stderr.on('data', (d) => { log += d; });
-  const deadline = Date.now() + 20000;
-  for (;;) {
-    if (Date.now() > deadline) throw new Error('server did not become ready:\n' + log);
-    try {
-      const r = await fetch(BASE + '/readyz');
-      if (r.ok) return;
-    } catch (e) { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 150));
+  let lastLog = '';
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const port = PORT + attempt;
+    BASE = 'http://127.0.0.1:' + port;
+    const proc = spawn(process.execPath, [path.join(ROOT, 'server.js')],
+      { env: { ...env, PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
+    let log = '';
+    proc.stdout.on('data', (d) => { log += d; });
+    proc.stderr.on('data', (d) => { log += d; });
+
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      // The port was taken, or the process died on boot: try the next one
+      // rather than sitting out the whole timeout on a socket that will never
+      // answer.
+      if (proc.exitCode !== null || /EADDRINUSE/.test(log)) break;
+      if (Date.now() > deadline) break;
+      try {
+        const r = await fetch(BASE + '/readyz');
+        if (r.ok) { child = proc; PORT = port; return; }
+      } catch (e) { /* not up yet */ }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    lastLog = log;
+    proc.kill('SIGKILL');
   }
+  throw new Error('server did not become ready on any port from ' + PORT + ':\n' + lastLog);
 }
 
 function ownerClient() {
@@ -71,11 +109,11 @@ function ownerClient() {
 /** Provision a fresh outlet, seed the minimum a sale needs, sign in. */
 async function bootOutlet() {
   await startServer();
-  const outletId = pickOutletId();
-  const code = 'T' + outletId;
   const today = new Date().toISOString().slice(0, 10);
   const owner = ownerClient();
   await owner.connect();
+  const outletId = await claimOutletId(owner);
+  const code = 'T' + outletId;
 
   const { outletPassword, hashPin, pinLookup } = require('../src/secrets');
   const s = 'outlet_' + outletId;
