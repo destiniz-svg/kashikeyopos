@@ -9,6 +9,8 @@ const menu = require('./menu');
 const recipes = require('./recipes');
 const stock = require('./stock');
 const orders = require('./orders');
+const reports = require('./reports');
+const drawer = require('./drawer');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -443,6 +445,94 @@ r.get('/outlet/:outletId/orders/:saleId', sameOutlet, staffOnly, atLeast('till')
     } catch (e) { next(e); }
   });
 
+/* ── the cash drawer ───────────────────────────────────────────────────────
+ *
+ * TILL rank to read: a cashier working the register has to see where their own
+ * drawer stands before they count it. Opening and closing go through the replay
+ * path with the other operations that move money.
+ */
+r.get('/outlet/:outletId/drawer', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return drawer.current(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Reports & Exports (§2 `reports`) ──────────────────────────────────────
+ *
+ * MANAGER rank, matching the rail. Every figure is derived in reports.js from
+ * `journal_line` — §22 requires the P&L, the trial balance, the tax return and
+ * the Z-reads to agree with each other, and they can only agree if they are the
+ * same arithmetic over the same rows.
+ *
+ * A date range is validated here rather than passed through: `from`/`to` reach
+ * SQL as parameters, but a malformed date should be a 400 with a sentence, not
+ * a driver error surfacing as a 500.
+ */
+function range(req, res) {
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
+  for (const d of [from, to]) {
+    if (d !== null && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
+      return null;
+    }
+  }
+  if (from && to && from > to) {
+    res.status(400).json({ error: 'from is after to' });
+    return null;
+  }
+  return { from, to };
+}
+
+r.get('/outlet/:outletId/reports/zread', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return reports.zRead(c, date, await drawer.sessionsOn(c, date));
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reports/trial-balance', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reports.trialBalance(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reports/pnl', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reports.profitAndLoss(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reports/tax', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reports.taxReturn(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
 // ── offline replay. Idempotent by construction: the client's own op_id is the
 //    primary key, and a closed sale is never reopened by a late arrival.
 r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
@@ -517,6 +607,8 @@ const OP_RANK = {
   ticket_send: 2,          // firing the kitchen moves no money
   guest_order_accept: 2,
   sale: 2,                 // taking money is the till's job
+  drawer_open: 2,          // …and so is counting the drawer it comes out of
+  drawer_close: 2,
   stock_receive: 3,        // receiving stock creates value in the accounts
   stock_waste: 3,          // and wastage destroys it
   stock_count: 3,          // a count writes on-hand; that is a manager's act
@@ -548,6 +640,12 @@ async function apply(c, op, ctx) {
 
     case 'kds_advance':
       return await kitchen.advance(c, op.payload || {}, ctx);
+
+    case 'drawer_open':
+      return await drawer.open(c, op.payload || {}, ctx);
+
+    case 'drawer_close':
+      return await drawer.close(c, op.payload || {}, ctx);
 
     case 'stock_receive':
       return await stock.receive(c, op.payload || {}, ctx);

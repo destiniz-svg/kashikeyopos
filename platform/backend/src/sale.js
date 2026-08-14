@@ -259,14 +259,22 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
      money arrived and the drawer and the acquirer can each be reconciled
      against their own account rather than against one lump. */
   const ACCOUNT_FOR = { cash: '1000', card: '1020', wallet: '1020', bank: '1010', points: '2200' };
+
+  /* A tip arrives WITH the money it was added to, so it debits the same
+     account as its own payment. This used to debit 1000 for every tip
+     regardless of method, which put a card tip in the cash drawer: the books
+     then showed cash that was never there, and the first drawer count of the
+     evening came up short by exactly the evening's card tips. The credit is
+     2120 either way — a tip is the team's money passing through, never the
+     restaurant's revenue. */
   let tips = 0;
   for (const pay of (p.payments || [])) {
-    const amt = toLaari(pay.amount || 0);
+    const account = ACCOUNT_FOR[pay.method] || '1000';
     const tip = toLaari(pay.tip || 0);
     tips += tip;
-    dr(ACCOUNT_FOR[pay.method] || '1000', amt);
+    dr(account, toLaari(pay.amount || 0) + tip);
   }
-  if (tips) { dr('1000', tips); cr('2120', tips); }
+  if (tips) cr('2120', tips);
 
   cr('4000', b.gross);
   cr('2100', b.tax);

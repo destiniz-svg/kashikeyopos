@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import type { Item, Snapshot } from './api';
+import type { Item, Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { Payment } from './Payment';
+import { Register } from './Register';
 
 /* POS Floor — 02-POS-SPEC.md §3.
  *
@@ -24,10 +25,11 @@ export interface Line { itemId: string; name: string; qty: number; unitPrice: nu
 interface Props {
   snap: Snapshot | null;
   now: Date;
+  session: Session;
   onQueued: () => void | Promise<void>;
 }
 
-export function Floor({ snap, now, onQueued }: Props) {
+export function Floor({ snap, now, session, onQueued }: Props) {
   const [table, setTable] = useState<string>('');
   const [lines, setLines] = useState<Line[]>([]);
   const [cat, setCat] = useState('all');
@@ -189,6 +191,10 @@ export function Floor({ snap, now, onQueued }: Props) {
             </div>
           )}
         </div>
+
+        {/* The drawer lives here, under the tables, because this is where the
+            cashier is standing when the shift ends. */}
+        <Register session={session} onQueued={onQueued} />
       </section>
 
       {/* ── Column 2: menu grid (§3.2) ──────────────────────────────────── */}

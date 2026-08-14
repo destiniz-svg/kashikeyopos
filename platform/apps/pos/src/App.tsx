@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useState } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import * as api from './api';
 import type { Session, Snapshot } from './api';
 import * as outbox from './outbox';
@@ -10,6 +11,7 @@ import { Menu } from './Menu';
 import { Recipes } from './Recipes';
 import { Inventory } from './Inventory';
 import { Orders } from './Orders';
+import { Reports } from './Reports';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -27,7 +29,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -284,13 +286,22 @@ export function App({ outletId }: { outletId: number }) {
           </span>
         </header>
 
+        {/* One module's bug must not take the terminal down. Without this a
+            crash anywhere below unmounted the whole app — rail, header and the
+            open ticket with it — mid-service, and the only way back was a
+            reload and a PIN. The boundary is keyed on the view so moving to
+            another screen clears it. */}
         <main style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <Boundary key={view} view={view}>
           {view === 'pos' && MODULES_BUILT.has('pos') ? (
             <Floor
               snap={snap}
               now={now}
+              session={session}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
+          ) : view === 'reports' && MODULES_BUILT.has('reports') ? (
+            <Reports session={session} />
           ) : view === 'orders' && MODULES_BUILT.has('orders') ? (
             <Orders session={session} />
           ) : view === 'menu' && MODULES_BUILT.has('menu') ? (
@@ -311,8 +322,55 @@ export function App({ outletId }: { outletId: number }) {
           ) : (
             <NotBuilt id={view} groups={groups} />
           )}
+          </Boundary>
         </main>
       </div>
     </div>
   );
+}
+
+/* ── the boundary ─────────────────────────────────────────────────────────
+ *
+ * A class, because that is the only thing React lets catch a render error. It
+ * says which screen failed and what it said — a till that goes blank tells the
+ * operator nothing they can pass on, and "it broke" is not a bug report.
+ */
+class Boundary extends Component<{ view: string; children: ReactNode }, { err: Error | null }> {
+  constructor(props: { view: string; children: ReactNode }) {
+    super(props);
+    this.state = { err: null };
+  }
+
+  static getDerivedStateFromError(err: Error) { return { err }; }
+
+  componentDidCatch(err: Error, info: ErrorInfo) {
+    // Logged rather than swallowed: this is the only trace of it once the
+    // fallback has replaced the screen.
+    console.error('screen "' + this.props.view + '" failed', err, info.componentStack);
+  }
+
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div style={{ maxWidth: 460, textAlign: 'center' }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+            This screen stopped working
+          </div>
+          <div style={{ margin: '9px 0 0', fontSize: 12.5, lineHeight: 1.65, color: 'var(--text-muted)' }}>
+            The rest of the terminal is still running — the floor, the ticket you had open
+            and anything queued to send are all untouched. Move to another screen, or try
+            this one again.
+          </div>
+          <div style={{ margin: '11px 0 0', padding: '8px 11px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 11, fontFamily: "'JetBrains Mono',monospace", color: 'var(--text-faint)', wordBreak: 'break-word' }}>
+            {this.props.view}: {this.state.err.message}
+          </div>
+          <button onClick={() => this.setState({ err: null })}
+            style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)' }}>
+            Try this screen again
+          </button>
+        </div>
+      </div>
+    );
+  }
 }
