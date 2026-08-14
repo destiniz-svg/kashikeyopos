@@ -121,6 +121,35 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('the CORS allow-list answers a browser, including the wildcard', () => {
+    /* Deployed, the POS is a static site on a DIFFERENT ORIGIN from the API, so
+       every call it makes is cross-origin and CORS is load-bearing. Nothing else
+       in this suite exercises it: the integration tests are server-to-server and
+       send no Origin at all, so the header they never ask for is a header they
+       can never miss.
+
+       And the value that failed was the obvious one. `ALLOWED_ORIGINS=*` — how
+       anybody writes "allow everything" — matched no origin, so no header went
+       out and the browser blocked every request, while leaving the variable
+       UNSET allowed everything. Exactly backwards, and visible only in a browser
+       console. */
+    // The shipped decision itself, not a retyped copy of it.
+    const { allowOrigin } = require('../src/cors');
+    const cases = [
+      { value: '', origin: 'http://a.example', allowed: true, why: 'unset allows any origin' },
+      { value: '*', origin: 'http://a.example', allowed: true, why: 'so does the wildcard' },
+      { value: 'http://a.example', origin: 'http://a.example', allowed: true, why: 'a listed origin' },
+      { value: 'http://a.example', origin: 'http://b.example', allowed: false, why: 'an unlisted one' },
+      { value: 'http://a.example,*', origin: 'http://b.example', allowed: true, why: 'a wildcard among names still means any' },
+    ];
+    for (const c of cases) {
+      const header = allowOrigin(c.value, c.origin);
+      assert.equal(header === c.origin, c.allowed, c.why + ' (' + JSON.stringify(c.value) + ')');
+    }
+    // No Origin at all is not a browser, and gets no header either way.
+    assert.equal(allowOrigin('*', undefined), null);
+  });
+
   test('every environment variable the runbook promises is read somewhere', () => {
     /* The other direction of the same drift: a variable documented in
        .env.example that no code reads is a variable an operator will set,

@@ -2,16 +2,17 @@
 const express = require('express');
 const { owner, shutdown } = require('./src/db');
 const routes = require('./src/routes');
+const { allowOrigin } = require('./src/cors');
 
 const app = express();
 app.set('trust proxy', 1);              // Railway terminates TLS at the edge
 app.use(express.json({ limit: '2mb' }));
 
-const origins = (process.env.ALLOWED_ORIGINS || '').split(',')
-  .map(function (s) { return s.trim(); }).filter(Boolean);
+/* Who may call this from a browser — see src/cors.js. A literal '*' means any
+   origin there, which it did not used to. */
 app.use(function (req, res, next) {
-  const o = req.get('origin');
-  if (o && (origins.indexOf(o) >= 0 || !origins.length)) {
+  const o = allowOrigin(process.env.ALLOWED_ORIGINS, req.get('origin'));
+  if (o) {
     res.set('access-control-allow-origin', o);
     res.set('vary', 'origin');
     res.set('access-control-allow-headers', 'authorization,content-type');

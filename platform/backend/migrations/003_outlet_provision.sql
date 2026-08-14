@@ -410,6 +410,50 @@ BEGIN
       CONSTRAINT one_side CHECK ((dr = 0) <> (cr = 0))
     );
     CREATE INDEX IF NOT EXISTS jl_journal ON %1$I.journal_line(journal_id);
+
+    -- Operating costs (§2 `opcosts`). Below the ledger tables deliberately:
+    -- both reference %1$I.account, and provisioning runs these blocks in file
+    -- order, so an expense table written above the chart of accounts creates
+    -- nothing and takes the whole outlet down with it. See migration 017.
+    --
+    -- A SPREAD cost sits on 1200 Prepaid expenses and is released a period at a
+    -- time — an annual licence paid in January is a twelfth of January's cost,
+    -- not all of it.
+    CREATE TABLE IF NOT EXISTS %1$I.expense (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      at        timestamptz NOT NULL DEFAULT now(),
+      spent_on  date NOT NULL,
+      account_code text NOT NULL REFERENCES %1$I.account(code),
+      amount    numeric(12,2) NOT NULL CHECK (amount > 0),
+      supplier_id uuid, note text,
+      method    text NOT NULL DEFAULT 'credit'
+                CHECK (method IN ('cash','bank','credit')),
+      recurring_id uuid, period_key text,
+      spread_months int CHECK (spread_months IS NULL OR spread_months > 1),
+      released_months int NOT NULL DEFAULT 0,
+      -- The last period released FOR, so month-end run twice charges once.
+      released_upto text,
+      by_staff  uuid,
+      UNIQUE (recurring_id, period_key)
+    );
+    CREATE INDEX IF NOT EXISTS expense_when ON %1$I.expense (spent_on DESC);
+    CREATE INDEX IF NOT EXISTS expense_unreleased ON %1$I.expense (spent_on)
+      WHERE spread_months IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS %1$I.recurring_cost (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      account_code text NOT NULL REFERENCES %1$I.account(code),
+      amount    numeric(12,2) NOT NULL CHECK (amount > 0),
+      cadence   text NOT NULL CHECK (cadence IN ('weekly','monthly','annual')),
+      due_day   int NOT NULL,
+      starts_on date NOT NULL, ends_on date,
+      supplier_id uuid, note text,
+      method    text NOT NULL DEFAULT 'credit'
+                CHECK (method IN ('cash','bank','credit')),
+      spread_months int CHECK (spread_months IS NULL OR spread_months > 1),
+      active    boolean NOT NULL DEFAULT true,
+      set_by    uuid, set_at timestamptz NOT NULL DEFAULT now()
+    );
   $ddl$, s);
 
   -- A journal that does not balance is not allowed to exist. Checked at
@@ -517,6 +561,8 @@ BEGIN
   EXECUTE format('GRANT DELETE ON %I.recipe_line TO %I', s, r);
   -- A DRAFT payroll run is deleted when abandoned; a posted one never is.
   EXECUTE format('GRANT DELETE ON %I.payroll_run, %I.payroll_line TO %I', s, s, r);
+  -- A schedule set up wrongly is deleted; a posted expense never is.
+  EXECUTE format('GRANT DELETE ON %I.recurring_cost TO %I', s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
   -- The supplier master is shared across the estate and written at ADMIN rank;
   -- the policy in migration 014 enforces the rank, this grants the right.

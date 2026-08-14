@@ -16,6 +16,7 @@ const purchasing = require('./purchasing');
 const staff = require('./staff');
 const payroll = require('./payroll');
 const analytics = require('./analytics');
+const opcosts = require('./opcosts');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -645,6 +646,75 @@ r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('man
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return staff.unlock(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Operating Costs (§2 `opcosts`) ───────────────────────────────────────
+ *
+ * MANAGER reads and records — somebody has to be able to enter the electricity
+ * bill. Setting up a RECURRING cost is admin: a schedule keeps charging long
+ * after whoever created it has forgotten, so it is a commitment rather than an
+ * entry.
+ */
+r.get('/outlet/:outletId/opcosts', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await opcosts.list(c, p.from, p.to)),
+          categories: await opcosts.categories(c),
+          schedules: await opcosts.schedules(c),
+          due: await opcosts.due(c, p.to || new Date().toISOString().slice(0, 10)),
+          canSchedule: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/opcosts', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.record(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Releasing a month of every prepaid cost. Idempotent per (cost, period), so a
+   month-end run pressed twice charges the month once. */
+r.post('/outlet/:outletId/opcosts/release', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.release(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/opcosts/recurring', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.setSchedule(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such schedule' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.stopSchedule(c, req.params.id, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }
