@@ -15,6 +15,7 @@ const today = require('./today');
 const purchasing = require('./purchasing');
 const staff = require('./staff');
 const payroll = require('./payroll');
+const analytics = require('./analytics');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -646,6 +647,23 @@ r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('man
         return staff.unlock(c, req.params.id, req.ctx);
       });
       res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Analytics & CFO (§2 `analytics`) ─────────────────────────────────────
+ *
+ * ADMIN, matching the rail. §22: prime cost and net margin come from the posted
+ * journals, not from a parallel calculation — analytics.js reads them through
+ * reports.balances(), the same function the P&L and the trial balance use.
+ */
+r.get('/outlet/:outletId/analytics', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return analytics.cfo(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
     } catch (e) { next(e); }
   });
 
