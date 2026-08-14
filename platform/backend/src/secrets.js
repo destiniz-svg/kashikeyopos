@@ -43,7 +43,29 @@ function hashPin(pin, salt) {
 
 function pinMatches(pin, hash, salt) {
   const h = crypto.scryptSync(String(pin), salt, 32).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(h), Buffer.from(hash));
+  const a = Buffer.from(h);
+  const b = Buffer.from(String(hash || ''));
+  // timingSafeEqual THROWS on a length mismatch, so a malformed or empty stored
+  // hash would raise instead of returning false. Compare lengths first — and
+  // still compare the bytes in constant time when they do match.
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-module.exports = { outletPassword, sign, verify, hashPin, pinMatches };
+/* A fast, keyed lookup key for (outlet, PIN) — see migration 007 for why it
+   exists. Keyed with a pepper from the environment so that reading every row
+   of chain.staff gives no way to test a PIN offline; the pepper is never
+   stored beside the data it protects.
+   Falls back to SESSION_SECRET so an existing deployment does not need a new
+   variable to boot, but PIN_PEPPER should be set and rotated independently:
+   rotating it invalidates every lookup, which is why it is separate from the
+   thing that also signs tokens. */
+function pinLookup(outletId, pin) {
+  const pepper = process.env.PIN_PEPPER || process.env.SESSION_SECRET;
+  if (!pepper || pepper.length < 32) {
+    throw new Error('PIN_PEPPER (or SESSION_SECRET) must be set and at least 32 chars');
+  }
+  return crypto.createHmac('sha256', pepper)
+    .update('pin:' + outletId + ':' + String(pin)).digest('hex');
+}
+
+module.exports = { outletPassword, sign, verify, hashPin, pinMatches, pinLookup };

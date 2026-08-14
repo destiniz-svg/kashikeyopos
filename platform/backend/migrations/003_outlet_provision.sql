@@ -90,6 +90,10 @@ BEGIN
       server_name text,
       closed_by   uuid NOT NULL, device_id uuid,
       voided_at   timestamptz, voided_by uuid,
+      -- What the TILL thought the bill came to, when it sent one. The server
+      -- derives the real figures; this is kept so a device that disagrees can
+      -- be found rather than quietly averaged into the month.
+      client_total numeric(12,2),
       CONSTRAINT sale_adds_up CHECK (
         round(gross - discount + service + tax + rounding, 2) = round(total, 2))
     );

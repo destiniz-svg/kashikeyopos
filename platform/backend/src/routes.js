@@ -1,8 +1,9 @@
 'use strict';
 const express = require('express');
-const { withOutlet, withEstate, poolFor } = require('./db');
-const { sign, pinMatches } = require('./secrets');
+const { withOutlet, withEstate } = require('./db');
+const { sign, pinMatches, pinLookup } = require('./secrets');
 const { session, sameOutlet, atLeast } = require('./auth');
+const { settle } = require('./sale');
 
 const r = express.Router();
 const LOCK_TRIES = 5, LOCK_MINS = 15;
@@ -11,39 +12,47 @@ const LOCK_TRIES = 5, LOCK_MINS = 15;
 r.post('/auth/pin', async function (req, res, next) {
   const { outletId, pin, deviceId } = req.body || {};
   if (!outletId || !pin) return res.status(400).json({ error: 'outletId and pin required' });
+  // Bound the input before it reaches a KDF: a PIN is a short numeric string,
+  // and accepting a megabyte of it is a free way to make the server work.
+  if (!/^[0-9]{4,12}$/.test(String(pin))) {
+    return res.status(401).json({ error: 'PIN not recognised' });
+  }
   try {
     const out = await withOutlet({ outletId: Number(outletId), rank: 0 }, async function (c) {
-      const q = await c.query(
-        'SELECT id, name, rank, pin_hash, pin_salt, failed, locked_until'
-        + ' FROM chain.staff WHERE outlet_id = $1 AND active', [Number(outletId)]);
+      /* Narrow to the one or two staff who could hold this PIN, then scrypt
+         only those — instead of a KDF pass per member of staff, which an
+         unauthenticated caller could trigger at will. The counters and the
+         session row go through SECURITY DEFINER functions because at this
+         point in the request there is no rank yet, and every policy on
+         chain.staff resolves against one. See migration 007. */
+      const lookup = pinLookup(Number(outletId), pin);
+      const q = await c.query('SELECT * FROM chain.pin_candidates($1,$2)',
+        [Number(outletId), lookup]);
       const now = Date.now();
       for (const s of q.rows) {
         if (s.locked_until && new Date(s.locked_until).getTime() > now) continue;
         let ok = false;
         try { ok = pinMatches(pin, s.pin_hash, s.pin_salt); } catch (e) { ok = false; }
         if (!ok) continue;
-        await c.query('UPDATE chain.staff SET failed = 0, locked_until = NULL WHERE id = $1', [s.id]);
-        const ttl = Number(process.env.SESSION_TTL_HOURS || 12) * 3600e3;
-        const sess = await c.query(
-          'INSERT INTO chain.session (staff_id, outlet_id, device_id, rank, expires_at)'
-          + ' VALUES ($1,$2,$3,$4, now() + ($5 || \' hours\')::interval) RETURNING id',
-          [s.id, Number(outletId), deviceId || null, s.rank,
-           String(process.env.SESSION_TTL_HOURS || 12)]);
-        await c.query("SELECT chain.log('signin','staff',$1,NULL,NULL)", [s.id]);
+        await c.query('SELECT chain.note_pin_attempt($1,$2,true,$3,$4)',
+          [Number(outletId), s.id, LOCK_TRIES, LOCK_MINS]);
+        const ttlHours = Number(process.env.SESSION_TTL_HOURS || 12);
+        const sess = await c.query('SELECT chain.open_session($1,$2,$3,$4,$5) AS id',
+          [s.id, Number(outletId), deviceId || null, s.rank, ttlHours]);
+        await c.query('SELECT chain.log_signin($1,$2,true)', [Number(outletId), s.id]);
         return {
           token: sign({ o: Number(outletId), r: s.rank, s: s.id,
-                        d: deviceId || null, sid: sess.rows[0].id, exp: now + ttl }),
+                        d: deviceId || null, sid: sess.rows[0].id,
+                        exp: now + ttlHours * 3600e3 }),
           name: s.name, rank: s.rank, outletId: Number(outletId)
         };
       }
-      // Wrong PIN: count the attempt against every unlocked account at this
-      // outlet, so brute force locks the door rather than probing it.
-      await c.query(
-        'UPDATE chain.staff SET failed = failed + 1,'
-        + ' locked_until = CASE WHEN failed + 1 >= $2'
-        + "   THEN now() + ($3 || ' minutes')::interval ELSE locked_until END"
-        + ' WHERE outlet_id = $1 AND active',
-        [Number(outletId), LOCK_TRIES, String(LOCK_MINS)]);
+      /* Wrong PIN: count the attempt against every unlocked account at this
+         outlet. With PIN-only sign-in the attacker never names an account, so
+         a per-account counter would let them walk the whole space while no
+         single counter ever climbed. */
+      await c.query('SELECT chain.note_pin_attempt($1,NULL,false,$2,$3)',
+        [Number(outletId), LOCK_TRIES, LOCK_MINS]);
       return null;
     });
     if (!out) return res.status(401).json({ error: 'PIN not recognised' });
@@ -199,55 +208,26 @@ r.get('/estate/day', atLeast('owner'), async function (req, res, next) {
 async function apply(c, op, ctx) {
   switch (op.kind) {
     case 'sale': {
-      const p = op.payload || {};
-      // A closed ticket is never overwritten by a replay: the receipt number
-      // is allocated here, on the server, under the series row lock.
-      const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['SALE']);
-      const sale = await c.query(
-        'INSERT INTO sale (receipt_no, ticket_id, business_date, channel, covers,'
-        + ' gross, discount, discount_reason, service, tax_code, tax_rate, tax,'
-        + ' rounding, total, cogs, member_id, server_name, closed_by, device_id)'
-        + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)'
-        + ' RETURNING id, receipt_no',
-        [no.rows[0].no, p.ticketId || null, p.businessDate, p.channel || 'dine_in',
-         p.covers || 1, p.gross, p.discount || 0, p.discountReason || null,
-         p.service || 0, p.taxCode, p.taxRate, p.tax, p.rounding || 0, p.total,
-         p.cogs || 0, p.memberId || null, p.server || null, ctx.actor, ctx.deviceId]);
-      for (const l of (p.lines || [])) {
-        await c.query('INSERT INTO sale_line (sale_id, item_id, name, qty,'
-          + ' unit_price, line_total, unit_cost, line_cost)'
-          + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-          [sale.rows[0].id, l.itemId, l.name, l.qty, l.price, l.total,
-           l.unitCost || 0, l.lineCost || 0]);
-      }
-      for (const pay of (p.payments || [])) {
-        await c.query('INSERT INTO payment (sale_id, method, amount, currency,'
-          + ' fx_amount, fx_rate, tendered, change_given, tip, auth_ref, taken_by, device_id)'
-          + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [sale.rows[0].id, pay.method, pay.amount, pay.currency || 'MVR',
-           pay.fxAmount || null, pay.fxRate || null, pay.tendered || null,
-           pay.change || null, pay.tip || 0, pay.ref || null, ctx.actor, ctx.deviceId]);
-      }
-      // Stock and COGS move at the moment of sale, not in a nightly batch.
-      for (const m of (p.stockMoves || [])) {
-        await c.query('INSERT INTO stock_move (ingredient_id, qty, unit_cost, value,'
-          + " reason, sale_id, by_staff, device_id) VALUES ($1,$2,$3,$4,'sale',$5,$6,$7)",
-          [m.ingredientId, -Math.abs(m.qty), m.unitCost, m.value,
-           sale.rows[0].id, ctx.actor, ctx.deviceId]);
-        await c.query('UPDATE ingredient SET on_hand = on_hand - $2 WHERE id = $1',
-          [m.ingredientId, Math.abs(m.qty)]);
-      }
-      if (p.journal) await postJournal(c, p.journal, ctx, 'sale', sale.rows[0].id);
-      if (p.ticketId) {
-        await c.query("UPDATE ticket SET status = 'closed', closed_at = now(),"
-          + " closed_by = $2 WHERE id = $1 AND status <> 'closed'",
-          [p.ticketId, ctx.actor]);
-      }
-      await c.query("SELECT chain.log('sale','sale',$1,NULL,$2)",
-        [sale.rows[0].id, JSON.stringify({ no: sale.rows[0].receipt_no, total: p.total })]);
-      return { saleId: sale.rows[0].id, receiptNo: sale.rows[0].receipt_no };
+      /* Everything financial is derived server-side — see src/sale.js for why
+         the payload's own gross/tax/total/journal are not trusted. The outlet
+         row carries the service charge and the cash-rounding increment, and it
+         is read HERE rather than passed in, so a replay arriving days later is
+         priced by the outlet's configuration and not by the client's memory
+         of it. */
+      const outlet = await c.query(
+        'SELECT service_pct, cash_round_laari FROM chain.outlet WHERE id = $1',
+        [ctx.outletId]);
+      if (!outlet.rows.length) throw new Error('outlet not found');
+      return await settle(c, op.payload || {}, ctx, outlet.rows[0]);
     }
     case 'journal':
+      /* A hand-posted journal is a Manager-and-above act with its own audit
+         entry, not something a till replays. Rank is checked here as well as on
+         the route because /sync/push admits everything at till rank and the
+         ops inside it are not all the same weight. */
+      if ((ctx.rank || 0) < 3) {
+        throw Object.assign(new Error('a manual journal needs manager rank'), { status: 403 });
+      }
       return { journalId: await postJournal(c, op.payload, ctx, op.payload.source || 'manual', null) };
     case 'stock_count': {
       const p = op.payload || {};
