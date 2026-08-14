@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="./kashikeyo-raw.js"></script>
+<script src="./kashikeyo-data.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{background:#8e3226;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;transition:transform .09s cubic-bezier(.2,.8,.3,1),opacity .12s}
+button:active:not(:disabled){transform:scale(.96)}
+button:disabled{cursor:not-allowed}
+input{font:inherit;color:inherit;background:none;border:none;outline:none;width:100%}
+a{color:#f4553c;text-decoration:none}
+a:hover{color:#d63f27}
+::-webkit-scrollbar{width:0;height:0}
+*{scrollbar-width:none}
+::placeholder{color:#bcbcc0}
+@keyframes qup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes qpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes qsheet{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes qtoast{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes qpulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){
+  @keyframes qup{from{opacity:0}to{opacity:1}}
+  @keyframes qpop{from{opacity:0}to{opacity:1}}
+  @keyframes qsheet{from{opacity:0}to{opacity:1}}
+  @keyframes qtoast{from{opacity:0;transform:translate(-50%,0)}to{opacity:1;transform:translate(-50%,0)}}
+}
+</style>
+</helmet>
+
+<div style="{{ pageStyle }}">
+  <div style="{{ frameStyle }}">
+    <div style="{{ screenStyle }}">
+
+      <div style="{{ statusStyle }}">
+        <span>{{ clock }}</span>
+        <span style="display:flex;align-items:flex-end;gap:6px;padding-top:2px">
+          <svg viewBox="0 0 20 12" width="18" height="11" fill="#111"><rect x="0" y="7.5" width="3" height="4.5" rx="1"></rect><rect x="4.5" y="5" width="3" height="7" rx="1"></rect><rect x="9" y="2.5" width="3" height="9.5" rx="1"></rect><rect x="13.5" y="0" width="3" height="12" rx="1"></rect></svg>
+          <svg viewBox="0 0 16 12" width="16" height="12" fill="#111"><path d="M8 11.2 6.1 9.1a2.7 2.7 0 0 1 3.8 0zM8 6.2c-1.5 0-2.9.6-3.9 1.6L2.7 6.3A7.5 7.5 0 0 1 8 4.1c2 0 3.9.8 5.3 2.2l-1.4 1.5A5.5 5.5 0 0 0 8 6.2zM8 1.6C5.4 1.6 3 2.7 1.3 4.4L0 3A11 11 0 0 1 8 0c3.1 0 6 1.2 8 3l-1.3 1.4A9.4 9.4 0 0 0 8 1.6z"></path></svg>
+          <span style="width:23px;height:12px;border:1.4px solid rgba(0,0,0,.35);border-radius:3.5px;padding:1.6px;display:block"><span style="display:block;width:100%;height:100%;background:#111;border-radius:1.6px"></span></span>
+        </span>
+      </div>
+
+      <sc-if value="{{ sSignIn }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 26px 24px;display:flex;flex-direction:column;animation:qup .2s">
+          <div style="padding-top:16px">
+            <span style="width:54px;height:54px;border-radius:16px;background:#f4553c;display:grid;place-items:center;box-shadow:0 8px 20px rgba(244,85,60,.32)">
+              <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
+            </span>
+            <div style="font-size:26px;font-weight:800;color:#111;letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
+            <div style="font-size:14px;color:#8a8a8f;margin-top:9px;line-height:1.6;text-wrap:pretty">{{ signInSub }}</div>
+          </div>
+
+          <div style="{{ phoneStepStyle }}">
+            <div style="font-size:12.5px;font-weight:600;color:#5a5a60;letter-spacing:.02em">Email address</div>
+            <div style="margin-top:9px;height:54px;border:1.4px solid #ececef;border-radius:14px;display:flex;align-items:center;gap:10px;padding:0 15px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04)">
+              <span style="display:grid;place-items:center;flex-shrink:0">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#bcbcc0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v12H3zM3 7l9 6 9-6"></path></svg>
+              </span>
+              <input value="{{ idValue }}" onChange="{{ setId }}" placeholder="you@example.com" style="font-size:16px;font-weight:500;color:#1a1a1a;letter-spacing:.02em"/>
+            </div>
+            <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ phoneHint }}</div>
+          </div>
+
+          <div style="{{ otpStepStyle }}">
+            <div style="font-size:12.5px;font-weight:600;color:#5a5a60;letter-spacing:.02em">{{ otpLabel }}</div>
+            <div style="margin-top:11px;display:flex;gap:10px">
+              <sc-for list="{{ otpBoxes }}" as="b" hint-placeholder-count="4">
+                <span style="{{ b.style }}">{{ b.ch }}</span>
+              </sc-for>
+            </div>
+            <div style="{{ otpErrStyle }}">{{ otpErr }}</div>
+            <div style="margin-top:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:9px">
+              <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
+                <button onClick="{{ k.tap }}" style="{{ k.style }}">{{ k.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex:1"></div>
+          <div style="margin-top:22px;font-size:11.5px;color:#b6b6bb;line-height:1.55;text-wrap:pretty">{{ signInFoot }}</div>
+        </div>
+        <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:14px 22px;background:#fff;display:flex;gap:12px;align-items:center">
+          <button onClick="{{ signInBack }}" style="{{ signInBackStyle }}">Back</button>
+          <button onClick="{{ signInNext }}" disabled="{{ signInDisabled }}" style="{{ signInBtnStyle }}">{{ signInBtn }}</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ signedIn }}" hint-placeholder-val="{{ true }}">
+        <div style="{{ scrollStyle }}" ref="{{ scrollRef }}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+            <div style="flex:1;min-width:0">
+              <div style="{{ greetStyle }}">{{ greetLine }}</div>
+              <div style="{{ nameStyle }}">{{ mName }}</div>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:9px;color:#f4553c;font-size:15px;font-weight:500">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#f4553c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
+                {{ tierLine }}
+              </div>
+            </div>
+            <button onClick="{{ openSheet }}" style="width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 3px 12px rgba(0,0,0,.10);display:grid;place-items:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f4553c" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h11"></path></svg>
+            </button>
+          </div>
+
+          <div style="{{ chipRowStyle }}">
+            <sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+              <button onClick="{{ c.pick }}" style="{{ c.style }}">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ c.icon }}"></path></svg>
+                {{ c.label }}
+              </button>
+            </sc-for>
+          </div>
+
+        <sc-if value="{{ sCard }}" hint-placeholder-val="{{ true }}">
+          <div style="animation:qup .2s">
+          <div style="{{ cardStyle }}">
+            <span style="position:absolute;top:-70px;right:-50px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.07);display:block"></span>
+            <span style="position:absolute;bottom:-90px;left:-40px;width:190px;height:190px;border-radius:50%;background:rgba(255,255,255,.05);display:block"></span>
+            <span style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+              <span style="display:block">
+                <span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
+                <span style="display:block;font-size:20px;font-weight:800;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
+              </span>
+              <span style="{{ tierBadgeStyle }}">{{ tierMark }}</span>
+            </span>
+            <span style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-top:26px">
+              <span style="display:block">
+                <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.09em;color:rgba(255,255,255,.6)">POINTS BALANCE</span>
+                <span style="display:block;font-size:34px;font-weight:800;color:#fff;letter-spacing:-.035em;margin-top:3px;font-variant-numeric:tabular-nums">{{ mPoints }}</span>
+              </span>
+              <span style="display:block;text-align:right">
+                <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.09em;color:rgba(255,255,255,.6)">WORTH</span>
+                <span style="display:block;font-size:15px;font-weight:700;color:#fff;margin-top:4px;font-variant-numeric:tabular-nums">{{ mWorth }}</span>
+              </span>
+            </span>
+            <span style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;padding-top:16px;border-top:1px solid rgba(255,255,255,.16)">
+              <span style="display:block;font-size:13px;font-weight:600;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums">{{ mCode }}</span>
+              <span style="display:block;font-size:11.5px;color:rgba(255,255,255,.6)">Member since {{ mSince }}</span>
+            </span>
+          </div>
+
+          <button onClick="{{ openScan }}" style="margin-top:12px;width:100%;height:50px;border-radius:25px;background:#fff;border:1.4px solid #f4553c;color:#f4553c;font-size:14.5px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:9px">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f4553c" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 12h10"></path></svg>
+            Show code at the till
+          </button>
+
+          <div style="margin-top:22px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:14.5px;font-weight:700;color:#111;letter-spacing:-.02em">{{ nextTierTitle }}</span>
+              <span style="font-size:12.5px;color:#9c9ca1;font-variant-numeric:tabular-nums">{{ nextTierMeta }}</span>
+            </div>
+            <div style="margin-top:12px;height:8px;border-radius:5px;background:#f2f2f4;overflow:hidden">
+              <span style="{{ tierBarStyle }}"></span>
+            </div>
+            <div style="margin-top:10px;font-size:12.5px;color:#8a8a8f;line-height:1.5;text-wrap:pretty">{{ nextTierSub }}</div>
+          </div>
+
+          <div style="{{ tileGridStyle }}">
+            <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
+              <div style="font-size:11.5px;font-weight:600;color:#9c9ca1;letter-spacing:.05em">HOUSE ACCOUNT</div>
+              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-variant-numeric:tabular-nums">{{ creditLeft }}</div>
+              <div style="font-size:11.5px;color:#a8a8ad;margin-top:4px;line-height:1.45">{{ creditSub }}</div>
+            </div>
+            <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
+              <div style="font-size:11.5px;font-weight:600;color:#9c9ca1;letter-spacing:.05em">LIFETIME</div>
+              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-variant-numeric:tabular-nums">{{ mSpent }}</div>
+              <div style="font-size:11.5px;color:#a8a8ad;margin-top:4px;line-height:1.45">{{ visitsSub }}</div>
+            </div>
+          </div>
+
+          <div style="{{ liveWrapStyle }}">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#f4553c;display:block;flex-shrink:0;animation:qpulse 1.5s ease-in-out infinite"></span>
+              <span style="font-size:14px;font-weight:700;color:#111;letter-spacing:-.02em">{{ liveTitle }}</span>
+            </div>
+            <div style="margin-top:8px;font-size:12.5px;color:#8a8a8f;line-height:1.5;text-wrap:pretty">{{ liveSub }}</div>
+            <div style="margin-top:12px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:12.5px;color:#8a8a8f">Running total</span>
+              <span style="font-size:17px;font-weight:700;color:#f4553c;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ liveTotal }}</span>
+            </div>
+            <div style="margin-top:6px;font-size:12px;color:#a8a8ad">{{ liveEarn }}</div>
+          </div>
+
+          <div style="{{ offersHeadStyle }}">Offers for you</div>
+          <div style="{{ offersWrapStyle }}" data-om-grid="offers">
+            <sc-for list="{{ offers }}" as="o" hint-placeholder-count="2">
+              <button onClick="{{ o.tap }}" style="{{ o.style }}">
+                <span style="{{ o.imgStyle }}"></span>
+                <span style="position:absolute;inset:0;background:linear-gradient(96deg,rgba(24,10,8,.88) 0%,rgba(24,10,8,.55) 55%,rgba(24,10,8,.1) 100%);display:block"></span>
+                <span style="position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;padding:15px 16px;width:100%">
+                  <span style="{{ o.tagStyle }}">{{ o.tag }}</span>
+                  <span style="display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.02em;line-height:1.25;text-align:left;max-width:230px;text-wrap:pretty">{{ o.title }}</span>
+                  <span style="display:block;font-size:11.5px;color:rgba(255,255,255,.76);line-height:1.4;text-align:left;max-width:230px;text-wrap:pretty">{{ o.sub }}</span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sOrder }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:qup .2s">
+          <div style="{{ bindWrapStyle }}">
+            <div style="font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Order from your table</div>
+            <div style="margin-top:7px;font-size:13px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">Key the number printed on your table card, or scan its QR. Everything you order is attached to your membership and earns points.</div>
+            <div style="margin-top:16px;display:flex;gap:9px;flex-wrap:wrap">
+              <sc-for list="{{ tableChoices }}" as="t" hint-placeholder-count="8">
+                <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+            <div style="margin-top:16px;font-size:12px;color:#a8a8ad;line-height:1.5">{{ bindHint }}</div>
+          </div>
+
+          <div style="{{ orderWrapStyle }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border-radius:14px;background:#fff5f2;border:1px solid #f7c8bd">
+              <span style="display:block;min-width:0">
+                <span style="display:block;font-size:14px;font-weight:700;color:#c2452f">{{ boundLine }}</span>
+                <span style="display:block;font-size:12px;color:#a05a48;margin-top:2px">{{ boundSub }}</span>
+              </span>
+              <button onClick="{{ unbind }}" style="flex-shrink:0;font-size:12.5px;font-weight:600;color:#c2452f;padding:7px 12px;border-radius:18px;background:rgba(244,85,60,.12)">Change</button>
+            </div>
+
+            <div style="{{ usualHeadStyle }}">Your usuals</div>
+            <div style="{{ usualWrapStyle }}">
+              <sc-for list="{{ usuals }}" as="u" hint-placeholder-count="3">
+                <button onClick="{{ u.add }}" style="flex-shrink:0;width:132px;text-align:left;background:#fff;border:1px solid #efefef;border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px">
+                  <span style="{{ u.imgStyle }}"></span>
+                  <span style="display:block;padding:0 4px;font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.25">{{ u.name }}</span>
+                  <span style="margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:6px;padding:0 4px">
+                    <span style="font-size:13px;font-weight:700;color:#f4553c;white-space:nowrap">{{ u.priceLabel }}</span>
+                    <span style="width:26px;height:26px;border-radius:50%;background:#f4553c;display:grid;place-items:center;flex-shrink:0">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                    </span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:18px;height:48px;border:1px solid #ececec;border-radius:16px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.03)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#c2c2c6" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
+              <input placeholder="Search the menu..." value="{{ q }}" onChange="{{ setQ }}" style="font-size:15px;color:#1a1a1a"/>
+            </div>
+
+            <div style="{{ catRowStyle }}">
+              <sc-for list="{{ cats }}" as="c" hint-placeholder-count="4">
+                <button onClick="{{ c.pick }}" style="{{ c.style }}">{{ c.name }}</button>
+              </sc-for>
+            </div>
+
+            <div style="{{ menuGridStyle }}">
+              <sc-for list="{{ dishes }}" as="d" hint-placeholder-count="4">
+                <button onClick="{{ d.add }}" disabled="{{ d.off }}" style="{{ d.cardStyle }}">
+                  <span style="position:relative;display:block">
+                    <span style="{{ d.imgStyle }}"></span>
+                    <span style="{{ d.badgeStyle }}">{{ d.badge }}</span>
+                    <span style="{{ d.offStyle }}">Sold out</span>
+                  </span>
+                  <span style="display:block;padding:0 4px">
+                    <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em;line-height:1.25">{{ d.name }}</span>
+                    <span style="display:block;font-size:11.5px;color:#9c9ca1;line-height:1.4;margin-top:4px;min-height:34px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:pretty">{{ d.desc }}</span>
+                  </span>
+                  <span style="margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px">
+                    <span style="font-size:14px;font-weight:700;color:#f4553c;white-space:nowrap">{{ d.priceLabel }}</span>
+                    <span style="{{ d.plusStyle }}">
+                      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                    </span>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="{{ cartHeadStyle }}">This round</div>
+            <div style="{{ cartWrapStyle }}">
+              <sc-for list="{{ cart }}" as="l" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <span style="{{ l.imgStyle }}"></span>
+                  <span style="flex:1;min-width:0;display:block">
+                    <span style="display:block;font-size:14.5px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em">{{ l.name }}</span>
+                    <span style="display:block;font-size:13.5px;font-weight:600;color:#f4553c;margin-top:4px">{{ l.priceLabel }}</span>
+                  </span>
+                  <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
+                    <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(244,85,60,.32)">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+                    </button>
+                    <span style="font-size:14.5px;font-weight:600;color:#1a1a1a;min-width:9px;text-align:center">{{ l.qty }}</span>
+                    <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;box-shadow:0 2px 6px rgba(244,85,60,.32)">
+                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                    </button>
+                  </span>
+                </div>
+              </sc-for>
+              <div style="border-top:1px solid #f0f0f0;padding-top:12px;display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13.5px;color:#4a4a4f"><span>Subtotal</span><span style="color:#1a1a1a;font-weight:500">{{ cartSubLabel }}</span></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13.5px;color:#4a4a4f"><span>Points this round</span><span style="color:#1f7a3d;font-weight:600">{{ cartPtsLabel }}</span></div>
+                <div style="font-size:11.5px;color:#a8a8ad;line-height:1.5;text-wrap:pretty">{{ orderFoot }}</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sOrders }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:qup .2s">
+          <div style="margin-top:14px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+            <span style="font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">My orders</span>
+            <span style="font-size:12.5px;color:#9c9ca1">{{ ordersMeta }}</span>
+          </div>
+
+          <div style="{{ trackWrapStyle }}">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+              <span style="display:block;min-width:0">
+                <span style="display:block;font-size:15px;font-weight:700;color:#111;letter-spacing:-.02em">{{ trackTitle }}</span>
+                <span style="display:block;font-size:12.5px;color:#9c9ca1;margin-top:3px">{{ trackSub }}</span>
+              </span>
+              <span style="{{ etaStyle }}">{{ etaLabel }}</span>
+            </div>
+            <div style="margin-top:16px">
+              <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4">
+                <div style="display:flex;gap:13px">
+                  <span style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:18px">
+                    <span style="{{ st.dotStyle }}"></span>
+                    <span style="{{ st.barStyle }}"></span>
+                  </span>
+                  <span style="display:block;padding-bottom:15px">
+                    <span style="{{ st.labelStyle }}">{{ st.label }}</span>
+                    <span style="{{ st.subStyle }}">{{ st.sub }}</span>
+                  </span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="{{ roundsWrapStyle }}">
+            <sc-for list="{{ rounds }}" as="rd" hint-placeholder-count="1">
+              <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);overflow:hidden">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border-bottom:1px solid #f4f4f4">
+                  <span style="font-size:13.5px;font-weight:700;color:#111">{{ rd.title }}</span>
+                  <span style="font-size:12.5px;color:#9c9ca1">{{ rd.at }}</span>
+                </div>
+                <div style="padding:6px 15px 12px;display:flex;flex-direction:column;gap:12px">
+                  <sc-for list="{{ rd.lines }}" as="rl" hint-placeholder-count="2">
+                    <div style="display:flex;align-items:center;gap:11px;padding-top:8px">
+                      <span style="{{ rl.imgStyle }}"></span>
+                      <span style="flex:1;min-width:0;display:block">
+                        <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ rl.name }}</span>
+                        <span style="{{ rl.chipStyle }}">{{ rl.status }}</span>
+                      </span>
+                      <span style="display:block;text-align:right;flex-shrink:0">
+                        <span style="display:block;font-size:12.5px;color:#9c9ca1">×{{ rl.qty }}</span>
+                        <span style="display:block;font-size:13.5px;font-weight:600;color:#1a1a1a;margin-top:3px">{{ rl.priceLabel }}</span>
+                      </span>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="padding:12px 15px;border-top:1px dashed #ececef;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                  <span style="font-size:12.5px;color:#8a8a8f">{{ rd.ptsLine }}</span>
+                  <span style="font-size:14px;font-weight:700;color:#f4553c;font-variant-numeric:tabular-nums">{{ rd.total }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="{{ ordersEmptyStyle }}">Nothing ordered on this visit yet. Open the Order chip to browse the menu at your table.</div>
+
+          <div style="{{ visitFootStyle }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+              <span style="font-size:13.5px;color:#4a4a4f">Table total so far</span>
+              <span style="font-size:16px;font-weight:700;color:#f4553c;font-variant-numeric:tabular-nums">{{ visitTotal }}</span>
+            </div>
+            <div style="margin-top:8px;font-size:11.5px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ visitFoot }}</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sBill }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:qup .2s">
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">The bill</div>
+          <div style="margin-top:6px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
+
+          <div style="{{ billBodyStyle }}">
+            <div style="margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+              <sc-for list="{{ billLines }}" as="l" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:#4a4a4f">
+                  <span style="min-width:0">{{ l.name }}</span>
+                  <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                </div>
+              </sc-for>
+              <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ billTotals }}" as="t" hint-placeholder-count="4">
+                  <div style="{{ t.style }}"><span>{{ t.label }}</span><span style="font-family:'JetBrains Mono',monospace">{{ t.amt }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
+            <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <sc-for list="{{ splitModes }}" as="m" hint-placeholder-count="4">
+                <button onClick="{{ m.tap }}" style="{{ m.style }}">
+                  <span style="display:block;font-size:13px;font-weight:700">{{ m.label }}</span>
+                  <span style="display:block;font-size:11.5px;opacity:.7;margin-top:2px;line-height:1.35">{{ m.sub }}</span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="{{ splitEvenStyle }}">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font-size:13.5px;color:#4a4a4f">Between how many?</span>
+                <span style="display:flex;align-items:center;gap:12px">
+                  <button onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:#f2f2f4;display:grid;place-items:center;color:#f4553c">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+                  </button>
+                  <span style="font-size:17px;font-weight:700;color:#111;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
+                  <button onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                </span>
+              </div>
+              <div style="margin-top:11px;font-size:13.5px;color:#f4553c;font-weight:700">{{ splitEach }}</div>
+            </div>
+
+            <div style="{{ splitItemStyle }}">
+              <div style="font-size:12.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table for whoever is paying it.</div>
+              <sc-for list="{{ pickLines }}" as="l" hint-placeholder-count="3">
+                <button onClick="{{ l.tap }}" style="{{ l.style }}">
+                  <span style="{{ l.box }}">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" style="{{ l.tick }}"><path d="m5 13 4.5 4.5L19 7"></path></svg>
+                  </span>
+                  <span style="flex:1;min-width:0;font-size:13.5px;color:#1a1a1a">{{ l.name }}</span>
+                  <span style="flex-shrink:0;font-size:13.5px;font-family:'JetBrains Mono',monospace;color:#4a4a4f">{{ l.amt }}</span>
+                </button>
+              </sc-for>
+              <div style="margin-top:12px;font-size:13.5px;color:#f4553c;font-weight:700">{{ pickTotal }}</div>
+            </div>
+
+            <div style="{{ splitCustomStyle }}">
+              <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
+              <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:14px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
+                <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+              </div>
+            </div>
+
+            <button onClick="{{ togglePoints }}" style="{{ ptsRowStyle }}">
+              <span style="flex:1;min-width:0;display:block">
+                <span style="display:block;font-size:14px;font-weight:700;color:#1a1a1a">Pay with points</span>
+                <span style="display:block;font-size:12px;color:#8a8a8f;margin-top:2px;line-height:1.45">{{ ptsRowSub }}</span>
+              </span>
+              <span style="{{ ptsSwitchStyle }}"><span style="{{ ptsKnobStyle }}"></span></span>
+            </button>
+
+            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">TIP FOR THE TEAM</div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <sc-for list="{{ tips }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+            <div style="margin-top:9px;font-size:11.5px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
+
+            <div style="margin-top:18px;font-size:11.5px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PAYING WITH</div>
+            <div style="margin-top:10px;display:grid;grid-template-columns:repeat(4,1fr);gap:7px">
+              <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+            <div style="{{ creditNoteStyle }}">{{ creditNote }}</div>
+
+            <div style="margin-top:18px;border-radius:16px;background:#fff8f6;border:1px solid #ffd9d1;padding:16px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                <span style="font-size:14px;font-weight:700;color:#c2452f">You are paying</span>
+                <span style="font-size:22px;font-weight:800;color:#f4553c;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
+              </div>
+              <div style="margin-top:7px;font-size:12.5px;color:#c2452f;line-height:1.55;text-wrap:pretty">{{ payBreak }}</div>
+            </div>
+
+            <button onClick="{{ askBill }}" style="{{ askBillStyle }}">{{ askBillLabel }}</button>
+            <div style="{{ askedStyle }}">{{ askedNote }}</div>
+          </div>
+
+          <div style="{{ billEmptyStyle }}">{{ billEmpty }}</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sRewards }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:qup .2s">
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Rewards</div>
+          <div style="margin-top:6px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ rewardsSub }}</div>
+
+          <div style="margin-top:16px;border-radius:16px;background:#fff5f2;border:1px solid #f7c8bd;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px">
+            <span style="display:block">
+              <span style="display:block;font-size:11.5px;font-weight:600;color:#c2452f;letter-spacing:.05em">AVAILABLE</span>
+              <span style="display:block;font-size:22px;font-weight:800;color:#f4553c;letter-spacing:-.03em;margin-top:3px;font-variant-numeric:tabular-nums">{{ mPoints }} pts</span>
+            </span>
+            <span style="font-size:12.5px;color:#c2452f;text-align:right;line-height:1.45;max-width:130px;text-wrap:pretty">{{ earnRateLine }}</span>
+          </div>
+
+          <div style="{{ rewardsGridStyle }}">
+            <sc-for list="{{ rewards }}" as="r" hint-placeholder-count="4">
+              <div style="{{ r.rowStyle }}">
+                <span style="{{ r.imgStyle }}"></span>
+                <span style="flex:1;min-width:0;display:block">
+                  <span style="display:block;font-size:14.5px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em;line-height:1.3">{{ r.name }}</span>
+                  <span style="display:block;font-size:12px;color:#9c9ca1;margin-top:3px;line-height:1.45;text-wrap:pretty">{{ r.sub }}</span>
+                  <span style="{{ r.costStyle }}">{{ r.cost }}</span>
+                </span>
+                <button onClick="{{ r.redeem }}" disabled="{{ r.locked }}" style="{{ r.btnStyle }}">{{ r.btn }}</button>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="{{ vouchHeadStyle }}">Ready to use</div>
+          <div style="{{ vouchWrapStyle }}">
+            <sc-for list="{{ vouchers }}" as="v" hint-placeholder-count="1">
+              <div style="border:1.4px dashed #f4553c;border-radius:14px;background:#fff8f6;padding:14px 15px;display:flex;align-items:center;gap:13px">
+                <span style="width:38px;height:38px;border-radius:50%;background:#f4553c;display:grid;place-items:center;flex-shrink:0">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z"></path></svg>
+                </span>
+                <span style="flex:1;min-width:0;display:block">
+                  <span style="display:block;font-size:14px;font-weight:700;color:#1a1a1a">{{ v.name }}</span>
+                  <span style="display:block;font-size:12px;color:#a05a48;margin-top:2px;font-variant-numeric:tabular-nums">{{ v.meta }}</span>
+                </span>
+                <span style="font-size:12.5px;font-weight:700;color:#f4553c;flex-shrink:0;letter-spacing:.04em">{{ v.code }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sActivity }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:qup .2s">
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Activity</div>
+          <div style="margin-top:6px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ activitySub }}</div>
+          <div style="{{ activityNoteStyle }}">{{ activityNote }}</div>
+
+          <div style="margin-top:16px;display:flex;gap:8px">
+            <sc-for list="{{ actTabs }}" as="t" hint-placeholder-count="3">
+              <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:18px;display:flex;flex-direction:column;gap:14px">
+            <sc-for list="{{ activity }}" as="a" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:13px">
+                <span style="{{ a.iconWrapStyle }}">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.icon }}"></path></svg>
+                </span>
+                <span style="flex:1;min-width:0;display:block">
+                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a;letter-spacing:-.01em">{{ a.title }}</span>
+                  <span style="display:block;font-size:12px;color:#9c9ca1;margin-top:2px">{{ a.meta }}</span>
+                </span>
+                <span style="display:block;text-align:right;flex-shrink:0">
+                  <span style="{{ a.amtStyle }}">{{ a.amt }}</span>
+                  <span style="{{ a.ptsStyle }}">{{ a.pts }}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="{{ actEmptyStyle }}">Nothing here yet.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sAccount }}" hint-placeholder-val="{{ false }}">
+        <div style="animation:qup .2s">
+          <div style="margin-top:14px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Profile</div>
+
+          <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
+            <span style="{{ avatarStyle }}">{{ mInitials }}</span>
+            <span style="flex:1;min-width:0;display:block">
+              <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ mName }}</span>
+              <span style="display:block;font-size:13px;color:#9c9ca1;margin-top:3px;font-variant-numeric:tabular-nums">{{ mPhone }}</span>
+            </span>
+          </div>
+
+          <div style="margin-top:20px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);overflow:hidden">
+            <sc-for list="{{ accRows }}" as="r" hint-placeholder-count="4">
+              <div style="{{ r.style }}">
+                <span style="font-size:13.5px;color:#5a5a60">{{ r.label }}</span>
+                <span style="font-size:13.5px;font-weight:600;color:#1a1a1a;text-align:right;font-variant-numeric:tabular-nums">{{ r.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="margin-top:20px;font-size:15px;font-weight:700;color:#111;letter-spacing:-.02em">Preferences</div>
+          <div style="margin-top:11px;display:flex;flex-direction:column;gap:9px">
+            <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="3">
+              <button onClick="{{ t.tap }}" style="display:flex;align-items:center;gap:13px;padding:14px;border-radius:14px;border:1px solid #efefef;background:#fff;text-align:left;box-shadow:0 2px 8px rgba(0,0,0,.03)">
+                <span style="flex:1;display:block">
+                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ t.label }}</span>
+                  <span style="display:block;font-size:12px;color:#9c9ca1;margin-top:2px;line-height:1.45;text-wrap:pretty">{{ t.sub }}</span>
+                </span>
+                <span style="{{ t.trackStyle }}"><span style="{{ t.knobStyle }}"></span></span>
+              </button>
+            </sc-for>
+          </div>
+
+          <button onClick="{{ signOut }}" style="margin-top:20px;width:100%;padding:14px;border-radius:26px;border:1.4px solid #ececef;color:#8a8a8f;font-size:14px;font-weight:600;background:#fff">Sign out</button>
+          <div style="margin-top:16px;font-size:11.5px;color:#b6b6bb;line-height:1.55;text-wrap:pretty">{{ accFoot }}</div>
+        </div>
+      </sc-if>
+        </div>
+
+        <div style="flex-shrink:0;padding:10px 20px 14px;background:#fff;border-top:1px solid #f4f4f4">
+          <button onClick="{{ barTap }}" style="width:100%;height:56px;border-radius:28px;background:#f4553c;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 10px 0 20px;box-shadow:0 8px 22px rgba(244,85,60,.4)">
+            <span style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left">
+              <span style="display:block;max-width:100%;font-size:14.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ barLine }}</span>
+              <span style="display:block;max-width:100%;font-size:11.5px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ barSub }}</span>
+            </span>
+            <span style="display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.16);border-radius:22px;padding:9px 13px;font-size:13.5px;font-weight:600;flex-shrink:0;white-space:nowrap">
+              {{ barBtn }}
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"></path></svg>
+            </span>
+          </button>
+        </div>
+      </sc-if>
+
+      <div style="{{ chromeStyle }}">
+        <div style="height:52px;display:flex;align-items:center;gap:12px;padding:0 18px;border-top:1px solid #e4e4e6">
+          <span style="font-size:14px;font-weight:500;color:#3a3a3c;letter-spacing:-.02em;flex-shrink:0"><span style="font-size:11px">A</span>A</span>
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;font-size:14.5px;color:#111">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="#3a3a3c"><path d="M17 9V7a5 5 0 0 0-10 0v2H5.8v12h12.4V9zm-8-2a3 3 0 0 1 6 0v2H9z"></path></svg>
+            {{ host }}
+          </span>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#3a3a3c" stroke-width="1.9" stroke-linecap="round" style="flex-shrink:0"><path d="M20 11a8 8 0 1 0-2.6 6M20 5v6h-6"></path></svg>
+        </div>
+        <div style="height:50px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;color:#007aff">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#007aff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#9cc9f7" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"></path></svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#007aff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M8 7l4-4 4 4M5 14v5.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V14"></path></svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#007aff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10v16H5.5A1.5 1.5 0 0 1 4 18.5zM20 5.5A1.5 1.5 0 0 0 18.5 4H14v16h4.5a1.5 1.5 0 0 0 1.5-1.5z"></path></svg>
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#007aff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="13" height="13" rx="2.5"></rect><path d="M8 4h10.5A2.5 2.5 0 0 1 21 6.5V16"></path></svg>
+        </div>
+        <div style="height:24px;display:grid;place-items:center"><span style="width:138px;height:5px;border-radius:3px;background:#111;display:block"></span></div>
+      </div>
+
+      <div style="{{ homeBarStyle }}"><span style="width:138px;height:5px;border-radius:3px;background:#111;display:block"></span></div>
+
+      <div style="{{ scrimStyle }}" onClick="{{ closeAll }}"></div>
+
+      <div style="{{ scanStyle }}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span style="display:block">
+            <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">Show this at the till</span>
+            <span style="display:block;font-size:12.5px;color:#9c9ca1;margin-top:3px">Your cashier keys the code to attach this visit</span>
+          </span>
+          <button onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+        </div>
+        <div style="margin-top:18px;border:1.4px solid #f0f0f0;border-radius:18px;padding:22px 18px;text-align:center;background:#fff">
+          <div style="display:flex;align-items:flex-end;justify-content:center;gap:3px;height:76px">
+            <sc-for list="{{ bars }}" as="b" hint-placeholder-count="30">
+              <span style="{{ b.style }}"></span>
+            </sc-for>
+          </div>
+          <div style="margin-top:16px;font-size:21px;font-weight:800;color:#111;letter-spacing:.14em;font-variant-numeric:tabular-nums">{{ mCode }}</div>
+          <div style="margin-top:6px;font-size:12px;color:#9c9ca1">{{ mName }} · {{ mTier }}</div>
+        </div>
+        <div style="{{ announceStyle }}">{{ announceMsg }}</div>
+        <button onClick="{{ announce }}" style="margin-top:14px;width:100%;padding:14px;border-radius:26px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:600;box-shadow:0 4px 14px rgba(244,85,60,.35)">{{ announceBtn }}</button>
+      </div>
+
+      <div style="{{ sheetStyle }}">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span style="display:block">
+            <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ mName }}</span>
+            <span style="display:block;font-size:12.5px;color:#9c9ca1;margin-top:3px">{{ mTier }} · {{ mPoints }} points</span>
+          </span>
+          <button onClick="{{ closeAll }}" style="width:34px;height:34px;border-radius:50%;background:#f6f6f7;display:grid;place-items:center;flex-shrink:0">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#6a6a6f" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+          </button>
+        </div>
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:9px">
+          <sc-for list="{{ sheetRows }}" as="r" hint-placeholder-count="3">
+            <button onClick="{{ r.tap }}" style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;border:1px solid #efefef;background:#fff;text-align:left">
+              <span style="width:34px;height:34px;border-radius:50%;background:#fff2ef;display:grid;place-items:center;flex-shrink:0">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#f4553c" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
+              </span>
+              <span style="flex:1;display:block">
+                <span style="display:block;font-size:14.5px;font-weight:600;color:#1a1a1a">{{ r.label }}</span>
+                <span style="display:block;font-size:12px;color:#9c9ca1;margin-top:2px">{{ r.sub }}</span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+        <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f2f2f2;display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <span style="font-size:11px;color:#b6b6bb;letter-spacing:.05em">{{ poweredLine }}</span>
+          <span style="{{ syncStyle }}">{{ syncLabel }}</span>
+        </div>
+      </div>
+
+      <div style="{{ toastStyle }}">{{ toastMsg }}</div>
+    </div>
+    <span style="{{ islandStyle }}"></span>
+    <span style="{{ camStyle }}"></span>
+  </div>
+</div>
+
+</x-dc>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><rect width="120" height="120" rx="27" fill="#c2321c"></rect><text x="60" y="74" font-family="system-ui,sans-serif" font-size="46" font-weight="700" fill="#ffffff" text-anchor="middle">M</text></svg></template>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1000,&quot;height&quot;:940},&quot;shell&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;frame&quot;,&quot;bleed&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;showBrowserChrome&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;host&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;rewards.kashikeyo.mv&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Session&quot;},&quot;outletId&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;3&quot;,&quot;4&quot;,&quot;5&quot;,&quot;6&quot;,&quot;7&quot;],&quot;default&quot;:&quot;3&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Session&quot;}}">
+/* Kashikeyo member portal — the registered-customer half of the QR product.
+   The guest app is anonymous and table-bound; this one is a person with a
+   history. Same shared surfaces, same money rules:
+     kashikeyo.session.v3   POS -> portal (read-only: is this member at a table now)
+     kashikeyo.bridge.v1    portal -> POS (member arrived, reward redeemed)
+     kashikeyo.member.v1    this phone's own signed-in session
+   A phone never awards itself points: it shows what the till recorded and
+   posts intent. */
+const POSKEY = "kashikeyo.session.v3";
+const BRIDGE = "kashikeyo.bridge.v1";
+const MKEY = "kashikeyo.member.v1";
+// Written by the till when someone moves an order along. The phone reads a
+// stage; it never works one out for itself.
+const FKEY = "kashikeyo.fulfil.v1";
+
+class Component extends DCLogic {
+  state = {
+    tab: "card", step: "phone", chan: "email", phone: "", email: "", otp: "", otpErr: "",
+    memberId: null, sheet: false, scan: false, toast: null,
+    split: "all", splitN: 2, picked: {}, customAmt: "", tip: 0, tender: "card", usePoints: false, asked: 0,
+    table: 0, cart: [], q: "", cat: "all", sent: [],
+    redeemed: [], announced: 0, actTab: "all",
+    prefs: { sms: true, email: false, receipts: true },
+    posStamp: "", tick: 0,
+    vw: (typeof window !== "undefined" ? window.innerWidth : 1280),
+    vh: (typeof window !== "undefined" ? window.innerHeight : 900)
+  };
+
+  componentDidMount() {
+    this.restore();
+    if (!this.K()) this._boot = setInterval(() => { if (this.K()) { clearInterval(this._boot); this.forceUpdate(); } }, 60);
+    this._poll = setInterval(() => this.pullPos(), 2500);
+    // The wait clock has to keep counting even when the till is idle.
+    this._tock = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 20000);
+    this._onStore = (e) => { if (!e.key || e.key === POSKEY) this.pullPos(); };
+    this._onSize = () => {
+      if (this._rs) return;
+      this._rs = setTimeout(() => { this._rs = null; this.setState({ vw: window.innerWidth, vh: window.innerHeight }); }, 120);
+    };
+    window.addEventListener("storage", this._onStore);
+    window.addEventListener("resize", this._onSize);
+    this.pullPos();
+  }
+  componentWillUnmount() {
+    clearInterval(this._boot); clearInterval(this._poll); clearInterval(this._tock); clearTimeout(this._tt); clearTimeout(this._rs);
+    window.removeEventListener("storage", this._onStore);
+    window.removeEventListener("resize", this._onSize);
+  }
+  componentDidUpdate() { this.save(); }
+
+  K() { const k = window.KPOS; return (k && k.CUSTOMERS && k.CUSTOMERS.length) ? k : null; }
+
+  save() {
+    const s = this.state;
+    try {
+      localStorage.setItem(MKEY, JSON.stringify({
+        v: 1, memberId: s.memberId, redeemed: s.redeemed, prefs: s.prefs, tab: s.tab,
+        table: s.table, cart: s.cart, sent: s.sent
+      }));
+    } catch (e) { /* private browsing */ }
+  }
+  restore() {
+    try {
+      const d = JSON.parse(localStorage.getItem(MKEY) || "null");
+      if (!d || d.v !== 1) return;
+      this.setState({
+        memberId: d.memberId || null, redeemed: d.redeemed || [],
+        prefs: Object.assign({ sms: true, email: false, receipts: true }, d.prefs || {}),
+        tab: d.tab || "card", table: d.table || 0, cart: d.cart || [], sent: d.sent || []
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  posSession() {
+    try { const d = JSON.parse(localStorage.getItem(POSKEY) || "null"); return (d && d.v === 3) ? d : null; }
+    catch (e) { return null; }
+  }
+  pullPos() {
+    const d = this.posSession();
+    let ful = "";
+    try { ful = localStorage.getItem(FKEY) || ""; } catch (e) { ful = ""; }
+    const stamp = (d ? JSON.stringify(d.tickets || {}).length + ":" + Object.keys(d.tickets || {}).length : "")
+      + "|" + ful.length + ":" + ful.slice(-40);
+    if (stamp !== this.state.posStamp) this.setState({ posStamp: stamp });
+  }
+  // The stage the till published for THIS guest: their table first, their
+  // membership second. Newest write wins, and a delivery row never matches a
+  // seated guest's tracker.
+  fulfilRow() {
+    let all = null;
+    try { all = JSON.parse(localStorage.getItem(FKEY) || "null"); } catch (e) { return null; }
+    if (!all || all.v !== 1 || !all.orders) return null;
+    const mine = String(this.state.table || "").replace(/^T/, "").replace(/^0+/, "");
+    const mid = (this.member() || {}).id || "";
+    let best = null;
+    Object.keys(all.orders).forEach((k) => {
+      const r = all.orders[k];
+      if (!r || r.kind === "delivery" || typeof r.stage !== "number") return;
+      const t = String(r.table || "").replace(/^T/, "").replace(/^0+/, "");
+      const hit = (mine && t === mine) || (mid && r.member === mid);
+      if (!hit) return;
+      if (!best || (r.at || 0) > (best.at || 0)) best = r;
+    });
+    return best;
+  }
+  bridgePush(kind, detail, extra) {
+    const m = this.member();
+    try {
+      const list = JSON.parse(localStorage.getItem(BRIDGE) || "[]");
+      list.push(Object.assign({
+        id: "m" + Date.now() + Math.floor(Math.random() * 1000),
+        outlet: this.outletId(), table: this.seatedAt() ? this.seatedAt().table : 0,
+        kind: kind, detail: detail || "", at: Date.now(), ack: 0,
+        member: m ? m.id : "", memberName: m ? m.name : ""
+      }, extra || {}));
+      localStorage.setItem(BRIDGE, JSON.stringify(list.filter((x) => !x.ack || x.at > Date.now() - 7200000)));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  outletId() { return Number(this.props.outletId ?? 3) || 3; }
+  outlet() {
+    const k = this.K();
+    return k.OUTLETS.filter((o) => o.id === this.outletId())[0] || k.OUTLETS.filter((o) => o.pos)[0];
+  }
+  prefsPos() { const d = this.posSession(); return (d && d.prefs) || {}; }
+  pointsPer() { return this.prefsPos().pointsPer || 10; }
+  money(n) { return "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  fmt(n) { return "MVR " + Math.round(n || 0).toLocaleString("en-US"); }
+  price(m) {
+    const o = this.outlet();
+    return o.tax === "TGST" ? Math.round(m.price * 1.12 / 5) * 5 : m.price;
+  }
+
+  members() { return this.K() ? (this.K().CUSTOMERS || []) : []; }
+  member() { return this.members().filter((c) => c.id === this.state.memberId)[0] || null; }
+  // A tier is earned, not stored: derive it from lifetime spend so the card and
+  // the till can never drift apart.
+  tiers() { return this.K() ? (this.K().TIERS || []) : []; }
+  tierOf(spent) {
+    let t = this.tiers()[0];
+    this.tiers().forEach((x) => { if (spent >= x.at) t = x; });
+    return t || { name: "Member", at: 0, mark: "", from: "#8a6a4f", to: "#5d4632" };
+  }
+  nextTier(spent) { return this.tiers().filter((x) => x.at > spent)[0] || null; }
+  // Points redeemed on this phone are pending until the till clears them; show
+  // the honest balance, not the flattering one.
+  points() {
+    const m = this.member();
+    if (!m) return 0;
+    return Math.max(0, m.points - this.state.redeemed.reduce((a, r) => a + r.cost, 0));
+  }
+  ptValue() { return this.points() / 10; }   // 10 points = MVR 1 off
+
+  // Is this member sitting at a table right now? The POS marks a seat with the
+  // customer id when a server attaches a member to a cover.
+  seatedAt() {
+    const d = this.posSession();
+    if (!d || !d.tickets || !this.state.memberId) return null;
+    const keys = Object.keys(d.tickets);
+    for (let i = 0; i < keys.length; i++) {
+      const tk = d.tickets[keys[i]];
+      const hit = (tk.guests || []).some((g) => g && g.custId === this.state.memberId);
+      if (hit && (tk.lines || []).length) return { table: keys[i].split(":")[1], tk: tk };
+    }
+    return null;
+  }
+  seatedTotal(tk) {
+    const o = this.outlet(), k = this.K();
+    let sub = 0;
+    (tk.lines || []).forEach((l) => {
+      const m = (k.MENU || []).filter((x) => x.id === l.id)[0];
+      if (m) sub += this.price(m) * l.qty;
+    });
+    const svc = sub * ((o.sc || 0) / 100);
+    return sub + svc + (sub + svc) * ((o.rate || 0) / 100);
+  }
+
+  // ── ordering ──────────────────────────────────────────────────────────────
+  // A member orders the same way a walk-in does — same menu, same prices, same
+  // bridge — but the round carries their id, so the till attaches the cover to
+  // the membership and the points land without anyone asking at the counter.
+  menu() { return this.K() ? (this.K().MENU || []) : []; }
+  item(id) { return this.menu().filter((m) => m.id === id)[0] || null; }
+  eightySix() {
+    const d = this.posSession();
+    if (d && d.eightySix) return d.eightySix;
+    const raw = window.KPOS_RAW || {};
+    const out = [];
+    this.menu().forEach((m) => {
+      if (m.off) return out.push(m.id);
+      if (!m.recipe || !m.recipe.length) return;
+      const short = m.recipe.some((r) => {
+        const inv = (raw.inv || []).find((i) => i[1] === r[0]);
+        return inv && inv[2] * 1000 < r[1] * 3;
+      });
+      if (short) out.push(m.id);
+    });
+    return out;
+  }
+  // "Usuals" are a real preference signal, not a guess: the dishes this member
+  // has ordered through the portal before, most recent first, then the outlet's
+  // own staples to fill the row.
+  usualIds() {
+    const seen = [];
+    this.state.sent.slice().reverse().forEach((r) => r.lines.forEach((l) => { if (seen.indexOf(l.id) < 0) seen.push(l.id); }));
+    const off = this.eightySix();
+    this.menu().forEach((m) => { if (seen.length < 6 && seen.indexOf(m.id) < 0 && off.indexOf(m.id) < 0) seen.push(m.id); });
+    return seen.filter((id) => off.indexOf(id) < 0).slice(0, 6);
+  }
+  addLine(id) {
+    const cart = this.state.cart.slice();
+    const ex = cart.filter((l) => l.id === id)[0];
+    if (ex) cart[cart.indexOf(ex)] = Object.assign({}, ex, { qty: ex.qty + 1 });
+    else cart.push({ id: id, qty: 1 });
+    const m = this.item(id);
+    this.setState({ cart: cart });
+    this.toast(m.name + " added · " + this.fmt(this.price(m)));
+  }
+  bumpLine(id, d) {
+    this.setState({ cart: this.state.cart.map((l) => l.id === id ? Object.assign({}, l, { qty: l.qty + d }) : l).filter((l) => l.qty > 0) });
+  }
+  cartSub() {
+    return this.state.cart.reduce((a, l) => {
+      const m = this.item(l.id);
+      return a + (m ? this.price(m) * l.qty : 0);
+    }, 0);
+  }
+  sendOrder() {
+    const s = this.state, m = this.member();
+    if (!s.table) return this.setState({ tab: "order" }, () => this.toast("Pick your table first"));
+    if (!s.cart.length) return this.toast("Add a dish first");
+    const lines = s.cart.map((l) => ({ id: l.id, qty: l.qty, note: "QR · " + m.name }));
+    const n = s.cart.reduce((a, l) => a + l.qty, 0);
+    const ok = this.bridgePush("order",
+      m.name + " · " + n + " item" + (n === 1 ? "" : "s") + " · " + this.money(this.cartSub()),
+      { lines: lines, total: this.cartSub() });
+    this.setState({
+      sent: s.sent.concat([{ id: "r" + Date.now(), at: Date.now(), lines: s.cart.map((l) => ({ id: l.id, qty: l.qty, total: this.price(this.item(l.id)) * l.qty })) }]),
+      cart: []
+    });
+    this.toast(ok ? "Order sent to the kitchen · " + Math.floor(this.cartSub() / this.pointsPer()) + " pts pending" : "Saved on this phone — it will send when you are back online");
+  }
+
+  // The reward catalogue is merchant data (KPOS.REWARDS); the image is borrowed
+  // from a live menu item in the reward's own category so the card never shows
+  // a picture of something the kitchen has stopped making.
+  rewardCatalog() {
+    const k = this.K(), menu = k.MENU || [];
+    const tierName = (key) => (this.tiers().filter((t) => t.key === key)[0] || {}).name || "";
+    return (k.REWARDS || []).map((r) => {
+      const pic = menu.filter((m) => m.cat === r.cat)[0] || menu[0] || {};
+      return {
+        id: r.id, name: r.name, cost: r.cost, img: pic.img || "",
+        sub: r.kind === "money" && r.min ? "Off a bill of " + this.fmt(r.min) + " or more" : r.sub,
+        tier: r.tier ? tierName(r.tier) : null
+      };
+    });
+  }
+
+  toast(msg) {
+    this.setState({ toast: { msg: msg, id: Date.now() } });
+    clearTimeout(this._tt);
+    this._tt = setTimeout(() => this.setState({ toast: null }), 2600);
+  }
+
+  metrics() {
+    const vw = this.state.vw, vh = this.state.vh;
+    const shell = this.props.shell || "auto";
+    const framed = shell === "frame" || (shell === "auto" && vw >= 900);
+    const scr = framed ? (vw >= 1180 ? 430 : 392) : Math.min(vw, 720);
+    const h = framed ? Math.min(846, Math.max(660, vh - 96)) : vh;
+    return {
+      bare: !framed, framed: framed, scr: scr, h: h,
+      pad: scr < 360 ? 16 : 22,
+      // A tablet-width screen earns a second column; a 320px handset never does.
+      cols: scr >= 600 ? 3 : 2,
+      wide: scr >= 560
+    };
+  }
+
+  // ── sign in ───────────────────────────────────────────────────────────────
+  // Phone then a four-digit code, because that is what a Maldivian merchant can
+  // actually send. The lookup is by the last seven digits so a guest can type
+  // their number however they remember it.
+  digits(s) { return (s || "").replace(/\D/g, ""); }
+  // Email is the only channel. An SMS gateway is billed per message in this
+  // market, and a login code is not worth a per-guest fee — the address is
+  // already on the membership.
+  onEmail() { return true; }
+  idValue() { return this.state.email; }
+  idOk() { return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(this.state.email.trim()); }
+  findMember() {
+    const want = this.state.email.trim().toLowerCase();
+    if (!want) return null;
+    return this.members().filter((c) => (c.email || "").toLowerCase() === want)[0] || null;
+  }
+  // The address we say we sent to is the one on file, masked — never the string
+  // the guest typed, so a typo shows up as "no membership" instead of a code
+  // that never arrives.
+  maskedTarget() {
+    const m = this.findMember();
+    if (!m) return this.idValue();
+    const parts = (m.email || "").split("@");
+    const u = parts[0] || "";
+    return u.slice(0, 2) + "•••" + u.slice(-1) + "@" + (parts[1] || "");
+  }
+  signInNext() {
+    const s = this.state;
+    if (s.step === "phone") {
+      const m = this.findMember();
+      if (!m) return this.setState({ otpErr: "" }, () => this.toast("No membership on that address — ask your server to sign you up"));
+      this.setState({ step: "otp", otp: "", otpErr: "" });
+      return this.toast("Code sent to " + this.maskedTarget());
+    }
+    if (s.otp.length < 4) return;
+    if (s.otp !== "1234") return this.setState({ otp: "", otpErr: "That code does not match. Demo code is 1234." });
+    const m = this.findMember();
+    this.setState({ memberId: m.id, step: "phone", otp: "", otpErr: "", tab: "card" });
+    this.toast("Welcome back, " + m.name.split(" ")[0]);
+  }
+  signOut() {
+    this.setState({ memberId: null, tab: "card", step: "phone", phone: "", otp: "", sheet: false, redeemed: [] });
+    this.toast("Signed out");
+  }
+
+  // A member could order and track but never settle: the bill was the one screen
+  // missing. This mirrors the till's order of operations exactly — discount off
+  // the goods, then service charge, then tax — because a portal that computes a
+  // total its own way eventually quotes a figure the cashier cannot match, and
+  // the guest believes the phone.
+  billMath() {
+    const seat = this.seatedAt();
+    const d = this.posSession();
+    const key = this.outletId() + ":" + this.state.table;
+    const tk = seat ? seat.tk : (d && d.tickets ? d.tickets[key] : null);
+    if (!tk || !(tk.lines || []).length) return null;
+    const o = this.outlet(), k = this.K();
+    const lines = (tk.lines || []).map((l) => {
+      const m = (k.MENU || []).filter((x) => x.id === l.id)[0];
+      return { name: (m ? m.name : "Item") + (l.qty > 1 ? " \u00d7" + l.qty : ""), amt: (m ? this.price(m) : 0) * l.qty };
+    });
+    const sub = lines.reduce((a, l) => a + l.amt, 0);
+    const pr = tk.promo || null;
+    const disc = pr ? sub * (Math.min(25, pr.pct || 0) / 100) : 0;
+    const net = sub - disc;
+    const svc = net * ((o.sc || 0) / 100);
+    const tax = (net + svc) * ((o.rate || 0) / 100);
+    return { lines: lines, sub: sub, disc: disc, discPct: pr ? pr.pct : 0, net: net, svc: svc, tax: tax,
+      total: net + svc + tax, o: o, table: seat ? seat.table : this.state.table };
+  }
+  myShare() {
+    const b = this.billMath();
+    if (!b) return 0;
+    const s = this.state;
+    if (s.split === "even") return b.total / Math.max(1, s.splitN || 2);
+    if (s.split === "custom") return Math.max(0, +s.customAmt || 0);
+    if (s.split === "items") {
+      const goods = b.lines.filter((l, i) => (s.picked || {})[i]).reduce((a, l) => a + l.amt, 0);
+      // Their share of discount, service and tax in the same proportion as the
+      // goods claimed — not the headline rates, which would over-collect from
+      // whoever picks first.
+      return b.sub ? (goods / b.sub) * b.total : 0;
+    }
+    return b.total;
+  }
+  // Points are money the member already earned, so they come off before the tip
+  // is worked out — tipping on money you are not paying would be a fee.
+  pointsApplied() {
+    if (!this.state.usePoints) return 0;
+    return Math.min(this.ptValue(), this.myShare());
+  }
+  tipAmount() { return Math.max(0, this.myShare() - this.pointsApplied()) * ((this.state.tip || 0) / 100); }
+  payDue() { return Math.max(0, this.myShare() - this.pointsApplied()) + this.tipAmount(); }
+  requestBill() {
+    const b = this.billMath();
+    if (!b) return this.toast("Nothing on your table yet");
+    const m = this.member();
+    const pts = this.pointsApplied();
+    const ok = this.bridgePush("bill", m.name + " is ready to pay at table " + b.table, {
+      table: b.table, tender: this.state.tender || "card", tip: this.state.tip || 0,
+      due: Math.round(this.payDue() * 100) / 100,
+      points: Math.round(pts * 10), ref: "M" + m.id,
+      split: this.state.split || "all", parts: this.state.splitN || 2
+    });
+    // Points spent are pending until the till clears them, exactly like a
+    // redeemed reward — a phone may not decrement a balance it does not own.
+    if (pts > 0) {
+      this.setState({ redeemed: this.state.redeemed.concat([{ id: "pay" + Date.now(), name: "Paid with points", cost: Math.round(pts * 10), code: "PTS", at: Date.now() }]) });
+    }
+    this.setState({ asked: Date.now() });
+    this.toast(ok ? "Your server is on the way" : "Saved — it will send when you are back online");
+  }
+  redeem(r) {
+    if (this.points() < r.cost) return this.toast("You need " + (r.cost - this.points()) + " more points");
+    const code = "RW-" + String(Date.now()).slice(-4);
+    this.setState({ redeemed: this.state.redeemed.concat([{ id: r.id, name: r.name, cost: r.cost, code: code, at: Date.now() }]) });
+    this.bridgePush("reward", (this.member() || {}).name + " redeemed " + r.name + " · " + r.cost + " pts · " + code,
+      { reward: r.id, cost: r.cost, code: code });
+    this.toast(r.name + " ready — show " + code + " at the till");
+  }
+  announce() {
+    const m = this.member();
+    this.bridgePush("member", m.name + " · " + this.tierOf(m.spent).name + " · " + this.points() + " pts is at the counter");
+    this.setState({ announced: Date.now() });
+    this.toast("The till has been told you are here");
+  }
+
+  renderVals() {
+    const s = this.state, M = this.metrics();
+    const V = {
+      clock: "9:41",
+      pageStyle: M.bare
+        ? "min-height:100vh;background:#fff;display:block"
+        : "min-height:100vh;padding:40px 20px 48px;background:linear-gradient(178deg,#25100c 0%,#5d2419 26%,#8e3527 62%,#b6503b 100%);display:flex;align-items:center;justify-content:center",
+      frameStyle: M.bare
+        ? "width:100%;max-width:" + M.scr + "px;margin:0 auto;height:100vh;position:relative;background:#fff;display:block"
+        : "width:" + (M.scr + 22) + "px;height:" + (M.h + 22) + "px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 44px 90px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.4)",
+      screenStyle: "width:100%;height:100%;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative" + (M.bare ? "" : ";border-radius:46px"),
+      islandStyle: M.bare ? "display:none" : "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:124px;height:35px;border-radius:20px;background:#0a0a0a;display:block;z-index:5",
+      camStyle: M.bare ? "display:none" : "position:absolute;top:34px;left:calc(50% + 40px);width:11px;height:11px;border-radius:50%;background:#16171b;box-shadow:inset 0 0 0 1.5px #0d0d0f;display:block;z-index:6",
+      statusStyle: M.bare ? "display:none" : "flex-shrink:0;height:54px;padding:16px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:#111",
+      host: this.props.host ?? "rewards.kashikeyo.mv",
+      scrollRef: (el) => { this._scroll = el; },
+      scrollStyle: "flex:1;min-height:0;overflow-y:auto;padding:6px " + M.pad + "px 18px",
+      chipRowStyle: "margin:18px -" + M.pad + "px 0;padding:4px " + M.pad + "px 8px;display:flex;gap:10px;overflow-x:auto",
+      // Two tiles side by side is right on a handset; a tablet gets three and a
+      // card that does not stretch into a billboard.
+      tileGridStyle: "margin-top:14px;display:grid;grid-template-columns:repeat(" + M.cols + ",minmax(0,1fr));gap:12px",
+      rewardsGridStyle: "margin-top:20px;display:grid;grid-template-columns:repeat(" + (M.wide ? 2 : 1) + ",minmax(0,1fr));gap:12px",
+      chromeStyle: (this.props.showBrowserChrome ?? true) && !M.bare ? "flex-shrink:0;background:#f7f7f8;display:flex;flex-direction:column" : "display:none",
+      homeBarStyle: (this.props.showBrowserChrome ?? true) || M.bare ? "display:none" : "flex-shrink:0;height:24px;display:grid;place-items:center;background:#fff",
+      idValue: this.idValue(),
+      setId: (e) => this.setState({ email: e.target.value }),
+      openSheet: () => this.setState({ sheet: true }),
+      openScan: () => this.setState({ scan: true }),
+      closeAll: () => this.setState({ sheet: false, scan: false }),
+      signOut: () => this.signOut(),
+      signInNext: () => this.signInNext(),
+      signInBack: () => s.step === "otp" ? this.setState({ step: "phone", otp: "", otpErr: "" }) : this.setState({ email: "" }),
+      announce: () => this.announce(),
+      tabs: [], rewards: [], vouchers: [], activity: [], accRows: [], toggles: [], sheetRows: [], offers: [], bars: [], keys: [], otpBoxes: [], actTabs: [],
+      cats: [], dishes: [], cart: [], usuals: [], tableChoices: [], sentLines: [],
+      q: s.q,
+      setQ: (e) => this.setState({ q: e.target.value }),
+      unbind: () => this.setState({ table: 0, q: "", cat: "all" }),
+      // Switching screens has to land at the top of the new one: the scroll
+      // position of the screen you left is meaningless in the one you opened,
+      // and a tap that appears to do nothing is worse than a slow one.
+      go: (tab) => this.setState({ tab: tab, sheet: false, scan: false }, () => {
+        const el = this._scroll;
+        if (el) el.scrollTop = 0;
+      }),
+      toastStyle: s.toast
+        ? "position:absolute;left:50%;bottom:" + (M.bare ? 108 : 128) + "px;transform:translateX(-50%);max-width:300px;padding:12px 18px;border-radius:24px;background:rgba(20,20,22,.94);color:#fff;font-size:13px;font-weight:500;text-align:center;line-height:1.4;z-index:20;animation:qtoast .18s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
+        : "display:none",
+      toastMsg: s.toast ? s.toast.msg : ""
+    };
+
+    const signedIn = !!(this.K() && this.member());
+    V.signedIn = signedIn;
+    V.sSignIn = !signedIn;
+    V.sCard = signedIn && s.tab === "card";
+    V.sOrder = signedIn && s.tab === "order";
+    V.sOrders = signedIn && s.tab === "orders";
+    V.sBill = signedIn && s.tab === "bill";
+    V.sRewards = signedIn && s.tab === "rewards";
+    V.sActivity = signedIn && s.tab === "activity";
+    V.sAccount = signedIn && s.tab === "account";
+    V.scrimStyle = (s.sheet || s.scan) ? "position:absolute;inset:0;background:rgba(15,10,9,.42);z-index:14;animation:qup .16s" : "display:none";
+    const sheetBase = "position:absolute;left:0;right:0;bottom:0;z-index:15;background:#fff;border-radius:26px 26px " + (M.bare ? "0 0" : "46px 46px") + ";padding:20px 22px 30px;box-shadow:0 -10px 40px rgba(0,0,0,.22);animation:qsheet .22s cubic-bezier(.2,.8,.3,1)";
+    V.sheetStyle = s.sheet ? sheetBase : "display:none";
+    V.scanStyle = s.scan ? sheetBase : "display:none";
+
+    if (!this.K()) return V;
+    const k = this.K(), o = this.outlet();
+    V.chainName = (k.CHAIN.name || "Kashikeyo").toUpperCase();
+    V.poweredLine = k.CHAIN.brand.poweredBy ? "Powered by KashikeyoPOS™" : k.CHAIN.brand.name;
+
+    // ── sign in ────────────────────────────────────────────────────────────
+    if (!signedIn) {
+      const onOtp = s.step === "otp";
+      V.signInTitle = onOtp ? "Check your inbox" : (k.CHAIN.name || "Kashikeyo") + " Rewards";
+      V.signInSub = onOtp
+        ? "We emailed a four-digit code to " + this.maskedTarget() + "."
+        : "Points on every visit, your house account, and the table you are sitting at — all in one place.";
+      V.phoneStepStyle = onOtp ? "display:none" : "margin-top:30px;display:block";
+      V.otpStepStyle = onOtp ? "margin-top:30px;display:block" : "display:none";
+      V.phoneHint = "The address on your membership. Demo: " + this.members().slice(0, 2).map((c) => c.email).join(" · ");
+      V.otpLabel = "Code from your inbox";
+      V.otpBoxes = [0, 1, 2, 3].map((i) => ({
+        ch: s.otp[i] || "",
+        style: "flex:1;max-width:96px;height:" + (M.scr < 360 ? 54 : 60) + "px;border-radius:14px;border:1.6px solid " + (s.otp.length === i ? "#f4553c" : s.otp[i] ? "#f7c8bd" : "#ececef")
+          + ";background:" + (s.otp[i] ? "#fff8f6" : "#fff") + ";display:grid;place-items:center;font-size:24px;font-weight:700;color:#111"
+      }));
+      V.otpErr = s.otpErr;
+      V.otpErrStyle = s.otpErr ? "margin-top:12px;font-size:12.5px;color:#d64545;font-weight:500" : "display:none";
+      V.keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((key) => ({
+        label: key,
+        tap: () => {
+          if (!key) return;
+          if (key === "\u232b") return this.setState((st) => ({ otp: st.otp.slice(0, -1), otpErr: "" }));
+          let full = "";
+          this.setState((st) => {
+            if (st.otp.length >= 4) { full = ""; return null; }
+            const next = st.otp + key;
+            full = next.length === 4 ? next : "";
+            return { otp: next, otpErr: "" };
+          }, () => { if (full) this.signInNext(); });
+        },
+        style: key
+          ? "height:52px;border-radius:14px;background:#f7f7f8;font-size:20px;font-weight:600;color:#1a1a1a"
+          : "height:52px;visibility:hidden"
+      }));
+      V.signInBtn = onOtp ? "Verify & sign in" : "Email me a code";
+      V.signInDisabled = onOtp ? s.otp.length < 4 : !this.idOk();
+      V.signInBtnStyle = "flex:1.4;padding:15px 8px;border-radius:26px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:600;box-shadow:0 4px 14px rgba(244,85,60,.35)" + (V.signInDisabled ? ";opacity:.45" : "");
+      V.signInBackStyle = "flex:1;padding:15px 8px;border-radius:26px;border:1.4px solid #ececef;color:#8a8a8f;font-size:14.5px;font-weight:600;background:#fff";
+      V.chromeStyle = "display:none";
+      V.signInFoot = "Codes go to the address on your membership, not the one typed here. " + k.CHAIN.name + " signs you in by email — no SMS charge is passed on to you.";
+      V.tabBarStyle = "display:none";
+      return V;
+    }
+
+    // ── member ─────────────────────────────────────────────────────────────
+    const m = this.member();
+    const tier = this.tierOf(m.spent), next = this.nextTier(m.spent);
+    const pts = this.points();
+    const hr = new Date().getHours();
+    V.greetLine = (hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening") + ",";
+    V.greetStyle = "font-size:" + (M.scr < 380 ? 15 : 17) + "px;color:#8a8a8f;letter-spacing:-.01em;line-height:1.3";
+    V.nameStyle = "font-size:" + (M.scr < 380 ? 20 : 23) + "px;font-weight:700;color:#111;letter-spacing:-.03em;margin-top:2px;line-height:1.2;text-wrap:pretty";
+    V.mName = m.name;
+    V.mPhone = m.phone;
+    V.mTier = tier.name;
+    V.tierMark = tier.mark;
+    V.mPoints = pts.toLocaleString("en-US");
+    V.mWorth = this.money(this.ptValue());
+    V.mSpent = this.fmt(m.spent);
+    V.mSince = "2023";
+    V.mCode = "KM " + m.id.toUpperCase().replace("C", "") + " " + String(1000 + m.visits * 37).slice(0, 4);
+    V.mInitials = m.name.split(" ").map((x) => x[0]).slice(0, 2).join("");
+    V.avatarStyle = "width:56px;height:56px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:700;color:#fff;letter-spacing:.02em;background:linear-gradient(140deg," + tier.from + "," + tier.to + ")";
+    V.cardStyle = "margin-top:16px;max-width:" + (M.wide ? "460px" : "none") + ";position:relative;overflow:hidden;border-radius:22px;padding:" + (M.scr < 360 ? 17 : 20) + "px;background:linear-gradient(140deg," + tier.from + " 0%," + tier.to + " 100%);box-shadow:0 14px 34px rgba(30,16,12,.32);display:block";
+    V.tierBadgeStyle = "width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:800;color:#fff;letter-spacing:.04em";
+
+    const prevAt = tier.at, nextAt = next ? next.at : m.spent;
+    const pct = next ? Math.max(4, Math.min(100, ((m.spent - prevAt) / (nextAt - prevAt)) * 100)) : 100;
+    V.nextTierTitle = next ? "Next: " + next.name : "Top tier reached";
+    V.nextTierMeta = next ? this.fmt(nextAt - m.spent) + " to go" : "Since 2023";
+    V.tierBarStyle = "display:block;height:100%;width:" + pct.toFixed(0) + "%;border-radius:5px;background:linear-gradient(90deg,#f4553c,#f6b81c)";
+    V.nextTierSub = next
+      ? "Spend " + this.fmt(nextAt - m.spent) + " more across any " + k.CHAIN.name + " outlet to unlock " + next.name + " — priority reservations and a higher earn rate."
+      : "You are on the highest tier. Chef's table invitations and priority booking are yours by default.";
+
+    V.creditLeft = this.fmt(Math.max(0, (m.credit || 0) - (m.used || 0)));
+    V.creditSub = m.credit ? "of " + this.fmt(m.credit) + " limit" : "No house account";
+    V.visitsSub = m.visits + " visit" + (m.visits === 1 ? "" : "s") + " · last " + (m.last || "—").toLowerCase();
+
+    // live table
+    const seat = this.seatedAt();
+    V.liveWrapStyle = seat ? "margin-top:14px;border:1.4px solid #f7c8bd;border-radius:16px;background:#fff8f6;padding:16px" : "display:none";
+    if (seat) {
+      const tot = this.seatedTotal(seat.tk);
+      V.liveTitle = "You are at table " + seat.table;
+      V.liveSub = o.name + " · " + (seat.tk.lines || []).length + " line" + ((seat.tk.lines || []).length === 1 ? "" : "s") + " on the ticket right now.";
+      V.liveTotal = this.money(tot);
+      V.liveEarn = "This visit will earn about " + Math.floor(tot / this.pointsPer()) + " points when the till settles it.";
+    }
+
+    // offers
+    let promos = [];
+    try {
+      const raw = JSON.parse(localStorage.getItem("kashikeyo.promos.v1") || "null");
+      if (Array.isArray(raw)) promos = raw;
+      else if (raw && raw.on !== false) promos = raw.items || [];
+    } catch (e) { promos = []; }
+    promos = promos.filter((b) => b && (!b.outlet || b.outlet === this.outletId())).slice(0, 3);
+    V.offersHeadStyle = promos.length ? "margin-top:24px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.offersWrapStyle = promos.length
+      ? "margin-top:12px;display:grid;grid-template-columns:repeat(" + (M.wide ? 2 : 1) + ",minmax(0,1fr));gap:11px"
+      : "display:none";
+    V.offers = promos.map((b) => ({
+      title: b.title, sub: b.sub || "", tag: b.code ? "OFFER" : "WHAT'S ON",
+      tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.09em;white-space:nowrap",
+      style: "position:relative;display:flex;width:100%;min-height:104px;border-radius:16px;overflow:hidden;background:#2a1a14;box-shadow:0 6px 18px rgba(94,32,22,.2)",
+      imgStyle: "position:absolute;inset:0;display:block;background-image:url('" + (b.img || "img/hero.jpg") + "');background-size:cover;background-position:center",
+      tap: () => this.toast(b.code ? b.code + " — mention it at the till" : b.title)
+    }));
+
+    // ── ordering ───────────────────────────────────────────────────────────
+    const bound = s.table > 0;
+    const off = this.eightySix();
+    const inCart = {};
+    s.cart.forEach((l) => { inCart[l.id] = (inCart[l.id] || 0) + l.qty; });
+    V.bindWrapStyle = bound ? "display:none" : "margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:18px";
+    V.orderWrapStyle = bound ? "margin-top:16px;display:block" : "display:none";
+    V.tableChoices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => ({
+      label: "Table " + n,
+      pick: () => { this.setState({ table: n }); this.toast("Ordering at table " + n + " · " + o.name); },
+      style: "padding:10px 15px;border-radius:22px;font-size:13.5px;font-weight:600;border:1px solid #efefef;background:#fff;color:#2b2b2e;box-shadow:0 2px 7px rgba(0,0,0,.045)"
+    }));
+    V.bindHint = seat
+      ? "The till already has you seated at table " + seat.table + " — pick it to add to that ticket."
+      : "Your table number is on the card by the condiments. Ordering here reaches the same kitchen as the table QR.";
+    V.boundLine = "Ordering at table " + s.table;
+    V.boundSub = o.name + " · attached to your membership";
+
+    V.usuals = this.usualIds().map((id) => {
+      const d = this.item(id);
+      return {
+        name: d.name, priceLabel: this.fmt(this.price(d)),
+        add: () => this.addLine(id),
+        imgStyle: "display:block;width:100%;height:88px;border-radius:12px;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7"
+      };
+    });
+    V.usualHeadStyle = bound && V.usuals.length ? "margin-top:20px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.usualWrapStyle = bound && V.usuals.length ? "margin:12px -" + M.pad + "px 0;padding:2px " + M.pad + "px 8px;display:flex;gap:11px;overflow-x:auto" : "display:none";
+
+    V.catRowStyle = "margin:14px -" + M.pad + "px 0;padding:2px " + M.pad + "px 8px;display:flex;gap:9px;overflow-x:auto";
+    V.cats = [{ id: "all", name: "All dishes" }].concat(k.MENU_CATEGORIES || []).map((c) => {
+      const on = s.cat === c.id;
+      return {
+        name: c.name,
+        pick: () => this.setState({ cat: c.id }),
+        style: "flex-shrink:0;padding:9px 15px;border-radius:22px;white-space:nowrap;font-size:13.5px;font-weight:500;border:1px solid "
+          + (on ? "#f4553c" : "#efefef") + ";background:" + (on ? "#fff5f2" : "#fff") + ";color:" + (on ? "#f4553c" : "#2b2b2e")
+      };
+    });
+    const q = s.q.trim().toLowerCase();
+    V.menuGridStyle = "margin-top:8px;display:grid;grid-template-columns:repeat(" + M.cols + ",minmax(0,1fr));gap:13px";
+    V.dishes = this.menu().filter((d) => {
+      if (s.cat !== "all" && d.cat !== s.cat) return false;
+      if (!q) return true;
+      return (d.name + " " + d.desc).toLowerCase().indexOf(q) >= 0;
+    }).map((d) => {
+      const sold = off.indexOf(d.id) >= 0;
+      const n = inCart[d.id] || 0;
+      return {
+        name: d.name, desc: d.desc, priceLabel: this.fmt(this.price(d)), off: sold, badge: n ? String(n) : "",
+        add: () => sold ? this.toast(d.name + " is off tonight") : this.addLine(d.id),
+        cardStyle: "text-align:left;background:#fff;border:1px solid " + (n ? "#f7c8bd" : "#efefef") + ";border-radius:16px;padding:7px 7px 11px;box-shadow:0 2px 8px rgba(0,0,0,.045);display:flex;flex-direction:column;gap:8px;opacity:" + (sold ? ".55" : "1"),
+        imgStyle: "display:block;width:100%;height:118px;border-radius:12px;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7" + (sold ? ";filter:grayscale(1)" : ""),
+        badgeStyle: n ? "position:absolute;top:8px;right:8px;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:#f4553c;color:#fff;font-size:12.5px;font-weight:700;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);animation:qpop .18s" : "display:none",
+        offStyle: sold ? "position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:block" : "display:none",
+        plusStyle: "width:28px;height:28px;border-radius:50%;background:" + (sold ? "#c9c9cd" : "#f4553c") + ";display:grid;place-items:center;flex-shrink:0;box-shadow:0 2px 6px rgba(244,85,60," + (sold ? "0" : ".35") + ")"
+      };
+    });
+
+    const nCart = s.cart.reduce((a, l) => a + l.qty, 0);
+    V.cart = s.cart.map((l) => {
+      const d = this.item(l.id);
+      return {
+        name: d.name, qty: l.qty, priceLabel: this.fmt(this.price(d) * l.qty),
+        imgStyle: "width:52px;height:52px;border-radius:11px;flex-shrink:0;display:block;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7",
+        inc: () => this.bumpLine(l.id, 1),
+        dec: () => this.bumpLine(l.id, -1)
+      };
+    });
+    V.cartHeadStyle = nCart ? "margin-top:24px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.cartWrapStyle = nCart ? "margin-top:13px;display:flex;flex-direction:column;gap:15px" : "display:none";
+    V.cartSubLabel = this.money(this.cartSub());
+    V.cartPtsLabel = "+" + Math.floor(this.cartSub() / this.pointsPer()) + " pts";
+    V.orderFoot = "Service charge and " + o.tax + " are added on the bill. Points post when the till settles the ticket.";
+
+    // sent this visit, with the till's own status once it has the lines
+    const posT = (() => {
+      const dd = this.posSession();
+      const tk = dd && dd.tickets ? dd.tickets[this.outletId() + ":" + s.table] : null;
+      return tk ? (tk.lines || []) : null;
+    })();
+    const flat = [];
+    s.sent.forEach((r) => r.lines.forEach((l) => flat.push(l)));
+    // Order status — four stages, each read off the ticket, never guessed:
+    // on the bridge only / on the ticket / fired / bumped off the pass. The
+    // slowest line decides where the round is.
+    const stageOf = (l) => {
+      if (!posT) return 0;
+      const hit = posT.filter((p) => p.id === l.id)[0];
+      if (!hit) return 0;
+      return hit.done ? 3 : hit.fired ? 2 : 1;
+    };
+    const stages = flat.map(stageOf);
+    // Four inferred stages widen to the till's five. When the till has
+    // published an explicit stage it wins outright: someone pressed it.
+    const posF = this.fulfilRow();
+    const WIDEN = [0, 1, 2, 4];
+    const widen = (v) => posF ? Math.min(4, (posF.stage || 0) + 1) : WIDEN[v];
+    const derived = stages.length ? Math.min.apply(null, stages) : 0;
+    const stageNow = flat.length || posF ? widen(derived) : 0;
+    const sla = this.prefsPos().kdsSla || 18;
+    const firedAges = (posT || []).filter((p) => p.fired && !p.done && p.firedAt).map((p) => (Date.now() - p.firedAt) / 60000);
+    const waited = firedAges.length ? Math.max.apply(null, firedAges) : 0;
+    const left = Math.max(0, Math.ceil(sla - waited));
+    const late = stageNow === 2 && left === 0 && !posF;
+    const firstAt = s.sent.length ? s.sent[0].at : 0;
+    const hhmm = (t) => t ? new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "";
+    V.trackWrapStyle = (flat.length || posF) ? "margin-top:16px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px 16px 4px" : "display:none";
+    V.trackTitle = ["On its way to the floor", "Your server has the ticket", "Cooking now", "Plated and ready", "Everything is served"][stageNow];
+    V.trackSub = (flat.length ? flat.length + " item" + (flat.length === 1 ? "" : "s") + " · " : "")
+      + "table " + s.table + (posF ? " · updated " + hhmm(posF.at) : "");
+    V.etaLabel = stageNow >= 4 ? "Complete" : stageNow === 3 ? "Coming out now"
+      : stageNow === 2 ? (late ? "Any minute now" : "~" + left + " min") : "Confirming";
+    V.etaStyle = "flex-shrink:0;padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:700;white-space:nowrap;background:"
+      + (stageNow >= 4 ? "#eaf7ee;color:#1f7a3d" : stageNow === 3 ? "#eaf7ee;color:#1f7a3d"
+        : stageNow === 2 ? (late ? "#fdeeee;color:#b03636" : "#fff3e6;color:#b4630f") : "#f2f2f4;color:#5a5a60");
+    V.steps = [
+      { label: "Sent from your phone", sub: hhmm(firstAt) || "From this table" },
+      { label: "Accepted at the till", sub: stageNow >= 1 ? "Attached to your membership" : "Waiting for the floor terminal" },
+      { label: "In the kitchen", sub: stageNow >= 2 ? (posF ? "On the pass" : "Fired · " + Math.round(waited) + " min in · target " + sla + " min") : "Fires once the till accepts it" },
+      { label: "Ready", sub: stageNow >= 3 ? "Plated · your server is bringing it over" : "You will see this the moment it is plated" },
+      { label: "Served", sub: stageNow >= 4 ? "Points post when the bill is settled" : "Brought to table " + s.table }
+    ].map((st, i) => {
+      const done = i < stageNow, on = i === stageNow;
+      return {
+        label: st.label, sub: st.sub,
+        dotStyle: "width:14px;height:14px;border-radius:50%;flex-shrink:0;display:block;background:" + (done || on ? "#f4553c" : "#fff") + ";border:2.5px solid " + (done || on ? "#f4553c" : "#dcdce0") + (on ? ";box-shadow:0 0 0 4px rgba(244,85,60,.16);animation:qpulse 1.8s ease-in-out infinite" : ""),
+        barStyle: i === 4 ? "display:none" : "flex:1;width:2.5px;min-height:26px;margin:3px 0;border-radius:2px;display:block;background:" + (done ? "#f4553c" : "#ececef"),
+        labelStyle: "display:block;font-size:14px;font-weight:" + (on ? "700" : "600") + ";color:" + (done || on ? "#1a1a1a" : "#a8a8ad"),
+        subStyle: "display:block;font-size:12px;color:" + (on ? "#f4553c" : "#a8a8ad") + ";margin-top:3px;line-height:1.45"
+      };
+    });
+    // My orders — one card per round, newest first, with each line's own stage.
+    const NAME = ["Sent to the floor", "Accepted at the till", "In the kitchen", "Ready", "Served"];
+    const TINT = [["#f2f2f4", "#5a5a60"], ["#eef4ff", "#1f4f9c"], ["#fff3e6", "#b4630f"], ["#eaf7ee", "#1f7a3d"], ["#eaf7ee", "#1f7a3d"]];
+    let visitSum = 0;
+    V.rounds = s.sent.slice().reverse().map((r, ri) => {
+      let sum = 0;
+      const lines = r.lines.map((l) => {
+        const d = this.item(l.id) || { name: "Item", img: "" };
+        const st = widen(stageOf(l));
+        sum += l.total;
+        return {
+          name: d.name, qty: l.qty, priceLabel: this.fmt(l.total), status: NAME[st],
+          imgStyle: "width:44px;height:44px;border-radius:10px;flex-shrink:0;display:block;background-image:url('" + d.img + "');background-size:cover;background-position:center;background-color:#eceae7",
+          chipStyle: "display:inline-flex;align-items:center;margin-top:5px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;background:" + TINT[st][0] + ";color:" + TINT[st][1]
+        };
+      });
+      visitSum += sum;
+      return {
+        title: "Round " + (s.sent.length - ri), at: hhmm(r.at), lines: lines,
+        ptsLine: "+" + Math.floor(sum / this.pointsPer()) + " pts pending",
+        total: this.fmt(sum)
+      };
+    });
+    V.roundsWrapStyle = s.sent.length ? "margin-top:18px;display:flex;flex-direction:column;gap:14px" : "display:none";
+    V.ordersEmptyStyle = s.sent.length ? "display:none" : "margin-top:18px;padding:20px 16px;border:1px dashed #e7e7e9;border-radius:16px;font-size:13px;color:#a8a8ad;line-height:1.6;text-wrap:pretty";
+    V.ordersMeta = s.sent.length ? s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " · table " + s.table : "This visit";
+    V.visitFootStyle = s.sent.length ? "margin-top:18px;border:1px solid #efefef;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px 16px" : "display:none";
+    V.visitTotal = this.money(visitSum);
+    V.visitFoot = "Before the " + (o.sc || 0) + "% service charge and " + o.tax + " " + o.rate + "%. Points post to your card when the till settles the bill.";
+
+    // rewards
+    V.rewardsSub = "Earn 1 point for every " + this.fmt(this.pointsPer()) + " you spend. 10 points is worth MVR 1 off.";
+    V.earnRateLine = "1 pt per " + this.fmt(this.pointsPer()) + " spent";
+    V.rewards = this.rewardCatalog().map((r) => {
+      const tierLocked = r.tier && r.tier !== tier.name;
+      const poor = pts < r.cost;
+      const locked = tierLocked || poor;
+      return {
+        name: r.name, sub: tierLocked ? r.tier + " tier only" : r.sub, cost: r.cost.toLocaleString("en-US") + " pts",
+        locked: locked,
+        redeem: () => this.redeem(r),
+        rowStyle: "display:flex;align-items:center;gap:13px;padding:12px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);opacity:" + (locked ? ".62" : "1"),
+        imgStyle: "width:58px;height:58px;border-radius:12px;flex-shrink:0;display:block;background-image:url('" + r.img + "');background-size:cover;background-position:center;background-color:#eceae7" + (locked ? ";filter:grayscale(.7)" : ""),
+        costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#a8a8ad" : "#f4553c") + ";margin-top:5px;font-variant-numeric:tabular-nums",
+        btn: tierLocked ? "Locked" : poor ? (r.cost - pts) + " pts" : "Redeem",
+        btnStyle: "flex-shrink:0;padding:10px 15px;border-radius:22px;font-size:13px;font-weight:600;white-space:nowrap;"
+          + (locked ? "background:#f4f4f6;color:#a8a8ad" : "background:#f4553c;color:#fff;box-shadow:0 3px 10px rgba(244,85,60,.32)")
+      };
+    });
+    V.vouchHeadStyle = s.redeemed.length ? "margin-top:26px;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em" : "display:none";
+    V.vouchWrapStyle = s.redeemed.length ? "margin-top:12px;display:flex;flex-direction:column;gap:10px" : "display:none";
+    V.vouchers = s.redeemed.slice().reverse().map((r) => ({
+      name: r.name, code: r.code,
+      meta: r.cost + " pts · redeemed " + new Date(r.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })
+    }));
+
+    // activity — the till's history, plus anything pending from this phone
+    const ICON = {
+      visit: "M3 3h18v4H3zM5 7v14h14V7M9 12h6",
+      points: "m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z",
+      reward: "M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z",
+      credit: "M2 7h20v11H2zM2 11h20M6 15h4"
+    };
+    const hist = [];
+    s.redeemed.slice().reverse().forEach((r) => hist.push({
+      kind: "reward", title: r.name, meta: "Voucher " + r.code + " · not yet used", amt: "", pts: "−" + r.cost + " pts", neg: true
+    }));
+    if (seat) hist.push({ kind: "visit", title: o.name, meta: "Table " + seat.table + " · open now", amt: this.money(this.seatedTotal(seat.tk)), pts: "pending" });
+    // Real settled sales, read from the till's own ledger. A member's history
+    // has to be the same rows the outlet's P&L was built from, or the two
+    // describe different visits.
+    const posd = this.posSession() || {};
+    const outsById = {};
+    (k.OUTLETS || []).forEach((x) => { outsById[x.id] = x; });
+    const ledger = (posd.settled || [])
+      .filter((x) => x.customer === m.id || (x.tender === "credit" && x.customer === m.id))
+      .sort((a, b) => (b.at || 0) - (a.at || 0))
+      .slice(0, 8);
+    ledger.forEach((x) => {
+      const d = new Date(x.at || Date.now());
+      hist.push({
+        kind: "visit", title: (outsById[x.outletId] || o).name,
+        meta: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+          + " · " + (x.no || "")
+          + (x.covers ? " · " + x.covers + " cover" + (x.covers === 1 ? "" : "s") : ""),
+        amt: this.money(x.total || 0),
+        pts: "+" + Math.floor((x.net || 0) / this.pointsPer()) + " pts"
+      });
+    });
+    this._histReal = ledger.length;
+    if (m.used > 0) hist.push({ kind: "credit", title: "House account drawn", meta: "Charged to your credit limit", amt: this.money(m.used), pts: "" });
+    V.actTabs = [["all", "All"], ["visit", "Visits"], ["reward", "Rewards"]].map((t) => ({
+      label: t[1],
+      pick: () => this.setState({ actTab: t[0] }),
+      style: "padding:8px 16px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid " + (s.actTab === t[0] ? "#f4553c" : "#ececef")
+        + ";background:" + (s.actTab === t[0] ? "#fff5f2" : "#fff") + ";color:" + (s.actTab === t[0] ? "#f4553c" : "#5a5a60")
+    }));
+    const shown = hist.filter((h) => s.actTab === "all" || h.kind === s.actTab);
+    // The lifetime figures are the chain's own record of this member and stand
+    // whether or not this browser has the till's ledger to hand; the list below
+    // is only what this device can actually see.
+    V.activitySub = m.visits + " recorded visit" + (m.visits === 1 ? "" : "s") + " · " + this.fmt(m.spent) + " lifetime";
+    V.activityNote = this._histReal
+      ? this._histReal + " settled bill" + (this._histReal === 1 ? "" : "s") + " on this device's ledger. Older visits are counted in your lifetime total above."
+      : "Your lifetime total comes from the chain. Individual bills appear here once this device has synced with the till that took them.";
+    V.activityNoteStyle = "margin-top:10px;font-size:11.5px;color:#a8a8ad;line-height:1.55;text-wrap:pretty";
+    V.activity = shown.map((h) => ({
+      title: h.title, meta: h.meta, amt: h.amt, pts: h.pts, icon: ICON[h.kind] || ICON.visit,
+      iconWrapStyle: "width:40px;height:40px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;background:" + (h.kind === "reward" ? "#fff2ef" : "#f6f6f7") + ";color:" + (h.kind === "reward" ? "#f4553c" : "#6a6a6f"),
+      amtStyle: "display:" + (h.amt ? "block" : "none") + ";font-size:14px;font-weight:600;color:#1a1a1a;font-variant-numeric:tabular-nums",
+      ptsStyle: "display:" + (h.pts ? "block" : "none") + ";font-size:12px;margin-top:2px;font-weight:600;font-variant-numeric:tabular-nums;color:" + (h.neg ? "#d64545" : h.pts === "pending" ? "#b4630f" : "#1f7a3d")
+    }));
+    V.actEmptyStyle = shown.length ? "display:none" : "padding:38px 6px;text-align:center;font-size:13px;color:#a8a8ad";
+
+    // account
+    V.accRows = [
+      ["Membership", V.mCode], ["Tier", tier.name + " · " + this.fmt(m.spent) + " lifetime"],
+      ["Points", pts.toLocaleString("en-US") + " pts · " + this.money(this.ptValue())],
+      ["House account", m.credit ? this.fmt(m.credit - m.used) + " of " + this.fmt(m.credit) : "Not enabled"],
+      ["Email", m.email || "Not on file"],
+      ["Home outlet", o.name]
+    ].map((r, i, arr) => ({
+      label: r[0], value: r[1],
+      style: "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px" + (i < arr.length - 1 ? ";border-bottom:1px solid #f4f4f4" : "")
+    }));
+    V.toggles = [
+      ["email", "Email from " + k.CHAIN.name, "Offers, receipts and booking reminders"],
+      ["receipts", "Save visits to this phone", "Keeps your history when offline"]
+    ].map((t) => {
+      const on = !!s.prefs[t[0]];
+      return {
+        label: t[1], sub: t[2],
+        tap: () => this.setState({ prefs: Object.assign({}, s.prefs, { [t[0]]: !on }) }),
+        trackStyle: "width:44px;height:26px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;padding:3px;transition:background .16s;background:" + (on ? "#f4553c" : "#e2e2e5") + ";justify-content:" + (on ? "flex-end" : "flex-start"),
+        knobStyle: "width:20px;height:20px;border-radius:50%;background:#fff;display:block;box-shadow:0 1px 4px rgba(0,0,0,.22)"
+      };
+    });
+    V.accFoot = "Your profile lives with " + k.CHAIN.name + ", not on this phone. Points, credit and tier are set by the till — this app shows them and asks for things.";
+
+    // scan sheet
+    V.bars = Array.from({ length: 34 }, (_, i) => {
+      const w = 2 + ((i * 7 + m.visits) % 3);
+      const h = 44 + ((i * 13 + m.points) % 32);
+      return { style: "display:block;width:" + w + "px;height:" + h + "px;background:#111;border-radius:1px" };
+    });
+    const fresh = s.announced && Date.now() - s.announced < 120000;
+    V.announceBtn = fresh ? "The till knows you are here" : "Tell the till I'm here";
+    V.announceStyle = fresh ? "margin-top:14px;padding:12px 14px;border-radius:14px;background:#fff8ef;border:1px solid #f6e2c4;color:#8a5a12;font-size:12.5px;line-height:1.5" : "display:none";
+    V.announceMsg = fresh ? "A cashier at " + o.name + " has been notified. Your next bill can be attached to this membership." : "";
+
+    // sheet + tabs
+    V.sheetRows = [
+      { label: "Show my code", sub: "For the cashier to key in", icon: "M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3M7 12h10", tap: () => this.setState({ sheet: false, scan: true }) },
+      { label: "My orders", sub: (s.sent.length || posF) ? (s.sent.length || 1) + " round" + ((s.sent.length || 1) === 1 ? "" : "s") + " · " + V.trackTitle : "Nothing sent yet", icon: "M6 2h9l5 5v15H6zM15 2v5h5M9 13h7M9 17h5", tap: () => V.go("orders") },
+      { label: "Rewards", sub: pts.toLocaleString("en-US") + " points available", icon: "M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z", tap: () => V.go("rewards") },
+      { label: "Order from my table", sub: s.table ? "Table " + s.table + " · " + o.name : "Pick your table and browse the menu", icon: "M4 5h16M4 12h16M4 19h10", tap: () => V.go("order") },
+      { label: "Profile", sub: "Details and preferences", icon: "M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z", tap: () => V.go("account") }
+    ];
+    // ── the bill ───────────────────────────────────────────────────────────
+    const B = this.billMath();
+    V.billSub = B
+      ? "Table " + B.table + " · exactly as the till has it"
+      : "Nothing on your table yet";
+    V.billBodyStyle = B ? "display:block" : "display:none";
+    V.billEmpty = "Once your server has put something on the table's ticket, the bill appears here — and you can split it, spend points, tip and ask to pay.";
+    V.billEmptyStyle = B ? "display:none" : "margin-top:22px;padding:22px 16px;border:1px dashed #e7e7e9;border-radius:16px;font-size:13px;color:#a8a8ad;line-height:1.6;text-wrap:pretty";
+    const bRow = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
+    V.billLines = B ? B.lines.map((l) => ({ name: l.name, amt: this.money(l.amt) })) : [];
+    V.billTotals = B ? [
+      { label: "Subtotal", amt: this.money(B.sub), style: bRow },
+      { label: "Discount " + B.discPct + "%", amt: "\u2212 " + this.money(B.disc), style: B.disc ? bRow + ";color:#1f7a3d" : "display:none" },
+      { label: "Service charge " + (B.o.sc || 0) + "%", amt: this.money(B.svc), style: B.o.sc ? bRow : "display:none" },
+      { label: (B.o.tax || "Tax") + " " + (B.o.rate || 0) + "%", amt: this.money(B.tax), style: bRow },
+      { label: "Table total", amt: this.money(B.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111;padding-top:9px;border-top:1px solid #f0f0f0;margin-top:3px" }
+    ] : [];
+    V.splitModes = [
+      { k: "all", label: "I'll get it", sub: "The whole table" },
+      { k: "even", label: "Split evenly", sub: "Between everyone" },
+      { k: "items", label: "What I ate", sub: "Pick your dishes" },
+      { k: "custom", label: "My own amount", sub: "You decide" }
+    ].map((mm) => ({
+      label: mm.label, sub: mm.sub,
+      style: "padding:13px 14px;border-radius:14px;min-height:60px;text-align:left;"
+        + ((s.split || "all") === mm.k
+          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(244,85,60,.26)"
+          : "background:#fff;color:#1a1a1a;border:1px solid #e8e8ea"),
+      tap: () => this.setState({ split: mm.k })
+    }));
+    V.splitEvenStyle = s.split === "even" ? "margin-top:13px;padding:15px;border-radius:15px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitN = String(s.splitN || 2);
+    V.splitLess = () => this.setState({ splitN: Math.max(2, (s.splitN || 2) - 1) });
+    V.splitMore = () => this.setState({ splitN: Math.min(20, (s.splitN || 2) + 1) });
+    V.splitEach = B ? this.money(B.total / Math.max(1, s.splitN || 2)) + " each" : "";
+    V.splitItemStyle = s.split === "items" ? "margin-top:13px;padding:15px;border-radius:15px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.pickLines = B ? B.lines.map((l, i) => {
+      const on = !!(s.picked || {})[i];
+      return {
+        name: l.name, amt: this.money(l.amt),
+        style: "width:100%;margin-top:9px;display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:12px;min-height:46px;"
+          + (on ? "background:#fff;border:1.4px solid #f4553c" : "background:#fff;border:1px solid #ececee"),
+        box: "width:21px;height:21px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"
+          + (on ? "background:#f4553c;color:#fff" : "background:#f2f2f4;color:#f2f2f4"),
+        tick: on ? "display:block" : "display:none",
+        tap: () => this.setState({ picked: Object.assign({}, s.picked, { [i]: !on }) })
+      };
+    }) : [];
+    V.pickTotal = B ? "Your share: " + this.money(this.myShare()) + " (with your part of service and tax)" : "";
+    V.splitCustomStyle = s.split === "custom" ? "margin-top:13px;padding:15px;border-radius:15px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.customAmt = s.customAmt || "";
+    V.setCustom = (e) => this.setState({ customAmt: e.target.value.replace(/[^0-9.]/g, "") });
+    // Points are the one thing a member has that a walk-in does not, so this is
+    // the screen where they finally behave like money.
+    const ptsWorth = this.ptValue();
+    V.ptsRowStyle = "margin-top:16px;width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:15px;min-height:60px;text-align:left;"
+      + (s.usePoints ? "background:#f0f9f2;border:1.4px solid #a8dcb8" : "background:#fff;border:1px solid #e8e8ea");
+    V.ptsRowSub = ptsWorth > 0
+      ? (s.usePoints
+        ? "Using " + this.money(this.pointsApplied()) + " of your " + this.money(ptsWorth) + ". The till clears them when it settles."
+        : this.money(ptsWorth) + " available · " + pts.toLocaleString("en-US") + " points")
+      : "No points to spend yet";
+    V.ptsSwitchStyle = "width:44px;height:26px;border-radius:14px;flex-shrink:0;display:flex;align-items:center;padding:3px;transition:background .16s;background:" + (s.usePoints ? "#2ea44f" : "#dcdce0");
+    V.ptsKnobStyle = "width:20px;height:20px;border-radius:50%;background:#fff;display:block;transition:transform .16s;transform:translateX(" + (s.usePoints ? "18px" : "0") + ")";
+    V.togglePoints = () => ptsWorth > 0 ? this.setState({ usePoints: !s.usePoints }) : this.toast("You have no points to spend yet");
+    V.tips = [0, 5, 10, 15].map((pc) => ({
+      label: pc ? pc + "%" : "None",
+      style: "flex:1;padding:12px 4px;border-radius:13px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
+        + ((s.tip || 0) === pc ? "background:#1a1a1a;color:#fff" : "background:#f4f4f6;color:#6a6a70"),
+      tap: () => this.setState({ tip: pc })
+    }));
+    V.tipNote = s.tip
+      ? "Adding " + this.money(this.tipAmount()) + ". Held apart from the service charge and paid to the team in full."
+      : "The service charge on your bill is already shared with the team. Anything here is on top of it.";
+    const canCredit = (m.credit || 0) - (m.used || 0) >= this.payDue() && this.payDue() > 0;
+    V.tenders = [
+      { k: "card", label: "Card" },
+      { k: "cash", label: "Cash" },
+      { k: "wallet", label: "Wallet" },
+      { k: "credit", label: "Account" }
+    ].map((x) => ({
+      label: x.label,
+      style: "padding:12px 4px;border-radius:13px;font-size:13px;font-weight:700;text-align:center;min-height:46px;"
+        + (x.k === "credit" && !canCredit ? "background:#fafafb;color:#c8c8cc"
+          : (s.tender || "card") === x.k ? "background:#1a1a1a;color:#fff" : "background:#f4f4f6;color:#6a6a70"),
+      tap: () => (x.k === "credit" && !canCredit)
+        ? this.toast("Not enough headroom on your house account")
+        : this.setState({ tender: x.k })
+    }));
+    V.creditNote = s.tender === "credit"
+      ? "Charged to your house account · " + this.fmt(Math.max(0, (m.credit || 0) - (m.used || 0))) + " available. The till still authorises it."
+      : "";
+    V.creditNoteStyle = s.tender === "credit" ? "margin-top:9px;font-size:11.5px;color:#8a8a8f;line-height:1.5;text-wrap:pretty" : "display:none";
+    V.payAmount = this.money(this.payDue());
+    V.payBreak = B
+      ? ((s.split || "all") === "all" ? "The whole table" : s.split === "even" ? "One of " + (s.splitN || 2) + " shares" : s.split === "items" ? "The dishes you picked, with their share of service and tax" : "The amount you entered")
+        + (this.pointsApplied() ? " · less " + this.money(this.pointsApplied()) + " in points" : "")
+        + (s.tip ? " · plus a " + s.tip + "% tip" : "")
+        + ". Your server brings the machine — nothing is charged from this phone."
+      : "";
+    V.askBillStyle = "margin-top:16px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(244,85,60,.3)";
+    V.askBillLabel = s.asked ? "Ask again" : "Ask for the bill";
+    V.askBill = () => this.requestBill();
+    V.askedNote = s.asked ? "Asked at " + hhmm(s.asked) + ". Your server has it on the floor terminal." : "";
+    V.askedStyle = s.asked ? "margin-top:11px;font-size:12.5px;color:#1f7a3d;line-height:1.55;text-align:center" : "display:none";
+
+    const live = !!this.posSession();
+    V.syncLabel = live ? "Till connected" : "Offline — showing saved profile";
+    V.syncStyle = "display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:" + (live ? "#1f7a3d" : "#b4630f");
+
+    // Navigation is the QR menu's chip row, not a tab bar: same component, same
+    // place on the screen, so a guest who has used the table menu already knows
+    // how this moves.
+    V.tierLine = tier.name + " member · " + pts.toLocaleString("en-US") + " pts";
+    V.chips = [
+      ["card", "My card", "M2 7h20v11H2zM2 11h20M6 15h4"],
+      ["order", "Order", "M4 6h16M4 12h16M4 18h11"],
+      ["orders", "My orders", "M6 2h9l5 5v15H6zM15 2v5h5M9 13h7M9 17h5"],
+      ["bill", "Bill", "M3 7h18v11H3zM3 11h18M7 15h4"],
+      ["rewards", "Rewards", "M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z"],
+      ["activity", "Activity", "M3 12h4l3 7 4-14 3 7h4"],
+      ["account", "Profile", "M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z"]
+    ].map((t) => {
+      const on = s.tab === t[0];
+      return {
+        label: t[1], icon: t[2],
+        pick: () => V.go(t[0]),
+        style: "flex-shrink:0;display:flex;align-items:center;gap:8px;padding:9px 16px;border-radius:26px;white-space:nowrap;font-size:14px;font-weight:500;border:1px solid "
+          + (on ? "#f4553c" : "#efefef") + ";background:" + (on ? "#fff5f2" : "#fff") + ";color:" + (on ? "#f4553c" : "#2b2b2e")
+          + ";box-shadow:0 2px 7px rgba(0,0,0," + (on ? ".07" : ".045") + ")"
+      };
+    });
+    // The bar follows what the member is doing: a cart to send beats a card to
+    // show, and a live table beats a points balance.
+    if (nCart) {
+      V.barLine = nCart + " item" + (nCart === 1 ? "" : "s") + " · " + this.fmt(this.cartSub());
+      V.barSub = "Table " + s.table + " · +" + Math.floor(this.cartSub() / this.pointsPer()) + " pts when settled";
+      V.barBtn = "Send order";
+      V.barTap = () => this.sendOrder();
+    } else if ((flat.length || posF) && stageNow < 4) {
+      V.barLine = V.trackTitle;
+      V.barSub = "Table " + s.table + (stageNow === 3 ? " · on its way over"
+        : stageNow === 2 && !late && !posF ? " · ~" + left + " min"
+        : " · " + flat.length + " item" + (flat.length === 1 ? "" : "s"));
+      V.barBtn = "Track";
+      V.barTap = () => V.go("orders");
+    } else if (seat) {
+      V.barLine = "Table " + seat.table + " · " + this.money(this.seatedTotal(seat.tk));
+      V.barSub = "Open now at " + o.name;
+      V.barBtn = "Show code";
+      V.barTap = () => this.setState({ scan: true });
+    } else {
+      V.barLine = pts.toLocaleString("en-US") + " points · " + this.money(this.ptValue());
+      V.barSub = next ? this.fmt(nextAt - m.spent) + " to " + next.name : tier.name + " · top tier";
+      V.barBtn = "Show code";
+      V.barTap = () => this.setState({ scan: true });
+    }
+    V.tabBarStyle = "display:none";
+    return V;
+  }
+}
+
+</script>
+</body>
+</html>

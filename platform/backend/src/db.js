@@ -1,0 +1,103 @@
+'use strict';
+const { Pool } = require('pg');
+const { outletPassword } = require('./secrets');
+
+const ssl = process.env.NODE_ENV === 'production'
+  ? { rejectUnauthorized: false }   // Railway's Postgres terminates TLS at the proxy
+  : false;
+
+// ── owner pool: migrations and provisioning only. Never reachable from a
+//    request handler; routes.js has no import of it.
+let ownerPool = null;
+function owner() {
+  if (!ownerPool) {
+    ownerPool = new Pool({ connectionString: process.env.DATABASE_URL, ssl, max: 3 });
+  }
+  return ownerPool;
+}
+
+// ── one pool per outlet, each authenticating as that outlet's own role.
+//    Two outlets never share a connection, so there is no path by which a
+//    forgotten WHERE clause reaches another outlet's rows: the tables are not
+//    in this role's search_path and USAGE was never granted on that schema.
+const pools = new Map();
+function poolFor(outletId) {
+  const id = Number(outletId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('bad outlet id');
+  if (!pools.has(id)) {
+    pools.set(id, new Pool({
+      host: process.env.PGHOST,
+      port: Number(process.env.PGPORT || 5432),
+      database: process.env.PGDATABASE,
+      user: 'outlet_' + id + '_app',
+      password: outletPassword(id),
+      ssl,
+      max: Number(process.env.PGPOOL_MAX || 6),
+      idleTimeoutMillis: 30000,
+      statement_timeout: 15000
+    }));
+  }
+  return pools.get(id);
+}
+
+// ── every query runs inside a transaction that first declares who is asking.
+//    SET LOCAL is transaction-scoped: it cannot survive back into the pool and
+//    leak context into the next request.
+async function withOutlet(ctx, fn) {
+  const client = await poolFor(ctx.outletId).connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      "SELECT set_config('app.outlet_id', $1, true),"
+      + " set_config('app.user_rank', $2, true),"
+      + " set_config('app.actor', $3, true),"
+      + " set_config('app.scope', $4, true)",
+      [String(ctx.outletId), String(ctx.rank || 0), ctx.actor || '',
+       ctx.scope === 'group' ? 'group' : 'outlet']
+    );
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(function () {});
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Read-only estate reporting. Uses a dedicated role that can execute the
+// aggregate function and nothing else.
+let reportPool = null;
+async function withEstate(ctx, fn) {
+  if ((ctx.rank || 0) < 5) throw Object.assign(new Error('rank 5 required'), { status: 403 });
+  if (!reportPool) {
+    reportPool = new Pool({
+      host: process.env.PGHOST, port: Number(process.env.PGPORT || 5432),
+      database: process.env.PGDATABASE, user: 'kashikeyo_report',
+      password: process.env.REPORT_ROLE_PASSWORD, ssl, max: 2
+    });
+  }
+  const client = await reportPool.connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    await client.query(
+      "SELECT set_config('app.outlet_id', $1, true),"
+      + " set_config('app.user_rank', '5', true),"
+      + " set_config('app.actor', $2, true),"
+      + " set_config('app.scope', 'group', true)",
+      [String(ctx.outletId || 0), ctx.actor || '']);
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } finally { client.release(); }
+}
+
+async function shutdown() {
+  const all = Array.from(pools.values());
+  if (ownerPool) all.push(ownerPool);
+  if (reportPool) all.push(reportPool);
+  await Promise.all(all.map(function (p) { return p.end().catch(function () {}); }));
+}
+
+module.exports = { owner, poolFor, withOutlet, withEstate, shutdown };
