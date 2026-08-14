@@ -79,6 +79,52 @@ export class ApiError extends Error {
    which proxies /api. */
 const BASE = (import.meta.env.VITE_API_ORIGIN as string | undefined) ?? '';
 
+export interface GuestSession {
+  token: string;
+  outletId: number;
+  table: string;
+  outlet: string;
+  expiresAt: number;
+}
+
+/* Exchange a table for a session.
+ *
+ * The QR card carries an outlet and a table and NO credential — a laminated
+ * card on a table cannot hold a secret. The token comes from here, is pinned to
+ * that one table, and expires in hours rather than living as long as the card.
+ * It is rank 0, so every till endpoint refuses it. */
+export async function openGuestSession(outletId: number, table: string): Promise<GuestSession> {
+  const r = await fetch(BASE + `/api/outlet/${outletId}/guest/session`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ table }),
+  });
+  const text = await r.text();
+  let json: unknown = null;
+  try { json = JSON.parse(text); } catch { /* an error page */ }
+  if (!r.ok) {
+    const msg = (json && typeof json === 'object' && 'error' in json)
+      ? String((json as { error: unknown }).error)
+      : 'We could not open your table.';
+    throw new ApiError(r.status, msg);
+  }
+  return json as GuestSession;
+}
+
+/** The outlet's public face, for the table gate: the name to welcome someone
+ *  with and how many tables to draw. The gate renders before any table has been
+ *  chosen, so there is no session to read a snapshot with — and this is the same
+ *  information as the sign over the door, so it needs no credential. */
+export async function outletCard(outletId: number): Promise<{ name: string; tables: number } | null> {
+  try {
+    const r = await fetch(BASE + `/api/outlet/${outletId}/guest/card`);
+    if (!r.ok) return null;
+    return await r.json() as { name: string; tables: number };
+  } catch {
+    return null;
+  }
+}
+
 export class Api {
   constructor(private outletId: number, private token: string) {}
 

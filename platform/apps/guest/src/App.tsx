@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Api, ApiError, type Snapshot } from './api';
+import { Api, ApiError, openGuestSession, outletCard, type GuestSession, type Snapshot } from './api';
 import * as session from './session';
 import type { CartLine, SentRound } from './session';
 import { C, HIT, MONO } from '../../../packages/tokens/guest';
@@ -55,16 +55,52 @@ export function App({ outletId, initialTable }: Props) {
   const [diets, setDiets] = useState<string[]>(restored.diets);
   const [rated, setRated] = useState(restored.rated);
 
-  /* The guest portal reads the snapshot with a token minted for the OUTLET, not
-     for a member of staff — it is a public storefront. In this build the token
-     is handed to the page by the QR link; when the guest-token endpoint lands
-     it will be fetched here instead, which is why it is behind one ref. */
-  const api = useMemo(() => {
-    const params = new URLSearchParams(location.search);
-    return new Api(outletId, params.get('k') || '');
-  }, [outletId]);
+  /* The session. The QR card carries an outlet and a table and no credential —
+     a laminated card on a table cannot hold a secret — so the token is minted
+     here, against the table, and is pinned to it for a few hours.
+     Held in state rather than derived, because choosing a table at the gate is
+     what creates it. */
+  const [sess, setSess] = useState<GuestSession | null>(null);
+  const [card, setCard] = useState<{ name: string; tables: number } | null>(null);
+  const [gateError, setGateError] = useState('');
+
+  const api = useMemo(
+    () => (sess ? new Api(outletId, sess.token) : null),
+    [outletId, sess],
+  );
+
+  /* The gate needs the outlet's name and table count before any table exists to
+     mint against, so it reads the public card. */
+  useEffect(() => {
+    if (!outletId || sess) return;
+    let alive = true;
+    void outletCard(outletId).then((c) => { if (alive) setCard(c); });
+    return () => { alive = false; };
+  }, [outletId, sess]);
 
   const say = useCallback((m: string) => setToast(m), []);
+
+  /* Open the table: mint, then remember. A deep link (`?t=4`) does this without
+     showing the gate at all, which is the normal case — the table number is
+     printed on the card. */
+  const openTable = useCallback(async (n: string) => {
+    setGateError('');
+    try {
+      const s = await openGuestSession(outletId, n);
+      setSess(s);
+      setTable(s.table);
+      say('Table ' + s.table + ' — here is the menu');
+    } catch (e) {
+      setGateError(e instanceof ApiError ? e.message : 'We could not open your table. Please ask a member of our team.');
+    }
+  }, [outletId, say]);
+
+  useEffect(() => {
+    if (initialTable && !sess) void openTable(initialTable);
+    // Deep-linked once, at mount. Re-running on every openTable identity change
+    // would re-mint a session the guest already has.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Poll the till. 03-GUEST-PORTAL-SPEC.md §4: "A recipe change updates the
      guest's filter the same minute", and §5 has the tracker following the
@@ -78,7 +114,7 @@ export function App({ outletId, initialTable }: Props) {
     let timer: number | undefined;
 
     const pull = async () => {
-      if (document.hidden) return;
+      if (!api || document.hidden) return;
       try {
         const s = await api.snapshot();
         if (!alive) return;
@@ -95,6 +131,7 @@ export function App({ outletId, initialTable }: Props) {
       tick.current++;
     };
 
+    if (!api) return;
     void pull();
     timer = window.setInterval(pull, 5000);
     const onVis = () => { if (!document.hidden) void pull(); };
@@ -117,9 +154,6 @@ export function App({ outletId, initialTable }: Props) {
     session.save(outletId, table, { cart, sent, ident, promo, diets, rated });
   }, [outletId, table, cart, sent, ident, promo, diets, rated]);
 
-  const outlet = snap?.outlet ?? null;
-  const tableCount = outlet?.tables ?? 0;
-
   /* ── The frame. Spec §1. ────────────────────────────────────────────────── */
   const stage: React.CSSProperties = {
     minHeight: '100dvh', background: C.appBg, display: 'flex', justifyContent: 'center',
@@ -130,7 +164,7 @@ export function App({ outletId, initialTable }: Props) {
   };
 
   /* ── Table gate. Spec §2. Shown when no table is chosen. ────────────────── */
-  if (!table) {
+  if (!table || !api) {
     return (
       <div style={stage}>
         <div style={screen}>
@@ -144,20 +178,20 @@ export function App({ outletId, initialTable }: Props) {
               </svg>
             </div>
             <div style={{ marginTop: 18, fontSize: 25, fontWeight: 700, color: C.inkStrong, letterSpacing: '-.035em', lineHeight: 1.15 }}>
-              {outlet ? 'Welcome to ' + outlet.name : 'Welcome'}
+              {card ? 'Welcome to ' + card.name : 'Welcome'}
             </div>
             <div style={{ marginTop: 9, fontSize: 14, color: C.inkMuted, lineHeight: 1.6, textWrap: 'pretty' }}>
-              {loadError && !snap
+              {gateError || (card === null
                 ? 'We cannot reach the restaurant just now. Please ask a member of our team.'
-                : 'Order from your table, follow it to the kitchen, and settle when you are ready.'}
+                : 'Order from your table, follow it to the kitchen, and settle when you are ready.')}
             </div>
 
             <div style={{ marginTop: 24, fontSize: 12, fontWeight: 700, color: C.label, letterSpacing: '.08em' }}>YOUR TABLE</div>
             <div style={{ marginTop: 11, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(62px,1fr))', gap: 9 }}>
-              {Array.from({ length: tableCount }, (_, i) => i + 1).map((n) => (
+              {Array.from({ length: card?.tables ?? 0 }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}
-                  onClick={() => { setTable(String(n)); say('Table ' + n + ' — here is the menu'); }}
+                  onClick={() => { void openTable(String(n)); }}
                   style={{
                     padding: '13px 6px', borderRadius: 14, background: C.surface,
                     border: '1px solid ' + C.hairline, fontSize: 13.5, fontWeight: 700,
@@ -171,11 +205,11 @@ export function App({ outletId, initialTable }: Props) {
             {/* An outlet whose table count is not configured yet has no grid to
                 draw. Say what is missing rather than render nothing: an empty
                 state is a first-class state (10-NO-DEMO-DATA.md §4). */}
-            {!tableCount && (
+            {!card?.tables && (
               <div style={{ marginTop: 14, fontSize: 13.5, color: C.inkGhost, lineHeight: 1.6 }}>
-                {snap
+                {card
                   ? 'This restaurant has not set its tables up yet. Please ask a member of our team to take your order.'
-                  : 'Loading the menu…'}
+                  : 'Loading…'}
               </div>
             )}
             <div style={{ marginTop: 18, fontSize: 12, color: C.inkGhost, lineHeight: 1.6, textWrap: 'pretty' }}>

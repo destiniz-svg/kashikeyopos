@@ -2,7 +2,7 @@
 const express = require('express');
 const { withOutlet, withEstate } = require('./db');
 const { sign, pinMatches, pinLookup } = require('./secrets');
-const { session, sameOutlet, atLeast } = require('./auth');
+const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
 const { settle } = require('./sale');
 
 const r = express.Router();
@@ -60,6 +60,86 @@ r.post('/auth/pin', async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* ── a guest's session, minted for a table ──────────────────────────────────
+ *
+ * The QR card on a table encodes an outlet and a table number and nothing else.
+ * A printed card cannot hold a secret: it is on the table, photographable, and
+ * lives for as long as the laminate does. So the card carries no credential —
+ * it points here, and this endpoint issues a SHORT-LIVED token pinned to that
+ * one table.
+ *
+ * What the token can do is deliberately small: read the snapshot for its own
+ * table, post an order, and raise a request. It is rank 0, so every atLeast()
+ * gate on every till endpoint refuses it without having to know it exists.
+ *
+ * Public by necessity — a guest has nothing to authenticate with — so it is
+ * rate limited, and it refuses a table the outlet does not have. Handing out a
+ * token for table 9,999 would otherwise let anyone mint a session that reads
+ * an empty ticket forever and hunt for tables that do exist.
+ */
+const GUEST_TTL_HOURS = Number(process.env.GUEST_TTL_HOURS || 4);
+
+/* Per-instance, in memory. Railway may run more than one instance, so this
+   bounds abuse per process rather than globally — it is a speed bump on a
+   cheap endpoint, not the tenancy boundary, which is the token's own scope. */
+const mintLog = new Map();
+const MINT_MAX = 30, MINT_WINDOW_MS = 60000;
+function mintAllowed(ip) {
+  const now = Date.now();
+  const hits = (mintLog.get(ip) || []).filter(function (t) { return now - t < MINT_WINDOW_MS; });
+  hits.push(now);
+  mintLog.set(ip, hits);
+  if (mintLog.size > 5000) mintLog.clear();   // bounded: this is a speed bump, not a ledger
+  return hits.length <= MINT_MAX;
+}
+
+/* The outlet's public face: the name on the welcome screen and how many tables
+   to draw on the table gate. Public and credential-free BY DESIGN — it is the
+   same information as the sign over the door and the number painted on the
+   table, and the gate has to render before any table has been chosen, so there
+   is no session to read it with yet.
+   Nothing else is here: no prices, no tickets, no staff, no configuration. */
+r.get('/outlet/:outletId/guest/card', async function (req, res, next) {
+  const outletId = Number(req.params.outletId);
+  if (!outletId) return res.status(400).json({ error: 'outletId required' });
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    const out = await withOutlet({ outletId: outletId, rank: 0 }, function (c) {
+      return c.query('SELECT name, tables FROM chain.outlet WHERE id = $1 AND active',
+        [outletId]).then(function (q) { return q.rows[0] || null; });
+    });
+    if (!out) return res.status(404).json({ error: 'outlet not found' });
+    res.set('cache-control', 'no-store')
+      .json({ outletId: outletId, name: out.name, tables: Number(out.tables) });
+  } catch (e) { next(e); }
+});
+
+r.post('/outlet/:outletId/guest/session', async function (req, res, next) {
+  const outletId = Number(req.params.outletId);
+  const table = String((req.body || {}).table || '').trim();
+  if (!outletId || !table) return res.status(400).json({ error: 'outletId and table required' });
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    /* Read the outlet as the outlet's own role. The table must be one this
+       outlet actually has: tables are numbered 1..n on the outlet record, which
+       is the same source the portal's table gate draws its tiles from. */
+    const out = await withOutlet({ outletId: outletId, rank: 0 }, function (c) {
+      return c.query('SELECT id, name, tables FROM chain.outlet WHERE id = $1 AND active',
+        [outletId]).then(function (q) { return q.rows[0] || null; });
+    });
+    if (!out) return res.status(404).json({ error: 'outlet not found' });
+    const n = Number(table);
+    if (!Number.isInteger(n) || n < 1 || n > Number(out.tables)) {
+      return res.status(404).json({ error: 'no such table' });
+    }
+    const exp = Date.now() + GUEST_TTL_HOURS * 3600e3;
+    res.json({
+      token: sign({ o: outletId, g: true, tbl: String(n), exp: exp }),
+      outletId: outletId, table: String(n), outlet: out.name, expiresAt: exp,
+    });
+  } catch (e) { next(e); }
+});
+
 r.use(session);
 
 r.get('/me', function (req, res) { res.json(req.ctx); });
@@ -77,15 +157,28 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
           + ' AND (effective_to IS NULL OR effective_to >= current_date)'
           + ' ORDER BY effective_from DESC LIMIT 1', [req.ctx.outletId]),
         c.query('SELECT id, name, category, price, off_menu FROM item WHERE active'),
+        /* A GUEST sees ONE table's ticket — its own. The projection used to
+           return every open ticket in the outlet, so a phone at table 4 could
+           read what table 9 had eaten and what they owed. Nothing in the app
+           displayed it, which is exactly the point: the client was the only
+           thing keeping one party's bill off another party's screen, and a
+           client is not a boundary. $2 is NULL for a staff session, which sees
+           the whole floor because that is its job. */
         c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
           + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
           + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL)"
           + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
           + ' FROM ticket t LEFT JOIN ticket_line l'
           + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
-          + " WHERE t.status = 'open' GROUP BY t.id"),
-        c.query('SELECT ticket_id, station, stage, target_mins, fired_at FROM kds_ticket'
-          + " WHERE served_at IS NULL")
+          + " WHERE t.status = 'open' AND ($1::text IS NULL OR t.table_no = $1)"
+          + ' GROUP BY t.id', [req.ctx.guest ? req.ctx.table : null]),
+        /* Stages are joined to the tickets the caller may see, for the same
+           reason: a stage row names a ticket, and a ticket names a table. */
+        c.query('SELECT k.ticket_id, k.station, k.stage, k.target_mins, k.fired_at'
+          + ' FROM kds_ticket k LEFT JOIN ticket t ON t.id = k.ticket_id'
+          + ' WHERE k.served_at IS NULL'
+          + " AND ($1::text IS NULL OR t.table_no = $1)",
+        [req.ctx.guest ? req.ctx.table : null])
       ]);
       return {
         v: 4, at: Date.now(),
@@ -101,7 +194,7 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
 });
 
 // ── a guest posts intent; the till decides. The phone never takes money. ────
-r.post('/outlet/:outletId/guest/order', sameOutlet, async function (req, res, next) {
+r.post('/outlet/:outletId/guest/order', sameOutlet, ownTable, async function (req, res, next) {
   const { table, lines, promo, name, phone, opId } = req.body || {};
   if (!table || !Array.isArray(lines) || !lines.length) {
     return res.status(400).json({ error: 'table and lines required' });
@@ -130,7 +223,7 @@ r.post('/outlet/:outletId/guest/order', sameOutlet, async function (req, res, ne
   } catch (e) { next(e); }
 });
 
-r.post('/outlet/:outletId/guest/request', sameOutlet, async function (req, res, next) {
+r.post('/outlet/:outletId/guest/request', sameOutlet, ownTable, async function (req, res, next) {
   const { table, kind, detail } = req.body || {};
   if (!table || !kind) return res.status(400).json({ error: 'table and kind required' });
   try {
@@ -145,7 +238,7 @@ r.post('/outlet/:outletId/guest/request', sameOutlet, async function (req, res, 
 
 // ── offline replay. Idempotent by construction: the client's own op_id is the
 //    primary key, and a closed sale is never reopened by a late arrival.
-r.post('/outlet/:outletId/sync/push', sameOutlet, atLeast('till'),
+r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('till'),
   async function (req, res, next) {
     const ops = (req.body || {}).ops;
     if (!Array.isArray(ops)) return res.status(400).json({ error: 'ops[] required' });
@@ -172,7 +265,7 @@ r.post('/outlet/:outletId/sync/push', sameOutlet, atLeast('till'),
     } catch (e) { next(e); }
   });
 
-r.get('/outlet/:outletId/sync/pull', sameOutlet, atLeast('till'),
+r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
   async function (req, res, next) {
     const since = new Date(Number(req.query.since || 0) || 0);
     try {
@@ -193,7 +286,7 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, atLeast('till'),
 
 // The one cross-outlet read in the system: aggregates only, rank 5 only,
 // through a read-only role, and stamped in the audit trail as group scope.
-r.get('/estate/day', atLeast('owner'), async function (req, res, next) {
+r.get('/estate/day', staffOnly, atLeast('owner'), async function (req, res, next) {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   try {
     const rows = await withEstate(req.ctx, function (c) {
