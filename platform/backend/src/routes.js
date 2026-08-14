@@ -14,6 +14,7 @@ const drawer = require('./drawer');
 const today = require('./today');
 const purchasing = require('./purchasing');
 const staff = require('./staff');
+const payroll = require('./payroll');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -643,6 +644,105 @@ r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('man
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return staff.unlock(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Payroll & Pension (§2 `payroll`) ─────────────────────────────────────
+ *
+ * ADMIN throughout. Payroll reads what everybody earns and writes what they are
+ * owed; there is no part of it a manager needs and no part that is safe to
+ * spread wider.
+ *
+ * Not on the replay path. A payroll run is done once a fortnight at a desk, and
+ * a queued run replayed hours later against rates that have since changed would
+ * post a liability nobody reviewed. The till is offline-first because a queue of
+ * customers cannot wait; payroll is not that.
+ */
+r.get('/outlet/:outletId/payroll', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query(
+          'SELECT pension_employee_bp, pension_employer_bp FROM chain.outlet WHERE id = $1',
+          [req.ctx.outletId]);
+        return {
+          runs: await payroll.runs(c, req.query.limit),
+          rates: await payroll.rates(c),
+          roster: await staff.roster(c, req.ctx.outletId),
+          pension: {
+            employeeBp: Number((o.rows[0] || {}).pension_employee_bp || 0),
+            employerBp: Number((o.rows[0] || {}).pension_employer_bp || 0),
+          },
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/payroll/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such run' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return payroll.run(c, req.params.id); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/payroll/rates', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.setRate(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Calculating a draft writes nothing to the ledger — it is a read of the clock
+   with the arithmetic done. Posting is the irreversible half, and it is its own
+   endpoint so it cannot happen by accident. */
+r.post('/outlet/:outletId/payroll/draft', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query(
+          'SELECT pension_employee_bp, pension_employer_bp FROM chain.outlet WHERE id = $1',
+          [req.ctx.outletId]);
+        return payroll.draft(c, req.body || {}, req.ctx, o.rows[0] || {});
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/payroll/:id/post', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.post(c, { runId: req.params.id }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/payroll/:id/pay', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.pay(c, { runId: req.params.id, method: (req.body || {}).method }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/payroll/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.discard(c, req.params.id, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }

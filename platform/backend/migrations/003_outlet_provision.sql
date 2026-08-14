@@ -319,6 +319,53 @@ BEGIN
 
   -- ── the ledger. Every consequence lands here, and it must balance. ──────
   EXECUTE format($ddl$
+    -- Payroll (§2 `payroll`). Rates are effective-dated like the tax rate, and
+    -- for the same reason: a rise agreed in March must not restate February.
+    -- See migration 016.
+    CREATE TABLE IF NOT EXISTS %1$I.pay_rate (
+      id        bigserial PRIMARY KEY,
+      staff_id  uuid NOT NULL,
+      kind      text NOT NULL DEFAULT 'hourly' CHECK (kind IN ('hourly','monthly')),
+      amount    numeric(12,2) NOT NULL CHECK (amount >= 0),
+      effective_from date NOT NULL,
+      set_by    uuid, set_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (staff_id, effective_from)
+    );
+    CREATE INDEX IF NOT EXISTS pay_rate_person ON %1$I.pay_rate (staff_id, effective_from DESC);
+
+    CREATE TABLE IF NOT EXISTS %1$I.payroll_run (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      period_from date NOT NULL, period_to date NOT NULL,
+      status    text NOT NULL DEFAULT 'draft'
+                CHECK (status IN ('draft','posted','paid')),
+      gross     numeric(12,2) NOT NULL DEFAULT 0,
+      employee_pension numeric(12,2) NOT NULL DEFAULT 0,
+      employer_pension numeric(12,2) NOT NULL DEFAULT 0,
+      net       numeric(12,2) NOT NULL DEFAULT 0,
+      run_by    uuid, run_at timestamptz NOT NULL DEFAULT now(),
+      posted_by uuid, posted_at timestamptz, paid_at timestamptz, note text,
+      CONSTRAINT payroll_period CHECK (period_to >= period_from)
+    );
+    -- One POSTED run per period: a second would pay everybody twice, and that
+    -- is not a mistake anybody spots from the ledger afterwards.
+    CREATE UNIQUE INDEX IF NOT EXISTS payroll_one_per_period
+      ON %1$I.payroll_run (period_from, period_to) WHERE status <> 'draft';
+
+    CREATE TABLE IF NOT EXISTS %1$I.payroll_line (
+      id        bigserial PRIMARY KEY,
+      run_id    uuid NOT NULL REFERENCES %1$I.payroll_run(id) ON DELETE CASCADE,
+      staff_id  uuid NOT NULL,
+      kind      text NOT NULL,
+      rate      numeric(12,2) NOT NULL,
+      hours     numeric(10,2) NOT NULL DEFAULT 0,
+      shifts    int NOT NULL DEFAULT 0,
+      gross     numeric(12,2) NOT NULL DEFAULT 0,
+      employee_pension numeric(12,2) NOT NULL DEFAULT 0,
+      employer_pension numeric(12,2) NOT NULL DEFAULT 0,
+      net       numeric(12,2) NOT NULL DEFAULT 0,
+      UNIQUE (run_id, staff_id)
+    );
+
     -- The time clock (§2 `staff`). Hours are the OUTLET's cost, so they live
     -- here while the person lives in chain.staff. See migration 015.
     CREATE TABLE IF NOT EXISTS %1$I.shift (
@@ -468,6 +515,8 @@ BEGIN
   -- recipe removes the lines no longer in it, and its history is kept in
   -- chain.audit, which records the whole before and after set on every save.
   EXECUTE format('GRANT DELETE ON %I.recipe_line TO %I', s, r);
+  -- A DRAFT payroll run is deleted when abandoned; a posted one never is.
+  EXECUTE format('GRANT DELETE ON %I.payroll_run, %I.payroll_line TO %I', s, s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
   -- The supplier master is shared across the estate and written at ADMIN rank;
   -- the policy in migration 014 enforces the rank, this grants the right.

@@ -58,6 +58,7 @@ BEGIN
       ('6300','Depreciation','expense','dr'),
       ('6900','FX gain or loss','expense','dr'),
       ('6910','Cash rounding','expense','dr'),
+      ('2310','Pension payable','liability','cr'),
       ('6920','Cash over or short','expense','dr')
     ON CONFLICT (code) DO NOTHING
   $q$, p_schema);
