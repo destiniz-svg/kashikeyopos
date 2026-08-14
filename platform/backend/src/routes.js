@@ -11,6 +11,7 @@ const stock = require('./stock');
 const orders = require('./orders');
 const reports = require('./reports');
 const drawer = require('./drawer');
+const today = require('./today');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -455,6 +456,27 @@ r.get('/outlet/:outletId/drawer', sameOutlet, staffOnly, atLeast('till'),
   async function (req, res, next) {
     try {
       const out = await withOutlet(req.ctx, function (c) { return drawer.current(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Today (§2 `today`) ────────────────────────────────────────────────────
+ *
+ * The manager's morning list. Manager rank, matching the rail. Margin is
+ * measured against the price NET of tax, so it needs today's rate — read here
+ * rather than assumed, because an outlet that is not GST-registered has a rate
+ * of zero and measuring its margin against 8% would invent a loss.
+ */
+r.get('/outlet/:outletId/today', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return today.waiting(c, date, await todayRate(c, req.ctx.outletId));
+      });
       res.set('cache-control', 'no-store').json(out);
     } catch (e) { next(e); }
   });

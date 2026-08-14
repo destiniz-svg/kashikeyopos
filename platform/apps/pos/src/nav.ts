@@ -100,7 +100,10 @@ export function navFor(rank: number): NavGroup[] {
  *  the counter. It falls back to the first visible item only if the preferred
  *  home is not available to that rank, so a new rank can never land nowhere. */
 export function landingFor(rank: number): string {
-  const prefer = rank >= 5 ? 'owner' : rank <= 1 ? 'kds' : 'pos';
+  /* A manager's shift starts with what is waiting, not with the till — that is
+     what §2 means by "the manager's morning screen". A cashier and a kitchen
+     hand land on the screen they work; an owner lands on the estate. */
+  const prefer = rank >= 5 ? 'owner' : rank >= 3 ? 'today' : rank <= 1 ? 'kds' : 'pos';
   const visible = navFor(rank).flatMap((g) => g.items);
   return visible.find((i) => i.id === prefer)?.id ?? visible[0]?.id ?? 'start';
 }
