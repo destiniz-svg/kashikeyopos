@@ -8,6 +8,7 @@ const kitchen = require('./kitchen');
 const menu = require('./menu');
 const recipes = require('./recipes');
 const stock = require('./stock');
+const orders = require('./orders');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -398,6 +399,45 @@ r.get('/outlet/:outletId/inventory/:id/ledger', sameOutlet, staffOnly, atLeast('
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return stock.ledger(c, req.params.id, Number(req.query.limit) || 0);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Orders & Tickets (§2 `orders`) ────────────────────────────────────────
+ *
+ * TILL rank: a cashier must be able to find the receipt they handed over a
+ * minute ago. What a cashier may NOT see is what the food cost — orders.js
+ * strips cost, COGS and the inventory legs of the journal below manager rank,
+ * and the audit trail is manager-only because that is what the RLS policy on
+ * chain.audit already says.
+ *
+ * Read-only. Voiding a sale is a reversing journal and a stock return, which is
+ * its own operation on the replay path with its own rank — not an edit made
+ * from a history screen.
+ */
+r.get('/outlet/:outletId/orders', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return orders.day(c, { date, limit: req.query.limit, offset: req.query.offset });
+      });
+      res.set('cache-control', 'no-store').json(orders.redactDay(out, req.ctx.rank));
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/orders/:saleId', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.saleId))) {
+      return res.status(404).json({ error: 'no such sale' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return orders.receipt(c, req.params.saleId, req.ctx.rank);
       });
       res.set('cache-control', 'no-store').json(out);
     } catch (e) { next(e); }

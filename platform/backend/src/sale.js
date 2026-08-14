@@ -180,7 +180,7 @@ async function settle(c, p, ctx, outlet) {
   // Stock moves at the moment of sale, exploded through the recipe.
   await moveStock(c, saleId, billLines, ctx);
 
-  await postSaleJournal(c, saleId, b, cogs, p, ctx, tax);
+  await postSaleJournal(c, saleId, sale.rows[0].receipt_no, b, cogs, p, ctx);
 
   if (p.ticketId) {
     // A closed ticket is never reopened by a late replay: the guard is in the
@@ -250,7 +250,7 @@ async function moveStock(c, saleId, lines, ctx) {
  * Tips credit 2120 and never touch income — a tip is the team's money passing
  * through the till, not the restaurant's revenue.
  */
-async function postSaleJournal(c, saleId, b, cogs, p, ctx, tax) {
+async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
   const lines = [];
   const dr = (account, laari) => { if (laari) lines.push({ account, dr: laari, cr: 0 }); };
   const cr = (account, laari) => { if (laari) lines.push({ account, dr: 0, cr: laari }); };
@@ -280,7 +280,12 @@ async function postSaleJournal(c, saleId, b, cogs, p, ctx, tax) {
   const h = await c.query(
     'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
     + " VALUES ($1,$2,$3,'sale',$4,$5) RETURNING id",
-    [no.rows[0].no, p.businessDate, 'Sale ' + saleId, saleId, ctx.actor]);
+    /* The memo is what somebody reads in the ledger, so it names the RECEIPT —
+       the number printed on the document the guest was handed and the one the
+       drawer count and any query will quote. `source_id` still carries the
+       sale's uuid, which is what a join needs; a uuid in the memo is a
+       reference nobody in the building can use. */
+    [no.rows[0].no, p.businessDate, 'Sale ' + receiptNo, saleId, ctx.actor]);
 
   for (const l of lines) {
     await c.query(

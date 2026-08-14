@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": ["backend", "packages/*", "apps/*"],
   "scripts": {
+    "lint": "npm -w @kashikeyo/pos run typecheck",
     "migrate": "npm -w backend run migrate",
     "leak-test": "npm -w backend run leak-test --",
     "test:unit": "node --test packages/money/*.test.js",
