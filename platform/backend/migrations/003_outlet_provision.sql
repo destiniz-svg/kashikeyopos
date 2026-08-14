@@ -174,7 +174,10 @@ BEGIN
       price    numeric(12,2) NOT NULL,
       yield_qty numeric(10,3) NOT NULL DEFAULT 1,
       active   boolean NOT NULL DEFAULT true,
-      off_menu boolean NOT NULL DEFAULT false
+      off_menu boolean NOT NULL DEFAULT false,
+      -- Which station cooks it (chain.station). NULL = not routed yet; the KDS
+      -- shows those on the first station rather than dropping the order.
+      station  text
     );
 
     CREATE TABLE IF NOT EXISTS %1$I.recipe_line (
@@ -394,6 +397,10 @@ BEGIN
       result    jsonb
     );
     CREATE INDEX IF NOT EXISTS op_log_applied ON %1$I.op_log(applied_at DESC);
+    -- The KDS reads live tickets every few seconds all service; without this it
+    -- is a seq scan of every ticket the outlet has ever fired.
+    CREATE INDEX IF NOT EXISTS kds_live ON %1$I.kds_ticket (stage, fired_at)
+      WHERE served_at IS NULL;
   $ddl$, s);
 
   -- Grants: data rights on the outlet's own tables. No DDL, no DELETE on the
@@ -403,6 +410,15 @@ BEGIN
   EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', s, r);
   EXECUTE format('REVOKE DELETE ON %I.sale, %I.sale_line, %I.payment, %I.journal, %I.journal_line, %I.op_log FROM %I', s, s, s, s, s, s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
+  -- Kitchen stations: readable always, writable at Manager rank through the
+  -- station_write policy. The grant lives HERE and not only in the migration
+  -- that added the table, or an outlet provisioned after that migration is born
+  -- without it — which is exactly how this was found.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.station TO %I', r);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION chain.pin_candidates(int,text),'
+    || ' chain.note_pin_attempt(int,uuid,boolean,int,int),'
+    || ' chain.open_session(uuid,int,uuid,int,int),'
+    || ' chain.log_signin(int,uuid,boolean) TO %I', r);
   -- SELECT so the outlet can read its OWN trail (the audit_read policy caps
   -- that at rank >= 3 and at this outlet); INSERT to append to it. No UPDATE,
   -- no DELETE, ever — append-only is the absence of the privilege.

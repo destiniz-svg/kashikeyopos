@@ -192,4 +192,40 @@ function priceIt(ctx, basket) {
   });
 }
 
-module.exports = { BASE, startServer, stopServer, bootOutlet, teardown, req, post, push, q, uuid, priceIt };
+/** Run SQL as the OWNER — for the handful of setup steps that are a Manager's
+ *  job through the app but have no endpoint yet (configuring stations). Kept
+ *  distinct from q() so a test can never accidentally assert an outlet-role
+ *  permission using owner privileges. */
+async function asOwner(ctx, sql, params) {
+  const c = ownerClient();
+  await c.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query("SELECT set_config('app.outlet_id',$1,true),"
+      + " set_config('app.user_rank','5',true), set_config('app.scope','outlet',true)",
+      [String(ctx.outletId)]);
+    await c.query('SET LOCAL search_path = ' + ctx.schema + ', chain, public');
+    const out = await c.query(sql, params || []);
+    await c.query('COMMIT');
+    return out;
+  } finally { await c.end().catch(() => {}); }
+}
+
+/** Add a member of staff at a rank, and sign them in. */
+async function addStaff(ctx, name, rank) {
+  const { hashPin, pinLookup } = require('../src/secrets');
+  const pin = String(2000 + Math.floor(Math.random() * 7000));
+  const h = hashPin(pin);
+  const c = ownerClient();
+  await c.connect();
+  try {
+    await c.query('INSERT INTO chain.staff (name, rank, outlet_id, pin_hash, pin_salt, pin_lookup)'
+      + ' VALUES ($1,$2,$3,$4,$5,$6)',
+      [name, rank, ctx.outletId, h.hash, h.salt, pinLookup(ctx.outletId, pin)]);
+  } finally { await c.end().catch(() => {}); }
+  const r = await post('/api/auth/pin', { outletId: ctx.outletId, pin });
+  if (r.status !== 200) throw new Error('staff sign-in failed: ' + JSON.stringify(r.json));
+  return { token: r.json.token, rank: r.json.rank, name, pin };
+}
+
+module.exports = { BASE, startServer, stopServer, bootOutlet, teardown, req, post, push, q, uuid, priceIt, asOwner, addStaff };

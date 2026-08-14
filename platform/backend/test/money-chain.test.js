@@ -220,7 +220,7 @@ describe('the money chain', () => {
         lines: [{ account: '1000', dr: 1000 }, { account: '4000', cr: 1000 }],
       },
     }]);
-    assert.match(r.json.results[0].error, /manager rank/i);
+    assert.match(r.json.results[0].error, /journal needs rank 3/i);
   });
 
   test('two terminals selling at once never mint the same receipt number', async () => {

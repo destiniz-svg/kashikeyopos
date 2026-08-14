@@ -4,6 +4,7 @@ const { withOutlet, withEstate } = require('./db');
 const { sign, pinMatches, pinLookup } = require('./secrets');
 const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
 const { settle } = require('./sale');
+const kitchen = require('./kitchen');
 
 const r = express.Router();
 const LOCK_TRIES = 5, LOCK_MINS = 15;
@@ -156,7 +157,7 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
           + ' AND effective_from <= current_date'
           + ' AND (effective_to IS NULL OR effective_to >= current_date)'
           + ' ORDER BY effective_from DESC LIMIT 1', [req.ctx.outletId]),
-        c.query('SELECT id, name, category, price, off_menu FROM item WHERE active'),
+        c.query('SELECT id, name, category, price, off_menu, station FROM item WHERE active'),
         /* A GUEST sees ONE table's ticket — its own. The projection used to
            return every open ticket in the outlet, so a phone at table 4 could
            read what table 9 had eaten and what they owed. Nothing in the app
@@ -164,29 +165,45 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
            thing keeping one party's bill off another party's screen, and a
            client is not a boundary. $2 is NULL for a staff session, which sees
            the whole floor because that is its job. */
+        /* `station` rides on each LINE, joined from the item master. The KDS
+           draws a column per station and must show that station only what it
+           cooks — without this the grill card listed the bar's drinks and the
+           all-day strip counted every dish once per station the ticket
+           touched, so a table ordering a burger and a cola read as two of
+           each. A line whose item has no station falls to the pass, matching
+           what kitchen.js did when it fired the round. */
         c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
           + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
-          + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL)"
+          + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
+          + "   'station', i.station)"
           + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
           + ' FROM ticket t LEFT JOIN ticket_line l'
           + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
+          + ' LEFT JOIN item i ON i.id = l.item_id'
           + " WHERE t.status = 'open' AND ($1::text IS NULL OR t.table_no = $1)"
           + ' GROUP BY t.id', [req.ctx.guest ? req.ctx.table : null]),
         /* Stages are joined to the tickets the caller may see, for the same
            reason: a stage row names a ticket, and a ticket names a table. */
-        c.query('SELECT k.ticket_id, k.station, k.stage, k.target_mins, k.fired_at'
+        c.query('SELECT k.id, k.ticket_id, k.station, k.stage, k.target_mins, k.fired_at'
           + ' FROM kds_ticket k LEFT JOIN ticket t ON t.id = k.ticket_id'
           + ' WHERE k.served_at IS NULL'
           + " AND ($1::text IS NULL OR t.table_no = $1)",
         [req.ctx.guest ? req.ctx.table : null])
       ]);
+      /* Stations ride on the snapshot so the KDS can draw its columns and
+         colour its cards against each station's OWN target, without a second
+         round trip on a screen that lives in a hot kitchen on poor wifi. */
+      const stations = req.ctx.guest ? { rows: [] }
+        : await c.query('SELECT name, target_mins, sort FROM chain.station'
+          + ' WHERE outlet_id = $1 AND active ORDER BY sort, name', [req.ctx.outletId]);
       return {
-        v: 4, at: Date.now(),
+        v: 5, at: Date.now(),
         outlet: outlet.rows[0] || null,
         tax: tax.rows[0] || null,
         items: items.rows,
         tickets: tickets.rows,
-        stages: stages.rows
+        stages: stages.rows,
+        stations: stations.rows
       };
     });
     res.set('cache-control', 'no-store').json(data);
@@ -238,7 +255,7 @@ r.post('/outlet/:outletId/guest/request', sameOutlet, ownTable, async function (
 
 // ── offline replay. Idempotent by construction: the client's own op_id is the
 //    primary key, and a closed sale is never reopened by a late arrival.
-r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('till'),
+r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
   async function (req, res, next) {
     const ops = (req.body || {}).ops;
     if (!Array.isArray(ops)) return res.status(400).json({ error: 'ops[] required' });
@@ -298,7 +315,28 @@ r.get('/estate/day', staffOnly, atLeast('owner'), async function (req, res, next
 });
 
 // ── apply one replayed operation ────────────────────────────────────────────
+/* The rank each operation needs, BY OPERATION rather than by endpoint.
+ *
+ * /sync/push is one pipe carrying very different acts, and gating the pipe was
+ * wrong in both directions: at till rank a kitchen hand could not advance their
+ * own pass (the KDS is rank 1 precisely so it needs no session that can sell),
+ * and anything that got through the pipe could post a journal. A transport is
+ * not an authorisation model. */
+const OP_RANK = {
+  kds_advance: 1,          // the pass — the lowest rank, deliberately
+  ticket_send: 2,          // firing the kitchen moves no money
+  guest_order_accept: 2,
+  sale: 2,                 // taking money is the till's job
+  stock_count: 3,          // a count writes on-hand; that is a manager's act
+  journal: 3,              // a hand-posted journal, with its own audit entry
+};
+
 async function apply(c, op, ctx) {
+  const need = OP_RANK[op.kind];
+  if (need === undefined) throw new Error('unknown op kind: ' + op.kind);
+  if ((ctx.rank || 0) < need) {
+    throw Object.assign(new Error(op.kind + ' needs rank ' + need), { status: 403 });
+  }
   switch (op.kind) {
     case 'sale': {
       /* Everything financial is derived server-side — see src/sale.js for why
@@ -313,14 +351,13 @@ async function apply(c, op, ctx) {
       if (!outlet.rows.length) throw new Error('outlet not found');
       return await settle(c, op.payload || {}, ctx, outlet.rows[0]);
     }
+    case 'ticket_send':
+      return await kitchen.sendRound(c, op.payload || {}, ctx);
+
+    case 'kds_advance':
+      return await kitchen.advance(c, op.payload || {}, ctx);
+
     case 'journal':
-      /* A hand-posted journal is a Manager-and-above act with its own audit
-         entry, not something a till replays. Rank is checked here as well as on
-         the route because /sync/push admits everything at till rank and the
-         ops inside it are not all the same weight. */
-      if ((ctx.rank || 0) < 3) {
-        throw Object.assign(new Error('a manual journal needs manager rank'), { status: 403 });
-      }
       return { journalId: await postJournal(c, op.payload, ctx, op.payload.source || 'manual', null) };
     case 'stock_count': {
       const p = op.payload || {};

@@ -34,7 +34,7 @@ export function NotBuilt({ id, groups }: { id: string; groups: NavGroup[] }) {
           that looked finished would be worse than this sentence.
         </div>
         <div style={{ marginTop: 12, fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
-          Built so far: POS Floor, payment, and the offline outbox behind them.
+          Built so far: POS Floor, payment, the Kitchen Display, and the offline outbox behind them.
         </div>
       </div>
     </div>

@@ -34,6 +34,12 @@ export function Floor({ snap, now, onQueued }: Props) {
   const [q, setQ] = useState('');
   const [paying, setPaying] = useState(false);
   const [flash, setFlash] = useState('');
+  /* §3.3's two foot actions are Send and Pay, and they are different things. A
+     round goes to the kitchen the moment it is ordered; the bill is settled
+     when the guest leaves. `sentIds` remembers what has already been fired so
+     a second Send only carries what was added since — not the whole ticket
+     again, which would cook everything twice. */
+  const [sentIds, setSentIds] = useState<Record<string, number>>({});
 
   const items = snap?.items ?? [];
   const outlet = snap?.outlet ?? null;
@@ -98,6 +104,29 @@ export function Floor({ snap, now, onQueued }: Props) {
   const total = goods + service;
   const tax = Math.round(total * (taxRate / 100) / (1 + taxRate / 100));
 
+  /* Fire the unsent part of the ticket. Queued like everything else, so a
+     server on a dead connection still gets the food to the kitchen the moment
+     the network returns — and the kitchen never waits on the card machine. */
+  const unsent = lines
+    .map((l) => ({ ...l, qty: l.qty - (sentIds[l.itemId] ?? 0) }))
+    .filter((l) => l.qty > 0);
+
+  const send = async () => {
+    if (!unsent.length) return;
+    await outbox.enqueue('ticket_send', {
+      table,
+      covers: openByTable.get(table)?.covers ?? 1,
+      channel: table === 'Takeaway' ? 'takeaway' : table === 'Delivery' ? 'delivery' : 'dine_in',
+      lines: unsent.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+    });
+    const next = { ...sentIds };
+    for (const l of lines) next[l.itemId] = l.qty;
+    setSentIds(next);
+    setFlash(unsent.reduce((a, l) => a + l.qty, 0) + ' to the kitchen');
+    setTimeout(() => setFlash(''), 2600);
+    await onQueued();
+  };
+
   const settled = async (payments: { method: string; amount: number }[]) => {
     /* One `sale` operation, queued locally. It carries what only the till knows
        — which items, how many, which table, which tender — and nothing about
@@ -113,6 +142,7 @@ export function Floor({ snap, now, onQueued }: Props) {
     });
     setPaying(false);
     setLines([]);
+    setSentIds({});
     setFlash('Sale queued — ' + money(total));
     setTimeout(() => setFlash(''), 2600);
     await onQueued();
@@ -121,7 +151,7 @@ export function Floor({ snap, now, onQueued }: Props) {
   const TILE = (label: string, busy: boolean, key: string) => (
     <button
       key={key}
-      onClick={() => setTable(label)}
+      onClick={() => { setTable(label); setLines([]); setSentIds({}); }}
       style={{
         padding: '10px 9px', borderRadius: 9, minHeight: 62, textAlign: 'left',
         background: table === label ? 'var(--bg-3)' : busy ? 'var(--amber-dim)' : 'var(--bg-1)',
@@ -282,16 +312,30 @@ export function Floor({ snap, now, onQueued }: Props) {
             </div>
           )}
 
-          <button
-            onClick={() => setPaying(true)}
-            disabled={!lines.length}
-            style={{
-              marginTop: 11, width: '100%', minHeight: 44, borderRadius: 9,
-              background: lines.length ? 'var(--amber)' : 'var(--bg-2)',
-              color: lines.length ? 'var(--on-amber)' : 'var(--text-faint)',
-              fontSize: 13.5, fontWeight: 700, textAlign: 'center',
-            }}
-          >Pay</button>
+          {/* §3.3: "Then Send (to kitchen) and Pay." */}
+          <div style={{ marginTop: 11, display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => void send()}
+              disabled={!unsent.length}
+              style={{
+                flex: 1, minHeight: 44, borderRadius: 9,
+                background: unsent.length ? 'var(--bg-3)' : 'var(--bg-2)',
+                border: '1px solid ' + (unsent.length ? 'var(--amber-line)' : 'var(--line)'),
+                color: unsent.length ? 'var(--amber-bright)' : 'var(--text-faint)',
+                fontSize: 13.5, fontWeight: 700, textAlign: 'center',
+              }}
+            >{unsent.length ? 'Send ' + unsent.reduce((a, l) => a + l.qty, 0) : 'Sent'}</button>
+            <button
+              onClick={() => setPaying(true)}
+              disabled={!lines.length}
+              style={{
+                flex: 1, minHeight: 44, borderRadius: 9,
+                background: lines.length ? 'var(--amber)' : 'var(--bg-2)',
+                color: lines.length ? 'var(--on-amber)' : 'var(--text-faint)',
+                fontSize: 13.5, fontWeight: 700, textAlign: 'center',
+              }}
+            >Pay</button>
+          </div>
         </div>
       </section>
 
