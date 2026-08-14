@@ -145,13 +145,26 @@ async function bootOutlet() {
   /* A menu and a pantry. Real rows through the real path — the suite's own
      fixtures, in a throwaway outlet, which is what 10-NO-DEMO-DATA.md permits
      ("Seed data may exist ONLY for development/testing environments"). */
+  /* Opening stock is seeded WITH its matching ledger rows, not by setting
+     on_hand directly. `ingredient.on_hand` is a cache of Σ stock_move.qty, and
+     a fixture that sets one without the other creates a state the system could
+     never reach — every test then runs against a database that is already
+     inconsistent, and the invariant tests cannot tell a fixture flaw from a
+     product bug. */
   const openingStock = { BEEF: 10000, BUN: 500, SYRUP: 20000 };
+  const openingCost = { BEEF: 0.0850, BUN: 4.5000, SYRUP: 0.0120 };
   await owner.query('INSERT INTO ' + s + '.ingredient (id, name, unit, on_hand, avg_cost)'
-    + " VALUES ('BEEF','Beef mince','g',$1,0.0850),"
-    + "        ('BUN','Burger bun','pcs',$2,4.5000),"
-    + "        ('SYRUP','Cola syrup','ml',$3,0.0120)"
+    + " VALUES ('BEEF','Beef mince','g',$1,$4),"
+    + "        ('BUN','Burger bun','pcs',$2,$5),"
+    + "        ('SYRUP','Cola syrup','ml',$3,$6)"
     + ' ON CONFLICT (id) DO NOTHING',
-  [openingStock.BEEF, openingStock.BUN, openingStock.SYRUP]);
+  [openingStock.BEEF, openingStock.BUN, openingStock.SYRUP,
+    openingCost.BEEF, openingCost.BUN, openingCost.SYRUP]);
+  for (const [id, qty] of Object.entries(openingStock)) {
+    await owner.query('INSERT INTO ' + s + '.stock_move'
+      + " (ingredient_id, qty, unit_cost, value, reason) VALUES ($1,$2,$3,$4,'opening')",
+    [id, qty, openingCost[id], (qty * openingCost[id]).toFixed(2)]);
+  }
 
   const menu = { BURGER: 8500, COLA: 2500 };     // laari, GST-inclusive
   await owner.query('INSERT INTO ' + s + '.item (id, name, category, price)'

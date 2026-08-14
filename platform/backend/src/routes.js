@@ -7,6 +7,7 @@ const { settle } = require('./sale');
 const kitchen = require('./kitchen');
 const menu = require('./menu');
 const recipes = require('./recipes');
+const stock = require('./stock');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -379,6 +380,29 @@ r.put('/outlet/:outletId/recipes/:itemId', sameOutlet, staffOnly, atLeast('manag
     } catch (e) { next(e); }
   });
 
+/* ── Inventory and the stock ledger (§2 `inventory`, `ledger`) ─────────────
+ * Reads at manager rank. WRITES go through the replay path below, so a stock
+ * count taken on a tablet in a walk-in freezer with no signal is queued and
+ * replayed exactly once, like every other movement of value in the system.
+ */
+r.get('/outlet/:outletId/inventory', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return stock.inventory(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/inventory/:id/ledger', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return stock.ledger(c, req.params.id, Number(req.query.limit) || 0);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
 // ── offline replay. Idempotent by construction: the client's own op_id is the
 //    primary key, and a closed sale is never reopened by a late arrival.
 r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
@@ -453,6 +477,8 @@ const OP_RANK = {
   ticket_send: 2,          // firing the kitchen moves no money
   guest_order_accept: 2,
   sale: 2,                 // taking money is the till's job
+  stock_receive: 3,        // receiving stock creates value in the accounts
+  stock_waste: 3,          // and wastage destroys it
   stock_count: 3,          // a count writes on-hand; that is a manager's act
   journal: 3,              // a hand-posted journal, with its own audit entry
 };
@@ -483,21 +509,17 @@ async function apply(c, op, ctx) {
     case 'kds_advance':
       return await kitchen.advance(c, op.payload || {}, ctx);
 
+    case 'stock_receive':
+      return await stock.receive(c, op.payload || {}, ctx);
+
+    case 'stock_waste':
+      return await stock.waste(c, op.payload || {}, ctx);
+
+    case 'stock_count':
+      return await stock.count(c, op.payload || {}, ctx);
+
     case 'journal':
       return { journalId: await postJournal(c, op.payload, ctx, op.payload.source || 'manual', null) };
-    case 'stock_count': {
-      const p = op.payload || {};
-      const h = await c.query('INSERT INTO stock_count (by_staff, categories, variance_value)'
-        + ' VALUES ($1,$2,$3) RETURNING id', [ctx.actor, p.categories || [], p.varianceValue || 0]);
-      for (const l of (p.lines || [])) {
-        await c.query('INSERT INTO count_line (count_id, ingredient_id, expected,'
-          + ' counted, variance, value) VALUES ($1,$2,$3,$4,$5,$6)',
-          [h.rows[0].id, l.ingredientId, l.expected, l.counted, l.variance, l.value]);
-        await c.query('UPDATE ingredient SET on_hand = $2 WHERE id = $1',
-          [l.ingredientId, l.counted]);
-      }
-      return { countId: h.rows[0].id };
-    }
     case 'guest_order_accept': {
       const p = op.payload || {};
       await c.query('UPDATE guest_order SET accepted_at = now(), accepted_by = $2,'

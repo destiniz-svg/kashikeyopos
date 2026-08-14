@@ -160,16 +160,17 @@ describe('the money chain', () => {
       assert.ok(Number(row.qty) < 0, 'a sale consumes stock, so the move is negative');
     }
 
-    // on_hand is a cache of the ledger: they must agree.
+    /* on_hand is a cache of Σ stock_move.qty — including the opening move the
+       harness now writes, so opening stock is IN the sum rather than added on
+       top of it. Adding it again would double-count, and the assertion would
+       then only pass while the fixture and the product were wrong together. */
     const drift = await H.q(ctx,
       'SELECT i.id, i.on_hand, coalesce(sum(m.qty),0) AS moved'
       + ' FROM ingredient i LEFT JOIN stock_move m ON m.ingredient_id = i.id'
       + ' GROUP BY i.id, i.on_hand');
     for (const row of drift.rows) {
-      const opening = ctx.openingStock[row.id] || 0;
-      assert.equal(Number(row.on_hand).toFixed(4),
-        (opening + Number(row.moved)).toFixed(4),
-        'on_hand for ' + row.id + ' does not equal opening + Σ moves');
+      assert.equal(Number(row.on_hand).toFixed(4), Number(row.moved).toFixed(4),
+        'on_hand for ' + row.id + ' does not equal the sum of its moves');
     }
 
     const cogs = await H.q(ctx, 'SELECT sum(cogs) AS c FROM sale');
