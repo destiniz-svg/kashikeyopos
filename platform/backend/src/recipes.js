@@ -24,14 +24,14 @@ const UNITS = ['g', 'kg', 'ml', 'l', 'each', 'portion'];
 
 async function listIngredients(c) {
   const q = await c.query(
-    'SELECT i.id, i.name, i.unit, i.on_hand, i.avg_cost, i.par, i.allergens,'
+    'SELECT i.id, i.name, i.unit, i.on_hand, i.avg_cost, i.par, i.allergens, i.category,'
     + ' (SELECT count(*)::int FROM recipe_line r WHERE r.ingredient_id = i.id) AS used_in'
     + ' FROM ingredient i ORDER BY i.name');
   return q.rows.map((r) => ({
     id: r.id, name: r.name, unit: r.unit,
     onHand: Number(r.on_hand), avgCost: Number(r.avg_cost),
     par: r.par === null ? null : Number(r.par),
-    allergens: r.allergens || [], usedIn: r.used_in,
+    allergens: r.allergens || [], category: r.category || null, usedIn: r.used_in,
   }));
 }
 
@@ -60,6 +60,12 @@ function cleanIngredient(body) {
   }
   if (body.par !== undefined) {
     out.par = body.par === null ? null : Math.max(0, Number(body.par) || 0);
+  }
+  if (body.category !== undefined) {
+    // Trimmed but not normalised into a vocabulary: "Walk-in" and "walk in"
+    // staying distinct is the kitchen's problem to tidy, not ours to guess at.
+    const v = String(body.category || '').trim().slice(0, 60);
+    out.category = v || null;
   }
   if (body.allergens !== undefined) {
     out.allergens = Array.isArray(body.allergens)

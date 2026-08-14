@@ -164,7 +164,10 @@ BEGIN
       avg_cost numeric(12,4) NOT NULL DEFAULT 0,
       par      numeric(14,4),
       allergens text[] NOT NULL DEFAULT '{}',
-      supplier_id uuid
+      supplier_id uuid,
+      -- Where it lives, in the kitchen's own words. Drives the count sheets
+      -- (§2 `counts`, "count sheets by category"). See migration 013.
+      category text
     );
 
     CREATE TABLE IF NOT EXISTS %1$I.item (
@@ -210,8 +213,21 @@ BEGIN
       by_staff uuid NOT NULL,
       categories text[] NOT NULL DEFAULT '{}',
       variance_value numeric(12,2) NOT NULL DEFAULT 0,
-      approved_by uuid, approved_at timestamptz
+      approved_by uuid, approved_at timestamptz,
+      -- A count above the outlet's approval threshold waits for a rank above
+      -- the counter's before it moves any stock. See migration 011 for why
+      -- this operation in particular is the one that needs a second signature.
+      status   text NOT NULL DEFAULT 'posted'
+        CHECK (status IN ('pending','posted','rejected')),
+      note     text,
+      rejected_reason text,
+      threshold numeric(12,2) NOT NULL DEFAULT 0,
+      CONSTRAINT count_approval_shape
+        CHECK (status <> 'pending' OR (approved_by IS NULL AND approved_at IS NULL))
     );
+    CREATE INDEX IF NOT EXISTS count_pending ON %1$I.stock_count (status, at)
+      WHERE status = 'pending';
+
     CREATE TABLE IF NOT EXISTS %1$I.count_line (
       count_id uuid NOT NULL REFERENCES %1$I.stock_count(id) ON DELETE CASCADE,
       ingredient_id text NOT NULL,
@@ -219,6 +235,8 @@ BEGIN
       counted  numeric(14,4) NOT NULL,
       variance numeric(14,4) NOT NULL,
       value    numeric(12,2) NOT NULL,
+      -- Valued as at the COUNT, so what is approved is what posts.
+      unit_cost numeric(12,4) NOT NULL DEFAULT 0,
       PRIMARY KEY (count_id, ingredient_id)
     );
   $ddl$, s);

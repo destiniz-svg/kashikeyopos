@@ -555,6 +555,79 @@ r.get('/outlet/:outletId/reports/tax', sameOutlet, staffOnly, atLeast('manager')
     } catch (e) { next(e); }
   });
 
+/* ── Stock Counts (§2 `counts`) and the Stock Ledger (§2 `ledger`) ────────
+ * Reads at manager rank. Counting itself, and approving a count, go through
+ * the replay path with everything else that moves value.
+ */
+r.get('/outlet/:outletId/counts', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query(
+          'SELECT count_approval_laari FROM chain.outlet WHERE id = $1', [req.ctx.outletId]);
+        return {
+          counts: await stock.counts(c, req.query.limit),
+          // The policy in force, so the screen can say what will need approving
+          // BEFORE somebody spends twenty minutes counting a freezer.
+          threshold: Number((o.rows[0] || {}).count_approval_laari || 0) / 100,
+          approveRank: stock.APPROVE_RANK,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* A blank sheet to go and count against. `sheet` before `:countId` in the
+   router, or the literal would be read as a count id. */
+r.get('/outlet/:outletId/counts/sheet', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const cats = req.query.categories
+      ? String(req.query.categories).split(',').map((x) => x.trim()).filter(Boolean)
+      : [];
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await stock.categories(c)),
+          chosen: cats,
+          items: await stock.countSheetFor(c, cats),
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/counts/:countId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.countId))) {
+      return res.status(404).json({ error: 'no such count' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return stock.countSheet(c, req.params.countId);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/ledger', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    for (const d of [req.query.from, req.query.to]) {
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(String(d))) {
+        return res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
+      }
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return stock.movements(c, {
+          ingredientId: req.query.ingredient, reason: req.query.reason,
+          from: req.query.from, to: req.query.to,
+          limit: req.query.limit, offset: req.query.offset,
+        });
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
 // ── offline replay. Idempotent by construction: the client's own op_id is the
 //    primary key, and a closed sale is never reopened by a late arrival.
 r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
@@ -634,6 +707,12 @@ const OP_RANK = {
   stock_receive: 3,        // receiving stock creates value in the accounts
   stock_waste: 3,          // and wastage destroys it
   stock_count: 3,          // a count writes on-hand; that is a manager's act
+  /* Approving somebody else's count is ADMIN. A count is the one operation
+     where a person types a number and the accounts move to meet it, so the
+     signature has to come from above the person who took it — stock.js refuses
+     a self-approval on top of this. */
+  stock_count_approve: 4,
+  stock_count_reject: 4,
   journal: 3,              // a hand-posted journal, with its own audit entry
 };
 
@@ -675,8 +754,20 @@ async function apply(c, op, ctx) {
     case 'stock_waste':
       return await stock.waste(c, op.payload || {}, ctx);
 
-    case 'stock_count':
-      return await stock.count(c, op.payload || {}, ctx);
+    case 'stock_count': {
+      /* The approval threshold is the OUTLET's, read here rather than sent by
+         the client — a tablet replaying a count from three hours ago must be
+         held to the policy in force now, not to the one it remembered. */
+      const o = await c.query(
+        'SELECT count_approval_laari FROM chain.outlet WHERE id = $1', [ctx.outletId]);
+      return await stock.count(c, op.payload || {}, ctx, o.rows[0] || {});
+    }
+
+    case 'stock_count_approve':
+      return await stock.approveCount(c, op.payload || {}, ctx);
+
+    case 'stock_count_reject':
+      return await stock.rejectCount(c, op.payload || {}, ctx);
 
     case 'journal':
       return { journalId: await postJournal(c, op.payload, ctx, op.payload.source || 'manual', null) };

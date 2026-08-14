@@ -27,7 +27,7 @@ interface Costed {
 }
 interface Ingredient {
   id: string; name: string; unit: string; onHand: number; avgCost: number;
-  par: number | null; allergens: string[]; usedIn: number;
+  par: number | null; allergens: string[]; category: string | null; usedIn: number;
 }
 interface RecipeLine {
   id: number; kind: 'ingredient' | 'sub'; ref: string; name: string;
@@ -51,7 +51,7 @@ export function Recipes({ session }: { session: Session }) {
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
   const [busy, setBusy] = useState(false);
-  const [newIng, setNewIng] = useState({ id: '', name: '', unit: 'g', avgCost: '' });
+  const [newIng, setNewIng] = useState({ id: '', name: '', unit: 'g', avgCost: '', category: '' });
   const [addingIng, setAddingIng] = useState(false);
 
   const call = useCallback(async (method: string, path: string, body?: unknown) => {
@@ -116,11 +116,11 @@ export function Recipes({ session }: { session: Session }) {
     setBusy(true); setError('');
     try {
       await call('POST', '/ingredients', {
-        id: newIng.id, name: newIng.name, unit: newIng.unit,
+        id: newIng.id, name: newIng.name, unit: newIng.unit, category: newIng.category,
         avgCost: newIng.avgCost === '' ? 0 : Number(newIng.avgCost),
       });
       say('Added ' + newIng.name);
-      setNewIng({ id: '', name: '', unit: 'g', avgCost: '' });
+      setNewIng({ id: '', name: '', unit: 'g', avgCost: '', category: '' });
       setAddingIng(false);
       await load();
     } catch (e) {
@@ -135,6 +135,16 @@ export function Recipes({ session }: { session: Session }) {
       say('Repriced — every dish using it has recosted');
       await load();
       if (open) await openRecipe(open.itemId);
+    } catch (e) {
+      setError(e instanceof api.ApiError ? e.message : 'Could not save.');
+    } finally { setBusy(false); }
+  };
+
+  const setCategory = async (id: string, category: string) => {
+    setBusy(true); setError('');
+    try {
+      await call('PATCH', '/ingredients/' + encodeURIComponent(id), { category });
+      await load();
     } catch (e) {
       setError(e instanceof api.ApiError ? e.message : 'Could not save.');
     } finally { setBusy(false); }
@@ -238,6 +248,15 @@ export function Recipes({ session }: { session: Session }) {
                       <L label="Cost per unit (MVR)" hint="From an invoice. A priced delivery will maintain this once Purchasing lands.">
                         <input inputMode="decimal" value={newIng.avgCost} onChange={(e) => setNewIng({ ...newIng, avgCost: e.target.value })} style={{ ...inp, fontFamily: MONO }} placeholder="0.0850" />
                       </L>
+                      {/* Where it lives, in the kitchen's own words — this is
+                          what a count sheet is drawn by, so an ingredient with
+                          no category ends up on every sheet. */}
+                      <L label="Where it lives" hint="Freezer, bar, dry store — whatever the kitchen calls it. Count sheets are taken by these.">
+                        <input list="kpos-ing-categories" value={newIng.category} onChange={(e) => setNewIng({ ...newIng, category: e.target.value })} style={inp} placeholder="Freezer" />
+                        <datalist id="kpos-ing-categories">
+                          {Array.from(new Set(ings.map((g) => g.category).filter(Boolean))).map((c) => <option key={c as string} value={c as string} />)}
+                        </datalist>
+                      </L>
                     </div>
                     <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
                       <button type="submit" disabled={busy} style={{ padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
@@ -266,6 +285,8 @@ export function Recipes({ session }: { session: Session }) {
                           </span>
                           <span style={{ display: 'block', marginTop: 3, fontSize: 10.5, color: 'var(--text-faint)' }}>
                             per {g.unit} · {g.onHand} on hand{g.usedIn ? ' · used in ' + g.usedIn + ' recipe' + (g.usedIn === 1 ? '' : 's') : ''}
+                            {' · '}
+                            <CategoryCell value={g.category} known={Array.from(new Set(ings.map((x) => x.category).filter(Boolean))) as string[]} onSave={(v) => void setCategory(g.id, v)} />
                           </span>
                         </span>
                         <CostCell value={g.avgCost} onSave={(v) => void repriceIngredient(g.id, v)} />
@@ -458,6 +479,34 @@ function CostCell({ value, onSave }: { value: number; onSave: (v: string) => voi
     <button onClick={() => setEditing(true)}
       style={{ width: 150, textAlign: 'right', fontSize: 13, fontWeight: 700, fontFamily: MONO, color: value ? 'var(--warn-bright)' : 'var(--text-faint)' }}>
       {value ? value.toFixed(4) : 'set a cost'}
+    </button>
+  );
+}
+
+/* Where an ingredient lives, edited in place. A <datalist> of the categories
+   already in use rather than a fixed vocabulary — the words are the kitchen's,
+   and a dropdown of ours would be one more thing to fight. */
+function CategoryCell({ value, known, onSave }: {
+  value: string | null; known: string[]; onSave: (v: string) => void;
+}) {
+  const [v, setV] = useState(value ?? '');
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { setV(value ?? ''); }, [value]);
+  const commit = () => { setEditing(false); if (v !== (value ?? '')) onSave(v); };
+  return editing ? (
+    <>
+      <input autoFocus list="kpos-ing-cat-inline" value={v}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setV(value ?? ''); setEditing(false); } }}
+        aria-label="Where it lives"
+        style={{ width: 120, height: 24, padding: '0 7px', borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--amber-line)', color: 'var(--text)', fontSize: 10.5 }} />
+      <datalist id="kpos-ing-cat-inline">{known.map((c) => <option key={c} value={c} />)}</datalist>
+    </>
+  ) : (
+    <button onClick={() => setEditing(true)}
+      style={{ fontSize: 10.5, color: value ? 'var(--text-faint)' : 'var(--warn-bright)', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: 2 }}>
+      {value ?? 'no category'}
     </button>
   );
 }

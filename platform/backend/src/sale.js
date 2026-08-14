@@ -215,22 +215,32 @@ async function settle(c, p, ctx, outlet) {
   };
 }
 
-/** Explode the recipe and move stock, signed, with the cost it moved at. */
+/**
+ * Explode the recipe and move stock, signed, with the cost it moved at.
+ *
+ * Goes through stock.move() rather than writing stock_move itself. It used to
+ * have its own INSERT, and the two writers had drifted: this one stored a
+ * POSITIVE value against a NEGATIVE quantity, while every other path stored the
+ * value signed to match. `stock_move.value` therefore meant different things
+ * depending on which code had written the row, so any sum over the column was
+ * meaningless — which is exactly what the Stock Ledger's in/out totals do, and
+ * how this was found. One table, one writer.
+ */
 async function moveStock(c, saleId, lines, ctx) {
+  const stock = require('./stock');
   const need = new Map();   // ingredientId -> qty
   for (const l of lines) await costing.explode(c, l.itemId, Number(l.qty), need);
   for (const [ingredientId, qty] of need) {
     const ing = await c.query(
       'SELECT avg_cost FROM ingredient WHERE id = $1 FOR UPDATE', [ingredientId]);
     if (!ing.rows.length) continue;
-    const unit = Number(ing.rows[0].avg_cost);
-    await c.query(
-      'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason, sale_id,'
-      + " by_staff, device_id) VALUES ($1,$2,$3,$4,'sale',$5,$6,$7)",
-      [ingredientId, -qty, unit, (qty * unit).toFixed(2), saleId, ctx.actor, ctx.deviceId]);
-    // on_hand is a cache of Σ stock_move.qty; the ledger above is the truth.
-    await c.query('UPDATE ingredient SET on_hand = on_hand - $2 WHERE id = $1',
-      [ingredientId, qty]);
+    /* NOT rounded to whole laari. A cost per gram is a fraction of a laari, and
+       rounding it here would inflate every gram-denominated dish — the same
+       trap costing.js carries a comment about. */
+    await stock.move(c, {
+      ingredientId, qty: -qty, unitCostLaari: Number(ing.rows[0].avg_cost) * 100,
+      reason: 'sale', saleId,
+    }, ctx);
   }
 }
 

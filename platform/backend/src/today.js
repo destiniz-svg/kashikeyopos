@@ -171,6 +171,27 @@ async function waiting(c, date, taxRatePct) {
     });
   }
 
+  /* A count sitting unapproved is the sharpest kind of decision waiting: the
+     stock has NOT moved, so inventory is knowingly wrong until somebody signs,
+     and the longer it waits the less anybody remembers about the shelf. */
+  const pendingCounts = await c.query(
+    'SELECT count(*)::int AS n, coalesce(sum(abs(variance_value)),0) AS value,'
+    + ' min(at) AS oldest FROM stock_count'
+    + " WHERE status = 'pending'");
+  if (pendingCounts.rows[0].n > 0) {
+    add({
+      id: 'count-awaiting-approval', severity: 'now', count: pendingCounts.rows[0].n,
+      title: pendingCounts.rows[0].n + ' stock count'
+        + (pendingCounts.rows[0].n === 1 ? '' : 's') + ' waiting to be approved',
+      detail: 'Worth ' + mvr(pendingCounts.rows[0].value).toFixed(2)
+        + ' in variance, taken ' + new Date(pendingCounts.rows[0].oldest).toLocaleDateString('en-GB')
+        + '. Nothing has moved: on-hand still shows the old figure, and every'
+        + ' dish costed from it is being costed against stock the counter says'
+        + ' is not there.',
+      action: 'Review the count', where: { module: 'counts' },
+    });
+  }
+
   const belowPar = await c.query(
     "SELECT count(*)::int AS n, string_agg(name, ', ' ORDER BY name) AS names"
     + ' FROM ingredient WHERE par IS NOT NULL AND on_hand >= 0 AND on_hand < par');
