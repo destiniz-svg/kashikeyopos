@@ -17,6 +17,7 @@ const staff = require('./staff');
 const payroll = require('./payroll');
 const analytics = require('./analytics');
 const opcosts = require('./opcosts');
+const assets = require('./assets');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -715,6 +716,116 @@ r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLea
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return opcosts.stopSchedule(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Equipment & Maintenance (§2 `assets`) ────────────────────────────────
+ *
+ * MANAGER reads the register and closes off a service — a duty manager knows
+ * the aircon was serviced on Tuesday and should not have to find an admin to
+ * say so.
+ *
+ * ADMIN buys, disposes and runs the monthly charge. Capitalising something
+ * decides the shape of the P&L for years, disposing of it takes an asset off
+ * the balance sheet, and depreciation moves the ledger for every asset at once.
+ * None of those is a duty-manager decision.
+ */
+r.get('/outlet/:outletId/assets', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await assets.list(c, { disposed: req.query.disposed === '1' })),
+          canManage: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/assets/:id/history', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such asset' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.history(c, req.params.id);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/assets', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.add(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Idempotent per (asset, period): a month-end run pressed twice charges once. */
+r.post('/outlet/:outletId/assets/depreciate', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.depreciate(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/assets/:id/dispose', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such asset' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.dispose(c, { ...(req.body || {}), id: req.params.id }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/assets/services', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.schedule(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Completing a service can spend money, and when it does it books ONE expense
+   row through opcosts — the same one the Operating Costs screen lists. */
+r.post('/outlet/:outletId/assets/services/:id/done', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such service' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.complete(c, { ...(req.body || {}), id: req.params.id },
+          req.ctx, opcosts);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/assets/services/:id', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such service' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.dropService(c, req.params.id, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }

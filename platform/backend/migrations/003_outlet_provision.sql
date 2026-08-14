@@ -454,6 +454,52 @@ BEGIN
       active    boolean NOT NULL DEFAULT true,
       set_by    uuid, set_at timestamptz NOT NULL DEFAULT now()
     );
+
+    -- The asset register (§2 `assets`). An oven is not an expense: it
+    -- capitalises to 1500 and is charged to 6300 a month at a time. See
+    -- migration 018.
+    CREATE TABLE IF NOT EXISTS %1$I.asset (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      tag       text,
+      name      text NOT NULL,
+      category  text,
+      acquired_on date NOT NULL,
+      cost      numeric(12,2) NOT NULL CHECK (cost > 0),
+      life_months int NOT NULL CHECK (life_months BETWEEN 1 AND 600),
+      residual  numeric(12,2) NOT NULL DEFAULT 0 CHECK (residual >= 0),
+      method    text NOT NULL DEFAULT 'credit'
+                CHECK (method IN ('cash','bank','credit')),
+      supplier_id uuid, serial text, location text, note text,
+      status    text NOT NULL DEFAULT 'active'
+                CHECK (status IN ('active','disposed')),
+      -- The last period depreciated FOR, so month-end run twice charges once.
+      depreciated_months int NOT NULL DEFAULT 0,
+      depreciated_upto text,
+      disposed_on date,
+      proceeds  numeric(12,2),
+      by_staff  uuid,
+      at        timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT residual_below_cost CHECK (residual < cost)
+    );
+    CREATE INDEX IF NOT EXISTS asset_live ON %1$I.asset (status, acquired_on DESC);
+
+    CREATE TABLE IF NOT EXISTS %1$I.asset_service (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      asset_id  uuid NOT NULL REFERENCES %1$I.asset(id),
+      kind      text NOT NULL DEFAULT 'service'
+                CHECK (kind IN ('service','repair','inspection')),
+      every_days int CHECK (every_days IS NULL OR every_days > 0),
+      due_on    date NOT NULL,
+      done_on   date,
+      done_by   uuid,
+      -- The ONE expense row a paid-for service books — the same table the
+      -- Operating Costs screen writes to. One figure, reachable from both ends.
+      expense_id uuid,
+      note      text,
+      at        timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS service_due ON %1$I.asset_service (due_on)
+      WHERE done_on IS NULL;
   $ddl$, s);
 
   -- A journal that does not balance is not allowed to exist. Checked at
@@ -563,6 +609,9 @@ BEGIN
   EXECUTE format('GRANT DELETE ON %I.payroll_run, %I.payroll_line TO %I', s, s, r);
   -- A schedule set up wrongly is deleted; a posted expense never is.
   EXECUTE format('GRANT DELETE ON %I.recurring_cost TO %I', s, r);
+  -- A service booked against the wrong machine is deleted; a capitalised asset
+  -- is disposed of, never deleted.
+  EXECUTE format('GRANT DELETE ON %I.asset_service TO %I', s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
   -- The supplier master is shared across the estate and written at ADMIN rank;
   -- the policy in migration 014 enforces the rank, this grants the right.
