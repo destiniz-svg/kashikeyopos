@@ -205,8 +205,50 @@ async function waiting(c, date, taxRatePct) {
     });
   }
 
-  /* "Unpriced deliveries" in this build's terms: stock that was received but
-     has no cost against it, so every dish using it is costed short. */
+  /* §2 names this one literally: "unpriced deliveries". A GRN received without
+     an invoice raised stock at whatever it was already worth, so until the real
+     price lands every dish using it is costed against a guess — and the supplier
+     is owed a figure nobody has agreed. */
+  const unpricedDeliveries = await c.query(
+    'SELECT count(*)::int AS n, coalesce(sum(total),0) AS value, min(at) AS oldest'
+    + ' FROM delivery WHERE priced = false');
+  if (unpricedDeliveries.rows[0].n > 0) {
+    const days = Math.floor(
+      (Date.now() - new Date(unpricedDeliveries.rows[0].oldest).getTime()) / 86400000);
+    add({
+      id: 'delivery-unpriced', severity: days >= 7 ? 'now' : 'today',
+      count: unpricedDeliveries.rows[0].n,
+      title: unpricedDeliveries.rows[0].n + ' deliver' + (unpricedDeliveries.rows[0].n === 1 ? 'y' : 'ies')
+        + ' received without prices',
+      detail: 'Provisionally worth ' + mvr(unpricedDeliveries.rows[0].value).toFixed(2)
+        + ', the oldest waiting ' + (days === 0 ? 'since today' : days + ' day'
+          + (days === 1 ? '' : 's'))
+        + '. The stock is on the shelf but valued at a guess, so every dish using'
+        + ' it reports a margin nobody has checked.',
+      action: 'Price the delivery', where: { module: 'purchases' },
+    });
+  }
+
+  /* And this one: "overdue suppliers". */
+  const overdue = await c.query(
+    'SELECT count(*)::int AS n, coalesce(sum(amount - paid),0) AS value,'
+    + ' max(current_date - due_date)::int AS worst'
+    + ' FROM vendor_invoice WHERE paid < amount AND due_date < current_date');
+  if (overdue.rows[0].n > 0) {
+    add({
+      id: 'supplier-overdue', severity: 'today', count: overdue.rows[0].n,
+      title: overdue.rows[0].n + ' supplier invoice'
+        + (overdue.rows[0].n === 1 ? ' is' : 's are') + ' past due',
+      detail: mvr(overdue.rows[0].value).toFixed(2) + ' outstanding, the worst '
+        + overdue.rows[0].worst + ' day' + (overdue.rows[0].worst === 1 ? '' : 's')
+        + ' over. A supplier who stops delivering stops the kitchen.',
+      action: 'Open the ageing', where: { module: 'purchases' },
+    });
+  }
+
+  /* An ingredient with no cost at all, which is a different and worse problem
+     than a delivery waiting to be priced: nothing has ever said what it is
+     worth, so every dish containing it reports a margin it is not making. */
   const uncosted = await c.query(
     "SELECT count(*)::int AS n, string_agg(i.name, ', ' ORDER BY i.name) AS names"
     + ' FROM ingredient i WHERE i.avg_cost = 0'

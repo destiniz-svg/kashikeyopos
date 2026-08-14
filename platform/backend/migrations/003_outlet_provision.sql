@@ -271,8 +271,25 @@ BEGIN
       at       timestamptz NOT NULL DEFAULT now(),
       received_by uuid NOT NULL,
       priced   boolean NOT NULL DEFAULT false,
-      total    numeric(12,2) NOT NULL DEFAULT 0
+      total    numeric(12,2) NOT NULL DEFAULT 0,
+      note     text,
+      priced_at timestamptz, priced_by uuid
     );
+    -- What actually arrived, line by line. `unit_price` is NULL until the
+    -- invoice does — a different state from zero, which would be a free
+    -- delivery. See migration 014.
+    CREATE TABLE IF NOT EXISTS %1$I.delivery_line (
+      id      bigserial PRIMARY KEY,
+      delivery_id uuid NOT NULL REFERENCES %1$I.delivery(id) ON DELETE CASCADE,
+      ingredient_id text NOT NULL REFERENCES %1$I.ingredient(id),
+      qty     numeric(14,4) NOT NULL CHECK (qty > 0),
+      unit_price numeric(12,4),
+      provisional_cost numeric(12,4) NOT NULL DEFAULT 0,
+      UNIQUE (delivery_id, ingredient_id)
+    );
+    CREATE INDEX IF NOT EXISTS delivery_unpriced ON %1$I.delivery (at)
+      WHERE priced = false;
+
     CREATE TABLE IF NOT EXISTS %1$I.vendor_invoice (
       id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       supplier_id uuid NOT NULL,
@@ -286,6 +303,8 @@ BEGIN
       approved_by uuid,
       UNIQUE (supplier_id, invoice_no)
     );
+    CREATE INDEX IF NOT EXISTS invoice_due ON %1$I.vendor_invoice (due_date)
+      WHERE paid < amount;
     CREATE TABLE IF NOT EXISTS %1$I.credit_note (
       id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       cn_no   text NOT NULL UNIQUE,
@@ -432,6 +451,9 @@ BEGIN
   -- chain.audit, which records the whole before and after set on every save.
   EXECUTE format('GRANT DELETE ON %I.recipe_line TO %I', s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
+  -- The supplier master is shared across the estate and written at ADMIN rank;
+  -- the policy in migration 014 enforces the rank, this grants the right.
+  EXECUTE format('GRANT INSERT, UPDATE ON chain.supplier TO %I', r);
   -- Kitchen stations: readable always, writable at Manager rank through the
   -- station_write policy. The grant lives HERE and not only in the migration
   -- that added the table, or an outlet provisioned after that migration is born

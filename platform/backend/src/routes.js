@@ -12,6 +12,7 @@ const orders = require('./orders');
 const reports = require('./reports');
 const drawer = require('./drawer');
 const today = require('./today');
+const purchasing = require('./purchasing');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -555,6 +556,81 @@ r.get('/outlet/:outletId/reports/tax', sameOutlet, staffOnly, atLeast('manager')
     } catch (e) { next(e); }
   });
 
+/* ── Vendors (§2 `vendors`) and Purchases / GRN (§2 `purchases`) ──────────
+ *
+ * Reads at manager rank — a chef checking what a supplier charged is doing
+ * their job. Writing the SUPPLIER MASTER is admin: it is shared across the
+ * estate, and it carries payment terms. Receiving and pricing go through the
+ * replay path, because a delivery arrives at a back door with no signal.
+ */
+r.get('/outlet/:outletId/vendors', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return purchasing.suppliers(c); });
+      res.set('cache-control', 'no-store').json({ suppliers: out });
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/vendors/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such supplier' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.supplier(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/vendors', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.createSupplier(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/vendors/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.updateSupplier(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/purchases', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          deliveries: await purchasing.deliveries(c, req.query.limit),
+          ageing: await purchasing.ageing(c),
+          suppliers: await purchasing.suppliers(c),
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/purchases/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such delivery' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.delivery(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
 /* ── Stock Counts (§2 `counts`) and the Stock Ledger (§2 `ledger`) ────────
  * Reads at manager rank. Counting itself, and approving a count, go through
  * the replay path with everything else that moves value.
@@ -713,6 +789,12 @@ const OP_RANK = {
      a self-approval on top of this. */
   stock_count_approve: 4,
   stock_count_reject: 4,
+  /* Receiving is a MANAGER's act — somebody has to be able to take a delivery
+     at 6am. Pricing it moves money between accounts and settles what is owed,
+     so those are admin. */
+  delivery_receive: 3,
+  delivery_price: 4,
+  invoice_pay: 4,
   journal: 3,              // a hand-posted journal, with its own audit entry
 };
 
@@ -762,6 +844,15 @@ async function apply(c, op, ctx) {
         'SELECT count_approval_laari FROM chain.outlet WHERE id = $1', [ctx.outletId]);
       return await stock.count(c, op.payload || {}, ctx, o.rows[0] || {});
     }
+
+    case 'delivery_receive':
+      return await purchasing.receiveDelivery(c, op.payload || {}, ctx);
+
+    case 'delivery_price':
+      return await purchasing.priceDelivery(c, op.payload || {}, ctx);
+
+    case 'invoice_pay':
+      return await purchasing.payInvoice(c, op.payload || {}, ctx);
 
     case 'stock_count_approve':
       return await stock.approveCount(c, op.payload || {}, ctx);

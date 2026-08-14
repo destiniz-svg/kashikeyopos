@@ -81,6 +81,33 @@ async function move(c, { ingredientId, qty, unitCostLaari, reason, saleId }, ctx
  * p = { ingredientId, qty, unitCost (MVR), reason?, date? }
  */
 async function receive(c, p, ctx) {
+  const r = await receiveLine(c, p, ctx);
+  const reason = p.reason === 'opening' ? 'opening' : 'purchase';
+  await postStockJournal(c, {
+    date: p.date || new Date().toISOString().slice(0, 10),
+    memo: (reason === 'opening' ? 'Opening stock — ' : 'Stock received — ') + r.name,
+    dr: '1100', cr: reason === 'opening' ? '3000' : '2000',
+    valueLaari: r.valueLaari, sourceId: r.ingredientId,
+  }, ctx);
+
+  await c.query("SELECT chain.log($1,'ingredient',$2,NULL,$3)",
+    ['stock_' + reason, r.ingredientId,
+      JSON.stringify({ qty: r.qty, unitCost: r.unitCost, newAvgCost: r.avgCost })]);
+
+  return { ingredientId: r.ingredientId, qty: r.qty, avgCost: r.avgCost };
+}
+
+/**
+ * Raise stock and re-average the cost. NO JOURNAL — the caller posts one.
+ *
+ * Split out so a delivery of nine lines posts ONE journal for the document
+ * rather than nine for its lines. An accountant looking at 2000 Accounts
+ * payable should see a delivery, not a shopping list; and a supplier query is
+ * about a GRN, which is one row that has to reconcile to one entry.
+ *
+ * p = { ingredientId, qty, unitCost (MVR), date? }
+ */
+async function receiveLine(c, p, ctx) {
   const id = String(p.ingredientId || '');
   const qty = Number(p.qty);
   if (!(qty > 0)) throw Object.assign(new Error('receive a quantity above zero'), { status: 400 });
@@ -91,7 +118,8 @@ async function receive(c, p, ctx) {
 
   const onHand = Number(ing.rows[0].on_hand);
   const oldCost = Number(ing.rows[0].avg_cost);
-  const price = p.unitCost === undefined ? oldCost : Number(p.unitCost);
+  const price = p.unitCost === undefined || p.unitCost === null
+    ? oldCost : Number(p.unitCost);
   if (!Number.isFinite(price) || price < 0) {
     throw Object.assign(new Error('a cost cannot be negative'), { status: 400 });
   }
@@ -103,28 +131,16 @@ async function receive(c, p, ctx) {
   const newCost = (base + qty) > 0
     ? (base * oldCost + qty * price) / (base + qty)
     : price;
-  await c.query('UPDATE ingredient SET avg_cost = $2 WHERE id = $1',
-    [id, Math.round(newCost * 10000) / 10000]);
+  const avgCost = Math.round(newCost * 10000) / 10000;
+  await c.query('UPDATE ingredient SET avg_cost = $2 WHERE id = $1', [id, avgCost]);
 
   const reason = p.reason === 'opening' ? 'opening' : 'purchase';
-  /* NOT Math.round(price * 100). A cost per GRAM is a fraction of a laari —
-     tuna at MVR 0.0850/g is 8.5 laari, and rounding that to 9 overstates every
-     gram-denominated movement by six per cent. move() rounds the VALUE once,
-     at the end, which is the only place a rounding belongs. */
   await move(c, { ingredientId: id, qty, unitCostLaari: price * 100, reason }, ctx);
 
-  const valueLaari = Math.round(qty * price * 100);
-  const date = p.date || new Date().toISOString().slice(0, 10);
-  await postStockJournal(c, {
-    date, memo: (reason === 'opening' ? 'Opening stock — ' : 'Stock received — ') + ing.rows[0].name,
-    dr: '1100', cr: reason === 'opening' ? '3000' : '2000',
-    valueLaari, sourceId: id,
-  }, ctx);
-
-  await c.query("SELECT chain.log($1,'ingredient',$2,NULL,$3)",
-    ['stock_' + reason, id, JSON.stringify({ qty, unitCost: price, newAvgCost: newCost })]);
-
-  return { ingredientId: id, qty, avgCost: Math.round(newCost * 10000) / 10000 };
+  return {
+    ingredientId: id, name: ing.rows[0].name, qty,
+    unitCost: price, avgCost, valueLaari: Math.round(qty * price * 100),
+  };
 }
 
 /**
@@ -596,8 +612,8 @@ async function movements(c, p) {
 }
 
 module.exports = {
-  move,
-  receive, waste, count, approveCount, rejectCount,
+  move, postStockJournal,
+  receive, receiveLine, waste, count, approveCount, rejectCount,
   inventory, ledger, counts, countSheet, countSheetFor, categories,
   movements, REASONS, APPROVE_RANK,
 };
