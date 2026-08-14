@@ -279,4 +279,7 @@ async function addStaff(ctx, name, rank) {
   return { token: r.json.token, rank: r.json.rank, name, pin };
 }
 
-module.exports = { BASE, startServer, stopServer, bootOutlet, teardown, req, post, push, q, uuid, priceIt, asOwner, addStaff };
+/* `money` is exported so a test can price a bill the server has not seen yet —
+   a promo quote, for instance, where the expectation is a discount applied
+   through the SAME calculation the server uses rather than a figure retyped. */
+module.exports = { BASE, startServer, stopServer, bootOutlet, teardown, req, post, push, q, uuid, priceIt, asOwner, addStaff, money };

@@ -20,6 +20,7 @@ const opcosts = require('./opcosts');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
+const promos = require('./promos');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -223,6 +224,35 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
       };
     });
     res.set('cache-control', 'no-store').json(data);
+  } catch (e) { next(e); }
+});
+
+/* A guest asks what a code is worth. The SAME evaluator the till calls, on the
+ * same server, reading the same row — which is the only way "a promo the guest
+ * sees is a promo the till charges" can be true of a system rather than of a
+ * pair of implementations that happen to agree this week.
+ *
+ * 03-GUEST-PORTAL-SPEC §4: "the phone treats an entered code as an OFFER, never
+ * a fact." So this answers with what it would be worth on the basket in front
+ * of the guest, and the till evaluates it again at settlement — by which time
+ * the basket, the clock and the caps may all have moved.
+ *
+ * Rank 0, and it needs no more: a promo code is printed on a flyer.
+ */
+r.post('/outlet/:outletId/guest/promo', sameOutlet, ownTable, async function (req, res, next) {
+  const { code, goods } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'code required' });
+  try {
+    const out = await withOutlet(req.ctx, function (c) {
+      return promos.quote(c, {
+        code,
+        /* The goods figure the PHONE is showing, which is what the guest is
+           being quoted against. The till recomputes from the item master at
+           settlement; this is an offer, not a fact. */
+        goodsLaari: Math.max(0, Math.round(Number(goods) || 0)),
+      });
+    });
+    res.set('cache-control', 'no-store').json(out);
   } catch (e) { next(e); }
 });
 
@@ -718,6 +748,74 @@ r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLea
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return opcosts.stopSchedule(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Promotions (§2 `promos`) ─────────────────────────────────────────────
+ *
+ * THE QUOTE ENDPOINT IS THE POINT OF THE MODULE. §16's acceptance criterion is
+ * that a promo quoted on the phone is charged by the till or refused with a
+ * reason, so both ask the SAME function on the SAME server rather than each
+ * implementing the rules. The till's copy is here; the guest's is under
+ * /guest/promo below, reachable by a rank-0 table token, and they differ in
+ * exactly nothing but the door they come through.
+ *
+ * Setting one up is ADMIN. A promo is a standing offer to the public with a
+ * cost the business has agreed to; it is not a shift decision.
+ */
+r.post('/outlet/:outletId/promos/quote', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.quote(c, req.body || {});
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/promos', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { ...(await promos.list(c)), canConfigure: req.ctx.rank >= 4 };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/promos/:id/uses', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such promotion' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.uses(c, req.params.id);
+      });
+      res.json({ uses: out });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/promos', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.save(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/promos/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such promotion' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.stop(c, req.params.id, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }
@@ -1371,8 +1469,8 @@ async function apply(c, op, ctx) {
          priced by the outlet's configuration and not by the client's memory
          of it. */
       const outlet = await c.query(
-        'SELECT service_pct, cash_round_laari FROM chain.outlet WHERE id = $1',
-        [ctx.outletId]);
+        'SELECT service_pct, cash_round_laari, max_open_discount'
+        + ' FROM chain.outlet WHERE id = $1', [ctx.outletId]);
       if (!outlet.rows.length) throw new Error('outlet not found');
       return await settle(c, op.payload || {}, ctx, outlet.rows[0]);
     }

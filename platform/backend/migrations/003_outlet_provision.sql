@@ -642,6 +642,11 @@ BEGIN
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON chain.reward TO %I', r);
   EXECUTE format('GRANT SELECT, INSERT ON chain.point_entry TO %I', r);
   EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.point_entry_id_seq TO %I', r);
+  -- Promotions (§2 `promos`). The uses are append-only: a cap counted from a
+  -- mutable ledger is not a cap. See migration 021.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON chain.promo TO %I', r);
+  EXECUTE format('GRANT SELECT, INSERT ON chain.promo_use TO %I', r);
+  EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.promo_use_id_seq TO %I', r);
   -- The supplier master is shared across the estate and written at ADMIN rank;
   -- the policy in migration 014 enforces the rank, this grants the right.
   EXECUTE format('GRANT INSERT, UPDATE ON chain.supplier TO %I', r);

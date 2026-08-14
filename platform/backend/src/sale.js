@@ -36,6 +36,7 @@ const money = require('../../packages/money/money');
 const costing = require('./costing');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
+const promos = require('./promos');
 
 /* MVR ↔ laari. The database columns are numeric(12,2) in MVR; every
    calculation in between is integer laari. Conversion happens here and at no
@@ -118,9 +119,77 @@ async function settle(c, p, ctx, outlet) {
     }
   }
 
+  /* ── WHAT MAY BE TAKEN OFF THIS BILL ────────────────────────────────────
+     Two doors, and until now there were none. `p.discount` was whatever number
+     the client sent: any till session could settle a 900-rufiyaa bill with a
+     900-rufiyaa discount and a reason it made up, and the sale was
+     self-consistent, balanced, and posted to 4090 like any other. Nothing
+     downstream could tell that apart from a genuine goodwill gesture.
+
+     A PROMO is a rule somebody wrote down: the server evaluates the code and
+     derives the amount, so the client cannot name it.
+
+     AN OPEN DISCOUNT is a judgement call — a burnt steak, a regular, an
+     apology — so it needs a rank and a ceiling instead of a rule. The ceiling
+     is per outlet and defaults to NOUGHT, which does not mean "no discounts":
+     it means nobody has decided yet, and until they do the only discount that
+     goes through is one a promo authorised. */
+  /* THE FIGURE A PROMOTION IS EVALUATED AGAINST IS THE INCLUSIVE ONE — what
+     the guest was shown on the menu. "20% off" means a fifth off the price on
+     the board, not a fifth off the figure left after the tax has been taken
+     out of it, and `priceBill` takes its `discount` inclusive for the same
+     reason. Evaluating on the net figure quoted 30.56 where the guest expected
+     33.00, and — far worse — the guest's PHONE sends the inclusive figure, so
+     the two sides would have quoted different numbers. That is the one thing
+     this module exists to prevent. */
+  const goodsForPromo = billLines.reduce(
+    (a, l) => a + money.lineIncl(l.unitPrice, l.qty), 0);
+
+  let discount = 0;
+  let discountReason = p.discountReason || null;
+  let promo = null;
+
+  if (p.promoCode) {
+    promo = await promos.quote(c, {
+      code: p.promoCode, goodsLaari: goodsForPromo,
+      memberId: p.memberId, at: p.businessDate + 'T' + new Date().toISOString().slice(11),
+    });
+    if (!promo.ok) {
+      /* Refused WITH THE REASON, never quoted and then silently dropped —
+         08-BUILD-STAGES §16's acceptance criterion, in one line. */
+      throw Object.assign(new Error(promo.reason), { status: 409 });
+    }
+    discount = promo.discount;
+    discountReason = promo.code + ' — ' + promo.name;
+  }
+
+  const open = toLaari(p.discount || 0);
+  if (open > 0) {
+    const ceiling = toLaari(outlet.max_open_discount || 0);
+    if (ceiling <= 0) {
+      throw Object.assign(new Error(
+        'no open discount is allowed at this outlet — use a promotion code, or'
+        + ' an admin sets a discount ceiling'), { status: 409 });
+    }
+    if (ctx.rank < 3) {
+      throw Object.assign(new Error(
+        'a discount off the cuff needs a manager'), { status: 403 });
+    }
+    if (open > ceiling) {
+      throw Object.assign(new Error(
+        toMVR(open) + ' is over the ' + toMVR(ceiling) + ' a manager may take off'),
+      { status: 409 });
+    }
+    if (!discountReason) {
+      throw Object.assign(new Error('say why it is being discounted'), { status: 400 });
+    }
+    discount += open;
+  }
+  if (discount > goodsForPromo) discount = goodsForPromo;
+
   const b = money.priceBill({
     lines: billLines,
-    discount: toLaari(p.discount || 0),
+    discount,
     servicePct,
     taxRate: tax.rate,
     fee: toLaari(p.fee || 0),
@@ -205,12 +274,16 @@ async function settle(c, p, ctx, outlet) {
   const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['SALE']);
   const sale = await c.query(
     'INSERT INTO sale (receipt_no, ticket_id, business_date, channel, covers,'
-    + ' gross, discount, discount_reason, service, tax_code, tax_rate, tax,'
+    + ' gross, discount, discount_reason, discount_by, service, tax_code, tax_rate, tax,'
     + ' rounding, total, cogs, member_id, server_name, closed_by, device_id, client_total)'
-    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)'
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)'
     + ' RETURNING id, receipt_no',
     [no.rows[0].no, p.ticketId || null, p.businessDate, p.channel || 'dine_in',
-      p.covers || 1, toMVR(b.gross), toMVR(b.discount), p.discountReason || null,
+      p.covers || 1, toMVR(b.gross), toMVR(b.discount), discountReason,
+      /* WHO took it off, when it was somebody's judgement rather than a rule.
+         The column has existed since migration 003 and nothing has ever
+         written to it, which made every discount anonymous. */
+      open > 0 ? ctx.actor : null,
       toMVR(b.service), tax.code, tax.rate, toMVR(b.tax), toMVR(b.rounding),
       toMVR(b.total), toMVR(cogs), p.memberId || null, p.server || null,
       ctx.actor, ctx.deviceId, clientTotal == null ? null : toMVR(clientTotal)]);
@@ -254,6 +327,12 @@ async function settle(c, p, ctx, outlet) {
 
   /* Points spent, then points earned — in that order, so a member cannot earn
      on this bill and immediately spend it on the same one. */
+  if (promo) {
+    await promos.record(c, {
+      promoId: promo.promoId, memberId: p.memberId, saleId, discount: promo.discount,
+    }, ctx);
+  }
+
   if (inPoints > 0) {
     await loyalty.spend(c, { memberId: p.memberId, amount: inPoints, saleId }, ctx);
   }

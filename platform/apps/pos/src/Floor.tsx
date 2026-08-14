@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import type { Item, Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { Payment } from './Payment';
+/* One bill calculation, shared with the server. See packages/money/money.js —
+   Node requires it, the browsers bundle it, and neither has a copy. */
+import { priceBill } from '../../../packages/money/money.js';
 import { Register } from './Register';
 
 /* POS Floor — 02-POS-SPEC.md §3.
@@ -35,6 +38,10 @@ interface Props {
 export function Floor({ snap, now, session, online, onQueued }: Props) {
   const [table, setTable] = useState<string>('');
   const [lines, setLines] = useState<Line[]>([]);
+  /* What a promotion takes off, once the payment screen has had the server
+     confirm it. Held here because it changes the BILL, not just the tender. */
+  const [promoDiscount, setPromoDiscount] = useState(0);
+  const [promoCode, setPromoCode] = useState<string | undefined>();
   const [cat, setCat] = useState('all');
   const [q, setQ] = useState('');
   const [paying, setPaying] = useState(false);
@@ -96,18 +103,27 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
       .map((l) => (l.itemId === itemId ? { ...l, qty: l.qty + d } : l))
       .filter((l) => l.qty > 0));
 
-  const goods = lines.reduce((a, l) => a + l.unitPrice * l.qty, 0);
   const servicePct = Number(outlet?.service_pct ?? 0);
   const taxRate = Number(snap?.tax?.rate ?? 0);
   const taxCode = snap?.tax?.code ?? 'GST';
-  /* Shown to the cashier so the bill on screen matches the one the guest is
-     handed. The SERVER computes the figures that are persisted and posted —
-     backend/src/sale.js — and refuses the sale if the tender does not match
-     what it computed. These two agree because they are the same model, not
-     because this one is trusted. */
-  const service = Math.round(goods * servicePct / 100);
-  const total = goods + service;
-  const tax = Math.round(total * (taxRate / 100) / (1 + taxRate / 100));
+
+  /* THE SAME CALCULATION THE SERVER USES, imported rather than rewritten.
+     These four lines used to be a hand-written second implementation: goods,
+     service, and a tax extraction, with no discount, no fee and no cash
+     rounding in it at all. It agreed with the server on a simple bill and
+     would have disagreed the moment a promotion came off one — which is
+     exactly how a till and a ledger drift, quietly, each satisfying its own
+     invariant. packages/money's own header always said "the browsers load it
+     as a script"; now they do. */
+  const bill = priceBill({
+    lines: lines.map((l) => ({ unitPrice: l.unitPrice, qty: l.qty })),
+    discount: promoDiscount,
+    servicePct, taxRate,
+  });
+  const goods = bill.gross;
+  const service = bill.service;
+  const tax = bill.tax;
+  const total = bill.total;
 
   /* Fire the unsent part of the ticket. Queued like everything else, so a
      server on a dead connection still gets the food to the kitchen the moment
@@ -133,7 +149,7 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
   };
 
   const settled = async (payments: { method: string; amount: number }[],
-    memberId?: string) => {
+    memberId?: string, code?: string) => {
     /* One `sale` operation, queued locally. It carries what only the till knows
        — which items, how many, which table, which tender — and nothing about
        what they cost: the server prices it from the item master and the tax
@@ -147,11 +163,17 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
       /* Whose account, when the tender is one. The server checks the limit
          again — it is the authority — but it cannot check it against nobody. */
       memberId,
+      /* The code, not the amount. The server evaluates it again and derives
+         what it is worth — a till that named its own discount is the hole this
+         closed. */
+      promoCode: code,
       clientTotal: (total / 100).toFixed(2),
     });
     setPaying(false);
     setLines([]);
     setSentIds({});
+    setPromoDiscount(0);
+    setPromoCode(undefined);
     setFlash('Sale queued — ' + money(total));
     setTimeout(() => setFlash(''), 2600);
     await onQueued();
@@ -312,6 +334,14 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
         {/* Foot: subtotal, service, tax, total, then Pay. §3.3 */}
         <div style={{ flexShrink: 0, borderTop: '1px solid var(--line)', padding: 13 }}>
           <Row label="Subtotal" value={money(goods)} />
+          {/* Without this line the footer does not add up on screen: subtotal
+              is the goods BEFORE the discount, while service and the total are
+              after it. A cashier reading four figures that do not reconcile
+              stops trusting all four. */}
+          {bill.discount > 0 && (
+            <Row label={'Discount' + (promoCode ? ' — ' + promoCode : '')}
+              value={'−' + money(bill.discount)} />
+          )}
           {servicePct > 0 && <Row label={'Service ' + servicePct + '%'} value={money(service)} />}
           {taxRate > 0 && <Row label={taxCode + ' ' + taxRate + '% (incl.)'} value={money(tax)} muted />}
           <div style={{ marginTop: 9, paddingTop: 9, borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
@@ -355,8 +385,11 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
       {paying && (
         <Payment
           total={total}
+          goods={lines.reduce((a, l) => a + l.unitPrice * l.qty, 0)}
           session={session}
           online={online}
+          promoCode={promoCode}
+          onPromo={(code, discount) => { setPromoCode(code); setPromoDiscount(discount); }}
           onCancel={() => setPaying(false)}
           onConfirm={settled}
         />

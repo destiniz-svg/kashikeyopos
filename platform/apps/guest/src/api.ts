@@ -168,6 +168,20 @@ export class Api {
       { opId, table, lines, promo, name, phone });
   }
 
+  /** What is this code worth on what is in the cart?
+   *
+   *  03-GUEST-PORTAL-SPEC §4: "the phone treats an entered code as an OFFER,
+   *  never a fact." So this asks the server — the SAME evaluator the till uses
+   *  at settlement, reading the same row — and shows the answer as an offer.
+   *  The code still travels with the order and the till decides again, by which
+   *  time the basket, the clock and the caps may all have moved. */
+  quotePromo(code: string, goods: number) {
+    return this.call<{
+      ok: boolean; reason?: string; code?: string; name?: string;
+      discount?: number; discountMvr?: number; capped?: boolean; note?: string;
+    }>('POST', `/api/outlet/${this.outletId}/guest/promo`, { code, goods });
+  }
+
   /** Call a server, ask for water, ask for the bill. Each appears on the floor
    *  terminal until somebody acknowledges it. */
   request(table: string, kind: 'server' | 'bill' | 'water' | 'help', detail?: string) {

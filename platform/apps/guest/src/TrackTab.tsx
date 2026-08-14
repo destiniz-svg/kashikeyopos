@@ -33,6 +33,14 @@ interface Props {
 export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, setPromo, api, ident, say, onBrowse }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  /* What the SERVER says the code is worth on this basket. Until this existed,
+     the phone accepted any code, showed nothing, sent the string along, and the
+     till ignored it — the guest paid full price having been told nothing at
+     all. §16's acceptance criterion forbids exactly that. */
+  const [quote, setQuote] = useState<{
+    ok: boolean; reason?: string; name?: string; discountMvr?: number; note?: string;
+  } | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const goods = cart.reduce((a, l) => a + l.unitPrice * l.qty, 0);
   const taxLabel = snap?.tax?.code ?? 'GST';
@@ -119,12 +127,14 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
             ))}
           </div>
 
-          {/* Promo: the phone treats a code as an OFFER, never a fact. It
-              travels with the order and the till decides. Spec §4. */}
+          {/* Promo: the phone treats a code as an OFFER, never a fact. It is
+              checked against the SAME evaluator the till will use, so what the
+              guest is shown is what the till will charge — and a code that will
+              not work says why, here, rather than at the counter. Spec §4. */}
           <div style={{ marginTop: 14, display: 'flex', gap: 9 }}>
             <input
               value={promo}
-              onChange={(e) => setPromo(e.target.value.toUpperCase().slice(0, 24))}
+              onChange={(e) => { setPromo(e.target.value.toUpperCase().slice(0, 24)); setQuote(null); }}
               placeholder="Promo code"
               aria-label="Promo code"
               style={{
@@ -132,7 +142,40 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
                 background: C.surfaceTint, fontSize: 14, color: C.ink, fontFamily: MONO,
               }}
             />
+            <button
+              disabled={!promo || checking || !cart.length}
+              onClick={async () => {
+                setChecking(true);
+                try { setQuote(await api.quotePromo(promo, goods)); }
+                catch { setQuote({ ok: false, reason: 'Could not check that just now.' }); }
+                finally { setChecking(false); }
+              }}
+              style={{
+                height: HIT.input, padding: '0 18px', borderRadius: 14,
+                background: promo && cart.length ? C.accent : C.surfaceTint,
+                color: promo && cart.length ? '#fff' : C.inkFaint,
+                fontSize: 14, fontWeight: 700,
+              }}
+            >{checking ? '…' : 'Check'}</button>
           </div>
+          {quote && (
+            <div style={{
+              marginTop: 9, padding: '11px 13px', borderRadius: 14, fontSize: 13,
+              lineHeight: 1.5,
+              background: quote.ok ? C.surfaceTint : C.surfaceTint,
+              color: quote.ok ? C.ink : C.inkMuted,
+            }}>
+              {quote.ok ? (
+                <>
+                  <b>{quote.name}</b> — {money((quote.discountMvr || 0) * 100)} off this round.
+                  {quote.note && ' ' + quote.note}
+                  <div style={{ marginTop: 4, fontSize: 11.5, color: C.inkFaint }}>
+                    The till checks it again when you pay — it is an offer until then.
+                  </div>
+                </>
+              ) : quote.reason}
+            </div>
+          )}
 
           {/* Spec §4: the total is labelled "Goods, before service and {tax}" —
               the phone never quotes a final figure the till has not computed. */}

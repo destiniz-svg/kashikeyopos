@@ -49,17 +49,29 @@ interface Customer {
   points: number;
 }
 interface Scheme { pointValue: number; running: boolean }
-
-interface Props {
-  total: number;                       // laari
-  session: Session;
-  online: boolean;
-  onCancel: () => void;
-  onConfirm: (payments: { method: Method; amount: number }[], memberId?: string)
-    => void | Promise<void>;
+interface Quote {
+  ok: boolean; reason?: string; code?: string; name?: string;
+  discount?: number; discountMvr?: number; note?: string;
 }
 
-export function Payment({ total, session, online, onCancel, onConfirm }: Props) {
+interface Props {
+  total: number;                       // laari, AFTER any promotion
+  /* INCLUSIVE goods — the prices on the menu board. A promotion is evaluated
+     against what the guest was shown, and the server does the same. */
+  goods: number;
+  session: Session;
+  online: boolean;
+  promoCode?: string;
+  /* Reported UP, because a promotion changes the bill and not just the tender:
+     Floor recomputes the whole thing through the one calculation. */
+  onPromo: (code: string | undefined, discount: number) => void;
+  onCancel: () => void;
+  onConfirm: (payments: { method: Method; amount: number }[], memberId?: string,
+    promoCode?: string) => void | Promise<void>;
+}
+
+export function Payment({ total, goods, session, online, promoCode, onPromo,
+  onCancel, onConfirm }: Props) {
   const [method, setMethod] = useState<Method>('cash');
   const [buf, setBuf] = useState('');
   const [busy, setBusy] = useState(false);
@@ -70,6 +82,13 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
   /* Opened by hand for a cash or card bill; forced open by a tender that
      cannot proceed without a member. */
   const [attaching, setAttaching] = useState(false);
+  /* The code the guest is holding. Quoted against the SAME evaluator their
+     phone asked, so the figure the cashier reads out is the figure the sale
+     will charge — and a code that will not work says why here, not after the
+     receipt has printed. */
+  const [promo, setPromo] = useState('');
+  const [quote, setQuote] = useState<Quote | null>(null);
+  const [checking, setChecking] = useState(false);
 
   /* Search only while a member tender is showing, and only online. The account
      tender needs somebody with credit; points need somebody with points. */
@@ -150,8 +169,9 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
          refuses a sale whose payments do not equal the bill it computed, which
          is the backstop under this. */
       /* The member goes with the SALE whatever paid for it — that is how a
-         cash-paying member earns. */
-      await onConfirm([{ method, amount: total }], who ? who.id : undefined);
+         cash-paying member earns. The code goes with it too; the server
+         evaluates it again at settlement and is the authority. */
+      await onConfirm([{ method, amount: total }], who ? who.id : undefined, promoCode);
     } finally {
       setBusy(false);
     }
@@ -209,6 +229,51 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
                 );
               })}
             </div>
+
+            {/* A CODE THE GUEST IS HOLDING. Quoted against the SAME evaluator
+                their phone asked, so what the cashier reads out is what the
+                sale will charge — and a code that will not work says why here,
+                rather than after the receipt has printed. */}
+            {online && (
+              <div style={{ marginBottom: 11 }}>
+                <div style={{ display: 'flex', gap: 7 }}>
+                  <input value={promo}
+                    onChange={(e) => { setPromo(e.target.value.toUpperCase().slice(0, 24)); setQuote(null); }}
+                    placeholder="Promo code" aria-label="Promo code"
+                    style={{ flex: 1, height: 34, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12.5, fontFamily: MONO }} />
+                  {promoCode ? (
+                    <button onClick={() => { onPromo(undefined, 0); setPromo(''); setQuote(null); }}
+                      style={{ height: 34, padding: '0 12px', borderRadius: 7, fontSize: 11.5, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+                      Remove
+                    </button>
+                  ) : (
+                    <button disabled={!promo || checking}
+                      onClick={async () => {
+                        setChecking(true);
+                        try {
+                          const r = await api.authed(session)<Quote>(
+                            'POST', '/promos/quote',
+                            { code: promo, goodsLaari: goods, memberId: who?.id });
+                          setQuote(r);
+                          if (r.ok) onPromo(r.code, r.discount || 0);
+                        } catch { setQuote({ ok: false, reason: 'Could not check that.' }); }
+                        finally { setChecking(false); }
+                      }}
+                      style={{ height: 34, padding: '0 14px', borderRadius: 7, fontSize: 11.5, fontWeight: 700, background: promo ? 'var(--go)' : 'var(--bg-2)', color: promo ? 'var(--on-go)' : 'var(--text-faint)' }}>
+                      {checking ? '…' : 'Apply'}
+                    </button>
+                  )}
+                </div>
+                {quote && (
+                  <div style={{ marginTop: 6, fontSize: 11, lineHeight: 1.5, color: quote.ok ? 'var(--go-bright)' : 'var(--stop-bright)' }}>
+                    {quote.ok
+                      ? quote.name + ' — ' + money(quote.discount || 0) + ' off'
+                        + (quote.note ? '. ' + quote.note : '')
+                      : quote.reason}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* WHO IS THIS? — asked of the sale, not of the tender, so a member
                 paying cash earns like anybody else. */}
