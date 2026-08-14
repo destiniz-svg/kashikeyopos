@@ -13,6 +13,7 @@ const reports = require('./reports');
 const drawer = require('./drawer');
 const today = require('./today');
 const purchasing = require('./purchasing');
+const staff = require('./staff');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -556,6 +557,97 @@ r.get('/outlet/:outletId/reports/tax', sameOutlet, staffOnly, atLeast('manager')
     } catch (e) { next(e); }
   });
 
+/* ── Staff & Time Clock (§2 `staff`) ──────────────────────────────────────
+ *
+ * The ROSTER is manager rank, matching the rail. Writing it is ADMIN, and the
+ * rank ceiling — nobody creates or promotes above their own rank — is enforced
+ * by the `staff_write` RLS policy as well as by staff.js, because rank is the
+ * only gate in this system and a check in application code is a check somebody
+ * forgets to write on the next endpoint.
+ *
+ * The CLOCK is on the replay path at rank 1: a kitchen hand clocks themselves
+ * in at 6am, and a system that needed a manager present to start a shift is a
+ * system people work around with a notebook.
+ */
+r.get('/outlet/:outletId/staff', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          roster: await staff.roster(c, req.ctx.outletId),
+          day: await staff.shifts(c, date),
+          ranks: staff.RANK_NAME,
+          // What THIS caller may do, so the screen does not offer a button that
+          // will be refused — and does not hide one that would be allowed.
+          maxRank: req.ctx.rank,
+          canWrite: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* A member of staff can always see their OWN clock, at any rank — that is the
+   till's shift badge, and it is the one thing on this module a kitchen hand
+   needs. */
+r.get('/outlet/:outletId/staff/me', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const q = await c.query(
+          'SELECT id, in_at FROM shift WHERE staff_id = $1 AND out_at IS NULL',
+          [req.ctx.actor]);
+        return q.rows.length
+          ? { onShift: true, shiftId: q.rows[0].id, since: q.rows[0].in_at }
+          : { onShift: false };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/staff', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return staff.addStaff(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/staff/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'nobody works here under that id' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return staff.updateStaff(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Releasing a lockout is a MANAGER's job, not an admin's: the usual cause is
+   five fat-fingered attempts on a wet screen mid-service, and the person who
+   can fix it is the one standing there. */
+r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'nobody works here under that id' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return staff.unlock(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
 /* ── Vendors (§2 `vendors`) and Purchases / GRN (§2 `purchases`) ──────────
  *
  * Reads at manager rank — a chef checking what a supplier charged is doing
@@ -775,6 +867,10 @@ r.get('/estate/day', staffOnly, atLeast('owner'), async function (req, res, next
  * not an authorisation model. */
 const OP_RANK = {
   kds_advance: 1,          // the pass — the lowest rank, deliberately
+  /* Clocking on is rank 1 by design. staff.js refuses clocking SOMEBODY ELSE
+     below manager rank, which is the distinction that matters. */
+  clock_in: 1,
+  clock_out: 1,
   ticket_send: 2,          // firing the kitchen moves no money
   guest_order_accept: 2,
   sale: 2,                 // taking money is the till's job
@@ -823,6 +919,12 @@ async function apply(c, op, ctx) {
 
     case 'kds_advance':
       return await kitchen.advance(c, op.payload || {}, ctx);
+
+    case 'clock_in':
+      return await staff.clockIn(c, op.payload || {}, ctx);
+
+    case 'clock_out':
+      return await staff.clockOut(c, op.payload || {}, ctx);
 
     case 'drawer_open':
       return await drawer.open(c, op.payload || {}, ctx);

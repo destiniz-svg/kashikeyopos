@@ -17,6 +17,7 @@ import { Counts } from './Counts';
 import { Ledger } from './Ledger';
 import { Purchases } from './Purchases';
 import { Vendors } from './Vendors';
+import { Staff } from './Staff';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -34,7 +35,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -307,6 +308,11 @@ export function App({ outletId }: { outletId: number }) {
             />
           ) : view === 'purchases' && MODULES_BUILT.has('purchases') ? (
             <Purchases
+              session={session}
+              onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
+            />
+          ) : view === 'staff' && MODULES_BUILT.has('staff') ? (
+            <Staff
               session={session}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />

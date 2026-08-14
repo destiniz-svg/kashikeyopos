@@ -319,6 +319,24 @@ BEGIN
 
   -- ── the ledger. Every consequence lands here, and it must balance. ──────
   EXECUTE format($ddl$
+    -- The time clock (§2 `staff`). Hours are the OUTLET's cost, so they live
+    -- here while the person lives in chain.staff. See migration 015.
+    CREATE TABLE IF NOT EXISTS %1$I.shift (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      staff_id  uuid NOT NULL,
+      in_at     timestamptz NOT NULL DEFAULT now(),
+      out_at    timestamptz,
+      in_by     uuid, out_by uuid,
+      device_id uuid,
+      note      text,
+      CONSTRAINT shift_ends_after_it_starts CHECK (out_at IS NULL OR out_at >= in_at)
+    );
+    -- One clock per person at a time, enforced by the database because two
+    -- terminals can press the button in the same second.
+    CREATE UNIQUE INDEX IF NOT EXISTS shift_one_open ON %1$I.shift (staff_id)
+      WHERE out_at IS NULL;
+    CREATE INDEX IF NOT EXISTS shift_by_day ON %1$I.shift (in_at DESC);
+
     CREATE TABLE IF NOT EXISTS %1$I.account (
       code text PRIMARY KEY,
       name text NOT NULL,
@@ -454,6 +472,10 @@ BEGIN
   -- The supplier master is shared across the estate and written at ADMIN rank;
   -- the policy in migration 014 enforces the rank, this grants the right.
   EXECUTE format('GRANT INSERT, UPDATE ON chain.supplier TO %I', r);
+  -- The roster is written at rank 4 and never above the writer's own rank.
+  -- That is the `staff_write` policy's job; this is the grant it needs to
+  -- have anything to decide about. See migration 015.
+  EXECUTE format('GRANT INSERT, UPDATE ON chain.staff TO %I', r);
   -- Kitchen stations: readable always, writable at Manager rank through the
   -- station_write policy. The grant lives HERE and not only in the migration
   -- that added the table, or an outlet provisioned after that migration is born
@@ -470,6 +492,9 @@ BEGIN
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.session, chain.doc_series, chain.member TO %I', r);
   EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.audit_id_seq TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.next_doc_no(text), chain.log(text,text,text,jsonb,jsonb) TO %I', r);
+  -- Releasing a lockout: manager rank, one person, its own function rather
+  -- than widening the roster policy to rank 3. See migration 015.
+  EXECUTE format('GRANT EXECUTE ON FUNCTION chain.release_lock(uuid) TO %I', r);
 
   INSERT INTO chain.outlet (id, code, name, schema_name, db_role)
   VALUES (p_id, p_code, p_name, s, r)
