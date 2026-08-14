@@ -121,6 +121,23 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('a rank gate with a name that is not in the ladder REFUSES TO EXIST', () => {
+    /* `RANK[name]` for a name outside the ladder is undefined, and
+       `anything < undefined` is false — so a gate written as atLeast('cashier'),
+       when the ladder calls that rank `till`, let everyone through: a kitchen
+       hand, and a rank-0 guest token too. It reads as the strictest line in the
+       file and enforces nothing.
+
+       It throws at require time now, which is server boot, which is the deploy. */
+    const { atLeast, RANK } = require('../src/auth');
+    assert.throws(() => atLeast('cashier'), /no such rank/);
+    assert.throws(() => atLeast('supervisor'), /no such rank/);
+    assert.throws(() => atLeast(undefined), /no such rank/);
+    for (const name of Object.keys(RANK)) {
+      assert.equal(typeof atLeast(name), 'function', name + ' is a real rank');
+    }
+  });
+
   test('the CORS allow-list answers a browser, including the wildcard', () => {
     /* Deployed, the POS is a static site on a DIFFERENT ORIGIN from the API, so
        every call it makes is cross-origin and CORS is load-bearing. Nothing else

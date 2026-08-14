@@ -61,8 +61,26 @@ function sameOutlet(req, res, next) {
   next();
 }
 
+/**
+ * A rank gate. `rank` is a name from RANK or a number.
+ *
+ * AN UNKNOWN NAME THROWS AT WIRING TIME, and that is the whole point of these
+ * four lines. `RANK[name]` for a name that is not in the ladder is `undefined`,
+ * and `anything < undefined` is false — so `atLeast('cashier')`, a perfectly
+ * reasonable-looking thing to write when the ladder calls that rank `till`,
+ * produced a gate that let EVERYONE through: a kitchen hand, and a rank-0
+ * guest token too. It looks like the strictest line in the file and enforces
+ * nothing.
+ *
+ * Throwing here fails at require time, which is server boot, which is the
+ * deploy — rather than at the moment somebody discovers the door was open.
+ */
 function atLeast(rank) {
   const need = typeof rank === 'string' ? RANK[rank] : rank;
+  if (!Number.isFinite(need)) {
+    throw new Error('atLeast(' + JSON.stringify(rank) + '): no such rank — one of '
+      + Object.keys(RANK).join(', '));
+  }
   return function (req, res, next) {
     if ((req.ctx.rank || 0) < need) {
       return res.status(403).json({ error: 'rank ' + need + ' required' });

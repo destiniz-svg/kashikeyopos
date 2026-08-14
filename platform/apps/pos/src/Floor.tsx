@@ -26,10 +26,13 @@ interface Props {
   snap: Snapshot | null;
   now: Date;
   session: Session;
+  /* The house tender is offered only online — see Payment.tsx. A charge queued
+     offline could be refused on replay long after the guest has gone. */
+  online: boolean;
   onQueued: () => void | Promise<void>;
 }
 
-export function Floor({ snap, now, session, onQueued }: Props) {
+export function Floor({ snap, now, session, online, onQueued }: Props) {
   const [table, setTable] = useState<string>('');
   const [lines, setLines] = useState<Line[]>([]);
   const [cat, setCat] = useState('all');
@@ -129,7 +132,8 @@ export function Floor({ snap, now, session, onQueued }: Props) {
     await onQueued();
   };
 
-  const settled = async (payments: { method: string; amount: number }[]) => {
+  const settled = async (payments: { method: string; amount: number }[],
+    memberId?: string) => {
     /* One `sale` operation, queued locally. It carries what only the till knows
        — which items, how many, which table, which tender — and nothing about
        what they cost: the server prices it from the item master and the tax
@@ -140,6 +144,9 @@ export function Floor({ snap, now, session, onQueued }: Props) {
       covers: openByTable.get(table)?.covers ?? 1,
       lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
       payments: payments.map((p) => ({ method: p.method, amount: (p.amount / 100).toFixed(2) })),
+      /* Whose account, when the tender is one. The server checks the limit
+         again — it is the authority — but it cannot check it against nobody. */
+      memberId,
       clientTotal: (total / 100).toFixed(2),
     });
     setPaying(false);
@@ -348,6 +355,8 @@ export function Floor({ snap, now, session, onQueued }: Props) {
       {paying && (
         <Payment
           total={total}
+          session={session}
+          online={online}
           onCancel={() => setPaying(false)}
           onConfirm={settled}
         />

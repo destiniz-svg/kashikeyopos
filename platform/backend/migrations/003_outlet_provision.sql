@@ -500,6 +500,26 @@ BEGIN
     );
     CREATE INDEX IF NOT EXISTS service_due ON %1$I.asset_service (due_on)
       WHERE done_on IS NULL;
+
+    -- The house-account credit ledger (§2 `customers`). Immutable and signed
+    -- like stock_move: + is owed to us, − is paid or written off. The profile
+    -- is chain-wide; the DEBT is per outlet, because 1030 lives here. See
+    -- migration 019.
+    CREATE TABLE IF NOT EXISTS %1$I.house_entry (
+      id        bigserial PRIMARY KEY,
+      at        timestamptz NOT NULL DEFAULT now(),
+      on_date   date NOT NULL,
+      member_id uuid NOT NULL,
+      kind      text NOT NULL
+                CHECK (kind IN ('charge','receipt','writeoff','adjust')),
+      amount    numeric(12,2) NOT NULL CHECK (amount <> 0),
+      sale_id   uuid,
+      doc_no    text,
+      method    text,
+      note      text,
+      by_staff  uuid
+    );
+    CREATE INDEX IF NOT EXISTS house_member ON %1$I.house_entry (member_id, on_date);
   $ddl$, s);
 
   -- A journal that does not balance is not allowed to exist. Checked at
@@ -601,6 +621,9 @@ BEGIN
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA %I TO %I', s, r);
   EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', s, r);
   EXECUTE format('REVOKE DELETE ON %I.sale, %I.sale_line, %I.payment, %I.journal, %I.journal_line, %I.op_log FROM %I', s, s, s, s, s, s, r);
+  -- A debt that can be tidied away is not a ledger: a house charge is written
+  -- off through an entry, never removed.
+  EXECUTE format('REVOKE DELETE ON %I.house_entry FROM %I', s, r);
   -- Recipe lines are current configuration, not a financial record: replacing a
   -- recipe removes the lines no longer in it, and its history is kept in
   -- chain.audit, which records the whole before and after set on every save.
@@ -647,7 +670,7 @@ BEGIN
   INSERT INTO chain.doc_series (outlet_id, kind, prefix) VALUES
     (p_id, 'SALE', p_code || '-R'), (p_id, 'CN', p_code || '-CN'),
     (p_id, 'PO', p_code || '-PO'), (p_id, 'GRN', p_code || '-GRN'),
-    (p_id, 'JV', p_code || '-JV')
+    (p_id, 'JV', p_code || '-JV'), (p_id, 'RCT', p_code || '-RCT')
   ON CONFLICT DO NOTHING;
 
   RETURN s;

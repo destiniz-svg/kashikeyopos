@@ -18,6 +18,7 @@ const payroll = require('./payroll');
 const analytics = require('./analytics');
 const opcosts = require('./opcosts');
 const assets = require('./assets');
+const customers = require('./customers');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -716,6 +717,98 @@ r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLea
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return opcosts.stopSchedule(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Customers & Credit (§2 `customers`) ──────────────────────────────────
+ *
+ * TILL rank creates and finds a customer: the person is standing at the counter
+ * and a cashier must be able to put a name to a phone number without fetching
+ * anybody.
+ *
+ * MANAGER sees the book and takes a payment against an account.
+ *
+ * ADMIN sets a credit limit and writes a debt off. Extending credit is a
+ * decision about money that keeps applying long after the shift ends, and a
+ * write-off is the one entry in this module that makes money disappear.
+ */
+r.get('/outlet/:outletId/customers', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const base = await customers.list(c, { q: req.query.q });
+        /* A cashier gets the roster and each customer's own credit position —
+           which is what they need to answer "can this go on the account?" — but
+           the aged debtors book is a manager's report. */
+        return req.ctx.rank >= 3
+          ? { ...base, ageing: await customers.ageing(c), canCredit: req.ctx.rank >= 4 }
+          : { ...base, canCredit: false };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/customers/:id', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.statement(c, req.params.id);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.save(c, req.body || {}, req.ctx);
+      });
+      res.status(out.already ? 200 : 201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers/:id/credit', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.setCredit(c, { ...(req.body || {}), id: req.params.id }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers/:id/receipt', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.receipt(c, { ...(req.body || {}), memberId: req.params.id },
+          req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers/:id/writeoff', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.writeOff(c, { ...(req.body || {}), memberId: req.params.id },
+          req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }

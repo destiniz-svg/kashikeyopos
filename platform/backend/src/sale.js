@@ -34,6 +34,7 @@
 
 const money = require('../../packages/money/money');
 const costing = require('./costing');
+const customers = require('./customers');
 
 /* MVR ↔ laari. The database columns are numeric(12,2) in MVR; every
    calculation in between is integer laari. Conversion happens here and at no
@@ -57,6 +58,15 @@ async function taxAsAt(c, outletId, businessDate) {
   }
   return { code: q.rows[0].code, rate: Number(q.rows[0].rate) };
 }
+
+/* THE TENDERS THE LEDGER KNOWS. One list, shared by the validation below and
+   by ACCOUNT_FOR in the journal, so a method can never be accepted at the door
+   and then have nowhere to go once it is inside.
+
+   `account` is the house tender: no money arrives, a customer's debt goes up.
+   `points` spends loyalty liability. Both are settlements without cash, which
+   is exactly why the drawer must not be their fallback. */
+const TENDERS = ['cash', 'card', 'wallet', 'bank', 'points', 'account'];
 
 /* Costing lives in ./costing.js — the SAME functions Recipes & Costing calls
    to show a manager a plate cost while they edit. Written twice, the screen
@@ -118,6 +128,23 @@ async function settle(c, p, ctx, outlet) {
       ? Number(outlet.cash_round_laari || 0) : 0,
   });
 
+  /* EVERY TENDER MUST BE ONE THE LEDGER KNOWS. The account each method debits
+     used to fall back to 1000 for anything unrecognised, so a typo, an old
+     client sending 'Cash', or a method added on the front end before the back
+     end knew about it all quietly landed in the cash drawer. Nothing said so:
+     the sale balanced, the P&L was right, and the only symptom was the drawer
+     coming up short at close by exactly the mis-tendered amount — with the
+     variance posted to 6920 as if somebody had taken the money.
+
+     A guess about where money went is worse than a refusal. */
+  for (const pay of (p.payments || [])) {
+    if (!TENDERS.includes(pay.method)) {
+      throw Object.assign(new Error(
+        'unknown tender "' + String(pay.method).slice(0, 20) + '" — one of: '
+        + TENDERS.join(', ')), { status: 400 });
+    }
+  }
+
   /* Payments must cover the bill. A short payment is a partly-paid ticket, not
      a closed sale, and letting one through is how a drawer comes up light with
      a receipt that says it should not have. */
@@ -126,6 +153,21 @@ async function settle(c, p, ctx, outlet) {
     throw Object.assign(new Error(
       'payments (' + toMVR(paid) + ') do not equal the bill (' + toMVR(b.total) + ')'),
       { status: 409 });
+  }
+
+  /* A HOUSE CHARGE IS CHECKED BEFORE THE SALE EXISTS. Refusing afterwards would
+     mean a printed receipt for a debt the customer was never approved for, and
+     an accounts-receivable balance nobody agreed to. */
+  const onAccount = (p.payments || [])
+    .filter((x) => x.method === 'account')
+    .reduce((a, x) => a + toLaari(x.amount || 0), 0);
+  if (onAccount > 0) {
+    if (!p.memberId) {
+      throw Object.assign(new Error(
+        'a house charge needs a customer — whose account is it going on?'),
+      { status: 409 });
+    }
+    await customers.checkCredit(c, p.memberId, onAccount);
   }
 
   // Cost of what was sold, captured NOW: margin must never be recomputed from a
@@ -181,6 +223,18 @@ async function settle(c, p, ctx, outlet) {
   await moveStock(c, saleId, billLines, ctx);
 
   await postSaleJournal(c, saleId, sale.rows[0].receipt_no, b, cogs, p, ctx);
+
+  /* The house ledger entry, written from the SAME figure the journal debited to
+     1030. The two are checked against each other by a test rather than trusted
+     to stay in step: a receivable that agrees with itself but not with the
+     ledger is the kind of thing nobody notices until a customer disputes a
+     statement. */
+  if (onAccount > 0) {
+    await customers.charge(c, {
+      onDate: p.businessDate, memberId: p.memberId, amount: onAccount,
+      saleId, docNo: sale.rows[0].receipt_no,
+    }, ctx);
+  }
 
   if (p.ticketId) {
     // A closed ticket is never reopened by a late replay: the guard is in the
@@ -267,8 +321,16 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
 
   /* Split the tender across accounts by method, so the ledger says how the
      money arrived and the drawer and the acquirer can each be reconciled
-     against their own account rather than against one lump. */
-  const ACCOUNT_FOR = { cash: '1000', card: '1020', wallet: '1020', bank: '1010', points: '2200' };
+     against their own account rather than against one lump.
+
+     `account` is the house tender and it is the odd one out: NO MONEY ARRIVED.
+     It debits 1030 Customer receivable — a promise to pay — and the drawer must
+     not think a thing of it, because the drawer's expected cash is derived from
+     account 1000. */
+  const ACCOUNT_FOR = {
+    cash: '1000', card: '1020', wallet: '1020', bank: '1010',
+    points: '2200', account: '1030',
+  };
 
   /* A tip arrives WITH the money it was added to, so it debits the same
      account as its own payment. This used to debit 1000 for every tip
@@ -279,7 +341,7 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
      restaurant's revenue. */
   let tips = 0;
   for (const pay of (p.payments || [])) {
-    const account = ACCOUNT_FOR[pay.method] || '1000';
+    const account = ACCOUNT_FOR[pay.method];
     const tip = toLaari(pay.tip || 0);
     tips += tip;
     dr(account, toLaari(pay.amount || 0) + tip);
@@ -313,4 +375,4 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
   return h.rows[0].id;   // the deferred trigger refuses an unbalanced entry at COMMIT
 }
 
-module.exports = { settle, taxAsAt, toLaari, toMVR };
+module.exports = { settle, taxAsAt, toLaari, toMVR, TENDERS };

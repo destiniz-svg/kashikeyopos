@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import * as api from './api';
+import type { Session } from './api';
 
 /* The payment modal — 02-POS-SPEC.md §3.4.
  *
@@ -12,24 +14,62 @@ import { useState } from 'react';
  * and the tax version in force, moves the stock, posts the journal and closes
  * the ticket — all in one transaction (§3.4's own list). This modal's job is to
  * take a number from a person's fingers and hand it on.
+ *
+ * THE ACCOUNT TENDER IS THE ODD ONE OUT. No money changes hands: the customer's
+ * debt goes up instead, so the tender needs a customer and the customer needs
+ * room on their limit. Both are checked here BEFORE the button is pressed —
+ * the server checks them again and is the authority, but a cashier standing in
+ * front of a guest should not learn about a credit limit from a refusal.
+ *
+ * And it is only offered ONLINE. Every other tender can be queued and replayed
+ * hours later because nothing about it can turn out to be untrue. A house
+ * charge can: the limit is checked when the sale reaches the server, so an
+ * offline one could be refused on replay long after the guest has walked out,
+ * leaving a meal nobody paid for and no way to find them. A tender that can
+ * evaporate is worse than a tender that is unavailable.
  */
 
 const MONO = "'JetBrains Mono',monospace";
 const money = (laari: number) =>
   (laari / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type Method = 'cash' | 'card' | 'wallet';
+type Method = 'cash' | 'card' | 'wallet' | 'account';
+
+interface Customer {
+  id: string; phone: string; name: string | null; company: string | null;
+  available: number; owed: number; onAccount: boolean; blocked: boolean;
+}
 
 interface Props {
   total: number;                       // laari
+  session: Session;
+  online: boolean;
   onCancel: () => void;
-  onConfirm: (payments: { method: Method; amount: number }[]) => void | Promise<void>;
+  onConfirm: (payments: { method: Method; amount: number }[], memberId?: string)
+    => void | Promise<void>;
 }
 
-export function Payment({ total, onCancel, onConfirm }: Props) {
+export function Payment({ total, session, online, onCancel, onConfirm }: Props) {
   const [method, setMethod] = useState<Method>('cash');
   const [buf, setBuf] = useState('');
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState('');
+  const [found, setFound] = useState<Customer[] | null>(null);
+  const [who, setWho] = useState<Customer | null>(null);
+
+  /* Search only while the account tender is showing, and only online. */
+  useEffect(() => {
+    if (method !== 'account' || !online) return;
+    let dead = false;
+    const t = setTimeout(async () => {
+      try {
+        const r = await api.authed(session)<{ members: Customer[] }>(
+          'GET', '/customers' + (q ? '?q=' + encodeURIComponent(q) : ''));
+        if (!dead) setFound(r.members.filter((m) => m.onAccount));
+      } catch { if (!dead) setFound([]); }
+    }, 220);
+    return () => { dead = true; clearTimeout(t); };
+  }, [method, q, online, session]);
 
   /* The keypad buffer is read as laari — typing 1 2 5 0 means MVR 12.50. A till
      keypad has no decimal point for the same reason a card terminal does not:
@@ -37,10 +77,13 @@ export function Payment({ total, onCancel, onConfirm }: Props) {
      point is a hundredfold error. */
   const tendered = buf ? Number(buf) : 0;
 
-  // Card and wallet are settled to the exact bill; only cash is tendered over.
+  // Only cash is tendered over; everything else settles to the exact bill.
   const effective = method === 'cash' ? (tendered || total) : total;
   const change = Math.max(0, effective - total);
-  const short = effective < total;
+  const shortCash = effective < total;
+  /* An account charge is blocked by its own arithmetic, not by the keypad. */
+  const noRoom = method === 'account' && !!who && who.available * 100 < total;
+  const short = shortCash || (method === 'account' && (!who || noRoom));
 
   const key = (d: string) => {
     if (busy) return;
@@ -57,7 +100,8 @@ export function Payment({ total, onCancel, onConfirm }: Props) {
          not revenue and must never reach the ledger as if it were. The server
          refuses a sale whose payments do not equal the bill it computed, which
          is the backstop under this. */
-      await onConfirm([{ method, amount: total }]);
+      await onConfirm([{ method, amount: total }],
+        method === 'account' && who ? who.id : undefined);
     } finally {
       setBusy(false);
     }
@@ -67,6 +111,7 @@ export function Payment({ total, onCancel, onConfirm }: Props) {
     { k: 'cash', label: 'Cash' },
     { k: 'card', label: 'Card' },
     { k: 'wallet', label: 'Wallet' },
+    ...(online ? [{ k: 'account' as Method, label: 'Account' }] : []),
   ];
 
   return (
@@ -129,6 +174,45 @@ export function Payment({ total, onCancel, onConfirm }: Props) {
                   </button>
                 ))}
               </div>
+            ) : method === 'account' ? (
+              <div style={{ padding: '4px 0' }}>
+                <input value={q} onChange={(e) => { setQ(e.target.value); setWho(null); }}
+                  placeholder="name or number…" aria-label="Find the account"
+                  style={{ width: '100%', height: 36, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 13 }} />
+                <div style={{ marginTop: 8, maxHeight: 190, overflowY: 'auto' }}>
+                  {!found ? (
+                    <div style={{ padding: '14px 2px', fontSize: 11.5, color: 'var(--text-faint)' }}>
+                      Looking…
+                    </div>
+                  ) : !found.length ? (
+                    <div style={{ padding: '14px 2px', fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
+                      No house accounts match. An account is opened in Customers &amp; Credit,
+                      by an admin — a customer record on its own carries no credit.
+                    </div>
+                  ) : found.map((m) => {
+                    const room = m.available * 100 >= total && !m.blocked;
+                    const on = who?.id === m.id;
+                    return (
+                      <button key={m.id} onClick={() => setWho(m)} disabled={!room}
+                        style={{ width: '100%', display: 'flex', alignItems: 'baseline', gap: 8, padding: '7px 8px', marginBottom: 4, borderRadius: 7, textAlign: 'left', background: on ? 'var(--bg-3)' : 'transparent', border: '1px solid ' + (on ? 'var(--amber-line)' : 'transparent'), opacity: room ? 1 : 0.5 }}>
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
+                            {m.name || m.phone}
+                          </span>
+                          <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>
+                            {m.company || m.phone}
+                          </span>
+                        </span>
+                        {/* What is LEFT, not what was granted — the only figure
+                            that answers "can this go on the account?" */}
+                        <span style={{ fontSize: 11.5, fontFamily: MONO, color: room ? 'var(--text-muted)' : 'var(--stop-bright)' }}>
+                          {m.blocked ? 'blocked' : money(m.available * 100) + ' left'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ) : (
               <div style={{ padding: '26px 8px', fontSize: 12, lineHeight: 1.65, color: 'var(--text-faint)' }}>
                 {method === 'card'
@@ -167,6 +251,40 @@ export function Payment({ total, onCancel, onConfirm }: Props) {
                   </div>
                 )}
               </>
+            )}
+
+            {method === 'account' && (
+              <div style={{ marginTop: 16 }}>
+                {!who ? (
+                  <div style={{ padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.55 }}>
+                    Whose account is it going on? Nothing is taken now — the bill becomes money
+                    they owe, and somebody has to owe it.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+                      ON ACCOUNT
+                    </div>
+                    <div style={{ marginTop: 5, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                      {who.name || who.phone}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11.5, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                      owes {money(who.owed * 100)} · {money(who.available * 100)} left
+                    </div>
+                    {noRoom ? (
+                      <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--red-dim)', color: 'var(--red-bright)', fontSize: 11.5, lineHeight: 1.5 }}>
+                        Only {money(who.available * 100)} left on the limit — this bill is{' '}
+                        {money(total)}.
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.5 }}>
+                        No money is taken. It becomes {money(total)} owed, and leaves{' '}
+                        {money(who.available * 100 - total)} on the account.
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             )}
 
             <button
