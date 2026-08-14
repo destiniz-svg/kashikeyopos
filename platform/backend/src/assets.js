@@ -28,6 +28,8 @@
  * have been easiest to break.
  */
 
+const { post: postJournal } = require('./journal');
+
 const toMVR = (laari) => (laari / 100).toFixed(2);
 const toLaari = (mvr) => Math.round(Number(mvr) * 100);
 const money = (n) => Math.round(Number(n) * 100) / 100;
@@ -183,7 +185,7 @@ async function add(c, p, ctx) {
 
   /* CAPITALISED, not expensed: Dr 1500 Equipment. Nothing reaches the P&L
      today — the whole point of the register. */
-  await journal(c, {
+  await postJournal(c, {
     date: on, memo: 'Bought — ' + name, source: 'asset', sourceId: id,
     lines: [
       { account: '1500', dr: cost, cr: 0 },
@@ -235,7 +237,7 @@ async function depreciate(c, p, ctx) {
     if (amount <= 0) continue;
     total += amount;
 
-    await journal(c, {
+    await postJournal(c, {
       date, memo: 'Depreciation — ' + a.name, source: 'asset', sourceId: a.id,
       lines: [
         { account: '6300', dr: amount, cr: 0 },
@@ -302,7 +304,7 @@ async function dispose(c, p, ctx) {
       : { account: '6310', dr: 0, cr: result });  // a gain is a negative one
   }
 
-  await journal(c, {
+  await postJournal(c, {
     date: on,
     memo: (proceeds > 0 ? 'Sold — ' : 'Scrapped — ') + a.name,
     source: 'asset', sourceId: a.id, lines,
@@ -447,21 +449,6 @@ async function history(c, id) {
   };
 }
 
-/* ── the one journal helper this module needs ────────────────────────────── */
-
-async function journal(c, j, ctx) {
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + ' VALUES ($1,$2::date,$3,$4,$5,$6) RETURNING id',
-    [no.rows[0].no, j.date, j.memo, j.source, j.sourceId, ctx.actor]);
-  for (const l of j.lines) {
-    await c.query(
-      'INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,$4)',
-      [h.rows[0].id, l.account, toMVR(l.dr), toMVR(l.cr)]);
-  }
-  return h.rows[0].id;   // the deferred trigger refuses an unbalanced entry at COMMIT
-}
 
 module.exports = {
   list, add, depreciate, dispose, schedule, complete, dropService, history,

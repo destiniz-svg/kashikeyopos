@@ -29,6 +29,8 @@
  * capitalised to 1200 Prepaid expenses and released a period at a time.
  */
 
+const { post: postJournal } = require('./journal');
+
 const toMVR = (laari) => (laari / 100).toFixed(2);
 const toLaari = (mvr) => Math.round(Number(mvr) * 100);
 const money = (n) => Math.round(Number(n) * 100) / 100;
@@ -105,7 +107,7 @@ async function record(c, p, ctx) {
 
   /* The journal. A SPREAD cost capitalises to 1200 and hits no expense account
      yet; an ordinary one goes straight to its category. */
-  await journal(c, {
+  await postJournal(c, {
     date: on,
     memo: (spread ? 'Prepaid — ' : '') + ok.rows[0].name
       + (p.note ? ' — ' + String(p.note).slice(0, 120) : ''),
@@ -174,7 +176,7 @@ async function release(c, p, ctx) {
       ? total - Math.round(total / n) * (n - 1)
       : Math.round(total / n);
 
-    await journal(c, {
+    await postJournal(c, {
       date, memo: 'Monthly share — ' + r.name,
       source: 'expense', sourceId: r.id,
       lines: [
@@ -393,21 +395,6 @@ async function list(c, from, to) {
   };
 }
 
-/* ── the one journal helper this module needs ────────────────────────────── */
-
-async function journal(c, j, ctx) {
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + ' VALUES ($1,$2::date,$3,$4,$5,$6) RETURNING id',
-    [no.rows[0].no, j.date, j.memo, j.source, j.sourceId, ctx.actor]);
-  for (const l of j.lines) {
-    await c.query(
-      'INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,$4)',
-      [h.rows[0].id, l.account, toMVR(l.dr), toMVR(l.cr)]);
-  }
-  return h.rows[0].id;   // the deferred trigger refuses an unbalanced entry at COMMIT
-}
 
 module.exports = {
   categories, record, release, schedules, setSchedule, stopSchedule, due, list,

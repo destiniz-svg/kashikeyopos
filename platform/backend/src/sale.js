@@ -35,6 +35,7 @@
 const money = require('../../packages/money/money');
 const costing = require('./costing');
 const customers = require('./customers');
+const loyalty = require('./loyalty');
 
 /* MVR ↔ laari. The database columns are numeric(12,2) in MVR; every
    calculation in between is integer laari. Conversion happens here and at no
@@ -170,6 +171,21 @@ async function settle(c, p, ctx, outlet) {
     await customers.checkCredit(c, p.memberId, onAccount);
   }
 
+  /* Points are the other settlement where nothing arrives, and they are checked
+     in the same place and for the same reason: a member who turns out not to
+     have the points, discovered after the sale, is a bill that was never
+     settled and a receipt that says it was. */
+  const inPoints = (p.payments || [])
+    .filter((x) => x.method === 'points')
+    .reduce((a, x) => a + toLaari(x.amount || 0), 0);
+  if (inPoints > 0) {
+    if (!p.memberId) {
+      throw Object.assign(new Error(
+        'paying with points needs a member — whose points are they?'), { status: 409 });
+    }
+    await loyalty.checkPoints(c, p.memberId, inPoints);
+  }
+
   // Cost of what was sold, captured NOW: margin must never be recomputed from a
   // later ingredient price, or last month's profit changes when a supplier does.
   const costs = new Map();
@@ -233,6 +249,21 @@ async function settle(c, p, ctx, outlet) {
     await customers.charge(c, {
       onDate: p.businessDate, memberId: p.memberId, amount: onAccount,
       saleId, docNo: sale.rows[0].receipt_no,
+    }, ctx);
+  }
+
+  /* Points spent, then points earned — in that order, so a member cannot earn
+     on this bill and immediately spend it on the same one. */
+  if (inPoints > 0) {
+    await loyalty.spend(c, { memberId: p.memberId, amount: inPoints, saleId }, ctx);
+  }
+  if (p.memberId) {
+    /* Earned on the GOODS, net of tax and service. Earning on the tax would
+       have the business paying a member a share of the government's money, and
+       earning on the service charge would pay them a share of the staff's. */
+    await loyalty.earn(c, {
+      memberId: p.memberId, goodsLaari: b.gross - b.discount, saleId,
+      businessDate: p.businessDate, docNo: sale.rows[0].receipt_no,
     }, ctx);
   }
 

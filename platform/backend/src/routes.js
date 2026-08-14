@@ -19,6 +19,7 @@ const analytics = require('./analytics');
 const opcosts = require('./opcosts');
 const assets = require('./assets');
 const customers = require('./customers');
+const loyalty = require('./loyalty');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -717,6 +718,75 @@ r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLea
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return opcosts.stopSchedule(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Loyalty & Rewards (§2 `loyalty`) ─────────────────────────────────────
+ *
+ * TILL rank reads it: a cashier tells a guest what they earned, and the tender
+ * screen needs the balance before it can offer points.
+ *
+ * ADMIN sets the earn rate, the ladder and the catalogue. An earn rate is a
+ * standing promise to every member of the chain — it accrues a real liability
+ * on every sale, at every branch, until somebody changes it.
+ */
+r.get('/outlet/:outletId/loyalty', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await loyalty.stats(c, req.ctx.outletId)),
+          rewards: await loyalty.rewards(c),
+          canConfigure: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/loyalty/member/:id', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such member' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.member(c, req.params.id);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/loyalty/config', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.setConfig(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/loyalty/rewards', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.setReward(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/loyalty/rewards/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such reward' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.dropReward(c, req.params.id, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }

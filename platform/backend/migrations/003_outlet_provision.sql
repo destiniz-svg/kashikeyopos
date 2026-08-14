@@ -636,6 +636,12 @@ BEGIN
   -- is disposed of, never deleted.
   EXECUTE format('GRANT DELETE ON %I.asset_service TO %I', s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
+  -- Loyalty (§2 `loyalty`). The scheme is chain-wide configuration; the point
+  -- ledger is append-only, so no UPDATE or DELETE on it ever. See migration 020.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.loyalty TO %I', r);
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON chain.reward TO %I', r);
+  EXECUTE format('GRANT SELECT, INSERT ON chain.point_entry TO %I', r);
+  EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.point_entry_id_seq TO %I', r);
   -- The supplier master is shared across the estate and written at ADMIN rank;
   -- the policy in migration 014 enforces the rank, this grants the right.
   EXECUTE format('GRANT INSERT, UPDATE ON chain.supplier TO %I', r);

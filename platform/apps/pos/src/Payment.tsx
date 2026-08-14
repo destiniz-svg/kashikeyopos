@@ -15,15 +15,23 @@ import type { Session } from './api';
  * the ticket — all in one transaction (§3.4's own list). This modal's job is to
  * take a number from a person's fingers and hand it on.
  *
- * THE ACCOUNT TENDER IS THE ODD ONE OUT. No money changes hands: the customer's
- * debt goes up instead, so the tender needs a customer and the customer needs
- * room on their limit. Both are checked here BEFORE the button is pressed —
- * the server checks them again and is the authority, but a cashier standing in
- * front of a guest should not learn about a credit limit from a refusal.
+ * TWO TENDERS TAKE NO MONEY. On ACCOUNT, the customer's debt goes up; in
+ * POINTS, a promise the business already accrued is settled. Both need a member
+ * named, and both can fail for a reason the cashier cannot see — no credit
+ * left, not enough points — so both are checked here BEFORE the button is
+ * pressed. The server checks them again and is the authority, but somebody
+ * standing in front of a guest should not learn about a credit limit from a
+ * refusal.
  *
- * And it is only offered ONLINE. Every other tender can be queued and replayed
- * hours later because nothing about it can turn out to be untrue. A house
- * charge can: the limit is checked when the sale reaches the server, so an
+ * A MEMBER CAN BE ATTACHED TO ANY BILL, not only to one settled in points. The
+ * first version of this screen only asked who the guest was when the tender
+ * needed to know — so a member paying cash, which is most of them, earned
+ * nothing and the scheme quietly did not work for the people it was for. The
+ * question "who is this?" belongs to the sale, not to the tender.
+ *
+ * And the two member tenders are only offered ONLINE. Every other tender can be queued and replayed
+ * hours later because nothing about it can turn out to be untrue. These two
+ * can: the limit is checked when the sale reaches the server, so an
  * offline one could be refused on replay long after the guest has walked out,
  * leaving a meal nobody paid for and no way to find them. A tender that can
  * evaporate is worse than a tender that is unavailable.
@@ -33,12 +41,14 @@ const MONO = "'JetBrains Mono',monospace";
 const money = (laari: number) =>
   (laari / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type Method = 'cash' | 'card' | 'wallet' | 'account';
+type Method = 'cash' | 'card' | 'wallet' | 'account' | 'points';
 
 interface Customer {
   id: string; phone: string; name: string | null; company: string | null;
   available: number; owed: number; onAccount: boolean; blocked: boolean;
+  points: number;
 }
+interface Scheme { pointValue: number; running: boolean }
 
 interface Props {
   total: number;                       // laari
@@ -56,20 +66,51 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
   const [q, setQ] = useState('');
   const [found, setFound] = useState<Customer[] | null>(null);
   const [who, setWho] = useState<Customer | null>(null);
+  const [scheme, setScheme] = useState<Scheme | null>(null);
+  /* Opened by hand for a cash or card bill; forced open by a tender that
+     cannot proceed without a member. */
+  const [attaching, setAttaching] = useState(false);
 
-  /* Search only while the account tender is showing, and only online. */
+  /* Search only while a member tender is showing, and only online. The account
+     tender needs somebody with credit; points need somebody with points. */
+  const memberTender = method === 'account' || method === 'points';
+  const picking = memberTender || attaching;
   useEffect(() => {
-    if (method !== 'account' || !online) return;
+    if (!picking || !online) return;
     let dead = false;
     const t = setTimeout(async () => {
       try {
         const r = await api.authed(session)<{ members: Customer[] }>(
           'GET', '/customers' + (q ? '?q=' + encodeURIComponent(q) : ''));
-        if (!dead) setFound(r.members.filter((m) => m.onAccount));
+        /* Filtered by what the TENDER needs. Attaching a member to a cash bill
+           needs nothing of them, so nothing is filtered out — the commonest
+           case is a member with no credit and no points yet. */
+        if (!dead) {
+          setFound(method === 'account' ? r.members.filter((m) => m.onAccount)
+            : method === 'points' ? r.members.filter((m) => m.points > 0)
+              : r.members);
+        }
       } catch { if (!dead) setFound([]); }
     }, 220);
     return () => { dead = true; clearTimeout(t); };
-  }, [method, q, online, session]);
+  }, [picking, method, q, online, session]);
+
+  /* What a point is worth, so the screen can say how many this bill costs
+     before anybody presses anything. */
+  useEffect(() => {
+    /* Fetched once for any bill, not only a points one: the attach row shows a
+       member's balance, and a cashier telling a guest what they have is the
+       cheapest reason this scheme gets used at all. */
+    if (!online || scheme) return;
+    let dead = false;
+    (async () => {
+      try {
+        const r = await api.authed(session)<{ config: Scheme }>('GET', '/loyalty');
+        if (!dead) setScheme(r.config);
+      } catch { if (!dead) setScheme({ pointValue: 0, running: false }); }
+    })();
+    return () => { dead = true; };
+  }, [online, session, scheme]);
 
   /* The keypad buffer is read as laari — typing 1 2 5 0 means MVR 12.50. A till
      keypad has no decimal point for the same reason a card terminal does not:
@@ -83,7 +124,15 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
   const shortCash = effective < total;
   /* An account charge is blocked by its own arithmetic, not by the keypad. */
   const noRoom = method === 'account' && !!who && who.available * 100 < total;
-  const short = shortCash || (method === 'account' && (!who || noRoom));
+  /* Points needed, rounded UP — the server does the same, and a screen that
+     rounded down would offer a redemption the server then refuses. */
+  const pointsNeeded = scheme && scheme.pointValue > 0
+    ? Math.ceil((total / 100) / scheme.pointValue * 100) / 100 : 0;
+  const notEnough = method === 'points'
+    && (!scheme?.running || !who || who.points < pointsNeeded);
+  const short = shortCash
+    || (method === 'account' && (!who || noRoom))
+    || (method === 'points' && notEnough);
 
   const key = (d: string) => {
     if (busy) return;
@@ -100,8 +149,9 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
          not revenue and must never reach the ledger as if it were. The server
          refuses a sale whose payments do not equal the bill it computed, which
          is the backstop under this. */
-      await onConfirm([{ method, amount: total }],
-        method === 'account' && who ? who.id : undefined);
+      /* The member goes with the SALE whatever paid for it — that is how a
+         cash-paying member earns. */
+      await onConfirm([{ method, amount: total }], who ? who.id : undefined);
     } finally {
       setBusy(false);
     }
@@ -111,7 +161,8 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
     { k: 'cash', label: 'Cash' },
     { k: 'card', label: 'Card' },
     { k: 'wallet', label: 'Wallet' },
-    ...(online ? [{ k: 'account' as Method, label: 'Account' }] : []),
+    ...(online ? [{ k: 'account' as Method, label: 'Account' },
+      { k: 'points' as Method, label: 'Points' }] : []),
   ];
 
   return (
@@ -159,7 +210,33 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
               })}
             </div>
 
-            {method === 'cash' ? (
+            {/* WHO IS THIS? — asked of the sale, not of the tender, so a member
+                paying cash earns like anybody else. */}
+            {online && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 11, padding: '7px 9px', borderRadius: 7, background: who ? 'var(--bg-3)' : 'var(--bg-2)', border: '1px solid ' + (who ? 'var(--amber-line)' : 'var(--line)') }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: who ? 'var(--text)' : 'var(--text-faint)' }}>
+                  {who ? (who.name || who.phone) : 'No member on this bill'}
+                  {who && scheme?.running && (
+                    <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                      {who.points} pts
+                    </span>
+                  )}
+                </span>
+                {who ? (
+                  <button onClick={() => { setWho(null); if (!memberTender) setAttaching(false); }}
+                    style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+                    Remove
+                  </button>
+                ) : !memberTender && (
+                  <button onClick={() => setAttaching((a) => !a)}
+                    style={{ padding: '4px 9px', borderRadius: 6, fontSize: 11, fontWeight: 700, background: attaching ? 'var(--bg-3)' : 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)' }}>
+                    {attaching ? 'Never mind' : 'Attach a member'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {method === 'cash' && !picking ? (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7 }}>
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'c', '0', 'del'].map((d) => (
                   <button key={d} onClick={() => key(d)}
@@ -174,7 +251,7 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
                   </button>
                 ))}
               </div>
-            ) : method === 'account' ? (
+            ) : picking ? (
               <div style={{ padding: '4px 0' }}>
                 <input value={q} onChange={(e) => { setQ(e.target.value); setWho(null); }}
                   placeholder="name or number…" aria-label="Find the account"
@@ -186,14 +263,33 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
                     </div>
                   ) : !found.length ? (
                     <div style={{ padding: '14px 2px', fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
-                      No house accounts match. An account is opened in Customers &amp; Credit,
-                      by an admin — a customer record on its own carries no credit.
+                      {method === 'account'
+                        ? 'No house accounts match. An account is opened in Customers & Credit, by an admin — a customer record on its own carries no credit.'
+                        : method === 'points'
+                          ? 'Nobody matching has any points. Points are earned on a sale once a member is attached to it.'
+                          : 'Nobody matching. A member is added in Customers & Credit — a phone number and a name is enough.'}
                     </div>
                   ) : found.map((m) => {
-                    const room = m.available * 100 >= total && !m.blocked;
+                    /* Whether this member can be PICKED, which depends on what
+                       the tender needs of them. Attaching to a cash bill needs
+                       nothing at all — the ordinary case is somebody with no
+                       credit and no points yet, and refusing them would be
+                       refusing the only way they ever get any. */
+                    const room = method === 'account'
+                      ? m.available * 100 >= total && !m.blocked
+                      : method === 'points' ? m.points >= pointsNeeded
+                        : true;
                     const on = who?.id === m.id;
                     return (
-                      <button key={m.id} onClick={() => setWho(m)} disabled={!room}
+                      <button key={m.id} disabled={!room}
+                        onClick={() => {
+                          setWho(m);
+                          /* On a cash bill the picker was covering the keypad,
+                             so picking closes it — otherwise the cashier can no
+                             longer type what the guest handed over. A member
+                             tender has no keypad to go back to. */
+                          if (!memberTender) setAttaching(false);
+                        }}
                         style={{ width: '100%', display: 'flex', alignItems: 'baseline', gap: 8, padding: '7px 8px', marginBottom: 4, borderRadius: 7, textAlign: 'left', background: on ? 'var(--bg-3)' : 'transparent', border: '1px solid ' + (on ? 'var(--amber-line)' : 'transparent'), opacity: room ? 1 : 0.5 }}>
                         <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>
@@ -206,7 +302,9 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
                         {/* What is LEFT, not what was granted — the only figure
                             that answers "can this go on the account?" */}
                         <span style={{ fontSize: 11.5, fontFamily: MONO, color: room ? 'var(--text-muted)' : 'var(--stop-bright)' }}>
-                          {m.blocked ? 'blocked' : money(m.available * 100) + ' left'}
+                          {method === 'account'
+                            ? (m.blocked ? 'blocked' : money(m.available * 100) + ' left')
+                            : m.points.toLocaleString('en-US', { maximumFractionDigits: 2 }) + ' pts'}
                         </span>
                       </button>
                     );
@@ -251,6 +349,45 @@ export function Payment({ total, session, online, onCancel, onConfirm }: Props) 
                   </div>
                 )}
               </>
+            )}
+
+            {method === 'points' && (
+              <div style={{ marginTop: 16 }}>
+                {!scheme?.running ? (
+                  <div style={{ padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.55 }}>
+                    The loyalty scheme is not running, so there is nothing to spend. An admin
+                    sets an earn rate and what a point is worth.
+                  </div>
+                ) : !who ? (
+                  <div style={{ padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.55 }}>
+                    Whose points? This bill costs{' '}
+                    <b style={{ fontFamily: MONO, color: 'var(--text-muted)' }}>{pointsNeeded}</b>{' '}
+                    of them.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+                      IN POINTS
+                    </div>
+                    <div style={{ marginTop: 5, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                      {who.name || who.phone}
+                    </div>
+                    <div style={{ marginTop: 4, fontSize: 11.5, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                      has {who.points} · this costs {pointsNeeded}
+                    </div>
+                    {notEnough ? (
+                      <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--red-dim)', color: 'var(--red-bright)', fontSize: 11.5, lineHeight: 1.5 }}>
+                        {pointsNeeded - who.points} points short.
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.5 }}>
+                        No money is taken. It settles a promise the business already owed, and
+                        leaves {Math.round((who.points - pointsNeeded) * 100) / 100} points.
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             )}
 
             {method === 'account' && (

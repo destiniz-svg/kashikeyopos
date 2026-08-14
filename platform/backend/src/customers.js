@@ -26,6 +26,8 @@
  * on purpose.
  */
 
+const { post: postJournal } = require('./journal');
+
 const toMVR = (laari) => (laari / 100).toFixed(2);
 const toLaari = (mvr) => Math.round(Number(mvr) * 100);
 const money = (n) => Math.round(Number(n) * 100) / 100;
@@ -247,7 +249,7 @@ async function receipt(c, p, ctx) {
   const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['RCT']);
   const docNo = no.rows[0].no;
 
-  await journal(c, {
+  await postJournal(c, {
     date: on, memo: 'Account payment — ' + docNo,
     source: 'house', sourceId: p.memberId,
     lines: [
@@ -296,7 +298,7 @@ async function writeOff(c, p, ctx) {
     throw Object.assign(new Error('say why it is being written off'), { status: 400 });
   }
 
-  await journal(c, {
+  await postJournal(c, {
     date: on, memo: 'Bad debt — ' + why,
     source: 'house', sourceId: p.memberId,
     lines: [
@@ -408,21 +410,6 @@ async function ageing(c) {
   return { rows, total };
 }
 
-/* ── the one journal helper this module needs ────────────────────────────── */
-
-async function journal(c, j, ctx) {
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + ' VALUES ($1,$2::date,$3,$4,$5,$6) RETURNING id',
-    [no.rows[0].no, j.date, j.memo, j.source, j.sourceId, ctx.actor]);
-  for (const l of j.lines) {
-    await c.query(
-      'INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,$4)',
-      [h.rows[0].id, l.account, toMVR(l.dr), toMVR(l.cr)]);
-  }
-  return h.rows[0].id;
-}
 
 module.exports = {
   list, save, setCredit, balance, checkCredit, charge, receipt, writeOff,

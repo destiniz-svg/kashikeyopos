@@ -94,8 +94,17 @@ ALTER TABLE chain.member ADD COLUMN IF NOT EXISTS credit_limit numeric(12,2)
   NOT NULL DEFAULT 0;
 ALTER TABLE chain.member ADD COLUMN IF NOT EXISTS terms_days int NOT NULL DEFAULT 0;
 ALTER TABLE chain.member ADD COLUMN IF NOT EXISTS blocked boolean NOT NULL DEFAULT false;
-ALTER TABLE chain.member ADD CONSTRAINT member_credit_positive
-  CHECK (credit_limit >= 0) NOT VALID;
+-- Guarded, because migrate.js runs EVERY migration on EVERY boot — that is the
+-- design, and it is why every other statement in this directory is
+-- `IF NOT EXISTS` or `CREATE OR REPLACE`. A bare ADD CONSTRAINT succeeds once
+-- and then fails for ever, so the first deploy would have looked fine and the
+-- second would have died before the server ever listened.
+DO $$
+BEGIN
+  ALTER TABLE chain.member ADD CONSTRAINT member_credit_positive
+    CHECK (credit_limit >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 CREATE INDEX IF NOT EXISTS member_name ON chain.member (lower(coalesce(name,'')));
 
 -- A receipt against a house account is a numbered document like any other, so

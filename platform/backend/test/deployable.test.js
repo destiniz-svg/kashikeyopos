@@ -121,6 +121,47 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('every migration survives being run TWICE, because every boot runs them all',
+    async () => {
+      /* migrate.js has no lock table and no applied-migrations ledger: it runs
+         the whole directory on every boot, by design, and the comment at the
+         top of it promises every migration is `IF NOT EXISTS` or
+         `CREATE OR REPLACE`. Nothing checked that promise.
+
+         A bare `ALTER TABLE ... ADD CONSTRAINT` shipped in 019 and broke it.
+         The first deploy was clean and the SECOND died before the server ever
+         listened — the worst possible shape for a failure, because it passes
+         every test on a fresh database and every fresh database is what a test
+         uses.
+
+         So: run the lot, then run the lot again, against a scratch database. */
+      const { Client } = require('pg');
+      const { execFileSync } = require('node:child_process');
+      const name = 'kpos_twice_' + process.pid;
+      const admin = new Client({ connectionString: process.env.DATABASE_URL });
+      await admin.connect();
+      try {
+        await admin.query('DROP DATABASE IF EXISTS ' + name);
+        await admin.query('CREATE DATABASE ' + name);
+      } finally { await admin.end().catch(() => {}); }
+
+      const url = String(process.env.DATABASE_URL).replace(/\/[^/]*$/, '/' + name);
+      const env = { ...process.env, DATABASE_URL: url, PGDATABASE: name };
+      const run = () => execFileSync(
+        process.execPath, [path.join(ROOT, 'backend', 'scripts', 'migrate.js')],
+        { env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+      try {
+        run();
+        run();                       // ← the second deploy
+      } finally {
+        const drop = new Client({ connectionString: process.env.DATABASE_URL });
+        await drop.connect();
+        try { await drop.query('DROP DATABASE IF EXISTS ' + name); }
+        finally { await drop.end().catch(() => {}); }
+      }
+    });
+
   test('a rank gate with a name that is not in the ladder REFUSES TO EXIST', () => {
     /* `RANK[name]` for a name outside the ladder is undefined, and
        `anything < undefined` is false — so a gate written as atLeast('cashier'),
