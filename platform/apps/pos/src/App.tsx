@@ -6,6 +6,7 @@ import { navFor, landingFor } from './nav';
 import { Lock } from './Lock';
 import { Floor } from './Floor';
 import { Kds } from './Kds';
+import { Menu } from './Menu';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -23,7 +24,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -287,6 +288,8 @@ export function App({ outletId }: { outletId: number }) {
               now={now}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
+          ) : view === 'menu' && MODULES_BUILT.has('menu') ? (
+            <Menu session={session} />
           ) : view === 'kds' && MODULES_BUILT.has('kds') ? (
             <Kds
               snap={snap}

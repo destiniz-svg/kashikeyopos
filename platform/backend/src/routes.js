@@ -5,6 +5,7 @@ const { sign, pinMatches, pinLookup } = require('./secrets');
 const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
 const { settle } = require('./sale');
 const kitchen = require('./kitchen');
+const menu = require('./menu');
 
 const r = express.Router();
 const LOCK_TRIES = 5, LOCK_MINS = 15;
@@ -252,6 +253,54 @@ r.post('/outlet/:outletId/guest/request', sameOutlet, ownTable, async function (
     res.status(201).json(out);
   } catch (e) { next(e); }
 });
+
+/* ── Menu Master (§2 `menu`) ────────────────────────────────────────────────
+ *
+ * Manager rank and above. NOT on the offline replay path: a menu is edited in
+ * an office by one person at a time, and an edit queued on a tablet for three
+ * hours then replayed over somebody else's newer price is a worse outcome than
+ * being told to reconnect. The till is offline-first because a queue of
+ * customers cannot wait; a price list is not that.
+ */
+r.get('/outlet/:outletId/menu', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { items: await menu.list(c), stations: await menu.stations(c, req.ctx.outletId) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/menu', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.create(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/menu/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.update(c, req.params.itemId, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/menu/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.retire(c, req.params.itemId);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
 
 // ── offline replay. Idempotent by construction: the client's own op_id is the
 //    primary key, and a closed sale is never reopened by a late arrival.
