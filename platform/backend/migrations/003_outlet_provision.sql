@@ -409,6 +409,10 @@ BEGIN
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA %I TO %I', s, r);
   EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I', s, r);
   EXECUTE format('REVOKE DELETE ON %I.sale, %I.sale_line, %I.payment, %I.journal, %I.journal_line, %I.op_log FROM %I', s, s, s, s, s, s, r);
+  -- Recipe lines are current configuration, not a financial record: replacing a
+  -- recipe removes the lines no longer in it, and its history is kept in
+  -- chain.audit, which records the whole before and after set on every save.
+  EXECUTE format('GRANT DELETE ON %I.recipe_line TO %I', s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
   -- Kitchen stations: readable always, writable at Manager rank through the
   -- station_write policy. The grant lives HERE and not only in the migration

@@ -6,6 +6,8 @@ const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
 const { settle } = require('./sale');
 const kitchen = require('./kitchen');
 const menu = require('./menu');
+const recipes = require('./recipes');
+const { taxAsAt } = require('./sale');
 
 const r = express.Router();
 const LOCK_TRIES = 5, LOCK_MINS = 15;
@@ -297,6 +299,81 @@ r.delete('/outlet/:outletId/menu/:itemId', sameOutlet, staffOnly, atLeast('manag
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return menu.retire(c, req.params.itemId);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Recipes & Costing (§2 `recipes`) ───────────────────────────────────────
+ *
+ * Manager rank. Costing is read against the tax rate in force TODAY, because
+ * GP is measured on the price net of tax and a menu price is GST-inclusive —
+ * measuring margin against a figure that includes the government's share
+ * flatters every dish by the tax rate.
+ */
+async function todayRate(c, outletId) {
+  try {
+    return (await taxAsAt(c, outletId, new Date().toISOString().slice(0, 10))).rate;
+  } catch (e) {
+    // An outlet with no tax version yet is not GST-registered as far as this
+    // screen is concerned; margin is then simply measured on the price.
+    return 0;
+  }
+}
+
+r.get('/outlet/:outletId/ingredients', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return recipes.listIngredients(c); });
+      res.set('cache-control', 'no-store').json({ ingredients: out, units: recipes.UNITS });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/ingredients', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return recipes.createIngredient(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/ingredients/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return recipes.updateIngredient(c, req.params.id, req.body || {});
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/recipes', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return recipes.costedMenu(c, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json({ items: out });
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/recipes/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return recipes.recipeFor(c, req.params.itemId, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/recipes/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return recipes.putRecipe(c, req.params.itemId, req.body || {}, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }

@@ -33,6 +33,7 @@
  */
 
 const money = require('../../packages/money/money');
+const costing = require('./costing');
 
 /* MVR ↔ laari. The database columns are numeric(12,2) in MVR; every
    calculation in between is integer laari. Conversion happens here and at no
@@ -57,41 +58,10 @@ async function taxAsAt(c, outletId, businessDate) {
   return { code: q.rows[0].code, rate: Number(q.rows[0].rate) };
 }
 
-/** Recipe cost of one unit of an item, in laari, walking sub-recipes.
- *  Depth-bounded and cycle-guarded: a recipe that refers to itself is a data
- *  error, and it must cost a sale a wrong number rather than the process. */
-async function unitCost(c, itemId, seen, depth) {
-  seen = seen || new Set();
-  depth = depth || 0;
-  if (depth > 8 || seen.has(itemId)) return 0;
-  seen.add(itemId);
-
-  const it = await c.query('SELECT yield_qty FROM item WHERE id = $1', [itemId]);
-  const yieldQty = it.rows.length ? Number(it.rows[0].yield_qty) || 1 : 1;
-
-  const lines = await c.query(
-    'SELECT ingredient_id, sub_item_id, qty, waste_pct FROM recipe_line WHERE item_id = $1',
-    [itemId]);
-
-  let total = 0;
-  for (const l of lines.rows) {
-    // Waste is a yield loss: needing 100g at 10% waste means buying 111g, so
-    // the cost divides by (1 − waste), it does not multiply by (1 + waste).
-    const wastePct = Number(l.waste_pct) || 0;
-    const grossQty = Number(l.qty) / (1 - Math.min(0.95, wastePct / 100));
-    if (l.ingredient_id) {
-      const ing = await c.query('SELECT avg_cost FROM ingredient WHERE id = $1', [l.ingredient_id]);
-      const cost = ing.rows.length ? Number(ing.rows[0].avg_cost) : 0;
-      total += grossQty * cost * 100;               // avg_cost is MVR per unit
-    } else if (l.sub_item_id) {
-      total += grossQty * await unitCost(c, l.sub_item_id, seen, depth + 1);
-    }
-  }
-  seen.delete(itemId);
-  // A recipe that yields 8 portions costs an eighth per portion. Forgetting
-  // this is the classic way food cost comes out eight times too high.
-  return total / (yieldQty || 1);
-}
+/* Costing lives in ./costing.js — the SAME functions Recipes & Costing calls
+   to show a manager a plate cost while they edit. Written twice, the screen
+   would say 31% food cost while the ledger booked 38%, with nothing to point
+   at. */
 
 /**
  * Settle a sale. `p` is what the till captured; everything financial is derived.
@@ -161,7 +131,7 @@ async function settle(c, p, ctx, outlet) {
   // Cost of what was sold, captured NOW: margin must never be recomputed from a
   // later ingredient price, or last month's profit changes when a supplier does.
   const costs = new Map();
-  for (const id of new Set(ids)) costs.set(id, await unitCost(c, id));
+  for (const id of new Set(ids)) costs.set(id, (await costing.itemCost(c, id)).cost);
   let cogs = 0;
   for (const l of billLines) {
     l.unitCost = costs.get(l.itemId) || 0;
@@ -248,7 +218,7 @@ async function settle(c, p, ctx, outlet) {
 /** Explode the recipe and move stock, signed, with the cost it moved at. */
 async function moveStock(c, saleId, lines, ctx) {
   const need = new Map();   // ingredientId -> qty
-  for (const l of lines) await accumulate(c, l.itemId, Number(l.qty), need, 0, new Set());
+  for (const l of lines) await costing.explode(c, l.itemId, Number(l.qty), need);
   for (const [ingredientId, qty] of need) {
     const ing = await c.query(
       'SELECT avg_cost FROM ingredient WHERE id = $1 FOR UPDATE', [ingredientId]);
@@ -262,26 +232,6 @@ async function moveStock(c, saleId, lines, ctx) {
     await c.query('UPDATE ingredient SET on_hand = on_hand - $2 WHERE id = $1',
       [ingredientId, qty]);
   }
-}
-
-async function accumulate(c, itemId, qty, need, depth, seen) {
-  if (depth > 8 || seen.has(itemId)) return;
-  seen.add(itemId);
-  const it = await c.query('SELECT yield_qty FROM item WHERE id = $1', [itemId]);
-  const yieldQty = it.rows.length ? Number(it.rows[0].yield_qty) || 1 : 1;
-  const lines = await c.query(
-    'SELECT ingredient_id, sub_item_id, qty, waste_pct FROM recipe_line WHERE item_id = $1',
-    [itemId]);
-  for (const l of lines.rows) {
-    const wastePct = Number(l.waste_pct) || 0;
-    const each = (Number(l.qty) / (1 - Math.min(0.95, wastePct / 100))) / yieldQty;
-    if (l.ingredient_id) {
-      need.set(l.ingredient_id, (need.get(l.ingredient_id) || 0) + each * qty);
-    } else if (l.sub_item_id) {
-      await accumulate(c, l.sub_item_id, each * qty, need, depth + 1, seen);
-    }
-  }
-  seen.delete(itemId);
 }
 
 /**
@@ -340,4 +290,4 @@ async function postSaleJournal(c, saleId, b, cogs, p, ctx, tax) {
   return h.rows[0].id;   // the deferred trigger refuses an unbalanced entry at COMMIT
 }
 
-module.exports = { settle, taxAsAt, unitCost, toLaari, toMVR };
+module.exports = { settle, taxAsAt, toLaari, toMVR };

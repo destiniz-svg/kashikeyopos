@@ -15,7 +15,7 @@ app.use(function (req, res, next) {
     res.set('access-control-allow-origin', o);
     res.set('vary', 'origin');
     res.set('access-control-allow-headers', 'authorization,content-type');
-    res.set('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+    res.set('access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
     res.set('access-control-max-age', '600');
   }
   res.set('x-content-type-options', 'nosniff');
