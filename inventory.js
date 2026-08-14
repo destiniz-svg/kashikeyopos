@@ -20,6 +20,10 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   const noteActivity = typeof logActivity === "function" ? logActivity : async () => {};
   const express = require("express");
   const router = express.Router();
+  /* The ONE allergen/diet derivation — the same file the terminal and the guest
+     portal load as a browser script. See web3/proto/allergens.js for why there
+     is exactly one copy of these rules. */
+  const ALG = require("./web3/proto/allergens.js");
 
   /* Back-office pages sign in with the app-session cookie; the till uses its
      bearer JWT. Accept either, and expose req.orgId either way. */
@@ -335,6 +339,222 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     } catch (e) { recordError("availability recompute", e); }
   }
 
+  /* ── Allergens: derived from the recipe, never re-typed ────────────────────
+
+     The chain the guest-portal spec asks for: tag an INGREDIENT once and every
+     dish that uses it inherits, so a recipe change updates the guest's filter
+     the same minute instead of leaving a hand-typed tag behind to lie about it.
+
+     This mirrors recomputeAvailability's shape — derive, write onto the product
+     entity, bump rowver, poke SSE — because the till and the guest portal
+     already poll that entity. No new transport, no new poll.
+
+     Deliberately NOT folded into recomputeAvailability: that one runs on every
+     sale, and a dish's allergens cannot change because stock moved. This runs
+     only when a recipe, an ingredient name or an ingredient's tags change.
+
+     Writes three fields, and the third is the one that matters:
+       dishAllergens       — the derived keys, canonical order
+       dishMeat            — any ingredient reads as flesh (for the veg diets)
+       allergensUnreviewed — at least one contributing ingredient is still the
+                             name-derived guess, or the dish has no recipe at
+                             all. The surfaces show a caveat instead of implying
+                             a verified absence. A regex on a supplier's product
+                             name is a suggestion; presenting it as a clearance
+                             is the failure mode that puts somebody in hospital. */
+  async function recomputeAllergensForProducts(orgId, productIds) {
+    const pids = Array.from(new Set((productIds || []).map((p) => String(p || "")).filter(Boolean)));
+    if (!pids.length) return;
+    try {
+      let maxRowver = 0;
+      await withOrgBackground(orgId, async (client) => {
+        /* The whole org's ingredients and recipe graph, in two queries. It has
+           to be the whole graph because recipe_lines is reused for SUB-RECIPES:
+           a prep item ("producible") and a stockable menu product both key
+           their build recipe by the ingredient's own id, so a dish's real
+           allergens can sit two or more levels down — a stockable "Fish curry"
+           product draws one unit of a backing ingredient whose build recipe is
+           where the fish actually is. Resolving only the top level would report
+           a curry with no fish in it.
+           Two queries over a few thousand rows beats a recursive CTE here: the
+           union-and-stop-at-a-human-decision rule below is not expressible in
+           SQL without duplicating the module's rules in a second language. */
+        const ingRows = (await client.query(
+          "SELECT id, name, allergens FROM ingredients WHERE org_id=$1", [orgId])).rows;
+        /* No `AND i.active` filter anywhere here, unlike recomputeAvailability —
+           deliberately. An inactive ingredient still sitting in a live recipe
+           means the dish is still made with it and nobody has updated the
+           recipe yet. Filtering it out would let deactivating "Prawn paste"
+           quietly clear shellfish off a dish that still contains it, which is
+           the one direction this system must never fail in. Removing the recipe
+           LINE is how an allergen leaves a dish. */
+        const lineRows = (await client.query(
+          "SELECT product_id, ingredient_id FROM recipe_lines WHERE org_id=$1", [orgId])).rows;
+        const ingById = new Map(ingRows.map((r) => [r.id, r]));
+        const childrenOf = new Map();
+        for (const l of lineRows) {
+          if (!childrenOf.has(l.product_id)) childrenOf.set(l.product_id, []);
+          childrenOf.get(l.product_id).push(l.ingredient_id);
+        }
+
+        /* One ingredient's contribution: { keys, meat, reviewed }.
+           A human's tags STOP the descent — if someone tagged the prep item
+           itself, that is the answer and its components do not override it.
+           Otherwise, if it has a build recipe, it is the union of that recipe;
+           failing both, it is the name-derived guess.
+           `seen` breaks a cycle (A built from B built from A); a cycle resolves
+           to the name guess and stays unreviewed rather than recursing forever
+           or throwing, because a malformed recipe must not take the menu down. */
+        const memo = new Map();
+        const resolveIngredient = (id, seen) => {
+          if (memo.has(id)) return memo.get(id);
+          const row = ingById.get(id);
+          if (!row) return { keys: [], meat: false, reviewed: false };
+          const nameMeat = ALG.nameHasMeat(row.name);
+          const kids = childrenOf.get(id) || [];
+          /* A cycle (A built from B built from A). Resolve to the name guess and
+             stay unreviewed rather than recursing forever — a malformed recipe
+             must not take the menu down. NOT memoised: this answer is truncated
+             by where the walk happened to start, and caching it would leak that
+             truncation into an unrelated branch that could have resolved fully. */
+          if (seen.has(id)) return { keys: ALG.suggestForIngredient(row.name), meat: nameMeat, reviewed: false, trunc: true };
+
+          /* Walk the build recipe for MEAT even when the tags below are settled.
+             Meat is not an allergen and a human's allergen tags say nothing
+             about it: tagging a "Ramen base" prep item ["soy"] must not make the
+             chicken inside it disappear, or the Vegetarian chip serves a
+             vegetarian a chicken dish. There is no field on which anyone could
+             have declared the absence of meat, so the recipe is the only
+             evidence there is and it is always consulted. */
+          let subMeat = nameMeat, trunc = false;
+          if (kids.length && !subMeat) {
+            seen.add(id);
+            for (const kid of kids) {
+              const r = resolveIngredient(kid, seen);
+              if (r.trunc) trunc = true;
+              if (r.meat) { subMeat = true; break; }
+            }
+            seen.delete(id);
+          }
+
+          /* A human's tags STOP the ALLERGEN descent — if someone tagged the
+             prep item itself, that is the answer and its components do not
+             override it. (Clarifying a stock really can leave the protein
+             behind; that judgement is the chef's to make and record.) */
+          /* Memoise only an answer no cycle guard truncated — anywhere beneath
+             it, not just at this node. What is cached is a full answer or
+             nothing; a truncated one is recomputed per starting point, which is
+             correct because that is exactly what it depends on. */
+          const keep = (out) => { if (!out.trunc) memo.set(id, out); return out; };
+
+          if (row.allergens != null) {
+            return keep({ keys: ALG.normalise(row.allergens), meat: subMeat, reviewed: true, trunc: trunc });
+          }
+          if (kids.length) {
+            seen.add(id);
+            let keys = [], reviewed = true;
+            for (const kid of kids) {
+              const r = resolveIngredient(kid, seen);
+              keys = keys.concat(r.keys);
+              if (!r.reviewed) reviewed = false;
+              if (r.trunc) trunc = true;
+            }
+            seen.delete(id);
+            // A truncated subtree is by definition not fully known, so the dish
+            // above it must not read as confirmed.
+            return keep({ keys: ALG.normalise(keys), meat: subMeat, reviewed: reviewed && !trunc, trunc: trunc });
+          }
+          return keep({ keys: ALG.suggestForIngredient(row.name), meat: subMeat, reviewed: false, trunc: trunc });
+        };
+
+        const byProduct = new Map();
+        for (const pid of pids) {
+          byProduct.set(pid, (childrenOf.get(pid) || []).map((id) => {
+            const r = resolveIngredient(id, new Set([pid]));
+            // dishAllergens() re-reads meat off the NAME, so hand it a name that
+            // already carries the resolved answer rather than the wrapper's.
+            return { name: r.meat ? "MEAT" : "", allergens: r.keys, reviewed: r.reviewed };
+          }));
+        }
+        // The per-dish additive override lives on the product entity, for what
+        // no ingredient list can show — a shared fryer, a dusted worktop.
+        const ents = await client.query(
+          `SELECT id, data FROM entities
+            WHERE org_id=$1 AND kind='products' AND id = ANY($2) AND deleted=false`, [orgId, pids]);
+        for (const ent of ents.rows) {
+          const prev = ent.data || {};
+          const d = ALG.dishAllergens(byProduct.get(ent.id) || [], prev.allergensAdd);
+          /* Only write when something actually moved: every write bumps rowver
+             and pokes SSE, which reloads open guest pages. A recipe save that
+             changes a quantity must not churn every phone in the room.
+
+             `derived` first, and it is not redundant. A dish that has never been
+             derived has NO allergensUnreviewed field, and the surfaces read a
+             missing field as unconfirmed (fail-safe). Comparing with `||` and
+             `!!` would score that absence as equal to a confirmed-empty result
+             and skip the write — so a dish whose every ingredient a chef had
+             explicitly cleared would sit there reading "we have not confirmed
+             the allergens for this dish" forever, with no edit able to fix it. */
+          const derived = prev.allergensUnreviewed !== undefined;
+          const same = derived
+            && JSON.stringify(prev.dishAllergens || []) === JSON.stringify(d.keys)
+            && !!prev.dishMeat === d.meat && !!prev.allergensUnreviewed === d.unreviewed;
+          if (same) continue;
+          const upd = await client.query(
+            `UPDATE entities SET
+               data = data || jsonb_build_object('dishAllergens', $3::jsonb,
+                                                 'dishMeat', $4::boolean,
+                                                 'allergensUnreviewed', $5::boolean),
+               rowver = nextval('entities_rowver_seq'), updated_at = now()
+             WHERE org_id=$1 AND kind='products' AND id=$2 AND deleted=false RETURNING rowver`,
+            [orgId, ent.id, JSON.stringify(d.keys), d.meat, d.unreviewed]);
+          for (const row of upd.rows) maxRowver = Math.max(maxRowver, Number(row.rowver));
+        }
+      });
+      if (maxRowver && poke) poke(orgId, maxRowver);
+    } catch (e) { recordError("allergen recompute", e); }
+  }
+
+  /* Ingredient-keyed entry point: re-derive every dish that uses these
+     ingredients. Use this when an ingredient's NAME or TAGS changed. When a
+     RECIPE changed, call recomputeAllergensForProducts with the product id
+     instead — an ingredient just removed from the recipe is no longer joined to
+     it, so the ingredient-keyed path would not find the dish that needs fixing,
+     which is exactly the edit that must not be missed. */
+  async function recomputeAllergens(orgId, ingredientIds) {
+    try {
+      const ids = Array.from(new Set((ingredientIds || []).map((i) => String(i || "")).filter(Boolean)));
+      const targets = await withOrgBackground(orgId, async (client) => {
+        if (!ids.length) {
+          return (await client.query("SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1", [orgId]))
+            .rows.map((r) => r.product_id);
+        }
+        /* Walk UP the recipe graph to a fixpoint, not just one hop. recipe_lines
+           is reused for sub-recipes, so an ingredient's consumer may itself be
+           an ingredient: a dish built from prep A built from prep B. Changing
+           B's tags has to reach the dish, and one hop only reaches A — which is
+           an ingredient id with no product entity behind it, so nothing would
+           have been written and the dish would keep serving the old answer.
+           `seen` bounds it: the graph is finite and each id is expanded once,
+           so a cycle terminates instead of looping. */
+        const seen = new Set(ids);
+        let frontier = ids;
+        while (frontier.length) {
+          const up = (await client.query(
+            "SELECT DISTINCT product_id FROM recipe_lines WHERE org_id=$1 AND ingredient_id = ANY($2)",
+            [orgId, frontier])).rows.map((r) => r.product_id);
+          frontier = up.filter((p) => !seen.has(p));
+          frontier.forEach((p) => seen.add(p));
+        }
+        // The originating ingredient ids stay in the set: one may be a resale
+        // item whose own product entity is keyed by a different id but whose
+        // recipe references it, and a non-product id simply matches no entity.
+        return Array.from(seen);
+      });
+      await recomputeAllergensForProducts(orgId, targets);
+    } catch (e) { recordError("allergen recompute (by ingredient)", e); }
+  }
+
   /* Stock reservations (AUDIT-UX-STOCK, issue #31): a short-lived hold so two
      guests submitting near-simultaneously for the last unit of a limited item
      can't both succeed. Deliberately scoped to the guest QR order path only —
@@ -574,7 +794,14 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
         .map((x) => {
           const d = x.data || {};
           const id = String(d.id || x.id).split(":").pop();
-          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", allergens: d.allergens || "", addons: Array.isArray(d.addons) ? d.addons : [], spiceLevels: Array.isArray(d.spiceLevels) ? d.spiceLevels : [], comments: !!d.comments, noKitchen: !!d.noKitchen, hidden: !!d.hidden, desc: d.desc || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId };
+          return { id, name: d.name || "Item", emoji: d.emoji || "", cat: d.cat || "General", price: num(d.price), img: d.img || "", allergens: d.allergens || "", addons: Array.isArray(d.addons) ? d.addons : [], spiceLevels: Array.isArray(d.spiceLevels) ? d.spiceLevels : [], comments: !!d.comments, noKitchen: !!d.noKitchen, hidden: !!d.hidden, desc: d.desc || "", recipeLines: recipeCounts[id] || 0, stockable: !!d.stockIngredientId,
+            /* Derived from the recipe (dishAllergens) vs the manager's additive
+               override (allergensAdd) vs the legacy free-text note (allergens,
+               above). Kept apart on purpose: the editor must show which of the
+               three it is about to change. */
+            dishAllergens: Array.isArray(d.dishAllergens) ? d.dishAllergens : [],
+            allergensAdd: Array.isArray(d.allergensAdd) ? d.allergensAdd : [],
+            allergensUnreviewed: d.allergensUnreviewed !== false };
         })
         .sort((a, b) => a.cat.localeCompare(b.cat) || a.name.localeCompare(b.name));
       const sd = st.rowCount ? st.rows[0].data : {};
@@ -710,6 +937,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     const pid = req.params.id, body = req.body || {};
     const cat = typeof body.cat === "string" ? body.cat.trim().slice(0, 40) : undefined;
     const allergens = typeof body.allergens === "string" ? body.allergens.slice(0, 200) : undefined;
+    /* The per-dish ADDITIVE override, for what no ingredient list can show — a
+       shared fryer, a dusted worktop. Additive only, by construction: it is a
+       separate field that recomputeAllergens unions ON TOP of the recipe, so
+       there is no representation for "this dish does not contain X" when the
+       recipe says it does. Removing an allergen means changing the recipe. */
+    const allergensAdd = Array.isArray(body.allergensAdd) ? ALG.normalise(body.allergensAdd) : undefined;
     const addons = body.addons !== undefined ? cleanAddons(body.addons) : undefined;
     const spiceLevels = body.spiceLevels !== undefined ? cleanSpice(body.spiceLevels) : undefined;
     const comments = body.comments !== undefined ? !!body.comments : undefined;
@@ -723,6 +956,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       const data = Object.assign({}, row.data || {});
       if (cat !== undefined && cat) data.cat = cat; // reassign to a sub category
       if (allergens !== undefined) { if (allergens.trim()) data.allergens = allergens.trim(); else delete data.allergens; }
+      if (allergensAdd !== undefined) { if (allergensAdd.length) data.allergensAdd = allergensAdd; else delete data.allergensAdd; }
       if (addons !== undefined) { if (addons.length) data.addons = addons; else delete data.addons; }
       if (spiceLevels !== undefined) { if (spiceLevels.length) data.spiceLevels = spiceLevels; else delete data.spiceLevels; }
       if (comments !== undefined) { if (comments) data.comments = true; else delete data.comments; }
@@ -735,6 +969,10 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     });
     if (rowver == null) return res.status(404).json({ error: "unknown menu item" });
     if (poke) poke(req.orgId, rowver);
+    /* The override is one of the two inputs to the derived list, so changing it
+       has to re-run the derivation — otherwise the manager ticks "shared fryer:
+       gluten" and the guest's phone never hears about it. */
+    if (allergensAdd !== undefined) await recomputeAllergensForProducts(req.orgId, [pid]);
     res.json({ ok: true, rowver });
   }));
 
@@ -976,7 +1214,7 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
   router.get("/ingredients", authAny, wrap(async (req, res) => {
     const rows = await withOrg(req.orgId, async (client) => {
       const ing = await client.query(
-        "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location, sellable, sell_price, producible FROM ingredients WHERE org_id=$1 AND active ORDER BY location, name",
+        "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location, sellable, sell_price, producible, allergens FROM ingredients WHERE org_id=$1 AND active ORDER BY location, name",
         [req.orgId]);
       const units = await client.query(
         "SELECT ingredient_id, name, factor FROM ingredient_units WHERE org_id=$1", [req.orgId]);
@@ -984,6 +1222,13 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
         ...i,
         current_stock: Number(i.current_stock), min_stock: Number(i.min_stock), avg_cost: Number(i.avg_cost),
         sellable: i.sellable === true, sell_price: Number(i.sell_price), producible: i.producible === true,
+        /* Always a concrete list to render, plus the flag that says whether it
+           is a person's answer or the machine's guess. The back office shows
+           the guess pre-ticked and asks for a confirmation; confirming is what
+           flips allergensReviewed and stops the dish reading "unconfirmed" on
+           the guest's phone. */
+        allergens: i.allergens == null ? ALG.suggestForIngredient(i.name) : ALG.normalise(i.allergens),
+        allergensReviewed: i.allergens != null,
         low: Number(i.min_stock) > 0 && Number(i.current_stock) <= Number(i.min_stock),
         units: units.rows.filter((u) => u.ingredient_id === i.id).map((u) => ({ name: u.name, factor: Number(u.factor) })),
       }));
@@ -1004,15 +1249,25 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     // seed a starting cost so food-cost maths work before any delivery. Only
     // applied when creating a new item, never overwriting a GRN-earned average.
     const openCost = Math.max(0, Math.round(num(req.body && req.body.avgCost) * 1e6) / 1e6);
+    /* Allergen tags. Sent = a human decided, and an EMPTY array is a decision
+       too ("I checked; none") — so distinguish "sent empty" from "not sent",
+       which stays NULL and keeps falling back to the name-derived suggestion.
+       Unknown keys are dropped by normalise() rather than stored, so a stale
+       client can never write a tag no surface knows how to render. */
+    const allergensSent = Array.isArray(req.body && req.body.allergens);
+    const allergenTags = allergensSent ? ALG.normalise(req.body.allergens) : null;
     const out = await withOrg(req.orgId, async (client) => {
       await client.query(
-        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price, producible, avg_cost)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        `INSERT INTO ingredients (org_id, id, name, sku, base_unit, min_stock, location, sellable, sell_price, producible, avg_cost, allergens)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          ON CONFLICT (org_id, id) DO UPDATE SET
            name=excluded.name, sku=excluded.sku, min_stock=excluded.min_stock,
            location=excluded.location, sellable=excluded.sellable, sell_price=excluded.sell_price,
-           producible=excluded.producible, active=true, updated_at=now()`,
-        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice)), willPrep, openCost]);
+           producible=excluded.producible, active=true, updated_at=now(),
+           -- Only overwrite the tags when this request actually carried them:
+           -- a plain edit that renames an item must not silently un-review it.
+           allergens=CASE WHEN $12::text[] IS NULL THEN ingredients.allergens ELSE $12::text[] END`,
+        [req.orgId, ingId, String(name).trim(), String(sku || "").trim(), base, num(minStock), String(location || "Dry"), willSell, Math.round(num(sellPrice)), willPrep, openCost, allergenTags]);
       if (Array.isArray(units)) {
         await client.query("DELETE FROM ingredient_units WHERE org_id=$1 AND ingredient_id=$2", [req.orgId, ingId]);
         for (const u of units) {
@@ -1041,6 +1296,9 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
     });
     if (out && poke) poke(req.orgId, out);
     if (willSell) await recomputeAvailability(req.orgId, [String(ingId)]);
+    /* The name feeds the suggestion and the tags are the fact, so either one
+       moving re-derives every dish that uses this ingredient. */
+    await recomputeAllergens(req.orgId, [String(ingId)]);
     res.json({ ok: true, id: ingId });
   }));
 
@@ -1093,6 +1351,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       return rv;
     });
     if (rowver && poke) poke(req.orgId, rowver);
+    /* Deleting a PREP item drops its build recipe, so every dish above it just
+       lost that subtree's allergens. Without this the dish keeps an
+       allergensUnreviewed=false declaration whose evidence no longer exists —
+       a confirmed answer standing on nothing, which is the same class of stale
+       claim this whole feature replaced. */
+    await recomputeAllergens(req.orgId, [String(req.params.id)]);
     res.json({ ok: true });
   }));
 
@@ -2013,6 +2277,12 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
 
     if (out.rowver && poke) poke(req.orgId, out.rowver);
     if (out.touched && out.touched.length) await recomputeAvailability(req.orgId, out.touched);
+    /* Promote and demote both restructure this product's recipe — one level of
+       indirection appears or disappears under it — so re-derive it by PRODUCT.
+       The resolver walks the new sub-recipe either way, so the dish keeps the
+       same allergens across the change; this call is what makes that true
+       rather than merely likely. */
+    await recomputeAllergensForProducts(req.orgId, [pid]);
     res.json(Object.assign({ ok: true }, out));
   }));
 
@@ -2029,8 +2299,13 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       return recipeCost(client, req.orgId, req.params.productId);
     });
     /* Editing a recipe changes what the product needs, so its availability
-       must be re-derived even if no stock moved. */
+       must be re-derived even if no stock moved. Allergens too — and that one
+       goes by PRODUCT, not by the ingredient ids in the new lines: an
+       ingredient just removed from the recipe is no longer joined to the dish,
+       so an ingredient-keyed recompute would silently skip the very edit that
+       has to reach the guest (the fish stock swapped out for a vegetable one). */
     await recomputeAvailability(req.orgId, lines.map((l) => l && String(l.ingredientId)).filter(Boolean));
+    await recomputeAllergensForProducts(req.orgId, [req.params.productId]);
     res.json({ ok: true, ...out });
   }));
 
@@ -3759,5 +4034,5 @@ module.exports = function createInventory({ withOrg, withOrgBg, uid, wrap, recor
       .catch((e) => console.log("AI smoke-test threw:", (e && e.message) || e)); }, 4000);
   }
 
-  return { router, processSales, recomputeAvailability, reserveOrderStock, releaseOrderReservations, aiConfig, aiSelfTest, aiSmokeTest };
+  return { router, processSales, recomputeAvailability, recomputeAllergens, recomputeAllergensForProducts, reserveOrderStock, releaseOrderReservations, aiConfig, aiSelfTest, aiSmokeTest };
 };

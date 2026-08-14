@@ -649,6 +649,10 @@ svg{display:block}
 .q-chrome-home>span{width:138px;height:5px;border-radius:3px;background:var(--k-ink);display:block}
 </style>
 <script src="menu-art.js"></script>
+<!-- allergens.js BEFORE the bridge and the app: both read KPOS_ALLERGENS at
+     module scope, and it is the same file the server runs when it derives a
+     dish's list from its recipe. One copy of the rules, three surfaces. -->
+<script src="allergens.js"></script>
 <script src="guest-qr-bridge.js"></script>
 </head>
 <body>
@@ -1014,6 +1018,10 @@ window.KashikeyoGuestQR = (function () {
     this.imageBase = cfg.imageBase == null ? 'img/' : cfg.imageBase;
     this.s = {
       screen: 'menu', q: '', cat: 'all', subcat: '', vegOnly: false, noHeat: false,
+      /* Diet filters, keyed by KPOS_ALLERGENS.DIETS. Multi-select: "no gluten"
+         AND "no nuts" is one guest, not two. A dish must clear every active
+         one — the guest is not asking for the union. */
+      diets: {},
       dishId: null, dQty: 1, addons: {}, note: '', heat: '',
       cart: [], sent: [], promo: '', applied: false, promoErr: '',
       sheet: false, toast: null, lang: 'en', banner: 0, tick: 0,
@@ -1100,6 +1108,56 @@ window.KashikeyoGuestQR = (function () {
     var host = (this.A.soldOut && this.A.soldOut()) || [];
     return manual.concat(host);
   };
+  /* ── allergens & diets ────────────────────────────────────────────────────
+     Every rule lives in allergens.js — the same file the server runs when it
+     derives a dish's list from its recipe. These methods only ask it questions;
+     none of them re-implements a rule. If the script is missing (this file
+     opened standalone with no server), ALG is null and the whole feature stays
+     dark rather than answering an allergen question with a guess. */
+  var ALG = window.KPOS_ALLERGENS || null;
+
+  App.prototype.diets = function () { return ALG ? ALG.DIETS : []; };
+  App.prototype.dietOn = function () { return Object.keys(this.s.diets || {}); };
+
+  /* Does this dish clear every diet filter the guest has switched on?
+     An UNREVIEWED dish (no recipe, or an ingredient nobody has confirmed) is
+     NOT silently hidden: hiding it would tell the guest the dish does not
+     exist, and they would never think to ask about it. It stays listed and the
+     row and the sheet both say the list is unconfirmed, which is the answer
+     that sends them to a member of staff instead of to a wrong assumption. */
+  /* Is this dish free of meat? ONE answer, used by both the leaf toggle beside
+     the search box and the Vegetarian/Vegan chips — they used to read different
+     fields and could disagree about the same dish in the same session.
+
+     Order matters, and it is the safe order:
+       1. meat found in the recipe → no, whatever anyone ticked. A store that
+          marked a chicken dish "plant-based" is wrong and the recipe wins.
+       2. recipe reviewed and no meat → yes, on the evidence.
+       3. no evidence either way → fall back to the store's curated flag, which
+          is the only thing anyone has actually said about the dish. */
+  App.prototype.dishIsVeg = function (m) {
+    if (m.meat) return false;
+    if (!m.allergensUnreviewed) return true;
+    return !!m.veg;
+  };
+
+  App.prototype.dishClears = function (m) {
+    if (!ALG) return true;
+    var on = this.dietOn();
+    if (!on.length) return true;
+    if (m.allergensUnreviewed) return true;
+    var dish = { allergens: m.allergens || [], meat: !this.dishIsVeg(m) };
+    return on.every(function (k) { return ALG.dishSuits(dish, k); });
+  };
+
+  /* The allergens to print on a dish, as { k, label } — canonical order. */
+  App.prototype.dishAllergens = function (m) {
+    if (!ALG || !m) return [];
+    return ALG.normalise(m.allergens).map(function (k) {
+      return { k: k, label: ALG.BY_KEY[k].label, icon: ALG.BY_KEY[k].icon };
+    });
+  };
+
   App.prototype.addonsFor = function (m) {
     /* Add-ons are per-product here (the store defines them on each menu item in
        the terminal), not a chain-wide modifier palette. Keyed by name — the
@@ -1260,7 +1318,11 @@ window.KashikeyoGuestQR = (function () {
     this.A.saveSession({
       v: 2, at: Date.now(), table: this.table(), outlet: this.cfg.outletId,
       cart: s.cart, sent: s.sent, promo: s.promo, applied: s.applied, lang: s.lang, screen: s.screen,
-      tender: s.tender, tip: s.tip, settling: s.settling, paid: s.paid
+      tender: s.tender, tip: s.tip, settling: s.settling, paid: s.paid,
+      /* A guest who set "no nuts" and whose phone then locked must not come
+         back to the full menu — re-picking a safety filter is exactly the step
+         somebody skips. */
+      diets: s.diets
     });
   };
   App.prototype.restore = function () {
@@ -1277,6 +1339,7 @@ window.KashikeyoGuestQR = (function () {
       cart: d.cart || [], sent: d.sent || [], promo: d.promo || '',
       applied: !!d.applied, lang: d.lang || 'en',
       tender: d.tender || '', tip: d.tip || 0, settling: d.settling || null, paid: d.paid || null,
+      diets: (d.diets && typeof d.diets === 'object') ? d.diets : {},
       screen: d.screen === 'dish' ? 'menu' : (d.screen || 'menu')
     });
   };
@@ -1432,6 +1495,12 @@ window.KashikeyoGuestQR = (function () {
       case 'sheet-close': s.sheet = false; break;
       case 'veg': s.vegOnly = !s.vegOnly; break;
       case 'noheat': s.noHeat = !s.noHeat; break;
+      // Diet chips are independent toggles, so a guest can hold "no gluten" and
+      // "no nuts" at once. Deleting rather than setting false keeps the saved
+      // session small and makes "any filter on?" a plain key count.
+      case 'diet':
+        if (s.diets[d.k]) delete s.diets[d.k]; else s.diets[d.k] = 1;
+        break;
       case 'heat': s.heat = (d.k === s.heat ? '' : d.k); break;
       // Picking a category drops any subcategory filter — the old one belongs to
       // the category you just left and would otherwise silently empty the grid.
@@ -1781,18 +1850,47 @@ window.KashikeyoGuestQR = (function () {
       if (s.cat === 'popular') { if (!m.best) return false; }
       else if (s.cat !== 'all' && m.cat !== s.cat) return false;
       if (s.subcat && String(m.subcat || '') !== s.subcat) return false;
-      if (s.vegOnly && !m.veg) return false;
+      if (s.vegOnly && !self.dishIsVeg(m)) return false;
       if (s.noHeat && (Number(m.spice) || 0) > 0) return false;
+      if (!self.dishClears(m)) return false;
       if (!q) return true;
       return (m.name + ' ' + m.desc).toLowerCase().indexOf(q) >= 0;
     });
     // Popular = what people actually order (usage-ranked), most-ordered first.
     if (s.cat === 'popular') list.sort(function (a, b) { return (Number(b.soldQty) || 0) - (Number(a.soldQty) || 0); });
 
+    /* DIET row — the filters the guest-portal spec asks for, derived from the
+       recipes rather than from a flag somebody has to remember to keep in step.
+       Drawn above the category chips because it is a filter on the whole menu,
+       not a slice of it, and it is the one row a guest with an allergy needs to
+       find first. Same chip geometry as the subcategory row below (46px tall,
+       23px radius, 14px/600) so the two read as one system.
+       Not drawn at all when the script is absent or the store has no recipe
+       costed yet — a filter that can only answer "unconfirmed" is worse than no
+       filter, because it looks like it checked. */
+    var dietList = this.diets();
+    var anyKnown = this.D.MENU.some(function (m) { return !m.allergensUnreviewed; });
+    if (dietList.length && anyKnown) {
+      h += '<div style="margin:20px -22px 0;padding:2px 22px 6px;display:flex;gap:10px;overflow-x:auto">' +
+        dietList.map(function (dt) {
+          var on = !!s.diets[dt.k];
+          return '<button data-act="diet" data-k="' + attr(dt.k) + '"' +
+            ' aria-pressed="' + (on ? 'true' : 'false') + '"' +
+            ' style="flex-shrink:0;min-height:46px;padding:0 18px;border-radius:23px;font-size:14px;font-weight:600;white-space:nowrap;background:' +
+            (on ? C : 'var(--k-white)') + ';color:' + (on ? 'var(--k-accent-ink)' : 'var(--k-ink-2)') +
+            ';border:1px solid ' + (on ? C : 'var(--k-line-2)') + ';box-shadow:0 2px 7px rgba(0,0,0,.045)">' +
+            esc(dt.label) + '</button>';
+        }).join('') + '</div>';
+    }
+
     h += '<div style="margin-top:22px;display:flex;align-items:center;justify-content:space-between">' +
       '<span class="q-h">Categories</span>' +
       '<span style="font-size:13px;color:var(--k-mute);font-weight:500">' +
         list.length + ' dish' + (list.length === 1 ? '' : 'es') + (s.vegOnly ? ' · plant-based' : '') + (s.noHeat ? ' · no chilli' : '') +
+        this.dietOn().map(function (k) {
+          var dt = null; dietList.forEach(function (x) { if (x.k === k) dt = x; });
+          return dt ? ' · ' + dt.label.toLowerCase() : '';
+        }).join('') +
       '</span></div>';
 
     h += '<div style="margin:14px -22px 0;padding:4px 22px 8px;display:flex;gap:10px;overflow-x:auto">' +
@@ -1868,6 +1966,9 @@ window.KashikeyoGuestQR = (function () {
     // With a subcategory chip active the row above already names the section, so
     // an in-grid heading would just repeat it back.
     var bareRuns = !!s.subcat || (runs.length <= 1 && (!runs.length || !runs[0].sub));
+    // Is a diet filter narrowing this list? Decides whether a tile has to admit
+    // that it was let through unchecked rather than cleared — see the badge.
+    var dietActive = this.dietOn().length > 0;
     var tile = function (m) {
         var sold = off.indexOf(m.id) >= 0, n = inCart[m.id] || 0, dh = self.dishHeat(m);
         return '<button data-act="dish" data-id="' + attr(m.id) + '"' + (sold ? ' disabled' : '') +
@@ -1879,6 +1980,18 @@ window.KashikeyoGuestQR = (function () {
             (sold ? '<span style="position:absolute;bottom:8px;left:8px;padding:4px 9px;border-radius:8px;background:rgba(20,20,22,.82);color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.03em;display:block">Sold out</span>'
                   : (dh ? '<span class="q-heat on-photo" style="position:absolute;bottom:8px;left:8px">' +
                             svg(I.flame, { s: 12, c: '#fff', w: 2 }) + esc(dh.name) + '</span>' : '')) +
+            /* A diet filter is on and THIS dish was not filtered on evidence —
+               nobody has confirmed its allergens, so dishClears() let it
+               through rather than hiding it. Say so on the tile. Without this
+               the result set mixes "checked, and it is fine for you" with
+               "never checked" and renders them identically, which reads as a
+               clearance the kitchen never gave. Only drawn while a filter is
+               active: on an unfiltered menu it is noise on every tile. */
+            (dietActive && m.allergensUnreviewed && !sold
+              ? '<span class="q-heat on-photo" style="position:absolute;bottom:8px;left:8px;background:rgba(140,86,20,.92)">' +
+                  svg('M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z', { s: 12, c: '#fff', w: 2 }) +
+                  'Not checked</span>'
+              : '') +
           '</span>' +
           '<span style="display:block;padding:0 4px">' +
             '<span style="display:block;font-size:14px;font-weight:600;color:var(--k-ink-1);letter-spacing:-.01em;line-height:1.25">' + esc(m.name) + '</span>' +
@@ -1961,6 +2074,47 @@ window.KashikeyoGuestQR = (function () {
         '</div>' +
 
         '<div style="margin-top:15px;font-size:13.5px;line-height:1.6;color:var(--k-ink-7);text-wrap:pretty">' + esc(d.desc) + '.</div>';
+
+    /* ALLERGENS — derived from this dish's recipe, so it cannot drift from what
+       the kitchen actually cooks. Three states, and the third is why this is
+       here rather than a tidy list of chips:
+
+       · unconfirmed → say so, in the warning tone, and point at a human. This
+         is a dish with no costed recipe or with an ingredient nobody has
+         checked. Printing "no allergens" for it would be a lie the guest has no
+         way to see through.
+       · a list → the chips, in the module's canonical order.
+       · confirmed and empty → say "none declared" in words. Silence here reads
+         as "nobody filled this in", which is the opposite of what it means.
+
+       Uses the existing tone tokens (warn / neutral) — no new colours. */
+    var alg = this.dishAllergens(d);
+    if (ALG) {
+      h += '<div style="margin-top:20px;font-size:11.5px;font-weight:700;letter-spacing:.09em;color:var(--k-ink-3)">ALLERGENS</div>';
+      if (d.allergensUnreviewed) {
+        h += '<div style="margin-top:11px;padding:11px 13px;border-radius:12px;background:var(--k-warn-bg);color:var(--k-warn-ink);font-size:13px;line-height:1.55;text-wrap:pretty">' +
+          (alg.length
+            ? 'May contain ' + esc(alg.map(function (a) { return a.label.toLowerCase(); }).join(', ')) + '. This list has not been confirmed by the kitchen — please ask a member of our team before ordering.'
+            : 'We have not confirmed the allergens for this dish yet. Please ask a member of our team before ordering.') +
+          '</div>';
+      } else if (alg.length) {
+        /* A FACT chip, not a control — hence the q-heat family (a read-only tag)
+           rather than q-mod, which is the interactive pill and expects a button
+           child to carry its padding. Sized up from q-heat's 11px because this
+           one is read at arm's length by someone deciding whether a dish is
+           safe, and given the neutral tone: an allergen present is information,
+           not an alarm. */
+        h += '<div style="margin-top:11px;display:flex;flex-wrap:wrap;gap:8px">' +
+          alg.map(function (a) {
+            return '<span class="q-heat" style="gap:6px;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;' +
+              'background:var(--k-neutral-bg);color:var(--k-neutral-ink)">' +
+              svg(a.icon, { s: 15, w: 1.8 }) + esc(a.label) + '</span>';
+          }).join('') + '</div>';
+      } else {
+        h += '<div style="margin-top:11px;font-size:13px;color:var(--k-ink-7);line-height:1.55">' +
+          'None of the 13 major allergens are declared for this dish. Tell a member of our team about any allergy — kitchens are shared spaces.</div>';
+      }
+    }
 
     /* HEAT — single-select, no price, no quantity. Deliberately NOT part of the
        counted add-on model: "Extra hot ×3" is nonsense, and the kitchen needs

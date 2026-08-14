@@ -668,3 +668,17 @@ FROM entities e
 WHERE e.org_id = s.org_id AND e.kind = 'settings' AND e.id = 'settings' AND NOT e.deleted
   AND s.id = (SELECT id FROM stores s2 WHERE s2.org_id = s.org_id ORDER BY s2.created_at LIMIT 1)
   AND (s.tables IS NULL OR s.seats IS NULL OR s.table_seats = '{}'::jsonb);
+
+-- Allergens (§ guest-portal spec: "tag an ingredient once and every dish that
+-- uses it inherits"). The INGREDIENT is authoritative; a dish's list is derived
+-- from its recipe and written onto the product entity by recomputeAllergens().
+--
+-- NULL is not "no allergens" — it is "nobody has said". The column carries the
+-- value AND the reviewed flag in one place: NULL means the surfaces fall back
+-- to the name-derived suggestion (KPOS_ALLERGENS.suggestForIngredient) and mark
+-- the dish unreviewed, while a non-NULL array — INCLUDING an empty one — is a
+-- human's decision and is never re-guessed. That is why there is no backfill
+-- here: guessing on every row at boot would launder a regex into a clearance,
+-- and it would freeze today's rule set into the data instead of letting a later
+-- improvement to the list reach every untagged ingredient for free.
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS allergens TEXT[];

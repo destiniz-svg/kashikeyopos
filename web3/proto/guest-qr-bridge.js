@@ -62,7 +62,15 @@
       spice: Math.max(0, Math.min(3, Math.round(Number(m.spice) || 0))), heat: !!m.heat,
       /* per-product add-ons (name + MVR price) drive the dish modal's Add Ons
          group; the server re-prices each by name at order time */
-      addons: Array.isArray(m.addons) ? m.addons : [], comments: !!m.comments
+      addons: Array.isArray(m.addons) ? m.addons : [], comments: !!m.comments,
+      /* Allergen KEYS derived from the recipe by the server (see
+         recomputeAllergens in inventory.js). Only keys travel — allergens.js,
+         which this page loads, owns the labels, icons and the diet rules that
+         read them, so the guest can never be shown a label the till does not
+         use. `allergensUnreviewed` defaults to TRUE when the server said
+         nothing: an unknown allergen list must never read as a clean one. */
+      allergens: Array.isArray(m.allergens) ? m.allergens : [],
+      meat: !!m.meat, allergensUnreviewed: m.allergensUnreviewed !== false
     };
   });
   /* One chain-wide heat scale — the words the card badge, the dish tag and the

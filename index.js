@@ -4379,6 +4379,17 @@ const buildGuestReal = async (orgId, slug) => withOrg(orgId, async (c) => {
         // Item tags for the QR menu: vegetarian flag, the fixed spice level
         // (0-3, 0 = shown as nothing) and whether the pass can vary the heat.
         veg: !!p.veg, spice: Math.max(0, Math.min(3, Math.round(Number(p.spice) || 0))), heat: !!p.heat,
+        /* Allergens: the KEYS only. The labels, icons and the diet rules that
+           read them all live in allergens.js, which this page already loads —
+           so a change to the wording never needs a matching server deploy, and
+           the guest can never be shown a label the till does not use.
+           These are DERIVED from the recipe by recomputeAllergens(); the old
+           hand-typed `p.allergens` string is not sent, because a free-text note
+           that drifts from the recipe is the exact hazard this replaced.
+           `allergensUnreviewed` travels with them so the sheet can say the list
+           is not confirmed rather than implying a clean bill. */
+        allergens: Array.isArray(p.dishAllergens) ? p.dishAllergens : [],
+        meat: !!p.dishMeat, allergensUnreviewed: p.allergensUnreviewed !== false,
         addons: addons, comments: !!p.comments, recipe: [] }; });
   const catName = {};
   menu.forEach((it) => { if (!catName[it.cat]) catName[it.cat] = it.sub || it.cat; });
@@ -4593,7 +4604,12 @@ if (fs.existsSync(protoFile)) {
       // Why it is off, when the availability engine knows ("Out of Tuna").
       // Null for a manual off-switch or a plain stock-out; the register's 86
       // list falls back to the item name alone in that case.
-      soldOutReason: p.soldOutReason || "" }));
+      soldOutReason: p.soldOutReason || "",
+      // The same derived keys the guest's phone gets, so a cashier answering
+      // "does this have nuts?" reads the list the guest is reading rather than
+      // a second one that can disagree with it.
+      allergens: Array.isArray(p.dishAllergens) ? p.dishAllergens : [],
+      meat: !!p.dishMeat, allergensUnreviewed: p.allergensUnreviewed !== false }));
   // Sold-out is real when the owner flagged it, an ingredient-driven recipe has
   // no servings left (recipeAvail<=0), or a stock-tracked item hit zero — the
   // same rule the guest boot mapper uses, so the register tile + admin menu
@@ -5632,7 +5648,7 @@ if (fs.existsSync(protoFile)) {
         // conversion factor by base_unit, and item[4] = avg_cost×factor/100 so
         // that item[4]×stockQty === avg_cost×current_stock/100 (the true value).
         const ingRows = (await c.query(
-          "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
+          "SELECT id, name, sku, base_unit, current_stock, min_stock, avg_cost, location, allergens FROM ingredients WHERE org_id=$1 AND active ORDER BY name", [orgId])).rows;
         const uMap = { g: ["GRM", "KG", 1000], gram: ["GRM", "KG", 1000], grm: ["GRM", "KG", 1000],
           kg: ["GRM", "KG", 1000], ml: ["ML", "LTR", 1000], l: ["ML", "LTR", 1000], ltr: ["ML", "LTR", 1000],
           pcs: ["PCS", "PCS", 1], pc: ["PCS", "PCS", 1], each: ["PCS", "PCS", 1] };
@@ -5645,7 +5661,13 @@ if (fs.existsSync(protoFile)) {
           const costPerStock = Math.round((Number(g.avg_cost) || 0) * cf / 100 * 100) / 100; // MVR/stock unit
           invItems.push([id, 1, g.name || "Item", stockU, costPerStock, "raw",
             g.sku || ("IT-" + String(id).padStart(4, "0")), baseU, stockU,
-            Number(g.min_stock) || 0, 100, 0, 0, g.id]);   // [13] = the real ingredient uuid, for recipe writes
+            Number(g.min_stock) || 0, 100, 0, 0, g.id,     // [13] = the real ingredient uuid, for recipe writes
+            /* [14] = the allergen tags, and NULL is load-bearing: it means
+               nobody has said, so the item form shows the name-derived
+               suggestion un-committed and the dishes read "unconfirmed". An
+               array — even an empty one — is a person's answer. Do not collapse
+               the two with `|| []`. */
+            g.allergens == null ? null : g.allergens]);
           invRows.push([3, id, Number(g.current_stock) || 0]);   // location = primary outlet, base units
         });
         const invCats = invItems.length ? [{ id: 1, name: "Ingredients", icon: "dry", storage: "daily", freq: "" }] : [];

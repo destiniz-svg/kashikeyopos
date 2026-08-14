@@ -17,6 +17,11 @@
 <!-- money.js first: v2-bridge.js and the terminal's own totals() both price
      bills through window.KPOS_MONEY, and neither will price without it. -->
 <script src="money.js"></script>
+<!-- allergens.js: the same file the server runs when it derives a dish's
+     allergens from its recipe. The item form reads it for the chip list and the
+     name-derived suggestion, so the till suggests exactly what the server would
+     have suggested. One copy of the rules. -->
+<script src="allergens.js"></script>
 <script src="v2-bridge.js"></script>
 <script src="v2-offline-cache.js"></script>
 <script>
@@ -1618,6 +1623,16 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
                       <button type="button" onClick="{{ f.onAdd }}" style="align-self:flex-start;font-size:11.5px;font-weight:700;color:var(--text-dim);padding:8px 13px;border-radius:8px;border:1px dashed var(--line);background:var(--bg-2)" style-hover="border-color:var(--text-dim);color:var(--text)">+ Add an add-on</button>
                     </div>
                   </sc-if>
+                  <sc-if value="{{ f.isChips }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <div style="display:flex;flex-wrap:wrap;gap:7px">
+                        <sc-for list="{{ f.chips }}" as="c" hint-placeholder-count="3">
+                          <button type="button" onClick="{{ c.onToggle }}" aria-pressed="{{ c.pressed }}" style="{{ c.style }}">{{ c.label }}</button>
+                        </sc-for>
+                      </div>
+                      <div style="font-size:10.5px;color:{{ f.noteColor }};line-height:1.5">{{ f.note }}</div>
+                    </div>
+                  </sc-if>
                   <sc-if value="{{ f.isImage }}" hint-placeholder-val="{{ false }}">
                     <div style="display:flex;gap:12px;align-items:flex-start">
                       <span style="width:120px;height:80px;flex-shrink:0;border-radius:10px;border:1px solid var(--line);background-color:var(--bg-2);background-image:url('{{ f.imageUrl }}');background-size:cover;background-position:center;display:grid;place-items:center;overflow:hidden">
@@ -1668,6 +1683,11 @@ button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.3
   window.addEventListener('unhandledrejection',function(ev){var r=ev&&ev.reason;report('v2:unhandledrejection',(r&&r.message)||String(r||'rejection'));});
 })();
 const K = () => window.KPOS || {};
+/* The allergen catalogue, from the one module the server derives with. Empty if
+   the script is missing, which drops the chip field rather than offering a
+   half-list somebody might read as complete. */
+const ALG = window.KPOS_ALLERGENS || null;
+const ALLERGEN_CHIPS = ALG ? ALG.ALLERGENS.map((a) => ({ v: a.k, l: a.label })) : [];
 const MVR = (n) => "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MVRc = (n) => "MVR " + Math.round(n || 0).toLocaleString("en-US");
 const pad = (n) => String(n).padStart(2, "0");
@@ -4996,6 +5016,40 @@ class Component extends DCLogic {
                 onRemove: () => { const n = list.slice(); n.splice(i, 1); upd(n); }
               })),
               onAdd: () => upd(list.concat([{ name: "", price: "" }]))
+            };
+          }
+          /* A chip multi-select. The value in formVals[f.k] is an ARRAY of keys,
+             and its identity carries meaning the other field types don't have:
+             `null`/absent means "nobody has said", an empty array means "somebody
+             checked and there is nothing". The allergen form depends on that
+             distinction — see the ALLERGENS field on the item spec. Toggling any
+             chip is what turns the first into the second. */
+          if (f.chips) {
+            const cur = Array.isArray(vals[f.k]) ? vals[f.k] : null;
+            /* Un-set: show what the server WOULD derive from the name typed so
+               far, live, so a new item opens with sensible chips already lit
+               instead of a blank row nobody fills in. Same function the server
+               calls, so the till never suggests something the backend wouldn't. */
+            const suggest = (f.suggestFrom && ALG) ? ALG.suggestForIngredient(vals[f.suggestFrom]) : (f.suggest || []);
+            const on = cur || suggest;
+            const upd = (next) => this.setState((st2) => ({ formVals: Object.assign({}, st2.formVals, { [f.k]: next }) }));
+            return {
+              label: f.label, wrap: f.full ? "grid-column:1/-1" : "", isChips: true,
+              note: cur ? (f.noteSet || "") : (f.noteUnset || ""),
+              noteColor: cur ? "var(--text-muted)" : "var(--amber-bright)",
+              chips: (f.chips || []).map((c) => {
+                const sel = on.indexOf(c.v) >= 0;
+                return {
+                  label: c.l, pressed: sel ? "true" : "false",
+                  style: "font-size:11.5px;font-weight:700;padding:7px 12px;border-radius:20px;border:1px solid "
+                    + (sel ? "var(--amber-line)" : "var(--line)") + ";background:" + (sel ? "var(--amber-dim)" : "var(--bg-2)")
+                    + ";color:" + (sel ? "var(--amber-bright)" : "var(--text-dim)"),
+                  // Toggling from the un-set state commits the suggestion as it
+                  // stands, plus or minus this chip — which is the moment a guess
+                  // becomes a person's answer.
+                  onToggle: () => upd(sel ? on.filter((k) => k !== c.v) : on.concat([c.v])),
+                };
+              }),
             };
           }
           // An image field: a live preview (uploaded photo, AI picture, or an
@@ -8404,6 +8458,12 @@ class Component extends DCLogic {
       // minStock is preserved on edit (the v2 form doesn't expose it) so a cost
       // edit can't silently zero the reorder par.
       const body = { name: v.name, baseUnit: baseUnit, minStock: keepMin != null ? keepMin : 0, location: "Dry", avgCost: avgCost };
+      /* Only send the tags when the form actually carries an array — an absent
+         key leaves the column NULL (and an existing tagging untouched), which
+         is what keeps "nobody has said" distinct from "somebody said none". A
+         plain cost edit must not silently confirm an allergen list nobody
+         looked at, nor un-confirm one somebody did. */
+      if (Array.isArray(v.allergens)) body.allergens = v.allergens;
       if (editId) body.id = editId;
       if (factor !== 1) body.units = [{ name: v.stock, factor: factor }];
       this.setState({ modal: null });
@@ -9431,10 +9491,22 @@ class Component extends DCLogic {
           { k: "base", label: "Recipe unit", options: [{ v: "GRM", l: "GRM — grams" }, { v: "ML", l: "ML — millilitres" }, { v: "PCS", l: "PCS — pieces" }] },
           { k: "stock", label: "Purchase unit", options: [{ v: "KG", l: "KG — kilogram" }, { v: "LTR", l: "LTR — litre" }, { v: "PCS", l: "PCS — pieces" }, { v: "GRM", l: "GRM — grams" }] },
           { k: "cost", label: "Cost per purchase unit MVR", v: "0" },
-          { k: "shelf", label: "Shelf life (days)", v: "180" }
+          { k: "shelf", label: "Shelf life (days)", v: "180" },
+          /* Tag the item once; every dish whose recipe uses it inherits, on the
+             till and on the guest's phone. The chips open pre-ticked from the
+             item's NAME — a suggestion, not a clearance — and stay amber-noted
+             until somebody touches one, which is what turns the guess into an
+             answer and clears "not confirmed" off every dish below it. */
+          { k: "allergens", label: "Allergens in this item", full: 1,
+            chips: ALLERGEN_CHIPS, suggestFrom: "name",
+            noteUnset: "Suggested from the item name — nothing has been confirmed. Until you tap a chip, every dish using this item tells guests its allergens are unconfirmed. Tap any chip (or the same one twice) to confirm this list as it stands.",
+            noteSet: "Confirmed. Dishes using this item inherit these, plus anything their own recipe brings." }
         ],
         editSave: "Save changes",
-        pre: (it) => ({ name: it[2], cat: String(it[1]), base: it[7], stock: it[8], cost: String(it[4]), shelf: String(it[9] || 180) }),
+        pre: (it) => ({ name: it[2], cat: String(it[1]), base: it[7], stock: it[8], cost: String(it[4]), shelf: String(it[9] || 180),
+          // it[14] is null when untagged — keep the null so the chip field can
+          // tell "nobody has said" from "somebody said none".
+          allergens: it[14] == null ? null : it[14] }),
         onEdit: (v, it) => {
           const cost = +v.cost || 0;
           if (cost <= 0) return this.toast("A cost is required", "warn");
@@ -9443,7 +9515,7 @@ class Component extends DCLogic {
           // preserving the item's min_stock (item[9], base units). Demo mode keeps
           // the in-memory patch.
           if (window.KPOS_REAL && window.KPOS_REAL.token && it[13]) {
-            this.saveIngredient({ name: v.name.toUpperCase(), cat: +v.cat || it[1], base: v.base, stock: v.stock, cost: cost }, it[13], Number(it[9]) || 0);
+            this.saveIngredient({ name: v.name.toUpperCase(), cat: +v.cat || it[1], base: v.base, stock: v.stock, cost: cost, allergens: v.allergens }, it[13], Number(it[9]) || 0);
             return;
           }
           const next = it.slice();
@@ -9458,7 +9530,7 @@ class Component extends DCLogic {
           const base = v.base || "GRM", stock = v.stock || "KG";
           const ok = base === stock || (base === "GRM" && stock === "KG") || (base === "ML" && stock === "LTR");
           if (!ok) return this.toast("No conversion exists from " + base + " to " + stock + " — pick grams/kg, ml/litre, or the same unit on both", "warn");
-          this.saveIngredient({ name: v.name.toUpperCase(), cat: +v.cat || 1, base: base, stock: stock, cost: cost, shelf: +v.shelf || 180 });
+          this.saveIngredient({ name: v.name.toUpperCase(), cat: +v.cat || 1, base: base, stock: stock, cost: cost, shelf: +v.shelf || 180, allergens: v.allergens });
         }
       },
       recipe: {
