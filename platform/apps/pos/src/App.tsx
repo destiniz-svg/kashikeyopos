@@ -25,6 +25,7 @@ import { Assets } from './Assets';
 import { Customers } from './Customers';
 import { Loyalty } from './Loyalty';
 import { Promos } from './Promos';
+import { Reservations } from './Reservations';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -42,7 +43,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -331,6 +332,8 @@ export function App({ outletId }: { outletId: number }) {
             <Loyalty session={session} />
           ) : view === 'promos' && MODULES_BUILT.has('promos') ? (
             <Promos session={session} />
+          ) : view === 'reservations' && MODULES_BUILT.has('reservations') ? (
+            <Reservations session={session} />
           ) : view === 'payroll' && MODULES_BUILT.has('payroll') ? (
             <Payroll session={session} />
           ) : view === 'staff' && MODULES_BUILT.has('staff') ? (

@@ -21,6 +21,7 @@ const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
 const promos = require('./promos');
+const reservations = require('./reservations');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -752,6 +753,87 @@ r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLea
       res.json(out);
     } catch (e) { next(e); }
   });
+
+/* ── Reservations (§2 `reservations`) ─────────────────────────────────────
+ *
+ * ALL OF IT IS TILL RANK, and that is the whole judgement. The person who
+ * answers the telephone, writes the name down, walks the party to the table and
+ * marks the ones who never came is the same person on the same shift. A book
+ * that needed a manager to cancel a booking would be a book kept on paper.
+ *
+ * Nothing here touches money, which is why it can sit at that rank without an
+ * argument.
+ */
+r.get('/outlet/:outletId/reservations', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.day(c, req.query.date ? String(req.query.date) : null);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reservations/table/:tableNo', sameOutlet, staffOnly,
+  atLeast('till'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.tableDay(c, req.params.tableNo,
+          req.query.date ? String(req.query.date) : null);
+      });
+      res.json({ table: req.params.tableNo, bookings: out });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/reservations', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.book(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+const bookingId = function (req, res, next) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+    return res.status(404).json({ error: 'no such booking' });
+  }
+  next();
+};
+
+r.patch('/outlet/:outletId/reservations/:id', sameOutlet, staffOnly, atLeast('till'),
+  bookingId, async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.amend(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Arrival — and the ticket that comes with it. */
+r.post('/outlet/:outletId/reservations/:id/seat', sameOutlet, staffOnly, atLeast('till'),
+  bookingId, async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.seat(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+for (const [path, fn] of [['no-show', 'noShow'], ['cancel', 'cancel'], ['finish', 'finish']]) {
+  r.post('/outlet/:outletId/reservations/:id/' + path, sameOutlet, staffOnly,
+    atLeast('till'), bookingId, async function (req, res, next) {
+      try {
+        const out = await withOutlet(req.ctx, function (c) {
+          return reservations[fn](c, req.params.id, req.body || {}, req.ctx);
+        });
+        res.json(out);
+      } catch (e) { next(e); }
+    });
+}
 
 /* ── Promotions (§2 `promos`) ─────────────────────────────────────────────
  *

@@ -63,6 +63,42 @@ BEGIN
       by_staff   uuid, device_id uuid
     );
     CREATE INDEX IF NOT EXISTS ticket_line_ticket ON %1$I.ticket_line(ticket_id);
+
+    -- Tonight's book (§2 `reservations`). A booking holds a table for a
+    -- WINDOW, and the exclusion constraint below is what stops two hosts on
+    -- two terminals selling the same table twice. See migration 022.
+    CREATE TABLE IF NOT EXISTS %1$I.reservation (
+      id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      at        timestamptz NOT NULL DEFAULT now(),
+      on_date   date NOT NULL,
+      at_min    int NOT NULL CHECK (at_min >= 0 AND at_min < 1440),
+      mins      int NOT NULL DEFAULT 90 CHECK (mins > 0 AND mins <= 480),
+      covers    int NOT NULL CHECK (covers > 0 AND covers <= 200),
+      name      text NOT NULL,
+      phone     text,
+      member_id uuid,
+      note      text,
+      table_no  text,
+      status    text NOT NULL DEFAULT 'booked'
+                CHECK (status IN ('booked','seated','done','no_show','cancelled')),
+      seated_at timestamptz,
+      ticket_id uuid REFERENCES %1$I.ticket(id),
+      done_at   timestamptz,
+      reason    text,
+      by_staff  uuid
+    );
+    CREATE INDEX IF NOT EXISTS reservation_day ON %1$I.reservation (on_date, at_min);
+  $ddl$, s);
+
+  EXECUTE 'CREATE EXTENSION IF NOT EXISTS btree_gist';
+  EXECUTE format($ddl$
+    ALTER TABLE %1$I.reservation
+      DROP CONSTRAINT IF EXISTS reservation_no_double_book;
+    ALTER TABLE %1$I.reservation
+      ADD CONSTRAINT reservation_no_double_book EXCLUDE USING gist (
+        table_no WITH =, on_date WITH =,
+        int4range(at_min, at_min + mins) WITH &&
+      ) WHERE (table_no IS NOT NULL AND status IN ('booked','seated'));
   $ddl$, s);
 
   -- ── the sale, once money has been taken ─────────────────────────────────
@@ -624,6 +660,9 @@ BEGIN
   -- A debt that can be tidied away is not a ledger: a house charge is written
   -- off through an entry, never removed.
   EXECUTE format('REVOKE DELETE ON %I.house_entry FROM %I', s, r);
+  -- A booking is cancelled, never deleted: what was promised and did not
+  -- happen is the part worth keeping.
+  EXECUTE format('REVOKE DELETE ON %I.reservation FROM %I', s, r);
   -- Recipe lines are current configuration, not a financial record: replacing a
   -- recipe removes the lines no longer in it, and its history is kept in
   -- chain.audit, which records the whole before and after set on every save.
