@@ -80,6 +80,30 @@ client never sends one.
 **GET `/api/outlet/:outletId/sync/pull?since=<ms>`** (rank ≥ 2)
 → `{ now, ops[], guestOrders[], guestRequests[] }`
 
+## Devices
+
+**GET `/api/outlet/:outletId/devices`** (rank ≥ 2)
+→ `{ devices[], paired, silent[], unpairedOpsToday, opsByKind[], opsByHour[],
+outbox: { known: false, why }, kinds[], canManage, thisDevice }`
+
+`outbox.known` is always false and that is the point: writes waiting to be
+replayed are held on each till until it reconnects, so the server cannot count
+them. `silent[]` is the honest signal — paired devices not heard from while
+others are talking.
+
+**POST `/api/outlet/:outletId/devices`** · **POST `…/:id/code`** ·
+**PATCH `…/:id`** · **POST `…/:id/revoke`** · **POST `…/:id/restore`** (rank ≥ 3)
+
+Revoking ends every open session bound to that device, immediately.
+
+**POST `/api/outlet/:outletId/devices/claim`** — **no session**
+`{ code, platform?, appVersion? }` → `{ id, label, kind }`
+
+Deliberately unauthenticated: a machine has to be usable before it is trusted,
+so the pairing screen sits in front of the PIN pad. The code is single-use, 30
+minutes, manager-issued and scoped to one outlet. Pairing IDENTIFIES a device;
+it does not authenticate one, and whoever claims it still needs a PIN.
+
 ## Estate
 
 **GET `/api/estate/day?date=YYYY-MM-DD`** (rank 5)

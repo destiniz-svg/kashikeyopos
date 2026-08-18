@@ -47,14 +47,28 @@ async function withOutlet(ctx, fn) {
   const client = await poolFor(ctx.outletId).connect();
   try {
     await client.query('BEGIN');
-    await client.query(
+    /* THE SESSION IS CHECKED HERE, in the statement that was already being
+       sent. Verifying the token's signature proves it was issued; it says
+       nothing about whether it has since been ended, and until migration 031
+       nothing asked — `chain.session.revoked_at` was written by nothing and
+       read by nothing, so there was no way to sign anybody out of this system.
+
+       It rides along with the set_config calls rather than costing a round
+       trip of its own, because a check with a latency cost is a check somebody
+       eventually caches, and a cached revocation is not a revocation. */
+    const ctxq = await client.query(
       "SELECT set_config('app.outlet_id', $1, true),"
       + " set_config('app.user_rank', $2, true),"
       + " set_config('app.actor', $3, true),"
-      + " set_config('app.scope', $4, true)",
+      + " set_config('app.scope', $4, true),"
+      + ' chain.session_live($5) AS live',
       [String(ctx.outletId), String(ctx.rank || 0), ctx.actor || '',
-       ctx.scope === 'group' ? 'group' : 'outlet']
+       ctx.scope === 'group' ? 'group' : 'outlet', ctx.sessionId || null]
     );
+    if (!ctxq.rows[0].live) {
+      throw Object.assign(new Error('this session has ended — sign in again'),
+        { status: 401 });
+    }
     const out = await fn(client);
     await client.query('COMMIT');
     return out;
@@ -85,12 +99,18 @@ async function withEstate(ctx, fn) {
   const client = await reporting().connect();
   try {
     await client.query('BEGIN READ ONLY');
-    await client.query(
+    const ctxq = await client.query(
       "SELECT set_config('app.outlet_id', $1, true),"
       + " set_config('app.user_rank', '5', true),"
       + " set_config('app.actor', $2, true),"
-      + " set_config('app.scope', 'group', true)",
-      [String(ctx.outletId || 0), ctx.actor || '']);
+      + " set_config('app.scope', 'group', true),"
+      + ' chain.session_live($3) AS live',
+      [String(ctx.outletId || 0), ctx.actor || '', ctx.sessionId || null]);
+    /* An ended session does not become live again by asking the estate. */
+    if (!ctxq.rows[0].live) {
+      throw Object.assign(new Error('this session has ended — sign in again'),
+        { status: 401 });
+    }
     const out = await fn(client);
     await client.query('COMMIT');
     return out;

@@ -78,6 +78,28 @@ Policy summary:
 
 ---
 
+## A session can be ended
+
+`chain.session.revoked_at` existed from migration 001 and nothing read it:
+`auth.js` verified the JWT's signature and expiry and stopped there, so there
+was no way to sign anybody out. Since migration 031 every request asks
+`chain.session_live(sid)` — inside the `set_config` statement `withOutlet`
+already sends, so a live session costs no extra round trip and a revocation
+cannot be cached away.
+
+A token with no session id in it (guest tokens, and staff tokens issued before
+that migration) is treated as live until it expires on its own. Refusing those
+would have signed out every terminal in the estate at deploy time to enforce a
+rule none of them had yet broken.
+
+Revoking a DEVICE ends the sessions bound to it, which is what makes a till
+lost at seven o'clock stop at seven rather than at midnight. The stated limit:
+a dishonest holder can clear that machine's storage and sign in again as an
+unpaired device. Pairing identifies a device; the PIN and the audit trail are
+the controls.
+
+---
+
 ## The one cross-outlet read
 
 `chain.estate_day(date)`, `chain.estate_ledger(from, to)`,

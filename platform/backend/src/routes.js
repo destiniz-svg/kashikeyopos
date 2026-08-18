@@ -24,6 +24,7 @@ const { tableName } = require('./tables');
 const settlements = require('./settlements');
 const creditnotes = require('./creditnotes');
 const estate = require('./estate');
+const devices = require('./devices');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -63,15 +64,40 @@ r.post('/auth/pin', async function (req, res, next) {
         if (!ok) continue;
         await c.query('SELECT chain.note_pin_attempt($1,$2,true,$3,$4)',
           [Number(outletId), s.id, LOCK_TRIES, LOCK_MINS]);
+
+        /* THE DEVICE IS CHECKED NOW, WHICH IT NEVER WAS. `deviceId` came off
+           the request body and went straight into the session and the JWT — no
+           such row need have existed, it need not have belonged to this
+           outlet, and `chain.device.revoked` was a column nothing read.
+           Migration 030 explains the three answers:
+             known + not revoked → the session carries it, ops are attributable
+             unknown             → treated as no device; an unpaired till works
+             revoked             → refused, and the open sessions are already
+                                   dead because revoking ended them
+           Pairing identifies a device. The PIN is still the credential. */
+        const dev = deviceId
+          ? (await c.query('SELECT * FROM chain.device_seen($1,$2)',
+            [Number(outletId), deviceId])).rows[0]
+          : { known: false, revoked: false };
+        if (dev.revoked) {
+          return { refused: 'this device has been revoked — a manager can pair it again' };
+        }
+        const boundDevice = dev.known ? deviceId : null;
+
         const ttlHours = Number(process.env.SESSION_TTL_HOURS || 12);
         const sess = await c.query('SELECT chain.open_session($1,$2,$3,$4,$5) AS id',
-          [s.id, Number(outletId), deviceId || null, s.rank, ttlHours]);
+          [s.id, Number(outletId), boundDevice, s.rank, ttlHours]);
         await c.query('SELECT chain.log_signin($1,$2,true)', [Number(outletId), s.id]);
         return {
+          /* The token carries the device the SERVER bound, not the one the
+             client asserted. An unknown id in a JWT would be an unverified
+             claim travelling on a signed credential, which is the shape of
+             every authorisation bug worth having. */
           token: sign({ o: Number(outletId), r: s.rank, s: s.id,
-                        d: deviceId || null, sid: sess.rows[0].id,
+                        d: boundDevice, sid: sess.rows[0].id,
                         exp: now + ttlHours * 3600e3 }),
-          name: s.name, rank: s.rank, outletId: Number(outletId)
+          name: s.name, rank: s.rank, outletId: Number(outletId),
+          device: dev.known ? { id: deviceId, label: dev.label } : null,
         };
       }
       /* Wrong PIN: count the attempt against every unlocked account at this
@@ -83,6 +109,10 @@ r.post('/auth/pin', async function (req, res, next) {
       return null;
     });
     if (!out) return res.status(401).json({ error: 'PIN not recognised' });
+    /* A refused DEVICE is not a refused PIN, and saying so is the difference
+       between a manager fixing it in ten seconds and a cashier retyping a
+       correct PIN until they are locked out. */
+    if (out.refused) return res.status(403).json({ error: out.refused });
     res.json(out);
   } catch (e) { next(e); }
 });
@@ -292,6 +322,34 @@ r.post('/member/bill/points', memberSession, async function (req, res, next) {
     const out = await memberOffer(req.member, p.outletId, p.ticketId, p.points, cfg);
     res.json(out);
   } catch (e) { next(e); }
+});
+
+/* Claiming a code is DELIBERATELY UNAUTHENTICATED, and that is the whole point
+ * of it: a machine has to be usable before it is trusted, so the pairing screen
+ * sits in front of the PIN pad. What protects it is the code — single-use,
+ * thirty minutes, issued by a manager, scoped to one outlet, and consumed by
+ * `chain.claim_device` in the same statement that checks it. Guessing one is
+ * guessing six characters of a 32-letter alphabet against a code that expires,
+ * and what it buys is a label on a list: pairing identifies a device, it does
+ * not authenticate one. Whoever claims it still needs a PIN to sell anything.
+ */
+r.post('/outlet/:outletId/devices/claim', async function (req, res, next) {
+  const outletId = Number(req.params.outletId);
+  if (!outletId) return res.status(400).json({ error: 'outlet required' });
+  try {
+    const out = await withOutlet({ outletId, rank: 0 }, function (c) {
+      return devices.claim(c, outletId, req.body || {});
+    });
+    res.json(out);
+  } catch (e) {
+    /* The one message a wrong code gets, whatever went wrong inside — a code
+       that is expired, revoked, for another outlet or never existed must not be
+       distinguishable from outside. */
+    if (/not valid here/.test(e.message)) {
+      return res.status(400).json({ error: 'that pairing code is not valid here' });
+    }
+    next(e);
+  }
 });
 
 r.use(session);
@@ -1896,6 +1954,15 @@ r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
     if (!Array.isArray(ops)) return res.status(400).json({ error: 'ops[] required' });
     try {
       const results = await withOutlet(req.ctx, async function (c) {
+        /* The heartbeat. A replay push is the only thing a till does that
+           proves it is alive AND has something to say, so `last_seen` is
+           stamped here rather than only at sign-in — a device that last spoke
+           when somebody typed a PIN at 09:00 tells the diagnostics screen
+           nothing about 19:00. */
+        if (req.ctx.deviceId) {
+          await c.query('SELECT chain.device_seen($1,$2)',
+            [req.ctx.outletId, req.ctx.deviceId]);
+        }
         const out = [];
         for (const op of ops) {
           if (!op || !op.opId) { out.push({ error: 'opId required' }); continue; }
@@ -1933,6 +2000,69 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
         return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
       });
       res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Sync & devices (08-BUILD-STAGES §28) ─────────────────────────────────
+ *
+ * Reading is TILL rank: a cashier looking at "this device is not paired" is
+ * the person who fetches the manager, and hiding it from them means the till
+ * that cannot sync is the one screen nobody can see. Writing is MANAGER — a
+ * machine dying mid-service is who is standing there, not an administrator.
+ */
+r.get('/outlet/:outletId/devices', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return devices.health(c); });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, kinds: devices.KINDS, canManage: req.ctx.rank >= 3,
+          thisDevice: req.ctx.deviceId || null });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return devices.add(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices/:id/code', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.reissue(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/devices/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.rename(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices/:id/revoke', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.revoke(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices/:id/restore', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.restore(c, req.params.id, req.ctx);
+      }));
     } catch (e) { next(e); }
   });
 

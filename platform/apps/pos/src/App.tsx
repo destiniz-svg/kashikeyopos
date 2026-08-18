@@ -30,6 +30,7 @@ import { Delivery } from './Delivery';
 import { Accounting } from './Accounting';
 import { Owner } from './Owner';
 import { Chain } from './Chain';
+import { Sync } from './Sync';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -47,7 +48,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations', 'delivery', 'accounting', 'owner', 'chain']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations', 'delivery', 'accounting', 'owner', 'chain', 'sync']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -101,7 +102,21 @@ export function App({ outletId }: { outletId: number }) {
       const s = await api.snapshot(session.outletId, session.token);
       setSnap(s);
       await outbox.putCache('snapshot', s);
-    } catch { /* the cache stands; the topbar already says we are offline */ }
+    } catch (e) {
+      /* A 401 is not "offline". Since migration 031 a session can genuinely be
+         ENDED — a manager revoking this device kills it mid-shift, which is the
+         entire point of a kill switch — and a till that keeps polling a dead
+         token shows a stale floor plan and a topbar claiming a network problem.
+         Drop to the PIN pad, which is the honest state.
+
+         Only on 401. Every other failure leaves the cache standing, because
+         being offline is the normal condition of a till and not an error. */
+      if ((e as api.ApiError)?.status === 401) {
+        setSession(null);
+        try { localStorage.removeItem(LS_SESSION); } catch { /* private mode */ }
+      }
+      /* else: the cache stands; the topbar already says we are offline */
+    }
   }, [session]);
 
   /* Drain the outbox whenever there is a network and something to send. This is
@@ -141,7 +156,9 @@ export function App({ outletId }: { outletId: number }) {
   }, [session, refresh, drain]);
 
   const signIn = async (pin: string) => {
-    const s = await api.signIn(outletId, pin);
+    /* Sent only if this machine has been paired. An unpaired one sends
+       nothing and the server binds nothing — see api.thisDevice(). */
+    const s = await api.signIn(outletId, pin, api.thisDevice() ?? undefined);
     setSession(s);
     setView(landingFor(s.rank));
     try { localStorage.setItem(LS_SESSION, JSON.stringify(s)); } catch { /* private mode */ }
@@ -315,6 +332,8 @@ export function App({ outletId }: { outletId: number }) {
             <Owner session={session} onGo={setView} />
           ) : view === 'chain' && MODULES_BUILT.has('chain') ? (
             <Chain session={session} onGo={setView} />
+          ) : view === 'sync' && MODULES_BUILT.has('sync') ? (
+            <Sync session={session} onPaired={signOut} />
           ) : view === 'pos' && MODULES_BUILT.has('pos') ? (
             <Floor
               snap={snap}

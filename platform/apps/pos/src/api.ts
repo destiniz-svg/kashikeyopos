@@ -166,6 +166,41 @@ export function download(session: { outletId: number; token: string }) {
 export const signIn = (outletId: number, pin: string, deviceId?: string) =>
   call<Session>('POST', '/api/auth/pin', { outletId, pin, deviceId });
 
+/* ── this machine's identity ───────────────────────────────────────────────
+ *
+ * A device id is NOT a credential. It lives in this browser's local storage,
+ * anybody holding the machine can read it, and anybody can invent one — so the
+ * server treats an unknown id as no device at all and the PIN remains the only
+ * thing that opens the till (backend/migrations/030).
+ *
+ * What it buys is attribution and a kill switch: ops carry the machine that
+ * made them, and a manager can revoke a till that has walked off, which ends
+ * its open sessions immediately. So it is only stored once a PAIRING CODE has
+ * been redeemed — an unpaired machine sends nothing and works exactly as
+ * before, which is the right behaviour for a new terminal on a Friday night.
+ */
+const LS_DEVICE = 'kashikeyo.pos.device.v1';
+
+export function thisDevice(): string | null {
+  try { return localStorage.getItem(LS_DEVICE); } catch { return null; }
+}
+
+export function forgetDevice() {
+  try { localStorage.removeItem(LS_DEVICE); } catch { /* private mode */ }
+}
+
+/** Redeem a pairing code. Unauthenticated by design — the machine has to be
+ *  usable before it is trusted, so this sits in front of the PIN pad. */
+export async function pairDevice(outletId: number, code: string) {
+  const d = await call<{ id: string; label: string; kind: string }>(
+    'POST', `/api/outlet/${outletId}/devices/claim`,
+    { code, platform: navigator.userAgent.slice(0, 120), appVersion: APP_VERSION });
+  try { localStorage.setItem(LS_DEVICE, d.id); } catch { /* private mode */ }
+  return d;
+}
+
+export const APP_VERSION = '1.0.0';
+
 export const snapshot = (outletId: number, token: string) =>
   call<Snapshot>('GET', `/api/outlet/${outletId}/snapshot`, undefined, token);
 

@@ -755,6 +755,17 @@ BEGIN
   -- granted because the rank-5 policy is what actually decides, and an owner
   -- signs in through an outlet's role like everybody else.
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.estate_target TO %I', r);
+  -- Devices (migration 030). A new outlet pairs its tills on day one, so the
+  -- grant belongs here as well as in the migration that added it — an outlet
+  -- provisioned afterwards is otherwise born unable to pair anything, which is
+  -- how the station grant three lines up was found to be missing.
+  EXECUTE format('GRANT INSERT, UPDATE ON chain.device TO %I', r);
+  EXECUTE format('GRANT EXECUTE ON FUNCTION chain.claim_device(int,text,text,text),'
+    || ' chain.device_seen(int,uuid), chain.revoke_device(uuid,uuid) TO %I', r);
+  -- Every request this outlet makes asks whether its session is still live
+  -- (migration 031). Without the grant a new outlet's every request fails
+  -- closed, which is the safe direction and still an outlet nobody can use.
+  EXECUTE format('GRANT EXECUTE ON FUNCTION chain.session_live(uuid) TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.pin_candidates(int,text),'
     || ' chain.note_pin_attempt(int,uuid,boolean,int,int),'
     || ' chain.open_session(uuid,int,uuid,int,int),'

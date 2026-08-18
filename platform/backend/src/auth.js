@@ -31,6 +31,12 @@ function session(req, res, next) {
     rank: guest ? 0 : claims.r,
     actor: guest ? null : claims.s,
     deviceId: guest ? null : (claims.d || null),
+    /* The session ROW, so it can be checked against the database rather than
+       taken on the token's word. Verifying a signature proves the token was
+       issued; it says nothing about whether it has since been ended. See
+       migration 031 — this column existed for the whole project and nothing
+       ever read it. */
+    sessionId: guest ? null : (claims.sid || null),
     scope: guest ? 'guest' : (claims.scope || 'outlet'),
     guest: guest,
     table: guest ? String(claims.tbl || '') : null,

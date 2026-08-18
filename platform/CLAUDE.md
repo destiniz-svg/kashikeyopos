@@ -49,8 +49,11 @@ COGS → accounting → reconciliation → business intelligence.**
 - Per-outlet role passwords are derived
   (`hmac(OUTLET_ROLE_SECRET, "outlet:" + id)`), never stored. The owner
   connection is for migrations only and must never be imported by a route.
-- The only cross-outlet read is `chain.estate_day()`: aggregates, rank 5,
-  read-only role, audited as group scope.
+- The only cross-outlet reads are the `chain.estate_*()` functions: aggregates
+  only, rank 5, through a read-only role that holds no table grant, audited as
+  group scope. `app.group_scope()` tests `session_user`, not `current_user` —
+  SECURITY DEFINER changes the latter, which is why the estate refused its own
+  caller for the whole project until migration 029.
 - `backend/scripts/leak-test.js` proves it. It runs in CI and blocks deploy.
 
 ## Hosting

@@ -76,7 +76,13 @@ export const NAV: NavGroup[] = [
     { id: 'logs', label: 'Audit Log', minRank: 3, icon: 'M14 2H6v20h12V8zM14 2v6h6M9 13h6M9 17h4' },
   ] },
   { title: 'Platform', items: [
-    { id: 'sync', label: 'Sync & Devices', minRank: 3, icon: 'M21 12a9 9 0 1 1-3-6.7M21 3v6h-6' },
+    /* TILL, not manager. The person standing at a machine that will not sync
+       is a cashier, and a screen that tells them "this device is not paired"
+       is the one screen they need to be able to open — hiding it means the
+       till with the problem is invisible to the only person looking at it.
+       Everything on it that CHANGES anything is still manager-gated, by the
+       server and not by the rail. */
+    { id: 'sync', label: 'Sync & Devices', minRank: 2, icon: 'M21 12a9 9 0 1 1-3-6.7M21 3v6h-6' },
     { id: 'architecture', label: 'Architecture', minRank: 4, icon: 'M5 3h6v6H5zM13 15h6v6h-6zM8 9v6h5M5 15h6v6H5zM13 3h6v6h-6zM16 9v6' },
     { id: 'settings', label: 'Settings', minRank: 3, icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z' },
   ] },
