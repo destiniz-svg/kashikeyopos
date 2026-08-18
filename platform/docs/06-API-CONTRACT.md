@@ -83,7 +83,27 @@ client never sends one.
 ## Estate
 
 **GET `/api/estate/day?date=YYYY-MM-DD`** (rank 5)
-→ `{ date, outlets: [ { outlet_id, outlet, sales, covers, cogs, tax } ] }`
+→ `{ date, outlets: [ { outlet_id, outlet, code, takings, revenue, covers,
+bills, cogs, tax, discount, service, last_sale_at } ] }`
+
+`takings` is what the guests paid, tax inclusive; `revenue` is goods net of tax
+and net of the discount, which is what the P&L recognises. Both are returned
+because they are different numbers and calling either of them "sales" is how
+the estate table and the P&L come to disagree by exactly the GST. `covers` is
+PEOPLE — it was the count of bills until the estate was built, which made every
+per-head figure wrong by the average party size.
+
+**GET `/api/estate/overview?date=YYYY-MM-DD`** (rank 5)
+→ the whole Owner Dashboard (`11-OWNER-DASHBOARD-SPEC.md`): `{ date, fellBack,
+target, briefing, figures, series, outlets[], pnl, position, waiting[],
+controls[], reconciliation }`. `date` is the day the server had figures for and
+`fellBack` says whether that differs from the day asked for.
+
+**GET `/api/estate/targets`** (rank ≥ 3) · **PUT `/api/estate/targets`** (rank 5)
+→ `{ foodCostTargetPct, labourTargetPct, primeTargetPct, weights, setAt }`.
+The yardstick the dashboard scores by, readable by anyone it judges. A null
+food cost target means nobody has chosen one, and the score does not deduct for
+food cost while it is null.
 
 Aggregates only, through the read-only `kashikeyo_report` role, audited as
 group scope. There is no endpoint that returns another outlet's rows.

@@ -80,12 +80,25 @@ Policy summary:
 
 ## The one cross-outlet read
 
-`chain.estate_day(date)` — `SECURITY DEFINER`, refuses unless
-`app.group_scope()`, returns **aggregates only**, reached through the read-only
-`kashikeyo_report` role which has `EXECUTE` on that function and no table grants
-at all, and is stamped in `chain.audit` with `scope = 'group'`.
+`chain.estate_day(date)`, `chain.estate_ledger(from, to)`,
+`chain.estate_series(from, to)`, `chain.estate_alerts(date)` and
+`chain.estate_last_trading(date)` — all `SECURITY DEFINER`, all refusing unless
+`app.group_scope()`, all returning **aggregates only**, all reached through the
+read-only `kashikeyo_report` role which has `EXECUTE` on them and no table
+grants at all. Each read is stamped in `chain.audit` with `scope = 'group'`, by
+the reporting connection itself: written on the owner's own outlet connection
+the entry would be stamped `outlet`, and a trail that records the one
+cross-outlet read as an ordinary local one is worse than no trail.
 
-There is no code path that returns another outlet's rows to anyone.
+None of them returns an id of anything, so there is nothing to drill through
+to. There is no code path that returns another outlet's rows to anyone.
+
+`app.group_scope()` tests **`session_user`**, not `current_user`. Inside a
+`SECURITY DEFINER` function `current_user` is the function's owner, so the
+original test refused the reporting role along with everybody else and the
+estate endpoint was a 500 for every owner who opened it. `session_user` is the
+role that connected; `SET ROLE` cannot change it, which makes the test strictly
+narrower than the one it replaced.
 
 ---
 

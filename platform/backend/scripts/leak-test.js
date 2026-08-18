@@ -155,6 +155,82 @@ async function assertBait(owner, victim) {
     }
   }
 
+  /* ── the half this suite was missing ──────────────────────────────────────
+   *
+   * Every probe above wants a REFUSAL. Twenty-four refusals is also what a
+   * completely broken door looks like, and that is not a hypothetical: for the
+   * whole life of this project `chain.estate_day()` refused the reporting role
+   * as well, because it asked `current_user` inside a SECURITY DEFINER function
+   * and was told it was postgres. Two probes here reported PASS on it every
+   * run while `GET /api/estate/day` was a 500 for every owner who opened the
+   * dashboard.
+   *
+   * So: the legitimate caller must GET THROUGH. A control that only ever says
+   * no is not proven correct by saying no again.
+   */
+  async function positiveControls(ownerClientRef) {
+    /* Connect as the reporting role itself — the same role and the same
+       settings the API uses in `withEstate`. */
+    const rep = new Client({
+      host: process.env.PGHOST, port: Number(process.env.PGPORT || 5432),
+      database: process.env.PGDATABASE, user: 'kashikeyo_report',
+      password: process.env.REPORT_ROLE_PASSWORD, ssl,
+    });
+    await rep.connect();
+    try {
+      async function opens(label, sql, expectRows) {
+        ran++;
+        try {
+          await rep.query('BEGIN READ ONLY');
+          await rep.query(
+            "SELECT set_config('app.user_rank','5',true),"
+            + " set_config('app.scope','group',true)");
+          const q = await rep.query(sql);
+          if (expectRows && !q.rows.length) {
+            console.log('BROKEN ' + label + ' → allowed, but returned nothing');
+            leaks++;
+          } else {
+            console.log('OPENS ' + label + ' → ' + q.rows.length + ' row(s)');
+          }
+        } catch (e) {
+          console.log('BROKEN ' + label + ' → the legitimate caller was refused ('
+            + e.message.split('\n')[0] + ')');
+          leaks++;
+        } finally {
+          await rep.query('ROLLBACK').catch(function () {});
+        }
+      }
+
+      /* One row per active outlet — so it also fails if the loop silently
+         returns nothing, which is the other way an aggregate can look fine. */
+      await opens('the estate aggregate OPENS for the reporting role',
+        'SELECT * FROM chain.estate_day(current_date)', true);
+      await opens('the estate ledger OPENS for the reporting role',
+        'SELECT * FROM chain.estate_ledger(NULL, NULL)', false);
+      await opens('the estate series OPENS for the reporting role',
+        "SELECT * FROM chain.estate_series(current_date - 13, current_date)", false);
+
+      /* And it still holds NO table grant. This is the property that makes the
+         aggregate functions safe to be SECURITY DEFINER at all: whatever goes
+         wrong inside one, the role calling it cannot read a row by itself. */
+      ran++;
+      const grants = await ownerClientRef.query(
+        'SELECT table_schema, table_name, privilege_type'
+        + ' FROM information_schema.table_privileges'
+        + " WHERE grantee = 'kashikeyo_report'");
+      if (grants.rows.length) {
+        console.log('LEAK  the reporting role has table grants → '
+          + grants.rows.map((r) => r.table_schema + '.' + r.table_name
+            + ':' + r.privilege_type).join(', '));
+        leaks++;
+      } else {
+        console.log('PASS  the reporting role holds no table grant at all');
+      }
+    } finally {
+      await rep.end().catch(function () {});
+    }
+  }
+
   const S = 'outlet_' + theirs;
 
   // ── belt one: the schema is not reachable at all ────────────────────────
@@ -223,6 +299,9 @@ async function assertBait(owner, victim) {
     'DELETE FROM chain.audit WHERE outlet_id = $1 RETURNING id', [mine]);
   await probe('erase a closed sale in my OWN outlet',
     'DELETE FROM outlet_' + mine + '.sale RETURNING id');
+
+  // ── the other half: the lock must also OPEN for the right key ───────────
+  await positiveControls(owner);
 
   await c.end();
   await owner.end();

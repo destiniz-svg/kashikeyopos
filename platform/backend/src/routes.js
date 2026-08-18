@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { withOutlet, withEstate, withMember, withMemberAnon } = require('./db');
+const { withOutlet, withEstate, noteGroupRead, withMember, withMemberAnon } = require('./db');
 const { sign, verify: verifyToken, pinMatches, pinLookup } = require('./secrets');
 const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
 const { settle } = require('./sale');
@@ -23,6 +23,7 @@ const vouchers = require('./vouchers');
 const { tableName } = require('./tables');
 const settlements = require('./settlements');
 const creditnotes = require('./creditnotes');
+const estate = require('./estate');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -1935,16 +1936,65 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
     } catch (e) { next(e); }
   });
 
-// The one cross-outlet read in the system: aggregates only, rank 5 only,
-// through a read-only role, and stamped in the audit trail as group scope.
+/* ── the estate (08-BUILD-STAGES §25, 11-OWNER-DASHBOARD-SPEC) ─────────────
+ *
+ * The one cross-outlet read in the system: aggregates only, rank 5 only,
+ * through a read-only role that holds no table grant, and stamped in the audit
+ * trail as group scope — by the reporting connection itself, so the entry
+ * records the scope the read actually ran at rather than the one the owner's
+ * own connection would have implied.
+ *
+ * TWO CONNECTIONS, ON PURPOSE. `withEstate` reaches the aggregates; the
+ * owner's ordinary outlet connection reads the targets they are judged
+ * against. Granting the reporting role that one small table would have saved a
+ * round trip and cost the property the whole design rests on. See migration
+ * 028.
+ */
 r.get('/estate/day', staffOnly, atLeast('owner'), async function (req, res, next) {
   const date = req.query.date || new Date().toISOString().slice(0, 10);
   try {
+    await noteGroupRead(req.ctx, date);
     const rows = await withEstate(req.ctx, function (c) {
       return c.query('SELECT * FROM chain.estate_day($1)', [date])
         .then(function (q) { return q.rows; });
     });
-    res.json({ date: date, outlets: rows });
+    res.set('cache-control', 'no-store').json({ date: date, outlets: rows });
+  } catch (e) { next(e); }
+});
+
+r.get('/estate/overview', staffOnly, atLeast('owner'), async function (req, res, next) {
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  try {
+    await noteGroupRead(req.ctx, date);
+    const out = await withEstate(req.ctx, function (est) {
+      return withOutlet(req.ctx, function (own) {
+        return estate.overview(est, own, date);
+      });
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+/* The yardstick. Readable by anyone with a back-office screen — a branch
+   judged against a target it cannot see is not being managed, it is being
+   graded — and writable only at rank 5, which the RLS policy enforces on its
+   own account. */
+r.get('/estate/targets', staffOnly, atLeast('manager'), async function (req, res, next) {
+  try {
+    const out = await withOutlet(req.ctx, function (c) { return estate.targets(c); });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.put('/estate/targets', staffOnly, atLeast('owner'), async function (req, res, next) {
+  try {
+    const out = await withOutlet(req.ctx, function (c) {
+      return estate.setTargets(c, req.body || {}, req.ctx).then(function (t) {
+        return c.query("SELECT chain.log('estate_targets','estate','targets',NULL,$1)",
+          [JSON.stringify(req.body || {})]).then(function () { return t; });
+      });
+    });
+    res.json(out);
   } catch (e) { next(e); }
 });
 

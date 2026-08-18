@@ -69,8 +69,7 @@ async function withOutlet(ctx, fn) {
 // Read-only estate reporting. Uses a dedicated role that can execute the
 // aggregate function and nothing else.
 let reportPool = null;
-async function withEstate(ctx, fn) {
-  if ((ctx.rank || 0) < 5) throw Object.assign(new Error('rank 5 required'), { status: 403 });
+function reporting() {
   if (!reportPool) {
     reportPool = new Pool({
       host: process.env.PGHOST, port: Number(process.env.PGPORT || 5432),
@@ -78,7 +77,12 @@ async function withEstate(ctx, fn) {
       password: process.env.REPORT_ROLE_PASSWORD, ssl, max: 2
     });
   }
-  const client = await reportPool.connect();
+  return reportPool;
+}
+
+async function withEstate(ctx, fn) {
+  if ((ctx.rank || 0) < 5) throw Object.assign(new Error('rank 5 required'), { status: 403 });
+  const client = await reporting().connect();
   try {
     await client.query('BEGIN READ ONLY');
     await client.query(
@@ -90,6 +94,45 @@ async function withEstate(ctx, fn) {
     const out = await fn(client);
     await client.query('COMMIT');
     return out;
+  } finally { client.release(); }
+}
+
+/**
+ * Record a group-scope read in the audit trail — BEFORE the read, in its own
+ * short read-write transaction on the same pool and as the same role.
+ *
+ * It cannot go inside `withEstate`: that transaction is `BEGIN READ ONLY`, and
+ * that is not incidental. Read-only is what makes it structurally impossible
+ * for the one connection that can see across outlets to change anything in any
+ * of them, and giving it up to save a round trip would be trading the property
+ * for the paperwork about the property.
+ *
+ * It cannot go on the owner's own outlet connection either. `chain.log()`
+ * stamps the scope from `app.group_scope()`, which is false there, so the
+ * entry would read `scope = 'outlet'` — a trail recording the single
+ * cross-outlet read in the system as an ordinary local one, which is worse
+ * than no trail because it would be believed.
+ *
+ * Written first, so a read that then fails still leaves the attempt on record.
+ * An audit trail of successful reads only is an audit trail with the
+ * interesting half missing.
+ */
+async function noteGroupRead(ctx, entityId) {
+  if ((ctx.rank || 0) < 5) throw Object.assign(new Error('rank 5 required'), { status: 403 });
+  const client = await reporting().connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      "SELECT set_config('app.outlet_id', $1, true),"
+      + " set_config('app.user_rank', '5', true),"
+      + " set_config('app.actor', $2, true),"
+      + " set_config('app.scope', 'group', true)",
+      [String(ctx.outletId || 0), ctx.actor || '']);
+    await client.query('SELECT chain.log_estate_read($1)', [entityId]);
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(function () {});
+    throw e;
   } finally { client.release(); }
 }
 
@@ -160,5 +203,6 @@ async function shutdown() {
 }
 
 module.exports = {
-  owner, poolFor, withOutlet, withEstate, withMember, withMemberAnon, shutdown,
+  owner, poolFor, withOutlet, withEstate, noteGroupRead,
+  withMember, withMemberAnon, shutdown,
 };

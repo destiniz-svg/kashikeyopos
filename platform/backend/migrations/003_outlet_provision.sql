@@ -750,6 +750,11 @@ BEGIN
   -- that added the table, or an outlet provisioned after that migration is born
   -- without it — which is exactly how this was found.
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.station TO %I', r);
+  -- The estate targets a branch is judged against (migration 028). SELECT so a
+  -- manager's own screens read the same yardstick the owner does; the write is
+  -- granted because the rank-5 policy is what actually decides, and an owner
+  -- signs in through an outlet's role like everybody else.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.estate_target TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.pin_candidates(int,text),'
     || ' chain.note_pin_attempt(int,uuid,boolean,int,int),'
     || ' chain.open_session(uuid,int,uuid,int,int),'
@@ -785,22 +790,15 @@ BEGIN
 END $fn$;
 
 -- ── group consolidation: read-only, aggregate-only ──────────────────────────
--- The estate view an Owner sees is built from per-outlet aggregates, never
--- from a role that can read another outlet's rows directly.
-CREATE OR REPLACE FUNCTION chain.estate_day(p_date date)
-RETURNS TABLE (outlet_id int, outlet text, sales numeric, covers bigint,
-               cogs numeric, tax numeric)
-LANGUAGE plpgsql SECURITY DEFINER AS $fn$
-DECLARE o record;
-BEGIN
-  IF NOT app.group_scope() THEN
-    RAISE EXCEPTION 'estate reporting requires rank 5 in group scope';
-  END IF;
-  FOR o IN SELECT id, name, schema_name FROM chain.outlet WHERE active LOOP
-    RETURN QUERY EXECUTE format(
-      'SELECT $1, $2, coalesce(sum(total),0), count(*)::bigint,
-              coalesce(sum(cogs),0), coalesce(sum(tax),0)
-         FROM %I.sale WHERE business_date = $3 AND voided_at IS NULL',
-      o.schema_name) USING o.id, o.name, p_date;
-  END LOOP;
-END $fn$;
+-- The estate view an Owner sees is built from per-outlet aggregates, never from
+-- a role that can read another outlet's rows directly.
+--
+-- IT USED TO BE DEFINED HERE and is now in migration 028, with the rest of the
+-- estate. Not tidying: leaving it here made the migrator unable to run twice.
+-- 028 has to DROP the function to change its shape (a RETURNS TABLE cannot be
+-- widened by CREATE OR REPLACE), and since every migration runs on every boot,
+-- the second boot came back to this file and tried to REPLACE the new function
+-- with the old one — `42P13: row type defined by OUT parameters is different`,
+-- and no deploy after the first ever completed. One definition, in one file,
+-- is the only shape of this that survives a redeploy.
+

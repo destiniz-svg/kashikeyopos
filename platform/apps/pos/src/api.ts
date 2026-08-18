@@ -103,6 +103,24 @@ export function authed(session: { outletId: number; token: string }) {
 }
 
 /**
+ * The same call, NOT scoped to an outlet.
+ *
+ * Almost everything in this application is one outlet's business and lives
+ * under `/api/outlet/:id/…`, which is why `authed()` puts it there. The estate
+ * is the exception the whole tenancy model is built around: it is the chain, it
+ * is rank 5, and its path has no outlet in it because it belongs to no outlet.
+ *
+ * It is a SEPARATE function rather than an argument to `authed()` so that
+ * reaching outside one outlet is a visible choice at the call site. A boolean
+ * flag would put the most security-relevant decision in this codebase inside a
+ * parameter list.
+ */
+export function chainAuthed(session: { token: string }) {
+  return <T = unknown>(method: string, path: string, body?: unknown) =>
+    call<T>(method, `/api${path}`, body, session.token);
+}
+
+/**
  * Download a file the SERVER produced, through the same base URL and the same
  * token as everything else.
  *

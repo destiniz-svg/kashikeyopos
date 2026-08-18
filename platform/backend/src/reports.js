@@ -26,6 +26,8 @@
  * come out negative and reduce revenue, instead of being mistaken for a cost.
  */
 
+const accounts = require('./accounts');
+
 const mvr = (n) => Math.round(Number(n) * 100) / 100;
 
 /* ── the one query everything else is built from ─────────────────────────── */
@@ -88,20 +90,18 @@ async function trialBalance(c, from, to) {
 
 /* ── profit and loss ─────────────────────────────────────────────────────── */
 
-/* Cost of sales is 5000/5010/5100 — food, beverage and the stock variance that
-   wastage and counts post. Wastage IS a cost of sale: excluding it flatters
-   gross profit by exactly the amount somebody threw away, which is the number
-   a kitchen most needs to see. */
-const COST_OF_SALES = new Set(['5000', '5010', '5100']);
-
+/* What counts as cost of sales, and what counts as labour, is `accounts.js` —
+   one list, shared with the CFO screen and the estate, because prime cost
+   reading 31% on one and 34% on the other is not a discrepancy anybody can
+   resolve from the screen they are looking at. */
 async function profitAndLoss(c, from, to) {
   const rows = await balances(c, from, to);
   const pick = (t) => rows.filter((r) => r.type === t && (r.dr !== 0 || r.cr !== 0));
 
   const income = pick('income');
   const expenses = pick('expense');
-  const cogsRows = expenses.filter((r) => COST_OF_SALES.has(r.code));
-  const opexRows = expenses.filter((r) => !COST_OF_SALES.has(r.code));
+  const cogsRows = expenses.filter((r) => accounts.isCostOfSales(r.code));
+  const opexRows = expenses.filter((r) => !accounts.isCostOfSales(r.code));
 
   const revenue = mvr(income.reduce((a, r) => a + r.balance, 0));   // 4090 is dr-normal → negative
   const cogs = mvr(cogsRows.reduce((a, r) => a + r.balance, 0));
@@ -117,12 +117,10 @@ async function profitAndLoss(c, from, to) {
     operatingCosts: { lines: opexRows, total: opex },
     netProfit: mvr(gross - opex),
     // §22's "prime cost" — cost of sales plus labour, the figure a restaurant
-    // actually runs on. Labour is 6000/6010; zero until payroll exists, and
-    // shown as zero rather than hidden, so nobody reads prime cost as complete.
-    primeCost: mvr(cogs + expenses
-      .filter((r) => r.code === '6000' || r.code === '6010')
-      .reduce((a, r) => a + r.balance, 0)),
-    labourPosted: expenses.some((r) => (r.code === '6000' || r.code === '6010') && r.dr !== 0),
+    // actually runs on. Zero until payroll exists, and shown as zero rather
+    // than hidden, so nobody reads prime cost as complete.
+    primeCost: mvr(cogs + accounts.sumWhere(expenses, accounts.isLabour)),
+    labourPosted: expenses.some((r) => accounts.isLabour(r.code) && r.dr !== 0),
   };
 }
 

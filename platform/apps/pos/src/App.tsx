@@ -28,6 +28,8 @@ import { Promos } from './Promos';
 import { Reservations } from './Reservations';
 import { Delivery } from './Delivery';
 import { Accounting } from './Accounting';
+import { Owner } from './Owner';
+import { Chain } from './Chain';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -45,7 +47,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations', 'delivery', 'accounting']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations', 'delivery', 'accounting', 'owner', 'chain']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -309,7 +311,11 @@ export function App({ outletId }: { outletId: number }) {
             another screen clears it. */}
         <main style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <Boundary key={view} view={view}>
-          {view === 'pos' && MODULES_BUILT.has('pos') ? (
+          {view === 'owner' && MODULES_BUILT.has('owner') ? (
+            <Owner session={session} onGo={setView} />
+          ) : view === 'chain' && MODULES_BUILT.has('chain') ? (
+            <Chain session={session} onGo={setView} />
+          ) : view === 'pos' && MODULES_BUILT.has('pos') ? (
             <Floor
               snap={snap}
               now={now}

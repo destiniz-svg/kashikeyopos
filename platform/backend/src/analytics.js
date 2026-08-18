@@ -23,19 +23,15 @@
  */
 
 const reports = require('./reports');
+const accounts = require('./accounts');
 
 const money = (n) => Math.round(Number(n) * 100) / 100;
 const pct = (num, den) => (den ? Math.round((num / den) * 1000) / 10 : null);
 
-/* Cost of sales and labour, by account, matching reports.js exactly — the same
-   sets, so prime cost cannot mean one thing on the P&L and another here. */
-const COST_OF_SALES = new Set(['5000', '5010', '5100']);
-const LABOUR = new Set(['6000', '6010']);
-/* What a variance trend is made of: stock that went missing, a drawer that
-   miscounted, and a price correction on stock already sold. Each is a loss
-   nobody decided on, which is exactly what makes a trend in them worth
-   watching. */
-const VARIANCE = new Set(['5100', '6920']);
+/* Cost of sales, labour and variance are `accounts.js` — the SAME lists the
+   P&L and the estate read, rather than a copy with a comment promising it
+   matches. It did not: the copy this replaced had drifted nowhere yet, but
+   nothing except that comment was stopping it. */
 
 /**
  * The CFO view for a period.
@@ -43,15 +39,12 @@ const VARIANCE = new Set(['5100', '6920']);
  */
 async function cfo(c, from, to) {
   const rows = await reports.balances(c, from, to);
-  const by = new Map(rows.map((r) => [r.code, r]));
-  const bal = (code) => (by.get(code) ? by.get(code).balance : 0);
-  const sumOf = (set) => money(rows.filter((r) => set.has(r.code))
-    .reduce((a, r) => a + r.balance, 0));
+  const bal = (code) => accounts.balanceOf(rows, code);
 
   const revenue = money(rows.filter((r) => r.type === 'income')
     .reduce((a, r) => a + r.balance, 0));
-  const cogs = sumOf(COST_OF_SALES);
-  const labour = sumOf(LABOUR);
+  const cogs = accounts.sumWhere(rows, accounts.isCostOfSales);
+  const labour = accounts.sumWhere(rows, accounts.isLabour);
   const expenses = money(rows.filter((r) => r.type === 'expense')
     .reduce((a, r) => a + r.balance, 0));
   const primeCost = money(cogs + labour);
@@ -89,9 +82,10 @@ async function cfo(c, from, to) {
          prime cost, and a restaurant reading 28% when payroll has never been
          run is reading a number that will roughly double. */
       labourPosted: labour !== 0,
-      cashInDrawer: bal('1000'),
-      owedToSuppliers: bal('2000'),
-      owedToStaff: money(bal('2300') + bal('2310')),
+      cashInDrawer: bal(accounts.POSITION.cashInDrawer),
+      owedToSuppliers: bal(accounts.POSITION.owedToSuppliers),
+      owedToStaff: money(bal(accounts.POSITION.payrollOwed)
+        + bal(accounts.POSITION.pensionOwed)),
     },
 
     dishes,
@@ -171,16 +165,20 @@ async function weekly(c, from, to) {
     "SELECT date_trunc('week', j.entry_date)::date AS wk,"
     + ' coalesce(sum(CASE WHEN a.type = \'income\''
     + "   THEN l.cr - l.dr ELSE 0 END), 0) AS revenue,"
-    + ' coalesce(sum(CASE WHEN l.account_code IN (\'5000\',\'5010\',\'5100\')'
+    /* The code lists are BOUND, not written into the SQL. Spelling them out
+       here was a fourth copy of the same judgement, and one no reader of
+       accounts.js would ever find. */
+    + ' coalesce(sum(CASE WHEN l.account_code = ANY($3)'
     + '   THEN l.dr - l.cr ELSE 0 END), 0) AS cogs,'
-    + ' coalesce(sum(CASE WHEN l.account_code IN (\'6000\',\'6010\')'
+    + ' coalesce(sum(CASE WHEN l.account_code = ANY($4)'
     + '   THEN l.dr - l.cr ELSE 0 END), 0) AS labour'
     + ' FROM journal_line l'
     + ' JOIN journal j ON j.id = l.journal_id'
     + ' JOIN account a ON a.code = l.account_code'
     + ' WHERE ($1::date IS NULL OR j.entry_date >= $1::date)'
     + '   AND ($2::date IS NULL OR j.entry_date <= $2::date)'
-    + " GROUP BY date_trunc('week', j.entry_date) ORDER BY wk", [from || null, to || null]);
+    + " GROUP BY date_trunc('week', j.entry_date) ORDER BY wk",
+    [from || null, to || null, [...accounts.COST_OF_SALES], [...accounts.LABOUR]]);
 
   return q.rows.map((r) => {
     const revenue = money(r.revenue);
@@ -211,7 +209,7 @@ async function varianceTrend(c, from, to) {
     + '   AND ($1::date IS NULL OR j.entry_date >= $1::date)'
     + '   AND ($2::date IS NULL OR j.entry_date <= $2::date)'
     + " GROUP BY date_trunc('week', j.entry_date), l.account_code ORDER BY wk",
-    [from || null, to || null, [...VARIANCE]]);
+    [from || null, to || null, [...accounts.VARIANCE]]);
 
   const byWeek = new Map();
   for (const r of q.rows) {

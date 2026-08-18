@@ -18,7 +18,7 @@ const H = require('./helpers');
 const loyalty = require('../src/loyalty');
 
 describe('loyalty', () => {
-  let ctx, mgr, admin, member;
+  let ctx, mgr, admin, member, residualRewards;
 
   before(async () => {
     ctx = await H.bootOutlet();
@@ -37,6 +37,16 @@ describe('loyalty', () => {
       await H.req('DELETE', `/api/outlet/${ctx.outletId}/loyalty/rewards/${rw.id}`,
         { token: admin.token });
     }
+    /* SOME OF THEM CANNOT GO, and that is correct: a reward somebody already
+       redeemed is referenced by their voucher, and deleting it would leave a
+       member holding a promise of nothing. So the reset records what survived,
+       and the catalogue test asserts against that rather than against an empty
+       list — which is only true on a database nobody has run the suite on
+       before. A test that passes once per database is a test that stops being
+       run. */
+    const left = await H.req('GET', `/api/outlet/${ctx.outletId}/loyalty`,
+      { token: admin.token });
+    residualRewards = (left.json?.rewards || []).map((r) => r.id).sort();
   });
   after(() => H.teardown(ctx));
 
@@ -177,9 +187,15 @@ describe('loyalty', () => {
 
   test('the ladder reports who is standing on each rung', async () => {
     const r = await get('/loyalty', mgr.token);
-    const member0 = r.json.ladder.find((t) => t.name === 'Member');
-    assert.ok(member0.members >= 1);
-    assert.equal(r.json.ladder.find((t) => t.name === 'Gold').members, 0);
+    const m = await get(`/loyalty/member/${member}`, ctx.token);
+    /* The rung the ladder puts this member on must be counting them. Asserting
+       instead that Gold holds NOBODY only worked until a previous run of the
+       suite left a member with 500 points — members are chain-wide, which is
+       the scheme working, not a leak. */
+    const rung = r.json.ladder.find((t) => t.name === m.json.tier.name);
+    assert.ok(rung, 'the member is on a rung that is not on the ladder');
+    assert.ok(rung.members >= 1);
+    assert.ok(r.json.ladder.every((t) => Number.isInteger(t.members) && t.members >= 0));
   });
 
   /* ── spending ─────────────────────────────────────────────────────────── */
@@ -268,7 +284,11 @@ describe('loyalty', () => {
 
   test('an empty catalogue is empty, not an error', async () => {
     const r = await get('/loyalty', ctx.token);
-    assert.deepEqual(r.json.rewards, []);
+    assert.equal(r.status, 200);
+    assert.ok(Array.isArray(r.json.rewards), 'nothing to offer is [] and a 200');
+    /* Empty on a cold database; on a warm one, exactly the rewards the reset
+       was not allowed to remove. Either way, nothing this file created. */
+    assert.deepEqual(r.json.rewards.map((x) => x.id).sort(), residualRewards);
   });
 
   test('a reward says what its points are actually worth', async () => {
