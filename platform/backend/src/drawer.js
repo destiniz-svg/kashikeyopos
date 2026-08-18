@@ -30,6 +30,8 @@
  * and this is where it goes.
  */
 
+const { post: postJournal } = require('./journal');
+
 const toMVR = (laari) => (laari / 100).toFixed(2);
 const toLaari = (mvr) => Math.round(Number(mvr) * 100);
 
@@ -110,22 +112,17 @@ async function close(c, p, ctx) {
   }
 
   if (variance !== 0) {
-    const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-    const h = await c.query(
-      'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-      + " VALUES ($1, $2::date, $3, 'drawer', $4, $5) RETURNING id",
-      [no.rows[0].no, now.toISOString().slice(0, 10),
-        'Drawer ' + (variance > 0 ? 'over' : 'short') + ' — counted ' + toMVR(counted)
-          + ' against ' + toMVR(expected),
-        d.id, ctx.actor]);
-    const amt = toMVR(Math.abs(variance));
+    const amt = Math.abs(variance);
     // Over: there is more cash than the books say, so cash goes up.
     const dr = variance > 0 ? '1000' : '6920';
     const cr = variance > 0 ? '6920' : '1000';
-    await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,0)',
-      [h.rows[0].id, dr, amt]);
-    await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,0,$3)',
-      [h.rows[0].id, cr, amt]);
+    await postJournal(c, {
+      date: now.toISOString().slice(0, 10),
+      memo: 'Drawer ' + (variance > 0 ? 'over' : 'short') + ' — counted ' + toMVR(counted)
+        + ' against ' + toMVR(expected),
+      source: 'drawer', sourceId: d.id,
+      lines: [{ account: dr, dr: amt, cr: 0 }, { account: cr, dr: 0, cr: amt }],
+    }, ctx);
   }
 
   await c.query("SELECT chain.log('drawer_close','drawer_session',$1,NULL,$2)",

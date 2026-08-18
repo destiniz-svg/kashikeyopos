@@ -35,6 +35,8 @@
  * unit with no meaning.
  */
 
+const { post: postJournal } = require('./journal');
+
 const REASONS = ['opening', 'purchase', 'waste', 'count', 'transfer', 'production', 'sale', 'return'];
 
 const toMVR = (laari) => (laari / 100).toFixed(2);
@@ -44,16 +46,10 @@ const toMVR = (laari) => (laari / 100).toFixed(2);
  *  expected) and posting an empty journal would clutter the ledger. */
 async function postStockJournal(c, { date, memo, dr, cr, valueLaari, sourceId }, ctx) {
   if (!valueLaari) return null;
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + " VALUES ($1,$2,$3,'stock',$4,$5) RETURNING id",
-    [no.rows[0].no, date, memo, sourceId || null, ctx.actor]);
-  await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,0)',
-    [h.rows[0].id, dr, toMVR(valueLaari)]);
-  await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,0,$3)',
-    [h.rows[0].id, cr, toMVR(valueLaari)]);
-  return h.rows[0].id;
+  return postJournal(c, {
+    date, memo, source: 'stock', sourceId: sourceId || null,
+    lines: [{ account: dr, dr: valueLaari, cr: 0 }, { account: cr, dr: 0, cr: valueLaari }],
+  }, ctx);
 }
 
 /** Write a move and reconcile the cache to the ledger. The ONLY way stock

@@ -37,6 +37,7 @@ const costing = require('./costing');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
 const promos = require('./promos');
+const { post: postJournal } = require('./journal');
 
 /* MVR ↔ laari. The database columns are numeric(12,2) in MVR; every
    calculation in between is integer laari. Conversion happens here and at no
@@ -466,23 +467,21 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
   if (b.rounding < 0) dr('6910', -b.rounding);
   if (cogs) { dr('5000', cogs); cr('1100', cogs); }
 
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + " VALUES ($1,$2,$3,'sale',$4,$5) RETURNING id",
-    /* The memo is what somebody reads in the ledger, so it names the RECEIPT —
-       the number printed on the document the guest was handed and the one the
-       drawer count and any query will quote. `source_id` still carries the
-       sale's uuid, which is what a join needs; a uuid in the memo is a
-       reference nobody in the building can use. */
-    [no.rows[0].no, p.businessDate, 'Sale ' + receiptNo, saleId, ctx.actor]);
+  /* The one journal writer. This function used to hold a private copy of it —
+     the fourth in the build, and the one with the best excuse, since a sale is
+     the entry every other entry is compared against. Which is precisely why it
+     must not have its own: the day the document series or the memo rule changes
+     for everybody, a sale would have kept the old one and nothing would have
+     said so.
 
-  for (const l of lines) {
-    await c.query(
-      'INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,$4)',
-      [h.rows[0].id, l.account, toMVR(l.dr), toMVR(l.cr)]);
-  }
-  return h.rows[0].id;   // the deferred trigger refuses an unbalanced entry at COMMIT
+     The memo names the RECEIPT — the number printed on the document the guest
+     was handed, and the one a drawer count or a query will quote. `sourceId`
+     carries the sale's uuid, which is what a join needs; a uuid in the memo is
+     a reference nobody in the building can use. */
+  return postJournal(c, {
+    date: p.businessDate, memo: 'Sale ' + receiptNo,
+    source: 'sale', sourceId: saleId, lines,
+  }, ctx);   // the deferred trigger refuses an unbalanced entry at COMMIT
 }
 
 module.exports = { settle, taxAsAt, toLaari, toMVR, TENDERS };

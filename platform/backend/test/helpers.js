@@ -230,7 +230,11 @@ async function req(method, p, { body, token } = {}) {
   const text = await r.text();
   let json = null;
   try { json = JSON.parse(text); } catch (e) { /* not json */ }
-  return { status: r.status, json, text };
+  /* The headers come back too. Not every response IS its body: a CSV export is
+     a file, and whether it downloads as one is decided entirely by content-type
+     and content-disposition — assertions no test could make while this returned
+     the body alone. */
+  return { status: r.status, json, text, headers: Object.fromEntries(r.headers) };
 }
 
 const post = (p, body, token) => req('POST', p, { body, token });

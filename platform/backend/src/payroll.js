@@ -1,4 +1,5 @@
 'use strict';
+const { post: postJournal } = require('./journal');
 /* Payroll & Pension — 02-POS-SPEC.md §2 (`payroll`): "Runs, pension, posts to
  * 6000 / 2300." 08-BUILD-STAGES.md §19.
  *
@@ -275,32 +276,28 @@ async function post(c, p, ctx) {
     throw Object.assign(new Error('there is nothing to pay on this run'), { status: 409 });
   }
 
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + " VALUES ($1,$2::date,$3,'payroll',$4,$5) RETURNING id",
-    [no.rows[0].no, r.period_to,
-      'Payroll ' + r.period_from.toISOString().slice(0, 10)
-        + ' to ' + r.period_to.toISOString().slice(0, 10), r.id, ctx.actor]);
-
-  const line = (account, dr, cr) => c.query(
-    'INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,$4)',
-    [h.rows[0].id, account, toMVR(dr), toMVR(cr)]);
-
-  await line('6000', grossLaari, 0);                    // wages
-  if (erLaari) await line('6010', erLaari, 0);          // employer pension
-  await line('2300', 0, netLaari);                      // owed to the staff
-  if (empLaari + erLaari) await line('2310', 0, empLaari + erLaari);  // owed to the pension office
+  const lines = [{ account: '6000', dr: grossLaari, cr: 0 }];          // wages
+  if (erLaari) lines.push({ account: '6010', dr: erLaari, cr: 0 });    // employer pension
+  lines.push({ account: '2300', dr: 0, cr: netLaari });                // owed to the staff
+  if (empLaari + erLaari) {                            // owed to the pension office
+    lines.push({ account: '2310', dr: 0, cr: empLaari + erLaari });
+  }
+  const jv = await postJournal(c, {
+    date: r.period_to,
+    memo: 'Payroll ' + r.period_from.toISOString().slice(0, 10)
+      + ' to ' + r.period_to.toISOString().slice(0, 10),
+    source: 'payroll', sourceId: r.id, lines,
+  }, ctx);
 
   await c.query(
     "UPDATE payroll_run SET status = 'posted', posted_by = $2, posted_at = now()"
     + ' WHERE id = $1', [r.id, ctx.actor]);
 
   await c.query("SELECT chain.log('payroll_post','payroll_run',$1,NULL,$2)",
-    [r.id, JSON.stringify({ gross: r.gross, net: r.net, jv: no.rows[0].no })]);
+    [r.id, JSON.stringify({ gross: r.gross, net: r.net, jv: jv.no })]);
 
   return {
-    runId: r.id, status: 'posted', jvNo: no.rows[0].no,
+    runId: r.id, status: 'posted', jvNo: jv.no,
     gross: money(r.gross), net: money(r.net),
     owedToStaff: money(r.net),
     owedToPension: money(Number(r.employee_pension) + Number(r.employer_pension)),
@@ -321,17 +318,16 @@ async function pay(c, p, ctx) {
 
   const method = p.method === 'cash' ? 'cash' : 'bank';
   const netLaari = toLaari(r.net);
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query(
-    'INSERT INTO journal (jv_no, entry_date, memo, source, source_id, posted_by)'
-    + " VALUES ($1,$2::date,$3,'payroll',$4,$5) RETURNING id",
-    [no.rows[0].no, new Date().toISOString().slice(0, 10),
-      'Wages paid — ' + r.period_from.toISOString().slice(0, 10)
-        + ' to ' + r.period_to.toISOString().slice(0, 10), r.id, ctx.actor]);
-  await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,0)',
-    [h.rows[0].id, '2300', toMVR(netLaari)]);
-  await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,0,$3)',
-    [h.rows[0].id, method === 'cash' ? '1000' : '1010', toMVR(netLaari)]);
+  await postJournal(c, {
+    date: new Date().toISOString().slice(0, 10),
+    memo: 'Wages paid — ' + r.period_from.toISOString().slice(0, 10)
+      + ' to ' + r.period_to.toISOString().slice(0, 10),
+    source: 'payroll', sourceId: r.id,
+    lines: [
+      { account: '2300', dr: netLaari, cr: 0 },
+      { account: method === 'cash' ? '1000' : '1010', dr: 0, cr: netLaari },
+    ],
+  }, ctx);
 
   await c.query("UPDATE payroll_run SET status = 'paid', paid_at = now() WHERE id = $1", [r.id]);
   await c.query("SELECT chain.log('payroll_pay','payroll_run',$1,NULL,$2)",

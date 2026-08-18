@@ -17,6 +17,7 @@ const staff = require('./staff');
 const payroll = require('./payroll');
 const analytics = require('./analytics');
 const opcosts = require('./opcosts');
+const accounting = require('./accounting');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -688,6 +689,75 @@ r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('man
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return staff.unlock(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Accounting Flow (§2 `accounting`) ────────────────────────────────────
+ *
+ * MANAGER may read the books; only ADMIN may write to them by hand. Reading is
+ * the daily job of anybody running a shift — the whole point of building this
+ * was that nothing could read back what it posted. Writing a journal directly
+ * bypasses every module that would otherwise own the entry, so it sits one rung
+ * higher, and a reversal sits with it: undoing a posting is writing one.
+ */
+r.get('/outlet/:outletId/accounting/journals', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await accounting.journals(c, req.query || {})),
+          sources: await accounting.sources(c),
+          /* The chart, so the entry form offers accounts by name rather than
+             asking somebody to remember that wages are 6000. */
+          accounts: (await c.query(
+            'SELECT code, name, type FROM account ORDER BY code')).rows,
+        };
+      });
+      res.set('cache-control', 'no-store').json({ ...out, canPost: req.ctx.rank >= 4 });
+    } catch (e) { next(e); }
+  });
+
+/* The trial balance, the P&L and the tax return live under /reports and this
+   screen calls them there. They are the same three statements whichever screen
+   asks; a copy under /accounting would be a second arithmetic to keep in step,
+   and this build has already paid that bill once. */
+
+/* The export is a file, not JSON: it is opened in a spreadsheet or handed to an
+   accountant, and it is audited because a copy of the books has left the
+   building. */
+r.get('/outlet/:outletId/accounting/export', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const f = await accounting.exportCsv(c, req.query || {}, reports);
+        await c.query("SELECT chain.log('accounting_export','journal',NULL,NULL,$1)",
+          [JSON.stringify({ kind: req.query.kind || 'journal', file: f.filename })]);
+        return f;
+      });
+      res.set('content-type', 'text/csv; charset=utf-8')
+        .set('content-disposition', 'attachment; filename="' + out.filename + '"')
+        .set('cache-control', 'no-store')
+        .send(out.body);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/accounting/journal', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return accounting.manual(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/accounting/journal/:id/reverse', sameOutlet, staffOnly,
+  atLeast('admin'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return accounting.reverse(c, req.params.id, req.body || {}, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }
@@ -1669,30 +1739,25 @@ async function apply(c, op, ctx) {
     case 'stock_count_reject':
       return await stock.rejectCount(c, op.payload || {}, ctx);
 
+    /* A journal queued offline goes through the SAME path a typed one does.
+       This used to have a private writer here that took its figures in MVR
+       while every other posting path in the build takes laari — so the one
+       entry that arrived after a network outage would have been out by a
+       factor of a hundred, and balanced, so nothing would have objected. It
+       also skipped the balance check, the account check and the audit line. */
     case 'journal':
-      return { journalId: await postJournal(c, op.payload, ctx, op.payload.source || 'manual', null) };
-    case 'guest_order_accept': {
-      const p = op.payload || {};
-      await c.query('UPDATE guest_order SET accepted_at = now(), accepted_by = $2,'
-        + ' ticket_id = $3 WHERE id = $1 AND accepted_at IS NULL',
-        [p.id, ctx.actor, p.ticketId || null]);
-      return { id: p.id, accepted: true };
-    }
+      return accounting.manual(c, op.payload || {}, ctx);
+
+    /* Accepting a round while offline reaches the kitchen on replay, because it
+       is the same accept the till's own button calls. It used to stamp
+       `accepted_at` and take a ticket id from the CLIENT — an id for a ticket
+       nothing had created — so a round accepted during an outage was marked
+       done and the food was never cooked. */
+    case 'guest_order_accept':
+      return delivery.accept(c, (op.payload || {}).id, op.payload || {}, ctx, kitchen);
     default:
       throw new Error('unknown op kind: ' + op.kind);
   }
-}
-
-async function postJournal(c, j, ctx, source, sourceId) {
-  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['JV']);
-  const h = await c.query('INSERT INTO journal (jv_no, entry_date, memo, source,'
-    + ' source_id, posted_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [no.rows[0].no, j.date, j.memo, source, sourceId, ctx.actor]);
-  for (const l of (j.lines || [])) {
-    await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr)'
-      + ' VALUES ($1,$2,$3,$4)', [h.rows[0].id, l.account, l.dr || 0, l.cr || 0]);
-  }
-  return h.rows[0].id;   // the deferred trigger refuses an unbalanced entry at COMMIT
 }
 
 module.exports = r;

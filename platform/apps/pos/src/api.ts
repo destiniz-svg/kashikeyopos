@@ -98,6 +98,49 @@ export function authed(session: { outletId: number; token: string }) {
     call<T>(method, `/api/outlet/${session.outletId}${path}`, body, session.token);
 }
 
+/**
+ * Download a file the SERVER produced, through the same base URL and the same
+ * token as everything else.
+ *
+ * A screen that builds its own CSV from JSON it happens to have is a second
+ * formatter of the same figures — with its own idea of which columns matter,
+ * its own rounding, and, in the one that existed before this, no defence
+ * against a memo beginning with `=` becoming a formula when the file is opened.
+ * The file the accountant reads should be the file the server wrote.
+ *
+ * It cannot be a plain link: the API wants an Authorization header, and an
+ * `<a href>` cannot carry one. So it is fetched, and handed to the browser as a
+ * blob under the filename the server chose.
+ */
+export function download(session: { outletId: number; token: string }) {
+  return async (path: string, fallbackName: string) => {
+    let r: Response;
+    try {
+      r = await fetch(BASE + `/api/outlet/${session.outletId}${path}`, {
+        headers: { authorization: 'Bearer ' + session.token },
+      });
+    } catch (e) {
+      throw new ApiError(0, e instanceof Error ? e.message : 'offline');
+    }
+    const text = await r.text();
+    if (!r.ok) {
+      let msg = 'HTTP ' + r.status;
+      try {
+        const j = JSON.parse(text) as { error?: unknown };
+        if (j && j.error) msg = String(j.error);
+      } catch { /* not json */ }
+      throw new ApiError(r.status, msg);
+    }
+    const named = /filename="([^"]+)"/.exec(r.headers.get('content-disposition') || '');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = named ? named[1] : fallbackName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+}
+
 export const signIn = (outletId: number, pin: string, deviceId?: string) =>
   call<Session>('POST', '/api/auth/pin', { outletId, pin, deviceId });
 

@@ -17,6 +17,13 @@ app.use(function (req, res, next) {
     res.set('vary', 'origin');
     res.set('access-control-allow-headers', 'authorization,content-type');
     res.set('access-control-allow-methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    /* A browser can only read the headers a cross-origin response says it may,
+       and everything here IS cross-origin in the deployed shape: the POS is a
+       static site on its own domain and the API is somewhere else. Without
+       this, an export downloads as whatever fallback name the client invented
+       instead of the one the server chose — which is how a file called
+       `export.csv` ends up in an accountant's folder beside four others. */
+    res.set('access-control-expose-headers', 'content-disposition');
     res.set('access-control-max-age', '600');
   }
   res.set('x-content-type-options', 'nosniff');

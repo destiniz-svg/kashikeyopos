@@ -121,6 +121,38 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('there is ONE journal writer, and every source it is given has a name', () => {
+    /* Two things that drift together.
+     *
+     * journal.js calls itself "the one copy" and was not: five modules kept a
+     * private insert, and they had already diverged — the one in routes.js took
+     * its figures in MVR while every other path in the build takes laari, so a
+     * journal queued during an outage would have posted a hundredth of the
+     * money and balanced, which is the kind of wrong nothing objects to.
+     *
+     * And the ledger screen turns a source into a sentence. A module that adds
+     * a new one without adding its label shows an operator the word `opcosts`,
+     * which means something to whoever wrote the code and nothing to anybody
+     * reading the books. */
+    const dir = path.join(ROOT, 'backend', 'src');
+    const writers = [];
+    const sources = new Set();
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.js')) continue;
+      const text = fs.readFileSync(path.join(dir, f), 'utf8');
+      if (f !== 'journal.js' && /INSERT INTO journal\s/.test(text)) writers.push(f);
+      for (const m of text.matchAll(/source: '([a-z_]+)'/g)) sources.add(m[1]);
+    }
+    assert.deepEqual(writers, [], 'these write journals without journal.js');
+
+    const screen = fs.readFileSync(
+      path.join(ROOT, 'apps', 'pos', 'src', 'Accounting.tsx'), 'utf8');
+    const labelled = new Set(
+      [...screen.matchAll(/^\s{2}([a-z_]+): '/gm)].map((m) => m[1]));
+    const unlabelled = [...sources].filter((s) => !labelled.has(s)).sort();
+    assert.deepEqual(unlabelled, [], 'these post to the ledger with no name on the screen');
+  });
+
   test('the gate typechecks EVERY front end, not just the one it started with', () => {
     /* `npm run lint` was `npm -w @kashikeyo/pos run typecheck` and nothing else,
        so the guest portal — the half a customer actually holds — was typechecked

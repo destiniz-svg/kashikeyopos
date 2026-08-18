@@ -37,7 +37,11 @@ async function post(c, j, ctx) {
       'INSERT INTO journal_line (journal_id, account_code, dr, cr) VALUES ($1,$2,$3,$4)',
       [h.rows[0].id, l.account, toMVR(l.dr), toMVR(l.cr)]);
   }
-  return h.rows[0].id;
+  /* Both, because callers need both and the alternative is what they were
+     doing: reading the number back with a second query, or keeping a private
+     copy of this function so as to have it. The number is what a human quotes;
+     the id is what a join needs. */
+  return { id: h.rows[0].id, no: no.rows[0].no };
 }
 
 module.exports = { post };
