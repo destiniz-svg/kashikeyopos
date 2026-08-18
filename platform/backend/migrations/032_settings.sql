@@ -16,9 +16,9 @@
 -- `schema_name` and `db_role` are what `withOutlet` resolves a connection
 -- through. A role that can write them can point its own outlet row at another
 -- outlet's schema, and RLS cannot help — a policy decides which ROWS you may
--- write, never which COLUMNS. So the grant is never issued, and the settings a
--- manager may change go through a SECURITY DEFINER function that can only
--- touch the five that are genuinely settings.
+-- write, never which COLUMNS. So the grant is never issued, and the settings an
+-- admin may change go through a SECURITY DEFINER function that can only touch
+-- the columns that are genuinely settings.
 --
 -- A TAX RATE IS ADDED, NEVER EDITED. `chain.tax_version` is keyed by effective
 -- date because a sale records the rate it was rung up at, and a filed return
@@ -28,8 +28,24 @@
 -- today or later, and yesterday's rate is a historical fact.
 -- ═══════════════════════════════════════════════════════════════════════════
 
+-- The registered identity of the business, which had nowhere to live. A GST
+-- receipt in the Maldives carries the trader's name, address and TIN; there was
+-- no column for any of them, so no receipt this system prints could be a
+-- compliant one. Added here rather than in a later migration because this file
+-- is the one that owns what an outlet's settings ARE.
+ALTER TABLE chain.outlet ADD COLUMN IF NOT EXISTS address text;
+ALTER TABLE chain.outlet ADD COLUMN IF NOT EXISTS phone   text;
+ALTER TABLE chain.outlet ADD COLUMN IF NOT EXISTS tin     text;
+
+-- The five-argument shape this file first shipped with is dropped rather than
+-- left beside the new one. Two overloads would both be grantable and only one
+-- would ever be called, which is the same trap as two copies of a chart of
+-- accounts: the dead one goes on looking maintained.
+DROP FUNCTION IF EXISTS chain.set_outlet_settings(text,text,numeric,int,int);
+
 CREATE OR REPLACE FUNCTION chain.set_outlet_settings(
-  p_name text, p_tz text, p_service numeric, p_round int, p_tables int)
+  p_name text, p_tz text, p_service numeric, p_round int, p_tables int,
+  p_address text, p_phone text, p_tin text)
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER AS $fn$
 DECLARE o int := app.current_outlet();
@@ -52,12 +68,15 @@ BEGIN
   IF btrim(coalesce(p_name, '')) = '' THEN
     RAISE EXCEPTION 'an outlet needs a name';
   END IF;
-  /* The five columns that are settings. `id`, `code`, `schema_name` and
+  /* The eight columns that are settings. `id`, `code`, `schema_name` and
      `db_role` are not in this statement and are not reachable from any grant
      this role holds — see the header. */
   UPDATE chain.outlet
      SET name = btrim(p_name), tz = coalesce(nullif(btrim(p_tz), ''), tz),
-         service_pct = p_service, cash_round_laari = p_round, tables = p_tables
+         service_pct = p_service, cash_round_laari = p_round, tables = p_tables,
+         address = nullif(btrim(coalesce(p_address, '')), ''),
+         phone = nullif(btrim(coalesce(p_phone, '')), ''),
+         tin = nullif(upper(btrim(coalesce(p_tin, ''))), '')
    WHERE id = o;
 END $fn$;
 
@@ -95,7 +114,7 @@ DECLARE o record;
 BEGIN
   FOR o IN SELECT db_role FROM chain.outlet LOOP
     EXECUTE format('GRANT EXECUTE ON FUNCTION'
-      || ' chain.set_outlet_settings(text,text,numeric,int,int),'
+      || ' chain.set_outlet_settings(text,text,numeric,int,int,text,text,text),'
       || ' chain.set_tax_rate(text,numeric,date) TO %I', o.db_role);
     /* The grant `tax_write` has been waiting for since migration 002. The
        policy is what decides; without this it decided nothing. Kept alongside

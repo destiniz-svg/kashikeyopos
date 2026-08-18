@@ -770,7 +770,7 @@ BEGIN
   -- `schema_name` and `db_role` on that row ARE the tenancy model, and a policy
   -- decides which rows you may write, never which columns.
   EXECUTE format('GRANT EXECUTE ON FUNCTION'
-    || ' chain.set_outlet_settings(text,text,numeric,int,int),'
+    || ' chain.set_outlet_settings(text,text,numeric,int,int,text,text,text),'
     || ' chain.set_tax_rate(text,numeric,date) TO %I', r);
   EXECUTE format('GRANT INSERT, UPDATE ON chain.tax_version TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.pin_candidates(int,text),'

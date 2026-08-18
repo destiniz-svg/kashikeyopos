@@ -60,6 +60,7 @@ interface SettingsData {
     id: number; code: string; name: string; currency: string; tz: string;
     servicePct: number; cashRoundLaari: number; tables: number;
     active: boolean; createdAt: string;
+    address: string | null; phone: string | null; tin: string | null;
   };
   tax: TaxVersion[];
   fixed: { fields: string[]; why: string };
@@ -86,6 +87,9 @@ export function Settings({ session }: { session: Session }) {
   const [round, setRound] = useState('');
   const [tables, setTables] = useState('');
   const [tz, setTz] = useState('');
+  const [address, setAddress] = useState('');
+  const [phone, setPhone] = useState('');
+  const [tin, setTin] = useState('');
 
   const [taxCode, setTaxCode] = useState('GGST');
   const [taxRate, setTaxRate] = useState('');
@@ -102,6 +106,9 @@ export function Settings({ session }: { session: Session }) {
     setRound(String(d.outlet.cashRoundLaari));
     setTables(String(d.outlet.tables));
     setTz(d.outlet.tz);
+    setAddress(d.outlet.address || '');
+    setPhone(d.outlet.phone || '');
+    setTin(d.outlet.tin || '');
   }, []);
 
   const load = useCallback(async () => {
@@ -128,6 +135,7 @@ export function Settings({ session }: { session: Session }) {
         servicePct: Number(service),
         cashRoundLaari: Number(round),
         tables: Number(tables),
+        address: address.trim(), phone: phone.trim(), tin: tin.trim(),
       }));
       setSaved('Saved. Every bill from here on carries it.');
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
@@ -209,6 +217,27 @@ export function Settings({ session }: { session: Session }) {
             </button>
           </div>
         )}
+      </div>
+
+      {/* ── the registered business ────────────────────────────────────── */}
+      <div style={card}>
+        <div style={h}>What a receipt has to say</div>
+        {!data.outlet.tin && (
+          /* Not a nag. A GST receipt without the trader's TIN is not a
+             compliant document, and the till has been printing them. */
+          <div style={{ font: '400 13px/1.5 system-ui', color: 'var(--warn-bright)',
+            marginBottom: 10, maxWidth: 640 }}>
+            No TIN has been entered. A GST receipt in the Maldives carries the
+            trader&rsquo;s name, address and taxpayer identification number — without it
+            the receipts this till prints are not compliant documents.
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          {field('Registered address', address, setAddress,
+            'As registered, not as the sign outside says.', 260)}
+          {field('Phone', phone, setPhone, 'For a guest with a question about a bill.', 150)}
+          {field('TIN', tin, setTin, 'The taxpayer identification number MIRA knows you by.', 150)}
+        </div>
       </div>
 
       {/* ── tax ────────────────────────────────────────────────────────── */}

@@ -35,7 +35,8 @@ const RANKS = ['—', 'Kitchen', 'Till', 'Manager', 'Admin', 'Owner'];
 async function settings(c, outletId) {
   const [o, tax] = await Promise.all([
     c.query('SELECT id, code, name, currency, tz, service_pct, cash_round_laari,'
-      + ' tables, active, created_at FROM chain.outlet WHERE id = $1', [outletId]),
+      + ' tables, active, created_at, address, phone, tin'
+      + ' FROM chain.outlet WHERE id = $1', [outletId]),
     /* Every version, not just the live one. A rate change is a dated fact and
        the screen that sets one has to show what it is changing FROM and when —
        "8% from 2020" beside "16% from next month" is the whole story, and a
@@ -61,6 +62,10 @@ async function settings(c, outletId) {
       servicePct: Number(r.service_pct),
       cashRoundLaari: r.cash_round_laari,
       tables: r.tables, active: r.active, createdAt: r.created_at,
+      /* The registered identity a GST receipt has to carry. Null is not blank —
+         it means nobody has entered it, and a receipt printed without it is not
+         a compliant document. The screen says so rather than printing a gap. */
+      address: r.address, phone: r.phone, tin: r.tin,
     },
     tax: versions,
     /* Said rather than left to the screen: the four columns nobody can change
@@ -92,8 +97,10 @@ async function setSettings(c, body, ctx) {
     throw bad('that is not a plausible number of tables');
   }
   const before = await settings(c, ctx.outletId);
-  await c.query('SELECT chain.set_outlet_settings($1,$2,$3,$4,$5)',
-    [name, tz, service, round, tables]);
+  await c.query('SELECT chain.set_outlet_settings($1,$2,$3,$4,$5,$6,$7,$8)',
+    [name, tz, service, round, tables,
+      String(body.address ?? '').trim(), String(body.phone ?? '').trim(),
+      String(body.tin ?? '').trim()]);
   const after = await settings(c, ctx.outletId);
   await c.query("SELECT chain.log('outlet_settings','outlet',$1,$2,$3)",
     [String(ctx.outletId), JSON.stringify(before.outlet), JSON.stringify(after.outlet)]);
