@@ -43,6 +43,11 @@ BEGIN
       opened_by   uuid, closed_by uuid, device_id uuid,
       server_name text,
       member_id   uuid,
+      -- What the member's own phone offered against this bill (migration 024).
+      -- The phone never takes money: it posts an intent where the cashier is
+      -- already looking, and the till decides.
+      points_offered    numeric(12,2),
+      points_offered_at timestamptz,
       CONSTRAINT closed_has_time CHECK (status <> 'closed' OR closed_at IS NOT NULL)
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ticket_open_table ON %1$I.ticket(table_no, split)
@@ -719,6 +724,12 @@ BEGIN
   -- no DELETE, ever — append-only is the absence of the privilege.
   EXECUTE format('GRANT SELECT, INSERT ON chain.audit TO %I', r);
   EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.session, chain.doc_series, chain.member TO %I', r);
+  -- The member portal's two chain-wide tables (migration 024). A new outlet
+  -- serves members from day one: it writes the visit it served and takes the
+  -- voucher a member presents.
+  EXECUTE format('GRANT SELECT, INSERT ON chain.member_visit TO %I', r);
+  EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.member_visit_id_seq TO %I', r);
+  EXECUTE format('GRANT SELECT, UPDATE ON chain.voucher TO %I', r);
   EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE chain.audit_id_seq TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.next_doc_no(text), chain.log(text,text,text,jsonb,jsonb) TO %I', r);
   -- Releasing a lockout: manager rank, one person, its own function rather

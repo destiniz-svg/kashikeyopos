@@ -1,4 +1,5 @@
 'use strict';
+const { tableName } = require('./tables');
 /* Sending a round to the kitchen, and moving it along the pass.
  *
  * 02-POS-SPEC.md §4. Two operations, both idempotent through op_log because
@@ -35,7 +36,10 @@ async function stationsFor(c, outletId) {
  * p = { table, covers?, lines: [{ itemId, qty, note? }], server? }
  */
 async function sendRound(c, p, ctx) {
-  const table = String((p && p.table) || '').trim();
+  /* NORMALISED HERE, because this is where a ticket gets its table. The floor
+     draws T05 and a guest's phone says 5; without this they became two rows for
+     one table and the cashier's tile opened an empty bill. See src/tables.js. */
+  const table = tableName(p && p.table);
   if (!table) throw Object.assign(new Error('a round needs a table'), { status: 400 });
   if (!Array.isArray(p.lines) || !p.lines.length) {
     throw Object.assign(new Error('a round needs at least one line'), { status: 400 });

@@ -60,7 +60,7 @@ describe('orders & tickets', () => {
     const row = r.json.closed.find((x) => x.saleId === sale.saleId);
     assert.ok(row, 'the settled sale is on the day');
     assert.equal(row.receiptNo, sale.receiptNo);
-    assert.equal(row.table, '6');
+    assert.equal(row.table, 'T06', 'the one spelling — see src/tables.js');
     assert.equal(row.server, 'Aishath');
     assert.deepEqual(row.methods, ['cash']);
     assert.equal(row.voided, false);
@@ -100,7 +100,7 @@ describe('orders & tickets', () => {
     const r = await asMgr(`/orders?date=${ctx.today}`);
     const open = r.json.open.find((x) => x.ticketId === openId);
     assert.ok(open, 'the open ticket is listed');
-    assert.equal(open.table, '9');
+    assert.equal(open.table, 'T09');
     assert.equal(open.covers, 4);
     assert.equal(open.lines, 1);
     assert.equal(open.sent, 1, 'and it is with the kitchen');
@@ -133,7 +133,7 @@ describe('orders & tickets', () => {
     assert.equal(r.json.sale.taxCode, 'GGST');
     assert.equal(Number(r.json.sale.taxRate), ctx.taxRate);
     assert.equal(r.json.sale.receiptNo, sale.receiptNo);
-    assert.equal(r.json.sale.table, '6');
+    assert.equal(r.json.sale.table, 'T06');
     assert.equal(r.json.sale.covers, 2);
   });
 

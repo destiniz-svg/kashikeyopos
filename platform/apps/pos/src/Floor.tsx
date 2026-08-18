@@ -81,10 +81,16 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
   const openByTable = useMemo(() => {
     const m = new Map<string, { covers: number }>();
     for (const t of snap?.tickets ?? []) {
-      if (t.table_no) m.set(String(t.table_no), { covers: t.covers });
+      if (t.table_no) m.set(tableName(t.table_no), { covers: t.covers });
     }
     return m;
   }, [snap]);
+
+  /* The open ticket for the table being worked, if there is one. */
+  const ticket = useMemo(
+    () => (snap?.tickets ?? []).find(
+      (t) => tableName(t.table_no ?? '') === tableName(table)) ?? null,
+    [snap, table]);
 
   const add = (it: Item) => {
     setLines((ls) => {
@@ -210,8 +216,8 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
           {TILE('Takeaway', false, 'tk')}
           {TILE('Delivery', false, 'dl')}
           {Array.from({ length: tableCount }, (_, i) => i + 1).map((n) => {
-            const label = 'T' + (n < 10 ? '0' + n : n);
-            return TILE(label, openByTable.has(label) || openByTable.has(String(n)), label);
+            const label = tableName(String(n));
+            return TILE(label, openByTable.has(label), label);
           })}
           {!tableCount && (
             <div style={{ gridColumn: '1/-1', padding: '20px 4px', fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
@@ -389,6 +395,12 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
           session={session}
           online={online}
           promoCode={promoCode}
+          /* What the guest's own phone offered against this bill, and whose
+             card it is. An offer nobody at the counter sees is a promise made
+             to a guest and kept by nobody, so it arrives on the screen where
+             the tender is chosen. */
+          offeredPoints={ticket?.points_offered ? Number(ticket.points_offered) : null}
+          offeredBy={ticket?.member_id ?? null}
           onPromo={(code, discount) => { setPromoCode(code); setPromoDiscount(discount); }}
           onCancel={() => setPaying(false)}
           onConfirm={settled}
@@ -405,4 +417,20 @@ function Row({ label, value, muted }: { label: string; value: string; muted?: bo
       <span style={{ fontSize: 12, fontFamily: MONO, color: muted ? 'var(--text-faint)' : 'var(--text-dim)' }}>{value}</span>
     </div>
   );
+}
+
+/* The one spelling of a table, matching backend/src/tables.js.
+ *
+ * The floor used to draw `T05` while a round sent from a guest's phone opened a
+ * ticket called `5`, and this screen half-knew: it checked both spellings when
+ * shading a tile busy and then used its own for everything after. So a QR order
+ * lit the tile and tapping it opened an empty bill — and sending a round from
+ * there would have opened a second ticket for the same table. */
+export function tableName(v: string): string {
+  const raw = String(v ?? '').trim();
+  if (!raw) return '';
+  const m = /^[Tt]?0*([1-9]\d{0,2})$/.exec(raw);
+  if (!m) return raw.slice(0, 20);
+  const n = Number(m[1]);
+  return 'T' + (n < 10 ? '0' + n : String(n));
 }

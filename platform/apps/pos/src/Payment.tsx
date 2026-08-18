@@ -68,10 +68,16 @@ interface Props {
   onCancel: () => void;
   onConfirm: (payments: { method: Method; amount: number }[], memberId?: string,
     promoCode?: string) => void | Promise<void>;
+  /* What the member's own phone offered against this bill, and whose it is.
+     04-MEMBER-PORTAL §3: "The till still takes the payment: the portal posts
+     intent." This is where that intent surfaces — an offer nobody at the
+     counter sees is a promise made to a guest and kept by nobody. */
+  offeredPoints?: number | null;
+  offeredBy?: string | null;
 }
 
 export function Payment({ total, goods, session, online, promoCode, onPromo,
-  onCancel, onConfirm }: Props) {
+  onCancel, onConfirm, offeredPoints, offeredBy }: Props) {
   const [method, setMethod] = useState<Method>('cash');
   const [buf, setBuf] = useState('');
   const [busy, setBusy] = useState(false);
@@ -211,6 +217,36 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
           </button>
         </div>
+
+        {/* WHAT THE GUEST'S PHONE OFFERED. §3 of the member spec: the portal
+            posts intent, the till settles. So the offer arrives here, above
+            the tender, and it is a prompt rather than a decision — pressing it
+            selects the points tender and attaches the member, which the
+            cashier then confirms like any other payment. */}
+        {offeredPoints ? (
+          <div style={{
+            padding: '11px 16px', display: 'flex', alignItems: 'center', gap: 12,
+            flexWrap: 'wrap', background: 'var(--go-dim)', color: 'var(--go-bright)',
+            borderBottom: '1px solid var(--line-soft)', fontSize: 12.5, lineHeight: 1.5,
+          }}>
+            <span>
+              The guest offered <b>{offeredPoints}</b> points from their phone
+              {scheme && scheme.pointValue > 0
+                && ' (' + (offeredPoints * scheme.pointValue).toFixed(2) + ')'}.
+            </span>
+            <span style={{ flex: 1 }} />
+            <button
+              onClick={() => {
+                setMethod('points');
+                setAttaching(true);
+                if (offeredBy) setQ('');
+              }}
+              style={{
+                padding: '6px 13px', borderRadius: 7, fontSize: 12, fontWeight: 700,
+                background: 'var(--go)', color: 'var(--on-go)',
+              }}>Take the points</button>
+          </div>
+        ) : null}
 
         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
           {/* Keypad — left */}

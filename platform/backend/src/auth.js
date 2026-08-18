@@ -16,6 +16,15 @@ function session(req, res, next) {
      to know guest tokens exist. `guest` is set from the claim, not inferred
      from a missing field, because "no rank" and "a guest" are different
      states and only one of them may read a table's bill. */
+  /* A MEMBER TOKEN IS FOR THE MEMBER PORTAL AND NOTHING ELSE. It is a validly
+     signed token of a different audience: it names no outlet and carries no
+     rank, so every gate below would refuse it anyway — by accident, on the
+     arithmetic that `undefined < 3`. Refusing it here means the refusal does
+     not depend on that arithmetic staying true, and it says the right thing to
+     whoever is holding it. */
+  if (claims.mem === true) {
+    return res.status(401).json({ error: 'that is a member session — it does not open the till' });
+  }
   const guest = claims.g === true;
   req.ctx = {
     outletId: claims.o,

@@ -1,7 +1,7 @@
 'use strict';
 const express = require('express');
-const { withOutlet, withEstate } = require('./db');
-const { sign, pinMatches, pinLookup } = require('./secrets');
+const { withOutlet, withEstate, withMember, withMemberAnon } = require('./db');
+const { sign, verify: verifyToken, pinMatches, pinLookup } = require('./secrets');
 const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
 const { settle } = require('./sale');
 const kitchen = require('./kitchen');
@@ -18,6 +18,9 @@ const payroll = require('./payroll');
 const analytics = require('./analytics');
 const opcosts = require('./opcosts');
 const accounting = require('./accounting');
+const memberportal = require('./memberportal');
+const vouchers = require('./vouchers');
+const { tableName } = require('./tables');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -135,6 +138,52 @@ r.get('/outlet/:outletId/guest/card', async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* ── the member portal (04-MEMBER-PORTAL-SPEC.md) ─────────────────────────
+ *
+ * OUTSIDE the /outlet tree, because a member is not an outlet's: they earn at
+ * one branch and spend at another. The session carries a member id and no
+ * outlet at all, and reads through `withMember` — a third database role with a
+ * SELECT on six chain tables and no grant on any outlet schema whatsoever.
+ *
+ * These two are public by necessity, exactly as the guest gate is: somebody
+ * signing in has nothing to authenticate with yet. Rate limited per instance.
+ */
+const MEMBER_TTL_HOURS = Number(process.env.MEMBER_TTL_HOURS || memberportal.SESSION_HOURS);
+
+r.post('/member/code', async function (req, res, next) {
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    /* Read through the OWNER-free path: this is before any session exists, and
+       the only table touched is chain.member by phone. The member role can do
+       it, and it is the narrowest thing that can. */
+    const out = await withMemberAnon(function (c) {
+      return memberportal.requestCode(c, req.body || {});
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.post('/member/session', async function (req, res, next) {
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    const memberId = await withMemberAnon(function (c) {
+      return memberportal.verifyCode(c, req.body || {});
+    });
+    /* One answer for a wrong code, an expired one and a phone with no code
+       outstanding. Which of the three it was is only useful to somebody
+       guessing. */
+    if (!memberId) return res.status(401).json({ error: 'that code is not right, or it has expired' });
+    const exp = Date.now() + MEMBER_TTL_HOURS * 3600e3;
+    const card = await withMember(memberId, function (c) {
+      return memberportal.me(c, memberId);
+    });
+    res.set('cache-control', 'no-store').json({
+      token: sign({ mem: true, m: memberId, exp: exp }),
+      expiresAt: exp, member: card,
+    });
+  } catch (e) { next(e); }
+});
+
 r.post('/outlet/:outletId/guest/session', async function (req, res, next) {
   const outletId = Number(req.params.outletId);
   const table = String((req.body || {}).table || '').trim();
@@ -158,6 +207,87 @@ r.post('/outlet/:outletId/guest/session', async function (req, res, next) {
       token: sign({ o: outletId, g: true, tbl: String(n), exp: exp }),
       outletId: outletId, table: String(n), outlet: out.name, expiresAt: exp,
     });
+  } catch (e) { next(e); }
+});
+
+/* ── the member's own session ─────────────────────────────────────────────
+ *
+ * Above `r.use(session)` because a member token is a different kind of thing
+ * from a staff or guest one: it names no outlet, so `sameOutlet` and every rank
+ * gate are meaningless against it, and the surest way to be certain it can
+ * never satisfy one of them is for it never to reach them.
+ */
+function memberSession(req, res, next) {
+  const h = req.get('authorization') || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  const claims = token && verifyToken(token);
+  if (!claims || claims.mem !== true || !claims.m) {
+    return res.status(401).json({ error: 'sign in on your phone to see this' });
+  }
+  req.member = String(claims.m);
+  next();
+}
+
+const memberBill = memberportal.billFinder(withOutlet);
+const memberOffer = memberportal.offerPoints(withOutlet);
+
+r.get('/member/me', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.me(c, req.member);
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.get('/member/visits', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.visits(c, req.member, req.query.limit);
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.get('/member/rewards', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.catalogue(c, req.member);
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.post('/member/redeem', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.redeem(c, req.member, req.body || {});
+    });
+    res.status(201).json(out);
+  } catch (e) { next(e); }
+});
+
+/* The bill at whichever outlet they are sitting in. The member session holds no
+   grant on any outlet schema, so the API asks each active outlet, over that
+   outlet's own connection, for a ticket that NAMES this member — and stops at
+   the first. Nobody has to tell the phone where it is. */
+r.get('/member/bill', memberSession, async function (req, res, next) {
+  try {
+    const outlets = await withMember(req.member, function (c) {
+      return c.query('SELECT id, name FROM chain.outlet WHERE active ORDER BY id')
+        .then(function (q) { return q.rows; });
+    });
+    const bill = await memberBill(req.member, outlets);
+    res.set('cache-control', 'no-store').json(bill || { open: false, outlets: outlets.length });
+  } catch (e) { next(e); }
+});
+
+r.post('/member/bill/points', memberSession, async function (req, res, next) {
+  const p = req.body || {};
+  try {
+    const cfg = await withMember(req.member, function (c) { return loyalty.config(c); });
+    const out = await memberOffer(req.member, p.outletId, p.ticketId, p.points, cfg);
+    res.json(out);
   } catch (e) { next(e); }
 });
 
@@ -192,7 +322,14 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
            touched, so a table ordering a burger and a cola read as two of
            each. A line whose item has no station falls to the pass, matching
            what kitchen.js did when it fired the round. */
+        /* `points_offered` rides along because a member's phone can put an
+           offer on this ticket, and an offer the cashier never sees is a
+           promise made to a guest and kept by nobody. It goes to STAFF only —
+           the guest portal is anonymous and has no business knowing that the
+           party at this table is a member. */
         c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
+          + ' t.member_id, ' + (req.ctx.guest ? 'NULL::numeric' : 't.points_offered')
+          + ' AS points_offered, '
           + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
           + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
           + "   'station', i.station)"
@@ -201,14 +338,17 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
           + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
           + ' LEFT JOIN item i ON i.id = l.item_id'
           + " WHERE t.status = 'open' AND ($1::text IS NULL OR t.table_no = $1)"
-          + ' GROUP BY t.id', [req.ctx.guest ? req.ctx.table : null]),
+          /* The guest's token carries the table as the QR card spells it — `3`.
+             A ticket is stored the way the floor spells it — `T03`. Compared
+             raw, a guest at a table with an open ticket saw nothing at all. */
+          + ' GROUP BY t.id', [req.ctx.guest ? tableName(req.ctx.table) : null]),
         /* Stages are joined to the tickets the caller may see, for the same
            reason: a stage row names a ticket, and a ticket names a table. */
         c.query('SELECT k.id, k.ticket_id, k.station, k.stage, k.target_mins, k.fired_at'
           + ' FROM kds_ticket k LEFT JOIN ticket t ON t.id = k.ticket_id'
           + ' WHERE k.served_at IS NULL'
           + " AND ($1::text IS NULL OR t.table_no = $1)",
-        [req.ctx.guest ? req.ctx.table : null])
+        [req.ctx.guest ? tableName(req.ctx.table) : null])
       ]);
       /* Stations ride on the snapshot so the KDS can draw its columns and
          colour its cards against each station's OWN target, without a second
@@ -691,6 +831,52 @@ r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('man
         return staff.unlock(c, req.params.id, req.ctx);
       });
       res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* What a code a guest is holding out is worth. TILL rank: it is the person at
+   the counter who is being shown a phone. Read-only — the voucher is claimed by
+   the settlement that uses it, not by looking at it. */
+r.get('/outlet/:outletId/vouchers/:code', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return vouchers.look(c, req.params.code);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* A cashier signs a member in at the counter.
+ *
+ * The other door, and not a workaround: with no message gateway configured
+ * there is no other way in at all, and even with one there is the member whose
+ * phone has no signal in a restaurant with thick walls. The cashier reads the
+ * six digits out; the member types them into their own phone; the code is
+ * single-use and expires in five minutes like any other. TILL rank, and the
+ * audit trail records who issued it — "who let this person into somebody's
+ * loyalty account" is a question that gets asked exactly once, afterwards. */
+r.post('/outlet/:outletId/members/:memberId/portal-code', sameOutlet, staffOnly,
+  atLeast('till'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const m = await c.query('SELECT phone, name FROM chain.member WHERE id = $1',
+          [req.params.memberId]);
+        if (!m.rows.length) {
+          throw Object.assign(new Error('no such member'), { status: 404 });
+        }
+        const issued = await memberportal.issueCode(
+          c, m.rows[0].phone, req.ctx.actor, req.ctx.outletId);
+        await c.query("SELECT chain.log('member_portal_code','member',$1,NULL,$2)",
+          [req.params.memberId, JSON.stringify({ at: new Date().toISOString() })]);
+        return {
+          code: issued.code, expiresAt: issued.expiresAt,
+          name: m.rows[0].name || null,
+          phone: memberportal.maskPhone(m.rows[0].phone),
+          message: 'Read this out. It works once, for five minutes.',
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
     } catch (e) { next(e); }
   });
 

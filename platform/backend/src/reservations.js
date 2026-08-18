@@ -44,14 +44,11 @@ const hhmm = (min) =>
  * "Terrace") is kept as it was written, because a restaurant that calls a table
  * the Terrace is not making a typing mistake.
  */
-function tableName(v) {
-  const raw = String(v == null ? '' : v).trim();
-  if (!raw) return null;
-  const m = /^[Tt]?0*([1-9]\d{0,2})$/.exec(raw);
-  if (!m) return raw.slice(0, 20);
-  const n = Number(m[1]);
-  return 'T' + (n < 10 ? '0' + n : String(n));
-}
+/* The one spelling, shared with every other path that names a table — the
+   floor, the kitchen, the member's bill. It lived here first, because the
+   EXCLUDE constraint below cannot stop a double booking if `2` and `T02` are
+   two tables; it lives in src/tables.js now because they all needed it. */
+const { tableName } = require('./tables');
 
 function toMin(v) {
   if (typeof v === 'number' && Number.isInteger(v)) return v;

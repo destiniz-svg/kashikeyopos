@@ -49,10 +49,19 @@ app.use('/api', routes);
 
 app.use(function (req, res) { res.status(404).json({ error: 'not found' }); });
 app.use(function (err, req, res, next) {
-  const status = err.status || 500;
-  // Never return a database message to a client: it names schemas and roles.
-  if (status >= 500) console.error('[error]', err.stack || err.message);
-  res.status(status).json({ error: status >= 500 ? 'server error' : err.message });
+  /* An error this system RAISED carries a status; one it suffered does not.
+     That distinction is the whole of the rule here.
+
+     A database error must never reach a client — it names schemas, roles and
+     columns — so anything unlabelled becomes "server error" and goes to the log
+     instead. But a 503 we wrote ourselves ("sign-in by text is not switched on
+     for this chain — a server can sign you in at the counter") is a sentence
+     written FOR the person reading it, and masking it by its number alone left
+     a member staring at "server error" with no idea what to do next. */
+  const deliberate = Number.isFinite(err.status);
+  const status = deliberate ? err.status : 500;
+  if (!deliberate) console.error('[error]', err.stack || err.message);
+  res.status(status).json({ error: deliberate ? err.message : 'server error' });
 });
 
 const port = Number(process.env.PORT || 8080);

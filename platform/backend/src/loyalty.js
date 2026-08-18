@@ -255,6 +255,18 @@ async function stats(c, outletId) {
   const earned = Number(here.rows[0].earned || 0);
   const redeemed = Number(here.rows[0].redeemed || 0);
 
+  /* VOUCHERS ARE THE SAME PROMISE IN ANOTHER SHAPE. A member who turns points
+     into a voucher has taken the points off their balance and is still owed
+     the thing; the liability does not move off 2200 until the voucher is
+     handed over at a counter. Counting only the points would have this figure
+     fall the moment somebody redeemed and rise again when they spent, which is
+     the opposite of what happened. */
+  const vouchers = await c.query(
+    'SELECT coalesce(sum(value),0) AS value, count(*)::int AS n'
+    + ' FROM chain.voucher WHERE redeemed_at IS NULL'
+    + ' AND (expires_at IS NULL OR expires_at > now())');
+  const voucherValue = Number(vouchers.rows[0].value || 0);
+
   /* The rungs, with how many members are standing on each. An empty ladder is
      not an error — it is a scheme with no tiers, which is a perfectly ordinary
      thing to run. */
@@ -268,10 +280,14 @@ async function stats(c, outletId) {
   return {
     config: cfg,
     outstanding: pts(outstanding),
-    /* What it would cost to honour every point outstanding, right now. The
-       figure a scheme is actually measured by, and the one nobody computes
-       until somebody asks why 2200 keeps growing. */
-    liability: money(outstanding * cfg.pointValue),
+    /* What it would cost to honour everything outstanding, right now — points
+       plus the vouchers they have already been turned into. The figure a scheme
+       is actually measured by, and the one nobody computes until somebody asks
+       why 2200 keeps growing. */
+    liability: money(outstanding * cfg.pointValue + voucherValue),
+    inPoints: money(outstanding * cfg.pointValue),
+    inVouchers: money(voucherValue),
+    vouchersLive: vouchers.rows[0].n,
     members: total.rows[0].members,
     hereEarned: pts(earned),
     hereRedeemed: pts(redeemed),

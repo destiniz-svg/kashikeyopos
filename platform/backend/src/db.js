@@ -1,6 +1,6 @@
 'use strict';
 const { Pool } = require('pg');
-const { outletPassword } = require('./secrets');
+const { outletPassword, rolePassword } = require('./secrets');
 
 const ssl = process.env.NODE_ENV === 'production'
   ? { rejectUnauthorized: false }   // Railway's Postgres terminates TLS at the proxy
@@ -93,11 +93,72 @@ async function withEstate(ctx, fn) {
   } finally { client.release(); }
 }
 
+/**
+ * A member's own session. Chain-wide, and narrower than any outlet's.
+ *
+ * A member belongs to no outlet — they earn at one branch and spend at another
+ * — so there is no `outlet_<id>_app` role that fits them. This is the third
+ * role: it holds USAGE on `chain` and `app` and a SELECT on six tables, no
+ * grant of any kind on any outlet schema, and every policy it meets requires
+ * `current_user = 'kashikeyo_member'` as well as the id in `app.member_id`. So
+ * an outlet connection that sets that variable gains nothing, exactly as one
+ * that asks for group scope gains nothing.
+ *
+ * READ ONLY at the transaction level, with the two writes a member legitimately
+ * makes — issuing a voucher, offering points — going through the outlet's own
+ * connection or a SECURITY DEFINER function that does the whole thing at once.
+ */
+let memberPool = null;
+
+/**
+ * The same role, with NOBODY signed in.
+ *
+ * Signing in is the one operation that cannot name a member — it is trying to
+ * find out whether there is one. So this connection sets no `app.member_id`,
+ * which means every policy keyed on `app.member_self()` matches nothing: it can
+ * read no member, no visit and no voucher. All it can do is call the three
+ * SECURITY DEFINER functions the sign-in path needs, which enforce the
+ * cooldown and the attempt limit themselves.
+ */
+async function withMemberAnon(fn) {
+  return withMember(null, fn, true);
+}
+
+async function withMember(memberId, fn, anonymous) {
+  if (!memberId && !anonymous) {
+    throw Object.assign(new Error('member session required'), { status: 401 });
+  }
+  if (!memberPool) {
+    memberPool = new Pool({
+      host: process.env.PGHOST, port: Number(process.env.PGPORT || 5432),
+      database: process.env.PGDATABASE, user: 'kashikeyo_member',
+      password: rolePassword('member'), ssl,
+      max: Number(process.env.PGPOOL_MAX || 6),
+      idleTimeoutMillis: 30000, statement_timeout: 15000,
+    });
+  }
+  const client = await memberPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.member_id', $1, true)",
+      [memberId ? String(memberId) : '']);
+    const out = await fn(client);
+    await client.query('COMMIT');
+    return out;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(function () {});
+    throw e;
+  } finally { client.release(); }
+}
+
 async function shutdown() {
   const all = Array.from(pools.values());
   if (ownerPool) all.push(ownerPool);
   if (reportPool) all.push(reportPool);
+  if (memberPool) all.push(memberPool);
   await Promise.all(all.map(function (p) { return p.end().catch(function () {}); }));
 }
 
-module.exports = { owner, poolFor, withOutlet, withEstate, shutdown };
+module.exports = {
+  owner, poolFor, withOutlet, withEstate, withMember, withMemberAnon, shutdown,
+};

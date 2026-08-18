@@ -13,6 +13,22 @@ function outletPassword(outletId) {
     .update('outlet:' + outletId).digest('hex');
 }
 
+/**
+ * A shared runtime role's password, derived the same way an outlet's is.
+ *
+ * A role whose password is a variable somebody has to set is a role that can be
+ * set to something weak, forgotten at a redeploy, or copied into a chat. This
+ * one cannot: it is an HMAC under the same secret every outlet password is
+ * derived from, so holding it means already holding that secret.
+ */
+function rolePassword(name) {
+  const secret = process.env.OUTLET_ROLE_SECRET;
+  if (!secret || secret.length < 32) {
+    throw new Error('OUTLET_ROLE_SECRET must be set and at least 32 chars');
+  }
+  return crypto.createHmac('sha256', secret).update('role:' + name).digest('hex');
+}
+
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const mac = crypto.createHmac('sha256', process.env.SESSION_SECRET)
@@ -68,4 +84,4 @@ function pinLookup(outletId, pin) {
     .update('pin:' + outletId + ':' + String(pin)).digest('hex');
 }
 
-module.exports = { outletPassword, sign, verify, hashPin, pinMatches, pinLookup };
+module.exports = { outletPassword, rolePassword, sign, verify, hashPin, pinMatches, pinLookup };

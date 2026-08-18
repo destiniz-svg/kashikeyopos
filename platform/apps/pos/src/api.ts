@@ -24,6 +24,10 @@ export interface TicketLine { name: string; qty: string; price: string; sent: bo
 export interface Ticket {
   id: string; table_no: string | null; split: number; covers: number;
   status: string; lines: TicketLine[];
+  member_id: string | null;
+  /* What the member's own phone offered against this bill. Staff sessions
+     only — the guest portal is anonymous and gets null. */
+  points_offered: string | null;
 }
 export interface Stage {
   id: string;

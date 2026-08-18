@@ -121,6 +121,61 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('a table that was already named the old way is RENAMED, not orphaned',
+    async () => {
+      /* src/tables.js made `T05` the one spelling, and every path that writes a
+         ticket now goes through it. That alone strands a trading database: the
+         rows already there say `5`, and the moment the new code looks for `T05`
+         every one of them becomes invisible — open tickets orphaned mid-service
+         and a guest's phone showing an empty bill for the food in front of
+         them. Migration 025 moves them, and this is the test that it does.
+
+         Run against the scratch database the twice-over test builds, so it
+         exercises the migration rather than the code that would have written
+         the row correctly in the first place. */
+      const { Client } = require('pg');
+      const name = 'scratch_tables_' + process.pid;
+      const admin = new Client({ connectionString: process.env.DATABASE_URL });
+      await admin.connect();
+      await admin.query('DROP DATABASE IF EXISTS ' + name);
+      await admin.query('CREATE DATABASE ' + name);
+      await admin.end();
+      try {
+        const url = new URL(process.env.DATABASE_URL);
+        url.pathname = '/' + name;
+        const env = { ...process.env, DATABASE_URL: url.toString(), PGDATABASE: name };
+        const run = (script, args) => require('node:child_process').spawnSync(
+          process.execPath, [path.join(ROOT, 'backend', 'scripts', script), ...(args || [])],
+          { env, encoding: 'utf8' });
+
+        assert.equal(run('migrate.js').status, 0, 'the scratch database migrates');
+        const { outletPassword } = require('../src/secrets');
+        assert.equal(
+          run('provision-outlet.js', ['77', 'TBL-77', 'Table Names', outletPassword(77)]).status,
+          0, 'and provisions an outlet');
+
+        const c = new Client({ connectionString: url.toString() });
+        await c.connect();
+        try {
+          /* A ticket the old way, exactly as a database that has been trading
+             holds thousands of them. */
+          await c.query("INSERT INTO outlet_77.ticket (table_no, split, status, covers)"
+            + " VALUES ('7',0,'open',2), ('Terrace',0,'open',4)");
+          assert.equal(run('migrate.js').status, 0, 'and migrates again');
+
+          const after = await c.query(
+            'SELECT table_no FROM outlet_77.ticket ORDER BY table_no');
+          assert.deepEqual(after.rows.map((r) => r.table_no), ['T07', 'Terrace'],
+            'the number moved; the NAME was left alone');
+        } finally { await c.end(); }
+      } finally {
+        const drop = new Client({ connectionString: process.env.DATABASE_URL });
+        await drop.connect();
+        await drop.query('DROP DATABASE IF EXISTS ' + name + ' WITH (FORCE)').catch(() => {});
+        await drop.end();
+      }
+    });
+
   test('there is ONE journal writer, and every source it is given has a name', () => {
     /* Two things that drift together.
      *

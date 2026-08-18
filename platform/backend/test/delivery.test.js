@@ -78,10 +78,14 @@ describe('delivery and QR', () => {
     assert.equal(r.status, 200, r.text);
     assert.ok(r.json.ticketId, 'a ticket exists now');
     assert.match(r.json.message, /kitchen has it/);
+    assert.match(r.json.message, /T03/, 'and it names the table the floor draws');
 
     const t = await H.q(ctx,
       'SELECT table_no, status FROM ticket WHERE id = $1', [r.json.ticketId]);
-    assert.equal(t.rows[0].table_no, '3', 'at the guest\'s own table');
+    /* Spelled the way the FLOOR spells it. The card on the table says 3 and the
+       cashier's tile says T03; a ticket stored under the guest's spelling was a
+       ticket the floor could not open. See src/tables.js. */
+    assert.equal(t.rows[0].table_no, 'T03', 'at the guest\'s own table');
     assert.equal(t.rows[0].status, 'open');
 
     const lines = await H.q(ctx,

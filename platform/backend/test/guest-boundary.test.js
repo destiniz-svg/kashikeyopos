@@ -23,12 +23,16 @@ describe('the guest boundary', () => {
     ctx = await H.bootOutlet();
 
     // Two parties, two tables, each with a real open ticket and a real bill.
+    /* Spelled the way every path now spells a table — T04, not 4. A row
+       written the old way is not a hypothetical: a trading database is full of
+       them, and migration 025 moves those. This fixture is about the boundary,
+       not about the rename. */
     await H.q(ctx, "INSERT INTO ticket (id, table_no, split, status, covers)"
-      + " VALUES ('aaaaaaaa-0000-4000-8000-000000000001','4',0,'open',2)");
+      + " VALUES ('aaaaaaaa-0000-4000-8000-000000000001','T04',0,'open',2)");
     await H.q(ctx, "INSERT INTO ticket_line (ticket_id, item_id, name, qty, unit_price)"
       + " VALUES ('aaaaaaaa-0000-4000-8000-000000000001','BURGER','Beef burger',2,85.00)");
     await H.q(ctx, "INSERT INTO ticket (id, table_no, split, status, covers)"
-      + " VALUES ('aaaaaaaa-0000-4000-8000-000000000002','9',0,'open',4)");
+      + " VALUES ('aaaaaaaa-0000-4000-8000-000000000002','T09',0,'open',4)");
     await H.q(ctx, "INSERT INTO ticket_line (ticket_id, item_id, name, qty, unit_price)"
       + " VALUES ('aaaaaaaa-0000-4000-8000-000000000002','COLA','Cola',7,25.00)");
 
@@ -63,7 +67,7 @@ describe('the guest boundary', () => {
     const r = await H.req('GET', `/api/outlet/${ctx.outletId}/snapshot`, { token: guest.token });
     assert.equal(r.status, 200);
     const tables = r.json.tickets.map((t) => t.table_no);
-    assert.deepEqual(tables, ['4'], 'table 9 must not be in the projection at all');
+    assert.deepEqual(tables, ['T04'], 'table 9 must not be in the projection at all');
     // And the bill it can see is its own.
     assert.equal(r.json.tickets[0].lines[0].name, 'Beef burger');
   });
@@ -71,14 +75,14 @@ describe('the guest boundary', () => {
   test('IDOR: the other party sees only theirs', async () => {
     const r = await H.req('GET', `/api/outlet/${ctx.outletId}/snapshot`, { token: otherGuest.token });
     const tables = r.json.tickets.map((t) => t.table_no);
-    assert.deepEqual(tables, ['9']);
+    assert.deepEqual(tables, ['T09']);
   });
 
   test('a staff session still sees the whole floor', async () => {
     // The scoping must not break the thing it is scoping for.
     const r = await H.req('GET', `/api/outlet/${ctx.outletId}/snapshot`, { token: ctx.token });
     const tables = r.json.tickets.map((t) => t.table_no).sort();
-    assert.deepEqual(tables, ['4', '9']);
+    assert.deepEqual(tables, ['T04', 'T09']);
   });
 
   test('a guest cannot order for another table', async () => {

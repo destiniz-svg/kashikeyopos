@@ -115,8 +115,9 @@ is one function, auditable, and cannot return a receipt.
    `LEAK` line and the run exits non-zero. Put it in the deploy pipeline.
 
 8. **Host the front-ends.** They are Vite apps that build to static files —
-   `apps/pos` (the till and the back office) and `apps/guest` (the QR portal).
-   Deploy each as its own Railway static site, or to any CDN.
+   `apps/pos` (the till and the back office), `apps/guest` (the QR portal) and
+   `apps/member` (the loyalty portal). Deploy each as its own Railway static
+   site, or to any CDN.
 
    Build each one with the API's public origin baked in:
 
@@ -132,8 +133,11 @@ is one function, auditable, and cannot return a receipt.
    screens did exactly that. `deployable.test.js` now fails the build if the
    literal `/api/` appears anywhere in `apps/pos/src` outside `api.ts`.
 
-   **Keep the till and the guest portal on different origins**, and list both in
-   `ALLOWED_ORIGINS`, so a guest phone's origin is never allowed to call a till
+   **Keep all three on different origins**, and list each in `ALLOWED_ORIGINS`,
+   so a guest phone's origin is never allowed to call a till endpoint. The
+   member portal is a third one: it is reached by a link rather than a QR card,
+   it holds an identified session, and it belongs to no outlet — its API is
+   `/api/member/*`, which no outlet token opens and which opens no outlet
    endpoint. With `ALLOWED_ORIGINS` unset the server allows any origin, which is
    right for local development and wrong everywhere else — set it.
 

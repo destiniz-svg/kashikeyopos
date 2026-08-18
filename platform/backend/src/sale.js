@@ -37,6 +37,7 @@ const costing = require('./costing');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
 const promos = require('./promos');
+const vouchers = require('./vouchers');
 const { post: postJournal } = require('./journal');
 
 /* MVR ↔ laari. The database columns are numeric(12,2) in MVR; every
@@ -69,7 +70,7 @@ async function taxAsAt(c, outletId, businessDate) {
    `account` is the house tender: no money arrives, a customer's debt goes up.
    `points` spends loyalty liability. Both are settlements without cash, which
    is exactly why the drawer must not be their fallback. */
-const TENDERS = ['cash', 'card', 'wallet', 'bank', 'points', 'account'];
+const TENDERS = ['cash', 'card', 'wallet', 'bank', 'points', 'account', 'voucher'];
 
 /* Costing lives in ./costing.js — the SAME functions Recipes & Costing calls
    to show a manager a plate cost while they edit. Written twice, the screen
@@ -256,6 +257,21 @@ async function settle(c, p, ctx, outlet) {
     await loyalty.checkPoints(c, p.memberId, inPoints);
   }
 
+  /* And a voucher, for the third time and the same reason. It is checked
+     against its own value here and CLAIMED after the sale exists, so a code
+     that turns out to be spent stops the settlement instead of appearing on a
+     receipt for money nobody received. */
+  const onVoucher = (p.payments || [])
+    .filter((x) => x.method === 'voucher')
+    .reduce((a, x) => a + toLaari(x.amount || 0), 0);
+  if (onVoucher > 0) {
+    if (!p.voucherCode) {
+      throw Object.assign(new Error('which voucher? type the code from their phone'),
+        { status: 409 });
+    }
+    await vouchers.check(c, p.voucherCode, onVoucher);
+  }
+
   // Cost of what was sold, captured NOW: margin must never be recomputed from a
   // later ingredient price, or last month's profit changes when a supplier does.
   const costs = new Map();
@@ -337,14 +353,30 @@ async function settle(c, p, ctx, outlet) {
   if (inPoints > 0) {
     await loyalty.spend(c, { memberId: p.memberId, amount: inPoints, saleId }, ctx);
   }
+  if (onVoucher > 0) await vouchers.take(c, p.voucherCode, saleId, ctx);
   if (p.memberId) {
     /* Earned on the GOODS, net of tax and service. Earning on the tax would
        have the business paying a member a share of the government's money, and
        earning on the service charge would pay them a share of the staff's. */
-    await loyalty.earn(c, {
+    const earned = await loyalty.earn(c, {
       memberId: p.memberId, goodsLaari: b.gross - b.discount, saleId,
       businessDate: p.businessDate, docNo: sale.rows[0].receipt_no,
     }, ctx);
+
+    /* THE VISIT, which is what the member's own phone will read back.
+       Deliberately a projection and not a join: the sale, its lines, its tender
+       and the staff who served it stay in this outlet's schema, where a member
+       session holds no grant at all (04-MEMBER-PORTAL §6, "their visits stay in
+       the outlet that served them"). What crosses is the date, the branch, the
+       covers, the total and what it earned.
+
+       ON CONFLICT because a settle that is replayed after a dropped connection
+       must not become a second evening out. */
+    await c.query(
+      'INSERT INTO chain.member_visit (member_id, outlet_id, sale_id, at, covers, total, points)'
+      + ' VALUES ($1,$2,$3,$4::date,$5,$6,$7) ON CONFLICT (outlet_id, sale_id) DO NOTHING',
+      [p.memberId, ctx.outletId, saleId, p.businessDate, p.covers || 1,
+        toMVR(b.total), (earned && earned.points) || 0]);
   }
 
   if (p.ticketId) {
@@ -440,7 +472,10 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
      account 1000. */
   const ACCOUNT_FOR = {
     cash: '1000', card: '1020', wallet: '1020', bank: '1010',
-    points: '2200', account: '1030',
+    /* A voucher settles against the SAME liability points do, because it is the
+       same promise in another shape: the points were taken off the member's
+       balance when it was issued and the obligation stayed on 2200 until now. */
+    points: '2200', voucher: '2200', account: '1030',
   };
 
   /* A tip arrives WITH the money it was added to, so it debits the same

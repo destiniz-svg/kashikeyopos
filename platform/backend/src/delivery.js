@@ -26,6 +26,8 @@
  * rider. One object, one accept path, one place that branches.
  */
 
+const { tableName } = require('./tables');
+
 const money = (n) => Math.round(Number(n) * 100) / 100;
 
 const CHANNELS = ['dine_in', 'takeaway', 'delivery'];
@@ -38,7 +40,9 @@ const SOURCES = ['qr', 'phone', 'aggregator'];
 function slotFor(o) {
   if (o.channel === 'delivery') return 'Delivery';
   if (o.channel === 'takeaway') return 'Takeaway';
-  return o.table_no;
+  /* Spelled the way the floor spells it. A round accepted for `5` used to open
+     a ticket the cashier's own T05 tile could not open. */
+  return tableName(o.table_no);
 }
 
 /** How far along it is — one word, derived, never stored twice. */
