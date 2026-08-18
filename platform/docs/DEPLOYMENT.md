@@ -76,7 +76,15 @@ is one function, auditable, and cannot return a receipt.
    | `ALLOWED_ORIGINS` | the POS and guest portal origins, comma separated |
    | `SESSION_TTL_HOURS` | 12 suits a double shift |
 
-4. **Migrate.** Runs on every boot and is idempotent:
+4. **Migrate — before the first deploy can pass its healthcheck.** The server
+   does **not** migrate on boot: `/readyz` asks `chain.outlet` a question and
+   answers 503 until the schema is there, so a service deployed against an
+   un-migrated database starts, listens, and never goes healthy. That is
+   deliberate — a deploy that cannot see its data should not take traffic — but
+   it means this step is a step, not a side effect of booting.
+
+   It is idempotent (the whole directory runs every time; `deployable.test.js`
+   proves running it twice is safe), so run it again on every release:
    ```
    railway run npm run migrate
    ```

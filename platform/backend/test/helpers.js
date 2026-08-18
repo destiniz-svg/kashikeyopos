@@ -11,7 +11,7 @@
  *   PGHOST PGPORT PGDATABASE DATABASE_URL
  *   OUTLET_ROLE_SECRET SESSION_SECRET REPORT_ROLE_PASSWORD
  */
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { Client } = require('pg');
@@ -71,8 +71,29 @@ async function claimOutletId(owner) {
 
 let child = null;
 
+/* The server does NOT migrate on boot — `/readyz` answers 503 until the control
+   schema is there, which is exactly what it should do on a deploy that cannot
+   see its database. The migration is a separate step of the deploy, so it has
+   to be a separate step here too.
+
+   Without this the suite could only ever run against a database somebody had
+   already migrated by hand: on a genuinely cold one every file failed with
+   "server did not become ready", the server having started perfectly and been
+   asked a question about a table that did not exist yet. A harness that only
+   works on a warm database cannot tell you a migration is missing, which is the
+   one thing a cold run is for. */
+function migrateIfCold() {
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'migrate.js')],
+    { env, encoding: 'utf8' });
+  if (r.status !== 0) {
+    throw new Error('migrations failed before the suite could start:\n'
+      + (r.stderr || r.stdout || '').slice(-2000));
+  }
+}
+
 async function startServer() {
   if (child) return;
+  migrateIfCold();
   let lastLog = '';
   for (let attempt = 0; attempt < 8; attempt++) {
     const port = PORT + attempt;
@@ -83,7 +104,13 @@ async function startServer() {
     proc.stdout.on('data', (d) => { log += d; });
     proc.stderr.on('data', (d) => { log += d; });
 
-    const deadline = Date.now() + 15000;
+    /* Long enough for a COLD database, where this boot is the one that runs the
+       whole migration directory before /readyz will answer, and short enough
+       that a Postgres which is simply not there fails the run in a minute
+       rather than in twenty. (A dead database looks exactly like a slow one
+       from here — the last log line is in the error either way, and it is worth
+       reading before assuming the code is at fault.) */
+    const deadline = Date.now() + 30000;
     for (;;) {
       // The port was taken, or the process died on boot: try the next one
       // rather than sitting out the whole timeout on a socket that will never

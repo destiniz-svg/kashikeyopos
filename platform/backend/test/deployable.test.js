@@ -121,6 +121,27 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('the gate typechecks EVERY front end, not just the one it started with', () => {
+    /* `npm run lint` was `npm -w @kashikeyo/pos run typecheck` and nothing else,
+       so the guest portal — the half a customer actually holds — was typechecked
+       only by `vite build`, which nobody runs before committing. A type error
+       there passed the gate green and would have been found by a guest.
+
+       Any app that can be typechecked must be in the one command the checklist
+       names. */
+    const lint = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
+      .scripts.lint;
+    const missing = [];
+    for (const app of fs.readdirSync(path.join(ROOT, 'apps'))) {
+      const pkgPath = path.join(ROOT, 'apps', app, 'package.json');
+      if (!fs.existsSync(pkgPath)) continue;
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+      if (!pkg.scripts || !pkg.scripts.typecheck) { missing.push(app + ': no typecheck script'); continue; }
+      if (!lint.includes(pkg.name)) missing.push(app + ': typechecks, but lint never calls it');
+    }
+    assert.deepEqual(missing, [], 'these are not covered by `npm run lint`');
+  });
+
   test('every migration survives being run TWICE, because every boot runs them all',
     async () => {
       /* migrate.js has no lock table and no applied-migrations ledger: it runs

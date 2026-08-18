@@ -612,8 +612,20 @@ BEGIN
       at      timestamptz NOT NULL DEFAULT now(),
       accepted_at timestamptz, accepted_by uuid,
       ticket_id uuid REFERENCES %1$I.ticket(id),
-      rejected_reason text
+      rejected_reason text,
+      -- Delivery & QR (§2 `delivery`). A QR order at table 4 and a delivery to
+      -- an address are the same object going to different places. See
+      -- migration 023.
+      channel text NOT NULL DEFAULT 'dine_in',
+      source  text NOT NULL DEFAULT 'qr',
+      ext_ref text,
+      address text,
+      fee     numeric(12,2) NOT NULL DEFAULT 0,
+      rejected_at timestamptz, rejected_by uuid,
+      rider   text, dispatched_at timestamptz, delivered_at timestamptz
     );
+    CREATE INDEX IF NOT EXISTS guest_order_waiting ON %1$I.guest_order (at)
+      WHERE accepted_at IS NULL AND rejected_at IS NULL;
     CREATE TABLE IF NOT EXISTS %1$I.guest_request (
       id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       table_no text NOT NULL,

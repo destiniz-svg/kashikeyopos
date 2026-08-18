@@ -81,13 +81,35 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
     }
   };
 
+  /* What the till did with a round.
+   *
+   * This is the link that was missing. A round was posted, the phone kept its
+   * server id, and then nothing joined the two: the tracker matched its stage
+   * with `find(() => false)` — a predicate that cannot be true — so every round
+   * sat on "With the till" for ever however far along the food actually was.
+   * The snapshot now carries this table's orders, each naming the ticket it
+   * became once the till accepted it, and the stages in the SAME snapshot are
+   * keyed by that ticket. */
+  const orderFor = (round: SentRound) =>
+    snap?.guestOrders?.find((o) => o.id === round.serverId) ?? null;
+
   /* The stage of a round, as the till projects it. Absent = the till has it but
      the kitchen has not started, which is "Received". */
   const stageOf = (round: SentRound): number => {
-    const s = snap?.stages?.find(() => false);   // matched by ticket once the till accepts the round
-    if (!s) return round.serverId ? 0 : 0;
-    const i = STAGES.indexOf(s.stage as typeof STAGES[number]);
-    return i < 0 ? 0 : i;
+    const o = orderFor(round);
+    if (!o || !o.ticketId) return 0;
+    /* Delivered outruns the kitchen board: the ticket may still say "Ready"
+       when the food is already at the door. */
+    if (o.stage === 'delivered') return STAGES.length - 1;
+    const mine = (snap?.stages ?? []).filter((s) => s.ticket_id === o.ticketId);
+    if (!mine.length) return 0;
+    /* The LEAST advanced station. A round is not "Ready" while the grill is
+       still cooking half of it, and a guest told it is ready and then left
+       waiting has been lied to by their own phone. */
+    return mine.reduce((lowest, s) => {
+      const i = STAGES.indexOf(s.stage as typeof STAGES[number]);
+      return Math.min(lowest, i < 0 ? 0 : i);
+    }, STAGES.length - 1);
   };
 
   return (
@@ -222,6 +244,7 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
           </div>
           {sent.map((round, i) => {
             const at = stageOf(round);
+            const order = orderFor(round);
             return (
               <div key={round.opId} style={{
                 marginTop: 12, padding: 15, borderRadius: 16,
@@ -239,13 +262,52 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
                   {round.lines.map((l) => l.qty + ' × ' + l.name).join(' · ')}
                 </div>
 
+                {/* A round the till turned down. Before this it stayed on
+                    "With the till" for ever and a guest sat waiting for a drink
+                    nobody was making — so the reason a server typed is read
+                    back here, in their words, and the stage list is not drawn
+                    because there is no food to follow. */}
+                {order?.stage === 'rejected' ? (
+                  <div style={{
+                    marginTop: 13, padding: '12px 14px', borderRadius: 14,
+                    background: C.warnBg, border: '1px solid ' + C.warnBorder,
+                    color: C.warnInk, fontSize: 13, lineHeight: 1.55,
+                  }}>
+                    <b>We could not do this one.</b>
+                    {order.rejectedReason ? ' ' + order.rejectedReason : ''}
+                    <div style={{ marginTop: 5, fontSize: 12, color: C.inkMuted }}>
+                      Nothing has been charged for it. Order something else, or ask a server.
+                    </div>
+                  </div>
+                ) : (
+                <>
+                {/* Until a server presses accept there is no ticket and no
+                    kitchen — the first stage dot alone cannot say that, because
+                    it looks identical to "the kitchen has it and has not
+                    started". This is the sentence that tells them apart. */}
+                {order?.stage === 'waiting for the till' && (
+                  <div style={{ marginTop: 11, fontSize: 12.5, color: C.inkMuted, lineHeight: 1.5 }}>
+                    Waiting for a server to confirm it.
+                  </div>
+                )}
+                {order?.rider && (
+                  <div style={{ marginTop: 11, fontSize: 13, color: C.inkMid, lineHeight: 1.5 }}>
+                    {order.deliveredAt
+                      ? 'Delivered by ' + order.rider + '.'
+                      : 'On its way with ' + order.rider + '.'}
+                  </div>
+                )}
                 {/* Spec §5: the stage list. Dot 26px — complete #2ea44f,
                     current #f4553c with a 4px .15 ring, pending #f0f0f2. */}
                 <div style={{ marginTop: 13, display: 'flex', flexDirection: 'column', gap: 11 }}>
                   {STAGES.map((label, si) => {
                     const done = si < at, now = si === at;
                     return (
-                      <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+                      /* The current stage is marked, not merely coloured: a
+                         guest using a screen reader hears where their food is
+                         rather than four undifferentiated lines. */
+                      <div key={label} aria-current={now ? 'step' : undefined}
+                        style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                         <span style={{
                           width: 26, height: 26, borderRadius: 13, flexShrink: 0,
                           display: 'grid', placeItems: 'center',
@@ -272,6 +334,8 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
                     );
                   })}
                 </div>
+                </>
+                )}
               </div>
             );
           })}

@@ -57,6 +57,25 @@ export interface Stage {
   fired_at: string;
 }
 
+/* What became of a round this table sent. The link the tracker was missing:
+   until the till accepts a round nothing connects it to a ticket, so `ticketId`
+   is null and the stages in the same snapshot cannot be matched to it. Once it
+   is accepted the id is here and the match is exact.
+
+   Deliberately narrow — a guest is shown their own order and its fate, not who
+   accepted it or what it earns the house. */
+export interface GuestOrder {
+  id: string;
+  at: string;
+  stage: 'waiting for the till' | 'in the kitchen' | 'with the rider'
+    | 'delivered' | 'rejected';
+  ticketId: string | null;
+  items: number;
+  rejectedReason: string | null;
+  rider: string | null;
+  deliveredAt: string | null;
+}
+
 export interface Snapshot {
   v: number;
   at: number;
@@ -65,6 +84,7 @@ export interface Snapshot {
   items: Item[];
   tickets: Ticket[];
   stages: Stage[];
+  guestOrders?: GuestOrder[];
 }
 
 export interface GuestOrderLine { itemId: string; qty: number; addons?: string[]; note?: string; }

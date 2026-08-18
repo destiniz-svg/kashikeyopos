@@ -22,6 +22,7 @@ const customers = require('./customers');
 const loyalty = require('./loyalty');
 const promos = require('./promos');
 const reservations = require('./reservations');
+const delivery = require('./delivery');
 const { taxAsAt } = require('./sale');
 
 const r = express.Router();
@@ -220,6 +221,13 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
         tax: tax.rows[0] || null,
         items: items.rows,
         tickets: tickets.rows,
+        /* A GUEST'S OWN ROUNDS, so the tracker can stop guessing. Until this
+           existed the phone matched its stage with a predicate that could
+           never be true, because nothing linked a round to the ticket it
+           became — and a round the till had turned down looked exactly like
+           one it had not looked at yet. Staff sessions get this from the
+           delivery board instead, which is a different question. */
+        guestOrders: req.ctx.guest ? await delivery.forTable(c, req.ctx.table) : undefined,
         stages: stages.rows,
         stations: stations.rows
       };
@@ -753,6 +761,63 @@ r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLea
       res.json(out);
     } catch (e) { next(e); }
   });
+
+/* ── Delivery & QR (§2 `delivery`) ────────────────────────────────────────
+ *
+ * TILL rank throughout, for the same reason the book is: the person who accepts
+ * a QR round, takes a delivery on the telephone and hands a bag to a rider is
+ * working the shift. Nothing here touches money — a delivery is settled at the
+ * till like anything else — so there is no argument for a higher rank.
+ */
+r.get('/outlet/:outletId/delivery', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return delivery.board(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/delivery', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return delivery.take(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+const orderId = function (req, res, next) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+    return res.status(404).json({ error: 'no such order' });
+  }
+  next();
+};
+
+/* Accepting CREATES THE TICKET and fires it at the kitchen — through the same
+   sendRound a waiter's terminal calls. */
+r.post('/outlet/:outletId/delivery/:id/accept', sameOutlet, staffOnly, atLeast('till'),
+  orderId, async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return delivery.accept(c, req.params.id, req.body || {}, req.ctx, kitchen);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+for (const [path, fn] of [['reject', 'reject'], ['dispatch', 'dispatch'],
+  ['delivered', 'delivered']]) {
+  r.post('/outlet/:outletId/delivery/:id/' + path, sameOutlet, staffOnly,
+    atLeast('till'), orderId, async function (req, res, next) {
+      try {
+        const out = await withOutlet(req.ctx, function (c) {
+          return delivery[fn](c, req.params.id, req.body || {}, req.ctx);
+        });
+        res.json(out);
+      } catch (e) { next(e); }
+    });
+}
 
 /* ── Reservations (§2 `reservations`) ─────────────────────────────────────
  *
