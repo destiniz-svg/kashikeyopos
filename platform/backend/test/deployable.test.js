@@ -176,6 +176,26 @@ describe('the deployable tree', () => {
       }
     });
 
+  test('there is ONE chart of accounts, defined once', () => {
+    /* Five migrations each held a complete copy of the chart, every one a
+       CREATE OR REPLACE of the same function, so only the last to run had any
+       effect. Adding an account to the chart-of-accounts migration — the file
+       named after the thing, the file anybody would open — did nothing at all,
+       because a migration about loyalty redefined the function forty lines
+       later. The account was missing from every outlet and the first posting
+       that needed it died on a foreign key.
+
+       A migration that needs a new account adds it to the one list and re-seeds
+       the outlets that already exist. It does not bring its own list. */
+    const dir = path.join(ROOT, 'backend', 'migrations');
+    const definers = fs.readdirSync(dir).filter((f) =>
+      f.endsWith('.sql')
+      && /CREATE OR REPLACE FUNCTION chain\.seed_chart/.test(
+        fs.readFileSync(path.join(dir, f), 'utf8')));
+    assert.deepEqual(definers, ['004_chart_seed.sql'],
+      'these each define the chart of accounts; only the last one runs');
+  });
+
   test('there is ONE journal writer, and every source it is given has a name', () => {
     /* Two things that drift together.
      *

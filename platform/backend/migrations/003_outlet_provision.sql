@@ -180,6 +180,12 @@ BEGIN
       net       numeric(12,2) NOT NULL,
       matched_at timestamptz, matched_by uuid,
       variance  numeric(12,2) NOT NULL DEFAULT 0,
+      -- Migration 026: who entered it, what they said, and the journal the
+      -- match posted.
+      entered_by uuid,
+      entered_at timestamptz NOT NULL DEFAULT now(),
+      note      text,
+      journal_id uuid,
       UNIQUE (acquirer, batch_no)
     );
 

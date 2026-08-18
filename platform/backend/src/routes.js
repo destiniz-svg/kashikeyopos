@@ -21,6 +21,7 @@ const accounting = require('./accounting');
 const memberportal = require('./memberportal');
 const vouchers = require('./vouchers');
 const { tableName } = require('./tables');
+const settlements = require('./settlements');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -944,6 +945,68 @@ r.post('/outlet/:outletId/accounting/journal/:id/reverse', sameOutlet, staffOnly
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return accounting.reverse(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Card settlements (08-BUILD-STAGES §17) ───────────────────────────────
+ *
+ * MANAGER throughout. Entering an acquirer's statement and tying it to the
+ * payments it settles is the same kind of act as entering the electricity bill:
+ * bookkeeping somebody running the shift does, with every step on the record.
+ * Unmatching is a correction, not an escalation — it reverses its own journal
+ * and leaves both entries, so it needs no higher rank than the match did.
+ */
+r.get('/outlet/:outletId/settlements', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await settlements.list(c, req.query || {})),
+          outstanding: await settlements.outstanding(c, req.query || {}),
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settlements', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.record(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* What this batch is probably made of. A suggestion, and it says so. */
+r.get('/outlet/:outletId/settlements/:id/suggest', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.suggest(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settlements/:id/match', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.match(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settlements/:id/unmatch', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.unmatch(c, req.params.id, req.body || {}, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }

@@ -101,8 +101,12 @@ async function startServer() {
     const proc = spawn(process.execPath, [path.join(ROOT, 'server.js')],
       { env: { ...env, PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
-    proc.stdout.on('data', (d) => { log += d; });
-    proc.stderr.on('data', (d) => { log += d; });
+    /* TEST_SERVER_LOG=1 puts the server's own output on stderr. A 500 in a test
+       is otherwise a message the harness swallows — the server logged the stack
+       and nobody was listening, so the only clue was "server error". */
+    const tee = process.env.TEST_SERVER_LOG ? (d) => process.stderr.write('[server] ' + d) : null;
+    proc.stdout.on('data', (d) => { log += d; if (tee) tee(d); });
+    proc.stderr.on('data', (d) => { log += d; if (tee) tee(d); });
 
     /* Long enough for a COLD database, where this boot is the one that runs the
        whole migration directory before /readyz will answer, and short enough

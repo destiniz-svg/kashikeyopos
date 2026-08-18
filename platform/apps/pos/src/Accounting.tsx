@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { Settlements } from './Settlements';
 
 /* Accounting Flow — 02-POS-SPEC.md §2 (`accounting`): "The ledger itself:
  * journals, trial balance, P&L."
@@ -26,6 +27,11 @@ import type { Session } from './api';
  * the ladder posts its own entries; a journal typed here is either the opening
  * position of a business that existed before this system, or a correction
  * nobody else's screen can make.
+ *
+ * CARD MONEY IS THE SECOND TAB rather than a rail item of its own, because §2's
+ * module list has no `settlements` and the rail IS the design. It belongs here:
+ * matching an acquirer's payout is reading the ledger and then writing to it,
+ * which is the whole of what this screen is for.
  */
 
 const MONO = "'JetBrains Mono',monospace";
@@ -64,12 +70,14 @@ const SOURCE_LABEL: Record<string, string> = {
   drawer: 'A drawer count',
   house: 'A house account',
   loyalty: 'Loyalty',
+  settlement: 'A card settlement',
   manual: 'Typed by hand',
   reversal: 'A reversal',
 };
 const sourceLabel = (s: string) => SOURCE_LABEL[s] ?? s;
 
 export function Accounting({ session }: { session: Session }) {
+  const [tab, setTab] = useState<'ledger' | 'cards'>('ledger');
   const [data, setData] = useState<Data | null>(null);
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -104,7 +112,11 @@ export function Accounting({ session }: { session: Session }) {
     }
   }, [call, query]);
 
-  useEffect(() => { void load(); }, [load]);
+  /* `tab` is in here on purpose. Coming back from Card money after matching a
+     batch showed the ledger as it was when the screen first mounted — without
+     the entry just posted, which is the one somebody switched tabs to look
+     at. */
+  useEffect(() => { if (tab === 'ledger') void load(); }, [load, tab]);
 
   const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 9000); };
   const act = async (fn: () => Promise<unknown>, said: string) => {
@@ -142,10 +154,36 @@ export function Accounting({ session }: { session: Session }) {
     finally { setBusy(false); }
   };
 
+  const tabs = (
+    <div style={{ display: 'flex', gap: 6 }}>
+      {([['ledger', 'The ledger'], ['cards', 'Card money']] as const).map(([id, label]) => (
+        <button key={id} onClick={() => setTab(id)}
+          aria-current={tab === id ? 'page' : undefined}
+          style={{
+            padding: '5px 11px', borderRadius: 7, fontSize: 12,
+            fontWeight: tab === id ? 700 : 500,
+            background: tab === id ? 'var(--bg-3)' : 'transparent',
+            color: tab === id ? 'var(--text)' : 'var(--text-muted)',
+          }}>{label}</button>
+      ))}
+    </div>
+  );
+
+  if (tab === 'cards') {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ flexShrink: 0, padding: '8px 14px', borderBottom: '1px solid var(--line-soft)' }}>
+          {tabs}
+        </div>
+        <div style={{ flex: 1, minHeight: 0 }}><Settlements session={session} /></div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>The ledger</span>
+        {tabs}
         <input type="date" aria-label="From" value={from} onChange={(e) => setFrom(e.target.value)} style={dateInput} />
         <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>to</span>
         <input type="date" aria-label="To" value={to} onChange={(e) => setTo(e.target.value)} style={dateInput} />
