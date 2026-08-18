@@ -44,7 +44,11 @@ export const NAV: NavGroup[] = [
     { id: 'menu', label: 'Menu Master', minRank: 3, icon: 'M4 5h16M4 12h16M4 19h10' },
     { id: 'aimenu', label: 'AI Menu Builder', minRank: 4, icon: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 17l.9 2.1L22 20l-2.1.9L19 23l-.9-2.1L16 20l2.1-.9z' },
     { id: 'recipes', label: 'Recipes & Costing', minRank: 3, icon: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z' },
-    { id: 'production', label: 'Production', minRank: 3, icon: 'M2 20h20V9l-6 4V9l-6 4V4H4z' },
+    /* TILL. The prep list is what a cook opens at six in the morning, and a
+       batch nobody at the stove can record is a batch that never reaches the
+       books. Writing the FORMULA is still a manager's act — that is a costing
+       decision — and the server is what enforces it. */
+    { id: 'production', label: 'Production', minRank: 2, icon: 'M2 20h20V9l-6 4V9l-6 4V4H4z' },
   ] },
   { title: 'Stock', items: [
     { id: 'inventory', label: 'Inventory', minRank: 3, icon: 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10' },

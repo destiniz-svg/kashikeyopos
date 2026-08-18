@@ -26,6 +26,7 @@ const creditnotes = require('./creditnotes');
 const estate = require('./estate');
 const devices = require('./devices');
 const governance = require('./governance');
+const production = require('./production');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -2001,6 +2002,63 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
         return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
       });
       res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Production (02-POS-SPEC §2 `production`) ─────────────────────────────
+ *
+ * Reading is TILL rank: the prep list is what a cook opens at the start of a
+ * shift, and rank 2 is where the cooking happens. Recording a batch is TILL
+ * too — the person who made it is the person at the screen, and a batch nobody
+ * can record is a batch that never reaches the books.
+ *
+ * Writing the FORMULA is MANAGER. What a thing is made of is a costing
+ * decision: it prices every dish that contains it and it is what a stock count
+ * is measured against.
+ */
+r.get('/outlet/:outletId/production', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return production.catalogue(c); });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canEditRecipe: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/production/:id/recipe', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return production.setRecipe(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/production/runs', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return production.make(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/production/runs', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return production.runs(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/production/runs/:id', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return production.one(c, req.params.id);
+      }));
     } catch (e) { next(e); }
   });
 

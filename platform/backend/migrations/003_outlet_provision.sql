@@ -214,7 +214,12 @@ BEGIN
       supplier_id uuid,
       -- Where it lives, in the kitchen's own words. Drives the count sheets
       -- (§2 `counts`, "count sheets by category"). See migration 013.
-      category text
+      category text,
+      -- How much one run of its prep recipe makes, in this ingredient's own
+      -- base unit. NULL means it is bought rather than made, which is most of
+      -- the store. See migration 033 — a prep item IS an ingredient, which is
+      -- why nothing else in the system had to learn a new concept.
+      prep_yield numeric(14,4) CHECK (prep_yield IS NULL OR prep_yield > 0)
     );
 
     CREATE TABLE IF NOT EXISTS %1$I.item (
@@ -250,8 +255,37 @@ BEGIN
       value    numeric(12,2) NOT NULL,
       reason   text NOT NULL,                -- sale|delivery|waste|count|transfer
       sale_id  uuid REFERENCES %1$I.sale(id),
+      -- Which prep batch this move belonged to (migration 033), so a run reads
+      -- back as one act rather than six movements at the same second.
+      prep_run_id uuid,
       by_staff uuid, device_id uuid
     );
+
+    -- ── prep: a thing the kitchen makes rather than buys (migration 033) ──
+    CREATE TABLE IF NOT EXISTS %1$I.prep_recipe (
+      id        bigserial PRIMARY KEY,
+      makes_id  text NOT NULL REFERENCES %1$I.ingredient(id) ON DELETE CASCADE,
+      component_id text NOT NULL REFERENCES %1$I.ingredient(id),
+      qty       numeric(14,4) NOT NULL CHECK (qty > 0),
+      waste_pct numeric(5,2) NOT NULL DEFAULT 0
+                CHECK (waste_pct >= 0 AND waste_pct < 100),
+      UNIQUE (makes_id, component_id),
+      CONSTRAINT not_itself CHECK (makes_id <> component_id)
+    );
+    CREATE INDEX IF NOT EXISTS prep_recipe_makes ON %1$I.prep_recipe(makes_id);
+
+    CREATE TABLE IF NOT EXISTS %1$I.prep_run (
+      id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      at       timestamptz NOT NULL DEFAULT now(),
+      on_date  date NOT NULL DEFAULT current_date,
+      makes_id text NOT NULL REFERENCES %1$I.ingredient(id),
+      qty      numeric(14,4) NOT NULL CHECK (qty > 0),
+      batches  numeric(10,4) NOT NULL DEFAULT 1 CHECK (batches > 0),
+      cost     numeric(12,2) NOT NULL DEFAULT 0,
+      note     text,
+      by_staff uuid, device_id uuid
+    );
+    CREATE INDEX IF NOT EXISTS prep_run_date ON %1$I.prep_run(on_date DESC);
     CREATE INDEX IF NOT EXISTS stock_move_ing ON %1$I.stock_move(ingredient_id, at DESC);
 
     CREATE TABLE IF NOT EXISTS %1$I.stock_count (
@@ -719,6 +753,11 @@ BEGIN
   -- recipe removes the lines no longer in it, and its history is kept in
   -- chain.audit, which records the whole before and after set on every save.
   EXECUTE format('GRANT DELETE ON %I.recipe_line TO %I', s, r);
+  -- A prep formula is replaced whole rather than edited line by line (a half
+  -- saved one is how a batch gets made from four of its five components), so
+  -- the rows have to be deletable. The RUNS never are: a batch that happened,
+  -- happened.
+  EXECUTE format('GRANT DELETE ON %I.prep_recipe TO %I', s, r);
   -- A DRAFT payroll run is deleted when abandoned; a posted one never is.
   EXECUTE format('GRANT DELETE ON %I.payroll_run, %I.payroll_line TO %I', s, s, r);
   -- A schedule set up wrongly is deleted; a posted expense never is.

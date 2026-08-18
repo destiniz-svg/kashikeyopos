@@ -37,7 +37,13 @@
 
 const { post: postJournal } = require('./journal');
 
-const REASONS = ['opening', 'purchase', 'waste', 'count', 'transfer', 'production', 'sale', 'return'];
+/* Every reason a quantity can move, in one list — the stock ledger's filter
+   reads it, so a reason that is not here is a movement nobody can find.
+   `prep` is a component going INTO a batch and `production` is the batch
+   coming out; two words rather than one signed number because a cook reading
+   the timeline needs to see which of the two happened. */
+const REASONS = ['opening', 'purchase', 'waste', 'count', 'transfer',
+  'prep', 'production', 'sale', 'return'];
 
 const toMVR = (laari) => (laari / 100).toFixed(2);
 
@@ -54,12 +60,17 @@ async function postStockJournal(c, { date, memo, dr, cr, valueLaari, sourceId },
 
 /** Write a move and reconcile the cache to the ledger. The ONLY way stock
  *  changes in this module. */
-async function move(c, { ingredientId, qty, unitCostLaari, reason, saleId }, ctx) {
+async function move(c, { ingredientId, qty, unitCostLaari, reason, saleId, prepRunId }, ctx) {
   await c.query(
-    'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason, sale_id, by_staff, device_id)'
-    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+    'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason, sale_id,'
+    + ' prep_run_id, by_staff, device_id)'
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
     [ingredientId, qty, (unitCostLaari / 100).toFixed(4),
-      toMVR(Math.round(qty * unitCostLaari)), reason, saleId || null, ctx.actor, ctx.deviceId]);
+      toMVR(Math.round(qty * unitCostLaari)), reason, saleId || null,
+      /* Which prep batch caused it, so a run reads back as one act. Passed in
+         rather than stamped afterwards by "the last move for this ingredient",
+         which is true right up until it is not. */
+      prepRunId || null, ctx.actor, ctx.deviceId]);
 
   /* on_hand = Σ moves, recomputed from the ledger rather than incremented.
      An increment drifts the moment anything else touches the row; a sum cannot
