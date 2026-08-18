@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import type { Overview, Waiting } from './estate';
@@ -451,7 +451,10 @@ function Controls({ data }: { data: Overview }) {
 function Targets({ session, data, onSaved }: {
   session: Session; data: Overview; onSaved: () => void;
 }) {
-  const call = api.chainAuthed(session);
+  /* Memoised for the same reason every other screen does it — see
+     `backend/test/deployable.test.js`. This one is only read inside a
+     click handler today, which is exactly how the habit lapses. */
+  const call = useMemo(() => api.chainAuthed(session), [session]);
   const t = data.target;
   const [food, setFood] = useState(t.foodCostTargetPct === null ? '' : String(t.foodCostTargetPct));
   const [labour, setLabour] = useState(String(t.labourTargetPct));

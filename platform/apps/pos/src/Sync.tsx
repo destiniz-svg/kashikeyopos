@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 
@@ -77,7 +77,13 @@ const secs = (s: number | null) => {
 };
 
 export function Sync({ session, onPaired }: { session: Session; onPaired: () => void }) {
-  const call = api.authed(session);
+  /* useMemo, and not decoration. `api.authed(session)` returns a NEW function
+     every render, so a `useCallback` that depends on it changes identity every
+     render too, and the `useEffect` that loads on it fires on every render —
+     an endless fetch loop that also resets this form's fields out from under
+     whoever is typing in them. Found by a browser check where a filled input
+     came back with its old value. */
+  const call = useMemo(() => api.authed(session), [session]);
   const [data, setData] = useState<Health | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');

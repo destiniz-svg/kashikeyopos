@@ -25,6 +25,7 @@ const settlements = require('./settlements');
 const creditnotes = require('./creditnotes');
 const estate = require('./estate');
 const devices = require('./devices');
+const governance = require('./governance');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -2000,6 +2001,100 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
         return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
       });
       res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Settings, access and the audit log (08-BUILD-STAGES §29) ─────────────
+ *
+ * Reading the settings is MANAGER — a duty manager needs to know what service
+ * charge is being added to every bill they are explaining to a guest. Changing
+ * them is ADMIN, because a service charge is a standing promise and a tax rate
+ * is a filing.
+ */
+r.get('/outlet/:outletId/settings', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.settings(c, req.ctx.outletId);
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canEdit: req.ctx.rank >= 4 });
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/settings', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return governance.setSettings(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settings/tax', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return governance.setTax(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* Who can act right now. MANAGER, because ending somebody's session is the
+   same act as revoking their device and belongs to the same person. */
+r.get('/outlet/:outletId/access', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.access(c, req.ctx);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/access/sessions/:id/end', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return governance.endSession(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* The trail. Manager rank, which is what the RLS policy on chain.audit already
+   says — the gate here only makes the refusal readable. */
+r.get('/outlet/:outletId/audit', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.auditLog(c, req.query || {}, req.ctx);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/audit/facets', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.auditFacets(c, req.ctx);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Exporting the trail is itself an act, and it is in the trail. A copy of the
+   audit log leaving the building is exactly the kind of thing the audit log is
+   for. */
+r.get('/outlet/:outletId/audit.csv', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const csv = await withOutlet(req.ctx, function (c) {
+        return governance.auditCsv(c, req.query || {}, req.ctx);
+      });
+      res.set('content-type', 'text/csv; charset=utf-8')
+        .set('content-disposition', 'attachment; filename="audit-log.csv"')
+        .send(csv);
     } catch (e) { next(e); }
   });
 

@@ -72,7 +72,12 @@ export const NAV: NavGroup[] = [
   { title: 'Chain', items: [
     { id: 'chain', label: 'Chain Overview', minRank: 5, icon: 'M3 3v18h18M7 15l4-5 3 3 5-7' },
     { id: 'branches', label: 'Outlets', minRank: 4, icon: 'M3 21h18M5 21V8l7-5 7 5v13M10 21v-6h4v6' },
-    { id: 'users', label: 'Users & Roles', minRank: 4, icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M12.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0zM17 11l2 2 4-4' },
+    /* MANAGER. This screen no longer edits ranks — that is Staff & Time
+       Clock, at admin rank, in one place. What is here is who is signed in
+       right now and how to get them off a terminal, which is the same act as
+       revoking a device and belongs to the same person: the one standing
+       there. */
+    { id: 'users', label: 'Users & Roles', minRank: 3, icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M12.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0zM17 11l2 2 4-4' },
     { id: 'logs', label: 'Audit Log', minRank: 3, icon: 'M14 2H6v20h12V8zM14 2v6h6M9 13h6M9 17h4' },
   ] },
   { title: 'Platform', items: [

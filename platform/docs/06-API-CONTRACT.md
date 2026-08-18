@@ -80,6 +80,39 @@ client never sends one.
 **GET `/api/outlet/:outletId/sync/pull?since=<ms>`** (rank ≥ 2)
 → `{ now, ops[], guestOrders[], guestRequests[] }`
 
+## Settings, access and the trail
+
+**GET `/api/outlet/:outletId/settings`** (rank ≥ 3) · **PUT** (rank ≥ 4)
+→ `{ outlet, tax[], fixed: { fields, why }, canEdit }`
+
+`fixed.fields` are `id`, `code`, `schema_name` and `db_role`: the tenancy model
+itself. The outlet role is never granted UPDATE on `chain.outlet` — a policy
+decides which ROWS you may write, never which COLUMNS — so the settings a
+manager may change go through `chain.set_outlet_settings()`.
+
+**POST `/api/outlet/:outletId/settings/tax`** (rank ≥ 4)
+`{ code, rate, from }`. A rate is ADDED with an effective date, never edited,
+and never backdated: every sale records the rate it was rung up at, so a rate
+that took effect last week would restate receipts already issued.
+
+**GET `/api/outlet/:outletId/access`** (rank ≥ 3)
+→ `{ ladder[], sessions[], lockedOut[], canEnd, myRank }` — who is signed in
+right now, on which device, and for how much longer.
+
+**POST `/api/outlet/:outletId/access/sessions/:id/end`** (rank ≥ 3)
+Takes effect on that terminal's next request, not when its token expires.
+
+**GET `/api/outlet/:outletId/audit`** (rank ≥ 3)
+`?action=&entity=&actor=&scope=&from=&to=&text=&before=&limit=`
+→ `{ entries[], nextBefore, appendOnly }`. Paged by CURSOR, not offset: a trail
+is read newest-first while rows are still arriving at the top of it.
+
+**GET `/api/outlet/:outletId/audit/facets`** (rank ≥ 3) — the filter values that
+are actually present.
+
+**GET `/api/outlet/:outletId/audit.csv`** (rank ≥ 3) — the export, which is
+itself written to the trail.
+
 ## Devices
 
 **GET `/api/outlet/:outletId/devices`** (rank ≥ 2)

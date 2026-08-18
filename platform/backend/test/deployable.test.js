@@ -91,6 +91,37 @@ describe('the deployable tree', () => {
       'these reach the owner pool from the request path');
   });
 
+  test('no screen builds its API caller on every render', () => {
+    /* `api.authed(session)` returns a NEW function each time it is called. A
+       screen that calls it in the component body gets a fresh identity on every
+       render, so a `useCallback` that closes over it changes identity too, and
+       the `useEffect` that loads on that callback fires again — which renders,
+       which makes another caller. An endless fetch loop.
+
+       It is not a performance nicety. On the Settings screen it ALSO reset
+       every form field between the keystroke and the save, so a changed
+       service charge went to the server as its old value and the audit entry
+       recorded a change of nothing. It was found in a browser check, by an
+       input that came back with the value it had before it was filled — which
+       is the only way a bug like this is ever visible.
+
+       Every screen already memoised it except the four written last; this is
+       the test that makes the fifth impossible. */
+    const dir = path.join(ROOT, 'apps', 'pos', 'src');
+    const offenders = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!/\.tsx$/.test(f)) continue;
+      const text = fs.readFileSync(path.join(dir, f), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      /* A bare `const x = api.authed(...)` or `api.chainAuthed(...)` at the top
+         of a component. Inside a callback it is fine — it is created and used
+         in the same turn and never lands in a dependency array. */
+      if (/^\s*const\s+\w+\s*=\s*api\.(chainA|a)uthed\(/m.test(text)) offenders.push(f);
+    }
+    assert.deepEqual(offenders, [],
+      'these rebuild their API caller every render — wrap it in useMemo');
+  });
+
   test('no screen reaches the API on a hard-coded path', () => {
     /* The front-end half of the same class of bug, and it bit just as hard:
        nine screens each wrote their own fetch('/api/...'). That resolves ONLY

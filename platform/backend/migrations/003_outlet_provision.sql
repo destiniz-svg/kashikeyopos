@@ -766,6 +766,13 @@ BEGIN
   -- (migration 031). Without the grant a new outlet's every request fails
   -- closed, which is the safe direction and still an outlet nobody can use.
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.session_live(uuid) TO %I', r);
+  -- Settings and the tax rate (migration 032). Never UPDATE on chain.outlet:
+  -- `schema_name` and `db_role` on that row ARE the tenancy model, and a policy
+  -- decides which rows you may write, never which columns.
+  EXECUTE format('GRANT EXECUTE ON FUNCTION'
+    || ' chain.set_outlet_settings(text,text,numeric,int,int),'
+    || ' chain.set_tax_rate(text,numeric,date) TO %I', r);
+  EXECUTE format('GRANT INSERT, UPDATE ON chain.tax_version TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.pin_candidates(int,text),'
     || ' chain.note_pin_attempt(int,uuid,boolean,int,int),'
     || ' chain.open_session(uuid,int,uuid,int,int),'
