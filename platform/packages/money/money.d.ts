@@ -32,7 +32,21 @@ export interface Bill {
   feeNet: number;
 }
 
+/** A sale's own figures, in laari, as a credit note apportions them. */
+export interface SaleFigures {
+  gross: number; discount: number; service: number; tax: number;
+}
+export interface CreditShare {
+  goods: number; discount: number; service: number; tax: number;
+  /** Net of the discount share — what the credit note row stores. */
+  goodsAfterDiscount: number;
+  /** What is actually handed back. */
+  total: number;
+}
+
 export function priceBill(input: BillInput): Bill;
+/** What a credit note gives back: a share of the SALE's own figures. */
+export function creditShare(goodsNet: number, sale: SaleFigures): CreditShare;
 export function taxWithin(inclusive: number, rate: number): number;
 export function lineIncl(unitPrice: number, qty: number): number;
 export function saleAddsUp(s: Record<string, unknown>): boolean;

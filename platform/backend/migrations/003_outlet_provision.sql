@@ -352,16 +352,45 @@ BEGIN
     );
     CREATE INDEX IF NOT EXISTS invoice_due ON %1$I.vendor_invoice (due_date)
       WHERE paid < amount;
+    -- A closed sale is corrected with one of these, never erased. Migration 027
+    -- is where the approval workflow and the per-line detail were added; the
+    -- shape below is what a NEW outlet gets, so both agree from day one.
     CREATE TABLE IF NOT EXISTS %1$I.credit_note (
       id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-      cn_no   text NOT NULL UNIQUE,
+      -- Issued at APPROVAL: a pending note is not yet a document, and a gapless
+      -- series must not carry a hole where a declined one used to be.
+      cn_no   text UNIQUE,
       sale_id uuid REFERENCES %1$I.sale(id),
       at      timestamptz NOT NULL DEFAULT now(),
+      business_date date,
       amount  numeric(12,2) NOT NULL,
+      goods   numeric(12,2) NOT NULL DEFAULT 0,
+      service numeric(12,2) NOT NULL DEFAULT 0,
       tax     numeric(12,2) NOT NULL DEFAULT 0,
       reason  text NOT NULL,
-      raised_by uuid NOT NULL, approved_by uuid NOT NULL
+      refund_method text,
+      raised_by uuid NOT NULL,
+      approved_by uuid, approved_at timestamptz,
+      declined_by uuid, declined_at timestamptz, decline_reason text,
+      journal_id uuid,
+      CONSTRAINT cn_one_fate CHECK (approved_at IS NULL OR declined_at IS NULL),
+      CONSTRAINT cn_approved_is_a_document
+        CHECK (approved_at IS NULL OR (cn_no IS NOT NULL AND approved_by IS NOT NULL))
     );
+    CREATE INDEX IF NOT EXISTS cn_sale ON %1$I.credit_note (sale_id);
+
+    CREATE TABLE IF NOT EXISTS %1$I.credit_note_line (
+      id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      credit_note_id uuid NOT NULL REFERENCES %1$I.credit_note(id) ON DELETE CASCADE,
+      sale_line_id uuid NOT NULL REFERENCES %1$I.sale_line(id),
+      item_id      text NOT NULL,
+      name         text NOT NULL,
+      qty          numeric(10,3) NOT NULL CHECK (qty > 0),
+      amount       numeric(12,2) NOT NULL,
+      restock      boolean NOT NULL DEFAULT false
+    );
+    CREATE INDEX IF NOT EXISTS cn_line_note ON %1$I.credit_note_line (credit_note_id);
+    CREATE INDEX IF NOT EXISTS cn_line_sale_line ON %1$I.credit_note_line (sale_line_id);
   $ddl$, s);
 
   -- ── the ledger. Every consequence lands here, and it must balance. ──────

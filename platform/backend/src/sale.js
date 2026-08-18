@@ -72,6 +72,24 @@ async function taxAsAt(c, outletId, businessDate) {
    is exactly why the drawer must not be their fallback. */
 const TENDERS = ['cash', 'card', 'wallet', 'bank', 'points', 'account', 'voucher'];
 
+/* WHERE EACH TENDER LANDS IN THE LEDGER. Module scope and exported, because a
+   credit note refunds by the same routes a sale collects by, and two maps that
+   are supposed to agree are two maps that can disagree — the one that is wrong
+   being, as ever, the one nobody looks at.
+
+   `account` is the house tender and it is the odd one out: NO MONEY ARRIVES.
+   It debits 1030 Customer receivable — a promise to pay — and the drawer must
+   not think a thing of it, because the drawer's expected cash is derived from
+   account 1000.
+
+   A voucher settles against the SAME liability points do, because it is the
+   same promise in another shape: the points came off the member's balance when
+   it was issued and the obligation stayed on 2200 until it was handed over. */
+const ACCOUNT_FOR = {
+  cash: '1000', card: '1020', wallet: '1020', bank: '1010',
+  points: '2200', voucher: '2200', account: '1030',
+};
+
 /* Costing lives in ./costing.js — the SAME functions Recipes & Costing calls
    to show a manager a plate cost while they edit. Written twice, the screen
    would say 31% food cost while the ledger booked 38%, with nothing to point
@@ -462,21 +480,10 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
   const dr = (account, laari) => { if (laari) lines.push({ account, dr: laari, cr: 0 }); };
   const cr = (account, laari) => { if (laari) lines.push({ account, dr: 0, cr: laari }); };
 
-  /* Split the tender across accounts by method, so the ledger says how the
-     money arrived and the drawer and the acquirer can each be reconciled
-     against their own account rather than against one lump.
+  /* Split the tender across accounts by method (ACCOUNT_FOR, above), so the
+     ledger says how the money arrived and the drawer and the acquirer can each
+     be reconciled against their own account rather than against one lump. */
 
-     `account` is the house tender and it is the odd one out: NO MONEY ARRIVED.
-     It debits 1030 Customer receivable — a promise to pay — and the drawer must
-     not think a thing of it, because the drawer's expected cash is derived from
-     account 1000. */
-  const ACCOUNT_FOR = {
-    cash: '1000', card: '1020', wallet: '1020', bank: '1010',
-    /* A voucher settles against the SAME liability points do, because it is the
-       same promise in another shape: the points were taken off the member's
-       balance when it was issued and the obligation stayed on 2200 until now. */
-    points: '2200', voucher: '2200', account: '1030',
-  };
 
   /* A tip arrives WITH the money it was added to, so it debits the same
      account as its own payment. This used to debit 1000 for every tip
@@ -519,4 +526,4 @@ async function postSaleJournal(c, saleId, receiptNo, b, cogs, p, ctx) {
   }, ctx);   // the deferred trigger refuses an unbalanced entry at COMMIT
 }
 
-module.exports = { settle, taxAsAt, toLaari, toMVR, TENDERS };
+module.exports = { settle, taxAsAt, toLaari, toMVR, TENDERS, ACCOUNT_FOR };

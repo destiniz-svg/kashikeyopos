@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { CreditNote } from './CreditNote';
 
 /* Orders & Tickets — 02-POS-SPEC.md §2 (`orders`):
  * "Every ticket today, open and closed, with its receipt, tender, server and
@@ -316,15 +317,26 @@ export function Orders({ session }: { session: Session }) {
         )}
       </div>
 
-      {receipt && <ReceiptSheet r={receipt} rank={session.rank} onClose={() => setReceipt(null)} />}
+      {receipt && (
+        <ReceiptSheet r={receipt} rank={session.rank} session={session}
+          onClose={() => setReceipt(null)}
+          onCredited={() => { void open(receipt.sale.id); }} />
+      )}
     </div>
   );
 }
 
 /* ── one receipt, and everything it caused ──────────────────────────────── */
 
-function ReceiptSheet({ r, rank, onClose }: { r: Receipt; rank: number; onClose: () => void }) {
+function ReceiptSheet({ r, rank, session, onClose, onCredited }: {
+  r: Receipt; rank: number; session: Session; onClose: () => void; onCredited: () => void;
+}) {
   const [tab, setTab] = useState<'receipt' | 'journal' | 'stock' | 'trail'>('receipt');
+  /* Credit notes are raised from HERE, because this is where somebody is
+     standing when they need one: a guest at the counter with a receipt and a
+     complaint. §21, and DEPLOYMENT.md's "a closed sale is corrected with a
+     credit note, never erased". */
+  const [crediting, setCrediting] = useState(false);
   const s = r.sale;
   const voidedLines = r.ticketLines.filter((l) => l.voided);
 
@@ -356,12 +368,25 @@ function ReceiptSheet({ r, rank, onClose }: { r: Receipt; rank: number; onClose:
         </div>
       )}
 
-      <div style={{ margin: '12px 0 4px', display: 'flex', gap: 4 }}>
+      <div style={{ margin: '12px 0 4px', display: 'flex', gap: 4, alignItems: 'center' }}>
         <Tab on={tab === 'receipt'} onClick={() => setTab('receipt')}>Receipt</Tab>
         <Tab on={tab === 'journal'} onClick={() => setTab('journal')}>Journal</Tab>
         <Tab on={tab === 'stock'} onClick={() => setTab('stock')}>Stock</Tab>
         <Tab on={tab === 'trail'} onClick={() => setTab('trail')}>Trail</Tab>
+        <span style={{ flex: 1 }} />
+        {/* A correction starts here, on the document being corrected. */}
+        <button onClick={() => setCrediting(true)}
+          style={{
+            padding: '5px 12px', borderRadius: 7, fontSize: 11.5, fontWeight: 700,
+            background: 'var(--bg-2)', border: '1px solid var(--line)',
+            color: 'var(--text-muted)',
+          }}>Credit this sale</button>
       </div>
+
+      {crediting && (
+        <CreditNote session={session} saleId={s.id}
+          onClose={() => setCrediting(false)} onDone={onCredited} />
+      )}
 
       {tab === 'receipt' && (
         <div>

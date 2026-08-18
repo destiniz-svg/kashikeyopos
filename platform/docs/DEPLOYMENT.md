@@ -111,8 +111,12 @@ is one function, auditable, and cannot return a receipt.
    group scope, a claimed outlet id in the context, attempts to rewrite or
    delete the audit trail, erasing a closed sale, and a DDL escalation. Each
    probe runs in its OWN transaction against planted bait; "current transaction
-   is aborted" counts against the suite rather than passing as a refusal. Any
-   `LEAK` line and the run exits non-zero. Put it in the deploy pipeline.
+   is aborted" counts against the suite rather than passing as a refusal, and so
+   does "relation … does not exist" — a probe aimed at an outlet that was never
+   provisioned proves nothing, and reporting "no leaks" for it is exactly the
+   false green this suite exists to avoid. So run step 5 for BOTH outlet ids
+   first. Any `LEAK` or `BROKEN` line and the run exits non-zero. Put it in the
+   deploy pipeline.
 
 8. **Host the front-ends.** They are Vite apps that build to static files —
    `apps/pos` (the till and the back office), `apps/guest` (the QR portal) and

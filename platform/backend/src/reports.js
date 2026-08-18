@@ -155,18 +155,62 @@ async function taxReturn(c, from, to) {
     + ' GROUP BY tax_code, tax_rate ORDER BY tax_code, tax_rate',
     [from || null, to || null]);
 
-  const fromSales = mvr(bands.rows.reduce((a, r) => a + Number(r.tax), 0));
-  const fromLedger = mvr(ledger.rows[0].output);
+  /* CREDIT NOTES COME OFF THE RETURN. A note approved against a sale gives the
+     guest their tax back and debits 2100, so the ledger figure already reflects
+     it — and the sales figure would not, which would make the two disagree by
+     exactly the month's refunds and look like a reconciliation failure. Worse,
+     a return filed from the sales side alone would declare tax on money that
+     was handed back.
 
-  return {
-    from: from || null, to: to || null,
-    bands: bands.rows.map((r) => ({
+     Only APPROVED notes count: a pending one has posted nothing and is not yet
+     a document. They are grouped by the SALE's rate, so a refund of a sale made
+     before a rate change is credited at the rate it was charged at. */
+  const credits = await c.query(
+    'SELECT s.tax_code, s.tax_rate, count(*)::int AS notes,'
+    + ' coalesce(sum(cn.goods + cn.service),0) AS taxable,'
+    + ' coalesce(sum(cn.tax),0) AS tax'
+    + ' FROM credit_note cn JOIN sale s ON s.id = cn.sale_id'
+    + ' WHERE cn.approved_at IS NOT NULL'
+    + ' AND ($1::date IS NULL OR cn.business_date >= $1::date)'
+    + ' AND ($2::date IS NULL OR cn.business_date <= $2::date)'
+    + ' GROUP BY s.tax_code, s.tax_rate', [from || null, to || null]);
+
+  const creditFor = new Map(credits.rows.map(
+    (r) => [r.tax_code + '|' + Number(r.tax_rate), r]));
+
+  const bandRows = bands.rows.map((r) => {
+    const cr = creditFor.get(r.tax_code + '|' + Number(r.tax_rate));
+    creditFor.delete(r.tax_code + '|' + Number(r.tax_rate));
+    return {
       code: r.tax_code, rate: Number(r.tax_rate), sales: r.sales,
       // Taxable value NET of tax — the base the rate was applied to. Menu
       // prices are tax-INCLUSIVE, so this is not the money taken; it is the
       // money taken less the government's share.
-      taxableValue: mvr(r.taxable), tax: mvr(r.tax),
-    })),
+      taxableValue: mvr(Number(r.taxable) - Number(cr ? cr.taxable : 0)),
+      tax: mvr(Number(r.tax) - Number(cr ? cr.tax : 0)),
+      /* Stated separately as well as netted, because "we sold 400,000 and gave
+         back 6,000" is the sentence, and a single net figure hides the second
+         half of it. */
+      credited: mvr(cr ? cr.tax : 0),
+      creditNotes: cr ? cr.notes : 0,
+    };
+  });
+  /* A credit note against a sale from an EARLIER period has no band of its own
+     this month; it still reduces what is owed, so it gets a row. */
+  for (const cr of creditFor.values()) {
+    bandRows.push({
+      code: cr.tax_code, rate: Number(cr.tax_rate), sales: 0,
+      taxableValue: mvr(-Number(cr.taxable)), tax: mvr(-Number(cr.tax)),
+      credited: mvr(cr.tax), creditNotes: cr.notes,
+    });
+  }
+
+  const fromSales = mvr(bandRows.reduce((a, r) => a + r.tax, 0));
+  const fromLedger = mvr(ledger.rows[0].output);
+
+  return {
+    from: from || null, to: to || null,
+    bands: bandRows,
     outputTax: fromLedger,
     checkedAgainstSales: fromSales,
     difference: mvr(fromLedger - fromSales),

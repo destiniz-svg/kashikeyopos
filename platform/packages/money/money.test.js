@@ -13,7 +13,7 @@
  */
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { priceBill, taxWithin, saleAddsUp } = require('./money');
+const { priceBill, taxWithin, creditShare, saleAddsUp } = require('./money');
 
 const RATES = [0, 8, 16];          // not registered, GGST, TGST
 const SERVICE = [0, 10, 12.5];
@@ -147,5 +147,53 @@ describe('priceBill', () => {
       }
     }
     assert.equal(checked, RATES.length * SERVICE.length * ROUNDING.length * 400);
+  });
+});
+
+describe('creditShare — what a credit note gives back', () => {
+  /* The property that makes a pro-rata share the right choice: crediting
+     everything returns exactly what was taken. Anything else means a guest
+     holding a receipt for 187.00 is handed 186.99 and is right to argue. */
+  test('a FULL credit returns the sale total, to the laari', () => {
+    for (const taxRate of [0, 6, 8, 16]) {
+      for (const servicePct of [0, 10]) {
+        for (const n of [1, 3, 7]) {
+          const bill = {
+            lines: Array.from({ length: n }, (_, i) => ({ unitPrice: 850 + i * 337, qty: 1 + i })),
+            servicePct, taxRate,
+          };
+          const b = priceBill(bill);
+          const share = creditShare(b.gross, b);
+          assert.equal(share.total, b.total - b.rounding,
+            'full credit ≠ total at ' + JSON.stringify({ taxRate, servicePct, n }));
+        }
+      }
+    }
+  });
+
+  test('a partial credit never returns more than the sale did', () => {
+    const b = priceBill({ lines: [{ unitPrice: 16500, qty: 3 }], servicePct: 10, taxRate: 8 });
+    for (let part = 1; part <= 3; part++) {
+      const goods = Math.round(b.gross * (part / 3));
+      const share = creditShare(goods, b);
+      assert.ok(share.total <= b.total, 'gave back more than was taken');
+      assert.ok(Number.isInteger(share.total), 'not whole laari: ' + share.total);
+    }
+  });
+
+  test('the discount comes off the credit in the same proportion', () => {
+    /* Otherwise a guest who paid 80 after a 20 discount is refunded 100 — the
+       restaurant buying back its own goodwill gesture at full price. */
+    const b = priceBill({
+      lines: [{ unitPrice: 10000, qty: 2 }], discount: 4000, servicePct: 0, taxRate: 8,
+    });
+    const half = creditShare(Math.round(b.gross / 2), b);
+    assert.equal(half.discount, Math.round(b.discount / 2));
+    assert.ok(half.total < Math.round(b.total / 2) + 2);
+  });
+
+  test('a sale of nothing credits nothing rather than dividing by zero', () => {
+    const share = creditShare(0, { gross: 0, discount: 0, service: 0, tax: 0 });
+    assert.equal(share.total, 0);
   });
 });

@@ -25,6 +25,11 @@ const { outletPassword } = require('../src/secrets');
 
 const ssl = process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false;
 
+/* SQLSTATEs that mean the thing the probe aimed at is not there: undefined
+   table, schema, function, column. See the catch block below for why they are
+   a broken suite rather than a pass. */
+const MISSING = new Set(['42P01', '3F000', '42883', '42703']);
+
 function outletClient(id) {
   return new Client({
     host: process.env.PGHOST, port: Number(process.env.PGPORT || 5432),
@@ -132,6 +137,15 @@ async function assertBait(owner, victim) {
          it counts as a failure of the SUITE, not a pass for the probe. */
       if (/current transaction is aborted/i.test(msg)) {
         console.log('BROKEN ' + label + ' → probe did not run (' + msg + ')');
+        leaks++;
+      } else if (MISSING.has(e.code)) {
+        /* "relation outlet_4.ticket does not exist" is not isolation working —
+           it is the object not being there, which is how the suite reported
+           "no leaks" against a database where the outlets had never been
+           provisioned. A role that lacks USAGE is told "permission denied",
+           never "does not exist", so this can only mean the probe had nothing
+           to prove. Same family of false pass as the aborted transaction. */
+        console.log('BROKEN ' + label + ' → nothing there to protect (' + msg + ')');
         leaks++;
       } else {
         console.log('PASS  ' + label + ' → ' + msg);

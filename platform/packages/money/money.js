@@ -155,6 +155,41 @@ function priceBill(bill) {
   };
 }
 
+/**
+ * What a credit note gives back.
+ *
+ * ALL OF IT IS A SHARE OF THE SALE'S OWN FIGURES. Crediting two lines out of
+ * nine gives back the same fraction of the discount, the service charge and the
+ * tax that those lines carried when they were sold — not a fresh calculation.
+ * Recomputing the tax at today's rate would restate a filed month the first
+ * time a rate changed; recomputing it at the sale's rate would be a second
+ * arithmetic beside the one that produced the receipt.
+ *
+ * It lives HERE, beside priceBill, for the reason priceBill lives here: the
+ * screen shows the refund before anybody presses anything and the server posts
+ * it afterwards, and a figure that differs by a laari between those two is a
+ * guest being told one number and given another. The browser loads this file
+ * as a script and the server requires it — one function, two callers.
+ *
+ *   goodsNet  the credited lines, net of tax, in laari
+ *   sale      { gross, discount, service, tax } — the sale's own, in laari
+ */
+function creditShare(goodsNet, sale) {
+  const goods = R(num(goodsNet));
+  const saleGoods = R(num(sale && sale.gross));
+  const share = saleGoods > 0 ? goods / saleGoods : 0;
+  const discount = R(num(sale && sale.discount) * share);
+  const service = R(num(sale && sale.service) * share);
+  const tax = R(num(sale && sale.tax) * share);
+  return {
+    goods, discount, service, tax,
+    /* Net of the discount, which is the figure that goes on the credit note
+       row and the one the ledger credits to 4000 less the reversal to 4090. */
+    goodsAfterDiscount: goods - discount,
+    total: goods - discount + service + tax,
+  };
+}
+
 /** Does a sale row's own declared arithmetic hold? The same equation the
  *  database's `sale_adds_up` constraint enforces, available to the application
  *  so a bad payload is refused with a readable message instead of a
@@ -164,4 +199,4 @@ function saleAddsUp(s) {
   return Math.abs(lhs - num(s.total)) < 0.005;
 }
 
-module.exports = { priceBill, taxWithin, lineIncl, saleAddsUp };
+module.exports = { priceBill, taxWithin, lineIncl, creditShare, saleAddsUp };

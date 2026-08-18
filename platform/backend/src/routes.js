@@ -22,6 +22,7 @@ const memberportal = require('./memberportal');
 const vouchers = require('./vouchers');
 const { tableName } = require('./tables');
 const settlements = require('./settlements');
+const creditnotes = require('./creditnotes');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -945,6 +946,70 @@ r.post('/outlet/:outletId/accounting/journal/:id/reverse', sameOutlet, staffOnly
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return accounting.reverse(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Credit notes (08-BUILD-STAGES §21) ───────────────────────────────────
+ *
+ * RAISING is TILL rank, because the person standing in front of the guest is
+ * the one who knows what went wrong, and a correction nobody can start is a
+ * correction that gets made by handing cash out of the drawer instead.
+ *
+ * APPROVING is MANAGER, and the module refuses an approval by the person who
+ * raised it: the point of an approval is that a second pair of eyes saw the
+ * thing. Nothing moves — no money, no stock, no document number — until then.
+ */
+r.get('/outlet/:outletId/credit-notes', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.list(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canApprove: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+/* What is left to credit on a sale, and what has been credited already. */
+r.get('/outlet/:outletId/sales/:saleId/credit', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.forSale(c, req.params.saleId);
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, refundMethods: creditnotes.REFUND_METHODS,
+          canApprove: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/credit-notes', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.raise(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/credit-notes/:id/approve', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.approve(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/credit-notes/:id/decline', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.decline(c, req.params.id, req.body || {}, req.ctx);
       });
       res.json(out);
     } catch (e) { next(e); }
