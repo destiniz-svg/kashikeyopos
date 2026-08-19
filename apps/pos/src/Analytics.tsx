@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { useBreakpoint } from './useBreakpoint';
 
 /* Analytics & CFO — 02-POS-SPEC.md §2: "Prime cost, margin by dish, variance
  * trend." 08-BUILD-STAGES §22.
@@ -192,6 +193,12 @@ export function Analytics({ session }: { session: Session }) {
 
 function DishBars({ dishes }: { dishes: Dish[] }) {
   const [hover, setHover] = useState<string | null>(null);
+  /* 56 + 88 + 200 + 64 is 408px of fixed columns before the dish name gets a
+     pixel, and a phone is 390. They did not clip — the row wrapped and the
+     margin bar was drawn over the dish it belonged to. On a phone the bar goes
+     (it ranks dishes against each other, which a one-per-line list on a narrow
+     screen does anyway) and the figures lose their floors. */
+  const isPhone = useBreakpoint() === 'm';
   if (!dishes.length) {
     return <Empty>Nothing has been sold in this period, so there is no margin to rank.</Empty>;
   }
@@ -204,18 +211,18 @@ function DishBars({ dishes }: { dishes: Dish[] }) {
     <div>
       <div style={{ display: 'flex', gap: 12, padding: '6px 0', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)', borderBottom: '1px solid var(--line-soft)' }}>
         <span style={{ flex: 1 }}>DISH</span>
-        <span style={{ width: 56, textAlign: 'right' }}>SOLD</span>
-        <span style={{ width: 88, textAlign: 'right' }}>REVENUE</span>
-        <span style={{ width: 200 }}>MARGIN</span>
-        <span style={{ width: 64, textAlign: 'right' }}>SHARE</span>
+        <span style={{ width: isPhone ? undefined : 56, textAlign: 'right' }}>SOLD</span>
+        <span style={{ width: isPhone ? undefined : 88, textAlign: 'right' }}>REVENUE</span>
+        {!isPhone && <span style={{ width: 200 }}>MARGIN</span>}
+        <span style={{ width: isPhone ? undefined : 64, textAlign: 'right' }}>SHARE</span>
       </div>
       {dishes.map((d) => (
         <div key={d.itemId}
           onMouseEnter={() => setHover(d.itemId)} onMouseLeave={() => setHover(null)}
           title={`${d.name}: ${mvr(d.revenue)} revenue less ${mvr(d.cost)} cost = ${mvr(d.margin)} margin (${pc(d.marginPct)}) over ${d.qty} sold`}
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--line-soft)', background: hover === d.itemId ? 'var(--bg-1)' : 'transparent' }}>
-          <span style={{ flex: 1, minWidth: 0 }}>
-            <span style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--line-soft)', background: hover === d.itemId ? 'var(--bg-1)' : 'transparent', flexWrap: 'wrap' }}>
+          <span style={{ flex: '1 1 150px', minWidth: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{d.name}</span>
               {/* A dish with no cost is not a 100% margin — it is a dish nobody
                   has costed, and it must not read as the star of the menu. */}
@@ -229,14 +236,14 @@ function DishBars({ dishes }: { dishes: Dish[] }) {
               <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>{d.category}</span>
             )}
           </span>
-          <span style={{ width: 56, textAlign: 'right', fontSize: 11.5, fontFamily: MONO, color: 'var(--text-faint)' }}>{d.qty}</span>
-          <span style={{ width: 88, textAlign: 'right', fontSize: 12, fontFamily: MONO, color: 'var(--text-dim)' }}>{mvr(d.revenue)}</span>
+          <span style={{ width: isPhone ? undefined : 56, textAlign: 'right', fontSize: 11.5, fontFamily: MONO, color: 'var(--text-faint)' }}>{d.qty}</span>
+          <span style={{ width: isPhone ? undefined : 88, textAlign: 'right', fontSize: 12, fontFamily: MONO, color: 'var(--text-dim)' }}>{mvr(d.revenue)}</span>
 
           {/* The bar. 10px, rounded at the data end only, anchored to a
               baseline — and the value is direct-labelled beside it, so this is
               a table that happens to be encoded rather than a chart needing an
               axis. */}
-          <span style={{ width: 200, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 200, display: isPhone ? 'none' : 'flex', alignItems: 'center', gap: 8 }}>
             <span aria-hidden style={{ flex: 1, height: 10, background: 'var(--bg-2)', borderRadius: 3, overflow: 'hidden', display: 'flex' }}>
               <span style={{
                 width: Math.max(2, (Math.abs(d.margin) / max) * 100) + '%',
@@ -250,7 +257,14 @@ function DishBars({ dishes }: { dishes: Dish[] }) {
               {mvr(d.margin)}
             </span>
           </span>
-          <span style={{ width: 64, textAlign: 'right', fontSize: 11, fontFamily: MONO, color: 'var(--text-faint)' }}>
+          {/* On a phone the bar is gone, so the margin has to be a figure or it
+              is not on the screen at all. */}
+          {isPhone && (
+            <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: d.margin < 0 ? 'var(--red-bright)' : 'var(--text)' }}>
+              {mvr(d.margin)}
+            </span>
+          )}
+          <span style={{ width: isPhone ? undefined : 64, textAlign: 'right', fontSize: 11, fontFamily: MONO, color: 'var(--text-faint)' }}>
             {pc(d.marginPct)}
           </span>
         </div>

@@ -313,7 +313,11 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
           {/* Keypad — left */}
           <div style={{ flex: '1 1 260px', minWidth: 240, padding: 16, borderRight: '1px solid var(--line-soft)' }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            {/* Seven tenders, not five. The row was a single nowrap line built
+                when there were five of them, and adding the two the ledger has
+                always known pushed Account and Points off the right edge of a
+                phone. It wraps. */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
               {METHODS.map((m) => {
                 const on = method === m.k;
                 return (

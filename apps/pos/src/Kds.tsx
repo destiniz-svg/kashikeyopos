@@ -167,6 +167,14 @@ export function Kds({ snap, now, onQueued }: Props) {
 
                   return (
                     <article key={s.id} style={{
+                      /* flexShrink 0, and it is load-bearing. The column is a
+                         flex column that scrolls, so once there are more cards
+                         than fit, the default shrink squashed every card and
+                         its dishes were drawn straight over the button beneath
+                         and over the next card's table number. It only ever
+                         showed on a busy pass — which is the only time anybody
+                         is looking at this screen. */
+                      flexShrink: 0,
                       background: tint, border: '1px solid ' + edge, borderRadius: 9, overflow: 'hidden',
                     }}>
                       <div style={{ padding: '9px 11px', display: 'flex', alignItems: 'baseline', gap: 8 }}>
