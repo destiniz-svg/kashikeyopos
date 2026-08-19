@@ -6,6 +6,7 @@ import { Payment } from './Payment';
    Node requires it, the browsers bundle it, and neither has a copy. */
 import { priceBill } from '../../../packages/money/money.js';
 import { Register } from './Register';
+import { useBreakpoint } from './useBreakpoint';
 
 /* POS Floor — 02-POS-SPEC.md §3.
  *
@@ -36,6 +37,24 @@ interface Props {
 }
 
 export function Floor({ snap, now, session, online, onQueued }: Props) {
+  /* THE TILL ON A PHONE IS A DIFFERENT MACHINE, and the prototype treats it as
+     one. Three columns — 250px of tables, the menu, 300px of ticket — need 550px
+     of fixed width before the menu gets a pixel, so on a 390px handset they do
+     not merely look cramped, they cannot be laid out at all.
+
+     So the phone shows ONE pane at a time and puts the ticket in a bottom
+     sheet, with the three destinations on a bar under the thumb. The
+     prototype's note on why: the POS destinations used to live in a tab strip
+     in the top-right corner — the furthest point from a thumb on a phone held
+     one-handed, and the hardest thing to hit during service. */
+  const bp = useBreakpoint();
+  const isPhone = bp === 'm';
+  const isTablet = bp === 't';
+  /* One pane at a time below the desktop: a phone has no room for two, and a
+     tablet's third column was eating the menu. */
+  const onePane = isPhone || isTablet;
+  const [pane, setPane] = useState<'floor' | 'menu'>('floor');
+  const [cart, setCart] = useState(false);
   const [table, setTable] = useState<string>('');
   const [lines, setLines] = useState<Line[]>([]);
   /* What a promotion takes off, once the payment screen has had the server
@@ -185,10 +204,42 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
     await onQueued();
   };
 
+  /* The prototype's Floor/Menu switcher, to its own numbers. It exists there
+     at every size: the prototype's till is ONE content pane plus a ticket, and
+     this three-column arrangement is ours. On a tablet ours starved the menu —
+     250px of tables and 300px of ticket leave 158px at 768px wide — so the
+     tablet adopts the prototype's shape. The desktop has the room for three and
+     keeps them. */
+  const paneTabs = (
+    <div style={{ display: 'flex', gap: 2, background: 'var(--bg-2)', borderRadius: 8, padding: 2, flexShrink: 0 }}>
+      {(['floor', 'menu'] as const).map((k) => (
+        <button
+          key={k}
+          onClick={() => setPane(k)}
+          aria-current={pane === k ? 'page' : undefined}
+          style={{
+            padding: '6px 14px', borderRadius: 7, fontSize: 11.5,
+            fontWeight: pane === k ? 700 : 600, whiteSpace: 'nowrap', minHeight: 30,
+            background: pane === k ? 'var(--text)' : 'transparent',
+            color: pane === k ? 'var(--bg)' : 'var(--text-dim)',
+          }}
+        >
+          {k === 'floor' ? 'Floor' : 'Menu'}
+        </button>
+      ))}
+    </div>
+  );
+
   const TILE = (label: string, busy: boolean, key: string) => (
     <button
       key={key}
-      onClick={() => { setTable(label); setLines([]); setSentIds({}); }}
+      onClick={() => {
+        setTable(label); setLines([]); setSentIds({});
+        /* On a phone the panes are one at a time, and choosing a table is the
+           step before ordering — so it moves you on rather than leaving you
+           looking at the tables you have just chosen from. */
+        if (isPhone) setPane('menu');
+      }}
       style={{
         padding: '10px 9px', borderRadius: 9, minHeight: 62, textAlign: 'left',
         background: table === label ? 'var(--bg-3)' : busy ? 'var(--amber-dim)' : 'var(--bg-1)',
@@ -205,13 +256,27 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
   );
 
   return (
-    <div style={{ height: '100%', display: 'flex', minWidth: 0 }}>
+    <div style={{ height: '100%', display: 'flex', minWidth: 0, position: 'relative' }}>
       {/* ── Column 1: floor plan (§3.1) ─────────────────────────────────── */}
-      <section style={{ width: 250, flexShrink: 0, borderRight: '1px solid var(--line-soft)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ padding: '11px 12px 8px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
-          FLOOR
+      <section style={onePane
+        ? { flex: 1, minWidth: 0, display: pane === 'floor' ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden' }
+        : { width: 250, flexShrink: 0, borderRight: '1px solid var(--line-soft)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ padding: '11px 12px 8px', display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+            FLOOR
+          </span>
+          <span style={{ flex: 1 }} />
+          {isTablet && paneTabs}
         </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignContent: 'start' }}>
+        <div style={{
+          flex: 1, minHeight: 0, overflowY: 'auto',
+          /* 92px of bottom padding on a phone, because the tab bar is fixed
+             over this pane and the last row of tables would sit under it. */
+          padding: isPhone ? '0 12px 92px' : '0 12px 12px',
+          display: 'grid',
+          gridTemplateColumns: onePane ? 'repeat(auto-fill,minmax(min(100%, 96px),1fr))' : '1fr 1fr',
+          gap: 8, alignContent: 'start',
+        }}>
           {/* §3.1: "Two non-table slots always exist: Takeaway and Delivery." */}
           {TILE('Takeaway', false, 'tk')}
           {TILE('Delivery', false, 'dl')}
@@ -228,13 +293,21 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
         </div>
 
         {/* The drawer lives here, under the tables, because this is where the
-            cashier is standing when the shift ends. */}
-        <Register session={session} onQueued={onQueued} />
+            cashier is standing when the shift ends. It sits OUTSIDE the tables
+            scroller, so it needs its own clearance for the tab bar — the
+            scroller's bottom padding does not reach it, and without this the
+            bar sat across "Open the register". */}
+        <div style={{ flexShrink: 0, paddingBottom: isPhone ? 'calc(62px + env(safe-area-inset-bottom))' : 0 }}>
+          <Register session={session} onQueued={onQueued} />
+        </div>
       </section>
 
       {/* ── Column 2: menu grid (§3.2) ──────────────────────────────────── */}
-      <section style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <section style={onePane
+        ? { flex: 1, minWidth: 0, display: pane === 'menu' ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden' }
+        : { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'center', borderBottom: '1px solid var(--line-soft)' }}>
+          {isTablet && paneTabs}
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -264,7 +337,12 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
           })}
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 148px), 1fr))', gap: 9, alignContent: 'start' }}>
+        <div style={{
+          flex: 1, minHeight: 0, overflowY: 'auto',
+          padding: isPhone ? '0 12px 92px' : '0 12px 14px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 148px), 1fr))',
+          gap: 9, alignContent: 'start',
+        }}>
           {shown.map((it) => (
             <button
               key={it.id}
@@ -299,7 +377,32 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
       </section>
 
       {/* ── Column 3: ticket (§3.3) ─────────────────────────────────────── */}
-      <section style={{ width: 300, flexShrink: 0, borderLeft: '1px solid var(--line-soft)', background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <section
+        aria-hidden={isPhone && !cart ? true : undefined}
+        style={isPhone
+          ? {
+            /* The prototype's sheet, to the number: it never unmounts, it
+               slides. 101% so the shadow clears the edge too. */
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 60,
+            height: 'min(88dvh, 680px)',
+            background: 'var(--bg-1)', borderTop: '1px solid var(--line)',
+            borderRadius: '16px 16px 0 0',
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxShadow: '0 -12px 44px rgba(0,0,0,.55)',
+            transition: 'transform .22s cubic-bezier(.32,.72,0,1)',
+            transform: cart ? 'translateY(0)' : 'translateY(101%)',
+          }
+          : { width: isTablet ? 'clamp(280px, 30vw, 330px)' : 300, flexShrink: 0, borderLeft: '1px solid var(--line-soft)', background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* The grabber. A sheet with no handle reads as a stuck panel. */}
+        {isPhone && (
+          <button
+            onClick={() => setCart(false)}
+            aria-label="Close the ticket"
+            style={{ width: '100%', padding: '11px 0 7px', flexShrink: 0, background: 'transparent', display: 'grid', placeItems: 'center' }}
+          >
+            <span style={{ width: 38, height: 4, borderRadius: 2, background: 'var(--line-3, var(--line-2))', display: 'block' }} />
+          </button>
+        )}
         <div style={{ padding: '11px 13px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 15, fontWeight: 700, fontFamily: MONO, letterSpacing: '-.02em', color: table ? 'var(--amber-bright)' : 'var(--text-faint)' }}>
             {table || 'No table'}
@@ -387,6 +490,86 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
           </div>
         </div>
       </section>
+
+      {/* ── The scrim behind the ticket sheet ─────────────────────────── */}
+      {isPhone && cart && (
+        <div
+          onClick={() => setCart(false)}
+          aria-hidden="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 55,
+            background: 'var(--scrim, rgba(0,0,0,.55))', animation: 'kfade .14s',
+          }}
+        />
+      )}
+
+      {/* ── The bar under the thumb ───────────────────────────────────────
+          The prototype's reasoning, kept: these three destinations used to be
+          a tab strip in the top-right corner — the furthest point from a thumb
+          on a phone held one-handed, and the hardest to hit during service. The
+          badges are the two counts that decide where you are going: how many
+          tables are open, and how many lines are on the bill in hand. */}
+      {isPhone && (
+        <nav
+          aria-label="Till"
+          style={{
+            /* z-50, BELOW the ticket sheet at z-60 — the prototype's order.
+               An open ticket covers this bar completely, which is what keeps
+               the Pay button off the bottom edge instead of underneath it. */
+            position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 50,
+            display: 'flex', alignItems: 'stretch', gap: 2,
+            padding: '5px 8px calc(5px + env(safe-area-inset-bottom))',
+            background: 'var(--bg-1)', borderTop: '1px solid var(--line)',
+            boxShadow: '0 -8px 24px rgba(0,0,0,.28)',
+          }}
+        >
+          {([
+            { k: 'floor', label: 'Floor', badge: openByTable.size || 0,
+              icon: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z' },
+            { k: 'menu', label: 'Menu', badge: 0,
+              icon: 'M4 6h16M4 12h16M4 18h10' },
+            { k: 'bill', label: table ? 'Bill' : 'Start', badge: lines.length,
+              icon: 'M6 2h9l4 4v16H6zM9 12h7M9 16h5' },
+          ] as const).map((t) => {
+            const on = t.k === 'bill' ? cart : !cart && pane === t.k;
+            return (
+              <button
+                key={t.k}
+                onClick={() => {
+                  if (t.k === 'bill') { setCart(true); return; }
+                  setPane(t.k === 'menu' ? 'menu' : 'floor');
+                  setCart(false);
+                }}
+                aria-current={on ? 'page' : undefined}
+                style={{
+                  position: 'relative', flex: '1 1 0', minWidth: 0,
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center', gap: 3,
+                  padding: '7px 4px', borderRadius: 12, minHeight: 52,
+                  background: 'transparent',
+                  color: on ? 'var(--text)' : 'var(--text-muted)',
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d={t.icon} />
+                </svg>
+                <span style={{ fontSize: 10.5, fontWeight: on ? 700 : 500 }}>{t.label}</span>
+                {t.badge > 0 && (
+                  <span style={{
+                    position: 'absolute', top: 4, right: 'calc(50% - 22px)',
+                    minWidth: 16, height: 16, padding: '0 4px', borderRadius: 9,
+                    fontSize: 9.5, fontWeight: 800, lineHeight: '16px', textAlign: 'center',
+                    background: t.k === 'bill' ? 'var(--amber)' : 'var(--bg-3)',
+                    color: t.k === 'bill' ? '#111214' : 'var(--text-dim)',
+                  }}>
+                    {t.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
       {paying && (
         <Payment
