@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { DataGrid } from './DataGrid';
 
 /* Outlets — 02-POS-SPEC §2 (`branches`): "Locations, tax profiles, printers,
  * stock sub-locations."
@@ -234,43 +235,25 @@ export function Branches({ session, onGo }: { session: Session; onGo: (m: string
             — and what that returns is sums, never rows.
           </div>
         ) : estate ? (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 460 }}>
-              <thead>
-                <tr style={{ font: '600 10px/1 system-ui', letterSpacing: '.06em',
-                  color: 'var(--text-faint)', textAlign: 'right' }}>
-                  <th style={{ textAlign: 'left', padding: '0 0 8px' }}>Outlet</th>
-                  <th style={{ padding: '0 0 8px' }}>Today</th>
-                  <th style={{ padding: '0 0 8px' }}>Bills</th>
-                  <th style={{ padding: '0 0 8px' }}>Covers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {estate.outlets.map((x) => (
-                  <tr key={x.outlet_id} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                    <td style={{ padding: '8px 0', font: '400 13px/1.3 system-ui', color: 'var(--text)' }}>
-                      {x.outlet}
-                      <span style={{ color: 'var(--text-faint)', marginLeft: 8,
-                        font: `400 11px/1 ${MONO}` }}>{x.code}</span>
-                      {x.outlet_id === o.id && (
-                        <span style={{ marginLeft: 8, font: '600 10px/1.6 system-ui',
-                          letterSpacing: '.06em', padding: '1px 6px', borderRadius: 5,
-                          background: 'var(--amber)', color: '#111214' }}>HERE</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right', font: `400 13px/1.3 ${MONO}`, color: 'var(--warn-bright)' }}>
-                      {Number(x.revenue).toFixed(2)}
-                    </td>
-                    <td style={{ textAlign: 'right', font: `400 13px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                      {x.bills}
-                    </td>
-                    <td style={{ textAlign: 'right', font: `400 13px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                      {x.covers}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div>
+            <DataGrid
+              cols={[
+                { label: 'Outlet', w: '1.6fr' },
+                { label: 'Today', mono: true, a: 'right' },
+                { label: 'Bills', mono: true, a: 'right' },
+                { label: 'Covers', mono: true, a: 'right' },
+              ]}
+              rows={estate.outlets.map((x) => ({
+                key: String(x.outlet_id),
+                on: x.outlet_id === o.id,
+                cells: [
+                  { t: `${x.outlet} · ${x.code}${x.outlet_id === o.id ? ' · here' : ''}`, w: 600 },
+                  { t: Number(x.revenue).toFixed(2), c: 'var(--warn-bright)' },
+                  { t: String(x.bills), c: 'var(--text-muted)' },
+                  { t: String(x.covers), c: 'var(--text-muted)' },
+                ],
+              }))}
+            />
             <div style={{ marginTop: 10, font: '400 11px/1.5 system-ui', color: 'var(--text-faint)' }}>
               Aggregates, computed inside each branch&rsquo;s own books. This read is in the
               audit trail, stamped as group scope.

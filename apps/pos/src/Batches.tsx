@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { DataGrid } from './DataGrid';
 
 /* Batches & Expiry — 02-POS-SPEC §2 (`batches`): "Lot tracking and expiry
  * alerts."
@@ -181,37 +182,24 @@ export function Batches({ session }: { session: Session }) {
             {' '}{n4(trace.drawn)} drawn, {n4(trace.batch.qtyLeft)} left.
           </div>
           {trace.sales.length > 0 ? (
-            <div style={{ marginTop: 10, overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
-                <thead>
-                  <tr style={{ font: '600 10px/1 system-ui', letterSpacing: '.06em',
-                    color: 'var(--text-faint)', textAlign: 'left' }}>
-                    <th style={{ padding: '0 0 7px' }}>Receipt</th>
-                    <th style={{ padding: '0 0 7px' }}>Day</th>
-                    <th style={{ padding: '0 0 7px' }}>Sold at</th>
-                    <th style={{ padding: '0 0 7px', textAlign: 'right' }}>From this lot</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {trace.sales.map((s, i) => (
-                    <tr key={i} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                      <td style={{ padding: '6px 0', font: `400 12px/1.3 ${MONO}`, color: 'var(--text)' }}>
-                        {s.receiptNo}
-                      </td>
-                      <td style={{ padding: '6px 0', font: `400 12px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                        {s.businessDate}
-                      </td>
-                      <td style={{ padding: '6px 0', font: `400 12px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                        {new Date(s.soldAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                      </td>
-                      <td style={{ padding: '6px 0', textAlign: 'right',
-                        font: `400 12px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                        {n4(s.qty)} {trace.batch.unit}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div style={{ marginTop: 10 }}>
+              <DataGrid
+                cols={[
+                  { label: 'Receipt', mono: true },
+                  { label: 'Day', mono: true },
+                  { label: 'Sold at', mono: true },
+                  { label: 'From this lot', mono: true, a: 'right' },
+                ]}
+                rows={trace.sales.map((s, i) => ({
+                  key: String(i),
+                  cells: [
+                    s.receiptNo,
+                    { t: s.businessDate, c: 'var(--text-muted)' },
+                    { t: new Date(s.soldAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }), c: 'var(--text-muted)' },
+                    { t: `${n4(s.qty)} ${trace.batch.unit}`, c: 'var(--text-muted)' },
+                  ],
+                }))}
+              />
             </div>
           ) : (
             <div style={{ marginTop: 8, font: '400 13px/1.5 system-ui', color: 'var(--text-muted)' }}>

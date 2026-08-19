@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { useBreakpoint } from './useBreakpoint';
 
 /* Audit Log — 02-POS-SPEC §2 (`logs`): "Append-only, filterable, exportable."
  * 08-BUILD-STAGES §29.
@@ -83,6 +84,7 @@ const show = (v: unknown) =>
     : typeof v === 'object' ? JSON.stringify(v) : String(v);
 
 export function Logs({ session }: { session: Session }) {
+  const isPhone = useBreakpoint() === 'm';
   /* useMemo, and not decoration. `api.authed(session)` returns a NEW function
      every render, so a `useCallback` that depends on it changes identity every
      render too, and the `useEffect` that loads on it fires on every render —
@@ -242,16 +244,16 @@ export function Logs({ session }: { session: Session }) {
                       padding: '8px 10px', borderRadius: 8, border: '1px solid transparent',
                       background: isOpen ? 'var(--bg-2)' : 'transparent', color: 'var(--text-dim)',
                     }}>
-                    <span style={{ font: `400 12px/1.3 ${MONO}`, color: 'var(--text-faint)', width: 130 }}>
+                    <span style={{ font: `400 12px/1.3 ${MONO}`, color: 'var(--text-faint)', width: isPhone ? undefined : 130 }}>
                       {clock(e.at)}
                     </span>
-                    <span style={{ font: '500 13px/1.3 system-ui', color: 'var(--text)', minWidth: 160 }}>
+                    <span style={{ font: '500 13px/1.3 system-ui', color: 'var(--text)', minWidth: isPhone ? 0 : 160 }}>
                       {e.action}
                     </span>
-                    <span style={{ font: `400 12px/1.3 ${MONO}`, color: 'var(--text-muted)', minWidth: 130 }}>
+                    <span style={{ font: `400 12px/1.3 ${MONO}`, color: 'var(--text-muted)', minWidth: isPhone ? 0 : 130 }}>
                       {e.entity}{e.entityId ? ' ' + String(e.entityId).slice(0, 12) : ''}
                     </span>
-                    <span style={{ font: '400 12px/1.3 system-ui', color: 'var(--text-muted)', minWidth: 140 }}>
+                    <span style={{ font: '400 12px/1.3 system-ui', color: 'var(--text-muted)', minWidth: isPhone ? 0 : 140 }}>
                       {e.actorName || 'the system'} · {e.rankName}
                     </span>
                     {e.scope === 'group' && (
@@ -268,7 +270,7 @@ export function Logs({ session }: { session: Session }) {
                     )}
                   </button>
                   {isOpen && diff.length > 0 && (
-                    <div style={{ padding: '4px 10px 12px 152px', display: 'grid', gap: 4 }}>
+                    <div style={{ padding: isPhone ? '4px 10px 12px 10px' : '4px 10px 12px 152px', display: 'grid', gap: 4, overflowX: 'auto' }}>
                       {diff.map((d) => (
                         <div key={d.key} style={{ font: `400 12px/1.5 ${MONO}` }}>
                           <span style={{ color: 'var(--text-muted)' }}>{d.key}</span>{'  '}

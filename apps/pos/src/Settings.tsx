@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { DataGrid } from './DataGrid';
 
 /* Settings — 02-POS-SPEC §2 (`settings`), 08-BUILD-STAGES §29.
  *
@@ -243,36 +244,26 @@ export function Settings({ session }: { session: Session }) {
       {/* ── tax ────────────────────────────────────────────────────────── */}
       <div style={card}>
         <div style={h}>GST</div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', maxWidth: 560 }}>
-          <thead>
-            <tr style={{ font: '600 10px/1 system-ui', letterSpacing: '.06em',
-              color: 'var(--text-faint)', textAlign: 'left' }}>
-              <th style={{ padding: '0 0 8px' }}>Code</th>
-              <th style={{ padding: '0 0 8px' }}>Rate</th>
-              <th style={{ padding: '0 0 8px' }}>From</th>
-              <th style={{ padding: '0 0 8px' }}>State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.tax.map((v) => (
-              <tr key={v.code + v.from} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                <td style={{ padding: '7px 0', font: `400 13px/1.2 ${MONO}`, color: 'var(--text)' }}>{v.code}</td>
-                <td style={{ padding: '7px 0', font: `400 13px/1.2 ${MONO}`, color: 'var(--text)' }}>{v.rate}%</td>
-                <td style={{ padding: '7px 0', font: `400 13px/1.2 ${MONO}`, color: 'var(--text-muted)' }}>{v.from}</td>
-                <td style={{ padding: '7px 0', font: '400 12px/1.2 system-ui',
-                  color: v.live ? 'var(--go-bright)' : v.scheduled ? 'var(--amber-bright)' : 'var(--text-faint)' }}>
-                  {v.live ? 'charging now' : v.scheduled ? 'starts on that date' : 'superseded'}
-                </td>
-              </tr>
-            ))}
-            {data.tax.length === 0 && (
-              <tr><td colSpan={4} style={{ padding: '8px 0', font: '400 13px/1.4 system-ui',
-                color: 'var(--warn-bright)' }}>
-                No rate has ever been set here, so nothing is being charged.
-              </td></tr>
-            )}
-          </tbody>
-        </table>
+        <DataGrid
+          cols={[
+            { label: 'Code', mono: true },
+            { label: 'Rate', mono: true, a: 'right' },
+            { label: 'From', mono: true },
+            { label: 'State' },
+          ]}
+          rows={data.tax.map((v) => ({
+            key: v.code + v.from,
+            cells: [
+              { t: v.code, w: 600 },
+              `${v.rate}%`,
+              { t: v.from, c: 'var(--text-muted)' },
+              v.live ? { t: 'charging now', chip: ['var(--go-dim)', 'var(--go-bright)'] as [string, string] }
+                : v.scheduled ? { t: 'starts on that date', chip: ['var(--amber-dim)', 'var(--amber-bright)'] as [string, string] }
+                  : { t: 'superseded', chip: ['var(--bg-2)', 'var(--text-faint)'] as [string, string] },
+            ],
+          }))}
+          empty={<span style={{ color: 'var(--warn-bright)' }}>No rate has ever been set here, so nothing is being charged.</span>}
+        />
 
         {data.canEdit && (
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 14 }}>

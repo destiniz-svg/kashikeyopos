@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { DataGrid } from './DataGrid';
 
 /* Production — 02-POS-SPEC §2 (`production`): "Batch prep of sub-recipes;
  * consumes ingredients, produces stock."
@@ -303,56 +304,30 @@ export function Production({ session }: { session: Session }) {
       {/* ── what has been made ────────────────────────────────────────── */}
       <div style={card}>
         <div style={h}>Batches made</div>
-        {runs.length === 0 ? (
-          <div style={{ font: '400 13px/1.5 system-ui', color: 'var(--text-muted)' }}>
-            Nothing has been made yet.
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
-              <thead>
-                <tr style={{ font: '600 10px/1 system-ui', letterSpacing: '.06em',
-                  color: 'var(--text-faint)', textAlign: 'right' }}>
-                  <th style={{ textAlign: 'left', padding: '0 0 8px' }}>When</th>
-                  <th style={{ textAlign: 'left', padding: '0 0 8px' }}>What</th>
-                  <th style={{ padding: '0 0 8px' }}>Made</th>
-                  <th style={{ padding: '0 0 8px' }}>Cost</th>
-                  <th style={{ padding: '0 0 8px' }}>Per unit</th>
-                  <th style={{ textAlign: 'left', padding: '0 0 8px' }}>By</th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((r) => (
-                  <tr key={r.id} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                    <td style={{ padding: '7px 0', font: `400 12px/1.3 ${MONO}`, color: 'var(--text-faint)' }}>
-                      {new Date(r.at).toLocaleString('en-GB',
-                        { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </td>
-                    <td style={{ padding: '7px 0', font: '400 13px/1.3 system-ui', color: 'var(--text)' }}>
-                      {r.makes.name}
-                      {r.note && (
-                        <span style={{ color: 'var(--text-faint)', marginLeft: 8,
-                          font: '400 11px/1.3 system-ui' }}>{r.note}</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'right', font: `400 13px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                      {n4(r.qty)} {r.makes.unit}
-                    </td>
-                    <td style={{ textAlign: 'right', font: `400 13px/1.3 ${MONO}`, color: 'var(--warn-bright)' }}>
-                      {money(r.cost)}
-                    </td>
-                    <td style={{ textAlign: 'right', font: `400 13px/1.3 ${MONO}`, color: 'var(--text-muted)' }}>
-                      {money(r.unitCost)}
-                    </td>
-                    <td style={{ padding: '7px 0', font: '400 12px/1.3 system-ui', color: 'var(--text-faint)' }}>
-                      {r.by || '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataGrid
+          cols={[
+            { label: 'When', mono: true },
+            { label: 'What', w: '1.6fr' },
+            { label: 'Made', a: 'right', mono: true },
+            { label: 'Cost', a: 'right', mono: true },
+            { label: 'Per unit', a: 'right', mono: true },
+            { label: 'By' },
+          ]}
+          rows={runs.map((r) => ({
+            key: String(r.id),
+            cells: [
+              { t: new Date(r.at).toLocaleString('en-GB',
+                  { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+                c: 'var(--text-faint)' },
+              { t: r.note ? `${r.makes.name} — ${r.note}` : r.makes.name, w: 600 },
+              `${n4(r.qty)} ${r.makes.unit}`,
+              { t: money(r.cost), c: 'var(--warn-bright)' },
+              money(r.unitCost),
+              { t: r.by || '—', c: 'var(--text-faint)' },
+            ],
+          }))}
+          empty="Nothing has been made yet."
+        />
         <div style={{ marginTop: 10, font: '400 11px/1.6 system-ui', color: 'var(--text-faint)',
           maxWidth: 700 }}>
           Making a batch moves value from one inventory line to another and posts

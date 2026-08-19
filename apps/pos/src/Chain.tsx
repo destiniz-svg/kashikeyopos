@@ -1,6 +1,7 @@
 import type { Session } from './api';
 import type { OutletRow } from './estate';
 import { MONO, mvr, pctText, shortDay, useOverview } from './estate';
+import { DataGrid } from './DataGrid';
 
 /* Chain Overview — 08-BUILD-STAGES §25.
  *
@@ -28,15 +29,6 @@ const h: React.CSSProperties = {
   font: '600 11px/1 system-ui', letterSpacing: '.08em', textTransform: 'uppercase',
   color: 'var(--text-faint)', margin: '0 0 10px',
 };
-const th: React.CSSProperties = {
-  font: '600 10px/1 system-ui', letterSpacing: '.06em', color: 'var(--text-faint)',
-  textAlign: 'right', padding: '0 0 9px', whiteSpace: 'nowrap',
-};
-const td: React.CSSProperties = {
-  textAlign: 'right', padding: '9px 0', font: `400 13px/1.2 ${MONO}`, color: 'var(--text-dim)',
-  whiteSpace: 'nowrap',
-};
-
 const perHead = (o: OutletRow) => (o.covers > 0 ? o.revenue / o.covers : null);
 
 export function Chain({ session, onGo }: { session: Session; onGo: (m: string) => void }) {
@@ -55,7 +47,6 @@ export function Chain({ session, onGo }: { session: Session; onGo: (m: string) =
 
   const trading = data.outlets.filter((o) => o.bills > 0);
   const totalRevenue = data.outlets.reduce((a, o) => a + o.revenue, 0);
-  const totalCovers = data.outlets.reduce((a, o) => a + o.covers, 0);
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -84,73 +75,61 @@ export function Chain({ session, onGo }: { session: Session; onGo: (m: string) =
 
       <div style={card}>
         <div style={h}>Branch by branch</div>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>
-            <thead>
-              <tr>
-                <th style={{ ...th, textAlign: 'left' }}>Outlet</th>
-                <th style={th}>Sales</th>
-                <th style={th}>Share</th>
-                <th style={th}>Bills</th>
-                <th style={th}>Covers</th>
-                <th style={th}>Per head</th>
-                <th style={th}>Food cost</th>
-                <th style={th}>Discount</th>
-                <th style={th}>Last sale</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.outlets.map((o) => (
-                <tr key={o.id} style={{ borderTop: '1px solid var(--line-soft)' }}>
-                  <td style={{ ...td, textAlign: 'left', font: '400 13px/1.2 system-ui', color: 'var(--text)' }}>
-                    <span style={{
-                      display: 'inline-block', width: 7, height: 7, borderRadius: 7, marginRight: 7,
-                      background: o.silent ? 'var(--red)' : o.bills > 0 ? 'var(--go)' : 'var(--line-3)',
-                    }} />
-                    {o.name}
-                    <span style={{ color: 'var(--text-faint)', marginLeft: 7, font: `400 11px/1 ${MONO}` }}>
-                      {o.code}
-                    </span>
-                  </td>
-                  <td style={{ ...td, color: 'var(--warn-bright)' }}>{mvr(o.revenue)}</td>
-                  <td style={td}>{pctText(o.sharePct)}</td>
-                  <td style={td}>{o.bills}</td>
-                  <td style={td}>{o.covers}</td>
-                  <td style={td}>{mvr(perHead(o))}</td>
-                  <td style={{ ...td,
-                    color: o.foodCostPct === null ? 'var(--text-faint)'
-                      : data.target.foodCostTargetPct === null ? 'var(--text-dim)'
-                        : o.foodCostPct > data.target.foodCostTargetPct
-                          ? 'var(--red-bright)' : 'var(--go-bright)' }}>
-                    {pctText(o.foodCostPct)}
-                  </td>
-                  <td style={td}>{mvr(o.discount)}</td>
-                  <td style={{ ...td, color: 'var(--text-faint)' }}>
-                    {o.lastSaleAt
-                      ? new Date(o.lastSaleAt).toLocaleTimeString('en-GB',
-                        { hour: '2-digit', minute: '2-digit' })
-                      : '—'}
-                  </td>
-                </tr>
-              ))}
-              {data.outlets.length > 1 && (
-                <tr style={{ borderTop: '1px solid var(--line-2)' }}>
-                  <td style={{ ...td, textAlign: 'left', font: '600 13px/1.2 system-ui', color: 'var(--text)' }}>
-                    The estate
-                  </td>
-                  <td style={{ ...td, color: 'var(--warn-bright)', fontWeight: 600 }}>{mvr(totalRevenue)}</td>
-                  <td style={td}>100%</td>
-                  <td style={td}>{data.outlets.reduce((a, o) => a + o.bills, 0)}</td>
-                  <td style={td}>{totalCovers}</td>
-                  <td style={td}>{mvr(totalCovers > 0 ? totalRevenue / totalCovers : null)}</td>
-                  <td style={td}>{pctText(data.figures.foodCost.value)}</td>
-                  <td style={td}>{mvr(data.outlets.reduce((a, o) => a + o.discount, 0))}</td>
-                  <td style={td}>—</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {/* Through the one grid — see DataGrid.tsx. This was a nine-column
+            table pinned to `min-width:720px`, so on a phone it was a 720px
+            side-scroller: you could reach every figure but never see a branch
+            as a whole. As record cards each branch is one card. The estate
+            total keeps its own row below, because it is a different kind of
+            fact from a branch and reading it as one more branch is the mistake
+            the separator was drawn to prevent. */}
+        <DataGrid
+          cols={[
+            { label: 'Outlet', w: '1.6fr' },
+            { label: 'Sales', a: 'right', mono: true },
+            { label: 'Share', a: 'right', mono: true },
+            { label: 'Bills', a: 'right', mono: true },
+            { label: 'Covers', a: 'right', mono: true },
+            { label: 'Per head', a: 'right', mono: true },
+            { label: 'Food cost', a: 'right', mono: true },
+            { label: 'Discount', a: 'right', mono: true },
+            { label: 'Last sale', a: 'right', mono: true },
+          ]}
+          rows={data.outlets.map((o) => ({
+            key: String(o.id),
+            cells: [
+              { t: o.name + '  ' + o.code, w: 600 },
+              { t: mvr(o.revenue), mono: true, c: 'var(--warn-bright)' },
+              { t: pctText(o.sharePct), mono: true },
+              { t: String(o.bills), mono: true },
+              { t: String(o.covers), mono: true },
+              { t: mvr(perHead(o)), mono: true },
+              { t: pctText(o.foodCostPct), mono: true,
+                c: o.foodCostPct === null ? 'var(--text-faint)'
+                  : data.target.foodCostTargetPct === null ? 'var(--text-dim)'
+                    : o.foodCostPct > data.target.foodCostTargetPct
+                      ? 'var(--red-bright)' : 'var(--go-bright)' },
+              { t: mvr(o.discount), mono: true },
+              { t: o.lastSaleAt
+                  ? new Date(o.lastSaleAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                  : '—',
+                mono: true, c: 'var(--text-faint)' },
+            ],
+          }))}
+          empty="No active outlets yet. A branch appears here the moment it is provisioned."
+        />
+
+        {data.outlets.length > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+            gap: 12, padding: '11px 14px', marginTop: 1,
+            borderTop: '1px solid var(--line-2)',
+          }}>
+            <span style={{ font: '600 13px/1.2 system-ui', color: 'var(--text)' }}>The estate</span>
+            <span style={{ font: `600 13px/1.2 ${MONO}`, color: 'var(--warn-bright)' }}>
+              {mvr(totalRevenue)}
+            </span>
+          </div>
+        )}
         {data.outlets.length === 0 && (
           <div style={{ font: '400 13px/1.5 system-ui', color: 'var(--text-muted)' }}>
             No active outlets yet. A branch appears here the moment it is provisioned.

@@ -44,6 +44,7 @@ import { Requests } from './Requests';
 import { AiMenu } from './AiMenu';
 import { NotBuilt } from './NotBuilt';
 import { useBreakpoint } from './useBreakpoint';
+import { Palette } from './Palette';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
  *
@@ -79,6 +80,10 @@ export function App({ outletId }: { outletId: number }) {
   const isPhone = bp === 'm';
   const isRail = bp === 't';
   const [drawer, setDrawer] = useState(false);
+  /* "Go anywhere" — thirty-seven modules is past what a rail makes
+     findable, so the prototype puts a ⌘K palette over it. */
+  const [pal, setPal] = useState(false);
+  const [palRecent, setPalRecent] = useState<string[]>([]);
 
   /* §1.4: "A terminal with nobody signed in IS locked." The session is restored
      from storage so a reload mid-service does not throw the cashier back to the
@@ -196,6 +201,19 @@ export function App({ outletId }: { outletId: number }) {
      pinned over a layout that now has a real rail. */
   useEffect(() => { setDrawer(false); }, [bp]);
 
+  /* ⌘K anywhere. The prototype binds it on the document so it works whatever
+     has focus, and preventDefault stops the browser's own find bar. */
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPal(true);
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, []);
+
   const groups = useMemo(() => navFor(session?.rank ?? 0), [session]);
 
   if (!session) return <Lock outletId={outletId} onSignIn={signIn} />;
@@ -210,6 +228,16 @@ export function App({ outletId }: { outletId: number }) {
   const labelled = isPhone ? true : isRail ? false : railOpen;
   const RAIL_W = isRail ? 60 : railOpen ? 208 : 56;
 
+  /* The palette navigates and remembers; the four most recent are what an
+     empty query offers, because the places somebody went yesterday are the
+     places they are going today. */
+  const palGo = (id: string, key: string) => {
+    setPalRecent((r) => [key].concat(r.filter((k) => k !== key)).slice(0, 4));
+    setPal(false);
+    setDrawer(false);
+    setView(id);
+  };
+
   return (
     <div style={{
       /* Phone: a column, with the rail lifted out of the layout entirely.
@@ -218,6 +246,11 @@ export function App({ outletId }: { outletId: number }) {
       flexDirection: isPhone ? 'column' : 'row',
       height: '100dvh', overflow: 'hidden', background: 'var(--bg)',
     }}>
+      <Palette
+        rank={session.rank} open={pal} recent={palRecent}
+        onClose={() => setPal(false)} onGo={palGo}
+      />
+
       {/* ── The scrim. Only a phone has one, because only a phone has an
              overlay to dismiss. Tapping it closes the drawer, which is the
              gesture everybody tries first. ──────────────────────────────── */}
@@ -399,6 +432,32 @@ export function App({ outletId }: { outletId: number }) {
             {snap?.outlet?.name ?? '—'}
           </span>
           <span style={{ flex: 1 }} />
+
+          {/* On a phone this is the icon alone — the label and the ⌘K hint are
+              the first things the prototype drops, because a phone has no ⌘
+              and the header has no room for a word. */}
+          <button
+            type="button" onClick={() => setPal(true)}
+            title="Go anywhere, or say what you want to do — ⌘K"
+            aria-label="Go anywhere"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+              minHeight: isPhone ? 38 : 34, padding: isPhone ? '0 10px' : '0 11px',
+              borderRadius: 999, background: 'var(--bg-2)', border: '1px solid var(--line)',
+              color: 'var(--text-dim)', fontFamily: 'inherit', fontSize: 11.5, fontWeight: 600,
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M4 6h16M4 12h10M4 18h13M18 15l3 3-3 3" />
+            </svg>
+            {!isPhone && <span style={{ whiteSpace: 'nowrap' }}>Go anywhere</span>}
+            {!isPhone && !isRail && (
+              <span style={{
+                fontSize: 9.5, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace",
+                color: 'var(--text-faint)', border: '1px solid var(--line)', borderRadius: 4, padding: '2px 5px',
+              }}>⌘K</span>
+            )}
+          </button>
 
           {pending > 0 && (
             <span

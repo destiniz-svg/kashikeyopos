@@ -171,7 +171,15 @@ export function DataGrid({ cols, rows, empty }: { cols: Col[]; rows: Row[]; empt
   const tmpl = cols.map((c, j) => `minmax(${mins[j]}px,${c.w || '1fr'})`).join(' ');
   const tableMin = mins.reduce((a, b) => a + b, 0) + Math.max(0, cols.length - 1) * 12 + 32;
 
+  /* The outer grid is load-bearing, not decoration. A scroll container's
+     minimum size only collapses to zero when it is a FLEX OR GRID ITEM; as a
+     plain block child it still reports the table's min-content upward, and the
+     card it sits in — itself a grid item on the page — grows to that width and
+     drags every sibling card wide with it. One `minmax(0,1fr)` track makes the
+     scroller a grid item, so the table side-scrolls inside the card instead of
+     widening the page. */
   return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)' }}>
     <div style={{ overflowX: 'auto' }}>
       <div style={{
         display: 'grid', gridTemplateColumns: tmpl, gap: 12, padding: '10px 16px',
@@ -229,6 +237,7 @@ export function DataGrid({ cols, rows, empty }: { cols: Col[]; rows: Row[]; empt
           </Tag>
         );
       })}
+    </div>
     </div>
   );
 }

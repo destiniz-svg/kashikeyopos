@@ -3,6 +3,8 @@ import * as api from './api';
 import type { Session } from './api';
 import type { Overview, Waiting } from './estate';
 import { MONO, mvr, pctText, shortDay, useOverview } from './estate';
+import { DataGrid } from './DataGrid';
+import { useBreakpoint } from './useBreakpoint';
 
 /* Owner Dashboard — 11-OWNER-DASHBOARD-SPEC.md.
  *
@@ -38,6 +40,7 @@ const h: React.CSSProperties = {
 
 export function Owner({ session, onGo }: { session: Session; onGo: (m: string) => void }) {
   const { data, error, loading, date, setDate, reload } = useOverview(session);
+  const isPhone = useBreakpoint() === 'm';
 
   if (error) {
     return (
@@ -56,15 +59,15 @@ export function Owner({ session, onGo }: { session: Session; onGo: (m: string) =
     <div style={{ display: 'grid', gap: 12 }}>
       <Briefing data={data} date={date} setDate={setDate} loading={loading} />
       <Figures data={data} />
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.15fr)' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isPhone ? '1fr' : 'minmax(0,1fr) minmax(0,1.15fr)' }}>
         <Fortnight data={data} />
         <Estate data={data} onGo={onGo} />
       </div>
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isPhone ? '1fr' : 'repeat(2, minmax(0,1fr))' }}>
         <ProfitAndLoss data={data} />
         <Position data={data} />
       </div>
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(2, minmax(0,1fr))' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: isPhone ? '1fr' : 'repeat(2, minmax(0,1fr))' }}>
         <WaitingOnYou data={data} onGo={onGo} />
         <Controls data={data} />
       </div>
@@ -244,50 +247,31 @@ function Estate({ data, onGo }: { data: Overview; onGo: (m: string) => void }) {
   return (
     <div style={card}>
       <div style={h}>The estate</div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 380 }}>
-          <thead>
-            <tr style={{ font: '600 10px/1 system-ui', letterSpacing: '.06em',
-              color: 'var(--text-faint)', textAlign: 'right' }}>
-              <th style={{ textAlign: 'left', padding: '0 0 8px' }}>Outlet</th>
-              <th style={{ padding: '0 0 8px' }}>Sales</th>
-              <th style={{ padding: '0 0 8px' }}>Share</th>
-              <th style={{ padding: '0 0 8px' }}>Covers</th>
-              <th style={{ padding: '0 0 8px' }}>Food</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.outlets.map((o) => (
-              <tr key={o.id} onClick={() => onGo('chain')} style={{ cursor: 'pointer' }}>
-                <td style={{ padding: '7px 0', font: '400 13px/1.2 system-ui', color: 'var(--text)' }}>
-                  <span style={{
-                    display: 'inline-block', width: 7, height: 7, borderRadius: 7, marginRight: 7,
-                    background: o.silent ? 'var(--red)' : o.bills > 0 ? 'var(--go)' : 'var(--line-3)',
-                  }} />
-                  {o.name}
-                </td>
-                <td style={{ textAlign: 'right', font: `400 13px/1.2 ${MONO}`, color: 'var(--warn-bright)' }}>
-                  {mvr(o.revenue)}
-                </td>
-                <td style={{ textAlign: 'right', font: `400 13px/1.2 ${MONO}`, color: 'var(--text-muted)' }}>
-                  {pctText(o.sharePct)}
-                </td>
-                <td style={{ textAlign: 'right', font: `400 13px/1.2 ${MONO}`, color: 'var(--text-muted)' }}>
-                  {o.covers}
-                </td>
-                <td style={{ textAlign: 'right', font: `400 13px/1.2 ${MONO}`, color: 'var(--text-muted)' }}>
-                  {pctText(o.foodCostPct)}
-                </td>
-              </tr>
-            ))}
-            {data.outlets.length === 0 && (
-              <tr><td colSpan={5} style={{ padding: '10px 0', font: '400 13px/1.4 system-ui', color: 'var(--text-muted)' }}>
-                No active outlets.
-              </td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataGrid
+        cols={[
+          { label: 'Outlet', w: '1.6fr' },
+          { label: 'Sales', a: 'right', mono: true },
+          { label: 'Share', a: 'right', mono: true },
+          { label: 'Covers', a: 'right', mono: true },
+          { label: 'Food', a: 'right', mono: true },
+          { label: 'State' },
+        ]}
+        rows={data.outlets.map((o) => ({
+          key: String(o.id),
+          go: () => onGo('chain'),
+          cells: [
+            { t: o.name, w: 600 },
+            { t: mvr(o.revenue), c: 'var(--warn-bright)' },
+            pctText(o.sharePct),
+            String(o.covers),
+            pctText(o.foodCostPct),
+            o.silent ? { t: 'silent', chip: ['var(--red-dim)', 'var(--red-bright)'] as [string, string] }
+              : o.bills > 0 ? { t: 'trading', chip: ['var(--go-dim)', 'var(--go-bright)'] as [string, string] }
+                : { t: 'quiet', chip: ['var(--bg-2)', 'var(--text-muted)'] as [string, string] },
+          ],
+        }))}
+        empty="No active outlets."
+      />
       {/* §3.4: the footer states the isolation rule, on the screen where
           somebody would otherwise ask for a drill-through. */}
       <div style={{ marginTop: 10, font: '400 11px/1.5 system-ui', color: 'var(--text-faint)' }}>
