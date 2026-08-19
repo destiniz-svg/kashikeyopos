@@ -836,6 +836,13 @@ BEGIN
   -- provisioned afterwards is otherwise born unable to pair anything, which is
   -- how the station grant three lines up was found to be missing.
   EXECUTE format('GRANT INSERT, UPDATE ON chain.device TO %I', r);
+  -- Inter-outlet transfers (migration 035). A new branch both sends and
+  -- receives from day one; the policies decide which end may do what.
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON chain.transfer TO %I', r);
+  -- The names of the other branches, and nothing else about them: a transfer
+  -- needs a destination and `chain.outlet` cannot be widened without handing
+  -- over `schema_name` and `db_role` too. See migration 035.
+  EXECUTE format('GRANT EXECUTE ON FUNCTION chain.outlet_names() TO %I', r);
   EXECUTE format('GRANT EXECUTE ON FUNCTION chain.claim_device(int,text,text,text),'
     || ' chain.device_seen(int,uuid), chain.revoke_device(uuid,uuid) TO %I', r);
   -- Every request this outlet makes asks whether its session is still live
@@ -877,6 +884,9 @@ BEGIN
   INSERT INTO chain.doc_series (outlet_id, kind, prefix) VALUES
     (p_id, 'SALE', p_code || '-R'), (p_id, 'CN', p_code || '-CN'),
     (p_id, 'PO', p_code || '-PO'), (p_id, 'GRN', p_code || '-GRN'),
+    -- Inter-outlet transfers get their OWN counter (migration 035). Borrowing
+    -- the GRN series and swapping the letters would leave gaps in that one.
+    (p_id, 'TRF', p_code || '-TRF'),
     (p_id, 'JV', p_code || '-JV'), (p_id, 'RCT', p_code || '-RCT')
   ON CONFLICT DO NOTHING;
 

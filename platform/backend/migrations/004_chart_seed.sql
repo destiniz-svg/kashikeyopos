@@ -22,6 +22,14 @@ BEGIN
       ('1100','Inventory - food','asset','dr'),
       ('1110','Inventory - beverage','asset','dr'),
       ('1200','Prepaid expenses','asset','dr'),
+      -- Inter-outlet clearing (migration 035). One account, not a pair: the
+      -- sending branch debits it when stock leaves and the receiving branch
+      -- credits it when the same stock arrives, so ACROSS THE ESTATE it nets
+      -- to zero the moment both halves have posted. A non-zero total is
+      -- therefore a real finding — a van still on the road, or a delivery
+      -- somebody never confirmed — and it is visible without reconciling two
+      -- accounts against each other.
+      ('1350','Inter-outlet clearing','asset','dr'),
       ('1500','Equipment','asset','dr'),
       ('1510','Accumulated depreciation','asset','cr'),
       ('2000','Accounts payable','liability','cr'),

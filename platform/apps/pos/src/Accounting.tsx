@@ -72,6 +72,7 @@ const SOURCE_LABEL: Record<string, string> = {
   loyalty: 'Loyalty',
   settlement: 'A card settlement',
   credit_note: 'A credit note',
+  transfer: 'Stock moved to or from another branch',
   manual: 'Typed by hand',
   reversal: 'A reversal',
 };

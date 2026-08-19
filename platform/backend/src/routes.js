@@ -28,6 +28,7 @@ const devices = require('./devices');
 const governance = require('./governance');
 const production = require('./production');
 const batches = require('./batches');
+const dispatches = require('./dispatches');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -2003,6 +2004,80 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
         return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
       });
       res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Dispatches: inter-outlet transfers (02-POS-SPEC §2 `dispatches`) ─────
+ *
+ * MANAGER at both ends. Stock leaving the building on a van is not a shift
+ * decision at either end, and the row is the only thing in the system one
+ * branch may write that another branch reads.
+ *
+ * Note what is NOT here: no endpoint by which one outlet writes the other's
+ * stock. The sender's movement is written on the sender's connection and the
+ * receiver's on the receiver's, because neither role can reach the other's
+ * schema — which is the property this whole feature is shaped around rather
+ * than an obstacle it works past.
+ */
+r.get('/outlet/:outletId/dispatches', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const [b, dest] = await Promise.all([
+          dispatches.board(c, req.ctx, req.query || {}),
+          dispatches.destinations(c, req.ctx),
+        ]);
+        const inv = await c.query(
+          'SELECT id, name, unit, on_hand FROM ingredient ORDER BY name');
+        return { ...b, destinations: dest, ingredients: inv.rows.map((i) => ({
+          id: i.id, name: i.name, unit: i.unit, onHand: Number(i.on_hand) })) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return dispatches.send(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/receive', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.receive(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/reject', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.settleBack(c, req.params.id, req.body || {}, req.ctx, 'rejected');
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/cancel', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.settleBack(c, req.params.id, req.body || {}, req.ctx, 'cancelled');
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/take-back', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.takeBack(c, req.params.id, req.body || {}, req.ctx);
+      }));
     } catch (e) { next(e); }
   });
 
