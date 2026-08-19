@@ -15,6 +15,10 @@ export interface Session {
 
 export interface Outlet {
   id: number; name: string; currency: string; service_pct: string; tables: number;
+  /* What a CASH bill rounds to, in laari; 0 means no rounding. The till has to
+     hold this because the server rounds the bill when the tender is cash, and a
+     till that cannot compute the same total cannot pay one. */
+  cash_round_laari: string | number;
 }
 export interface Tax { code: string; rate: string; }
 export interface Item {

@@ -373,7 +373,12 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
          the server after the sale exists, so a code that turns out to be spent
          stops the settlement instead of printing on a receipt. */
       voucherCode,
-      clientTotal: (total / 100).toFixed(2),
+      /* THE TOTAL AS SETTLED, which is the sum of the tender — not this
+         screen's figure. They differ whenever the bill rounded for cash, and
+         `client_total` exists so a till that has genuinely drifted can be
+         found; filling it with a number the till knew was superseded would
+         report drift on every rounded sale and hide it on every real one. */
+      clientTotal: (payments.reduce((a, x) => a + x.amount, 0) / 100).toFixed(2),
     });
     setPaying(false);
     setDraft([]);
@@ -384,7 +389,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     setSplit(0);
     setPromoDiscount(0);
     setPromoCode(undefined);
-    setFlash('Sale queued — ' + money(total));
+    setFlash('Sale queued — ' + money(payments.reduce((a, x) => a + x.amount, 0)));
     setTimeout(() => setFlash(''), 2600);
     await onQueued();
   };
@@ -950,6 +955,9 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
 
       {paying && (
         <Payment
+          /* Cash rounds, card does not — so the total depends on the tender,
+             and the tender is chosen in there. */
+          cashRoundLaari={Number(outlet?.cash_round_laari ?? 0)}
           total={total}
           goods={lines.reduce((a, l) => a + l.unitPrice * l.qty, 0)}
           session={session}

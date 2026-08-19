@@ -369,7 +369,14 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
   try {
     const data = await withOutlet(req.ctx, async function (c) {
       const [outlet, tax, items, tickets, stages] = await Promise.all([
-        c.query('SELECT id, name, currency, service_pct, tables FROM chain.outlet WHERE id = $1', [req.ctx.outletId]),
+        /* `cash_round_laari` rides along because the TILL has to be able to
+           compute the same total the server will. Without it the till sent the
+           unrounded figure, the server rounded the bill because the tender was
+           cash, and every cash sale at an outlet that rounds was refused with
+           "payments do not equal the bill" — with no way for the cashier to
+           make it agree. */
+        c.query('SELECT id, name, currency, service_pct, cash_round_laari, tables'
+          + ' FROM chain.outlet WHERE id = $1', [req.ctx.outletId]),
         c.query('SELECT code, rate FROM chain.tax_version WHERE outlet_id = $1'
           + ' AND effective_from <= current_date'
           + ' AND (effective_to IS NULL OR effective_to >= current_date)'

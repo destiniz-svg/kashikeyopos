@@ -58,7 +58,13 @@ interface Quote {
 }
 
 interface Props {
-  total: number;                       // laari, AFTER any promotion
+  /* laari, AFTER any promotion and BEFORE cash rounding — whether it rounds
+     depends on the tender, and the tender is chosen on this screen. */
+  total: number;
+  /* What a CASH bill rounds to, in laari; 0 means none. sale.js rounds the
+     WHOLE bill when ANY part of the tender is cash, and this screen has to
+     reach the same figure or the server refuses the sale outright. */
+  cashRoundLaari: number;
   /* INCLUSIVE goods — the prices on the menu board. A promotion is evaluated
      against what the guest was shown, and the server does the same. */
   goods: number;
@@ -83,8 +89,8 @@ interface Props {
   offeredBy?: string | null;
 }
 
-export function Payment({ total, goods, session, online, promoCode, onPromo,
-  onCancel, onConfirm, offeredPoints, offeredBy }: Props) {
+export function Payment({ total: raw, goods, session, online, promoCode, onPromo,
+  cashRoundLaari, onCancel, onConfirm, offeredPoints, offeredBy }: Props) {
   const [method, setMethod] = useState<Method>('cash');
   /* THE BILL CAN BE PAID IN MORE THAN ONE WAY. sale.js has always taken an
      ARRAY of payments and posted each to its own ledger account; this screen
@@ -158,6 +164,18 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
      the operator is typing what the guest handed over, fast, and a misplaced
      point is a hundredfold error. */
   const tendered = buf ? Number(buf) : 0;
+
+  /* CASH ROUNDING, THE SAME WAY THE SERVER DOES IT. sale.js rounds the whole
+     bill when ANY part of the tender is cash — coins below the increment do not
+     exist, and a bill half-settled on a card is still handed over in cash at
+     the end. This screen used not to know the increment at all: the till sent
+     the unrounded figure, the server rounded, and every cash sale at an outlet
+     that rounds came back "payments do not equal the bill" with nothing the
+     cashier could do about it. */
+  const cashInTender = method === 'cash' || parts.some((x) => x.method === 'cash');
+  const rounds = cashRoundLaari > 1 && cashInTender;
+  const total = rounds ? Math.round(raw / cashRoundLaari) * cashRoundLaari : raw;
+  const rounding = total - raw;
 
   /* WHAT IS LEFT TO PAY. With no parts taken this is the whole bill and every
      figure below reads exactly as it did before splitting existed. */
@@ -505,6 +523,18 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
             <div style={{ marginTop: 6, fontSize: 26, fontWeight: 700, fontFamily: MONO, color: 'var(--text)', letterSpacing: '-.02em' }}>
               {money(due)}
             </div>
+
+            {/* THE ROUNDING, SAID OUT LOUD. A figure that changes the moment
+                Cash is pressed and does not explain itself reads as a bug at
+                the counter — and it is the cashier who has to answer the guest
+                for it. */}
+            {rounding !== 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, lineHeight: 1.5, color: 'var(--text-faint)' }}>
+                {rounding > 0 ? 'Rounded up ' : 'Rounded down '}
+                <b style={{ fontFamily: MONO, color: 'var(--text-muted)' }}>{money(Math.abs(rounding))}</b>
+                {' '}for cash — {money(raw)} on the bill. Card and account bills never round.
+              </div>
+            )}
 
             {/* WHAT HAS ALREADY BEEN TAKEN. Drawn only once there is something,
                 so a bill paid one way looks exactly as it always did. */}

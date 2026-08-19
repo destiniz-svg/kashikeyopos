@@ -114,6 +114,30 @@ async function settle(c, p, ctx, outlet) {
      item id and a quantity; what that item costs is not its decision. This is
      the difference between a price the guest was shown and a price the guest
      can choose. */
+  /* THE TICKET IS SETTLED ONCE. Locked before anything is priced, because the
+     alternative is two receipts for one meal: the op_log makes an identical
+     replay idempotent, but a second genuine submission — a double-tapped Pay,
+     two terminals on the same table — carried a new opId and sailed straight
+     through. The close at the end was already guarded with `status <> closed`,
+     which quietly did nothing while the sale itself was written anyway. */
+  if (p.ticketId) {
+    const tk = await c.query(
+      'SELECT status FROM ticket WHERE id = $1 FOR UPDATE', [p.ticketId]);
+    if (!tk.rows.length) {
+      throw Object.assign(new Error('no such ticket'), { status: 404 });
+    }
+    if (tk.rows[0].status === 'closed') {
+      throw Object.assign(
+        new Error('that bill has already been settled — a receipt is corrected with a credit note'),
+        { status: 409 });
+    }
+    if (tk.rows[0].status === 'void') {
+      throw Object.assign(
+        new Error('that bill was written off, so there is nothing to take money for'),
+        { status: 409 });
+    }
+  }
+
   const ids = p.lines.map((l) => String(l.itemId));
   const items = await c.query(
     'SELECT id, name, price, category, active FROM item WHERE id = ANY($1)', [ids]);

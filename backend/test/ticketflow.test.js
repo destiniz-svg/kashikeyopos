@@ -435,3 +435,150 @@ describe('a dish taken off the menu mid-service', () => {
     assert.match(String(r.json.results[0].error), /off the menu/);
   });
 });
+
+describe('an outlet that rounds its cash', () => {
+  let ctx;
+  before(async () => {
+    ctx = await H.bootOutlet();
+    /* Round cash bills to the nearest rufiyaa. Ordinary wherever small coins
+       are scarce, and the setting has existed since the first migration. */
+    await H.asOwner(ctx,
+      'UPDATE chain.outlet SET cash_round_laari = 100 WHERE id = $1', [ctx.outletId]);
+  });
+  after(() => H.teardown(ctx));
+
+  test('the till is told the increment', async () => {
+    /* The snapshot did not carry it, so the till could not compute the total
+       the server was going to compute, and had no way to find out. */
+    const s = await H.req('GET', `/api/outlet/${ctx.outletId}/snapshot`, { token: ctx.token });
+    assert.equal(Number(s.json.outlet.cash_round_laari), 100);
+  });
+
+  test('a cash bill rounds, and the unrounded figure is refused', async () => {
+    /* 1 burger 85.00 + 1 cola 25.00 = 110.00, +10% service = 121.00, which is
+       already whole. A single cola is 25.00 → 27.50, which is not. */
+    const short = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [{ method: 'cash', amount: '27.50' }], clientTotal: '27.50',
+      },
+    }]);
+    assert.match(String(short.json.results[0].error), /do not equal the bill \(28\.00\)/,
+      'this is exactly what every cash sale used to do at an outlet that rounds');
+
+    const ok = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [{ method: 'cash', amount: '28.00' }], clientTotal: '28.00',
+      },
+    }]);
+    assert.equal(Number(ok.json.results[0].result.total), 28);
+  });
+
+  test('the same bill on a card does not round', async () => {
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [{ method: 'card', amount: '27.50' }], clientTotal: '27.50',
+      },
+    }]);
+    assert.equal(Number(r.json.results[0].result.total), 27.5);
+  });
+
+  test('a bill part-settled on a card still rounds if any of it is cash', async () => {
+    /* sale.js rounds when ANY payment is cash, and the till has to agree — the
+       last few rufiyaa of a split bill are the ones handed over in coins. */
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [{ method: 'card', amount: '20.00' }, { method: 'cash', amount: '8.00' }],
+        clientTotal: '28.00',
+      },
+    }]);
+    assert.equal(Number(r.json.results[0].result.total), 28);
+  });
+});
+
+describe('a bill is settled once', () => {
+  let ctx, ticketId;
+  before(async () => {
+    ctx = await H.bootOutlet();
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_send', at: Date.now(),
+      payload: { table: 'T10', covers: 1, lines: [{ itemId: 'COLA', qty: 1 }] },
+    }]);
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T10'");
+    ticketId = t.rows[0].id;
+  });
+  after(() => H.teardown(ctx));
+
+  const pay = (ctx2) => ({
+    businessDate: ctx2.today, channel: 'dine_in', covers: 1, ticketId,
+    lines: [{ itemId: 'COLA', qty: 1 }],
+    payments: [{ method: 'card', amount: '27.50' }], clientTotal: '27.50',
+  });
+
+  test('the first sale settles it', async () => {
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(), payload: pay(ctx),
+    }]);
+    assert.ok(r.json.results[0].result.receiptNo, JSON.stringify(r.json.results[0]));
+  });
+
+  test('a second, with a new opId, is refused', async () => {
+    /* The op_log makes an identical replay idempotent. A double-tapped Pay, or
+       two terminals on the same table, carries a NEW opId and used to sail
+       through — two receipts, two journals and two stock movements for one
+       meal. The close at the end was guarded with `status <> closed`, which
+       quietly did nothing while the sale was written anyway. */
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(), payload: pay(ctx),
+    }]);
+    assert.match(String(r.json.results[0].error), /already been settled/);
+    const n = await H.q(ctx, 'SELECT count(*) FROM sale WHERE ticket_id = $1', [ticketId]);
+    assert.equal(Number(n.rows[0].count), 1, 'one meal, one receipt');
+  });
+
+  test('a written-off bill cannot be paid for either', async () => {
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_send', at: Date.now(),
+      payload: { table: 'T11', covers: 1, lines: [{ itemId: 'COLA', qty: 1 }] },
+    }]);
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T11'");
+    const mgr = await H.addStaff(ctx, 'Void Manager', 3);
+    await H.push({ ...ctx, token: mgr.token }, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(),
+      payload: { ticketId: t.rows[0].id, reason: 'walked out' },
+    }]);
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: { ...pay(ctx), ticketId: t.rows[0].id },
+    }]);
+    assert.match(String(r.json.results[0].error), /written off/);
+  });
+
+  test('an identical replay is still idempotent, not refused', async () => {
+    /* The whole offline model rests on this: a till that pushed a sale and lost
+       the reply must be able to push the SAME op again and be told it is done. */
+    const opId = H.uuid();
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_send', at: Date.now(),
+      payload: { table: 'T12', covers: 1, lines: [{ itemId: 'COLA', qty: 1 }] },
+    }]);
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T12'");
+    const body = { ...pay(ctx), ticketId: t.rows[0].id };
+    const a = await H.push(ctx, [{ opId, kind: 'sale', at: Date.now(), payload: body }]);
+    const b = await H.push(ctx, [{ opId, kind: 'sale', at: Date.now(), payload: body }]);
+    assert.ok(a.json.results[0].result.receiptNo);
+    assert.equal(b.json.results[0].result.receiptNo, a.json.results[0].result.receiptNo,
+      'the same receipt back, not a refusal and not a second one');
+  });
+});
