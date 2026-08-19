@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 
 /* Promotions & Banners — 02-POS-SPEC.md §2 (`promos`):
  * "Codes, windows, caps. A promo the guest sees is a promo the till charges."
@@ -48,7 +49,7 @@ interface Use {
   outlet: string; member: string | null; docNo: string | null;
 }
 
-export function Promos({ session }: { session: Session }) {
+export function Promos({ session, search }: { session: Session; search?: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [open, setOpen] = useState<Promo | null>(null);
   const [uses, setUses] = useState<Use[] | null>(null);
@@ -124,7 +125,7 @@ export function Promos({ session }: { session: Session }) {
             ) : (
               <>
                 <SubHead>Every promotion</SubHead>
-                {data.promos.map((p) => (
+                {data.promos.filter((p) => hit(search, p.name, p.code, p.kind)).map((p) => (
                   <button key={p.id} onClick={() => void openOne(p)}
                     style={{ width: '100%', display: 'flex', alignItems: 'baseline', gap: 10, padding: '9px 2px', borderBottom: '1px solid var(--line-soft)', background: 'transparent', textAlign: 'left' }}>
                     <span style={{ width: 120, minWidth: 0 }}>

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 import * as outbox from './outbox';
 
 /* The cash drawer, on the till — 08-BUILD-STAGES.md stage 1:
@@ -33,7 +35,12 @@ interface Drawer {
   expected?: string;
 }
 
-export function Register({ session, onQueued }: { session: Session; onQueued: () => void | Promise<void> }) {
+export function Register({ session, onQueued, intent, onIntentDone }: {
+  session: Session;
+  onQueued: () => void | Promise<void>;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+}) {
   const [d, setD] = useState<Drawer | null>(null);
   const [mode, setMode] = useState<'idle' | 'open' | 'close'>('idle');
   const [value, setValue] = useState('');
@@ -42,6 +49,25 @@ export function Register({ session, onQueued }: { session: Session; onQueued: ()
 
   /* Through api.authed, not a bare fetch — see there. */
   const call = useMemo(() => api.authed(session), [session]);
+
+  /* Arriving from the palette's "Close the register".
+     The intent lands before the drawer has been read — the fetch is in flight
+     when the navigation happens — so it is HELD rather than acted on, and the
+     form opens the moment the drawer arrives. Acting immediately meant the
+     one-shot fired against `d === null`, cleared itself, and the row appeared
+     to do nothing. */
+  const [wantClose, setWantClose] = useState(false);
+  useIntent(intent, 'pos', (act) => {
+    if (act === 'regclose') setWantClose(true);
+  }, () => onIntentDone?.());
+  useEffect(() => {
+    if (!wantClose || d === null) return;
+    setWantClose(false);
+    /* A closed drawer has nothing to count. Say so rather than opening a form
+       whose expected figure would be zero. */
+    if (d.open) { setMode('close'); setValue(''); }
+    else { setNote('The register is already closed — open one before it can be counted.'); }
+  }, [wantClose, d]);
 
   const load = useCallback(async () => {
     try {

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 
 /* Reports & Exports — 02-POS-SPEC.md §2 (`reports`): "Z-read, tax return, P&L,
  * trial balance, MIRA exports."
@@ -72,7 +74,11 @@ const SOURCE_LABEL: Record<string, string> = {
   sale: 'Sales', stock: 'Stock movements', drawer: 'Drawer variance', manual: 'Manual entries',
 };
 
-export function Reports({ session }: { session: Session }) {
+export function Reports({ session, intent, onIntentDone }: {
+  session: Session;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+}) {
   const [tab, setTab] = useState<Tab>('zread');
   const [date, setDate] = useState(today());
   const [from, setFrom] = useState(monthStart());
@@ -93,6 +99,14 @@ export function Reports({ session }: { session: Session }) {
      write its own fetch('/api/...'), which resolves only behind the Vite
      proxy; deployed on its own origin every one of them would have 404'd. */
   const authed = useMemo(() => api.authed(session), [session]);
+
+  /* Arriving from the palette's "Z-report". Z-read is already the opening tab,
+     but somebody who left this screen on Trial balance would otherwise land on
+     Trial balance, and the row promised them a Z-read. */
+  useIntent(intent, 'reports', (act) => {
+    if (act === 'zread') setTab('zread');
+  }, () => onIntentDone?.());
+
   const call = useCallback((path: string) => authed('GET', path), [authed]);
 
   const load = useCallback(async () => {

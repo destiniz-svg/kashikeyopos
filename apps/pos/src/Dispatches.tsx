@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 
 /* Dispatches — 02-POS-SPEC §2 (`dispatches`): "Inter-outlet transfers, both
  * sides of the move."
@@ -76,8 +79,19 @@ const STATE: Record<string, { label: string; tone: string }> = {
   cancelled: { label: 'cancelled', tone: 'var(--text-faint)' },
 };
 
-export function Dispatches({ session }: { session: Session }) {
+export function Dispatches({ session, intent, onIntentDone, search }: {
+  session: Session;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+  search?: string;
+}) {
   const call = useMemo(() => api.authed(session), [session]);
+
+  /* Arriving from the palette's "Start a dispatch". */
+  useIntent(intent, 'dispatches', (act) => {
+    if (act === 'start') setSending(true);
+  }, () => onIntentDone?.());
+
   const [data, setData] = useState<Board | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -109,6 +123,10 @@ export function Dispatches({ session }: { session: Session }) {
        case; the change is the one that matters. */
     setGot({ ingredientId: '', qty: String(t.qtySent), reason: '' });
   };
+
+  /* The board's filter. Both directions read it, so it is one predicate. */
+  const match = (t: Transfer) =>
+    hit(search, t.ref, t.item, t.from.name, t.to.name, t.state);
 
   const row = (t: Transfer) => {
     const st = STATE[t.state] || { label: t.state, tone: 'var(--text-faint)' };
@@ -354,7 +372,7 @@ export function Dispatches({ session }: { session: Session }) {
               Nothing on its way.
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: 9 }}>{data.inbound.map(row)}</div>
+            <div style={{ display: 'grid', gap: 9 }}>{data.inbound.filter(match).map(row)}</div>
           )}
         </div>
         <div style={card}>
@@ -364,7 +382,7 @@ export function Dispatches({ session }: { session: Session }) {
               Nothing has gone out.
             </div>
           ) : (
-            <div style={{ display: 'grid', gap: 9 }}>{data.outbound.map(row)}</div>
+            <div style={{ display: 'grid', gap: 9 }}>{data.outbound.filter(match).map(row)}</div>
           )}
         </div>
       </div>

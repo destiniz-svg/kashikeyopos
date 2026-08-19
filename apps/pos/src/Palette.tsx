@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { NAV } from './nav';
+import type { Intent } from './intent';
 import { useBreakpoint } from './useBreakpoint';
 
 /* "Go anywhere" — the prototype's ⌘K palette, transcribed.
@@ -12,11 +13,16 @@ import { useBreakpoint } from './useBreakpoint';
  * is the entire reason the palette finds anything. It is PALWORDS from
  * design/KashikeyoPOS Guest Theme v3.dc.html, unchanged.
  *
- * Only the "Go" half of the prototype's index is here. The prototype also lists
- * ten "Do" rows that open a form inside a module ("Receive a delivery",
- * "Clock in"); those need an intent to survive the jump between modules, which
- * this build does not carry yet. A row that navigated and then did nothing
- * would be worse than an absent row, so they are absent.
+ * Both halves of the prototype's index are here. The "Go" rows are the rail.
+ * The "Do" rows are jobs named as the job rather than the screen — somebody new
+ * knows they have to book in a delivery long before they know the word GRN —
+ * and each one lands on a module AND opens the thing you asked for, through the
+ * one-shot channel in intent.ts.
+ *
+ * The Do rows are rank-gated by their target module, which the prototype does
+ * not do. A row that takes you somewhere you cannot go is the same broken
+ * promise as a row that does nothing, and §1.5's rule — a module the rank
+ * cannot view is absent, not greyed — applies to a palette as much as a rail.
  */
 
 const PALWORDS: Record<string, string> = {
@@ -58,7 +64,47 @@ const PALWORDS: Record<string, string> = {
   settings: 'config preferences printer tax rate terminal receipt currency exchange rate usd dollar euro fx',
 };
 
-interface PalRow { key: string; label: string; sub: string; icon: string; words: string }
+interface PalRow {
+  key: string; label: string; sub: string; icon: string; words: string;
+  kind: 'go' | 'do';
+  /** Do rows only: where it lands and what it opens on arrival. */
+  intent?: Intent;
+}
+
+/* The prototype's own icon paths for the Do rows. */
+const ICO = {
+  box: 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4',
+  plus: 'M12 5v14M5 12h14',
+  book: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z',
+  clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2',
+  cash: 'M2 7h20v12H2zM2 11h20M6 15h4',
+  truck: 'M1 3h15v13H1zM16 8h4l3 3v5h-7z',
+};
+
+/* Label, the sentence under it, icon, and where it goes. The `sub` doubles as
+   the search words, exactly as the prototype does it. */
+const DO_ROWS: Array<{ label: string; sub: string; icon: string; intent: Intent }> = [
+  { label: 'Receive a delivery', sub: 'Book goods in against a vendor invoice', icon: ICO.box,
+    intent: { view: 'purchases', act: 'receive' } },
+  { label: 'Price a signed-in delivery', sub: 'Add the rates to a delivery someone signed for', icon: ICO.cash,
+    intent: { view: 'purchases', act: 'price' } },
+  { label: 'Build a recipe', sub: 'Cost a dish, ingredient by ingredient', icon: ICO.book,
+    intent: { view: 'recipes', act: 'build' } },
+  { label: 'Add an item to the pantry', sub: 'A new ingredient in the item master', icon: ICO.plus,
+    intent: { view: 'recipes', act: 'newIngredient' } },
+  { label: 'Add a vendor', sub: 'A new supplier before their first delivery', icon: ICO.plus,
+    intent: { view: 'vendors', act: 'newVendor' } },
+  { label: 'Raise an indent', sub: 'Request stock from the central store', icon: ICO.truck,
+    intent: { view: 'requests', act: 'raise' } },
+  { label: 'Start a dispatch', sub: 'Send stock to another outlet', icon: ICO.truck,
+    intent: { view: 'dispatches', act: 'start' } },
+  { label: 'Clock in', sub: 'Start a paid shift on this device', icon: ICO.clock,
+    intent: { view: 'staff', act: 'clockin' } },
+  { label: 'Close the register', sub: 'Blind count, then the variance', icon: ICO.cash,
+    intent: { view: 'pos', act: 'regclose' } },
+  { label: 'Z-report', sub: 'End-of-shift cash-up for this terminal', icon: ICO.cash,
+    intent: { view: 'reports', act: 'zread' } },
+];
 
 /* The rail is already rank-filtered by whoever renders it; the index is built
    from the same NAV so a module absent from the rail is absent here too. */
@@ -68,10 +114,20 @@ const indexFor = (rank: number): PalRow[] => {
     for (const it of grp.items) {
       if (rank < it.minRank) continue;
       out.push({
+        kind: 'go',
         key: 'go:' + it.id, label: it.label, sub: grp.title, icon: it.icon,
         words: (PALWORDS[it.id] || '') + ' ' + grp.title.toLowerCase(),
       });
     }
+  }
+  const reachable = new Set(out.map((x) => x.key.slice(3)));
+  for (const d of DO_ROWS) {
+    if (!reachable.has(d.intent.view)) continue;
+    out.push({
+      kind: 'do',
+      key: 'do:' + d.label, label: d.label, sub: d.sub, icon: d.icon,
+      words: d.sub.toLowerCase(), intent: d.intent,
+    });
   }
   return out;
 };
@@ -96,7 +152,8 @@ export function Palette({ rank, open, recent, onClose, onGo }: {
   open: boolean;
   recent: string[];
   onClose: () => void;
-  onGo: (id: string, key: string) => void;
+  /** A Go row passes a view id; a Do row passes the intent that follows it. */
+  onGo: (id: string, key: string, intent?: Intent) => void;
 }) {
   const isPhone = useBreakpoint() === 'm';
   const [q, setQ] = useState('');
@@ -122,14 +179,17 @@ export function Palette({ rank, open, recent, onClose, onGo }: {
     return all
       .map((x) => ({ row: x, sc: score(x, t) }))
       .filter((x) => x.sc > 0)
-      .sort((a, b) => b.sc - a.sc)
+      .sort((a, b) => b.sc - a.sc || (a.row.kind === b.row.kind ? 0 : a.row.kind === 'go' ? -1 : 1))
       .slice(0, 12)
       .map((x) => x.row);
   }, [all, q, recent]);
 
   if (!open) return null;
   const at = Math.max(0, Math.min(rows.length - 1, sel));
-  const run = (r: PalRow | undefined) => { if (r) onGo(r.key.slice(3), r.key); };
+  const run = (r: PalRow | undefined) => {
+    if (!r) return;
+    onGo(r.intent ? r.intent.view : r.key.slice(3), r.key, r.intent);
+  };
 
   return (
     <>
@@ -187,8 +247,10 @@ export function Palette({ rank, open, recent, onClose, onGo }: {
               </span>
               <span style={{
                 flexShrink: 0, fontSize: 9, fontWeight: 800, letterSpacing: '.07em', textTransform: 'uppercase',
-                padding: '3px 7px', borderRadius: 5, background: 'var(--bg-3)', color: 'var(--text-muted)',
-              }}>Go</span>
+                padding: '3px 7px', borderRadius: 5,
+                background: r.kind === 'do' ? 'var(--warn-dim)' : 'var(--bg-3)',
+                color: r.kind === 'do' ? 'var(--warn-bright)' : 'var(--text-muted)',
+              }}>{r.kind === 'do' ? 'Do' : 'Go'}</span>
             </button>
           ))}
           {rows.length === 0 && (

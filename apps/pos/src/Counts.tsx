@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import * as outbox from './outbox';
 
 /* Stock Counts — 02-POS-SPEC.md §2 (`counts`):
@@ -56,7 +57,7 @@ const STATUS: Record<string, { label: string; fg: string; bg: string }> = {
   rejected: { label: 'REFUSED', fg: 'var(--red-bright)', bg: 'var(--red-dim)' },
 };
 
-export function Counts({ session, onQueued }: { session: Session; onQueued: () => void | Promise<void> }) {
+export function Counts({ session, onQueued, search }: { session: Session; onQueued: () => void | Promise<void>; search?: string }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [threshold, setThreshold] = useState(0);
   const [approveRank, setApproveRank] = useState(4);
@@ -146,6 +147,7 @@ export function Counts({ session, onQueued }: { session: Session; onQueued: () =
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}>
         {taking ? (
           <TakeSheet
+            search={search}
             blank={taking} counted={counted} setCounted={setCounted}
             note={note} setNote={setNote} busy={busy} threshold={threshold}
             onPick={(cats) => void startSheet(cats)}
@@ -228,7 +230,7 @@ export function Counts({ session, onQueued }: { session: Session; onQueued: () =
 
 /* ── taking a count ──────────────────────────────────────────────────────── */
 
-function TakeSheet({ blank, counted, setCounted, note, setNote, busy, threshold, onPick, onCancel, onSubmit }: {
+function TakeSheet({ blank, counted, setCounted, note, setNote, busy, threshold, onPick, onCancel, onSubmit, search }: {
   blank: Blank;
   counted: Record<string, string>;
   setCounted: (v: Record<string, string>) => void;
@@ -237,6 +239,7 @@ function TakeSheet({ blank, counted, setCounted, note, setNote, busy, threshold,
   onPick: (cats: string[]) => void;
   onCancel: () => void;
   onSubmit: (lines: Array<{ ingredientId: string; counted: number }>, cats: string[]) => void;
+  search?: string;
 }) {
   const lines = Object.entries(counted)
     .filter(([, v]) => v !== '')
@@ -276,7 +279,7 @@ function TakeSheet({ blank, counted, setCounted, note, setNote, busy, threshold,
           <span style={{ flex: 1 }}>ITEM</span>
           <span style={{ width: 130, textAlign: 'right' }}>HOW MANY ARE THERE</span>
         </div>
-        {blank.items.map((i) => (
+        {blank.items.filter((i) => hit(search, i.name, i.category, i.unit)).map((i) => (
           <div key={i.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 13px', background: 'var(--bg-1)' }}>
             <span style={{ flex: 1, minWidth: 0 }}>
               <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{i.name}</span>

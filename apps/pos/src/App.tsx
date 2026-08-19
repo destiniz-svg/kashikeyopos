@@ -1,9 +1,9 @@
-import { Component, useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import * as api from './api';
 import type { Session, Snapshot } from './api';
 import * as outbox from './outbox';
-import { navFor, landingFor } from './nav';
+import { navFor, landingFor, FILTERABLE } from './nav';
 import { Lock } from './Lock';
 import { Floor } from './Floor';
 import { Kds } from './Kds';
@@ -45,6 +45,7 @@ import { AiMenu } from './AiMenu';
 import { NotBuilt } from './NotBuilt';
 import { useBreakpoint } from './useBreakpoint';
 import { Palette } from './Palette';
+import type { Intent } from './intent';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
  *
@@ -84,6 +85,17 @@ export function App({ outletId }: { outletId: number }) {
      findable, so the prototype puts a ⌘K palette over it. */
   const [pal, setPal] = useState(false);
   const [palRecent, setPalRecent] = useState<string[]>([]);
+  /* The one-shot that carries a palette "Do" row across the navigation to
+     the module that finishes the job. See intent.ts. */
+  const [intent, setIntent] = useState<Intent | null>(null);
+  /* "/" filters what is already on screen — the other half of the prototype's
+     two-key convention, where ⌘K goes somewhere and / narrows where you are.
+     The value is the SHELL's rather than each screen's because the box is in
+     the top bar, and it is cleared on every navigation: a filter carried onto
+     the next screen would hide most of it for no reason the operator can see. */
+  const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchBox = useRef<HTMLInputElement>(null);
 
   /* §1.4: "A terminal with nobody signed in IS locked." The session is restored
      from storage so a reload mid-service does not throw the cashier back to the
@@ -201,18 +213,52 @@ export function App({ outletId }: { outletId: number }) {
      pinned over a layout that now has a real rail. */
   useEffect(() => { setDrawer(false); }, [bp]);
 
+  /* A filter belongs to the screen that was filtered. */
+  useEffect(() => { setSearch(''); setSearchOpen(false); }, [view]);
+
   /* ⌘K anywhere. The prototype binds it on the document so it works whatever
      has focus, and preventDefault stops the browser's own find bar. */
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return;
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         setPal(true);
+        return;
       }
+      if (e.metaKey || e.ctrlKey) return;
+      /* Out of the way the moment somebody is typing into a field — otherwise
+         a slash in a dish name opens a search box instead of being typed. */
+      const t = e.target as HTMLElement | null;
+      const tag = (t?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'select' || tag === 'textarea' || t?.isContentEditable) return;
+      if (e.key !== '/') return;
+      /* The prototype's rule: "/" lands on whichever search is actually on
+         screen. A screen that draws its own filter field owns the key; the top
+         bar's box is the fallback, and on a screen with neither the key does
+         nothing rather than opening a box that filters nothing. */
+      const own = document.querySelector<HTMLInputElement>('main [data-screen-search]');
+      if (own && own.offsetParent !== null) {
+        e.preventDefault(); own.focus(); own.select(); return;
+      }
+      if (!FILTERABLE.has(viewRef.current)) return;
+      e.preventDefault();
+      setSearchOpen(true);
+      setTimeout(() => { const n = searchBox.current; if (n) { n.focus(); n.select(); } }, 30);
     };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, []);
+
+  /* The keydown listener is bound once, so it reads the live view through a ref
+     rather than closing over the value it was bound with. */
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; }, [view]);
+
+  /* Above the lock's early return, with every other hook: a useCallback below
+     it runs on the signed-in render and not on the locked one, which is one
+     hook more on one render than the other and takes React down. */
+  const intentDone = useCallback(() => setIntent(null), []);
 
   const groups = useMemo(() => navFor(session?.rank ?? 0), [session]);
 
@@ -231,12 +277,17 @@ export function App({ outletId }: { outletId: number }) {
   /* The palette navigates and remembers; the four most recent are what an
      empty query offers, because the places somebody went yesterday are the
      places they are going today. */
-  const palGo = (id: string, key: string) => {
+  const palGo = (id: string, key: string, next?: Intent) => {
     setPalRecent((r) => [key].concat(r.filter((k) => k !== key)).slice(0, 4));
     setPal(false);
     setDrawer(false);
     setView(id);
+    setIntent(next ?? null);
   };
+  /* Every module clears the intent the moment it has acted on it. */
+  /* Only the addressed module sees one, so a stale intent cannot fire on a
+     screen it was never meant for. */
+  const intentFor = (id: string) => (intent && intent.view === id ? intent : null);
 
   return (
     <div style={{
@@ -459,6 +510,54 @@ export function App({ outletId }: { outletId: number }) {
             )}
           </button>
 
+          {/* The filter. Hidden on a phone, exactly as the prototype hides it —
+              there is no room beside the outlet name, and no keyboard to press
+              "/" on. It collapses to a 32px disc when empty and grows on focus,
+              so a screen that can be filtered says so without spending the
+              width all the time. */}
+          {!isPhone && FILTERABLE.has(view) && (
+            <div
+              onClick={() => {
+                if (searchOpen) return;
+                setSearchOpen(true);
+                setTimeout(() => searchBox.current?.focus(), 30);
+              }}
+              title="Filter this screen — press /"
+              style={{
+                display: 'flex', alignItems: 'center', gap: searchOpen ? 8 : 0,
+                background: 'var(--bg-2)',
+                border: '1px solid ' + (searchOpen ? 'var(--warn-line)' : 'var(--line)'),
+                borderRadius: 8, padding: searchOpen ? '7px 10px' : 0, flexShrink: 0,
+                color: 'var(--text-dim)',
+                width: searchOpen ? 'clamp(112px,14vw,180px)' : 32,
+                height: searchOpen ? undefined : 32,
+                justifyContent: searchOpen ? undefined : 'center',
+                transition: 'width .14s ease', cursor: 'text', overflow: 'hidden',
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
+              </svg>
+              <input
+                ref={searchBox} value={search} placeholder="Search…" aria-label="Filter this screen"
+                onChange={(e) => setSearch(e.target.value)}
+                onBlur={() => { if (!search) setSearchOpen(false); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setSearch(''); setSearchOpen(false);
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                style={{
+                  background: 'transparent', border: 'none', outline: 'none', color: 'var(--text)',
+                  fontSize: 12, minWidth: 0, fontFamily: 'inherit',
+                  ...(searchOpen ? { flex: 1, width: 'auto' } : { width: 0, flex: '0 0 0', padding: 0 }),
+                }}
+              />
+            </div>
+          )}
+
           {pending > 0 && (
             <span
               title={pending + ' operation(s) waiting to reach the server'}
@@ -529,6 +628,29 @@ export function App({ outletId }: { outletId: number }) {
               ? '12px 12px calc(12px + env(safe-area-inset-bottom))'
               : '14px 16px',
         }}>
+          {/* A filter that has hidden rows must say so. Every screen already has
+              its own empty state, and each of them explains an empty DATABASE —
+              "no dishes yet", "nothing has been received". Left alone, a filter
+              that matches nothing shows one of those, and the operator reads it
+              as data loss rather than as a filter. One strip, above every
+              screen, is the honest answer and it is the same answer everywhere. */}
+          {search.trim() !== '' && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              marginBottom: 10, padding: '7px 11px', borderRadius: 8,
+              background: 'var(--warn-dim)', border: '1px solid var(--warn-line)',
+            }}>
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--warn-bright)' }}>
+                Showing only what matches “{search.trim()}”.
+              </span>
+              <span style={{ flex: 1 }} />
+              <button type="button" onClick={() => { setSearch(''); setSearchOpen(false); }}
+                style={{ padding: '4px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-dim)' }}>
+                Clear the filter
+              </button>
+            </div>
+          )}
+
           <Boundary key={view} view={view}>
           {view === 'owner' && MODULES_BUILT.has('owner') ? (
             <Owner session={session} onGo={setView} />
@@ -539,9 +661,9 @@ export function App({ outletId }: { outletId: number }) {
           ) : view === 'settings' && MODULES_BUILT.has('settings') ? (
             <Settings session={session} />
           ) : view === 'users' && MODULES_BUILT.has('users') ? (
-            <Users session={session} onGo={setView} />
+            <Users session={session} onGo={setView} search={search} />
           ) : view === 'logs' && MODULES_BUILT.has('logs') ? (
-            <Logs session={session} />
+            <Logs session={session} search={search} />
           ) : view === 'branches' && MODULES_BUILT.has('branches') ? (
             <Branches session={session} onGo={setView} />
           ) : view === 'architecture' && MODULES_BUILT.has('architecture') ? (
@@ -549,13 +671,13 @@ export function App({ outletId }: { outletId: number }) {
           ) : view === 'start' && MODULES_BUILT.has('start') ? (
             <Start session={session} onGo={setView} />
           ) : view === 'production' && MODULES_BUILT.has('production') ? (
-            <Production session={session} />
+            <Production session={session} search={search} />
           ) : view === 'batches' && MODULES_BUILT.has('batches') ? (
-            <Batches session={session} />
+            <Batches session={session} search={search} />
           ) : view === 'dispatches' && MODULES_BUILT.has('dispatches') ? (
-            <Dispatches session={session} />
+            <Dispatches session={session} intent={intentFor('dispatches')} onIntentDone={intentDone} search={search} />
           ) : view === 'requests' && MODULES_BUILT.has('requests') ? (
-            <Requests session={session} />
+            <Requests session={session} intent={intentFor('requests')} onIntentDone={intentDone} search={search} />
           ) : view === 'aimenu' && MODULES_BUILT.has('aimenu') ? (
             <AiMenu session={session} />
           ) : view === 'pos' && MODULES_BUILT.has('pos') ? (
@@ -564,11 +686,13 @@ export function App({ outletId }: { outletId: number }) {
               now={now}
               session={session}
               online={online}
+              intent={intentFor('pos')} onIntentDone={intentDone}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'purchases' && MODULES_BUILT.has('purchases') ? (
             <Purchases
-              session={session}
+              session={session} search={search}
+              intent={intentFor('purchases')} onIntentDone={intentDone}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'analytics' && MODULES_BUILT.has('analytics') ? (
@@ -576,15 +700,15 @@ export function App({ outletId }: { outletId: number }) {
           ) : view === 'costs' && MODULES_BUILT.has('costs') ? (
             <OpCosts session={session} />
           ) : view === 'assets' && MODULES_BUILT.has('assets') ? (
-            <Assets session={session} />
+            <Assets session={session} search={search} />
           ) : view === 'customers' && MODULES_BUILT.has('customers') ? (
             <Customers session={session} />
           ) : view === 'loyalty' && MODULES_BUILT.has('loyalty') ? (
-            <Loyalty session={session} />
+            <Loyalty session={session} search={search} />
           ) : view === 'promos' && MODULES_BUILT.has('promos') ? (
-            <Promos session={session} />
+            <Promos session={session} search={search} />
           ) : view === 'reservations' && MODULES_BUILT.has('reservations') ? (
-            <Reservations session={session} />
+            <Reservations session={session} search={search} />
           ) : view === 'delivery' && MODULES_BUILT.has('delivery') ? (
             <Delivery session={session} />
           ) : view === 'accounting' && MODULES_BUILT.has('accounting') ? (
@@ -593,33 +717,34 @@ export function App({ outletId }: { outletId: number }) {
             <Payroll session={session} />
           ) : view === 'staff' && MODULES_BUILT.has('staff') ? (
             <Staff
-              session={session}
+              session={session} search={search}
+              intent={intentFor('staff')} onIntentDone={intentDone}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'vendors' && MODULES_BUILT.has('vendors') ? (
-            <Vendors session={session} />
+            <Vendors session={session} intent={intentFor('vendors')} onIntentDone={intentDone} search={search} />
           ) : view === 'counts' && MODULES_BUILT.has('counts') ? (
             <Counts
-              session={session}
+              session={session} search={search}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'ledger' && MODULES_BUILT.has('ledger') ? (
-            <Ledger session={session} />
+            <Ledger session={session} search={search} />
           ) : view === 'today' && MODULES_BUILT.has('today') ? (
             <Today session={session} onGo={setView} />
           ) : view === 'reports' && MODULES_BUILT.has('reports') ? (
-            <Reports session={session} />
+            <Reports session={session} intent={intentFor('reports')} onIntentDone={intentDone} />
           ) : view === 'orders' && MODULES_BUILT.has('orders') ? (
-            <Orders session={session} />
+            <Orders session={session} search={search} />
           ) : view === 'menu' && MODULES_BUILT.has('menu') ? (
             <Menu session={session} />
           ) : view === 'inventory' && MODULES_BUILT.has('inventory') ? (
             <Inventory
-              session={session}
+              session={session} search={search}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'recipes' && MODULES_BUILT.has('recipes') ? (
-            <Recipes session={session} />
+            <Recipes session={session} intent={intentFor('recipes')} onIntentDone={intentDone} search={search} />
           ) : view === 'kds' && MODULES_BUILT.has('kds') ? (
             <Kds
               snap={snap}

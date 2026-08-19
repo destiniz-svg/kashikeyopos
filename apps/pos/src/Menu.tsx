@@ -125,7 +125,7 @@ export function Menu({ session }: { session: Session }) {
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Menu Master</span>
         <input
-          value={q} onChange={(e) => setQ(e.target.value)}
+          data-screen-search value={q} onChange={(e) => setQ(e.target.value)}
           placeholder="Search dishes" aria-label="Search dishes"
           style={{ flex: 1, maxWidth: 260, height: 30, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }}
         />
@@ -224,20 +224,27 @@ export function Menu({ session }: { session: Session }) {
             {shown.map((it) => (
               <div key={it.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px',
+                /* A dish row is a name, a price and three buttons. At 390px they
+                   do not fit on one line, and a nowrap flex row does not clip
+                   them — it draws them over each other, which is how "No recipe"
+                   ended up printed across "Edit". Wrapping is the honest answer:
+                   the row becomes two lines and stays readable. */
+                flexWrap: 'wrap',
                 background: 'var(--bg-1)', opacity: it.active ? 1 : 0.55,
               }}>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ minWidth: 0, flex: '1 1 200px' }}>
+                  <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
                     <span style={{
                       fontSize: 13, fontWeight: 600, color: 'var(--text)',
                       textDecoration: it.offMenu ? 'line-through' : 'none',
+                      minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>{it.name}</span>
                     <span style={{ fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>{it.id}</span>
                     {!it.active && <Tag tone="red">Retired</Tag>}
                     {it.offMenu && it.active && <Tag tone="warn">Off menu</Tag>}
                     {it.recipeLines === 0 && it.active && <Tag tone="warn">No recipe</Tag>}
                   </span>
-                  <span style={{ display: 'flex', gap: 10, marginTop: 3, fontSize: 10.5, color: 'var(--text-faint)' }}>
+                  <span style={{ display: 'flex', gap: 10, marginTop: 3, fontSize: 10.5, color: 'var(--text-faint)', flexWrap: 'wrap' }}>
                     <span>{it.category || 'Uncategorised'}</span>
                     <span>{it.station || 'The pass'}</span>
                     {it.sold > 0 && <span>{it.sold} sold</span>}
@@ -248,7 +255,7 @@ export function Menu({ session }: { session: Session }) {
                   {money(it.price)}
                 </span>
 
-                <span style={{ display: 'flex', gap: 6 }}>
+                <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   <RowBtn onClick={() => {
                     setEditing(it.id); setAdding(false); setError('');
                     setDraft({ id: it.id, name: it.name, category: it.category ?? '', price: String(it.price), station: it.station ?? '' });

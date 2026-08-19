@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import { DataGrid } from './DataGrid';
 
 /* Production — 02-POS-SPEC §2 (`production`): "Batch prep of sub-recipes;
@@ -77,7 +78,7 @@ interface Made {
   ledger: string;
 }
 
-export function Production({ session }: { session: Session }) {
+export function Production({ session, search }: { session: Session; search?: string }) {
   const call = useMemo(() => api.authed(session), [session]);
   const [data, setData] = useState<Catalogue | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -169,7 +170,7 @@ export function Production({ session }: { session: Session }) {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 12 }}>
-            {data.items.map((it) => {
+            {data.items.filter((it) => hit(search, it.name, it.unit)).map((it) => {
               const canMake = it.possibleBatches;
               const short = canMake !== null && canMake < 1;
               return (
@@ -313,7 +314,7 @@ export function Production({ session }: { session: Session }) {
             { label: 'Per unit', a: 'right', mono: true },
             { label: 'By' },
           ]}
-          rows={runs.map((r) => ({
+          rows={runs.filter((r) => hit(search, r.makes.name, r.note, r.by)).map((r) => ({
             key: String(r.id),
             cells: [
               { t: new Date(r.at).toLocaleString('en-GB',

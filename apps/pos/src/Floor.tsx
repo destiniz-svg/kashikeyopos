@@ -6,6 +6,8 @@ import { Payment } from './Payment';
    Node requires it, the browsers bundle it, and neither has a copy. */
 import { priceBill } from '../../../packages/money/money.js';
 import { Register } from './Register';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 import { useBreakpoint } from './useBreakpoint';
 
 /* POS Floor — 02-POS-SPEC.md §3.
@@ -34,9 +36,11 @@ interface Props {
      offline could be refused on replay long after the guest has gone. */
   online: boolean;
   onQueued: () => void | Promise<void>;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
 }
 
-export function Floor({ snap, now, session, online, onQueued }: Props) {
+export function Floor({ snap, now, session, online, onQueued, intent, onIntentDone }: Props) {
   /* THE TILL ON A PHONE IS A DIFFERENT MACHINE, and the prototype treats it as
      one. Three columns — 250px of tables, the menu, 300px of ticket — need 550px
      of fixed width before the menu gets a pixel, so on a 390px handset they do
@@ -54,6 +58,14 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
      tablet's third column was eating the menu. */
   const onePane = isPhone || isTablet;
   const [pane, setPane] = useState<'floor' | 'menu'>('floor');
+
+  /* The drawer lives at the foot of the FLOOR pane, and on a phone only one
+     pane is on screen. Arriving on the menu pane, "Close the register" would
+     open a form the operator cannot see. The intent itself is Register's to
+     consume — this only makes sure the pane holding it is the one showing. */
+  useIntent(intent, 'pos', (act) => {
+    if (act === 'regclose') setPane('floor');
+  }, () => { /* Register clears it — this is a second reader of the same one-shot. */ });
   const [cart, setCart] = useState(false);
   const [table, setTable] = useState<string>('');
   const [lines, setLines] = useState<Line[]>([]);
@@ -298,7 +310,7 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
             scroller's bottom padding does not reach it, and without this the
             bar sat across "Open the register". */}
         <div style={{ flexShrink: 0, paddingBottom: isPhone ? 'calc(62px + env(safe-area-inset-bottom))' : 0 }}>
-          <Register session={session} onQueued={onQueued} />
+          <Register session={session} onQueued={onQueued} intent={intent} onIntentDone={onIntentDone} />
         </div>
       </section>
 

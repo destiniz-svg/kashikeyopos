@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 
 /* Users & Roles — 02-POS-SPEC §2 (`users`), 08-BUILD-STAGES §29.
  *
@@ -55,7 +56,7 @@ const until = (iso: string) => {
   return m <= 0 ? 'expired' : m < 60 ? m + ' min' : Math.round(m / 60) + ' h';
 };
 
-export function Users({ session, onGo }: { session: Session; onGo: (m: string) => void }) {
+export function Users({ session, onGo, search }: { session: Session; onGo: (m: string) => void; search?: string }) {
   /* useMemo, and not decoration. `api.authed(session)` returns a NEW function
      every render, so a `useCallback` that depends on it changes identity every
      render too, and the `useEffect` that loads on it fires on every render —
@@ -137,7 +138,7 @@ export function Users({ session, onGo }: { session: Session; onGo: (m: string) =
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 9 }}>
-            {data.sessions.map((s) => (
+            {data.sessions.filter((s) => hit(search, s.staffName, s.rankName, s.device?.label)).map((s) => (
               <div key={s.id} style={{
                 padding: '10px 12px', borderRadius: 10,
                 background: s.isMine ? 'var(--bg-3)' : 'var(--bg-2)',

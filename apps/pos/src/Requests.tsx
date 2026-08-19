@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 
 /* Indent Requests — 02-POS-SPEC §2 (`requests`): "A kitchen asks; a manager
  * approves."
@@ -89,8 +92,19 @@ const STATE: Record<string, { label: string; tone: string }> = {
    full", and the screen must not turn a blank box into a zero. */
 interface Decision { [lineId: string]: { qty: string; reason: string } }
 
-export function Requests({ session }: { session: Session }) {
+export function Requests({ session, intent, onIntentDone, search }: {
+  session: Session;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+  search?: string;
+}) {
   const call = useMemo(() => api.authed(session), [session]);
+
+  /* Arriving from the palette's "Raise an indent". */
+  useIntent(intent, 'requests', (act) => {
+    if (act === 'raise') setAsking(true);
+  }, () => onIntentDone?.());
+
   const [data, setData] = useState<Board | null>(null);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [error, setError] = useState('');
@@ -213,6 +227,11 @@ export function Requests({ session }: { session: Session }) {
       </div>
     );
   };
+
+  /* One predicate for all three columns of the board. */
+  const match = (it: Indent) =>
+    hit(search, it.ref, it.forArea, it.note, it.reason, it.raisedBy, it.poNo)
+    || it.lines.some((l) => hit(search, l.name));
 
   const row = (it: Indent) => {
     const st = STATE[it.state] || { label: it.state, tone: 'var(--text-faint)' };
@@ -475,21 +494,21 @@ export function Requests({ session }: { session: Session }) {
             Nobody has asked for anything.
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: 9 }}>{openOnes.map(row)}</div>
+          <div style={{ display: 'grid', gap: 9 }}>{openOnes.filter(match).map(row)}</div>
         )}
       </div>
 
       {decidedOnes.length > 0 && (
         <div style={card}>
           <div style={h}>Decided, waiting to be ordered</div>
-          <div style={{ display: 'grid', gap: 9 }}>{decidedOnes.map(row)}</div>
+          <div style={{ display: 'grid', gap: 9 }}>{decidedOnes.filter(match).map(row)}</div>
         </div>
       )}
 
       {doneOnes.length > 0 && (
         <div style={card}>
           <div style={h}>Ordered and turned down</div>
-          <div style={{ display: 'grid', gap: 9 }}>{doneOnes.map(row)}</div>
+          <div style={{ display: 'grid', gap: 9 }}>{doneOnes.filter(match).map(row)}</div>
         </div>
       )}
 

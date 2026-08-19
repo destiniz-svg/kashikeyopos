@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import * as outbox from './outbox';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 
 /* Purchases / GRN — 02-POS-SPEC.md §2 (`purchases`):
  * "PO → delivery → priced GRN → vendor invoice → ageing."
@@ -55,7 +58,13 @@ interface Detail {
 }
 interface Ingredient { id: string; name: string; unit: string; avgCost: number }
 
-export function Purchases({ session, onQueued }: { session: Session; onQueued: () => void | Promise<void> }) {
+export function Purchases({ session, onQueued, intent, onIntentDone, search }: {
+  session: Session;
+  onQueued: () => void | Promise<void>;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+  search?: string;
+}) {
   const [tab, setTab] = useState<'deliveries' | 'ageing'>('deliveries');
   const [data, setData] = useState<Data | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
@@ -105,6 +114,15 @@ export function Purchases({ session, onQueued }: { session: Session; onQueued: (
       setError(e instanceof api.ApiError ? e.message : 'Could not load the ingredient list.');
     }
   };
+
+  /* Arriving from the palette. "Receive a delivery" opens the GRN form the
+     moment the ingredient list is in; "Price a signed-in delivery" only puts
+     you on the deliveries tab, because which one to price is the operator's
+     call and guessing it would be worse than landing on the list. */
+  useIntent(intent, 'purchases', (act) => {
+    if (act === 'receive') void openReceive();
+    if (act === 'price') setTab('deliveries');
+  }, () => onIntentDone?.());
 
   const unpriced = (data?.deliveries ?? []).filter((d) => !d.priced).length;
   const canPrice = session.rank >= 4;
@@ -172,7 +190,7 @@ export function Purchases({ session, onQueued }: { session: Session; onQueued: (
                   + ' is nobody to owe and nobody to ring when the fish is short.'} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {data.deliveries.map((d) => (
+              {data.deliveries.filter((d) => hit(search, d.supplier, d.invoiceNo)).map((d) => (
                 <button key={d.id} onClick={() => void (async () => {
                   try { setDetail(await call('/purchases/' + d.id) as Detail); }
                   catch (e) { setError(e instanceof api.ApiError ? e.message : 'Could not open it.'); }

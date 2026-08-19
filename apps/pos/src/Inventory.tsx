@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import * as outbox from './outbox';
 
 /* Inventory and the stock ledger — 02-POS-SPEC.md §2 (`inventory`, `ledger`).
@@ -43,7 +44,7 @@ const REASON_LABEL: Record<string, string> = {
   production: 'Production', return: 'Returned',
 };
 
-export function Inventory({ session, onQueued }: { session: Session; onQueued: () => void | Promise<void> }) {
+export function Inventory({ session, onQueued, search }: { session: Session; onQueued: () => void | Promise<void>; search?: string }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [totalValue, setTotalValue] = useState(0);
   const [ledger, setLedger] = useState<Ledger | null>(null);
@@ -156,7 +157,7 @@ export function Inventory({ session, onQueued }: { session: Session; onQueued: (
               <span style={{ width: 84, textAlign: 'right' }}>VALUE</span>
               <span style={{ width: counting ? 110 : 150 }} />
             </div>
-            {rows.map((r) => (
+            {rows.filter((r) => hit(search, r.name, r.unit)).map((r) => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

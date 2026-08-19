@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 
 /* Reservations — 02-POS-SPEC.md §2 (`reservations`):
  * "Tonight's book, table assignment, arrival state."
@@ -51,7 +52,7 @@ const STATUS: Record<string, { label: string; fg: string }> = {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function Reservations({ session }: { session: Session }) {
+export function Reservations({ session, search }: { session: Session; search?: string }) {
   const [date, setDate] = useState(today());
   /* The outlet's OWN tables, so a host picks one rather than inventing a name
      for it. The server normalises anyway — "2" and "T02" are one table — but a
@@ -188,7 +189,7 @@ export function Reservations({ session }: { session: Session }) {
             ) : (
               <>
                 {live.length > 0 && <SubHead>The evening</SubHead>}
-                {live.map((r) => (
+                {live.filter((r) => hit(search, r.name, r.phone, r.tableNo, r.at, r.status)).map((r) => (
                   <div key={r.id} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '9px 2px', borderBottom: '1px solid var(--line-soft)' }}>
                     <span style={{ width: 54, fontSize: 13, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
                       {r.at}

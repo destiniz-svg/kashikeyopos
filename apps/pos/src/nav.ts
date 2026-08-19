@@ -137,3 +137,21 @@ export function landingFor(rank: number): string {
   const visible = navFor(rank).flatMap((g) => g.items);
   return visible.find((i) => i.id === prefer)?.id ?? visible[0]?.id ?? 'start';
 }
+
+/* Screens whose main content is a LIST, and so can answer a filter.
+ *
+ * The prototype's rule, in its own words: "A shortcut that focuses a box the
+ * operator cannot see is worse than no shortcut." The corollary is the box
+ * itself — a search field on a screen that cannot search is the same broken
+ * promise. So the top bar shows one only here, and `/` does nothing anywhere
+ * else.
+ *
+ * Menu Master, Customers and Accounting are deliberately absent: each already
+ * draws its own filter field inside the screen, and `/` jumps to that one
+ * instead. Two search boxes on one screen is a worse answer than either.
+ */
+export const FILTERABLE = new Set([
+  'vendors', 'recipes', 'staff', 'ledger', 'batches', 'orders', 'assets',
+  'users', 'promos', 'loyalty', 'reservations', 'production', 'purchases',
+  'counts', 'logs', 'dispatches', 'requests', 'inventory',
+]);

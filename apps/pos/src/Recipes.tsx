@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
+import { DataGrid } from './DataGrid';
 
 /* Recipes & Costing — 02-POS-SPEC.md §2 (`recipes`):
  * "Ingredients, yield, sub-recipes, waste %, live plate cost and GP."
@@ -42,7 +46,12 @@ interface RecipeDetail {
 
 type Tab = 'dishes' | 'ingredients';
 
-export function Recipes({ session }: { session: Session }) {
+export function Recipes({ session, intent, onIntentDone, search }: {
+  session: Session;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+  search?: string;
+}) {
   const [tab, setTab] = useState<Tab>('dishes');
   const [items, setItems] = useState<Costed[] | null>(null);
   const [ings, setIngs] = useState<Ingredient[] | null>(null);
@@ -53,11 +62,32 @@ export function Recipes({ session }: { session: Session }) {
   const [busy, setBusy] = useState(false);
   const [newIng, setNewIng] = useState({ id: '', name: '', unit: 'g', avgCost: '', category: '' });
   const [addingIng, setAddingIng] = useState(false);
+  /* Set by the palette's "Build a recipe": show only the dishes that have
+     none, which is where that job actually starts. Cleared the moment the
+     operator picks a dish or switches tabs. */
+  const [onlyUncosted, setOnlyUncosted] = useState(false);
 
   /* One helper, one BASE — see api.authed. Each of these screens used to
      write its own fetch('/api/...'), which resolves only behind the Vite
      proxy; deployed on its own origin every one of them would have 404'd. */
   const call = useMemo(() => api.authed(session), [session]);
+
+  /* Arriving from the palette. "Add an item to the pantry" IS the item master,
+     which lives on the ingredients tab, so it opens there with the form up.
+     "Build a recipe" cannot open an editor because a recipe belongs to a dish
+     and the palette was not told which one — so it lands on the dishes that
+     have no recipe yet, and the operator picks. */
+  useIntent(intent, 'recipes', (act) => {
+    if (act === 'newIngredient') { setTab('ingredients'); setAddingIng(true); }
+    if (act === 'build') { setTab('dishes'); setOnlyUncosted(true); }
+  }, () => onIntentDone?.());
+
+  /* A dish with no lines has no recipe. Filtering on that rather than on a
+     saved flag means the strip empties itself as the job gets done. */
+  const shownDishes = (items ?? [])
+    .filter((it) => (onlyUncosted ? !it.lines : true))
+    .filter((it) => hit(search, it.name, it.category));
+
 
   const load = useCallback(async () => {
     try {
@@ -150,7 +180,7 @@ export function Recipes({ session }: { session: Session }) {
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Recipes &amp; Costing</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
           {(['dishes', 'ingredients'] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)}
+            <button key={t} onClick={() => { setTab(t); setOnlyUncosted(false); }}
               style={{
                 padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
                 background: tab === t ? 'var(--amber)' : 'var(--bg-2)',
@@ -185,42 +215,55 @@ export function Recipes({ session }: { session: Session }) {
                 body="A dish costs what its recipe costs. Add dishes in Menu Master, then give each one a recipe here — the plate cost and margin appear immediately, and the same figures are what the ledger books when it sells."
               />
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line-soft)', borderRadius: 9, overflow: 'hidden', border: '1px solid var(--line-soft)' }}>
-                <div style={{ display: 'flex', gap: 12, padding: '8px 13px', background: 'var(--bg-2)', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>
-                  <span style={{ flex: 1 }}>DISH</span>
-                  <span style={{ width: 78, textAlign: 'right' }}>PRICE</span>
-                  <span style={{ width: 78, textAlign: 'right' }}>PLATE COST</span>
-                  <span style={{ width: 62, textAlign: 'right' }}>FOOD %</span>
-                  <span style={{ width: 78, textAlign: 'right' }}>GP</span>
-                  <span style={{ width: 56 }} />
+              <>
+              {onlyUncosted && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, padding: '8px 12px', borderRadius: 9, background: 'var(--warn-dim)', border: '1px solid var(--warn-line)' }}>
+                  <span style={{ fontSize: 11.5, color: 'var(--warn-bright)', fontWeight: 600 }}>
+                    {shownDishes && shownDishes.length
+                      ? `${shownDishes.length} dish${shownDishes.length === 1 ? '' : 'es'} with no recipe yet — open one to build it.`
+                      : 'Every dish on this menu already has a recipe.'}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  <button type="button" onClick={() => setOnlyUncosted(false)}
+                    style={{ padding: '5px 10px', borderRadius: 7, fontSize: 11, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-dim)' }}>
+                    Show them all
+                  </button>
                 </div>
-                {items.map((it) => (
-                  <div key={it.itemId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)' }}>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{it.name}</span>
-                        {!it.lines && <Tag>No recipe</Tag>}
-                        {it.lines > 0 && it.incomplete && <Tag>Unpriced ingredient</Tag>}
-                      </span>
-                      <span style={{ display: 'block', marginTop: 3, fontSize: 10.5, color: 'var(--text-faint)' }}>
-                        {it.category || 'Uncategorised'}{it.lines ? ' · ' + it.lines + ' line' + (it.lines === 1 ? '' : 's') : ''}
-                      </span>
-                    </span>
-                    <Num>{mvr(it.price)}</Num>
-                    <Num dim={!it.lines}>{it.lines ? mvr(it.plateCost) : '—'}</Num>
-                    <span style={{ width: 62, textAlign: 'right', fontSize: 13, fontWeight: 700, fontFamily: MONO, color: costTone(it.foodCostPct, it.incomplete || !it.lines) }}>
-                      {it.lines && !it.incomplete ? it.foodCostPct + '%' : '—'}
-                    </span>
-                    <Num dim={!it.lines}>{it.lines && !it.incomplete ? mvr(it.gp) : '—'}</Num>
-                    <span style={{ width: 56, textAlign: 'right' }}>
-                      <button onClick={() => void openRecipe(it.itemId)}
-                        style={{ padding: '5px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
-                        Recipe
-                      </button>
-                    </span>
-                  </div>
-                ))}
-              </div>
+              )}
+              {/* Through the one grid — see DataGrid.tsx. Six fixed-width
+                  columns in a flex row do not overflow on a phone, they WRAP,
+                  and a wrapped cell is drawn on top of its neighbour: the dish
+                  name was printed across its own price. The whole row opens the
+                  recipe, which is what the Recipe button did. */}
+              <DataGrid
+                cols={[
+                  { label: 'Dish', w: '1.8fr' },
+                  { label: 'Price', a: 'right', mono: true },
+                  { label: 'Plate cost', a: 'right', mono: true },
+                  { label: 'Food %', a: 'right', mono: true },
+                  { label: 'GP', a: 'right', mono: true },
+                  { label: 'Recipe' },
+                ]}
+                rows={(shownDishes ?? []).map((it) => ({
+                  key: it.itemId,
+                  go: () => void openRecipe(it.itemId),
+                  cells: [
+                    { t: it.name + ' · ' + (it.category || 'Uncategorised')
+                        + (it.lines ? ' · ' + it.lines + ' line' + (it.lines === 1 ? '' : 's') : ''), w: 600 },
+                    mvr(it.price),
+                    { t: it.lines ? mvr(it.plateCost) : '—', c: it.lines ? undefined : 'var(--text-faint)' },
+                    { t: it.lines && !it.incomplete ? it.foodCostPct + '%' : '—', w: 700,
+                      c: costTone(it.foodCostPct, it.incomplete || !it.lines) },
+                    { t: it.lines && !it.incomplete ? mvr(it.gp) : '—', c: it.lines ? undefined : 'var(--text-faint)' },
+                    !it.lines
+                      ? { t: 'No recipe', chip: ['var(--warn-dim)', 'var(--warn-bright)'] as [string, string] }
+                      : it.incomplete
+                        ? { t: 'Unpriced ingredient', chip: ['var(--red-dim)', 'var(--red-bright)'] as [string, string] }
+                        : { t: 'Costed', chip: ['var(--go-dim)', 'var(--go-bright)'] as [string, string] },
+                  ],
+                }))}
+              />
+              </>
             )
         ) : (
           ings === null ? <Loading />
@@ -263,7 +306,7 @@ export function Recipes({ session }: { session: Session }) {
                   />
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line-soft)', borderRadius: 9, overflow: 'hidden', border: '1px solid var(--line-soft)' }}>
-                    {ings.map((g) => (
+                    {ings.filter((g) => hit(search, g.name, g.id, g.category)).map((g) => (
                       <div key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)' }}>
                         <span style={{ flex: 1, minWidth: 0 }}>
                           <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -497,10 +540,6 @@ function CategoryCell({ value, known, onSave }: {
       {value ?? 'no category'}
     </button>
   );
-}
-
-function Num({ children, dim }: { children: React.ReactNode; dim?: boolean }) {
-  return <span style={{ width: 78, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: dim ? 'var(--text-faint)' : 'var(--text-dim)' }}>{children}</span>;
 }
 
 function Tag({ children }: { children: React.ReactNode }) {

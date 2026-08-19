@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import { DataGrid } from './DataGrid';
 import type { Session } from './api';
+import { hit } from './filter';
 
 /* Stock Ledger — 02-POS-SPEC.md §2 (`ledger`):
  * "Every movement with its reason and source document."
@@ -43,7 +44,7 @@ const REASON_LABEL: Record<string, string> = {
 
 const PAGE = 100;
 
-export function Ledger({ session }: { session: Session }) {
+export function Ledger({ session, search }: { session: Session; search?: string }) {
   const [reason, setReason] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -151,7 +152,7 @@ export function Ledger({ session }: { session: Session }) {
                 { label: 'Quantity', a: 'right', mono: true, w: '0.9fr' },
                 { label: 'Value', a: 'right', mono: true, w: '0.8fr' },
               ]}
-              rows={data.moves.map((m) => ({
+              rows={data.moves.filter((m) => hit(search, m.name, m.reason, m.source, m.by)).map((m) => ({
                 key: String(m.id),
                 cells: [
                   { t: new Date(m.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })

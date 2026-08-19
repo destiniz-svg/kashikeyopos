@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import { DataGrid } from './DataGrid';
 
 /* Batches & Expiry — 02-POS-SPEC §2 (`batches`): "Lot tracking and expiry
@@ -80,7 +81,7 @@ const TONE: Record<string, string> = {
   'no expiry': 'var(--text-faint)',
 };
 
-export function Batches({ session }: { session: Session }) {
+export function Batches({ session, search }: { session: Session; search?: string }) {
   const call = useMemo(() => api.authed(session), [session]);
   const [data, setData] = useState<List | null>(null);
   const [trace, setTrace] = useState<Trace | null>(null);
@@ -282,7 +283,7 @@ export function Batches({ session }: { session: Session }) {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
-            {data.batches.map((b) => (
+            {data.batches.filter((b) => hit(search, b.name, b.lot, b.state)).map((b) => (
               <div key={b.id} style={{
                 padding: '10px 12px', borderRadius: 10, background: 'var(--bg-2)',
                 border: '1px solid ' + (b.state === 'expired' ? 'var(--red)'

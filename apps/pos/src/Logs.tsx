@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import { useBreakpoint } from './useBreakpoint';
 
 /* Audit Log — 02-POS-SPEC §2 (`logs`): "Append-only, filterable, exportable."
@@ -83,7 +84,7 @@ const show = (v: unknown) =>
   v === undefined ? '—' : v === null ? 'null'
     : typeof v === 'object' ? JSON.stringify(v) : String(v);
 
-export function Logs({ session }: { session: Session }) {
+export function Logs({ session, search }: { session: Session; search?: string }) {
   const isPhone = useBreakpoint() === 'm';
   /* useMemo, and not decoration. `api.authed(session)` returns a NEW function
      every render, so a `useCallback` that depends on it changes identity every
@@ -231,7 +232,7 @@ export function Logs({ session }: { session: Session }) {
           </div>
         ) : (
           <div style={{ display: 'grid', gap: 2 }}>
-            {entries.map((e) => {
+            {entries.filter((e) => hit(search, e.action, e.entity, e.entityId, e.actorName, e.rankName)).map((e) => {
               const diff = changed(e.before, e.after);
               const isOpen = open === e.id;
               return (

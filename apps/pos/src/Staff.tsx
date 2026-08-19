@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
+import { useIntent } from './intent';
+import { useBreakpoint } from './useBreakpoint';
+import type { Intent } from './intent';
 import * as outbox from './outbox';
 
 /* Staff & Time Clock — 02-POS-SPEC.md §2 (`staff`):
@@ -41,13 +45,28 @@ interface Data {
   canWrite: boolean;
 }
 
-export function Staff({ session, onQueued }: { session: Session; onQueued: () => void | Promise<void> }) {
+export function Staff({ session, onQueued, intent, onIntentDone, search }: {
+  session: Session;
+  onQueued: () => void | Promise<void>;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+  search?: string;
+}) {
   const [data, setData] = useState<Data | null>(null);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Person | null>(null);
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
   const [busy, setBusy] = useState(false);
+  /* The palette's "Clock in" asks rather than does. Starting a paid shift is a
+     payroll write, and a palette row that silently books one is how somebody
+     ends up paid for a shift they never worked. */
+  const [clockAsk, setClockAsk] = useState<Person | 'unknown' | null>(null);
+  /* 130 + 110 + 210 of fixed columns is 450px before the name gets a pixel.
+     At 390 they do not clip — the row wraps and draws the shift time over
+     the name. On a phone the columns lose their floors and the header,
+     which was labelling columns that are no longer in a line. */
+  const isPhone = useBreakpoint() === 'm';
 
   const call = useMemo(() => api.authed(session), [session]);
 
@@ -64,6 +83,26 @@ export function Staff({ session, onQueued }: { session: Session; onQueued: () =>
   useEffect(() => { void load(); }, [load]);
 
   const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 5000); };
+
+  /* Arriving from the palette's "Clock in".
+     HELD until the roster is in. The intent lands while the fetch is still in
+     flight, so matching against `data` on arrival matched against nothing and
+     told everybody their name was not on the roster. */
+  const [wantClock, setWantClock] = useState(false);
+  useIntent(intent, 'staff', (act) => {
+    if (act === 'clockin') setWantClock(true);
+  }, () => onIntentDone?.());
+  useEffect(() => {
+    if (!wantClock || !data) return;
+    setWantClock(false);
+    /* The session carries a name and not a staff id, so the person is matched
+       by name inside this outlet — and an ambiguous name changes nothing,
+       exactly as the bootstrap rule does it. A wrong guess here is somebody
+       else's timesheet. */
+    const hits = data.roster.filter(
+      (p) => p.active && p.name.trim().toLowerCase() === session.name.trim().toLowerCase());
+    setClockAsk(hits.length === 1 ? hits[0] : 'unknown');
+  }, [wantClock, data, session.name]);
 
   const clock = async (p: Person, kind: 'clock_in' | 'clock_out') => {
     setBusy(true);
@@ -107,6 +146,33 @@ export function Staff({ session, onQueued }: { session: Session; onQueued: () =>
         )}
       </div>
 
+      {clockAsk && (
+        <div role="status" style={{
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          padding: '10px 14px', background: 'var(--warn-dim)', borderBottom: '1px solid var(--warn-line)',
+        }}>
+          <span style={{ fontSize: 12, color: 'var(--warn-bright)', fontWeight: 600 }}>
+            {clockAsk === 'unknown'
+              ? `Nobody on this roster is named "${session.name}", or more than one is — clock in from your own row below.`
+              : clockAsk.onShift
+                ? `${clockAsk.name} is already on shift since ${hhmm(clockAsk.onSince as string)}.`
+                : `Start a paid shift for ${clockAsk.name} now?`}
+          </span>
+          <span style={{ flex: 1 }} />
+          {clockAsk !== 'unknown' && !clockAsk.onShift && (
+            <button type="button" disabled={busy}
+              onClick={() => { const p = clockAsk; setClockAsk(null); void clock(p, 'clock_in'); }}
+              style={{ padding: '6px 13px', borderRadius: 7, fontSize: 12, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
+              Clock in
+            </button>
+          )}
+          <button type="button" onClick={() => setClockAsk(null)}
+            style={{ padding: '6px 12px', borderRadius: 7, fontSize: 12, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+            {clockAsk === 'unknown' || clockAsk.onShift ? 'Close' : 'Not now'}
+          </button>
+        </div>
+      )}
+
       {(error || flash) && (
         <div role="status" style={{
           flexShrink: 0, padding: '9px 14px', fontSize: 11.5, lineHeight: 1.5,
@@ -139,15 +205,17 @@ export function Staff({ session, onQueued }: { session: Session; onQueued: () =>
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line-soft)', borderRadius: 9, overflow: 'hidden', border: '1px solid var(--line-soft)' }}>
-              <div style={{ display: 'flex', gap: 12, padding: '8px 13px', background: 'var(--bg-2)', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>
-                <span style={{ flex: 1 }}>WHO</span>
-                <span style={{ width: 130 }}>ON SHIFT</span>
-                <span style={{ width: 110, textAlign: 'right' }}>HOURS THIS WEEK</span>
-                <span style={{ width: 210 }} />
-              </div>
-              {data.roster.map((p) => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)', opacity: p.active ? 1 : .55 }}>
-                  <span style={{ flex: 1, minWidth: 0 }}>
+              {!isPhone && (
+                <div style={{ display: 'flex', gap: 12, padding: '8px 13px', background: 'var(--bg-2)', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>
+                  <span style={{ flex: 1 }}>WHO</span>
+                  <span style={{ width: 130 }}>ON SHIFT</span>
+                  <span style={{ width: 110, textAlign: 'right' }}>HOURS THIS WEEK</span>
+                  <span style={{ width: 210 }} />
+                </div>
+              )}
+              {data.roster.filter((p) => hit(search, p.name, p.rankName)).map((p) => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)', opacity: p.active ? 1 : .55, flexWrap: 'wrap' }}>
+                  <span style={{ flex: '1 1 160px', minWidth: 0 }}>
                     <span style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{p.name}</span>
                       <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
@@ -166,14 +234,14 @@ export function Staff({ session, onQueued }: { session: Session; onQueued: () =>
                     )}
                   </span>
 
-                  <span style={{ width: 130, fontSize: 11.5, color: p.onShift ? 'var(--go-bright)' : 'var(--text-faint)' }}>
+                  <span style={{ width: isPhone ? undefined : 130, fontSize: 11.5, color: p.onShift ? 'var(--go-bright)' : 'var(--text-faint)' }}>
                     {p.onShift
                       ? 'since ' + hhmm(p.onSince as string)
                         + (p.onFor !== null ? ' · ' + p.onFor + 'h' : '')
                       : '—'}
                   </span>
 
-                  <span style={{ width: 110, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
+                  <span style={{ width: isPhone ? undefined : 110, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
                     {p.weekHours ? p.weekHours + 'h' : '—'}
                     {p.weekShifts > 0 && (
                       <span style={{ display: 'block', fontSize: 9.5, color: 'var(--text-faint)' }}>
@@ -182,7 +250,7 @@ export function Staff({ session, onQueued }: { session: Session; onQueued: () =>
                     )}
                   </span>
 
-                  <span style={{ width: 210, display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                  <span style={{ width: isPhone ? '100%' : 210, display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     {p.active && (
                       <RowBtn disabled={busy} onClick={() => void clock(p, p.onShift ? 'clock_out' : 'clock_in')}>
                         {p.onShift ? 'Clock out' : 'Clock in'}

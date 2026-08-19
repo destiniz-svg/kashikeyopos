@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 
 /* Loyalty & Rewards — 02-POS-SPEC.md §2 (`loyalty`):
  * "Earn rate, tier ladder, reward catalogue. Points are a liability
@@ -46,7 +47,7 @@ interface Data {
   canConfigure: boolean;
 }
 
-export function Loyalty({ session }: { session: Session }) {
+export function Loyalty({ session, search }: { session: Session; search?: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState('');
   const [flash, setFlash] = useState('');
@@ -159,7 +160,7 @@ export function Loyalty({ session }: { session: Session }) {
               </div>
             )}
 
-            <Catalogue data={data} busy={busy}
+            <Catalogue data={data} busy={busy} search={search}
               onSave={(b) => act(() => call('POST', '/loyalty/rewards', b), 'Added.')}
               onDrop={(id) => act(() => call('DELETE', '/loyalty/rewards/' + id), 'Removed.')} />
           </>
@@ -265,10 +266,11 @@ function Scheme({ cfg, busy, onSave }: {
 
 /* ── the catalogue ───────────────────────────────────────────────────────── */
 
-function Catalogue({ data, busy, onSave, onDrop }: {
+function Catalogue({ data, busy, onSave, onDrop, search }: {
   data: Data; busy: boolean;
   onSave: (b: Record<string, unknown>) => void;
   onDrop: (id: string) => void;
+  search?: string;
 }) {
   const [name, setName] = useState('');
   const [points, setPoints] = useState('');
@@ -328,7 +330,7 @@ function Catalogue({ data, busy, onSave, onDrop }: {
           Nothing in the catalogue. Points can still be spent against a bill at what they are
           worth — a catalogue is for the things a member would rather have than the money.
         </div>
-      ) : data.rewards.map((rw) => (
+      ) : data.rewards.filter((rw) => hit(search, rw.name)).map((rw) => (
         <div key={rw.id} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 2px', borderBottom: '1px solid var(--line-soft)' }}>
           <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: rw.active ? 'var(--text)' : 'var(--text-faint)' }}>
             {rw.name}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 
 /* Equipment & Maintenance — 02-POS-SPEC.md §2 (`assets`):
  * "Asset register, depreciation posting, service schedule."
@@ -62,7 +63,7 @@ interface Entry {
 const today = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
-export function Assets({ session }: { session: Session }) {
+export function Assets({ session, search }: { session: Session; search?: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [showDisposed, setShowDisposed] = useState(false);
   const [open, setOpen] = useState<Asset | null>(null);
@@ -205,7 +206,7 @@ export function Assets({ session }: { session: Session }) {
                   <span style={{ width: 90, textAlign: 'right' }}>A MONTH</span>
                   <span style={{ width: 78, textAlign: 'right' }}>LEFT</span>
                 </div>
-                {data.assets.map((a) => (
+                {data.assets.filter((a) => hit(search, a.name, a.tag, a.category, a.location, a.serial, a.supplier)).map((a) => (
                   <button key={a.id} onClick={() => void openAsset(a)}
                     style={{ width: '100%', display: 'flex', alignItems: 'baseline', gap: 10, padding: '9px 2px', borderBottom: '1px solid var(--line-soft)', background: 'transparent', textAlign: 'left' }}>
                     <span style={{ flex: 1, minWidth: 0 }}>

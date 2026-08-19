@@ -197,7 +197,7 @@ export function Accounting({ session }: { session: Session }) {
             </option>
           ))}
         </select>
-        <input aria-label="Search" value={q} placeholder="voucher or memo"
+        <input data-screen-search aria-label="Search" value={q} placeholder="voucher or memo"
           onChange={(e) => setQ(e.target.value)}
           style={{ ...dateInput, width: 170, fontFamily: 'inherit' }} />
         <span style={{ flex: 1 }} />

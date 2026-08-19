@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
+import { useIntent } from './intent';
+import type { Intent } from './intent';
 
 /* Vendors — 02-POS-SPEC.md §2: "Supplier master, terms, price history."
  *
@@ -31,7 +34,12 @@ interface Detail {
   }>;
 }
 
-export function Vendors({ session }: { session: Session }) {
+export function Vendors({ session, intent, onIntentDone, search }: {
+  session: Session;
+  intent?: Intent | null;
+  onIntentDone?: () => void;
+  search?: string;
+}) {
   const [rows, setRows] = useState<Supplier[] | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [adding, setAdding] = useState(false);
@@ -43,6 +51,12 @@ export function Vendors({ session }: { session: Session }) {
      write its own fetch('/api/...'), which resolves only behind the Vite
      proxy; deployed on its own origin every one of them would have 404'd. */
   const call = useMemo(() => api.authed(session), [session]);
+
+  /* Arriving from the palette's "Add a vendor". */
+  useIntent(intent, 'vendors', (act) => {
+    if (act === 'newVendor') setAdding(true);
+  }, () => onIntentDone?.());
+
 
   const load = useCallback(async () => {
     try {
@@ -134,7 +148,7 @@ export function Vendors({ session }: { session: Session }) {
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line-soft)', borderRadius: 9, overflow: 'hidden', border: '1px solid var(--line-soft)' }}>
-            {rows.map((s) => (
+            {rows.filter((s) => hit(search, s.name, s.trn)).map((s) => (
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)' }}>
                 <button onClick={() => void (async () => {
                   try { setDetail(await call('GET', '/vendors/' + s.id) as Detail); }

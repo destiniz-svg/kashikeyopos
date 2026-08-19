@@ -120,7 +120,7 @@ export function Customers({ session }: { session: Session }) {
           </span>
         )}
         <span style={{ flex: 1 }} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="name or number…"
+        <input data-screen-search value={q} onChange={(e) => setQ(e.target.value)} placeholder="name or number…"
           aria-label="Find a customer"
           style={{ width: 190, height: 30, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }} />
       </div>

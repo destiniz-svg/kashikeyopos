@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { hit } from './filter';
 import { CreditNote } from './CreditNote';
 
 /* Orders & Tickets — 02-POS-SPEC.md §2 (`orders`):
@@ -103,7 +104,7 @@ const METHOD_LABEL: Record<string, string> = {
 const today = () => new Date().toISOString().slice(0, 10);
 const PAGE = 50;
 
-export function Orders({ session }: { session: Session }) {
+export function Orders({ session, search }: { session: Session; search?: string }) {
   const [date, setDate] = useState(today());
   const [offset, setOffset] = useState(0);
   const [day, setDay] = useState<Day | null>(null);
@@ -189,7 +190,7 @@ export function Orders({ session }: { session: Session }) {
               <section style={{ marginBottom: 18 }}>
                 <Head>On the floor — {day.open.length} open ticket{day.open.length === 1 ? '' : 's'}</Head>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 190px), 1fr))', gap: 9 }}>
-                  {day.open.map((o) => (
+                  {day.open.filter((o) => hit(search, o.table, o.channel, o.server, o.status)).map((o) => (
                     <div key={o.ticketId} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
@@ -245,7 +246,7 @@ export function Orders({ session }: { session: Session }) {
                     <span style={{ width: 78, textAlign: 'right' }}>GST</span>
                     <span style={{ width: 92, textAlign: 'right' }}>TOTAL</span>
                   </div>
-                  {day.closed.map((s) => (
+                  {day.closed.filter((s) => hit(search, s.receiptNo, s.table, s.channel, s.server, s.methods.join(' '))).map((s) => (
                     <button key={s.saleId} onClick={() => void open(s.saleId)}
                       style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 13px', background: 'var(--bg-1)', textAlign: 'left', width: '100%' }}>
                       <span style={{ width: 46, fontSize: 11, fontFamily: MONO, color: 'var(--text-faint)' }}>{time(s.at)}</span>
