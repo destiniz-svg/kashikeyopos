@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Item, Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { Payment } from './Payment';
@@ -68,7 +68,15 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   }, () => { /* Register clears it — this is a second reader of the same one-shot. */ });
   const [cart, setCart] = useState(false);
   const [table, setTable] = useState<string>('');
-  const [lines, setLines] = useState<Line[]>([]);
+  /* WHICH BILL ON THIS TABLE. 0 is the table's own; 1.. are guests who asked to
+     pay separately. `ticket.split` has been in the schema since the first
+     migration and every write put a literal 0 in it, so a party splitting the
+     bill had to be handled on paper. */
+  const [split, setSplit] = useState(0);
+  /* What has been keyed but not yet fired. The lines the kitchen already has
+     live on the SERVER's ticket and are read from the snapshot — this is only
+     the part that has not left the till. */
+  const [draft, setDraft] = useState<Line[]>([]);
   /* What a promotion takes off, once the payment screen has had the server
      confirm it. Held here because it changes the BILL, not just the tender. */
   const [promoDiscount, setPromoDiscount] = useState(0);
@@ -77,12 +85,18 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const [q, setQ] = useState('');
   const [paying, setPaying] = useState(false);
   const [flash, setFlash] = useState('');
-  /* §3.3's two foot actions are Send and Pay, and they are different things. A
-     round goes to the kitchen the moment it is ordered; the bill is settled
-     when the guest leaves. `sentIds` remembers what has already been fired so
-     a second Send only carries what was added since — not the whole ticket
-     again, which would cook everything twice. */
-  const [sentIds, setSentIds] = useState<Record<string, number>>({});
+  /* §3.3's two foot actions are Send and Pay, and they are different things: a
+     round goes to the kitchen the moment it is ordered, the bill is settled
+     when the guest leaves.
+     A round that has been FIRED but whose ticket has not come back yet — the
+     normal case on a bad connection, and every case offline — is held here so
+     it stays on the bill in front of the cashier. Each entry remembers the
+     server quantity at the moment it was fired, so it can be retired when the
+     snapshot has genuinely caught up rather than when it merely looks similar. */
+  const [firing, setFiring] = useState<Array<Line & { baseline: number }>>([]);
+  /* The line being voided, and the reason being typed for it. */
+  const [voiding, setVoiding] = useState<{ id: string; name: string } | null>(null);
+  const [voidWhy, setVoidWhy] = useState('');
 
   const items = snap?.items ?? [];
   const outlet = snap?.outlet ?? null;
@@ -109,22 +123,68 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   /* Which tables are busy, from the till's own open tickets. Free/Seated is
      derived from the server's state, never from a counter this screen keeps —
      two terminals are looking at the same floor. */
+  /* OPEN ONLY. The snapshot also carries tickets that are settled but still
+     have food on the pass, so the kitchen keeps its card — a table whose party
+     has paid and gone is not busy, and shading it would be the same "the table
+     never frees" bug in a new place. */
+  const openTickets = useMemo(
+    () => (snap?.tickets ?? []).filter((t) => t.status === 'open'), [snap]);
+
   const openByTable = useMemo(() => {
     const m = new Map<string, { covers: number }>();
-    for (const t of snap?.tickets ?? []) {
+    for (const t of openTickets) {
       if (t.table_no) m.set(tableName(t.table_no), { covers: t.covers });
     }
     return m;
-  }, [snap]);
+  }, [openTickets]);
 
-  /* The open ticket for the table being worked, if there is one. */
+  /* Every open bill on the table being worked, in split order. This is what the
+     guest chips are drawn from, and it is the server's answer rather than a
+     count this screen keeps: two terminals are looking at the same table. */
+  const billsHere = useMemo(
+    () => openTickets
+      .filter((t) => tableName(t.table_no ?? '') === tableName(table))
+      .slice()
+      .sort((a, b) => a.split - b.split),
+    [openTickets, table]);
+
+  /* The open ticket for the bill being worked, if there is one.
+     THE WHOLE POINT OF THIS SCREEN HAVING AN ID. Without it the ticket panel
+     was a local scratchpad: a reload emptied it while the server still held the
+     round, a second terminal could not take the table over, a round accepted
+     from a guest's phone never appeared in front of the cashier, and settling
+     could not close the ticket it had just been paid for — so the table stayed
+     shaded busy and the same meal sat on the Orders board twice, once as an
+     unsettled tab and once as a receipt. */
   const ticket = useMemo(
-    () => (snap?.tickets ?? []).find(
-      (t) => tableName(t.table_no ?? '') === tableName(table)) ?? null,
-    [snap, table]);
+    () => billsHere.find((t) => t.split === split) ?? null,
+    [billsHere, split]);
+
+  /* The lines the kitchen has, from the ticket itself. Every ticket_line is
+     created already sent (see kitchen.sendRound), so what is on the server IS
+     what has been fired. */
+  const sentLines = ticket?.lines ?? [];
+
+  /* Retire a fired round once the ticket it was fired onto has caught up.
+     Compared against the baseline captured at fire time, not against zero: two
+     espressos fired onto a ticket that already had two must wait for four. */
+  useEffect(() => {
+    if (!firing.length) return;
+    const have = new Map<string, number>();
+    for (const l of sentLines) {
+      const id = l.itemId ?? l.name;
+      have.set(id, (have.get(id) ?? 0) + Number(l.qty));
+    }
+    const still = firing.filter((f) => (have.get(f.itemId) ?? 0) < f.baseline + f.qty);
+    if (still.length !== firing.length) setFiring(still);
+  }, [sentLines, firing]);
+
+  /* Changing table or guest starts a different bill. The draft belongs to the
+     bill it was keyed against and must not follow the cashier to the next one. */
+  useEffect(() => { setDraft([]); setFiring([]); setVoiding(null); }, [table, split]);
 
   const add = (it: Item) => {
-    setLines((ls) => {
+    setDraft((ls) => {
       const i = ls.findIndex((l) => l.itemId === it.id);
       if (i >= 0) {
         const next = ls.slice();
@@ -136,9 +196,45 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   };
 
   const step = (itemId: string, d: number) =>
-    setLines((ls) => ls
+    setDraft((ls) => ls
       .map((l) => (l.itemId === itemId ? { ...l, qty: l.qty + d } : l))
       .filter((l) => l.qty > 0));
+
+  /* Taking a line off a bill the kitchen already has. Not a delete — a void
+     with a reason, which stays on the ticket and prints in the receipt's own
+     voided-lines section. The server refuses one below manager rank. */
+  const voidLine = async () => {
+    if (!voiding || voidWhy.trim().length < 3) return;
+    await outbox.enqueue('ticket_line_void', { lineId: voiding.id, reason: voidWhy.trim() });
+    setVoiding(null); setVoidWhy('');
+    setFlash('Taken off the bill');
+    setTimeout(() => setFlash(''), 2600);
+    await onQueued();
+  };
+
+  /* Opening a guest their own bill. Nothing is written until the first round is
+     fired or the first payment taken — an empty split is a promise, not a row. */
+  /* The chips: every open bill on this table, plus the one being keyed if it
+     has no server ticket yet. A guest who has been given their own bill but
+     whose first round is still in the cashier's hands must still be on the row
+     — otherwise pressing "+ Guest" appears to do nothing at all. */
+  const guestBills = useMemo(() => {
+    const out = billsHere.map((t) => ({
+      split: t.split,
+      open: true,
+      value: t.lines.reduce((a, l) => a + toLaari(l.price) * Number(l.qty), 0),
+    }));
+    if (!out.some((g) => g.split === split)) out.push({ split, open: false, value: 0 });
+    return out.sort((a, b) => a.split - b.split);
+  }, [billsHere, split]);
+
+  const addGuest = () => {
+    const next = billsHere.reduce((m, t) => Math.max(m, t.split), 0) + 1;
+    setSplit(Math.max(next, split + 1));
+    setDraft([]);
+    setFlash('Guest ' + (Math.max(next, split + 1) + 1) + ' — new items go to their bill');
+    setTimeout(() => setFlash(''), 2600);
+  };
 
   const servicePct = Number(outlet?.service_pct ?? 0);
   const taxRate = Number(snap?.tax?.rate ?? 0);
@@ -152,6 +248,22 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
      exactly how a till and a ledger drift, quietly, each satisfying its own
      invariant. packages/money's own header always said "the browsers load it
      as a script"; now they do. */
+  /* WHAT IS ON THE BILL: what the kitchen has, what is queued to reach it, and
+     what has only been keyed. Priced from the menu where the dish is still on
+     it, and from the ticket where it is not — a dish taken off the board after
+     it was ordered still has to be charged at the price the guest was quoted. */
+  const priceOf = (itemId: string | undefined, fallback: string) => {
+    const it = itemId ? items.find((i) => i.id === itemId) : undefined;
+    return toLaari(it ? it.price : fallback);
+  };
+  const onKitchen: Line[] = sentLines.map((l, i) => ({
+    itemId: l.itemId ?? ('srv' + i),
+    name: l.name,
+    qty: Number(l.qty),
+    unitPrice: priceOf(l.itemId, l.price),
+  }));
+  const lines: Line[] = [...onKitchen, ...firing, ...draft];
+
   const bill = priceBill({
     lines: lines.map((l) => ({ unitPrice: l.unitPrice, qty: l.qty })),
     discount: promoDiscount,
@@ -162,31 +274,35 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const tax = bill.tax;
   const total = bill.total;
 
-  /* Fire the unsent part of the ticket. Queued like everything else, so a
+  /* Fire the keyed part of the ticket. Queued like everything else, so a
      server on a dead connection still gets the food to the kitchen the moment
      the network returns — and the kitchen never waits on the card machine. */
-  const unsent = lines
-    .map((l) => ({ ...l, qty: l.qty - (sentIds[l.itemId] ?? 0) }))
-    .filter((l) => l.qty > 0);
-
   const send = async () => {
-    if (!unsent.length) return;
+    if (!draft.length) return;
     await outbox.enqueue('ticket_send', {
       table,
+      split,
       covers: openByTable.get(table)?.covers ?? 1,
       channel: table === 'Takeaway' ? 'takeaway' : table === 'Delivery' ? 'delivery' : 'dine_in',
-      lines: unsent.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+      lines: draft.map((l) => ({ itemId: l.itemId, qty: l.qty })),
     });
-    const next = { ...sentIds };
-    for (const l of lines) next[l.itemId] = l.qty;
-    setSentIds(next);
-    setFlash(unsent.reduce((a, l) => a + l.qty, 0) + ' to the kitchen');
+    /* Held on the bill against the quantity the ticket has NOW, so it survives
+       the round trip — or the hours of it, offline — without being counted
+       twice when the ticket comes back carrying it. */
+    const have = new Map<string, number>();
+    for (const l of sentLines) {
+      const id = l.itemId ?? l.name;
+      have.set(id, (have.get(id) ?? 0) + Number(l.qty));
+    }
+    setFiring((f) => f.concat(draft.map((l) => ({ ...l, baseline: have.get(l.itemId) ?? 0 }))));
+    setDraft([]);
+    setFlash(draft.reduce((a, l) => a + l.qty, 0) + ' to the kitchen');
     setTimeout(() => setFlash(''), 2600);
     await onQueued();
   };
 
-  const settled = async (payments: { method: string; amount: number }[],
-    memberId?: string, code?: string) => {
+  const settled = async (payments: { method: string; amount: number; ref?: string }[],
+    memberId?: string, code?: string, voucherCode?: string) => {
     /* One `sale` operation, queued locally. It carries what only the till knows
        — which items, how many, which table, which tender — and nothing about
        what they cost: the server prices it from the item master and the tax
@@ -195,8 +311,16 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
       businessDate: new Date().toISOString().slice(0, 10),
       channel: table === 'Takeaway' ? 'takeaway' : table === 'Delivery' ? 'delivery' : 'dine_in',
       covers: openByTable.get(table)?.covers ?? 1,
+      /* WHICH TICKET THIS SETTLES. Without it the server had nothing to close,
+         so a paid table stayed shaded busy and its tab stayed on the Orders
+         board beside the receipt for the very same meal. */
+      ticketId: ticket?.id,
       lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
-      payments: payments.map((p) => ({ method: p.method, amount: (p.amount / 100).toFixed(2) })),
+      payments: payments.map((p) => ({
+        method: p.method,
+        amount: (p.amount / 100).toFixed(2),
+        ...(p.ref ? { ref: p.ref } : {}),
+      })),
       /* Whose account, when the tender is one. The server checks the limit
          again — it is the authority — but it cannot check it against nobody. */
       memberId,
@@ -204,11 +328,19 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
          what it is worth — a till that named its own discount is the hole this
          closed. */
       promoCode: code,
+      /* Which voucher, when one is part of the tender. Checked and CLAIMED by
+         the server after the sale exists, so a code that turns out to be spent
+         stops the settlement instead of printing on a receipt. */
+      voucherCode,
       clientTotal: (total / 100).toFixed(2),
     });
     setPaying(false);
-    setLines([]);
-    setSentIds({});
+    setDraft([]);
+    setFiring([]);
+    /* Back to the table's own bill: the guest whose split this was has paid and
+       gone, and leaving the cashier pointed at a closed split is how the next
+       round gets keyed onto nothing. */
+    setSplit(0);
     setPromoDiscount(0);
     setPromoCode(undefined);
     setFlash('Sale queued — ' + money(total));
@@ -246,7 +378,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     <button
       key={key}
       onClick={() => {
-        setTable(label); setLines([]); setSentIds({});
+        setTable(label); setSplit(0);
         /* On a phone the panes are one at a time, and choosing a table is the
            step before ordering — so it moves you on rather than leaving you
            looking at the tables you have just chosen from. */
@@ -425,8 +557,89 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           </span>
         </div>
 
+        {/* SEPARATE BILLS ON ONE TABLE. Drawn for any real table, because the
+            row is also the only way to OPEN a second bill — gated on there
+            already being one, "+ Guest" was unreachable and splitting stayed
+            exactly as impossible as it was before.
+            Not for Takeaway or Delivery: those are not tables and a party
+            cannot ask to split one. */}
+        {table && table !== 'Takeaway' && table !== 'Delivery' && (
+          <div style={{ padding: '8px 13px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            {guestBills.map((g) => {
+              const on = g.split === split;
+              return (
+                <button key={g.split} onClick={() => setSplit(g.split)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, fontSize: 10.5, fontWeight: 600,
+                    padding: '5px 10px', borderRadius: 16, minHeight: 30,
+                    border: '1px solid ' + (on ? 'var(--text)' : 'var(--line)'),
+                    color: on ? 'var(--bg)' : 'var(--text-dim)',
+                    background: on ? 'var(--text)' : 'var(--bg-2)',
+                  }}>
+                  {g.split === 0 ? 'Table' : 'Guest ' + (g.split + 1)}
+                  {g.open && <span style={{ opacity: .7, fontFamily: MONO }}>{money(g.value)}</span>}
+                </button>
+              );
+            })}
+            <button onClick={addGuest} disabled={!table}
+              style={{ fontSize: 10.5, color: 'var(--text-dim)', padding: '5px 9px', borderRadius: 16, minHeight: 30, border: '1px dashed var(--line-2)' }}>
+              + Guest
+            </button>
+          </div>
+        )}
+
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 13px' }}>
-          {lines.map((l) => (
+          {/* WITH THE KITCHEN — the server's own lines, drawn one row per line
+              as the ticket holds them rather than aggregated, because a void
+              acts on a line and an aggregate has no id to act on. */}
+          {sentLines.map((l, i) => (
+            <div key={l.id ?? i} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+                  {Number(l.qty) > 1 && (
+                    <span style={{ fontFamily: MONO, color: 'var(--text-muted)' }}>{Number(l.qty)}× </span>
+                  )}
+                  {l.name}
+                </span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                  {money(priceOf(l.itemId, l.price) * Number(l.qty))}
+                </span>
+              </div>
+              <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--go-bright)' }}>
+                  with the kitchen
+                </span>
+                <span style={{ flex: 1 }} />
+                {l.id && (
+                  <button onClick={() => { setVoiding({ id: l.id as string, name: l.name }); setVoidWhy(''); }}
+                    style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--red-bright)', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--red-line, var(--line))', minHeight: 26 }}>
+                    Take off
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
+          {/* QUEUED — fired, not yet acknowledged. Offline this is where a whole
+              service lives, so it is drawn as part of the bill and not hidden. */}
+          {firing.map((l, i) => (
+            <div key={'q' + i} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)', opacity: .82 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+                  <span style={{ fontFamily: MONO, color: 'var(--text-muted)' }}>{l.qty}× </span>{l.name}
+                </span>
+                <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                  {money(l.unitPrice * l.qty)}
+                </span>
+              </div>
+              <div style={{ marginTop: 5, fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--warn-bright)' }}>
+                on its way to the kitchen
+              </div>
+            </div>
+          ))}
+
+          {/* KEYED, NOT SENT — the only part this screen still owns outright. */}
+          {draft.map((l) => (
             <div key={l.itemId} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
@@ -443,7 +656,45 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
               </div>
             </div>
           ))}
-          {!lines.length && (
+
+          {/* The reason. A void with no reason is a number nobody can answer
+              for at the end of the month. */}
+          {voiding && (
+            <div style={{ marginTop: 10, padding: 11, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--red-line, var(--line))' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>
+                Take {voiding.name} off the bill
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.5, color: 'var(--text-faint)' }}>
+                It stays on the ticket as a voided line, with your name against it.
+              </div>
+              <input
+                value={voidWhy} autoFocus placeholder="Why? — sent back, wrong table, keyed twice"
+                aria-label="Why this line is coming off"
+                onChange={(e) => setVoidWhy(e.target.value)}
+                style={{
+                  marginTop: 8, width: '100%', minHeight: 36, padding: '7px 9px', borderRadius: 7,
+                  background: 'var(--bg-1)', border: '1px solid var(--line-2)', color: 'var(--text)',
+                  fontSize: 12, fontFamily: 'inherit',
+                }} />
+              <div style={{ marginTop: 8, display: 'flex', gap: 7 }}>
+                <button onClick={() => setVoiding(null)}
+                  style={{ flex: 1, minHeight: 34, borderRadius: 7, background: 'var(--bg-1)', border: '1px solid var(--line)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600 }}>
+                  Keep it
+                </button>
+                <button onClick={() => void voidLine()} disabled={voidWhy.trim().length < 3}
+                  style={{
+                    flex: 1, minHeight: 34, borderRadius: 7, fontSize: 12, fontWeight: 700,
+                    background: voidWhy.trim().length >= 3 ? 'var(--red)' : 'var(--bg-1)',
+                    color: voidWhy.trim().length >= 3 ? '#fff' : 'var(--text-faint)',
+                    border: '1px solid ' + (voidWhy.trim().length >= 3 ? 'var(--red)' : 'var(--line)'),
+                  }}>
+                  Take it off
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!lines.length && !voiding && (
             <div style={{ padding: '30px 4px', textAlign: 'center', fontSize: 11.5, lineHeight: 1.65, color: 'var(--text-faint)' }}>
               {table
                 ? 'Nothing on this ticket yet. Tap a dish to add it.'
@@ -480,15 +731,15 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           <div style={{ marginTop: 11, display: 'flex', gap: 8 }}>
             <button
               onClick={() => void send()}
-              disabled={!unsent.length}
+              disabled={!draft.length}
               style={{
                 flex: 1, minHeight: 44, borderRadius: 9,
-                background: unsent.length ? 'var(--bg-3)' : 'var(--bg-2)',
-                border: '1px solid ' + (unsent.length ? 'var(--amber-line)' : 'var(--line)'),
-                color: unsent.length ? 'var(--amber-bright)' : 'var(--text-faint)',
+                background: draft.length ? 'var(--bg-3)' : 'var(--bg-2)',
+                border: '1px solid ' + (draft.length ? 'var(--amber-line)' : 'var(--line)'),
+                color: draft.length ? 'var(--amber-bright)' : 'var(--text-faint)',
                 fontSize: 13.5, fontWeight: 700, textAlign: 'center',
               }}
-            >{unsent.length ? 'Send ' + unsent.reduce((a, l) => a + l.qty, 0) : 'Sent'}</button>
+            >{draft.length ? 'Send ' + draft.reduce((a, l) => a + l.qty, 0) : 'Sent'}</button>
             <button
               onClick={() => setPaying(true)}
               disabled={!lines.length}

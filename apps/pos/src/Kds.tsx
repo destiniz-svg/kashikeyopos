@@ -59,7 +59,20 @@ export function Kds({ snap, now, onQueued }: Props) {
      A line with no routed station falls to the first column — the same rule
      kitchen.js applied when it decided which stations to fire, so the display
      and the fire agree. */
-  const firstStation = (stations[0]?.name) ?? null;
+  const columns = stations.length
+    ? stations.map((s) => s.name)
+    // An outlet that has configured no stations still has a pass; the server
+    // fires everything to one, and this must show it rather than nothing.
+    : [...new Set(stages.map((s) => s.station))];
+
+  /* Falls back to the first column, which is itself derived from the stage rows
+     when no stations are configured. Keyed off `stations` alone this was `null`
+     in exactly that case, while the kitchen had fired everything to a station
+     called "Pass" — so the columns drew, the cards drew, and not one of them
+     listed any food. The snapshot now supplies the implicit pass too; this is
+     the second half of the same fix, so a card cannot be emptied by a
+     disagreement between two sources again. */
+  const firstStation = (stations[0]?.name) ?? columns[0] ?? null;
   const linesForStation = (ticketId: string | null, station: string) =>
     (linesOf.get(ticketId ?? '') ?? []).filter((l) => (l.station ?? firstStation) === station);
 
@@ -82,12 +95,6 @@ export function Kds({ snap, now, onQueued }: Props) {
     }
     return [...n.entries()].sort((a, b) => b[1] - a[1]);
   }, [stages, linesOf]);
-
-  const columns = stations.length
-    ? stations.map((s) => s.name)
-    // An outlet that has configured no stations still has a pass; the server
-    // fires everything to one, and this must show it rather than nothing.
-    : [...new Set(stages.map((s) => s.station))];
 
   const advance = async (kdsId: string, stage: string) => {
     await outbox.enqueue('kds_advance', { kdsId, stage });

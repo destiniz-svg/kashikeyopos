@@ -33,7 +33,7 @@ async function stationsFor(c, outletId) {
  * Fire a round. Opens the table's ticket if it has none, appends the lines, and
  * raises one kds_ticket per station the round actually touches.
  *
- * p = { table, covers?, lines: [{ itemId, qty, note? }], server? }
+ * p = { table, split?, covers?, lines: [{ itemId, qty, note? }], server? }
  */
 async function sendRound(c, p, ctx) {
   /* NORMALISED HERE, because this is where a ticket gets its table. The floor
@@ -58,13 +58,20 @@ async function sendRound(c, p, ctx) {
     }
   }
 
+  /* WHICH BILL ON THIS TABLE. `split` has been in the schema and in the unique
+     index since the first migration and every insert wrote a literal 0, so a
+     table could only ever have one bill and a party of four splitting it had to
+     be handled on paper. It is a small non-negative integer: 0 is the table's
+     own bill, 1.. are the guests who asked for their own. */
+  const split = Math.max(0, Math.min(99, Math.trunc(Number(p.split) || 0)));
+
   /* One open ticket per (table, split) — the partial unique index enforces it.
      ON CONFLICT rather than a read-then-write: two servers firing the same
      table at the same moment must not race into two tickets, and the database
      is the only place that can be decided. */
   const existing = await c.query(
-    "SELECT id FROM ticket WHERE table_no = $1 AND split = 0 AND status = 'open'"
-    + ' FOR UPDATE', [table]);
+    "SELECT id FROM ticket WHERE table_no = $1 AND split = $2 AND status = 'open'"
+    + ' FOR UPDATE', [table, split]);
   let ticketId;
   if (existing.rows.length) {
     ticketId = existing.rows[0].id;
@@ -75,14 +82,16 @@ async function sendRound(c, p, ctx) {
   } else {
     const ins = await c.query(
       'INSERT INTO ticket (table_no, split, channel, status, covers, opened_by, device_id, server_name)'
-      + " VALUES ($1, 0, $2, 'open', $3, $4, $5, $6)"
+      + " VALUES ($1, $2, $3, 'open', $4, $5, $6, $7)"
       + ' ON CONFLICT DO NOTHING RETURNING id',
-      [table, p.channel || 'dine_in', Number(p.covers) || 1, ctx.actor, ctx.deviceId, p.server || null]);
+      [table, split, p.channel || 'dine_in', Number(p.covers) || 1,
+        ctx.actor, ctx.deviceId, p.server || null]);
     if (ins.rows.length) ticketId = ins.rows[0].id;
     else {
       // Lost the race; the other transaction's ticket is the one to use.
       const again = await c.query(
-        "SELECT id FROM ticket WHERE table_no = $1 AND split = 0 AND status = 'open'", [table]);
+        "SELECT id FROM ticket WHERE table_no = $1 AND split = $2 AND status = 'open'",
+        [table, split]);
       if (!again.rows.length) throw new Error('could not open a ticket for ' + table);
       ticketId = again.rows[0].id;
     }
@@ -117,9 +126,76 @@ async function sendRound(c, p, ctx) {
   }
 
   await c.query("SELECT chain.log('ticket_send','ticket',$1,NULL,$2)",
-    [ticketId, JSON.stringify({ table, lines: p.lines.length, stations: fired.map((f) => f.station) })]);
+    [ticketId, JSON.stringify({
+      table, split, lines: p.lines.length, stations: fired.map((f) => f.station),
+    })]);
 
-  return { ticketId, table, fired };
+  return { ticketId, table, split, fired };
+}
+
+/**
+ * Take a line off an open ticket.
+ *
+ * NOT a delete. `void_at` and a reason, so the line stays on the ticket and in
+ * the receipt's own "voided lines" section — the schema, the snapshot query and
+ * the receipt drawer have all read this column since the beginning and nothing
+ * has ever written it, which meant a dish keyed by mistake could not be taken
+ * off a tab by anybody at any rank.
+ *
+ * RANK IS DECIDED BY WHETHER THE KITCHEN HAS IT. An unsent line is a typo and
+ * the person who made it should fix it, so the till can. A line that has been
+ * fired is food that was cooked and is now being written off, which is a
+ * manager's signature — the same reason wastage is rank 3. Every line this
+ * build creates is sent the moment it is created (see sendRound), so in
+ * practice this is the manager rule; the unsent branch is here because the
+ * column allows it and a future "hold this round" would rely on it.
+ *
+ * p = { lineId, reason }
+ */
+async function voidLine(c, p, ctx) {
+  const lineId = String((p && p.lineId) || '');
+  const reason = String((p && p.reason) || '').trim();
+  if (!lineId) throw Object.assign(new Error('which line?'), { status: 400 });
+  if (reason.length < 3) {
+    throw Object.assign(
+      new Error('a voided line needs a reason — it is what the write-off is answered with'),
+      { status: 400 });
+  }
+
+  const q = await c.query(
+    'SELECT l.id, l.name, l.qty, l.unit_price, l.sent_at, l.void_at,'
+    + ' t.id AS ticket_id, t.status, t.table_no'
+    + ' FROM ticket_line l JOIN ticket t ON t.id = l.ticket_id'
+    + ' WHERE l.id = $1 FOR UPDATE OF l', [lineId]);
+  if (!q.rows.length) throw Object.assign(new Error('no such line'), { status: 404 });
+  const l = q.rows[0];
+
+  /* Idempotent: a till replaying a queued void after a reconnect must not be
+     told its own completed work was an error. */
+  if (l.void_at) return { lineId: l.id, ticketId: l.ticket_id, already: true };
+
+  if (l.status !== 'open') {
+    throw Object.assign(
+      new Error('that ticket is settled — a settled sale is corrected with a credit note, never edited'),
+      { status: 409 });
+  }
+  if (l.sent_at && (ctx.rank || 0) < 3) {
+    throw Object.assign(
+      new Error('that one is already with the kitchen — a manager takes it off'),
+      { status: 403 });
+  }
+
+  await c.query(
+    'UPDATE ticket_line SET void_at = now(), void_reason = $2, void_by = $3 WHERE id = $1',
+    [lineId, reason, ctx.actor]);
+
+  await c.query("SELECT chain.log('ticket_line_void','ticket_line',$1,NULL,$2)",
+    [lineId, JSON.stringify({
+      ticketId: l.ticket_id, table: l.table_no, name: l.name,
+      qty: l.qty, unitPrice: l.unit_price, wasSent: l.sent_at !== null, reason,
+    })]);
+
+  return { lineId: l.id, ticketId: l.ticket_id, name: l.name, qty: l.qty };
 }
 
 /* §4: "Stages: Received → In the kitchen → Ready → Served." A stage only ever
@@ -162,4 +238,4 @@ async function advance(c, p, ctx) {
   return { kdsId: p.kdsId, stage, from: cur.rows[0].stage };
 }
 
-module.exports = { sendRound, advance, stationsFor, STAGES, DEFAULT_STATION };
+module.exports = { sendRound, advance, voidLine, stationsFor, STAGES, DEFAULT_STATION };

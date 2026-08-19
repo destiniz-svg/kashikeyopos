@@ -397,14 +397,31 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
         c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
           + ' t.member_id, ' + (req.ctx.guest ? 'NULL::numeric' : 't.points_offered')
           + ' AS points_offered, '
-          + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
+          /* `id` and `itemId` ride along because a ticket is not only something
+             to LOOK at. The till has to be able to settle this exact ticket and
+             to void this exact line, and it can do neither from a name and a
+             price. Without them the ticket panel could only ever be a picture
+             of a bill somebody else was holding. Staff only: a guest's phone
+             has no business holding line ids it could send back. */
+          + " coalesce(json_agg(json_build_object("
+          + (req.ctx.guest ? "" : "   'id', l.id, 'itemId', l.item_id, ")
+          + "   'name', l.name, 'qty', l.qty,"
           + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
           + "   'station', i.station)"
           + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
           + ' FROM ticket t LEFT JOIN ticket_line l'
           + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
           + ' LEFT JOIN item i ON i.id = l.item_id'
-          + " WHERE t.status = 'open' AND ($1::text IS NULL OR t.table_no = $1)"
+          /* OPEN, OR STILL BEING COOKED. Closing a ticket on payment — which
+             it now is — used to take it out of this list entirely, and the
+             pass kept the round it had not sent out yet with no table against
+             it and no dishes on the card. A takeaway paid at the counter is
+             the ordinary case of that, so the rule cannot be "paid means
+             served". The floor filters this list back down to open tickets;
+             the KDS wants both. */
+          + " WHERE ($1::text IS NULL OR t.table_no = $1) AND (t.status = 'open'"
+          + '   OR EXISTS (SELECT 1 FROM kds_ticket k'
+          + '              WHERE k.ticket_id = t.id AND k.served_at IS NULL))'
           /* The guest's token carries the table as the QR card spells it — `3`.
              A ticket is stored the way the floor spells it — `T03`. Compared
              raw, a guest at a table with an open ticket saw nothing at all. */
@@ -420,9 +437,15 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
       /* Stations ride on the snapshot so the KDS can draw its columns and
          colour its cards against each station's OWN target, without a second
          round trip on a screen that lives in a hot kitchen on poor wifi. */
+      /* THROUGH kitchen.stationsFor, not a second copy of its query. An outlet
+         that has configured no stations still HAS one — sendRound falls back to
+         a pass and fires everything to it — and this used to ask the table
+         directly, get nothing, and hand the KDS an empty list. The columns then
+         came from the stage rows (which say "Pass") while the line matching
+         compared against `null`, so every card in a default outlet listed no
+         food at all. One function, one answer. */
       const stations = req.ctx.guest ? { rows: [] }
-        : await c.query('SELECT name, target_mins, sort FROM chain.station'
-          + ' WHERE outlet_id = $1 AND active ORDER BY sort, name', [req.ctx.outletId]);
+        : { rows: await kitchen.stationsFor(c, req.ctx.outletId) };
       return {
         v: 5, at: Date.now(),
         outlet: outlet.rows[0] || null,
@@ -2523,6 +2546,11 @@ const OP_RANK = {
   clock_in: 1,
   clock_out: 1,
   ticket_send: 2,          // firing the kitchen moves no money
+  /* Queued at TILL rank because the person who mis-keyed a dish is standing at
+     the till. kitchen.voidLine then refuses a line the kitchen already has
+     below manager rank, which is the distinction that matters — the same shape
+     as clock_in above. */
+  ticket_line_void: 2,
   guest_order_accept: 2,
   sale: 2,                 // taking money is the till's job
   drawer_open: 2,          // …and so is counting the drawer it comes out of
@@ -2565,6 +2593,9 @@ async function apply(c, op, ctx) {
       if (!outlet.rows.length) throw new Error('outlet not found');
       return await settle(c, op.payload || {}, ctx, outlet.rows[0]);
     }
+    case 'ticket_line_void':
+      return await kitchen.voidLine(c, op.payload || {}, ctx);
+
     case 'ticket_send':
       return await kitchen.sendRound(c, op.payload || {}, ctx);
 

@@ -20,7 +20,12 @@ export interface Tax { code: string; rate: string; }
 export interface Item {
   id: string; name: string; category: string | null; price: string; off_menu: boolean;
 }
-export interface TicketLine { name: string; qty: string; price: string; sent: boolean; station: string | null; }
+export interface TicketLine {
+  /* Staff sessions only — a guest's phone is given the bill to READ, and an id
+     it could send back is an id it could send back about somebody else's. */
+  id?: string; itemId?: string;
+  name: string; qty: string; price: string; sent: boolean; station: string | null;
+}
 export interface Ticket {
   id: string; table_no: string | null; split: number; covers: number;
   status: string; lines: TicketLine[];

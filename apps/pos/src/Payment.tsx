@@ -41,7 +41,10 @@ const MONO = "'JetBrains Mono',monospace";
 const money = (laari: number) =>
   (laari / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-type Method = 'cash' | 'card' | 'wallet' | 'account' | 'points';
+type Method = 'cash' | 'card' | 'wallet' | 'bank' | 'account' | 'points' | 'voucher';
+
+/** A part of the bill, once the cashier has taken it. */
+interface Part { method: Method; amount: number; ref?: string }
 
 interface Customer {
   id: string; phone: string; name: string | null; company: string | null;
@@ -66,8 +69,12 @@ interface Props {
      Floor recomputes the whole thing through the one calculation. */
   onPromo: (code: string | undefined, discount: number) => void;
   onCancel: () => void;
-  onConfirm: (payments: { method: Method; amount: number }[], memberId?: string,
-    promoCode?: string) => void | Promise<void>;
+  /* `voucherCode` rides beside the payments rather than inside one, because
+     that is where sale.js reads it: the code is checked against its own value
+     and CLAIMED after the sale exists, so it belongs to the sale and not to a
+     tender line. */
+  onConfirm: (payments: { method: Method; amount: number; ref?: string }[], memberId?: string,
+    promoCode?: string, voucherCode?: string) => void | Promise<void>;
   /* What the member's own phone offered against this bill, and whose it is.
      04-MEMBER-PORTAL §3: "The till still takes the payment: the portal posts
      intent." This is where that intent surfaces — an offer nobody at the
@@ -79,6 +86,15 @@ interface Props {
 export function Payment({ total, goods, session, online, promoCode, onPromo,
   onCancel, onConfirm, offeredPoints, offeredBy }: Props) {
   const [method, setMethod] = useState<Method>('cash');
+  /* THE BILL CAN BE PAID IN MORE THAN ONE WAY. sale.js has always taken an
+     ARRAY of payments and posted each to its own ledger account; this screen
+     sent exactly one, for the whole total, which is why "half cash, half card"
+     — the most ordinary request in a restaurant — could not be rung up at all.
+     `parts` is what has already been taken; the keypad is working on the rest. */
+  const [parts, setParts] = useState<Part[]>([]);
+  /* A voucher settles against the liability it was issued from, so the server
+     needs to know WHICH one. */
+  const [voucherRef, setVoucherRef] = useState('');
   const [buf, setBuf] = useState('');
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
@@ -143,21 +159,52 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
      point is a hundredfold error. */
   const tendered = buf ? Number(buf) : 0;
 
-  // Only cash is tendered over; everything else settles to the exact bill.
-  const effective = method === 'cash' ? (tendered || total) : total;
-  const change = Math.max(0, effective - total);
-  const shortCash = effective < total;
+  /* WHAT IS LEFT TO PAY. With no parts taken this is the whole bill and every
+     figure below reads exactly as it did before splitting existed. */
+  const taken = parts.reduce((a, x) => a + x.amount, 0);
+  const due = Math.max(0, total - taken);
+
+  // Only cash is tendered over; everything else settles to the exact balance.
+  const effective = method === 'cash' ? (tendered || due) : due;
+  const change = Math.max(0, effective - due);
+  const shortCash = effective < due;
   /* An account charge is blocked by its own arithmetic, not by the keypad. */
-  const noRoom = method === 'account' && !!who && who.available * 100 < total;
+  const noRoom = method === 'account' && !!who && who.available * 100 < due;
   /* Points needed, rounded UP — the server does the same, and a screen that
      rounded down would offer a redemption the server then refuses. */
   const pointsNeeded = scheme && scheme.pointValue > 0
-    ? Math.ceil((total / 100) / scheme.pointValue * 100) / 100 : 0;
+    ? Math.ceil((due / 100) / scheme.pointValue * 100) / 100 : 0;
   const notEnough = method === 'points'
     && (!scheme?.running || !who || who.points < pointsNeeded);
-  const short = shortCash
-    || (method === 'account' && (!who || noRoom))
-    || (method === 'points' && notEnough);
+  const needsRef = method === 'voucher' && voucherRef.trim().length < 3;
+  /* Reasons this TENDER cannot be used at all, as opposed to a cash amount that
+     merely does not cover the bill. The distinction matters: the second is what
+     splitting a bill looks like on the way in. */
+  const methodBlocked = (method === 'account' && (!who || noRoom))
+    || (method === 'points' && notEnough)
+    || needsRef;
+  const short = shortCash || methodBlocked;
+
+  /* TAKING PART OF THE BILL. The amount is what the operator keyed, capped at
+     what is still owed — a part larger than the balance would make the payments
+     exceed the bill, and the server refuses that whole sale rather than the one
+     bad part, which is a refusal at the worst possible moment.
+     Deliberately NOT gated on `short`: a cash amount under the bill IS the
+     split case, and gating on it hid the button in exactly the situation it
+     exists for. */
+  const partAmount = Math.min(due, tendered);
+  const canPart = partAmount > 0 && partAmount < due && !methodBlocked;
+  const takePart = () => {
+    if (!canPart) return;
+    setParts((ps) => ps.concat([{
+      method, amount: partAmount,
+      ...(method === 'voucher' ? { ref: voucherRef.trim() } : {}),
+    }]));
+    setBuf(''); setVoucherRef('');
+    /* Back to cash for the remainder: it is the commonest second tender, and
+       leaving the last method selected invites the same one being taken twice. */
+    setMethod('cash');
+  };
 
   const key = (d: string) => {
     if (busy) return;
@@ -177,16 +224,31 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
       /* The member goes with the SALE whatever paid for it — that is how a
          cash-paying member earns. The code goes with it too; the server
          evaluates it again at settlement and is the authority. */
-      await onConfirm([{ method, amount: total }], who ? who.id : undefined, promoCode);
+      const last: Part = {
+        method, amount: due,
+        ...(method === 'voucher' ? { ref: voucherRef.trim() } : {}),
+      };
+      const all = parts.concat([last]);
+      const voucher = all.find((x) => x.method === 'voucher');
+      await onConfirm(all, who ? who.id : undefined, promoCode, voucher?.ref);
     } finally {
       setBusy(false);
     }
   };
 
+  /* Every tender sale.js knows, which is the point: the list here and the list
+     there used to differ by two, so `bank` and `voucher` had a ledger account,
+     a validation branch and a journal line each, and no way for anybody to
+     choose them. A tender the server accepts and the till cannot offer is a
+     feature that exists only in the tests. */
   const METHODS: { k: Method; label: string }[] = [
     { k: 'cash', label: 'Cash' },
     { k: 'card', label: 'Card' },
     { k: 'wallet', label: 'Wallet' },
+    /* Bank transfer settles to 1010 rather than the card float, and it takes no
+       cash, so the drawer must not expect it. */
+    { k: 'bank', label: 'Transfer' },
+    { k: 'voucher', label: 'Voucher' },
     ...(online ? [{ k: 'account' as Method, label: 'Account' },
       { k: 'points' as Method, label: 'Points' }] : []),
   ];
@@ -337,7 +399,8 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
               </div>
             )}
 
-            {method === 'cash' && !picking ? (
+            {!picking ? (
+              <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 7 }}>
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'c', '0', 'del'].map((d) => (
                   <button key={d} onClick={() => key(d)}
@@ -352,7 +415,22 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
                   </button>
                 ))}
               </div>
-            ) : picking ? (
+                {/* WHAT THE KEYPAD MEANS depends on the tender, and saying so is
+                    the difference between a split and a mis-key. On cash it is
+                    what the guest handed over; on every other amount tender it
+                    is how much of the bill goes this way, and leaving it empty
+                    means all of it. */}
+                <div style={{ marginTop: 9, fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
+                  {method === 'cash'
+                    ? 'What they handed over. Leave it empty for the exact bill.'
+                    : method === 'card'
+                      ? 'Take it on the card terminal, then confirm. Key an amount first only to put part of the bill on the card.'
+                      : method === 'wallet'
+                        ? 'Take it on the wallet app, then confirm. Key an amount first only to put part of the bill on it.'
+                        : 'Key an amount to put part of the bill on this tender; leave it empty for the whole balance.'}
+                </div>
+              </>
+            ) : (
               <div style={{ padding: '4px 0' }}>
                 <input value={q} onChange={(e) => { setQ(e.target.value); setWho(null); }}
                   placeholder="name or number…" aria-label="Find the account"
@@ -412,27 +490,79 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
                   })}
                 </div>
               </div>
-            ) : (
-              <div style={{ padding: '26px 8px', fontSize: 12, lineHeight: 1.65, color: 'var(--text-faint)' }}>
-                {method === 'card'
-                  ? 'Take the amount on the card terminal, then confirm here. The sale is recorded against card, and settles to the acquirer batch when it arrives.'
-                  : 'Take the amount on the wallet app, then confirm here.'}
-              </div>
             )}
           </div>
 
           {/* Bill — right */}
           <div style={{ flex: '1 1 240px', minWidth: 220, padding: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>TO PAY</div>
-            <div style={{ marginTop: 6, fontSize: 26, fontWeight: 700, fontFamily: MONO, color: 'var(--text)', letterSpacing: '-.02em' }}>
-              {money(total)}
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+              {parts.length ? 'STILL TO PAY' : 'TO PAY'}
             </div>
+            <div style={{ marginTop: 6, fontSize: 26, fontWeight: 700, fontFamily: MONO, color: 'var(--text)', letterSpacing: '-.02em' }}>
+              {money(due)}
+            </div>
+
+            {/* WHAT HAS ALREADY BEEN TAKEN. Drawn only once there is something,
+                so a bill paid one way looks exactly as it always did. */}
+            {parts.length > 0 && (
+              <div style={{ marginTop: 12, padding: '9px 11px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)' }}>
+                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.07em', color: 'var(--text-faint)' }}>
+                  TAKEN SO FAR — {money(taken)} of {money(total)}
+                </div>
+                {parts.map((x, i) => (
+                  <div key={i} style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)', textTransform: 'capitalize' }}>
+                      {x.method === 'bank' ? 'Transfer' : x.method}
+                      {x.ref && <span style={{ color: 'var(--text-faint)', fontFamily: MONO }}> {x.ref}</span>}
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>{money(x.amount)}</span>
+                    {/* Nothing has reached the server yet, so taking a part back
+                        is free — and a cashier who mis-keyed the split must not
+                        have to cancel the whole payment to fix it. */}
+                    <button onClick={() => setParts((ps) => ps.filter((_, j) => j !== i))}
+                      aria-label={'Undo the ' + x.method + ' part'}
+                      style={{ fontSize: 10.5, color: 'var(--text-muted)', padding: '2px 7px', borderRadius: 5, border: '1px solid var(--line)', minHeight: 24 }}>
+                      Undo
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* A voucher settles against the liability it was issued from, so
+                the server is told which one. */}
+            {method === 'voucher' && (
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>VOUCHER CODE</div>
+                <input
+                  value={voucherRef} aria-label="Voucher code"
+                  placeholder="from their phone"
+                  onChange={(e) => setVoucherRef(e.target.value.toUpperCase())}
+                  style={{
+                    marginTop: 6, width: '100%', minHeight: 38, padding: '8px 10px', borderRadius: 8,
+                    background: 'var(--bg-2)', border: '1px solid ' + (needsRef ? 'var(--line-2)' : 'var(--go-line, var(--line))'),
+                    color: 'var(--text)', fontSize: 14, fontFamily: MONO, letterSpacing: '.04em',
+                  }} />
+                <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
+                  No money is taken. The voucher settles against the same liability points do —
+                  the obligation was booked when it was issued.
+                </div>
+              </div>
+            )}
+
+            {method === 'bank' && (
+              <div style={{ marginTop: 16, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.55 }}>
+                Confirm once the transfer shows on the account. It settles to the bank rather
+                than the drawer, so the cash count at close is unaffected by it.
+              </div>
+            )}
 
             {method === 'cash' && (
               <>
                 <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>TENDERED</div>
                 <div style={{ marginTop: 5, fontSize: 22, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>
-                  {buf ? money(tendered) : money(total)}
+                  {buf ? money(tendered) : money(due)}
                 </div>
 
                 {/* §3.4: change due appears the MOMENT tendered exceeds total. */}
@@ -446,7 +576,26 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
                 )}
                 {short && (
                   <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--red-dim)', color: 'var(--red-bright)', fontSize: 11.5, lineHeight: 1.5 }}>
-                    {money(total - effective)} short of the bill.
+                    {money(due - effective)} short{parts.length ? ' of the balance' : ' of the bill'}.
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* On a non-cash tender the keypad says how much of the bill goes
+                this way. Without a readout the operator is typing into nothing
+                they can see. */}
+            {method !== 'cash' && tendered > 0 && (
+              <>
+                <div style={{ marginTop: 16, fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+                  ON THIS TENDER
+                </div>
+                <div style={{ marginTop: 5, fontSize: 22, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>
+                  {money(Math.min(due, tendered))}
+                </div>
+                {tendered >= due && (
+                  <div style={{ marginTop: 6, fontSize: 11, lineHeight: 1.5, color: 'var(--text-faint)' }}>
+                    That is the whole balance — confirm settles it.
                   </div>
                 )}
               </>
@@ -511,13 +660,13 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
                     </div>
                     {noRoom ? (
                       <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--red-dim)', color: 'var(--red-bright)', fontSize: 11.5, lineHeight: 1.5 }}>
-                        Only {money(who.available * 100)} left on the limit — this bill is{' '}
-                        {money(total)}.
+                        Only {money(who.available * 100)} left on the limit — this is{' '}
+                        {money(due)}.
                       </div>
                     ) : (
                       <div style={{ marginTop: 12, padding: '8px 10px', borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-faint)', fontSize: 11.5, lineHeight: 1.5 }}>
-                        No money is taken. It becomes {money(total)} owed, and leaves{' '}
-                        {money(who.available * 100 - total)} on the account.
+                        No money is taken. It becomes {money(due)} owed, and leaves{' '}
+                        {money(who.available * 100 - due)} on the account.
                       </div>
                     )}
                   </>
@@ -525,17 +674,37 @@ export function Payment({ total, goods, session, online, promoCode, onPromo,
               </div>
             )}
 
+            {/* TAKE PART OF IT. Offered only when the keyed amount is less than
+                the balance — at or above it, the button beneath settles the
+                whole bill and a second control saying nearly the same thing is
+                how the wrong one gets pressed. */}
+            {canPart && (
+              <button
+                onClick={takePart}
+                disabled={busy}
+                style={{
+                  marginTop: 18, width: '100%', minHeight: 42, borderRadius: 9,
+                  background: 'var(--bg-2)', border: '1px solid var(--amber-line)',
+                  color: 'var(--amber-bright)', fontSize: 13, fontWeight: 700, textAlign: 'center',
+                }}
+              >
+                Take {money(partAmount)} this way — {money(due - partAmount)} left
+              </button>
+            )}
+
             <button
               onClick={confirm}
               disabled={busy || short}
               style={{
-                marginTop: 18, width: '100%', minHeight: 46, borderRadius: 9,
+                marginTop: canPart ? 8 : 18, width: '100%', minHeight: 46, borderRadius: 9,
                 background: busy || short ? 'var(--bg-2)' : 'var(--go)',
                 color: busy || short ? 'var(--text-faint)' : 'var(--on-go)',
                 fontSize: 14, fontWeight: 700, textAlign: 'center',
               }}
             >
-              {busy ? 'Recording…' : 'Confirm ' + money(total)}
+              {busy ? 'Recording…'
+                : parts.length ? 'Confirm ' + money(due) + ' — settles ' + money(total)
+                  : 'Confirm ' + money(total)}
             </button>
             <div style={{ marginTop: 9, fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
               Recorded on this terminal immediately, and sent to the server when there
