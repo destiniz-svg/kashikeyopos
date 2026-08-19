@@ -139,12 +139,20 @@ is one function, auditable, and cannot return a receipt.
    BOOTSTRAP_OWNER="Owner:4821"
    ```
 
-   It is safe on every boot: provisioning is idempotent, and the owner is seeded
-   ONLY into an outlet with no staff at all, so a redeploy cannot duplicate a PIN
-   or add a second sign-in beside a real one. That same condition is the way back
-   in if every account with access is ever lost — empty the outlet's staff and
-   redeploy. It bootstraps ONE outlet; a second site uses the commands below, and
-   the leak test needs two.
+   The PIN is **exactly 4 digits**: the till draws four dots and submits on the
+   fourth, so anything longer is not a stricter PIN but an account nobody can
+   sign into, with nothing on screen to say why.
+
+   It is safe on every boot. Provisioning is idempotent, and the owner is
+   declarative — absent they are created, present with a different PIN the PIN is
+   reset and the change logged, present and identical nothing happens. Matching
+   is by name within the outlet and an ambiguous name changes nothing, so it
+   cannot add a second sign-in beside a real one.
+
+   Because it is declarative, **clear `BOOTSTRAP_OWNER` once you are in**, or the
+   next deploy restores that PIN over the one you set in the app. Setting it again
+   is the way back in if every account with access is ever lost. It bootstraps ONE
+   outlet; a second site uses the commands below, and the leak test needs two.
 
    With a shell, one command per site:
    ```
