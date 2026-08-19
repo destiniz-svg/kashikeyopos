@@ -30,6 +30,7 @@ const production = require('./production');
 const batches = require('./batches');
 const dispatches = require('./dispatches');
 const indents = require('./indents');
+const aimenu = require('./aimenu');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -2079,6 +2080,33 @@ r.get('/outlet/:outletId/purchase-orders', sameOutlet, staffOnly, atLeast('manag
         return indents.orders(c, req.query || {});
       });
       res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── AI Menu Builder (02-POS-SPEC §2 `aimenu`) ──────────────────────
+ *
+ * MANAGER reads the board — it is the same costing and the same sales the
+ * Recipes and Analytics screens already show them, arranged to answer a
+ * pricing question. Asking the model to WRITE something is ADMIN: it is the
+ * only part of this build that sends anything to an outside service, and it
+ * spends somebody's money per call.
+ */
+r.get('/outlet/:outletId/aimenu', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return aimenu.board(c, req.query || {}, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json({ ...out, ai: aimenu.aiConfig() });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/aimenu/:itemId/describe', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return aimenu.describe(c, req.params.itemId, req.body || {});
+      }));
     } catch (e) { next(e); }
   });
 

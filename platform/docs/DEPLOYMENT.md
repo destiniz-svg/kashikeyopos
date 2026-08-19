@@ -75,6 +75,14 @@ is one function, auditable, and cannot return a receipt.
    | `REPORT_ROLE_PASSWORD` | the read-only consolidation role |
    | `ALLOWED_ORIGINS` | the POS and guest portal origins, comma separated |
    | `SESSION_TTL_HOURS` | 12 suits a double shift |
+   | `ANTHROPIC_API_KEY` | **optional, and unset in this build.** One thing needs it: writing menu copy on the AI Menu Builder. Everything else on that screen is arithmetic over your own menu and your own sales, so the module is fully usable without a key and says by name what is missing. `AIMENU_MODEL` overrides the model. |
+
+   Setting `ANTHROPIC_API_KEY` turns on the only call this application makes to
+   an outside service, and it is billed per call. The request path exists and is
+   reviewed but has never run against the live API here, because no key has ever
+   been configured — so the day you set one, ask for a description on one real
+   dish before telling anybody the feature is on. The not-configured path is the
+   one the test suite covers.
 
 4. **Migrate — before the first deploy can pass its healthcheck.** The server
    does **not** migrate on boot: `/readyz` asks `chain.outlet` a question and

@@ -70,7 +70,8 @@ the dev proxy. `backend/test/deployable.test.js` enforces both. Runbook in
 
 ```
 backend/        API, migrations, provisioning, leak test
-apps/pos        till + 30 back-office modules
+apps/pos        37 modules — the till, the KDS and the back office. All built;
+                `deployable.test.js` fails if a new rail entry is not wired
 apps/guest      QR portal
 apps/member     loyalty portal
 packages/       api-client, tokens, ui

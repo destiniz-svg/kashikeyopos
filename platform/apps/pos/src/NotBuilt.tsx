@@ -1,15 +1,17 @@
 import type { NavGroup } from './nav';
 
-/* An honest placeholder.
+/* The last resort, and it is now genuinely unreachable by the rail.
  *
- * The rail carries all 31 modules because the rail is the design. Only the POS
- * Floor is built in this deployment. §65 of the brief: do not fake completion —
- * no buttons that only toast, no screens that look finished and do nothing. So
- * an unbuilt module says exactly that, names what it will hold when it lands,
- * and does not pretend to be an empty state of real data.
+ * This screen existed because most of the rail was unbuilt: §65 of the brief
+ * says do not fake completion — no buttons that only toast, no screens that
+ * look finished and do nothing — so an unbuilt module said exactly that rather
+ * than pretending to be an empty state of real data.
  *
- * This is the one screen in the app that is NOT in the prototype, because the
- * prototype had every module. It uses only existing tokens.
+ * Every module in `nav.ts` is now built, and `deployable.test.js` fails if one
+ * is added to the rail without being wired into `MODULES_BUILT`. So this is no
+ * longer "not built yet"; it is "nothing answers to that id", which is a
+ * different sentence and a real one — a `view` restored from an older release's
+ * localStorage lands here rather than on a blank page.
  */
 export function NotBuilt({ id, groups }: { id: string; groups: NavGroup[] }) {
   const item = groups.flatMap((g) => g.items).find((i) => i.id === id);
@@ -29,12 +31,9 @@ export function NotBuilt({ id, groups }: { id: string; groups: NavGroup[] }) {
           {item?.label ?? id}
         </div>
         <div style={{ marginTop: 8, fontSize: 12.5, lineHeight: 1.65, color: 'var(--text-muted)' }}>
-          This module is not built in this deployment yet. It is in the rail because
-          the rail is the finished design — but nothing behind it is real, and a screen
-          that looked finished would be worse than this sentence.
-        </div>
-        <div style={{ marginTop: 12, fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
-          Built so far: POS Floor, payment, the Kitchen Display, Menu Master, Recipes & Costing, Inventory, and the offline outbox behind them.
+          Nothing in this release answers to <code>{id}</code>. Every module in the rail
+          is built, so you have most likely followed a link from an older version — pick
+          one from the rail and it will open.
         </div>
       </div>
     </div>

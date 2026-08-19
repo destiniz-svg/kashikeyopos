@@ -122,6 +122,35 @@ describe('the deployable tree', () => {
       'these rebuild their API caller every render — wrap it in useMemo');
   });
 
+  test('every module in the rail is wired to a screen', () => {
+    /* The rail is the design, so a module lands in `nav.ts` the moment it is
+       designed and long before it is built. `App.tsx` decides what actually
+       renders through `MODULES_BUILT`, and the two are edited in different
+       files at different times — so the failure mode is a nav entry that opens
+       the placeholder, which reads as "not built yet" to a user looking at a
+       release where it IS built and simply was not wired.
+
+       Now that every module is built, this test is what keeps that true: add a
+       module to the rail and this fails until it renders something. */
+    const dir = path.join(ROOT, 'apps', 'pos', 'src');
+    const nav = fs.readFileSync(path.join(dir, 'nav.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const ids = [...nav.matchAll(/\{\s*id:\s*'([a-z]+)'/g)].map((m) => m[1]);
+    assert.ok(ids.length > 20, 'the rail could not be read at all');
+
+    const app = fs.readFileSync(path.join(dir, 'App.tsx'), 'utf8');
+    const set = app.match(/const MODULES_BUILT = new Set\(\[([^\]]*)\]/);
+    assert.ok(set, 'MODULES_BUILT could not be read');
+    const built = new Set((set[1].match(/'[a-z]+'/g) || []).map((x) => x.slice(1, -1)));
+
+    assert.deepEqual(ids.filter((i) => !built.has(i)), [],
+      'these are in the navigation rail and open the "not built" placeholder');
+    /* And the reverse: a key in MODULES_BUILT that no rail entry names is a
+       screen nobody can reach, which is a different kind of dead code. */
+    assert.deepEqual([...built].filter((b) => !ids.includes(b)), [],
+      'these are marked built but appear nowhere in the rail');
+  });
+
   test('no screen reaches the API on a hard-coded path', () => {
     /* The front-end half of the same class of bug, and it bit just as hard:
        nine screens each wrote their own fetch('/api/...'). That resolves ONLY
