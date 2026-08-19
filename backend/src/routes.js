@@ -1,0 +1,2637 @@
+'use strict';
+const express = require('express');
+const { withOutlet, withEstate, noteGroupRead, withMember, withMemberAnon } = require('./db');
+const { sign, verify: verifyToken, pinMatches, pinLookup } = require('./secrets');
+const { session, sameOutlet, atLeast, ownTable, staffOnly } = require('./auth');
+const { settle } = require('./sale');
+const kitchen = require('./kitchen');
+const menu = require('./menu');
+const recipes = require('./recipes');
+const stock = require('./stock');
+const orders = require('./orders');
+const reports = require('./reports');
+const drawer = require('./drawer');
+const today = require('./today');
+const purchasing = require('./purchasing');
+const staff = require('./staff');
+const payroll = require('./payroll');
+const analytics = require('./analytics');
+const opcosts = require('./opcosts');
+const accounting = require('./accounting');
+const memberportal = require('./memberportal');
+const vouchers = require('./vouchers');
+const { tableName } = require('./tables');
+const settlements = require('./settlements');
+const creditnotes = require('./creditnotes');
+const estate = require('./estate');
+const devices = require('./devices');
+const governance = require('./governance');
+const production = require('./production');
+const batches = require('./batches');
+const dispatches = require('./dispatches');
+const indents = require('./indents');
+const aimenu = require('./aimenu');
+const assets = require('./assets');
+const customers = require('./customers');
+const loyalty = require('./loyalty');
+const promos = require('./promos');
+const reservations = require('./reservations');
+const delivery = require('./delivery');
+const { taxAsAt } = require('./sale');
+
+const r = express.Router();
+const LOCK_TRIES = 5, LOCK_MINS = 15;
+
+// ── sign in with a PIN, at one outlet, on one device ────────────────────────
+r.post('/auth/pin', async function (req, res, next) {
+  const { outletId, pin, deviceId } = req.body || {};
+  if (!outletId || !pin) return res.status(400).json({ error: 'outletId and pin required' });
+  // Bound the input before it reaches a KDF: a PIN is a short numeric string,
+  // and accepting a megabyte of it is a free way to make the server work.
+  if (!/^[0-9]{4,12}$/.test(String(pin))) {
+    return res.status(401).json({ error: 'PIN not recognised' });
+  }
+  try {
+    const out = await withOutlet({ outletId: Number(outletId), rank: 0 }, async function (c) {
+      /* Narrow to the one or two staff who could hold this PIN, then scrypt
+         only those — instead of a KDF pass per member of staff, which an
+         unauthenticated caller could trigger at will. The counters and the
+         session row go through SECURITY DEFINER functions because at this
+         point in the request there is no rank yet, and every policy on
+         chain.staff resolves against one. See migration 007. */
+      const lookup = pinLookup(Number(outletId), pin);
+      const q = await c.query('SELECT * FROM chain.pin_candidates($1,$2)',
+        [Number(outletId), lookup]);
+      const now = Date.now();
+      for (const s of q.rows) {
+        if (s.locked_until && new Date(s.locked_until).getTime() > now) continue;
+        let ok = false;
+        try { ok = pinMatches(pin, s.pin_hash, s.pin_salt); } catch (e) { ok = false; }
+        if (!ok) continue;
+        await c.query('SELECT chain.note_pin_attempt($1,$2,true,$3,$4)',
+          [Number(outletId), s.id, LOCK_TRIES, LOCK_MINS]);
+
+        /* THE DEVICE IS CHECKED NOW, WHICH IT NEVER WAS. `deviceId` came off
+           the request body and went straight into the session and the JWT — no
+           such row need have existed, it need not have belonged to this
+           outlet, and `chain.device.revoked` was a column nothing read.
+           Migration 030 explains the three answers:
+             known + not revoked → the session carries it, ops are attributable
+             unknown             → treated as no device; an unpaired till works
+             revoked             → refused, and the open sessions are already
+                                   dead because revoking ended them
+           Pairing identifies a device. The PIN is still the credential. */
+        const dev = deviceId
+          ? (await c.query('SELECT * FROM chain.device_seen($1,$2)',
+            [Number(outletId), deviceId])).rows[0]
+          : { known: false, revoked: false };
+        if (dev.revoked) {
+          return { refused: 'this device has been revoked — a manager can pair it again' };
+        }
+        const boundDevice = dev.known ? deviceId : null;
+
+        const ttlHours = Number(process.env.SESSION_TTL_HOURS || 12);
+        const sess = await c.query('SELECT chain.open_session($1,$2,$3,$4,$5) AS id',
+          [s.id, Number(outletId), boundDevice, s.rank, ttlHours]);
+        await c.query('SELECT chain.log_signin($1,$2,true)', [Number(outletId), s.id]);
+        return {
+          /* The token carries the device the SERVER bound, not the one the
+             client asserted. An unknown id in a JWT would be an unverified
+             claim travelling on a signed credential, which is the shape of
+             every authorisation bug worth having. */
+          token: sign({ o: Number(outletId), r: s.rank, s: s.id,
+                        d: boundDevice, sid: sess.rows[0].id,
+                        exp: now + ttlHours * 3600e3 }),
+          name: s.name, rank: s.rank, outletId: Number(outletId),
+          device: dev.known ? { id: deviceId, label: dev.label } : null,
+        };
+      }
+      /* Wrong PIN: count the attempt against every unlocked account at this
+         outlet. With PIN-only sign-in the attacker never names an account, so
+         a per-account counter would let them walk the whole space while no
+         single counter ever climbed. */
+      await c.query('SELECT chain.note_pin_attempt($1,NULL,false,$2,$3)',
+        [Number(outletId), LOCK_TRIES, LOCK_MINS]);
+      return null;
+    });
+    if (!out) return res.status(401).json({ error: 'PIN not recognised' });
+    /* A refused DEVICE is not a refused PIN, and saying so is the difference
+       between a manager fixing it in ten seconds and a cashier retyping a
+       correct PIN until they are locked out. */
+    if (out.refused) return res.status(403).json({ error: out.refused });
+    res.json(out);
+  } catch (e) { next(e); }
+});
+
+/* ── a guest's session, minted for a table ──────────────────────────────────
+ *
+ * The QR card on a table encodes an outlet and a table number and nothing else.
+ * A printed card cannot hold a secret: it is on the table, photographable, and
+ * lives for as long as the laminate does. So the card carries no credential —
+ * it points here, and this endpoint issues a SHORT-LIVED token pinned to that
+ * one table.
+ *
+ * What the token can do is deliberately small: read the snapshot for its own
+ * table, post an order, and raise a request. It is rank 0, so every atLeast()
+ * gate on every till endpoint refuses it without having to know it exists.
+ *
+ * Public by necessity — a guest has nothing to authenticate with — so it is
+ * rate limited, and it refuses a table the outlet does not have. Handing out a
+ * token for table 9,999 would otherwise let anyone mint a session that reads
+ * an empty ticket forever and hunt for tables that do exist.
+ */
+const GUEST_TTL_HOURS = Number(process.env.GUEST_TTL_HOURS || 4);
+
+/* Per-instance, in memory. Railway may run more than one instance, so this
+   bounds abuse per process rather than globally — it is a speed bump on a
+   cheap endpoint, not the tenancy boundary, which is the token's own scope. */
+const mintLog = new Map();
+const MINT_MAX = 30, MINT_WINDOW_MS = 60000;
+function mintAllowed(ip) {
+  const now = Date.now();
+  const hits = (mintLog.get(ip) || []).filter(function (t) { return now - t < MINT_WINDOW_MS; });
+  hits.push(now);
+  mintLog.set(ip, hits);
+  if (mintLog.size > 5000) mintLog.clear();   // bounded: this is a speed bump, not a ledger
+  return hits.length <= MINT_MAX;
+}
+
+/* The outlet's public face: the name on the welcome screen and how many tables
+   to draw on the table gate. Public and credential-free BY DESIGN — it is the
+   same information as the sign over the door and the number painted on the
+   table, and the gate has to render before any table has been chosen, so there
+   is no session to read it with yet.
+   Nothing else is here: no prices, no tickets, no staff, no configuration. */
+r.get('/outlet/:outletId/guest/card', async function (req, res, next) {
+  const outletId = Number(req.params.outletId);
+  if (!outletId) return res.status(400).json({ error: 'outletId required' });
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    const out = await withOutlet({ outletId: outletId, rank: 0 }, function (c) {
+      return c.query('SELECT name, tables FROM chain.outlet WHERE id = $1 AND active',
+        [outletId]).then(function (q) { return q.rows[0] || null; });
+    });
+    if (!out) return res.status(404).json({ error: 'outlet not found' });
+    res.set('cache-control', 'no-store')
+      .json({ outletId: outletId, name: out.name, tables: Number(out.tables) });
+  } catch (e) { next(e); }
+});
+
+/* ── the member portal (04-MEMBER-PORTAL-SPEC.md) ─────────────────────────
+ *
+ * OUTSIDE the /outlet tree, because a member is not an outlet's: they earn at
+ * one branch and spend at another. The session carries a member id and no
+ * outlet at all, and reads through `withMember` — a third database role with a
+ * SELECT on six chain tables and no grant on any outlet schema whatsoever.
+ *
+ * These two are public by necessity, exactly as the guest gate is: somebody
+ * signing in has nothing to authenticate with yet. Rate limited per instance.
+ */
+const MEMBER_TTL_HOURS = Number(process.env.MEMBER_TTL_HOURS || memberportal.SESSION_HOURS);
+
+r.post('/member/code', async function (req, res, next) {
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    /* Read through the OWNER-free path: this is before any session exists, and
+       the only table touched is chain.member by phone. The member role can do
+       it, and it is the narrowest thing that can. */
+    const out = await withMemberAnon(function (c) {
+      return memberportal.requestCode(c, req.body || {});
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.post('/member/session', async function (req, res, next) {
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    const memberId = await withMemberAnon(function (c) {
+      return memberportal.verifyCode(c, req.body || {});
+    });
+    /* One answer for a wrong code, an expired one and a phone with no code
+       outstanding. Which of the three it was is only useful to somebody
+       guessing. */
+    if (!memberId) return res.status(401).json({ error: 'that code is not right, or it has expired' });
+    const exp = Date.now() + MEMBER_TTL_HOURS * 3600e3;
+    const card = await withMember(memberId, function (c) {
+      return memberportal.me(c, memberId);
+    });
+    res.set('cache-control', 'no-store').json({
+      token: sign({ mem: true, m: memberId, exp: exp }),
+      expiresAt: exp, member: card,
+    });
+  } catch (e) { next(e); }
+});
+
+r.post('/outlet/:outletId/guest/session', async function (req, res, next) {
+  const outletId = Number(req.params.outletId);
+  const table = String((req.body || {}).table || '').trim();
+  if (!outletId || !table) return res.status(400).json({ error: 'outletId and table required' });
+  if (!mintAllowed(req.ip)) return res.status(429).json({ error: 'too many requests' });
+  try {
+    /* Read the outlet as the outlet's own role. The table must be one this
+       outlet actually has: tables are numbered 1..n on the outlet record, which
+       is the same source the portal's table gate draws its tiles from. */
+    const out = await withOutlet({ outletId: outletId, rank: 0 }, function (c) {
+      return c.query('SELECT id, name, tables FROM chain.outlet WHERE id = $1 AND active',
+        [outletId]).then(function (q) { return q.rows[0] || null; });
+    });
+    if (!out) return res.status(404).json({ error: 'outlet not found' });
+    const n = Number(table);
+    if (!Number.isInteger(n) || n < 1 || n > Number(out.tables)) {
+      return res.status(404).json({ error: 'no such table' });
+    }
+    const exp = Date.now() + GUEST_TTL_HOURS * 3600e3;
+    res.json({
+      token: sign({ o: outletId, g: true, tbl: String(n), exp: exp }),
+      outletId: outletId, table: String(n), outlet: out.name, expiresAt: exp,
+    });
+  } catch (e) { next(e); }
+});
+
+/* ── the member's own session ─────────────────────────────────────────────
+ *
+ * Above `r.use(session)` because a member token is a different kind of thing
+ * from a staff or guest one: it names no outlet, so `sameOutlet` and every rank
+ * gate are meaningless against it, and the surest way to be certain it can
+ * never satisfy one of them is for it never to reach them.
+ */
+function memberSession(req, res, next) {
+  const h = req.get('authorization') || '';
+  const token = h.startsWith('Bearer ') ? h.slice(7) : null;
+  const claims = token && verifyToken(token);
+  if (!claims || claims.mem !== true || !claims.m) {
+    return res.status(401).json({ error: 'sign in on your phone to see this' });
+  }
+  req.member = String(claims.m);
+  next();
+}
+
+const memberBill = memberportal.billFinder(withOutlet);
+const memberOffer = memberportal.offerPoints(withOutlet);
+
+r.get('/member/me', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.me(c, req.member);
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.get('/member/visits', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.visits(c, req.member, req.query.limit);
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.get('/member/rewards', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.catalogue(c, req.member);
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.post('/member/redeem', memberSession, async function (req, res, next) {
+  try {
+    const out = await withMember(req.member, function (c) {
+      return memberportal.redeem(c, req.member, req.body || {});
+    });
+    res.status(201).json(out);
+  } catch (e) { next(e); }
+});
+
+/* The bill at whichever outlet they are sitting in. The member session holds no
+   grant on any outlet schema, so the API asks each active outlet, over that
+   outlet's own connection, for a ticket that NAMES this member — and stops at
+   the first. Nobody has to tell the phone where it is. */
+r.get('/member/bill', memberSession, async function (req, res, next) {
+  try {
+    const outlets = await withMember(req.member, function (c) {
+      return c.query('SELECT id, name FROM chain.outlet WHERE active ORDER BY id')
+        .then(function (q) { return q.rows; });
+    });
+    const bill = await memberBill(req.member, outlets);
+    res.set('cache-control', 'no-store').json(bill || { open: false, outlets: outlets.length });
+  } catch (e) { next(e); }
+});
+
+r.post('/member/bill/points', memberSession, async function (req, res, next) {
+  const p = req.body || {};
+  try {
+    const cfg = await withMember(req.member, function (c) { return loyalty.config(c); });
+    const out = await memberOffer(req.member, p.outletId, p.ticketId, p.points, cfg);
+    res.json(out);
+  } catch (e) { next(e); }
+});
+
+/* Claiming a code is DELIBERATELY UNAUTHENTICATED, and that is the whole point
+ * of it: a machine has to be usable before it is trusted, so the pairing screen
+ * sits in front of the PIN pad. What protects it is the code — single-use,
+ * thirty minutes, issued by a manager, scoped to one outlet, and consumed by
+ * `chain.claim_device` in the same statement that checks it. Guessing one is
+ * guessing six characters of a 32-letter alphabet against a code that expires,
+ * and what it buys is a label on a list: pairing identifies a device, it does
+ * not authenticate one. Whoever claims it still needs a PIN to sell anything.
+ */
+r.post('/outlet/:outletId/devices/claim', async function (req, res, next) {
+  const outletId = Number(req.params.outletId);
+  if (!outletId) return res.status(400).json({ error: 'outlet required' });
+  try {
+    const out = await withOutlet({ outletId, rank: 0 }, function (c) {
+      return devices.claim(c, outletId, req.body || {});
+    });
+    res.json(out);
+  } catch (e) {
+    /* The one message a wrong code gets, whatever went wrong inside — a code
+       that is expired, revoked, for another outlet or never existed must not be
+       distinguishable from outside. */
+    if (/not valid here/.test(e.message)) {
+      return res.status(400).json({ error: 'that pairing code is not valid here' });
+    }
+    next(e);
+  }
+});
+
+r.use(session);
+
+r.get('/me', function (req, res) { res.json(req.ctx); });
+
+// ── the snapshot both guest portals read. Prices, stages and what is owed —
+//    no margins, no costs, no staff records. A guest device has no business
+//    holding those, so they are not in the projection at all.
+r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) {
+  try {
+    const data = await withOutlet(req.ctx, async function (c) {
+      const [outlet, tax, items, tickets, stages] = await Promise.all([
+        c.query('SELECT id, name, currency, service_pct, tables FROM chain.outlet WHERE id = $1', [req.ctx.outletId]),
+        c.query('SELECT code, rate FROM chain.tax_version WHERE outlet_id = $1'
+          + ' AND effective_from <= current_date'
+          + ' AND (effective_to IS NULL OR effective_to >= current_date)'
+          + ' ORDER BY effective_from DESC LIMIT 1', [req.ctx.outletId]),
+        c.query('SELECT id, name, category, price, off_menu, station FROM item WHERE active'),
+        /* A GUEST sees ONE table's ticket — its own. The projection used to
+           return every open ticket in the outlet, so a phone at table 4 could
+           read what table 9 had eaten and what they owed. Nothing in the app
+           displayed it, which is exactly the point: the client was the only
+           thing keeping one party's bill off another party's screen, and a
+           client is not a boundary. $2 is NULL for a staff session, which sees
+           the whole floor because that is its job. */
+        /* `station` rides on each LINE, joined from the item master. The KDS
+           draws a column per station and must show that station only what it
+           cooks — without this the grill card listed the bar's drinks and the
+           all-day strip counted every dish once per station the ticket
+           touched, so a table ordering a burger and a cola read as two of
+           each. A line whose item has no station falls to the pass, matching
+           what kitchen.js did when it fired the round. */
+        /* `points_offered` rides along because a member's phone can put an
+           offer on this ticket, and an offer the cashier never sees is a
+           promise made to a guest and kept by nobody. It goes to STAFF only —
+           the guest portal is anonymous and has no business knowing that the
+           party at this table is a member. */
+        c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
+          + ' t.member_id, ' + (req.ctx.guest ? 'NULL::numeric' : 't.points_offered')
+          + ' AS points_offered, '
+          + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
+          + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
+          + "   'station', i.station)"
+          + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
+          + ' FROM ticket t LEFT JOIN ticket_line l'
+          + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
+          + ' LEFT JOIN item i ON i.id = l.item_id'
+          + " WHERE t.status = 'open' AND ($1::text IS NULL OR t.table_no = $1)"
+          /* The guest's token carries the table as the QR card spells it — `3`.
+             A ticket is stored the way the floor spells it — `T03`. Compared
+             raw, a guest at a table with an open ticket saw nothing at all. */
+          + ' GROUP BY t.id', [req.ctx.guest ? tableName(req.ctx.table) : null]),
+        /* Stages are joined to the tickets the caller may see, for the same
+           reason: a stage row names a ticket, and a ticket names a table. */
+        c.query('SELECT k.id, k.ticket_id, k.station, k.stage, k.target_mins, k.fired_at'
+          + ' FROM kds_ticket k LEFT JOIN ticket t ON t.id = k.ticket_id'
+          + ' WHERE k.served_at IS NULL'
+          + " AND ($1::text IS NULL OR t.table_no = $1)",
+        [req.ctx.guest ? tableName(req.ctx.table) : null])
+      ]);
+      /* Stations ride on the snapshot so the KDS can draw its columns and
+         colour its cards against each station's OWN target, without a second
+         round trip on a screen that lives in a hot kitchen on poor wifi. */
+      const stations = req.ctx.guest ? { rows: [] }
+        : await c.query('SELECT name, target_mins, sort FROM chain.station'
+          + ' WHERE outlet_id = $1 AND active ORDER BY sort, name', [req.ctx.outletId]);
+      return {
+        v: 5, at: Date.now(),
+        outlet: outlet.rows[0] || null,
+        tax: tax.rows[0] || null,
+        items: items.rows,
+        tickets: tickets.rows,
+        /* A GUEST'S OWN ROUNDS, so the tracker can stop guessing. Until this
+           existed the phone matched its stage with a predicate that could
+           never be true, because nothing linked a round to the ticket it
+           became — and a round the till had turned down looked exactly like
+           one it had not looked at yet. Staff sessions get this from the
+           delivery board instead, which is a different question. */
+        guestOrders: req.ctx.guest ? await delivery.forTable(c, req.ctx.table) : undefined,
+        stages: stages.rows,
+        stations: stations.rows
+      };
+    });
+    res.set('cache-control', 'no-store').json(data);
+  } catch (e) { next(e); }
+});
+
+/* A guest asks what a code is worth. The SAME evaluator the till calls, on the
+ * same server, reading the same row — which is the only way "a promo the guest
+ * sees is a promo the till charges" can be true of a system rather than of a
+ * pair of implementations that happen to agree this week.
+ *
+ * 03-GUEST-PORTAL-SPEC §4: "the phone treats an entered code as an OFFER, never
+ * a fact." So this answers with what it would be worth on the basket in front
+ * of the guest, and the till evaluates it again at settlement — by which time
+ * the basket, the clock and the caps may all have moved.
+ *
+ * Rank 0, and it needs no more: a promo code is printed on a flyer.
+ */
+r.post('/outlet/:outletId/guest/promo', sameOutlet, ownTable, async function (req, res, next) {
+  const { code, goods } = req.body || {};
+  if (!code) return res.status(400).json({ error: 'code required' });
+  try {
+    const out = await withOutlet(req.ctx, function (c) {
+      return promos.quote(c, {
+        code,
+        /* The goods figure the PHONE is showing, which is what the guest is
+           being quoted against. The till recomputes from the item master at
+           settlement; this is an offer, not a fact. */
+        goodsLaari: Math.max(0, Math.round(Number(goods) || 0)),
+      });
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+// ── a guest posts intent; the till decides. The phone never takes money. ────
+r.post('/outlet/:outletId/guest/order', sameOutlet, ownTable, async function (req, res, next) {
+  const { table, lines, promo, name, phone, opId } = req.body || {};
+  if (!table || !Array.isArray(lines) || !lines.length) {
+    return res.status(400).json({ error: 'table and lines required' });
+  }
+  try {
+    const out = await withOutlet(req.ctx, async function (c) {
+      if (opId) {
+        const seen = await c.query('SELECT result FROM op_log WHERE op_id = $1', [opId]);
+        if (seen.rows.length) return seen.rows[0].result;   // replay, not a new order
+      }
+      const ins = await c.query(
+        'INSERT INTO guest_order (table_no, lines, promo, guest_name, guest_phone)'
+        + ' VALUES ($1,$2,$3,$4,$5) RETURNING id, at',
+        [String(table), JSON.stringify(lines), promo || null, name || null, phone || null]);
+      const result = { id: ins.rows[0].id, at: ins.rows[0].at, status: 'awaiting till' };
+      if (opId) {
+        await c.query('INSERT INTO op_log (op_id, kind, payload, client_at, result)'
+          + " VALUES ($1,'guest_order',$2, now(), $3)",
+          [opId, JSON.stringify(req.body), JSON.stringify(result)]);
+      }
+      await c.query("SELECT chain.log('guest_order','guest_order',$1,NULL,$2)",
+        [ins.rows[0].id, JSON.stringify({ table: table, lines: lines.length })]);
+      return result;
+    });
+    res.status(201).json(out);
+  } catch (e) { next(e); }
+});
+
+r.post('/outlet/:outletId/guest/request', sameOutlet, ownTable, async function (req, res, next) {
+  const { table, kind, detail } = req.body || {};
+  if (!table || !kind) return res.status(400).json({ error: 'table and kind required' });
+  try {
+    const out = await withOutlet(req.ctx, function (c) {
+      return c.query('INSERT INTO guest_request (table_no, kind, detail)'
+        + ' VALUES ($1,$2,$3) RETURNING id, at', [String(table), kind, detail || null])
+        .then(function (q) { return q.rows[0]; });
+    });
+    res.status(201).json(out);
+  } catch (e) { next(e); }
+});
+
+/* ── Menu Master (§2 `menu`) ────────────────────────────────────────────────
+ *
+ * Manager rank and above. NOT on the offline replay path: a menu is edited in
+ * an office by one person at a time, and an edit queued on a tablet for three
+ * hours then replayed over somebody else's newer price is a worse outcome than
+ * being told to reconnect. The till is offline-first because a queue of
+ * customers cannot wait; a price list is not that.
+ */
+r.get('/outlet/:outletId/menu', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { items: await menu.list(c), stations: await menu.stations(c, req.ctx.outletId) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/menu', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.create(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/menu/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.update(c, req.params.itemId, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/menu/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.retire(c, req.params.itemId);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Recipes & Costing (§2 `recipes`) ───────────────────────────────────────
+ *
+ * Manager rank. Costing is read against the tax rate in force TODAY, because
+ * GP is measured on the price net of tax and a menu price is GST-inclusive —
+ * measuring margin against a figure that includes the government's share
+ * flatters every dish by the tax rate.
+ */
+async function todayRate(c, outletId) {
+  try {
+    return (await taxAsAt(c, outletId, new Date().toISOString().slice(0, 10))).rate;
+  } catch (e) {
+    // An outlet with no tax version yet is not GST-registered as far as this
+    // screen is concerned; margin is then simply measured on the price.
+    return 0;
+  }
+}
+
+r.get('/outlet/:outletId/ingredients', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return recipes.listIngredients(c); });
+      res.set('cache-control', 'no-store').json({ ingredients: out, units: recipes.UNITS });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/ingredients', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return recipes.createIngredient(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/ingredients/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return recipes.updateIngredient(c, req.params.id, req.body || {});
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/recipes', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return recipes.costedMenu(c, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json({ items: out });
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/recipes/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return recipes.recipeFor(c, req.params.itemId, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/recipes/:itemId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return recipes.putRecipe(c, req.params.itemId, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Inventory and the stock ledger (§2 `inventory`, `ledger`) ─────────────
+ * Reads at manager rank. WRITES go through the replay path below, so a stock
+ * count taken on a tablet in a walk-in freezer with no signal is queued and
+ * replayed exactly once, like every other movement of value in the system.
+ */
+r.get('/outlet/:outletId/inventory', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return stock.inventory(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/inventory/:id/ledger', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return stock.ledger(c, req.params.id, Number(req.query.limit) || 0);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Orders & Tickets (§2 `orders`) ────────────────────────────────────────
+ *
+ * TILL rank: a cashier must be able to find the receipt they handed over a
+ * minute ago. What a cashier may NOT see is what the food cost — orders.js
+ * strips cost, COGS and the inventory legs of the journal below manager rank,
+ * and the audit trail is manager-only because that is what the RLS policy on
+ * chain.audit already says.
+ *
+ * Read-only. Voiding a sale is a reversing journal and a stock return, which is
+ * its own operation on the replay path with its own rank — not an edit made
+ * from a history screen.
+ */
+r.get('/outlet/:outletId/orders', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return orders.day(c, { date, limit: req.query.limit, offset: req.query.offset });
+      });
+      res.set('cache-control', 'no-store').json(orders.redactDay(out, req.ctx.rank));
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/orders/:saleId', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.saleId))) {
+      return res.status(404).json({ error: 'no such sale' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return orders.receipt(c, req.params.saleId, req.ctx.rank);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── the cash drawer ───────────────────────────────────────────────────────
+ *
+ * TILL rank to read: a cashier working the register has to see where their own
+ * drawer stands before they count it. Opening and closing go through the replay
+ * path with the other operations that move money.
+ */
+r.get('/outlet/:outletId/drawer', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return drawer.current(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Today (§2 `today`) ────────────────────────────────────────────────────
+ *
+ * The manager's morning list. Manager rank, matching the rail. Margin is
+ * measured against the price NET of tax, so it needs today's rate — read here
+ * rather than assumed, because an outlet that is not GST-registered has a rate
+ * of zero and measuring its margin against 8% would invent a loss.
+ */
+r.get('/outlet/:outletId/today', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return today.waiting(c, date, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Reports & Exports (§2 `reports`) ──────────────────────────────────────
+ *
+ * MANAGER rank, matching the rail. Every figure is derived in reports.js from
+ * `journal_line` — §22 requires the P&L, the trial balance, the tax return and
+ * the Z-reads to agree with each other, and they can only agree if they are the
+ * same arithmetic over the same rows.
+ *
+ * A date range is validated here rather than passed through: `from`/`to` reach
+ * SQL as parameters, but a malformed date should be a 400 with a sentence, not
+ * a driver error surfacing as a 500.
+ */
+function range(req, res) {
+  const from = req.query.from ? String(req.query.from) : null;
+  const to = req.query.to ? String(req.query.to) : null;
+  for (const d of [from, to]) {
+    if (d !== null && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
+      return null;
+    }
+  }
+  if (from && to && from > to) {
+    res.status(400).json({ error: 'from is after to' });
+    return null;
+  }
+  return { from, to };
+}
+
+r.get('/outlet/:outletId/reports/zread', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return reports.zRead(c, date, await drawer.sessionsOn(c, date));
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reports/trial-balance', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reports.trialBalance(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reports/pnl', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reports.profitAndLoss(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reports/tax', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reports.taxReturn(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Staff & Time Clock (§2 `staff`) ──────────────────────────────────────
+ *
+ * The ROSTER is manager rank, matching the rail. Writing it is ADMIN, and the
+ * rank ceiling — nobody creates or promotes above their own rank — is enforced
+ * by the `staff_write` RLS policy as well as by staff.js, because rank is the
+ * only gate in this system and a check in application code is a check somebody
+ * forgets to write on the next endpoint.
+ *
+ * The CLOCK is on the replay path at rank 1: a kitchen hand clocks themselves
+ * in at 6am, and a system that needed a manager present to start a shift is a
+ * system people work around with a notebook.
+ */
+r.get('/outlet/:outletId/staff', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const date = String(req.query.date || new Date().toISOString().slice(0, 10));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          roster: await staff.roster(c, req.ctx.outletId),
+          day: await staff.shifts(c, date),
+          ranks: staff.RANK_NAME,
+          // What THIS caller may do, so the screen does not offer a button that
+          // will be refused — and does not hide one that would be allowed.
+          maxRank: req.ctx.rank,
+          canWrite: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* A member of staff can always see their OWN clock, at any rank — that is the
+   till's shift badge, and it is the one thing on this module a kitchen hand
+   needs. */
+r.get('/outlet/:outletId/staff/me', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const q = await c.query(
+          'SELECT id, in_at FROM shift WHERE staff_id = $1 AND out_at IS NULL',
+          [req.ctx.actor]);
+        return q.rows.length
+          ? { onShift: true, shiftId: q.rows[0].id, since: q.rows[0].in_at }
+          : { onShift: false };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/staff', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return staff.addStaff(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/staff/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'nobody works here under that id' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return staff.updateStaff(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Releasing a lockout is a MANAGER's job, not an admin's: the usual cause is
+   five fat-fingered attempts on a wet screen mid-service, and the person who
+   can fix it is the one standing there. */
+r.post('/outlet/:outletId/staff/:id/unlock', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'nobody works here under that id' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return staff.unlock(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* What a code a guest is holding out is worth. TILL rank: it is the person at
+   the counter who is being shown a phone. Read-only — the voucher is claimed by
+   the settlement that uses it, not by looking at it. */
+r.get('/outlet/:outletId/vouchers/:code', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return vouchers.look(c, req.params.code);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* A cashier signs a member in at the counter.
+ *
+ * The other door, and not a workaround: with no message gateway configured
+ * there is no other way in at all, and even with one there is the member whose
+ * phone has no signal in a restaurant with thick walls. The cashier reads the
+ * six digits out; the member types them into their own phone; the code is
+ * single-use and expires in five minutes like any other. TILL rank, and the
+ * audit trail records who issued it — "who let this person into somebody's
+ * loyalty account" is a question that gets asked exactly once, afterwards. */
+r.post('/outlet/:outletId/members/:memberId/portal-code', sameOutlet, staffOnly,
+  atLeast('till'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const m = await c.query('SELECT phone, name FROM chain.member WHERE id = $1',
+          [req.params.memberId]);
+        if (!m.rows.length) {
+          throw Object.assign(new Error('no such member'), { status: 404 });
+        }
+        const issued = await memberportal.issueCode(
+          c, m.rows[0].phone, req.ctx.actor, req.ctx.outletId);
+        await c.query("SELECT chain.log('member_portal_code','member',$1,NULL,$2)",
+          [req.params.memberId, JSON.stringify({ at: new Date().toISOString() })]);
+        return {
+          code: issued.code, expiresAt: issued.expiresAt,
+          name: m.rows[0].name || null,
+          phone: memberportal.maskPhone(m.rows[0].phone),
+          message: 'Read this out. It works once, for five minutes.',
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Accounting Flow (§2 `accounting`) ────────────────────────────────────
+ *
+ * MANAGER may read the books; only ADMIN may write to them by hand. Reading is
+ * the daily job of anybody running a shift — the whole point of building this
+ * was that nothing could read back what it posted. Writing a journal directly
+ * bypasses every module that would otherwise own the entry, so it sits one rung
+ * higher, and a reversal sits with it: undoing a posting is writing one.
+ */
+r.get('/outlet/:outletId/accounting/journals', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await accounting.journals(c, req.query || {})),
+          sources: await accounting.sources(c),
+          /* The chart, so the entry form offers accounts by name rather than
+             asking somebody to remember that wages are 6000. */
+          accounts: (await c.query(
+            'SELECT code, name, type FROM account ORDER BY code')).rows,
+        };
+      });
+      res.set('cache-control', 'no-store').json({ ...out, canPost: req.ctx.rank >= 4 });
+    } catch (e) { next(e); }
+  });
+
+/* The trial balance, the P&L and the tax return live under /reports and this
+   screen calls them there. They are the same three statements whichever screen
+   asks; a copy under /accounting would be a second arithmetic to keep in step,
+   and this build has already paid that bill once. */
+
+/* The export is a file, not JSON: it is opened in a spreadsheet or handed to an
+   accountant, and it is audited because a copy of the books has left the
+   building. */
+r.get('/outlet/:outletId/accounting/export', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const f = await accounting.exportCsv(c, req.query || {}, reports);
+        await c.query("SELECT chain.log('accounting_export','journal',NULL,NULL,$1)",
+          [JSON.stringify({ kind: req.query.kind || 'journal', file: f.filename })]);
+        return f;
+      });
+      res.set('content-type', 'text/csv; charset=utf-8')
+        .set('content-disposition', 'attachment; filename="' + out.filename + '"')
+        .set('cache-control', 'no-store')
+        .send(out.body);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/accounting/journal', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return accounting.manual(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/accounting/journal/:id/reverse', sameOutlet, staffOnly,
+  atLeast('admin'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return accounting.reverse(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Credit notes (08-BUILD-STAGES §21) ───────────────────────────────────
+ *
+ * RAISING is TILL rank, because the person standing in front of the guest is
+ * the one who knows what went wrong, and a correction nobody can start is a
+ * correction that gets made by handing cash out of the drawer instead.
+ *
+ * APPROVING is MANAGER, and the module refuses an approval by the person who
+ * raised it: the point of an approval is that a second pair of eyes saw the
+ * thing. Nothing moves — no money, no stock, no document number — until then.
+ */
+r.get('/outlet/:outletId/credit-notes', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.list(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canApprove: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+/* What is left to credit on a sale, and what has been credited already. */
+r.get('/outlet/:outletId/sales/:saleId/credit', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.forSale(c, req.params.saleId);
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, refundMethods: creditnotes.REFUND_METHODS,
+          canApprove: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/credit-notes', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.raise(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/credit-notes/:id/approve', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.approve(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/credit-notes/:id/decline', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return creditnotes.decline(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Card settlements (08-BUILD-STAGES §17) ───────────────────────────────
+ *
+ * MANAGER throughout. Entering an acquirer's statement and tying it to the
+ * payments it settles is the same kind of act as entering the electricity bill:
+ * bookkeeping somebody running the shift does, with every step on the record.
+ * Unmatching is a correction, not an escalation — it reverses its own journal
+ * and leaves both entries, so it needs no higher rank than the match did.
+ */
+r.get('/outlet/:outletId/settlements', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await settlements.list(c, req.query || {})),
+          outstanding: await settlements.outstanding(c, req.query || {}),
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settlements', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.record(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* What this batch is probably made of. A suggestion, and it says so. */
+r.get('/outlet/:outletId/settlements/:id/suggest', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.suggest(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settlements/:id/match', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.match(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settlements/:id/unmatch', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return settlements.unmatch(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Operating Costs (§2 `opcosts`) ───────────────────────────────────────
+ *
+ * MANAGER reads and records — somebody has to be able to enter the electricity
+ * bill. Setting up a RECURRING cost is admin: a schedule keeps charging long
+ * after whoever created it has forgotten, so it is a commitment rather than an
+ * entry.
+ */
+r.get('/outlet/:outletId/opcosts', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await opcosts.list(c, p.from, p.to)),
+          categories: await opcosts.categories(c),
+          schedules: await opcosts.schedules(c),
+          due: await opcosts.due(c, p.to || new Date().toISOString().slice(0, 10)),
+          canSchedule: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/opcosts', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.record(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Releasing a month of every prepaid cost. Idempotent per (cost, period), so a
+   month-end run pressed twice charges the month once. */
+r.post('/outlet/:outletId/opcosts/release', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.release(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/opcosts/recurring', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.setSchedule(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/opcosts/recurring/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such schedule' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return opcosts.stopSchedule(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Delivery & QR (§2 `delivery`) ────────────────────────────────────────
+ *
+ * TILL rank throughout, for the same reason the book is: the person who accepts
+ * a QR round, takes a delivery on the telephone and hands a bag to a rider is
+ * working the shift. Nothing here touches money — a delivery is settled at the
+ * till like anything else — so there is no argument for a higher rank.
+ */
+r.get('/outlet/:outletId/delivery', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return delivery.board(c); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/delivery', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return delivery.take(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+const orderId = function (req, res, next) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+    return res.status(404).json({ error: 'no such order' });
+  }
+  next();
+};
+
+/* Accepting CREATES THE TICKET and fires it at the kitchen — through the same
+   sendRound a waiter's terminal calls. */
+r.post('/outlet/:outletId/delivery/:id/accept', sameOutlet, staffOnly, atLeast('till'),
+  orderId, async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return delivery.accept(c, req.params.id, req.body || {}, req.ctx, kitchen);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+for (const [path, fn] of [['reject', 'reject'], ['dispatch', 'dispatch'],
+  ['delivered', 'delivered']]) {
+  r.post('/outlet/:outletId/delivery/:id/' + path, sameOutlet, staffOnly,
+    atLeast('till'), orderId, async function (req, res, next) {
+      try {
+        const out = await withOutlet(req.ctx, function (c) {
+          return delivery[fn](c, req.params.id, req.body || {}, req.ctx);
+        });
+        res.json(out);
+      } catch (e) { next(e); }
+    });
+}
+
+/* ── Reservations (§2 `reservations`) ─────────────────────────────────────
+ *
+ * ALL OF IT IS TILL RANK, and that is the whole judgement. The person who
+ * answers the telephone, writes the name down, walks the party to the table and
+ * marks the ones who never came is the same person on the same shift. A book
+ * that needed a manager to cancel a booking would be a book kept on paper.
+ *
+ * Nothing here touches money, which is why it can sit at that rank without an
+ * argument.
+ */
+r.get('/outlet/:outletId/reservations', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.day(c, req.query.date ? String(req.query.date) : null);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/reservations/table/:tableNo', sameOutlet, staffOnly,
+  atLeast('till'), async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.tableDay(c, req.params.tableNo,
+          req.query.date ? String(req.query.date) : null);
+      });
+      res.json({ table: req.params.tableNo, bookings: out });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/reservations', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.book(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+const bookingId = function (req, res, next) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+    return res.status(404).json({ error: 'no such booking' });
+  }
+  next();
+};
+
+r.patch('/outlet/:outletId/reservations/:id', sameOutlet, staffOnly, atLeast('till'),
+  bookingId, async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.amend(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Arrival — and the ticket that comes with it. */
+r.post('/outlet/:outletId/reservations/:id/seat', sameOutlet, staffOnly, atLeast('till'),
+  bookingId, async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return reservations.seat(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+for (const [path, fn] of [['no-show', 'noShow'], ['cancel', 'cancel'], ['finish', 'finish']]) {
+  r.post('/outlet/:outletId/reservations/:id/' + path, sameOutlet, staffOnly,
+    atLeast('till'), bookingId, async function (req, res, next) {
+      try {
+        const out = await withOutlet(req.ctx, function (c) {
+          return reservations[fn](c, req.params.id, req.body || {}, req.ctx);
+        });
+        res.json(out);
+      } catch (e) { next(e); }
+    });
+}
+
+/* ── Promotions (§2 `promos`) ─────────────────────────────────────────────
+ *
+ * THE QUOTE ENDPOINT IS THE POINT OF THE MODULE. §16's acceptance criterion is
+ * that a promo quoted on the phone is charged by the till or refused with a
+ * reason, so both ask the SAME function on the SAME server rather than each
+ * implementing the rules. The till's copy is here; the guest's is under
+ * /guest/promo below, reachable by a rank-0 table token, and they differ in
+ * exactly nothing but the door they come through.
+ *
+ * Setting one up is ADMIN. A promo is a standing offer to the public with a
+ * cost the business has agreed to; it is not a shift decision.
+ */
+r.post('/outlet/:outletId/promos/quote', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.quote(c, req.body || {});
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/promos', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { ...(await promos.list(c)), canConfigure: req.ctx.rank >= 4 };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/promos/:id/uses', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such promotion' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.uses(c, req.params.id);
+      });
+      res.json({ uses: out });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/promos', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.save(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/promos/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such promotion' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return promos.stop(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Loyalty & Rewards (§2 `loyalty`) ─────────────────────────────────────
+ *
+ * TILL rank reads it: a cashier tells a guest what they earned, and the tender
+ * screen needs the balance before it can offer points.
+ *
+ * ADMIN sets the earn rate, the ladder and the catalogue. An earn rate is a
+ * standing promise to every member of the chain — it accrues a real liability
+ * on every sale, at every branch, until somebody changes it.
+ */
+r.get('/outlet/:outletId/loyalty', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await loyalty.stats(c, req.ctx.outletId)),
+          rewards: await loyalty.rewards(c),
+          canConfigure: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/loyalty/member/:id', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such member' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.member(c, req.params.id);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/loyalty/config', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.setConfig(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/loyalty/rewards', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.setReward(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/loyalty/rewards/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such reward' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return loyalty.dropReward(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Customers & Credit (§2 `customers`) ──────────────────────────────────
+ *
+ * TILL rank creates and finds a customer: the person is standing at the counter
+ * and a cashier must be able to put a name to a phone number without fetching
+ * anybody.
+ *
+ * MANAGER sees the book and takes a payment against an account.
+ *
+ * ADMIN sets a credit limit and writes a debt off. Extending credit is a
+ * decision about money that keeps applying long after the shift ends, and a
+ * write-off is the one entry in this module that makes money disappear.
+ */
+r.get('/outlet/:outletId/customers', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const base = await customers.list(c, { q: req.query.q });
+        /* A cashier gets the roster and each customer's own credit position —
+           which is what they need to answer "can this go on the account?" — but
+           the aged debtors book is a manager's report. */
+        return req.ctx.rank >= 3
+          ? { ...base, ageing: await customers.ageing(c), canCredit: req.ctx.rank >= 4 }
+          : { ...base, canCredit: false };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/customers/:id', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.statement(c, req.params.id);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.save(c, req.body || {}, req.ctx);
+      });
+      res.status(out.already ? 200 : 201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers/:id/credit', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.setCredit(c, { ...(req.body || {}), id: req.params.id }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers/:id/receipt', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.receipt(c, { ...(req.body || {}), memberId: req.params.id },
+          req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/customers/:id/writeoff', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such customer' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return customers.writeOff(c, { ...(req.body || {}), memberId: req.params.id },
+          req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Equipment & Maintenance (§2 `assets`) ────────────────────────────────
+ *
+ * MANAGER reads the register and closes off a service — a duty manager knows
+ * the aircon was serviced on Tuesday and should not have to find an admin to
+ * say so.
+ *
+ * ADMIN buys, disposes and runs the monthly charge. Capitalising something
+ * decides the shape of the P&L for years, disposing of it takes an asset off
+ * the balance sheet, and depreciation moves the ledger for every asset at once.
+ * None of those is a duty-manager decision.
+ */
+r.get('/outlet/:outletId/assets', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await assets.list(c, { disposed: req.query.disposed === '1' })),
+          canManage: req.ctx.rank >= 4,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/assets/:id/history', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such asset' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.history(c, req.params.id);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/assets', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.add(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Idempotent per (asset, period): a month-end run pressed twice charges once. */
+r.post('/outlet/:outletId/assets/depreciate', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.depreciate(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/assets/:id/dispose', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such asset' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.dispose(c, { ...(req.body || {}), id: req.params.id }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/assets/services', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.schedule(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Completing a service can spend money, and when it does it books ONE expense
+   row through opcosts — the same one the Operating Costs screen lists. */
+r.post('/outlet/:outletId/assets/services/:id/done', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such service' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.complete(c, { ...(req.body || {}), id: req.params.id },
+          req.ctx, opcosts);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/assets/services/:id', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such service' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return assets.dropService(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Analytics & CFO (§2 `analytics`) ─────────────────────────────────────
+ *
+ * ADMIN, matching the rail. §22: prime cost and net margin come from the posted
+ * journals, not from a parallel calculation — analytics.js reads them through
+ * reports.balances(), the same function the P&L and the trial balance use.
+ */
+r.get('/outlet/:outletId/analytics', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    const p = range(req, res); if (!p) return;
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return analytics.cfo(c, p.from, p.to);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Payroll & Pension (§2 `payroll`) ─────────────────────────────────────
+ *
+ * ADMIN throughout. Payroll reads what everybody earns and writes what they are
+ * owed; there is no part of it a manager needs and no part that is safe to
+ * spread wider.
+ *
+ * Not on the replay path. A payroll run is done once a fortnight at a desk, and
+ * a queued run replayed hours later against rates that have since changed would
+ * post a liability nobody reviewed. The till is offline-first because a queue of
+ * customers cannot wait; payroll is not that.
+ */
+r.get('/outlet/:outletId/payroll', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query(
+          'SELECT pension_employee_bp, pension_employer_bp FROM chain.outlet WHERE id = $1',
+          [req.ctx.outletId]);
+        return {
+          runs: await payroll.runs(c, req.query.limit),
+          rates: await payroll.rates(c),
+          roster: await staff.roster(c, req.ctx.outletId),
+          pension: {
+            employeeBp: Number((o.rows[0] || {}).pension_employee_bp || 0),
+            employerBp: Number((o.rows[0] || {}).pension_employer_bp || 0),
+          },
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/payroll/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such run' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return payroll.run(c, req.params.id); });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/payroll/rates', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.setRate(c, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Calculating a draft writes nothing to the ledger — it is a read of the clock
+   with the arithmetic done. Posting is the irreversible half, and it is its own
+   endpoint so it cannot happen by accident. */
+r.post('/outlet/:outletId/payroll/draft', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query(
+          'SELECT pension_employee_bp, pension_employer_bp FROM chain.outlet WHERE id = $1',
+          [req.ctx.outletId]);
+        return payroll.draft(c, req.body || {}, req.ctx, o.rows[0] || {});
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/payroll/:id/post', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.post(c, { runId: req.params.id }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/payroll/:id/pay', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.pay(c, { runId: req.params.id, method: (req.body || {}).method }, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/payroll/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return payroll.discard(c, req.params.id, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Vendors (§2 `vendors`) and Purchases / GRN (§2 `purchases`) ──────────
+ *
+ * Reads at manager rank — a chef checking what a supplier charged is doing
+ * their job. Writing the SUPPLIER MASTER is admin: it is shared across the
+ * estate, and it carries payment terms. Receiving and pricing go through the
+ * replay path, because a delivery arrives at a back door with no signal.
+ */
+r.get('/outlet/:outletId/vendors', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return purchasing.suppliers(c); });
+      res.set('cache-control', 'no-store').json({ suppliers: out });
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/vendors/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such supplier' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.supplier(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/vendors', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.createSupplier(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/vendors/:id', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.updateSupplier(c, req.params.id, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/purchases', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          deliveries: await purchasing.deliveries(c, req.query.limit),
+          ageing: await purchasing.ageing(c),
+          suppliers: await purchasing.suppliers(c),
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/purchases/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.id))) {
+      return res.status(404).json({ error: 'no such delivery' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return purchasing.delivery(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Stock Counts (§2 `counts`) and the Stock Ledger (§2 `ledger`) ────────
+ * Reads at manager rank. Counting itself, and approving a count, go through
+ * the replay path with everything else that moves value.
+ */
+r.get('/outlet/:outletId/counts', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query(
+          'SELECT count_approval_laari FROM chain.outlet WHERE id = $1', [req.ctx.outletId]);
+        return {
+          counts: await stock.counts(c, req.query.limit),
+          // The policy in force, so the screen can say what will need approving
+          // BEFORE somebody spends twenty minutes counting a freezer.
+          threshold: Number((o.rows[0] || {}).count_approval_laari || 0) / 100,
+          approveRank: stock.APPROVE_RANK,
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* A blank sheet to go and count against. `sheet` before `:countId` in the
+   router, or the literal would be read as a count id. */
+r.get('/outlet/:outletId/counts/sheet', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    const cats = req.query.categories
+      ? String(req.query.categories).split(',').map((x) => x.trim()).filter(Boolean)
+      : [];
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return {
+          ...(await stock.categories(c)),
+          chosen: cats,
+          items: await stock.countSheetFor(c, cats),
+        };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/counts/:countId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(req.params.countId))) {
+      return res.status(404).json({ error: 'no such count' });
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return stock.countSheet(c, req.params.countId);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/ledger', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    for (const d of [req.query.from, req.query.to]) {
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(String(d))) {
+        return res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
+      }
+    }
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return stock.movements(c, {
+          ingredientId: req.query.ingredient, reason: req.query.reason,
+          from: req.query.from, to: req.query.to,
+          limit: req.query.limit, offset: req.query.offset,
+        });
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+// ── offline replay. Idempotent by construction: the client's own op_id is the
+//    primary key, and a closed sale is never reopened by a late arrival.
+r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    const ops = (req.body || {}).ops;
+    if (!Array.isArray(ops)) return res.status(400).json({ error: 'ops[] required' });
+    try {
+      const results = await withOutlet(req.ctx, async function (c) {
+        /* The heartbeat. A replay push is the only thing a till does that
+           proves it is alive AND has something to say, so `last_seen` is
+           stamped here rather than only at sign-in — a device that last spoke
+           when somebody typed a PIN at 09:00 tells the diagnostics screen
+           nothing about 19:00. */
+        if (req.ctx.deviceId) {
+          await c.query('SELECT chain.device_seen($1,$2)',
+            [req.ctx.outletId, req.ctx.deviceId]);
+        }
+        const out = [];
+        for (const op of ops) {
+          if (!op || !op.opId) { out.push({ error: 'opId required' }); continue; }
+          const seen = await c.query('SELECT result FROM op_log WHERE op_id = $1', [op.opId]);
+          if (seen.rows.length) { out.push({ opId: op.opId, replay: true, result: seen.rows[0].result }); continue; }
+          let result;
+          try { result = await apply(c, op, req.ctx); }
+          catch (e) { out.push({ opId: op.opId, error: e.message }); continue; }
+          await c.query('INSERT INTO op_log (op_id, kind, payload, client_at, device_id, by_staff, result)'
+            + ' VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            [op.opId, op.kind, JSON.stringify(op.payload || {}),
+             new Date(op.at || Date.now()), req.ctx.deviceId, req.ctx.actor,
+             JSON.stringify(result || {})]);
+          out.push({ opId: op.opId, result: result });
+        }
+        return out;
+      });
+      res.json({ results: results });
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    const since = new Date(Number(req.query.since || 0) || 0);
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const [ops, orders, reqs] = await Promise.all([
+          c.query('SELECT op_id, kind, result, applied_at FROM op_log'
+            + ' WHERE applied_at > $1 ORDER BY applied_at LIMIT 500', [since]),
+          c.query('SELECT id, table_no, lines, promo, at FROM guest_order'
+            + ' WHERE accepted_at IS NULL AND rejected_reason IS NULL ORDER BY at'),
+          c.query('SELECT id, table_no, kind, detail, at FROM guest_request'
+            + ' WHERE ack_at IS NULL ORDER BY at')
+        ]);
+        return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Indent requests (02-POS-SPEC §2 `requests`) ──────────────────────────
+ *
+ * ASKING IS KITCHEN RANK. The person who can see the empty shelf is a cook, and
+ * a request only a manager can enter is a request that gets made by shouting
+ * instead. Deciding is MANAGER, and so is turning it into an order — which is
+ * the first thing in this build ever to write a purchase order.
+ */
+r.get('/outlet/:outletId/indents', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const list = await indents.list(c, req.query || {}, req.ctx);
+        const inv = await c.query(
+          'SELECT id, name, unit, on_hand, par FROM ingredient ORDER BY name');
+        return { ...list, ingredients: inv.rows.map((i) => ({
+          id: i.id, name: i.name, unit: i.unit,
+          onHand: Number(i.on_hand), par: i.par === null ? null : Number(i.par) })) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return indents.raise(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents/:id/decide', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return indents.decide(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents/:id/order', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return indents.order(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents/:id/cancel', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return indents.cancel(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* The purchase orders themselves, so a delivery can be received against one.
+ *
+ * `/orders` is already taken, and by the other meaning of the word: the live
+ * ticket board, registered above at TILL rank. Two routes with the same path
+ * do not collide loudly — Express hands every request to the first one — so
+ * this reads `purchase-orders` rather than quietly shadowing the till. */
+r.get('/outlet/:outletId/purchase-orders', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return indents.orders(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── AI Menu Builder (02-POS-SPEC §2 `aimenu`) ──────────────────────
+ *
+ * MANAGER reads the board — it is the same costing and the same sales the
+ * Recipes and Analytics screens already show them, arranged to answer a
+ * pricing question. Asking the model to WRITE something is ADMIN: it is the
+ * only part of this build that sends anything to an outside service, and it
+ * spends somebody's money per call.
+ */
+r.get('/outlet/:outletId/aimenu', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return aimenu.board(c, req.query || {}, await todayRate(c, req.ctx.outletId));
+      });
+      res.set('cache-control', 'no-store').json({ ...out, ai: aimenu.aiConfig() });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/aimenu/:itemId/describe', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return aimenu.describe(c, req.params.itemId, req.body || {});
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* ── Dispatches: inter-outlet transfers (02-POS-SPEC §2 `dispatches`) ─────
+ *
+ * MANAGER at both ends. Stock leaving the building on a van is not a shift
+ * decision at either end, and the row is the only thing in the system one
+ * branch may write that another branch reads.
+ *
+ * Note what is NOT here: no endpoint by which one outlet writes the other's
+ * stock. The sender's movement is written on the sender's connection and the
+ * receiver's on the receiver's, because neither role can reach the other's
+ * schema — which is the property this whole feature is shaped around rather
+ * than an obstacle it works past.
+ */
+r.get('/outlet/:outletId/dispatches', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const [b, dest] = await Promise.all([
+          dispatches.board(c, req.ctx, req.query || {}),
+          dispatches.destinations(c, req.ctx),
+        ]);
+        const inv = await c.query(
+          'SELECT id, name, unit, on_hand FROM ingredient ORDER BY name');
+        return { ...b, destinations: dest, ingredients: inv.rows.map((i) => ({
+          id: i.id, name: i.name, unit: i.unit, onHand: Number(i.on_hand) })) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return dispatches.send(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/receive', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.receive(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/reject', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.settleBack(c, req.params.id, req.body || {}, req.ctx, 'rejected');
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/cancel', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.settleBack(c, req.params.id, req.body || {}, req.ctx, 'cancelled');
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/dispatches/:id/take-back', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return dispatches.takeBack(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* ── Batches & expiry (02-POS-SPEC §2 `batches`) ──────────────────────────
+ *
+ * Reading is TILL: what is about to go off is a question the person doing the
+ * mise en place asks, and hiding it behind a manager is how it gets asked at
+ * the bin instead. Recording a batch is TILL too — whoever opens the sack is
+ * who knows the date on it. Writing one OFF is MANAGER, because it is wastage
+ * and lands in the P&L.
+ */
+r.get('/outlet/:outletId/batches', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return batches.list(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canWriteOff: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/batches', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return batches.add(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/batches/:id/write-off', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return batches.writeOff(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* Where a lot went. MANAGER — it names receipts, and a receipt is a guest. */
+r.get('/outlet/:outletId/batches/:id/trace', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return batches.trace(c, req.params.id);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Production (02-POS-SPEC §2 `production`) ─────────────────────────────
+ *
+ * Reading is TILL rank: the prep list is what a cook opens at the start of a
+ * shift, and rank 2 is where the cooking happens. Recording a batch is TILL
+ * too — the person who made it is the person at the screen, and a batch nobody
+ * can record is a batch that never reaches the books.
+ *
+ * Writing the FORMULA is MANAGER. What a thing is made of is a costing
+ * decision: it prices every dish that contains it and it is what a stock count
+ * is measured against.
+ */
+r.get('/outlet/:outletId/production', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return production.catalogue(c); });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canEditRecipe: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/production/:id/recipe', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return production.setRecipe(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/production/runs', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return production.make(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/production/runs', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return production.runs(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/production/runs/:id', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return production.one(c, req.params.id);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* ── Settings, access and the audit log (08-BUILD-STAGES §29) ─────────────
+ *
+ * Reading the settings is MANAGER — a duty manager needs to know what service
+ * charge is being added to every bill they are explaining to a guest. Changing
+ * them is ADMIN, because a service charge is a standing promise and a tax rate
+ * is a filing.
+ */
+r.get('/outlet/:outletId/settings', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.settings(c, req.ctx.outletId);
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canEdit: req.ctx.rank >= 4 });
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/settings', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return governance.setSettings(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/settings/tax', sameOutlet, staffOnly, atLeast('admin'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return governance.setTax(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* Who can act right now. MANAGER, because ending somebody's session is the
+   same act as revoking their device and belongs to the same person. */
+r.get('/outlet/:outletId/access', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.access(c, req.ctx);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/access/sessions/:id/end', sameOutlet, staffOnly,
+  atLeast('manager'), async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return governance.endSession(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* The trail. Manager rank, which is what the RLS policy on chain.audit already
+   says — the gate here only makes the refusal readable. */
+r.get('/outlet/:outletId/audit', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.auditLog(c, req.query || {}, req.ctx);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/audit/facets', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return governance.auditFacets(c, req.ctx);
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* Exporting the trail is itself an act, and it is in the trail. A copy of the
+   audit log leaving the building is exactly the kind of thing the audit log is
+   for. */
+r.get('/outlet/:outletId/audit.csv', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const csv = await withOutlet(req.ctx, function (c) {
+        return governance.auditCsv(c, req.query || {}, req.ctx);
+      });
+      res.set('content-type', 'text/csv; charset=utf-8')
+        .set('content-disposition', 'attachment; filename="audit-log.csv"')
+        .send(csv);
+    } catch (e) { next(e); }
+  });
+
+/* ── Sync & devices (08-BUILD-STAGES §28) ─────────────────────────────────
+ *
+ * Reading is TILL rank: a cashier looking at "this device is not paired" is
+ * the person who fetches the manager, and hiding it from them means the till
+ * that cannot sync is the one screen nobody can see. Writing is MANAGER — a
+ * machine dying mid-service is who is standing there, not an administrator.
+ */
+r.get('/outlet/:outletId/devices', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) { return devices.health(c); });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, kinds: devices.KINDS, canManage: req.ctx.rank >= 3,
+          thisDevice: req.ctx.deviceId || null });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return devices.add(c, req.body || {}, req.ctx);
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices/:id/code', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.reissue(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/devices/:id', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.rename(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices/:id/revoke', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.revoke(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/devices/:id/restore', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return devices.restore(c, req.params.id, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* ── the estate (08-BUILD-STAGES §25, 11-OWNER-DASHBOARD-SPEC) ─────────────
+ *
+ * The one cross-outlet read in the system: aggregates only, rank 5 only,
+ * through a read-only role that holds no table grant, and stamped in the audit
+ * trail as group scope — by the reporting connection itself, so the entry
+ * records the scope the read actually ran at rather than the one the owner's
+ * own connection would have implied.
+ *
+ * TWO CONNECTIONS, ON PURPOSE. `withEstate` reaches the aggregates; the
+ * owner's ordinary outlet connection reads the targets they are judged
+ * against. Granting the reporting role that one small table would have saved a
+ * round trip and cost the property the whole design rests on. See migration
+ * 028.
+ */
+r.get('/estate/day', staffOnly, atLeast('owner'), async function (req, res, next) {
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  try {
+    await noteGroupRead(req.ctx, date);
+    const rows = await withEstate(req.ctx, function (c) {
+      return c.query('SELECT * FROM chain.estate_day($1)', [date])
+        .then(function (q) { return q.rows; });
+    });
+    res.set('cache-control', 'no-store').json({ date: date, outlets: rows });
+  } catch (e) { next(e); }
+});
+
+r.get('/estate/overview', staffOnly, atLeast('owner'), async function (req, res, next) {
+  const date = req.query.date || new Date().toISOString().slice(0, 10);
+  try {
+    await noteGroupRead(req.ctx, date);
+    const out = await withEstate(req.ctx, function (est) {
+      return withOutlet(req.ctx, function (own) {
+        return estate.overview(est, own, date);
+      });
+    });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+/* The yardstick. Readable by anyone with a back-office screen — a branch
+   judged against a target it cannot see is not being managed, it is being
+   graded — and writable only at rank 5, which the RLS policy enforces on its
+   own account. */
+r.get('/estate/targets', staffOnly, atLeast('manager'), async function (req, res, next) {
+  try {
+    const out = await withOutlet(req.ctx, function (c) { return estate.targets(c); });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+r.put('/estate/targets', staffOnly, atLeast('owner'), async function (req, res, next) {
+  try {
+    const out = await withOutlet(req.ctx, function (c) {
+      return estate.setTargets(c, req.body || {}, req.ctx).then(function (t) {
+        return c.query("SELECT chain.log('estate_targets','estate','targets',NULL,$1)",
+          [JSON.stringify(req.body || {})]).then(function () { return t; });
+      });
+    });
+    res.json(out);
+  } catch (e) { next(e); }
+});
+
+// ── apply one replayed operation ────────────────────────────────────────────
+/* The rank each operation needs, BY OPERATION rather than by endpoint.
+ *
+ * /sync/push is one pipe carrying very different acts, and gating the pipe was
+ * wrong in both directions: at till rank a kitchen hand could not advance their
+ * own pass (the KDS is rank 1 precisely so it needs no session that can sell),
+ * and anything that got through the pipe could post a journal. A transport is
+ * not an authorisation model. */
+const OP_RANK = {
+  kds_advance: 1,          // the pass — the lowest rank, deliberately
+  /* Clocking on is rank 1 by design. staff.js refuses clocking SOMEBODY ELSE
+     below manager rank, which is the distinction that matters. */
+  clock_in: 1,
+  clock_out: 1,
+  ticket_send: 2,          // firing the kitchen moves no money
+  guest_order_accept: 2,
+  sale: 2,                 // taking money is the till's job
+  drawer_open: 2,          // …and so is counting the drawer it comes out of
+  drawer_close: 2,
+  stock_receive: 3,        // receiving stock creates value in the accounts
+  stock_waste: 3,          // and wastage destroys it
+  stock_count: 3,          // a count writes on-hand; that is a manager's act
+  /* Approving somebody else's count is ADMIN. A count is the one operation
+     where a person types a number and the accounts move to meet it, so the
+     signature has to come from above the person who took it — stock.js refuses
+     a self-approval on top of this. */
+  stock_count_approve: 4,
+  stock_count_reject: 4,
+  /* Receiving is a MANAGER's act — somebody has to be able to take a delivery
+     at 6am. Pricing it moves money between accounts and settles what is owed,
+     so those are admin. */
+  delivery_receive: 3,
+  delivery_price: 4,
+  invoice_pay: 4,
+  journal: 3,              // a hand-posted journal, with its own audit entry
+};
+
+async function apply(c, op, ctx) {
+  const need = OP_RANK[op.kind];
+  if (need === undefined) throw new Error('unknown op kind: ' + op.kind);
+  if ((ctx.rank || 0) < need) {
+    throw Object.assign(new Error(op.kind + ' needs rank ' + need), { status: 403 });
+  }
+  switch (op.kind) {
+    case 'sale': {
+      /* Everything financial is derived server-side — see src/sale.js for why
+         the payload's own gross/tax/total/journal are not trusted. The outlet
+         row carries the service charge and the cash-rounding increment, and it
+         is read HERE rather than passed in, so a replay arriving days later is
+         priced by the outlet's configuration and not by the client's memory
+         of it. */
+      const outlet = await c.query(
+        'SELECT service_pct, cash_round_laari, max_open_discount'
+        + ' FROM chain.outlet WHERE id = $1', [ctx.outletId]);
+      if (!outlet.rows.length) throw new Error('outlet not found');
+      return await settle(c, op.payload || {}, ctx, outlet.rows[0]);
+    }
+    case 'ticket_send':
+      return await kitchen.sendRound(c, op.payload || {}, ctx);
+
+    case 'kds_advance':
+      return await kitchen.advance(c, op.payload || {}, ctx);
+
+    case 'clock_in':
+      return await staff.clockIn(c, op.payload || {}, ctx);
+
+    case 'clock_out':
+      return await staff.clockOut(c, op.payload || {}, ctx);
+
+    case 'drawer_open':
+      return await drawer.open(c, op.payload || {}, ctx);
+
+    case 'drawer_close':
+      return await drawer.close(c, op.payload || {}, ctx);
+
+    case 'stock_receive':
+      return await stock.receive(c, op.payload || {}, ctx);
+
+    case 'stock_waste':
+      return await stock.waste(c, op.payload || {}, ctx);
+
+    case 'stock_count': {
+      /* The approval threshold is the OUTLET's, read here rather than sent by
+         the client — a tablet replaying a count from three hours ago must be
+         held to the policy in force now, not to the one it remembered. */
+      const o = await c.query(
+        'SELECT count_approval_laari FROM chain.outlet WHERE id = $1', [ctx.outletId]);
+      return await stock.count(c, op.payload || {}, ctx, o.rows[0] || {});
+    }
+
+    case 'delivery_receive':
+      return await purchasing.receiveDelivery(c, op.payload || {}, ctx);
+
+    case 'delivery_price':
+      return await purchasing.priceDelivery(c, op.payload || {}, ctx);
+
+    case 'invoice_pay':
+      return await purchasing.payInvoice(c, op.payload || {}, ctx);
+
+    case 'stock_count_approve':
+      return await stock.approveCount(c, op.payload || {}, ctx);
+
+    case 'stock_count_reject':
+      return await stock.rejectCount(c, op.payload || {}, ctx);
+
+    /* A journal queued offline goes through the SAME path a typed one does.
+       This used to have a private writer here that took its figures in MVR
+       while every other posting path in the build takes laari — so the one
+       entry that arrived after a network outage would have been out by a
+       factor of a hundred, and balanced, so nothing would have objected. It
+       also skipped the balance check, the account check and the audit line. */
+    case 'journal':
+      return accounting.manual(c, op.payload || {}, ctx);
+
+    /* Accepting a round while offline reaches the kitchen on replay, because it
+       is the same accept the till's own button calls. It used to stamp
+       `accepted_at` and take a ticket id from the CLIENT — an id for a ticket
+       nothing had created — so a round accepted during an outage was marked
+       done and the food was never cooked. */
+    case 'guest_order_accept':
+      return delivery.accept(c, (op.payload || {}).id, op.payload || {}, ctx, kitchen);
+    default:
+      throw new Error('unknown op kind: ' + op.kind);
+  }
+}
+
+module.exports = r;

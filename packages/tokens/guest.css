@@ -1,0 +1,42 @@
+/* Guest + member portal base stylesheet.
+ *
+ * Copied VERBATIM from design/KashikeyoGuest QR v3.dc.html's <style> block. The
+ * design is the visual contract: these rules are not re-derived, re-tidied or
+ * "improved". If a value here looks odd (button text-align:left, the .qs
+ * scrollbar hiding, the duplicated qrise/qriseb keyframes) it is odd in the
+ * prototype too, and screens depend on it.
+ *
+ * Only ONE thing is added, at the bottom: the tabular-numerals rule that
+ * 01-DESIGN-TOKENS.md §3 makes mandatory on every surface. It is in the token
+ * doc but not in this prototype's style block, and a column of money that
+ * changes width as digits change reads as a glitch.
+ *
+ * Fonts are loaded by the app shell, not here — see index.html:
+ *   Instrument Sans 400/500/600/700  (prose)
+ *   JetBrains Mono  500/700          (every figure)
+ */
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{background:#1b0d0a;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;text-align:left;transition:transform .1s cubic-bezier(.2,.8,.3,1),opacity .12s,background .14s}
+button:active:not(:disabled){transform:scale(.975)}
+input,textarea,select{font:inherit;color:inherit;background:none;border:none;outline:none;width:100%}
+textarea{resize:none}
+a{color:#f4553c;text-decoration:none}
+a:hover{color:#d33d26}
+.qs::-webkit-scrollbar{height:0;width:0}
+.qs{scrollbar-width:none}
+@keyframes qrise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes qriseb{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes qsheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes qfade{from{opacity:0}to{opacity:1}}
+@keyframes qpulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+
+/* 01-DESIGN-TOKENS.md §3: mandatory on every surface. */
+html, body, input, select, textarea, button {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

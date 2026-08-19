@@ -1,0 +1,272 @@
+/* POS stylesheet — copied VERBATIM from the <style> block of
+ * design/KashikeyoPOS Guest Theme v3.dc.html.
+ *
+ * The design is the visual contract. These rules are not re-derived or tidied:
+ * the custom-property ramp, the dark default with a [data-theme="light"]
+ * variant, the seven --id-* role hues and the semantic status tokens are all
+ * the prototype's, and 01-DESIGN-TOKENS.md §1 documents them as the authority.
+ *
+ * Note the surface ramp INVERTS between themes (--bg-1 is the lightest surface
+ * in light mode and a mid surface in dark). That is intentional and documented:
+ * --bg-1 means "card", not "a particular lightness". Do not make it monotonic.
+ *
+ * Fonts are loaded by the app shell — Inter 400..800 for prose, JetBrains Mono
+ * 400..700 for every figure (§3).
+ */
+
+/* Palette as the reference defined it — :root custom properties, dark by
+   default. ThemeMode / CustomColors on the Users table select the variant. */
+:root{
+  /* Guest-app palette, night side. The ramp is near-neutral with only a
+     whisper of the brick #8e3226 the guest phone sits on — 2-3% chroma, enough
+     to relate the two surfaces, little enough that the coral accent is the only
+     saturated thing on screen. A fully warm ramp gave the accent nothing to
+     pop against; every surface was already the brand hue. */
+  --bg:#111214; --bg-0:#161719; --bg-1:#1b1c1f; --bg-2:#212327; --bg-3:#2c2e33;
+  --line-soft:#212327; --line:#2c2e33; --line-2:#3a3d43; --line-3:#4e525a;
+  /* The neutral status fill. It has to read on --bg-1 AND on --bg-3, because a
+     selected tile is --bg-3 — one step past both. */
+  --mute-dim:#3a3d43;
+  /* Every tier clears 7:1 against bg…bg-2. Subdued here means smaller and
+     lighter in weight, never lower in contrast — a till is read off-axis,
+     across a counter, under downlights. Low-contrast grey is not an option. */
+  --text:#f5f6f7; --text-dim:#d3d5d9; --text-muted:#bcbfc5; --text-faint:#a6aab1;
+  --code-text:#d0d3d8;
+  /* --amber-* is the BRAND ACCENT and is rewritten inline on <html> by
+     applyTheme() from the user's CustomColors. It must therefore never carry
+     meaning. --warn-* below is the fixed warning tier: it is defined only here
+     and in the light block, and applyTheme() never touches it. A user picking
+     the crimson accent previously repainted every warning into the destructive
+     red — an open table then signalled in the same hue as Void. */
+  --amber:#f4553c; --amber-bright:#ff7a63; --amber-dim:#331611; --amber-line:#7d3325; --amber-deep:#d63f27;
+  --warn:#f2a43a; --warn-bright:#ffc14a; --warn-dim:rgba(242,164,58,.14); --warn-line:#6b4a1f; --on-warn:#1a0f00;
+  /* Tint tokens for the four STATUS families. Hard-coded rgba() tints cannot
+     follow the theme, so in light mode a tint kept its dark-theme hue while its
+     paired border and label resolved to the light ramp — tint and text drifting
+     apart on the same chip. Every status tint now resolves per theme. */
+  --ok-dim:#12281d; --bad-dim:#301218;
+  --info-dim:#171c33; --violet-dim:#221a30;
+  --brand-dim:#331611;
+  --brand-red:#8e3226; --brand-red-bright:#f4553c; --brand-olive:#8a9440; --brand-olive-bright:#a8b354;
+  --brand-cream:#f0e2c0; --brand-grey:#a4a8af;
+  --brand-plate:#ffffff; --brand-plate-line:#3d2c28;
+  --on-amber:#fff4f0;
+  /* Semantic. Colour states intent and never decorates: green commits money,
+     blue advances the order, red destroys, amber warns. Nothing else is
+     allowed a filled background, so a fill always means "this does something". */
+  --go:#34c77b; --go-bright:#5fe09a; --go-dim:#12281d; --go-line:#256b47; --on-go:#04180d;
+  --fwd:#7c92f5; --fwd-bright:#a3b3fa; --fwd-dim:#171c33; --fwd-line:#3a4a9c; --on-fwd:#060c26;
+  --danger:#f2445e; --danger-bright:#ff7b8e; --danger-dim:#301218; --danger-line:#7d2231; --on-danger:#fff2f4;
+  /* Categorical. Hue carries the menu section so a cashier lands on it without
+     reading the label. Swatches, dots and rails only — never a button fill —
+     so a category colour can never be misread as an action. */
+  --cat-starters:#5f9d92; --cat-mains:#7b90c4; --cat-grill:#c08f68; --cat-rice:#b0a06a;
+  --cat-sides:#8fa86a; --cat-desserts:#bd83a6; --cat-drinks:#9689bf; --cat-all:#878b92;
+  /* IDENTITY — who someone is, not what something does. Seven fixed hues at one
+     lightness, spaced so no two are confusable: every pair is ≥40 apart in RGB
+     and every one clears 7:1 on --bg-3. Never sourced from --amber-* (a user can
+     repaint that, and identity is meaning), never from --cat-* (muted by design,
+     tops out near 5:1 as text). Add a role, add a hue here — do not borrow one. */
+  --id-violet:#ddb5ff; --id-gold:#ecc663; --id-green:#90e19c; --id-blue:#97ccff;
+  --id-orange:#ffab9a; --id-teal:#4be3eb; --id-pink:#ffa8d6;
+  /* --green is the INK role (chip labels, table cells, KPI figures), the peer
+     of --red-bright / --warn-bright / --blue-bright. The FILL is --go. Green was
+     the one family missing an ink token, so call sites reached for the fill and
+     every green chip landed under the contrast floor. */
+  --green:#5fe09a; --green-bright:#5fe09a; --green-line:#256b47; --green-soft:#93dcb2;
+  --red:#f2607a; --red-bright:#ff8ba0; --red-line:#6b2a38; --red-line-2:#3a222a;
+  --red-dim:#7a4050; --red-dim-2:#c06880; --red-soft:#f0a8b8;
+  --blue:#8ba0f7; --blue-bright:#adbaf9; --violet:#a88ad9; --violet-bright:#c3aae6;
+  --paper:#fdfbf6; --paper-ink:#1a1a1a; --qr-ink:#0e0f11;
+  --scrim:rgba(8,9,11,.76); --shadow-lg:0 2px 4px rgba(0,0,0,.4), 0 24px 64px rgba(0,0,0,.55);
+}
+[data-theme="light"]{
+  /* ── LIGHT THEME ──────────────────────────────────────────────────────────
+     Rebuilt in OKLCH, not picked by eye, so lightness and chroma are even
+     across every family and no one hue shouts louder than another.
+
+     Neutrals are TRUE grey — chroma 0, no warm or cool bias — matching the
+     reference screens, where an off-white page (#efefef) carries pure-white
+     cards and the only chromatic pixel is a notification dot. The earlier warm
+     hue-75 ramp was derived from a coral accent; with the accent collapsed to
+     ink (see --amber below), a tinted neutral has nothing to agree with and
+     just reads as beige. Elevation is now carried by white against grey and by
+     shadow, not by hue.
+
+     Elevation means what it means in the dark block: --bg is the page, --bg-1
+     the card, --bg-2 a raised row, --bg-3 hover/pressed. Light mode cannot go
+     brighter than white, so --bg-3 steps DOWN in lightness where dark steps up.
+     Same role, opposite direction — do not "correct" it to be monotonic.
+     ───────────────────────────────────────────────────────────────────────── */
+  --bg:#efefef; --bg-0:#e9e9e9; --bg-1:#ffffff; --bg-2:#f8f8f8; --bg-3:#e7e7e7;
+  --line-soft:#f2f2f2; --line:#e6e6e6; --line-2:#d6d6d6; --line-3:#b4b4b4;
+  /* Same role. A translucent white here vanished on #ffffff, which is why a
+     Free table read as having no status at all in this theme. */
+  --mute-dim:#d6d6d6;
+  /* All four ink tiers clear 7:1 on --bg-3, the worst surface in this theme —
+     14.92 / 11.27 / 8.87 / 7.03:1, and 18.36 / 13.86 / 10.91 / 8.65:1 on white. Subdued means
+     smaller and lighter in weight, never lower in contrast: a till is read
+     off-axis, across a counter, under downlights. */
+  --text:#131313; --text-dim:#2b2b2b; --text-muted:#3d3d3d; --text-faint:#4d4d4d;
+  --code-text:#2b2b2b;
+  /* Three roles per family, and they are NOT interchangeable:
+       base    the FILL, carrying white ink   (white-on-fill ≥ 7:1)
+       bright  INK on a tint or on the page   (darker than base in light mode)
+       dim     the tint; line its border
+     ONE RULE, NO EXCEPTIONS: text and icons take --*-bright; fills, bars, dots
+     and chart series take the bare name. Every family now has a -bright alias,
+     including green, whose missing one is exactly why call sites reached for
+     the fill and landed under the contrast floor.
+     Swapping base and bright is the classic light-theme bug — a fill colour
+     used as 12px text, or an ink used as a button. */
+  /* The reference profile makes the PRIMARY ACTION near-black, not a hue: the
+     only saturated pixel on those screens is a 6px notification dot. So the
+     accent family collapses to ink — fill #1c1c1c carrying white, a neutral
+     #f1f1f1 tint, and a grey line. Semantic families keep their hues below;
+     with the accent neutral, a coloured fill now means ONLY go/warn/danger. */
+  --amber:#1c1c1c; --amber-bright:#111111; --amber-dim:#f1f1f1; --amber-line:#d8d8d8; --amber-deep:#000000;
+  /* Warn holds hue 70: 34° off brand coral, 55° off danger, so "needs
+     attention" can never be read as the brand or as a destructive act. */
+  --warn:#804c00; --warn-bright:#663700; --warn-dim:#fcf4ec; --warn-line:#ecd6bf; --on-warn:#ffffff;
+  /* Aliases, deliberately equal: ok=go, bad=danger, brand=amber. Any change to
+     one must be made to its pair. */
+  --ok-dim:#eef9f2; --bad-dim:#fff1f1;
+  --info-dim:#eff6ff; --violet-dim:#f7f3ff;
+  --brand-dim:#f1f1f1;
+  --brand-red:#8e3226; --brand-red-bright:#6f2418; --brand-olive:#5f6a2c; --brand-olive-bright:#4a5320;
+  --brand-cream:#ededed; --brand-grey:#6a6a6a;
+  --brand-plate:#ffffff; --brand-plate-line:#dcdcdc;
+  --on-amber:#ffffff;
+  /* Brand coral hue 36, danger crimson hue 15 — the same separation the dark
+     block uses (#f4553c against #f2445e), so both themes agree on what red
+     means. Hue is not the safeguard on its own: only a semantic tier may take a
+     filled background, so a fill always means "this does something".
+     Green sits a step darker than the rest (L .435) because white ink on green
+     needs it to clear the same 7:1 floor. */
+  --go:#006337; --go-bright:#004c24; --go-dim:#eef9f2; --go-line:#c4e3d0; --on-go:#ffffff;
+  --fwd:#2754ac; --fwd-bright:#143d8e; --fwd-dim:#eff6ff; --fwd-line:#c7dbff; --on-fwd:#ffffff;
+  --danger:#9b283d; --danger-bright:#7e0f2a; --danger-dim:#fff1f1; --danger-line:#fccccf; --on-danger:#ffffff;
+  /* Categorical: ONE lightness (.50) and ONE chroma (.072) across all eight, so
+     hue is the only variable and no menu section outranks another. Well below
+     the semantic families in chroma — a category can never read as an action. */
+  --cat-starters:#26706e; --cat-mains:#50628d; --cat-grill:#85563e; --cat-rice:#706330;
+  --cat-sides:#4d6d46; --cat-desserts:#80536f; --cat-drinks:#685a87; --cat-all:#6a6a6a;
+  /* IDENTITY — who someone is, not what something does. Seven fixed hues at one
+     lightness, spaced so no two are confusable: every pair is ≥40 apart in RGB
+     and every one clears 7:1 on --bg-3. Never sourced from --amber-* (a user can
+     repaint that, and identity is meaning), never from --cat-* (muted by design,
+     tops out near 5:1 as text). Add a role, add a hue here — do not borrow one. */
+  --id-violet:#522977; --id-gold:#5d3900; --id-green:#00520f; --id-blue:#083d84;
+  --id-orange:#771910; --id-teal:#00535c; --id-pink:#6f194b;
+  /* --green is the INK role — peer of --red-bright / --warn-bright. --go is the
+     FILL. 9.45:1 on --ok-dim; the fill it replaced measured 6.86:1 there. */
+  --green:#004c24; --green-bright:#004c24; --green-line:#c4e3d0; --green-soft:#004c24;
+  --red:#9b283d; --red-bright:#7e0f2a; --red-line:#fccccf; --red-line-2:#ffdfe1;
+  --red-dim:#ab575f; --red-dim-2:#993041; --red-soft:#67051f;
+  --blue:#2754ac; --blue-bright:#143d8e; --violet:#67419d; --violet-bright:#502b81;
+  /* Shadow is warm-neutral, never black: black over a warm surface greys it.
+     Two layers — a 1px contact edge and a wide, soft ambient. */
+  /* Neutral shadow now that the surfaces are neutral — a warm shadow over a
+     grey desk was the tint that read as "beige" in the reference comparison. */
+  --scrim:rgba(20,20,20,.34); --shadow-lg:0 1px 2px rgba(0,0,0,.06), 0 16px 40px rgba(0,0,0,.10);
+}
+*{box-sizing:border-box}
+/* Tabular figures everywhere, inherited, not opt-in. A total that reflows its
+   own width as digits change reads as a glitch and pulls the eye off the line
+   being rung. Inter's tnum keeps every numeric column static. */
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;height:100%;overflow:hidden;font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+input,select,textarea,button{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit;text-align:left;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+  transition:background-color .14s cubic-bezier(.2,.7,.3,1),border-color .14s cubic-bezier(.2,.7,.3,1),color .14s,box-shadow .14s,transform .09s cubic-bezier(.2,.7,.3,1)}
+/* Every button answers the finger the same way: one pixel down, shadow pulled
+   in. On a till the operator is looking at the guest, not the screen — the
+   press has to be felt in peripheral vision, which rules out a colour-only
+   response. It is deliberately not a bounce: this is a cash register, and a
+   button that springs reads as unserious next to a total. */
+button:active:not(:disabled){transform:translateY(1px)}
+/* Keyboard focus only. A till is driven by touch and the ring would otherwise
+   sit under every finger; :focus-visible keeps it for the people who need it. */
+button:focus-visible,[role="button"]:focus-visible{outline:2px solid var(--fwd);outline-offset:2px;border-radius:inherit}
+button:disabled{cursor:not-allowed}
+@media (prefers-reduced-motion:reduce){button{transition:none}button:active:not(:disabled){transform:none}}
+input,select,textarea{font-family:inherit}
+a{color:var(--fwd-bright);text-decoration:none}
+a:hover{color:var(--fwd);text-decoration:underline}
+::selection{background:var(--fwd);color:var(--on-fwd)}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:var(--line-3)}
+/* A single-row chip rail (menu sections) scrolls sideways rather than wrapping:
+   a wrapping row changes height with the section count, and every dish below it
+   moves. The bar is slimmed rather than hidden — it is the only honest signal
+   that there are more sections off the right edge, and it shows up exactly when
+   there are. */
+.krail{scrollbar-width:thin;scrollbar-color:var(--line-3) transparent}
+.krail::-webkit-scrollbar{height:4px}
+.krail::-webkit-scrollbar-track{background:transparent}
+.krail::-webkit-scrollbar-thumb{background:var(--line-3);border-radius:3px}
+@keyframes kfade{from{opacity:0}to{opacity:1}}
+@keyframes kmodal{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes ktoast{from{opacity:0;transform:translate(-50%,18px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes kpulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes kspin{to{transform:rotate(360deg)}}
+@keyframes kslide{from{transform:translateX(-100%)}to{transform:none}}
+@keyframes ksheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes kshake{0%,100%{transform:translateX(0)}18%{transform:translateX(-6px)}36%{transform:translateX(5px)}54%{transform:translateX(-3px)}72%{transform:translateX(2px)}}
+@keyframes ktoastshake{0%,100%{transform:translate(-50%,0)}18%{transform:translate(calc(-50% - 6px),0)}36%{transform:translate(calc(-50% + 5px),0)}54%{transform:translate(calc(-50% - 3px),0)}72%{transform:translate(calc(-50% + 2px),0)}}
+@keyframes kaddline{from{opacity:0;transform:translateX(14px);background:var(--warn-dim)}to{opacity:1;transform:none}}
+@keyframes kcheck{from{stroke-dashoffset:26}to{stroke-dashoffset:0}}
+@keyframes kpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
+/* Content entrance. Two identical names because an animation only restarts when
+   its NAME changes — switching menu section alternates between them, so the
+   dish grid re-enters on every section instead of sitting there silently. */
+@keyframes krise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+@keyframes kriseb{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+/* Skeletons, not spinners, for content about to arrive: the operator sees the
+   shape of the answer and can aim their hand at it before it lands. */
+@keyframes kshimmer{from{background-position:-160% 0}to{background-position:260% 0}}
+/* A till is tapped thousands of times a shift. The press must answer instantly
+   or the operator taps again and rings the item twice — so this is a duplicate
+   charge control, not decoration. Kept off inputs and selects, which have
+   their own native affordance. */
+button{transition:transform .09s cubic-bezier(.2,.8,.3,1),background .08s ease-out,border-color .08s ease-out,color .08s ease-out}
+button:active:not(:disabled){transform:scale(.97)}
+/* Disabled is a visible state, not an absent one: it must still read as a
+   button so the operator knows where the control is and why it is refusing. */
+button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.35)}
+/* Reduced motion: swap MOVEMENT for a FADE, never strip the feedback.
+   The blunt "animation-duration:.01ms !important" this replaces was worse than
+   nothing: it freezes the sync spinner mid-rotation (a stuck icon reads as a
+   crashed till), kills the offline pulse that is the only signal the terminal
+   has stopped talking to the server, and flattens the just-added-line tint that
+   tells the operator which of twenty rows they touched. All of that is meaning.
+   Large positional movement is the trigger; a quick opacity change almost never
+   is. So each keyframe is REDEFINED here under the same name — every inline
+   "animation:kmodal .2s" keeps working, and timing, easing and staging survive.
+   What dies: slide-ins, the sheet rising, the shake, the spin, the shimmer
+   sweep, the scale-up pop. What lives: opacity, colour, and the 3% button
+   squish, which is user-initiated, sub-pixel at a fingertip, and the one cue
+   that stops a cashier tapping twice and ringing an item twice. */
+@media (prefers-reduced-motion:reduce){
+  @keyframes kmodal{from{opacity:0}to{opacity:1}}
+  @keyframes ksheet{from{opacity:0}to{opacity:1}}
+  @keyframes kslide{from{opacity:0}to{opacity:1}}
+  @keyframes kpop{from{opacity:0}to{opacity:1}}
+  @keyframes krise{from{opacity:0}to{opacity:1}}
+  @keyframes kriseb{from{opacity:0}to{opacity:1}}
+  @keyframes kaddline{from{opacity:0;background:var(--warn-dim)}to{opacity:1}}
+  /* translate(-50%) is the toast's centring, not its animation — it must stay. */
+  @keyframes ktoast{from{opacity:0;transform:translate(-50%,0)}to{opacity:1;transform:translate(-50%,0)}}
+  /* The shake meant "rejected". It becomes a double blink so the message still
+     announces itself when it replaces an identical one already on screen. */
+  @keyframes kshake{0%,100%{opacity:1}25%,75%{opacity:.45}}
+  @keyframes ktoastshake{0%,100%{opacity:1;transform:translate(-50%,0)}25%,75%{opacity:.45;transform:translate(-50%,0)}}
+  /* Rotation out, "still working" kept. */
+  @keyframes kspin{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes kshimmer{0%,100%{opacity:1}50%{opacity:.55}}
+  @keyframes kcheck{from{stroke-dashoffset:0}to{stroke-dashoffset:0}}
+  /* Skeleton gradients stop travelling; the block still breathes. */
+  [style*="kshimmer"]{background-image:none !important;background:var(--bg-2) !important}
+}

@@ -1,0 +1,16 @@
+{
+  "name": "kashikeyo",
+  "private": true,
+  "workspaces": ["backend", "packages/*", "apps/*"],
+  "scripts": {
+    "lint": "npm -w @kashikeyo/pos run typecheck && npm -w @kashikeyo/guest run typecheck && npm -w @kashikeyo/member run typecheck",
+    "migrate": "npm -w backend run migrate",
+    "leak-test": "npm -w backend run leak-test --",
+    "test:unit": "node --test packages/money/*.test.js",
+    "test:integration": "npm -w backend run test:integration",
+    "test": "npm run test:unit && npm run test:integration",
+    "dev:guest": "npm -w @kashikeyo/guest run dev",
+    "build:guest": "npm -w @kashikeyo/guest run build",
+    "build:member": "npm -w @kashikeyo/member run build"
+  }
+}

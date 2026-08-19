@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  body { margin: 0; background: #f6f6f4; font-family: 'Instrument Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: #c2321c; text-decoration: none; }
+  a:hover { color: #f4553c; text-decoration: underline; }
+  @keyframes opfade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<div style="min-height:100vh;background:#f6f6f4;padding:34px 30px 64px;color:#1a1a1a">
+<div style="max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:26px">
+
+  <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap">
+    <div style="min-width:0">
+      <div style="font-size:11.5px;font-weight:700;letter-spacing:.1em;color:#a0a0a5">KASHIKEYOPOS · PLATFORM</div>
+      <div style="margin-top:7px;font-size:31px;font-weight:700;letter-spacing:-.02em;line-height:1.15">Hosting and data isolation</div>
+      <div style="margin-top:9px;font-size:14.5px;color:#6a6a70;line-height:1.6;max-width:64ch;text-wrap:pretty">Two belts, not one. Each outlet holds its data in its own schema behind its own database login, and row-level security guards the control plane that has to be shared. Neither belt depends on the application remembering to filter.</div>
+    </div>
+    <div style="display:flex;gap:9px;flex-shrink:0">
+      <div style="padding:11px 15px;border-radius:13px;background:#fff;border:1px solid #e6e6e3">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;color:#a0a0a5">OUTLETS</div>
+        <div style="margin-top:4px;font-size:21px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ outletCount }}</div>
+      </div>
+      <div style="padding:11px 15px;border-radius:13px;background:#fff;border:1px solid #e6e6e3">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;color:#a0a0a5">SCHEMAS</div>
+        <div style="margin-top:4px;font-size:21px;font-weight:700;font-family:'JetBrains Mono',monospace">{{ schemaCount }}</div>
+      </div>
+      <div style="padding:11px 15px;border-radius:13px;background:#132018;border:1px solid #132018">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;color:#7fc39a">LEAK TESTS</div>
+        <div style="margin-top:4px;font-size:21px;font-weight:700;color:#fff;font-family:'JetBrains Mono',monospace">{{ leakScore }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── topology ────────────────────────────────────────────────────── -->
+  <div style="background:#fff;border:1px solid #e6e6e3;border-radius:20px;padding:26px 26px 30px;animation:opfade .25s">
+    <div style="font-size:12px;font-weight:700;letter-spacing:.09em;color:#a0a0a5">TOPOLOGY ON RAILWAY</div>
+    <div style="margin-top:16px;display:grid;grid-template-columns:1fr 30px 1fr 30px 1.15fr;gap:0;align-items:stretch">
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#b0b0b5">DEVICES</div>
+        <sc-for list="{{ devices }}" as="d" hint-placeholder-count="4">
+          <div style="padding:12px 13px;border-radius:13px;background:#fafaf8;border:1px solid #ebebe8">
+            <div style="font-size:13.5px;font-weight:600">{{ d.label }}</div>
+            <div style="margin-top:3px;font-size:11.5px;color:#8a8a8f;line-height:1.45">{{ d.note }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:grid;place-items:center">
+        <div style="width:1px;height:100%;background:linear-gradient(#ebebe8,#d8d8d4,#ebebe8)"></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#b0b0b5">API SERVICE</div>
+        <div style="padding:14px;border-radius:14px;background:#1a1a1a;color:#fff">
+          <div style="font-size:13.5px;font-weight:700">kashikeyo-server</div>
+          <div style="margin-top:4px;font-size:11.5px;color:#9a9a9f;font-family:'JetBrains Mono',monospace">/readyz · Nixpacks · 1 replica</div>
+          <div style="margin-top:11px;display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ serverParts }}" as="p" hint-placeholder-count="4">
+              <div style="display:flex;gap:7px;align-items:baseline;font-size:11.5px;color:#c8c8cc;line-height:1.45">
+                <span style="color:#f4553c;font-weight:700">·</span>
+                <span style="flex:1;min-width:0">{{ p }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="padding:12px 13px;border-radius:13px;background:#fff8f0;border:1px solid #f2ddc6">
+          <div style="font-size:12px;font-weight:700;color:#8a5a12">One pool per outlet</div>
+          <div style="margin-top:4px;font-size:11.5px;color:#96702e;line-height:1.5;text-wrap:pretty">Each authenticates as that outlet's own role. Two outlets never share a connection.</div>
+        </div>
+      </div>
+
+      <div style="display:grid;place-items:center">
+        <div style="width:1px;height:100%;background:linear-gradient(#ebebe8,#d8d8d4,#ebebe8)"></div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.08em;color:#b0b0b5">POSTGRES</div>
+        <div style="padding:13px 14px;border-radius:14px;background:#eef4ff;border:1px solid #d3e0f7">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+            <div style="font-size:13px;font-weight:700;color:#20447e;font-family:'JetBrains Mono',monospace">schema chain</div>
+            <div style="font-size:10.5px;font-weight:700;color:#4b74b8;letter-spacing:.06em">RLS + FORCE</div>
+          </div>
+          <div style="margin-top:6px;font-size:11.5px;color:#4a6796;line-height:1.5;text-wrap:pretty">Outlets, staff, devices, sessions, tax versions, document series, members, audit. Shared by necessity, filtered by policy.</div>
+        </div>
+        <sc-for list="{{ schemas }}" as="s" hint-placeholder-count="3">
+          <div style="padding:13px 14px;border-radius:14px;background:#f3f9f4;border:1px solid #d6e9da">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+              <div style="font-size:13px;font-weight:700;color:#1d5c33;font-family:'JetBrains Mono',monospace">{{ s.schema }}</div>
+              <div style="font-size:10.5px;font-weight:700;color:#4a8a5e;letter-spacing:.06em">{{ s.role }}</div>
+            </div>
+            <div style="margin-top:5px;font-size:11.5px;color:#4a7a58;line-height:1.5">{{ s.body }}</div>
+          </div>
+        </sc-for>
+        <div style="padding:11px 13px;border-radius:12px;background:#fafaf8;border:1px dashed #d8d8d4">
+          <div style="font-size:11.5px;color:#7a7a80;line-height:1.5;text-wrap:pretty">USAGE is granted on one schema only. Another outlet's tables are not filtered out — they are unreachable objects.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── the two belts ───────────────────────────────────────────────── -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px">
+    <sc-for list="{{ belts }}" as="b" hint-placeholder-count="2">
+      <div style="background:#fff;border:1px solid #e6e6e3;border-radius:18px;padding:22px 22px 24px;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="{{ b.chip }}">{{ b.n }}</div>
+          <div style="font-size:16px;font-weight:700;letter-spacing:-.01em">{{ b.title }}</div>
+        </div>
+        <div style="font-size:13.5px;color:#6a6a70;line-height:1.62;text-wrap:pretty">{{ b.body }}</div>
+        <div style="padding:12px 13px;border-radius:12px;background:#1a1a1a;overflow-x:auto">
+          <div style="font-size:11.5px;color:#8fd3a6;font-family:'JetBrains Mono',monospace;line-height:1.7;white-space:pre">{{ b.code }}</div>
+        </div>
+        <div style="font-size:12.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ b.foot }}</div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- ── leak matrix ─────────────────────────────────────────────────── -->
+  <div style="background:#fff;border:1px solid #e6e6e3;border-radius:20px;padding:24px 26px 26px">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:12px;font-weight:700;letter-spacing:.09em;color:#a0a0a5">LEAK TEST · <span style="font-family:'JetBrains Mono',monospace">npm run leak-test -- 3 4</span></div>
+        <div style="margin-top:7px;font-size:19px;font-weight:700;letter-spacing:-.01em">Ten attempts to cross the boundary</div>
+      </div>
+      <div style="font-size:12.5px;color:#8a8a8f;line-height:1.5;max-width:44ch;text-wrap:pretty">Run as outlet 3's own role, against outlet 4. Any single LEAK line exits non-zero, so it belongs in the deploy pipeline rather than a checklist.</div>
+    </div>
+    <div style="margin-top:18px;display:flex;flex-direction:column;gap:7px">
+      <sc-for list="{{ leaks }}" as="l" hint-placeholder-count="10">
+        <div style="display:grid;grid-template-columns:26px 1fr auto;gap:13px;align-items:center;padding:11px 13px;border-radius:12px;background:#fafaf8;border:1px solid #ededea">
+          <div style="width:22px;height:22px;border-radius:7px;background:#e8f3ec;display:grid;place-items:center">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#2b8049" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          </div>
+          <div style="min-width:0;font-size:13.5px;font-weight:500">{{ l.what }}</div>
+          <div style="font-size:11.5px;color:#7a7a80;font-family:'JetBrains Mono',monospace;text-align:right">{{ l.how }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- ── refusals + env ──────────────────────────────────────────────── -->
+  <div style="display:grid;grid-template-columns:1.15fr 1fr;gap:14px">
+    <div style="background:#1a1a1a;border-radius:20px;padding:24px 26px 26px;color:#fff">
+      <div style="font-size:12px;font-weight:700;letter-spacing:.09em;color:#8a8a90">THE DATABASE REFUSES</div>
+      <div style="margin-top:7px;font-size:18px;font-weight:700;letter-spacing:-.01em">Controls that are not the app's to forget</div>
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:11px">
+        <sc-for list="{{ refusals }}" as="r" hint-placeholder-count="6">
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:11px;align-items:baseline">
+            <div style="font-size:11px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace;letter-spacing:.04em">{{ r.tag }}</div>
+            <div style="min-width:0;font-size:13px;color:#c8c8cc;line-height:1.58;text-wrap:pretty">{{ r.body }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e6e6e3;border-radius:20px;padding:24px 24px 26px">
+      <div style="font-size:12px;font-weight:700;letter-spacing:.09em;color:#a0a0a5">RAILWAY VARIABLES</div>
+      <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ envs }}" as="e" hint-placeholder-count="7">
+          <div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;padding-bottom:8px;border-bottom:1px solid #f2f2ef">
+            <div style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ e.k }}</div>
+            <div style="font-size:11.5px;color:#8a8a8f;text-align:right;max-width:22ch;line-height:1.45">{{ e.v }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:16px;padding:13px;border-radius:13px;background:#fff8f0;border:1px solid #f2ddc6">
+        <div style="font-size:12px;font-weight:700;color:#8a5a12">Passwords are derived, not stored</div>
+        <div style="margin-top:5px;font-size:11.5px;color:#96702e;line-height:1.55;text-wrap:pretty">An outlet role's password is an HMAC of the chain secret and the outlet id. Reading every row in outlet 3 yields no way to become outlet 4.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── offline chain ───────────────────────────────────────────────── -->
+  <div style="background:#fff;border:1px solid #e6e6e3;border-radius:20px;padding:24px 26px 28px">
+    <div style="font-size:12px;font-weight:700;letter-spacing:.09em;color:#a0a0a5">OFFLINE IS THE NORMAL CASE</div>
+    <div style="margin-top:7px;font-size:19px;font-weight:700;letter-spacing:-.01em">What happens when the line drops mid-service</div>
+    <div style="margin-top:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:0">
+      <sc-for list="{{ chain }}" as="c" hint-placeholder-count="5">
+        <div style="position:relative;padding:0 16px 0 0">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div style="{{ c.dot }}">{{ c.n }}</div>
+            <div style="flex:1;height:1px;background:#ebebe8"></div>
+          </div>
+          <div style="margin-top:11px;font-size:13.5px;font-weight:700">{{ c.title }}</div>
+          <div style="margin-top:5px;font-size:12px;color:#8a8a8f;line-height:1.55;text-wrap:pretty;padding-right:8px">{{ c.body }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="margin-top:22px;padding:14px 16px;border-radius:14px;background:#fafaf8;border:1px solid #ededea;font-size:13px;color:#6a6a70;line-height:1.6;text-wrap:pretty">{{ replayNote }}</div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap;padding:0 4px">
+    <div style="font-size:12.5px;color:#a0a0a5">Full runbook in <a href="DEPLOYMENT.md">DEPLOYMENT.md</a> · schema in <span style="font-family:'JetBrains Mono',monospace">backend/migrations</span> · client seam in <span style="font-family:'JetBrains Mono',monospace">kashikeyo-api.js</span></div>
+    <div style="font-size:12.5px;color:#a0a0a5">{{ stamp }}</div>
+  </div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1500},&quot;outletCount&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:4,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:1,&quot;max&quot;:24,&quot;section&quot;:&quot;Estate&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const n = Math.max(1, Math.min(24, this.props.outletCount ?? 4));
+    const V = {};
+    V.outletCount = String(n);
+    V.schemaCount = String(n + 1);
+    V.leakScore = "10/10";
+    V.stamp = "Reviewed " + new Date().toLocaleDateString("en-GB",
+      { day: "numeric", month: "short", year: "numeric" });
+
+    V.devices = [
+      { label: "Till · floor terminal", note: "Signs in by PIN, one outlet, one device id" },
+      { label: "KDS + expo", note: "Paired by code, rank 1 and up" },
+      { label: "Guest phone · QR", note: "Posts intent only, never takes money" },
+      { label: "Member portal", note: "Reads its own bill and points" }
+    ];
+
+    V.serverParts = [
+      "Owner connection is used by migrations only, never by a request",
+      "Session token carries outlet, rank, staff and device",
+      "An outlet named in a path must match the one in the token",
+      "SET LOCAL context dies at COMMIT, so a pooled connection carries nothing forward"
+    ];
+
+    const sites = [
+      { schema: "outlet_3", role: "outlet_3_app", body: "Tickets, sales, payments, stock, recipes, ledger, KDS, guest orders, replay log." },
+      { schema: "outlet_4", role: "outlet_4_app", body: "The same spine, its own rows, its own document series, its own chart." },
+      { schema: "outlet_" + (n + 2), role: "outlet_" + (n + 2) + "_app", body: "Adding a site is one provisioning command; nothing existing is touched." }
+    ];
+    V.schemas = n <= 2 ? sites.slice(0, 2) : sites;
+
+    const chip = (bg, fg) => "width:26px;height:26px;border-radius:9px;background:" + bg
+      + ";color:" + fg + ";display:grid;place-items:center;font-size:12.5px;font-weight:700;"
+      + "flex-shrink:0;font-family:'JetBrains Mono',monospace";
+
+    V.belts = [
+      {
+        n: "1", chip: chip("#f3f9f4", "#1d5c33"),
+        title: "Its own schema, its own login",
+        body: "The server connects to outlet 3 as a role granted USAGE on outlet_3 and nothing else. There is no query, no forgotten WHERE clause and no injected string that reaches outlet 4, because the privilege was never granted.",
+        code: "GRANT USAGE ON SCHEMA outlet_3 TO outlet_3_app;\nALTER ROLE outlet_3_app\n  SET search_path = outlet_3, chain;",
+        foot: "The role holds no CREATE, so it cannot add an object that escapes its own grants."
+      },
+      {
+        n: "2", chip: chip("#eef4ff", "#20447e"),
+        title: "RLS on what must be shared",
+        body: "Identity, the outlet registry, tax versions and the audit trail are chain-wide to be useful. Every policy resolves against the transaction's declared outlet and rank — and FORCE means even a table owner obeys it.",
+        code: "ALTER TABLE chain.staff\n  ENABLE ROW LEVEL SECURITY;\nALTER TABLE chain.staff\n  FORCE ROW LEVEL SECURITY;",
+        foot: "Rank is the only gate anywhere: Kitchen 1, Till 2, Manager 3, Admin 4, Owner 5. Never a name."
+      }
+    ];
+
+    V.leaks = [
+      { what: "Read another outlet's sales directly", how: "no USAGE" },
+      { what: "Read another outlet's open tickets", how: "no USAGE" },
+      { what: "Read another outlet's ledger", how: "no USAGE" },
+      { what: "Probe the catalogue for readable tables", how: "0 rows" },
+      { what: "See another outlet's staff through the shared table", how: "RLS" },
+      { what: "See another outlet's document series", how: "RLS" },
+      { what: "Read another outlet's audit trail", how: "RLS" },
+      { what: "Forge group scope from an outlet connection", how: "rank < 5" },
+      { what: "Claim a different outlet in the request context", how: "no USAGE" },
+      { what: "Escalate by creating an object in another schema", how: "no CREATE" }
+    ];
+
+    V.refusals = [
+      { tag: "NUMBERING", body: "A receipt number exists only if chain.next_doc_no() minted it under a row lock. Two terminals cannot collide, and a replay cannot mint a second one." },
+      { tag: "BALANCE", body: "A journal that does not balance is rejected by a deferred constraint trigger at COMMIT. Either both legs land or neither does." },
+      { tag: "NO DELETE", body: "The grant is absent on sale, sale_line, payment, journal, journal_line and op_log. A closed sale is corrected with a credit note, never erased." },
+      { tag: "IDEMPOTENT", body: "The client generates an opId before the network is touched. The primary key on it makes a reconnect a no-op instead of a second sale." },
+      { tag: "NO REOPEN", body: "A late replay updates a ticket only where status is not already closed, so a reconnect cannot overwrite a settled bill." },
+      { tag: "ADDS UP", body: "A check constraint holds gross less discount plus service, tax and rounding equal to the total — the arithmetic the P&L depends on." },
+      { tag: "AGGREGATE", body: "The one cross-outlet read is a SECURITY DEFINER function returning sums, reachable only by rank 5 through a read-only role, and stamped in the audit trail as group scope." }
+    ];
+
+    V.envs = [
+      { k: "DATABASE_URL", v: "referenced from the Postgres plugin; owner, migrations only" },
+      { k: "PGHOST / PGPORT / PGDATABASE", v: "same instance, per-outlet user rewritten at runtime" },
+      { k: "OUTLET_ROLE_SECRET", v: "32+ chars, derives every outlet role password" },
+      { k: "SESSION_SECRET", v: "32+ chars, separate from the above" },
+      { k: "REPORT_ROLE_PASSWORD", v: "read-only consolidation role" },
+      { k: "ALLOWED_ORIGINS", v: "the till and guest origins, kept apart" },
+      { k: "SESSION_TTL_HOURS", v: "12 suits a double shift" }
+    ];
+
+    const dot = (bg, fg) => "width:24px;height:24px;border-radius:50%;background:" + bg
+      + ";color:" + fg + ";display:grid;place-items:center;font-size:11.5px;font-weight:700;"
+      + "flex-shrink:0;font-family:'JetBrains Mono',monospace";
+    V.chain = [
+      { n: "1", dot: dot("#1a1a1a", "#fff"), title: "The line drops", body: "The floor notices nothing. The till reads its local cache, which was always the source of truth for the UI." },
+      { n: "2", dot: dot("#1a1a1a", "#fff"), title: "Service continues", body: "Orders, kitchen stages, payments and stock moves all complete locally, against the same rules." },
+      { n: "3", dot: dot("#1a1a1a", "#fff"), title: "Writes queue", body: "Each carries an opId minted on the device. The pending count is visible rather than hidden." },
+      { n: "4", dot: dot("#f4553c", "#fff"), title: "The line returns", body: "The outbox replays in order. Anything the server already holds comes back marked as a replay." },
+      { n: "5", dot: dot("#2b8049", "#fff"), title: "Books catch up", body: "Sales, COGS, tax and journals land in the outlet's schema with their original timestamps intact." }
+    ];
+    V.replayNote = "An op that errors on replay stays in the outbox and surfaces to the operator. Nothing is dropped quietly, because a sale that vanished on reconnect is worse than one that needs a manager to look at it.";
+
+    return V;
+  }
+}
+</script>
+</body>
+</html>
