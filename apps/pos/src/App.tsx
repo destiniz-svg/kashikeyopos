@@ -204,6 +204,9 @@ export function App({ outletId }: { outletId: number }) {
      being "collapsed" is a desktop and tablet idea only. On the tablet rail the
      column is 60px and labels cannot fit at all, which is the prototype's
      behaviour and not a preference the operator gets to override. */
+  /* The sell screens are full-bleed: they manage their own height and their
+     own scrolling, and the prototype gives them every pixel. */
+  const fullBleed = view === 'pos' || view === 'kds';
   const labelled = isPhone ? true : isRail ? false : railOpen;
   const RAIL_W = isRail ? 60 : railOpen ? 208 : 56;
 
@@ -350,7 +353,13 @@ export function App({ outletId }: { outletId: number }) {
       </nav>
 
       {/* ── Main ─────────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* `minHeight: 0` is load-bearing. A flex item defaults to
+          `min-height:auto`, which refuses to shrink below its content — so this
+          column grew to the full height of whatever screen was inside it, main
+          grew with it, and main could never become a scroll container no matter
+          what its own overflow said. The shell's `overflow:hidden` then clipped
+          the excess and there was no gesture that could reach it. */}
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {/* Topbar. §1.1: outlet, live clock over a date, and the pending count —
             "a hidden queue is how sales get lost" (§5.1). */}
         <header style={{
@@ -430,7 +439,37 @@ export function App({ outletId }: { outletId: number }) {
             open ticket with it — mid-service, and the only way back was a
             reload and a PIN. The boundary is keyed on the view so moving to
             another screen clears it. */}
-        <main style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        {/* THE PAGE SCROLLS HERE, and nowhere else.
+            This was `overflow:hidden` with no scroll container under it, which
+            on a desktop looked fine because the content happened to fit. On a
+            phone it never fits: the Owner Dashboard is ~2600px tall in an 844px
+            viewport, so about 1,800px of it was clipped and could not be
+            reached by any gesture — the document itself did not scroll either,
+            because the shell is `height:100dvh;overflow:hidden`.
+
+            THE TILL AND THE PASS ARE THE EXCEPTION. Floor and Kds are
+            `height:100%` and do their own scrolling inside their own columns;
+            they want every pixel and no gutter, which is the prototype's rule
+            for the sell screens. Giving them a scrolling, padded parent would
+            put a second scrollbar around a screen that already had one. */}
+        <main style={{
+          flex: 1, minHeight: 0,
+          overflowY: fullBleed ? 'hidden' : 'auto',
+          /* Never sideways: a horizontal scrollbar on the page is always a
+             layout fault, and the tables that legitimately scroll do it inside
+             their own container. */
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
+          /* The gutter. Content used to sit flush against both bezels — every
+             card's border touched the edge of the glass. The bottom inset keeps
+             the last row clear of the home indicator on a notched phone, which
+             `viewport-fit=cover` in index.html otherwise lets it slide under. */
+          padding: fullBleed
+            ? 0
+            : isPhone
+              ? '12px 12px calc(12px + env(safe-area-inset-bottom))'
+              : '14px 16px',
+        }}>
           <Boundary key={view} view={view}>
           {view === 'owner' && MODULES_BUILT.has('owner') ? (
             <Owner session={session} onGo={setView} />

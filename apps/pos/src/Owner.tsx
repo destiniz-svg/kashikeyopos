@@ -82,8 +82,13 @@ function Briefing({ data, date, setDate, loading }: {
   const score = data.briefing.score;
   const tone = score === null ? 'var(--text-faint)'
     : score >= 80 ? 'var(--go-bright)' : score >= 60 ? 'var(--warn-bright)' : 'var(--red-bright)';
+  /* The row wraps, because it is a 74px badge, a sentence and a date field. On
+     a phone that left the sentence about 86px to live in and it broke every two
+     words — "Nothing / has / traded / yet." straight down the card. The date
+     drops to its own line instead; on a desktop there is room and nothing
+     moves. */
   return (
-    <div style={{ ...card, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+    <div style={{ ...card, display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <div title={score === null ? 'A day that has not happened is not a judgement.'
         : data.briefing.why.map((w) => `−${w.points}  ${w.cause}`).join('\n') || 'Nothing deducted.'}
       style={{
@@ -98,7 +103,7 @@ function Briefing({ data, date, setDate, loading }: {
           HEALTH
         </div>
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: '1 1 200px', minWidth: 0 }}>
         <div style={{ font: '600 18px/1.3 system-ui', color: 'var(--text)' }}>
           {data.briefing.headline}
         </div>
