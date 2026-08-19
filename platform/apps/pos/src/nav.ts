@@ -61,7 +61,12 @@ export const NAV: NavGroup[] = [
     { id: 'batches', label: 'Batches & Expiry', minRank: 2, icon: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2' },
   ] },
   { title: 'Purchasing', items: [
-    { id: 'requests', label: 'Indent Requests', minRank: 2, icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01' },
+    /* KITCHEN, and that is the whole feature. The person who can see the empty
+       shelf is a cook, and a request only a manager can enter is a request that
+       gets made by shouting across a kitchen instead. Deciding it and turning
+       it into an order are manager rank — the screen shows those controls only
+       to the ranks that hold them, and the server is what enforces it. */
+    { id: 'requests', label: 'Indent Requests', minRank: 1, icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01' },
     { id: 'purchases', label: 'Purchases / GRN', minRank: 3, icon: 'M6 2 3 6v14h18V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0' },
     { id: 'dispatches', label: 'Dispatches', minRank: 3, icon: 'M1 3h15v13H1zM16 8h4l3 3v5h-7zM5.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM18.5 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z' },
     { id: 'vendors', label: 'Vendors', minRank: 3, icon: 'M3 21h18M4 21V10l8-6 8 6v11M9 21v-5h6v5M9 12h.01M15 12h.01' },

@@ -29,6 +29,7 @@ const governance = require('./governance');
 const production = require('./production');
 const batches = require('./batches');
 const dispatches = require('./dispatches');
+const indents = require('./indents');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -2002,6 +2003,80 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
             + ' WHERE ack_at IS NULL ORDER BY at')
         ]);
         return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Indent requests (02-POS-SPEC §2 `requests`) ──────────────────────────
+ *
+ * ASKING IS KITCHEN RANK. The person who can see the empty shelf is a cook, and
+ * a request only a manager can enter is a request that gets made by shouting
+ * instead. Deciding is MANAGER, and so is turning it into an order — which is
+ * the first thing in this build ever to write a purchase order.
+ */
+r.get('/outlet/:outletId/indents', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const list = await indents.list(c, req.query || {}, req.ctx);
+        const inv = await c.query(
+          'SELECT id, name, unit, on_hand, par FROM ingredient ORDER BY name');
+        return { ...list, ingredients: inv.rows.map((i) => ({
+          id: i.id, name: i.name, unit: i.unit,
+          onHand: Number(i.on_hand), par: i.par === null ? null : Number(i.par) })) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents', sameOutlet, staffOnly, atLeast('kitchen'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return indents.raise(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents/:id/decide', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return indents.decide(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents/:id/order', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return indents.order(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/indents/:id/cancel', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return indents.cancel(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* The purchase orders themselves, so a delivery can be received against one.
+ *
+ * `/orders` is already taken, and by the other meaning of the word: the live
+ * ticket board, registered above at TILL rank. Two routes with the same path
+ * do not collide loudly — Express hands every request to the first one — so
+ * this reads `purchase-orders` rather than quietly shadowing the till. */
+r.get('/outlet/:outletId/purchase-orders', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return indents.orders(c, req.query || {});
       });
       res.set('cache-control', 'no-store').json(out);
     } catch (e) { next(e); }

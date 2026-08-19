@@ -184,12 +184,41 @@ async function receiveDelivery(c, p, ctx) {
   const priced = lines.every((l) => l.unitPrice !== undefined && l.unitPrice !== null
     && l.unitPrice !== '');
 
+  /* THE ORDER IT ANSWERS, when there is one. `delivery.po_id` has existed
+     since the first migration and nothing ever set it: a delivery arrived
+     against a supplier and no order at all, so "what we asked for" and "what
+     turned up" were never the same conversation. An order is optional — stock
+     arrives unordered every day of the week — but when one is named, the lines
+     are marked off against it below. */
+  let poId = null;
+  if (p.poId) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(p.poId))) {
+      throw Object.assign(new Error('no such order'), { status: 404 });
+    }
+    const po = await c.query(
+      "SELECT id, supplier_id, status FROM purchase_order WHERE id = $1 FOR UPDATE",
+      [String(p.poId)]);
+    if (!po.rows.length) {
+      throw Object.assign(new Error('no such order'), { status: 404 });
+    }
+    if (po.rows[0].supplier_id !== sup.rows[0].id) {
+      /* Refused rather than quietly received. A delivery booked against
+         another supplier's order makes both of them wrong. */
+      throw Object.assign(new Error('that order is with a different supplier'),
+        { status: 400 });
+    }
+    if (po.rows[0].status === 'closed' || po.rows[0].status === 'cancelled') {
+      throw Object.assign(new Error('that order is closed'), { status: 400 });
+    }
+    poId = po.rows[0].id;
+  }
+
   const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['GRN']);
   const head = await c.query(
-    'INSERT INTO delivery (grn_no, supplier_id, received_by, priced, total, note,'
+    'INSERT INTO delivery (grn_no, po_id, supplier_id, received_by, priced, total, note,'
     + ' priced_at, priced_by)'
-    + ' VALUES ($1,$2,$3,$4,0,$5,$6,$7) RETURNING id, grn_no',
-    [no.rows[0].no, sup.rows[0].id, ctx.actor, priced,
+    + ' VALUES ($1,$2,$3,$4,$5,0,$6,$7,$8) RETURNING id, grn_no',
+    [no.rows[0].no, poId, sup.rows[0].id, ctx.actor, priced,
       p.note ? String(p.note).slice(0, 200) : null,
       priced ? new Date() : null, priced ? ctx.actor : null]);
   const deliveryId = head.rows[0].id;
@@ -220,6 +249,28 @@ async function receiveDelivery(c, p, ctx) {
   }
 
   await c.query('UPDATE delivery SET total = $2 WHERE id = $1', [deliveryId, toMVR(totalLaari)]);
+
+  /* Mark the order off. `received_qty` is capped at what was ordered so that a
+     line over-delivered does not read as an order that is somehow more than
+     complete; the surplus is on the shelf either way — the stock movement
+     above is what is true — and the ORDER only ever says how much of it has
+     been answered. */
+  let order = null;
+  if (poId) {
+    for (const l of lines) {
+      await c.query(
+        'UPDATE po_line SET received_qty = least(qty, received_qty + $3)'
+        + ' WHERE po_id = $1 AND ingredient_id = $2',
+        [poId, l.ingredientId, Number(l.qty)]);
+    }
+    const left = await c.query(
+      'SELECT coalesce(sum(qty - received_qty),0) AS outstanding FROM po_line'
+      + ' WHERE po_id = $1', [poId]);
+    const outstanding = Number(left.rows[0].outstanding);
+    const status = outstanding <= 0.00005 ? 'received' : 'part';
+    await c.query('UPDATE purchase_order SET status = $2 WHERE id = $1', [poId, status]);
+    order = { id: poId, status, outstanding: Math.round(outstanding * 10000) / 10000 };
+  }
 
   /* ONE journal for the document. Dr 1100 Inventory, Cr 2000 Accounts payable —
      the goods are on the shelf and the money is owed, whether or not anybody
@@ -252,7 +303,7 @@ async function receiveDelivery(c, p, ctx) {
 
   return {
     deliveryId, grnNo: head.rows[0].grn_no, priced,
-    total: toMVR(totalLaari), lines: results, invoice,
+    total: toMVR(totalLaari), lines: results, invoice, order,
     message: priced ? undefined
       : 'Received without prices. The stock is on the shelf, valued at what it'
         + ' was already worth — put the invoice prices in when they arrive and'

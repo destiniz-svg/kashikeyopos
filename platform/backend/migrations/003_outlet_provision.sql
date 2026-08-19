@@ -336,6 +336,38 @@ BEGIN
       expected  date,
       total     numeric(12,2) NOT NULL DEFAULT 0
     );
+    -- ── a kitchen asks; a manager decides (migration 036) ────────────────
+    -- The first half of a chain whose second half — the purchase order below —
+    -- has existed since this file was written and had nothing pointing at it.
+    CREATE TABLE IF NOT EXISTS %1$I.indent (
+      id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      ref      text NOT NULL UNIQUE,
+      at       timestamptz NOT NULL DEFAULT now(),
+      on_date  date NOT NULL DEFAULT current_date,
+      for_area text,
+      needed_by date,
+      note     text,
+      state    text NOT NULL DEFAULT 'open'
+               CHECK (state IN ('open','decided','ordered','cancelled')),
+      raised_by uuid,
+      decided_by uuid, decided_at timestamptz,
+      reason   text,
+      po_id    uuid REFERENCES %1$I.purchase_order(id)
+    );
+    CREATE INDEX IF NOT EXISTS indent_state ON %1$I.indent (state, at DESC);
+
+    CREATE TABLE IF NOT EXISTS %1$I.indent_line (
+      id        bigserial PRIMARY KEY,
+      indent_id uuid NOT NULL REFERENCES %1$I.indent(id) ON DELETE CASCADE,
+      ingredient_id text NOT NULL REFERENCES %1$I.ingredient(id),
+      qty       numeric(14,4) NOT NULL CHECK (qty > 0),
+      approved_qty numeric(14,4) CHECK (approved_qty >= 0),
+      note      text,
+      reason    text,
+      UNIQUE (indent_id, ingredient_id)
+    );
+    CREATE INDEX IF NOT EXISTS indent_line_indent ON %1$I.indent_line(indent_id);
+
     CREATE TABLE IF NOT EXISTS %1$I.po_line (
       id      bigserial PRIMARY KEY,
       po_id   uuid NOT NULL REFERENCES %1$I.purchase_order(id) ON DELETE CASCADE,
@@ -795,6 +827,10 @@ BEGIN
   -- the rows have to be deletable. The RUNS never are: a batch that happened,
   -- happened.
   EXECUTE format('GRANT DELETE ON %I.prep_recipe TO %I', s, r);
+  -- An indent still open can have a line taken off it by whoever raised it.
+  -- The indent itself is cancelled rather than deleted: a request that was
+  -- turned down is a thing that happened. See migration 036.
+  EXECUTE format('GRANT DELETE ON %I.indent_line TO %I', s, r);
   -- A DRAFT payroll run is deleted when abandoned; a posted one never is.
   EXECUTE format('GRANT DELETE ON %I.payroll_run, %I.payroll_line TO %I', s, s, r);
   -- A schedule set up wrongly is deleted; a posted expense never is.
@@ -886,7 +922,7 @@ BEGIN
     (p_id, 'PO', p_code || '-PO'), (p_id, 'GRN', p_code || '-GRN'),
     -- Inter-outlet transfers get their OWN counter (migration 035). Borrowing
     -- the GRN series and swapping the letters would leave gaps in that one.
-    (p_id, 'TRF', p_code || '-TRF'),
+    (p_id, 'TRF', p_code || '-TRF'), (p_id, 'IND', p_code || '-IND'),
     (p_id, 'JV', p_code || '-JV'), (p_id, 'RCT', p_code || '-RCT')
   ON CONFLICT DO NOTHING;
 

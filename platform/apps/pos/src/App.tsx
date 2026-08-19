@@ -40,6 +40,7 @@ import { Start } from './Start';
 import { Production } from './Production';
 import { Batches } from './Batches';
 import { Dispatches } from './Dispatches';
+import { Requests } from './Requests';
 import { NotBuilt } from './NotBuilt';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
@@ -57,7 +58,7 @@ import { NotBuilt } from './NotBuilt';
  * pretends to work is worse than one that admits it does not.
  */
 
-const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations', 'delivery', 'accounting', 'owner', 'chain', 'sync', 'settings', 'users', 'logs', 'branches', 'architecture', 'start', 'production', 'batches', 'dispatches']);
+const MODULES_BUILT = new Set(['pos', 'kds', 'menu', 'recipes', 'inventory', 'orders', 'reports', 'today', 'counts', 'ledger', 'purchases', 'vendors', 'staff', 'payroll', 'analytics', 'costs', 'assets', 'customers', 'loyalty', 'promos', 'reservations', 'delivery', 'accounting', 'owner', 'chain', 'sync', 'settings', 'users', 'logs', 'branches', 'architecture', 'start', 'production', 'batches', 'dispatches', 'requests']);
 
 const LS_SESSION = 'kashikeyo.pos.session.v1';
 
@@ -361,6 +362,8 @@ export function App({ outletId }: { outletId: number }) {
             <Batches session={session} />
           ) : view === 'dispatches' && MODULES_BUILT.has('dispatches') ? (
             <Dispatches session={session} />
+          ) : view === 'requests' && MODULES_BUILT.has('requests') ? (
+            <Requests session={session} />
           ) : view === 'pos' && MODULES_BUILT.has('pos') ? (
             <Floor
               snap={snap}
