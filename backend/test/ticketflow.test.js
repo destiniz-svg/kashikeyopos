@@ -274,3 +274,164 @@ describe('a bill paid more than one way', () => {
     assert.equal(Number(j.rows[0].dr), 27.5, 'it lands in the bank, not the drawer');
   });
 });
+
+describe('giving a table back without a sale', () => {
+  let ctx, mgr;
+  before(async () => {
+    ctx = await H.bootOutlet();
+    mgr = await H.addStaff(ctx, 'Test Manager', 3);
+  });
+  after(() => H.teardown(ctx));
+
+  test('a ticket with nothing on it could not be settled by anybody', async () => {
+    /* The shape a reservation leaves behind: a party seated, a table held, and
+       nothing ordered. sale.js refuses a sale with no lines — rightly — so
+       before ticket_void existed the table stayed busy until closing. */
+    await H.asOwner(ctx,
+      "INSERT INTO " + ctx.schema + ".ticket (table_no, split, channel, status, covers)"
+      + " VALUES ('T07', 0, 'dine_in', 'open', 2)");
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'dine_in', covers: 2, lines: [],
+        payments: [{ method: 'cash', amount: '0.00' }],
+      },
+    }]);
+    assert.match(String(r.json.results[0].error), /at least one line/);
+  });
+
+  test('a till can give an empty table back', async () => {
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T07'");
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(), payload: { ticketId: t.rows[0].id },
+    }]);
+    assert.equal(r.json.results[0].result.table, 'T07', JSON.stringify(r.json.results[0]));
+    const row = await H.q(ctx, "SELECT status FROM ticket WHERE table_no = 'T07'");
+    assert.equal(row.rows[0].status, 'void', 'void, not closed — nothing was paid');
+  });
+
+  test('a till cannot write off a bill the kitchen cooked', async () => {
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_send', at: Date.now(),
+      payload: { table: 'T08', covers: 2, lines: [{ itemId: 'BURGER', qty: 2 }] },
+    }]);
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T08'");
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(),
+      payload: { ticketId: t.rows[0].id, reason: 'walked out' },
+    }]);
+    assert.match(String(r.json.results[0].error), /manager/);
+    const row = await H.q(ctx, "SELECT status FROM ticket WHERE table_no = 'T08'");
+    assert.equal(row.rows[0].status, 'open', 'and the bill is untouched');
+  });
+
+  test('a manager needs a reason, and every line is voided by name', async () => {
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T08'");
+    const bare = await H.push({ ...ctx, token: mgr.token }, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(), payload: { ticketId: t.rows[0].id },
+    }]);
+    assert.match(String(bare.json.results[0].error), /reason/);
+
+    const r = await H.push({ ...ctx, token: mgr.token }, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(),
+      payload: { ticketId: t.rows[0].id, reason: 'walked out' },
+    }]);
+    assert.equal(r.json.results[0].result.lines, 1, JSON.stringify(r.json.results[0]));
+    assert.equal(Number(r.json.results[0].result.value), 170);
+
+    const lines = await H.q(ctx,
+      'SELECT void_at, void_reason FROM ticket_line WHERE ticket_id = $1', [t.rows[0].id]);
+    assert.ok(lines.rows.every((l) => l.void_at), 'itemised, not one number at the ticket');
+    assert.equal(lines.rows[0].void_reason, 'walked out');
+  });
+
+  test('and the kitchen card goes with it', async () => {
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T08'");
+    const k = await H.q(ctx,
+      'SELECT served_at FROM kds_ticket WHERE ticket_id = $1', [t.rows[0].id]);
+    assert.ok(k.rows.length > 0);
+    assert.ok(k.rows.every((x) => x.served_at),
+      'a card for a bill that no longer exists is worse than no card');
+  });
+
+  test('a settled ticket is never voided over', async () => {
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_send', at: Date.now(),
+      payload: { table: 'T09', covers: 1, lines: [{ itemId: 'COLA', qty: 1 }] },
+    }]);
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T09'");
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'dine_in', covers: 1, ticketId: t.rows[0].id,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [{ method: 'cash', amount: '27.50' }], clientTotal: '27.50',
+      },
+    }]);
+    const r = await H.push({ ...ctx, token: mgr.token }, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(),
+      payload: { ticketId: t.rows[0].id, reason: 'changed my mind' },
+    }]);
+    assert.match(String(r.json.results[0].error), /credit note/);
+  });
+
+  test('replaying a void is idempotent', async () => {
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T08'");
+    const r = await H.push({ ...ctx, token: mgr.token }, [{
+      opId: H.uuid(), kind: 'ticket_void', at: Date.now(),
+      payload: { ticketId: t.rows[0].id, reason: 'walked out' },
+    }]);
+    assert.equal(r.json.results[0].result.already, true);
+  });
+
+  test('the write-off is in the audit trail with what it was worth', async () => {
+    const log = await H.asOwner(ctx,
+      "SELECT after FROM chain.audit WHERE action = 'ticket_void' AND outlet_id = $1"
+      + " AND after->>'table' = 'T08' ORDER BY at DESC LIMIT 1", [ctx.outletId]);
+    assert.equal(log.rows.length, 1);
+    assert.equal(log.rows[0].after.reason, 'walked out');
+    assert.equal(Number(log.rows[0].after.value), 170);
+  });
+});
+
+describe('a dish taken off the menu mid-service', () => {
+  let ctx;
+  before(async () => { ctx = await H.bootOutlet(); });
+  after(() => H.teardown(ctx));
+
+  test('a bill carrying it can still be settled', async () => {
+    /* `active` was in the WHERE clause of the price lookup, so retiring a dish
+       at three in the afternoon made every open tab carrying it unsettleable
+       for the rest of the day — refused with "inactive item", with no other way
+       to close the ticket. You cannot RING UP something retired; you must be
+       able to TAKE MONEY for something a guest was already served. */
+    await H.push(ctx, [{
+      opId: H.uuid(), kind: 'ticket_send', at: Date.now(),
+      payload: { table: 'T05', covers: 1, lines: [{ itemId: 'BURGER', qty: 1 }] },
+    }]);
+    const t = await H.q(ctx, "SELECT id FROM ticket WHERE table_no = 'T05'");
+    await H.q(ctx, "UPDATE item SET active = false WHERE id = 'BURGER'");
+
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'dine_in', covers: 1, ticketId: t.rows[0].id,
+        lines: [{ itemId: 'BURGER', qty: 1 }],
+        payments: [{ method: 'cash', amount: '93.50' }], clientTotal: '93.50',
+      },
+    }]);
+    assert.ok(r.json.results[0].result?.receiptNo, JSON.stringify(r.json.results[0]));
+  });
+
+  test('but it cannot be rung up onto a bill it was never on', async () => {
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'BURGER', qty: 1 }],
+        payments: [{ method: 'cash', amount: '93.50' }], clientTotal: '93.50',
+      },
+    }]);
+    assert.match(String(r.json.results[0].error), /off the menu/);
+  });
+});

@@ -205,6 +205,23 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('every open bill is reachable from the floor', () => {
+    /* The floor drew exactly `outlet.tables` tiles and nothing else, so an open
+       ticket on a table outside that set had no tile — a QR card printed for a
+       table since renumbered, a reservation seated by name, or simply the table
+       count lowered while a bill was open. A bill nobody can reach is a bill
+       nobody can settle, and the table stays occupied with no way to say
+       otherwise. Floor.tsx derives the strays from the open tickets themselves
+       and draws them after the numbered grid; this is the guard that it keeps
+       doing so, because the failure is invisible on a tidy database. */
+    const src = fs.readFileSync(
+      path.join(ROOT, 'apps', 'pos', 'src', 'Floor.tsx'), 'utf8');
+    assert.ok(/strays\.map\(/.test(src),
+      'the floor must draw a tile for an open bill on a table it does not expect');
+    assert.ok(/const strays = useMemo/.test(src),
+      'and derive them from the open tickets rather than from the table count');
+  });
+
   test('a table that was already named the old way is RENAMED, not orphaned',
     async () => {
       /* src/tables.js made `T05` the one spelling, and every path that writes a

@@ -116,11 +116,30 @@ async function settle(c, p, ctx, outlet) {
      can choose. */
   const ids = p.lines.map((l) => String(l.itemId));
   const items = await c.query(
-    'SELECT id, name, price, category FROM item WHERE id = ANY($1) AND active', [ids]);
+    'SELECT id, name, price, category, active FROM item WHERE id = ANY($1)', [ids]);
   const byId = new Map(items.rows.map((r) => [r.id, r]));
+
+  /* A RETIRED DISH CAN STILL BE PAID FOR IF IT IS ALREADY ON THE TICKET.
+     `active` used to be in the WHERE clause, so taking a dish off the menu at
+     three in the afternoon made every open tab carrying it unsettleable for
+     the rest of the day — the sale was refused with "inactive item" and there
+     was no other way to close the ticket. The rule is not "this dish exists",
+     it is "this dish was ordered": you cannot RING UP something retired, and
+     you must be able to TAKE MONEY for something a guest was already served. */
+  const onTicket = new Set();
+  if (p.ticketId) {
+    const t = await c.query(
+      'SELECT DISTINCT item_id FROM ticket_line WHERE ticket_id = $1 AND void_at IS NULL',
+      [p.ticketId]);
+    for (const r of t.rows) onTicket.add(r.item_id);
+  }
   for (const id of ids) {
     if (!byId.has(id)) {
-      throw Object.assign(new Error('unknown or inactive item: ' + id), { status: 409 });
+      throw Object.assign(new Error('unknown item: ' + id), { status: 409 });
+    }
+    if (!byId.get(id).active && !onTicket.has(id)) {
+      throw Object.assign(
+        new Error('that dish is off the menu: ' + byId.get(id).name), { status: 409 });
     }
   }
 

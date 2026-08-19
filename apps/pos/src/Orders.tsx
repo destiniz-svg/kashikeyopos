@@ -104,7 +104,14 @@ const METHOD_LABEL: Record<string, string> = {
 const today = () => new Date().toISOString().slice(0, 10);
 const PAGE = 50;
 
-export function Orders({ session, search }: { session: Session; search?: string }) {
+export function Orders({ session, search, onSettle }: {
+  session: Session;
+  search?: string;
+  /* NO SCREEN IS A DEAD END. This board is where somebody notices a tab that
+     has been open too long, and until now the only thing they could do about
+     it was go to the till and find the table by eye. */
+  onSettle?: (table: string | null, split: number) => void;
+}) {
   const [date, setDate] = useState(today());
   const [offset, setOffset] = useState(0);
   const [day, setDay] = useState<Day | null>(null);
@@ -191,7 +198,7 @@ export function Orders({ session, search }: { session: Session; search?: string 
                 <Head>On the floor — {day.open.length} open ticket{day.open.length === 1 ? '' : 's'}</Head>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 190px), 1fr))', gap: 9 }}>
                   {day.open.filter((o) => hit(search, o.table, o.channel, o.server, o.status)).map((o) => (
-                    <div key={o.ticketId} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
+                    <ClickableTicket key={o.ticketId} go={onSettle ? () => onSettle(o.table, o.split) : undefined}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
                         <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
                           {o.table ? 'Table ' + o.table : 'Counter'}
@@ -209,7 +216,12 @@ export function Orders({ session, search }: { session: Session; search?: string 
                             : ' · ' + (o.lines - o.sent) + ' not sent yet'}
                         </span>
                       </div>
-                    </div>
+                      {onSettle && (
+                        <div style={{ marginTop: 6, fontSize: 10.5, fontWeight: 700, color: 'var(--amber-bright)' }}>
+                          Open it at the till →
+                        </div>
+                      )}
+                    </ClickableTicket>
                   ))}
                 </div>
                 <p style={{ margin: '8px 2px 0', fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
@@ -634,4 +646,17 @@ function Sheet({ title, children, onClose }: { title: string; children: React.Re
       </div>
     </div>
   );
+}
+
+/* A tab card that is a BUTTON when there is somewhere for it to go, and a plain
+   box otherwise. Not a button unconditionally: a control that looks tappable
+   and silently is not is the thing this whole change is against. */
+function ClickableTicket({ go, children }: { go?: () => void; children: React.ReactNode }) {
+  const style: React.CSSProperties = {
+    padding: '10px 12px', borderRadius: 9, background: 'var(--bg-1)',
+    border: '1px solid var(--amber-line)', textAlign: 'left', width: '100%',
+  };
+  return go
+    ? <button type="button" onClick={go} style={style}>{children}</button>
+    : <div style={style}>{children}</div>;
 }

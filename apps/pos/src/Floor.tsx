@@ -59,13 +59,6 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const onePane = isPhone || isTablet;
   const [pane, setPane] = useState<'floor' | 'menu'>('floor');
 
-  /* The drawer lives at the foot of the FLOOR pane, and on a phone only one
-     pane is on screen. Arriving on the menu pane, "Close the register" would
-     open a form the operator cannot see. The intent itself is Register's to
-     consume — this only makes sure the pane holding it is the one showing. */
-  useIntent(intent, 'pos', (act) => {
-    if (act === 'regclose') setPane('floor');
-  }, () => { /* Register clears it — this is a second reader of the same one-shot. */ });
   const [cart, setCart] = useState(false);
   const [table, setTable] = useState<string>('');
   /* WHICH BILL ON THIS TABLE. 0 is the table's own; 1.. are guests who asked to
@@ -97,6 +90,27 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   /* The line being voided, and the reason being typed for it. */
   const [voiding, setVoiding] = useState<{ id: string; name: string } | null>(null);
   const [voidWhy, setVoidWhy] = useState('');
+  /* Clearing the whole bill: null when nobody is asking, otherwise the reason
+     being typed for it. */
+  const [clearing, setClearing] = useState(false);
+  const [clearWhy, setClearWhy] = useState('');
+
+  /* The drawer lives at the foot of the FLOOR pane, and on a phone only one
+     pane is on screen. Arriving on the menu pane, "Close the register" would
+     open a form the operator cannot see. The intent itself is Register's to
+     consume — this only makes sure the pane holding it is the one showing. */
+  useIntent(intent, 'pos', (act) => {
+    if (act === 'regclose') setPane('floor');
+    /* "Open it at the till" from the Orders board. That screen is where
+       somebody notices a tab that has been open too long, and until this the
+       only thing they could do about it was come here and find the table by
+       eye — on a busy floor, the tab most worth chasing is the one hardest to
+       spot. */
+    if (act.startsWith('open:')) {
+      const [, t, sp] = act.split(':');
+      if (t) { setTable(tableName(t)); setSplit(Number(sp) || 0); setPane('menu'); setCart(true); }
+    }
+  }, () => { /* Register clears it — this is a second reader of the same one-shot. */ });
 
   const items = snap?.items ?? [];
   const outlet = snap?.outlet ?? null;
@@ -147,6 +161,14 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
       .slice()
       .sort((a, b) => a.split - b.split),
     [openTickets, table]);
+
+  /* Open bills on tables the numbered grid does not draw. Takeaway and
+     Delivery have their own tiles, so they are not strays. */
+  const strays = useMemo(() => {
+    const drawn = new Set(['Takeaway', 'Delivery']);
+    for (let n = 1; n <= tableCount; n++) drawn.add(tableName(String(n)));
+    return [...openByTable.keys()].filter((k) => !drawn.has(k)).sort();
+  }, [openByTable, tableCount]);
 
   /* The open ticket for the bill being worked, if there is one.
      THE WHOLE POINT OF THIS SCREEN HAVING AN ID. Without it the ticket panel
@@ -208,6 +230,25 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     await outbox.enqueue('ticket_line_void', { lineId: voiding.id, reason: voidWhy.trim() });
     setVoiding(null); setVoidWhy('');
     setFlash('Taken off the bill');
+    setTimeout(() => setFlash(''), 2600);
+    await onQueued();
+  };
+
+  /* Giving the table back without a sale.
+     A ticket with nothing on it — seated from the reservations book, or every
+     line voided — could not be settled by anybody: Pay is disabled with no
+     lines and the server rightly refuses a sale with none, so the table stayed
+     shaded busy for the rest of the service. */
+  const clearBill = async () => {
+    if (!ticket) return;
+    if (onKitchen.length > 0 && clearWhy.trim().length < 3) return;
+    await outbox.enqueue('ticket_void', {
+      ticketId: ticket.id,
+      ...(clearWhy.trim() ? { reason: clearWhy.trim() } : {}),
+    });
+    setClearing(false); setClearWhy('');
+    setDraft([]); setFiring([]); setSplit(0);
+    setFlash(onKitchen.length ? 'Bill written off' : 'Table given back');
     setTimeout(() => setFlash(''), 2600);
     await onQueued();
   };
@@ -428,6 +469,14 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
             const label = tableName(String(n));
             return TILE(label, openByTable.has(label), label);
           })}
+          {/* EVERY OPEN BILL GETS A TILE, even one on a table this floor does
+              not expect. The grid used to draw exactly `outlet.tables` of them,
+              so a ticket on T15 at an outlet with twelve — a QR card printed
+              for a table since renumbered, a reservation seated by name, or the
+              table count simply lowered while a bill was open — was invisible.
+              A bill nobody can reach is a bill nobody can settle, and the table
+              would have stayed occupied with no way to say otherwise. */}
+          {strays.map((label) => TILE(label, true, label))}
           {!tableCount && (
             <div style={{ gridColumn: '1/-1', padding: '20px 4px', fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
               This outlet has no tables configured. Set the table count on the outlet
@@ -694,12 +743,77 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
             </div>
           )}
 
-          {!lines.length && !voiding && (
+          {/* GIVING THE TABLE BACK. Offered whenever there is a ticket, because
+              the case it exists for is the one with nothing on it — a party
+              seated from the book that got up and left, or a bill whose every
+              line was voided. Neither could be settled by anybody, and the
+              table stayed busy until closing. */}
+          {clearing && (
+            <div style={{ marginTop: 10, padding: 11, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid ' + (onKitchen.length ? 'var(--red-line, var(--line))' : 'var(--line-2)') }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>
+                {onKitchen.length
+                  ? 'Write off this bill'
+                  : 'Give ' + (table || 'this table') + ' back'}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
+                {onKitchen.length
+                  ? 'The kitchen made it and nobody paid. Every line is voided with your'
+                    + ' reason against it. NO STOCK MOVES — costing happens at the sale, so'
+                    + ' the ingredients are still on the books. Record them through Inventory'
+                    + ' as wastage, where they land in the same figure as everything else'
+                    + ' thrown away.'
+                  : 'Nothing was ordered, so nothing is being written off. The table goes back'
+                    + ' to free and the ticket is closed unpaid.'}
+              </div>
+              {onKitchen.length > 0 && (
+                <input
+                  value={clearWhy} autoFocus placeholder="Why? — walked out, keyed to the wrong table"
+                  aria-label="Why this bill is being written off"
+                  onChange={(e) => setClearWhy(e.target.value)}
+                  style={{
+                    marginTop: 8, width: '100%', minHeight: 36, padding: '7px 9px', borderRadius: 7,
+                    background: 'var(--bg-1)', border: '1px solid var(--line-2)', color: 'var(--text)',
+                    fontSize: 12, fontFamily: 'inherit',
+                  }} />
+              )}
+              <div style={{ marginTop: 8, display: 'flex', gap: 7 }}>
+                <button onClick={() => { setClearing(false); setClearWhy(''); }}
+                  style={{ flex: 1, minHeight: 34, borderRadius: 7, background: 'var(--bg-1)', border: '1px solid var(--line)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600 }}>
+                  Keep it
+                </button>
+                <button onClick={() => void clearBill()}
+                  disabled={onKitchen.length > 0 && clearWhy.trim().length < 3}
+                  style={{
+                    flex: 1, minHeight: 34, borderRadius: 7, fontSize: 12, fontWeight: 700,
+                    background: onKitchen.length === 0 || clearWhy.trim().length >= 3 ? 'var(--red)' : 'var(--bg-1)',
+                    color: onKitchen.length === 0 || clearWhy.trim().length >= 3 ? '#fff' : 'var(--text-faint)',
+                    border: '1px solid ' + (onKitchen.length === 0 || clearWhy.trim().length >= 3 ? 'var(--red)' : 'var(--line)'),
+                  }}>
+                  {onKitchen.length ? 'Write it off' : 'Give it back'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!lines.length && !voiding && !clearing && (
             <div style={{ padding: '30px 4px', textAlign: 'center', fontSize: 11.5, lineHeight: 1.65, color: 'var(--text-faint)' }}>
               {table
                 ? 'Nothing on this ticket yet. Tap a dish to add it.'
                 : 'Choose a table, then tap dishes to build the ticket.'}
             </div>
+          )}
+
+          {/* The way in. Only when there IS a ticket — with no ticket there is
+              nothing to give back, and the table is already free. */}
+          {ticket && !clearing && !voiding && (
+            <button onClick={() => { setClearing(true); setClearWhy(''); }}
+              style={{
+                marginTop: 12, width: '100%', minHeight: 34, borderRadius: 7,
+                background: 'transparent', border: '1px dashed var(--line-2)',
+                color: 'var(--text-faint)', fontSize: 11.5, fontWeight: 600,
+              }}>
+              {onKitchen.length ? 'Write off this bill' : 'Give the table back'}
+            </button>
           )}
         </div>
 

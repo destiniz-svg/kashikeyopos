@@ -735,7 +735,15 @@ export function App({ outletId }: { outletId: number }) {
           ) : view === 'reports' && MODULES_BUILT.has('reports') ? (
             <Reports session={session} intent={intentFor('reports')} onIntentDone={intentDone} />
           ) : view === 'orders' && MODULES_BUILT.has('orders') ? (
-            <Orders session={session} search={search} />
+            <Orders
+              session={session} search={search}
+              /* Straight to the till with that bill open. Through the same
+                 one-shot the palette uses — see intent.ts. */
+              onSettle={(t, sp) => {
+                setView('pos');
+                setIntent({ view: 'pos', act: 'open:' + (t ?? '') + ':' + sp });
+              }}
+            />
           ) : view === 'menu' && MODULES_BUILT.has('menu') ? (
             <Menu session={session} />
           ) : view === 'inventory' && MODULES_BUILT.has('inventory') ? (

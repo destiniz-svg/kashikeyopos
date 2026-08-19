@@ -196,7 +196,7 @@ describe('the money chain', () => {
         payments: [{ method: 'cash', amount: '0.00' }],
       },
     }]);
-    assert.match(r.json.results[0].error, /unknown or inactive item/i);
+    assert.match(r.json.results[0].error, /unknown item/i);
   });
 
   test('a sale on a date no tax version covers is refused', async () => {

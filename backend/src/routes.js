@@ -2551,6 +2551,10 @@ const OP_RANK = {
      below manager rank, which is the distinction that matters — the same shape
      as clock_in above. */
   ticket_line_void: 2,
+  /* Same shape again: queued at TILL rank because giving a table back is the
+     till's job, and kitchen.voidTicket refuses one with food on it below
+     manager rank. */
+  ticket_void: 2,
   guest_order_accept: 2,
   sale: 2,                 // taking money is the till's job
   drawer_open: 2,          // …and so is counting the drawer it comes out of
@@ -2595,6 +2599,9 @@ async function apply(c, op, ctx) {
     }
     case 'ticket_line_void':
       return await kitchen.voidLine(c, op.payload || {}, ctx);
+
+    case 'ticket_void':
+      return await kitchen.voidTicket(c, op.payload || {}, ctx);
 
     case 'ticket_send':
       return await kitchen.sendRound(c, op.payload || {}, ctx);

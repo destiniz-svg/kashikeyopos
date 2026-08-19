@@ -198,6 +198,102 @@ async function voidLine(c, p, ctx) {
   return { lineId: l.id, ticketId: l.ticket_id, name: l.name, qty: l.qty };
 }
 
+/**
+ * Close an open ticket WITHOUT a sale.
+ *
+ * There has never been a way to do this, and there are two ordinary ways to
+ * end up needing one:
+ *
+ *   · Seating a reservation opens a ticket before anybody has ordered
+ *     (reservations.js). The party sits down, changes its mind and leaves, and
+ *     the table is shaded busy for the rest of the service.
+ *   · Every line on a ticket gets voided — a round keyed onto the wrong table,
+ *     say — and what is left is an open ticket with nothing on it.
+ *
+ * In both cases the till could not settle it: Pay is disabled with no lines,
+ * and sale.js rightly refuses a sale with none. So the table stayed busy and
+ * no rank could free it.
+ *
+ * THE RANK FOLLOWS WHETHER THERE IS ANYTHING TO ANSWER FOR. An empty ticket is
+ * a table being given back and the till can do it. A ticket with food on it is
+ * a walkout: the kitchen made it, nobody paid, and that is a manager's
+ * signature with a reason — the same rule as voiding a single fired line, for
+ * the same reason.
+ *
+ * WHAT IT DOES NOT DO IS MOVE STOCK. Costing happens at the moment of sale, so
+ * a voided ticket books no COGS and relieves no ingredients: the food that was
+ * made is still on the books as stock. That is a wastage entry, through the
+ * ordinary wastage path, so it lands in the same figure as everything else
+ * that was thrown away rather than in a second one nobody adds up. The screen
+ * says so; this function will not quietly invent the policy.
+ *
+ * p = { ticketId, reason? }
+ */
+async function voidTicket(c, p, ctx) {
+  const ticketId = String((p && p.ticketId) || '');
+  const reason = String((p && p.reason) || '').trim();
+  if (!ticketId) throw Object.assign(new Error('which ticket?'), { status: 400 });
+
+  /* Two queries, not one: Postgres refuses FOR UPDATE alongside GROUP BY, and
+     the lock on the ticket row is the thing that stops two terminals voiding
+     and settling the same bill at once. So lock first, count second. */
+  const q = await c.query(
+    'SELECT id, table_no, split, status, covers FROM ticket WHERE id = $1 FOR UPDATE',
+    [ticketId]);
+  if (!q.rows.length) throw Object.assign(new Error('no such ticket'), { status: 404 });
+  const t = q.rows[0];
+  const agg = await c.query(
+    'SELECT count(*) AS live, coalesce(sum(qty * unit_price), 0) AS value'
+    + ' FROM ticket_line WHERE ticket_id = $1 AND void_at IS NULL', [ticketId]);
+  const live = Number(agg.rows[0].live);
+  t.value = agg.rows[0].value;
+
+  /* Idempotent: a till replaying a queued void after a reconnect must not be
+     told its own completed work was an error. A ticket somebody SETTLED in the
+     meantime is a different matter and must not be quietly voided over. */
+  if (t.status === 'void') return { ticketId: t.id, table: t.table_no, already: true };
+  if (t.status === 'closed') {
+    throw Object.assign(
+      new Error('that ticket was paid — a settled sale is corrected with a credit note, never voided'),
+      { status: 409 });
+  }
+
+  if (live > 0) {
+    if ((ctx.rank || 0) < 3) {
+      throw Object.assign(
+        new Error('there is food on that bill — a manager writes it off'), { status: 403 });
+    }
+    if (reason.length < 3) {
+      throw Object.assign(
+        new Error('a written-off bill needs a reason — it is what the loss is answered with'),
+        { status: 400 });
+    }
+    /* Each line voided by name, so the write-off is itemised in the trail
+       rather than being one number at the ticket. */
+    await c.query(
+      'UPDATE ticket_line SET void_at = now(), void_reason = $2, void_by = $3'
+      + ' WHERE ticket_id = $1 AND void_at IS NULL', [ticketId, reason, ctx.actor]);
+  }
+
+  await c.query(
+    "UPDATE ticket SET status = 'void', closed_at = now(), closed_by = $2 WHERE id = $1",
+    [ticketId, ctx.actor]);
+
+  /* Whatever the kitchen still had is off the pass: there is no longer a bill
+     for it to belong to, and a card nobody can act on is worse than none. */
+  await c.query(
+    'UPDATE kds_ticket SET served_at = now() WHERE ticket_id = $1 AND served_at IS NULL',
+    [ticketId]);
+
+  await c.query("SELECT chain.log('ticket_void','ticket',$1,NULL,$2)",
+    [ticketId, JSON.stringify({
+      table: t.table_no, split: t.split, covers: t.covers,
+      lines: live, value: Number(t.value), reason: reason || null,
+    })]);
+
+  return { ticketId: t.id, table: t.table_no, lines: live, value: Number(t.value) };
+}
+
 /* §4: "Stages: Received → In the kitchen → Ready → Served." A stage only ever
    moves FORWARD along this list. A ticket that has been served is finished;
    dragging it back to "In the kitchen" would restart a timer against a target
@@ -238,4 +334,4 @@ async function advance(c, p, ctx) {
   return { kdsId: p.kdsId, stage, from: cur.rows[0].stage };
 }
 
-module.exports = { sendRound, advance, voidLine, stationsFor, STAGES, DEFAULT_STATION };
+module.exports = { sendRound, advance, voidLine, voidTicket, stationsFor, STAGES, DEFAULT_STATION };

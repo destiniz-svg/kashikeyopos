@@ -150,7 +150,11 @@ describe('Menu Master', () => {
     assert.equal(row.rows[0].active, false, 'deactivated, never deleted');
   });
 
-  test('a retired dish cannot be sold', async () => {
+  test('a retired dish cannot be RUNG UP onto a new bill', async () => {
+    /* The other half of this rule lives in ticketflow.test.js: a dish already
+       on an open ticket when it was retired can still be PAID for, or taking
+       something off the menu at three in the afternoon would strand every tab
+       carrying it. "Cannot be sold" was always meant as "cannot be ordered". */
     const r = await H.push(ctx, [{
       opId: H.uuid(), kind: 'sale', at: Date.now(),
       payload: {
@@ -159,7 +163,7 @@ describe('Menu Master', () => {
         payments: [{ method: 'cash', amount: '10.00' }],
       },
     }]);
-    assert.match(r.json.results[0].error, /unknown or inactive item/i);
+    assert.match(r.json.results[0].error, /off the menu/i);
   });
 
   test('retiring twice is not an error', async () => {
