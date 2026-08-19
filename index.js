@@ -167,7 +167,7 @@ async function ensureAppRole() {
     END $do$;
   `);
   await bootPool.query(`GRANT USAGE ON SCHEMA public TO ${APP_DB_ROLE}`);
-  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, paired_devices, otp_codes, store_backups, receipt_seq TO ${APP_DB_ROLE}`);
+  await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON orgs, stores, entities, ops, platform_admins, app_sessions, paired_devices, otp_codes, store_backups, receipt_seq, org_slug_aliases TO ${APP_DB_ROLE}`);
   await bootPool.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ingredients, ingredient_units, recipe_lines, stock_moves,
     audit_sessions, audit_lines, suppliers, purchase_invoices, purchase_invoice_lines, ingredient_lots, stock_reservations TO ${APP_DB_ROLE}`);
   /* Append-only: INSERT + SELECT only, so the audit trail can't be rewritten or
@@ -525,6 +525,69 @@ const bootState = { ready: false, error: null, startedAt: Date.now(), readyAt: 0
        it on demand from Menu Master → "Load default menu". We deliberately do NOT
        backfill every outlet on boot any more — that would inject the full
        300-dish catalogue into stores that run their own menu. */
+
+    /* One-time cleanup for stores that DECLINED the starter menu and got it
+       anyway. The wizard asks about the menu after the account exists, so
+       registration had already seeded it and "empty" only stopped the backfill —
+       fixed at the source now, but stores onboarded before that are still
+       holding 300 dishes they said no to.
+
+       Three guards, because this deletes rows in someone's live store:
+         · only orgs with skip_default_menu — a store that later asked for the
+           sample menu has the flag cleared, so it is never touched;
+         · only the starter ids, and only where the row still matches the seed
+           EXACTLY (same name, same price) — an owner who renamed or repriced a
+           seeded dish is using it, and their edit is the evidence;
+         · never a dish that has been SOLD — a receipt reads its name from the
+           product row, so removing one rewrites history.
+       Tombstoned, not hard-deleted, so offline tills drop them on next pull. */
+    try {
+      const mc3 = await bootPool.connect();
+      try {
+        await mc3.query("BEGIN");
+        const claim = await mc3.query("INSERT INTO app_migrations (id) VALUES ('starter_menu_declined_cleanup_v1') ON CONFLICT DO NOTHING RETURNING id");
+        if (claim.rowCount) {
+          const seed = JSON.stringify((DEFAULT_MENU || []).map((d) => ({ id: d.id, name: d.name, price: d.price })));
+          const cleared = await mc3.query(
+            `WITH seed AS (
+               SELECT x->>'id' AS id, x->>'name' AS name, (x->>'price')::numeric AS price
+               FROM jsonb_array_elements($1::jsonb) AS x
+             ), sold AS (
+               SELECT DISTINCT e.org_id, l->>'pid' AS pid
+               FROM entities e, jsonb_array_elements(COALESCE(e.data->'lines','[]'::jsonb)) AS l
+               WHERE e.kind='sales' AND NOT e.deleted
+             )
+             UPDATE entities e SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+             FROM orgs o, seed s
+             WHERE e.org_id = o.id AND o.skip_default_menu
+               AND e.kind='products' AND NOT e.deleted
+               AND e.id = s.id
+               AND e.data->>'name' = s.name
+               AND COALESCE((e.data->>'price')::numeric, -1) = s.price
+               AND NOT EXISTS (SELECT 1 FROM sold WHERE sold.org_id = e.org_id AND sold.pid = e.id)
+             RETURNING e.org_id`, [seed]);
+          const orgs = new Set(cleared.rows.map((r) => r.org_id));
+          // The empty sample SECTIONS go too, but only for a store left with no
+          // products at all — otherwise its sections may describe its own menu.
+          let sections = 0;
+          if (orgs.size) {
+            const sec = await mc3.query(
+              `UPDATE entities e SET data = e.data - 'menuCats' - 'catGroups' - 'menuSubs',
+                 rowver = nextval('entities_rowver_seq'), updated_at = now()
+               WHERE e.kind='settings' AND e.id='settings' AND NOT e.deleted
+                 AND e.org_id = ANY($1::text[])
+                 AND NOT EXISTS (SELECT 1 FROM entities p WHERE p.org_id=e.org_id AND p.kind='products' AND NOT p.deleted)
+               RETURNING e.org_id`, [[...orgs]]);
+            sections = sec.rowCount;
+          }
+          await mc3.query("COMMIT");
+          console.log(`starter_menu_declined_cleanup_v1: removed ${cleared.rowCount} untouched, unsold starter dish(es) from ${orgs.size} store(s) that declined the menu; cleared sample sections on ${sections}`);
+        } else {
+          await mc3.query("ROLLBACK");
+        }
+      } catch (e) { try { await mc3.query("ROLLBACK"); } catch (_) { /* already unwound */ } throw e; }
+      finally { mc3.release(); }
+    } catch (e) { console.warn("starter_menu_declined_cleanup_v1 skipped:", e.message); }
   } catch (e) { console.error("schema init failed:", e.message); bootState.error = String(e && e.message || e); }
   finally { bootClient.release(); }
   /* Cross-instance SSE fan-out (ARCH-01). Started after boot init + lock release,
@@ -1878,6 +1941,38 @@ async function ensureOwnerSeed(org, explicitPin) {
 async function orgBySlug(slug) {
   return withSystem(async (client) => (await client.query("SELECT * FROM orgs WHERE slug=$1", [slug])).rows[0]);
 }
+/* The store a public address belongs to, INCLUDING addresses it used to use.
+   A handle is printed onto table QR codes and stickers that stay in the world
+   for years, so a rename cannot be allowed to kill them: the current handle is
+   tried first, then the store's retired ones. Returns the org with `viaAlias`
+   set when it answered to an old name, so the caller can send the visitor on to
+   the current address instead of leaving them on a dead one. */
+async function orgBySlugOrAlias(slug) {
+  const s = String(slug || "").toLowerCase();
+  if (!s) return undefined;
+  const live = await orgBySlug(s);
+  if (live) return live;
+  return withSystem(async (client) => {
+    const r = await client.query(
+      "SELECT o.* FROM org_slug_aliases a JOIN orgs o ON o.id = a.org_id WHERE a.slug=$1", [s]);
+    const org = r.rows[0];
+    if (org) org.viaAlias = s;
+    return org;
+  });
+}
+// Is this handle free to take? A handle belongs to a store the moment it is
+// used, and keeps belonging to it after a rename — otherwise the next store to
+// register could take a retired handle and silently collect another business's
+// scanned QR traffic. `exceptOrg` lets a store reclaim its own old name.
+async function handleTaken(handle, exceptOrg) {
+  const h = String(handle || "").toLowerCase();
+  return withSystem(async (client) => {
+    const r = await client.query(
+      `SELECT id AS org_id FROM orgs WHERE slug=$1
+       UNION ALL SELECT org_id FROM org_slug_aliases WHERE slug=$1`, [h]);
+    return r.rows.some((row) => String(row.org_id) !== String(exceptOrg || ""));
+  });
+}
 
 async function kindAll(orgId, kind, storeId = DEFAULT_STORE_ID) {
   const rows = await withOrg(orgId, async (client) =>
@@ -2177,10 +2272,14 @@ function memberPayload(org, c, settings, orders, vouchers) {
   };
 }
 
+/* A handle is free only if NO store holds it — currently or as one of the
+   handles it used to answer to. Handing a retired handle to a new store would
+   quietly point another business's printed QR codes at a stranger's menu. */
 async function uniqueSlug(client, base) {
   let slug = base;
   for (let i = 0; i < 5; i++) {
-    const hit = await client.query("SELECT 1 FROM orgs WHERE slug=$1", [slug]);
+    const hit = await client.query(
+      `SELECT 1 FROM orgs WHERE slug=$1 UNION ALL SELECT 1 FROM org_slug_aliases WHERE slug=$1`, [slug]);
     if (!hit.rowCount) break;
     slug = base + "-" + crypto.randomBytes(2).toString("hex");
   }
@@ -2197,7 +2296,9 @@ async function uniqueSlugFor(client, base, exceptOrgId) {
   let slug = root;
   for (let i = 0; i < 6; i++) {
     if (!RESERVED_HANDLES.has(slug)) {
-      const hit = await client.query("SELECT 1 FROM orgs WHERE slug=$1 AND id<>$2", [slug, exceptOrgId]);
+      const hit = await client.query(
+        `SELECT 1 FROM orgs WHERE slug=$1 AND id<>$2
+         UNION ALL SELECT 1 FROM org_slug_aliases WHERE slug=$1 AND org_id<>$2`, [slug, exceptOrgId]);
       if (!hit.rowCount) return slug;
     }
     slug = root + "-" + crypto.randomBytes(2).toString("hex");
@@ -2629,6 +2730,36 @@ app.post("/api/onboard/finish", wrap(async (req, res) => {
   if (menu === "sample") {
     try { await seedSampleCategories(orgId); } catch (e) { console.warn("sample-categories seed skipped:", e.message); }
     try { await applyMenuItems(orgId, DEFAULT_MENU, CAT_GROUPS, CAT_ORDER, {}); } catch (e) { console.warn("sample-menu seed skipped:", e.message); }
+  } else {
+    /* "Empty" has to actually empty it. The wizard asks this question AFTER the
+       account exists, and /api/register has already seeded the starter menu by
+       then (it defaults to 'sample' because it cannot know yet) — so the flag
+       set above only stopped the boot backfill re-seeding, and the owner was
+       left with 300 dishes they had just declined. To an owner opening their
+       second store that reads as the first store's data following them around,
+       because it is the same 300 dishes either way.
+
+       Only the STARTER items are removed, by their known ids: anything the
+       owner has already created in the meantime is theirs and is left alone.
+       Tombstoned rather than hard-deleted so an offline till that pulled them
+       removes them too — a deleted row is a row the client must be told about. */
+    try {
+      const gone = await withOrg(orgId, async (c) => {
+        const r = await c.query(
+          `UPDATE entities SET deleted=true, rowver=nextval('entities_rowver_seq'), updated_at=now()
+           WHERE org_id=$1 AND kind='products' AND deleted=false AND id = ANY($2::text[])
+           RETURNING rowver`, [orgId, DEFAULT_MENU.map((i) => i.id)]);
+        // The empty sample SECTIONS go with the dishes; a store that wanted no
+        // menu did not want 36 named empty shelves either.
+        await c.query(
+          `UPDATE entities SET data = data - 'menuCats' - 'catGroups' - 'menuSubs',
+             rowver = nextval('entities_rowver_seq'), updated_at = now()
+           WHERE org_id=$1 AND kind='settings' AND id='settings' AND deleted=false`, [orgId]);
+        return r.rows.reduce((mx, row) => Math.max(mx, Number(row.rowver)), 0);
+      });
+      if (gone) poke(orgId, gone);
+      console.log("onboard finish: starter menu cleared for " + orgId + " (menu=" + menu + ")");
+    } catch (e) { console.warn("starter-menu clear skipped:", e.message); }
   }
   // Land a freshly-onboarded store on the v2 terminal — the current build —
   // rather than the legacy /app register. (/app stays reachable for installed
@@ -7686,18 +7817,72 @@ if (fs.existsSync(protoFile)) {
     const handle = String((req.body && req.body.handle) || "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
     if (handle.length < 3) return res.status(400).json({ error: "A handle needs at least 3 characters — letters, digits and hyphens." });
     if (RESERVED_HANDLES.has(handle)) return res.status(400).json({ error: "That handle is reserved — pick another." });
+    // Taken means taken by ANOTHER store — including as one of its retired
+    // handles. Reclaiming your own old handle is allowed, and is the whole point.
+    if (await handleTaken(handle, orgId)) return res.status(409).json({ error: "That handle is already taken — try another." });
     const result = await withSystem(async (c) => {
+      const prev = (await c.query("SELECT slug FROM orgs WHERE id=$1", [orgId])).rows[0];
+      const old = prev && prev.slug;
       try {
         const r = await c.query("UPDATE orgs SET slug=$1 WHERE id=$2 RETURNING slug", [handle, orgId]);
-        return { ok: true, handle: r.rows[0] && r.rows[0].slug };
+        /* Keep the address the store is LEAVING. Every QR code already printed
+           with it stays scannable, and the guest is forwarded to the new one —
+           which is the difference between a rename and a dead table. Deleting
+           the row for the new handle first covers a store swapping back to a
+           name it used before. */
+        if (old && old !== handle) {
+          await c.query("DELETE FROM org_slug_aliases WHERE slug=$1", [handle]);
+          await c.query(
+            "INSERT INTO org_slug_aliases (slug, org_id) VALUES ($1,$2) ON CONFLICT (slug) DO UPDATE SET org_id=EXCLUDED.org_id",
+            [old, orgId]);
+        }
+        return { ok: true, handle: r.rows[0] && r.rows[0].slug, old: old };
       } catch (e) {
         if (String(e && e.code) === "23505") return { taken: true };
         throw e;
       }
     });
     if (result.taken) return res.status(409).json({ error: "That handle is already taken — try another." });
-    logActivity(orgId, { actor: "admin", action: "store.handle", ref: handle, requestId: req.id, detail: {} });
-    res.json({ ok: true, handle: result.handle });
+    logActivity(orgId, { actor: "admin", action: "store.handle", ref: handle, requestId: req.id, detail: { from: result.old || "" } });
+    res.json({ ok: true, handle: result.handle, keptAnswering: result.old && result.old !== result.handle ? result.old : "" });
+  }));
+  /* Handles this store also answers to. GET lists them; POST claims one; POST
+     with remove:true drops one.
+
+     Claiming exists because a rename that happened BEFORE handles were kept has
+     no record of what the old one was — the store knows, the database doesn't.
+     An owner whose stickers still say the old address can type it in here and
+     have every one of them work again, which is the only repair for a QR code
+     that is already on a table. It is guarded the same way a rename is: a
+     handle another store holds, currently or historically, is refused. */
+  app.get("/api/app2/handle/aliases", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Store handles need an admin or the owner.")) return;
+    const rows = await withOrg(orgId, (c) => c.query(
+      "SELECT slug, created_at FROM org_slug_aliases WHERE org_id=$1 ORDER BY created_at DESC", [orgId]));
+    res.json({ ok: true, aliases: rows.rows.map((r) => ({ handle: r.slug, at: r.created_at })) });
+  }));
+  app.post("/api/app2/handle/alias", wrap(async (req, res) => {
+    const orgId = await resolveAppSession(req);
+    if (!orgId) return res.status(401).json({ error: "no session" });
+    if (denyAppRole(req, res, APP_RANK.ADMIN, "Store handles need an admin or the owner.")) return;
+    const handle = String((req.body && req.body.handle) || "").toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+    const remove = !!(req.body && req.body.remove);
+    if (!handle) return res.status(400).json({ error: "Enter the handle your old QR codes use." });
+    if (remove) {
+      await withOrg(orgId, (c) => c.query("DELETE FROM org_slug_aliases WHERE org_id=$1 AND slug=$2", [orgId, handle]));
+      logActivity(orgId, { actor: "admin", action: "store.handle.alias.remove", ref: handle, requestId: req.id, detail: {} });
+      return res.json({ ok: true, removed: handle });
+    }
+    if (RESERVED_HANDLES.has(handle)) return res.status(400).json({ error: "That handle is reserved — it was never a storefront address." });
+    const self = await withSystem((c) => c.query("SELECT slug FROM orgs WHERE id=$1", [orgId]));
+    if (self.rows[0] && self.rows[0].slug === handle) return res.status(400).json({ error: "That is already your current handle." });
+    if (await handleTaken(handle, orgId)) return res.status(409).json({ error: "Another store holds that handle — it can't be pointed here." });
+    await withSystem((c) => c.query(
+      "INSERT INTO org_slug_aliases (slug, org_id) VALUES ($1,$2) ON CONFLICT (slug) DO UPDATE SET org_id=EXCLUDED.org_id", [handle, orgId]));
+    logActivity(orgId, { actor: "admin", action: "store.handle.alias", ref: handle, requestId: req.id, detail: {} });
+    res.json({ ok: true, handle });
   }));
   // Telegram alert test-send. Mirrors the AI features' graceful-degrade
   // contract: with no TELEGRAM_BOT_TOKEN in the environment it reports
@@ -8280,7 +8465,22 @@ if (fs.existsSync(webDir)) {
     soldOut: !!p.soldOut || (p.recipeAvail != null ? Number(p.recipeAvail) <= 0 : (p.stock != null && Number(p.stock) <= 0)) }));
   const serveGuestPortal = async (req, res) => {
     const slugReq = String(req.query.s || "");
-    const org = await orgBySlug(slugReq);
+    const org = await orgBySlugOrAlias(slugReq);
+    /* Scanned an old QR code: the store answers, and the guest is moved to its
+       current address so the page they bookmark or share is the live one. The
+       table and customer parameters travel with them — a redirect that loses
+       ?t=7 puts the guest on the right menu at the wrong table. */
+    if (org && org.viaAlias && org.slug && org.slug !== org.viaAlias) {
+      const q = new URLSearchParams();
+      for (const [k, v] of Object.entries(req.query || {})) if (k !== "s") q.set(k, String(v));
+      const qs = q.toString();
+      const onSub = portalSlugFromHost(req) === org.viaAlias;
+      const to = onSub
+        ? portalOriginForSlug(org.slug, req) + "/" + (qs ? "?" + qs : "")
+        : "/?s=" + encodeURIComponent(org.slug) + (qs ? "&" + qs : "");
+      try { console.log("guest portal alias", JSON.stringify({ from: org.viaAlias, to: org.slug, host: (req.headers && req.headers.host) || "" })); } catch (e) {}
+      return res.redirect(301, to);
+    }
     /* No-secret diagnostic: which storefront slug was asked for, on which host,
        and whether it resolved (plus the org id + its registered name). Answers
        "my storefront shows the demo / the wrong name" straight from the logs —

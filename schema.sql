@@ -669,6 +669,32 @@ WHERE e.org_id = s.org_id AND e.kind = 'settings' AND e.id = 'settings' AND NOT 
   AND s.id = (SELECT id FROM stores s2 WHERE s2.org_id = s.org_id ORDER BY s2.created_at LIMIT 1)
   AND (s.tables IS NULL OR s.seats IS NULL OR s.table_seats = '{}'::jsonb);
 
+-- ── Previous store handles (orphaned-QR fix) ───────────────────────────────
+-- A store's handle is its public address: <handle>.kashikeyopos.com, and it is
+-- printed onto table QR codes, stickers and menus that live in the physical
+-- world for years. Renaming the handle used to break every one of them at once
+-- — the old address stopped resolving and the guest got "storefront not found"
+-- with no way onward, which is a dead table in a working restaurant.
+--
+-- A handle a store has ANSWERED TO is therefore kept, not discarded: the old
+-- address keeps resolving to the same store and redirects to the current one,
+-- so the printed code still works and the address bar still tells the truth.
+-- Platform-wide like orgs.slug itself, and unique across every store, so one
+-- store's retired handle can never be handed to another and quietly redirect a
+-- rival's guests. ON DELETE CASCADE: a closed store releases its old names.
+CREATE TABLE IF NOT EXISTS org_slug_aliases (
+  slug       TEXT PRIMARY KEY,
+  org_id     TEXT NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS org_slug_aliases_org ON org_slug_aliases (org_id);
+ALTER TABLE org_slug_aliases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE org_slug_aliases FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON org_slug_aliases;
+CREATE POLICY tenant_isolation ON org_slug_aliases
+  USING (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on')
+  WITH CHECK (org_id = current_setting('app.org_id', true) OR current_setting('app.is_superadmin', true) = 'on');
+
 -- Allergens (§ guest-portal spec: "tag an ingredient once and every dish that
 -- uses it inherits"). The INGREDIENT is authoritative; a dish's list is derived
 -- from its recipe and written onto the product entity by recomputeAllergens().

@@ -64,8 +64,23 @@ directly — but nothing routes new users there. Staff-PIN sign-in still opens
 
 ## Data model
 
-**Tenancy:** Postgres FORCE RLS. Every query runs in `withOrg(orgId, fn)`
-(sets `app.org_id`) or `withSystem(fn)`. `bootPool` (postgres role) runs
+**Tenancy:** ONE Postgres database, not one per store; isolation is Postgres
+FORCE RLS, verified in `tenant isolation (TENANT-ISOLATION)` (test/audit.test.js)
+— store A writes a marker into every kind, store B reads every surface it can
+reach and finds none of it. The posture that makes it true: `kashikeyo_app` is
+neither superuser nor BYPASSRLS, and every table carrying `org_id` has FORCE RLS.
+The only cross-org reads are `/api/dev/orgs` (platform admin) and the
+`V2_SELFTEST` boot log. Every query runs in `withOrg(orgId, fn)`
+(sets `app.org_id`) or `withSystem(fn)` — a `withSystem` read of a tenant table
+is the one way this breaks, so it needs a reason.
+
+A new store shares NOTHING with another store, but it is seeded with the shared
+starter menu (`DEFAULT_MENU`, ~300 dishes + 36 sections) — the same dishes every
+store gets, which reads like carried-over data and is not. `/api/register`
+seeds it because the wizard asks the question later; `/api/onboard/finish` with
+`menu: empty|ai` therefore DELETES the starter ids again (tombstoned, so offline
+tills drop them too) and clears the sample sections. Anything the owner created
+in between is theirs and is left alone. `bootPool` (postgres role) runs
 migrations; request handling uses the restricted `kashikeyo_app` role. Schema
 in `schema.sql` is applied on every boot; add columns via idempotent
 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` in the "Incremental migrations"
@@ -216,10 +231,18 @@ stay the platform app; an unknown label falls back to the app. QR codes
 `*.kashikeyopos.com` is a provisioned wildcard custom domain on the service, so
 `<handle>.kashikeyopos.com` really does serve storefronts today.
 
-Consequence to keep in mind: a handle rename silently orphans every QR code
-already printed for the old subdomain. The production log has at least one
-`guest portal {"slug":"m",…,"resolved":false}` — an unknown label falls back to
-the app rather than telling the guest the store moved.
+**A handle a store has answered to keeps answering.** `org_slug_aliases(slug,
+org_id)` holds every handle a store leaves behind; `orgBySlugOrAlias()` tries the
+live `orgs.slug` first, then the aliases, and `serveGuestPortal` 301s an alias
+hit to the current address carrying `?t=`/`?c=` with it — so a printed QR code
+survives a rename instead of dying. A handle is owned from first use: `uniqueSlug`,
+`uniqueSlugFor` and `handleTaken()` all treat an alias as taken, or the next store
+to register could collect another business's scanned traffic. A handle retired
+*before* this existed leaves no record of who owned it, so an admin claims it back
+by hand — `POST /api/app2/handle/alias` (Settings → Store handle, second field).
+That is the only repair for a code already stuck to a table. An address no store
+has ever answered to is still a 404 (`STOREFRONT_NOT_FOUND_HTML`), never a
+fallback into the app.
 
 ## Deploy (staging → production flow)
 
@@ -245,6 +268,24 @@ git checkout staging
 ```
 Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>` +
 `Claude-Session: …`. Don't put the model id in commits/PRs.
+
+## Deploys must not touch stored data
+
+Every deploy re-applies `schema.sql` and re-runs the boot backfills against the
+live database. `test/upgrade-safety.test.js` is the guard: it fingerprints a
+real store (content hash + rowver per row, read through `/api/pull`), restarts
+the server, and asserts **nothing** changed — a rewrite producing identical bytes
+still bumps `rowver` and makes every till re-sync a phantom change, so rowver is
+part of the assertion. It restarts a second time to prove one-time migrations
+are one-time.
+
+Rules for anything that writes at boot: claim it in `app_migrations` (INSERT …
+ON CONFLICT DO NOTHING RETURNING id) so it runs once, wrap it in its own
+transaction, and never widen it to "every org" unless it genuinely is. The
+`starter_menu_declined_cleanup_v1` example shows the guard style for a migration
+that DELETES: only orgs that declined the menu (`skip_default_menu`), only rows
+still matching the seed exactly, never a dish that has been sold, tombstoned not
+hard-deleted.
 
 ## Local test harness (sandbox)
 
