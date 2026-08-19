@@ -2006,7 +2006,19 @@ r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
           if (seen.rows.length) { out.push({ opId: op.opId, replay: true, result: seen.rows[0].result }); continue; }
           let result;
           try { result = await apply(c, op, req.ctx); }
-          catch (e) { out.push({ opId: op.opId, error: e.message }); continue; }
+          catch (e) {
+            /* A REFUSED OP LEAVES A TRACE. This used to be swallowed into the
+               response body and nowhere else: the HTTP layer answers 200
+               because the REQUEST was fine, so a till whose sales were all
+               being refused produced a log full of 200s and not one line
+               saying why. The one place it could be seen was the screen of the
+               person it was happening to. */
+            console.error('[op refused] ' + op.kind + ' outlet=' + req.ctx.outletId
+              + ' actor=' + (req.ctx.actor || '?') + ' rank=' + (req.ctx.rank || 0)
+              + ': ' + e.message);
+            out.push({ opId: op.opId, error: e.message });
+            continue;
+          }
           await c.query('INSERT INTO op_log (op_id, kind, payload, client_at, device_id, by_staff, result)'
             + ' VALUES ($1,$2,$3,$4,$5,$6,$7)',
             [op.opId, op.kind, JSON.stringify(op.payload || {}),

@@ -71,6 +71,10 @@ export function App({ outletId }: { outletId: number }) {
   const [view, setView] = useState('pos');
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [pending, setPending] = useState(0);
+  /* WHAT THE SERVER REFUSED. Held in the shell rather than on the screen that
+     queued it, because the refusal arrives seconds later and the cashier has
+     usually moved on by then. */
+  const [refused, setRefused] = useState<outbox.Op[]>([]);
   const [online, setOnline] = useState(navigator.onLine);
   const [now, setNow] = useState(() => new Date());
   const [railOpen, setRailOpen] = useState(true);
@@ -176,6 +180,7 @@ export function App({ outletId }: { outletId: number }) {
       }
     });
     setPending(await outbox.pendingCount());
+    setRefused(await outbox.conflicts());
     await refresh();
   }, [session, refresh]);
 
@@ -610,6 +615,59 @@ export function App({ outletId }: { outletId: number }) {
             they want every pixel and no gutter, which is the prototype's rule
             for the sell screens. Giving them a scrolling, padded parent would
             put a second scrollbar around a screen that already had one. */}
+        {/* A REFUSED OPERATION, WHERE THE OPERATOR IS LOOKING.
+            The till is offline-first: it queues a sale and says so immediately,
+            because it cannot wait for a server it may not be able to reach.
+            The price of that is that a refusal arrives seconds later, after the
+            ticket panel has cleared and the flash has faded — and until this,
+            it arrived nowhere at all. The bill simply came back on the floor.
+            It sits above the screen, not inside it, because by the time the
+            answer comes the cashier is usually somewhere else. */}
+        {refused.length > 0 && (
+          <div role="alert" style={{
+            flexShrink: 0, background: 'var(--red-dim)',
+            borderBottom: '1px solid var(--red-line, var(--line))',
+            padding: isPhone ? '10px 12px' : '10px 16px',
+            display: 'grid', gap: 8,
+          }}>
+            {refused.slice(0, 3).map((o) => (
+              <div key={o.opId} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                <span style={{ minWidth: 0, flex: '1 1 240px' }}>
+                  <span style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--red-bright)' }}>
+                    {o.kind === 'sale' ? 'That sale was NOT taken' : 'The server refused this'}
+                    {o.kind !== 'sale' && (
+                      <span style={{ fontFamily: "'JetBrains Mono',monospace", fontWeight: 400 }}> ({o.kind})</span>
+                    )}
+                  </span>
+                  <span style={{ display: 'block', marginTop: 2, fontSize: 11.5, lineHeight: 1.5, color: 'var(--text-dim)' }}>
+                    {o.error || 'no reason given'}
+                    {/* Deliberately not "the bill is still open": one of the
+                        commonest refusals is that another terminal already
+                        settled it, and telling the cashier to go and take the
+                        money again would be the worst possible advice. */}
+                    {o.kind === 'sale'
+                      && ' — this till recorded nothing. Check Orders & Tickets before taking it again.'}
+                  </span>
+                </span>
+                <button
+                  onClick={() => { void outbox.clearConflict(o.opId).then(async () => setRefused(await outbox.conflicts())); }}
+                  style={{
+                    flexShrink: 0, minHeight: 32, padding: '0 12px', borderRadius: 7,
+                    background: 'var(--bg-2)', border: '1px solid var(--line)',
+                    color: 'var(--text-dim)', fontSize: 11.5, fontWeight: 700,
+                  }}>
+                  Got it
+                </button>
+              </div>
+            ))}
+            {refused.length > 3 && (
+              <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                and {refused.length - 3} more — see Sync &amp; Devices.
+              </span>
+            )}
+          </div>
+        )}
+
         <main style={{
           flex: 1, minHeight: 0,
           overflowY: fullBleed ? 'hidden' : 'auto',

@@ -101,6 +101,16 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
   /* A voucher settles against the liability it was issued from, so the server
      needs to know WHICH one. */
   const [voucherRef, setVoucherRef] = useState('');
+  /* WHAT THE VOUCHER IS WORTH. Looked up, because the cashier cannot know: a
+     voucher that does not cover the bill has to be taken as PART of the tender
+     and the rest collected some other way, and until the till showed the value
+     there was no way to work out what that part was. The server refused the
+     whole sale with "that voucher is worth 35.00 — it cannot cover 38.50",
+     which is the right answer to the wrong question. */
+  const [voucher, setVoucher] = useState<{
+    value: number; name: string; state: string; usable: boolean; member: string | null;
+  } | null>(null);
+  const [voucherErr, setVoucherErr] = useState('');
   const [buf, setBuf] = useState('');
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState('');
@@ -159,6 +169,34 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
     return () => { dead = true; };
   }, [online, session, scheme]);
 
+  /* Look the voucher up as it is typed. Debounced, because a cashier reading a
+     code off a phone types it one character at a time and every prefix would
+     otherwise be a 404. */
+  useEffect(() => {
+    const code = voucherRef.trim();
+    if (method !== 'voucher' || code.length < 3 || !online) {
+      setVoucher(null); setVoucherErr('');
+      return;
+    }
+    let dead = false;
+    const t = setTimeout(() => {
+      (async () => {
+        try {
+          const r = await api.authed(session)<{
+            value: number; name: string; state: string; usable: boolean; member: string | null;
+          }>('GET', '/vouchers/' + encodeURIComponent(code));
+          if (dead) return;
+          setVoucher(r); setVoucherErr('');
+        } catch (e) {
+          if (dead) return;
+          setVoucher(null);
+          setVoucherErr(e instanceof api.ApiError ? e.message : 'could not check that code');
+        }
+      })();
+    }, 350);
+    return () => { dead = true; clearTimeout(t); };
+  }, [voucherRef, method, online, session]);
+
   /* The keypad buffer is read as laari — typing 1 2 5 0 means MVR 12.50. A till
      keypad has no decimal point for the same reason a card terminal does not:
      the operator is typing what the guest handed over, fast, and a misplaced
@@ -195,13 +233,28 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
   const notEnough = method === 'points'
     && (!scheme?.running || !who || who.points < pointsNeeded);
   const needsRef = method === 'voucher' && voucherRef.trim().length < 3;
+  /* WHAT THIS VOUCHER CAN ACTUALLY SETTLE. Capped at the balance: a voucher
+     worth more than the bill is not change, it is a voucher with something
+     left on it, and the server would refuse a payment larger than what is
+     owed. Capped at zero when the code is bad or spent, so the button below
+     says why instead of the server saying it after the fact. */
+  const voucherWorth = method === 'voucher' && voucher?.usable ? Math.round(voucher.value * 100) : 0;
   /* Reasons this TENDER cannot be used at all, as opposed to a cash amount that
      merely does not cover the bill. The distinction matters: the second is what
      splitting a bill looks like on the way in. */
   const methodBlocked = (method === 'account' && (!who || noRoom))
     || (method === 'points' && notEnough)
-    || needsRef;
-  const short = shortCash || methodBlocked;
+    || needsRef
+    || (method === 'voucher' && (!!voucherErr || (!!voucher && !voucher.usable)));
+
+  /* A voucher that does not cover the balance cannot SETTLE it — Confirm sends
+     the whole remaining balance for every other tender, and pressing it here
+     would queue a sale the server refuses for being short. But it CAN be taken
+     as a part, and that button is the way through, so this blocks the one and
+     not the other. Folding it into `methodBlocked` disabled the escape route
+     along with the trap. */
+  const voucherShort = method === 'voucher' && voucherWorth > 0 && voucherWorth < due;
+  const short = shortCash || methodBlocked || voucherShort;
 
   /* TAKING PART OF THE BILL. The amount is what the operator keyed, capped at
      what is still owed — a part larger than the balance would make the payments
@@ -210,7 +263,11 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
      Deliberately NOT gated on `short`: a cash amount under the bill IS the
      split case, and gating on it hid the button in exactly the situation it
      exists for. */
-  const partAmount = Math.min(due, tendered);
+  /* A voucher's amount is not keyed — it is what the voucher is worth, up to
+     the balance. Everything else takes the keypad. */
+  const partAmount = method === 'voucher'
+    ? Math.min(due, voucherWorth)
+    : Math.min(due, tendered);
   const canPart = partAmount > 0 && partAmount < due && !methodBlocked;
   const takePart = () => {
     if (!canPart) return;
@@ -223,6 +280,26 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
        leaving the last method selected invites the same one being taken twice. */
     setMethod('cash');
   };
+
+  /* WHY THE BUTTON IS GREY, ON THE BUTTON. Every one of these already had a
+     sentence somewhere in the right-hand column explaining the tender, but the
+     control the cashier is pressing said nothing — so a bill that would not
+     settle looked like a bill the till had broken on, with a guest waiting.
+     The blocker belongs on the thing that is refusing to move. */
+  const blocker = needsRef ? 'Type the voucher code'
+    : voucherErr ? 'No voucher with that code'
+      : (method === 'voucher' && voucher && !voucher.usable)
+        ? (voucher.state === 'used' ? 'That voucher has been used' : 'That voucher has expired')
+        : (method === 'voucher' && !voucher) ? 'Checking the voucher…'
+          : voucherShort
+            ? 'Take the ' + money(voucherWorth) + ' below, then collect ' + money(due - voucherWorth)
+    : (method === 'account' && !who) ? 'Choose whose account'
+      : (method === 'account' && noRoom) ? 'Not enough left on the limit'
+        : (method === 'points' && !scheme?.running) ? 'The loyalty scheme is not running'
+          : (method === 'points' && !who) ? 'Choose whose points'
+            : (method === 'points' && notEnough) ? 'Not enough points'
+              : shortCash ? money(due - effective) + ' short'
+                : null;
 
   const key = (d: string) => {
     if (busy) return;
@@ -243,7 +320,10 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
          cash-paying member earns. The code goes with it too; the server
          evaluates it again at settlement and is the authority. */
       const last: Part = {
-        method, amount: due,
+        /* A voucher settles what it is worth. Everything else settles the
+           balance — a card or a cash drawer can take any figure, a voucher
+           cannot. */
+        method, amount: method === 'voucher' ? Math.min(due, voucherWorth) : due,
         ...(method === 'voucher' ? { ref: voucherRef.trim() } : {}),
       };
       const all = parts.concat([last]);
@@ -578,6 +658,30 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
                     background: 'var(--bg-2)', border: '1px solid ' + (needsRef ? 'var(--line-2)' : 'var(--go-line, var(--line))'),
                     color: 'var(--text)', fontSize: 14, fontFamily: MONO, letterSpacing: '.04em',
                   }} />
+                {voucherErr && (
+                  <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7, background: 'var(--red-dim)', color: 'var(--red-bright)', fontSize: 11.5, lineHeight: 1.5 }}>
+                    {voucherErr}
+                  </div>
+                )}
+                {voucher && (
+                  <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 7,
+                    background: voucher.usable ? 'var(--bg-2)' : 'var(--red-dim)',
+                    color: voucher.usable ? 'var(--text-dim)' : 'var(--red-bright)',
+                    fontSize: 11.5, lineHeight: 1.5 }}>
+                    <b>{voucher.name}</b>
+                    {voucher.member && <span style={{ color: 'var(--text-faint)' }}> · {voucher.member}</span>}
+                    <span style={{ display: 'block', marginTop: 3 }}>
+                      {voucher.state === 'used' ? 'Already redeemed — it cannot be used again.'
+                        : voucher.state === 'expired' ? 'Expired.'
+                          : <>
+                            Worth <b style={{ fontFamily: MONO }}>{money(Math.round(voucher.value * 100))}</b>
+                            {voucherWorth >= due
+                              ? ' — it covers this bill.'
+                              : ' — ' + money(due - voucherWorth) + ' left to collect another way.'}
+                            </>}
+                    </span>
+                  </div>
+                )}
                 <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
                   No money is taken. The voucher settles against the same liability points do —
                   the obligation was booked when it was issued.
@@ -729,6 +833,9 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
             <button
               onClick={confirm}
               disabled={busy || short}
+              /* A stable name: the label now says what is BLOCKING the payment
+                 when something is, so the word "Confirm" is not always on it. */
+              aria-label="Take the payment"
               style={{
                 marginTop: canPart ? 8 : 18, width: '100%', minHeight: 46, borderRadius: 9,
                 background: busy || short ? 'var(--bg-2)' : 'var(--go)',
@@ -737,8 +844,9 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
               }}
             >
               {busy ? 'Recording…'
-                : parts.length ? 'Confirm ' + money(due) + ' — settles ' + money(total)
-                  : 'Confirm ' + money(total)}
+                : blocker ? blocker
+                  : parts.length ? 'Confirm ' + money(due) + ' — settles ' + money(total)
+                    : 'Confirm ' + money(total)}
             </button>
             <div style={{ marginTop: 9, fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
               Recorded on this terminal immediately, and sent to the server when there

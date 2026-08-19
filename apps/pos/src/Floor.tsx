@@ -76,7 +76,20 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const [promoCode, setPromoCode] = useState<string | undefined>();
   const [cat, setCat] = useState('all');
   const [q, setQ] = useState('');
-  const [paying, setPaying] = useState(false);
+  /* THE BILL AS IT STOOD WHEN PAY WAS PRESSED.
+     Not a boolean, and this is the point. The payment modal used to read the
+     live ticket at CONFIRM time, seconds or minutes after it opened, while the
+     snapshot kept refreshing underneath it. If anything emptied the ticket in
+     that window — another terminal settling the same table is the ordinary
+     case — the till sent a sale with no lines and the server refused it with
+     "a sale needs at least one line", which no cashier could act on and which
+     nothing on the screen explained.
+     It is also the correct semantics regardless of races: the bill somebody is
+     being asked to pay is the bill they were shown, not whatever the ticket
+     happens to say by the time they hand over a card. */
+  const [paying, setPaying] = useState<{
+    lines: Line[]; total: number; goods: number; ticketId: string | undefined;
+  } | null>(null);
   const [flash, setFlash] = useState('');
   /* §3.3's two foot actions are Send and Pay, and they are different things: a
      round goes to the kitchen the moment it is ordered, the bill is settled
@@ -344,6 +357,19 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
 
   const settled = async (payments: { method: string; amount: number; ref?: string }[],
     memberId?: string, code?: string, voucherCode?: string) => {
+    /* THE BILL CAPTURED WHEN PAY WAS PRESSED, never the live one. See the
+       `paying` state above for why. */
+    const bill = paying;
+    if (!bill) return;
+    if (!bill.lines.length) {
+      /* Belt as well as braces. The server refuses a sale with no lines, and
+         rightly, but it should never be asked to: an empty bill is something
+         the till can see and say before a guest is left standing. */
+      setFlash('Nothing on this bill to settle.');
+      setTimeout(() => setFlash(''), 3200);
+      setPaying(null);
+      return;
+    }
     /* One `sale` operation, queued locally. It carries what only the till knows
        — which items, how many, which table, which tender — and nothing about
        what they cost: the server prices it from the item master and the tax
@@ -355,8 +381,8 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
       /* WHICH TICKET THIS SETTLES. Without it the server had nothing to close,
          so a paid table stayed shaded busy and its tab stayed on the Orders
          board beside the receipt for the very same meal. */
-      ticketId: ticket?.id,
-      lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+      ticketId: bill.ticketId,
+      lines: bill.lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
       payments: payments.map((p) => ({
         method: p.method,
         amount: (p.amount / 100).toFixed(2),
@@ -380,7 +406,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
          report drift on every rounded sale and hide it on every real one. */
       clientTotal: (payments.reduce((a, x) => a + x.amount, 0) / 100).toFixed(2),
     });
-    setPaying(false);
+    setPaying(null);
     setDraft([]);
     setFiring([]);
     /* Back to the table's own bill: the guest whose split this was has paid and
@@ -860,7 +886,11 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
               }}
             >{draft.length ? 'Send ' + draft.reduce((a, l) => a + l.qty, 0) : 'Sent'}</button>
             <button
-              onClick={() => setPaying(true)}
+              onClick={() => setPaying({
+                lines, total,
+                goods: lines.reduce((a, l) => a + l.unitPrice * l.qty, 0),
+                ticketId: ticket?.id,
+              })}
               disabled={!lines.length}
               style={{
                 flex: 1, minHeight: 44, borderRadius: 9,
@@ -958,8 +988,8 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           /* Cash rounds, card does not — so the total depends on the tender,
              and the tender is chosen in there. */
           cashRoundLaari={Number(outlet?.cash_round_laari ?? 0)}
-          total={total}
-          goods={lines.reduce((a, l) => a + l.unitPrice * l.qty, 0)}
+          total={paying.total}
+          goods={paying.goods}
           session={session}
           online={online}
           promoCode={promoCode}
@@ -970,7 +1000,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           offeredPoints={ticket?.points_offered ? Number(ticket.points_offered) : null}
           offeredBy={ticket?.member_id ?? null}
           onPromo={(code, discount) => { setPromoCode(code); setPromoDiscount(discount); }}
-          onCancel={() => setPaying(false)}
+          onCancel={() => setPaying(null)}
           onConfirm={settled}
         />
       )}

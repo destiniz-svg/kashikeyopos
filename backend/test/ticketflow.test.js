@@ -582,3 +582,80 @@ describe('a bill is settled once', () => {
       'the same receipt back, not a refusal and not a second one');
   });
 });
+
+describe('a voucher that does not cover the bill', () => {
+  let ctx, code;
+  before(async () => {
+    ctx = await H.bootOutlet();
+    /* A reward worth 10.00, redeemed into a voucher. The bill below is 27.50,
+       so the voucher can only ever be PART of the tender — which is the
+       ordinary case for a voucher and the one the till could not ring up. */
+    const r = await H.asOwner(ctx,
+      "INSERT INTO chain.reward (name, points, value, active)"
+      + " VALUES ('Small treat', 20, 10.00, true) RETURNING id");
+    const m = await H.asOwner(ctx,
+      "INSERT INTO chain.member (phone, name, points, home_outlet)"
+      + " VALUES ('7770001','Voucher Guest', 500, $1) RETURNING id", [ctx.outletId]);
+    const v = await H.asOwner(ctx,
+      'SELECT code FROM chain.redeem_reward($1,$2,$3,$4)',
+      [m.rows[0].id, r.rows[0].id, 'VCH-PART-1', 30]);
+    code = v.rows[0].code;
+  });
+  after(() => H.teardown(ctx));
+
+  test('on its own it is refused — it cannot settle what it is not worth', async () => {
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [{ method: 'voucher', amount: '10.00' }], voucherCode: code,
+        clientTotal: '10.00',
+      },
+    }]);
+    assert.match(String(r.json.results[0].error), /do not equal the bill/);
+  });
+
+  test('with the rest collected another way it settles', async () => {
+    /* 25.00 cola +10% service = 27.50. The voucher takes 10.00 of it. */
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [
+          { method: 'voucher', amount: '10.00' },
+          { method: 'card', amount: '17.50' },
+        ],
+        voucherCode: code, clientTotal: '27.50',
+      },
+    }]);
+    assert.ok(r.json.results[0].result?.receiptNo, JSON.stringify(r.json.results[0]));
+
+    const pay = await H.q(ctx,
+      'SELECT method, amount FROM payment WHERE sale_id = $1 ORDER BY method',
+      [r.json.results[0].result.saleId]);
+    assert.deepEqual(pay.rows.map((x) => [x.method, Number(x.amount)]),
+      [['card', 17.5], ['voucher', 10]]);
+
+    const v = await H.asOwner(ctx,
+      'SELECT redeemed_at FROM chain.voucher WHERE code = $1', [code]);
+    assert.ok(v.rows[0].redeemed_at, 'and the voucher is spent, once');
+  });
+
+  test('the same voucher cannot be spent twice', async () => {
+    const r = await H.push(ctx, [{
+      opId: H.uuid(), kind: 'sale', at: Date.now(),
+      payload: {
+        businessDate: ctx.today, channel: 'takeaway', covers: 1,
+        lines: [{ itemId: 'COLA', qty: 1 }],
+        payments: [
+          { method: 'voucher', amount: '10.00' },
+          { method: 'card', amount: '17.50' },
+        ],
+        voucherCode: code, clientTotal: '27.50',
+      },
+    }]);
+    assert.ok(r.json.results[0].error, 'a spent voucher is refused');
+  });
+});

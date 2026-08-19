@@ -137,6 +137,34 @@ export async function pendingCount(): Promise<number> {
   return rows.filter((o) => o.state === 'queued' || o.state === 'sent').length;
 }
 
+/**
+ * Operations the SERVER REFUSED.
+ *
+ * These are not pending — retrying will be refused again — so they are not in
+ * the count above, and for a long time that meant they were counted nowhere and
+ * shown nowhere. A sale queued optimistically, refused a second later, and
+ * vanished: the ticket panel had already cleared, the flash already said
+ * "Sale queued", the pending badge stayed at zero, and the bill simply
+ * reappeared on the floor at the next snapshot with nothing anywhere saying
+ * why. That is the worst failure mode this application had — money that the
+ * till says it took and the books have never heard of.
+ */
+export async function conflicts(): Promise<Op[]> {
+  const rows = await allOps();
+  return rows.filter((o) => o.state === 'conflict').sort((a, b) => b.at - a.at);
+}
+
+/** Acknowledge a refusal: the operator has read it and dealt with it. */
+export async function clearConflict(opId: string): Promise<void> {
+  const rows = await allOps();
+  const op = rows.find((o) => o.opId === opId);
+  if (!op) return;
+  /* Marked done rather than deleted, so `trim` ages it out with the rest and
+     the record of what was refused survives until then. */
+  op.state = 'done';
+  await update(op);
+}
+
 /* ── the local cache the UI reads ────────────────────────────────────────── */
 
 export async function putCache<T>(key: string, value: T): Promise<void> {
