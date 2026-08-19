@@ -371,6 +371,43 @@ BEGIN
     CREATE INDEX IF NOT EXISTS delivery_unpriced ON %1$I.delivery (at)
       WHERE priced = false;
 
+    -- ── lots and expiry (migration 034) ──────────────────────────────────
+    -- Two questions: what is about to go off, and which sales contained a
+    -- given lot. The second cannot be reconstructed after the fact, which is
+    -- why every draw is recorded rather than inferred from quantities.
+    CREATE TABLE IF NOT EXISTS %1$I.batch (
+      id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      ingredient_id text NOT NULL REFERENCES %1$I.ingredient(id),
+      lot      text,
+      qty_in   numeric(14,4) NOT NULL CHECK (qty_in > 0),
+      qty_left numeric(14,4) NOT NULL CHECK (qty_left >= 0),
+      unit_cost numeric(12,4) NOT NULL DEFAULT 0,
+      received_on date NOT NULL DEFAULT current_date,
+      expires_on date,
+      delivery_id uuid REFERENCES %1$I.delivery(id),
+      prep_run_id uuid,
+      closed_at timestamptz,
+      closed_reason text,
+      note     text,
+      by_staff uuid,
+      CONSTRAINT left_within_in CHECK (qty_left <= qty_in)
+    );
+    CREATE INDEX IF NOT EXISTS batch_fefo ON %1$I.batch
+      (ingredient_id, expires_on NULLS LAST, received_on) WHERE closed_at IS NULL;
+    CREATE INDEX IF NOT EXISTS batch_expiry ON %1$I.batch (expires_on)
+      WHERE closed_at IS NULL AND expires_on IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS %1$I.batch_draw (
+      id       bigserial PRIMARY KEY,
+      batch_id uuid NOT NULL REFERENCES %1$I.batch(id),
+      stock_move_id bigint NOT NULL REFERENCES %1$I.stock_move(id),
+      qty      numeric(14,4) NOT NULL CHECK (qty > 0),
+      at       timestamptz NOT NULL DEFAULT now()
+    );
+    CREATE INDEX IF NOT EXISTS batch_draw_batch ON %1$I.batch_draw(batch_id);
+    CREATE INDEX IF NOT EXISTS batch_draw_move ON %1$I.batch_draw(stock_move_id);
+
+
     CREATE TABLE IF NOT EXISTS %1$I.vendor_invoice (
       id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       supplier_id uuid NOT NULL,

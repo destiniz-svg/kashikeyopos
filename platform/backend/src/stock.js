@@ -61,16 +61,30 @@ async function postStockJournal(c, { date, memo, dr, cr, valueLaari, sourceId },
 /** Write a move and reconcile the cache to the ledger. The ONLY way stock
  *  changes in this module. */
 async function move(c, { ingredientId, qty, unitCostLaari, reason, saleId, prepRunId }, ctx) {
-  await c.query(
+  const inserted = await c.query(
     'INSERT INTO stock_move (ingredient_id, qty, unit_cost, value, reason, sale_id,'
     + ' prep_run_id, by_staff, device_id)'
-    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
     [ingredientId, qty, (unitCostLaari / 100).toFixed(4),
       toMVR(Math.round(qty * unitCostLaari)), reason, saleId || null,
       /* Which prep batch caused it, so a run reads back as one act. Passed in
          rather than stamped afterwards by "the last move for this ingredient",
          which is true right up until it is not. */
       prepRunId || null, ctx.actor, ctx.deviceId]);
+
+  /* FEFO, done here because here is the only place stock moves.
+   *
+   * Nobody scans a lot at the pass and no design that requires it survives a
+   * Friday, so a batch's remaining quantity is kept honest by the server: a
+   * movement OUT draws from the open batches of that ingredient, soonest
+   * expiry first. It is a MODEL of what the kitchen does rather than a record
+   * of it — a cook who reaches past the older tub is not lying to the system,
+   * they are doing what the expiry alert exists to prevent.
+   *
+   * An ingredient nobody has batched draws nothing and costs one indexed query
+   * that finds no rows. Most of the store is like that: nobody tracks the lot
+   * of a bag of salt. */
+  if (qty < 0) await drawFefo(c, ingredientId, -qty, inserted.rows[0].id);
 
   /* on_hand = Σ moves, recomputed from the ledger rather than incremented.
      An increment drifts the moment anything else touches the row; a sum cannot
@@ -79,6 +93,49 @@ async function move(c, { ingredientId, qty, unitCostLaari, reason, saleId, prepR
     'UPDATE ingredient SET on_hand = ('
     + ' SELECT coalesce(sum(qty),0) FROM stock_move WHERE ingredient_id = $1) WHERE id = $1',
     [ingredientId]);
+}
+
+/**
+ * Take `want` out of the open batches of an ingredient, soonest expiry first,
+ * recording every draw.
+ *
+ * WHAT IS LEFT OVER IS LEFT ALONE. If the open batches do not cover the
+ * movement, what they do cover is drawn and the rest is untracked — which is
+ * the truth rather than a failure: the store held stock nobody recorded a batch
+ * for. Inventing a batch to balance it would put a lot number on food that
+ * never had one, on the screen an inspector reads.
+ */
+async function drawFefo(c, ingredientId, want, moveId) {
+  const open = await c.query(
+    'SELECT id, qty_left FROM batch'
+    + ' WHERE ingredient_id = $1 AND closed_at IS NULL AND qty_left > 0'
+    + ' ORDER BY expires_on NULLS LAST, received_on, id FOR UPDATE', [ingredientId]);
+  if (!open.rows.length) return [];
+
+  const drawn = [];
+  let left = Number(want);
+  for (const b of open.rows) {
+    if (left <= 0.00005) break;
+    const take = Math.min(Number(b.qty_left), left);
+    if (take <= 0) continue;
+    await c.query('INSERT INTO batch_draw (batch_id, stock_move_id, qty) VALUES ($1,$2,$3)',
+      [b.id, moveId, take]);
+    const rest = Math.round((Number(b.qty_left) - take) * 10000) / 10000;
+    await c.query(
+      /* Cast once, explicitly. Postgres deduces a parameter's type from every
+         place it appears, and `$2` used as a numeric column value AND compared
+         against the integer 0 in two CASE arms is "inconsistent types deduced
+         for parameter $2" — which surfaces as a 500 on the sale path, not here. */
+      'UPDATE batch SET qty_left = $2::numeric,'
+      /* Closed when it is empty, with the reason, so the trail says why a batch
+         stopped being drawn from rather than leaving somebody to infer it. */
+      + " closed_at = CASE WHEN $2::numeric <= 0 THEN now() ELSE NULL END,"
+      + " closed_reason = CASE WHEN $2::numeric <= 0 THEN 'used' ELSE NULL END"
+      + ' WHERE id = $1', [b.id, rest]);
+    drawn.push({ batchId: b.id, qty: take });
+    left = Math.round((left - take) * 10000) / 10000;
+  }
+  return drawn;
 }
 
 /**
@@ -619,7 +676,7 @@ async function movements(c, p) {
 }
 
 module.exports = {
-  move, postStockJournal,
+  move, drawFefo, postStockJournal,
   receive, receiveLine, waste, count, approveCount, rejectCount,
   inventory, ledger, counts, countSheet, countSheetFor, categories,
   movements, REASONS, APPROVE_RANK,

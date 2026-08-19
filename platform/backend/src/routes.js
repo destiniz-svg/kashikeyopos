@@ -27,6 +27,7 @@ const estate = require('./estate');
 const devices = require('./devices');
 const governance = require('./governance');
 const production = require('./production');
+const batches = require('./batches');
 const assets = require('./assets');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -2000,6 +2001,54 @@ r.get('/outlet/:outletId/sync/pull', sameOutlet, staffOnly, atLeast('till'),
             + ' WHERE ack_at IS NULL ORDER BY at')
         ]);
         return { now: Date.now(), ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── Batches & expiry (02-POS-SPEC §2 `batches`) ──────────────────────────
+ *
+ * Reading is TILL: what is about to go off is a question the person doing the
+ * mise en place asks, and hiding it behind a manager is how it gets asked at
+ * the bin instead. Recording a batch is TILL too — whoever opens the sack is
+ * who knows the date on it. Writing one OFF is MANAGER, because it is wastage
+ * and lands in the P&L.
+ */
+r.get('/outlet/:outletId/batches', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return batches.list(c, req.query || {});
+      });
+      res.set('cache-control', 'no-store')
+        .json({ ...out, canWriteOff: req.ctx.rank >= 3 });
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/batches', sameOutlet, staffOnly, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      res.status(201).json(await withOutlet(req.ctx, function (c) {
+        return batches.add(c, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/batches/:id/write-off', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      res.json(await withOutlet(req.ctx, function (c) {
+        return batches.writeOff(c, req.params.id, req.body || {}, req.ctx);
+      }));
+    } catch (e) { next(e); }
+  });
+
+/* Where a lot went. MANAGER — it names receipts, and a receipt is a guest. */
+r.get('/outlet/:outletId/batches/:id/trace', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return batches.trace(c, req.params.id);
       });
       res.set('cache-control', 'no-store').json(out);
     } catch (e) { next(e); }

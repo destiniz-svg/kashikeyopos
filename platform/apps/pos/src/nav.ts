@@ -54,7 +54,11 @@ export const NAV: NavGroup[] = [
     { id: 'inventory', label: 'Inventory', minRank: 3, icon: 'M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10' },
     { id: 'counts', label: 'Stock Counts', minRank: 3, icon: 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9' },
     { id: 'ledger', label: 'Stock Ledger', minRank: 3, icon: 'M3 3v18h18M7 16l3-4 3 2 4-6' },
-    { id: 'batches', label: 'Batches & Expiry', minRank: 3, icon: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2' },
+    /* TILL. What is about to go off is a question the person doing the mise
+       en place asks at six in the morning, and hiding it behind a manager is
+       how it gets asked at the bin instead. Writing one OFF is still manager
+       rank — that is wastage, and it lands in the P&L. */
+    { id: 'batches', label: 'Batches & Expiry', minRank: 2, icon: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2' },
   ] },
   { title: 'Purchasing', items: [
     { id: 'requests', label: 'Indent Requests', minRank: 2, icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01' },
