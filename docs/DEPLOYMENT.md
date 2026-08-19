@@ -127,7 +127,26 @@ is one function, auditable, and cannot return a receipt.
    > the Dockerfile took the job and was never corrected, so anyone following it
    > would have gone looking for a broken deploy that was in fact fine.
 
-5. **Provision each outlet.** One command per site:
+5. **Provision each outlet.** Every command in this step and the next assumes a
+   shell against the running environment. A deploy driven from a browser has no
+   shell, and without one the system comes up correct, healthy and impossible to
+   sign into — which is exactly what happened on this build's first deploy. For
+   that case set two variables instead and redeploy; `scripts/bootstrap.js` runs
+   from the image's start command, after migrations:
+
+   ```
+   BOOTSTRAP_OUTLET="1:SEP-01:Sephora Café"
+   BOOTSTRAP_OWNER="Owner:4821"
+   ```
+
+   It is safe on every boot: provisioning is idempotent, and the owner is seeded
+   ONLY into an outlet with no staff at all, so a redeploy cannot duplicate a PIN
+   or add a second sign-in beside a real one. That same condition is the way back
+   in if every account with access is ever lost — empty the outlet's staff and
+   redeploy. It bootstraps ONE outlet; a second site uses the commands below, and
+   the leak test needs two.
+
+   With a shell, one command per site:
    ```
    railway run npm run provision:outlet -- 3 MAL-01 "Kashikeyo Malé"
    railway run npm run provision:outlet -- 4 HUL-01 "Kashikeyo Hulhumalé"

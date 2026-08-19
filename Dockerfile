@@ -34,4 +34,12 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
 
 # Migrations run on boot and are idempotent; the healthcheck on /readyz means a
 # deploy that cannot reach its database never goes live.
-CMD ["sh", "-c", "npm run migrate && node server.js"]
+#
+# `bootstrap.js` sits between them because a cloud deploy has no shell: the
+# runbook's provisioning commands assume somebody can open a terminal against
+# the running environment, and driven from a browser nobody can, so the first
+# deploy came up healthy and impossible to sign into. It reads its outlet and
+# owner from the environment, does nothing at all when they are unset, and is
+# safe on every boot. It runs AFTER migrate because it calls functions the
+# migrations create.
+CMD ["sh", "-c", "npm run migrate && node scripts/bootstrap.js && node server.js"]
