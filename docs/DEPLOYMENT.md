@@ -52,8 +52,22 @@ is one function, auditable, and cannot return a receipt.
    service. That connection is the owner: migrations and provisioning only, and
    `src/routes.js` never imports it.
 
+   Railway's Postgres template currently ships **Postgres 18**. The suite runs
+   against 16, and the staging deploy migrates and runs clean on 18, but those
+   are not the same statement — if you are ever chasing a database-level oddity
+   that will not reproduce locally, check the version before anything else.
+
 2. **New service from this repo**, root directory left at the **repository
-   root** (the default) — NOT `backend`. `railway.json` selects the root
+   root** (the default) — NOT `backend`.
+
+   **Check which branch the first build actually used.** Creating the service
+   from a branch pushed minutes earlier silently built the repository's DEFAULT
+   branch instead: the service config said the right branch, and the build was
+   of something else entirely. The giveaway is in the deploy log — the wrong
+   branch boots a different application with a different package name. Railway's
+   own deployment record names the branch and commit, so check it there rather
+   than trusting the service config, and redeploy once the integration has seen
+   the branch. `railway.json` selects the root
    `Dockerfile`, which sets `/readyz` as the healthcheck, so a deploy that
    cannot see its database never goes live.
 
@@ -85,18 +99,33 @@ is one function, auditable, and cannot return a receipt.
    dish before telling anybody the feature is on. The not-configured path is the
    one the test suite covers.
 
-4. **Migrate — before the first deploy can pass its healthcheck.** The server
-   does **not** migrate on boot: `/readyz` asks `chain.outlet` a question and
-   answers 503 until the schema is there, so a service deployed against an
-   un-migrated database starts, listens, and never goes healthy. That is
-   deliberate — a deploy that cannot see its data should not take traffic — but
-   it means this step is a step, not a side effect of booting.
+4. **Migrating is automatic, and this step is a fallback.** The image's command
+   is `npm run migrate && node server.js`, so every container migrates before it
+   serves. The *server* does not migrate — `server.js` never touches the
+   migration directory — which is what makes the distinction worth stating: run
+   `node server.js` directly, as the edge box and a local checkout do, and you
+   get an un-migrated database.
 
-   It is idempotent (the whole directory runs every time; `deployable.test.js`
-   proves running it twice is safe), so run it again on every release:
+   The first deploy of this build showed it working: all 36 migrations logged
+   `ok` and `migrations complete` before `kashikeyo-server listening on 8080`,
+   and the healthcheck passed first try.
+
+   That leaves `/readyz` as the guard rather than the mechanism. It asks
+   `chain.outlet` a question and answers 503 until the schema is there, so a
+   container whose migration failed never goes healthy and never takes traffic.
+
+   Migrating is idempotent — the whole directory runs on every boot and
+   `deployable.test.js` proves running it twice is safe — so you rarely need to
+   run it by hand. When you do (a migration that failed and needs re-running
+   without a redeploy, or a database restored from backup):
    ```
    railway run npm run migrate
    ```
+
+   > This step used to say the opposite — that the server does not migrate on
+   > boot and that migrating was a required manual step. It was written before
+   > the Dockerfile took the job and was never corrected, so anyone following it
+   > would have gone looking for a broken deploy that was in fact fine.
 
 5. **Provision each outlet.** One command per site:
    ```
