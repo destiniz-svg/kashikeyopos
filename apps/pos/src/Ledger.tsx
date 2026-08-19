@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
+import { DataGrid } from './DataGrid';
 import type { Session } from './api';
 
 /* Stock Ledger — 02-POS-SPEC.md §2 (`ledger`):
@@ -136,45 +137,43 @@ export function Ledger({ session }: { session: Session }) {
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 1, background: 'var(--line-soft)', borderRadius: 9, overflow: 'hidden', border: '1px solid var(--line-soft)' }}>
-              <div style={{ display: 'flex', gap: 12, padding: '8px 13px', background: 'var(--bg-2)', fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>
-                <span style={{ width: 96 }}>WHEN</span>
-                <span style={{ flex: 1 }}>ITEM</span>
-                <span style={{ width: 132 }}>WHY, AND FROM WHAT</span>
-                <span style={{ width: 100, textAlign: 'right' }}>QUANTITY</span>
-                <span style={{ width: 88, textAlign: 'right' }}>VALUE</span>
-              </div>
-              {data.moves.map((m) => (
-                <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 13px', background: 'var(--bg-1)' }}>
-                  <span style={{ width: 96, fontSize: 10.5, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                    {new Date(m.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                    {' '}{new Date(m.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{m.name}</span>
-                    <span style={{ display: 'block', fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>{m.ingredientId}</span>
-                  </span>
-                  <span style={{ width: 132, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-dim)' }}>
-                      {REASON_LABEL[m.reason] ?? m.reason}
-                    </span>
-                    {/* The source document. A sale names its receipt; a manual
-                        movement names the person, because for those the person
-                        IS the document. */}
-                    <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {m.source ?? (m.by ? 'by ' + m.by : 'no source recorded')}
-                    </span>
-                  </span>
-                  <span style={{ width: 100, textAlign: 'right', fontSize: 13, fontWeight: 700, fontFamily: MONO, color: m.qty < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
-                    {m.qty > 0 ? '+' : ''}{qty(m.qty)}
-                    <span style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--text-faint)' }}> {m.unit ?? ''}</span>
-                  </span>
-                  <span style={{ width: 88, textAlign: 'right', fontSize: 12, fontFamily: MONO, color: 'var(--text-dim)' }}>
-                    {mvr(m.value)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {/* One table, one implementation — see DataGrid.tsx. The row was
+                96 + 132 + 100 + 88px of fixed columns beside a flex one, so a
+                390px phone could not lay it out at all. The grid measures each
+                column from the widest string it actually renders, and on a
+                phone drops the table shape entirely for record cards. */}
+            <DataGrid
+              cols={[
+                { label: 'When', mono: true, w: '0.9fr' },
+                { label: 'Item', w: '1.4fr' },
+                { label: 'Why', w: '0.8fr' },
+                { label: 'From what', w: '1.2fr' },
+                { label: 'Quantity', a: 'right', mono: true, w: '0.9fr' },
+                { label: 'Value', a: 'right', mono: true, w: '0.8fr' },
+              ]}
+              rows={data.moves.map((m) => ({
+                key: String(m.id),
+                cells: [
+                  { t: new Date(m.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+                       + ' ' + new Date(m.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                    mono: true, c: 'var(--text-faint)' },
+                  { t: m.name, w: 600 },
+                  /* Two columns, not one composed string. Joined, the value
+                     was long enough to ellipsise on a phone card and the
+                     source — the thing that says WHY it moved — was what got
+                     cut. The source document names a receipt; a manual
+                     movement names the person, because there the person IS the
+                     document. */
+                  { t: REASON_LABEL[m.reason] ?? m.reason, c: 'var(--text-dim)' },
+                  { t: m.source ?? (m.by ? 'by ' + m.by : 'no source recorded'),
+                    c: 'var(--text-faint)' },
+                  { t: (m.qty > 0 ? '+' : '') + qty(m.qty) + ' ' + (m.unit ?? ''),
+                    mono: true, w: 700,
+                    c: m.qty < 0 ? 'var(--red-bright)' : 'var(--go-bright)' },
+                  { t: mvr(m.value), mono: true, c: 'var(--text-dim)' },
+                ],
+              }))}
+            />
 
             {pages > 1 && (
               <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 9 }}>
