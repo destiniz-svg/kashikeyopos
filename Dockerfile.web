@@ -1,0 +1,42 @@
+# The front-end image — one Dockerfile, three sites.
+#
+# BUILT FROM THE REPOSITORY ROOT, and for the same reason the API is: every app
+# imports `../../../packages/money` and `../../../packages/tokens`. There is
+# exactly ONE bill calculation in this system and the browser loads the same
+# file the server does, so a build context of `apps/pos` alone cannot see it and
+# the build fails. Root directory here is the default; do not set it to the app.
+#
+# WHICH app is a build argument, so the three sites differ only by a variable
+# rather than by three near-identical files that drift apart.
+#
+# VITE_API_ORIGIN IS BAKED IN AT BUILD TIME. Vite substitutes it into the bundle
+# during `vite build`, so it is an ARG, not a runtime variable — setting it on a
+# running container does nothing at all. Rebuild to change it.
+
+ARG APP=pos
+
+FROM node:20-alpine AS build
+ARG APP
+ARG VITE_API_ORIGIN
+WORKDIR /app
+
+# The whole workspace, because the app reaches into packages/. backend's
+# manifest is copied so `npm ci` can resolve the workspace list; none of its
+# code is, and none of it reaches the served image.
+COPY package.json package-lock.json ./
+COPY backend/package.json ./backend/package.json
+COPY packages ./packages
+COPY apps ./apps
+RUN npm ci
+
+ENV VITE_API_ORIGIN=$VITE_API_ORIGIN
+RUN npm -w @kashikeyo/${APP} run build && cp -r apps/${APP}/dist /dist
+
+# ── serve ──────────────────────────────────────────────────────────────────
+# Static files only. No Node, no npm, no source and no build tooling in the
+# image that faces the internet.
+FROM nginx:alpine
+COPY --from=build /dist /usr/share/nginx/html
+COPY docker/web.nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV PORT=8080
+EXPOSE 8080

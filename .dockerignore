@@ -1,6 +1,15 @@
 **/node_modules
 **/dist
-apps
+.git
+
+# `design` and `docs` are for humans and reach neither image.
 design
 docs
-.git
+
+# `apps` is NOT excluded, and that is deliberate. Dockerfile.web builds the
+# three front-ends and needs them in the context; .dockerignore governs the
+# context, which both Dockerfiles share. Keeping them out of the API image is
+# the API Dockerfile's job and it already does it — it copies `backend` and
+# `packages/money` by name and nothing else — so listing `apps` here bought a
+# slightly smaller upload and would have silently made `COPY apps` copy
+# nothing.

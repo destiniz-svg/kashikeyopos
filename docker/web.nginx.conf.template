@@ -1,0 +1,29 @@
+# Serving one built front-end. `envsubst` fills ${PORT} from the environment at
+# container start — the official nginx image does that for anything in
+# /etc/nginx/templates — because Railway assigns the port and a hardcoded 80
+# would simply never be reached.
+server {
+  listen ${PORT};
+  server_name _;
+  root /usr/share/nginx/html;
+
+  # Hashed asset filenames are content-addressed, so they can be cached hard.
+  location /assets/ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+  }
+
+  # index.html must NOT be cached: it is the file that names the current asset
+  # hashes, so a stale one points a browser at bundles that no longer exist and
+  # the app dies on a blank screen after every deploy.
+  location = /index.html {
+    add_header Cache-Control "no-cache, must-revalidate";
+  }
+
+  # A single-page app: unknown paths are the app's business, not a 404. This is
+  # also why the bare origin works at all, which the API service deliberately
+  # does not do.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}
