@@ -52,9 +52,10 @@ is one function, auditable, and cannot return a receipt.
    service. That connection is the owner: migrations and provisioning only, and
    `src/routes.js` never imports it.
 
-2. **New service from this repo**, root directory `platform` — NOT `backend`.
-   `platform/railway.json` selects `platform/Dockerfile`, which sets `/readyz`
-   as the healthcheck, so a deploy that cannot see its database never goes live.
+2. **New service from this repo**, root directory left at the **repository
+   root** (the default) — NOT `backend`. `railway.json` selects the root
+   `Dockerfile`, which sets `/readyz` as the healthcheck, so a deploy that
+   cannot see its database never goes live.
 
    The root directory matters and is not a preference. `backend/src/sale.js`
    requires `../../packages/money/money`, because there is exactly ONE bill

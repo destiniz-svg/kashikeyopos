@@ -58,10 +58,14 @@ COGS → accounting → reconciliation → business intelligence.**
 
 ## Hosting
 
-Railway: the API service builds from `platform/Dockerfile` with **root
-directory `platform`** — not `backend`, which cannot see `packages/money` and
-dies on the first require. Postgres is a plugin; the front-ends are static
-sites built with `VITE_API_ORIGIN` set to the API's public origin. Every screen
+Railway: the API service builds from the **repository root** — the default,
+and the only correct setting. NOT `backend`, which cannot see `packages/money`
+and dies on the first require. (This build used to live in a `platform/`
+subdirectory of another repository and the runbook said root directory
+`platform`; it is its own repository root now, so that setting is gone.)
+
+Postgres is a plugin; the front-ends are static sites built with
+`VITE_API_ORIGIN` set to the API's public origin. Every screen
 reaches the API through `api.authed()`; a hard-coded `/api` only resolves behind
 the dev proxy. `backend/test/deployable.test.js` enforces both. Runbook in
 `docs/DEPLOYMENT.md`.

@@ -1,0 +1,18 @@
+# Installed, not authored. The workspace root holds one tree for every package.
+node_modules/
+
+# Vite build output, per front-end. The image builds these; a committed dist is
+# a stale copy of a file nobody reads.
+dist/
+*.tsbuildinfo
+
+# Secrets and local overrides. `backend/.env.example` is the documented list and
+# IS tracked; a real `.env` never is.
+.env
+.env.*
+!.env.example
+
+# Local noise
+*.log
+npm-debug.log*
+.DS_Store

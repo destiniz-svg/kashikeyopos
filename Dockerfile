@@ -1,6 +1,6 @@
 # The API image.
 #
-# BUILT FROM THE PLATFORM ROOT, not from backend/. That is not a preference —
+# BUILT FROM THE REPOSITORY ROOT, not from backend/. That is not a preference —
 # backend/src/sale.js requires ../../packages/money/money, because there is
 # exactly ONE bill calculation in this system and both the browser and the
 # server load the same file. A build context of backend/ alone cannot see it,

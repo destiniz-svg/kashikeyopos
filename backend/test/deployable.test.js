@@ -23,7 +23,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');          // platform/
+const ROOT = path.join(__dirname, '..', '..');          // the repository root
 
 describe('the deployable tree', () => {
   test('the Dockerfile copies everything the server requires', () => {
