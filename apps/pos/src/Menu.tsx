@@ -160,7 +160,7 @@ export function Menu({ session }: { session: Session }) {
             <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', marginBottom: 11 }}>
               {adding ? 'New dish' : 'Editing ' + editing}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 10 }}>
               {adding && (
                 <Field label="Code" hint="A-Z, 0-9, dash. Cannot change later.">
                   <input required value={draft.id} onChange={(e) => setDraft({ ...draft, id: e.target.value })}

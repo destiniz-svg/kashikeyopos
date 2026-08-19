@@ -162,7 +162,7 @@ function Figures({ data }: { data: Overview }) {
       color: (f.profit.value ?? 0) < 0 ? 'var(--red-bright)' : undefined },
   ];
   return (
-    <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(168px,1fr))' }}>
+    <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 168px), 1fr))' }}>
       {cells.map((c) => (
         <div key={c.label} style={card}>
           <div style={h}>{c.label}</div>

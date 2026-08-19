@@ -252,7 +252,7 @@ function MoveSheet({ act, busy, onClose, onSubmit }: {
 
   return (
     <Sheet title={(kind === 'receive' ? 'Receive ' : 'Waste ') + row.name} onClose={onClose}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 11 }}>
         <L label={'Quantity (' + row.unit + ')'}>
           <input autoFocus inputMode="decimal" value={q} onChange={(e) => setQ(e.target.value)}
             style={{ ...inp, fontFamily: MONO, textAlign: 'right' }} />

@@ -305,7 +305,7 @@ function Take({ busy, date, held, tables, onBook }: {
   return (
     <div style={{ marginBottom: 18, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
       <SubHead>Take a booking</SubHead>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 11, marginTop: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 130px), 1fr))', gap: 11, marginTop: 6 }}>
         <L label="Name">
           <input value={name} onChange={(e) => setName(e.target.value)}
             aria-label="Name" style={inp} />

@@ -122,6 +122,30 @@ describe('the deployable tree', () => {
       'these rebuild their API caller every render — wrap it in useMemo');
   });
 
+  test('no grid can be wider than the screen it is on', () => {
+    /* `minmax(260px, 1fr)` has a floor of 260px, so two columns need 520px and
+       a 360px phone gets a horizontally scrolling page — the layout spills
+       sideways and the right-hand edge of every card is off screen. It is the
+       prototype's own fix that is enforced here: `minmax(min(100%, 260px), 1fr)`
+       is identical on any screen wide enough for the card and collapses to one
+       column below it.
+
+       Thirty-four of these shipped before anybody opened the till on a phone,
+       which is why this is a test and not a note. */
+    const offenders = [];
+    for (const app of fs.readdirSync(path.join(ROOT, 'apps'))) {
+      const dir = path.join(ROOT, 'apps', app, 'src');
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        if (!/\.tsx?$/.test(f)) continue;
+        const text = fs.readFileSync(path.join(dir, f), 'utf8');
+        if (/minmax\(\s*\d+px\s*,/.test(text)) offenders.push(app + '/' + f);
+      }
+    }
+    assert.deepEqual(offenders, [],
+      'these pin a grid column to a fixed minimum — wrap it in min(100%, …)');
+  });
+
   test('every module in the rail is wired to a screen', () => {
     /* The rail is the design, so a module lands in `nav.ts` the moment it is
        designed and long before it is built. `App.tsx` decides what actually

@@ -302,7 +302,7 @@ function Buy({ busy, onAdd }: { busy: boolean; onAdd: (b: Record<string, unknown
 
   return (
     <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 11 }}>
         <L label="What is it">
           <input value={name} onChange={(e) => setName(e.target.value)}
             aria-label="What is it" style={inp} />
@@ -474,7 +474,7 @@ function Jobs({ asset, waiting, done, busy, onSchedule, onDone, onDrop }: {
     <>
       {asset.status === 'active' && (
         <div style={{ margin: '8px 0 14px', padding: 12, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--line-soft)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 130px), 1fr))', gap: 10 }}>
             <L label="Job">
               <select value={kind} onChange={(e) => setKind(e.target.value)}
                 aria-label="Job" style={inp}>
@@ -532,7 +532,7 @@ function Jobs({ asset, waiting, done, busy, onSchedule, onDone, onDrop }: {
           </div>
           {doing === s.id && (
             <div style={{ marginTop: 9, padding: 11, borderRadius: 8, background: 'var(--bg-2)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 130px), 1fr))', gap: 10 }}>
                 <L label="What it cost" hint="Leave blank if it cost nothing.">
                   <input inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)}
                     aria-label="What it cost" style={{ ...inp, fontFamily: MONO }} />
@@ -603,7 +603,7 @@ function Dispose({ asset, busy, onDispose }: {
 
   return (
     <div style={{ padding: '10px 0' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11 }}>
         <L label="What you got (MVR)" hint="Nought if it was scrapped.">
           <input inputMode="decimal" value={proceeds} onChange={(e) => setProceeds(e.target.value)}
             aria-label="What you got" style={{ ...inp, fontFamily: MONO }} />

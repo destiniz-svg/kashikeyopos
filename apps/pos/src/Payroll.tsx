@@ -378,7 +378,7 @@ function Rates({ data, busy, onSet }: {
   return (
     <>
       <div style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 11 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 11 }}>
           <L label="Who">
             <select value={staffId} onChange={(e) => setStaffId(e.target.value)} style={inp}>
               {data.roster.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}

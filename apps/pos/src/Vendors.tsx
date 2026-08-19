@@ -102,7 +102,7 @@ export function Vendors({ session }: { session: Session }) {
         {adding && (
           <form onSubmit={(e) => { e.preventDefault(); void add(); }}
             style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 11 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 160px), 1fr))', gap: 11 }}>
               <L label="Name"><input required autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={inp} placeholder="Malé Fish Co" /></L>
               <L label="TRN" hint="Their tax registration number, for the invoices you file."><input value={form.trn} onChange={(e) => setForm({ ...form, trn: e.target.value })} style={inp} /></L>
               <L label="Payment terms (days)" hint="How long after an invoice it falls due. Ageing is measured from that date, not from the invoice.">

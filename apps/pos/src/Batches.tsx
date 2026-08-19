@@ -133,7 +133,7 @@ export function Batches({ session }: { session: Session }) {
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {/* ── the two numbers ────────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 220px), 1fr))' }}>
         <div style={{ ...card, borderColor: data.expired.count ? 'var(--red)' : 'var(--line)' }}>
           <div style={h}>Already gone off</div>
           <div style={{ font: `600 22px/1.1 ${MONO}`,

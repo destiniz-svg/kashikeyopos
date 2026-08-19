@@ -190,7 +190,7 @@ function Scheme({ cfg, busy, onSave }: {
   return (
     <div style={{ marginBottom: 18, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
       <SubHead>The scheme</SubHead>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 11, marginTop: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 160px), 1fr))', gap: 11, marginTop: 6 }}>
         <L label="Points per MVR" hint="Earned on the food and drink, not on tax or service.">
           <input inputMode="decimal" value={earn} onChange={(e) => setEarn(e.target.value)}
             aria-label="Points per MVR" style={{ ...inp, fontFamily: MONO }} />
@@ -284,7 +284,7 @@ function Catalogue({ data, busy, onSave, onDrop }: {
       <SubHead>What points can buy</SubHead>
       {data.canConfigure && (
         <div style={{ marginBottom: 14, padding: 13, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 11 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11 }}>
             <L label="Reward">
               <input value={name} onChange={(e) => setName(e.target.value)}
                 aria-label="Reward" style={inp} />

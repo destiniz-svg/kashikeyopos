@@ -229,7 +229,7 @@ export function Recipes({ session }: { session: Session }) {
                 {addingIng && (
                   <form onSubmit={(e) => { e.preventDefault(); void addIngredient(); }}
                     style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 10 }}>
                       <L label="Code"><input required value={newIng.id} onChange={(e) => setNewIng({ ...newIng, id: e.target.value })} style={inp} placeholder="TUNA" /></L>
                       <L label="Name"><input required value={newIng.name} onChange={(e) => setNewIng({ ...newIng, name: e.target.value })} style={inp} /></L>
                       <L label="Unit"><select value={newIng.unit} onChange={(e) => setNewIng({ ...newIng, unit: e.target.value })} style={inp}>{units.map((u) => <option key={u} value={u}>{u}</option>)}</select></L>

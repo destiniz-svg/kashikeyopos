@@ -230,7 +230,7 @@ function Compose({ busy, onSave }: {
   return (
     <div style={{ marginBottom: 18, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
       <SubHead>Write a promotion</SubHead>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 11, marginTop: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11, marginTop: 6 }}>
         <L label="Code" hint="Letters and digits — it gets read out over a telephone.">
           <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())}
             aria-label="Code" style={{ ...inp, fontFamily: MONO }} />

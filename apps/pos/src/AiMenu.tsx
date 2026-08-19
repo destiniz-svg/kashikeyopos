@@ -231,7 +231,7 @@ export function AiMenu({ session }: { session: Session }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 12,
-          gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))' }}>
+          gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 300px), 1fr))' }}>
           {(['star', 'ploughhorse', 'puzzle', 'dog'] as const).map((q) => {
             const list = inQuadrant(q);
             return (
@@ -265,7 +265,7 @@ export function AiMenu({ session }: { session: Session }) {
             Write them in Recipes &amp; Costing.
           </div>
           <div style={{ display: 'grid', gap: 8,
-            gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))' }}>
+            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 260px), 1fr))' }}>
             {uncosted.map(dish)}
           </div>
         </div>
@@ -280,7 +280,7 @@ export function AiMenu({ session }: { session: Session }) {
             being called dogs by default.
           </div>
           <div style={{ display: 'grid', gap: 8,
-            gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))' }}>
+            gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 260px), 1fr))' }}>
             {unsold.map(dish)}
           </div>
         </div>

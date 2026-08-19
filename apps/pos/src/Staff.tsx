@@ -279,7 +279,7 @@ function PersonForm({ title, person, maxRank, ranks, busy, onCancel, onSave }: {
   return (
     <div style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
       <div style={{ marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{title}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 160px), 1fr))', gap: 11 }}>
         <L label="Name">
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} style={inp} />
         </L>

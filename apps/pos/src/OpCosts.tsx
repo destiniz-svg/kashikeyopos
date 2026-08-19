@@ -232,7 +232,7 @@ function Costs({ data, busy, onRecord, onPost, onRelease }: {
 
       {/* ── record one ─────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 11 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 11 }}>
           <L label="Category">
             <select value={account} onChange={(e) => setAccount(e.target.value)}
               aria-label="Category" style={inp}>
@@ -430,7 +430,7 @@ function Recurring({ data, busy, onSet, onStop }: {
         </p>
       ) : (
         <div style={{ marginBottom: 14, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 11 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 11 }}>
             <L label="Category">
               <select value={account} onChange={(e) => setAccount(e.target.value)}
                 aria-label="Category" style={inp}>

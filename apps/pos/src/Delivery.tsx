@@ -312,7 +312,7 @@ function Take({ busy, items, onTake }: {
   return (
     <div style={{ marginTop: 10, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
       <SubHead>Take an order</SubHead>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 11, marginTop: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11, marginTop: 6 }}>
         <L label="Going">
           <select value={channel} aria-label="Going"
             onChange={(e) => setChannel(e.target.value as 'delivery' | 'takeaway')} style={inp}>

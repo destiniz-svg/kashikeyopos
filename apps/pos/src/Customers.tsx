@@ -190,7 +190,7 @@ function People({ data, busy, onAdd, onOpen }: {
   return (
     <>
       <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--line-soft)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 11 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 150px), 1fr))', gap: 11 }}>
           <L label="Phone">
             <input inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
               aria-label="Phone" style={{ ...inp, fontFamily: MONO }} />
@@ -425,7 +425,7 @@ function Sheet({ st, busy, canCredit, onClose, onCredit, onReceipt, onWriteOff }
                       {st.ageing.termsDays} day terms
                     </span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 130px), 1fr))', gap: 10 }}>
                     <L label="They paid (MVR)">
                       <input inputMode="decimal" value={amount}
                         onChange={(e) => setAmount(e.target.value)}
@@ -499,7 +499,7 @@ function Sheet({ st, busy, canCredit, onClose, onCredit, onReceipt, onWriteOff }
             </>
           ) : (
             <div style={{ padding: '10px 0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 11 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11 }}>
                 <L label="Credit limit (MVR)" hint="Nought means no house account at all.">
                   <input inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)}
                     aria-label="Credit limit" style={{ ...inp, fontFamily: MONO }} />

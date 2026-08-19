@@ -264,7 +264,7 @@ export function Floor({ snap, now, session, online, onQueued }: Props) {
           })}
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(148px,1fr))', gap: 9, alignContent: 'start' }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 14px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 148px), 1fr))', gap: 9, alignContent: 'start' }}>
           {shown.map((it) => (
             <button
               key={it.id}

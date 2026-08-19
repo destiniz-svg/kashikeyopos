@@ -515,7 +515,7 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function Two({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 12 }}>{children}</div>;
+  return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 300px), 1fr))', gap: 12 }}>{children}</div>;
 }
 
 function Fig({ label, value, big, warn }: { label: string; value: string; big?: boolean; warn?: boolean }) {

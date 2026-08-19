@@ -117,7 +117,7 @@ export function Analytics({ session }: { session: Session }) {
         ) : (
           <>
             {/* ── the two numbers a CFO opens this for ─────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 190px), 1fr))', gap: 10, marginBottom: 14 }}>
               <Hero label="Prime cost" value={pc(h.primeCostPct)} sub={mvr(h.primeCost)}
                 tone={h.primeCostPct === null ? 'flat' : h.primeCostPct <= 65 ? 'good' : 'bad'} />
               <Hero label="Net margin" value={pc(h.netMarginPct)} sub={mvr(h.netProfit)}

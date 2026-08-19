@@ -246,7 +246,7 @@ function Receive({ suppliers, ings, busy, onCancel, onSubmit }: {
 
   return (
     <div style={{ padding: 14, borderRadius: 10, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 170px), 1fr))', gap: 11 }}>
         <L label="Supplier">
           <select value={supplierId} onChange={(e) => setSupplierId(e.target.value)} style={inp}>
             {!suppliers.length && <option value="">no suppliers yet</option>}
@@ -430,7 +430,7 @@ function DeliverySheet({ detail, canPrice, busy, onClose, onPrice }: {
           {!d.priced && (
             canPrice ? (
               <div style={{ marginTop: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 11 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 180px), 1fr))', gap: 11 }}>
                   <L label="Invoice number" hint={'Due ' + d.termsDays + ' days from today on this supplier\'s terms.'}>
                     <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} style={inp} />
                   </L>

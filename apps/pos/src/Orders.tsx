@@ -188,7 +188,7 @@ export function Orders({ session }: { session: Session }) {
             {day.open.length > 0 && (
               <section style={{ marginBottom: 18 }}>
                 <Head>On the floor — {day.open.length} open ticket{day.open.length === 1 ? '' : 's'}</Head>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(190px,1fr))', gap: 9 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 190px), 1fr))', gap: 9 }}>
                   {day.open.map((o) => (
                     <div key={o.ticketId} style={{ padding: '10px 12px', borderRadius: 9, background: 'var(--bg-1)', border: '1px solid var(--amber-line)' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>

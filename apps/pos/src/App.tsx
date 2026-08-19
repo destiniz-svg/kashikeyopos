@@ -43,6 +43,7 @@ import { Dispatches } from './Dispatches';
 import { Requests } from './Requests';
 import { AiMenu } from './AiMenu';
 import { NotBuilt } from './NotBuilt';
+import { useBreakpoint } from './useBreakpoint';
 
 /* ═══ KASHIKEYOPOS — THE TILL ══════════════════════════════════════════════
  *
@@ -71,6 +72,13 @@ export function App({ outletId }: { outletId: number }) {
   const [online, setOnline] = useState(navigator.onLine);
   const [now, setNow] = useState(() => new Date());
   const [railOpen, setRailOpen] = useState(true);
+  /* The prototype computes this in JS because the breakpoint changes what the
+     shell IS, not just how wide it is — on a phone the rail stops being a
+     column and becomes an overlay. See useBreakpoint.ts. */
+  const bp = useBreakpoint();
+  const isPhone = bp === 'm';
+  const isRail = bp === 't';
+  const [drawer, setDrawer] = useState(false);
 
   /* §1.4: "A terminal with nobody signed in IS locked." The session is restored
      from storage so a reload mid-service does not throw the cashier back to the
@@ -183,37 +191,85 @@ export function App({ outletId }: { outletId: number }) {
     try { localStorage.removeItem(LS_SESSION); } catch { /* ignore */ }
   };
 
+  /* The prototype's resize handler closes the drawer on every breakpoint
+     change. Without it, rotating a phone to landscape leaves a fixed overlay
+     pinned over a layout that now has a real rail. */
+  useEffect(() => { setDrawer(false); }, [bp]);
+
   const groups = useMemo(() => navFor(session?.rank ?? 0), [session]);
 
   if (!session) return <Lock outletId={outletId} onSignIn={signIn} />;
 
-  const RAIL_W = railOpen ? 208 : 56;
+  /* Labels show on a phone too — the drawer is a full 280px there, so the rail
+     being "collapsed" is a desktop and tablet idea only. On the tablet rail the
+     column is 60px and labels cannot fit at all, which is the prototype's
+     behaviour and not a preference the operator gets to override. */
+  const labelled = isPhone ? true : isRail ? false : railOpen;
+  const RAIL_W = isRail ? 60 : railOpen ? 208 : 56;
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', overflow: 'hidden', background: 'var(--bg)' }}>
-      {/* ── Rail. §1.1: --bg-0, 208px expanded / 56px collapsed. ─────────── */}
+    <div style={{
+      /* Phone: a column, with the rail lifted out of the layout entirely.
+         Tablet and desktop: rail beside main. The prototype's shellStyle. */
+      display: 'flex',
+      flexDirection: isPhone ? 'column' : 'row',
+      height: '100dvh', overflow: 'hidden', background: 'var(--bg)',
+    }}>
+      {/* ── The scrim. Only a phone has one, because only a phone has an
+             overlay to dismiss. Tapping it closes the drawer, which is the
+             gesture everybody tries first. ──────────────────────────────── */}
+      {isPhone && drawer && (
+        <div
+          onClick={() => setDrawer(false)}
+          aria-hidden="true"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'var(--scrim, rgba(0,0,0,.55))',
+            backdropFilter: 'blur(3px)', animation: 'kfade .14s',
+          }}
+        />
+      )}
+
+      {/* ── Rail. §1.1: --bg-0, 208px expanded / 56px collapsed. On a phone it
+             is not a column at all — it is a fixed drawer over the content,
+             and when closed it is not rendered, so it costs no width. ───── */}
       <nav
         aria-label="Modules"
-        style={{
-          width: RAIL_W, flexShrink: 0, background: 'var(--bg-0)',
-          borderRight: '1px solid var(--line-soft)', display: 'flex',
-          flexDirection: 'column', overflow: 'hidden',
-        }}
+        aria-hidden={isPhone && !drawer ? true : undefined}
+        style={isPhone
+          ? {
+            position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 70,
+            width: 'min(280px, 84vw)',
+            display: drawer ? 'flex' : 'none',
+            flexDirection: 'column', overflow: 'hidden',
+            background: 'var(--bg-0)', borderRight: '1px solid var(--line-soft)',
+            boxShadow: '0 0 60px rgba(0,0,0,.6)', animation: 'kslide .2s',
+          }
+          : {
+            width: RAIL_W, flexShrink: 0, background: 'var(--bg-0)',
+            borderRight: '1px solid var(--line-soft)', display: 'flex',
+            flexDirection: 'column', overflow: 'hidden',
+          }}
       >
-        <div style={{ padding: railOpen ? '14px 14px 10px' : '14px 8px 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
+        <div style={{ padding: labelled ? '14px 14px 10px' : '14px 8px 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
           <button
-            onClick={() => setRailOpen((v) => !v)}
-            aria-label={railOpen ? 'Collapse the rail' : 'Expand the rail'}
+            onClick={() => (isPhone ? setDrawer(false) : setRailOpen((v) => !v))}
+            /* On the tablet rail the column is 60px and a label cannot fit, so
+               there is nothing for this to toggle — it closes the drawer on a
+               phone and collapses the rail on a desktop. */
+            aria-label={isPhone ? 'Close the menu' : railOpen ? 'Collapse the rail' : 'Expand the rail'}
             style={{
-              width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)',
-              color: 'var(--text-dim)', display: 'grid', placeItems: 'center', flexShrink: 0,
+              width: isPhone ? 34 : 28, height: isPhone ? 34 : 28,
+              borderRadius: 7, background: 'var(--bg-2)',
+              color: 'var(--text-dim)', placeItems: 'center', flexShrink: 0,
+              display: isRail ? 'none' : 'grid',
             }}
           >
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          {railOpen && (
+          {labelled && (
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-.01em' }}>
               KashikeyoPOS
             </span>
@@ -223,7 +279,7 @@ export function App({ outletId }: { outletId: number }) {
         <div className="krail" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 8px 10px' }}>
           {groups.map((g) => (
             <div key={g.title} style={{ marginTop: 10 }}>
-              {railOpen && (
+              {labelled && (
                 <div style={{ padding: '6px 6px 4px', fontSize: 11, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
                   {g.title.toUpperCase()}
                 </div>
@@ -233,21 +289,25 @@ export function App({ outletId }: { outletId: number }) {
                 return (
                   <button
                     key={it.id}
-                    onClick={() => setView(it.id)}
-                    title={railOpen ? undefined : it.label}
+                    onClick={() => { setView(it.id); setDrawer(false); }}
+                    title={labelled ? undefined : it.label}
                     aria-current={on ? 'page' : undefined}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 9,
-                      padding: railOpen ? '8px 8px' : '8px 6px', borderRadius: 7,
+                      padding: labelled ? '8px 8px' : '8px 6px', borderRadius: 7,
                       background: on ? 'var(--bg-2)' : 'transparent',
                       color: on ? 'var(--amber-bright)' : 'var(--text-muted)',
-                      minHeight: 34, justifyContent: railOpen ? 'flex-start' : 'center',
+                      /* 44px on a phone: a finger is not a mouse pointer, and
+                         these sit in a list where a mis-tap opens the wrong
+                         module mid-service. */
+                      minHeight: isPhone ? 44 : 34,
+                      justifyContent: labelled ? 'flex-start' : 'center',
                     }}
                   >
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                       <path d={it.icon} />
                     </svg>
-                    {railOpen && (
+                    {labelled && (
                       <span style={{ fontSize: 13, fontWeight: on ? 600 : 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {it.label}
                       </span>
@@ -268,7 +328,7 @@ export function App({ outletId }: { outletId: number }) {
           }}>
             {session.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
           </span>
-          {railOpen && (
+          {labelled && (
             <>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -294,11 +354,39 @@ export function App({ outletId }: { outletId: number }) {
         {/* Topbar. §1.1: outlet, live clock over a date, and the pending count —
             "a hidden queue is how sales get lost" (§5.1). */}
         <header style={{
-          flexShrink: 0, height: 52, borderBottom: '1px solid var(--line-soft)',
+          flexShrink: 0, minHeight: isPhone ? 56 : 52,
+          borderBottom: '1px solid var(--line-soft)',
           background: 'var(--bg-1)', display: 'flex', alignItems: 'center',
-          gap: 14, padding: '0 14px',
+          gap: isPhone ? 10 : 14, padding: isPhone ? '8px 12px' : '0 14px',
+          /* Never wrap on a phone: a header that grows to two lines eats the
+             screen the ticket needs. Things drop out instead — see below. */
+          flexWrap: 'nowrap',
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+          {/* The only way to the modules on a phone. It lives in the header
+              rather than the rail because on a phone the rail is not on
+              screen to be tapped. */}
+          {isPhone && (
+            <button
+              onClick={() => setDrawer(true)}
+              aria-label="Open the menu"
+              aria-expanded={drawer}
+              style={{
+                width: 40, height: 40, flexShrink: 0, borderRadius: 9,
+                background: 'var(--bg-2)', color: 'var(--text-dim)',
+                display: 'grid', placeItems: 'center',
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
+          <span style={{
+            fontSize: isPhone ? 15 : 13, fontWeight: isPhone ? 700 : 600,
+            color: 'var(--text)', letterSpacing: isPhone ? '-.025em' : undefined,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            minWidth: 0,
+          }}>
             {snap?.outlet?.name ?? '—'}
           </span>
           <span style={{ flex: 1 }} />
@@ -313,12 +401,12 @@ export function App({ outletId }: { outletId: number }) {
               }}
             >
               <span style={{ width: 6, height: 6, borderRadius: 3, background: 'currentColor', animation: 'kpulse 1.4s infinite' }} />
-              {pending} to sync
+              {pending}{isPhone ? '' : ' to sync'}
             </span>
           )}
           {!online && (
             <span style={{ padding: '4px 9px', borderRadius: 999, background: 'var(--red-dim)', color: 'var(--red-bright)', fontSize: 10.5, fontWeight: 700 }}>
-              Offline — still selling
+              {isPhone ? 'Offline' : 'Offline — still selling'}
             </span>
           )}
 
@@ -326,9 +414,14 @@ export function App({ outletId }: { outletId: number }) {
             <span style={{ display: 'block', fontSize: 15, fontWeight: 600, letterSpacing: '-.01em', fontFamily: "'JetBrains Mono',monospace", color: 'var(--text)' }}>
               {now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
             </span>
-            <span style={{ display: 'block', fontSize: 9.5, color: 'var(--text-faint)' }}>
-              {now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
-            </span>
+            {/* The date goes first on a phone. The time is an operational
+                fact during a shift; the date is not, and the header has no
+                room to wrap. */}
+            {!isPhone && (
+              <span style={{ display: 'block', fontSize: 9.5, color: 'var(--text-faint)' }}>
+                {now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+              </span>
+            )}
           </span>
         </header>
 

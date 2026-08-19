@@ -346,7 +346,7 @@ export function Dispatches({ session }: { session: Session }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(340px,1fr))' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 340px), 1fr))' }}>
         <div style={card}>
           <div style={h}>Coming here</div>
           {data.inbound.length === 0 ? (

@@ -185,7 +185,7 @@ export function Sync({ session, onPaired }: { session: Session; onPaired: () => 
       </div>
 
       {/* ── what the server can and cannot see ─────────────────────────── */}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))' }}>
+      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 230px), 1fr))' }}>
         <div style={card}>
           <div style={h}>Devices gone quiet</div>
           {data.silent.length === 0 ? (

@@ -187,7 +187,7 @@ export function App({ outletId, initialTable }: Props) {
             </div>
 
             <div style={{ marginTop: 24, fontSize: 12, fontWeight: 700, color: C.label, letterSpacing: '.08em' }}>YOUR TABLE</div>
-            <div style={{ marginTop: 11, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(62px,1fr))', gap: 9 }}>
+            <div style={{ marginTop: 11, display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 62px), 1fr))', gap: 9 }}>
               {Array.from({ length: card?.tables ?? 0 }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}
