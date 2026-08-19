@@ -2,3 +2,9 @@ node_modules
 npm-debug.log
 .git
 .env
+
+# The second application. `platform/` is a separate, self-contained build with
+# its own Dockerfile and its own Railway service (root directory `platform`),
+# and this image runs `index.js` — it has never needed a line of it. Without
+# this the root image quietly starts shipping a whole second codebase.
+platform
