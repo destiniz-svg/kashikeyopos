@@ -7,13 +7,15 @@
 # the build fails. Root directory here is the default; do not set it to the app.
 #
 # WHICH app is a build argument, so the three sites differ only by a variable
-# rather than by three near-identical files that drift apart.
+# rather than by three near-identical files that drift apart. It has NO DEFAULT
+# on purpose: a default means a service whose build arg never arrived builds
+# some other app and serves it under this one's name, looking entirely healthy.
+# That is not hypothetical — this deployment already had one build silently come
+# from the wrong branch. Missing APP fails the build instead.
 #
 # VITE_API_ORIGIN IS BAKED IN AT BUILD TIME. Vite substitutes it into the bundle
 # during `vite build`, so it is an ARG, not a runtime variable — setting it on a
 # running container does nothing at all. Rebuild to change it.
-
-ARG APP=pos
 
 FROM node:20-alpine AS build
 ARG APP
@@ -28,6 +30,9 @@ COPY backend/package.json ./backend/package.json
 COPY packages ./packages
 COPY apps ./apps
 RUN npm ci
+
+RUN test -n "$APP" || { echo "FATAL: the APP build arg is required (pos|guest|member)." >&2; exit 1; }
+RUN test -d "apps/$APP" || { echo "FATAL: no such app: apps/$APP" >&2; exit 1; }
 
 ENV VITE_API_ORIGIN=$VITE_API_ORIGIN
 RUN npm -w @kashikeyo/${APP} run build && cp -r apps/${APP}/dist /dist
