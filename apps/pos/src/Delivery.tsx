@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { Overlay } from './ui';
 
 /* Delivery & QR — 02-POS-SPEC.md §2 (`delivery`):
  * "Aggregator and QR channel orders, rider dispatch, stage tracking."
@@ -419,30 +420,27 @@ function Ask({ title, label, hint, action, busy, onClose, onSubmit }: {
 }) {
   const [v, setV] = useState('');
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}
-        style={{ width: '100%', maxWidth: 440, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
-          {title}
-        </div>
-        <div style={{ padding: 16 }}>
-          <L label={label} hint={hint}>
-            <input value={v} onChange={(e) => setV(e.target.value)}
-              aria-label={label} style={inp} autoFocus />
-          </L>
-          <div style={{ marginTop: 13, display: 'flex', gap: 9 }}>
-            <button disabled={busy || v.trim().length < 3} onClick={() => onSubmit(v.trim())}
-              style={{ flex: 1, minHeight: 40, borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: v.trim().length >= 3 ? 'var(--go)' : 'var(--bg-2)', color: v.trim().length >= 3 ? 'var(--on-go)' : 'var(--text-faint)' }}>
-              {action}
-            </button>
-            <button onClick={onClose}
-              style={{ padding: '0 16px', minHeight: 40, borderRadius: 8, fontSize: 12, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
-              Never mind
-            </button>
-          </div>
-        </div>
+    <Overlay onClose={onClose} label={title} width={440}>
+    <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
+      {title}
+    </div>
+    <div style={{ padding: 16 }}>
+      <L label={label} hint={hint}>
+        <input value={v} onChange={(e) => setV(e.target.value)}
+          aria-label={label} style={inp} autoFocus />
+      </L>
+      <div style={{ marginTop: 13, display: 'flex', gap: 9 }}>
+        <button disabled={busy || v.trim().length < 3} onClick={() => onSubmit(v.trim())}
+          style={{ flex: 1, minHeight: 40, borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: v.trim().length >= 3 ? 'var(--go)' : 'var(--bg-2)', color: v.trim().length >= 3 ? 'var(--on-go)' : 'var(--text-faint)' }}>
+          {action}
+        </button>
+        <button onClick={onClose}
+          style={{ padding: '0 16px', minHeight: 40, borderRadius: 8, fontSize: 12, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+          Never mind
+        </button>
       </div>
     </div>
+    </Overlay>
   );
 }
 

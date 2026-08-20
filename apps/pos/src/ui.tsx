@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react';
+import { useBreakpoint, useShortViewport } from './useBreakpoint';
 
 /* The hover layer — design/KashikeyoPOS Guest Theme v3.dc.html, `style-hover`.
  *
@@ -230,6 +231,107 @@ export function Skeleton({ rows = 4, height = 34, gap = 8 }: {
           animationDelay: (i * 0.08).toFixed(2) + 's',
         }} />
       ))}
+    </div>
+  );
+}
+
+/* ── the overlay ───────────────────────────────────────────────────────────
+   design/KashikeyoPOS Guest Theme v3.dc.html, `scrimStyle` / `modalStyle` /
+   `modalPad`. One component, because the prototype has one rule and this build
+   had nineteen hand-rolled copies of a fragment of it.
+
+   ON A PHONE A DIALOG IS NOT A SMALL DIALOG — IT IS A SHEET. It is anchored to
+   the bottom edge, full width, rounded only along the top, and it rises rather
+   than scaling in. That is not decoration. A phone is held low and worked with
+   a thumb, and a card floating in the middle of the glass puts its buttons in
+   the one band the thumb cannot reach; the same card also leaves a strip of
+   dead scrim down each side, which is the part of the screen a thumb CAN reach.
+   Every back-office dialog here was a centred card with 20px of inset at every
+   width, so on a 390px phone the useful area was 350px with the actions in the
+   middle of the screen.
+
+   HEIGHT DECIDES THE INSET. `modalPad` is 0 on a phone (the sheet owns the
+   width), 12 on a short viewport and 28 otherwise — a 620px-tall laptop window
+   cannot afford to give 56px of its height to scrim, and the prototype spends
+   it on the dialog instead.
+
+   dvh, NOT vh. A phone's address bar collapses as the page scrolls and `vh` is
+   frozen at the tallest state, so a footer measured in vh sits under the fold
+   exactly when the bar is showing — which is when the sheet first opens.
+
+   THE PANEL IS A FLEX COLUMN THAT CLIPS. Children lay out as header / body /
+   footer with the body scrolling, so the footer's actions stay on screen no
+   matter how long the body is; `overflow:hidden` makes the card clip its own
+   corners rather than letting a wide child square them off. Three of the
+   nineteen scrolled the whole panel instead, which slid their Save button off
+   the bottom of a long form — `scroll` reproduces that shape for them without
+   giving up the sizing.
+
+   THE SCRIM IS BLURRED. 3px, the prototype's figure: enough that the screen
+   behind reads as "still there, not now", which a flat wash does not say. */
+export function Overlay({ onClose, label, width = 520, scroll, pad, z = 80, children }: {
+  onClose: () => void;
+  /** Names the dialog for a screen reader. */
+  label: string;
+  /** How wide it may get on tablet and desktop. The phone sheet is full width. */
+  width?: number;
+  /** Scroll the whole panel rather than laying children out as header/body/footer. */
+  scroll?: boolean;
+  /** Padding inside the panel — only for `scroll`, which has no header of its own. */
+  pad?: number;
+  /** Above another overlay. The credit note opens ON TOP of the receipt drawer
+   *  that raised it; it is a DOM descendant so it would paint above anyway, but
+   *  a number that says so survives somebody moving the call site. */
+  z?: number;
+  children?: ReactNode;
+}) {
+  const isPhone = useBreakpoint() === 'm';
+  const short = useShortViewport();
+  const inset = isPhone ? 0 : short ? 12 : 28;
+
+  return (
+    <div
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: z,
+        background: 'var(--scrim)', backdropFilter: 'blur(3px)',
+        display: 'flex', animation: 'kfade .14s',
+        ...(isPhone
+          ? { alignItems: 'flex-end', justifyContent: 'stretch', padding: 0 }
+          : { alignItems: 'center', justifyContent: 'center', padding: inset }),
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'var(--bg-1)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          ...(isPhone
+            ? {
+              borderTop: '1px solid var(--line)',
+              borderRadius: '16px 16px 0 0',
+              boxShadow: '0 -14px 50px rgba(0,0,0,.6)',
+              width: '100%', maxWidth: '100vw', maxHeight: '92dvh',
+              animation: 'ksheet .2s',
+            }
+            : {
+              border: '1px solid var(--line)',
+              borderRadius: 14,
+              boxShadow: 'var(--shadow-lg)',
+              width: '100%',
+              maxWidth: `min(${width}px, calc(100vw - ${inset * 2}px))`,
+              maxHeight: `calc(100dvh - ${inset * 2}px)`,
+              animation: 'kmodal .18s',
+            }),
+        }}
+      >
+        {scroll
+          ? <div style={{ minHeight: 0, overflowY: 'auto', padding: pad ?? 18 }}>{children}</div>
+          : children}
+      </div>
     </div>
   );
 }

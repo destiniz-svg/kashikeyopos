@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
-import { Skeleton } from './ui';
+import { Overlay, Skeleton } from './ui';
 
 /* Promotions & Banners — 02-POS-SPEC.md §2 (`promos`):
  * "Codes, windows, caps. A promo the guest sees is a promo the till charges."
@@ -355,78 +355,75 @@ function Sheet({ promo, uses, busy, canConfigure, onClose, onStop }: {
   onClose: () => void; onStop: () => void;
 }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Promotion"
-        style={{ width: '100%', maxWidth: 660, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
-            {promo.code}
-          </span>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{promo.name}</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div style={{ flexShrink: 0, padding: '11px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <Fig label="USED" value={String(promo.uses)} />
-          <Fig label="GIVEN AWAY" value={mvr(promo.given)} big />
-          <span style={{ fontSize: 11, color: promo.dormant ? 'var(--stop-bright)' : 'var(--go-bright)' }}>
-            {promo.dormant || 'running'}
-          </span>
-          <span style={{ fontSize: 10.5, color: 'var(--text-faint)', maxWidth: 300, lineHeight: 1.5 }}>
-            {describe(promo)}
-          </span>
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 16px 16px' }}>
-          <SubHead>Where it has been used</SubHead>
-          {!uses ? (
-            <div style={{ padding: '18px 0' }}><Skeleton rows={4} /></div>
-          ) : !uses.length ? (
-            <div style={{ padding: '18px 2px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 480 }}>
-              Nobody has used it yet. A code that has been printed and never redeemed is worth
-              knowing about too.
-            </div>
-          ) : uses.map((u) => (
-            <div key={u.id} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 2px', borderBottom: '1px solid var(--line-soft)' }}>
-              <span style={{ width: 96, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                {new Date(u.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-              </span>
-              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text)' }}>
-                {u.member || 'a guest'}
-                {u.docNo && (
-                  <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                    {u.docNo}
-                  </span>
-                )}
-              </span>
-              <span style={{ width: 90, textAlign: 'right', fontSize: 10.5, color: 'var(--text-faint)' }}>
-                {u.outlet}
-              </span>
-              <span style={{ width: 90, textAlign: 'right', fontSize: 12.5, fontWeight: 600, fontFamily: MONO, color: 'var(--text)' }}>
-                {mvr(u.amount)}
-              </span>
-            </div>
-          ))}
-
-          {canConfigure && promo.active && (
-            <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--line-soft)' }}>
-              <button disabled={busy} onClick={onStop}
-                style={{ padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: 'var(--stop)', color: 'var(--on-stop, #fff)' }}>
-                Stop it
-              </button>
-              <p style={{ margin: '9px 2px 0', fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)', maxWidth: 480 }}>
-                It stops being honoured from the moment you press this — on the phone and at the
-                till alike, because both ask the same question of the same row. What it has
-                already given away stays given.
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
+    <Overlay onClose={onClose} label="Promotion" width={660}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 14, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+        {promo.code}
+      </span>
+      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{promo.name}</span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+
+    <div style={{ flexShrink: 0, padding: '11px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
+      <Fig label="USED" value={String(promo.uses)} />
+      <Fig label="GIVEN AWAY" value={mvr(promo.given)} big />
+      <span style={{ fontSize: 11, color: promo.dormant ? 'var(--stop-bright)' : 'var(--go-bright)' }}>
+        {promo.dormant || 'running'}
+      </span>
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)', maxWidth: 300, lineHeight: 1.5 }}>
+        {describe(promo)}
+      </span>
+    </div>
+
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 16px 16px' }}>
+      <SubHead>Where it has been used</SubHead>
+      {!uses ? (
+        <div style={{ padding: '18px 0' }}><Skeleton rows={4} /></div>
+      ) : !uses.length ? (
+        <div style={{ padding: '18px 2px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 480 }}>
+          Nobody has used it yet. A code that has been printed and never redeemed is worth
+          knowing about too.
+        </div>
+      ) : uses.map((u) => (
+        <div key={u.id} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 2px', borderBottom: '1px solid var(--line-soft)' }}>
+          <span style={{ width: 96, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+            {new Date(u.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+          </span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text)' }}>
+            {u.member || 'a guest'}
+            {u.docNo && (
+              <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                {u.docNo}
+              </span>
+            )}
+          </span>
+          <span style={{ width: 90, textAlign: 'right', fontSize: 10.5, color: 'var(--text-faint)' }}>
+            {u.outlet}
+          </span>
+          <span style={{ width: 90, textAlign: 'right', fontSize: 12.5, fontWeight: 600, fontFamily: MONO, color: 'var(--text)' }}>
+            {mvr(u.amount)}
+          </span>
+        </div>
+      ))}
+
+      {canConfigure && promo.active && (
+        <div style={{ marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--line-soft)' }}>
+          <button disabled={busy} onClick={onStop}
+            style={{ padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: 'var(--stop)', color: 'var(--on-stop, #fff)' }}>
+            Stop it
+          </button>
+          <p style={{ margin: '9px 2px 0', fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)', maxWidth: 480 }}>
+            It stops being honoured from the moment you press this — on the phone and at the
+            till alike, because both ask the same question of the same row. What it has
+            already given away stays given.
+          </p>
+        </div>
+      )}
+    </div>
+    </Overlay>
   );
 }
 

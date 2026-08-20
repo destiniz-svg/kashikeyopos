@@ -46,3 +46,49 @@ export function useBreakpoint(): Bp {
 
   return bp;
 }
+
+/* HEIGHT IS A BREAKPOINT TOO, and the prototype says why in one line: "A
+ * 1440-wide window 600px tall passes every width test as desktop and still
+ * cannot show a keypad beside a bill, so anything that stacks or scrolls has to
+ * consult this as well."
+ *
+ * That is not an exotic window. It is a 13" laptop with a browser chrome and a
+ * dock, and it is a tablet in landscape — the two shapes a back office is
+ * actually used on. Every dialog in this build asked only about WIDTH, so on a
+ * short screen it kept the desktop's 28px of scrim inset and then had to scroll
+ * its own body inside what was left.
+ *
+ * `shortVp` is the prototype's `shortVp()`: 760, the same number as the phone
+ * width breakpoint, applied to the other axis.
+ *
+ * THE 12px DEADBAND IS THE PROTOTYPE'S AS WELL. A phone's address bar collapses
+ * and expands as the page scrolls, which fires `resize` with a height that
+ * moves by 40-60px and back. Re-rendering the shell on every one of those is
+ * the jank the deadband exists to stop; the state only moves when the change is
+ * bigger than the noise.
+ */
+export const SHORT_VP = 760;
+
+export function useViewportHeight(): number {
+  const [vh, setVh] = useState<number>(() =>
+    typeof window === 'undefined' ? 900 : window.innerHeight);
+
+  useEffect(() => {
+    const onResize = () => setVh((prev) =>
+      Math.abs(window.innerHeight - prev) > 12 ? window.innerHeight : prev);
+    onResize();
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+
+  return vh;
+}
+
+/** Too short to put two things side by side, whatever the width says. */
+export function useShortViewport(): boolean {
+  return useViewportHeight() < SHORT_VP;
+}

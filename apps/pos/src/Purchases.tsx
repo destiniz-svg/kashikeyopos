@@ -5,6 +5,7 @@ import { hit } from './filter';
 import * as outbox from './outbox';
 import { useIntent } from './intent';
 import type { Intent } from './intent';
+import { Overlay } from './ui';
 
 /* Purchases / GRN — 02-POS-SPEC.md §2 (`purchases`):
  * "PO → delivery → priced GRN → vendor invoice → ageing."
@@ -383,111 +384,108 @@ function DeliverySheet({ detail, canPrice, busy, onClose, onPrice }: {
     && prices[l.ingredientId] !== '');
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Delivery"
-        style={{ width: '100%', maxWidth: 700, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{d.supplier}</span>
-          <span style={{ fontSize: 11.5, fontFamily: MONO, color: 'var(--text-faint)' }}>{d.grnNo}</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-          {!d.priced && (
-            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.6, background: 'var(--warn-dim)', color: 'var(--warn-bright)' }}>
-              Received without an invoice. The stock is on the shelf, valued provisionally at what
-              it was already worth — so every dish using it reports a margin nobody has checked.
-              Putting the real prices in corrects the value and recosts every recipe.
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 12, padding: '6px 0', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)', borderBottom: '1px solid var(--line-soft)' }}>
-            <span style={{ flex: 1 }}>ITEM</span>
-            <span style={{ width: 96, textAlign: 'right' }}>QUANTITY</span>
-            <span style={{ width: 108, textAlign: 'right' }}>{d.priced ? 'PRICE EACH' : 'PROVISIONAL'}</span>
-            {!d.priced && <span style={{ width: 118, textAlign: 'right' }}>INVOICED AT</span>}
-            <span style={{ width: 92, textAlign: 'right' }}>VALUE</span>
-          </div>
-          {detail.lines.map((l) => (
-            <div key={l.ingredientId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
-                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
-                  per {l.unit}{l.currentAvgCost !== null && ' · shelf now at ' + price(l.currentAvgCost)}
-                </span>
-              </span>
-              <span style={{ width: 96, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
-                {qty(l.qty)}
-              </span>
-              <span style={{ width: 108, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: l.unitPrice === null ? 'var(--text-faint)' : 'var(--text)' }}>
-                {price(l.unitPrice ?? l.provisionalCost)}
-              </span>
-              {!d.priced && (
-                <span style={{ width: 118, display: 'flex', justifyContent: 'flex-end' }}>
-                  {l.unitPrice === null ? (
-                    <input inputMode="decimal" value={prices[l.ingredientId] ?? ''}
-                      onChange={(e) => setPrices({ ...prices, [l.ingredientId]: e.target.value })}
-                      aria-label={'Invoiced price for ' + l.name}
-                      disabled={!canPrice}
-                      placeholder={price(l.provisionalCost)}
-                      style={{ width: 110, height: 30, padding: '0 9px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--amber-line)', color: 'var(--text)', fontSize: 12, fontFamily: MONO, textAlign: 'right' }} />
-                  ) : <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>already priced</span>}
-                </span>
-              )}
-              <span style={{ width: 92, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
-                {mvr(l.value)}
-              </span>
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 12, padding: '9px 0', fontWeight: 700 }}>
-            <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>
-              {d.priced ? 'Invoiced' : 'Provisional value'}
-            </span>
-            <span style={{ fontSize: 14, fontFamily: MONO, color: 'var(--text)' }}>{mvr(d.total)}</span>
-          </div>
-
-          {detail.invoice && (
-            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.6 }}>
-              Invoice {detail.invoice.invoiceNo} · due{' '}
-              {new Date(detail.invoice.dueDate).toLocaleDateString('en-GB')} ·{' '}
-              {mvr(detail.invoice.paid)} of {mvr(detail.invoice.amount)} paid
-            </div>
-          )}
-
-          {!d.priced && (
-            canPrice ? (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 180px), 1fr))', gap: 11 }}>
-                  <L label="Invoice number" hint={'Due ' + d.termsDays + ' days from today on this supplier\'s terms.'}>
-                    <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} style={inp} />
-                  </L>
-                </div>
-                <button disabled={busy || !ready}
-                  onClick={() => onPrice(
-                    needed.map((l) => ({ ingredientId: l.ingredientId, unitPrice: Number(prices[l.ingredientId]) })),
-                    invoiceNo)}
-                  style={{ marginTop: 12, padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, background: ready ? 'var(--go)' : 'var(--bg-2)', color: ready ? 'var(--on-go)' : 'var(--text-faint)' }}>
-                  {busy ? 'Queuing…' : 'Price it'}
-                </button>
-                {!ready && (
-                  <span style={{ marginLeft: 10, fontSize: 10.5, color: 'var(--text-faint)' }}>
-                    Every line needs a price — a half-priced delivery leaves the rest at a guess.
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 11, lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                Pricing a delivery needs rank 4 — it moves value between accounts and settles what
-                is owed. Receiving is a manager&apos;s job; agreeing the bill is not.
-              </div>
-            )
-          )}
-        </div>
-      </div>
+    <Overlay onClose={onClose} label="Delivery" width={700}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{d.supplier}</span>
+      <span style={{ fontSize: 11.5, fontFamily: MONO, color: 'var(--text-faint)' }}>{d.grnNo}</span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+      {!d.priced && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.6, background: 'var(--warn-dim)', color: 'var(--warn-bright)' }}>
+          Received without an invoice. The stock is on the shelf, valued provisionally at what
+          it was already worth — so every dish using it reports a margin nobody has checked.
+          Putting the real prices in corrects the value and recosts every recipe.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, padding: '6px 0', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)', borderBottom: '1px solid var(--line-soft)' }}>
+        <span style={{ flex: 1 }}>ITEM</span>
+        <span style={{ width: 96, textAlign: 'right' }}>QUANTITY</span>
+        <span style={{ width: 108, textAlign: 'right' }}>{d.priced ? 'PRICE EACH' : 'PROVISIONAL'}</span>
+        {!d.priced && <span style={{ width: 118, textAlign: 'right' }}>INVOICED AT</span>}
+        <span style={{ width: 92, textAlign: 'right' }}>VALUE</span>
+      </div>
+      {detail.lines.map((l) => (
+        <div key={l.ingredientId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
+            <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
+              per {l.unit}{l.currentAvgCost !== null && ' · shelf now at ' + price(l.currentAvgCost)}
+            </span>
+          </span>
+          <span style={{ width: 96, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
+            {qty(l.qty)}
+          </span>
+          <span style={{ width: 108, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: l.unitPrice === null ? 'var(--text-faint)' : 'var(--text)' }}>
+            {price(l.unitPrice ?? l.provisionalCost)}
+          </span>
+          {!d.priced && (
+            <span style={{ width: 118, display: 'flex', justifyContent: 'flex-end' }}>
+              {l.unitPrice === null ? (
+                <input inputMode="decimal" value={prices[l.ingredientId] ?? ''}
+                  onChange={(e) => setPrices({ ...prices, [l.ingredientId]: e.target.value })}
+                  aria-label={'Invoiced price for ' + l.name}
+                  disabled={!canPrice}
+                  placeholder={price(l.provisionalCost)}
+                  style={{ width: 110, height: 30, padding: '0 9px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--amber-line)', color: 'var(--text)', fontSize: 12, fontFamily: MONO, textAlign: 'right' }} />
+              ) : <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>already priced</span>}
+            </span>
+          )}
+          <span style={{ width: 92, textAlign: 'right', fontSize: 12.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
+            {mvr(l.value)}
+          </span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 12, padding: '9px 0', fontWeight: 700 }}>
+        <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>
+          {d.priced ? 'Invoiced' : 'Provisional value'}
+        </span>
+        <span style={{ fontSize: 14, fontFamily: MONO, color: 'var(--text)' }}>{mvr(d.total)}</span>
+      </div>
+
+      {detail.invoice && (
+        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.6 }}>
+          Invoice {detail.invoice.invoiceNo} · due{' '}
+          {new Date(detail.invoice.dueDate).toLocaleDateString('en-GB')} ·{' '}
+          {mvr(detail.invoice.paid)} of {mvr(detail.invoice.amount)} paid
+        </div>
+      )}
+
+      {!d.priced && (
+        canPrice ? (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 180px), 1fr))', gap: 11 }}>
+              <L label="Invoice number" hint={'Due ' + d.termsDays + ' days from today on this supplier\'s terms.'}>
+                <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} style={inp} />
+              </L>
+            </div>
+            <button disabled={busy || !ready}
+              onClick={() => onPrice(
+                needed.map((l) => ({ ingredientId: l.ingredientId, unitPrice: Number(prices[l.ingredientId]) })),
+                invoiceNo)}
+              style={{ marginTop: 12, padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, background: ready ? 'var(--go)' : 'var(--bg-2)', color: ready ? 'var(--on-go)' : 'var(--text-faint)' }}>
+              {busy ? 'Queuing…' : 'Price it'}
+            </button>
+            {!ready && (
+              <span style={{ marginLeft: 10, fontSize: 10.5, color: 'var(--text-faint)' }}>
+                Every line needs a price — a half-priced delivery leaves the rest at a guess.
+              </span>
+            )}
+          </div>
+        ) : (
+          <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 11, lineHeight: 1.55, color: 'var(--text-muted)' }}>
+            Pricing a delivery needs rank 4 — it moves value between accounts and settles what
+            is owed. Receiving is a manager&apos;s job; agreeing the bill is not.
+          </div>
+        )
+      )}
+    </div>
+    </Overlay>
   );
 }
 

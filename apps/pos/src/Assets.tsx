@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
-import { Skeleton } from './ui';
+import { Overlay, Skeleton } from './ui';
 
 /* Equipment & Maintenance — 02-POS-SPEC.md §2 (`assets`):
  * "Asset register, depreciation posting, service schedule."
@@ -393,80 +393,77 @@ function Sheet({ asset, entries, busy, canManage, onClose, onSchedule, onDone, o
   const done = asset.services.filter((s) => s.doneOn);
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Asset"
-        style={{ width: '100%', maxWidth: 700, maxHeight: '88dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{asset.name}</span>
-          <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
-            bought {day(asset.acquiredOn)}{asset.supplier && ' · ' + asset.supplier}
-          </span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div style={{ flexShrink: 0, padding: '11px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <Fig label="COST" value={mvr(asset.cost)} />
-          <Fig label="CHARGED SO FAR" value={mvr(asset.accumulated)} />
-          <Fig label="WORTH NOW" value={mvr(asset.netBook)} big />
-          <Fig label="A MONTH" value={asset.fullyDepreciated ? '—' : mvr(asset.monthly)} />
-          <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
-            {asset.status === 'disposed'
-              ? 'Disposed of ' + (asset.disposedOn ? day(asset.disposedOn) : '')
-                + (asset.proceeds ? ' for ' + mvr(asset.proceeds) : '')
-              : asset.depreciatedMonths + ' of ' + asset.lifeMonths + ' months charged'
-                + (asset.residual ? ' · stops at ' + mvr(asset.residual) : '')}
-          </span>
-        </div>
-
-        <div style={{ flexShrink: 0, padding: '8px 16px', display: 'flex', gap: 4 }}>
-          <TabBtn on={tab === 'jobs'} onClick={() => setTab('jobs')}>
-            Maintenance{waiting.length ? ' · ' + waiting.length : ''}
-          </TabBtn>
-          <TabBtn on={tab === 'ledger'} onClick={() => setTab('ledger')}>In the ledger</TabBtn>
-          {canManage && asset.status === 'active' && (
-            <TabBtn on={tab === 'dispose'} onClick={() => setTab('dispose')}>Sell or scrap</TabBtn>
-          )}
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 16px 16px' }}>
-          {tab === 'jobs' && (
-            <Jobs asset={asset} waiting={waiting} done={done} busy={busy}
-              onSchedule={onSchedule} onDone={onDone} onDrop={onDrop} />
-          )}
-          {tab === 'ledger' && (
-            !entries ? (
-              <div style={{ padding: '20px 0' }}><Skeleton rows={4} /></div>
-            ) : !entries.length ? (
-              <div style={{ padding: '20px 2px', fontSize: 12, color: 'var(--text-faint)' }}>
-                Nothing posted against it.
-              </div>
-            ) : entries.map((e, i) => (
-              <div key={e.jvNo + i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '6px 2px', borderBottom: '1px solid var(--line-soft)' }}>
-                <span style={{ width: 60, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                  {day(e.date)}
-                </span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text)' }}>
-                  {e.accountName}
-                  <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                    {e.account}
-                  </span>
-                </span>
-                <span style={{ width: 90, textAlign: 'right', fontSize: 11.5, fontFamily: MONO, color: e.dr ? 'var(--text)' : 'var(--text-faint)' }}>
-                  {e.dr ? mvr(e.dr) : ''}
-                </span>
-                <span style={{ width: 90, textAlign: 'right', fontSize: 11.5, fontFamily: MONO, color: e.cr ? 'var(--text)' : 'var(--text-faint)' }}>
-                  {e.cr ? mvr(e.cr) : ''}
-                </span>
-              </div>
-            ))
-          )}
-          {tab === 'dispose' && <Dispose asset={asset} busy={busy} onDispose={onDispose} />}
-        </div>
-      </div>
+    <Overlay onClose={onClose} label="Asset" width={700}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{asset.name}</span>
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+        bought {day(asset.acquiredOn)}{asset.supplier && ' · ' + asset.supplier}
+      </span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+
+    <div style={{ flexShrink: 0, padding: '11px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
+      <Fig label="COST" value={mvr(asset.cost)} />
+      <Fig label="CHARGED SO FAR" value={mvr(asset.accumulated)} />
+      <Fig label="WORTH NOW" value={mvr(asset.netBook)} big />
+      <Fig label="A MONTH" value={asset.fullyDepreciated ? '—' : mvr(asset.monthly)} />
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+        {asset.status === 'disposed'
+          ? 'Disposed of ' + (asset.disposedOn ? day(asset.disposedOn) : '')
+            + (asset.proceeds ? ' for ' + mvr(asset.proceeds) : '')
+          : asset.depreciatedMonths + ' of ' + asset.lifeMonths + ' months charged'
+            + (asset.residual ? ' · stops at ' + mvr(asset.residual) : '')}
+      </span>
+    </div>
+
+    <div style={{ flexShrink: 0, padding: '8px 16px', display: 'flex', gap: 4 }}>
+      <TabBtn on={tab === 'jobs'} onClick={() => setTab('jobs')}>
+        Maintenance{waiting.length ? ' · ' + waiting.length : ''}
+      </TabBtn>
+      <TabBtn on={tab === 'ledger'} onClick={() => setTab('ledger')}>In the ledger</TabBtn>
+      {canManage && asset.status === 'active' && (
+        <TabBtn on={tab === 'dispose'} onClick={() => setTab('dispose')}>Sell or scrap</TabBtn>
+      )}
+    </div>
+
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 16px 16px' }}>
+      {tab === 'jobs' && (
+        <Jobs asset={asset} waiting={waiting} done={done} busy={busy}
+          onSchedule={onSchedule} onDone={onDone} onDrop={onDrop} />
+      )}
+      {tab === 'ledger' && (
+        !entries ? (
+          <div style={{ padding: '20px 0' }}><Skeleton rows={4} /></div>
+        ) : !entries.length ? (
+          <div style={{ padding: '20px 2px', fontSize: 12, color: 'var(--text-faint)' }}>
+            Nothing posted against it.
+          </div>
+        ) : entries.map((e, i) => (
+          <div key={e.jvNo + i} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '6px 2px', borderBottom: '1px solid var(--line-soft)' }}>
+            <span style={{ width: 60, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+              {day(e.date)}
+            </span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text)' }}>
+              {e.accountName}
+              <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                {e.account}
+              </span>
+            </span>
+            <span style={{ width: 90, textAlign: 'right', fontSize: 11.5, fontFamily: MONO, color: e.dr ? 'var(--text)' : 'var(--text-faint)' }}>
+              {e.dr ? mvr(e.dr) : ''}
+            </span>
+            <span style={{ width: 90, textAlign: 'right', fontSize: 11.5, fontFamily: MONO, color: e.cr ? 'var(--text)' : 'var(--text-faint)' }}>
+              {e.cr ? mvr(e.cr) : ''}
+            </span>
+          </div>
+        ))
+      )}
+      {tab === 'dispose' && <Dispose asset={asset} busy={busy} onDispose={onDispose} />}
+    </div>
+    </Overlay>
   );
 }
 

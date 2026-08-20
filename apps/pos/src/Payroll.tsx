@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { Overlay } from './ui';
 
 /* Payroll & Pension — 02-POS-SPEC.md §2 (`payroll`):
  * "Runs, pension, posts to 6000 / 2300."
@@ -455,39 +456,36 @@ function Rates({ data, busy, onSet }: {
 function RunSheet({ detail, onClose }: { detail: Detail; onClose: () => void }) {
   const r = detail.run;
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Payroll run"
-        style={{ width: '100%', maxWidth: 660, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-            {day(r.from)} – {day(r.to)}
-          </span>
-          <span style={{ padding: '3px 7px', borderRadius: 5, fontSize: 9, fontWeight: 700, letterSpacing: '.05em', background: STATUS[r.status].bg, color: STATUS[r.status].fg }}>
-            {STATUS[r.status].label}
-          </span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-          <Lines lines={detail.lines} />
-          <div style={{ marginTop: 12, display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
-            <Fig label="GROSS" value={mvr(r.gross)} />
-            <Fig label="PENSION" value={mvr(r.employeePension + r.employerPension)} />
-            <Fig label="NET" value={mvr(r.net)} big />
-            <Fig label="COST" value={mvr(r.cost)} />
-          </div>
-          <p style={{ margin: '12px 2px 0', fontSize: 11, lineHeight: 1.6, color: 'var(--text-faint)' }}>
-            {r.status === 'draft'
-              ? 'Nothing has posted. These figures are arithmetic read off the time clock.'
-              : 'Wages went to 6000 and the employer pension to 6010. Net pay is owed on 2300'
-                + (r.paidAt ? ' and has been paid.' : ' and has not been paid yet.')
-                + ' Both pension halves sit on 2310, owed to the pension office on its own schedule.'}
-          </p>
-        </div>
-      </div>
+    <Overlay onClose={onClose} label="Payroll run" width={660}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+        {day(r.from)} – {day(r.to)}
+      </span>
+      <span style={{ padding: '3px 7px', borderRadius: 5, fontSize: 9, fontWeight: 700, letterSpacing: '.05em', background: STATUS[r.status].bg, color: STATUS[r.status].fg }}>
+        {STATUS[r.status].label}
+      </span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+      <Lines lines={detail.lines} />
+      <div style={{ marginTop: 12, display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
+        <Fig label="GROSS" value={mvr(r.gross)} />
+        <Fig label="PENSION" value={mvr(r.employeePension + r.employerPension)} />
+        <Fig label="NET" value={mvr(r.net)} big />
+        <Fig label="COST" value={mvr(r.cost)} />
+      </div>
+      <p style={{ margin: '12px 2px 0', fontSize: 11, lineHeight: 1.6, color: 'var(--text-faint)' }}>
+        {r.status === 'draft'
+          ? 'Nothing has posted. These figures are arithmetic read off the time clock.'
+          : 'Wages went to 6000 and the employer pension to 6010. Net pay is owed on 2300'
+            + (r.paidAt ? ' and has been paid.' : ' and has not been paid yet.')
+            + ' Both pension halves sit on 2310, owed to the pension office on its own schedule.'}
+      </p>
+    </div>
+    </Overlay>
   );
 }
 

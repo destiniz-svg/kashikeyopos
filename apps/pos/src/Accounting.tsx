@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { Settlements } from './Settlements';
+import { Overlay } from './ui';
 
 /* Accounting Flow — 02-POS-SPEC.md §2 (`accounting`): "The ledger itself:
  * journals, trial balance, P&L."
@@ -484,16 +485,12 @@ function Modal({ title, onClose, children }: {
   title: string; onClose: () => void; children: React.ReactNode;
 }) {
   return (
-    <div role="dialog" aria-label={title}
-      style={{ position: 'fixed', inset: 0, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 40, animation: 'kfade .14s' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width: 'min(680px, 100%)', maxHeight: '86vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)', animation: 'kmodal .18s' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
-          {title}
-        </div>
-        {children}
-      </div>
+    <Overlay onClose={onClose} label={title} width={680} scroll>
+    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
+      {title}
     </div>
+    {children}
+    </Overlay>
   );
 }
 

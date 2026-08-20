@@ -3,7 +3,7 @@ import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
 import * as outbox from './outbox';
-import { Skeleton } from './ui';
+import { Overlay, Skeleton } from './ui';
 
 /* Inventory and the stock ledger — 02-POS-SPEC.md §2 (`inventory`, `ledger`).
  *
@@ -381,19 +381,16 @@ function Sheet({ title, children, onClose, wide }: {
   title: string; children: React.ReactNode; onClose: () => void; wide?: boolean;
 }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}
-        style={{ width: '100%', maxWidth: wide ? 640 : 460, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>{children}</div>
-      </div>
+    <Overlay onClose={onClose} label={title} width={wide ? 640 : 460}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center' }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>{children}</div>
+    </Overlay>
   );
 }
 

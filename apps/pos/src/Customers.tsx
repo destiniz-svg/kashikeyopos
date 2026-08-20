@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { Overlay } from './ui';
 
 /* Customers & Credit — 02-POS-SPEC.md §2 (`customers`):
  * "Chain-wide profiles, loyalty tier, house-account credit ledger."
@@ -389,185 +390,182 @@ function Sheet({ st, busy, canCredit, onClose, onCredit, onReceipt, onWriteOff }
   const pay = Number(amount) || 0;
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Customer"
-        style={{ width: '100%', maxWidth: 680, maxHeight: '88dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-            {m.name || m.phone}
-          </span>
-          <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
-            {m.phone}{m.company && ' · ' + m.company}
-          </span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+    <Overlay onClose={onClose} label="Customer" width={680}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+        {m.name || m.phone}
+      </span>
+      <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+        {m.phone}{m.company && ' · ' + m.company}
+      </span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
+    </div>
 
-        <div style={{ flexShrink: 0, padding: '11px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
-          <Fig label="OWES HERE" value={mvr(st.owed)} big />
-          <Fig label="LIMIT" value={m.creditLimit ? mvr(m.creditLimit) : 'none'} />
-          <Fig label="CAN CHARGE" value={m.blocked ? '—' : mvr(m.available)} />
-          {/* Said plainly, because it is the thing most likely to be assumed
-              wrong: the person is chain-wide, the debt is not. */}
-          <span style={{ fontSize: 10.5, lineHeight: 1.5, color: 'var(--text-faint)', maxWidth: 260 }}>
-            This is what they owe at this outlet. Another branch keeps its own.
-          </span>
-        </div>
+    <div style={{ flexShrink: 0, padding: '11px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', gap: 22, flexWrap: 'wrap', alignItems: 'baseline' }}>
+      <Fig label="OWES HERE" value={mvr(st.owed)} big />
+      <Fig label="LIMIT" value={m.creditLimit ? mvr(m.creditLimit) : 'none'} />
+      <Fig label="CAN CHARGE" value={m.blocked ? '—' : mvr(m.available)} />
+      {/* Said plainly, because it is the thing most likely to be assumed
+          wrong: the person is chain-wide, the debt is not. */}
+      <span style={{ fontSize: 10.5, lineHeight: 1.5, color: 'var(--text-faint)', maxWidth: 260 }}>
+        This is what they owe at this outlet. Another branch keeps its own.
+      </span>
+    </div>
 
-        <div style={{ flexShrink: 0, padding: '8px 16px', display: 'flex', gap: 4 }}>
-          <TabBtn on={tab === 'account'} onClick={() => setTab('account')}>The account</TabBtn>
-          {canCredit && (
-            <TabBtn on={tab === 'terms'} onClick={() => setTab('terms')}>Credit &amp; terms</TabBtn>
-          )}
-        </div>
+    <div style={{ flexShrink: 0, padding: '8px 16px', display: 'flex', gap: 4 }}>
+      <TabBtn on={tab === 'account'} onClick={() => setTab('account')}>The account</TabBtn>
+      {canCredit && (
+        <TabBtn on={tab === 'terms'} onClick={() => setTab('terms')}>Credit &amp; terms</TabBtn>
+      )}
+    </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 16px 16px' }}>
-          {tab === 'account' ? (
-            <>
-              {st.owed > 0 && (
-                <div style={{ margin: '8px 0 14px', padding: 12, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--line-soft)' }}>
-                  <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 11 }}>
-                    <Fig label="NOT YET DUE" value={mvr(st.ageing.notYetDue)} />
-                    <Fig label="1–30" value={mvr(st.ageing.upTo30)} />
-                    <Fig label="31–60" value={mvr(st.ageing.upTo60)} />
-                    <Fig label="60+" value={mvr(st.ageing.over60)} />
-                    <span style={{ fontSize: 10, color: 'var(--text-faint)', alignSelf: 'center' }}>
-                      {st.ageing.termsDays} day terms
-                    </span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 130px), 1fr))', gap: 10 }}>
-                    <L label="They paid (MVR)">
-                      <input inputMode="decimal" value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        aria-label="They paid" style={{ ...inp, fontFamily: MONO }} />
-                    </L>
-                    <L label="Into">
-                      <select value={method} onChange={(e) => setMethod(e.target.value)}
-                        aria-label="Into" style={inp}>
-                        <option value="cash">the drawer</option>
-                        <option value="bank">the bank</option>
-                        <option value="card">a card</option>
-                      </select>
-                    </L>
-                    <L label="On">
-                      <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
-                        aria-label="Paid on" style={{ ...inp, fontFamily: MONO }} />
-                    </L>
-                  </div>
-                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <button disabled={busy || !(pay > 0) || pay > st.owed}
-                      onClick={() => { onReceipt({ amount: pay, method, on }); setAmount(''); }}
-                      style={{ padding: '8px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700, background: pay > 0 && pay <= st.owed ? 'var(--go)' : 'var(--bg-2)', color: pay > 0 && pay <= st.owed ? 'var(--on-go)' : 'var(--text-faint)' }}>
-                      Take the payment
-                    </button>
-                    {pay > st.owed && (
-                      <span style={{ fontSize: 10.5, color: 'var(--text-faint)', maxWidth: 360, lineHeight: 1.5 }}>
-                        That is more than the {mvr(st.owed)} owed. Anything beyond a debt is a
-                        deposit, not a payment, and would turn the receivable negative.
-                      </span>
-                    )}
-                    {pay > 0 && pay <= st.owed && (
-                      <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
-                        Leaves {mvr(st.owed - pay)} outstanding.
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <SubHead>Every entry</SubHead>
-              {!st.entries.length ? (
-                <div style={{ padding: '20px 2px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 500 }}>
-                  Nothing has been charged to this account.
-                </div>
-              ) : st.entries.map((e) => (
-                <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 2px', borderBottom: '1px solid var(--line-soft)' }}>
-                  <span style={{ width: 62, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                    {day(e.on)}
-                  </span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text)' }}>
-                    {KIND[e.kind]}
-                    {e.docNo && (
-                      <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
-                        {e.docNo}
-                      </span>
-                    )}
-                    {e.note && (
-                      <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-faint)' }}>
-                        {e.note}
-                      </span>
-                    )}
-                  </span>
-                  <span style={{ width: 100, textAlign: 'right', fontSize: 12.5, fontWeight: 600, fontFamily: MONO, color: e.amount > 0 ? 'var(--text)' : 'var(--go-bright)' }}>
-                    {e.amount > 0 ? mvr(e.amount) : '(' + mvr(-e.amount) + ')'}
-                  </span>
-                  <span style={{ width: 96, textAlign: 'right', fontSize: 10, color: 'var(--text-faint)' }}>
-                    {e.by || ''}
-                  </span>
-                </div>
-              ))}
-            </>
-          ) : (
-            <div style={{ padding: '10px 0' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11 }}>
-                <L label="Credit limit (MVR)" hint="Nought means no house account at all.">
-                  <input inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)}
-                    aria-label="Credit limit" style={{ ...inp, fontFamily: MONO }} />
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 16px 16px' }}>
+      {tab === 'account' ? (
+        <>
+          {st.owed > 0 && (
+            <div style={{ margin: '8px 0 14px', padding: 12, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--line-soft)' }}>
+              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 11 }}>
+                <Fig label="NOT YET DUE" value={mvr(st.ageing.notYetDue)} />
+                <Fig label="1–30" value={mvr(st.ageing.upTo30)} />
+                <Fig label="31–60" value={mvr(st.ageing.upTo60)} />
+                <Fig label="60+" value={mvr(st.ageing.over60)} />
+                <span style={{ fontSize: 10, color: 'var(--text-faint)', alignSelf: 'center' }}>
+                  {st.ageing.termsDays} day terms
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 130px), 1fr))', gap: 10 }}>
+                <L label="They paid (MVR)">
+                  <input inputMode="decimal" value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    aria-label="They paid" style={{ ...inp, fontFamily: MONO }} />
                 </L>
-                <L label="Terms (days)" hint="How long they have before a charge is overdue.">
-                  <input inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)}
-                    aria-label="Terms in days" style={{ ...inp, fontFamily: MONO }} />
+                <L label="Into">
+                  <select value={method} onChange={(e) => setMethod(e.target.value)}
+                    aria-label="Into" style={inp}>
+                    <option value="cash">the drawer</option>
+                    <option value="bank">the bank</option>
+                    <option value="card">a card</option>
+                  </select>
                 </L>
-                <L label="Blocked">
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 7, height: 34, fontSize: 12, color: 'var(--text-muted)' }}>
-                    <input type="checkbox" checked={blocked}
-                      onChange={(e) => setBlocked(e.target.checked)} />
-                    stop new charges
-                  </label>
+                <L label="On">
+                  <input type="date" value={on} onChange={(e) => setOn(e.target.value)}
+                    aria-label="Paid on" style={{ ...inp, fontFamily: MONO }} />
                 </L>
               </div>
-              <button disabled={busy}
-                onClick={() => onCredit({ creditLimit: Number(limit) || 0, termsDays: Number(terms) || 0, blocked })}
-                style={{ marginTop: 12, padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
-                Set the account
-              </button>
-              {Number(limit) > 0 && st.owed > Number(limit) && (
-                <p style={{ margin: '10px 2px 0', fontSize: 11, lineHeight: 1.55, color: 'var(--text-faint)', maxWidth: 480 }}>
-                  They already owe {mvr(st.owed)}, which is over that. Nothing is clawed back —
-                  it only stops the next charge.
-                </p>
-              )}
+              <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <button disabled={busy || !(pay > 0) || pay > st.owed}
+                  onClick={() => { onReceipt({ amount: pay, method, on }); setAmount(''); }}
+                  style={{ padding: '8px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700, background: pay > 0 && pay <= st.owed ? 'var(--go)' : 'var(--bg-2)', color: pay > 0 && pay <= st.owed ? 'var(--on-go)' : 'var(--text-faint)' }}>
+                  Take the payment
+                </button>
+                {pay > st.owed && (
+                  <span style={{ fontSize: 10.5, color: 'var(--text-faint)', maxWidth: 360, lineHeight: 1.5 }}>
+                    That is more than the {mvr(st.owed)} owed. Anything beyond a debt is a
+                    deposit, not a payment, and would turn the receivable negative.
+                  </span>
+                )}
+                {pay > 0 && pay <= st.owed && (
+                  <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+                    Leaves {mvr(st.owed - pay)} outstanding.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
-              {st.owed > 0 && (
-                <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid var(--line-soft)' }}>
-                  <SubHead>Give up on it</SubHead>
-                  <p style={{ margin: '0 2px 9px', fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)', maxWidth: 500 }}>
-                    Writing off {mvr(st.owed)} charges it to 6400 Bad debt and clears the
-                    receivable. It is the one entry here that makes money disappear, so it is
-                    dated, attributed, and needs a reason.
-                  </p>
-                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                    <span style={{ flex: 1, minWidth: 200 }}>
-                      <L label="Why">
-                        <input value={reason} onChange={(e) => setReason(e.target.value)}
-                          aria-label="Why" style={inp} />
-                      </L>
-                    </span>
-                    <button disabled={busy || reason.trim().length < 3}
-                      onClick={() => { onWriteOff({ reason: reason.trim() }); setReason(''); }}
-                      style={{ padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: reason.trim().length >= 3 ? 'var(--stop)' : 'var(--bg-2)', color: reason.trim().length >= 3 ? 'var(--on-stop, #fff)' : 'var(--text-faint)' }}>
-                      Write it off
-                    </button>
-                  </div>
-                </div>
-              )}
+          <SubHead>Every entry</SubHead>
+          {!st.entries.length ? (
+            <div style={{ padding: '20px 2px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 500 }}>
+              Nothing has been charged to this account.
+            </div>
+          ) : st.entries.map((e) => (
+            <div key={e.id} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '7px 2px', borderBottom: '1px solid var(--line-soft)' }}>
+              <span style={{ width: 62, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                {day(e.on)}
+              </span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 11.5, color: 'var(--text)' }}>
+                {KIND[e.kind]}
+                {e.docNo && (
+                  <span style={{ marginLeft: 6, fontSize: 10, fontFamily: MONO, color: 'var(--text-faint)' }}>
+                    {e.docNo}
+                  </span>
+                )}
+                {e.note && (
+                  <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-faint)' }}>
+                    {e.note}
+                  </span>
+                )}
+              </span>
+              <span style={{ width: 100, textAlign: 'right', fontSize: 12.5, fontWeight: 600, fontFamily: MONO, color: e.amount > 0 ? 'var(--text)' : 'var(--go-bright)' }}>
+                {e.amount > 0 ? mvr(e.amount) : '(' + mvr(-e.amount) + ')'}
+              </span>
+              <span style={{ width: 96, textAlign: 'right', fontSize: 10, color: 'var(--text-faint)' }}>
+                {e.by || ''}
+              </span>
+            </div>
+          ))}
+        </>
+      ) : (
+        <div style={{ padding: '10px 0' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%, 140px), 1fr))', gap: 11 }}>
+            <L label="Credit limit (MVR)" hint="Nought means no house account at all.">
+              <input inputMode="decimal" value={limit} onChange={(e) => setLimit(e.target.value)}
+                aria-label="Credit limit" style={{ ...inp, fontFamily: MONO }} />
+            </L>
+            <L label="Terms (days)" hint="How long they have before a charge is overdue.">
+              <input inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)}
+                aria-label="Terms in days" style={{ ...inp, fontFamily: MONO }} />
+            </L>
+            <L label="Blocked">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 7, height: 34, fontSize: 12, color: 'var(--text-muted)' }}>
+                <input type="checkbox" checked={blocked}
+                  onChange={(e) => setBlocked(e.target.checked)} />
+                stop new charges
+              </label>
+            </L>
+          </div>
+          <button disabled={busy}
+            onClick={() => onCredit({ creditLimit: Number(limit) || 0, termsDays: Number(terms) || 0, blocked })}
+            style={{ marginTop: 12, padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
+            Set the account
+          </button>
+          {Number(limit) > 0 && st.owed > Number(limit) && (
+            <p style={{ margin: '10px 2px 0', fontSize: 11, lineHeight: 1.55, color: 'var(--text-faint)', maxWidth: 480 }}>
+              They already owe {mvr(st.owed)}, which is over that. Nothing is clawed back —
+              it only stops the next charge.
+            </p>
+          )}
+
+          {st.owed > 0 && (
+            <div style={{ marginTop: 22, paddingTop: 14, borderTop: '1px solid var(--line-soft)' }}>
+              <SubHead>Give up on it</SubHead>
+              <p style={{ margin: '0 2px 9px', fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)', maxWidth: 500 }}>
+                Writing off {mvr(st.owed)} charges it to 6400 Bad debt and clears the
+                receivable. It is the one entry here that makes money disappear, so it is
+                dated, attributed, and needs a reason.
+              </p>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <span style={{ flex: 1, minWidth: 200 }}>
+                  <L label="Why">
+                    <input value={reason} onChange={(e) => setReason(e.target.value)}
+                      aria-label="Why" style={inp} />
+                  </L>
+                </span>
+                <button disabled={busy || reason.trim().length < 3}
+                  onClick={() => { onWriteOff({ reason: reason.trim() }); setReason(''); }}
+                  style={{ padding: '9px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: reason.trim().length >= 3 ? 'var(--stop)' : 'var(--bg-2)', color: reason.trim().length >= 3 ? 'var(--on-stop, #fff)' : 'var(--text-faint)' }}>
+                  Write it off
+                </button>
+              </div>
             </div>
           )}
         </div>
-      </div>
+      )}
     </div>
+    </Overlay>
   );
 }
 

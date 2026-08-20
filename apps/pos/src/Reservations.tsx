@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
+import { Overlay } from './ui';
 
 /* Reservations — 02-POS-SPEC.md §2 (`reservations`):
  * "Tonight's book, table assignment, arrival state."
@@ -385,46 +386,43 @@ function Seat({ booking, busy, held, tables, onClose, onSeat }: {
 }) {
   const [tableNo, setTableNo] = useState(booking.tableNo || '');
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Seat the party"
-        style={{ width: '100%', maxWidth: 460, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{booking.name}</span>
-          <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
-            {booking.covers} covers · {booking.at}
-          </span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div style={{ padding: 16 }}>
-          <L label="Which table">
-            <select value={tableNo} onChange={(e) => setTableNo(e.target.value)}
-              aria-label="Which table" style={{ ...inp, fontFamily: MONO, fontSize: 15 }}>
-              <option value="">choose…</option>
-              {tables.map((t) => (
-                <option key={t} value={t}>{t}{held.includes(t) ? ' — held' : ''}</option>
-              ))}
-            </select>
-          </L>
-          {held.length > 0 && (
-            <p style={{ margin: '7px 2px 0', fontSize: 10.5, color: 'var(--text-faint)' }}>
-              Held today: {held.map((t) => 'table ' + t).join(', ')}
-            </p>
-          )}
-          <button disabled={busy || !tableNo.trim()} onClick={() => onSeat(tableNo.trim())}
-            style={{ marginTop: 14, width: '100%', minHeight: 44, borderRadius: 9, fontSize: 13.5, fontWeight: 700, background: tableNo.trim() ? 'var(--go)' : 'var(--bg-2)', color: tableNo.trim() ? 'var(--on-go)' : 'var(--text-faint)' }}>
-            Sit them down
-          </button>
-          {/* What the button actually does, said before it is pressed. */}
-          <p style={{ margin: '10px 2px 0', fontSize: 11, lineHeight: 1.55, color: 'var(--text-faint)' }}>
-            This opens their ticket on that table with {booking.covers} covers and the name
-            already on it — nothing to type again at the till.
-          </p>
-        </div>
-      </div>
+    <Overlay onClose={onClose} label="Seat the party" width={460}>
+    <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{booking.name}</span>
+      <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
+        {booking.covers} covers · {booking.at}
+      </span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+    <div style={{ padding: 16 }}>
+      <L label="Which table">
+        <select value={tableNo} onChange={(e) => setTableNo(e.target.value)}
+          aria-label="Which table" style={{ ...inp, fontFamily: MONO, fontSize: 15 }}>
+          <option value="">choose…</option>
+          {tables.map((t) => (
+            <option key={t} value={t}>{t}{held.includes(t) ? ' — held' : ''}</option>
+          ))}
+        </select>
+      </L>
+      {held.length > 0 && (
+        <p style={{ margin: '7px 2px 0', fontSize: 10.5, color: 'var(--text-faint)' }}>
+          Held today: {held.map((t) => 'table ' + t).join(', ')}
+        </p>
+      )}
+      <button disabled={busy || !tableNo.trim()} onClick={() => onSeat(tableNo.trim())}
+        style={{ marginTop: 14, width: '100%', minHeight: 44, borderRadius: 9, fontSize: 13.5, fontWeight: 700, background: tableNo.trim() ? 'var(--go)' : 'var(--bg-2)', color: tableNo.trim() ? 'var(--on-go)' : 'var(--text-faint)' }}>
+        Sit them down
+      </button>
+      {/* What the button actually does, said before it is pressed. */}
+      <p style={{ margin: '10px 2px 0', fontSize: 11, lineHeight: 1.55, color: 'var(--text-faint)' }}>
+        This opens their ticket on that table with {booking.covers} covers and the name
+        already on it — nothing to type again at the till.
+      </p>
+    </div>
+    </Overlay>
   );
 }
 

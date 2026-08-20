@@ -3,7 +3,7 @@ import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
 import * as outbox from './outbox';
-import { Skeleton } from './ui';
+import { Overlay, Skeleton } from './ui';
 
 /* Stock Counts — 02-POS-SPEC.md §2 (`counts`):
  * "Count sheets by category; variance in units and MVR; approval above a
@@ -353,120 +353,117 @@ function SheetView({ sheet, canApprove, approveRank, busy, onClose, onApprove, o
   const s = STATUS[c.status];
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Count sheet"
-        style={{ width: '100%', maxWidth: 660, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-            {c.categories.length ? c.categories.join(', ') : 'Whole store'}
-          </span>
-          <span style={{ padding: '3px 7px', borderRadius: 5, fontSize: 9, fontWeight: 700, letterSpacing: '.05em', background: s.bg, color: s.fg }}>{s.label}</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-          {/* The one thing a reader must not get wrong. */}
-          {!c.applied && (
-            <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.6, background: c.status === 'rejected' ? 'var(--red-dim)' : 'var(--warn-dim)', color: c.status === 'rejected' ? 'var(--red-bright)' : 'var(--warn-bright)' }}>
-              {c.status === 'rejected'
-                ? 'This count was refused' + (c.rejectedReason ? ' — ' + c.rejectedReason : '')
-                  + '. No stock moved and nothing posted to the accounts. The sheet is kept'
-                  + ' because a refused count is evidence.'
-                : 'The stock has NOT moved. On-hand still shows the old figure and every dish'
-                  + ' costed from it is being costed against stock this count says is not there.'
-                  + ' It is worth ' + mvr(Math.abs(c.varianceValue)) + ', over the '
-                  + mvr(c.threshold) + ' limit, so it needs rank ' + approveRank + ' to approve.'}
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 12, padding: '6px 0', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)', borderBottom: '1px solid var(--line-soft)' }}>
-            <span style={{ flex: 1 }}>ITEM</span>
-            <span style={{ width: 88, textAlign: 'right' }}>EXPECTED</span>
-            <span style={{ width: 88, textAlign: 'right' }}>COUNTED</span>
-            <span style={{ width: 88, textAlign: 'right' }}>DIFFERENCE</span>
-            <span style={{ width: 88, textAlign: 'right' }}>VALUE</span>
-          </div>
-          {sheet.lines.map((l) => (
-            <div key={l.ingredientId} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
-                {/* Up to 4dp, NOT the 2dp used for money elsewhere. A cost per
-                    gram is a fraction of a laari — tuna at 0.0850 renders as
-                    "0.09" at two places, which is a 6% lie about the cost of
-                    every gram-denominated line on the sheet. */}
-                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
-                  in {l.unit} · at {l.unitCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} each
-                </span>
-              </span>
-              <Num>{qty(l.expected)}</Num>
-              <Num>{qty(l.counted)}</Num>
-              {/* Units AND money, side by side — §2 asks for both, and a
-                  variance in grams means nothing to whoever signs it. */}
-              <span style={{ width: 88, textAlign: 'right', fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: l.variance === 0 ? 'var(--text-faint)' : l.variance < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
-                {l.variance > 0 ? '+' : ''}{qty(l.variance)}
-              </span>
-              <span style={{ width: 88, textAlign: 'right', fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: l.value === 0 ? 'var(--text-faint)' : l.value < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
-                {l.value > 0 ? '+' : ''}{mvr(l.value)}
-              </span>
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 12, padding: '9px 0', fontWeight: 700 }}>
-            <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>
-              {sheet.lines.filter((l) => l.variance !== 0).length} of {sheet.lines.length} differed
-            </span>
-            <span style={{ width: 88 }} /><span style={{ width: 88 }} /><span style={{ width: 88 }} />
-            <span style={{ width: 88, textAlign: 'right', fontSize: 14, fontWeight: 700, fontFamily: MONO, color: c.varianceValue < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
-              {c.varianceValue > 0 ? '+' : ''}{mvr(c.varianceValue)}
-            </span>
-          </div>
-
-          {c.status === 'pending' && (
-            canApprove ? (
-              refusing ? (
-                <div style={{ marginTop: 14 }}>
-                  <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>WHY</label>
-                  <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)}
-                    placeholder="counted the delivery twice"
-                    style={{ marginTop: 4, width: '100%', height: 34, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12.5 }} />
-                  <div style={{ marginTop: 9, display: 'flex', gap: 8 }}>
-                    <button disabled={busy || !reason.trim()} onClick={() => onReject(reason)}
-                      style={{ padding: '9px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: reason.trim() ? 'var(--red-dim-2)' : 'var(--bg-2)', color: reason.trim() ? '#fff' : 'var(--text-faint)' }}>
-                      Refuse this count
-                    </button>
-                    <button onClick={() => setRefusing(false)}
-                      style={{ padding: '9px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
-                      Back
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button disabled={busy} onClick={onApprove}
-                    style={{ padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
-                    Approve — move the stock
-                  </button>
-                  <button onClick={() => setRefusing(true)}
-                    style={{ padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--red-bright)' }}>
-                    Refuse
-                  </button>
-                  <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
-                    Approving posts the variance to the accounts.
-                  </span>
-                </div>
-              )
-            ) : (
-              <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 11, lineHeight: 1.55, color: 'var(--text-muted)' }}>
-                Approving a count needs rank {approveRank}. Somebody who did not take it has to
-                sign it — that is what the threshold is for.
-              </div>
-            )
-          )}
-        </div>
-      </div>
+    <Overlay onClose={onClose} label="Count sheet" width={660}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+        {c.categories.length ? c.categories.join(', ') : 'Whole store'}
+      </span>
+      <span style={{ padding: '3px 7px', borderRadius: 5, fontSize: 9, fontWeight: 700, letterSpacing: '.05em', background: s.bg, color: s.fg }}>{s.label}</span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+      {/* The one thing a reader must not get wrong. */}
+      {!c.applied && (
+        <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 8, fontSize: 11.5, lineHeight: 1.6, background: c.status === 'rejected' ? 'var(--red-dim)' : 'var(--warn-dim)', color: c.status === 'rejected' ? 'var(--red-bright)' : 'var(--warn-bright)' }}>
+          {c.status === 'rejected'
+            ? 'This count was refused' + (c.rejectedReason ? ' — ' + c.rejectedReason : '')
+              + '. No stock moved and nothing posted to the accounts. The sheet is kept'
+              + ' because a refused count is evidence.'
+            : 'The stock has NOT moved. On-hand still shows the old figure and every dish'
+              + ' costed from it is being costed against stock this count says is not there.'
+              + ' It is worth ' + mvr(Math.abs(c.varianceValue)) + ', over the '
+              + mvr(c.threshold) + ' limit, so it needs rank ' + approveRank + ' to approve.'}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 12, padding: '6px 0', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)', borderBottom: '1px solid var(--line-soft)' }}>
+        <span style={{ flex: 1 }}>ITEM</span>
+        <span style={{ width: 88, textAlign: 'right' }}>EXPECTED</span>
+        <span style={{ width: 88, textAlign: 'right' }}>COUNTED</span>
+        <span style={{ width: 88, textAlign: 'right' }}>DIFFERENCE</span>
+        <span style={{ width: 88, textAlign: 'right' }}>VALUE</span>
+      </div>
+      {sheet.lines.map((l) => (
+        <div key={l.ingredientId} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
+            {/* Up to 4dp, NOT the 2dp used for money elsewhere. A cost per
+                gram is a fraction of a laari — tuna at 0.0850 renders as
+                "0.09" at two places, which is a 6% lie about the cost of
+                every gram-denominated line on the sheet. */}
+            <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
+              in {l.unit} · at {l.unitCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} each
+            </span>
+          </span>
+          <Num>{qty(l.expected)}</Num>
+          <Num>{qty(l.counted)}</Num>
+          {/* Units AND money, side by side — §2 asks for both, and a
+              variance in grams means nothing to whoever signs it. */}
+          <span style={{ width: 88, textAlign: 'right', fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: l.variance === 0 ? 'var(--text-faint)' : l.variance < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
+            {l.variance > 0 ? '+' : ''}{qty(l.variance)}
+          </span>
+          <span style={{ width: 88, textAlign: 'right', fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: l.value === 0 ? 'var(--text-faint)' : l.value < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
+            {l.value > 0 ? '+' : ''}{mvr(l.value)}
+          </span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 12, padding: '9px 0', fontWeight: 700 }}>
+        <span style={{ flex: 1, fontSize: 12.5, color: 'var(--text)' }}>
+          {sheet.lines.filter((l) => l.variance !== 0).length} of {sheet.lines.length} differed
+        </span>
+        <span style={{ width: 88 }} /><span style={{ width: 88 }} /><span style={{ width: 88 }} />
+        <span style={{ width: 88, textAlign: 'right', fontSize: 14, fontWeight: 700, fontFamily: MONO, color: c.varianceValue < 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
+          {c.varianceValue > 0 ? '+' : ''}{mvr(c.varianceValue)}
+        </span>
+      </div>
+
+      {c.status === 'pending' && (
+        canApprove ? (
+          refusing ? (
+            <div style={{ marginTop: 14 }}>
+              <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>WHY</label>
+              <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)}
+                placeholder="counted the delivery twice"
+                style={{ marginTop: 4, width: '100%', height: 34, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12.5 }} />
+              <div style={{ marginTop: 9, display: 'flex', gap: 8 }}>
+                <button disabled={busy || !reason.trim()} onClick={() => onReject(reason)}
+                  style={{ padding: '9px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 700, background: reason.trim() ? 'var(--red-dim-2)' : 'var(--bg-2)', color: reason.trim() ? '#fff' : 'var(--text-faint)' }}>
+                  Refuse this count
+                </button>
+                <button onClick={() => setRefusing(false)}
+                  style={{ padding: '9px 16px', borderRadius: 8, fontSize: 12.5, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+                  Back
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button disabled={busy} onClick={onApprove}
+                style={{ padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
+                Approve — move the stock
+              </button>
+              <button onClick={() => setRefusing(true)}
+                style={{ padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--red-bright)' }}>
+                Refuse
+              </button>
+              <span style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>
+                Approving posts the variance to the accounts.
+              </span>
+            </div>
+          )
+        ) : (
+          <div style={{ marginTop: 14, padding: '9px 11px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--line)', fontSize: 11, lineHeight: 1.55, color: 'var(--text-muted)' }}>
+            Approving a count needs rank {approveRank}. Somebody who did not take it has to
+            sign it — that is what the threshold is for.
+          </div>
+        )
+      )}
+    </div>
+    </Overlay>
   );
 }
 

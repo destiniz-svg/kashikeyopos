@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
+import { Overlay } from './ui';
 
 /* Card settlements — 08-BUILD-STAGES §17, and the second half of a sentence
  * this build has only ever said the first half of: a card sale debits 1020 Card
@@ -466,16 +467,12 @@ function Modal({ title, onClose, children }: {
   title: string; onClose: () => void; children: React.ReactNode;
 }) {
   return (
-    <div role="dialog" aria-label={title}
-      style={{ position: 'fixed', inset: 0, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 40, animation: 'kfade .14s' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)', animation: 'kmodal .18s' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
-          {title}
-        </div>
-        {children}
-      </div>
+    <Overlay onClose={onClose} label={title} width={760} scroll>
+    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
+      {title}
     </div>
+    {children}
+    </Overlay>
   );
 }
 

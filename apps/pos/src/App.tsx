@@ -662,6 +662,49 @@ export function App({ outletId }: { outletId: number }) {
               </span>
             )}
           </span>
+
+          {/* WHO IS SIGNED IN, AND THE WAY OUT — but only when the rail cannot
+              say it. The identity block at the foot of the rail prints the name,
+              the rank and Sign out; on a 60px icon rail it collapses to the
+              avatar alone and the button is not rendered at all.
+
+              On a TABLET that left a terminal with no way to sign out. The rail
+              is 60px for the whole tablet range and its collapse toggle does
+              nothing there (`labelled` is forced false by `isRail`), so there
+              was no width, no tap and no gesture that could reach the control —
+              on the one device a floor manager actually carries, and on a
+              terminal several people share across a shift. A collapsed desktop
+              rail had the same hole.
+
+              This is the prototype's own remedy for the same shape of problem:
+              "The sidebar role select is hidden on the tablet icon rail, which
+              has no drawer — so surface the switcher in the topbar at that
+              width." A control the rail cannot show moves to the header rather
+              than ceasing to exist. */}
+          {!isPhone && !labelled && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <span
+                title={session.name + ' · ' + ['', 'Kitchen', 'Till', 'Manager', 'Admin', 'Owner'][session.rank]}
+                style={{
+                  width: 28, height: 28, borderRadius: 14, background: 'var(--bg-3)',
+                  color: 'var(--amber-bright)', display: 'grid', placeItems: 'center',
+                  fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace",
+                }}
+              >
+                {session.name.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}
+              </span>
+              <HButton onClick={signOut} title="Sign out" aria-label="Sign out"
+                hover={{ background: 'var(--bg-3)', color: 'var(--red-bright)' }}
+                style={{
+                  width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)',
+                  color: 'var(--text-faint)', display: 'grid', placeItems: 'center',
+                }}>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                </svg>
+              </HButton>
+            </span>
+          )}
         </header>
 
         {/* ── THE STAT STRIP ────────────────────────────────────────────────

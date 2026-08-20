@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { creditShare } from '../../../packages/money/money.js';
+import { Overlay } from './ui';
 
 /* Credit notes — 08-BUILD-STAGES §21, raised from the receipt they correct.
  *
@@ -128,182 +129,178 @@ export function CreditNote({ session, saleId, onClose, onDone }: {
   };
 
   return (
-    <div role="dialog" aria-label="Credit this sale"
-      style={{ position: 'fixed', inset: 0, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 90, animation: 'kfade .14s' }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)', animation: 'kmodal .18s' }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-          Credit {data ? data.sale.receiptNo : 'this sale'}
-        </div>
-        <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 620 }}>
-          A closed sale is corrected with a credit note, never erased. Raising one
-          moves nothing: a manager other than whoever raised it has to approve it
-          before any money goes back.
-        </div>
-
-        {(error || flash) && (
-          <div style={{ marginTop: 11, padding: '9px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.55, background: error ? 'var(--stop-dim)' : 'var(--go-dim)', color: error ? 'var(--stop-bright)' : 'var(--go-bright)' }}>
-            {error || flash}
-          </div>
-        )}
-
-        {!data ? (
-          <div style={{ padding: '24px 2px', fontSize: 12.5, color: 'var(--text-faint)' }}>
-            Reading the sale…
-          </div>
-        ) : (
-          <>
-            {/* ── the lines ────────────────────────────────────────────── */}
-            <table style={{ marginTop: 14, width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-              <thead>
-                <tr style={{ color: 'var(--text-faint)', fontSize: 10, letterSpacing: '.06em' }}>
-                  <th style={{ textAlign: 'left', padding: '0 0 5px' }}>ITEM</th>
-                  <th style={{ textAlign: 'right', padding: '0 0 5px', width: 70 }}>SOLD</th>
-                  <th style={{ textAlign: 'right', padding: '0 0 5px', width: 80 }}>LEFT</th>
-                  <th style={{ textAlign: 'right', padding: '0 0 5px', width: 90 }}>CREDIT</th>
-                  <th style={{ textAlign: 'right', padding: '0 0 5px', width: 110 }}>CAME BACK?</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.lines.map((l) => (
-                  <tr key={l.id}>
-                    <td style={{ padding: '4px 0', color: 'var(--text)' }}>{l.name}</td>
-                    <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: MONO, color: 'var(--text-muted)' }}>
-                      {l.qty}
-                    </td>
-                    <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: MONO, color: l.remaining ? 'var(--text-muted)' : 'var(--text-ghost)' }}>
-                      {l.remaining}
-                    </td>
-                    <td style={{ padding: '4px 0 4px 6px' }}>
-                      <input
-                        aria-label={'Credit ' + l.name}
-                        inputMode="decimal"
-                        disabled={l.remaining <= 0}
-                        value={picked[l.id]?.qty ?? ''}
-                        onChange={(e) => set(l.id, Number(e.target.value) || 0,
-                          picked[l.id]?.restock ?? false)}
-                        style={{
-                          width: '100%', height: 28, padding: '0 8px', borderRadius: 6,
-                          background: 'var(--bg-2)', border: '1px solid var(--line)',
-                          color: 'var(--text)', fontFamily: MONO, textAlign: 'right',
-                        }} />
-                    </td>
-                    <td style={{ padding: '4px 0 4px 6px', textAlign: 'right' }}>
-                      {/* Not a default. A steak sent back goes in the bin, and
-                          ticking this by default would invent stock. */}
-                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-                        <input type="checkbox"
-                          aria-label={l.name + ' came back'}
-                          disabled={!picked[l.id]}
-                          checked={picked[l.id]?.restock ?? false}
-                          onChange={(e) => set(l.id, picked[l.id]?.qty ?? 0, e.target.checked)} />
-                        back on the shelf
-                      </label>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* ── why, and where the money goes ────────────────────────── */}
-            <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <label style={{ flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10.5, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
-                WHY
-                <input aria-label="Why" value={reason} maxLength={200}
-                  placeholder="one burger came back raw"
-                  onChange={(e) => setReason(e.target.value)}
-                  style={{ height: 32, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }} />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10.5, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
-                REFUND BY
-                <select aria-label="Refund by" value={method}
-                  onChange={(e) => setMethod(e.target.value)}
-                  style={{ height: 32, padding: '0 8px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }}>
-                  {data.refundMethods.map((m) => (
-                    <option key={m} value={m}>
-                      {m}{data.tenders.some((t) => t.method === m) ? ' (as paid)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div style={{ paddingBottom: 6 }}>
-                <span style={{ fontSize: 10.5, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
-                  REFUND
-                </span>
-                <div style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
-                  {mvr(refund / 100)}
-                </div>
-              </div>
-            </div>
-
-            <div style={{ marginTop: 14, display: 'flex', gap: 9 }}>
-              <button onClick={onClose} style={ghost}>Close</button>
-              <button disabled={!ready || busy} onClick={() => void raise()}
-                style={{ padding: '8px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: ready ? 'var(--accent)' : 'var(--bg-2)', color: ready ? 'var(--on-accent)' : 'var(--text-ghost)' }}>
-                Raise it for approval
-              </button>
-            </div>
-
-            {/* ── what has already been raised against this sale ───────── */}
-            {data.notes.length > 0 && (
-              <div style={{ marginTop: 20 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
-                  ALREADY RAISED
-                </div>
-                {data.notes.map((n) => (
-                  <div key={n.id} style={{ marginTop: 9, padding: 11, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--line-soft)' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12, fontFamily: MONO, color: 'var(--text)' }}>
-                        {n.no || 'not numbered yet'}
-                      </span>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{n.reason}</span>
-                      <span style={{ flex: 1 }} />
-                      <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
-                        {mvr(n.amount)}
-                      </span>
-                    </div>
-                    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                      <span style={{
-                        fontSize: 11,
-                        color: n.state === 'approved' ? 'var(--go-bright)'
-                          : n.state === 'declined' ? 'var(--text-faint)' : 'var(--warn-bright)',
-                      }}>
-                        {n.state}
-                        {n.raisedBy && ' · raised by ' + n.raisedBy}
-                        {n.approvedBy && ' · approved by ' + n.approvedBy}
-                        {n.declinedBy && ' · turned down by ' + n.declinedBy}
-                        {n.declineReason && ' — ' + n.declineReason}
-                        {n.refundMethod && n.state === 'approved' && ' · by ' + n.refundMethod}
-                      </span>
-                      <span style={{ flex: 1 }} />
-                      {data.canApprove && n.state === 'waiting for approval' && (
-                        <>
-                          <button disabled={busy}
-                            onClick={() => void act(`/credit-notes/${n.id}/approve`)}
-                            style={{ padding: '5px 12px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
-                            Approve and refund
-                          </button>
-                          <button disabled={busy}
-                            onClick={() => {
-                              const why = window.prompt('Why is it being turned down?');
-                              if (why && why.trim().length >= 4) {
-                                void act(`/credit-notes/${n.id}/decline`, { reason: why.trim() });
-                              }
-                            }}
-                            style={{ padding: '5px 11px', borderRadius: 6, fontSize: 11.5, background: 'var(--bg-1)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
-                            Turn it down
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+    <Overlay onClose={onClose} label="Credit this sale" width={760} z={90} scroll>
+    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+      Credit {data ? data.sale.receiptNo : 'this sale'}
     </div>
+    <div style={{ marginTop: 5, fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 620 }}>
+      A closed sale is corrected with a credit note, never erased. Raising one
+      moves nothing: a manager other than whoever raised it has to approve it
+      before any money goes back.
+    </div>
+
+    {(error || flash) && (
+      <div style={{ marginTop: 11, padding: '9px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.55, background: error ? 'var(--stop-dim)' : 'var(--go-dim)', color: error ? 'var(--stop-bright)' : 'var(--go-bright)' }}>
+        {error || flash}
+      </div>
+    )}
+
+    {!data ? (
+      <div style={{ padding: '24px 2px', fontSize: 12.5, color: 'var(--text-faint)' }}>
+        Reading the sale…
+      </div>
+    ) : (
+      <>
+        {/* ── the lines ────────────────────────────────────────────── */}
+        <table style={{ marginTop: 14, width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: 'var(--text-faint)', fontSize: 10, letterSpacing: '.06em' }}>
+              <th style={{ textAlign: 'left', padding: '0 0 5px' }}>ITEM</th>
+              <th style={{ textAlign: 'right', padding: '0 0 5px', width: 70 }}>SOLD</th>
+              <th style={{ textAlign: 'right', padding: '0 0 5px', width: 80 }}>LEFT</th>
+              <th style={{ textAlign: 'right', padding: '0 0 5px', width: 90 }}>CREDIT</th>
+              <th style={{ textAlign: 'right', padding: '0 0 5px', width: 110 }}>CAME BACK?</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.lines.map((l) => (
+              <tr key={l.id}>
+                <td style={{ padding: '4px 0', color: 'var(--text)' }}>{l.name}</td>
+                <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: MONO, color: 'var(--text-muted)' }}>
+                  {l.qty}
+                </td>
+                <td style={{ padding: '4px 0', textAlign: 'right', fontFamily: MONO, color: l.remaining ? 'var(--text-muted)' : 'var(--text-ghost)' }}>
+                  {l.remaining}
+                </td>
+                <td style={{ padding: '4px 0 4px 6px' }}>
+                  <input
+                    aria-label={'Credit ' + l.name}
+                    inputMode="decimal"
+                    disabled={l.remaining <= 0}
+                    value={picked[l.id]?.qty ?? ''}
+                    onChange={(e) => set(l.id, Number(e.target.value) || 0,
+                      picked[l.id]?.restock ?? false)}
+                    style={{
+                      width: '100%', height: 28, padding: '0 8px', borderRadius: 6,
+                      background: 'var(--bg-2)', border: '1px solid var(--line)',
+                      color: 'var(--text)', fontFamily: MONO, textAlign: 'right',
+                    }} />
+                </td>
+                <td style={{ padding: '4px 0 4px 6px', textAlign: 'right' }}>
+                  {/* Not a default. A steak sent back goes in the bin, and
+                      ticking this by default would invent stock. */}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                    <input type="checkbox"
+                      aria-label={l.name + ' came back'}
+                      disabled={!picked[l.id]}
+                      checked={picked[l.id]?.restock ?? false}
+                      onChange={(e) => set(l.id, picked[l.id]?.qty ?? 0, e.target.checked)} />
+                    back on the shelf
+                  </label>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* ── why, and where the money goes ────────────────────────── */}
+        <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <label style={{ flex: 1, minWidth: 260, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10.5, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
+            WHY
+            <input aria-label="Why" value={reason} maxLength={200}
+              placeholder="one burger came back raw"
+              onChange={(e) => setReason(e.target.value)}
+              style={{ height: 32, padding: '0 10px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }} />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 10.5, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
+            REFUND BY
+            <select aria-label="Refund by" value={method}
+              onChange={(e) => setMethod(e.target.value)}
+              style={{ height: 32, padding: '0 8px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }}>
+              {data.refundMethods.map((m) => (
+                <option key={m} value={m}>
+                  {m}{data.tenders.some((t) => t.method === m) ? ' (as paid)' : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div style={{ paddingBottom: 6 }}>
+            <span style={{ fontSize: 10.5, letterSpacing: '.05em', color: 'var(--text-faint)' }}>
+              REFUND
+            </span>
+            <div style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+              {mvr(refund / 100)}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 14, display: 'flex', gap: 9 }}>
+          <button onClick={onClose} style={ghost}>Close</button>
+          <button disabled={!ready || busy} onClick={() => void raise()}
+            style={{ padding: '8px 16px', borderRadius: 7, fontSize: 12.5, fontWeight: 700, background: ready ? 'var(--accent)' : 'var(--bg-2)', color: ready ? 'var(--on-accent)' : 'var(--text-ghost)' }}>
+            Raise it for approval
+          </button>
+        </div>
+
+        {/* ── what has already been raised against this sale ───────── */}
+        {data.notes.length > 0 && (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.08em', color: 'var(--text-faint)' }}>
+              ALREADY RAISED
+            </div>
+            {data.notes.map((n) => (
+              <div key={n.id} style={{ marginTop: 9, padding: 11, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--line-soft)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontFamily: MONO, color: 'var(--text)' }}>
+                    {n.no || 'not numbered yet'}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{n.reason}</span>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                    {mvr(n.amount)}
+                  </span>
+                </div>
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: 11,
+                    color: n.state === 'approved' ? 'var(--go-bright)'
+                      : n.state === 'declined' ? 'var(--text-faint)' : 'var(--warn-bright)',
+                  }}>
+                    {n.state}
+                    {n.raisedBy && ' · raised by ' + n.raisedBy}
+                    {n.approvedBy && ' · approved by ' + n.approvedBy}
+                    {n.declinedBy && ' · turned down by ' + n.declinedBy}
+                    {n.declineReason && ' — ' + n.declineReason}
+                    {n.refundMethod && n.state === 'approved' && ' · by ' + n.refundMethod}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  {data.canApprove && n.state === 'waiting for approval' && (
+                    <>
+                      <button disabled={busy}
+                        onClick={() => void act(`/credit-notes/${n.id}/approve`)}
+                        style={{ padding: '5px 12px', borderRadius: 6, fontSize: 11.5, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
+                        Approve and refund
+                      </button>
+                      <button disabled={busy}
+                        onClick={() => {
+                          const why = window.prompt('Why is it being turned down?');
+                          if (why && why.trim().length >= 4) {
+                            void act(`/credit-notes/${n.id}/decline`, { reason: why.trim() });
+                          }
+                        }}
+                        style={{ padding: '5px 11px', borderRadius: 6, fontSize: 11.5, background: 'var(--bg-1)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+                        Turn it down
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </>
+    )}
+    </Overlay>
   );
 }
 

@@ -4,7 +4,7 @@ import type { Session } from './api';
 import { hit } from './filter';
 import { useIntent } from './intent';
 import type { Intent } from './intent';
-import { Skeleton } from './ui';
+import { Overlay, Skeleton } from './ui';
 
 /* Vendors — 02-POS-SPEC.md §2: "Supplier master, terms, price history."
  *
@@ -181,79 +181,76 @@ export function Vendors({ session, intent, onIntentDone, search }: {
 function SupplierSheet({ detail, onClose }: { detail: Detail; onClose: () => void }) {
   const s = detail.supplier;
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={s.name}
-        style={{ width: '100%', maxWidth: 640, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center' }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{s.name}</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
+    <Overlay onClose={onClose} label={s.name} width={640}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center' }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{s.name}</span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
+    </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-          <div style={{ display: 'flex', gap: 22, marginBottom: 14 }}>
-            <Fig label="OWED" value={mvr(s.owed)} strong={s.owed > 0} />
-            <Fig label="TERMS" value={s.termsDays + ' days'} />
-            <Fig label="DELIVERIES" value={String(detail.deliveries.length)} />
-          </div>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+      <div style={{ display: 'flex', gap: 22, marginBottom: 14 }}>
+        <Fig label="OWED" value={mvr(s.owed)} strong={s.owed > 0} />
+        <Fig label="TERMS" value={s.termsDays + ' days'} />
+        <Fig label="DELIVERIES" value={String(detail.deliveries.length)} />
+      </div>
 
-          <Head>What they charge</Head>
-          {!detail.priceHistory.length ? (
-            <Note>Nothing priced from this supplier yet. Prices appear here as deliveries are
-              invoiced, and the second one starts telling you which way they are moving.</Note>
-          ) : (
-            detail.priceHistory.map((h) => (
-              <div key={h.ingredientId} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                  <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
-                    {h.name} <span style={{ fontWeight: 400, fontSize: 10, color: 'var(--text-faint)' }}>per {h.unit}</span>
-                  </span>
-                  {/* The direction of travel — the reason this screen exists. */}
-                  {h.changePct !== null && h.changePct !== 0 && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: h.changePct > 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
-                      {h.changePct > 0 ? '↑' : '↓'} {Math.abs(h.changePct)}%
-                    </span>
-                  )}
-                  <span style={{ fontSize: 13, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
-                    {price(h.latest)}
-                  </span>
-                </div>
-                <div style={{ marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  {h.prices.slice(0, 6).map((p, i) => (
-                    <span key={i} style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: MONO }}>
-                      {new Date(p.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
-                      {' '}{price(p.unitPrice)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))
-          )}
-
-          <div style={{ marginTop: 16 }}>
-            <Head>Deliveries</Head>
-            {!detail.deliveries.length ? (
-              <Note>Nothing received from them yet.</Note>
-            ) : detail.deliveries.map((d) => (
-              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontSize: 12, fontFamily: MONO, color: 'var(--text)' }}>{d.grnNo}</span>
-                  <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
-                    {new Date(d.at).toLocaleDateString('en-GB')} · {d.lines} line{d.lines === 1 ? '' : 's'}
-                    {!d.priced && ' · not priced yet'}
-                  </span>
+      <Head>What they charge</Head>
+      {!detail.priceHistory.length ? (
+        <Note>Nothing priced from this supplier yet. Prices appear here as deliveries are
+          invoiced, and the second one starts telling you which way they are moving.</Note>
+      ) : (
+        detail.priceHistory.map((h) => (
+          <div key={h.ingredientId} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
+                {h.name} <span style={{ fontWeight: 400, fontSize: 10, color: 'var(--text-faint)' }}>per {h.unit}</span>
+              </span>
+              {/* The direction of travel — the reason this screen exists. */}
+              {h.changePct !== null && h.changePct !== 0 && (
+                <span style={{ fontSize: 11, fontWeight: 700, color: h.changePct > 0 ? 'var(--red-bright)' : 'var(--go-bright)' }}>
+                  {h.changePct > 0 ? '↑' : '↓'} {Math.abs(h.changePct)}%
                 </span>
-                <span style={{ fontSize: 12.5, fontFamily: MONO, color: d.priced ? 'var(--text-dim)' : 'var(--warn-bright)' }}>
-                  {mvr(d.total)}
+              )}
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                {price(h.latest)}
+              </span>
+            </div>
+            <div style={{ marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {h.prices.slice(0, 6).map((p, i) => (
+                <span key={i} style={{ fontSize: 10, color: 'var(--text-faint)', fontFamily: MONO }}>
+                  {new Date(p.at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                  {' '}{price(p.unitPrice)}
                 </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        ))
+      )}
+
+      <div style={{ marginTop: 16 }}>
+        <Head>Deliveries</Head>
+        {!detail.deliveries.length ? (
+          <Note>Nothing received from them yet.</Note>
+        ) : detail.deliveries.map((d) => (
+          <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ display: 'block', fontSize: 12, fontFamily: MONO, color: 'var(--text)' }}>{d.grnNo}</span>
+              <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
+                {new Date(d.at).toLocaleDateString('en-GB')} · {d.lines} line{d.lines === 1 ? '' : 's'}
+                {!d.priced && ' · not priced yet'}
+              </span>
+            </span>
+            <span style={{ fontSize: 12.5, fontFamily: MONO, color: d.priced ? 'var(--text-dim)' : 'var(--warn-bright)' }}>
+              {mvr(d.total)}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
+    </Overlay>
   );
 }
 

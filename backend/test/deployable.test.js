@@ -205,6 +205,42 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('a back-office dialog is a sheet on a phone, not a shrunken card', () => {
+    /* Nineteen screens hand-rolled their own overlay: a fixed scrim, 20px of
+       inset at every width, and a centred card. That is the desktop dialog and
+       nothing else — on a 390px phone it left 350px of usable width, put the
+       actions in the middle of the glass where a thumb cannot reach, and wasted
+       the two strips down the sides that a thumb CAN reach. The prototype makes
+       a phone dialog a SHEET: bottom-anchored, full width, rounded only along
+       the top, `ksheet` rather than `kmodal`.
+
+       That behaviour now lives in one component, Overlay, along with the
+       height breakpoint the inset depends on. This guard is what stops the
+       twentieth screen from writing the centred card again — nobody would
+       notice on the desktop where it is built, and it is not visibly broken on
+       a phone either, just wrong in the way that costs a tap.
+
+       THE TILL IS DELIBERATELY EXEMPT. Floor and Payment were built against the
+       prototype's till directly and own sheets it does not describe here — the
+       add-on picker, the keypad's bill panel. Palette is the command palette,
+       which is anchored to the top on purpose and is not a dialog in this
+       sense. */
+    const allowed = new Set(['ui.tsx', 'Floor.tsx', 'Payment.tsx', 'Palette.tsx']);
+    const dir = path.join(ROOT, 'apps', 'pos', 'src');
+    const offenders = [];
+    for (const f of fs.readdirSync(dir)) {
+      if (!/\.tsx$/.test(f) || allowed.has(f)) continue;
+      const text = fs.readFileSync(path.join(dir, f), 'utf8');
+      const code = text
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+      if (code.includes('role="dialog"')) offenders.push(f);
+    }
+    assert.deepEqual(offenders, [],
+      'these build their own overlay instead of using Overlay from ui.tsx, '
+      + 'so they stay a centred card on a phone');
+  });
+
   test('every design token a screen reads is actually defined', () => {
     /* An undefined custom property does not throw and does not warn. The
        declaration that reads it is simply INVALID AT COMPUTED-VALUE TIME:

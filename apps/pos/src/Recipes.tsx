@@ -5,7 +5,7 @@ import { hit } from './filter';
 import { useIntent } from './intent';
 import type { Intent } from './intent';
 import { DataGrid } from './DataGrid';
-import { Skeleton } from './ui';
+import { Overlay, Skeleton } from './ui';
 
 /* Recipes & Costing — 02-POS-SPEC.md §2 (`recipes`):
  * "Ingredients, yield, sub-recipes, waste %, live plate cost and GP."
@@ -403,101 +403,98 @@ function RecipeSheet({ detail, ingredients, dishes, busy, onClose, onSave, costT
     a + (l.qty / (1 - Math.min(0.95, l.wastePct / 100))) * l.unitCost, 0) / y);
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={'Recipe for ' + detail.name}
-        style={{ width: '100%', maxWidth: 720, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{detail.name}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>sells at {mvr(detail.price)}</span>
-          <span style={{ flex: 1 }} />
-          <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
-          {lines.map((l, i) => (
-            <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
-                <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
-                  {l.kind === 'sub' ? 'sub-recipe' : 'per ' + l.unit}
-                  {l.wastePct > 0 && ' · buys ' + (Math.round(l.qty / (1 - l.wastePct / 100) * 100) / 100) + ' ' + l.unit}
-                  {!l.priced && ' · not priced'}
-                </span>
-              </span>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ fontSize: 9.5, color: 'var(--text-faint)' }}>QTY</span>
-                <input inputMode="decimal" value={l.qty}
-                  onChange={(e) => patch(i, { qty: Number(e.target.value) || 0 })}
-                  style={{ ...inp, width: 74, height: 30, fontFamily: MONO, textAlign: 'right' }} />
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ fontSize: 9.5, color: 'var(--text-faint)' }}>WASTE%</span>
-                <input inputMode="decimal" value={l.wastePct}
-                  onChange={(e) => patch(i, { wastePct: Number(e.target.value) || 0 })}
-                  style={{ ...inp, width: 60, height: 30, fontFamily: MONO, textAlign: 'right' }} />
-              </label>
-              <button onClick={() => setLines((ls) => ls.filter((_, n) => n !== i))}
-                aria-label={'Remove ' + l.name}
-                style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-faint)', display: 'grid', placeItems: 'center' }}>×</button>
-            </div>
-          ))}
-
-          {!lines.length && (
-            <div style={{ padding: '22px 4px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)' }}>
-              Nothing in this recipe yet. Until it has one, the dish sells and reports
-              zero cost — the sale is right, the margin is unknown.
-            </div>
-          )}
-
-          <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...inp, flex: 1 }}>
-              <option value="">Add an ingredient or a sub-recipe…</option>
-              {ingredients.length > 0 && (
-                <optgroup label="Ingredients">
-                  {ingredients.map((g) => <option key={g.id} value={'ing:' + g.id}>{g.name} (per {g.unit})</option>)}
-                </optgroup>
-              )}
-              {dishes.length > 0 && (
-                <optgroup label="Sub-recipes">
-                  {dishes.map((d) => <option key={d.itemId} value={'sub:' + d.itemId}>{d.name}</option>)}
-                </optgroup>
-              )}
-            </select>
-            <button onClick={add} disabled={!pick}
-              style={{ padding: '9px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700, background: pick ? 'var(--bg-3)' : 'var(--bg-2)', border: '1px solid var(--line)', color: pick ? 'var(--amber-bright)' : 'var(--text-faint)' }}>Add</button>
-          </div>
-
-          <label style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>YIELD</span>
-            <input inputMode="decimal" value={yieldQty} onChange={(e) => setYieldQty(e.target.value)}
-              style={{ ...inp, width: 80, fontFamily: MONO, textAlign: 'right' }} />
-            <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
-              portions this recipe makes. A batch that makes 8 costs an eighth a portion.
-            </span>
-          </label>
-        </div>
-
-        <div style={{ flexShrink: 0, padding: '13px 16px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <span>
-            <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>PLATE COST</span>
-            <span style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>{mvr(preview)}</span>
-          </span>
-          <span>
-            <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>FOOD COST</span>
-            <span style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: costTone(detail.net ? Math.round(preview / detail.net * 1000) / 10 : 0, false) }}>
-              {detail.net ? Math.round(preview / detail.net * 1000) / 10 + '%' : '—'}
-            </span>
-          </span>
-          <span style={{ flex: 1 }} />
-          <button onClick={() => void onSave(lines, Number(yieldQty) || 1)} disabled={busy}
-            style={{ padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
-            {busy ? 'Saving…' : 'Save recipe'}
-          </button>
-        </div>
-      </div>
+    <Overlay onClose={onClose} label={'Recipe for ' + detail.name} width={720}>
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'baseline', gap: 10 }}>
+      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{detail.name}</span>
+      <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>sells at {mvr(detail.price)}</span>
+      <span style={{ flex: 1 }} />
+      <button onClick={onClose} aria-label="Close" style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
     </div>
+
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 16 }}>
+      {lines.map((l, i) => (
+        <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
+            <span style={{ display: 'block', fontSize: 10, color: 'var(--text-faint)' }}>
+              {l.kind === 'sub' ? 'sub-recipe' : 'per ' + l.unit}
+              {l.wastePct > 0 && ' · buys ' + (Math.round(l.qty / (1 - l.wastePct / 100) * 100) / 100) + ' ' + l.unit}
+              {!l.priced && ' · not priced'}
+            </span>
+          </span>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 9.5, color: 'var(--text-faint)' }}>QTY</span>
+            <input inputMode="decimal" value={l.qty}
+              onChange={(e) => patch(i, { qty: Number(e.target.value) || 0 })}
+              style={{ ...inp, width: 74, height: 30, fontFamily: MONO, textAlign: 'right' }} />
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 9.5, color: 'var(--text-faint)' }}>WASTE%</span>
+            <input inputMode="decimal" value={l.wastePct}
+              onChange={(e) => patch(i, { wastePct: Number(e.target.value) || 0 })}
+              style={{ ...inp, width: 60, height: 30, fontFamily: MONO, textAlign: 'right' }} />
+          </label>
+          <button onClick={() => setLines((ls) => ls.filter((_, n) => n !== i))}
+            aria-label={'Remove ' + l.name}
+            style={{ width: 30, height: 30, borderRadius: 6, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-faint)', display: 'grid', placeItems: 'center' }}>×</button>
+        </div>
+      ))}
+
+      {!lines.length && (
+        <div style={{ padding: '22px 4px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)' }}>
+          Nothing in this recipe yet. Until it has one, the dish sells and reports
+          zero cost — the sale is right, the margin is unknown.
+        </div>
+      )}
+
+      <div style={{ marginTop: 14, display: 'flex', gap: 8, alignItems: 'center' }}>
+        <select value={pick} onChange={(e) => setPick(e.target.value)} style={{ ...inp, flex: 1 }}>
+          <option value="">Add an ingredient or a sub-recipe…</option>
+          {ingredients.length > 0 && (
+            <optgroup label="Ingredients">
+              {ingredients.map((g) => <option key={g.id} value={'ing:' + g.id}>{g.name} (per {g.unit})</option>)}
+            </optgroup>
+          )}
+          {dishes.length > 0 && (
+            <optgroup label="Sub-recipes">
+              {dishes.map((d) => <option key={d.itemId} value={'sub:' + d.itemId}>{d.name}</option>)}
+            </optgroup>
+          )}
+        </select>
+        <button onClick={add} disabled={!pick}
+          style={{ padding: '9px 14px', borderRadius: 7, fontSize: 12, fontWeight: 700, background: pick ? 'var(--bg-3)' : 'var(--bg-2)', border: '1px solid var(--line)', color: pick ? 'var(--amber-bright)' : 'var(--text-faint)' }}>Add</button>
+      </div>
+
+      <label style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 9 }}>
+        <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>YIELD</span>
+        <input inputMode="decimal" value={yieldQty} onChange={(e) => setYieldQty(e.target.value)}
+          style={{ ...inp, width: 80, fontFamily: MONO, textAlign: 'right' }} />
+        <span style={{ fontSize: 10.5, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+          portions this recipe makes. A batch that makes 8 costs an eighth a portion.
+        </span>
+      </label>
+    </div>
+
+    <div style={{ flexShrink: 0, padding: '13px 16px', borderTop: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 14 }}>
+      <span>
+        <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>PLATE COST</span>
+        <span style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>{mvr(preview)}</span>
+      </span>
+      <span>
+        <span style={{ display: 'block', fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-faint)' }}>FOOD COST</span>
+        <span style={{ fontSize: 17, fontWeight: 700, fontFamily: MONO, color: costTone(detail.net ? Math.round(preview / detail.net * 1000) / 10 : 0, false) }}>
+          {detail.net ? Math.round(preview / detail.net * 1000) / 10 + '%' : '—'}
+        </span>
+      </span>
+      <span style={{ flex: 1 }} />
+      <button onClick={() => void onSave(lines, Number(yieldQty) || 1)} disabled={busy}
+        style={{ padding: '10px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, background: 'var(--go)', color: 'var(--on-go)' }}>
+        {busy ? 'Saving…' : 'Save recipe'}
+      </button>
+    </div>
+    </Overlay>
   );
 }
 
