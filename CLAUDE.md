@@ -143,6 +143,28 @@ The network pill is a real switch (`KPOS_BRIDGE.setOffline`), not a simulation:
 offline means nothing is POSTed and every write holds durably until it is
 flipped back. An op the server refuses stays queued, with the reason it gave.
 
+### An open ticket belongs to the outlet
+
+A waiter's tablet takes the order, the counter settles it, the pass fires it —
+so an open bill lives in the outlet's database, not on the device that opened
+it. Two things make that work:
+
+- **A line carries the id the till gave it** (`ticket_line.client_id`, unique
+  per ticket). A line is created offline and cannot wait for a server id to be
+  nameable; without a name, "void the second line" is unsendable. It also makes
+  `add_line` idempotent — the same line replayed updates the quantity rather
+  than ordering the dish again.
+- **Ticket operations name their ticket by TABLE** when the device has no
+  server id for it (`ticketRef()` in `src/apply.js`, `openTicket()` being
+  find-or-create by table + split).
+
+`seed()` in the terminal maps the outlet's table labels onto this floor's slots
+and merges line by line; a bill open on this device wins, because its
+un-replayed lines may not have reached the outlet yet. **Do not merge
+`state.tickets` from a bootstrap anywhere else** — the server keys them
+`"<label>:<split>"` and the floor keys them `"<outletId>:<slot>"`, and mixing
+the two files a bill under a table that does not exist.
+
 ## Allergens and diets
 
 One table, in `app/kashikeyo-rules.js`, loaded by the browser as a script and by
