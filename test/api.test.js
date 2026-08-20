@@ -383,6 +383,148 @@ test('a guest posts intent and never money', opts, async () => {
   assert.match(gone.body.error, /not in use here any more/);
 });
 
+test('the guest projection carries the floor and only this table', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token?t=T01');
+  const table = t.body.token;
+  const menu = await getWith('/api/g/' + slug + '/menu', { 'x-table-token': table });
+
+  // The floor is the outlet's own. It used to be a count guessed on the phone,
+  // which offered a six-table room a seat at table twelve.
+  assert.ok(Array.isArray(menu.body.floor), 'the floor is published');
+  assert.ok(menu.body.floor.length >= 1, 'and it has the outlet\'s tables in it');
+  menu.body.floor.forEach((f) => {
+    assert.ok(f.label, 'every table has the label the floor plan gave it');
+    assert.strictEqual(typeof f.seats, 'number');
+  });
+
+  // Another table's bill is not this guest's business.
+  await push([{ opId: uuid(), kind: 'add_line', payload: {
+    table: 'T02', lines: [{ id: 'm1', qty: 1, name: 'Test dish', price: 100 }]
+  } }]);
+  const again = await getWith('/api/g/' + slug + '/menu', { 'x-table-token': table });
+  again.body.tickets.forEach((tk) => {
+    assert.strictEqual(tk.table_no, 'T01', 'a guest reads their OWN table only');
+  });
+  const ids = again.body.tickets.map((tk) => tk.id);
+  again.body.stages.forEach((k) => {
+    assert.ok(ids.indexOf(k.ticket_id) >= 0,
+      "another table's ticket in the kitchen is not this guest's business");
+  });
+});
+
+test('a member reaches their own card and nobody else\'s', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token');
+  const table = { 'x-table-token': t.body.token };
+
+  // Two members, so "their own" is a claim with something to be wrong about.
+  await one("INSERT INTO chain.member (phone, name, email, points, tier)"
+    + " VALUES ('7770001','Member One','one@example.mv',100,'Bronze'),"
+    + " ('7770002','Member Two','two@example.mv',900,'Gold')"
+    + ' ON CONFLICT (phone) DO NOTHING');
+
+  // Whether a number is a customer here is not a question a stranger may ask:
+  // the answer is the same either way.
+  const unknown = await postWith('/api/g/' + slug + '/member/start',
+    { id: '7000000' }, table);
+  const known = await postWith('/api/g/' + slug + '/member/start',
+    { id: '7770001' }, table);
+  assert.strictEqual(unknown.status, known.status);
+  assert.deepStrictEqual(Object.keys(unknown.body).sort(), Object.keys(known.body).sort());
+
+  // A wrong code is refused; the right one is spent on use.
+  const wrong = await postWith('/api/g/' + slug + '/member/verify',
+    { id: '7770001', code: '0000' }, table);
+  assert.strictEqual(wrong.status, 401);
+
+  const code = process.env.MEMBER_CODE_ECHO === '1' ? known.body.code : null;
+  if (!code) {
+    // Without the echo the code is only readable at the counter, which is the
+    // point. Set it and re-issue so the rest of the path is still exercised.
+    process.env.MEMBER_CODE_ECHO = '1';
+  }
+  const issued = await postWith('/api/g/' + slug + '/member/start',
+    { id: '7770001' }, table);
+  const ok = await postWith('/api/g/' + slug + '/member/verify',
+    { id: '7770001', code: issued.body.code }, table);
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+  assert.ok(ok.body.token, 'a member token is minted');
+
+  const replay = await postWith('/api/g/' + slug + '/member/verify',
+    { id: '7770001', code: issued.body.code }, table);
+  assert.strictEqual(replay.status, 401, 'a used code is spent');
+
+  const me = await getWith('/api/g/' + slug + '/member/me',
+    { 'x-member-token': ok.body.token });
+  assert.strictEqual(me.status, 200);
+  assert.strictEqual(me.body.member.name, 'Member One');
+  assert.strictEqual(me.body.member.phone, '7770001');
+  assert.ok(Array.isArray(me.body.receipts), 'their own receipts, and only those');
+  me.body.receipts.forEach((r) => assert.ok(r.receipt_no));
+
+  // No token, no card. A table token is not a member token.
+  const bare = await get('/api/g/' + slug + '/member/me');
+  assert.strictEqual(bare.status, 401);
+  const wrongKind = await getWith('/api/g/' + slug + '/member/me',
+    { 'x-member-token': t.body.token });
+  assert.strictEqual(wrongKind.status, 401,
+    'a table token cannot read a membership');
+});
+
+test('a dish declares what its recipe contains, worked out where the recipe is',
+  opts, async () => {
+    // The guest device holds no recipe, so the outlet publishes the answer.
+    const { publishDeclaration } = require('../src/apply');
+    await push([{ opId: uuid(), kind: 'item_upsert', payload: {
+      id: 'ing_prawn', name: 'Tiger prawns', cat: 'Seafood', base: 'g', cost: 0.6
+    } }, { opId: uuid(), kind: 'item_upsert', payload: {
+      id: 'ing_coco', name: 'Coconut cream', cat: 'Dry goods', base: 'ml', cost: 0.02
+    } }]);
+    await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+      id: 'prawn_curry', name: 'Prawn curry', price: 220,
+      recipe: [{ ing: 'ing_prawn', qty: 120 }, { ing: 'ing_coco', qty: 80 }]
+    } }]);
+
+    const row = await one("SELECT allergens, diets FROM item WHERE id = 'prawn_curry'");
+    assert.ok(row.allergens.indexOf('crustacean') >= 0, 'prawns are declared');
+    // Coconut cream is not dairy. A vegan curry wrongly flagged is a dish a
+    // guest cannot order.
+    assert.strictEqual(row.allergens.indexOf('milk'), -1, 'coconut cream is not milk');
+    assert.strictEqual(row.diets.indexOf('veg'), -1, 'and a prawn curry is not vegetarian');
+    assert.strictEqual(typeof publishDeclaration, 'function');
+
+    // A dish with no recipe claims nothing. Silence beats an unearned label.
+    await push([{ opId: uuid(), kind: 'dish_upsert',
+      payload: { id: 'mystery', name: 'Mystery plate', price: 90 } }]);
+    const bare = await one("SELECT allergens, diets FROM item WHERE id = 'mystery'");
+    assert.deepStrictEqual(bare.allergens, []);
+    assert.deepStrictEqual(bare.diets, [], 'an unwritten recipe declares nothing');
+  });
+
+test('points are awarded by the outlet, never by the terminal', opts, async () => {
+  await one("INSERT INTO chain.setting (key, value) VALUES ('loyalty','{\"pointsPer\":10}')"
+    + ' ON CONFLICT (key) DO UPDATE SET value = excluded.value');
+  const m = await one("SELECT id, points FROM chain.member WHERE phone = '7770002'");
+
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 2, sub: 500, disc: 0, net: 500, svc: 0,
+    tax: 0, round: 0, total: 500, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    member: m.id, customer: 'Member Two',
+    // The terminal claims a thousand points. It does not get to.
+    points: 1000,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 500, amount: 500 }],
+    payments: [{ method: 'cash', amt: 500, tendered: 500 }], stockMoves: []
+  } }]);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+
+  const after = await one('SELECT points FROM chain.member WHERE id = $1', [m.id]);
+  assert.strictEqual(Number(after.points) - Number(m.points), 50,
+    'fifty points on a five hundred rufiyaa net, at the outlet\'s own rate');
+});
+
 test('isolation holds — the leak test runs in the pipeline', opts, async () => {
   const { run } = require('../src/scripts/leak-test');
   const out = await run(() => {});
@@ -398,6 +540,7 @@ test('shut down cleanly', opts, async () => {
 
 /* ── plumbing ───────────────────────────────────────────────────────────── */
 function uuid() { return require('crypto').randomUUID(); }
+function today() { return new Date().toISOString().slice(0, 10); }
 function round(n) { return Math.round(n * 100) / 100; }
 function today() { return new Date().toISOString().slice(0, 10); }
 

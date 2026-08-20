@@ -45,9 +45,15 @@ async function snapshot(c, outletId) {
     items: ['SELECT id, name, category_id, price, description, image, allergens,'
       + ' diets, off_menu, sold_out_reason FROM item WHERE active ORDER BY pos, name'],
     cats: ['SELECT id, name, pos FROM menu_category WHERE active ORDER BY pos, name'],
+    // The floor is the outlet's own, never a count guessed by the phone: a
+    // room with six tables must not offer a guest twelve to sit at.
+    floor: ['SELECT id, label, seats, zone_id FROM table_def WHERE active'
+      + ' ORDER BY pos, label'],
+    zones: ['SELECT id, name FROM zone WHERE active ORDER BY pos, name'],
     tickets: ["SELECT t.id, t.table_no, t.split, t.covers, t.status,"
-      + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
-      + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL)"
+      + " coalesce(json_agg(json_build_object('id', l.item_id, 'name', l.name,"
+      + "   'qty', l.qty, 'price', l.unit_price, 'note', l.note,"
+      + "   'sent', l.sent_at IS NOT NULL)"
       + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
       + ' FROM ticket t LEFT JOIN ticket_line l'
       + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
@@ -58,26 +64,41 @@ async function snapshot(c, outletId) {
     promos: ['SELECT id, name, kind, value, code, max_pct FROM promo WHERE active'
       + ' AND (starts_on IS NULL OR starts_on <= current_date)'
       + ' AND (ends_on IS NULL OR ends_on >= current_date)'],
+    // What a member's card is worth here. These three are customer-facing by
+    // definition — a reward nobody can see is a reward nobody redeems.
+    loyalty: ["SELECT key, value FROM chain.setting"
+      + " WHERE key IN ('tiers','rewards','loyalty')"],
+    // Who the guest is dealing with, as it is going to appear on their receipt.
+    company: ['SELECT legal_name, brand, country, base_currency FROM chain.company'
+      + ' LIMIT 1'],
   });
-  const outlet = q.outlet;
-  const tax = q.tax;
-  const items = q.items;
-  const cats = q.cats;
-  const tickets = q.tickets;
-  const stages = q.stages;
-  const banners = q.banners;
-  const promos = q.promos;
+  const zoneName = {};
+  q.zones.rows.forEach((z) => { zoneName[z.id] = z.name; });
+  const loyalty = {};
+  q.loyalty.rows.forEach((r) => { loyalty[r.key] = r.value; });
 
   return {
-    v: 4, at: Date.now(),
-    outlet: outlet.rows[0] || null,
-    tax: tax.rows[0] || null,
-    categories: cats.rows,
-    items: items.rows,
-    tickets: tickets.rows,
-    stages: stages.rows,
-    banners: banners.rows,
-    promos: promos.rows
+    v: 5, at: Date.now(),
+    outlet: q.outlet.rows[0] || null,
+    tax: q.tax.rows[0] || null,
+    categories: q.cats.rows,
+    items: q.items.rows,
+    floor: q.floor.rows.map((t) => ({
+      id: t.id, label: t.label, seats: t.seats, zone: zoneName[t.zone_id] || ''
+    })),
+    tickets: q.tickets.rows,
+    stages: q.stages.rows,
+    banners: q.banners.rows,
+    promos: q.promos.rows,
+    company: q.company.rows[0]
+      ? { name: q.company.rows[0].legal_name,
+        brand: q.company.rows[0].brand || {},
+        country: q.company.rows[0].country,
+        currency: q.company.rows[0].base_currency }
+      : null,
+    tiers: loyalty.tiers || null,
+    rewards: loyalty.rewards || [],
+    loyalty: loyalty.loyalty || {}
   };
 }
 

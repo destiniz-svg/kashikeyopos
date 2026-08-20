@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
+<!-- These pages are served under /g/<handle> and /m/<handle>, so every relative
+     asset path has to resolve against the root rather than against the handle.
+     Without this the whole app 404s and the browser refuses the HTML it gets
+     back as a stylesheet. -->
+<base href="/">
+<link rel="icon" href="/brand/kashikeyo-mark.png">
+<link rel="apple-touch-icon" href="/brand/kashikeyo-mark.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="./support.js"></script>
@@ -8,11 +15,14 @@
 <body>
 <x-dc>
 <helmet>
-<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Self-hosted: a guest on a restaurant's wifi should not wait on a
+     third-party font server to read a menu. -->
+<link rel="stylesheet" href="fonts.css"/>
 <script src="./kashikeyo-raw.js"></script>
+<script src="./kashikeyo-rules.js"></script>
 <script src="./kashikeyo-data.js"></script>
+<script src="./guest-bridge.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
 body{background:#8e3226;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
@@ -727,7 +737,7 @@ const FKEY = "kashikeyo.fulfil.v1";
 class Component extends DCLogic {
   state = {
     tab: "card", step: "phone", chan: "email", phone: "", email: "", otp: "", otpErr: "",
-    memberId: null, sheet: false, scan: false, toast: null,
+    memberId: null, sheet: false, scan: false, toast: null, busy: false,
     split: "all", splitN: 2, picked: {}, customAmt: "", tip: 0, tender: "card", usePoints: false, asked: 0,
     table: 0, cart: [], q: "", cat: "all", sent: [],
     redeemed: [], announced: 0, actTab: "all",
@@ -750,16 +760,31 @@ class Component extends DCLogic {
     };
     window.addEventListener("storage", this._onStore);
     window.addEventListener("resize", this._onSize);
+    // A member who signed in on this phone stays signed in: the card arrives
+    // from the outlet on its own token, and whenever it does the portal opens
+    // on the card rather than asking again for a code it does not need.
+    this._onCard = () => {
+      const card = (window.KPOS_GUEST || {}).card;
+      if (card && card.id !== this.state.memberId) {
+        this.setState({ memberId: card.id, step: "phone", otp: "", otpErr: "" });
+      }
+    };
+    window.addEventListener("kpos-member-ready", this._onCard);
+    this._onCard();
     this.pullPos();
   }
   componentWillUnmount() {
     clearInterval(this._boot); clearInterval(this._poll); clearInterval(this._tock); clearTimeout(this._tt); clearTimeout(this._rs);
     window.removeEventListener("storage", this._onStore);
     window.removeEventListener("resize", this._onSize);
+    window.removeEventListener("kpos-member-ready", this._onCard);
   }
   componentDidUpdate() { this.save(); }
 
-  K() { const k = window.KPOS; return (k && k.CUSTOMERS && k.CUSTOMERS.length) ? k : null; }
+  // The portal is ready when THIS OUTLET's menu has arrived. It used to wait
+  // on a customer roster — which a phone must never be sent, and which
+  // therefore never arrives.
+  K() { const k = window.KPOS; return (k && k.MENU && k.MENU.length) ? k : null; }
 
   save() {
     const s = this.state;
@@ -798,6 +823,15 @@ class Component extends DCLogic {
   // membership second. Newest write wins, and a delivery row never matches a
   // seated guest's tracker.
   fulfilRow() {
+    // What the pass set on this member's own ticket, as the outlet published
+    // it. The stage numbers here are the portal's five: 0 sent, 1 accepted,
+    // 2 cooking, 3 ready, 4 served.
+    const live = window.KPOS && window.KPOS.MEMBER_STAGE;
+    if (live) {
+      const N = { Received: 0, "In the kitchen": 1, Ready: 2, Served: 3, Recalled: 0 };
+      return { stage: N[live.stage] === undefined ? 0 : N[live.stage],
+        at: new Date(live.at || Date.now()).getTime(), member: this.state.memberId };
+    }
     let all = null;
     try { all = JSON.parse(localStorage.getItem(FKEY) || "null"); } catch (e) { return null; }
     if (!all || all.v !== 1 || !all.orders) return null;
@@ -816,6 +850,17 @@ class Component extends DCLogic {
   }
   bridgePush(kind, detail, extra) {
     const m = this.member();
+    const G = window.KPOS_GUEST_API;
+    if (G && G.ready()) {
+      const seat = this.seatedAt();
+      const body = Object.assign({ member: m ? m.id : "",
+        memberName: m ? m.name : "" }, extra || {});
+      const done = kind === "order"
+        ? G.order(body.lines || [], { table: seat ? seat.table : undefined,
+          name: m ? m.name : "", phone: m ? m.phone : "", note: detail })
+        : G.request(kind, detail);
+      done.catch((e) => this.toast(e.message));
+    }
     try {
       const list = JSON.parse(localStorage.getItem(BRIDGE) || "[]");
       list.push(Object.assign({
@@ -829,20 +874,38 @@ class Component extends DCLogic {
     } catch (e) { return false; }
   }
 
-  outletId() { return Number(this.props.outletId ?? 3) || 3; }
+  // The outlet is the one the link named, never a number compiled into the
+  // page. A member scanning in Hulhumale is not shown Male prices.
+  outletId() {
+    const g = window.KPOS_GUEST;
+    if (g && g.outlet && g.outlet.id) return g.outlet.id;
+    const k = this.K();
+    const first = k && (k.OUTLETS || [])[0];
+    return first ? first.id : 0;
+  }
   outlet() {
     const k = this.K();
-    return k.OUTLETS.filter((o) => o.id === this.outletId())[0] || k.OUTLETS.filter((o) => o.pos)[0];
+    if (!k) return {};
+    return (k.OUTLETS || []).filter((o) => o.id === this.outletId())[0]
+      || (k.OUTLETS || []).filter((o) => o.pos)[0] || {};
   }
   prefsPos() { const d = this.posSession(); return (d && d.prefs) || {}; }
-  pointsPer() { return this.prefsPos().pointsPer || 10; }
+  // The earn rate is the OUTLET's, published with the card's terms. A phone
+  // that guesses ten and a till that awards twenty tell a member two different
+  // numbers about the same visit.
+  pointsPer() {
+    const k = window.KPOS || {};
+    return Number((k.LOYALTY || {}).pointsPer) || this.prefsPos().pointsPer || 10;
+  }
   money(n) { return "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   fmt(n) { return "MVR " + Math.round(n || 0).toLocaleString("en-US"); }
-  price(m) {
-    const o = this.outlet();
-    return o.tax === "TGST" ? Math.round(m.price * 1.12 / 5) * 5 : m.price;
-  }
+  // The menu price, exactly as the till and the guest app read it. There is
+  // one bill calculation in this product and this is not a second one: tax and
+  // service are added ONCE, on the bill, below.
+  price(m) { return m ? m.price : 0; }
 
+  // One record, fetched against this phone's own member token. A portal that
+  // holds the roster is a portal that leaks it.
   members() { return this.K() ? (this.K().CUSTOMERS || []) : []; }
   member() { return this.members().filter((c) => c.id === this.state.memberId)[0] || null; }
   // A tier is earned, not stored: derive it from lifetime spend so the card and
@@ -866,6 +929,11 @@ class Component extends DCLogic {
   // Is this member sitting at a table right now? The POS marks a seat with the
   // customer id when a server attaches a member to a cover.
   seatedAt() {
+    // What the outlet's database says: an open ticket carrying this member id.
+    const live = window.KPOS && window.KPOS.MEMBER_TICKET;
+    if (live && this.state.memberId) {
+      return { table: live.table, tk: { lines: live.lines, guests: [] } };
+    }
     const d = this.posSession();
     if (!d || !d.tickets || !this.state.memberId) return null;
     const keys = Object.keys(d.tickets);
@@ -881,7 +949,10 @@ class Component extends DCLogic {
     let sub = 0;
     (tk.lines || []).forEach((l) => {
       const m = (k.MENU || []).filter((x) => x.id === l.id)[0];
-      if (m) sub += this.price(m) * l.qty;
+      // The counter's price wins: an override rung in at the till is what the
+      // member is going to be asked for.
+      const unit = (l.price !== undefined && l.price !== null) ? l.price : (m ? this.price(m) : 0);
+      sub += unit * l.qty;
     });
     const svc = sub * ((o.sc || 0) / 100);
     return sub + svc + (sub + svc) * ((o.rate || 0) / 100);
@@ -1010,28 +1081,52 @@ class Component extends DCLogic {
   // the guest typed, so a typo shows up as "no membership" instead of a code
   // that never arrives.
   maskedTarget() {
-    const m = this.findMember();
+    const m = this.findMember() || this.member();
     if (!m) return this.idValue();
     const parts = (m.email || "").split("@");
     const u = parts[0] || "";
     return u.slice(0, 2) + "•••" + u.slice(-1) + "@" + (parts[1] || "");
   }
+  /* The code is issued and checked BY THE OUTLET, hashed there the same way a
+     staff PIN is, with an expiry and a try limit. This phone never decides
+     whether a code was right, and never learns whether an address is a
+     membership — the answer to "start" is the same either way, because "is
+     this person a customer here" is not a question a stranger gets to ask. */
   signInNext() {
-    const s = this.state;
+    const s = this.state, G = window.KPOS_GUEST_API;
+    if (this.state.busy) return;
     if (s.step === "phone") {
-      const m = this.findMember();
-      if (!m) return this.setState({ otpErr: "" }, () => this.toast("No membership on that address — ask your server to sign you up"));
-      this.setState({ step: "otp", otp: "", otpErr: "" });
-      return this.toast("Code sent to " + this.maskedTarget());
+      if (!this.idOk()) return;
+      if (!G) return this.toast("Not connected — try again in a moment");
+      this.setState({ busy: true });
+      return G.memberStart(this.idValue().trim()).then((r) => {
+        this.setState({ busy: false, step: "otp", otp: "", otpErr: "" });
+        this.toast(r && r.via === "counter"
+          ? "Ask your server for the code — it is on their screen now"
+          : "Code sent to " + this.maskedTarget());
+      }).catch((e) => {
+        this.setState({ busy: false });
+        this.toast(e.message);
+      });
     }
     if (s.otp.length < 4) return;
-    if (s.otp !== "1234") return this.setState({ otp: "", otpErr: "That code does not match. Demo code is 1234." });
-    const m = this.findMember();
-    this.setState({ memberId: m.id, step: "phone", otp: "", otpErr: "", tab: "card" });
-    this.toast("Welcome back, " + m.name.split(" ")[0]);
+    if (!G) return this.toast("Not connected — try again in a moment");
+    this.setState({ busy: true });
+    G.memberVerify(this.idValue().trim(), s.otp).then(() => G.memberMe()).then((d) => {
+      const m = d && d.member;
+      this.setState({ busy: false, memberId: m ? m.id : null, step: "phone",
+        otp: "", otpErr: "", tab: "card" });
+      if (m) this.toast("Welcome back, " + String(m.name || "").split(" ")[0]);
+    }).catch(() => {
+      this.setState({ busy: false, otp: "",
+        otpErr: "That code does not match. Codes last ten minutes." });
+    });
   }
   signOut() {
-    this.setState({ memberId: null, tab: "card", step: "phone", phone: "", otp: "", sheet: false, redeemed: [] });
+    if (window.KPOS_GUEST_API) window.KPOS_GUEST_API.memberSignOut();
+    if (window.KPOS) { window.KPOS.CUSTOMERS = []; window.KPOS.MEMBER_TICKET = null; }
+    this.setState({ memberId: null, tab: "card", step: "phone", phone: "", email: "",
+      otp: "", sheet: false, redeemed: [] });
     this.toast("Signed out");
   }
 
@@ -1191,14 +1286,17 @@ class Component extends DCLogic {
     // ── sign in ────────────────────────────────────────────────────────────
     if (!signedIn) {
       const onOtp = s.step === "otp";
-      V.signInTitle = onOtp ? "Check your inbox" : (k.CHAIN.name || "Kashikeyo") + " Rewards";
+      V.signInTitle = onOtp ? "Ask for your code" : (k.CHAIN.name || "Kashikeyo") + " Rewards";
       V.signInSub = onOtp
-        ? "We emailed a four-digit code to " + this.maskedTarget() + "."
+        ? "A four-digit code for " + this.maskedTarget()
+          + " is on your server's screen. It lasts ten minutes."
         : "Points on every visit, your house account, and the table you are sitting at — all in one place.";
       V.phoneStepStyle = onOtp ? "display:none" : "margin-top:30px;display:block";
       V.otpStepStyle = onOtp ? "margin-top:30px;display:block" : "display:none";
-      V.phoneHint = "The address on your membership. Demo: " + this.members().slice(0, 2).map((c) => c.email).join(" · ");
-      V.otpLabel = "Code from your inbox";
+      // Never a list of addresses: this page must not be able to tell anyone
+      // who is a member here.
+      V.phoneHint = "The address or mobile number on your membership.";
+      V.otpLabel = "The four digits your server reads out";
       V.otpBoxes = [0, 1, 2, 3].map((i) => ({
         ch: s.otp[i] || "",
         style: "flex:1;max-width:96px;height:" + (M.scr < 360 ? 54 : 60) + "px;border-radius:14px;border:1.6px solid " + (s.otp.length === i ? "#f4553c" : s.otp[i] ? "#f7c8bd" : "#ececef")
@@ -1228,7 +1326,9 @@ class Component extends DCLogic {
       V.signInBtnStyle = "flex:1.4;padding:15px 8px;border-radius:26px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:600;box-shadow:0 4px 14px rgba(244,85,60,.35)" + (V.signInDisabled ? ";opacity:.45" : "");
       V.signInBackStyle = "flex:1;padding:15px 8px;border-radius:26px;border:1.4px solid #ececef;color:#8a8a8f;font-size:14.5px;font-weight:600;background:#fff";
       V.chromeStyle = "display:none";
-      V.signInFoot = "Codes go to the address on your membership, not the one typed here. " + k.CHAIN.name + " signs you in by email — no SMS charge is passed on to you.";
+      V.signInFoot = "Your code is issued by the restaurant and lasts ten minutes. "
+        + "Ask whoever is serving you for it — they can see it on their screen the "
+        + "moment you tap below, and it is recorded against your card either way.";
       V.tabBarStyle = "display:none";
       return V;
     }
@@ -1249,7 +1349,10 @@ class Component extends DCLogic {
     V.mWorth = this.money(this.ptValue());
     V.mSpent = this.fmt(m.spent);
     V.mSince = "2023";
-    V.mCode = "KM " + m.id.toUpperCase().replace("C", "") + " " + String(1000 + m.visits * 37).slice(0, 4);
+    // A card number a person can read down a phone line: the stable head of
+    // the member's own id, grouped, never the whole 36-character uuid.
+    const hex = String(m.id).replace(/[^0-9a-f]/gi, "").toUpperCase();
+    V.mCode = "KM " + hex.slice(0, 4) + " " + hex.slice(4, 8) + " " + hex.slice(8, 12);
     V.mInitials = m.name.split(" ").map((x) => x[0]).slice(0, 2).join("");
     V.avatarStyle = "width:56px;height:56px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:700;color:#fff;letter-spacing:.02em;background:linear-gradient(140deg," + tier.from + "," + tier.to + ")";
     V.cardStyle = "margin-top:16px;max-width:" + (M.wide ? "460px" : "none") + ";position:relative;overflow:hidden;border-radius:22px;padding:" + (M.scr < 360 ? 17 : 20) + "px;background:linear-gradient(140deg," + tier.from + " 0%," + tier.to + " 100%);box-shadow:0 14px 34px rgba(30,16,12,.32);display:block";
@@ -1399,7 +1502,8 @@ class Component extends DCLogic {
     const widen = (v) => posF ? Math.min(4, (posF.stage || 0) + 1) : WIDEN[v];
     const derived = stages.length ? Math.min.apply(null, stages) : 0;
     const stageNow = flat.length || posF ? widen(derived) : 0;
-    const sla = this.prefsPos().kdsSla || 18;
+    const sla = Number((window.KPOS.MEMBER_STAGE || {}).target)
+      || this.prefsPos().kdsSla || 18;
     const firedAges = (posT || []).filter((p) => p.fired && !p.done && p.firedAt).map((p) => (Date.now() - p.firedAt) / 60000);
     const waited = firedAges.length ? Math.max.apply(null, firedAges) : 0;
     const left = Math.max(0, Math.ceil(sla - waited));
@@ -1502,17 +1606,14 @@ class Component extends DCLogic {
     // Real settled sales, read from the till's own ledger. A member's history
     // has to be the same rows the outlet's P&L was built from, or the two
     // describe different visits.
-    const posd = this.posSession() || {};
-    const outsById = {};
-    (k.OUTLETS || []).forEach((x) => { outsById[x.id] = x; });
-    const ledger = (posd.settled || [])
-      .filter((x) => x.customer === m.id || (x.tender === "credit" && x.customer === m.id))
-      .sort((a, b) => (b.at || 0) - (a.at || 0))
-      .slice(0, 8);
+    // The member's OWN receipts, read against their own token. These are the
+    // same rows the outlet's P&L was built from — a member's history and the
+    // outlet's takings must describe the same visits or one of them is wrong.
+    const ledger = (k.MEMBER_RECEIPTS || []).slice(0, 8);
     ledger.forEach((x) => {
-      const d = new Date(x.at || Date.now());
+      const d = new Date(x.at || x.date || Date.now());
       hist.push({
-        kind: "visit", title: (outsById[x.outletId] || o).name,
+        kind: "visit", title: o.name,
         meta: d.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
           + " · " + (x.no || "")
           + (x.covers ? " · " + x.covers + " cover" + (x.covers === 1 ? "" : "s") : ""),
@@ -1534,8 +1635,8 @@ class Component extends DCLogic {
     // is only what this device can actually see.
     V.activitySub = m.visits + " recorded visit" + (m.visits === 1 ? "" : "s") + " · " + this.fmt(m.spent) + " lifetime";
     V.activityNote = this._histReal
-      ? this._histReal + " settled bill" + (this._histReal === 1 ? "" : "s") + " on this device's ledger. Older visits are counted in your lifetime total above."
-      : "Your lifetime total comes from the chain. Individual bills appear here once this device has synced with the till that took them.";
+      ? "Your last " + this._histReal + " bill" + (this._histReal === 1 ? "" : "s") + " at this restaurant. Earlier visits are counted in your lifetime total above."
+      : "Nothing settled here yet. A bill appears the moment the till closes it against your card.";
     V.activityNoteStyle = "margin-top:10px;font-size:11.5px;color:#a8a8ad;line-height:1.55;text-wrap:pretty";
     V.activity = shown.map((h) => ({
       title: h.title, meta: h.meta, amt: h.amt, pts: h.pts, icon: ICON[h.kind] || ICON.visit,

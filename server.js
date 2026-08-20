@@ -4,6 +4,10 @@ const express = require('express');
 const { owner, shutdown } = require('./src/db');
 const { migrate } = require('./src/scripts/migrate');
 
+// Set when a migration could not finish, and reported by both health
+// endpoints so a half-migrated schema cannot pass for a healthy one.
+let bootError = null;
+
 const app = express();
 app.set('trust proxy', 1);              // Railway terminates TLS at the edge
 app.set('x-powered-by', false);
@@ -36,11 +40,15 @@ app.use(function (req, res, next) {
   next();
 });
 
-app.get('/healthz', (req, res) => res.json({ ok: true }));
+app.get('/healthz', function (req, res) {
+  if (bootError) return res.status(503).json({ ok: false, migration: bootError });
+  res.json({ ok: true });
+});
 
 // Railway's healthcheck hits this: the service is only ready when the control
 // plane answers, otherwise a deploy that cannot see its database goes live.
 app.get('/readyz', async function (req, res) {
+  if (bootError) return res.status(503).json({ ok: false, migration: bootError });
   try {
     await owner().query('SELECT 1 FROM chain.outlet LIMIT 1');
     res.json({ ok: true, at: new Date().toISOString() });
@@ -89,7 +97,14 @@ async function boot() {
   if (process.env.SKIP_MIGRATE !== '1') {
     try { await migrate(); }
     catch (e) {
-      console.error('[boot] migration failed:', e.message);
+      // Production refuses to go live on a schema it could not finish. Every
+      // other environment keeps serving so the fault can be fixed from the
+      // same shell — but it says so on every health check, because a silent
+      // half-migrated schema is how you spend an afternoon debugging code
+      // that was never the problem.
+      bootError = e.message;
+      console.error('[boot] MIGRATION FAILED — the schema is not what this'
+        + ' build expects: ' + e.message);
       if (process.env.NODE_ENV === 'production') process.exit(1);
     }
   }

@@ -81,6 +81,8 @@ function loadLogic(opts) {
 
   // The structure the app ships with, and then whatever this test wants live.
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-raw.js'), 'utf8'), ctx);
+  // The rule table loads first in the browser, so it loads first here too.
+  vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-rules.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-data.js'), 'utf8'), ctx);
   if (o.kpos) vm.runInContext('Object.assign(window.KPOS, ' + JSON.stringify(o.kpos) + ')', ctx);
   if (o.raw) vm.runInContext('Object.assign(window.KPOS_RAW, ' + JSON.stringify(o.raw) + ')', ctx);

@@ -8,7 +8,8 @@
 
 const express = require('express');
 const { owner, withOutlet, withOutletRead } = require('../db');
-const { signTable, verifyTable } = require('../secrets');
+const { signTable, verifyTable, signMember, verifyMember,
+  hashPin, pinMatches, randomPin } = require('../secrets');
 const { snapshot } = require('./outlet');
 
 const r = express.Router();
@@ -49,11 +50,15 @@ function guest(req, res, next) {
 r.get('/:slug/menu', guest, async function (req, res, next) {
   try {
     const data = await withOutletRead(req.ctx, (c) => snapshot(c, req.ctx.outletId));
-    // Strip the floor: a guest sees the menu and their own table, never the
-    // room's open tickets.
+    // Strip the room: a guest sees the menu and their OWN table, never anyone
+    // else's open bill and never anyone else's ticket in the kitchen. The
+    // floor plan itself stays — it is what the table chooser offers when the
+    // QR does not name a table — but it carries labels and seats, nothing more.
     const mine = (data.tickets || []).filter((t) => t.table_no === req.guest.table);
+    const ids = mine.map((t) => t.id);
+    const stages = (data.stages || []).filter((k) => ids.indexOf(k.ticket_id) >= 0);
     res.set('cache-control', 'no-store').json(Object.assign({}, data, {
-      tickets: mine, table: req.guest.table
+      tickets: mine, stages: stages, table: req.guest.table
     }));
   } catch (e) { next(e); }
 });
@@ -104,6 +109,22 @@ r.post('/:slug/request', guest, async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* ═══ THE MEMBER PORTAL ═════════════════════════════════════════════════════
+   A member is neither staff nor anonymous: the person holding the phone owns
+   exactly one record and must reach that one and no other. So the portal
+   signs in — a code, checked like a PIN, in exchange for a token that names a
+   member id and carries no rank.
+
+   DELIVERY: this build has no SMS or email transport, so a code is delivered
+   the way a restaurant already verifies a person — AT THE COUNTER. Issuing one
+   raises a request on the floor board for a server to read out, and it is
+   recorded in the audit trail. Wiring a transport later means sending
+   `code` from issueCode() down that channel instead; nothing else changes.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const CODE_MINS = 10;
+const CODE_TRIES = 5;
+
 // A member checks their own points by phone. It returns their record and
 // nothing else — no other member, no spend history from another outlet.
 r.get('/:slug/member', guest, async function (req, res, next) {
@@ -114,6 +135,125 @@ r.get('/:slug/member', guest, async function (req, res, next) {
       'SELECT name, points, tier, joined_at FROM chain.member WHERE phone = $1',
       [phone]).then((q) => q.rows[0] || null));
     res.set('cache-control', 'no-store').json({ member: row });
+  } catch (e) { next(e); }
+});
+
+r.post('/:slug/member/start', guest, async function (req, res, next) {
+  // Either half of the membership: the phone on the card or the email on file.
+  const phone = String((req.body || {}).id || (req.body || {}).phone || '').trim();
+  if (phone.length < 6) return res.status(400).json({ error: 'phone or email required' });
+  try {
+    const out = await withOutlet(req.ctx, async function (c) {
+      // Four digits from the CSPRNG, hashed with a per-row salt exactly like a
+      // staff PIN — and, like a PIN, it is the expiry and the try limit that
+      // make it safe, never the entropy. What the database holds is never the
+      // code.
+      const code = randomPin();
+      const h = hashPin(code, null);
+      const q = await c.query('SELECT chain.member_code_set($1,$2,$3,$4) AS id',
+        [phone, h.hash, h.salt, CODE_MINS]);
+      const id = q.rows[0].id;
+      if (id) {
+        await c.query('INSERT INTO guest_request (table_no, kind, detail)'
+          + " VALUES ($1,'member_code',$2)",
+        [req.guest.table || 'card', 'Sign-in code for ' + phone + ': ' + code]);
+        await c.query("SELECT chain.log_anon($1,'member_code','member',$2,$3)",
+          [req.ctx.outletId, id, JSON.stringify({ mins: CODE_MINS })]);
+      }
+      // The same answer either way: whether a phone number is a customer here
+      // is not a question a stranger gets to ask.
+      return { sent: true, via: 'counter', mins: CODE_MINS,
+        code: (process.env.MEMBER_CODE_ECHO === '1' && id) ? code : undefined };
+    });
+    res.json(out);
+  } catch (e) { next(e); }
+});
+
+r.post('/:slug/member/verify', guest, async function (req, res, next) {
+  const b = req.body || {};
+  const phone = String(b.id || b.phone || '').trim();
+  const code = String(b.code || '').trim();
+  if (phone.length < 6 || code.length < 4) {
+    return res.status(400).json({ error: 'phone or email, and a code, required' });
+  }
+  try {
+    const out = await withOutlet(req.ctx, async function (c) {
+      const q = await c.query('SELECT * FROM chain.member_code_take($1)', [phone]);
+      const m = q.rows[0];
+      const no = { ok: false, error: 'That code does not match' };
+      if (!m) return no;
+      if (m.code_tries > CODE_TRIES || new Date(m.code_exp).getTime() < Date.now()) {
+        await c.query('SELECT chain.member_code_clear($1,false)', [m.id]);
+        return { ok: false, error: 'That code has expired — ask for another' };
+      }
+      if (!pinMatches(code, m.code_hash, m.code_salt)) {
+        await c.query("SELECT chain.log_anon($1,'member_code_failed','member',$2,$3)",
+          [req.ctx.outletId, m.id, JSON.stringify({ tries: m.code_tries })]);
+        return no;
+      }
+      await c.query('SELECT chain.member_code_clear($1,true)', [m.id]);
+      await c.query("SELECT chain.log_anon($1,'member_sign_in','member',$2,'{}')",
+        [req.ctx.outletId, m.id]);
+      return {
+        ok: true,
+        token: signMember({ m: m.id, o: req.ctx.outletId, sl: req.guest.slug,
+          exp: Date.now() + 30 * 24 * 3600e3 })
+      };
+    });
+    res.status(out.ok ? 200 : 401).json(out);
+  } catch (e) { next(e); }
+});
+
+// The signed-in member's own card: their record, their open table, their own
+// receipts. Nobody else's row is reachable from this token.
+function member(req, res, next) {
+  const claims = verifyMember(String(req.get('x-member-token') || ''));
+  if (!claims || !claims.m) return res.status(401).json({ error: 'sign in again' });
+  req.member = { id: claims.m, outletId: claims.o };
+  req.ctx = { outletId: claims.o, rank: 0, actor: null, scope: 'outlet' };
+  next();
+}
+
+r.get('/:slug/member/me', member, async function (req, res, next) {
+  try {
+    const out = await withOutletRead(req.ctx, async function (c) {
+      const card = await c.query('SELECT * FROM chain.member_card($1)', [req.member.id]);
+      if (!card.rows.length) return null;
+      const hist = await c.query(
+        'SELECT count(*)::int AS visits, sum(total)::numeric AS spent,'
+        + ' max(business_date) AS last_visit FROM sale'
+        + ' WHERE member_id = $1 AND voided_at IS NULL', [req.member.id]);
+      const recent = await c.query(
+        'SELECT receipt_no, business_date, at, covers, net, service, tax, total'
+        + ' FROM sale WHERE member_id = $1 AND voided_at IS NULL'
+        + ' ORDER BY at DESC LIMIT 25', [req.member.id]);
+      const open = await c.query(
+        "SELECT t.id, t.table_no, t.covers,"
+        + " coalesce(json_agg(json_build_object('id', l.item_id, 'name', l.name,"
+        + "   'qty', l.qty, 'price', l.unit_price, 'sent', l.sent_at IS NOT NULL)"
+        + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
+        + ' FROM ticket t LEFT JOIN ticket_line l'
+        + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
+        + " WHERE t.status = 'open' AND t.member_id = $1 GROUP BY t.id",
+        [req.member.id]);
+      // The stage the PASS set, never one this phone inferred from a ticket.
+      const stage = open.rows.length ? await c.query(
+        'SELECT station, stage, target_mins, fired_at FROM kds_ticket'
+        + ' WHERE ticket_id = $1 AND served_at IS NULL ORDER BY fired_at DESC LIMIT 1',
+        [open.rows[0].id]) : { rows: [] };
+      return {
+        member: Object.assign({}, card.rows[0], {
+          visits: Number(hist.rows[0].visits) || 0,
+          spent: Number(hist.rows[0].spent) || 0,
+          last: hist.rows[0].last_visit || ''
+        }),
+        receipts: recent.rows,
+        ticket: open.rows[0] || null,
+        stage: stage.rows[0] || null
+      };
+    });
+    if (!out) return res.status(404).json({ error: 'no card on this token' });
+    res.set('cache-control', 'no-store').json(out);
   } catch (e) { next(e); }
 });
 

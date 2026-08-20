@@ -921,7 +921,9 @@ BEGIN
     || ' chain.log(text,text,text,jsonb,jsonb),'
     || ' chain.log_anon(int,text,text,text,jsonb),'
     || ' chain.pin_candidates(int), chain.pin_failed(int,int,int),'
-    || ' chain.pin_ok(uuid) TO %I', r);
+    || ' chain.pin_ok(uuid), chain.member_code_set(text,text,text,int),'
+    || ' chain.member_code_take(text), chain.member_code_clear(uuid,boolean),'
+    || ' chain.member_card(uuid) TO %I', r);
 
   INSERT INTO chain.outlet (id, code, name, schema_name, db_role)
   VALUES (p_id, p_code, p_name, s, r)

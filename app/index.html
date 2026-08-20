@@ -27,6 +27,7 @@
      ships NO trade data: an empty install renders every screen with an empty
      state that names the action which fills it. -->
 <script src="./kashikeyo-raw.js"></script>
+<script src="./kashikeyo-rules.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./kashikeyo-api.js"></script>
 <script src="./kpos-bridge.js"></script>
@@ -2704,6 +2705,10 @@ class Component extends DCLogic {
       id: "op_" + lamport.toString(36) + this._opn.toString(36),
       opId: opId,
       op: op, label: label, entity: entity || "orders", at: this.clock(),
+      // Machine timestamps beside the human one: the replay-lag figure is a
+      // measurement, and a measurement needs two clocks it can subtract.
+      queuedAt: Date.now(),
+      sentAt: this.state.online ? Date.now() : null,
       lamport: lamport, state: this.state.online ? "sent" : "queued"
     };
     this.setState({ outbox: this.trimOutbox(prev.concat([row])) });
@@ -2782,7 +2787,7 @@ class Component extends DCLogic {
       tip: row.tip, cogs: row.cogs, taxCode: (row.taxLabel || "").split(" ")[0] || "GGST",
       taxLabel: row.taxLabel, taxRate: row.taxRate,
       cur: row.cur, rate: row.rate, fgn: row.fgn,
-      member: row.customer || null, customer: row.customer || "",
+      member: row.customer || null, customer: this.memberName(row.customer),
       server: row.server, ticketId: (tk || {}).id || null,
       at: row.at, sold: sold, payments: payments, stockMoves: stockMoves
     });
@@ -2800,6 +2805,20 @@ class Component extends DCLogic {
     if (tk.guests && tk.guests.length) return tk.guests;
     const n = Math.max(1, tk.splits || 1);
     return Array.from({ length: n }, (_, i) => this.newGuest(i));
+  }
+  // The registered customer on this ticket, if there is one. A member is
+  // attached to a COVER, not to the table, so the ticket's own member is the
+  // first cover that carries one. Without this the loyalty link never reached
+  // the sale: no points posted and every regular's history stayed empty.
+  ticketMember(tk) {
+    if (!tk) return "";
+    const g = (this.guestsOf(tk) || []).filter((x) => x && x.custId)[0];
+    return (g && g.custId) || tk.member || "";
+  }
+  memberName(id) {
+    if (!id) return "";
+    const c = (K().CUSTOMERS || []).filter((x) => x.id === id)[0];
+    return c ? c.name : "";
   }
   guestLabel(g) {
     if (!g) return "Guest";
@@ -3449,7 +3468,14 @@ class Component extends DCLogic {
         ? "background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--text);font-size:12px;font-weight:600;padding:8px 10px;max-width:150px;min-width:110px;outline:none"
         : "display:none",
       search: s.search, onSearch: (e) => this.setState({ search: e.target.value }),
-      toggleOnline: () => { const on = !s.online; this.setState({ online: on }); if (on) this.flush(); else this.toast("Terminal offline — orders will queue locally", "warn"); },
+      toggleOnline: () => {
+        const on = !s.online;
+        // The pill flips the queue itself: offline means nothing is POSTed and
+        // every write holds durably in IndexedDB until it is flipped back.
+        if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(!on);
+        this.setState({ online: on });
+        if (on) this.flush(); else this.toast("Terminal offline — orders will queue locally", "warn");
+      },
       netLabel: s.online ? "Online" : "Offline",
       netStyle: "display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid " + (s.online ? "var(--green-line)" : "var(--red-line)") + ";background:" + (s.online ? "var(--ok-dim)" : "var(--bad-dim)") + ";color:" + (s.online ? "var(--green)" : "var(--red-bright)"),
       netDot: "width:6px;height:6px;border-radius:50%;background:" + (s.online ? "var(--go)" : "var(--red)") + (s.online ? ";box-shadow:0 0 8px var(--go)" : ";animation:kpulse 1.4s infinite"),
@@ -3597,20 +3623,43 @@ class Component extends DCLogic {
       const tot = cst.reduce((a, x) => a + x.sales, 0);
       const cov = cst.reduce((a, x) => a + x.covers, 0);
       const best = this.posOutlets()[cst.indexOf(cst.slice().sort((a, b) => b.avg - a.avg)[0])] || {};
+      // The comparison is against the receipts of the same weekday last week,
+      // which is the only week-on-week figure a restaurant can act on. If there
+      // are none, the card says so rather than inventing a movement.
+      const weekAgo = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10);
+      const then = (s.settled || []).filter((x) => x.bizDate === weekAgo)
+        .reduce((a, x) => a + (x.net || 0), 0);
+      const lastWeek = then > 0 ? then : null;
+      const delta = lastWeek === null ? 0 : ((tot - lastWeek) / lastWeek) * 100;
+      const nonTrading = (K0.OUTLETS || []).filter((x) => !x.pos);
       return [
-        card("Chain net sales · today", MVRc(tot), "+12.4% vs same day last week", amber),
-        card("Trading outlets", String(this.posOutlets().length) + " / " + (K0.OUTLETS || []).length, "2 non-trading: main store, central kitchen"),
+        card("Chain net sales · today", MVRc(tot),
+          lastWeek === null ? "No trading on this day last week to compare"
+            : (delta >= 0 ? "+" : "") + delta.toFixed(1) + "% vs same day last week", amber),
+        card("Trading outlets", String(this.posOutlets().length) + " / " + (K0.OUTLETS || []).length,
+          nonTrading.length
+            ? nonTrading.length + " non-trading: " + nonTrading.map((x) => x.name).join(", ")
+            : "Every outlet is selling"),
         card("Average cheque", MVR(tot / (cov || 1)), "Highest: " + (best.name || "—").replace("Kashikeyo ", "")),
         card("Chain food cost", this.blendedCost().toFixed(1) + "%", "Theoretical, from live recipes · target 30%")
       ];
     }
     if (v === "inventory" || v === "counts" || v === "batches" || v === "ledger") {
       const val = (raw.inv || []).reduce((a, r) => { const it = (raw.items || []).find((i) => i[0] === r[1]); return a + (it ? it[4] * this.stockQty(it, r[2]) : 0); }, 0);
+      // Measured, all of it: what is short, what is about to die, and when
+      // somebody last counted. A ribbon that invents these is worse than no
+      // ribbon — it is a number a manager acts on.
+      const dig = this.stockDigest();
+      const lastCount = this.lastCount();
       return [
         card("Stock on hand", MVRc(val), (raw.inv || []).length + " item/location rows", amber),
-        card("Below par", "14", "Auto-indent drafted for 9 of them"),
-        card("Expiring ≤ 7 days", String((raw.batches || []).filter((b) => b[8] === "active").length), "FEFO picking enforced at dispatch"),
-        card("Last cycle count", "Today 06:12", "Variance MVR 412 · posted to 5100")
+        card("Below par", String(dig.short.length),
+          dig.short.length ? "Short by " + MVRc(dig.short.reduce((a, x) => a + x.cost, 0)) + " at cost" : "Every item at or above par"),
+        card("Expiring ≤ 7 days", String(dig.soon.length),
+          dig.expired.length ? dig.expired.length + " already past date" : "FEFO picking enforced at dispatch"),
+        card("Last cycle count", lastCount ? this.dayLabel(lastCount.date) : "Never",
+          lastCount ? "Variance " + MVRc(lastCount.variance) + " · posted to 5100"
+            : "Nothing counted on this outlet yet")
       ];
     }
     if (v === "staff") {
@@ -3622,7 +3671,7 @@ class Component extends DCLogic {
         card("On shift now", String(L.open), L.heads + " shifts clocked today", amber),
         card("Hours today", L.hours.toFixed(1) + "h", L.ot > 0 ? L.ot.toFixed(1) + "h of it at 1.25× overtime" : "No overtime yet"),
         card("Labour cost today", MVRc(L.cost), L.open ? L.open + " shifts still open — counted only to now" : "All shifts closed · final for today"),
-        card("Labour % of sales", pct.toFixed(1) + "%", "10–15% typical here · " + MVRc(sales) + " net sales",
+        card("Labour % of sales", pct.toFixed(1) + "%", "Against " + MVRc(sales) + " net sales",
           pct <= 16 ? big + ";color:var(--green)" : pct <= 22 ? big + ";color:var(--warn-bright)" : big + ";color:var(--red-bright)")
       ];
     }
@@ -3644,11 +3693,18 @@ class Component extends DCLogic {
       const sales = this.posOutlets().reduce((a, x) => a + this.outletSales(x), 0) * 26;
       const day = s.now.getDate();
       const soon = scoped.filter((e) => e.due >= day && e.due <= day + 7);
+      // Days this outlet actually took money this month — not a rule of thumb.
+      const month = this.today().slice(0, 7);
+      const tradingDays = new Set((s.settled || [])
+        .filter((x) => x.outletId === s.outletId && String(x.bizDate || "").slice(0, 7) === month)
+        .map((x) => x.bizDate)).size;
       return [
         card("Operating cost · month", MVRc(monthly), scoped.length + " recurring lines", amber),
         card("Share of sales", ((monthly / (sales || 1)) * 100).toFixed(1) + "%", "Everything below gross profit"),
         card("Due in 7 days", MVRc(soon.reduce((a, e) => a + e.amt, 0)), soon.length ? soon.length + " payments coming up" : "Nothing due this week"),
-        card("Fixed cost per day", MVRc(monthly / 26), "Across 26 trading days")
+        card("Fixed cost per day", MVRc(monthly / (tradingDays || 1)),
+          tradingDays ? "Across " + tradingDays + " day" + (tradingDays === 1 ? "" : "s")
+            + " traded this month" : "Nothing traded this month yet")
       ];
     }
     if (v === "assets") {
@@ -3694,11 +3750,21 @@ class Component extends DCLogic {
     }
     if (v === "sync") {
       const q = s.outbox.filter((x) => x.state === "queued").length;
+      const devs = (K0.DEVICES || []).filter((d) => !d.revoked);
+      const hour = Date.now() - 3600e3;
+      const live = devs.filter((d) => d.seen && new Date(d.seen).getTime() > hour).length;
+      const acked = s.outbox.filter((x) => x.sentAt && x.queuedAt);
+      const lag = acked.length
+        ? Math.round(acked.reduce((a, x) => a + (x.sentAt - x.queuedAt), 0)
+          / acked.length / 100) / 10
+        : null;
       return [
         card("Queued operations", String(q), q ? "Will replay in Lamport order" : "Outbox empty", q ? big + ";color:var(--red-bright)" : big + ";color:var(--green)"),
-        card("Registered devices", "14", "12 online · 2 last seen > 1h"),
+        card("Registered devices", String(devs.length),
+          devs.length ? live + " seen in the last hour" : "This device is not paired yet"),
         card("Conflicts resolved", String(s.conflicts.length), "Last-writer-wins except closed tickets"),
-        card("Replay lag p95", "1.8s", "kpos-sync worker · Railway private net")
+        card("Last replay", lag === null ? "—" : lag + "s",
+          lag === null ? "Nothing has replayed on this device" : "Time from queue to acknowledged")
       ];
     }
     if (v === "kds") {
@@ -3718,19 +3784,50 @@ class Component extends DCLogic {
     }
     if (v === "__kds_old") {
       const t = this.kdsTickets();
+      const sla = this.prefs().kdsSla || 18;
+      // Every line the pass has finished today, with the minutes it took.
+      const served = [];
+      Object.keys(s.tickets || {}).forEach((key) => {
+        const tk = s.tickets[key];
+        (tk && tk.lines || []).forEach((l) => {
+          if (l.done && l.firedAt && l.doneAt) served.push((l.doneAt - l.firedAt) / 60000);
+        });
+      });
+      const onTime = served.length
+        ? Math.round((served.filter((m) => m <= sla).length / served.length) * 100)
+        : null;
       return [
         card("Open tickets", String(t.length), "Fire order, oldest first", amber),
         card("Longest wait", (t.length ? t[0].wait : 0) + "m", "SLA " + (this.prefs().kdsSla || 18) + "m for mains"),
-        card("Items in the pass", String(t.reduce((a, x) => a + x.items.length, 0)), "Grill 4 · Fry 3 · Cold 2"),
-        card("On-time tonight", "94%", "Target 92%")
+        card("Items in the pass", String(t.reduce((a, x) => a + x.items.length, 0)),
+          this.stationSpread(t)),
+        card("On-time tonight", onTime === null ? "—" : onTime + "%",
+          onTime === null ? "Nothing has left the pass yet" : "Target 92%")
       ];
     }
     if (v === "customers" || v === "delivery") {
+      const custs = K0.CUSTOMERS || [];
+      const month = new Date().toISOString().slice(0, 7);
+      const joinedThisMonth = custs.filter((c) => String(c.since || "").slice(0, 7) === month).length;
+      const owing = custs.reduce((a, c) => a + (c.used || 0), 0);
+      const overLimit = custs.filter((c) => c.credit && c.used >= c.credit).length;
+      const today = this.today();
+      const F = s.fulfil || {};
+      const qr = Object.keys(F).map((k) => F[k]).filter((x) => x && x.kind === "qr");
+      const qrToday = qr.filter((x) => this.dayOf(x.at) === today).length;
+      const qrLive = new Set(qr.filter((x) => (x.stage || 0) < 4)
+        .map((x) => String(x.table || ""))).size;
+      const deliv = (s.settled || []).filter((x) => x.outletId === s.outletId
+        && x.channel === "delivery" && x.bizDate === today);
       return [
-        card("Registered customers", String((K0.CUSTOMERS || []).length * 214), "Portal sign-ups this month: 89", amber),
-        card("Credit outstanding", MVRc((K0.CUSTOMERS || []).reduce((a, c) => a + c.used, 0)), "3 accounts over 30 days"),
-        card("QR table sessions", "38", "Live now: 6 tables ordering"),
-        card("Delivery orders", "127", "Own fleet 71 · aggregators 56")
+        card("Registered customers", String(custs.length),
+          joinedThisMonth + " joined this month", amber),
+        card("Credit outstanding", MVRc(owing),
+          owing ? overLimit + " at or over their limit" : "Nothing on account"),
+        card("QR table sessions", String(qrToday),
+          qrLive ? qrLive + " tables ordering right now" : "No table ordering from a phone"),
+        card("Delivery orders", String(deliv.length),
+          deliv.length ? "Settled through the delivery channel" : "Nothing delivered today")
       ];
     }
     if (v === "today") {
@@ -4344,7 +4441,7 @@ class Component extends DCLogic {
                 const t = Object.assign({}, this.state.tickets);
                 const cur = Object.assign({}, t[tk.key]);
                 cur.lines = cur.lines.slice();
-                cur.lines[i] = Object.assign({}, cur.lines[i], { done: true });
+                cur.lines[i] = Object.assign({}, cur.lines[i], { done: true, doneAt: Date.now() });
                 t[tk.key] = cur;
                 this.setState({ tickets: t, kdsRecall: { key: tk.key, idx: [i], name: m.name, table: this.slotName(tk.num), at: Date.now() } });
                 this.queue("kds_bump", m.name + " bumped \u00b7 T" + pad(tk.num) + " \u00b7 " + this.me(), "order_lines", { id: m.kdsId || m.id, stage: "Ready" });
@@ -4377,7 +4474,7 @@ class Component extends DCLogic {
             cur.lines = cur.lines.map((l, i) => {
               const takes = l.fired && !l.done && (isExpo || stnKey(l) === scope);
               if (takes) hit.push(i);
-              return takes ? Object.assign({}, l, { done: true }) : l;
+              return takes ? Object.assign({}, l, { done: true, doneAt: Date.now() }) : l;
             });
             t[tk.key] = cur;
             this.setState({ tickets: t, kdsRecall: hit.length ? { key: tk.key, idx: hit, name: hit.length + " line" + (hit.length === 1 ? "" : "s"), table: this.slotName(tk.num), at: Date.now() } : this.state.kdsRecall });
@@ -10318,7 +10415,7 @@ class Component extends DCLogic {
         outletId: s.outletId, no: snap.no, time: snap.time, table: snap.table,
         channel: tk.channel || "dine_in", total: grossDue, round: roundDiff, tender: tender,
         status: "closed", server: tk.waiter || "Unassigned", ref: ref,
-        tip: 0, customer: tk.member || "",
+        tip: 0, customer: this.ticketMember(tk),
         covers: Math.max(((this.guestsOf(tk) || []).length) || 0, tk.party || 0) || 1,
         at: Date.now(), sold: sold, cogs: this.saleTrail({ sold: sold, T: T }).cogs,
         net: T.net, disc: T.disc, discCode: T.discCode, svc: T.svc, tax: T.tax,
@@ -11038,6 +11135,33 @@ class Component extends DCLogic {
   today() {
     const n = (this.state || {}).now;
     return (n instanceof Date ? n : new Date()).toISOString().slice(0, 10);
+  }
+  // The business date of a timestamp, on the same clock every other figure uses.
+  dayOf(ts) { return new Date(ts || 0).toISOString().slice(0, 10); }
+  dayLabel(ts) {
+    if (!ts) return "Never";
+    const d = new Date(ts);
+    return this.dayOf(ts) === this.today()
+      ? "Today " + pad(d.getHours()) + ":" + pad(d.getMinutes())
+      : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  }
+  // The last stock count POSTED ON THIS OUTLET, with the variance it found.
+  // Nothing invented: if nobody has counted, the ribbon says so.
+  lastCount() {
+    const c = (this.state.counts || []).filter((x) => x.outletId === this.state.outletId)[0];
+    return c ? { date: c.at, variance: c.varValue || 0, lines: (c.lines || []).length } : null;
+  }
+  // "Grill 4 · Fry 3 · Cold 2", counted rather than asserted.
+  stationSpread(tickets) {
+    const K1 = K() || {};
+    const by = {};
+    (tickets || []).forEach((t) => (t.items || []).forEach((l) => {
+      const m = (K1.MENU || []).filter((x) => x.id === l.id)[0];
+      const k = m ? this.dishStation(m) : "hot";
+      by[k] = (by[k] || 0) + 1;
+    }));
+    const parts = Object.keys(by).map((k) => this.stationName(k) + " " + by[k]);
+    return parts.length ? parts.join(" · ") : "Nothing routed yet";
   }
   vendorVals(v) {
     const name = String(v.name || "").trim();
@@ -13930,23 +14054,56 @@ class Component extends DCLogic {
     setTimeout(() => this.runJob(j.id), 60);
   }
   failedJobs() { return (this.state.printJobs || []).filter((j) => j.state === "failed" && j.outletId === this.state.outletId); }
+  /* Replay is REAL. The strip on this screen is a mirror of the durable queue
+     in kashikeyo-api.js, so what it shows is what the outlet's database has
+     actually taken. An op the server refused STAYS in the queue and shows the
+     reason it gave — nothing is marked sent that was not sent, and a conflict
+     is a conflict the server reported, never one this screen invented. */
   flush() {
     const s = this.state;
     const queued = s.outbox.filter((x) => x.state === "queued");
     if (!queued.length) { this.toast("Back online — nothing to replay"); return; }
     this.setState({ syncing: true });
-    setTimeout(() => {
-      const conflict = queued.length > 2 ? queued[1] : null;
+    const api = window.KPOS_API;
+    if (!api || typeof api.flush !== "function") {
+      // No sync bridge on this page (a standalone open of the file). Say so
+      // rather than pretending the queue drained.
+      this.setState({ syncing: false });
+      this.toast("No connection to the outlet — the queue is holding", "warn");
+      return;
+    }
+    Promise.resolve(api.flush()).then((results) => {
+      const byId = {};
+      (results || []).forEach((r) => { byId[r.opId] = r; });
+      const failed = [];
       const outbox = this.state.outbox.map((x) => {
         if (x.state !== "queued") return x;
-        if (conflict && x.id === conflict.id) return Object.assign({}, x, { state: "conflict", note: "Same line edited on dev_CHA_T2 at " + x.at + " — the server copy is newer" });
-        return Object.assign({}, x, { state: "sent" });
+        const r = byId[x.opId];
+        if (!r) return x;                                    // still queued
+        if (r.error) {
+          failed.push({ id: x.id, label: x.label, at: x.at, note: r.error });
+          return Object.assign({}, x, { state: "conflict", note: r.error });
+        }
+        return Object.assign({}, x, { state: "sent", sentAt: Date.now() });
       });
-      const conflicts = conflict ? this.state.conflicts.concat([{ id: conflict.id, label: conflict.label, at: conflict.at }]) : this.state.conflicts;
-      this.setState({ outbox: outbox, conflicts: conflicts, syncing: false });
-      this.toast(conflict ? (queued.length - 1) + " replayed · 1 conflict needs a decision" : queued.length + " operations replayed in order", conflict ? "warn" : "ok");
-      if (conflict) this.setState({ view: "sync" });
-    }, 1400);
+      const sent = outbox.filter((x) => x.state === "sent").length
+        - s.outbox.filter((x) => x.state === "sent").length;
+      this.setState({
+        outbox: outbox, syncing: false,
+        conflicts: this.state.conflicts.concat(failed)
+      });
+      if (failed.length) {
+        this.toast(sent + " replayed · " + failed.length + " refused by the outlet", "warn");
+        this.setState({ view: "sync" });
+      } else if (sent) {
+        this.toast(sent + " operation" + (sent === 1 ? "" : "s") + " replayed in order", "ok");
+      } else {
+        this.toast("Still holding — the outlet did not answer", "warn");
+      }
+    }).catch((e) => {
+      this.setState({ syncing: false });
+      this.toast("Replay failed: " + (e && e.message ? e.message : "no answer"), "err");
+    });
   }
 
   g_sync() {
@@ -14045,7 +14202,12 @@ class Component extends DCLogic {
       };
     }
     return {
-      tabs: stabs.concat([{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => { const on = !s.online; this.setState({ online: on }); if (on) this.flush(); } }]),
+      tabs: stabs.concat([{ label: s.online ? "Terminal is online" : "Terminal is offline", on: !s.online, pick: () => {
+        const on = !s.online;
+        if (window.KPOS_BRIDGE && window.KPOS_BRIDGE.setOffline) window.KPOS_BRIDGE.setOffline(!on);
+        this.setState({ online: on });
+        if (on) this.flush();
+      } }]),
       actions: [
         { label: "Replay outbox now", go: () => { if (!s.online) return this.toast("Come back online to replay", "warn"); this.flush(); } },
         { label: s.conflicts.length ? "Resolve " + s.conflicts.length + " conflict" + (s.conflicts.length > 1 ? "s" : "") : "No conflicts", primary: !!s.conflicts.length, go: () => s.conflicts.length ? this.setState({ modal: { kind: "conflict" } }) : this.toast("Nothing to resolve") },

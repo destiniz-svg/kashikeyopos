@@ -16,6 +16,8 @@
    visible, not a write we silently dropped.
    ═══════════════════════════════════════════════════════════════════════ */
 
+const RULES = require('../app/kashikeyo-rules.js');
+
 const num = (v) => (v == null || v === '' ? 0 : Number(v) || 0);
 const r2 = (v) => Math.round(num(v) * 100) / 100;
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -102,9 +104,20 @@ async function applySale(c, p, ctx) {
     + " VALUES ($1,'SALE',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
     [sale.receipt_no, p.bizDate || today(), total, sale.id, ctx.actor]);
 
-  if (p.member && num(p.points)) {
-    await c.query('UPDATE chain.member SET points = points + $2 WHERE id = $1',
-      [p.member, num(p.points)]);
+  /* Points are awarded HERE, from the outlet's own earn rate — never from a
+     number the terminal sent. A till that computes its own points is a till
+     that can be made to award any number of them, and a member whose balance
+     depends on which device settled the bill has no balance at all. */
+  if (p.member) {
+    const rate = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
+    const per = Number(((rate.rows[0] || {}).value || {}).pointsPer) || 10;
+    const earned = Math.floor(net / per);
+    if (earned > 0) {
+      await c.query('UPDATE chain.member SET points = points + $2 WHERE id = $1',
+        [p.member, earned]);
+      await log(c, 'points_earned', 'member', p.member, null,
+        { sale: sale.receipt_no, net, per, points: earned });
+    }
   }
 
   await log(c, 'sale', 'sale', sale.id, null, { no: sale.receipt_no, total });
@@ -898,6 +911,7 @@ H.dish_upsert = async (c, p, ctx) => {
       arr(p.allergens), arr(p.diets), arr(p.tags), p.active, p.offMenu,
       p.soldOutReason || null, num(p.pos)]);
   if (Array.isArray(p.recipe)) await writeRecipe(c, id, p.recipe);
+  await publishDeclaration(c, id);
   await log(c, 'dish_upsert', 'item', id, null, { name: p.name, price: r2(p.price) });
   return { itemId: id };
 };
@@ -914,6 +928,7 @@ H.ai_menu_draft = async (c, p, ctx) => {
 
 H.recipe_update = async (c, p) => {
   await writeRecipe(c, p.item, arr(p.lines));
+  await publishDeclaration(c, p.item);
   return { lines: arr(p.lines).length };
 };
 
@@ -929,6 +944,56 @@ async function writeRecipe(c, itemId, lines) {
       + ' waste_pct) VALUES ($1,$2,$3,$4,$5)',
     [itemId, isSub ? null : ing, isSub ? ing : null, num(qty), num(waste)]);
   }
+}
+
+/* ── what a dish declares ─────────────────────────────────────────────────
+   A GUEST PHONE HOLDS NO RECIPE — a recipe is a cost sheet, and a costing on
+   a customer's device is a leak. So the allergen and diet declaration is
+   worked out HERE, from the recipe rows, using the same rule table the
+   browser loads (app/kashikeyo-rules.js), and published onto the item. The
+   phone reads the answer, never the ingredients.
+
+   Sub-recipes are expanded: a sauce made of a sauce still declares what is in
+   both. Depth is bounded because a recipe that references itself is a bug the
+   kitchen should not be able to turn into a hang. ───────────────────────── */
+async function publishDeclaration(c, itemId) {
+  const parts = [];
+  const add = {};
+  let frontier = [itemId];
+  const seen = new Set([itemId]);
+  for (let depth = 0; depth < 4 && frontier.length; depth++) {
+    const q = await c.query(
+      'SELECT r.item_id, r.sub_item_id, i.name, i.category, i.allergens'
+      + ' FROM recipe_line r LEFT JOIN ingredient i ON i.id = r.ingredient_id'
+      + ' WHERE r.item_id = ANY($1::text[])', [frontier]);
+    const next = [];
+    q.rows.forEach((row) => {
+      if (row.sub_item_id) {
+        if (!seen.has(row.sub_item_id)) { seen.add(row.sub_item_id); next.push(row.sub_item_id); }
+        return;
+      }
+      if (!row.name) return;
+      parts.push({ name: row.name, cat: row.category });
+      // An ingredient may carry a declaration of its own — a supplier's "may
+      // contain". It is added, never subtracted.
+      (row.allergens || []).forEach((k) => { add[k] = 1; });
+    });
+    frontier = next;
+  }
+  const declared = Object.keys(add);
+  const allergens = RULES.allergenKeys(parts, declared);
+  const diets = RULES.dietKeys(parts, declared);
+  await c.query('UPDATE item SET allergens = $2, diets = $3 WHERE id = $1',
+    [itemId, allergens, diets]);
+  return { allergens, diets };
+}
+
+// An ingredient's name, category or own declaration changed: every dish that
+// uses it says something different now.
+async function republishUsing(c, ingredientId) {
+  const q = await c.query('SELECT DISTINCT item_id FROM recipe_line'
+    + ' WHERE ingredient_id = $1', [ingredientId]);
+  for (const row of q.rows) await publishDeclaration(c, row.item_id);
 }
 
 H.item_upsert = async (c, p) => {
@@ -950,6 +1015,7 @@ H.item_upsert = async (c, p) => {
       p.min == null ? null : num(p.min), p.loc || null, p.vendor || null,
       p.freq || 'weekly', arr(p.allergens), p.sellable,
       p.sellPrice == null ? null : r2(p.sellPrice), p.producible]);
+  await republishUsing(c, id);
   return { ingredientId: id };
 };
 
@@ -1303,4 +1369,4 @@ async function applyOp(c, op, ctx) {
   return fn(c, op.payload || {}, ctx) || {};
 }
 
-module.exports = { applyOp, postJournal, moveStock, HANDLERS: H, AUDIT_ONLY };
+module.exports = { applyOp, postJournal, moveStock, publishDeclaration, HANDLERS: H, AUDIT_ONLY };

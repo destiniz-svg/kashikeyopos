@@ -1,6 +1,13 @@
 <!DOCTYPE html>
 <html>
 <head>
+<!-- These pages are served under /g/<handle> and /m/<handle>, so every relative
+     asset path has to resolve against the root rather than against the handle.
+     Without this the whole app 404s and the browser refuses the HTML it gets
+     back as a stylesheet. -->
+<base href="/">
+<link rel="icon" href="/brand/kashikeyo-mark.png">
+<link rel="apple-touch-icon" href="/brand/kashikeyo-mark.png">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="./support.js"></script>
@@ -9,11 +16,13 @@
 <x-dc>
 <helmet>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<!-- Self-hosted: a guest on a restaurant's wifi should not wait on a
+     third-party font server to read a menu. -->
+<link rel="stylesheet" href="fonts.css"/>
 <script src="./kashikeyo-raw.js"></script>
+<script src="./kashikeyo-rules.js"></script>
 <script src="./kashikeyo-data.js"></script>
+<script src="./guest-bridge.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
 body{background:#1b0d0a;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
@@ -538,6 +547,14 @@ class Component extends DCLogic {
 
   componentDidMount() {
     this.restore();
+    // The QR names the table, and the token is minted against it. A guest who
+    // scanned the card in front of them is not asked where they are sitting.
+    const g = window.KPOS_GUEST;
+    if (g && g.table) this.setState({ table: g.table });
+    this._gt = setInterval(() => {
+      const q = window.KPOS_GUEST;
+      if (q && q.table && q.table !== this.state.table) this.setState({ table: q.table });
+    }, 1000);
     // The till is another tab or another device; poll and also listen, because
     // the storage event does not fire in the tab that wrote it.
     this._t = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 2000);
@@ -548,7 +565,7 @@ class Component extends DCLogic {
     } else this.setState({ ready: true });
   }
   componentWillUnmount() {
-    clearInterval(this._t); clearInterval(this._w);
+    clearInterval(this._t); clearInterval(this._w); clearInterval(this._gt);
     if (this._on) window.removeEventListener("storage", this._on);
     if (this._toastT) clearTimeout(this._toastT);
   }
@@ -608,6 +625,10 @@ class Component extends DCLogic {
       });
       if (dead) out[m.id] = 1;
     });
+    // What this outlet has taken off tonight, as the outlet published it.
+    (this.menu() || []).forEach((m) => {
+      if (m.offMenu || m.soldOutReason) out[m.id] = 1;
+    });
     const manual = (d && d.eightySix) || [];
     manual.forEach((id) => { out[id] = 1; });
     return out;
@@ -615,13 +636,31 @@ class Component extends DCLogic {
   // The live ticket for this table, as the till holds it. This is the bill —
   // the phone never keeps its own copy of what is owed.
   ticket() {
+    if (!this.state.table) return null;
+    // What the outlet's own database holds for this table, read over the
+    // table token. This is the bill.
+    const k = window.KPOS || {};
+    const want = String(this.state.table);
+    const live = (k.TICKETS || []).filter((t) => String(t.table) === want)[0];
+    if (live) return live;
+    // A till running in another tab of THIS device — the reference's own
+    // demo path, and the fallback when the link is down.
     const d = this.pos();
-    if (!d || !this.state.table) return null;
+    if (!d) return null;
     const key = (d.outletId || this.outlet().id) + ":" + this.state.table;
     return (d.tickets || {})[key] || null;
   }
 
   menu() { const k = this.K(); return k ? (k.MENU || []) : []; }
+  // A table is stored by the label the floor plan gives it — "T04", "Deck 2".
+  // What a guest is TOLD is the human half of that, so a standard floor still
+  // reads "table 4" and a named one still reads "table Deck 2".
+  tblOf(v) {
+    if (v === null || v === undefined || v === "") return "";
+    const m = /^T0*(\d+)$/i.exec(String(v));
+    return m ? m[1] : String(v);
+  }
+  tbl() { return this.tblOf(this.state.table); }
   item(id) { return this.menu().filter((m) => m.id === id)[0] || null; }
   money(n) { return "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   fmt(n) { return "MVR " + Math.round(n || 0).toLocaleString("en-US"); }
@@ -648,21 +687,41 @@ class Component extends DCLogic {
     this._toastT = setTimeout(() => this.setState({ toast: "" }), 2600);
   }
 
-  // ── the bridge ───────────────────────────────────────────────────────────
+  /* ── the bridge ───────────────────────────────────────────────────────────
+     The phone posts INTENT to the outlet it scanned into, over a table token
+     minted from the QR. It never takes money, and the projection it reads
+     carries no cost and no margin — so there is nothing here to leak.
+
+     A local copy is still written, because a guest on a restaurant's wifi
+     loses the link mid-round more often than anyone likes to admit. The
+     opId means the retry sends one order, not two. */
   push(kind, detail, extra) {
+    const G = window.KPOS_GUEST_API;
+    const body = Object.assign({
+      id: "q" + Date.now() + Math.floor(Math.random() * 1000),
+      outlet: this.outlet().id, table: this.state.table,
+      kind: kind, detail: detail || "", at: Date.now(), ack: 0,
+      guest: (this.state.ident || {}).name || ""
+    }, extra || {});
+
     try {
       const list = JSON.parse(localStorage.getItem(BRIDGE) || "[]");
-      list.push(Object.assign({
-        id: "q" + Date.now() + Math.floor(Math.random() * 1000),
-        outlet: this.outlet().id, table: this.state.table,
-        kind: kind, detail: detail || "", at: Date.now(), ack: 0,
-        guest: (this.state.ident || {}).name || ""
-      }, extra || {}));
+      list.push(body);
       // Acknowledged signals older than two hours are the till's business, not
       // this phone's; trimming keeps the shared key from growing without bound.
       localStorage.setItem(BRIDGE, JSON.stringify(list.filter((x) => !x.ack || x.at > Date.now() - 7200000)));
-      return true;
-    } catch (e) { return false; }
+    } catch (e) { /* a full quota is not a reason to stop ordering */ }
+
+    if (!G || !G.ready()) return false;
+    const done = kind === "order"
+      ? G.order(body.lines || [], {
+        promo: body.promo || "", name: (this.state.ident || {}).name || "",
+        phone: (this.state.ident || {}).phone || "", note: detail
+      })
+      : G.request(kind, detail);
+    done.then(() => { this.setState({ tick: this.state.tick + 1 }); })
+      .catch((e) => { this.toast(e.message); });
+    return true;
   }
 
   cartSub() {
@@ -681,7 +740,7 @@ class Component extends DCLogic {
       note: [l.opt, l.note].filter(Boolean).join(" · ") || "QR"
     }));
     const n = this.state.cart.reduce((a, l) => a + l.qty, 0);
-    const ok = this.push("order", n + " item" + (n === 1 ? "" : "s") + " from table " + this.state.table, {
+    const ok = this.push("order", n + " item" + (n === 1 ? "" : "s") + " from table " + this.tbl(), {
       lines: lines,
       promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
       pct: this.state.promoOk ? 5 : 0
@@ -696,6 +755,14 @@ class Component extends DCLogic {
   // The stage the TILL published, never one this phone inferred from the
   // ticket. A guest watching a tracker that guesses is worse than no tracker.
   stage() {
+    // What the pass actually set on this table's ticket.
+    const k = window.KPOS || {};
+    const mine = (k.TICKETS || []).filter((t) => String(t.table) === String(this.state.table))
+      .map((t) => t.id);
+    const live = (k.STAGES || []).filter((x) => mine.indexOf(x.ticket) >= 0)
+      .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))[0];
+    // The kitchen calls it "Cooking"; a guest is told what that means.
+    if (live) return { stage: live.stage === "Cooking" ? "In the kitchen" : live.stage, at: live.at };
     try {
       const all = JSON.parse(localStorage.getItem(FKEY) || "null");
       if (!all || all.v !== 1 || !all.orders) return null;
@@ -711,7 +778,7 @@ class Component extends DCLogic {
     const t = this.ticket();
     if (!t) return this.toast("Nothing on this table yet");
     const due = this.payDue();
-    const ok = this.push("bill", "Table " + this.state.table + " is ready to pay", {
+    const ok = this.push("bill", "Table " + this.tbl() + " is ready to pay", {
       tender: this.state.tender, tip: this.state.tip, due: Math.round(due * 100) / 100,
       ref: (this.state.ident || {}).phone ? "G" + (this.state.ident || {}).phone.slice(-4) : "",
       promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
@@ -730,7 +797,10 @@ class Component extends DCLogic {
     if (!t) return null;
     const lines = (t.lines || []).map((l) => {
       const m = this.item(l.id);
-      return { id: l.id, name: (m ? m.name : "Item") + (l.qty > 1 ? " ×" + l.qty : ""), amt: (m ? this.price(m) : 0) * l.qty, qty: l.qty };
+      // The counter's price wins over the menu's: an override rung in at the
+      // till is what the guest is going to be asked for.
+      const unit = (l.price !== undefined && l.price !== null) ? l.price : (m ? this.price(m) : 0);
+      return { id: l.id, name: (l.name || (m ? m.name : "Item")) + (l.qty > 1 ? " ×" + l.qty : ""), amt: unit * l.qty, qty: l.qty };
     });
     const sub = lines.reduce((a, l) => a + l.amt, 0);
     const pr = t.promo || null;
@@ -798,11 +868,12 @@ class Component extends DCLogic {
       { icon: "M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z", title: "The phone never takes money", sub: "It asks to pay and says how the table is splitting it. The cashier settles, and the ledger fires once where it is attributable." },
       { icon: "M12 3l9 16H3zM12 9v4M12 16h.01", title: "Allergens from the recipe", sub: "Derived from the ingredients each dish actually uses, so a recipe change updates the guest's filter the same moment it updates the kitchen." }
     ];
+    const tno = this.tbl();
     const liveN = t ? (t.lines || []).length : 0;
     V.liveStyle = "margin-top:28px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);display:flex;gap:10px;align-items:flex-start";
     V.liveText = this.pos()
       ? (liveN
-        ? "Live: table " + s.table + " has " + liveN + " line" + (liveN === 1 ? "" : "s") + " on the till right now."
+        ? "Live: table " + tno + " has " + liveN + " line" + (liveN === 1 ? "" : "s") + " on the till right now."
         : "Live: connected to " + (o.name || "the outlet") + ". Send a round and it appears on the floor terminal.")
       : "The till is not open in this browser. Open the POS alongside this and the two talk to each other.";
 
@@ -811,11 +882,20 @@ class Component extends DCLogic {
     V.welcomeTitle = "Welcome to " + (o.name || "the restaurant");
     V.welcomeSub = "Order from where you are sitting. No app, no queue, no waiting for someone to be free.";
     V.welcomeFoot = "Your table number is printed on the card in front of you. Everything you order goes onto that table's bill.";
-    const nT = o.tables || 12;
-    V.tableChoices = Array.from({ length: nT }, (_, i) => i + 1).map((n) => ({
-      label: "T" + (n < 10 ? "0" + n : n),
+    // The room's own tables, in the room's own labels. A floor of six must
+    // never offer a guest a seat at table nine.
+    const floor = (o.floor && o.floor.length)
+      ? o.floor
+      : Array.from({ length: o.tables || 12 }, (_, i) => ({
+        label: "T" + (i + 1 < 10 ? "0" + (i + 1) : i + 1), seats: 0, zone: ""
+      }));
+    V.tableChoices = floor.map((t) => ({
+      label: t.label,
       style: "padding:13px 6px;border-radius:14px;background:#fff;border:1px solid #e8e8ea;font-size:13.5px;font-weight:700;color:#1a1a1a;text-align:center;min-height:46px;font-family:'JetBrains Mono',monospace",
-      pick: () => { self.setState({ table: n }); self.toast("Table " + n + " — here is the menu"); }
+      pick: () => {
+        self.setState({ table: t.label });
+        self.toast("Table " + self.tblOf(t.label) + " — here is the menu");
+      }
     }));
 
     V.onMenu = !!s.table && s.tab === "menu";
@@ -824,7 +904,7 @@ class Component extends DCLogic {
     V.onYou = !!s.table && s.tab === "you";
 
     V.outletName = o.name || "";
-    V.tableLabel = "Table " + s.table + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
+    V.tableLabel = "Table " + tno + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
     V.avatarText = s.ident ? (s.ident.name || "G").trim().charAt(0).toUpperCase() : "?";
     V.avatarStyle = "width:38px;height:38px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"
       + (s.ident ? "background:#f4553c;color:#fff" : "background:#f5f5f6;color:#b0b0b5");
@@ -955,7 +1035,7 @@ class Component extends DCLogic {
     V.cartCount = String(s.cart.reduce((a, l) => a + l.qty, 0));
     V.cartTotal = this.fmt(sub);
     V.cartTotalLabel = "Goods, before " + (o.sc ? "service and " : "") + (o.tax || "tax");
-    V.cartSub = s.cart.length + " item" + (s.cart.length === 1 ? "" : "s") + " · table " + s.table;
+    V.cartSub = s.cart.length + " item" + (s.cart.length === 1 ? "" : "s") + " · table " + tno;
     V.cartFoot = "Service charge and " + (o.tax || "tax") + " are added on the bill by the till. Send as many rounds as you like — they all join the same ticket.";
     V.cart = s.cart.map((l, i) => {
       const m = this.item(l.id);
@@ -994,7 +1074,7 @@ class Component extends DCLogic {
     const STAGES = ["Received", "In the kitchen", "Ready", "Served"];
     const at = fs ? Math.max(0, STAGES.indexOf(fs.stage)) : (s.sent.length ? 0 : -1);
     V.trackSub = s.sent.length
-      ? "Table " + s.table + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
+      ? "Table " + tno + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
       : "Nothing sent yet";
     V.trackWrapStyle = s.sent.length ? "margin-top:20px;display:block" : "display:none";
     V.stages = STAGES.map((label, i) => {
@@ -1005,7 +1085,7 @@ class Component extends DCLogic {
         sub: i === 0 ? (at >= 0 ? "The till has your round" : "Send a round to start")
           : i === 1 ? (at >= 1 ? "Being cooked now" : "Fires once the kitchen accepts it")
             : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")
-              : (at >= 3 ? "On your table — enjoy" : "Brought to table " + s.table),
+              : (at >= 3 ? "On your table — enjoy" : "Brought to table " + tno),
         dot: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
           + (done ? "background:#2ea44f;color:#fff" : on ? "background:#f4553c;color:#fff;box-shadow:0 0 0 4px rgba(244,85,60,.15)" : "background:#f0f0f2;color:#f0f0f2"),
         tickStyle: done || on ? "display:block" : "display:none",
@@ -1033,7 +1113,7 @@ class Component extends DCLogic {
     // ── the bill ───────────────────────────────────────────────────────────
     const b = this.billMath();
     V.billSub = b
-      ? "Table " + s.table + " · as the till has it right now"
+      ? "Table " + tno + " · as the till has it right now"
       : "Nothing on this table yet";
     V.billBodyStyle = b ? "display:block" : "display:none";
     V.billEmpty = "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
@@ -1118,7 +1198,7 @@ class Component extends DCLogic {
     // ── you ────────────────────────────────────────────────────────────────
     V.youTitle = s.ident ? "Hello, " + (s.ident.name || "there").split(" ")[0] : "Order anonymously";
     V.youSub = s.ident
-      ? "The till knows you are on table " + s.table + ", so your server can ask for you by name and any points land on this number."
+      ? "The till knows you are on table " + tno + ", so your server can ask for you by name and any points land on this number."
       : "You do not need to tell us anything to order. Leave your name and number only if you want the points, or to be recognised next time.";
     V.identFormStyle = s.ident ? "display:none" : "display:block";
     V.identCardStyle = s.ident ? "display:block" : "display:none";
@@ -1133,10 +1213,10 @@ class Component extends DCLogic {
       if (!n) return self.toast("A first name is enough");
       if (p && p.length < 7) return self.toast("That number looks short");
       self.setState({ ident: { name: n, phone: p } });
-      self.push("member", n + " is on table " + s.table, { memberName: n });
+      self.push("member", n + " is on table " + tno, { memberName: n });
       self.toast("Your server knows who to ask for");
     };
-    V.cardKicker = "GUEST AT TABLE " + s.table;
+    V.cardKicker = "GUEST AT TABLE " + tno;
     V.identMasked = s.ident && s.ident.phone ? "+960 " + s.ident.phone.slice(0, 3) + " " + s.ident.phone.slice(3) : "No number on file";
     const per = this.prefs().pointsPer || 10;
     V.ptsLabel = b ? "+" + Math.floor(b.net / per) + " pts" : "";
@@ -1162,7 +1242,7 @@ class Component extends DCLogic {
       : "display:none";
     V.rateSendLabel = "Send to the team";
     V.sendRating = () => {
-      self.push("assist", "Table " + s.table + " rated the meal " + s.stars + "/5" + (s.rateNote ? " · " + s.rateNote : ""), { rating: s.stars });
+      self.push("assist", "Table " + tno + " rated the meal " + s.stars + "/5" + (s.rateNote ? " · " + s.rateNote : ""), { rating: s.stars });
       self.setState({ rated: true });
       self.toast("Thank you — the manager sees this straight away");
     };
@@ -1171,15 +1251,15 @@ class Component extends DCLogic {
 
     V.tableActions = [
       {
-        label: "Ask for a server", sub: "Someone comes over to table " + s.table,
-        tap: () => { self.push("assist", "Table " + s.table + " is asking for a server"); self.toast("Someone is on their way"); }
+        label: "Ask for a server", sub: "Someone comes over to table " + tno,
+        tap: () => { self.push("assist", "Table " + tno + " is asking for a server"); self.toast("Someone is on their way"); }
       },
       {
         label: "Ask for the bill", sub: b ? "Table total " + self.money(b.total) : "Nothing on the table yet",
         tap: () => self.setState({ tab: "bill" })
       },
       {
-        label: "Change table", sub: "Currently table " + s.table,
+        label: "Change table", sub: "Currently table " + tno,
         tap: () => self.setState({ table: null, cart: [], sent: [] })
       }
     ].map((a) => Object.assign({

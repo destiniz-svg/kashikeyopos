@@ -294,27 +294,11 @@
     min_wage_small: 4500, min_wage_medium: 6000, min_wage_large: 8000
   };
 
-  var ALLERGENS = [
-    { k: "dairy", label: "Dairy", icon: "M8 2h8l-1 4v14H9V6z", cat: [3], re: /MILK|CREAM|CHEESE|BUTTER|YOGH|GHEE|PANEER|MOZZAR|PARMES|CHEDDAR|MASCARP|CUSTARD/i },
-    { k: "gluten", label: "Gluten", icon: "M12 3v18M12 7c-3-2-5 0-5 0s2 3 5 1M12 12c3-2 5 0 5 0s-2 3-5 1", re: /FLOUR|BREAD|PASTA|NOODLE|WHEAT|CRUMB|BUN|ROTI|CHAPATI|PASTRY|BATTER|SEMOL|COUSCOUS|BARLEY|BISCUIT|CRACKER/i },
-    { k: "fish", label: "Fish", icon: "M2 12s4-6 10-6 10 6 10 6-4 6-10 6-10-6-10-6zM17 11h.01", re: /FISH|TUNA|SNAPPER|REEF|SALMON|ANCHOV|SARDIN|MAAS|GARUDHIY|COD/i },
-    { k: "shellfish", label: "Shellfish", icon: "M12 3a7 7 0 0 0-7 7c0 5 7 11 7 11s7-6 7-11a7 7 0 0 0-7-7z", re: /PRAWN|SHRIMP|CRAB|LOBSTER|SQUID|OCTOPUS|CALAMAR|CLAM|MUSSEL|OYSTER/i },
-    { k: "egg", label: "Egg", icon: "M12 2c-4 5-6 8-6 12a6 6 0 0 0 12 0c0-4-2-7-6-12z", re: /\bEGG|MAYON|MERINGUE|AIOLI/i },
-    { k: "nuts", label: "Tree nuts", icon: "M12 2C8 6 6 9 6 13a6 6 0 0 0 12 0c0-4-2-7-6-11zM12 8v8", re: /CASHEW|ALMOND|WALNUT|PISTACH|HAZELNUT|PECAN|MACADAM|\bNUT\b|NUTS\b/i },
-    { k: "peanut", label: "Peanut", icon: "M9 4a4 4 0 1 0 0 8 4 4 0 1 0 0 8 4 4 0 1 0 6-3 4 4 0 1 0-6-3z", re: /PEANUT|GROUNDNUT/i },
-    { k: "soy", label: "Soy", icon: "M4 12c4-8 12-8 16 0-4 8-12 8-16 0z", re: /\bSOY|SOYA|TOFU|EDAMAME|MISO|TERIYAKI/i },
-    { k: "sesame", label: "Sesame", icon: "M12 4v16M6 8v8M18 8v8", re: /SESAME|TAHINI/i },
-    { k: "mustard", label: "Mustard", icon: "M7 3h10l-1 18H8z", re: /MUSTARD/i },
-    { k: "sulphite", label: "Sulphites", icon: "M12 3l9 16H3z", re: /WINE|VINEGAR|DRIED FRUIT|SULPH/i }
-  ];
-  var DIETS = [
-    { k: "veg", label: "Vegetarian", blocks: ["fish", "shellfish"], meat: true },
-    { k: "vegan", label: "Vegan", blocks: ["fish", "shellfish", "dairy", "egg"], meat: true },
-    { k: "gf", label: "No gluten", blocks: ["gluten"] },
-    { k: "nutfree", label: "No nuts", blocks: ["nuts", "peanut"] },
-    { k: "dairyfree", label: "No dairy", blocks: ["dairy"] }
-  ];
-  var MEAT_RE = /BEEF|CHICKEN|MUTTON|LAMB|PORK|BACON|SAUSAGE|HAM\b|TURKEY|DUCK|MEAT/i;
+  // The allergen and diet rules are shared with the server, which derives a
+  // dish's declaration from the recipe a guest device never holds.
+  var RULES = (typeof window !== "undefined" && window.KPOS_RULES) || {};
+  var ALLERGENS = RULES.ALLERGENS || [];
+  var DIETS = RULES.DIETS || [];
 
   // ── What this system actually is ──────────────────────────────────────────
   // The Architecture screen reads these. They describe the deployed design, so
@@ -475,7 +459,7 @@
 
 
   window.KPOS = {
-    ALLERGENS: ALLERGENS, DIETS: DIETS, MEAT_RE: MEAT_RE,
+    ALLERGENS: ALLERGENS, DIETS: DIETS, MEAT_RE: RULES.MEAT_RE,
     CHAIN: CHAIN, OUTLETS: OUTLETS, MENU: MENU,
     MENU_CATEGORIES: MENU_CATEGORIES, MENU_SECTIONS: MENU_SECTIONS,
     BANNERS: BANNERS, PROMOS: PROMOS, MODIFIERS: MODIFIERS,
@@ -493,41 +477,48 @@
     RAW: R, HERO: ""
   };
 
-  // One implementation, shared by the till, the guest QR app and the member
-  // portal. Three copies of an allergen rule is three chances to poison somebody.
+  /* One implementation, in kashikeyo-rules.js, shared by the till, the guest
+     QR app, the member portal AND the server. Everything below is the lookup
+     that turns a dish into the ingredient list those rules read.
+
+     A device that HOLDS RECIPES works the declaration out from them. A device
+     that does not — a guest phone, deliberately, because a recipe is a cost
+     sheet — reads what the outlet published for the dish. Same rules, applied
+     where the recipe actually lives. */
+  function partsOf(dish) {
+    var raw = window.KPOS_RAW || {}, items = raw.items || [];
+    return (dish && dish.recipe || []).map(function (r) {
+      var it = items.filter(function (x) { return x[0] === r[0]; })[0];
+      return it ? { name: it[2], cat: it[1] } : null;
+    }).filter(Boolean);
+  }
+  function keyed(keys) {
+    return ALLERGENS.filter(function (a) { return (keys || []).indexOf(a.k) >= 0; });
+  }
+
   window.KPOS.dishAllergens = function (dish) {
     if (!dish) return [];
-    var raw = window.KPOS_RAW || {}, items = raw.items || [];
-    var hit = {};
-    (dish.recipe || []).forEach(function (r) {
-      var it = items.filter(function (x) { return x[0] === r[0]; })[0];
-      if (!it) return;
-      var name = String(it[2] || ""), cat = it[1];
-      ALLERGENS.forEach(function (a) {
-        if ((a.cat && a.cat.indexOf(cat) >= 0) || a.re.test(name)) hit[a.k] = 1;
-      });
-    });
-    // A manual addition for something no ingredient list can show — a shared
-    // fryer, a dusted worktop. Additive only: nobody may declare an allergen
-    // absent that the recipe says is present.
-    (dish.allergensAdd || []).forEach(function (k) { hit[k] = 1; });
-    return ALLERGENS.filter(function (a) { return hit[a.k]; });
+    var parts = partsOf(dish);
+    return keyed(parts.length
+      ? RULES.allergenKeys(parts, dish.allergensAdd)
+      : (dish.allergens || []));
   };
   window.KPOS.dishHasMeat = function (dish) {
     if (!dish) return false;
     if (dish.veg === true) return false;
-    var raw = window.KPOS_RAW || {}, items = raw.items || [];
-    return (dish.recipe || []).some(function (r) {
-      var it = items.filter(function (x) { return x[0] === r[0]; })[0];
-      return it && MEAT_RE.test(String(it[2] || ""));
-    });
+    var parts = partsOf(dish);
+    // No recipe on this device: a dish is vegetarian only if the outlet SAID
+    // so. Silence is not a claim.
+    if (!parts.length) return (dish.diets || []).indexOf("veg") < 0;
+    return RULES.hasMeat(parts);
   };
   window.KPOS.dishSuits = function (dish, dietKey) {
     var d = DIETS.filter(function (x) { return x.k === dietKey; })[0];
-    if (!d) return true;
-    if (d.meat && window.KPOS.dishHasMeat(dish)) return false;
-    var have = window.KPOS.dishAllergens(dish).map(function (a) { return a.k; });
-    return !d.blocks.some(function (b) { return have.indexOf(b) >= 0; });
+    if (!d) return true;                       // a filter nobody defined filters nothing
+    if (!dish) return false;
+    var parts = partsOf(dish);
+    if (!parts.length) return (dish.diets || []).indexOf(dietKey) >= 0;
+    return RULES.dietKeys(parts, dish.allergensAdd, dish.veg).indexOf(dietKey) >= 0;
   };
   window.dispatchEvent(new Event("kpos-data-ready"));
 })();

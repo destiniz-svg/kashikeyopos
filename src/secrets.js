@@ -61,6 +61,12 @@ const verify = (t) => verifyWith(need('SESSION_SECRET'), t);
 const signTable = (p) => signWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), p);
 const verifyTable = (t) => verifyWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), t);
 
+// A member token is the same shape, minted only after a code is verified. It
+// carries a member id and nothing else, so a stolen one reads one card and
+// cannot order, price or settle.
+const signMember = (p) => signWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), p);
+const verifyMember = (t) => verifyWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), t);
+
 /* PINs are hashed with scrypt and a per-row salt. A PIN is short by nature, so
    the work factor and the sign-in lockout are what make it safe — never the
    entropy. A visible or shared PIN would make every "who voided this" answer
@@ -96,6 +102,6 @@ function pairCode() {
 }
 
 module.exports = {
-  outletPassword, sign, verify, signTable, verifyTable,
+  outletPassword, sign, verify, signTable, verifyTable, signMember, verifyMember,
   hashPin, pinMatches, randomPin, pairCode, need
 };

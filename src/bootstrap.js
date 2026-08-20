@@ -50,6 +50,15 @@ async function buildBootstrap(ctx) {
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
       members: ['SELECT id, phone, name, email, home_outlet, points, tier,'
         + ' credit_limit, joined_at FROM chain.member ORDER BY joined_at DESC LIMIT 500'],
+      // A member's history is DERIVED from this outlet's own receipts. It was
+      // once three zeroes on the card, which made every regular look like a
+      // first-timer and made the credit limit unenforceable.
+      memberHistory: ['SELECT s.member_id, count(*)::int AS visits,'
+        + ' sum(s.total)::numeric AS spent, max(s.business_date) AS last_visit,'
+        + " sum(p.amount) FILTER (WHERE p.method = 'credit')::numeric AS on_account"
+        + ' FROM sale s LEFT JOIN payment p ON p.sale_id = s.id'
+        + ' WHERE s.member_id IS NOT NULL AND s.voided_at IS NULL'
+        + ' GROUP BY s.member_id'],
       sections: ['SELECT * FROM menu_section WHERE active ORDER BY pos, name'],
       categories: ['SELECT * FROM menu_category WHERE active ORDER BY pos, name'],
       items: ['SELECT * FROM item ORDER BY pos, name'],
@@ -79,6 +88,8 @@ async function buildBootstrap(ctx) {
     const chainSettings = q.chainSettings;
     const suppliers = q.suppliers;
     const members = q.members;
+    const history = {};
+    q.memberHistory.rows.forEach((h) => { history[h.member_id] = h; });
     const sections = q.sections;
     const categories = q.categories;
     const items = q.items;
@@ -147,7 +158,7 @@ async function buildBootstrap(ctx) {
       // A chain that has customised its roles overrides them, and only then.
       ROLES: setting.roles || undefined,
       USERS: staff.rows.map(userOf),
-      CUSTOMERS: members.rows.map(customerOf),
+      CUSTOMERS: members.rows.map((r) => customerOf(r, history[r.id])),
       STAFF: employees.rows.map(employeeOf),
       PAYROLL_RULES: setting.payroll_rules || {},
       OPEX: opex.rows.map((r) => ({
@@ -597,12 +608,15 @@ function userOf(r) {
   };
 }
 
-function customerOf(r) {
+function customerOf(r, h) {
+  const hist = h || {};
   return {
     id: r.id, name: r.name || r.phone, phone: r.phone, email: r.email || '',
-    since: (r.joined_at || '').toString().slice(0, 10), visits: 0, spent: 0,
-    points: num(r.points), tier: r.tier, credit: num(r.credit_limit), used: 0,
-    last: '', home: r.home_outlet
+    since: (r.joined_at || '').toString().slice(0, 10),
+    visits: num(hist.visits), spent: num(hist.spent),
+    points: num(r.points), tier: r.tier, credit: num(r.credit_limit),
+    used: num(hist.on_account),
+    last: hist.last_visit || '', home: r.home_outlet
   };
 }
 
@@ -824,30 +838,9 @@ const DEFAULT_TIERS = [
   { key: 'platinum', name: 'Platinum', at: 15000, mark: '★', from: '#3c3f46', to: '#16171b' }
 ];
 
-const ALLERGENS = [
-  { k: 'gluten', name: 'Gluten', re: /wheat|flour|bread|pasta|noodle|barley|rye|semolina|breadcrumb/i },
-  { k: 'crustacean', name: 'Crustaceans', re: /prawn|shrimp|lobster|crab|crayfish/i },
-  { k: 'egg', name: 'Egg', re: /\begg|mayonnaise|mayo|aioli|meringue/i },
-  { k: 'fish', name: 'Fish', re: /fish|tuna|snapper|grouper|anchovy|reef|maldive fish/i },
-  { k: 'peanut', name: 'Peanuts', re: /peanut|groundnut/i },
-  { k: 'soy', name: 'Soya', re: /soy|soya|tofu|edamame|miso/i },
-  { k: 'milk', name: 'Milk', re: /milk|cream|butter|cheese|yoghurt|ghee|paneer/i },
-  { k: 'nuts', name: 'Tree nuts', re: /almond|cashew|walnut|pistachio|hazelnut|pecan/i },
-  { k: 'celery', name: 'Celery', re: /celery|celeriac/i },
-  { k: 'mustard', name: 'Mustard', re: /mustard|dijon/i },
-  { k: 'sesame', name: 'Sesame', re: /sesame|tahini/i },
-  { k: 'sulphite', name: 'Sulphites', re: /sulphite|sulfite|dried apricot|wine/i },
-  { k: 'lupin', name: 'Lupin', re: /lupin/i },
-  { k: 'mollusc', name: 'Molluscs', re: /squid|octopus|calamari|mussel|clam|oyster|scallop/i }
-];
-
-const DIETS = [
-  { k: 'veg', name: 'Vegetarian', meat: true },
-  { k: 'vegan', name: 'Vegan', meat: true, dairy: true, egg: true },
-  { k: 'halal', name: 'Halal', pork: true, alcohol: true },
-  { k: 'gf', name: 'Gluten free', allergen: 'gluten' },
-  { k: 'df', name: 'Dairy free', allergen: 'milk' },
-  { k: 'nf', name: 'Nut free', allergen: 'nuts' }
-];
+// The allergen and diet rules are ONE table, shared with every browser that
+// loads kashikeyo-rules.js. The server holds the recipes, so the server is
+// what derives a dish's declaration from them (see src/apply.js).
+const { ALLERGENS, DIETS } = require('../app/kashikeyo-rules.js');
 
 module.exports = { buildBootstrap, buildState, all, MODULES, rolesOf, ALLERGENS, DIETS };

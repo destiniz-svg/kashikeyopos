@@ -94,3 +94,52 @@ test('the five-rank ladder is the only gate', () => {
   // Rank 5 is the only cross-outlet read.
   assert.strictEqual(F.can('owner'), true, 'rank 5 reaches the estate');
 });
+
+/* ═══ NO INVENTED FIGURES ═══════════════════════════════════════════════════
+   Every ribbon card is a number a manager acts on. The reference's cards were
+   written against a demo, so several were literals — "Registered customers"
+   was the real count MULTIPLIED BY 214, "QR table sessions" was the string
+   "38", "On-time tonight" was "94%", and the last cycle count was always
+   "Today 06:12" with a variance of MVR 412.
+
+   On a real install those read as measurements and are not. This walks the
+   ribbon at every rank on an EMPTY database, where every honest figure is
+   zero or an empty state, and fails on anything that isn't.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('no ribbon card invents a figure on an empty install', () => {
+  const F = H.makeInstance({});
+  const bad = [];
+  // statCards() reads the current view, so drive it the way the shell does.
+  const VIEWS = H.GENERATORS.map((g) => g.replace(/^g_/, ''))
+    .concat(['pos', 'kds', 'bill', 'sync']);
+  VIEWS.forEach((v) => {
+    let cards;
+    F.state.view = v;
+    try { cards = F.statCards(); } catch (e) { return; }   // a view with no ribbon
+    (cards || []).forEach((c) => {
+      const value = String((c && c.value) !== undefined ? c.value : (c && c.v) || '');
+      const sub = String((c && c.sub) || '');
+      // A figure on an empty database is 0, an em dash, "Never", a currency
+      // zero, a percentage of nothing, or a label. Anything else was typed.
+      const n = value.replace(/[^0-9.]/g, '');
+      if (n && Number(n) !== 0) {
+        bad.push(v + ' · ' + (c.label || '?') + ' = "' + value + '"');
+      }
+      // Sub-lines are where the inventions hid: "12 online · 2 last seen > 1h".
+      // Three kinds of number are NOT measurements and are allowed to be
+      // written down: a statutory rate (MRPS is 7% + 7%, the service charge
+      // pool is 99%), an account code in the chart, and a target this outlet
+      // configured. Everything else on an empty install must be zero.
+      const digits = sub.match(/\b[1-9][0-9]*\b/g) || [];
+      const statutory = /\b7% employee|99% distributed|MRPS|GST|TGST|GGST\b/;
+      const accountCode = /\b(1[0-9]{3}|2[0-9]{3}|3[0-9]{3}|4[0-9]{3}|5[0-9]{3}|6[0-9]{3})\b/;
+      const configured = /target|sla|red at|10 points|1 pt|MVR 1 off|every |per |set on this device/i;
+      if (digits.length && !statutory.test(sub) && !accountCode.test(sub)
+        && !configured.test(sub)) {
+        bad.push(v + ' · ' + (c.label || '?') + ' sub "' + sub + '"');
+      }
+    });
+  });
+  assert.deepStrictEqual(bad, [],
+    'these read as measurements on an empty install:\n  ' + bad.join('\n  '));
+});
