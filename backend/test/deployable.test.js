@@ -175,6 +175,38 @@ describe('the deployable tree', () => {
       'these are marked built but appear nowhere in the rail');
   });
 
+  test('every module in the rail says what it is', () => {
+    /* The header prints the module's name over a one-line description of what
+       the screen is for, which is the prototype's pageMain/pageSub. On a phone
+       that header is the ONLY thing on screen naming the module — the rail is
+       behind a drawer — so a missing subtitle is not a cosmetic gap on the
+       small shell, it is the difference between two screens that look alike.
+
+       Several pairs here are told apart by nothing else: Purchases / GRN
+       against Indent Requests, Stock Counts against Stock Ledger, Dispatches
+       against Delivery & QR. TypeScript makes the field required; it cannot
+       make it non-empty, or stop it being filled in with the label again.
+
+       `pos` and `reservations` are exempt from the length floor: the prototype
+       derives their line from the live outlet — the tax and service charge in
+       force, whose book it is — and nav.ts holds only the static half. */
+    const dir = path.join(ROOT, 'apps', 'pos', 'src');
+    const nav = fs.readFileSync(path.join(dir, 'nav.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '');
+    const entries = [...nav.matchAll(
+      /\{\s*id:\s*'([a-z]+)',\s*label:\s*'((?:[^'\\]|\\.)*)'[\s\S]*?sub:\s*'((?:[^'\\]|\\.)*)'\s*\}/g)]
+      .map((m) => ({ id: m[1], label: m[2], sub: m[3] }));
+    assert.ok(entries.length > 20,
+      'the rail could not be read — did the shape of a NavItem change?');
+
+    const derived = new Set(['pos', 'reservations']);
+    const bad = entries.filter((e) =>
+      (!derived.has(e.id) && e.sub.trim().length < 12)
+      || e.sub.trim().toLowerCase() === e.label.trim().toLowerCase());
+    assert.deepEqual(bad.map((e) => e.id + ': ' + JSON.stringify(e.sub)), [],
+      'these have no usable one-line description, so the phone header says nothing');
+  });
+
   test('no screen reaches the API on a hard-coded path', () => {
     /* The front-end half of the same class of bug, and it bit just as hard:
        nine screens each wrote their own fetch('/api/...'). That resolves ONLY

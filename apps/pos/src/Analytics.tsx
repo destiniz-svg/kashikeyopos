@@ -98,7 +98,6 @@ export function Analytics({ session }: { session: Session }) {
       {/* Filters in one row above everything, which is where a reader looks for
           them and where they stay put as the content below changes. */}
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Analytics</span>
         <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)}
           aria-label="From" style={dateInput} />
         <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>to</span>

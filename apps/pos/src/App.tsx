@@ -3,7 +3,7 @@ import type { ErrorInfo, ReactNode } from 'react';
 import * as api from './api';
 import type { Session, Snapshot } from './api';
 import * as outbox from './outbox';
-import { navFor, landingFor, FILTERABLE } from './nav';
+import { navFor, navItem, landingFor, FILTERABLE } from './nav';
 import { HButton, LIFT, Toast } from './ui';
 import type { ToastTone } from './ui';
 import { applyTheme, readTheme } from './theme';
@@ -47,7 +47,7 @@ import { Dispatches } from './Dispatches';
 import { Requests } from './Requests';
 import { AiMenu } from './AiMenu';
 import { NotBuilt } from './NotBuilt';
-import { useBreakpoint } from './useBreakpoint';
+import { useBreakpoint, useShortViewport } from './useBreakpoint';
 import { Palette } from './Palette';
 import type { Intent } from './intent';
 
@@ -106,6 +106,7 @@ export function App({ outletId }: { outletId: number }) {
   const bp = useBreakpoint();
   const isPhone = bp === 'm';
   const isRail = bp === 't';
+  const shortVp = useShortViewport();
   const [drawer, setDrawer] = useState(false);
   /* "Go anywhere" — thirty-seven modules is past what a rail makes
      findable, so the prototype puts a ⌘K palette over it. */
@@ -298,6 +299,29 @@ export function App({ outletId }: { outletId: number }) {
   /* The sell screens are full-bleed: they manage their own height and their
      own scrolling, and the prototype gives them every pixel. */
   const fullBleed = view === 'pos' || view === 'kds';
+
+  /* The header's two lines. The name is the rail's own label, so the rail and
+     the header can never disagree about what a screen is called.
+
+     THREE OF THEM THE PROTOTYPE DERIVES rather than writes down, and they are
+     the three where a fixed sentence would be worse than none: the floor's
+     line carries the tax and service charge actually in force at THIS outlet,
+     which is the number a cashier is asked about across the counter; the book
+     names the outlet whose evening it is; the estate says how many outlets it
+     just added together, which is the difference between a number and a
+     number you can trust. nav.ts holds the static half of each. */
+  const pageMain = navItem(view)?.label ?? 'KashikeyoPOS';
+  const pageSub = (() => {
+    const o = snap?.outlet;
+    if (view === 'pos') {
+      if (!o) return '';
+      const tax = snap?.tax ? snap.tax.code + ' ' + Number(snap.tax.rate) + '%' : '';
+      const sc = Number(o.service_pct || 0);
+      return [o.name, tax, sc ? sc + '% service charge' : ''].filter(Boolean).join(' · ');
+    }
+    if (view === 'reservations') return o ? "Tonight's book for " + o.name : "Tonight's book";
+    return navItem(view)?.sub ?? '';
+  })();
   const labelled = isPhone ? true : isRail ? false : railOpen;
   const RAIL_W = isRail ? 60 : railOpen ? 208 : 56;
 
@@ -514,13 +538,51 @@ export function App({ outletId }: { outletId: number }) {
               </svg>
             </HButton>
           )}
-          <span style={{
-            fontSize: isPhone ? 15 : 13, fontWeight: isPhone ? 700 : 600,
-            color: 'var(--text)', letterSpacing: isPhone ? '-.025em' : undefined,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-            minWidth: 0,
-          }}>
-            {snap?.outlet?.name ?? '—'}
+          {/* WHERE YOU ARE — the prototype's pageMain over pageSub.
+              §1.1 puts the outlet on the left and the module's name and its
+              one-line description beside it, and the reason shows up on a
+              phone: the rail is behind a drawer there, so with the outlet name
+              alone the header could be any one of thirty-seven screens. The
+              prototype's phone header drops the outlet and truncates the
+              module name rather than dropping the module name — because which
+              SCREEN you are on changes every tap, and which outlet you are in
+              does not change all shift.
+
+              The subtitle earns its line on the wider shells: several pairs
+              here are only told apart by knowing the business — Purchases /
+              GRN against Indent Requests, Stock Counts against Stock Ledger —
+              and this answers "is this the one I want" before the screen has
+              to be opened and its empty state read. */}
+          <span style={{ minWidth: 0, display: 'grid', gap: 1 }}>
+            {!isPhone && (
+              <span style={{
+                fontSize: 10, fontWeight: 600, color: 'var(--text-faint)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                letterSpacing: '.04em', textTransform: 'uppercase',
+              }}>
+                {snap?.outlet?.name ?? '—'}
+              </span>
+            )}
+            <span style={{
+              fontSize: isPhone ? 15 : 14, fontWeight: 700,
+              color: 'var(--text)', letterSpacing: '-.025em',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              minWidth: 0,
+            }}>
+              {pageMain}
+            </span>
+            {/* Not on a phone, and not on a short window either: the header is
+                one of the few things that cannot scroll away, so it gives its
+                second line back when height is what is scarce. */}
+            {!isPhone && !shortVp && pageSub && (
+              <span style={{
+                fontSize: 10.5, color: 'var(--text-faint)',
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                minWidth: 0,
+              }}>
+                {pageSub}
+              </span>
+            )}
           </span>
           <span style={{ flex: 1 }} />
 

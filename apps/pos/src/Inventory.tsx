@@ -109,7 +109,6 @@ export function Inventory({ session, onQueued, search, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Inventory</span>
         <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
           stock at cost <b style={{ fontFamily: MONO, color: 'var(--text-dim)' }}>{mvr(totalValue)}</b>
         </span>

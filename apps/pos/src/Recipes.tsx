@@ -190,7 +190,6 @@ export function Recipes({ session, intent, onIntentDone, search, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Recipes &amp; Costing</span>
         <div style={{ display: 'flex', gap: 6, marginLeft: 8 }}>
           {(['dishes', 'ingredients'] as Tab[]).map((t) => (
             <button key={t} onClick={() => { setTab(t); setOnlyUncosted(false); }}

@@ -273,7 +273,6 @@ export function Menu({ session, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Menu Master</span>
         {/* One rail, three modes. Counts on the tabs, because "Add-ons 0" and
             "Add-ons" are different messages: the first says nobody has made one
             yet, the second says nothing at all. */}

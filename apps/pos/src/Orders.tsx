@@ -153,7 +153,6 @@ export function Orders({ session, search, onSettle }: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Orders &amp; tickets</span>
         <input type="date" value={date} max={today()}
           onChange={(e) => { setOffset(0); setDate(e.target.value); }}
           aria-label="Business date"

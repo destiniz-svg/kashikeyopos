@@ -123,7 +123,6 @@ export function Payroll({ session, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Payroll</span>
         <span style={{ display: 'flex', gap: 4 }}>
           <TabBtn on={tab === 'runs'} onClick={() => setTab('runs')}>Runs</TabBtn>
           <TabBtn on={tab === 'rates'} onClick={() => setTab('rates')}>What people are paid</TabBtn>

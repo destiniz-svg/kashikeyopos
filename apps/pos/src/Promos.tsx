@@ -101,7 +101,6 @@ export function Promos({ session, search, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Promotions</span>
         {data && data.promos.length > 0 && (
           <>
             <Fig label="RUNNING NOW" value={String(data.totals.live)} />

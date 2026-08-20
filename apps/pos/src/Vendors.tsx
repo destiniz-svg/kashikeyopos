@@ -96,7 +96,6 @@ export function Vendors({ session, intent, onIntentDone, search }: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Vendors</span>
         <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
           shared across the estate — one supplier, one record, wherever they deliver
         </span>

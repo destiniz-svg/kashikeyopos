@@ -81,7 +81,6 @@ export function Ledger({ session, search }: { session: Session; search?: string 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Stock ledger</span>
         <input value={item} onChange={(e) => set(() => setItem(e.target.value))}
           placeholder="Item code" aria-label="Filter by item code"
           style={{ width: 120, height: 30, padding: '0 9px', borderRadius: 7, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text)', fontSize: 12 }} />

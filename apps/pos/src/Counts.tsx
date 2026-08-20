@@ -129,7 +129,6 @@ export function Counts({ session, onQueued, search, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Stock counts</span>
         <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
           {threshold > 0
             ? 'a count worth over ' + mvr(threshold) + ' waits for approval'

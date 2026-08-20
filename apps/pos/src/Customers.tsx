@@ -123,7 +123,6 @@ export function Customers({ session, toast}: {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flexShrink: 0, padding: '11px 14px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>Customers</span>
         {owed && (
           <span style={{ display: 'flex', gap: 4 }}>
             <TabBtn on={tab === 'people'} onClick={() => setTab('people')}>Everyone</TabBtn>
