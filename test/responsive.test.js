@@ -157,9 +157,17 @@ test('the identity control is the last thing in the bar, at every width', { skip
         // whether it is the LAST CHILD OF THE BAR — not the rightmost thing on
         // the page, which at phone width includes the ribbon underneath.
         const cand = [...document.querySelectorAll('button, div')]
-          .filter((e) => e.getBoundingClientRect().top < 70
-            && /OWNER|ADMIN|MANAGER|CASHIER|KITCHEN|LOCKED/i.test(e.textContent)
-            && e.textContent.length < 90);
+          .filter((e) => {
+            const r = e.getBoundingClientRect();
+            // Zero-sized candidates are off-screen furniture — the onboarding
+            // panel's hidden rail matches the rank words too, and picking one
+            // failed this test against an install that was simply not set up
+            // yet rather than against a bar that had actually broken.
+            if (r.width < 1 || r.height < 1) return false;
+            return r.top < 70
+              && /OWNER|ADMIN|MANAGER|CASHIER|KITCHEN|LOCKED/i.test(e.textContent)
+              && e.textContent.length < 90;
+          });
         if (!cand.length) return { none: true };
         const me = cand[cand.length - 1];
         // Walk up to the child of the bar that contains it.
@@ -218,4 +226,69 @@ test('the onboarding panel works on a phone', { skip }, async (t) => {
   } finally {
     await b.close();
   }
+});
+
+/* ═══ THE PANEL MUST SCROLL ═════════════════════════════════════════════════
+   This is a STATIC check on purpose. The browser test above skips whenever the
+   install it is pointed at has already been set up — which is most of the time
+   — and that is exactly how this shipped:
+
+     kashikeyo.css locks the document down for the TERMINAL, which is an app
+     shell with its own internal scroll panes:  html,body{overflow:hidden}.
+     The onboarding panel loads the same stylesheet and is not a shell; it is a
+     long form, taller than a phone at every single step. It inherited the lock,
+     could not scroll, and left "Save and continue" stranded below the fold —
+     an install nobody on a phone could complete.
+
+   A skipped test is not a passing test, so this one cannot skip.
+   ═══════════════════════════════════════════════════════════════════════ */
+const path = require('path');
+const APP = path.join(__dirname, '..', 'app');
+
+test('the onboarding panel restores document scrolling', () => {
+  const shared = fs.readFileSync(path.join(APP, 'kashikeyo.css'), 'utf8');
+  const panel = fs.readFileSync(path.join(APP, 'onboarding.html'), 'utf8');
+
+  // The shell rule is still there — the terminal needs it.
+  assert.match(shared, /html,body\{[^}]*overflow:hidden/,
+    'the shared stylesheet still locks the shell (the terminal relies on it)');
+
+  // ...so the panel must override it, or it cannot be scrolled on a phone.
+  const own = panel.match(/html,body\{[^}]*\}/g) || [];
+  assert.ok(own.length, 'the panel declares its own html,body rule');
+  assert.ok(own.some((r) => /overflow-y:\s*(auto|scroll|visible)/.test(r)),
+    'the panel must re-enable vertical scrolling: ' + own.join(' '));
+  assert.ok(own.some((r) => /height:\s*auto/.test(r)),
+    'and must not pin itself to the viewport height');
+});
+
+test('a table editor cannot drag the panel sideways', () => {
+  // A grid track defaults to min-width:auto and will not shrink below its
+  // widest content, so the step editors — which are tables — grew the page to
+  // 819px inside a 390px phone and made .scroll's overflow-x:auto useless.
+  const panel = fs.readFileSync(path.join(APP, 'onboarding.html'), 'utf8');
+  // The PAGE SHELL only. `.grid` inside a card is repeat(auto-fit,minmax(220px,1fr))
+  // and is supposed to have a floor — that one wraps instead of overflowing.
+  const shells = panel.match(/\.wrap\{[^}]*\}/g) || [];
+  assert.ok(shells.length, 'the panel lays out on a grid');
+  shells.forEach((r) => {
+    const track = (r.match(/grid-template-columns:[^;}]+/) || [''])[0];
+    assert.match(track, /minmax\(0,\s*1fr\)/,
+      'the shell\'s flexible track must be minmax(0,1fr) so it can shrink: ' + track);
+  });
+  assert.match(panel, /\.stage\{[^}]*min-width:0/,
+    'the stage must be allowed to shrink below its content');
+});
+
+test('a phone tap target is never under 40px in the panel', () => {
+  const panel = fs.readFileSync(path.join(APP, 'onboarding.html'), 'utf8');
+  // There is more than one phone block; take the one that styles the editors.
+  const blocks = panel.match(/@media \(max-width:900px\)\{[\s\S]*?\n\}/g) || [];
+  const block = blocks.filter((b) => /td input/.test(b))[0];
+  assert.ok(block, 'the panel has a phone block that sizes the table editors');
+  assert.match(block, /td input,td select\{[^}]*min-height:4[0-9]px/,
+    'in-table inputs are at least 40px on a phone');
+  assert.match(block, /button\.mini\{[^}]*min-height:40px/, 'and so is the mini button');
+  assert.match(block, /button\.mini\{[^}]*min-width:40px/,
+    'including its WIDTH — a single-glyph delete was 34px across');
 });

@@ -22,7 +22,15 @@
    is a first correct, complete, auditable sale in under five minutes.
    ═══════════════════════════════════════════════════════════════════════ */
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;height:100%}
+/* The shared stylesheet locks the document down for the TERMINAL, which is an
+   app shell with its own internal scroll panes: html,body{height:100%;overflow:hidden}.
+   This panel is not a shell — it is a long form, and on a phone it is taller
+   than the viewport every single step. Inheriting that rule left the page
+   unscrollable with "Save and continue" stranded below the fold, which is an
+   install nobody can complete. Restore document scrolling explicitly. */
+html,body{margin:0;padding:0;height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto}
+/* iOS: keep the last control clear of the home indicator. */
+body{padding-bottom:env(safe-area-inset-bottom,0px)}
 body{
   background:var(--bg); color:var(--text);
   font-family:'Inter',system-ui,sans-serif;
@@ -30,8 +38,13 @@ body{
   -webkit-font-smoothing:antialiased;
 }
 .mono{font-family:'JetBrains Mono',monospace}
-.wrap{display:grid;grid-template-columns:280px 1fr;min-height:100dvh}
-@media (max-width:900px){ .wrap{grid-template-columns:1fr} .rail{display:none} }
+/* minmax(0,1fr), not 1fr: a grid track defaults to min-width:auto and will
+   refuse to shrink below its widest content. The step editors are TABLES, so
+   the track grew to 819px inside a 390px phone, dragged the whole page
+   sideways, and left .scroll's overflow-x:auto with nothing to do because its
+   parent was already as wide as the table. */
+.wrap{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:100dvh}
+@media (max-width:900px){ .wrap{grid-template-columns:minmax(0,1fr)} .rail{display:none} }
 
 /* ── the rail: where you are, and what is left ─────────────────────────── */
 .rail{background:var(--bg-0);border-right:1px solid var(--line);padding:22px 0;overflow-y:auto}
@@ -59,7 +72,7 @@ body{
 .step.done .lab b{color:var(--text-muted)}
 
 /* ── the stage ─────────────────────────────────────────────────────────── */
-.stage{padding:34px clamp(18px,5vw,54px) 80px;max-width:900px;width:100%}
+.stage{padding:34px clamp(18px,5vw,54px) 80px;max-width:900px;width:100%;min-width:0}
 h1{font-size:clamp(21px,3vw,27px);font-weight:800;letter-spacing:-.035em;margin:0 0 6px;
   text-wrap:balance}
 .sub{font-size:13.5px;color:var(--text-dim);margin:0 0 4px;max-width:62ch;text-wrap:pretty}
@@ -100,7 +113,7 @@ th{text-align:left;font-size:9.5px;font-weight:800;text-transform:uppercase;
   letter-spacing:.07em;color:var(--text-faint);padding:0 8px 8px;white-space:nowrap}
 td{padding:5px 8px;border-top:1px solid var(--line-soft);vertical-align:middle}
 td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
-.scroll{overflow-x:auto;margin:0 -4px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;max-width:100%}
 .chip{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;
   text-transform:uppercase;letter-spacing:.07em;padding:4px 9px;border-radius:20px;
   background:var(--bg-3);color:var(--text-dim);border:1px solid var(--line-2)}
@@ -118,6 +131,15 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
   padding:12px 18px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);
   animation:ktoast .2s}
 .toast.err{border-color:var(--danger-line);color:var(--danger-bright)}
+/* Thumbs, not mice. In-table controls were 36–38px, which is under the floor
+   every other surface in this build holds itself to. */
+@media (max-width:900px){
+  td input,td select{min-height:42px;font-size:13px}
+  /* min-WIDTH too: the row-delete control is a single glyph, so padding alone
+     left it 34px across — tall enough and still too small to hit. */
+  button.mini{min-height:40px;min-width:40px;padding:9px 13px}
+  .stage{padding-top:24px}
+}
 @media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
 </style>
 </head>
