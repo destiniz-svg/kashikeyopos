@@ -2766,6 +2766,10 @@ class Component extends DCLogic {
       method: row.tender === "wallet" ? "card" : (row.tender || "cash"),
       amt: row.total, cur: row.cur || "MVR", rate: row.rate || 1,
       fgn: row.fgn || 0, chg: row.chg || 0, tip: row.tip || 0,
+      // What was handed over, not just what was owed. A drawer reconciles
+      // against the note that went in and the change that came out; recording
+      // only the amount due leaves a cash count with nothing to check.
+      tendered: r2((row.total || 0) + (row.chg || 0)),
       ref: row.ref || ""
     }];
     const stockMoves = (trail.stock || []).map((g) => ({
@@ -3555,7 +3559,11 @@ class Component extends DCLogic {
     const open = Object.keys(s.tickets).filter((k) => k.indexOf(s.outletId + ":") === 0 && s.tickets[k].status === "occupied");
     const openTables = open.filter((k) => this.floorTables().some((t) => t.n === +k.split(":")[1]));
     const openVal = open.reduce((a, k) => a + this.totals(s.tickets[k]).total, 0);
-    const netSales = this.outletSales(o) + openVal;
+    // Settled sales, and separately what is still sitting on the floor. The
+    // reference added them together under one heading called "Net sales ·
+    // today"; money on an open table is not sales, and a manager reading that
+    // figure at 21:00 would be reading a number that can still walk out.
+    const netSales = this.outletSales(o);
     const v = s.view;
     const card = (l, val, sub, st) => ({ label: l, value: val, sub: sub, valStyle: st || big });
 
@@ -3745,10 +3753,12 @@ class Component extends DCLogic {
     }
     if (v === "users" || v === "logs" || v === "architecture") {
       return [
-        card("Active users", String((K0.USERS || []).filter((u) => u.status === "Active").length), "1 suspended", amber),
-        card("Roles", String((K0.ROLES || []).length), "Every role maps to an RLS predicate"),
-        card("Policies enforced", "31", "force row level security on all kpos.* tables"),
-        card("Audit rows · today", "3,918", "Insert-only, update/delete revoked")
+        card("Active users", String((K0.USERS || []).filter((u) => u.status === "Active").length),
+          ((K0.USERS || []).filter((u) => u.status !== "Active").length || "no")
+          + " suspended or locked", amber),
+        card("Roles", String((K0.ROLES || []).length), "Every role is a rank, and the rank is the gate"),
+        card("Isolation", "Two belts", "A schema and a login role per outlet, RLS on the control plane"),
+        card("Audit rows · today", String(this.auditToday()), "Append-only \u2014 update and delete are revoked")
       ];
     }
     const openParty = open.reduce((a, k) => a + (s.tickets[k].party || 0), 0);
@@ -3764,7 +3774,9 @@ class Component extends DCLogic {
       ];
     }
     return [
-      card("Net sales · today", MVRc(netSales), o.tax + " " + o.rate + "% excluded", amber),
+      card("Net sales · today", MVRc(netSales),
+        (openVal ? MVRc(openVal) + " still on the floor · " : "")
+        + (o.tax ? o.tax + " " + o.rate + "% excluded" : "no GST charged here"), amber),
       card("Open tables", openTables.length + " / " + this.floorTables().length, Math.round((openTables.length / (this.floorTables().length || 1)) * 100) + "% full · " + MVRc(openVal) + " on the floor"),
       card("Covers", String(covers), "Avg cheque " + MVR(netSales / (covers || 1))),
       (() => {
@@ -7126,6 +7138,15 @@ class Component extends DCLogic {
     const R = this.rules(), reg = (R.week_hours || 48) / 6;
     return this.clockRows().filter((c) => c.staff === staffId)
       .reduce((a, c) => a + Math.max(0, this.clockHours(c) - reg), 0);
+  }
+  // How many audit rows this outlet has written today. Counted, because an
+  // audit figure that is decoration is worse than none: it is the one number
+  // somebody checks when they want to know whether the trail is running.
+  auditToday() {
+    const t = this.today();
+    return (this.state.audit || []).filter(function (r) {
+      return String(r.at || "").slice(0, 10) === t;
+    }).length;
   }
   // Hours worked on an entry, to the minute. An open entry accrues to now.
   clockHours(c) {
@@ -14708,6 +14729,11 @@ class Component extends DCLogic {
     // statement about who traded — the blanks are correct until somebody fills
     // them in, and the empty state says which are still missing.
     return Object.assign({
+      // The company's own identity, under the keys the rest of the app reads.
+      // The reference exposed it only as `taxTin`, so the set-up checklist —
+      // which asks for `tin` — could never see it and told a fully configured
+      // outlet to go and name itself.
+      name: CH.name || "", tin: CH.tin || "", regNo: CH.regNo || "",
       email: CH.email || "", phone: CH.phone || "", altPhone: "",
       website: "", billing: CH.hq || "",
       outletName: o.name || "", outletPhone: o.phone || "", outletEmail: "",
@@ -15031,10 +15057,13 @@ class Component extends DCLogic {
         done: !!(P.tin && P.name), act: "Open settings", go: () => this.setState({ view: "settings" }) },
       { key: "menu", label: "Put dishes on sale",
         sub: priced.length ? priced.length + " dishes priced and visible" : "The till has nothing to ring until a dish has a price",
-        done: priced.length >= 3, act: "Open the menu", go: () => this.setState({ view: "menu" }) },
+        // One dish is enough to trade. The target is a first correct, complete,
+        // auditable sale — not a finished menu.
+        done: priced.length >= 1, act: "Open the menu", go: () => this.setState({ view: "menu" }) },
       { key: "recipes", label: "Cost what they are made of",
         sub: costed.length ? costed.length + " dishes carry a recipe · food cost is live" : "Without recipes a sale moves money but no stock",
-        done: costed.length >= 3, act: "Build a recipe", go: () => this.setState({ view: "recipes" }) },
+        done: costed.length >= 1 && costed.length >= priced.length,
+        act: "Build a recipe", go: () => this.setState({ view: "recipes" }) },
       { key: "sale", label: "Ring the first sale",
         sub: sold.length ? sold.length + " tickets settled at " + o.name : this.registerOpen() ? "Register open — seat a table and charge it" : "Open the register with a float, then charge a table",
         done: sold.length > 0, act: this.registerOpen() ? "Open the floor" : "Open the register",
