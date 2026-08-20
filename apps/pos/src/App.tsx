@@ -792,7 +792,25 @@ export function App({ outletId }: { outletId: number }) {
           </div>
         )}
 
-        <main style={{
+        {/* KEYED ON THE VIEW, so switching module remounts this and the entry
+            animation below runs again. Boundary is already keyed the same way,
+            so this costs no extra mount — it only gives the animation something
+            to hang off.
+
+            WHY THE MODULE ANIMATES AT ALL. There are thirty-eight of these and
+            most of them are a column of cards on the same grey. Swapped with no
+            transition, a rail click looks like nothing happened until the eye
+            finds the changed heading; the prototype's answer is a 7px rise that
+            says "this is new content" before a single word is read.
+
+            A FULL-BLEED SCREEN FADES INSTEAD OF RISING. The till and the pass
+            fill the glass, and sliding the whole floor plan up by 7px reads as
+            the screen slipping rather than as content arriving. `kfade` is also
+            transform-free, which matters here: a transform makes the element a
+            containing block for position:fixed descendants, and those two are
+            the screens that own fixed overlays. */}
+        <main key={view} style={{
+          animation: fullBleed ? 'kfade .16s ease-out' : 'krise .2s cubic-bezier(.2,.7,.3,1)',
           flex: 1, minHeight: 0,
           overflowY: fullBleed ? 'hidden' : 'auto',
           /* Never sideways: a horizontal scrollbar on the page is always a
@@ -874,33 +892,33 @@ export function App({ outletId }: { outletId: number }) {
             />
           ) : view === 'purchases' && MODULES_BUILT.has('purchases') ? (
             <Purchases
-              session={session} search={search}
+              toast={say} session={session} search={search}
               intent={intentFor('purchases')} onIntentDone={intentDone}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'analytics' && MODULES_BUILT.has('analytics') ? (
             <Analytics session={session} />
           ) : view === 'costs' && MODULES_BUILT.has('costs') ? (
-            <OpCosts session={session} />
+            <OpCosts toast={say} session={session} />
           ) : view === 'assets' && MODULES_BUILT.has('assets') ? (
-            <Assets session={session} search={search} />
+            <Assets toast={say} session={session} search={search} />
           ) : view === 'customers' && MODULES_BUILT.has('customers') ? (
-            <Customers session={session} />
+            <Customers toast={say} session={session} />
           ) : view === 'loyalty' && MODULES_BUILT.has('loyalty') ? (
-            <Loyalty session={session} search={search} />
+            <Loyalty toast={say} session={session} search={search} />
           ) : view === 'promos' && MODULES_BUILT.has('promos') ? (
-            <Promos session={session} search={search} />
+            <Promos toast={say} session={session} search={search} />
           ) : view === 'reservations' && MODULES_BUILT.has('reservations') ? (
-            <Reservations session={session} search={search} />
+            <Reservations toast={say} session={session} search={search} />
           ) : view === 'delivery' && MODULES_BUILT.has('delivery') ? (
-            <Delivery session={session} />
+            <Delivery toast={say} session={session} />
           ) : view === 'accounting' && MODULES_BUILT.has('accounting') ? (
-            <Accounting session={session} />
+            <Accounting toast={say} session={session} />
           ) : view === 'payroll' && MODULES_BUILT.has('payroll') ? (
-            <Payroll session={session} />
+            <Payroll toast={say} session={session} />
           ) : view === 'staff' && MODULES_BUILT.has('staff') ? (
             <Staff
-              session={session} search={search}
+              toast={say} session={session} search={search}
               intent={intentFor('staff')} onIntentDone={intentDone}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
@@ -908,7 +926,7 @@ export function App({ outletId }: { outletId: number }) {
             <Vendors session={session} intent={intentFor('vendors')} onIntentDone={intentDone} search={search} />
           ) : view === 'counts' && MODULES_BUILT.has('counts') ? (
             <Counts
-              session={session} search={search}
+              toast={say} session={session} search={search}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'ledger' && MODULES_BUILT.has('ledger') ? (
@@ -928,14 +946,14 @@ export function App({ outletId }: { outletId: number }) {
               }}
             />
           ) : view === 'menu' && MODULES_BUILT.has('menu') ? (
-            <Menu session={session} />
+            <Menu toast={say} session={session} />
           ) : view === 'inventory' && MODULES_BUILT.has('inventory') ? (
             <Inventory
-              session={session} search={search}
+              toast={say} session={session} search={search}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'recipes' && MODULES_BUILT.has('recipes') ? (
-            <Recipes session={session} intent={intentFor('recipes')} onIntentDone={intentDone} search={search} />
+            <Recipes toast={say} session={session} intent={intentFor('recipes')} onIntentDone={intentDone} search={search} />
           ) : view === 'kds' && MODULES_BUILT.has('kds') ? (
             <Kds
               snap={snap}

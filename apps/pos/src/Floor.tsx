@@ -1653,7 +1653,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                     minWidth: 16, height: 16, padding: '0 4px', borderRadius: 9,
                     fontSize: 9.5, fontWeight: 800, lineHeight: '16px', textAlign: 'center',
                     background: t.k === 'bill' ? 'var(--amber)' : 'var(--bg-3)',
-                    color: t.k === 'bill' ? '#111214' : 'var(--text-dim)',
+                    color: t.k === 'bill' ? 'var(--on-amber)' : 'var(--text-dim)',
                   }}>
                     {t.badge}
                   </span>

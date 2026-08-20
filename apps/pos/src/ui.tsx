@@ -189,3 +189,47 @@ export function Toast({ text, tone, seq }: { text: string; tone: ToastTone; seq:
     >{text}</div>
   );
 }
+
+/* ── the skeleton ──────────────────────────────────────────────────────────
+   The other half of the note above `shimmer`. Wherever a module used to print
+   the word "Reading…" into an empty panel, it now draws the SHAPE of the answer
+   that is coming: rows of the right height, in the right place, sweeping.
+
+   WHY THE SHAPE AND NOT THE WORD. A back-office screen is opened to look
+   something up, and the operator's hand is already moving towards where they
+   expect the row to be. A centred word gives them nothing to aim at and, worse,
+   is indistinguishable from "there is nothing here" — the two states a manager
+   most needs told apart, because one means wait and the other means act.
+
+   ITS RAMP IS bg-2 → bg-3, not the bg-1 → bg-2 of `shimmer`. A skeleton sits ON
+   a card, which is already --bg-1; sweeping between --bg-1 and --bg-2 on a
+   --bg-1 surface is all but invisible in the light theme, where the whole ramp
+   is compressed into the top few percent of lightness. One step further up
+   reads in both.
+
+   IT ANNOUNCES ITSELF ONCE. role="status" with a single visually-hidden word,
+   rather than aria-label on every bar — a screen reader should hear "reading"
+   once, not five times. */
+export function Skeleton({ rows = 4, height = 34, gap = 8 }: {
+  rows?: number; height?: number; gap?: number;
+}) {
+  return (
+    <div role="status" aria-live="polite" style={{ display: 'grid', gap }}>
+      <span style={{
+        position: 'absolute', width: 1, height: 1, margin: -1,
+        overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap',
+      }}>Reading…</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} aria-hidden style={{
+          height, borderRadius: 8,
+          background: 'linear-gradient(90deg, var(--bg-2) 0%, var(--bg-3) 42%, var(--bg-2) 84%)',
+          backgroundSize: '260% 100%',
+          /* Staggered, so the sweep travels DOWN the list rather than every bar
+             pulsing in lockstep — which reads as a flashing block, not motion. */
+          animation: 'kshimmer 1.05s linear infinite',
+          animationDelay: (i * 0.08).toFixed(2) + 's',
+        }} />
+      ))}
+    </div>
+  );
+}

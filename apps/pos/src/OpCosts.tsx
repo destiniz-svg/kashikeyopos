@@ -71,7 +71,10 @@ const METHOD: Record<string, string> = {
 const today = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 
-export function OpCosts({ session }: { session: Session }) {
+export function OpCosts({ session, toast}: {
+  /* The terminal's shared toast (src/ui.tsx). Optional, so this module
+     still speaks when it is rendered on its own. */
+  toast?: (t: string) => void; session: Session }) {
   const [tab, setTab] = useState<'costs' | 'recurring'>('costs');
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState('');
@@ -90,7 +93,16 @@ export function OpCosts({ session }: { session: Session }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 8000); };
+  /* Routed to the terminal's toast when one is supplied (src/ui.tsx), and to
+     the module's own banner when it is not. A confirmation belongs at the
+     bottom of the SCREEN rather than at the top of one card: the operator who
+     just pressed Save is looking at the thing they saved, not at the header.
+     Errors are deliberately NOT routed here — those stay in the form, beside
+     the field that has to change, until somebody changes it. */
+  const say = (t: string) => {
+    if (toast) { toast(t); return; }
+    setFlash(t); setTimeout(() => setFlash(''), 8000);
+  };
 
   /* An empty `said` means the action reported for itself — say('') here would
      wipe the message it just set. */

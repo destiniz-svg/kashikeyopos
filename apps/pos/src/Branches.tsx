@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { DataGrid } from './DataGrid';
+import { Skeleton } from './ui';
 
 /* Outlets — 02-POS-SPEC §2 (`branches`): "Locations, tax profiles, printers,
  * stock sub-locations."
@@ -92,7 +93,7 @@ export function Branches({ session, onGo }: { session: Session; onGo: (m: string
   useEffect(() => { void load(); }, [load]);
 
   if (error && !settings) return <div style={{ ...card, color: 'var(--red-bright)' }}>{error}</div>;
-  if (!settings) return <div style={{ ...card, color: 'var(--text-muted)' }}>Reading…</div>;
+  if (!settings) return <div style={card}><Skeleton /></div>;
 
   const o = settings.outlet;
   const printers = (devices?.devices || []).filter((d) => d.kind === 'printer' && !d.revoked);

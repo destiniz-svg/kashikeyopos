@@ -49,7 +49,10 @@ const WHERE = (o: Order) =>
       : 'table ' + o.tableNo;
 const FROM = { qr: 'from the table', phone: 'by telephone', aggregator: 'aggregator' };
 
-export function Delivery({ session }: { session: Session }) {
+export function Delivery({ session, toast}: {
+  /* The terminal's shared toast (src/ui.tsx). Optional, so this module
+     still speaks when it is rendered on its own. */
+  toast?: (t: string) => void; session: Session }) {
   const [data, setData] = useState<Data | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [rejecting, setRejecting] = useState<Order | null>(null);
@@ -83,7 +86,16 @@ export function Delivery({ session }: { session: Session }) {
     })();
   }, [call]);
 
-  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 8000); };
+  /* Routed to the terminal's toast when one is supplied (src/ui.tsx), and to
+     the module's own banner when it is not. A confirmation belongs at the
+     bottom of the SCREEN rather than at the top of one card: the operator who
+     just pressed Save is looking at the thing they saved, not at the header.
+     Errors are deliberately NOT routed here — those stay in the form, beside
+     the field that has to change, until somebody changes it. */
+  const say = (t: string) => {
+    if (toast) { toast(t); return; }
+    setFlash(t); setTimeout(() => setFlash(''), 8000);
+  };
   const act = async (fn: () => Promise<unknown>, said: string) => {
     setBusy(true); setError('');
     try { await fn(); if (said) say(said); await load(); }
@@ -407,7 +419,7 @@ function Ask({ title, label, hint, action, busy, onClose, onSubmit }: {
 }) {
   const [v, setV] = useState('');
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}
         style={{ width: '100%', maxWidth: 440, background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
         <div style={{ padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>

@@ -78,7 +78,10 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 const sourceLabel = (s: string) => SOURCE_LABEL[s] ?? s;
 
-export function Accounting({ session }: { session: Session }) {
+export function Accounting({ session, toast}: {
+  /* The terminal's shared toast (src/ui.tsx). Optional, so this module
+     still speaks when it is rendered on its own. */
+  toast?: (t: string) => void; session: Session }) {
   const [tab, setTab] = useState<'ledger' | 'cards'>('ledger');
   const [data, setData] = useState<Data | null>(null);
   const [from, setFrom] = useState(monthStart());
@@ -120,7 +123,16 @@ export function Accounting({ session }: { session: Session }) {
      at. */
   useEffect(() => { if (tab === 'ledger') void load(); }, [load, tab]);
 
-  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 9000); };
+  /* Routed to the terminal's toast when one is supplied (src/ui.tsx), and to
+     the module's own banner when it is not. A confirmation belongs at the
+     bottom of the SCREEN rather than at the top of one card: the operator who
+     just pressed Save is looking at the thing they saved, not at the header.
+     Errors are deliberately NOT routed here — those stay in the form, beside
+     the field that has to change, until somebody changes it. */
+  const say = (t: string) => {
+    if (toast) { toast(t); return; }
+    setFlash(t); setTimeout(() => setFlash(''), 9000);
+  };
   const act = async (fn: () => Promise<unknown>, said: string) => {
     setBusy(true); setError('');
     try { await fn(); if (said) say(said); await load(); }
@@ -473,9 +485,9 @@ function Modal({ title, onClose, children }: {
 }) {
   return (
     <div role="dialog" aria-label={title}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 40 }}
+      style={{ position: 'fixed', inset: 0, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 40, animation: 'kfade .14s' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width: 'min(680px, 100%)', maxHeight: '86vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)' }}>
+      <div style={{ width: 'min(680px, 100%)', maxHeight: '86vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)', animation: 'kmodal .18s' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
           {title}
         </div>

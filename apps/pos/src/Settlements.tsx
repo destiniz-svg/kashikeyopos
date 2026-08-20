@@ -58,7 +58,10 @@ interface Suggestion {
   agrees: boolean; message: string;
 }
 
-export function Settlements({ session }: { session: Session }) {
+export function Settlements({ session, toast}: {
+  /* The terminal's shared toast (src/ui.tsx). Optional, so this module
+     still speaks when it is rendered on its own. */
+  toast?: (t: string) => void; session: Session }) {
   const [data, setData] = useState<Data | null>(null);
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
@@ -83,7 +86,16 @@ export function Settlements({ session }: { session: Session }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 10000); };
+  /* Routed to the terminal's toast when one is supplied (src/ui.tsx), and to
+     the module's own banner when it is not. A confirmation belongs at the
+     bottom of the SCREEN rather than at the top of one card: the operator who
+     just pressed Save is looking at the thing they saved, not at the header.
+     Errors are deliberately NOT routed here — those stay in the form, beside
+     the field that has to change, until somebody changes it. */
+  const say = (t: string) => {
+    if (toast) { toast(t); return; }
+    setFlash(t); setTimeout(() => setFlash(''), 10000);
+  };
   const act = async (fn: () => Promise<unknown>, said?: string) => {
     setBusy(true); setError('');
     try { await fn(); if (said) say(said); await load(); }
@@ -455,9 +467,9 @@ function Modal({ title, onClose, children }: {
 }) {
   return (
     <div role="dialog" aria-label={title}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 40 }}
+      style={{ position: 'fixed', inset: 0, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 40, animation: 'kfade .14s' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)' }}>
+      <div style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)', animation: 'kmodal .18s' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
           {title}
         </div>

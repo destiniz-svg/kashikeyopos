@@ -354,7 +354,7 @@ export function Payment({ total: raw, goods, session, online, promoCode, onPromo
   return (
     <div
       style={{
-        position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.55)',
+        position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)',
         display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s',
       }}
       onClick={onCancel}

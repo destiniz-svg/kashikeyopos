@@ -57,6 +57,34 @@
   --go:#34c77b; --go-bright:#5fe09a; --go-dim:#12281d; --go-line:#256b47; --on-go:#04180d;
   --fwd:#7c92f5; --fwd-bright:#a3b3fa; --fwd-dim:#171c33; --fwd-line:#3a4a9c; --on-fwd:#060c26;
   --danger:#f2445e; --danger-bright:#ff7b8e; --danger-dim:#301218; --danger-line:#7d2231; --on-danger:#fff2f4;
+
+  /* ── ALIASES ──────────────────────────────────────────────────────────────
+     These six names were in use across the back office — 77 call sites in 13
+     modules — and were never defined anywhere. An undefined custom property is
+     not an error: `background:var(--stop-dim)` is simply an invalid declaration
+     and is DROPPED, and `color:var(--stop-bright)` falls back to inherit. So
+     every refusal strip in Customers, Loyalty, Promos, Assets, OpCosts,
+     Settlements, Reservations, Accounting and Credit Note drew no strip at all
+     and printed the refusal in ordinary body ink — a server saying no, rendered
+     with exactly the weight of a caption. Filled destructive buttons ("Write it
+     off", "Stop this promo") lost their fill and became invisible text on the
+     card, and the accent buttons in Accounting, Settlements and Credit Note
+     lost theirs. Nothing threw; it just quietly did not paint.
+
+     They are aliases and not new colours, because there is one status ramp and
+     a second one would be a second answer to the same question. --stop-* is the
+     refusal tier, which is what --danger-* already names; --accent is the brand
+     fill; --text-ghost is the quietest ink, which §1.3 fixes at --text-faint —
+     "the floor; nothing quieter ships".
+
+     var() resolves at USE time, so a one-line alias here follows the theme into
+     the light block for free, and --accent follows a user's CustomColors repaint
+     of --amber for free as well. Neither needs a twin below. */
+  --stop:var(--danger); --stop-bright:var(--danger-bright);
+  --stop-dim:var(--danger-dim); --stop-line:var(--danger-line);
+  --on-stop:var(--on-danger);
+  --accent:var(--amber); --on-accent:var(--on-amber);
+  --text-ghost:var(--text-faint);
   /* Categorical. Hue carries the menu section so a cashier lands on it without
      reading the label. Swatches, dots and rails only — never a button fill —
      so a category colour can never be misread as an action. */
@@ -75,7 +103,13 @@
      every green chip landed under the contrast floor. */
   --green:#5fe09a; --green-bright:#5fe09a; --green-line:#256b47; --green-soft:#93dcb2;
   --red:#f2607a; --red-bright:#ff8ba0; --red-line:#6b2a38; --red-line-2:#3a222a;
-  --red-dim:#7a4050; --red-dim-2:#c06880; --red-soft:#f0a8b8;
+  /* --red-dim is a BACKGROUND everywhere it appears (the KDS overdue card,
+     the refusal strip, the failed-check row) and never an ink. It used to be a
+     mid-tone, #7a4050 dark and #ab575f light, alone among the -dim tokens in
+     being saturated rather than a wash — so in light mode --text at #131313
+     landed on a mid red and the overdue cards could not be read. It is now a
+     wash like --warn-dim, --go-dim and --fwd-dim beside it. */
+  --red-dim:#2e161c; --red-dim-2:#c06880; --red-soft:#f0a8b8;
   --blue:#8ba0f7; --blue-bright:#adbaf9; --violet:#a88ad9; --violet-bright:#c3aae6;
   --paper:#fdfbf6; --paper-ink:#1a1a1a; --qr-ink:#0e0f11;
   --scrim:rgba(8,9,11,.76); --shadow-lg:0 2px 4px rgba(0,0,0,.4), 0 24px 64px rgba(0,0,0,.55);
@@ -162,7 +196,7 @@
      FILL. 9.45:1 on --ok-dim; the fill it replaced measured 6.86:1 there. */
   --green:#004c24; --green-bright:#004c24; --green-line:#c4e3d0; --green-soft:#004c24;
   --red:#9b283d; --red-bright:#7e0f2a; --red-line:#fccccf; --red-line-2:#ffdfe1;
-  --red-dim:#ab575f; --red-dim-2:#993041; --red-soft:#67051f;
+  --red-dim:#fdeef0; --red-dim-2:#993041; --red-soft:#67051f;
   --blue:#2754ac; --blue-bright:#143d8e; --violet:#67419d; --violet-bright:#502b81;
   /* Shadow is warm-neutral, never black: black over a warm surface greys it.
      Two layers — a 1px contact edge and a wide, soft ambient. */

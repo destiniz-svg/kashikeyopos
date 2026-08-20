@@ -129,9 +129,9 @@ export function CreditNote({ session, saleId, onClose, onDone }: {
 
   return (
     <div role="dialog" aria-label="Credit this sale"
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 90 }}
+      style={{ position: 'fixed', inset: 0, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, zIndex: 90, animation: 'kfade .14s' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)' }}>
+      <div style={{ width: 'min(760px, 100%)', maxHeight: '88vh', overflowY: 'auto', padding: 18, borderRadius: 12, background: 'var(--bg-1)', border: '1px solid var(--line)', animation: 'kmodal .18s' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
           Credit {data ? data.sale.receiptNo : 'this sale'}
         </div>

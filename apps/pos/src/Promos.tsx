@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
+import { Skeleton } from './ui';
 
 /* Promotions & Banners — 02-POS-SPEC.md §2 (`promos`):
  * "Codes, windows, caps. A promo the guest sees is a promo the till charges."
@@ -49,7 +50,10 @@ interface Use {
   outlet: string; member: string | null; docNo: string | null;
 }
 
-export function Promos({ session, search }: { session: Session; search?: string }) {
+export function Promos({ session, search, toast}: {
+  /* The terminal's shared toast (src/ui.tsx). Optional, so this module
+     still speaks when it is rendered on its own. */
+  toast?: (t: string) => void; session: Session; search?: string }) {
   const [data, setData] = useState<Data | null>(null);
   const [open, setOpen] = useState<Promo | null>(null);
   const [uses, setUses] = useState<Use[] | null>(null);
@@ -69,7 +73,16 @@ export function Promos({ session, search }: { session: Session; search?: string 
 
   useEffect(() => { void load(); }, [load]);
 
-  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 9000); };
+  /* Routed to the terminal's toast when one is supplied (src/ui.tsx), and to
+     the module's own banner when it is not. A confirmation belongs at the
+     bottom of the SCREEN rather than at the top of one card: the operator who
+     just pressed Save is looking at the thing they saved, not at the header.
+     Errors are deliberately NOT routed here — those stay in the form, beside
+     the field that has to change, until somebody changes it. */
+  const say = (t: string) => {
+    if (toast) { toast(t); return; }
+    setFlash(t); setTimeout(() => setFlash(''), 9000);
+  };
   const act = async (fn: () => Promise<unknown>, said: string) => {
     setBusy(true); setError('');
     try { await fn(); if (said) say(said); await load(); }
@@ -342,7 +355,7 @@ function Sheet({ promo, uses, busy, canConfigure, onClose, onStop }: {
   onClose: () => void; onStop: () => void;
 }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Promotion"
         style={{ width: '100%', maxWidth: 660, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
         <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -370,7 +383,7 @@ function Sheet({ promo, uses, busy, canConfigure, onClose, onStop }: {
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 16px 16px' }}>
           <SubHead>Where it has been used</SubHead>
           {!uses ? (
-            <div style={{ padding: '18px 2px', fontSize: 12, color: 'var(--text-faint)' }}>Loading…</div>
+            <div style={{ padding: '18px 0' }}><Skeleton rows={4} /></div>
           ) : !uses.length ? (
             <div style={{ padding: '18px 2px', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)', maxWidth: 480 }}>
               Nobody has used it yet. A code that has been printed and never redeemed is worth

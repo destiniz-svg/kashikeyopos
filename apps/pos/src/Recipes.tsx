@@ -5,6 +5,7 @@ import { hit } from './filter';
 import { useIntent } from './intent';
 import type { Intent } from './intent';
 import { DataGrid } from './DataGrid';
+import { Skeleton } from './ui';
 
 /* Recipes & Costing — 02-POS-SPEC.md §2 (`recipes`):
  * "Ingredients, yield, sub-recipes, waste %, live plate cost and GP."
@@ -46,7 +47,10 @@ interface RecipeDetail {
 
 type Tab = 'dishes' | 'ingredients';
 
-export function Recipes({ session, intent, onIntentDone, search }: {
+export function Recipes({ session, intent, onIntentDone, search, toast}: {
+  /* The terminal's shared toast (src/ui.tsx). Optional, so this module
+     still speaks when it is rendered on its own. */
+  toast?: (t: string) => void;
   session: Session;
   intent?: Intent | null;
   onIntentDone?: () => void;
@@ -104,7 +108,16 @@ export function Recipes({ session, intent, onIntentDone, search }: {
 
   useEffect(() => { void load(); }, [load]);
 
-  const say = (m: string) => { setFlash(m); setTimeout(() => setFlash(''), 2600); };
+  /* Routed to the terminal's toast when one is supplied (src/ui.tsx), and to
+     the module's own banner when it is not. A confirmation belongs at the
+     bottom of the SCREEN rather than at the top of one card: the operator who
+     just pressed Save is looking at the thing they saved, not at the header.
+     Errors are deliberately NOT routed here — those stay in the form, beside
+     the field that has to change, until somebody changes it. */
+  const say = (t: string) => {
+    if (toast) { toast(t); return; }
+    setFlash(t); setTimeout(() => setFlash(''), 2600);
+  };
 
   const openRecipe = async (itemId: string) => {
     setError('');
@@ -390,7 +403,7 @@ function RecipeSheet({ detail, ingredients, dishes, busy, onClose, onSave, costT
     a + (l.qty / (1 - Math.min(0.95, l.wastePct / 100))) * l.unitCost, 0) / y);
 
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={'Recipe for ' + detail.name}
         style={{ width: '100%', maxWidth: 720, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
         <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'baseline', gap: 10 }}>
@@ -557,7 +570,7 @@ function L({ label, hint, children }: { label: string; hint?: string; children: 
 }
 
 const Loading = () => (
-  <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--text-faint)' }}>Loading…</div>
+  <div style={{ padding: 14 }}><Skeleton rows={5} /></div>
 );
 
 /* §6: every module has a real empty state — what lands here, what creates it,

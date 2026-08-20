@@ -205,6 +205,67 @@ describe('the deployable tree', () => {
       'these bypass api.ts and only work behind the dev proxy');
   });
 
+  test('every design token a screen reads is actually defined', () => {
+    /* An undefined custom property does not throw and does not warn. The
+       declaration that reads it is simply INVALID AT COMPUTED-VALUE TIME:
+       `background:var(--stop-dim)` is dropped and `color:var(--stop-bright)`
+       inherits. So the screen renders, the tests pass, and the thing quietly
+       does not paint.
+
+       That is not hypothetical either. --stop, --stop-bright, --stop-dim,
+       --on-stop, --accent, --on-accent and --text-ghost were read from 77 call
+       sites across thirteen back-office modules and defined nowhere. Every
+       refusal strip in Customers, Loyalty, Promos, Assets, OpCosts,
+       Settlements, Reservations, Accounting and Credit Note drew no strip and
+       printed the server's refusal in ordinary body ink. The destructive filled
+       buttons lost their fill. Nobody noticed for eleven phases, because there
+       is nothing to notice: no error, no console line, no failing assertion —
+       only a strip that isn't there.
+
+       A fallback — var(--x, #fff) — is a real answer and is allowed. Naming a
+       token nothing defines is not. */
+    const roots = ['apps/pos/src', 'apps/guest/src', 'apps/member/src',
+      'packages/ui/src', 'packages/tokens'];
+    const files = [];
+    const walk = (d) => {
+      if (!fs.existsSync(d)) return;
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) {
+          if (e.name !== 'node_modules' && e.name !== 'dist') walk(full);
+        } else if (/\.(tsx?|css)$/.test(e.name)) files.push(full);
+      }
+    };
+    for (const r of roots) walk(path.join(ROOT, r));
+
+    /* Definitions come from EVERY stylesheet in the tree, not only pos.css — a
+       portal is entitled to define its own ramp, and §2 of the token document
+       says the guest portals do exactly that. What is not allowed is a name
+       that nothing anywhere defines. */
+    const defined = new Set();
+    for (const f of files.filter((x) => x.endsWith('.css'))) {
+      for (const m of fs.readFileSync(f, 'utf8').matchAll(/(--[a-zA-Z0-9-]+)\s*:/g)) {
+        defined.add(m[1]);
+      }
+    }
+
+    const missing = new Map();
+    for (const f of files) {
+      const text = fs.readFileSync(f, 'utf8');
+      /* The capture after the name is the comma that starts a fallback. With
+         one, the call site has said what to do when the token is absent. */
+      for (const m of text.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)\s*(,)?/g)) {
+        if (defined.has(m[1]) || m[2]) continue;
+        if (!missing.has(m[1])) missing.set(m[1], new Set());
+        missing.get(m[1]).add(path.relative(ROOT, f));
+      }
+    }
+
+    assert.deepEqual([...missing.keys()].sort(), [],
+      'these are read by a screen and defined by no stylesheet:\n' +
+      [...missing.entries()].map(([k, v]) => `  ${k}  ${[...v].sort().join(', ')}`).join('\n'));
+  });
+
   test('every open bill is reachable from the floor', () => {
     /* The floor drew exactly `outlet.tables` tiles and nothing else, so an open
        ticket on a table outside that set had no tile — a QR card printed for a

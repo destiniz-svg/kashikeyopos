@@ -4,6 +4,7 @@ import type { Session } from './api';
 import { hit } from './filter';
 import { useIntent } from './intent';
 import type { Intent } from './intent';
+import { Skeleton } from './ui';
 
 /* Vendors — 02-POS-SPEC.md §2: "Supplier master, terms, price history."
  *
@@ -135,7 +136,7 @@ export function Vendors({ session, intent, onIntentDone, search }: {
         )}
 
         {rows === null ? (
-          <div style={{ padding: 40, textAlign: 'center', fontSize: 12, color: 'var(--text-faint)' }}>Loading…</div>
+          <div style={{ padding: 14 }}><Skeleton rows={5} /></div>
         ) : !rows.length ? (
           <div style={{ padding: '54px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>No suppliers yet</div>
@@ -180,7 +181,7 @@ export function Vendors({ session, intent, onIntentDone, search }: {
 function SupplierSheet({ detail, onClose }: { detail: Detail; onClose: () => void }) {
   const s = detail.supplier;
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.55)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'var(--scrim)', display: 'grid', placeItems: 'center', padding: 20, animation: 'kfade .14s' }}>
       <div onClick={(e) => e.stopPropagation()} role="dialog" aria-label={s.name}
         style={{ width: '100%', maxWidth: 640, maxHeight: '86dvh', display: 'flex', flexDirection: 'column', background: 'var(--bg-1)', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', animation: 'kmodal .18s' }}>
         <div style={{ flexShrink: 0, padding: '13px 16px', borderBottom: '1px solid var(--line-soft)', display: 'flex', alignItems: 'center' }}>

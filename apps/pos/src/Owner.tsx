@@ -500,7 +500,7 @@ function Targets({ session, data, onSaved }: {
         <button type="button" onClick={save} disabled={saving}
           style={{
             marginTop: 20, padding: '9px 16px', borderRadius: 9, cursor: 'pointer',
-            background: 'var(--amber)', color: '#111214', border: 'none',
+            background: 'var(--amber)', color: 'var(--on-amber)', border: 'none',
             font: '600 13px/1 system-ui', opacity: saving ? 0.6 : 1,
           }}>
           {saving ? 'Saving…' : 'Save targets'}

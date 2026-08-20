@@ -3,6 +3,7 @@ import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
 import { DataGrid } from './DataGrid';
+import { Skeleton } from './ui';
 
 /* Production — 02-POS-SPEC §2 (`production`): "Batch prep of sub-recipes;
  * consumes ingredients, produces stock."
@@ -42,7 +43,11 @@ const box: React.CSSProperties = {
 const btn = (primary?: boolean): React.CSSProperties => ({
   padding: '8px 14px', borderRadius: 9, cursor: 'pointer', font: '600 13px/1 system-ui',
   background: primary ? 'var(--amber)' : 'var(--bg-2)',
-  color: primary ? '#111214' : 'var(--text-dim)',
+  /* var(--on-amber), NOT a literal. --amber is a warm coral in the dark theme
+     and NEAR-BLACK in the light one, so a hardcoded #111214 — which is the dark
+     theme's --bg — rendered every primary button in this module as black text
+     on a black fill the moment a till by a window switched to light. */
+  color: primary ? 'var(--on-amber)' : 'var(--text-dim)',
   border: primary ? 'none' : '1px solid var(--line-2)',
 });
 
@@ -127,7 +132,7 @@ export function Production({ session, search }: { session: Session; search?: str
   };
 
   if (error && !data) return <div style={{ ...card, color: 'var(--red-bright)' }}>{error}</div>;
-  if (!data) return <div style={{ ...card, color: 'var(--text-muted)' }}>Reading…</div>;
+  if (!data) return <div style={card}><Skeleton /></div>;
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>

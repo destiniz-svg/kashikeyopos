@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as api from './api';
 import type { Session } from './api';
 import { hit } from './filter';
+import { Skeleton } from './ui';
 
 /* Users & Roles — 02-POS-SPEC §2 (`users`), 08-BUILD-STAGES §29.
  *
@@ -84,7 +85,7 @@ export function Users({ session, onGo, search }: { session: Session; onGo: (m: s
   };
 
   if (error && !data) return <div style={{ ...card, color: 'var(--red-bright)' }}>{error}</div>;
-  if (!data) return <div style={{ ...card, color: 'var(--text-muted)' }}>Reading…</div>;
+  if (!data) return <div style={card}><Skeleton /></div>;
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
@@ -164,7 +165,7 @@ export function Users({ session, onGo, search }: { session: Session; onGo: (m: s
                 </span>
                 {s.isMine && (
                   <span style={{ font: '600 10px/1.6 system-ui', letterSpacing: '.06em',
-                    padding: '1px 6px', borderRadius: 5, background: 'var(--amber)', color: '#111214' }}>
+                    padding: '1px 6px', borderRadius: 5, background: 'var(--amber)', color: 'var(--on-amber)' }}>
                     YOU
                   </span>
                 )}
