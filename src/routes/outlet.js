@@ -67,7 +67,7 @@ async function snapshot(c, outletId) {
     // What a member's card is worth here. These three are customer-facing by
     // definition — a reward nobody can see is a reward nobody redeems.
     loyalty: ["SELECT key, value FROM chain.setting"
-      + " WHERE key IN ('tiers','rewards','loyalty')"],
+      + " WHERE key IN ('tiers','rewards','loyalty','currencies')"],
     // Who the guest is dealing with, as it is going to appear on their receipt.
     company: ['SELECT legal_name, brand, country, base_currency FROM chain.company'
       + ' LIMIT 1'],
@@ -96,6 +96,7 @@ async function snapshot(c, outletId) {
         country: q.company.rows[0].country,
         currency: q.company.rows[0].base_currency }
       : null,
+    currencies: loyalty.currencies || [],
     tiers: loyalty.tiers || null,
     rewards: loyalty.rewards || [],
     loyalty: loyalty.loyalty || {}

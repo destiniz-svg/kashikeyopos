@@ -1865,8 +1865,49 @@
 <template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><rect width="120" height="120" rx="27" fill="#161719"></rect><text x="60" y="74" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#f0a04b" text-anchor="middle">POS</text></svg></template>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ink&quot;,&quot;guest&quot;,&quot;kashikeyo&quot;,&quot;amber&quot;,&quot;lagoon&quot;,&quot;coral&quot;,&quot;palm&quot;],&quot;default&quot;:&quot;ink&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;layout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;mobile&quot;,&quot;tablet&quot;,&quot;desktop&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;startRole&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;SuperAdmin&quot;,&quot;ChainAdmin&quot;,&quot;OutletManager&quot;,&quot;Cashier&quot;,&quot;KitchenManager&quot;,&quot;StoreKeeper&quot;,&quot;Accountant&quot;],&quot;default&quot;:&quot;ChainAdmin&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;startView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;pos&quot;,&quot;kds&quot;,&quot;chain&quot;,&quot;branches&quot;,&quot;menu&quot;,&quot;aimenu&quot;,&quot;inventory&quot;,&quot;counts&quot;,&quot;purchases&quot;,&quot;requests&quot;,&quot;dispatches&quot;,&quot;production&quot;,&quot;recipes&quot;,&quot;batches&quot;,&quot;customers&quot;,&quot;delivery&quot;,&quot;accounting&quot;,&quot;reports&quot;,&quot;sync&quot;,&quot;users&quot;,&quot;logs&quot;,&quot;architecture&quot;],&quot;default&quot;:&quot;pos&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;busyness&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:0,&quot;max&quot;:90,&quot;step&quot;:5,&quot;default&quot;:42,&quot;unit&quot;:&quot;%&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Demo state&quot;},&quot;showHint&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Demo state&quot;}}">
 const K = () => window.KPOS || {};
-const MVR = (n) => "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const MVRc = (n) => "MVR " + Math.round(n || 0).toLocaleString("en-US");
+
+/* ── MONEY ────────────────────────────────────────────────────────────────
+   The books are kept in ONE currency — the base currency the business chose
+   when it opened — and every figure in this application is in it. A guest may
+   hand over another currency at the counter; that is a tender, converted at a
+   rate the till records, and it does not make the ledger bilingual.
+
+   These two formatters are the only place a currency is written, which is why
+   they read a single record rather than a constant. Set it once, when the
+   outlet's own records arrive, and 485 call sites follow. */
+let CUR = { code: "MVR", symbol: "MVR", minor: 2, cashRound: 0.5 };
+function setCurrency(c) {
+  if (!c) return CUR;
+  CUR = {
+    code: c.code || "MVR",
+    // The receipt says "MVR 1,234.00", not "MVR1,234.00" — and for a symbol
+    // like "$" the space is wrong, so the record carries what to print.
+    symbol: c.symbol || c.code || "MVR",
+    minor: c.minor === undefined ? 2 : Number(c.minor),
+    // What cash rounds to. MVR settles to the 50-laari coin, which is the
+    // smallest in circulation; a currency with no such convention rounds to
+    // nothing and the field is 0.
+    cashRound: Number(c.cashRound) || 0
+  };
+  return CUR;
+}
+function curOf(code) {
+  const list = (K().CURRENCIES || []);
+  return list.filter((x) => x.code === code)[0] || null;
+}
+const money = (n, cur) => {
+  const c = cur || CUR;
+  const sym = c.symbol || c.code;
+  const gap = /[A-Z]$/.test(sym) ? " " : "";
+  return sym + gap + (Math.round((n || 0) * 100) / 100)
+    .toLocaleString("en-US", { minimumFractionDigits: c.minor, maximumFractionDigits: c.minor });
+};
+const MVR = (n) => money(n);
+const MVRc = (n) => {
+  const sym = CUR.symbol || CUR.code;
+  const gap = /[A-Z]$/.test(sym) ? " " : "";
+  return sym + gap + Math.round(n || 0).toLocaleString("en-US");
+};
 const pad = (n) => String(n).padStart(2, "0");
 
 // Grouped by how a day actually runs: the service floor first, then what
@@ -2166,14 +2207,14 @@ class Component extends DCLogic {
     // exactly the change given.
     return (this.state.settled || [])
       .filter((x) => x.tender === "cash" && (x.at || 0) >= r.openedAt)
-      .reduce((a, x) => a + ((x.cur || "MVR") === "MVR" ? (x.total || 0) : -(x.chg || 0)), 0);
+      .reduce((a, x) => a + ((x.cur || this.base()) === this.base() ? (x.total || 0) : -(x.chg || 0)), 0);
   }
   // What foreign paper is physically in the drawer, by currency.
   fxTakings() {
     const r = this.state.register; if (!r) return [];
     const by = {};
     (this.state.settled || [])
-      .filter((x) => x.tender === "cash" && (x.cur || "MVR") !== "MVR" && (x.at || 0) >= r.openedAt)
+      .filter((x) => x.tender === "cash" && (x.cur || this.base()) !== this.base() && (x.at || 0) >= r.openedAt)
       .forEach((x) => { by[x.cur] = (by[x.cur] || 0) + (x.fgn || 0); });
     return Object.keys(by).map((k) => ({ code: k, amt: by[k], mvr: by[k] * this.fxRate(k) }));
   }
@@ -2422,6 +2463,7 @@ class Component extends DCLogic {
     // floor is shared: a table opened on the handheld is a table on this till.
     window.addEventListener("kpos-live", (e) => {
       this.applyLive((e.detail || {}).state);
+      this.syncCurrency();
       if (!this.state.session) this.adoptSession();
     });
     // Ages and the top-bar clock are minute-resolution; a 15s tick keeps them
@@ -2442,6 +2484,7 @@ class Component extends DCLogic {
     window.addEventListener("pagehide", this._flush);
     this._busy = this.props.busyness === undefined ? 42 : this.props.busyness;
     if (!Object.keys(this.state.tickets).length) this.seed();
+    this.syncCurrency();
     this.ensureTradingDay();
   }
   componentWillUnmount() {
@@ -2691,6 +2734,27 @@ class Component extends DCLogic {
     const list = (window.KPOS_INSTALL || {}).outlets || (K().OUTLETS || []);
     return list.length ? list[0].id : 0;
   }
+  /* The base currency of the outlet currently on screen. Called wherever the
+     outlet's records change — bootstrap, outlet switch, adopt — because every
+     money figure in the app is formatted from it. */
+  syncCurrency() {
+    const o = this.outlet() || {};
+    const code = o.currency || ((K().CHAIN || {}).currency) || "MVR";
+    const rec = curOf(code) || { code: code, symbol: code, minor: 2,
+      cashRound: code === "MVR" ? 0.5 : 0 };
+    setCurrency(rec);
+    return rec;
+  }
+  // What cash settles to in this currency: MVR to the 50-laari coin, a
+  // currency with no such convention to nothing at all.
+  // The books' own currency code. Everything that used to say "MVR" as a
+  // synonym for "the base currency" asks this instead — a business keeping
+  // its books in dollars takes rufiyaa as the FOREIGN tender, not the reverse.
+  base() { return CUR.code || "MVR"; }
+  cashStep() {
+    const step = Number(CUR.cashRound) || 0;
+    return this.prefs().cashRound === false ? 0 : step;
+  }
   outlet(id) { return (K().OUTLETS || []).find((o) => o.id === (id === undefined ? this.state.outletId : id)) || {}; }
   posOutlets() { return (K().OUTLETS || []).filter((o) => o.pos); }
   scopedOutlets() {
@@ -2792,7 +2856,7 @@ class Component extends DCLogic {
     });
     const payments = [{
       method: row.tender === "wallet" ? "card" : (row.tender || "cash"),
-      amt: row.total, cur: row.cur || "MVR", rate: row.rate || 1,
+      amt: row.total, cur: row.cur || this.base(), rate: row.rate || 1,
       fgn: row.fgn || 0, chg: row.chg || 0, tip: row.tip || 0,
       // What was handed over, not just what was owed. A drawer reconciles
       // against the note that went in and the change that came out; recording
@@ -5415,14 +5479,16 @@ class Component extends DCLogic {
       // What was typed is in the tender currency; what the bill is owed in is MVR.
       // Keeping the two apart by name is the whole trick — a single "given" that
       // silently means one or the other is how FX bugs get into a till.
-      const payCur = m.cur || "MVR";
+      const payCur = m.cur || this.base();
       const fx = this.fxRate(payCur);
       const givenFgn = parseFloat(m.given || "0") || 0;
-      const given = payCur === "MVR" ? givenFgn : Math.round(givenFgn * fx * 100) / 100;
+      const given = payCur === this.base() ? givenFgn : Math.round(givenFgn * fx * 100) / 100;
       // Cash rounding applies to the CASH tender only: coins below 50 laari are
       // scarce, so the drawer is reconciled against a rounded figure while card
       // and transfer settle the exact total. The difference posts to 4900.
-      const round50 = (n) => Math.round(n * 2) / 2;
+      // Was a hardcoded half-rufiyaa. A dollar bill does not round to 50c.
+      const step = this.cashStep();
+      const round50 = (n) => (step > 0 ? Math.round(n / step) * step : n);
       // Splitting evenly is a payment arrangement, not a change to the bill: the
       // ticket keeps one set of lines and one journal, and the shares are just
       // instalments against it. Shares are whole-laari, with the remainder on the
@@ -5435,7 +5501,7 @@ class Component extends DCLogic {
       // total, and the drawer must expect the larger figure.
       const tipPct = ((tk || {}).payIntent || {}).tip || 0;
       const tipAmt = Math.round(T.net * (tipPct / 100) * 100) / 100;
-      const rounding = (m.tender === "cash" && this.prefs().cashRound !== false);
+      const rounding = (m.tender === "cash" && this.cashStep() > 0);
       const rounded = rounding ? round50(gross) : gross;
       const roundDiff = rounded - gross;
       const due = rounded + tipAmt;
@@ -5488,7 +5554,7 @@ class Component extends DCLogic {
           const on = payCur === c.code;
           return {
             label: c.code,
-            sub: c.code === "MVR" ? "book" : "@ " + c.rate,
+            sub: c.code === this.base() ? "book" : "@ " + c.rate,
             // Switching currency clears the pad rather than converting what was
             // typed: 200 keyed as rufiyaa is not 200 dollars, and quietly
             // reinterpreting it is how a drawer ends up 2,800 short.
@@ -5504,10 +5570,10 @@ class Component extends DCLogic {
         // the counter holds the exact amount or the next note up, and keying
         // "5·0·0" for a 500 note is three taps to say one thing. Only in
         // rufiyaa: "the next 500" of a foreign note is not a real quantity.
-        quickWrap: (m.tender === "cash" && payCur === "MVR")
+        quickWrap: (m.tender === "cash" && payCur === this.base())
           ? "display:flex;gap:6px;flex-wrap:wrap;margin-top:9px" : "display:none",
         quickTender: (function (self) {
-          if (m.tender !== "cash" || payCur !== "MVR") return [];
+          if (m.tender !== "cash" || payCur !== self.base()) return [];
           const up = (step) => Math.ceil((due + 0.001) / step) * step;
           const opts = [{ label: "Exact", v: due }];
           [50, 100, 500].forEach((step) => {
@@ -5523,14 +5589,14 @@ class Component extends DCLogic {
           }));
         })(this),
         tenderedDisp: givenFgn ? this.fmtCur(payCur, givenFgn) : this.fmtCur(payCur, 0),
-        fxNote: payCur === "MVR" ? ""
+        fxNote: payCur === this.base() ? ""
           : "= " + MVR(given) + " at " + fx + " \u00b7 " + (this.cur(payCur).peg || "rate captured on this ticket")
-            + (change > 0 ? " \u00b7 change " + MVR(change) + " in rufiyaa" : ""),
-        fxNoteStyle: payCur === "MVR" ? "display:none"
+            + (change > 0 ? " \u00b7 change " + MVR(change) + " in " + this.base() : ""),
+        fxNoteStyle: payCur === this.base() ? "display:none"
           : "margin-top:7px;padding:8px 11px;border-radius:8px;background:var(--info-dim);border:1px solid var(--line);font-size:11px;line-height:1.55;color:var(--blue-bright)",
-        curDueLabel: payCur === "MVR" ? "" : "Due in " + payCur,
-        curDueValue: payCur === "MVR" ? "" : this.fmtCur(payCur, Math.ceil((due / fx) * 100) / 100),
-        curDueStyle: payCur === "MVR" ? "display:none" : "display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:7px 0;border-top:1px solid var(--line);margin-top:4px;color:var(--text)",
+        curDueLabel: payCur === this.base() ? "" : "Due in " + payCur,
+        curDueValue: payCur === this.base() ? "" : this.fmtCur(payCur, Math.ceil((due / fx) * 100) / 100),
+        curDueStyle: payCur === this.base() ? "display:none" : "display:flex;justify-content:space-between;font-size:12px;font-weight:700;padding:7px 0;border-top:1px solid var(--line);margin-top:4px;color:var(--text)",
         payCust: m.cust || "",
         custOpts: (K0.CUSTOMERS || []).filter((c) => c.credit > 0).map((c) => ({ id: c.id, label: c.name + " · " + MVRc(c.credit - c.used) + " available" })),
         onPayCust: (e) => this.setState({ modal: Object.assign({}, m, { cust: e.target.value }) }),
@@ -5586,7 +5652,7 @@ class Component extends DCLogic {
           // Not the last share: bank it and come back for the next one. The
           // ticket, its lines and its journal stay open until the bill is whole.
           if (evenN > 1 && paidN + 1 < evenN) {
-            this.queue("split_payment", "Share " + (paidN + 1) + " of " + evenN + " settled · " + MVR(due) + " · " + m.tender + (payCur !== "MVR" ? " in " + payCur + " @ " + fx : "") + " · " + this.slotName(s.activeTable), "payments");
+            this.queue("split_payment", "Share " + (paidN + 1) + " of " + evenN + " settled · " + MVR(due) + " · " + m.tender + (payCur !== this.base() ? " in " + payCur + " @ " + fx : "") + " · " + this.slotName(s.activeTable), "payments");
             this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidAmt: paidAmt + due, given: "", cust: "", approving: 0 }) });
             this.toast("Share " + (paidN + 1) + " of " + evenN + " paid · " + MVRc(T.total - paidAmt - due) + " left to collect");
             return;
@@ -5608,7 +5674,7 @@ class Component extends DCLogic {
             // Both figures and the rate between them. The MVR amount is what the
             // ledger uses; the foreign amount and rate are what make the entry
             // defensible three years later, when the rate is different.
-            cur: payCur, rate: fx, fgn: payCur === "MVR" ? 0 : givenFgn,
+            cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
             split: evenN > 1 ? evenN + " ways · " + MVRc(shareBase) + " each" : ""
           };
           const last = gAll.length < 2;
@@ -5651,7 +5717,7 @@ class Component extends DCLogic {
               // percentage that divides COGS by it.
               at: Date.now(), sold: snapshot.sold, cogs: trail.cogs, net: T.net,
               disc: T.disc, discCode: T.discCode, svc: T.svc, tax: T.tax,
-              cur: payCur, rate: fx, fgn: payCur === "MVR" ? 0 : givenFgn, chg: change,
+              cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn, chg: change,
               // Which tax version this sale was charged under. Without it a
               // reprint after a rate change silently restates the invoice.
               bizDate: (tk || {}).bizDate || this.today(), taxRate: T.taxRate, taxLabel: T.taxLabel
@@ -6633,11 +6699,11 @@ class Component extends DCLogic {
       // rate off the receipt — that is what makes the conversion checkable rather
       // than something the till decided on their behalf.
       const rw = "display:flex;justify-content:space-between;padding:2px 0";
-      if (p.cur && p.cur !== "MVR") {
+      if (p.cur && p.cur !== this.base()) {
         rows.push({ n: "Paid in " + p.cur, v: this.fmtCur(p.cur, p.fgn || 0), style: rw + ";font-weight:700" });
         rows.push({ n: "Rate applied", v: "1 " + p.cur + " = " + (p.rate || this.fxRate(p.cur)) + " MVR", style: rw });
       }
-      if (p.tender === "cash" && p.change > 0) rows.push({ n: "Change" + (p.cur && p.cur !== "MVR" ? " (MVR)" : ""), v: MVRc(p.change), style: "display:flex;justify-content:space-between;font-weight:700;padding:2px 0" });
+      if (p.tender === "cash" && p.change > 0) rows.push({ n: "Change" + (p.cur && p.cur !== this.base() ? " (" + this.base() + ")" : ""), v: MVRc(p.change), style: "display:flex;justify-content:space-between;font-weight:700;padding:2px 0" });
       if (p.tender === "credit" && p.cust) rows.push({ n: "Charged to", v: p.cust.name, style: "display:flex;justify-content:space-between;padding:2px 0" });
       if (p.split) rows.push({ n: "Split", v: p.split, style: "display:flex;justify-content:space-between;padding:2px 0" });
       return {
@@ -6983,6 +7049,9 @@ class Component extends DCLogic {
       return;
     }
     this.setState({ outletId: id, activeTable: null, activeSplit: 0, modal: null, pane: "floor" }, () => {
+      // A chain can trade in more than one currency; the figures on screen
+      // must be in the one belonging to the outlet you just switched to.
+      this.syncCurrency();
       // Each outlet's day is generated the first time it is opened, so switching
       // sites does not land on an empty P&L.
       this.ensureTradingDay();
@@ -7365,26 +7434,47 @@ class Component extends DCLogic {
   // posts in MVR. Storing only the MVR figure loses the audit trail MIRA asks
   // for; storing only the foreign figure means the books move when the rate does.
   // So both are kept, plus the rate, on the ticket itself.
+  /* ONE currency table, published by the outlet's own database, with this
+     till's counter rates layered on top. There used to be a second copy right
+     here with different numbers in it — EUR at 17.85 against the table's 16.80
+     — so what a guest was charged depended on which screen quoted it.
+
+     Rates are relative to the BASE currency: the base is 1, and every other
+     rate says how much base one unit of it is worth. A business keeping its
+     books in dollars therefore treats the rufiyaa as the foreign tender. */
   CURRENCIES() {
     const p = this.prefs().fx || {};
-    return [
-      { code: "MVR", name: "Rufiyaa", rate: 1, sym: "MVR", base: 1 },
-      // The MMA peg has held at 15.42 for years, which is why a resort till can
-      // treat USD as near-cash — but it is still a rate, still dated, and still
-      // recorded per sale rather than assumed.
-      { code: "USD", name: "US dollar", rate: +p.USD || 15.42, sym: "$", peg: "MMA peg" },
-      { code: "EUR", name: "Euro", rate: +p.EUR || 17.85, sym: "\u20ac" },
-      { code: "GBP", name: "Pound sterling", rate: +p.GBP || 20.9, sym: "\u00a3" }
-    ];
+    const base = this.base();
+    const table = (K().CURRENCIES || []);
+    const rows = table.length ? table
+      : [{ code: base, symbol: base, rate: 1, minor: 2, cashRound: base === "MVR" ? 0.5 : 0 }];
+    const baseRow = rows.filter((c) => c.code === base)[0];
+    // The published rates are quoted against the rufiyaa; re-base them when
+    // the books are kept in something else, so 1 always means "the books".
+    const perBase = baseRow && Number(baseRow.rate) ? Number(baseRow.rate) : 1;
+    return rows.map((c) => {
+      const raw = +p[c.code] || (Number(c.rate) || 1) / perBase;
+      return {
+        code: c.code, name: c.name || c.code,
+        rate: c.code === base ? 1 : Math.round(raw * 10000) / 10000,
+        sym: c.symbol || c.code, minor: c.minor === undefined ? 2 : c.minor,
+        cashRound: Number(c.cashRound) || 0,
+        base: c.code === base ? 1 : 0,
+        peg: c.note || ""
+      };
+    });
   }
-  cur(code) { return this.CURRENCIES().find((c) => c.code === (code || "MVR")) || this.CURRENCIES()[0]; }
+  cur(code) { return this.CURRENCIES().find((c) => c.code === (code || this.base())) || this.CURRENCIES()[0]; }
   fxRate(code) { return this.cur(code).rate || 1; }
   // Foreign amounts are shown to two decimals in their own currency and never
   // rounded to 50 laari — that rounding is a coin-availability rule for rufiyaa.
   fmtCur(code, n) {
     const c = this.cur(code);
-    const v = (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return c.code === "MVR" ? "MVR " + v : c.sym + v;
+    const d = c.minor === undefined ? 2 : c.minor;
+    const v = (Math.round((n || 0) * 100) / 100)
+      .toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+    const sym = c.sym || c.code;
+    return sym + (/[A-Z]$/.test(sym) ? " " : "") + v;
   }
   // ── Capability ladder: what this rank may DO ────────────────────────────
   // The five-rank ladder from the product definition — Kitchen 1, Till 2,
@@ -8733,7 +8823,7 @@ class Component extends DCLogic {
         { label: "GST class", w: ".8fr", a: "right" }
       ],
       rows: outs.map((x) => ({
-        go: () => { this.setState({ outletId: x.o.id, view: "pos" }, () => this.ensureTradingDay()); },
+        go: () => { this.setState({ outletId: x.o.id, view: "pos" }, () => { this.syncCurrency(); this.ensureTradingDay(); }); },
         cells: [x.o.name, { t: MVRc(x.sales), c: "var(--warn-bright)", w: 600 }, Math.round((x.sales / total) * 100) + "%", String(x.covers), MVR(x.avg), { t: x.fc + "%", c: x.fc > 33 ? "var(--red-bright)" : "var(--green)" }, { t: this.taxRegistered(x.o) ? x.o.tax : "None", chip: this.chip(x.o.tax === "TGST" ? "purple" : x.o.tax === "NONE" ? "mute" : "info") }]
       }))
     };
@@ -9232,7 +9322,7 @@ class Component extends DCLogic {
     if (t.flat.length) rows.push(["· " + t.flat.join(", "), "no recipe \u2014 costed at 30%", "t"]);
     rows.push(["Journal posted", "Four lines, one transaction", "t"]);
     rows.push(["Dr " + acct[0] + " " + acct[1], MVR(T.total || 0)]);
-    if (snap.cur && snap.cur !== "MVR") {
+    if (snap.cur && snap.cur !== this.base()) {
       rows.push(["· tendered", this.fmtCur(snap.cur, snap.fgn || 0) + " at " + (snap.rate || 0), "t"]);
       rows.push(["· posted at", "the rate on the ticket, not today's", "var(--green)"]);
     }
@@ -10617,7 +10707,7 @@ class Component extends DCLogic {
         covers: Math.max(((this.guestsOf(tk) || []).length) || 0, tk.party || 0) || 1,
         at: Date.now(), sold: sold, cogs: this.saleTrail({ sold: sold, T: T }).cogs,
         net: T.net, disc: T.disc, discCode: T.discCode, svc: T.svc, tax: T.tax,
-        cur: "MVR", rate: 1, fgn: 0, chg: 0,
+        cur: this.base(), rate: 1, fgn: 0, chg: 0,
         bizDate: tk.bizDate || this.today(), taxRate: T.taxRate, taxLabel: T.taxLabel
       };
       this.bookSale(settledRow, tk, T);

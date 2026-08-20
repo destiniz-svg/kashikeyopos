@@ -213,11 +213,16 @@
 
   // MVR is the book currency and change is always given in rufiyaa. The rates
   // here are a starting point an outlet edits; the currency LIST is structure.
+  // `minor` is how many decimals the currency has; `cashRound` is what CASH
+  // settles to — the rufiyaa to its 50-laari coin, a dollar to nothing.
+  // `canBase` marks the currencies a business may keep its books in.
   var CURRENCIES = [
-    { code: "MVR", name: "Maldivian rufiyaa", symbol: "MVR", base: true, rate: 1 },
-    { code: "USD", name: "US dollar", symbol: "$", rate: 15.42 },
-    { code: "EUR", name: "Euro", symbol: "\u20ac", rate: 16.8 },
-    { code: "GBP", name: "Pound sterling", symbol: "\u00a3", rate: 19.6 }
+    { code: "MVR", name: "Maldivian rufiyaa", symbol: "MVR", base: true,
+      canBase: true, rate: 1, minor: 2, cashRound: 0.5 },
+    { code: "USD", name: "US dollar", symbol: "$",
+      canBase: true, rate: 15.42, minor: 2, cashRound: 0 },
+    { code: "EUR", name: "Euro", symbol: "\u20ac", rate: 16.8, minor: 2, cashRound: 0 },
+    { code: "GBP", name: "Pound sterling", symbol: "\u00a3", rate: 19.6, minor: 2, cashRound: 0 }
   ];
 
   var UNITS = [

@@ -123,6 +123,9 @@ r.post('/company', async function (req, res, next) {
       + " VALUES (1,$1,$2,$3,$4,$5,coalesce($6,'Maldives'),$7,$8,coalesce($9,'MVR'),"
       + ' coalesce($10,1), $11) ON CONFLICT (id) DO UPDATE SET legal_name = $1,'
       + ' reg_no = $2, tin = $3, address = $4, atoll = $5, phone = $7, email = $8,'
+      // The base currency is the books' currency; re-running the step must be
+      // able to correct it while the install is still empty.
+      + " base_currency = coalesce($9, chain.company.base_currency),"
       + ' brand = $11, updated_at = now()',
       [b.legalName, b.regNo, b.tin, b.address, b.atoll || null, b.country || null,
         b.phone || null, b.email || null, b.currency || null,
@@ -130,6 +133,12 @@ r.post('/company', async function (req, res, next) {
     res.json({ ok: true, step: 'company' });
   } catch (e) { next(e); }
 });
+
+// The books' currency, as the company step recorded it.
+async function baseCurrency() {
+  const q = await owner().query('SELECT base_currency FROM chain.company WHERE id = 1');
+  return (q.rows[0] || {}).base_currency || 'MVR';
+}
 
 /* ── 2 · First outlet. Creates the schema and the login role. ───────────── */
 r.post('/outlet', async function (req, res, next) {
@@ -146,7 +155,9 @@ r.post('/outlet', async function (req, res, next) {
       taxCode: b.taxCode || 'GGST', taxRate: b.taxRate, taxFrom: b.taxFrom,
       servicePct: b.servicePct == null ? 10 : b.servicePct,
       address: b.address, atoll: b.atoll, phone: b.phone,
-      tz: b.tz, currency: b.currency, dayStart: b.dayStart
+      // An outlet keeps the company's books, so it keeps the company's
+      // currency unless it is explicitly given another one.
+      tz: b.tz, currency: b.currency || (await baseCurrency()), dayStart: b.dayStart
     });
     res.status(201).json(out);
   } catch (e) { next(e); }

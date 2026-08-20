@@ -140,6 +140,8 @@
     }
     // The card's own terms. TIERS falls back to the shipped ladder, which is
     // structure; REWARDS is the merchant's catalogue and starts empty.
+    // The currency table, so the phone formats money the way the till does.
+    if (snap.currencies && snap.currencies.length) K.CURRENCIES = snap.currencies;
     if (snap.tiers && snap.tiers.length) K.TIERS = snap.tiers;
     K.REWARDS = snap.rewards || [];
     K.LOYALTY = snap.loyalty || {};

@@ -668,8 +668,26 @@ class Component extends DCLogic {
   }
   tbl() { return this.tblOf(this.state.table); }
   item(id) { return this.menu().filter((m) => m.id === id)[0] || null; }
-  money(n) { return "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-  fmt(n) { return "MVR " + Math.round(n || 0).toLocaleString("en-US"); }
+  /* The outlet's own currency, not a constant. The books are kept in one
+     currency and this phone shows the same figures the till does. */
+  cur() {
+    const o = this.outlet() || {};
+    const code = o.currency || ((this.K() || {}).CHAIN || {}).currency || "MVR";
+    const list = ((this.K() || {}).CURRENCIES) || [];
+    return list.filter((x) => x.code === code)[0]
+      || { code: code, symbol: code, minor: 2 };
+  }
+  curGap(sym) { return /[A-Z]$/.test(sym) ? " " : ""; }
+  money(n) {
+    const c = this.cur(); const sym = c.symbol || c.code;
+    return sym + this.curGap(sym) + (Math.round((n || 0) * 100) / 100)
+      .toLocaleString("en-US", { minimumFractionDigits: c.minor === undefined ? 2 : c.minor,
+        maximumFractionDigits: c.minor === undefined ? 2 : c.minor });
+  }
+  fmt(n) {
+    const c = this.cur(); const sym = c.symbol || c.code;
+    return sym + this.curGap(sym) + Math.round(n || 0).toLocaleString("en-US");
+  }
 
   price(m) {
     const ov = ((this.pos() || {}).priceOv || {})[this.outlet().id] || {};

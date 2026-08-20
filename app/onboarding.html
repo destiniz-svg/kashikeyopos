@@ -181,6 +181,9 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
         { k: "tin", label: "TIN", req: true, mono: true, ph: "1000000GST501" },
         { k: "address", label: "Registered address", req: true, full: true },
         { k: "atoll", label: "Atoll or city" },
+        { k: "currency", label: "Base currency", type: "select", req: true, v: "MVR",
+          options: [["MVR", "MVR — Maldivian rufiyaa"], ["USD", "USD — US dollar"]],
+          hint: "The currency this business keeps its books in. Every price, receipt, report and ledger figure is in it. A guest may still pay in another currency at the counter." },
         { k: "phone", label: "Telephone" },
         { k: "email", label: "Accounts email", type: "email" }
       ],
