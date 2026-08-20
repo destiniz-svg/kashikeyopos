@@ -7,7 +7,10 @@ name: tests
 # be validated on the branch it was made on.
 on:
   push:
-    branches: [main, staging]
+    # Feature branches get the same cold-database run as the branches they will
+    # be promoted through — the first full run of a change should happen on the
+    # branch it was written on, not after it reaches production.
+    branches: [main, staging, 'claude/**']
   pull_request:
 
 jobs:
