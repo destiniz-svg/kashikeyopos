@@ -3,15 +3,18 @@
   "version": "3.0.0",
   "private": true,
   "type": "commonjs",
-  "description": "KashikeyoPOS — offline-first, multi-outlet restaurant operating platform",
-  "engines": { "node": ">=20" },
+  "description": "KashikeyoPOS \u2014 offline-first, multi-outlet restaurant operating platform",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "migrate": "node src/scripts/migrate.js",
     "provision:outlet": "node src/scripts/provision-outlet.js",
     "leak-test": "node src/scripts/leak-test.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "reset:database": "node src/scripts/reset-database.js"
   },
   "dependencies": {
     "express": "^4.21.2",

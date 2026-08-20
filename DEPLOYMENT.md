@@ -136,6 +136,25 @@ Then redeploy. The service migrates from nothing and lands on `/onboarding`
 again. `test/db.js` does the same thing on every test run, which is why the
 path stays working.
 
+### On a platform with no shell
+
+`npm run reset:database` does exactly the above against `DATABASE_URL`, for a
+host that hands you a connection string and no psql. It is the most dangerous
+file in the repository, so it is guarded three ways:
+
+- `RESET_DATABASE` must be exactly `yes-i-mean-it` — a flag that can be set by
+  accident is not a guard;
+- it REFUSES when `RAILWAY_ENVIRONMENT_NAME` is `production`, which the platform
+  injects itself and a copied variable set cannot forge;
+- it names the database, the host and every schema before dropping anything, so
+  the log is a record of what was destroyed.
+
+Run it as a **one-shot pre-deploy command**, never in the start path, and
+REMOVE both the command and the variable the moment it has run — otherwise
+every future deploy wipes the environment. The pre-deploy runs before the new
+container starts, so the sequence in a single deploy is: wipe, then migrate
+from nothing, then serve.
+
 ## What is not automated, and needs a console
 
 Two things in this build cannot be verified from the repository and have to be
