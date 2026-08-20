@@ -174,7 +174,7 @@
     // that nets them cannot tell a good month from a heavily discounted one.
     { code: "4200", name: "Discounts & allowances", type: "Revenue", till: true },
     { code: "4900", name: "Cash rounding", type: "Revenue", till: true },
-    { code: "5000", name: "Cost of goods sold", type: "Expense", till: true },
+    { code: "5000", name: "Cost of goods sold", type: "Expense" },
     { code: "5100", name: "Wastage & variance", type: "Expense" },
     { code: "5300", name: "Wages & salaries", type: "Expense" },
     { code: "5310", name: "Employer pension contribution", type: "Expense" },
@@ -383,25 +383,79 @@
     '  WITH CHECK (outlet_id = app.current_outlet());'
   ];
 
+  // The data model, as it is actually deployed. Grouped by which belt of
+  // isolation guards it: the control plane is shared and guarded by RLS; a
+  // per-outlet schema is guarded by not being reachable at all.
   var ERD = [
-    ["chain.company", "The legal entity. One row. Who files the return."],
-    ["chain.outlet", "id, code, schema_name, db_role, tax_code, service_pct"],
-    ["chain.staff", "name, rank 1-5, role_key, pin_hash + pin_salt, outlets[]"],
-    ["chain.device", "A till, a KDS or a printer, paired and revocable"],
-    ["chain.session", "Issued at sign-in, revocable, expires"],
-    ["chain.tax_version", "code, rate, effective_from — law, not a figure"],
-    ["chain.doc_series", "Numbers allocated under a row lock, per outlet per kind"],
-    ["chain.member", "Loyalty is chain-wide: earn here, spend there"],
-    ["chain.supplier", "One vendor, many outlets"],
-    ["chain.audit", "Append-only. Who, what, when, on which device"],
-    ["outlet_N.ticket \u2192 sale", "The floor becomes money"],
-    ["sale \u2192 payment", "Tender by method: cash, card, credit, foreign note"],
-    ["sale \u2192 stock_move", "Recipe explosion at the moment of sale"],
-    ["sale \u2192 journal", "Tender, revenue, discount, service, tax, rounding, COGS"],
-    ["journal \u2192 journal_line", "A deferred trigger refuses an unbalanced entry at COMMIT"],
-    ["delivery \u2192 vendor_invoice", "Signed for on arrival, PRICED later \u2014 that is what claims input tax"],
-    ["op_log", "The client\'s own opId is the primary key. Replay is a no-op."]
+    {
+      group: "Control plane · chain (RLS, FORCE)", color: "#f2a43a",
+      tables: [
+        { name: "chain.company", rls: "rank 4 writes", cols: ["id pk", "legal_name", "reg_no", "tin", "address", "brand jsonb"] },
+        { name: "chain.outlet", rls: "self or group", cols: ["id pk", "code", "schema_name", "db_role", "tax_code", "service_pct", "day_start"] },
+        { name: "chain.staff", rls: "own outlet", cols: ["id pk", "name", "rank", "role_key", "pin_hash", "pin_salt", "outlets[]"] },
+        { name: "chain.device", rls: "own outlet", cols: ["id pk", "label", "kind", "pair_code", "fingerprint", "revoked"] },
+        { name: "chain.session", rls: "own outlet", cols: ["id pk", "staff_id fk", "device_id fk", "rank", "expires_at", "revoked_at"] },
+        { name: "chain.tax_version", rls: "own or statute", cols: ["id pk", "outlet_id fk", "code", "rate", "effective_from", "effective_to"] },
+        { name: "chain.doc_series", rls: "own outlet", cols: ["outlet_id pk", "kind pk", "prefix", "next_no", "used"] },
+        { name: "chain.member", rls: "any outlet", cols: ["id pk", "phone", "points", "tier", "credit_limit"] },
+        { name: "chain.supplier", rls: "rank 3 writes", cols: ["id pk", "name", "trn", "terms_days"] },
+        { name: "chain.audit", rls: "append only", cols: ["id pk", "at", "outlet_id", "actor", "rank", "device_id", "action", "before jsonb", "after jsonb"] }
+      ]
+    },
+    {
+      group: "Service · outlet_N", color: "#7c92f5",
+      tables: [
+        { name: "zone", rls: "schema", cols: ["id pk", "name", "pos"] },
+        { name: "table_def", rls: "schema", cols: ["id pk", "label", "zone_id fk", "seats", "status"] },
+        { name: "ticket", rls: "schema", cols: ["id pk", "table_no", "split", "channel", "status", "covers", "party", "business_date"] },
+        { name: "ticket_line", rls: "schema", cols: ["id pk", "ticket_id fk", "item_id", "qty", "unit_price", "sent_at", "void_at"] },
+        { name: "reservation", rls: "schema", cols: ["id pk", "guest_name", "party", "at", "status", "ticket_id fk"] },
+        { name: "kds_ticket", rls: "schema", cols: ["id pk", "ticket_id fk", "station", "stage", "target_mins"] }
+      ]
+    },
+    {
+      group: "Money · outlet_N", color: "#34c77b",
+      tables: [
+        { name: "sale", rls: "no delete", cols: ["id pk", "receipt_no", "business_date", "subtotal", "discount", "net", "service", "tax_rate", "tax", "rounding", "total", "cogs"] },
+        { name: "sale_line", rls: "no delete", cols: ["id pk", "sale_id fk", "item_id", "qty", "line_total", "line_cost"] },
+        { name: "payment", rls: "no delete", cols: ["id pk", "sale_id fk", "method", "amount", "currency", "fx_rate", "tendered", "change_given"] },
+        { name: "credit_note", rls: "no delete", cols: ["id pk", "cn_no", "sale_id fk", "amount", "tax", "reason", "approved_by"] },
+        { name: "settlement_batch", rls: "schema", cols: ["id pk", "acquirer", "batch_no", "gross", "mdr_pct", "fee", "net", "variance", "state"] },
+        { name: "drawer_session", rls: "schema", cols: ["id pk", "float_amount", "counted", "expected", "variance"] },
+        { name: "journal", rls: "no delete", cols: ["id pk", "jv_no", "entry_date", "memo", "source", "posted_by"] },
+        { name: "journal_line", rls: "no delete", cols: ["id pk", "journal_id fk", "account_code fk", "dr", "cr"] },
+        { name: "account", rls: "schema", cols: ["code pk", "name", "type", "normal_side", "till_owned"] },
+        { name: "period", rls: "schema", cols: ["id pk", "starts_on", "ends_on", "state"] },
+        { name: "bank_line", rls: "schema", cols: ["id pk", "value_date", "descr", "amount", "state", "matched_account"] }
+      ]
+    },
+    {
+      group: "Stock and supply · outlet_N", color: "#a88ad9",
+      tables: [
+        { name: "ingredient", rls: "schema", cols: ["id pk", "name", "base_unit", "stock_unit", "on_hand", "avg_cost", "par"] },
+        { name: "recipe_line", rls: "schema", cols: ["id pk", "item_id fk", "ingredient_id fk", "sub_item_id fk", "qty", "waste_pct"] },
+        { name: "stock_move", rls: "immutable", cols: ["id pk", "ingredient_id fk", "qty", "unit_cost", "value", "reason", "sale_id fk"] },
+        { name: "batch", rls: "schema", cols: ["id pk", "ingredient_id fk", "lot", "qty", "use_by", "state"] },
+        { name: "stock_count", rls: "schema", cols: ["id pk", "by_staff", "variance_value", "state"] },
+        { name: "delivery", rls: "schema", cols: ["id pk", "grn_no", "supplier_id", "priced", "net", "tax"] },
+        { name: "vendor_invoice", rls: "schema", cols: ["id pk", "supplier_id", "invoice_no", "due_date", "amount", "paid"] },
+        { name: "indent", rls: "schema", cols: ["id pk", "pr_no", "to_outlet", "status"] },
+        { name: "dispatch", rls: "schema", cols: ["id pk", "dsp_no", "indent_id fk", "status", "value"] }
+      ]
+    },
+    {
+      group: "People, costs and replay · outlet_N", color: "#f4553c",
+      tables: [
+        { name: "employee", rls: "schema", cols: ["id pk", "staff_id", "job", "basic", "hourly", "mrps", "ot", "svc"] },
+        { name: "clock_entry", rls: "schema", cols: ["id pk", "employee_id fk", "in_at", "out_at", "business_date"] },
+        { name: "payroll_run", rls: "schema", cols: ["id pk", "gross", "pension_ee", "pension_er", "withholding", "net"] },
+        { name: "opex", rls: "schema", cols: ["id pk", "category", "amount", "freq", "due_day", "account_code fk"] },
+        { name: "asset", rls: "schema", cols: ["id pk", "name", "cost", "bought_on", "life_years", "state"] },
+        { name: "op_log", rls: "immutable", cols: ["op_id pk", "kind", "payload jsonb", "client_at", "lamport", "result jsonb"] }
+      ]
+    }
   ];
+
 
   var RAILWAY = [
     ["Service", "One Node process: the API and the terminal it serves"],

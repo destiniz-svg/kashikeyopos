@@ -100,8 +100,12 @@ async function buildBootstrap(ctx) {
       })),
       TIERS: setting.tiers || DEFAULT_TIERS,
       REWARDS: setting.rewards || [],
-      MODULES: MODULES,
-      ROLES: rolesOf(setting),
+      // The module catalogue and the permission matrix are STRUCTURE: they ship
+      // with the app and the server has no opinion on them. Sending a second
+      // copy from here is how the two lists drift, and a module missing from
+      // one of them is a module whose permission check silently passes.
+      // A chain that has customised its roles overrides them, and only then.
+      ROLES: setting.roles || undefined,
       USERS: staff.rows.map(userOf),
       CUSTOMERS: members.rows.map(customerOf),
       STAFF: employees.rows.map(employeeOf),
@@ -154,8 +158,13 @@ async function buildBootstrap(ctx) {
     // would be two thirds of the payload.
     const raw = {
       cats: cats.rows.map((r, i) => ({ id: r.category, name: r.category, icon: 'store', storage: '', freq: '' })),
+      // Index 4 is the cost per STOCK unit — what the kitchen buys in, and what
+      // costPerBase() divides by the conversion factor to reach a per-gram
+      // figure. avg_cost is held per BASE unit, so it is multiplied up here
+      // exactly once, in one place.
       items: ingredients.rows.map((r) => [
-        r.id, r.category || '', r.name, r.stock_unit, num(r.sell_price),
+        r.id, r.category || '', r.name, r.stock_unit,
+        num(r.avg_cost) * (num(r.stock_factor) || 1),
         r.producible ? 'prep' : 'raw', r.id, r.base_unit, r.stock_unit,
         String(num(r.avg_cost)), num(r.par), num(r.min_stock), r.sellable ? 1 : 0
       ]),

@@ -37,6 +37,9 @@
     // opinion on keeps the shipped structure — which is how the labels, the
     // reason codes and the chart survive a bootstrap that carries no trade.
     Object.keys(live).forEach(function (k) {
+      // `undefined` means "the server has no opinion" — the shipped structure
+      // stands. That is how MODULES, the reason codes and the chart survive a
+      // bootstrap that carries no trade.
       if (live[k] === undefined || live[k] === null) return;
       if (Array.isArray(live[k]) && !live[k].length && Array.isArray(K[k]) && K[k].length) {
         // The server says "none". On a structural key that is the shipped

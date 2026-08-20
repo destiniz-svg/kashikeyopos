@@ -33,7 +33,7 @@ BEGIN
       ('4100','Delivery revenue',              'Revenue',  'cr', true,  16),
       ('4200','Discounts & allowances',        'Revenue',  'dr', true,  17),
       ('4900','Cash rounding',                 'Revenue',  'cr', true,  18),
-      ('5000','Cost of goods sold',            'Expense',  'dr', true,  19),
+      ('5000','Cost of goods sold',            'Expense',  'dr', false, 19),
       ('5100','Wastage & variance',            'Expense',  'dr', false, 20),
       ('5300','Wages & salaries',              'Expense',  'dr', false, 21),
       ('5310','Employer pension contribution', 'Expense',  'dr', false, 22),

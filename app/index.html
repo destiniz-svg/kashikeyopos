@@ -4035,7 +4035,7 @@ class Component extends DCLogic {
     // fraction, which was wrong for a simple reason: a fraction is a share of
     // surplus, and says nothing about how many characters the cell holds. It
     // missed exactly the cells that compose two values into one string —
-    // "MVR 940 / MVR 2,500", "General Food Supplies Co · Food" — because those
+    // "MVR 940 / MVR 2,500", "<supplier> · Food" — because those
     // are built at render time and are far wider than their column's share
     // suggests.
     //
@@ -6065,7 +6065,7 @@ class Component extends DCLogic {
         qrOutlet: o.name,
         qrPoweredStyle: this.brandOf().poweredBy === false ? "display:none"
           : "font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px",
-        qrUrl: "https://order.kashikeyo.mv/t/" + o.code.toLowerCase() + "/" + pad(s.activeTable || 1) + "?k=8f3a91c2e7"
+        qrUrl: "https://order.kashikeyo.mv/t/" + this.fileTag() + "/" + pad(s.activeTable || 1) + "?k=8f3a91c2e7"
       });
     }
 
@@ -6833,7 +6833,10 @@ class Component extends DCLogic {
       const u = (K0.USERS || []).find((x) => x.id === m.id) || {};
       const r = (K0.ROLES || []).find((x) => x.key === u.role) || {};
       const o = (K0.OUTLETS || []).find((x) => x.id === u.outlet);
-      const mods = (K0.MODULES || []).filter((mm) => (r.perms[mm.key] || {}).v).length;
+      // A role key can outlive its role — renamed, removed, or a person carried
+      // over from an older grant. The panel still has to open and say what it
+      // knows, because the one thing an operator needs here is to FIX that.
+      const mods = (K0.MODULES || []).filter((mm) => ((r.perms || {})[mm.key] || {}).v).length;
       return {
         hasDetailEdit: this.can("users"), detailEditLabel: "Edit role, scope or suspend", detailEdit: () => this.openForm("user", u),
         // Resetting a PIN and removing a person are the two administrative acts
@@ -6853,7 +6856,7 @@ class Component extends DCLogic {
           }
         ] : [],
         modalTitle: u.name, modalSub: "@" + u.user + " · " + (r.label || ""),
-        detailRows: [Rt("Role", r.label || "", this.tone(r.color)), Rt("Scope", r.scope || ""), Rt("Home outlet", o ? o.name : "Chain-wide"), Rt("Status", u.status), Rt("Last seen", u.last), R("Modules visible", mods + " / " + (K0.MODULES || []).length), Rt("Can write money", (r.perms.pos || {}).a ? "Yes" : "No", (r.perms.pos || {}).a ? "var(--warn-bright)" : "var(--green)"), Rt("Sees cost price", u.role === "Cashier" ? "No — column masked" : "Yes")],
+        detailRows: [Rt("Role", r.label || "", this.tone(r.color)), Rt("Scope", r.scope || ""), Rt("Home outlet", o ? o.name : "Chain-wide"), Rt("Status", u.status), Rt("Last seen", u.last), R("Modules visible", mods + " / " + (K0.MODULES || []).length), Rt("Can write money", ((r.perms || {}).pos || {}).a ? "Yes" : "No", ((r.perms || {}).pos || {}).a ? "var(--warn-bright)" : "var(--green)"), Rt("Sees cost price", u.role === "Cashier" ? "No — column masked" : "Yes")],
         detailNote: r.blurb || "",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -8626,13 +8629,13 @@ class Component extends DCLogic {
   g_branches() {
     const K0 = K(), s = this.state;
     const q = s.search.toLowerCase();
-    const list = this.scopedOutlets().filter((o) => !q || o.name.toLowerCase().indexOf(q) >= 0 || o.code.toLowerCase().indexOf(q) >= 0);
+    const list = this.scopedOutlets().filter((o) => !q || o.name.toLowerCase().indexOf(q) >= 0 || this.fileTag().indexOf(q) >= 0);
     const kind = { main_store: ["Main store", "info"], central_kitchen: ["Central kitchen", "purple"], restaurant: ["Restaurant", "warn"] };
     return {
       guideTitle: "Opening a location", guide: ["Create the outlet with its tax profile — GGST 8% or TGST 16%", "Restaurants get tables and a till; stores and kitchens do not", "Add stock sub-locations beneath it for freezer, dry store, bar", "Bind printer stations before the first service"],
       actions: [
         { label: "Add outlet", primary: true, go: () => this.openForm("outlet") },
-        { label: "Printer profiles", go: () => this.info("Printer profiles", "Stations bound per outlet", this.posOutlets().map((o) => [o.name, "KOT " + o.code.toLowerCase() + "-kot · Bar " + o.code.toLowerCase() + "-bar · Bill " + o.code.toLowerCase() + "-bill", "t"])) }
+        { label: "Printer profiles", go: () => this.info("Printer profiles", "Stations bound per outlet", this.posOutlets().map((o) => [o.name, "KOT " + this.fileTag() + "-kot · Bar " + this.fileTag() + "-bar · Bill " + this.fileTag() + "-bill", "t"])) }
       ],
       cols: [
         { label: "Code", w: ".8fr", mono: 1 }, { label: "Location", w: "1.8fr" }, { label: "Type", w: "1fr" },
@@ -9406,11 +9409,23 @@ class Component extends DCLogic {
   }
   itemName(id) { const raw = window.KPOS_RAW || {}; const it = (raw.items || []).find((i) => i[0] === id); return it ? it[2] : "Item #" + id; }
   item(id) { const raw = window.KPOS_RAW || {}; return (raw.items || []).find((i) => i[0] === id); }
+  /* How many BASE units are in one STOCK unit — 1000 g in a kilogram, 12 in a
+     dozen. Read from the unit table rather than a pair of hardcoded spellings:
+     the reference recognised "GRM"/"KG" and "ML"/"LTR" and silently returned 1
+     for everything else, which costs a plate at a thousandth of what it cost
+     and reports a food cost of 0.0%. A conversion that fails quietly is worse
+     than one that fails loudly. */
   convFactor(it) {
     if (!it) return 1;
-    const b = (it[7] || "").toLowerCase(), st = (it[8] || "").toLowerCase();
-    if (b === st || !st) return 1;
-    if ((b === "grm" && st === "kg") || (b === "ml" && (st === "ltr" || st === "l"))) return 1000;
+    const b = String(it[7] || "").toLowerCase(), st = String(it[8] || "").toLowerCase();
+    if (!st || b === st) return 1;
+    const units = (K().UNITS || []);
+    const u = units.find((x) => String(x.code).toLowerCase() === st);
+    if (u && String(u.base).toLowerCase() === b) return +u.factor || 1;
+    // Legacy spellings from an imported workbook.
+    if ((b === "grm" || b === "g") && (st === "kg" || st === "kgs")) return 1000;
+    if ((b === "ml") && (st === "ltr" || st === "l" || st === "litre")) return 1000;
+    if ((b === "pcs") && (st === "doz" || st === "dozen")) return 12;
     return 1;
   }
   stockQty(it, qty) { return qty / this.convFactor(it); }
@@ -12140,12 +12155,26 @@ class Component extends DCLogic {
           : [{ item: String(((f.options || [])[0] || {}).v || ""), qty: "1", rate: "" }];
         return;
       }
-      const dflt = f.v === undefined ? (f.options ? f.options[0].v : "") : String(f.v);
+      // An empty option list is the normal state of a new install: there is no
+      // supplier to pick because nobody has added one yet. The form still has
+      // to OPEN — its own empty state names the thing that is missing — and a
+      // picker that throws on its default is a dead end, which the product
+      // principles forbid.
+      const first = f.options && f.options.length ? f.options[0].v : "";
+      const dflt = f.v === undefined ? first : String(f.v);
       const has = row && row[f.k] !== undefined && row[f.k] !== null;
       v[f.k] = has ? String(row[f.k]) : dflt;
     });
     if (row && spec.pre) Object.assign(v, spec.pre(row));
     this.setState({ modal: { kind: "form", form: name, edit: row || null }, formVals: v });
+  }
+  /* A file name for an export. Built from whatever identifies this outlet and
+     never from a field being present: an export that throws because the code
+     has not been set yet is an export nobody can take to their accountant. */
+  fileTag() {
+    const o = this.outlet();
+    return String(o.code || o.name || "outlet").toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "outlet";
   }
   downloadCsv(name, rows) {
     const esc = (v) => '"' + String(v === undefined || v === null ? "" : v).replace(/"/g, '""') + '"';
@@ -14361,7 +14390,7 @@ class Component extends DCLogic {
           "Due on the 28th · " + days + " day" + (days === 1 ? "" : "s") + " from today"
         ],
         actions: [
-          { label: "Export the return", primary: true, go: () => this.downloadCsv("kashikeyo-" + o.code.toLowerCase() + "-gst-return.csv",
+          { label: "Export the return", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.fileTag() + "-gst-return.csv",
             [[o.tax + " return", o.name], ["TIN", this.prof().tin || "—"], ["Period", s.now.toLocaleDateString("en-GB", { month: "long", year: "numeric" })], [],
              ["Line", "MVR"],
              ["Net sales (excl. " + o.tax + ")", netSales.toFixed(2)],
