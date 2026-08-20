@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Set up KashikeyoPOS</title>
+<link rel="icon" href="brand/kashikeyo-mark.png">
+<link rel="stylesheet" href="fonts.css">
+<!-- The same tokens the terminal is painted from. An onboarding panel that
+     looks like a different product is an onboarding panel nobody trusts with
+     their TIN. -->
+<link rel="stylesheet" href="kashikeyo.css">
+<style>
+/* ═══ THE PANEL ═════════════════════════════════════════════════════════════
+   Fourteen steps, forced by dependency, each writing the records the running
+   app reads — through the same handlers the app itself uses. There is no
+   config blob and no wizard-only table: if step 2 wrote something only the
+   wizard understood, step 2 would become un-editable the moment the wizard
+   closed.
+
+   Every step therefore has an equivalent edit path in Settings, and the target
+   is a first correct, complete, auditable sale in under five minutes.
+   ═══════════════════════════════════════════════════════════════════════ */
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:'JetBrains Mono',monospace}
+.wrap{display:grid;grid-template-columns:280px 1fr;min-height:100dvh}
+@media (max-width:900px){ .wrap{grid-template-columns:1fr} .rail{display:none} }
+
+/* ── the rail: where you are, and what is left ─────────────────────────── */
+.rail{background:var(--bg-0);border-right:1px solid var(--line);padding:22px 0;overflow-y:auto}
+.brand{display:flex;align-items:center;gap:11px;padding:0 20px 20px}
+.brand img{width:34px;height:34px;border-radius:11px;background:var(--brand-plate);
+  border:1px solid var(--brand-plate-line);object-fit:contain;padding:2px}
+.brand b{font-size:13.5px;font-weight:800;letter-spacing:-.03em}
+.brand span{color:var(--brand-olive-bright)}
+.brand small{display:block;font-size:9px;color:var(--text-muted);letter-spacing:.09em;
+  text-transform:uppercase;margin-top:2px}
+.steps{display:flex;flex-direction:column;gap:1px}
+.step{display:flex;align-items:flex-start;gap:11px;padding:9px 20px;border:0;width:100%;
+  background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.step:hover{background:var(--bg-2)}
+.step[aria-current="true"]{background:var(--bg-3)}
+.step .no{flex-shrink:0;width:21px;height:21px;border-radius:7px;display:grid;place-items:center;
+  font-size:9.5px;font-weight:800;font-family:'JetBrains Mono',monospace;
+  background:var(--bg-3);color:var(--text-faint);border:1px solid var(--line-2)}
+.step.done .no{background:var(--go-dim);color:var(--go-bright);border-color:var(--go-line)}
+.step[aria-current="true"] .no{background:var(--amber);color:var(--on-amber);border-color:var(--amber)}
+.step .lab{min-width:0;flex:1}
+.step .lab b{display:block;font-size:12.5px;font-weight:600;line-height:1.3}
+.step .lab small{display:block;font-size:10.5px;color:var(--text-muted);margin-top:2px;
+  text-wrap:pretty}
+.step.done .lab b{color:var(--text-muted)}
+
+/* ── the stage ─────────────────────────────────────────────────────────── */
+.stage{padding:34px clamp(18px,5vw,54px) 80px;max-width:900px;width:100%}
+h1{font-size:clamp(21px,3vw,27px);font-weight:800;letter-spacing:-.035em;margin:0 0 6px;
+  text-wrap:balance}
+.sub{font-size:13.5px;color:var(--text-dim);margin:0 0 4px;max-width:62ch;text-wrap:pretty}
+.why{font-size:12px;color:var(--text-muted);margin:10px 0 0;max-width:62ch;
+  border-left:2px solid var(--amber-line);padding-left:11px;text-wrap:pretty}
+.card{background:var(--bg-1);border:1px solid var(--line);border-radius:13px;
+  padding:20px;margin-top:22px;box-shadow:var(--shadow-lg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.f.full{grid-column:1/-1}
+label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--text-faint)}
+label .req{color:var(--amber-bright);margin-left:3px}
+input,select,textarea{
+  background:var(--bg-2);border:1px solid var(--line-2);border-radius:9px;
+  padding:10px 12px;min-height:42px;color:var(--text);font:inherit;font-size:13.5px;
+  width:100%;outline:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--amber);background:var(--bg-1)}
+input.mono{font-family:'JetBrains Mono',monospace;letter-spacing:.06em}
+.hint{font-size:10.5px;color:var(--text-muted);text-wrap:pretty}
+.err{font-size:11.5px;color:var(--danger-bright);margin-top:9px;font-weight:600}
+.foot{font-size:11.5px;color:var(--text-muted);margin-top:16px;padding-top:14px;
+  border-top:1px solid var(--line-soft);text-wrap:pretty}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:20px}
+button.go{flex:0 0 auto;padding:12px 20px;min-height:44px;border-radius:10px;border:0;
+  background:var(--amber);color:var(--on-amber);font:inherit;font-size:13px;font-weight:700;
+  cursor:pointer}
+button.go:disabled{opacity:.45;cursor:not-allowed}
+button.ghost{background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);
+  padding:12px 16px;min-height:44px;border-radius:10px;font:inherit;font-size:12.5px;
+  font-weight:600;cursor:pointer}
+button.mini{background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);
+  padding:7px 11px;min-height:36px;border-radius:8px;font:inherit;font-size:11.5px;
+  font-weight:600;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:9.5px;font-weight:800;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--text-faint);padding:0 8px 8px;white-space:nowrap}
+td{padding:5px 8px;border-top:1px solid var(--line-soft);vertical-align:middle}
+td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
+.scroll{overflow-x:auto;margin:0 -4px}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:800;
+  text-transform:uppercase;letter-spacing:.07em;padding:4px 9px;border-radius:20px;
+  background:var(--bg-3);color:var(--text-dim);border:1px solid var(--line-2)}
+.chip.ok{background:var(--ok-dim);color:var(--go-bright);border-color:var(--go-line)}
+.chip.warn{background:var(--warn-dim);color:var(--warn-bright);border-color:var(--warn-line)}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:8px 0;
+  border-top:1px solid var(--line-soft);font-size:12.5px}
+.kv:first-child{border-top:0}
+.kv b{font-weight:600;color:var(--text-dim)}
+.kv span{font-family:'JetBrains Mono',monospace;color:var(--text);text-align:right}
+.bar{height:3px;background:var(--bg-3);border-radius:3px;overflow:hidden;margin-top:18px}
+.bar i{display:block;height:100%;background:var(--amber);transition:width .3s}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;
+  background:var(--bg-1);border:1px solid var(--line-2);border-radius:11px;
+  padding:12px 18px;font-size:13px;font-weight:600;box-shadow:var(--shadow-lg);
+  animation:ktoast .2s}
+.toast.err{border-color:var(--danger-line);color:var(--danger-bright)}
+@media (prefers-reduced-motion:reduce){ *{animation:none!important;transition:none!important} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="rail">
+    <div class="brand">
+      <img src="brand/kashikeyo-mark.png" alt="">
+      <div>
+        <b>Kashikeyo<span>POS</span></b>
+        <small>Setting up</small>
+      </div>
+    </div>
+    <div class="steps" id="steps"></div>
+  </aside>
+  <main class="stage" id="stage"></main>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ── the fourteen, forced by dependency ───────────────────────────────────
+     Each `write` posts to the SAME handler the running app uses, so the
+     wizard's output and the app's model cannot drift. `edit` names where the
+     step lives once the app is running — that is the promise this panel makes,
+     and it is the reason none of these steps writes a config blob. */
+  var STEPS = [
+    {
+      key: "company", n: 1, label: "Company",
+      sub: "The entity that files the return",
+      title: "Who is trading?",
+      lede: "This is the legal entity — the name on the tax return, the registration number and the TIN. The fascia a guest sees is set separately, per outlet, under branding.",
+      why: "A receipt carries the TIN of the entity that took the money. A placeholder here would be a false statement to a tax authority, which is why nothing is pre-filled.",
+      edit: "Settings → Company",
+      fields: [
+        { k: "legalName", label: "Registered legal name", req: true, full: true, ph: "e.g. Kashikeyo Group Pvt Ltd" },
+        { k: "regNo", label: "Company registration number", req: true, mono: true, ph: "C-0000/2026" },
+        { k: "tin", label: "TIN", req: true, mono: true, ph: "1000000GST501" },
+        { k: "address", label: "Registered address", req: true, full: true },
+        { k: "atoll", label: "Atoll or city" },
+        { k: "phone", label: "Telephone" },
+        { k: "email", label: "Accounts email", type: "email" }
+      ],
+      foot: "Saving writes chain.company. Every receipt, invoice and tax return reads it back from there rather than keeping its own copy, so a correction lands everywhere at once.",
+      write: function (v) { return post("company", v); }
+    },
+    {
+      key: "outlet", n: 2, label: "First outlet",
+      sub: "Its own schema and its own login role",
+      title: "The first place you trade from",
+      lede: "An outlet is not a filter on shared data. It gets its own Postgres schema and its own database login, granted access to that schema alone — another outlet's tables are unreachable, not merely hidden.",
+      why: "Tax class is per outlet, not per company: GGST for a general outlet, TGST for one in a tourism zone. Choose “not registered” if the business is below the registration threshold — the app will charge nothing rather than quietly assuming 8%.",
+      edit: "Chain & Outlets → the outlet",
+      fields: [
+        { k: "name", label: "Outlet name", req: true, full: true, ph: "e.g. Chaandhanee" },
+        { k: "code", label: "Short code", req: true, mono: true, ph: "KOCHA", hint: "Goes in front of every document number. Letters and digits, up to eight." },
+        { k: "kind", label: "What it is", type: "select", options: [
+          ["restaurant", "Restaurant — takes money"],
+          ["central_kitchen", "Central kitchen — produces, does not sell"],
+          ["main_store", "Main store — receives and dispatches"]
+        ] },
+        { k: "taxCode", label: "Tax class", type: "select", options: [
+          ["GGST", "GGST — general goods and services"],
+          ["TGST", "TGST — tourism sector"],
+          ["NONE", "Not registered for GST"]
+        ] },
+        { k: "servicePct", label: "Service charge %", type: "number", v: "10",
+          hint: "Charged on the goods, distributed to staff, and itself taxable." },
+        { k: "dayStart", label: "Trading day starts", type: "time", v: "04:00",
+          hint: "The trading day is not the calendar day: a sale at 01:30 belongs to last night." },
+        { k: "address", label: "Street address", full: true },
+        { k: "phone", label: "Telephone" }
+      ],
+      foot: "Saving creates the schema, the login role, the document series and the chart of accounts, and records the tax version in force from today.",
+      write: function (v) {
+        v.servicePct = Number(v.servicePct) || 0;
+        return post("outlet", v);
+      }
+    },
+    {
+      key: "owner", n: 3, label: "Owner account",
+      sub: "Rank 5 — the only account that can create others",
+      title: "Your own account",
+      lede: "One five-rank ladder runs the whole system: Kitchen 1, Till 2, Manager 3, Admin 4, Owner 5. This is the rank-5 account, and it is the only one that can create the others.",
+      why: "A shared till never asks for a password. Staff tap their own face and key four digits — that is what makes a void, a discount or a drawer opening attributable to a person. Your PIN is hashed with scrypt and a per-row salt the moment you set it, and is never displayed again.",
+      edit: "Chain & Outlets → Users & roles",
+      fields: [
+        { k: "name", label: "Your name", req: true, full: true },
+        { k: "pin", label: "Choose a PIN", req: true, mono: true, type: "password",
+          attrs: { inputmode: "numeric", maxlength: "8", autocomplete: "new-password" },
+          hint: "Four to eight digits. Five wrong attempts lock this terminal for fifteen minutes." },
+        { k: "pin2", label: "Repeat the PIN", req: true, mono: true, type: "password",
+          attrs: { inputmode: "numeric", maxlength: "8", autocomplete: "new-password" } }
+      ],
+      foot: "This account can be claimed exactly once in the life of an installation. After that, accounts are created from Users & roles by an admin, and never above their own rank.",
+      validate: function (v) {
+        if (!/^\d{4,8}$/.test(v.pin)) return "A PIN is four to eight digits.";
+        if (v.pin !== v.pin2) return "The two PINs do not match.";
+        if (/^(\d)\1+$/.test(v.pin)) return "That PIN is one repeated digit — pick something a colleague could not watch you type.";
+        return null;
+      },
+      write: function (v) {
+        return post("owner", { name: v.name, pin: v.pin }).then(function (r) {
+          state.token = r.token;
+          try { localStorage.setItem("kashikeyo.token", JSON.stringify({
+            token: r.token, outletId: r.outletId, rank: r.rank, name: r.name,
+            roleKey: r.roleKey, staffId: r.staffId, exp: Date.now() + 11 * 3600e3
+          })); } catch (e) {}
+          return r;
+        });
+      }
+    },
+    {
+      key: "tax", n: 4, label: "Tax profile",
+      sub: "The rate in force, and from when",
+      title: "Confirm the rate you charge",
+      lede: "A tax version is law, not a setting. It carries the date it took effect, so a rate change next year cannot restate a return you have already filed.",
+      why: "Prices on the menu are set exclusive of GST and the tax is shown as its own line — the same arithmetic on the till, on the guest's phone and on the receipt.",
+      edit: "Settings → Tax profile",
+      dynamic: function () {
+        var o = state.outlet || {};
+        return {
+          fields: [
+            { k: "code", label: "Tax class", type: "select", v: o.tax_code || "GGST", options: [
+              ["GGST", "GGST"], ["TGST", "TGST"], ["NONE", "Not registered"]
+            ] },
+            { k: "rate", label: "Rate %", type: "number", v: String(state.statutory(o.tax_code || "GGST")),
+              hint: "The statutory rate in force today is filled in. Change it only if yours differs." },
+            { k: "from", label: "In force from", type: "date", v: today() },
+            { k: "servicePct", label: "Service charge %", type: "number", v: String(Number(o.service_pct) || 10) }
+          ]
+        };
+      },
+      foot: "Saving adds a version to this outlet's rate history. Nothing already settled is restated.",
+      write: function (v) { return post("tax", v); }
+    },
+    {
+      key: "series", n: 5, label: "Document series",
+      sub: "Once used, never renumbered",
+      title: "How your documents are numbered",
+      lede: "Every numbered document — receipt, credit note, purchase order, goods received note, indent, dispatch, journal voucher — is allocated from a series under a row lock, so two terminals can never mint the same number.",
+      why: "A series that has already issued a number cannot be renumbered. That is not a limitation; it is what makes the trail auditable. Set them now, while they are empty.",
+      edit: "Settings → Document series",
+      table: {
+        rows: "series",
+        cols: [
+          { k: "kind", label: "Document", ro: true, w: "1.4fr" },
+          { k: "prefix", label: "Prefix", mono: true, w: "1.2fr" },
+          { k: "start", label: "Starts at", type: "number", mono: true, w: ".8fr" }
+        ]
+      },
+      foot: "Saving writes chain.doc_series. A series already in use is left alone and named back to you rather than silently ignored.",
+      write: function (v) {
+        return post("series", { series: v.series }).then(function (r) {
+          if (r.refused && r.refused.length) {
+            toast("Left alone (already in use): " + r.refused.join(", "), "warn");
+          }
+          return r;
+        });
+      }
+    },
+    {
+      key: "chart", n: 6, label: "Chart of accounts",
+      sub: "Shipped complete — confirm the bank",
+      title: "The books are already set up",
+      lede: "Thirty-five accounts ship with the product, and the codes are load-bearing: the auto-posting rules, the profit and loss grouping and the GST return all read them. Nine of them belong to the till and a manual journal will refuse to touch them, because the ledger reconciles to the POS by construction.",
+      why: "The only thing the app cannot know is your bank account and what was in it on the day your books start. The reconciliation counts forward from that figure.",
+      edit: "Accounting → Chart of accounts",
+      fields: [
+        { k: "bankName", label: "Bank account name", v: "Bank — BML MVR", full: true },
+        { k: "bankCode", label: "Account code", v: "1020", mono: true, ro: true },
+        { k: "opening", label: "Opening balance, MVR", type: "number", v: "0", mono: true },
+        { k: "asOf", label: "As at", type: "date", v: today() }
+      ],
+      foot: "The opening balance is a reconciliation anchor, not a posting — so the trial balance squares from the very first day, before anything has been sold.",
+      write: function (v) { return post("chart", v); }
+    },
+    {
+      key: "units", n: 7, label: "Units",
+      sub: "What the kitchen buys and cooks in",
+      title: "Units, and how they convert",
+      lede: "A recipe is written in the unit a chef thinks in — grams, millilitres, pieces — and stock is bought in the unit a supplier sells in. The factor between them is the only thing that keeps a plate cost honest.",
+      why: "Get this wrong by a factor of a thousand and every food-cost percentage in the app is wrong by the same factor, silently. The defaults below are the standard set; add to them if your kitchen buys in something else.",
+      edit: "Inventory → Units",
+      table: {
+        rows: "units",
+        cols: [
+          { k: "code", label: "Code", mono: true, w: ".8fr" },
+          { k: "name", label: "Name", w: "1.6fr" },
+          { k: "base", label: "Base unit", mono: true, w: ".9fr" },
+          { k: "factor", label: "Base units in one", type: "number", mono: true, w: "1.1fr" }
+        ],
+        add: true
+      },
+      foot: "Saving writes the unit table the recipes and the stock ledger both read.",
+      write: function (v) { return post("units", { units: v.units }); }
+    },
+    {
+      key: "locations", n: 8, label: "Locations",
+      sub: "Stock cannot exist without one",
+      title: "Where stock is held",
+      lede: "Every gram in the system sits somewhere. A location is a place a person can walk to and count — the kitchen line, the dry store, the freezer.",
+      why: "Transfers between them are movements, not edits, so the ledger stays the story of what actually happened.",
+      edit: "Inventory → Locations",
+      table: {
+        rows: "locations",
+        cols: [
+          { k: "name", label: "Name", w: "1.6fr" },
+          { k: "kind", label: "What it is", type: "select", w: "1.2fr", options: [
+            ["kitchen", "Kitchen"], ["store", "Dry store"], ["freezer", "Freezer"],
+            ["chiller", "Chiller"], ["bar", "Bar"], ["other", "Other"]
+          ] }
+        ],
+        add: true
+      },
+      foot: "Saving writes the locations. One is enough to start; you can add the rest as you go.",
+      write: function (v) {
+        return post("locations", { locations: v.locations.filter(function (l) { return l.name; })
+          .map(function (l) { return { id: slug(l.name), name: l.name, kind: l.kind }; }) });
+      }
+    },
+    {
+      key: "items", n: 9, label: "Items",
+      sub: "The first ingredients, with a cost",
+      title: "What the kitchen buys",
+      lede: "An ingredient carries the unit it is cooked in, the unit it is bought in, and what it costs. That is everything a recipe needs to price a plate.",
+      why: "One item is enough to reach a first sale. The rest can arrive with your first delivery, or be imported from a supplier list later — the point of this step is that the chain is complete, not that the catalogue is.",
+      edit: "Inventory → On hand",
+      table: {
+        rows: "items",
+        cols: [
+          { k: "name", label: "Ingredient", w: "1.8fr" },
+          { k: "cat", label: "Category", w: "1fr" },
+          { k: "base", label: "Cooks in", type: "select", w: ".8fr", options: [["g", "g"], ["ml", "ml"], ["pcs", "pcs"]] },
+          { k: "stock", label: "Bought in", type: "select", w: ".9fr", options: [["kg", "kg"], ["g", "g"], ["l", "l"], ["ml", "ml"], ["pcs", "pcs"], ["doz", "doz"]] },
+          { k: "cost", label: "Cost per bought unit", type: "number", mono: true, w: "1.2fr" },
+          { k: "loc", label: "Held at", type: "select", w: "1fr", options: "locations" }
+        ],
+        add: true
+      },
+      foot: "Saving writes the ingredients. Cost is converted to a per-base-unit figure once, here, so no screen has to do it again.",
+      write: function (v) {
+        var rows = v.items.filter(function (i) { return i.name; });
+        return post("items", { items: rows.map(function (i) {
+          var f = factorFor(i.base, i.stock);
+          return {
+            id: slug(i.name), name: i.name, cat: i.cat || null,
+            base: i.base, stock: i.stock, factor: f,
+            cost: (Number(i.cost) || 0) / (f || 1),
+            loc: i.loc || null
+          };
+        }) });
+      }
+    },
+    {
+      key: "menu", n: 10, label: "Menu",
+      sub: "Sections, dishes, then the recipe on each",
+      title: "What you sell",
+      lede: "A dish carries a price and a recipe. The price is what the guest pays; the recipe is what leaves the kitchen when they do — and it is what turns a sale into a stock movement and a cost of sales at the moment of sale, rather than in a nightly batch.",
+      why: "A dish with no recipe can still sell, but it cannot be costed, and the app will say so rather than silently reporting a 100% margin.",
+      edit: "Menu Master",
+      table: {
+        rows: "dishes",
+        cols: [
+          { k: "name", label: "Dish", w: "1.8fr" },
+          { k: "cat", label: "Section", w: "1fr" },
+          { k: "price", label: "Price MVR", type: "number", mono: true, w: ".9fr" },
+          { k: "station", label: "Fires to", type: "select", w: ".9fr", options: [
+            ["main", "Main"], ["grill", "Grill"], ["cold", "Cold"], ["bar", "Bar"], ["dessert", "Dessert"]
+          ] },
+          { k: "recipe", label: "Recipe", type: "recipe", w: "2.4fr" }
+        ],
+        add: true
+      },
+      foot: "Saving writes the sections, the dishes and the recipe lines. Price is exclusive of GST — the tax is added and shown as its own line.",
+      write: function (v) {
+        var dishes = v.dishes.filter(function (d) { return d.name && d.price; });
+        var cats = [];
+        dishes.forEach(function (d) {
+          var c = d.cat || "Menu";
+          if (!cats.some(function (x) { return x.name === c; })) cats.push({ name: c });
+        });
+        return post("sections", { sections: [{ id: "menu", name: "Menu", pos: 1 }] })
+          .then(function () {
+            return post("categories", { categories: cats.map(function (c, i) {
+              return { id: slug(c.name), name: c.name, section: "menu", pos: i + 1 };
+            }) });
+          })
+          .then(function () {
+            return post("dishes", { dishes: dishes.map(function (d, i) {
+              return {
+                id: slug(d.name), name: d.name, cat: slug(d.cat || "Menu"),
+                price: Number(d.price) || 0, station: d.station || "main", pos: i,
+                recipe: (d.recipe || []).filter(function (r) { return r.ing && r.qty; })
+                  .map(function (r) { return [r.ing, Number(r.qty) || 0, 0]; })
+              };
+            }) });
+          });
+      }
+    },
+    {
+      key: "floor", n: 11, label: "Tables and zones",
+      sub: "Or takeaway only, if that is the business",
+      title: "The floor",
+      lede: "A floor plan is a list of tables, not a count. A restaurant adds a two-top, pushes two together for a party of eight, or takes the terrace out of service for a week — none of which a number can express.",
+      why: "If you only do takeaway and delivery, leave this empty and carry on. The till opens a bill straight away for those.",
+      edit: "POS Floor → Edit floor",
+      table: {
+        rows: "tables",
+        cols: [
+          { k: "label", label: "Table", mono: true, w: "1fr" },
+          { k: "zone", label: "Zone", w: "1.4fr" },
+          { k: "seats", label: "Seats", type: "number", mono: true, w: ".8fr" }
+        ],
+        add: true
+      },
+      foot: "Saving writes the zones and the tables. Renaming a table later renames it on the kitchen ticket, the parked strip and the printed bill at the same time.",
+      write: function (v) {
+        var rows = v.tables.filter(function (t) { return t.label; });
+        var zones = [];
+        rows.forEach(function (t) {
+          var z = t.zone || "Main floor";
+          if (!zones.some(function (x) { return x.name === z; })) {
+            zones.push({ id: slug(z), name: z, pos: zones.length });
+          }
+        });
+        if (!rows.length) return Promise.resolve({ skipped: true });
+        return post("zones", { zones: [{ zones: zones }] }).then(function () {
+          return post("tables", { tables: rows.map(function (t, i) {
+            return {
+              id: t.label, label: t.label, zone: slug(t.zone || "Main floor"),
+              seats: Number(t.seats) || 2, pos: i
+            };
+          }) });
+        });
+      }
+    },
+    {
+      key: "staff", n: 12, label: "Staff",
+      sub: "The people who will use it, each with a rank",
+      title: "Who works here",
+      lede: "Rank decides what someone can reach: Kitchen 1 sees the kitchen display, Till 2 takes money, Manager 3 approves and receives, Admin 4 changes the configuration, Owner 5 reads across outlets.",
+      why: "Each person gets their own PIN, hashed the moment it is set. Never share one: a shared PIN makes every “who voided this” answer in the audit log a guess.",
+      edit: "Chain & Outlets → Users & roles",
+      table: {
+        rows: "staff",
+        cols: [
+          { k: "name", label: "Name", w: "1.6fr" },
+          { k: "job", label: "Job title", w: "1.2fr" },
+          { k: "rank", label: "Rank", type: "select", w: "1.4fr", options: [
+            ["1", "1 · Kitchen"], ["2", "2 · Till"], ["3", "3 · Manager"], ["4", "4 · Admin"]
+          ] },
+          { k: "pin", label: "PIN", mono: true, w: ".9fr", attrs: { inputmode: "numeric", maxlength: "8" } },
+          { k: "basic", label: "Basic / month", type: "number", mono: true, w: "1.1fr" }
+        ],
+        add: true
+      },
+      foot: "Saving creates the sign-in accounts and, where a job title is given, the employment record that hours and payroll are measured against. Nobody can be created above your own rank.",
+      write: function (v) {
+        var rows = v.staff.filter(function (s) { return s.name && s.pin; });
+        var bad = rows.filter(function (s) { return !/^\d{4,8}$/.test(s.pin); });
+        if (bad.length) return Promise.reject(new Error("Every PIN is four to eight digits"));
+        if (!rows.length) return Promise.resolve({ skipped: true });
+        return post("staff", { staff: rows.map(function (s) {
+          return {
+            name: s.name, rank: Number(s.rank) || 2, pin: s.pin, job: s.job || "",
+            basic: Number(s.basic) || 0,
+            hourly: Math.round(((Number(s.basic) || 0) / 26 / 8) * 100) / 100,
+            mrps: true, ot: Number(s.rank) < 3, svc: true
+          };
+        }) });
+      }
+    },
+    {
+      key: "device", n: 13, label: "Device",
+      sub: "A device is attributable or it takes no money",
+      title: "Register this terminal",
+      lede: "Every action carries who did it, when, and on which device. A terminal that is not registered is a terminal nobody can hold to account, so it is not allowed to take money.",
+      why: "Register the till you are standing at now. Kitchen displays and printers are paired later from Sync & Devices, with a code that expires in fifteen minutes.",
+      edit: "Settings → Sync & devices",
+      fields: [
+        { k: "label", label: "What to call it", req: true, v: "POS-1", full: true,
+          hint: "Something a person could point at: “Front till”, “Bar handheld”." },
+        { k: "kind", label: "What it is", type: "select", options: [
+          ["till", "Till — takes money"], ["handheld", "Handheld — takes orders"],
+          ["kds", "Kitchen display"], ["expo", "Expo screen"], ["printer", "Printer"]
+        ] }
+      ],
+      foot: "Saving registers the device against this outlet. Revoking it later stops it taking money without touching anybody's account.",
+      write: function (v) { return api("POST", "/api/auth/devices", v); }
+    },
+    {
+      key: "register", n: 14, label: "Open the register",
+      sub: "Float counted. Only now can a sale happen",
+      title: "Count the float",
+      lede: "A closed register cannot take money. Without an opening float there is no expected cash at the end of the shift, and therefore no over or short — the one control every cash-handling business is actually audited on.",
+      why: "Count what is physically in the drawer and type that. Not a round number you meant to put in.",
+      edit: "POS Floor → Open register",
+      fields: [
+        { k: "float", label: "Cash in the drawer, MVR", type: "number", mono: true, v: "0", req: true }
+      ],
+      foot: "Saving opens the drawer session. From this moment the till can ring a sale, and every sale will move stock, tax, cost and the ledger in one transaction.",
+      write: function (v) { return post("register", { float: Number(v.float) || 0 }); }
+    }
+  ];
+
+  /* ── state ────────────────────────────────────────────────────────────── */
+  var state = {
+    token: null, at: 0, done: {}, outlet: null, install: null,
+    vals: {},
+    statutory: function (code) {
+      var rows = (state.install && state.install.tax) || [];
+      var hit = rows.filter(function (r) { return r.code === code; })[0];
+      return hit ? hit.rate : (code === "TGST" ? 16 : code === "NONE" ? 0 : 8);
+    }
+  };
+
+  function today() { return new Date().toISOString().slice(0, 10); }
+  function slug(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "").slice(0, 40) || ("x" + Date.now().toString(36));
+  }
+  // How many base units are in one stock unit. The one conversion in the app,
+  // and it lives in one place.
+  function factorFor(base, stock) {
+    if (!stock || base === stock) return 1;
+    var map = { "g:kg": 1000, "ml:l": 1000, "pcs:doz": 12 };
+    return map[base + ":" + stock] || 1;
+  }
+
+  function api(method, path, body) {
+    var headers = { "content-type": "application/json" };
+    if (state.token) headers.authorization = "Bearer " + state.token;
+    return fetch(path, {
+      method: method, headers: headers,
+      body: body === undefined ? undefined : JSON.stringify(body)
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        var data = null;
+        try { data = t ? JSON.parse(t) : null; } catch (e) {}
+        if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+        return data;
+      });
+    });
+  }
+  function post(step, body) { return api("POST", "/api/onboarding/" + step, body); }
+
+  var toastTimer = null;
+  function toast(msg, tone) {
+    var el = document.querySelector(".toast");
+    if (el) el.remove();
+    el = document.createElement("div");
+    el.className = "toast" + (tone === "err" ? " err" : "");
+    el.textContent = msg;
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.remove(); }, 4200);
+  }
+
+  /* ── where are we? The server decides, from the records. ──────────────── */
+  function refresh() {
+    return api("GET", "/api/onboarding/state").then(function (r) {
+      state.done = {};
+      (r.steps || []).forEach(function (s) { state.done[s.key] = s.done; });
+      state.next = r.next;
+      state.counts = r.counts || {};
+      return api("GET", "/api/auth/install");
+    }).then(function (i) {
+      state.install = i;
+      state.outlet = (i.outlets || [])[0] || null;
+      if (!state.token) {
+        try {
+          var t = JSON.parse(localStorage.getItem("kashikeyo.token") || "null");
+          if (t && t.exp > Date.now()) state.token = t.token;
+        } catch (e) {}
+      }
+    });
+  }
+
+  /* ── defaults: what a step opens with ─────────────────────────────────── */
+  function defaults(step) {
+    var v = {};
+    (fieldsOf(step) || []).forEach(function (f) {
+      // A select shows its first option whether or not anyone has touched it,
+      // so that is what it is worth. Leaving it blank makes the screen say one
+      // thing and the request say another.
+      if (f.v !== undefined) { v[f.k] = f.v; return; }
+      v[f.k] = f.type === "select" ? ((f.options || [])[0] || [""])[0] : "";
+    });
+    if (step.key === "series") {
+      v.series = [
+        { kind: "SALE", prefix: pfx("R"), start: 1 },
+        { kind: "CN", prefix: pfx("CN"), start: 1 },
+        { kind: "PO", prefix: pfx("PO"), start: 1 },
+        { kind: "GRN", prefix: pfx("GRN"), start: 1 },
+        { kind: "PR", prefix: pfx("PR"), start: 1 },
+        { kind: "DSP", prefix: pfx("DSP"), start: 1 },
+        { kind: "JV", prefix: pfx("JV"), start: 1 }
+      ];
+    }
+    if (step.key === "units") {
+      v.units = [
+        { code: "g", name: "gram", base: "g", factor: 1 },
+        { code: "kg", name: "kilogram", base: "g", factor: 1000 },
+        { code: "ml", name: "millilitre", base: "ml", factor: 1 },
+        { code: "l", name: "litre", base: "ml", factor: 1000 },
+        { code: "pcs", name: "piece", base: "pcs", factor: 1 },
+        { code: "doz", name: "dozen", base: "pcs", factor: 12 }
+      ];
+    }
+    if (step.key === "locations") {
+      v.locations = [
+        { name: "Kitchen", kind: "kitchen" },
+        { name: "Dry store", kind: "store" },
+        { name: "Freezer", kind: "freezer" }
+      ];
+    }
+    if (step.key === "items") v.items = [blank(step), blank(step), blank(step)];
+    if (step.key === "menu") v.dishes = [blank(step), blank(step)];
+    if (step.key === "floor") {
+      v.tables = [];
+      for (var i = 1; i <= 6; i++) {
+        v.tables.push({ label: "T" + (i < 10 ? "0" : "") + i, zone: "Main floor", seats: i % 3 === 0 ? 4 : 2 });
+      }
+    }
+    if (step.key === "staff") v.staff = [blank(step), blank(step)];
+    return v;
+  }
+  function pfx(suffix) {
+    return ((state.outlet && state.outlet.code) || "DOC") + "-" + suffix;
+  }
+  function blank(step) {
+    var row = {};
+    (step.table ? step.table.cols : []).forEach(function (c) {
+      row[c.k] = c.type === "recipe" ? [] : (typeof c.options === "object" && c.options.length ? c.options[0][0] : "");
+    });
+    return row;
+  }
+  function fieldsOf(step) {
+    if (step.dynamic) return step.dynamic().fields;
+    return step.fields;
+  }
+
+  /* ── render ───────────────────────────────────────────────────────────── */
+  var current = 0;
+
+  function renderRail() {
+    var el = document.getElementById("steps");
+    el.innerHTML = "";
+    STEPS.forEach(function (s, i) {
+      var b = document.createElement("button");
+      b.className = "step" + (state.done[s.key] ? " done" : "");
+      b.setAttribute("aria-current", i === current ? "true" : "false");
+      b.type = "button";
+      var reachable = i === 0 || state.done[STEPS[i - 1].key] || state.done[s.key];
+      b.disabled = !reachable;
+      b.style.opacity = reachable ? "1" : ".42";
+      b.innerHTML = '<span class="no">' + (state.done[s.key] ? "✓" : s.n) + '</span>'
+        + '<span class="lab"><b></b><small></small></span>';
+      b.querySelector("b").textContent = s.label;
+      b.querySelector("small").textContent = s.sub;
+      b.addEventListener("click", function () { if (reachable) { current = i; render(); } });
+      el.appendChild(b);
+    });
+  }
+
+  function render() {
+    renderRail();
+    var step = STEPS[current];
+    var v = state.vals[step.key] || (state.vals[step.key] = defaults(step));
+    var stage = document.getElementById("stage");
+    stage.innerHTML = "";
+
+    var doneN = STEPS.filter(function (s) { return state.done[s.key]; }).length;
+
+    var h = el("div");
+    h.appendChild(el("div", { class: "chip" + (state.done[step.key] ? " ok" : "") },
+      state.done[step.key] ? "Step " + step.n + " of 14 · done" : "Step " + step.n + " of 14"));
+    var title = el("h1", {}, step.title);
+    title.style.marginTop = "12px";
+    h.appendChild(title);
+    h.appendChild(el("p", { class: "sub" }, step.lede));
+    if (step.why) h.appendChild(el("p", { class: "why" }, step.why));
+    var bar = el("div", { class: "bar" });
+    bar.appendChild(el("i", { style: "width:" + Math.round((doneN / 14) * 100) + "%" }));
+    h.appendChild(bar);
+    stage.appendChild(h);
+
+    var card = el("div", { class: "card" });
+    if (step.table) card.appendChild(renderTable(step, v));
+    else card.appendChild(renderFields(step, v));
+    if (step.key === "chart") card.appendChild(renderChartSummary());
+    card.appendChild(el("div", { class: "foot" }, step.foot));
+    stage.appendChild(card);
+
+    var err = el("div", { class: "err" });
+    err.style.display = "none";
+    stage.appendChild(err);
+
+    var row = el("div", { class: "row" });
+    var save = el("button", { class: "go", type: "button" },
+      state.done[step.key] ? "Saved · continue" : (step.n === 14 ? "Open the register and start" : "Save and continue"));
+    save.addEventListener("click", function () { commit(step, v, save, err); });
+    row.appendChild(save);
+
+    if (current > 0) {
+      var back = el("button", { class: "ghost", type: "button" }, "Back");
+      back.addEventListener("click", function () { current--; render(); });
+      row.appendChild(back);
+    }
+    if (state.done[step.key] && current < STEPS.length - 1) {
+      var skip = el("button", { class: "ghost", type: "button" }, "Skip — already done");
+      skip.addEventListener("click", function () { current++; render(); });
+      row.appendChild(skip);
+    }
+    var where = el("span", { class: "hint" }, "Editable afterwards: " + step.edit);
+    where.style.marginLeft = "auto";
+    row.appendChild(where);
+    stage.appendChild(row);
+    window.scrollTo(0, 0);
+  }
+
+  function renderFields(step, v) {
+    var grid = el("div", { class: "grid" });
+    (fieldsOf(step) || []).forEach(function (f) {
+      var wrap = el("div", { class: "f" + (f.full ? " full" : "") });
+      var lab = el("label", {}, f.label);
+      if (f.req) lab.appendChild(el("span", { class: "req" }, "*"));
+      wrap.appendChild(lab);
+      var input;
+      if (f.type === "select") {
+        input = el("select");
+        (f.options || []).forEach(function (o) {
+          var opt = el("option", { value: o[0] }, o[1]);
+          input.appendChild(opt);
+        });
+        input.value = v[f.k] || (f.options[0] || [])[0] || "";
+      } else {
+        input = el("input", { type: f.type || "text" });
+        if (f.mono) input.className = "mono";
+        if (f.ph) input.placeholder = f.ph;
+        if (f.ro) { input.readOnly = true; input.style.opacity = ".6"; }
+        Object.keys(f.attrs || {}).forEach(function (a) { input.setAttribute(a, f.attrs[a]); });
+        input.value = v[f.k] === undefined ? "" : v[f.k];
+      }
+      input.addEventListener("input", function () { v[f.k] = input.value; });
+      input.addEventListener("change", function () { v[f.k] = input.value; });
+      wrap.appendChild(input);
+      if (f.hint) wrap.appendChild(el("div", { class: "hint" }, f.hint));
+      grid.appendChild(wrap);
+    });
+    return grid;
+  }
+
+  function renderTable(step, v) {
+    var key = step.table.rows;
+    var rows = v[key] || (v[key] = []);
+    var box = el("div");
+    var scroll = el("div", { class: "scroll" });
+    var t = el("table");
+    var thead = el("thead"), tr = el("tr");
+    step.table.cols.forEach(function (c) { tr.appendChild(el("th", {}, c.label)); });
+    if (step.table.add) tr.appendChild(el("th", {}, ""));
+    thead.appendChild(tr); t.appendChild(thead);
+    var tb = el("tbody");
+    rows.forEach(function (r, i) {
+      var line = el("tr");
+      step.table.cols.forEach(function (c) {
+        var td = el("td");
+        td.style.minWidth = c.w === "2.4fr" ? "300px" : "110px";
+        if (c.type === "recipe") td.appendChild(recipeCell(r));
+        else if (c.type === "select") {
+          var sel = el("select");
+          optionsFor(c).forEach(function (o) { sel.appendChild(el("option", { value: o[0] }, o[1])); });
+          sel.value = r[c.k] || "";
+          sel.addEventListener("change", function () { r[c.k] = sel.value; });
+          td.appendChild(sel);
+        } else {
+          var inp = el("input", { type: c.type || "text" });
+          if (c.mono) inp.className = "mono";
+          if (c.ro) { inp.readOnly = true; inp.style.opacity = ".6"; }
+          Object.keys(c.attrs || {}).forEach(function (a) { inp.setAttribute(a, c.attrs[a]); });
+          inp.value = r[c.k] === undefined ? "" : r[c.k];
+          inp.addEventListener("input", function () { r[c.k] = inp.value; });
+          td.appendChild(inp);
+        }
+        line.appendChild(td);
+      });
+      if (step.table.add) {
+        var td2 = el("td");
+        td2.style.minWidth = "0";
+        var del = el("button", { class: "mini", type: "button", title: "Remove this row" }, "✕");
+        del.addEventListener("click", function () { rows.splice(i, 1); render(); });
+        td2.appendChild(del);
+        line.appendChild(td2);
+      }
+      tb.appendChild(line);
+    });
+    t.appendChild(tb);
+    scroll.appendChild(t);
+    box.appendChild(scroll);
+    if (step.table.add) {
+      var add = el("button", { class: "mini", type: "button" }, "+ Add a row");
+      add.style.marginTop = "12px";
+      add.addEventListener("click", function () { rows.push(blank(step)); render(); });
+      box.appendChild(add);
+    }
+    if (!rows.length) {
+      box.appendChild(el("div", { class: "hint", style: "padding:14px 4px" },
+        "Nothing here yet — add a row, or carry on and add them from the app later."));
+    }
+    return box;
+  }
+
+  function optionsFor(c) {
+    if (c.options === "locations") {
+      var locs = (state.vals.locations && state.vals.locations.locations) || [];
+      var out = locs.filter(function (l) { return l.name; })
+        .map(function (l) { return [slug(l.name), l.name]; });
+      return out.length ? out : [["", "—"]];
+    }
+    return c.options || [];
+  }
+
+  // A recipe on one line: what goes into the dish, and how much.
+  function recipeCell(row) {
+    var box = el("div");
+    row.recipe = row.recipe || [];
+    var items = (state.vals.items && state.vals.items.items) || [];
+    var choices = items.filter(function (i) { return i.name; });
+    if (!choices.length) {
+      return el("div", { class: "hint" }, "Add ingredients in step 9 first");
+    }
+    row.recipe.forEach(function (line, i) {
+      var l = el("div");
+      l.style.cssText = "display:flex;gap:6px;align-items:center;margin-bottom:5px";
+      var sel = el("select");
+      sel.style.flex = "1 1 auto";
+      choices.forEach(function (c) { sel.appendChild(el("option", { value: slug(c.name) }, c.name)); });
+      sel.value = line.ing || slug(choices[0].name);
+      line.ing = sel.value;
+      sel.addEventListener("change", function () { line.ing = sel.value; });
+      var qty = el("input", { type: "number", class: "mono" });
+      qty.style.cssText = "width:88px;flex:0 0 auto";
+      qty.placeholder = "qty";
+      qty.value = line.qty || "";
+      qty.addEventListener("input", function () { line.qty = qty.value; });
+      var unit = el("span", { class: "hint" },
+        (choices.filter(function (c) { return slug(c.name) === line.ing; })[0] || {}).base || "");
+      var del = el("button", { class: "mini", type: "button" }, "✕");
+      del.addEventListener("click", function () { row.recipe.splice(i, 1); render(); });
+      l.appendChild(sel); l.appendChild(qty); l.appendChild(unit); l.appendChild(del);
+      box.appendChild(l);
+    });
+    var add = el("button", { class: "mini", type: "button" }, "+ ingredient");
+    add.addEventListener("click", function () {
+      row.recipe.push({ ing: slug(choices[0].name), qty: "" });
+      render();
+    });
+    box.appendChild(add);
+    return box;
+  }
+
+  function renderChartSummary() {
+    var box = el("div");
+    box.style.marginTop = "18px";
+    var rows = [
+      ["Accounts shipped", "35"],
+      ["Owned by the till, refused to a manual journal", "9"],
+      ["Expense accounts on the P&L", "17"],
+      ["Document series created", "7"]
+    ];
+    rows.forEach(function (r) {
+      var kv = el("div", { class: "kv" });
+      kv.appendChild(el("b", {}, r[0]));
+      kv.appendChild(el("span", {}, r[1]));
+      box.appendChild(kv);
+    });
+    return box;
+  }
+
+  /* ── save ─────────────────────────────────────────────────────────────── */
+  function commit(step, v, button, errEl) {
+    errEl.style.display = "none";
+    var missing = (fieldsOf(step) || []).filter(function (f) {
+      return f.req && !String(v[f.k] || "").trim();
+    });
+    if (missing.length) {
+      errEl.textContent = missing.length === 1
+        ? missing[0].label + " is required."
+        : "These are required: " + missing.map(function (f) { return f.label; }).join(", ") + ".";
+      errEl.style.display = "block";
+      return;
+    }
+    if (step.validate) {
+      var msg = step.validate(v);
+      if (msg) { errEl.textContent = msg; errEl.style.display = "block"; return; }
+    }
+
+    // Already done and unchanged: move on rather than writing twice.
+    if (state.done[step.key] && !step.rewritable) {
+      advance();
+      return;
+    }
+
+    button.disabled = true;
+    var was = button.textContent;
+    button.textContent = "Saving…";
+    Promise.resolve(step.write(v)).then(function () {
+      return refresh();
+    }).then(function () {
+      button.disabled = false;
+      button.textContent = was;
+      toast(step.label + " saved");
+      advance();
+    }).catch(function (e) {
+      button.disabled = false;
+      button.textContent = was;
+      errEl.textContent = e.message;
+      errEl.style.display = "block";
+      toast(e.message, "err");
+    });
+  }
+
+  function advance() {
+    if (current < STEPS.length - 1) { current++; render(); return; }
+    // Fourteen of fourteen. Stamp it and hand over to the floor.
+    api("POST", "/api/onboarding/finish", {}).catch(function () {}).then(function () {
+      toast("Set up — opening the floor");
+      setTimeout(function () { location.href = "/"; }, 700);
+    });
+  }
+
+  /* ── boot ─────────────────────────────────────────────────────────────── */
+  refresh().then(function () {
+    // Land on the first step that is not done, not on step 1 every time.
+    var i = STEPS.findIndex(function (s) { return !state.done[s.key]; });
+    current = i < 0 ? 0 : i;
+    if (i < 0) { location.href = "/"; return; }
+    render();
+  }).catch(function (e) {
+    document.getElementById("stage").innerHTML = "";
+    var stage = document.getElementById("stage");
+    stage.appendChild(el("h1", {}, "The server is not answering"));
+    stage.appendChild(el("p", { class: "sub" },
+      "Set-up needs the database to be reachable. " + e.message));
+  });
+
+  /* One element helper, so the markup above reads as markup. Text is set with
+     textContent, never innerHTML: a company name is user input and belongs in
+     a text node. */
+  function el(tag, attrs, text) {
+    var n = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+})();
+</script>
+</body>
+</html>

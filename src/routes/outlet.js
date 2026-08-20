@@ -2,7 +2,7 @@
 const express = require('express');
 const { withOutletRead } = require('../db');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
-const { buildBootstrap, buildState } = require('../bootstrap');
+const { buildBootstrap, buildState, all } = require('../bootstrap');
 
 const r = express.Router({ mergeParams: true });
 
@@ -35,30 +35,39 @@ r.get('/snapshot', sameOutlet, async function (req, res, next) {
 });
 
 async function snapshot(c, outletId) {
-  const [outlet, tax, items, cats, tickets, stages, banners, promos] = await Promise.all([
-    c.query('SELECT id, name, currency, service_pct, tax_code, slug FROM chain.outlet'
-      + ' WHERE id = $1', [outletId]),
-    c.query('SELECT code, rate FROM chain.tax_version WHERE outlet_id = $1'
+  const q = await all(c, {
+    outlet: ['SELECT id, name, currency, service_pct, tax_code, slug FROM chain.outlet'
+      + ' WHERE id = $1', [outletId]],
+    tax: ['SELECT code, rate FROM chain.tax_version WHERE outlet_id = $1'
       + ' AND effective_from <= current_date'
       + ' AND (effective_to IS NULL OR effective_to >= current_date)'
-      + ' ORDER BY effective_from DESC LIMIT 1', [outletId]),
-    c.query('SELECT id, name, category_id, price, description, image, allergens,'
-      + ' diets, off_menu, sold_out_reason FROM item WHERE active ORDER BY pos, name'),
-    c.query('SELECT id, name, pos FROM menu_category WHERE active ORDER BY pos, name'),
-    c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
+      + ' ORDER BY effective_from DESC LIMIT 1', [outletId]],
+    items: ['SELECT id, name, category_id, price, description, image, allergens,'
+      + ' diets, off_menu, sold_out_reason FROM item WHERE active ORDER BY pos, name'],
+    cats: ['SELECT id, name, pos FROM menu_category WHERE active ORDER BY pos, name'],
+    tickets: ["SELECT t.id, t.table_no, t.split, t.covers, t.status,"
       + " coalesce(json_agg(json_build_object('name', l.name, 'qty', l.qty,"
       + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL)"
       + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
       + ' FROM ticket t LEFT JOIN ticket_line l'
       + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
-      + " WHERE t.status = 'open' GROUP BY t.id"),
-    c.query('SELECT ticket_id, station, stage, target_mins, fired_at FROM kds_ticket'
-      + ' WHERE served_at IS NULL'),
-    c.query('SELECT id, slot, title, body, image, link FROM banner WHERE active'),
-    c.query('SELECT id, name, kind, value, code, max_pct FROM promo WHERE active'
+      + " WHERE t.status = 'open' GROUP BY t.id"],
+    stages: ['SELECT ticket_id, station, stage, target_mins, fired_at FROM kds_ticket'
+      + ' WHERE served_at IS NULL'],
+    banners: ['SELECT id, slot, title, body, image, link FROM banner WHERE active'],
+    promos: ['SELECT id, name, kind, value, code, max_pct FROM promo WHERE active'
       + ' AND (starts_on IS NULL OR starts_on <= current_date)'
-      + ' AND (ends_on IS NULL OR ends_on >= current_date)')
-  ]);
+      + ' AND (ends_on IS NULL OR ends_on >= current_date)'],
+  });
+  const outlet = q.outlet;
+  const tax = q.tax;
+  const items = q.items;
+  const cats = q.cats;
+  const tickets = q.tickets;
+  const stages = q.stages;
+  const banners = q.banners;
+  const promos = q.promos;
+
   return {
     v: 4, at: Date.now(),
     outlet: outlet.rows[0] || null,
@@ -91,15 +100,18 @@ r.get('/sales', sameOutlet, atLeast('till'), async function (req, res, next) {
   const offset = Math.max(Number(req.query.offset || 0), 0);
   try {
     const out = await withOutletRead(req.ctx, async function (c) {
-      const [rows, count] = await Promise.all([
-        c.query('SELECT id, receipt_no, at, business_date, channel, covers, net,'
+      const q = await all(c, {
+        rows: ['SELECT id, receipt_no, at, business_date, channel, covers, net,'
           + ' service, tax, rounding, total, server_name, voided_at FROM sale'
           + ' WHERE ($1::date IS NULL OR business_date = $1)'
           + ' ORDER BY at DESC LIMIT $2 OFFSET $3',
-        [req.query.date || null, limit, offset]),
-        c.query('SELECT count(*)::int AS n FROM sale'
-          + ' WHERE ($1::date IS NULL OR business_date = $1)', [req.query.date || null])
-      ]);
+        [req.query.date || null, limit, offset]],
+        count: ['SELECT count(*)::int AS n FROM sale'
+          + ' WHERE ($1::date IS NULL OR business_date = $1)', [req.query.date || null]],
+      });
+      const rows = q.rows;
+      const count = q.count;
+
       return { sales: rows.rows, total: count.rows[0].n, limit, offset };
     });
     res.json(out);

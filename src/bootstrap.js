@@ -19,47 +19,87 @@ const num = (v) => (v == null ? 0 : Number(v));
 const iso = (d) => (d ? new Date(d).toISOString() : null);
 const ms = (d) => (d ? new Date(d).getTime() : 0);
 
+/* One client, one query at a time.
+
+   Promise.all over a single pg client looks concurrent and is not: the driver
+   pipelines them onto the same connection and warns that it will stop doing so
+   in pg 9. Naming the queries and running them in order costs nothing here —
+   the round trips are to a socket on the same machine — and it makes the
+   payload readable as a list of what it contains. */
+async function all(c, spec) {
+  const out = {};
+  for (const key of Object.keys(spec)) {
+    const [sql, params] = Array.isArray(spec[key]) ? spec[key] : [spec[key], []];
+    out[key] = await c.query(sql, params);
+  }
+  return out;
+}
+
 /* ── the whole payload, one round trip ─────────────────────────────────── */
 async function buildBootstrap(ctx) {
   return withOutletRead(ctx, async function (c) {
-    const [
-      company, outlets, taxVers, staff, devices, chainSettings, suppliers, members,
-      sections, categories, items, recipeLines, modifiers, modGroups, itemMods,
-      promos, banners, cats, ingredients, units, locations, accounts,
-      employees, opex, assets, outletSettings, zones, tables
-    ] = await Promise.all([
-      c.query('SELECT * FROM chain.company WHERE id = 1'),
-      c.query('SELECT * FROM chain.outlet ORDER BY id'),
-      c.query('SELECT * FROM chain.tax_version ORDER BY code, effective_from'),
-      c.query('SELECT id, name, rank, role_key, outlet_id, outlets, active,'
-        + ' locked_until, perm_override FROM chain.staff ORDER BY rank DESC, name'),
-      c.query('SELECT id, label, kind, station, paired_at, last_seen, revoked'
-        + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]),
-      c.query('SELECT key, value FROM chain.setting'),
-      c.query('SELECT * FROM chain.supplier WHERE active ORDER BY name'),
-      c.query('SELECT id, phone, name, email, home_outlet, points, tier,'
-        + ' credit_limit, joined_at FROM chain.member ORDER BY joined_at DESC LIMIT 500'),
-      c.query('SELECT * FROM menu_section WHERE active ORDER BY pos, name'),
-      c.query('SELECT * FROM menu_category WHERE active ORDER BY pos, name'),
-      c.query('SELECT * FROM item ORDER BY pos, name'),
-      c.query('SELECT * FROM recipe_line ORDER BY item_id, id'),
-      c.query('SELECT * FROM modifier ORDER BY pos, name'),
-      c.query('SELECT * FROM modifier_group ORDER BY name'),
-      c.query('SELECT * FROM item_modifier'),
-      c.query('SELECT * FROM promo ORDER BY name'),
-      c.query('SELECT * FROM banner ORDER BY slot'),
-      c.query('SELECT DISTINCT category FROM ingredient WHERE category IS NOT NULL ORDER BY category'),
-      c.query('SELECT * FROM ingredient ORDER BY name'),
-      c.query('SELECT * FROM ingredient_unit ORDER BY ingredient_id, name'),
-      c.query('SELECT * FROM location WHERE active ORDER BY name'),
-      c.query('SELECT * FROM account ORDER BY pos'),
-      c.query('SELECT * FROM employee WHERE active ORDER BY name'),
-      c.query('SELECT * FROM opex WHERE active ORDER BY category'),
-      c.query('SELECT * FROM asset ORDER BY bought_on DESC'),
-      c.query('SELECT key, value FROM setting'),
-      c.query('SELECT * FROM zone WHERE active ORDER BY pos, name'),
-      c.query('SELECT * FROM table_def WHERE active ORDER BY pos, label')
-    ]);
+    const q = await all(c, {
+      company: ['SELECT * FROM chain.company WHERE id = 1'],
+      outlets: ['SELECT * FROM chain.outlet ORDER BY id'],
+      taxVers: ['SELECT * FROM chain.tax_version ORDER BY code, effective_from'],
+      staff: ['SELECT id, name, rank, role_key, outlet_id, outlets, active,'
+        + ' locked_until, perm_override FROM chain.staff ORDER BY rank DESC, name'],
+      devices: ['SELECT id, label, kind, station, paired_at, last_seen, revoked'
+        + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]],
+      chainSettings: ['SELECT key, value FROM chain.setting'],
+      suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
+      members: ['SELECT id, phone, name, email, home_outlet, points, tier,'
+        + ' credit_limit, joined_at FROM chain.member ORDER BY joined_at DESC LIMIT 500'],
+      sections: ['SELECT * FROM menu_section WHERE active ORDER BY pos, name'],
+      categories: ['SELECT * FROM menu_category WHERE active ORDER BY pos, name'],
+      items: ['SELECT * FROM item ORDER BY pos, name'],
+      recipeLines: ['SELECT * FROM recipe_line ORDER BY item_id, id'],
+      modifiers: ['SELECT * FROM modifier ORDER BY pos, name'],
+      modGroups: ['SELECT * FROM modifier_group ORDER BY name'],
+      itemMods: ['SELECT * FROM item_modifier'],
+      promos: ['SELECT * FROM promo ORDER BY name'],
+      banners: ['SELECT * FROM banner ORDER BY slot'],
+      cats: ['SELECT DISTINCT category FROM ingredient WHERE category IS NOT NULL ORDER BY category'],
+      ingredients: ['SELECT * FROM ingredient ORDER BY name'],
+      units: ['SELECT * FROM ingredient_unit ORDER BY ingredient_id, name'],
+      locations: ['SELECT * FROM location WHERE active ORDER BY name'],
+      accounts: ['SELECT * FROM account ORDER BY pos'],
+      employees: ['SELECT * FROM employee WHERE active ORDER BY name'],
+      opex: ['SELECT * FROM opex WHERE active ORDER BY category'],
+      assets: ['SELECT * FROM asset ORDER BY bought_on DESC'],
+      outletSettings: ['SELECT key, value FROM setting'],
+      zones: ['SELECT * FROM zone WHERE active ORDER BY pos, name'],
+      tables: ['SELECT * FROM table_def WHERE active ORDER BY pos, label'],
+    });
+    const company = q.company;
+    const outlets = q.outlets;
+    const taxVers = q.taxVers;
+    const staff = q.staff;
+    const devices = q.devices;
+    const chainSettings = q.chainSettings;
+    const suppliers = q.suppliers;
+    const members = q.members;
+    const sections = q.sections;
+    const categories = q.categories;
+    const items = q.items;
+    const recipeLines = q.recipeLines;
+    const modifiers = q.modifiers;
+    const modGroups = q.modGroups;
+    const itemMods = q.itemMods;
+    const promos = q.promos;
+    const banners = q.banners;
+    const cats = q.cats;
+    const ingredients = q.ingredients;
+    const units = q.units;
+    const locations = q.locations;
+    const accounts = q.accounts;
+    const employees = q.employees;
+    const opex = q.opex;
+    const assets = q.assets;
+    const outletSettings = q.outletSettings;
+    const zones = q.zones;
+    const tables = q.tables;
+
 
     const setting = kv(chainSettings.rows);
     const oset = kv(outletSettings.rows);
@@ -186,64 +226,93 @@ async function buildState(ctx, opts) {
   const o = opts || {};
   const days = Number(o.days || 60);
   return withOutletRead(ctx, async function (c) {
-    const [
-      tickets, lines, sales, saleLines, payments, credits, drawer, counts,
-      countLines, moves, batches, deliveries, grnLines, invoices, indents,
-      dispatches, kds, guestOrders, guestReqs, prints, reservations, periods,
-      bankLines, bankOpen, acq, docs, clock, payroll, maint, opexPaid,
-      priceOv, journals, journalLines, ops
-    ] = await Promise.all([
-      c.query("SELECT * FROM ticket WHERE status IN ('open','held') ORDER BY opened_at"),
-      c.query('SELECT l.* FROM ticket_line l JOIN ticket t ON t.id = l.ticket_id'
-        + " WHERE t.status IN ('open','held') ORDER BY l.at"),
-      c.query('SELECT * FROM sale WHERE at > now() - ($1 || \' days\')::interval'
-        + ' ORDER BY at DESC LIMIT 2000', [String(days)]),
-      c.query('SELECT sl.* FROM sale_line sl JOIN sale s ON s.id = sl.sale_id'
-        + ' WHERE s.at > now() - ($1 || \' days\')::interval', [String(days)]),
-      c.query('SELECT p.* FROM payment p JOIN sale s ON s.id = p.sale_id'
-        + ' WHERE s.at > now() - ($1 || \' days\')::interval', [String(days)]),
-      c.query('SELECT * FROM credit_note ORDER BY at DESC LIMIT 500'),
-      c.query('SELECT * FROM drawer_session ORDER BY opened_at DESC LIMIT 30'),
-      c.query('SELECT * FROM stock_count ORDER BY opened_at DESC LIMIT 30'),
-      c.query('SELECT cl.* FROM count_line cl JOIN stock_count sc ON sc.id = cl.count_id'),
-      c.query('SELECT * FROM stock_move ORDER BY at DESC LIMIT 1500'),
-      c.query('SELECT * FROM batch ORDER BY use_by NULLS LAST LIMIT 500'),
-      c.query('SELECT * FROM delivery ORDER BY at DESC LIMIT 300'),
-      c.query('SELECT * FROM grn_line'),
-      c.query('SELECT * FROM vendor_invoice ORDER BY invoice_date DESC LIMIT 300'),
-      c.query('SELECT i.*, coalesce(json_agg(json_build_object('
+    const q = await all(c, {
+      tickets: ["SELECT * FROM ticket WHERE status IN ('open','held') ORDER BY opened_at"],
+      lines: ['SELECT l.* FROM ticket_line l JOIN ticket t ON t.id = l.ticket_id'
+        + " WHERE t.status IN ('open','held') ORDER BY l.at"],
+      sales: ['SELECT * FROM sale WHERE at > now() - ($1 || \' days\')::interval'
+        + ' ORDER BY at DESC LIMIT 2000', [String(days)]],
+      saleLines: ['SELECT sl.* FROM sale_line sl JOIN sale s ON s.id = sl.sale_id'
+        + ' WHERE s.at > now() - ($1 || \' days\')::interval', [String(days)]],
+      payments: ['SELECT p.* FROM payment p JOIN sale s ON s.id = p.sale_id'
+        + ' WHERE s.at > now() - ($1 || \' days\')::interval', [String(days)]],
+      credits: ['SELECT * FROM credit_note ORDER BY at DESC LIMIT 500'],
+      drawer: ['SELECT * FROM drawer_session ORDER BY opened_at DESC LIMIT 30'],
+      counts: ['SELECT * FROM stock_count ORDER BY opened_at DESC LIMIT 30'],
+      countLines: ['SELECT cl.* FROM count_line cl JOIN stock_count sc ON sc.id = cl.count_id'],
+      moves: ['SELECT * FROM stock_move ORDER BY at DESC LIMIT 1500'],
+      batches: ['SELECT * FROM batch ORDER BY use_by NULLS LAST LIMIT 500'],
+      deliveries: ['SELECT * FROM delivery ORDER BY at DESC LIMIT 300'],
+      grnLines: ['SELECT * FROM grn_line'],
+      invoices: ['SELECT * FROM vendor_invoice ORDER BY invoice_date DESC LIMIT 300'],
+      indents: ['SELECT i.*, coalesce(json_agg(json_build_object('
         + "'ing', il.ingredient_id, 'qty', il.qty, 'sent', il.sent_qty)"
         + ") FILTER (WHERE il.id IS NOT NULL), '[]') AS lines"
         + ' FROM indent i LEFT JOIN indent_line il ON il.indent_id = i.id'
-        + ' GROUP BY i.id ORDER BY i.at DESC LIMIT 200'),
-      c.query('SELECT d.*, coalesce(json_agg(json_build_object('
+        + ' GROUP BY i.id ORDER BY i.at DESC LIMIT 200'],
+      dispatches: ['SELECT d.*, coalesce(json_agg(json_build_object('
         + "'ing', dl.ingredient_id, 'qty', dl.qty, 'cost', dl.unit_cost)"
         + ") FILTER (WHERE dl.id IS NOT NULL), '[]') AS lines"
         + ' FROM dispatch d LEFT JOIN dispatch_line dl ON dl.dispatch_id = d.id'
-        + ' GROUP BY d.id ORDER BY d.at DESC LIMIT 200'),
-      c.query('SELECT * FROM kds_ticket WHERE served_at IS NULL ORDER BY fired_at'),
-      c.query('SELECT * FROM guest_order WHERE accepted_at IS NULL'
-        + ' AND rejected_reason IS NULL ORDER BY at'),
-      c.query('SELECT * FROM guest_request WHERE ack_at IS NULL ORDER BY at'),
-      c.query('SELECT * FROM print_job ORDER BY at DESC LIMIT 100'),
-      c.query('SELECT * FROM reservation WHERE at > now() - interval \'2 days\' ORDER BY at'),
-      c.query('SELECT * FROM period ORDER BY id DESC LIMIT 36'),
-      c.query('SELECT * FROM bank_line ORDER BY value_date DESC LIMIT 500'),
-      c.query('SELECT * FROM bank_opening WHERE id = 1'),
-      c.query('SELECT * FROM settlement_batch ORDER BY value_date DESC LIMIT 200'),
-      c.query('SELECT * FROM document ORDER BY at DESC LIMIT 500'),
-      c.query('SELECT * FROM clock_entry ORDER BY in_at DESC LIMIT 500'),
-      c.query('SELECT * FROM payroll_run ORDER BY id DESC LIMIT 24'),
-      c.query('SELECT * FROM maintenance_log ORDER BY at DESC LIMIT 200'),
-      c.query('SELECT * FROM opex_payment ORDER BY paid_on DESC LIMIT 500'),
-      c.query('SELECT DISTINCT ON (item_id) * FROM price_override'
-        + ' WHERE until IS NULL OR until > now() ORDER BY item_id, at DESC'),
-      c.query('SELECT * FROM journal ORDER BY entry_date DESC LIMIT 800'),
-      c.query('SELECT jl.*, j.entry_date FROM journal_line jl'
-        + ' JOIN journal j ON j.id = jl.journal_id ORDER BY j.entry_date DESC LIMIT 4000'),
-      c.query('SELECT op_id, kind, label, entity, applied_at, lamport FROM op_log'
-        + ' ORDER BY applied_at DESC LIMIT 200')
-    ]);
+        + ' GROUP BY d.id ORDER BY d.at DESC LIMIT 200'],
+      kds: ['SELECT * FROM kds_ticket WHERE served_at IS NULL ORDER BY fired_at'],
+      guestOrders: ['SELECT * FROM guest_order WHERE accepted_at IS NULL'
+        + ' AND rejected_reason IS NULL ORDER BY at'],
+      guestReqs: ['SELECT * FROM guest_request WHERE ack_at IS NULL ORDER BY at'],
+      prints: ['SELECT * FROM print_job ORDER BY at DESC LIMIT 100'],
+      reservations: ['SELECT * FROM reservation WHERE at > now() - interval \'2 days\' ORDER BY at'],
+      periods: ['SELECT * FROM period ORDER BY id DESC LIMIT 36'],
+      bankLines: ['SELECT * FROM bank_line ORDER BY value_date DESC LIMIT 500'],
+      bankOpen: ['SELECT * FROM bank_opening WHERE id = 1'],
+      acq: ['SELECT * FROM settlement_batch ORDER BY value_date DESC LIMIT 200'],
+      docs: ['SELECT * FROM document ORDER BY at DESC LIMIT 500'],
+      clock: ['SELECT * FROM clock_entry ORDER BY in_at DESC LIMIT 500'],
+      payroll: ['SELECT * FROM payroll_run ORDER BY id DESC LIMIT 24'],
+      maint: ['SELECT * FROM maintenance_log ORDER BY at DESC LIMIT 200'],
+      opexPaid: ['SELECT * FROM opex_payment ORDER BY paid_on DESC LIMIT 500'],
+      priceOv: ['SELECT DISTINCT ON (item_id) * FROM price_override'
+        + ' WHERE until IS NULL OR until > now() ORDER BY item_id, at DESC'],
+      journals: ['SELECT * FROM journal ORDER BY entry_date DESC LIMIT 800'],
+      journalLines: ['SELECT jl.*, j.entry_date FROM journal_line jl'
+        + ' JOIN journal j ON j.id = jl.journal_id ORDER BY j.entry_date DESC LIMIT 4000'],
+      ops: ['SELECT op_id, kind, label, entity, applied_at, lamport FROM op_log'
+        + ' ORDER BY applied_at DESC LIMIT 200'],
+    });
+    const tickets = q.tickets;
+    const lines = q.lines;
+    const sales = q.sales;
+    const saleLines = q.saleLines;
+    const payments = q.payments;
+    const credits = q.credits;
+    const drawer = q.drawer;
+    const counts = q.counts;
+    const countLines = q.countLines;
+    const moves = q.moves;
+    const batches = q.batches;
+    const deliveries = q.deliveries;
+    const grnLines = q.grnLines;
+    const invoices = q.invoices;
+    const indents = q.indents;
+    const dispatches = q.dispatches;
+    const kds = q.kds;
+    const guestOrders = q.guestOrders;
+    const guestReqs = q.guestReqs;
+    const prints = q.prints;
+    const reservations = q.reservations;
+    const periods = q.periods;
+    const bankLines = q.bankLines;
+    const bankOpen = q.bankOpen;
+    const acq = q.acq;
+    const docs = q.docs;
+    const clock = q.clock;
+    const payroll = q.payroll;
+    const maint = q.maint;
+    const opexPaid = q.opexPaid;
+    const priceOv = q.priceOv;
+    const journals = q.journals;
+    const journalLines = q.journalLines;
+    const ops = q.ops;
+
 
     const linesByTicket = group(lines.rows, 'ticket_id');
     // Which table a closed sale was rung on. The ticket is closed, so it is not
@@ -781,4 +850,4 @@ const DIETS = [
   { k: 'nf', name: 'Nut free', allergen: 'nuts' }
 ];
 
-module.exports = { buildBootstrap, buildState, MODULES, rolesOf, ALLERGENS, DIETS };
+module.exports = { buildBootstrap, buildState, all, MODULES, rolesOf, ALLERGENS, DIETS };

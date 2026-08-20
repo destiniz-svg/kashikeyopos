@@ -83,10 +83,13 @@
 
     root.KPOS_INSTALL = install;
 
-    // An empty install lands on onboarding, not on the floor.
+    // An empty install lands on onboarding, not on the floor. A terminal that
+    // opens on a floor with no tables, no menu and no register teaches nothing
+    // except that the app is broken.
     if (install && !install.ready) {
       root.KPOS_ONBOARDING = true;
       try { root.dispatchEvent(new CustomEvent("kpos-onboarding", { detail: install })); } catch (e) {}
+      if (location.pathname !== "/onboarding") location.replace("/onboarding");
       return;
     }
 
@@ -128,7 +131,8 @@
     root.KPOS.OUTLETS = outlets.map(function (o) {
       return {
         id: o.id, code: o.code, name: o.name, type: "restaurant", loc: "restaurant",
-        parent: 0, region: "", tax: o.tax_code, rate: 0, sc: Number(o.service_pct) || 0,
+        parent: 0, region: "", tax: o.tax_code, rate: Number(o.rate) || 0,
+        sc: Number(o.service_pct) || 0,
         addr: "", mgr: "", pos: true, seats: 0, tables: 0,
         currency: o.currency, active: o.active
       };

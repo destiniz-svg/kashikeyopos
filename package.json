@@ -11,7 +11,7 @@
     "migrate": "node src/scripts/migrate.js",
     "provision:outlet": "node src/scripts/provision-outlet.js",
     "leak-test": "node src/scripts/leak-test.js",
-    "test": "node --test test/"
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "express": "^4.21.2",

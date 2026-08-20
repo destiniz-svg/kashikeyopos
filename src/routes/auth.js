@@ -20,8 +20,16 @@ r.get('/install', async function (req, res, next) {
     const st = await owner().query('SELECT * FROM chain.install_state()');
     const s = st.rows[0] || { outlets: 0, staff: 0, company: 0 };
     const outlets = Number(s.outlets) > 0
-      ? await owner().query('SELECT id, code, name, tax_code, service_pct, currency,'
-        + ' active FROM chain.outlet WHERE active ORDER BY id').then((q) => q.rows)
+      ? await owner().query(
+        // The rate in force today, resolved here rather than defaulted on the
+        // client: a lock screen that says "GGST 0%" at an outlet charging 8%
+        // is the first thing a manager will not trust.
+        'SELECT o.id, o.code, o.name, o.tax_code, o.service_pct, o.currency, o.active,'
+        + ' coalesce((SELECT tv.rate FROM chain.tax_version tv'
+        + '   WHERE tv.outlet_id = o.id AND tv.effective_from <= current_date'
+        + '     AND (tv.effective_to IS NULL OR tv.effective_to >= current_date)'
+        + '   ORDER BY tv.effective_from DESC LIMIT 1), 0) AS rate'
+        + ' FROM chain.outlet o WHERE o.active ORDER BY o.id').then((q) => q.rows)
       : [];
     // The trading name and the brand mark are on the shopfront: a lock screen
     // that cannot name the business it belongs to is a lock screen nobody

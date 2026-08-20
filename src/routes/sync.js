@@ -3,6 +3,7 @@ const express = require('express');
 const { withOutlet, withOutletRead } = require('../db');
 const { sameOutlet, atLeast } = require('../auth');
 const { applyOp } = require('../apply');
+const { all } = require('../bootstrap');
 
 const r = express.Router({ mergeParams: true });
 
@@ -19,10 +20,20 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
   try {
     const results = await withOutlet(req.ctx, async function (c) {
       const out = [];
+      const inThisBatch = new Set();
       let n = 0;
       for (const op of ops.slice().sort((a, b) => (a.lamport || 0) - (b.lamport || 0))) {
         if (!op || !op.opId) { out.push({ error: 'opId required' }); continue; }
         if (!op.kind) { out.push({ opId: op.opId, error: 'kind required' }); continue; }
+
+        // The same op can arrive twice in ONE push — an outbox drained by two
+        // overlapping flushes, a retry that raced its own response. Idempotent
+        // means idempotent, not "idempotent across requests".
+        if (inThisBatch.has(op.opId)) {
+          out.push({ opId: op.opId, replay: true });
+          continue;
+        }
+        inThisBatch.add(op.opId);
 
         const seen = await c.query('SELECT result FROM op_log WHERE op_id = $1', [op.opId]);
         if (seen.rows.length) {
@@ -37,18 +48,29 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
         let result;
         try {
           result = await applyOp(c, op, req.ctx);
+          // Inside the savepoint, so a duplicate that slipped past both checks
+          // rolls back its own work rather than taking the batch with it. A
+          // conflict here IS a replay — say so, and keep the stored result.
+          const ins = await c.query(
+            'INSERT INTO op_log (op_id, kind, label, entity, payload,'
+            + ' client_at, lamport, device_id, by_staff, result)'
+            + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)'
+            + ' ON CONFLICT (op_id) DO NOTHING RETURNING op_id',
+            [op.opId, op.kind, op.label || null, op.entity || null,
+              JSON.stringify(op.payload || {}),
+              new Date(op.at || Date.now()), Number(op.lamport) || 0,
+              req.ctx.deviceId, req.ctx.actor, JSON.stringify(result || {})]);
+          if (!ins.rows.length) {
+            await c.query('ROLLBACK TO SAVEPOINT ' + sp);
+            const prev = await c.query('SELECT result FROM op_log WHERE op_id = $1', [op.opId]);
+            out.push({ opId: op.opId, replay: true, result: prev.rows[0] && prev.rows[0].result });
+            continue;
+          }
         } catch (e) {
           await c.query('ROLLBACK TO SAVEPOINT ' + sp);
           out.push({ opId: op.opId, error: e.message });
           continue;
         }
-        await c.query('INSERT INTO op_log (op_id, kind, label, entity, payload,'
-          + ' client_at, lamport, device_id, by_staff, result)'
-          + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-        [op.opId, op.kind, op.label || null, op.entity || null,
-          JSON.stringify(op.payload || {}),
-          new Date(op.at || Date.now()), Number(op.lamport) || 0,
-          req.ctx.deviceId, req.ctx.actor, JSON.stringify(result || {})]);
         await c.query('RELEASE SAVEPOINT ' + sp);
         out.push({ opId: op.opId, result: result });
       }
@@ -67,19 +89,25 @@ r.get('/pull', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
   const since = new Date(Number(req.query.since || 0) || 0);
   try {
     const out = await withOutletRead(req.ctx, async function (c) {
-      const [ops, orders, reqs, kds, tickets] = await Promise.all([
-        c.query('SELECT op_id, kind, label, entity, result, applied_at, lamport'
-          + ' FROM op_log WHERE applied_at > $1 ORDER BY applied_at LIMIT 500', [since]),
-        c.query('SELECT id, table_no, lines, promo, guest_name, guest_phone, note, at'
+      const q = await all(c, {
+        ops: ['SELECT op_id, kind, label, entity, result, applied_at, lamport'
+          + ' FROM op_log WHERE applied_at > $1 ORDER BY applied_at LIMIT 500', [since]],
+        orders: ['SELECT id, table_no, lines, promo, guest_name, guest_phone, note, at'
           + ' FROM guest_order WHERE accepted_at IS NULL AND rejected_reason IS NULL'
-          + ' ORDER BY at'),
-        c.query('SELECT id, table_no, kind, detail, at FROM guest_request'
-          + ' WHERE ack_at IS NULL ORDER BY at'),
-        c.query('SELECT id, ticket_id, station, stage, course, fired_at, ready_at,'
-          + ' target_mins FROM kds_ticket WHERE served_at IS NULL ORDER BY fired_at'),
-        c.query("SELECT id, table_no, split, status, covers, party, server_name,"
-          + " opened_at FROM ticket WHERE status IN ('open','held') ORDER BY opened_at")
-      ]);
+          + ' ORDER BY at'],
+        reqs: ['SELECT id, table_no, kind, detail, at FROM guest_request'
+          + ' WHERE ack_at IS NULL ORDER BY at'],
+        kds: ['SELECT id, ticket_id, station, stage, course, fired_at, ready_at,'
+          + ' target_mins FROM kds_ticket WHERE served_at IS NULL ORDER BY fired_at'],
+        tickets: ["SELECT id, table_no, split, status, covers, party, server_name,"
+          + " opened_at FROM ticket WHERE status IN ('open','held') ORDER BY opened_at"],
+      });
+      const ops = q.ops;
+      const orders = q.orders;
+      const reqs = q.reqs;
+      const kds = q.kds;
+      const tickets = q.tickets;
+
       return {
         now: Date.now(),
         ops: ops.rows, guestOrders: orders.rows, guestRequests: reqs.rows,

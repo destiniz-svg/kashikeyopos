@@ -14,7 +14,8 @@ module.exports = function (app, APP) {
   app.get('/pos', send('index.html'));
   app.get('/kds', send('index.html'));
   app.get('/admin', send('index.html'));
-  app.get('/onboarding', send('index.html'));
+  // An empty install lands here, not on the floor.
+  app.get('/onboarding', send('onboarding.html'));
 
   // The guest portals. A QR resolves to /g/<slug>?t=<table>.
   app.get('/g/:slug', send('guest.html'));
