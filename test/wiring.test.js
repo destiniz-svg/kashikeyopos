@@ -114,6 +114,19 @@ test('an op that carries a consequence carries its payload', () => {
     'Supplier added', 'vendors');
   has(grab('vendor_upsert'), ['name']);
 
+  // A line on an open ticket. This is the op that makes a floor shared: it
+  // used to queue a LABEL and no payload, so the outlet never held the ticket
+  // and a bill opened on the handheld was invisible at the counter.
+  F.state.activeTable = 1;
+  F.state.tickets = Object.assign({}, F.state.tickets,
+    { [F.state.outletId + ':1']: F.blankTicket() });
+  F.addLine(F.dish ? F.dish('m1') : { id: 'm1', name: 'Test dish', price: 100 }, 2);
+  const line = grab('add_line');
+  has(line, ['table', 'item', 'name', 'qty', 'price', 'lid']);
+  assert.match(line.payload.lid,
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    'the line carries the id this terminal gave it, so it can be named later');
+
   // The sale — the one that matters.
   const slot = 1, key = F.state.outletId + ':' + slot;
   const tk = Object.assign(F.blankTicket(), {
@@ -125,7 +138,7 @@ test('an op that carries a consequence carries its payload', () => {
   F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' }).tkSettle();
   const sale = grab('sale');
   has(sale, ['bizDate', 'covers', 'net', 'tax', 'taxRate', 'taxLabel', 'total',
-    'sold', 'payments', 'stockMoves']);
+    'sold', 'payments', 'stockMoves', 'table']);
   assert.ok(sale.payload.payments[0].tendered >= sale.payload.total,
     'the payment records what was handed over, not only what was owed');
 });

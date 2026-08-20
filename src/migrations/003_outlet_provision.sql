@@ -88,12 +88,19 @@ BEGIN
       note       text,
       course     text,
       station    text,
+      -- The id the TILL gave this line. A line is created offline, so it
+      -- cannot wait for a server id to be nameable — and without a name, "void
+      -- the second line" is unsendable. Unique per ticket, which also makes
+      -- add_line idempotent under replay.
+      client_id  text,
       sent_at    timestamptz,
       void_at    timestamptz, void_by uuid, void_reason text,
       by_staff   uuid, device_id uuid,
       at         timestamptz NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS ticket_line_ticket ON %1$I.ticket_line(ticket_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ticket_line_client
+      ON %1$I.ticket_line(ticket_id, client_id) WHERE client_id IS NOT NULL;
 
     -- Booked -> confirmed -> arrived -> seated. A booking's guest name, phone
     -- and kitchen note travel to the ticket without anyone re-keying them.

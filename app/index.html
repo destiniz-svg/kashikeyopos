@@ -2548,13 +2548,13 @@ class Component extends DCLogic {
     if (live.opexPaid) patch.opexPaid = live.opexPaid;
     if (live.payrollPosted) patch.payrollPosted = live.payrollPosted;
     if (live.printJobs) patch.printJobs = live.printJobs;
-    // Open tickets: the server's copy fills slots this device does not already
-    // have open, and never replaces one it does.
-    if (live.tickets) {
-      const merged = Object.assign({}, live.tickets, s.tickets || {});
-      patch.tickets = merged;
-    }
     if (Object.keys(patch).length) this.setState(patch);
+    // Open tickets go through seed(), which is the ONE place that maps the
+    // outlet's table labels onto this floor's slots and merges line by line.
+    // Merging them here instead filed T05's bill under the key "T05:0", which
+    // no table on this floor is, so a bill opened on the handheld was invisible
+    // at the counter and the table read FREE with food on it.
+    if (live.tickets) this.seed();
   }
 
   /* ── the floor, as it actually stands ────────────────────────────────────
@@ -2572,12 +2572,35 @@ class Component extends DCLogic {
     const mine = {};
     Object.keys(live.tickets).forEach((k) => {
       const t = live.tickets[k];
-      mine[this.state.outletId + ":" + (t.table || k.split(":")[0])] = t;
+      // The outlet names a ticket by its TABLE LABEL; this device keys its map
+      // by floor slot. Resolve one to the other, or a bill opened on the
+      // tablet lands on a table number this floor does not have.
+      const slot = this.tableSlot(t.table || k.split(":")[0]);
+      if (!slot) return;
+      mine[this.state.outletId + ":" + slot] = Object.assign({}, t, {
+        status: t.status === "open" ? "occupied" : t.status,
+        openedAt: t.opened || Date.now()
+      });
     });
-    // Anything already on a table on THIS device wins: a bill left open here
-    // is a bill somebody is standing at.
+    // A bill open on THIS device wins: it is a bill somebody is standing at,
+    // and its un-replayed lines may not have reached the outlet yet.
     const cur = this.state.tickets || {};
-    Object.keys(cur).forEach((k) => { mine[k] = cur[k]; });
+    Object.keys(cur).forEach((k) => {
+      const here = cur[k], there = mine[k];
+      if (!there) { mine[k] = here; return; }
+      // Both sides have the table. Merge by line id: what this device wrote and
+      // what another terminal wrote are both real, and neither may drop the
+      // other's plate off the ticket.
+      const seen = {};
+      const lines = [];
+      (there.lines || []).concat(here.lines || []).forEach((l) => {
+        const key = l.lid || (l.id + ":" + (l.split || 0) + ":" + (l.at || 0));
+        if (seen[key]) return;
+        seen[key] = 1;
+        lines.push(l);
+      });
+      mine[k] = Object.assign({}, there, here, { id: there.id || here.id, lines: lines });
+    });
     this.setState({ tickets: mine });
   }
   rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
@@ -2789,6 +2812,9 @@ class Component extends DCLogic {
       cur: row.cur, rate: row.rate, fgn: row.fgn,
       member: row.customer || null, customer: this.memberName(row.customer),
       server: row.server, ticketId: (tk || {}).id || null,
+      // The table too, because a ticket opened offline has no server id yet
+      // and the outlet still has to close the right bill.
+      table: row.table, split: 0,
       at: row.at, sold: sold, payments: payments, stockMoves: stockMoves
     });
     return row;
@@ -2961,12 +2987,18 @@ class Component extends DCLogic {
   // number, so it is clamped where it is USED rather than where it arrives —
   // clamping on arrival only protects the one path that happens to go through it.
   MAX_DISC = 25;
+  /* The menu price, with this outlet's own override if it has one, and NOTHING
+     else applied. Tax and service are added once, on the bill, by totals().
+
+     This used to re-gross a TGST outlet's prices by 1.12 and round to the
+     nearest five — and then totals() added TGST on top of that, so a resort
+     till charged 12% more than its own menu said while the guest's phone,
+     which reads the price plainly, quoted the menu. Two surfaces, two
+     answers, and the receipt was the one that was wrong. */
   menuPrice(m) {
-    const o = this.outlet();
+    if (!m) return 0;
     const ov = this.priceOv(m.id);
-    let p = ov === undefined ? m.price : ov;
-    if (o.tax === "TGST") p = Math.round(p * 1.12 / 5) * 5;
-    return p;
+    return ov === undefined ? m.price : ov;
   }
   // The rate was a single mutable field on the outlet, which meant editing it
   // silently restated history: a receipt reprinted after a rate change showed the
@@ -4622,7 +4654,9 @@ class Component extends DCLogic {
             return;
           }
           this.mutate(undefined, (t) => t.lines.splice(i, 1));
-          this.queue("void_line", "Void " + m.name + " · " + this.slotName(s.activeTable) + (l.fired ? " · FIRED, authorised by " + this.me() : "") , "order_lines");
+          this.queue("void_line", "Void " + m.name + " · " + this.slotName(s.activeTable) + (l.fired ? " · FIRED, authorised by " + this.me() : "") , "order_lines",
+            { table: this.slotName(s.activeTable), split: 0, lid: l.lid,
+              reason: l.fired ? "Voided after firing · " + this.me() : "Voided before firing" });
         },
         note: () => this.setState({ modal: { kind: "note", idx: i, val: l.note || "" } }),
         stateStyle: "font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 7px;border-radius:4px;margin-right:auto;" + (l.fired ? "background:var(--ok-dim);color:var(--green)" : "background:var(--warn-dim);color:var(--warn-bright)"),
@@ -5113,7 +5147,8 @@ class Component extends DCLogic {
         const held = s.held.concat([{ ref: ref, outletId: s.outletId, table: s.activeTable, at: pad(s.now.getHours()) + ":" + pad(s.now.getMinutes()), ticket: tk, total: this.totals(tk).total, guests: guests.map((g) => this.guestLabel(g)) }]);
         const t = Object.assign({}, s.tickets); delete t[this.ticketKey()];
         this.setState({ held: held, tickets: t, activeTable: null, activeSplit: 0, modal: null, pane: "floor" });
-        this.queue("park_bill", "Bill parked " + ref + " · " + this.slotName(s.activeTable), "orders");
+        this.queue("park_bill", "Bill parked " + ref + " · " + this.slotName(s.activeTable),
+          "orders", { table: this.slotName(s.activeTable), split: 0, ref: ref });
         this.toast("Parked as " + ref + " — table freed");
       },
       openHeld: () => this.setState({ modal: { kind: "held" } }),
@@ -5126,7 +5161,8 @@ class Component extends DCLogic {
         // resolve it, or the KOT renders a line with no dish on it.
         const going = (t0.lines || []).filter((l) => !l.fired).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || {};
-          return { id: l.id, qty: l.qty, name: l.name || mi.name || "Item", note: l.note || "" };
+          return { id: l.id, lid: l.lid, qty: l.qty,
+            name: l.name || mi.name || "Item", note: l.note || "" };
         });
         this.mutate(undefined, (t) => { t.lines = t.lines.map((l) => l.fired ? l : Object.assign({}, l, { fired: true, since: 0, firedAt: Date.now() })); });
         // A later course reopens an order the pass had finished: the stage must
@@ -5135,7 +5171,15 @@ class Component extends DCLogic {
           const id = "QR-T" + pad(s.activeTable);
           if (this.fStage(id, -1) >= 2) this.stageWrite(id, "qr", 1, { table: pad(s.activeTable), title: "Table T" + pad(s.activeTable), source: "pass" });
         }
-        this.queue("fire_course", unfired + " item" + (unfired > 1 ? "s" : "") + " fired to KDS · T" + pad(s.activeTable), "order_lines");
+        // The pass is told WHICH lines, by the ids this terminal gave them, so
+        // a docket on the kitchen screen is the same lines as the ticket.
+        this.queue("fire_course", unfired + " item" + (unfired > 1 ? "s" : "") + " fired to KDS · "
+          + this.slotName(s.activeTable), "order_lines", {
+          table: this.slotName(s.activeTable), split: 0,
+          lids: going.map((l) => l.lid).filter(Boolean),
+          station: this.dishStation((K0.MENU || []).find((x) => x.id === going[0].id) || {}),
+          target: this.prefs().kdsSla || 12
+        });
         if (this.prefs().kotPrint === false) { this.toast(unfired + " item" + (unfired > 1 ? "s" : "") + " sent to the kitchen"); return; }
         const stns = [];
         going.forEach((l) => {
@@ -5202,16 +5246,39 @@ class Component extends DCLogic {
     if (!this.guardRegister()) return;
     if (!s.activeTable) { this.toast("Pick a table first", "warn"); return; }
     const qty = Math.max(1, qtyIn || s.qtyMult || 1);
+    let line = null;
     this.mutate(undefined, (t) => {
       const gi = Math.min(s.activeSplit, Math.max(0, this.guestsOf(t).length - 1));
       const ex = t.lines.find((l) => l.id === m.id && (l.split || 0) === gi && !l.fired);
-      if (ex) { const i = t.lines.indexOf(ex); t.lines[i] = Object.assign({}, ex, { qty: ex.qty + qty }); }
-      else t.lines.push({ id: m.id, qty: qty, note: "", split: gi, fired: false, since: 0, firedAt: 0 });
+      if (ex) {
+        const i = t.lines.indexOf(ex);
+        t.lines[i] = Object.assign({}, ex, { qty: ex.qty + qty });
+        line = t.lines[i];
+      } else {
+        // The line carries the id THIS terminal gave it. That is what lets the
+        // outlet hold the open ticket — a line created offline cannot wait for
+        // a server id to be nameable, and without a name "void the second
+        // line" is unsendable, which is why the open ticket used to live on one
+        // device and the other terminals saw an empty floor.
+        line = { id: m.id, lid: this.opId(), qty: qty, note: "", split: gi,
+          fired: false, since: 0, firedAt: 0 };
+        t.lines.push(line);
+      }
       t.status = "occupied";
       if (!t.openedAt) t.openedAt = Date.now() - (t.opened || 0) * 60000;
     });
     if (s.qtyMult && s.qtyMult > 1) this.setState({ qtyMult: 0 });
-    this.queue("add_line", m.name + " × " + qty + " · T" + pad(s.activeTable), "order_lines");
+    // The whole line, every time. An op that carries a label and no payload
+    // looks fine in the outbox, appears in the audit trail, and changes
+    // nothing — which is the worst failure available, because it is invisible.
+    this.queue("add_line", m.name + " × " + qty + " · " + this.slotName(s.activeTable),
+      "order_lines", {
+        table: this.slotName(s.activeTable), split: 0,
+        item: m.id, name: m.name, qty: (line || {}).qty || qty,
+        price: this.menuPrice(m), guest: (line || {}).split || 0,
+        note: (line || {}).note || "", lid: (line || {}).lid || undefined,
+        station: this.dishStation(m), party: (this.ticket() || {}).party || 0
+      });
     // The ticket sits beside the menu, so a flying-item animation would cross
     // ground the eye already covers. Flashing the line that changed answers the
     // real question — did that land? — without the operator reading the list.
@@ -5532,7 +5599,8 @@ class Component extends DCLogic {
             cur.guests = gAll.filter((_, i) => i !== gIdx);
             tables[this.ticketKey()] = cur;
           }
-          this.queue("close_ticket", (last ? "Ticket closed · " : "Guest settled · " + gname + " · ") + this.slotName(s.activeTable) + " · " + MVR(T.total) + " · " + m.tender, "orders");
+          this.queue("close_ticket", (last ? "Ticket closed · " : "Guest settled · " + gname + " · ") + this.slotName(s.activeTable) + " · " + MVR(T.total) + " · " + m.tender,
+            "orders", { table: this.slotName(s.activeTable), split: 0 });
           if (Math.abs(roundDiff) > 0.004) {
             this.queue("post_journal", "Cash rounding · " + (roundDiff > 0 ? "Cr" : "Dr") + " 4900 Rounding · " + MVRc(Math.abs(roundDiff)) + " · " + snapshot.no, "journal_entries");
           }
@@ -5938,7 +6006,19 @@ class Component extends DCLogic {
         quickNotes: quick.map((q) => ({ label: q, pick: () => this.setState({ modal: Object.assign({}, m, { val: q }) }) })),
         noteVal: m.val || "",
         onNoteChange: (e) => this.setState({ modal: Object.assign({}, m, { val: e.target.value }) }),
-        saveNote: () => { const i = m.idx; this.mutate(undefined, (t) => { t.lines[i] = Object.assign({}, t.lines[i], { note: m.val, fired: false }); }); this.queue("line_note", "Note on line " + (i + 1) + " · " + this.slotName(s.activeTable), "order_lines"); this.setState({ modal: null }); this.toast("Note attached — re-fire to send it"); }
+        saveNote: () => {
+          const i = m.idx;
+          let lid = null;
+          this.mutate(undefined, (t) => {
+            t.lines[i] = Object.assign({}, t.lines[i], { note: m.val, fired: false });
+            lid = t.lines[i].lid;
+          });
+          this.queue("line_note", "Note on line " + (i + 1) + " · " + this.slotName(s.activeTable),
+            "order_lines", { table: this.slotName(s.activeTable), split: 0,
+              lid: lid, note: m.val });
+          this.setState({ modal: null });
+          this.toast("Note attached — re-fire to send it");
+        }
       };
     }
 
@@ -6447,7 +6527,8 @@ class Component extends DCLogic {
             t[s.outletId + ":" + tb.n] = t[s.outletId + ":" + from];
             delete t[s.outletId + ":" + from];
             this.setState({ tickets: t, activeTable: tb.n, activeSplit: 0, modal: null });
-            this.queue("move_table", "Bill moved " + this.slotName(from) + " → " + tb.name + " · by " + this.me(), "orders");
+            this.queue("move_table", "Bill moved " + this.slotName(from) + " → " + tb.name + " · by " + this.me(),
+              "orders", { table: this.slotName(from), split: 0, from: this.slotName(from), to: tb.name });
             this.toast("Moved to " + tb.name + " — the kitchen ticket follows");
           }
         }))
@@ -6971,11 +7052,62 @@ class Component extends DCLogic {
   prefs() { return this.state.prefs || {}; }
   // Written by KashikeyoGuest. Unacknowledged rows for THIS outlet only — a
   // server at one outlet must never see a raised hand at another.
+  // A table slot from whatever the guest side called the table. The floor plan
+  // owns the labels ("T03", "Deck 2"); the ticket map is keyed by slot. Without
+  // this a QR order opened a phantom ticket at key "1:T03" that no table on the
+  // floor could ever be.
+  tableSlot(v) {
+    if (v === null || v === undefined || v === "") return 0;
+    const want = String(v).trim().toLowerCase();
+    const hit = this.floorTables()
+      .filter((t) => String(t.name).toLowerCase() === want
+        || String(t.id).toLowerCase() === want)[0];
+    if (hit) return hit.n;
+    const m = /(\d+)/.exec(want);
+    return m ? Number(m[1]) : 0;
+  }
+  /* Everything the floor is being asked for, from BOTH directions:
+
+       · the outlet's own database — a guest on their own phone, on their own
+         network, reaching the outlet the QR named. This is the real path
+       · localStorage — a portal open in another tab of THIS device, which is
+         how the reference demonstrated it and how it still works with no link
+
+     The server rows win on identity: both carry an id, and a signal already
+     acknowledged does not come back. */
   allSignals() {
+    const oid = this.state.outletId;
+    const live = (window.KPOS_REAL || {}).state || {};
+    const acked = this._ackedSig || (this._ackedSig = {});
+    const out = [];
+    (live.guestOrders || []).forEach((g) => {
+      const id = "go_" + g.id;
+      if (acked[id]) return;
+      const items = (g.lines || []).reduce((a, l) => a + (l.qty || 1), 0);
+      out.push({
+        id: id, outlet: oid, table: this.tableSlot(g.table), kind: "order",
+        detail: items + " item" + (items === 1 ? "" : "s") + " from the QR menu",
+        at: g.at, ack: 0, lines: g.lines || [], promo: g.promo || "",
+        guest: g.name || "", memberName: g.name || "", from: "portal"
+      });
+    });
+    (live.guestRequests || []).forEach((r) => {
+      const id = "gr_" + r.id;
+      if (acked[id]) return;
+      out.push({
+        id: id, outlet: oid, table: this.tableSlot(r.table), kind: r.kind,
+        detail: r.detail || "", at: r.at, ack: 0, from: "portal"
+      });
+    });
     try {
       const raw = localStorage.getItem("kashikeyo.bridge.v1");
-      return (raw ? JSON.parse(raw) : []).filter((x) => !x.ack);
-    } catch (e) { return []; }
+      (raw ? JSON.parse(raw) : []).forEach((x) => {
+        if (x && !x.ack && !acked[x.id]) {
+          out.push(Object.assign({}, x, { table: this.tableSlot(x.table) }));
+        }
+      });
+    } catch (e) { /* private mode: the local half is simply absent */ }
+    return out.sort((a, b) => (a.at || 0) - (b.at || 0));
   }
   signals() { return this.allSignals().filter((x) => x.outlet === this.state.outletId); }
   // Calls for other outlets are never actionable here, but silence is worse
@@ -7002,8 +7134,28 @@ class Component extends DCLogic {
     const all = this.allSignals();
     if (all.length !== (this._sigN || 0)) { this._sigN = all.length; this.forceUpdate(); }
   }
-  ackSignal(id) { this.patchSignal(id, { ack: 1 }); this.forceUpdate(); }
+  /* Acknowledging is a person saying "seen". It has to reach the OUTLET, or
+     the call is answered on one terminal and still flashing on the other two.
+     A server-sourced signal carries its row id in its own id ("go_<uuid>",
+     "gr_<uuid>"), so the acknowledgement is one op against that row. */
+  ackSignal(id) {
+    this.patchSignal(id, { ack: 1 });
+    const acked = this._ackedSig || (this._ackedSig = {});
+    acked[id] = 1;
+    if (id.indexOf("go_") === 0) {
+      this.queue("qr_order", "QR round acknowledged by " + this.me(), "guest_signals",
+        { id: id.slice(3) });
+    } else if (id.indexOf("gr_") === 0) {
+      this.queue("flag_ack", "Guest call acknowledged by " + this.me(), "guest_signals",
+        { id: id.slice(3) });
+    }
+    this.forceUpdate();
+  }
   patchSignal(id, patch) {
+    if (patch && patch.ack) {
+      const acked = this._ackedSig || (this._ackedSig = {});
+      acked[id] = 1;
+    }
     try {
       const K = "kashikeyo.bridge.v1";
       const list = JSON.parse(localStorage.getItem(K) || "[]");
@@ -7052,7 +7204,19 @@ class Component extends DCLogic {
       if (!cur.waiter) cur.waiter = "QR self-order";
       x.lines.forEach((ql) => {
         const note = ql.note || "QR";
-        cur.lines.push({ id: ql.id, qty: ql.qty || 1, note: note, split: 0, fired: false, since: 0, firedAt: 0, sig: x.id });
+        const lid = this.opId();
+        cur.lines.push({ id: ql.id, lid: lid, qty: ql.qty || 1, note: note, split: 0,
+          fired: false, since: 0, firedAt: 0, sig: x.id });
+        // The round becomes lines on the OUTLET's ticket, not just on this
+        // screen: the counter has to be able to settle a table a phone opened.
+        const mi = (K().MENU || []).find((y) => y.id === ql.id) || {};
+        this.queue("add_line", (mi.name || ql.id) + " × " + (ql.qty || 1)
+          + " · QR · " + this.slotName(x.table), "order_lines", {
+          table: this.slotName(x.table), split: 0, item: ql.id,
+          name: mi.name || ql.id, qty: ql.qty || 1, price: this.menuPrice(mi),
+          guest: 0, note: note, lid: lid, station: this.dishStation(mi),
+          channel: "qr"
+        });
       });
       touched = true;
       // A promo the guest entered on their phone is an offer, not a decision:
@@ -7067,8 +7231,16 @@ class Component extends DCLogic {
         cur.promo = { code: x.promo, pct: given, from: "qr" };
       }
       t[key] = cur;
-      this.queue("qr_order", "QR order · T" + x.table + " · " + x.lines.length + " line" + (x.lines.length === 1 ? "" : "s")
-        + (x.promo ? " · promo " + x.promo + " " + (x.pct || 5) + "%" : ""), "order_lines");
+      // One op, and it CLOSES the round at the outlet when the round came from
+      // there: a second terminal must not put the same lines on the same
+      // ticket a minute later.
+      this.queue("qr_order", "QR order · T" + x.table + " · " + x.lines.length + " line"
+        + (x.lines.length === 1 ? "" : "s")
+        + (x.promo ? " · promo " + x.promo + " " + (x.pct || 5) + "%" : "")
+        + " · taken by " + this.me(), "order_lines",
+      String(x.id).indexOf("go_") === 0
+        ? { id: String(x.id).slice(3), ticketId: cur.id || null }
+        : undefined);
     });
     // Signals confirmed present on the ticket are closed now; ones just applied
     // stay open until a later poll can see them, which is what makes this
@@ -10423,7 +10595,8 @@ class Component extends DCLogic {
         bizDate: tk.bizDate || this.today(), taxRate: T.taxRate, taxLabel: T.taxLabel
       };
       this.bookSale(settledRow, tk, T);
-      this.queue("close_ticket", "Ticket closed from Orders · " + this.slotName(m.slot) + " · " + MVR(grossDue) + " · " + tname(tender) + (tender === "cash" ? "" : ref ? " · ref " + ref : " · no reference given"), "orders");
+      this.queue("close_ticket", "Ticket closed from Orders · " + this.slotName(m.slot) + " · " + MVR(grossDue) + " · " + tname(tender) + (tender === "cash" ? "" : ref ? " · ref " + ref : " · no reference given"),
+        "orders", { table: this.slotName(m.slot), split: 0 });
       if (Math.abs(roundDiff) > 0.004) {
         this.queue("post_journal", "Cash rounding · " + (roundDiff > 0 ? "Cr" : "Dr") + " 4900 Rounding · " + MVRc(Math.abs(roundDiff)) + " · " + snap.no, "journal_entries");
       }
@@ -10782,17 +10955,18 @@ class Component extends DCLogic {
       // Rounds arriving off the guest portal, live. There is no seeded tail:
       // a board that reads the same on a cold terminal reads the same when
       // nothing has been ordered, which is a lie the kitchen acts on.
+      // Rounds from the outlet's own database AND from a portal open on this
+      // device both arrive through signals(), so there is one list and no
+      // seeded tail. A board that reads the same on a cold terminal reads the
+      // same when nothing has been ordered, which is a lie the kitchen acts on.
       const live = this.signals().filter((x) => x.kind === "order");
-      const seeded = (s.guestOrders || []).map((g, i) => ({
-        id: "PO:" + g.id, who: g.name || "Portal guest", table: pad(+g.table || 0),
-        items: (g.lines || []).reduce((a, l) => a + (l.qty || 1), 0), total: 0,
-        at: g.at, from: "Guest portal"
-      }));
       const list = live.map((x) => ({
-        id: "PO:" + x.id, who: x.memberName || "Portal guest", table: pad(+x.table || 0),
+        id: "PO:" + x.id, who: x.memberName || x.guest || "Portal guest",
+        table: this.slotName(x.table),
         items: (x.lines || []).reduce((a, l) => a + (l.qty || 1), 0), total: x.total || 0,
-        at: x.at, from: x.member ? "Member portal \u00b7 live" : "Table QR \u00b7 live", sig: x
-      })).concat(seeded);
+        at: x.at, from: x.member ? "Member portal \u00b7 live"
+          : x.from === "portal" ? "Table QR" : "Table QR \u00b7 this device", sig: x
+      }));
       return {
         tabs: tabs,
         cardMin: 290,
@@ -11449,7 +11623,8 @@ class Component extends DCLogic {
     if (t[s.outletId + ":" + num]) return this.toast(this.slotName(h.table) + " is occupied again — clear it first", "err");
     t[s.outletId + ":" + num] = h.ticket;
     this.setState({ tickets: t, held: s.held.filter((x) => x.ref !== h.ref), activeTable: num, activeSplit: 0, modal: null, view: "pos", pane: "menu" });
-    this.queue("resume_bill", "Bill resumed " + h.ref + " · " + this.slotName(h.table), "orders");
+    this.queue("resume_bill", "Bill resumed " + h.ref + " · " + this.slotName(h.table),
+      "orders", { table: this.slotName(h.table), split: 0 });
     this.toast(h.ref + " resumed on " + this.slotName(h.table));
   }
   // Section names typed into a form are matched back to ids case-insensitively;
@@ -13380,7 +13555,8 @@ class Component extends DCLogic {
           const p = Math.max(1, Math.min(40, +v.party || 1));
           this.mutate(row.n, (t) => { t.party = p; });
           this.setState({ modal: null });
-          this.queue("covers_update", this.slotName(row.n) + " · " + p + " covers · by " + this.me(), "orders", { ticketId: (this.ticketAt(row.n) || {}).id || null, party: p });
+          this.queue("covers_update", this.slotName(row.n) + " · " + p + " covers · by " + this.me(),
+            "orders", { table: this.slotName(row.n), split: 0, party: p });
           this.toast(this.slotName(row.n) + " · " + p + " cover" + (p === 1 ? "" : "s"));
         }
       },

@@ -647,10 +647,18 @@ function ticketOf(t, lines) {
     waiter: t.server_name || '', member: t.member_id || '',
     note: t.note || '', guests: t.guests || [],
     promo: null,
+    // `lid` is the id the TILL gave the line, which is what every terminal
+    // names it by. `serverId` is the row. Sending the row id as `lid` would
+    // mean a line adopted from the outlet could never be voided from the
+    // device that wrote it, because the two would be talking about different
+    // names for the same plate.
     lines: lines.filter((l) => !l.void_at).map((l) => ({
-      lid: l.id, id: l.item_id, name: l.name, qty: num(l.qty),
+      lid: l.client_id || l.id, serverId: l.id,
+      id: l.item_id, name: l.name, qty: num(l.qty),
       price: num(l.unit_price), addons: l.addons || [], guest: l.guest_ix,
+      split: l.guest_ix,
       note: l.note || '', course: l.course || '', station: l.station,
+      fired: !!l.sent_at, firedAt: ms(l.sent_at), since: 0,
       sent: !!l.sent_at, at: ms(l.at)
     }))
   };

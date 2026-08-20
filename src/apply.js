@@ -96,9 +96,16 @@ async function applySale(c, p, ctx) {
     payments: arr(p.payments), stock: arr(p.stockMoves), channel: p.channel
   }), 'sale', sale.id, p.bizDate || today(), 'Sale ' + sale.receipt_no);
 
-  if (p.ticketId) {
+  // Close the bill this sale settled. A ticket opened offline reaches the
+  // outlet as lines against a TABLE and has no server id on the device, so
+  // resolve either way — otherwise the floor keeps showing an occupied table
+  // whose money is already in the drawer.
+  const closing = await ticketRef(c, p);
+  if (closing) {
     await c.query("UPDATE ticket SET status = 'closed', closed_at = now(),"
-      + " closed_by = $2 WHERE id = $1 AND status <> 'closed'", [p.ticketId, ctx.actor]);
+      + " closed_by = $2 WHERE id = $1 AND status <> 'closed'", [closing, ctx.actor]);
+    await c.query('UPDATE sale SET ticket_id = coalesce(ticket_id, $2) WHERE id = $1',
+      [sale.id, closing]);
   }
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
     + " VALUES ($1,'SALE',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
@@ -266,35 +273,75 @@ H.close_register = async (c, p, ctx) => {
 H.sale = applySale;
 H.split_payment = applySale;
 
+/* A line on an open ticket. `lid` is the id the TILL gave it, which is what
+   makes this idempotent: the same line arriving twice — a retry, a replay from
+   an outbox that came back after an outage — updates the quantity rather than
+   ordering the dish again. A line with no client id is still accepted, because
+   an older terminal must not be refused mid-service. */
 H.add_line = async (c, p, ctx) => {
+  if (!p.item) return { skipped: 'no item' };
   const t = await ticketFor(c, ctx, p);
   if (!t) return { skipped: 'ticket closed' };
+  const cols = [t.id, p.item, p.name || p.item, num(p.qty) || 1, r2(p.price),
+    JSON.stringify(p.addons || []), num(p.guest), p.note || null,
+    p.course || null, p.station || null, ctx.actor, ctx.deviceId, p.lid || null];
   const l = await one(c, 'INSERT INTO ticket_line (ticket_id, item_id, name, qty,'
-    + ' unit_price, addons, guest_ix, note, course, station, by_staff, device_id)'
-    + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
-    [t.id, p.item, p.name || p.item, num(p.qty) || 1, r2(p.price),
-      JSON.stringify(p.addons || []), num(p.guest), p.note || null,
-      p.course || null, p.station || null, ctx.actor, ctx.deviceId]);
+    + ' unit_price, addons, guest_ix, note, course, station, by_staff, device_id,'
+    + ' client_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)'
+    + ' ON CONFLICT (ticket_id, client_id) WHERE client_id IS NOT NULL'
+    + ' DO UPDATE SET qty = excluded.qty, note = excluded.note,'
+    + ' guest_ix = excluded.guest_ix, course = excluded.course'
+    + ' RETURNING id', cols);
   return { ticketId: t.id, lineId: l.id };
 };
 
+// Resolve a line the till named, either by server id or by the id it gave.
+async function lineOf(c, p) {
+  if (p.lineId) return p.lineId;
+  if (!p.lid) return null;
+  const q = await one(c, 'SELECT l.id FROM ticket_line l JOIN ticket t ON t.id = l.ticket_id'
+    + " WHERE l.client_id = $1 AND t.status <> 'closed'"
+    + ' ORDER BY l.at DESC LIMIT 1', [p.lid]);
+  return q ? q.id : null;
+};
+
 H.void_line = async (c, p, ctx) => {
+  const id = await lineOf(c, p);
+  if (!id) return { skipped: 'no such line' };
   await c.query('UPDATE ticket_line SET void_at = now(), void_by = $2, void_reason = $3'
-    + ' WHERE id = $1 AND void_at IS NULL', [p.lineId, ctx.actor, p.reason || 'Voided']);
-  await log(c, 'void_line', 'ticket_line', p.lineId, null, { reason: p.reason });
+    + ' WHERE id = $1 AND void_at IS NULL', [id, ctx.actor, p.reason || 'Voided']);
+  await log(c, 'void_line', 'ticket_line', id, null, { reason: p.reason });
   return { ok: true };
 };
 
 H.line_note = async (c, p) => {
-  await c.query('UPDATE ticket_line SET note = $2 WHERE id = $1', [p.lineId, p.note || null]);
+  const id = await lineOf(c, p);
+  if (!id) return { skipped: 'no such line' };
+  await c.query('UPDATE ticket_line SET note = $2 WHERE id = $1', [id, p.note || null]);
   return { ok: true };
 };
 
+/* An open ticket, named the way the terminal can name it. A till holds a
+   TABLE, not a server id: the ticket was opened offline, or on the tablet in
+   somebody else's hand. Every ticket operation therefore resolves by id when
+   there is one and by table otherwise, so an outlet's open bills are the
+   outlet's — visible at the counter, on the tablet and on the pass alike. */
+async function ticketRef(c, p) {
+  if (p.ticketId) return p.ticketId;
+  if (p.table == null) return null;
+  const t = await one(c, "SELECT id FROM ticket WHERE table_no = $1 AND split = $2"
+    + " AND status <> 'closed' ORDER BY opened_at DESC LIMIT 1",
+  [String(p.table), num(p.split)]);
+  return t ? t.id : null;
+}
+
 H.move_table = async (c, p, ctx) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
   const q = await c.query("UPDATE ticket SET table_no = $2 WHERE id = $1"
-    + " AND status = 'open' RETURNING id", [p.ticketId, String(p.to)]);
+    + " AND status = 'open' RETURNING id", [id, String(p.to)]);
   if (!q.rows.length) return { skipped: 'ticket closed' };
-  await log(c, 'move_table', 'ticket', p.ticketId, { table: p.from }, { table: p.to });
+  await log(c, 'move_table', 'ticket', id, { table: p.from }, { table: p.to });
   return { ok: true };
 };
 
@@ -306,20 +353,25 @@ H.park_bill = async (c, p, ctx) => {
 };
 
 H.resume_bill = async (c, p) => {
-  await c.query("UPDATE ticket SET status = 'open' WHERE id = $1 AND status = 'held'",
-    [p.ticketId]);
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no held ticket' };
+  await c.query("UPDATE ticket SET status = 'open' WHERE id = $1 AND status = 'held'", [id]);
   return { ok: true };
 };
 
 H.close_ticket = async (c, p, ctx) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
   await c.query("UPDATE ticket SET status = 'closed', closed_at = now(), closed_by = $2"
-    + " WHERE id = $1 AND status <> 'closed'", [p.ticketId, ctx.actor]);
+    + " WHERE id = $1 AND status <> 'closed'", [id, ctx.actor]);
   return { ok: true };
 };
 
 H.ticket_status = async (c, p) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
   await c.query('UPDATE ticket SET note = coalesce($2, note) WHERE id = $1',
-    [p.ticketId, p.note || null]);
+    [id, p.note || null]);
   return { ok: true };
 };
 
@@ -350,14 +402,18 @@ H.zones_update = async (c, p) => {
 };
 
 H.covers_update = async (c, p) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
   await c.query('UPDATE ticket SET party = $2, covers = greatest($2, covers)'
-    + ' WHERE id = $1', [p.ticketId, Math.max(1, num(p.party) || 1)]);
+    + ' WHERE id = $1', [id, Math.max(1, num(p.party) || 1)]);
   return { ok: true };
 };
 
 H.guest_add = async (c, p) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
   await c.query("UPDATE ticket SET guests = coalesce(guests,'[]'::jsonb) || $2::jsonb"
-    + ' WHERE id = $1', [p.ticketId, JSON.stringify([p.guest || {}])]);
+    + ' WHERE id = $1', [id, JSON.stringify([p.guest || {}])]);
   return { ok: true };
 };
 
@@ -1078,14 +1134,23 @@ H.vendor_upsert = async (c, p) => {
 
 // ═══ KITCHEN ═══════════════════════════════════════════════════════════════
 H.fire_course = async (c, p, ctx) => {
+  const id = await ticketRef(c, p);
+  // The till names its own lines; resolve them to the outlet's before the pass
+  // is told which ones it is cooking.
+  let ids = arr(p.lineIds);
+  if (!ids.length && arr(p.lids).length && id) {
+    const q = await c.query('SELECT id FROM ticket_line WHERE ticket_id = $1'
+      + ' AND client_id = ANY($2::text[])', [id, arr(p.lids)]);
+    ids = q.rows.map((r) => r.id);
+  }
   const k = await one(c, 'INSERT INTO kds_ticket (ticket_id, line_ids, station, course,'
     + ' target_mins, by_staff) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [p.ticketId || null, arr(p.lineIds), p.station || 'main', p.course || null,
+    [id, ids, p.station || 'main', p.course || null,
       num(p.target) || 12, ctx.actor]);
-  if (arr(p.lineIds).length) {
-    await c.query('UPDATE ticket_line SET sent_at = now() WHERE id = ANY($1)', [arr(p.lineIds)]);
+  if (ids.length) {
+    await c.query('UPDATE ticket_line SET sent_at = now() WHERE id = ANY($1)', [ids]);
   }
-  return { kdsId: k.id };
+  return { kdsId: k.id, lines: ids.length };
 };
 
 H.kds_bump = async (c, p, ctx) => {
