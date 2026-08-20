@@ -57,8 +57,10 @@ async function applySale(c, p, ctx) {
     [no.no, p.ticketId || null, p.at ? new Date(p.at) : null,
       p.bizDate || today(), p.channel || 'dine_in', Math.max(1, num(p.covers) || 1),
       subtotal, discount, p.discCode || null, p.discReason || null,
+      // An unregistered outlet must not have a tax LABEL invented for it: the
+      // receipt would name a registration the business does not hold.
       p.discBy || null, net, service, p.taxCode || 'GGST',
-      p.taxLabel || 'GST', num(p.taxRate), tax, rounding, total, r2(p.tip),
+      p.taxCode === 'NONE' ? '' : (p.taxLabel || 'GST'), num(p.taxRate), tax, rounding, total, r2(p.tip),
       r2(p.cogs), p.cur || 'MVR', num(p.rate) || 1, r2(p.fgn),
       p.member || null, p.customer || null, p.server || null,
       ctx.actor, ctx.deviceId, claimed, audit ? JSON.stringify(audit) : null]);

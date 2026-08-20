@@ -77,6 +77,14 @@ async function buildBootstrap(ctx) {
       opex: ['SELECT * FROM opex WHERE active ORDER BY category'],
       assets: ['SELECT * FROM asset ORDER BY bought_on DESC'],
       outletSettings: ['SELECT key, value FROM setting'],
+      // Taxable supplies over a rolling 12 months, MEASURED. An unregistered
+      // business is told where it stands against the registration threshold
+      // rather than being asked to remember, and a registered one is told
+      // nothing because the question is already answered.
+      turnover: ["SELECT coalesce(sum(net), 0)::numeric AS net,"
+        + ' min(business_date) AS since, count(*)::int AS sales FROM sale'
+        + " WHERE voided_at IS NULL"
+        + " AND business_date > current_date - interval '12 months'"],
       zones: ['SELECT * FROM zone WHERE active ORDER BY pos, name'],
       tables: ['SELECT * FROM table_def WHERE active ORDER BY pos, label'],
     });
@@ -114,6 +122,8 @@ async function buildBootstrap(ctx) {
 
     const setting = kv(chainSettings.rows);
     const oset = kv(outletSettings.rows);
+    const gstRule = setting.gst_registration || {};
+    const rolled = q.turnover.rows[0] || {};
     const ingById = index(ingredients.rows, 'id');
     const recipeByItem = group(recipeLines.rows, 'item_id');
     const unitsByIng = group(units.rows, 'ingredient_id');
@@ -192,6 +202,36 @@ async function buildBootstrap(ctx) {
         paired: iso(r.paired_at), seen: iso(r.last_seen), revoked: r.revoked
       })),
       ALLERGENS: ALLERGENS, DIETS: DIETS,
+      /* Where this outlet stands on GST registration. `registered` is a fact
+         read from its own effective-dated tax version, never a preference; the
+         rest is the measurement that says whether that is still the right
+         answer. A registered outlet gets `due: false` and no nagging. */
+      GST_WATCH: (function () {
+        const mine = outlets.rows.filter((x) => x.id === ctx.outletId)[0] || {};
+        const code = mine.tax_code || 'NONE';
+        const registered = code !== 'NONE';
+        const threshold = num(gstRule.threshold) || 0;
+        const turnover = num(rolled.net);
+        const tourism = code === 'TGST' || mine.kind === 'resort';
+        return {
+          registered: registered,
+          code: code,
+          threshold: threshold,
+          months: num(gstRule.months) || 12,
+          turnover: turnover,
+          sales: num(rolled.sales),
+          since: rolled.since || null,
+          // Only ever true for a business that is NOT registered and has
+          // measurably crossed the line. Nothing here is a projection.
+          due: !registered && threshold > 0 && turnover >= threshold,
+          near: !registered && threshold > 0
+            && turnover >= threshold * (num(gstRule.warnAt) || 0.8)
+            && turnover < threshold,
+          tourismAlways: gstRule.tourismAlways !== false && tourism,
+          note: gstRule.note || '',
+          authority: gstRule.authority || ''
+        };
+      })(),
       REASONS: {
         waste: setting.waste_reasons || [], void: setting.void_reasons || [],
         discount: setting.discount_reasons || []

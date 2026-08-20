@@ -906,6 +906,10 @@ class Component extends DCLogic {
 
   // One record, fetched against this phone's own member token. A portal that
   // holds the roster is a portal that leaks it.
+  taxRegistered() {
+    const o = this.outlet();
+    return !!o.tax && o.tax !== "NONE" && Number(o.rate || 0) > 0;
+  }
   members() { return this.K() ? (this.K().CUSTOMERS || []) : []; }
   member() { return this.members().filter((c) => c.id === this.state.memberId)[0] || null; }
   // A tier is earned, not stored: derive it from lifetime spend so the card and
@@ -1475,7 +1479,10 @@ class Component extends DCLogic {
     V.cartWrapStyle = nCart ? "margin-top:13px;display:flex;flex-direction:column;gap:15px" : "display:none";
     V.cartSubLabel = this.money(this.cartSub());
     V.cartPtsLabel = "+" + Math.floor(this.cartSub() / this.pointsPer()) + " pts";
-    V.orderFoot = "Service charge and " + o.tax + " are added on the bill. Points post when the till settles the ticket.";
+    V.orderFoot = (this.taxRegistered()
+      ? "Service charge and " + o.tax + " are added on the bill. "
+      : ((o.sc || 0) ? "A service charge is added on the bill. " : ""))
+      + "Points post when the till settles the ticket.";
 
     // sent this visit, with the till's own status once it has the lines
     const posT = (() => {
@@ -1563,7 +1570,9 @@ class Component extends DCLogic {
     V.ordersMeta = s.sent.length ? s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " · table " + s.table : "This visit";
     V.visitFootStyle = s.sent.length ? "margin-top:18px;border:1px solid #efefef;border-radius:14px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px 16px" : "display:none";
     V.visitTotal = this.money(visitSum);
-    V.visitFoot = "Before the " + (o.sc || 0) + "% service charge and " + o.tax + " " + o.rate + "%. Points post to your card when the till settles the bill.";
+    V.visitFoot = "Before the " + (o.sc || 0) + "% service charge"
+      + (this.taxRegistered() ? " and " + o.tax + " " + o.rate + "%" : "")
+      + ". Points post to your card when the till settles the bill.";
 
     // rewards
     V.rewardsSub = "Earn 1 point for every " + this.fmt(this.pointsPer()) + " you spend. 10 points is worth MVR 1 off.";
@@ -1704,7 +1713,8 @@ class Component extends DCLogic {
       { label: "Subtotal", amt: this.money(B.sub), style: bRow },
       { label: "Discount " + B.discPct + "%", amt: "\u2212 " + this.money(B.disc), style: B.disc ? bRow + ";color:#1f7a3d" : "display:none" },
       { label: "Service charge " + (B.o.sc || 0) + "%", amt: this.money(B.svc), style: B.o.sc ? bRow : "display:none" },
-      { label: (B.o.tax || "Tax") + " " + (B.o.rate || 0) + "%", amt: this.money(B.tax), style: bRow },
+      { label: this.taxRegistered() ? B.o.tax + " " + B.o.rate + "%" : "",
+        amt: this.money(B.tax), style: this.taxRegistered() ? bRow : "display:none" },
       { label: "Table total", amt: this.money(B.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111;padding-top:9px;border-top:1px solid #f0f0f0;margin-top:3px" }
     ] : [];
     V.splitModes = [

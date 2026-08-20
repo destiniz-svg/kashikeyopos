@@ -3035,6 +3035,23 @@ class Component extends DCLogic {
     const o = this.outlet(outletId === undefined ? this.state.outletId : outletId);
     return hit || { tax: o.tax, rate: o.rate || 0, sc: o.sc || 0, from: "" };
   }
+  /* GST REGISTRATION IS A FACT ABOUT THE BUSINESS, NOT A SETTING.
+     In the Maldives a business registers once it crosses the turnover
+     threshold; below it, it charges nothing. A receipt that prints a tax line
+     anyway is claiming a registration it does not have — so every tax row in
+     this app asks here first, and an unregistered outlet shows no tax line at
+     all rather than a zero one. */
+  taxRegistered(o) {
+    const x = o || this.outlet();
+    return !!x && !!x.tax && x.tax !== "NONE" && Number(x.rate || 0) > 0;
+  }
+  // Where this business stands against the registration threshold, as the
+  // outlet's own database measured it. Never a projection, never a guess.
+  gstWatch() { return (K() || {}).GST_WATCH || null; }
+  taxLine(o) {                       // "GGST 8%", or "" when not registered
+    const x = o || this.outlet();
+    return this.taxRegistered(x) ? x.tax + " " + (x.rate || 0) + "%" : "";
+  }
   totals(tk, split) {
     const o = this.outlet();
     let sub = 0;
@@ -3568,7 +3585,9 @@ class Component extends DCLogic {
     const s = this.state, o = this.outlet();
     const m = {
       pos: o.pos
-        ? ["POS Floor", o.name + " · " + o.tax + " " + o.rate + "% · " + (o.sc || 0) + "% service charge"]
+        ? ["POS Floor", o.name
+          + (this.taxRegistered(o) ? " · " + this.taxLine(o) : " · no GST charged")
+          + ((o.sc || 0) ? " · " + o.sc + "% service charge" : "")]
         : [this.siteFloorLabel(), o.name + " · no till here · " + (this.siteKind() === "store" ? "receiving, counting and dispatch" : "production and dispatch")],
       kds: ["Kitchen Display", "Live fire queue · longest ticket first"],
       orders: ["Orders & Tickets", "Every ticket written by this outlet today"],
@@ -3909,7 +3928,7 @@ class Component extends DCLogic {
     return [
       card("Net sales · today", MVRc(netSales),
         (openVal ? MVRc(openVal) + " still on the floor · " : "")
-        + (o.tax ? o.tax + " " + o.rate + "% excluded" : "no GST charged here"), amber),
+        + (this.taxRegistered(o) ? this.taxLine(o) + " excluded" : "no GST charged here"), amber),
       card("Open tables", openTables.length + " / " + this.floorTables().length, Math.round((openTables.length / (this.floorTables().length || 1)) * 100) + "% full · " + MVRc(openVal) + " on the floor"),
       card("Covers", String(covers), "Avg cheque " + MVR(netSales / (covers || 1))),
       (() => {
@@ -4679,7 +4698,7 @@ class Component extends DCLogic {
     const foldTotals = tight && !s.showWorking;
     const totalRows = (foldTotals
       ? [{
-        label: "Sub " + MVR(T.sub).replace("MVR ", "") + (T.disc ? "  \u00b7  less " + MVR(T.disc).replace("MVR ", "") : "") + (o.sc ? "  \u00b7  Svc " + MVR(T.svc).replace("MVR ", "") : "") + "  \u00b7  " + o.tax + " " + MVR(T.tax).replace("MVR ", ""),
+        label: "Sub " + MVR(T.sub).replace("MVR ", "") + (T.disc ? "  \u00b7  less " + MVR(T.disc).replace("MVR ", "") : "") + (o.sc ? "  \u00b7  Svc " + MVR(T.svc).replace("MVR ", "") : "") + (this.taxRegistered(o) ? "  \u00b7  " + o.tax + " " + MVR(T.tax).replace("MVR ", "") : ""),
         value: "Show working",
         style: "display:flex;justify-content:space-between;gap:8px;font-size:10.5px;font-weight:500;color:var(--text-muted);padding:2px 0;cursor:pointer",
         go: () => this.setState({ showWorking: true })
@@ -4688,7 +4707,8 @@ class Component extends DCLogic {
         { label: "Subtotal", value: MVR(T.sub), style: rowS },
         { label: "Discount " + T.discCode + " " + T.discPct + "%", value: "\u2212 " + MVR(T.disc), style: T.disc ? rowS + ";color:var(--warn-bright)" : "display:none" },
         { label: "Service charge " + (o.sc || 0) + "%", value: MVR(T.svc), style: (o.sc ? rowS : "display:none") },
-        { label: o.tax + " " + o.rate + "%", value: MVR(T.tax), style: rowS }
+        { label: this.taxLine(o), value: MVR(T.tax),
+          style: this.taxRegistered(o) ? rowS : "display:none" }
       ].concat(tight ? [{ label: "", value: "Hide working", style: "display:flex;justify-content:flex-end;font-size:10px;font-weight:600;color:var(--text-muted);padding:1px 0;cursor:pointer", go: () => this.setState({ showWorking: false }) }] : [])
     ).concat([
       // Nothing on this screen is allowed to be bigger. The operator and the
@@ -5432,7 +5452,8 @@ class Component extends DCLogic {
       const canConfirm = m.tender === "cash" ? given >= due : (m.tender === "credit" ? !!cust && (cust.credit - cust.used) >= gross : true);
       return {
         modalTitle: "Settle · " + this.guestLabel(gAll[gIdx]),
-        modalSub: this.slotName(s.activeTable) + " · " + o.name + " · " + o.tax + " " + o.rate + "%" + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : "") + (evenN > 1 ? " · split " + evenN + " ways" : ""),
+        modalSub: this.slotName(s.activeTable) + " · " + o.name
+          + (this.taxRegistered(o) ? " · " + this.taxLine(o) : "") + (gAll.length > 1 ? " · bill " + (gIdx + 1) + " of " + gAll.length : "") + (evenN > 1 ? " · split " + evenN + " ways" : ""),
         billLines: (tk ? tk.lines.filter((l) => gAll.length < 2 || (l.split || 0) === gIdx) : []).map((l) => {
           const mi = (K0.MENU || []).find((x) => x.id === l.id) || { name: "?" };
           return { n: l.qty + "× " + mi.name, v: MVRc(this.menuPrice(mi) * l.qty), note: l.note || "", noteStyle: l.note ? "display:block;font-size:10px;color:var(--warn-bright);margin-top:2px" : "display:none" };
@@ -5519,7 +5540,8 @@ class Component extends DCLogic {
           { label: "Subtotal", value: MVR(T.sub), style: rowS },
           { label: "Discount " + T.discCode + " " + T.discPct + "%" + (T.discFrom === "qr" ? " · from the guest's phone" : ""), value: "\u2212 " + MVR(T.disc), style: T.disc ? rowS + ";color:var(--warn-bright)" : "display:none" },
           { label: "Service charge " + (o.sc || 0) + "%", value: MVR(T.svc), style: o.sc ? rowS : "display:none" },
-          { label: o.tax + " " + o.rate + "%", value: MVR(T.tax), style: rowS },
+          { label: this.taxLine(o), value: MVR(T.tax),
+            style: this.taxRegistered(o) ? rowS : "display:none" },
           { label: "Total", value: MVR(T.total), style: "display:flex;justify-content:space-between;font-size:17px;font-weight:700;padding:9px 0;margin-top:6px;border-top:1px solid var(--line);color:var(--text)" },
           { label: "Split " + evenN + " ways", value: MVR(shareBase) + " each", style: evenN > 1 ? rowS : "display:none" },
           { label: "Already collected", value: "\u2212 " + MVR(paidAmt), style: paidAmt ? rowS : "display:none" },
@@ -5854,7 +5876,7 @@ class Component extends DCLogic {
         acts.push({
           head: i === 0 ? "Where you are working" : "",
           label: x.name,
-          sub: x.pos ? (x.tax + " " + x.rate + "% · " + (x.tables || 0) + " tables · " + x.region)
+          sub: x.pos ? ((this.taxLine(x) || "No GST") + " · " + (x.tables || 0) + " tables · " + x.region)
                      : ((x.type === "central_kitchen" ? "Central kitchen" : "Main store") + " · no till · " + x.region),
           style: x.id === s.outletId ? on : btn,
           go: () => { this.setState({ modal: null }); setTimeout(() => this.goOutlet(x.id), 0); }
@@ -6602,7 +6624,8 @@ class Component extends DCLogic {
       const rows = [
         { n: "Subtotal", v: MVRc(T.sub), style: "display:flex;justify-content:space-between;padding:2px 0" },
         { n: "Service " + (o.sc || 0) + "%", v: MVRc(T.svc), style: o.sc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
-        { n: o.tax + " " + o.rate + "%", v: MVRc(T.tax), style: "display:flex;justify-content:space-between;padding:2px 0" },
+        { n: this.taxLine(o), v: MVRc(T.tax),
+          style: this.taxRegistered(o) ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
         { n: "TOTAL", v: MVRc(T.total), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
         { n: tn, v: MVRc(p.given || T.total), style: "display:flex;justify-content:space-between;padding:5px 0 0" }
       ];
@@ -6651,7 +6674,8 @@ class Component extends DCLogic {
         rcpTotals: [
           { n: "Net reversed", v: MVRc(T.sub), style: rw },
           { n: "Service " + d.sc + "%", v: MVRc(T.svc), style: d.sc ? rw : "display:none" },
-          { n: d.taxLabel + " " + d.rate + "%", v: MVRc(T.tax), style: rw },
+          { n: (d.taxLabel || "") + " " + (d.rate || 0) + "%", v: MVRc(T.tax),
+            style: (d.taxLabel && d.taxLabel !== "NONE" && d.rate) ? rw : "display:none" },
           { n: "TOTAL CREDITED", v: MVRc(T.total), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" }
         ],
         rcpFoot: d.note + "\nIssued by " + d.by + " · " + d.date
@@ -6688,7 +6712,8 @@ class Component extends DCLogic {
         ["Discounts given", disc ? "\u2212 " + MVRc(disc) : "none"],
         ["Net sales", MVRc(net)],
         ["Service charge " + (V.sc || 0) + "%", MVRc(svc)],
-        [(V.tax || "GST") + " " + V.rate + "%", MVRc(tax)],
+        [(this.taxRegistered() ? V.tax + " " + V.rate + "%" : "GST"),
+          this.taxRegistered() ? MVRc(tax) : "not registered"],
         ["Cash rounding", rnd ? (rnd > 0 ? "+" : "\u2212") + MVRc(Math.abs(rnd)) : "none"],
         ["Gross taken", MVRc(gross)],
         ["Credit notes issued", credits.length ? credits.length + " · " + MVRc(refunded) : "none"],
@@ -6744,7 +6769,8 @@ class Component extends DCLogic {
       rcpTotals: [
         { n: "Subtotal", v: MVRc(acc), style: "display:flex;justify-content:space-between;padding:2px 0" },
         { n: "Service " + (o.sc || 0) + "%", v: MVRc(svc), style: (o.sc ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none") },
-        { n: o.tax + " " + o.rate + "%", v: MVRc(tax), style: "display:flex;justify-content:space-between;padding:2px 0" },
+        { n: this.taxLine(o), v: MVRc(tax),
+          style: this.taxRegistered(o) ? "display:flex;justify-content:space-between;padding:2px 0" : "display:none" },
         { n: "TOTAL", v: MVRc(acc + svc + tax), style: "display:flex;justify-content:space-between;font-weight:700;font-size:13.5px;padding-top:6px;border-top:1px solid #999;margin-top:4px" },
         { n: this.tenderName(ord.tender), v: MVRc(acc + svc + tax), style: "display:flex;justify-content:space-between;padding:4px 0 0" }
       ],
@@ -6799,7 +6825,7 @@ class Component extends DCLogic {
       return {
         hasDetailEdit: this.can("branches"), detailEditLabel: "Edit outlet, tax or service charge", detailEdit: () => this.openForm("outlet", o),
         modalTitle: o.name, modalSub: o.code + " · " + (o.region || ""),
-        detailRows: [Rt("Type", o.type ? o.type.replace("_", " ") : ""), Rt("Manager", o.mgr || "—"), Rt("Address", o.addr || "—"), R("Tax class", o.tax + " " + o.rate + "%", "var(--warn-bright)"), R("Service charge", (o.sc || 0) + "%"), R("Seats", String(o.seats || 0)), R("Tables", String(o.tables || 0)), Rt("POS terminal", o.pos ? "Yes" : "No"), Rt("Stock locations", kids.length ? kids.map((k) => k.code).join(", ") : "None")],
+        detailRows: [Rt("Type", o.type ? o.type.replace("_", " ") : ""), Rt("Manager", o.mgr || "—"), Rt("Address", o.addr || "—"), R("Tax class", this.taxLine(o) || "Not registered", "var(--warn-bright)"), R("Service charge", (o.sc || 0) + "%"), R("Seats", String(o.seats || 0)), R("Tables", String(o.tables || 0)), Rt("POS terminal", o.pos ? "Yes" : "No"), Rt("Stock locations", kids.length ? kids.map((k) => k.code).join(", ") : "None")],
         detailNote: "outlet_ids in this outlet's staff tokens = [" + [o.id].concat(kids.map((k) => k.id)).join(", ") + "] — the outlet plus its stock sub-locations, nothing else.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -8621,7 +8647,7 @@ class Component extends DCLogic {
       + "Answer in plain prose, no markdown, no bullets, no headings, two short paragraphs at most. Never invent a figure that is not given. "
       + "Say what to do about it, in the order it costs money to ignore.";
     const body = "Question: " + q
-      + "\nOutlet: " + d.o.name + " · " + d.o.tax + " " + d.o.rate + "%"
+      + "\nOutlet: " + d.o.name + " · " + (this.taxLine(d.o) || "not GST registered")
       + "\nBelow par: " + (d.short.map((x) => x.name + " " + (Math.round(x.qty * 10) / 10) + "/" + x.par + x.unit).join("; ") || "none")
       + "\nExpired batches: " + (d.expired.map((x) => x.name + " " + Math.abs(x.days) + "d ago " + MVRc(x.value)).join("; ") || "none")
       + "\nExpiring within 7 days: " + (d.soon.map((x) => x.name + " in " + x.days + "d").join("; ") || "none")
@@ -8694,7 +8720,7 @@ class Component extends DCLogic {
       ],
       cardMin: 250,
       cards: outs.map((x) => ({
-        title: x.o.name, sub: x.o.region + " · " + x.o.tax + " " + x.o.rate + "%",
+        title: x.o.name, sub: x.o.region + " · " + (this.taxLine(x.o) || "no GST"),
         chip: (x.growth >= 0 ? "+" : "") + x.growth + "%", chipBg: x.growth >= 0 ? "var(--ok-dim)" : "var(--bad-dim)", chipFg: x.growth >= 0 ? "var(--green)" : "var(--red-bright)",
         big: MVRc(x.sales), pct: (x.sales / best) * 100, barColor: x.fc > 33 ? "var(--red)" : "var(--warn)",
         rows: [["Covers", String(x.covers)], ["Avg cheque", MVR(x.avg)], ["Food cost", x.fc + "%", x.fc > 33 ? "var(--red-bright)" : "var(--green)"], ["Manager", x.o.mgr]],
@@ -8708,7 +8734,7 @@ class Component extends DCLogic {
       ],
       rows: outs.map((x) => ({
         go: () => { this.setState({ outletId: x.o.id, view: "pos" }, () => this.ensureTradingDay()); },
-        cells: [x.o.name, { t: MVRc(x.sales), c: "var(--warn-bright)", w: 600 }, Math.round((x.sales / total) * 100) + "%", String(x.covers), MVR(x.avg), { t: x.fc + "%", c: x.fc > 33 ? "var(--red-bright)" : "var(--green)" }, { t: x.o.tax, chip: this.chip(x.o.tax === "TGST" ? "purple" : "info") }]
+        cells: [x.o.name, { t: MVRc(x.sales), c: "var(--warn-bright)", w: 600 }, Math.round((x.sales / total) * 100) + "%", String(x.covers), MVR(x.avg), { t: x.fc + "%", c: x.fc > 33 ? "var(--red-bright)" : "var(--green)" }, { t: this.taxRegistered(x.o) ? x.o.tax : "None", chip: this.chip(x.o.tax === "TGST" ? "purple" : x.o.tax === "NONE" ? "mute" : "info") }]
       }))
     };
   }
@@ -8720,7 +8746,7 @@ class Component extends DCLogic {
     const list = this.scopedOutlets().filter((o) => !q || o.name.toLowerCase().indexOf(q) >= 0 || this.fileTag().indexOf(q) >= 0);
     const kind = { main_store: ["Main store", "info"], central_kitchen: ["Central kitchen", "purple"], restaurant: ["Restaurant", "warn"] };
     return {
-      guideTitle: "Opening a location", guide: ["Create the outlet with its tax profile — GGST 8% or TGST 16%", "Restaurants get tables and a till; stores and kitchens do not", "Add stock sub-locations beneath it for freezer, dry store, bar", "Bind printer stations before the first service"],
+      guideTitle: "Opening a location", guide: ["Create the outlet with its tax profile — general, tourism zone, or not registered for GST", "Restaurants get tables and a till; stores and kitchens do not", "Add stock sub-locations beneath it for freezer, dry store, bar", "Bind printer stations before the first service"],
       actions: [
         { label: "Add outlet", primary: true, go: () => this.openForm("outlet") },
         { label: "Printer profiles", go: () => this.info("Printer profiles", "Stations bound per outlet", this.posOutlets().map((o) => [o.name, "KOT " + this.fileTag() + "-kot · Bar " + this.fileTag() + "-bar · Bill " + this.fileTag() + "-bill", "t"])) }
@@ -8736,7 +8762,7 @@ class Component extends DCLogic {
         return {
           on: o.id === s.outletId,
           go: () => this.setState({ modal: { kind: "outletDetail", id: o.id } }),
-          cells: [{ t: o.code, mono: 1 }, o.name, { t: k[0], chip: this.chip(k[1]) }, par ? par.name : "—", { t: o.tax + " " + o.rate + "%", c: "var(--text)" }, o.sc ? o.sc + "%" : "—", o.seats || "—", { t: o.pos ? "Yes" : "No", chip: this.chip(o.pos ? "ok" : "mute") }]
+          cells: [{ t: o.code, mono: 1 }, o.name, { t: k[0], chip: this.chip(k[1]) }, par ? par.name : "—", { t: this.taxLine(o) || "Not registered", c: "var(--text)" }, o.sc ? o.sc + "%" : "—", o.seats || "—", { t: o.pos ? "Yes" : "No", chip: this.chip(o.pos ? "ok" : "mute") }]
         };
       }),
       notes: [
@@ -9213,7 +9239,7 @@ class Component extends DCLogic {
     rows.push(["Cr 4000 Food and beverage", MVR(T.net === undefined ? (T.sub || 0) : T.net)]);
     if (T.disc) rows.push(["Dr 4200 Discounts and allowances", MVR(T.disc)]);
     if (T.svc) rows.push(["Cr 2300 Service charge payable", MVR(T.svc)]);
-    rows.push(["Cr 2200 " + (o.tax || "GST") + " payable", MVR(T.tax || 0)]);
+    if (this.taxRegistered(o)) rows.push(["Cr 2200 " + o.tax + " payable", MVR(T.tax || 0)]);
     if (snap.tip) rows.push(["Cr 2450 Tips payable to staff", MVR(snap.tip)]);
     rows.push(["Dr 5000 Cost of sales", MVR(t.cogs)]);
     rows.push(["Cr 1200 Inventory", MVR(t.cogs)]);
@@ -10628,7 +10654,8 @@ class Component extends DCLogic {
       tkTotals: [
         { k: "Subtotal", v: MVRc(T.sub), s: "font-size:11.5px;color:var(--text-dim)" },
         { k: "Service charge " + (o.sc || 0) + "%", v: MVRc(T.svc || 0), s: "font-size:11.5px;color:var(--text-dim)" },
-        { k: o.tax + " " + o.rate + "%", v: MVRc(T.tax || 0), s: "font-size:11.5px;color:var(--text-dim)" },
+        { k: this.taxLine(o) || "GST", v: this.taxRegistered(o) ? MVRc(T.tax || 0) : "not registered",
+          s: "font-size:11.5px;color:var(--text-dim)" },
         { k: "Total", v: MVRc(T.total), s: "font-size:13px;font-weight:800;color:var(--text);padding-top:7px;border-top:1px solid var(--line)" },
         { k: "Cash rounding", v: (roundDiff >= 0 ? "+" : "") + MVRc(roundDiff), s: Math.abs(roundDiff) > 0.004 ? "font-size:11.5px;color:var(--text-dim)" : "display:none" },
         { k: "Cash due", v: MVRc(grossDue), s: Math.abs(roundDiff) > 0.004 ? "font-size:13px;font-weight:800;color:var(--warn-bright)" : "display:none" }
@@ -14555,7 +14582,7 @@ class Component extends DCLogic {
       + '{"rationale":"2-3 sentences on the trade-offs you made","dishes":[{"name":"","cat":"one of the given categories","price":<MVR integer>,"lines":[{"item":<pantry id>,"qty":<integer>}],"why":"one sentence tying this dish to cost or stock"}]}. '
       + "Use pantry ids exactly. qty is per single portion, in THAT item's own base unit as given in the pantry (GRM = grams, ML = millilitres, PCS = whole pieces) — never convert. "
       + "Price in whole MVR at a level a guest would pay. Favour items with the most stock on hand and the lowest cost per base unit.";
-    const body = "Outlet: " + o.name + " (" + o.code + "), " + o.type.replace("_", " ") + ", tax " + o.tax + " " + o.rate + "%.\n"
+    const body = "Outlet: " + o.name + " (" + o.code + "), " + o.type.replace("_", " ") + ", " + (this.taxLine(o) || "not GST registered") + ".\n"
       + "Menu categories: " + cats + "\n"
       + "Brief: " + s.aiPrompt + "\n\nPantry (id · item · category · base unit · MVR per one base unit · on hand):\n"
       + pantry.map((p) => p.id + " · " + p.name + " · " + p.cat + " · " + p.base + " · " + p.costPerBase.toFixed(4) + " · " + p.onHand.toFixed(1) + p.unit).join("\n");
@@ -14640,7 +14667,8 @@ class Component extends DCLogic {
       const unpriced = grns.length - claimable.length;
       return {
         tabs: tabs,
-        guideTitle: o.tax + " return · " + s.now.toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
+        guideTitle: (this.taxRegistered(o) ? o.tax + " return" : "No GST return due")
+          + " · " + s.now.toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
         guide: [
           "Output tax is extracted from every settled bill, never added on top",
           "Input tax is only claimable against a priced supplier invoice",
@@ -14649,7 +14677,7 @@ class Component extends DCLogic {
         ],
         actions: [
           { label: "Export the return", primary: true, go: () => this.downloadCsv("kashikeyo-" + this.fileTag() + "-gst-return.csv",
-            [[o.tax + " return", o.name], ["TIN", this.prof().tin || "—"], ["Period", s.now.toLocaleDateString("en-GB", { month: "long", year: "numeric" })], [],
+            [[(this.taxRegistered(o) ? o.tax + " return" : "Not GST registered"), o.name], ["TIN", this.prof().tin || "—"], ["Period", s.now.toLocaleDateString("en-GB", { month: "long", year: "numeric" })], [],
              ["Line", "MVR"],
              ["Net sales (excl. " + o.tax + ")", netSales.toFixed(2)],
              ["Service charge collected", svc.toFixed(2)],
@@ -14666,7 +14694,7 @@ class Component extends DCLogic {
             accent: days < 5 ? "var(--warn-line)" : null,
             chip: "Due in " + days + "d", chipBg: days < 5 ? "var(--warn-dim)" : "var(--bg-3)", chipFg: days < 5 ? "var(--warn-bright)" : "var(--text-dim)",
             big: MVRc(payable), bigSize: 24, bigColor: payable > 0 ? "var(--text)" : "var(--green)",
-            rows: [["Filing date", filing.toLocaleDateString("en-GB", { day: "numeric", month: "short" })], ["Rate", o.tax + " " + o.rate + "%"], ["TIN", this.prof().tin || "not set"]],
+            rows: [["Filing date", filing.toLocaleDateString("en-GB", { day: "numeric", month: "short" })], ["Rate", this.taxLine(o) || "Not registered"], ["TIN", this.prof().tin || "not set"]],
             foot: payable > 0 ? "Payable to MIRA on filing. The figure is read from settled bills and priced invoices at this moment, not accrued." : "A credit position — carried forward rather than refunded." },
           { title: "Output tax", sub: mine.length + " bills settled",
             chip: o.rate + "% extracted", chipBg: "var(--ok-dim)", chipFg: "var(--green)",
@@ -15256,9 +15284,27 @@ class Component extends DCLogic {
           picks: [{ label: "What this business does", opts: this.ACTIVITIES().map((a) => ({ label: a[1], on: this.activity() === a[0], go: gate(() => this.setActivity(a[0])) })) }],
           rows: [["Modules hidden", (function (self) { const n = ["kds", "reservations", "recipes", "batches", "production", "aimenu"].filter((k) => self.hiddenBy(self.activity(), k)).length; return n ? String(n) : "None"; })(this)]],
           foot: "A grocery has stock, staff and a till but no pass and no book; a salon takes appointments and has neither. Carrying modules a trade will never open is how a back office starts to feel like someone else's software — so the activity hides them rather than greying them out." },
-        { title: "Taxation", sub: P0.taxClass + " · " + P0.taxRate + "%", chip: "Editable", chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)", cat: "tax",
-          rows: [["Class", P0.taxClass], ["Rate", P0.taxRate + "%"], ["Service charge", P0.taxSc + "%"], ["TIN on the bill", P0.taxTin], ["Activity", P0.taxActivity]],
-          foot: "GGST 8% general, TGST 16% tourism zone. A rate change applies from the next order — open tickets keep the rate they were rung at.",
+        { title: "Taxation",
+          sub: this.taxRegistered() ? P0.taxClass + " · " + P0.taxRate + "%" : "Not registered for GST",
+          chip: "Editable", chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)", cat: "tax",
+          rows: [
+            ["Class", this.taxRegistered() ? P0.taxClass : "Not registered"],
+            ["Rate", this.taxRegistered() ? P0.taxRate + "%" : "Nothing charged"],
+            ["Service charge", P0.taxSc + "%"],
+            ["TIN on the bill", P0.taxTin],
+            // The measurement, always visible — this is the figure that decides
+            // whether the class above is still the right answer.
+            ["Taxable supplies · " + ((this.gstWatch() || {}).months || 12) + " months",
+              this.gstWatch()
+                ? MVRc(this.gstWatch().turnover) + " of " + MVRc(this.gstWatch().threshold)
+                : "Not measured yet"],
+            ["Activity", P0.taxActivity]
+          ],
+          foot: this.taxRegistered()
+            ? "GGST 8% general, TGST 16% tourism zone. A rate change applies from the next order — open tickets keep the rate they were rung at."
+            : "This business charges no GST, and no tax line prints on its bills. "
+              + ((this.gstWatch() || {}).note
+                || "Registration becomes compulsory once taxable supplies pass the threshold."),
           go: gate(() => this.openForm("taxProfile")) },
         { title: "Invoice particulars", sub: "Printed on every bill", cat: "tax",
           rows: [["Note", P0.invoiceNote || "—"], ["Taxpayer line", CH.name + " · TIN " + P0.taxTin], ["Contact line", P0.phone + " · " + P0.email], ["Tax summary", "Subtotal, service charge, " + P0.taxClass]],
@@ -15352,7 +15398,8 @@ class Component extends DCLogic {
           foot: "Rounding applies to the cash tender only, and the difference posts to 4900 so the drawer still reconciles." },
         { title: "Tax rate history", sub: "A rate is a fact with a date on it", cat: "tax",
           chip: this.taxAt().tax + " " + this.taxAt().rate + "%", chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)",
-          rows: this.taxVersions().slice(-4).reverse().map((v) => [v.from, v.tax + " " + v.rate + "% · " + v.note]),
+          rows: this.taxVersions().slice(-4).reverse().map((v) => [v.from,
+            (v.tax === "NONE" || !v.rate ? "Not registered" : v.tax + " " + v.rate + "%") + " · " + v.note]),
           foot: "Every sale is taxed at the version in force on its own business date, and every receipt, credit note and return reads the same table. That is what lets a rate change be entered the day it is announced rather than the night it takes effect — and what stops a reprinted receipt from restating an invoice that has already been filed.",
           goLabel: "Schedule a rate change", go: gate(() => this.openForm("taxVersion")) },
         { title: "Accepted currencies", sub: "MVR is the book currency", cat: "tax",
@@ -15409,6 +15456,30 @@ class Component extends DCLogic {
     if (!this.registerOpen()) {
       add("now", "No register is open", "Nothing can be rung", "Not a single sale can be taken until a float is declared. This is the one item that stops the day starting.", "pos",
         { act: "Open the register", go: () => this.openForm("regopen") });
+    }
+    /* Registration is the one tax decision an owner can get wrong by doing
+       nothing. It appears only when the measurement says so — crossing the
+       threshold is "now", approaching it is "watch", and a registered
+       business is never told anything. */
+    const gw = this.gstWatch();
+    if (gw && !gw.registered && gw.due) {
+      add("now", "GST registration is due", MVRc(gw.turnover) + " in " + gw.months + " months",
+        "Taxable supplies have passed " + MVRc(gw.threshold) + " over a rolling "
+        + gw.months + " months, which requires registration. Until the outlet is "
+        + "registered here it charges nothing, so every sale from now is one you "
+        + "cannot reclaim the tax on. " + gw.authority, "settings",
+      { act: "Set the tax class", go: () => this.openForm("taxProfile") });
+    } else if (gw && !gw.registered && gw.near) {
+      add("watch", "Approaching GST registration", MVRc(gw.turnover) + " of " + MVRc(gw.threshold),
+        "Taxable supplies over a rolling " + gw.months + " months are within reach of "
+        + "the threshold. Nothing to do today — but the month you cross it, "
+        + "registration is not optional.", "settings",
+      { act: "Tax profile", go: () => this.openForm("taxProfile") });
+    } else if (gw && !gw.registered && gw.tourismAlways) {
+      add("now", "Tourism sector must register for GST", "TGST applies regardless of turnover",
+        "A business in the tourism sector registers for GST whatever its turnover. "
+        + "This outlet is currently charging nothing. " + gw.authority, "settings",
+      { act: "Set the tax class", go: () => this.openForm("taxProfile") });
     }
     const pf = this.failedJobs();
     if (pf.length) {

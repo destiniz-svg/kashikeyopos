@@ -652,6 +652,12 @@ class Component extends DCLogic {
   }
 
   menu() { const k = this.K(); return k ? (k.MENU || []) : []; }
+  // A business below the registration threshold charges no GST, and a bill
+  // that shows a tax line anyway claims a registration it does not have.
+  taxRegistered() {
+    const o = this.outlet();
+    return !!o.tax && o.tax !== "NONE" && Number(o.rate || 0) > 0;
+  }
   // A table is stored by the label the floor plan gives it — "T04", "Deck 2".
   // What a guest is TOLD is the human half of that, so a standard floor still
   // reads "table 4" and a named one still reads "table Deck 2".
@@ -1034,7 +1040,9 @@ class Component extends DCLogic {
     V.closeCart = () => self.setState({ cartOpen: false });
     V.cartCount = String(s.cart.reduce((a, l) => a + l.qty, 0));
     V.cartTotal = this.fmt(sub);
-    V.cartTotalLabel = "Goods, before " + (o.sc ? "service and " : "") + (o.tax || "tax");
+    V.cartTotalLabel = this.taxRegistered()
+      ? "Goods, before " + (o.sc ? "service and " : "") + o.tax
+      : (o.sc ? "Goods, before service" : "Goods");
     V.cartSub = s.cart.length + " item" + (s.cart.length === 1 ? "" : "s") + " · table " + tno;
     V.cartFoot = "Service charge and " + (o.tax || "tax") + " are added on the bill by the till. Send as many rounds as you like — they all join the same ticket.";
     V.cart = s.cart.map((l, i) => {
@@ -1124,7 +1132,8 @@ class Component extends DCLogic {
       { label: "Subtotal", amt: this.money(b.sub), style: rowS },
       { label: "Discount " + b.discPct + "%", amt: "\u2212 " + this.money(b.disc), style: b.disc ? rowS + ";color:#2ea44f" : "display:none" },
       { label: "Service charge " + (b.o.sc || 0) + "%", amt: this.money(b.svc), style: b.o.sc ? rowS : "display:none" },
-      { label: (b.o.tax || "Tax") + " " + (b.o.rate || 0) + "%", amt: this.money(b.tax), style: rowS },
+      { label: this.taxRegistered() ? b.o.tax + " " + b.o.rate + "%" : "",
+        amt: this.money(b.tax), style: this.taxRegistered() ? rowS : "display:none" },
       { label: "Table total", amt: this.money(b.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111;padding-top:9px;border-top:1px solid #f0f0f0;margin-top:3px" }
     ] : [];
 
