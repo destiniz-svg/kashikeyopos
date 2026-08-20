@@ -20,7 +20,8 @@ const opcosts = require('./opcosts');
 const accounting = require('./accounting');
 const memberportal = require('./memberportal');
 const vouchers = require('./vouchers');
-const { tableName } = require('./tables');
+const tables = require('./tables');
+const { tableName } = tables;
 const settlements = require('./settlements');
 const creditnotes = require('./creditnotes');
 const estate = require('./estate');
@@ -368,7 +369,7 @@ r.get('/me', function (req, res) { res.json(req.ctx); });
 r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) {
   try {
     const data = await withOutlet(req.ctx, async function (c) {
-      const [outlet, tax, items, sections, modifiers, itemMods, tickets, stages] = await Promise.all([
+      const [outlet, tax, items, sections, floor, money, top, modifiers, itemMods, tickets, stages] = await Promise.all([
         /* `cash_round_laari` rides along because the TILL has to be able to
            compute the same total the server will. Without it the till sent the
            unrounded figure, the server rounded the bill because the tender was
@@ -392,6 +393,32 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
            menu that stops working when the wifi does. */
         c.query('SELECT name, color, icon, station, sort, hidden FROM menu_section'
           + ' ORDER BY sort, name'),
+        /* The room, when somebody has described it (migration 038). An outlet
+           with no rows here is not broken — the floor keeps drawing T01..Tn
+           off outlet.tables, which is what it has always done. */
+        c.query('SELECT name, zone, seats, sort FROM dining_table'
+          + ' WHERE active ORDER BY sort, name'),
+        /* WHAT THIS ROOM ACTUALLY SELLS, over the last four weeks. The till
+           puts the busiest dozen behind one chip, because in most restaurants a
+           handful of dishes are most of the covers and hunting for them through
+           six sections is the commonest thing a cashier does all night.
+           DERIVED, never configured: it is whatever has been selling, so a menu
+           change moves it on its own and nobody has to maintain a list.
+           A GUEST DOES NOT GET IT — what sells is the merchant's information,
+           and it is a short step from there to what the room is making. */
+        /* Today's takings and what they cost, in one row. `gross` is net of
+           tax by construction (see src/sale.js), which is the figure a manager
+           means by "sales today". */
+        req.ctx.guest ? { rows: [{}] } : c.query(
+          'SELECT current_date AS on_date,'
+          + ' coalesce(sum(gross),0) AS net, coalesce(sum(cogs),0) AS cogs,'
+          + ' count(*)::int AS sales'
+          + ' FROM sale WHERE business_date = current_date AND voided_at IS NULL'),
+        req.ctx.guest ? { rows: [] } : c.query(
+          'SELECT l.item_id, sum(l.qty) AS qty FROM sale_line l'
+          + ' JOIN sale s ON s.id = l.sale_id'
+          + " WHERE s.business_date >= current_date - 27 AND s.voided_at IS NULL"
+          + ' GROUP BY l.item_id ORDER BY qty DESC, l.item_id LIMIT 12'),
         c.query('SELECT id, name, price, sections, sort FROM modifier'
           + ' WHERE active ORDER BY sort, name'),
         c.query('SELECT item_id, modifier_id FROM item_modifier'),
@@ -415,6 +442,11 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
            the guest portal is anonymous and has no business knowing that the
            party at this table is a member. */
         c.query("SELECT t.id, t.table_no, t.split, t.covers, t.status,"
+          /* WHEN THE PARTY SAT DOWN. §3.1 wants elapsed time on the tile and
+             says how: "Age counts up from openedAt for as long as the terminal
+             is open — it is derived from a timestamp, never a stored counter."
+             The column has existed since migration 003; nothing sent it. */
+          + ' t.opened_at, t.guest_name, t.hold_ref, t.held_at,'
           + ' t.member_id, ' + (req.ctx.guest ? 'NULL::numeric' : 't.points_offered')
           + ' AS points_offered, '
           /* `id` and `itemId` ride along because a ticket is not only something
@@ -427,17 +459,29 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
           + (req.ctx.guest ? "" : "   'id', l.id, 'itemId', l.item_id, ")
           + "   'name', l.name, 'qty', l.qty,"
           + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
+          /* WHEN it was fired, not merely that it was. "Same again" repeats the
+             LAST ROUND, and a round is physically everything that went to the
+             kitchen at the same moment — which cannot be recovered from a
+             boolean. */
+          + "   'sentAt', l.sent_at,"
           /* What was added on top, and what each one cost. The ticket panel
              prints them under the dish, the KOT prints them for the kitchen,
              and the till sends them back at settlement — a unit price with no
              explanation is how a guest gets charged 285 for a 240 curry and
              nobody can say why. */
           + "   'addons', l.addons,"
+          /* The kitchen note. Written by nobody until now (§3.3) even though
+             every reader of it — the KDS card, the receipt — already looked. */
+          + "   'note', l.note,"
           + "   'station', i.station)"
           + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
           + ' FROM ticket t LEFT JOIN ticket_line l'
           + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
           + ' LEFT JOIN item i ON i.id = l.item_id'
+          /* OPEN, STILL BEING COOKED, OR PARKED. A held ticket has no table
+             reserved and would otherwise vanish from every screen the moment it
+             was put down — which is the same "a bill nobody can reach is a bill
+             nobody can settle" trap the stray tiles were built for (§3.5). */
           /* OPEN, OR STILL BEING COOKED. Closing a ticket on payment — which
              it now is — used to take it out of this list entirely, and the
              pass kept the round it had not sent out yet with no table against
@@ -446,8 +490,23 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
              served". The floor filters this list back down to open tickets;
              the KDS wants both. */
           + " WHERE ($1::text IS NULL OR t.table_no = $1) AND (t.status = 'open'"
+          /* A PARKED BILL IS STILL A BILL. It holds no table, so without this
+             it left every screen the moment it was put down — the same "a bill
+             nobody can reach is a bill nobody can settle" trap the stray tiles
+             were built for. Staff only: a guest's phone has no business
+             reading bills that are not on its own table (§3.5). */
+          + (req.ctx.guest ? '' : "   OR t.status = 'held'")
           + '   OR EXISTS (SELECT 1 FROM kds_ticket k'
           + '              WHERE k.ticket_id = t.id AND k.served_at IS NULL))'
+          /* AND NEVER A PARKED BILL, for a guest, by ANY route. Adding 'held'
+             only to the staff branch was not enough and the test caught it: a
+             parked bill KEEPS ITS TABLE NAME, and its round is usually still on
+             the pass — so it came back through the kds branch to the phone of
+             whoever was seated on that table NEXT. One party reading another
+             party's bill is the precise thing this projection exists to stop,
+             and the table filter cannot see the difference because both parties
+             are, correctly, at the same table. */
+          + (req.ctx.guest ? "   AND t.status <> 'held'" : '')
           /* The guest's token carries the table as the QR card spells it — `3`.
              A ticket is stored the way the floor spells it — `T03`. Compared
              raw, a guest at a table with an open ticket saw nothing at all. */
@@ -482,6 +541,24 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
            flattening it per dish would send the same "extra sambol" forty
            times to a tablet on a hot kitchen's wifi. */
         sections: sections.rows,
+        /* Empty means "nobody has described the room", not "no tables" — the
+           till falls back to the numbered grid. See src/tables.js. */
+        floor: floor.rows,
+        /* Ids only, busiest first — the till already has the dishes. */
+        topItems: top.rows.map((r) => r.item_id),
+        /* THE FOUR FIGURES THE HEADER CARRIES. Net sales and cost of sales come
+           from the sales already written today; open tables and covers are
+           counted off the tickets in this same payload rather than queried
+           again. They ride here because the header is on EVERY screen and a
+           second poll for four numbers, on a terminal that already polls this,
+           is a second poll. Staff only — what the room is making is not a
+           guest's business. */
+        today: req.ctx.guest ? undefined : {
+          date: money.rows[0].on_date,
+          net: money.rows[0].net,
+          cogs: money.rows[0].cogs,
+          sales: money.rows[0].sales,
+        },
         modifiers: modifiers.rows,
         itemModifiers: itemMods.rows,
         tickets: tickets.rows,
@@ -695,6 +772,42 @@ r.delete('/outlet/:outletId/menu/addons/:addonId', sameOutlet, staffOnly, atLeas
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return menu.retireModifier(c, req.params.addonId);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── the floor plan (§3.1, migration 038) ───────────────────────────────────
+ *
+ * Manager rank. Naming the room is a manager's job for the same reason the
+ * price list is: a table renamed mid-service moves every open tab on it, and
+ * the till, the kitchen and the guest's QR card all read the result.
+ */
+r.get('/outlet/:outletId/floor', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { tables: await tables.allTables(c) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/floor/:name', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return tables.saveTable(c, req.params.name, req.body || {});
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/floor/:name', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return tables.dropTable(c, req.params.name);
       });
       res.json(out);
     } catch (e) { next(e); }
@@ -2686,6 +2799,14 @@ const OP_RANK = {
   clock_in: 1,
   clock_out: 1,
   ticket_send: 2,          // firing the kitchen moves no money
+  /* None of these four move money either. A name on a chip, a note for the
+     kitchen, and putting a bill down or picking it up again are all things the
+     person holding the tray does — gating them behind a manager would mean
+     waiting for one to record an allergy. See src/kitchen.js. */
+  ticket_guest_name: 2,
+  ticket_line_note: 2,
+  ticket_park: 2,
+  ticket_resume: 2,
   /* Queued at TILL rank because the person who mis-keyed a dish is standing at
      the till. kitchen.voidLine then refuses a line the kitchen already has
      below manager rank, which is the distinction that matters — the same shape
@@ -2745,6 +2866,18 @@ async function apply(c, op, ctx) {
 
     case 'ticket_send':
       return await kitchen.sendRound(c, op.payload || {}, ctx);
+
+    case 'ticket_guest_name':
+      return await kitchen.nameGuest(c, op.payload || {}, ctx);
+
+    case 'ticket_line_note':
+      return await kitchen.noteLine(c, op.payload || {}, ctx);
+
+    case 'ticket_park':
+      return await kitchen.parkTicket(c, op.payload || {}, ctx);
+
+    case 'ticket_resume':
+      return await kitchen.resumeTicket(c, op.payload || {}, ctx);
 
     case 'kds_advance':
       return await kitchen.advance(c, op.payload || {}, ctx);

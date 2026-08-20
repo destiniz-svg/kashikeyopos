@@ -55,10 +55,27 @@ export interface TicketLine {
   id?: string; itemId?: string;
   name: string; qty: string; price: string; sent: boolean; station: string | null;
   addons?: LineAddon[];
+  /* What the server told the kitchen about this line — "no onion", "allergy —
+     nuts". Written by nobody until §3.3's note was built. */
+  note?: string | null;
+  /* When it went to the kitchen. "Same again" repeats the last ROUND, and a
+     round is everything fired at the same moment — a boolean cannot say that. */
+  sentAt?: string | null;
 }
 export interface Ticket {
   id: string; table_no: string | null; split: number; covers: number;
   status: string; lines: TicketLine[];
+  /* When the party sat down. The tile's age counts up from this rather than
+     from a stored counter, so it survives a reload and two terminals agree
+     (§3.1). */
+  opened_at?: string;
+  /* Whose bill this split is (§3.3). Null means nobody has said, and the till
+     draws "Guest 2" as it always has. */
+  guest_name?: string | null;
+  /* Set only on a parked bill (§3.5) — the reference the cashier reads off the
+     strip to pick it back up. */
+  hold_ref?: string | null;
+  held_at?: string | null;
   member_id: string | null;
   /* What the member's own phone offered against this bill. Staff sessions
      only — the guest portal is anonymous and gets null. */
@@ -79,6 +96,15 @@ export interface Snapshot {
      a round trip to know what an "extra sambol" costs stops working when the
      wifi does. Optional so an older cached snapshot still parses. */
   sections?: Section[];
+  /* The room, when a merchant has named it (migration 038). Empty means nobody
+     has — the floor draws the numbered grid, which is what it always did. */
+  floor?: Array<{ name: string; zone: string | null; seats: number; sort: number }>;
+  /* The busiest dishes of the last four weeks, busiest first. Derived from what
+     has sold, never configured — staff sessions only. */
+  topItems?: string[];
+  /* What the room has taken today and what it cost, for the header strip.
+     Staff only. `net` is already net of tax — see backend/src/sale.js. */
+  today?: { date: string; net: string; cogs: string; sales: number };
   modifiers?: Modifier[];
   itemModifiers?: Array<{ item_id: string; modifier_id: string }>;
 }

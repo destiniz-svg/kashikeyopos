@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Item, LineAddon, Modifier, Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { Payment } from './Payment';
@@ -56,9 +56,13 @@ interface Props {
   onQueued: () => void | Promise<void>;
   intent?: Intent | null;
   onIntentDone?: () => void;
+  /* The terminal's toast (src/ui.tsx). The till's own flash used to sit at the
+     top of the ticket panel — which is exactly where the operator is NOT
+     looking: they are looking at the guest, or at the dish grid. */
+  say?: (text: string, tone?: 'ok' | 'warn' | 'err') => void;
 }
 
-export function Floor({ snap, now, session, online, onQueued, intent, onIntentDone }: Props) {
+export function Floor({ snap, now, session, online, onQueued, intent, onIntentDone, say }: Props) {
   /* THE TILL ON A PHONE IS A DIFFERENT MACHINE, and the prototype treats it as
      one. Three columns — 250px of tables, the menu, 300px of ticket — need 550px
      of fixed width before the menu gets a pixel, so on a 390px handset they do
@@ -117,6 +121,15 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     lines: Line[]; total: number; goods: number; ticketId: string | undefined;
   } | null>(null);
   const [flash, setFlash] = useState('');
+  /* Every message this screen raises goes through here. Where a toast is
+     supplied it goes to the toast; the inline banner stays as the fallback so
+     the till still speaks when Floor is rendered on its own. The two are
+     mutually exclusive rather than both — one event, one message. */
+  const tell = useCallback((text: string, tone: 'ok' | 'warn' | 'err' = 'ok') => {
+    if (say) { say(text, tone); return; }
+    setFlash(text);
+    window.setTimeout(() => setFlash(''), tone === 'err' ? 5200 : 2800);
+  }, [say]);
   /* §3.3's two foot actions are Send and Pay, and they are different things: a
      round goes to the kitchen the moment it is ordered, the bill is settled
      when the guest leaves.
@@ -132,6 +145,15 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   /* Clearing the whole bill: null when nobody is asking, otherwise the reason
      being typed for it. */
   const [clearing, setClearing] = useState(false);
+  /* Naming the bill being worked, and writing a note on one of its lines.
+     Both are held here rather than on the row so Escape and a tap outside
+     close them from one place. */
+  const [naming, setNaming] = useState<string | null>(null);
+  const [noting, setNoting] = useState<{ id: string; name: string; note: string } | null>(null);
+  const [parking, setParking] = useState(false);
+  /* The quantity the NEXT tap rings. Sticky for one dish and then it clears
+     itself — see `add`. Nought means one, which is the ordinary case. */
+  const [qtyMult, setQtyMult] = useState(0);
   const [clearWhy, setClearWhy] = useState('');
 
   /* The drawer lives at the foot of the FLOOR pane, and on a phone only one
@@ -155,6 +177,22 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const outlet = snap?.outlet ?? null;
   const tableCount = outlet?.tables ?? 0;
 
+  /* THE ROOM, WHEN SOMEBODY HAS DESCRIBED IT (migration 038). A merchant who
+     has named their tables gets those names and their seat counts; one who has
+     not gets T01..Tn off the outlet's table count, exactly as this screen has
+     always drawn them. Empty is a first-class state here, not a broken one —
+     naming the room is an enrichment, and the till behaves identically either
+     way. The ORDER and the NAVIGATION are unchanged in both cases. */
+  const plan = useMemo(() => {
+    const rows = snap?.floor ?? [];
+    if (rows.length) {
+      return rows.map((t) => ({ name: tableName(t.name), seats: t.seats }));
+    }
+    return Array.from({ length: tableCount }, (_, i) => ({
+      name: tableName(String(i + 1)), seats: 0,
+    }));
+  }, [snap?.floor, tableCount]);
+
   /* Every section the menu uses, in the merchant's own order, styled where
      anyone has styled it. A section nobody has opened the editor for still
      gets a chip — see menu.ts. */
@@ -162,17 +200,27 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const cats = useMemo(
     () => sections.filter((sn) => !sn.hidden).map((sn) => sn.name), [sections]);
 
+  /* The busiest dozen of the last four weeks, and only when there ARE a dozen
+     to be busy about: a chip offering "the most ordered" out of five dishes is
+     a chip that says nothing, and a brand-new outlet has sold nothing at all.
+     Derived from sales, never configured — a menu change moves it on its own. */
+  const top = useMemo(() => {
+    const ids = snap?.topItems ?? [];
+    return ids.length >= 3 && items.length > ids.length ? new Set(ids) : null;
+  }, [snap?.topItems, items.length]);
+
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return items.filter((it) => {
-      if (cat !== 'all' && (it.category || 'Other') !== cat) return false;
+      if (cat === 'top') { if (!top || !top.has(it.id)) return false; }
+      else if (cat !== 'all' && (it.category || 'Other') !== cat) return false;
       if (!needle) return true;
       /* The description is searched too. A cashier who has been told "the one
          with the coconut" has no other way in. */
       return it.name.toLowerCase().includes(needle)
         || (it.description || '').toLowerCase().includes(needle);
     });
-  }, [items, cat, q]);
+  }, [items, cat, q, top]);
 
   /* How many dishes each chip holds — the prototype prints it on the chip, and
      it is the difference between "this section is empty" and "the search found
@@ -206,13 +254,47 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const openTickets = useMemo(
     () => (snap?.tickets ?? []).filter((t) => t.status === 'open'), [snap]);
 
+  /* Bills that have been put down (§3.5). They hold no table — that is the
+     point — so they would leave every screen without a strip of their own. */
+  const parked = useMemo(
+    () => (snap?.tickets ?? [])
+      .filter((t) => t.status === 'held' && t.hold_ref)
+      .sort((a, b) => String(a.hold_ref).localeCompare(String(b.hold_ref))),
+    [snap]);
+
+  /* WHAT EACH BUSY TABLE IS DOING, not merely that it is busy. §3.1 asks the
+     tile for a status chip and an elapsed time, and both are derived from the
+     server's own rows rather than from anything this screen keeps: two
+     terminals looking at the same floor must agree.
+
+     FOUR STATES, NOT SIX. §3.1 lists Free, Seated, Ordered, Served, Bill
+     requested and Overdue. Four of them are derivable from what exists — a
+     ticket, its lines, and whether the kitchen still has unserved rows against
+     it. "Bill requested" has no signal anywhere in this system, and "Overdue"
+     needs a per-outlet threshold nobody has configured. Inventing either would
+     be a colour on a tile that means whatever the invented number meant, which
+     is docs/10-NO-DEMO-DATA.md's whole objection to shipping defaults. They
+     arrive when the thing behind them does. */
   const openByTable = useMemo(() => {
-    const m = new Map<string, { covers: number }>();
+    const cooking = new Set(
+      (snap?.stages ?? []).filter((g) => g.ticket_id).map((g) => g.ticket_id as string));
+    const m = new Map<string, {
+      covers: number; openedAt: number; lines: number; state: 'seated' | 'ordered' | 'served';
+    }>();
     for (const t of openTickets) {
-      if (t.table_no) m.set(tableName(t.table_no), { covers: t.covers });
+      if (!t.table_no) continue;
+      const lines = t.lines.reduce((a, l) => a + Number(l.qty), 0);
+      m.set(tableName(t.table_no), {
+        covers: t.covers,
+        openedAt: t.opened_at ? Date.parse(t.opened_at) : 0,
+        lines,
+        /* The snapshot carries only UNSERVED kds rows, so a ticket that has
+           dropped off that list is one the pass has finished. */
+        state: !lines ? 'seated' : cooking.has(t.id) ? 'ordered' : 'served',
+      });
     }
     return m;
-  }, [openTickets]);
+  }, [openTickets, snap?.stages]);
 
   /* Every open bill on the table being worked, in split order. This is what the
      guest chips are drawn from, and it is the server's answer rather than a
@@ -228,9 +310,9 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
      Delivery have their own tiles, so they are not strays. */
   const strays = useMemo(() => {
     const drawn = new Set(['Takeaway', 'Delivery']);
-    for (let n = 1; n <= tableCount; n++) drawn.add(tableName(String(n)));
+    for (const t of plan) drawn.add(t.name);
     return [...openByTable.keys()].filter((k) => !drawn.has(k)).sort();
-  }, [openByTable, tableCount]);
+  }, [openByTable, plan]);
 
   /* The open ticket for the bill being worked, if there is one.
      THE WHOLE POINT OF THIS SCREEN HAVING AN ID. Without it the ticket panel
@@ -248,6 +330,38 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
      created already sent (see kitchen.sendRound), so what is on the server IS
      what has been fired. */
   const sentLines = ticket?.lines ?? [];
+
+  /* SAME AGAIN — the commonest order in the room (the prototype's own words).
+     A round is physically everything that went to the kitchen at the same
+     moment, so "the last round" is every line fired within a minute of the most
+     recent fire. Anything since taken off the menu is dropped rather than
+     silently re-rung: a dish that is 86'd cannot be repeated just because it
+     was ordered an hour ago. */
+  const lastRound = useMemo(() => {
+    const fired = sentLines.filter((l) => l.sentAt);
+    if (!fired.length) return [];
+    const at = fired.reduce((a, l) => Math.max(a, Date.parse(l.sentAt as string) || 0), 0);
+    const round = fired.filter(
+      (l) => Math.abs((Date.parse(l.sentAt as string) || 0) - at) < 60000);
+    return (round.length ? round : fired);
+  }, [sentLines]);
+
+  const sameAgain = () => {
+    const live = new Map(items.filter((i) => !i.off_menu).map((i) => [i.id, i]));
+    const put = lastRound
+      .map((l) => ({ it: l.itemId ? live.get(l.itemId) : undefined, l }))
+      .filter((x) => x.it);
+    if (!put.length) {
+      tell(lastRound.length
+        ? "Everything in that round is off the menu now"
+        : 'Nothing has been fired yet — a repeat needs a round to repeat', 'warn');
+      return;
+    }
+    for (const { it, l } of put) {
+      add(it as Item, (l.addons || []).map((a) => ({ ...a })), Number(l.qty));
+    }
+    tell('Same again · ' + put.map((x) => Number(x.l.qty) + '× ' + x.l.name).join(', '));
+  };
 
   /* Retire a fired round once the ticket it was fired onto has caught up.
      Compared against the baseline captured at fire time, not against zero: two
@@ -282,18 +396,22 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     return () => document.removeEventListener('keydown', esc);
   }, [picking]);
 
-  const add = (it: Item, picks?: LineAddon[]) => {
+  const add = (it: Item, picks?: LineAddon[], howMany?: number) => {
     const chosen = (picks || []).filter((a) => a.qty > 0);
+    /* THE MULTIPLIER APPLIES TO THE NEXT DISH AND THEN LETS GO. A sticky ×6
+       that stayed on is how a table of two ends up with six desserts: the
+       cashier set it for the drinks round three taps ago and never saw it. */
+    const n = Math.max(1, howMany || qtyMult || 1);
     setDraft((ls) => {
       const sig = sigOf(it.id, chosen);
       const i = ls.findIndex((l) => sigOf(l.itemId, l.addons) === sig);
       if (i >= 0) {
         const next = ls.slice();
-        next[i] = { ...next[i], qty: next[i].qty + 1 };
+        next[i] = { ...next[i], qty: next[i].qty + n };
         return next;
       }
       return ls.concat([{
-        itemId: it.id, name: it.name, qty: 1,
+        itemId: it.id, name: it.name, qty: n,
         /* The till's own figure, for the ticket panel only. The SERVER prices
            the sale — this is what the cashier reads out while it is being
            keyed, and it has to agree, which is why it is the same sum. */
@@ -308,6 +426,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
        than no feedback at all. */
     setLastAdd(it.id + ':' + Date.now());
     window.setTimeout(() => setLastAdd(''), 400);
+    if (qtyMult) setQtyMult(0);
   };
 
   const step = (sig: string, d: number) =>
@@ -322,8 +441,46 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     if (!voiding || voidWhy.trim().length < 3) return;
     await outbox.enqueue('ticket_line_void', { lineId: voiding.id, reason: voidWhy.trim() });
     setVoiding(null); setVoidWhy('');
-    setFlash('Taken off the bill');
-    setTimeout(() => setFlash(''), 2600);
+    tell('Taken off the bill');
+    await onQueued();
+  };
+
+  /* Whose bill this is. A name, not a customer record — see kitchen.nameGuest. */
+  const nameGuest = async () => {
+    if (!ticket || naming === null) return;
+    await outbox.enqueue('ticket_guest_name', { ticketId: ticket.id, name: naming.trim() });
+    setNaming(null);
+    tell(naming.trim() ? 'This bill is ' + naming.trim() : 'Name cleared');
+    await onQueued();
+  };
+
+  /* What the kitchen needs to know about a line that is already going to be
+     cooked. Deliberately not rank-gated: waiting for a manager to record an
+     allergy is the opposite of safe. */
+  const noteLine = async () => {
+    if (!noting) return;
+    await outbox.enqueue('ticket_line_note', { lineId: noting.id, note: noting.note.trim() });
+    const said = noting.name;
+    setNoting(null);
+    tell('Note on ' + said);
+    await onQueued();
+  };
+
+  /* Putting the bill down (§3.5). The table frees itself — `ticket_open_table`
+     is a partial index over open tickets, so a held one stops reserving it. */
+  const park = async () => {
+    if (!ticket) return;
+    await outbox.enqueue('ticket_park', { ticketId: ticket.id });
+    setParking(false);
+    setDraft([]); setFiring([]); setSplit(0);
+    tell('Parked — pick it up from Parked bills');
+    await onQueued();
+  };
+
+  const resume = async (id: string, onto: string) => {
+    await outbox.enqueue('ticket_resume', { ticketId: id, table: onto });
+    setTable(onto); setSplit(0);
+    tell('Back on ' + onto);
     await onQueued();
   };
 
@@ -341,8 +498,8 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     });
     setClearing(false); setClearWhy('');
     setDraft([]); setFiring([]); setSplit(0);
-    setFlash(onKitchen.length ? 'Bill written off' : 'Table given back');
-    setTimeout(() => setFlash(''), 2600);
+    tell(onKitchen.length ? 'Bill written off' : 'Table given back',
+      onKitchen.length ? 'warn' : 'ok');
     await onQueued();
   };
 
@@ -356,18 +513,27 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     const out = billsHere.map((t) => ({
       split: t.split,
       open: true,
+      id: t.id as string | undefined,
+      /* §3.3: "Guest 1, OR A NAMED MEMBER". Four bills on table nine read
+         "Guest 2 / Guest 3 / Guest 4" and a server carrying two of them has no
+         way to say which is whose. */
+      name: t.guest_name ?? null,
       value: t.lines.reduce((a, l) => a + toLaari(l.price) * Number(l.qty), 0),
     }));
-    if (!out.some((g) => g.split === split)) out.push({ split, open: false, value: 0 });
+    if (!out.some((g) => g.split === split)) {
+      out.push({ split, open: false, id: undefined, name: null, value: 0 });
+    }
     return out.sort((a, b) => a.split - b.split);
   }, [billsHere, split]);
+
+  const guestLabel = (g: { split: number; name: string | null }) =>
+    g.name || (g.split === 0 ? 'Table' : 'Guest ' + (g.split + 1));
 
   const addGuest = () => {
     const next = billsHere.reduce((m, t) => Math.max(m, t.split), 0) + 1;
     setSplit(Math.max(next, split + 1));
     setDraft([]);
-    setFlash('Guest ' + (Math.max(next, split + 1) + 1) + ' — new items go to their bill');
-    setTimeout(() => setFlash(''), 2600);
+    tell('Guest ' + (Math.max(next, split + 1) + 1) + ' — new items go to their bill');
   };
 
   const servicePct = Number(outlet?.service_pct ?? 0);
@@ -442,8 +608,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     }
     setFiring((f) => f.concat(draft.map((l) => ({ ...l, baseline: have.get(l.itemId) ?? 0 }))));
     setDraft([]);
-    setFlash(draft.reduce((a, l) => a + l.qty, 0) + ' to the kitchen');
-    setTimeout(() => setFlash(''), 2600);
+    tell(draft.reduce((a, l) => a + l.qty, 0) + ' to the kitchen');
     await onQueued();
   };
 
@@ -457,8 +622,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
       /* Belt as well as braces. The server refuses a sale with no lines, and
          rightly, but it should never be asked to: an empty bill is something
          the till can see and say before a guest is left standing. */
-      setFlash('Nothing on this bill to settle.');
-      setTimeout(() => setFlash(''), 3200);
+      tell('Nothing on this bill to settle.', 'warn');
       setPaying(null);
       return;
     }
@@ -511,8 +675,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     setSplit(0);
     setPromoDiscount(0);
     setPromoCode(undefined);
-    setFlash('Sale queued — ' + money(payments.reduce((a, x) => a + x.amount, 0)));
-    setTimeout(() => setFlash(''), 2600);
+    tell('Sale queued — ' + money(payments.reduce((a, x) => a + x.amount, 0)));
     await onQueued();
   };
 
@@ -542,30 +705,121 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
     </div>
   );
 
-  const TILE = (label: string, busy: boolean, key: string) => (
-    <button
-      key={key}
-      onClick={() => {
-        setTable(label); setSplit(0);
-        /* On a phone the panes are one at a time, and choosing a table is the
-           step before ordering — so it moves you on rather than leaving you
-           looking at the tables you have just chosen from. */
-        if (isPhone) setPane('menu');
-      }}
-      style={{
-        padding: '10px 9px', borderRadius: 9, minHeight: 62, textAlign: 'left',
-        background: table === label ? 'var(--bg-3)' : busy ? 'var(--amber-dim)' : 'var(--bg-1)',
-        border: '1px solid ' + (table === label ? 'var(--amber-line)' : busy ? 'var(--amber-line)' : 'var(--line)'),
-      }}
-    >
-      <span style={{ display: 'block', fontSize: 20, fontWeight: 700, letterSpacing: '-.03em', fontFamily: MONO, color: busy ? 'var(--amber-bright)' : 'var(--text)' }}>
-        {label}
-      </span>
-      <span style={{ display: 'block', marginTop: 3, fontSize: 9.5, color: 'var(--text-faint)' }}>
-        {busy ? (openByTable.get(label)?.covers ?? 1) + ' covers' : 'Free'}
-      </span>
-    </button>
-  );
+  /* THE STATUS CHIP'S VOCABULARY. One tint per state, reused on every tile, so
+     an operator reads the room by colour before they read a single label —
+     the same argument the menu sections make for their hues. */
+  const STATE: Record<string, { label: string; tint: string; ink: string; edge: string }> = {
+    seated: { label: 'Seated', tint: 'var(--amber-dim)', ink: 'var(--amber-bright)', edge: 'var(--amber-line)' },
+    ordered: { label: 'Ordered', tint: 'var(--warn-dim)', ink: 'var(--warn-bright)', edge: 'var(--warn-line)' },
+    served: { label: 'Served', tint: 'var(--go-dim)', ink: 'var(--go-bright)', edge: 'var(--go-line, var(--line-2))' },
+  };
+
+  /* Minutes since the party sat down, counted from the server's timestamp
+     against this render's clock — never a counter this screen keeps. It
+     therefore survives a reload, and two terminals agree (§3.1). */
+  const ageOf = (openedAt: number) => {
+    if (!openedAt) return '';
+    const mins = Math.max(0, Math.floor((now.getTime() - openedAt) / 60000));
+    if (mins < 60) return mins + 'm';
+    return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm';
+  };
+
+  /* `busy` used to be passed in; it is now read from the same map that supplies
+     the status and the age, so the tile cannot be shaded busy while claiming to
+     be free. */
+  const TILE = (label: string, key: string, seats = 0) => {
+    const open = openByTable.get(label);
+    const st = open ? STATE[open.state] : null;
+    const on = table === label;
+    return (
+      <HButton
+        key={key}
+        onClick={() => {
+          setTable(label); setSplit(0);
+          /* On a phone the panes are one at a time, and choosing a table is the
+             step before ordering — so it moves you on rather than leaving you
+             looking at the tables you have just chosen from. */
+          if (isPhone) setPane('menu');
+        }}
+        hover={on ? undefined : { borderColor: 'var(--text-dim)' }}
+        title={label + (open ? ' — ' + STATE[open.state].label.toLowerCase()
+          + ', ' + open.covers + ' covers, open ' + ageOf(open.openedAt)
+          : seats > 0 ? ' — free, seats ' + seats : ' — free')}
+        style={{
+          padding: '9px 9px 8px', borderRadius: 9, minHeight: 62, textAlign: 'left',
+          display: 'flex', flexDirection: 'column',
+          background: on ? 'var(--bg-3)' : st ? st.tint : 'var(--bg-1)',
+          border: '1px solid ' + (on ? 'var(--amber-line)' : st ? st.edge : 'var(--line)'),
+        }}
+      >
+        {/* §3.1 asks for "20px/700 monospace label" and "a status chip
+            top-right". BOTH DO NOT FIT ON ONE LINE HERE, and the label is the
+            one that must not give way: this floor column is 250px against the
+            prototype's full-width pane, so two tiles across is 108px, and
+            "Takeaway" at 20px monospace beside an ORDERED chip truncated to
+            "Takeaw…" — a table you cannot name is worse than a status you read
+            on the line below. So the status keeps its colour and its word and
+            moves under the label, where the covers and the age already are. */}
+        <span style={{
+          display: 'block', width: '100%',
+          /* §3.1's 20px, FOR THE NAMES IT WAS SIZED FOR. "T04" is three
+             characters and 20px monospace is exactly right for it. "Takeaway"
+             and "Cabana 1" are eight, which at 20px is 96px inside a 90px tile
+             — and the spec's own reason for naming tables ("Cabana 1 reads that
+             way on the KDS ticket, the parked strip and the printed bill") is
+             lost the moment the floor renders it "Cabana…". A name that fits is
+             worth more than a type size that does not, so the label steps down
+             rather than truncating. */
+          fontSize: label.length <= 4 ? 20 : label.length <= 9 ? 15 : 13,
+          fontWeight: 700,
+          letterSpacing: '-.03em', fontFamily: MONO, lineHeight: 1.15,
+          color: st ? st.ink : 'var(--text)',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>{label}</span>
+
+        {open && st
+          ? (
+            <>
+              <span style={{
+                display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5, minWidth: 0,
+              }}>
+                <span style={{
+                  fontSize: 8.5, fontWeight: 800, letterSpacing: '.07em',
+                  textTransform: 'uppercase', color: st.ink,
+                }}>{st.label}</span>
+                <span style={{ flex: 1 }} />
+                {/* The age is the figure a manager scans a room for. Monospace
+                    so a column of them lines up and the long one stands out. */}
+                <span style={{ fontSize: 9.5, fontFamily: MONO, color: 'var(--text-dim)' }}>
+                  {ageOf(open.openedAt)}
+                </span>
+              </span>
+              <span style={{ marginTop: 2, fontSize: 9.5, color: 'var(--text-faint)' }}>
+                {open.covers} cover{open.covers === 1 ? '' : 's'}
+              </span>
+            </>
+          )
+          : (
+            <span style={{
+              display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5,
+              fontSize: 9.5, color: 'var(--text-faint)', minWidth: 0,
+            }}>
+              <span>Free</span>
+              {/* Seats only when somebody has said so — "can we fit six" is
+                  asked at the door twenty times a service and is answered from
+                  memory today. An outlet that has not described its room shows
+                  nothing here rather than a made-up two. */}
+              {seats > 0 && (
+                <>
+                  <span style={{ flex: 1 }} />
+                  <span style={{ fontFamily: MONO }}>{seats}</span>
+                </>
+              )}
+            </span>
+          )}
+      </HButton>
+    );
+  };
 
   return (
     <div style={{ height: '100%', display: 'flex', minWidth: 0, position: 'relative' }}>
@@ -586,16 +840,20 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
              over this pane and the last row of tables would sit under it. */
           padding: isPhone ? '0 12px 92px' : '0 12px 12px',
           display: 'grid',
-          gridTemplateColumns: onePane ? 'repeat(auto-fill,minmax(min(100%, 96px),1fr))' : '1fr 1fr',
+          /* minmax(0,1fr), NOT 1fr. A bare `1fr` is minmax(AUTO, 1fr), and an
+             auto minimum is min-content — so the moment a table earned a real
+             name, "Cabana 1" at 20px monospace with a status chip beside it set
+             a 177px floor on its track and the two columns totalled 297px
+             inside a 250px pane. The label already knows how to ellipsize; it
+             was never given the chance. Same reason DataGrid wraps its scroller
+             in minmax(0,1fr). */
+          gridTemplateColumns: onePane ? 'repeat(auto-fill,minmax(min(100%, 96px),1fr))' : 'minmax(0,1fr) minmax(0,1fr)',
           gap: 8, alignContent: 'start',
         }}>
           {/* §3.1: "Two non-table slots always exist: Takeaway and Delivery." */}
-          {TILE('Takeaway', false, 'tk')}
-          {TILE('Delivery', false, 'dl')}
-          {Array.from({ length: tableCount }, (_, i) => i + 1).map((n) => {
-            const label = tableName(String(n));
-            return TILE(label, openByTable.has(label), label);
-          })}
+          {TILE('Takeaway', 'tk')}
+          {TILE('Delivery', 'dl')}
+          {plan.map((t) => TILE(t.name, t.name, t.seats))}
           {/* EVERY OPEN BILL GETS A TILE, even one on a table this floor does
               not expect. The grid used to draw exactly `outlet.tables` of them,
               so a ticket on T15 at an outlet with twelve — a QR card printed
@@ -603,8 +861,8 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
               table count simply lowered while a bill was open — was invisible.
               A bill nobody can reach is a bill nobody can settle, and the table
               would have stayed occupied with no way to say otherwise. */}
-          {strays.map((label) => TILE(label, true, label))}
-          {!tableCount && (
+          {strays.map((label) => TILE(label, label))}
+          {!plan.length && (
             <div style={{ gridColumn: '1/-1', padding: '20px 4px', fontSize: 11.5, lineHeight: 1.6, color: 'var(--text-faint)' }}>
               This outlet has no tables configured. Set the table count on the outlet
               record and they appear here.
@@ -645,10 +903,16 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
             and its count — the prototype's wayfinding, in that order, because a
             cashier aims at the colour before they read the word. */}
         <div className="krail" style={{ flexShrink: 0, display: 'flex', gap: 6, padding: '9px 12px', overflowX: 'auto' }}>
-          {[{ id: 'all', name: 'All' }, ...cats.map((c) => ({ id: c, name: c }))].map((c) => {
+          {[
+            ...(top ? [{ id: 'top', name: 'Most ordered' }] : []),
+            { id: 'all', name: 'All' },
+            ...cats.map((c) => ({ id: c, name: c })),
+          ].map((c) => {
             const on = cat === c.id;
-            const hue = c.id === 'all' ? 'var(--cat-all)' : sectionColor(sections, c.id);
-            const n = c.id === 'all' ? items.length : countIn(c.id);
+            const hue = c.id === 'all' ? 'var(--cat-all)'
+              : c.id === 'top' ? 'var(--warn-bright)' : sectionColor(sections, c.id);
+            const n = c.id === 'all' ? items.length
+              : c.id === 'top' ? (top ? top.size : 0) : countIn(c.id);
             return (
               <HButton key={c.id} onClick={() => setCat(c.id)}
                 hover={on ? undefined : LIFT}
@@ -668,13 +932,66 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                   style={{ flexShrink: 0, opacity: .9 }} aria-hidden>
                   <path d={c.id === 'all'
                     ? 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z'
-                    : sectionIcon(sections, c.id)} />
+                    : c.id === 'top'
+                      ? 'M12 3l2.6 5.8 6.4.7-4.8 4.3 1.4 6.2L12 17l-5.6 3 1.4-6.2L3 9.5l6.4-.7z'
+                      : sectionIcon(sections, c.id)} />
                 </svg>
                 {c.name}
                 <span style={{ fontSize: 10, opacity: .55, fontFamily: MONO }}>{n}</span>
               </HButton>
             );
           })}
+        </div>
+
+        {/* QTY — the prototype's multiplier bar. Six drinks is one tap and a
+            dish, not six taps on a dish, and on a busy bar that is most of the
+            keying. It sets what the NEXT tap rings and then lets go of itself;
+            a sticky ×6 nobody can see is how a table of two gets six desserts.
+            "Same again" sits on the same row because it is the same idea —
+            ring a lot with one press. */}
+        <div className="krail" style={{
+          flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+          padding: '0 12px 9px', overflowX: 'auto',
+        }}>
+          <span style={{
+            flexShrink: 0, fontSize: 9.5, fontWeight: 800, letterSpacing: '.09em',
+            textTransform: 'uppercase', color: 'var(--text-muted)',
+          }}>Qty</span>
+          {[2, 3, 4, 6, 8, 10].map((n) => {
+            const on = qtyMult === n;
+            return (
+              <HButton key={n} onClick={() => setQtyMult(on ? 0 : n)}
+                hover={on ? undefined : LIFT}
+                title={on ? 'Back to one at a time' : 'The next dish rings ' + n + ' at once'}
+                style={{
+                  flexShrink: 0, minWidth: 34, minHeight: 28, padding: '0 9px',
+                  borderRadius: 7, fontSize: 11.5, fontWeight: 700, fontFamily: MONO,
+                  textAlign: 'center',
+                  background: on ? 'var(--warn)' : 'var(--bg-2)',
+                  color: on ? 'var(--on-warn, var(--bg))' : 'var(--text-muted)',
+                  border: '1px solid ' + (on ? 'var(--warn)' : 'var(--line)'),
+                }}>{'×' + n}</HButton>
+            );
+          })}
+          <span style={{ flex: 1, minWidth: 4 }} />
+          <HButton onClick={sameAgain} disabled={!lastRound.length}
+            hover={LIFT}
+            title={lastRound.length
+              ? 'Add the last round again — ' + lastRound.map((l) => Number(l.qty) + '× ' + l.name).join(', ')
+              : 'Nothing has been fired yet'}
+            style={{
+              flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6,
+              minHeight: 28, padding: '0 11px', borderRadius: 7,
+              fontSize: 11.5, fontWeight: 600,
+              background: 'var(--bg-2)', border: '1px solid var(--line)',
+              color: 'var(--text-muted)',
+            }}>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+              strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M17 2l4 4-4 4M21 6H8a5 5 0 0 0 0 10h1M7 22l-4-4 4-4M3 18h13a5 5 0 0 0 0-10h-1" />
+            </svg>
+            Same again
+          </HButton>
         </div>
 
         <div style={{
@@ -801,11 +1118,19 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                     <span style={{ fontSize: 14, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>
                       {money(toLaari(it.price))}
                     </span>
-                    {offers.length > 0 && (
+                    {/* §3.2: "an ALL-CAPS 9.5px foot (STATION OR DIET MARKER)".
+                        It used to say "ADD-ONS", which is neither — and the
+                        add-ons are already announced by the +N badge on the
+                        photograph, so the foot was spending the only line it
+                        has on something said twice. The station is what a
+                        cashier needs from it: it answers "why has this not come
+                        out" before anybody walks to the pass. */}
+                    {(it.station || (it.tags ?? [])[0]) && (
                       <span style={{
                         fontSize: 9.5, color: 'var(--text-faint)', fontWeight: 600,
                         letterSpacing: '.04em', textTransform: 'uppercase',
-                      }}>Add-ons</span>
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      }}>{it.station || tagLabel((it.tags ?? [])[0])}</span>
                     )}
                   </span>
                 </span>
@@ -894,11 +1219,27 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                     color: on ? 'var(--bg)' : 'var(--text-dim)',
                     background: on ? 'var(--text)' : 'var(--bg-2)',
                   }}>
-                  {g.split === 0 ? 'Table' : 'Guest ' + (g.split + 1)}
+                  {guestLabel(g)}
                   {g.open && <span style={{ opacity: .7, fontFamily: MONO }}>{money(g.value)}</span>}
                 </button>
               );
             })}
+            {/* Naming acts on the bill you are ON, so it is one control rather
+                than one per chip — the chips are already the widest row on this
+                panel and a pencil on each would push the values off. */}
+            {/* Pre-filled with the STORED name, not the derived label. Seeding it
+                with "Table" or "Guest 2" meant the cashier had to clear a word
+                they never typed before typing the one they wanted — which
+                produced "TableDaniel" the first time it was used. The derived
+                label belongs in the placeholder, where it reads as a prompt
+                rather than as content. */}
+            {ticket && (
+              <HButton onClick={() => setNaming(ticket.guest_name ?? '')}
+                hover={LIFT} title="Name this bill"
+                style={{ fontSize: 10.5, color: 'var(--text-dim)', padding: '5px 9px', borderRadius: 16, minHeight: 30, border: '1px solid var(--line)' }}>
+                Name
+              </HButton>
+            )}
             <button onClick={addGuest} disabled={!table}
               style={{ fontSize: 10.5, color: 'var(--text-dim)', padding: '5px 9px', borderRadius: 16, minHeight: 30, border: '1px dashed var(--line-2)' }}>
               + Guest
@@ -923,17 +1264,25 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                   {money(priceOf(l.itemId, l.price, l.addons) * Number(l.qty))}
                 </span>
               </div>
-              <AddonNote addons={l.addons} />
-              <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <AddonNote addons={l.addons} note={l.note} />
+              <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--go-bright)' }}>
                   with the kitchen
                 </span>
                 <span style={{ flex: 1 }} />
                 {l.id && (
-                  <button onClick={() => { setVoiding({ id: l.id as string, name: l.name }); setVoidWhy(''); }}
+                  <HButton onClick={() => setNoting({ id: l.id as string, name: l.name, note: l.note ?? '' })}
+                    hover={LIFT}
+                    style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--text-dim)', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--line)', minHeight: 26 }}>
+                    {l.note ? 'Edit note' : 'Note'}
+                  </HButton>
+                )}
+                {l.id && (
+                  <HButton onClick={() => { setVoiding({ id: l.id as string, name: l.name }); setVoidWhy(''); }}
+                    hover={{ background: 'var(--red-dim)' }}
                     style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--red-bright)', padding: '3px 8px', borderRadius: 6, border: '1px solid var(--red-line, var(--line))', minHeight: 26 }}>
                     Take off
-                  </button>
+                  </HButton>
                 )}
               </div>
             </div>
@@ -1082,17 +1431,101 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
             </div>
           )}
 
-          {/* The way in. Only when there IS a ticket — with no ticket there is
+          {/* PARKING THE BILL (§3.5). Offered only when the kitchen has
+              something — an empty bill is given back, not parked, and the
+              server refuses to mint a HOLD reference for nothing. */}
+          {parking && (
+            <div style={{ marginTop: 10, padding: 11, borderRadius: 9, background: 'var(--bg-2)', border: '1px solid var(--line-2)', animation: 'krise .18s cubic-bezier(.2,.7,.3,1)' }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text)' }}>
+                Put {table || 'this bill'} down
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
+                The bill keeps everything on it and gets a reference. The table
+                goes back to free straight away, so the next party can be seated
+                on it — pick this one up again from Parked bills.
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', gap: 7 }}>
+                <HButton onClick={() => setParking(false)} hover={LIFT}
+                  style={{ flex: 1, minHeight: 34, borderRadius: 7, background: 'var(--bg-1)', border: '1px solid var(--line)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 600 }}>
+                  Keep it here
+                </HButton>
+                <HButton onClick={() => void park()} hover={{ background: 'var(--amber-deep)' }}
+                  style={{ flex: 1, minHeight: 34, borderRadius: 7, fontSize: 12, fontWeight: 700, background: 'var(--amber)', color: 'var(--on-amber)' }}>
+                  Park it
+                </HButton>
+              </div>
+            </div>
+          )}
+
+          {/* The ways out. Only when there IS a ticket — with no ticket there is
               nothing to give back, and the table is already free. */}
-          {ticket && !clearing && !voiding && (
-            <button onClick={() => { setClearing(true); setClearWhy(''); }}
-              style={{
-                marginTop: 12, width: '100%', minHeight: 34, borderRadius: 7,
-                background: 'transparent', border: '1px dashed var(--line-2)',
-                color: 'var(--text-faint)', fontSize: 11.5, fontWeight: 600,
-              }}>
-              {onKitchen.length ? 'Write off this bill' : 'Give the table back'}
-            </button>
+          {ticket && !clearing && !voiding && !parking && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 7 }}>
+              {onKitchen.length > 0 && (
+                <HButton onClick={() => setParking(true)} hover={LIFT}
+                  style={{
+                    flex: 1, minHeight: 34, borderRadius: 7,
+                    background: 'transparent', border: '1px dashed var(--line-2)',
+                    color: 'var(--text-faint)', fontSize: 11.5, fontWeight: 600,
+                    textAlign: 'center', display: 'grid', placeItems: 'center',
+                  }}>
+                  Park
+                </HButton>
+              )}
+              <HButton onClick={() => { setClearing(true); setClearWhy(''); }} hover={LIFT}
+                style={{
+                  flex: 1, minHeight: 34, borderRadius: 7,
+                  background: 'transparent', border: '1px dashed var(--line-2)',
+                  color: 'var(--text-faint)', fontSize: 11.5, fontWeight: 600,
+                  textAlign: 'center', display: 'grid', placeItems: 'center',
+                }}>
+                {onKitchen.length ? 'Write off' : 'Give the table back'}
+              </HButton>
+            </div>
+          )}
+
+          {/* PARKED BILLS (§3.5). They hold no table, so without a strip of
+              their own a parked bill is a bill nobody can reach — the same trap
+              the stray tiles were built for. It lives in the ticket column
+              rather than on the floor because the floor's navigation is not
+              being changed. */}
+          {parked.length > 0 && !clearing && !voiding && !parking && (
+            <div style={{ marginTop: 14, paddingTop: 11, borderTop: '1px solid var(--line-soft)' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>
+                Parked bills
+              </div>
+              {parked.map((t) => {
+                const value = t.lines.reduce(
+                  (a, l) => a + toLaari(l.price) * Number(l.qty), 0);
+                const onto = table || t.table_no || '';
+                return (
+                  <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 7 }}>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                        {t.hold_ref}
+                      </span>
+                      <span style={{ display: 'block', marginTop: 1, fontSize: 10, color: 'var(--text-faint)' }}>
+                        {(t.guest_name || t.table_no || '—')}
+                        {' · '}{t.lines.length} line{t.lines.length === 1 ? '' : 's'}
+                        {' · '}{money(value)}
+                      </span>
+                    </span>
+                    <HButton
+                      onClick={() => void resume(t.id, onto)}
+                      disabled={!onto}
+                      title={onto ? 'Put it back on ' + onto : 'Choose a table first'}
+                      hover={{ background: 'var(--amber-deep)' }}
+                      style={{
+                        flexShrink: 0, minHeight: 28, padding: '0 11px', borderRadius: 7,
+                        fontSize: 11, fontWeight: 700,
+                        background: 'var(--amber)', color: 'var(--on-amber)',
+                      }}>
+                      Resume
+                    </HButton>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -1230,6 +1663,79 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           })}
         </nav>
       )}
+
+      {/* ── NAMING THE BILL, AND NOTING A LINE ──────────────────────────────
+          Two small prompts, one shape. Both are typed answers the cashier gives
+          while looking at the guest, so both take the whole width and put the
+          confirm under the thumb rather than in a corner. */}
+      {(naming !== null || noting) && (() => {
+        const isName = naming !== null;
+        const close = () => { setNaming(null); setNoting(null); };
+        return (
+          <>
+            <div onClick={close} style={{
+              position: 'fixed', inset: 0, zIndex: 78,
+              background: 'var(--scrim, rgba(0,0,0,.55))', animation: 'kfade .14s',
+            }} />
+            <div role="dialog" aria-modal="true"
+              aria-label={isName ? 'Name this bill' : 'A note for the kitchen'}
+              style={{
+                position: 'fixed', zIndex: 79,
+                ...(isPhone
+                  ? { left: 0, right: 0, bottom: 0, borderRadius: '16px 16px 0 0', animation: 'ksheet .2s cubic-bezier(.2,.7,.3,1)' }
+                  : {
+                    left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
+                    width: 'min(400px, calc(100vw - 32px))', borderRadius: 14,
+                  }),
+                background: 'var(--bg-1)', border: '1px solid var(--line-2)',
+                boxShadow: 'var(--shadow-lg)', padding: '15px 16px 16px',
+              }}>
+              <div style={{ animation: isPhone ? undefined : 'kmodal .16s cubic-bezier(.2,.7,.3,1)' }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)' }}>
+                  {isName ? 'Whose bill is this?' : 'For the kitchen — ' + noting!.name}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 10.5, lineHeight: 1.55, color: 'var(--text-faint)' }}>
+                  {isName
+                    ? 'A name for the chip so the server knows which bill is whose. It is not a customer record — leave it empty to go back to “Guest”.'
+                    : 'Prints on the kitchen docket and on the bill. “No onion”, “allergy — nuts”, “fire with the mains”.'}
+                </div>
+                <input
+                  autoFocus
+                  value={isName ? (naming as string) : noting!.note}
+                  maxLength={isName ? 60 : 200}
+                  onChange={(e) => (isName
+                    ? setNaming(e.target.value)
+                    : setNoting({ ...noting!, note: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void (isName ? nameGuest() : noteLine());
+                    if (e.key === 'Escape') close();
+                  }}
+                  placeholder={isName
+                    ? guestLabel({ split, name: null }) + ' — or a name'
+                    : 'No onion'}
+                  aria-label={isName ? 'The name for this bill' : 'The note for the kitchen'}
+                  style={{
+                    marginTop: 10, width: '100%', minHeight: 40, padding: '9px 11px',
+                    borderRadius: 8, background: 'var(--bg-2)',
+                    border: '1px solid var(--line-2)', color: 'var(--text)',
+                    fontSize: 13, fontFamily: 'inherit',
+                  }} />
+                <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+                  <HButton onClick={close} hover={LIFT}
+                    style={{ minHeight: 40, padding: '0 15px', borderRadius: 999, fontSize: 12.5, fontWeight: 600, background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)' }}>
+                    Cancel
+                  </HButton>
+                  <HButton onClick={() => void (isName ? nameGuest() : noteLine())}
+                    hover={{ background: 'var(--amber-deep)' }}
+                    style={{ flex: 1, minHeight: 40, borderRadius: 999, textAlign: 'center', fontSize: 12.5, fontWeight: 700, background: 'var(--amber)', color: 'var(--on-amber)' }}>
+                    {isName ? 'Name it' : 'Send the note'}
+                  </HButton>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* ── THE ADD-ON SHEET ────────────────────────────────────────────────
           Opened by tapping a dish that offers something. Ringing it silently
@@ -1377,15 +1883,20 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
  * add-on is not a warning, so it loses the amber it used to borrow. It recedes
  * on size and weight and keeps its 7:1 — a kitchen instruction that cannot be
  * read at a glance is how allergies get missed. */
-function AddonNote({ addons }: { addons?: LineAddon[] }) {
-  if (!addons || !addons.length) return null;
+function AddonNote({ addons, note }: { addons?: LineAddon[]; note?: string | null }) {
+  const parts: string[] = [];
+  if (addons && addons.length) {
+    parts.push(addons.map((a) => (a.qty > 1 ? a.qty + '× ' : '') + a.name).join(' · '));
+  }
+  if (note) parts.push(note);
+  if (!parts.length) return null;
   return (
     <div style={{
       marginTop: 5, paddingLeft: 9, borderLeft: '2px solid var(--line-3)',
       fontSize: 10.5, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '.005em',
       lineHeight: 1.5,
     }}>
-      {addons.map((a) => (a.qty > 1 ? a.qty + '× ' : '') + a.name).join(' · ')}
+      {parts.map((t, i) => <div key={i}>{t}</div>)}
     </div>
   );
 }

@@ -42,6 +42,15 @@ BEGIN
       closed_at   timestamptz,
       opened_by   uuid, closed_by uuid, device_id uuid,
       server_name text,
+      -- Whose bill this split is (migration 039). NULL means nobody has said,
+      -- and the till draws "Guest 2" — a party that has not asked to be named
+      -- should not be made to be.
+      guest_name  text,
+      -- A parked bill's reference (§3.5), minted from the HOLD series. Parking
+      -- frees the table for free: ticket_open_table covers only status='open'.
+      hold_ref    text,
+      held_at     timestamptz,
+      held_by     uuid,
       member_id   uuid,
       -- What the member's own phone offered against this bill (migration 024).
       -- The phone never takes money: it posts an intent where the cashier is
@@ -52,6 +61,8 @@ BEGIN
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ticket_open_table ON %1$I.ticket(table_no, split)
       WHERE status = 'open';
+    CREATE UNIQUE INDEX IF NOT EXISTS ticket_hold_ref ON %1$I.ticket(hold_ref)
+      WHERE hold_ref IS NOT NULL;
 
     CREATE TABLE IF NOT EXISTS %1$I.ticket_line (
       id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -250,6 +261,21 @@ BEGIN
       addons_own  boolean NOT NULL DEFAULT false,
       CONSTRAINT item_spice_range CHECK (spice BETWEEN 0 AND 3)
     );
+
+    -- The floor plan (migration 038). Keyed by the NAME, because
+    -- ticket.table_no is text and every reader of the floor — the KDS, the
+    -- orders board, the receipt, the guest's QR card — already speaks it. An
+    -- outlet with no rows here is not broken: the floor draws T01..Tn from
+    -- chain.outlet.tables exactly as it always has, and naming tables is an
+    -- enrichment a merchant opts into.
+    CREATE TABLE IF NOT EXISTS %1$I.dining_table (
+      name    text PRIMARY KEY,
+      zone    text,
+      seats   int NOT NULL DEFAULT 2 CHECK (seats > 0 AND seats <= 99),
+      sort    int NOT NULL DEFAULT 0,
+      active  boolean NOT NULL DEFAULT true
+    );
+    CREATE INDEX IF NOT EXISTS dining_table_zone ON %1$I.dining_table (zone, sort, name);
 
     -- Sections are keyed BY THE TEXT item.category already holds, so every
     -- query written against that column keeps working and a section with no row
@@ -896,6 +922,9 @@ BEGIN
   -- charged is captured on sale_line.addons and is untouched by any of it.
   -- See migration 037.
   EXECUTE format('GRANT DELETE ON %I.item_modifier, %I.menu_section, %I.modifier TO %I', s, s, s, r);
+  -- A table added by a typo is removed; one that has traded is retired, and
+  -- the app enforces that rather than the grant. See migration 038.
+  EXECUTE format('GRANT DELETE ON %I.dining_table TO %I', s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
   -- Loyalty (§2 `loyalty`). The scheme is chain-wide configuration; the point
   -- ledger is append-only, so no UPDATE or DELETE on it ever. See migration 020.
@@ -977,6 +1006,10 @@ BEGIN
 
   INSERT INTO chain.doc_series (outlet_id, kind, prefix) VALUES
     (p_id, 'SALE', p_code || '-R'), (p_id, 'CN', p_code || '-CN'),
+    -- Parked tickets get their own counter (migration 039): HOLD-000004
+    -- following HOLD-000003 is what lets a cashier read a reference off a slip
+    -- and find the bill. Borrowing SALE's would gap the receipt numbers.
+    (p_id, 'HOLD', p_code || '-HOLD'),
     (p_id, 'PO', p_code || '-PO'), (p_id, 'GRN', p_code || '-GRN'),
     -- Inter-outlet transfers get their OWN counter (migration 035). Borrowing
     -- the GRN series and swapping the letters would leave gaps in that one.

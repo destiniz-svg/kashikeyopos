@@ -143,3 +143,49 @@ export function Busy({ size = 13 }: { size?: number }) {
     </svg>
   );
 }
+
+/* ── the toast ─────────────────────────────────────────────────────────────
+   design/KashikeyoPOS Guest Theme v3.dc.html, `toastStyle`. Bottom centre,
+   pill, `ktoast` in — and on a refusal, `ktoastshake` on top of it.
+
+   WHY THE SHAKE IS THE POINT. A toast that replaces an identical toast is
+   invisible: ring the same dish twice, get "added" twice, see one message that
+   never appeared to change. The shake is what makes the SECOND one announce
+   itself, and the prototype reserves it for errors — where "it did not work,
+   again" is precisely the message a cashier misses.
+
+   WHY NOT AN INLINE BANNER. The till's inline flash lived at the top of the
+   ticket panel, which is where the operator is NOT looking: they are looking at
+   the guest, or at the dish grid. Bottom centre is the one part of a POS screen
+   the eye passes over between every tap.
+*/
+export type ToastTone = 'ok' | 'warn' | 'err';
+
+export function Toast({ text, tone, seq }: { text: string; tone: ToastTone; seq: number }) {
+  if (!text) return null;
+  const skin = tone === 'err'
+    ? { background: 'var(--red)', color: '#fff', border: '1px solid var(--red)' }
+    : tone === 'warn'
+      ? { background: 'var(--warn-dim)', color: 'var(--warn-bright)', border: '1px solid var(--warn-line)' }
+      : { background: 'var(--warn)', color: 'var(--on-warn, var(--bg))', border: '1px solid var(--warn)' };
+  return (
+    <div
+      /* KEYED ON THE SEQUENCE, so React remounts it and the animation runs
+         again even when the text is identical to the last one. Without the key
+         a repeated message is a silent no-op. */
+      key={seq}
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed', left: '50%', bottom: 'calc(26px + env(safe-area-inset-bottom))',
+        transform: 'translateX(-50%)', zIndex: 90,
+        maxWidth: 'calc(100vw - 28px)', textAlign: 'center', textWrap: 'pretty',
+        padding: '11px 20px', borderRadius: 24,
+        fontSize: 12.5, fontWeight: 600, lineHeight: 1.4,
+        boxShadow: '0 8px 30px rgba(0,0,0,.5)',
+        animation: tone === 'err' ? 'ktoast .18s, ktoastshake .38s .1s' : 'ktoast .18s',
+        ...skin,
+      }}
+    >{text}</div>
+  );
+}

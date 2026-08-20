@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { applyTheme, readTheme } from './theme';
+import type { Theme } from './theme';
 import * as api from './api';
 import type { Session } from './api';
 import { DataGrid } from './DataGrid';
@@ -50,7 +52,8 @@ const btn = (primary?: boolean): React.CSSProperties => ({
   border: primary ? 'none' : '1px solid var(--line-2)',
 });
 
-const LS_THEME = 'kashikeyo.pos.theme.v1';
+/* One implementation, in src/theme.ts — it also runs at boot, which is what
+   this screen's own copy could not do. */
 
 interface TaxVersion {
   code: string; rate: number; from: string; to: string | null;
@@ -97,7 +100,7 @@ export function Settings({ session }: { session: Session }) {
   const [taxFrom, setTaxFrom] = useState(today());
 
   const [theme, setTheme] = useState<string>(() => {
-    try { return localStorage.getItem(LS_THEME) || 'system'; } catch { return 'system'; }
+    return readTheme();
   });
 
   const fill = useCallback((d: SettingsData) => {
@@ -121,12 +124,7 @@ export function Settings({ session }: { session: Session }) {
 
   /* Applied to the document, not to a React tree — the tokens are CSS custom
      properties on :root and every screen reads them from there. */
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'system') root.removeAttribute('data-theme');
-    else root.setAttribute('data-theme', theme);
-    try { localStorage.setItem(LS_THEME, theme); } catch { /* private mode */ }
-  }, [theme]);
+  useEffect(() => { applyTheme(theme as Theme); }, [theme]);
 
   const save = async () => {
     setBusy(true); setError(''); setSaved('');

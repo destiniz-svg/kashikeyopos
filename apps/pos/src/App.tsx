@@ -4,7 +4,10 @@ import * as api from './api';
 import type { Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { navFor, landingFor, FILTERABLE } from './nav';
-import { HButton, LIFT } from './ui';
+import { HButton, LIFT, Toast } from './ui';
+import type { ToastTone } from './ui';
+import { applyTheme, readTheme } from './theme';
+import type { Theme } from './theme';
 import { Lock } from './Lock';
 import { Floor } from './Floor';
 import { Kds } from './Kds';
@@ -79,6 +82,24 @@ export function App({ outletId }: { outletId: number }) {
   const [online, setOnline] = useState(navigator.onLine);
   const [now, setNow] = useState(() => new Date());
   const [railOpen, setRailOpen] = useState(true);
+  /* Mirrors what is on the document. Applied at boot in main.tsx — this only
+     tracks it so the icon can say which of the three states is on. */
+  const [theme, setTheme] = useState<Theme>(() => readTheme());
+  /* The toast the whole terminal shares. `seq` climbs on every call so an
+     identical message still remounts and announces itself — see ui.tsx. */
+  const [toast, setToast] = useState<{ text: string; tone: ToastTone; seq: number }>(
+    { text: '', tone: 'ok', seq: 0 });
+  const say = useCallback((text: string, tone: ToastTone = 'ok') => {
+    setToast((t) => ({ text, tone, seq: t.seq + 1 }));
+  }, []);
+  useEffect(() => {
+    if (!toast.text) return;
+    /* Long enough to read a sentence, and a refusal is left up longer because
+       it is the one the operator has to act on. */
+    const ms = toast.tone === 'err' ? 5200 : 3000;
+    const h = window.setTimeout(() => setToast((t) => ({ ...t, text: '' })), ms);
+    return () => window.clearTimeout(h);
+  }, [toast.seq, toast.text, toast.tone]);
   /* The prototype computes this in JS because the breakpoint changes what the
      shell IS, not just how wide it is — on a phone the rail stops being a
      column and becomes an overlay. See useBreakpoint.ts. */
@@ -308,6 +329,10 @@ export function App({ outletId }: { outletId: number }) {
         onClose={() => setPal(false)} onGo={palGo}
       />
 
+      {/* Bottom centre, over everything — the one part of a till screen the eye
+          passes over between every tap. */}
+      <Toast text={toast.text} tone={toast.tone} seq={toast.seq} />
+
       {/* ── The scrim. Only a phone has one, because only a phone has an
              overlay to dismiss. Tapping it closes the drawer, which is the
              gesture everybody tries first. ──────────────────────────────── */}
@@ -526,6 +551,37 @@ export function App({ outletId }: { outletId: number }) {
             )}
           </HButton>
 
+          {/* THE PALETTE, one tap from anywhere. §1 of the tokens doc: "a till
+              by a window needs light mode and a bar at midnight needs dark" —
+              which is a thing that changes during a shift, at the terminal, by
+              whoever is standing at it. Burying it in Settings made it a
+              configuration decision instead of a lighting one. Three states,
+              cycled in that order, because "system" is the useful middle and a
+              two-way toggle cannot express it. */}
+          <HButton
+            onClick={() => {
+              const next: Theme = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system';
+              setTheme(next); applyTheme(next);
+            }}
+            title={'Palette — ' + (theme === 'system' ? 'following this device' : theme)}
+            aria-label={'Palette — ' + (theme === 'system' ? 'following this device' : theme)}
+            hover={{ background: 'var(--bg-3)', color: 'var(--text)' }}
+            style={{
+              flexShrink: 0, width: isPhone ? 38 : 34, height: isPhone ? 38 : 34,
+              borderRadius: 999, display: 'grid', placeItems: 'center',
+              background: 'var(--bg-2)', border: '1px solid var(--line)',
+              color: 'var(--text-dim)',
+            }}>
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+              strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              {theme === 'light'
+                ? <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>
+                : theme === 'dark'
+                  ? <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                  : <><rect x="2.5" y="4" width="19" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></>}
+            </svg>
+          </HButton>
+
           {/* The filter. Hidden on a phone, exactly as the prototype hides it —
               there is no room beside the outlet name, and no keyboard to press
               "/" on. It collapses to a 32px disc when empty and grows on focus,
@@ -607,6 +663,62 @@ export function App({ outletId }: { outletId: number }) {
             )}
           </span>
         </header>
+
+        {/* ── THE STAT STRIP ────────────────────────────────────────────────
+            Four figures the prototype carries under the header, on every
+            screen. They are the ones a manager asks for while walking past a
+            terminal — and they ride on the snapshot the till already polls
+            rather than costing a request of their own.
+
+            HIDDEN ON A PHONE, where the header has no room and the same numbers
+            are one tap away on Today. Hidden for a kitchen rank too: what the
+            room is making is not the pass's business.
+
+            EACH ONE SAYS WHEN IT HAS NOTHING TO SAY. A dash is not nought —
+            "no sales yet" and "sold nothing" are different mornings, and food
+            cost against no sales is a division by zero somebody would otherwise
+            print as 0%. */}
+        {!isPhone && session.rank >= 2 && snap?.today && (
+          <div style={{
+            flexShrink: 0, display: 'flex', alignItems: 'stretch',
+            borderBottom: '1px solid var(--line-soft)', background: 'var(--bg-1)',
+            overflowX: 'auto',
+          }} className="krail">
+            {(() => {
+              const net = Number(snap.today.net || 0);
+              const cogs = Number(snap.today.cogs || 0);
+              const open = (snap.tickets ?? []).filter((t) => t.status === 'open');
+              const covers = open.reduce((a, t) => a + (t.covers || 0), 0);
+              const seats = snap.floor?.length || snap.outlet?.tables || 0;
+              const mvr = (v: number) =>
+                v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+              const cells: Array<[string, string, string?]> = [
+                ['Net sales · today', snap.today.sales ? 'MVR ' + mvr(net) : '—'],
+                ['Open tables', open.length + (seats ? ' / ' + seats : '')],
+                ['Covers', covers ? String(covers) : '—'],
+                ['Food cost', net > 0 ? (cogs / net * 100).toFixed(1) + '%' : '—'],
+              ];
+              return cells.map(([label, value], i) => (
+                <span key={label} style={{
+                  display: 'flex', alignItems: 'baseline', gap: 8, flexShrink: 0,
+                  padding: '7px 16px',
+                  borderRight: i < cells.length - 1 ? '1px solid var(--line-soft)' : undefined,
+                }}>
+                  <span style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '.09em',
+                    textTransform: 'uppercase', color: 'var(--text-faint)',
+                    whiteSpace: 'nowrap',
+                  }}>{label}</span>
+                  <span style={{
+                    fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono',monospace",
+                    color: value === '—' ? 'var(--text-faint)' : 'var(--text)',
+                    whiteSpace: 'nowrap',
+                  }}>{value}</span>
+                </span>
+              ));
+            })()}
+          </div>
+        )}
 
         {/* One module's bug must not take the terminal down. Without this a
             crash anywhere below unmounted the whole app — rail, header and the
@@ -757,6 +869,7 @@ export function App({ outletId }: { outletId: number }) {
               session={session}
               online={online}
               intent={intentFor('pos')} onIntentDone={intentDone}
+              say={say}
               onQueued={async () => { setPending(await outbox.pendingCount()); void drain(); }}
             />
           ) : view === 'purchases' && MODULES_BUILT.has('purchases') ? (

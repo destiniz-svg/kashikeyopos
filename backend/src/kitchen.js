@@ -148,6 +148,170 @@ async function sendRound(c, p, ctx) {
 }
 
 /**
+ * Whose bill this split is (§3.3).
+ *
+ * A NAME, NOT AN IDENTITY. This is what the cashier writes on the chip so the
+ * server can say "Daniel's is the one with the ceviche" — it is not a customer
+ * record and it deliberately does not reach for one. A bill that belongs to a
+ * real member already carries `member_id`, which is the thing loyalty, credit
+ * and the member portal read; this is the four-splits-on-table-nine problem,
+ * and it is solved with four words.
+ *
+ * p = { ticketId, name }
+ */
+async function nameGuest(c, p, ctx) {
+  const ticketId = String((p && p.ticketId) || '');
+  if (!ticketId) throw Object.assign(new Error('which bill?'), { status: 400 });
+  const name = String((p && p.name) || '').trim().slice(0, 60);
+
+  const q = await c.query(
+    "SELECT id, split, table_no, status FROM ticket WHERE id = $1 AND status = 'open'"
+    + ' FOR UPDATE', [ticketId]);
+  if (!q.rows.length) {
+    throw Object.assign(new Error('that bill is not open'), { status: 409 });
+  }
+  await c.query('UPDATE ticket SET guest_name = $2 WHERE id = $1', [ticketId, name || null]);
+  await c.query("SELECT chain.log('ticket_guest_name','ticket',$1,NULL,$2)",
+    [ticketId, JSON.stringify({ table: q.rows[0].table_no, split: q.rows[0].split, name })]);
+  return { ticketId, name: name || null };
+}
+
+/**
+ * A note on a line (§3.3: "Modifiers and notes sit under the line").
+ *
+ * `ticket_line.note` has existed since migration 003. The kitchen path passes
+ * it through, the KDS prints it and the receipt shows it — and until now no
+ * screen could put one there, so "no onion", "allergy — nuts" and "fire with
+ * the mains" were said out loud and written nowhere.
+ *
+ * NOT RANK-GATED, unlike a void. A note costs nothing and corrects nothing; it
+ * is the server telling the kitchen something about food that is already going
+ * to be cooked. Gating it would mean waiting for a manager to record an
+ * allergy, which is the opposite of safe.
+ *
+ * p = { lineId, note }
+ */
+async function noteLine(c, p, ctx) {
+  const lineId = String((p && p.lineId) || '');
+  if (!lineId) throw Object.assign(new Error('which line?'), { status: 400 });
+  const note = String((p && p.note) || '').trim().slice(0, 200);
+
+  const q = await c.query(
+    'SELECT l.id, l.name, l.note, t.id AS ticket_id, t.status'
+    + ' FROM ticket_line l JOIN ticket t ON t.id = l.ticket_id'
+    + ' WHERE l.id = $1 AND l.void_at IS NULL FOR UPDATE OF l', [lineId]);
+  if (!q.rows.length) throw Object.assign(new Error('no such line'), { status: 404 });
+  if (q.rows[0].status !== 'open') {
+    throw Object.assign(new Error('that bill is closed'), { status: 409 });
+  }
+
+  await c.query('UPDATE ticket_line SET note = $2 WHERE id = $1', [lineId, note || null]);
+  await c.query("SELECT chain.log('ticket_line_note','ticket_line',$1,$2,$3)",
+    [lineId, JSON.stringify({ note: q.rows[0].note }), JSON.stringify({ note })]);
+  return { lineId, ticketId: q.rows[0].ticket_id, note: note || null };
+}
+
+/**
+ * Park a bill (§3.5).
+ *
+ * A party moves to the bar. A walk-in has to give the table back before the
+ * card machine frees up. A bill wants setting aside. Until now the only ways
+ * out of an open ticket were to settle it or write it off, so every one of
+ * those became a lie in the books.
+ *
+ * PARKING FREES THE TABLE, and the schema does it rather than this function:
+ * `ticket_open_table` is a partial unique index over `WHERE status = 'open'`,
+ * so a held ticket stops reserving its (table, split) the moment the status
+ * changes and the next party can be seated on it.
+ *
+ * IDEMPOTENT, like everything else that arrives over the replay path: a till
+ * re-sending a queued park after a reconnect gets the reference it already
+ * minted rather than a second one.
+ *
+ * p = { ticketId }
+ */
+async function parkTicket(c, p, ctx) {
+  const ticketId = String((p && p.ticketId) || '');
+  if (!ticketId) throw Object.assign(new Error('which bill?'), { status: 400 });
+
+  const q = await c.query(
+    'SELECT id, table_no, split, status, hold_ref FROM ticket WHERE id = $1 FOR UPDATE',
+    [ticketId]);
+  if (!q.rows.length) throw Object.assign(new Error('no such bill'), { status: 404 });
+  const t = q.rows[0];
+  if (t.status === 'held') return { ticketId, ref: t.hold_ref, already: true };
+  if (t.status !== 'open') {
+    throw Object.assign(new Error('only an open bill can be parked'), { status: 409 });
+  }
+
+  const lines = await c.query(
+    'SELECT count(*)::int AS n FROM ticket_line WHERE ticket_id = $1 AND void_at IS NULL',
+    [ticketId]);
+  if (!lines.rows[0].n) {
+    /* An empty bill is not parked, it is given back. Minting a HOLD reference
+       for nothing would put a row on the parked strip that resumes to an empty
+       ticket — and `ticket_void` already does the right thing for this. */
+    throw Object.assign(
+      new Error('there is nothing on this bill to park — give the table back instead'),
+      { status: 409 });
+  }
+
+  const no = await c.query('SELECT chain.next_doc_no($1) AS no', ['HOLD']);
+  const ref = no.rows[0].no;
+  await c.query(
+    "UPDATE ticket SET status = 'held', hold_ref = $2, held_at = now(), held_by = $3"
+    + ' WHERE id = $1', [ticketId, ref, ctx.actor]);
+  await c.query("SELECT chain.log('ticket_park','ticket',$1,NULL,$2)",
+    [ticketId, JSON.stringify({ ref, table: t.table_no, split: t.split })]);
+  return { ticketId, ref, table: t.table_no };
+}
+
+/**
+ * Put a parked bill back on a table (§3.5).
+ *
+ * The table has to be free again, and that is the honest constraint rather than
+ * an oversight: two open bills on one (table, split) is exactly what
+ * `ticket_open_table` exists to prevent, and a resumed bill landing on top of
+ * the party who was seated after it is how one table's food reaches another
+ * table's receipt. A cashier whose table has been taken resumes onto a
+ * different one, which is what they would do with paper.
+ *
+ * p = { ticketId, table? }
+ */
+async function resumeTicket(c, p, ctx) {
+  const ticketId = String((p && p.ticketId) || '');
+  if (!ticketId) throw Object.assign(new Error('which bill?'), { status: 400 });
+
+  const q = await c.query(
+    'SELECT id, table_no, split, status, hold_ref FROM ticket WHERE id = $1 FOR UPDATE',
+    [ticketId]);
+  if (!q.rows.length) throw Object.assign(new Error('no such bill'), { status: 404 });
+  const t = q.rows[0];
+  if (t.status === 'open') return { ticketId, table: t.table_no, already: true };
+  if (t.status !== 'held') {
+    throw Object.assign(new Error('that bill is not parked'), { status: 409 });
+  }
+
+  const table = p.table ? tableName(p.table) : t.table_no;
+  const taken = await c.query(
+    "SELECT 1 FROM ticket WHERE table_no = $1 AND split = $2 AND status = 'open'",
+    [table, t.split]);
+  if (taken.rows.length) {
+    throw Object.assign(
+      new Error(table + ' has an open bill on it — resume this one onto another table'),
+      { status: 409 });
+  }
+
+  await c.query(
+    "UPDATE ticket SET status = 'open', table_no = $2, hold_ref = NULL,"
+    + ' held_at = NULL, held_by = NULL WHERE id = $1', [ticketId, table]);
+  await c.query("SELECT chain.log('ticket_resume','ticket',$1,$2,$3)",
+    [ticketId, JSON.stringify({ ref: t.hold_ref, table: t.table_no }),
+      JSON.stringify({ table })]);
+  return { ticketId, table, ref: t.hold_ref };
+}
+
+/**
  * Take a line off an open ticket.
  *
  * NOT a delete. `void_at` and a reason, so the line stays on the ticket and in
@@ -348,4 +512,7 @@ async function advance(c, p, ctx) {
   return { kdsId: p.kdsId, stage, from: cur.rows[0].stage };
 }
 
-module.exports = { sendRound, advance, voidLine, voidTicket, stationsFor, STAGES, DEFAULT_STATION };
+module.exports = {
+  sendRound, advance, voidLine, voidTicket, stationsFor, STAGES, DEFAULT_STATION,
+  nameGuest, noteLine, parkTicket, resumeTicket,
+};
