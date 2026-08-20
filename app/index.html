@@ -126,7 +126,7 @@
 
     <div style="{{ barStyle }}">
       <sc-if value="{{ isMobile }}">
-        <button onClick="{{ openDrawer }}" title="Menu" style="width:38px;height:38px;flex-shrink:0;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);display:grid;place-items:center;color:var(--text)">
+        <button onClick="{{ openDrawer }}" title="Menu" style="width:40px;height:40px;flex-shrink:0;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);display:grid;place-items:center;color:var(--text)">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
         </button>
       </sc-if>
@@ -222,15 +222,15 @@
             <div style="margin-bottom:14px;padding:10px 14px;background:linear-gradient(90deg,var(--warn-dim),transparent 65%);border:1px solid var(--warn-line);border-radius:10px;display:flex;align-items:center;gap:10px;font-size:12px">
               <span style="color:var(--warn-bright);font-weight:700;flex-shrink:0">Try it</span>
               <span style="color:var(--text-dim);flex:1">Tap a table to open its ticket, add dishes, then flip the network pill to <b style="color:var(--text)">Offline</b> — the terminal keeps selling and every write stacks in the outbox.</span>
-              <button onClick="{{ dismissTip }}" style="color:var(--text-muted);padding:4px 8px;border-radius:999px;font-size:11px;flex-shrink:0">Dismiss</button>
+              <button onClick="{{ dismissTip }}" style="color:var(--text-muted);padding:4px 8px;border-radius:999px;font-size:11px;flex-shrink:0;min-height:40px;min-width:40px">Dismiss</button>
             </div>
           </sc-if>
 
           <div style="{{ setupBarStyle }}">
             <span style="font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;color:var(--amber-bright);flex-shrink:0">{{ setupBarLabel }}</span>
             <span style="min-width:0;flex:1;font-size:11.5px;color:var(--text-dim)">Next · {{ setupBarNext }}</span>
-            <button onClick="{{ setupBarGo }}" style="flex-shrink:0;font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;min-height:34px;background:var(--amber);color:var(--on-amber)">{{ setupBarAct }}</button>
-            <button onClick="{{ setupBarHide }}" title="Hide the set-up list" style="flex-shrink:0;font-size:11px;color:var(--text-muted);padding:7px 8px">Hide</button>
+            <button onClick="{{ setupBarGo }}" style="flex-shrink:0;font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;min-height:40px;background:var(--amber);color:var(--on-amber)">{{ setupBarAct }}</button>
+            <button onClick="{{ setupBarHide }}" title="Hide the set-up list" style="flex-shrink:0;font-size:11px;color:var(--text-muted);padding:7px 8px;min-height:40px;min-width:40px">Hide</button>
           </div>
 
           <div style="{{ regBarStyle }}">
@@ -2193,7 +2193,7 @@ class Component extends DCLogic {
       register: { open: true, no: "REG-" + s.now.toISOString().slice(0, 10).replace(/-/g, "") + "-1", float: floatAmt, openedBy: u.name || this.me(), openedAt: Date.now() },
       modal: null
     });
-    this.queue("open_register", "Register opened · float " + MVRc(floatAmt) + " · " + (u.name || this.me()), "shifts");
+    this.queue("open_register", "Register opened · float " + MVRc(floatAmt) + " · " + (u.name || this.me()), "shifts", { float: floatAmt });
     this.toast("Register open · float " + MVRc(floatAmt));
   }
   shiftLabel() {
@@ -2934,7 +2934,8 @@ class Component extends DCLogic {
     all[this.state.outletId] = mine;
     this.setState({ priceOv: all, modal: null });
     const o = this.outlet();
-    this.queue("price_override", name + " · " + o.code + " · " + (val === null ? "back to chain price" : MVRc(val)) + " · by " + this.me(), "menu");
+    this.queue("price_override", name + " · " + o.code + " · " + (val === null ? "back to chain price" : MVRc(val)) + " · by " + this.me(), "menu",
+      val === null ? null : { item: id, price: val, reason: "Outlet price override" });
     this.toast(val === null ? name + " follows the chain price again" : name + " is " + MVRc(val) + " at " + o.code);
   }
   // No single promo may take more than this. The QR payload is a client-supplied
@@ -3205,7 +3206,7 @@ class Component extends DCLogic {
       // silently isn't, which is how the user switcher went missing on tablet.
       railFootStyle: (rail && !s.drawer) ? "padding:10px 0 0;border-top:1px solid var(--line);margin-top:8px;flex-shrink:0;display:grid;place-items:center;width:100%;cursor:pointer" : "display:none",
       openPal: () => this.openPal(),
-      palBtnStyle: "display:flex;align-items:center;gap:8px;flex-shrink:0;min-height:" + (isM ? 38 : 34) + "px;padding:0 " + (isM ? "10px" : "11px")
+      palBtnStyle: "display:flex;align-items:center;justify-content:center;gap:8px;flex-shrink:0;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:0 " + (isM ? "8px" : "11px")
         + ";border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-family:inherit;font-size:11.5px;font-weight:600",
       palBtnTextStyle: isM ? "display:none" : "white-space:nowrap",
       palBtnKeyStyle: (isM || rail) ? "display:none" : "font-size:9.5px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text-faint);border:1px solid var(--line);border-radius:4px;padding:2px 5px",
@@ -3360,7 +3361,7 @@ class Component extends DCLogic {
       searchKey: (e) => { if (e.key === "Escape") { this.setState({ search: "", searchOpen: false }); e.target.blur(); } },
       searchInputStyle: "background:transparent;border:none;outline:none;color:var(--text);font-size:12px;min-width:0;" + (s.searchOpen ? "flex:1;width:auto" : "width:0;flex:0 0 0;padding:0"),
       netTitle: s.online ? "Online — tap to simulate a network drop" : "Offline — tap to restore the link",
-      netDotBtnStyle: "display:flex;align-items:center;padding:" + (isM ? "9px 8px 9px 10px" : "7px 10px 7px 12px") + ";flex-shrink:0",
+      netDotBtnStyle: "display:flex;align-items:center;justify-content:center;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 8px 0 10px" : "7px 10px 7px 12px") + ";flex-shrink:0",
       linkPillStyle: "display:flex;align-items:center;flex-shrink:0;border-radius:20px;overflow:hidden;border:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (!s.online ? "var(--bad-dim)" : queued ? "var(--warn-dim)" : "var(--bg-2)"),
       searchStyle: isM ? "display:none" : "display:flex;align-items:center;gap:" + (s.searchOpen ? "8px" : "0") + ";background:var(--bg-2);border:1px solid " + (s.searchOpen ? "var(--warn-line)" : "var(--line)") + ";border-radius:8px;padding:" + (s.searchOpen ? "7px 10px" : "0") + ";flex-shrink:0;color:var(--text-dim);" + (s.searchOpen ? "width:clamp(112px,14vw,180px);" : "width:32px;height:32px;justify-content:center;") + "transition:width .14s ease;cursor:text;overflow:hidden;",
       _searchStyleOld: isM ? "display:none" : "display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;width:clamp(112px,14vw,180px);color:var(--text-muted)",
@@ -3373,7 +3374,7 @@ class Component extends DCLogic {
         : "display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;background:var(--line);flex:1;min-width:0",
       miniRowStyle: "display:flex;align-items:stretch;gap:1px;background:var(--line);flex:1;min-width:0;overflow-x:auto",
       miniItemStyle: "background:var(--bg-1);display:flex;align-items:center;gap:8px;padding:0 " + (isM ? "13px" : "17px") + ";height:34px;white-space:nowrap;flex-shrink:0",
-      statsBtnStyle: "background:var(--bg-1);width:34px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted)",
+      statsBtnStyle: "background:var(--bg-1);width:" + (isM ? 40 : 34) + "px;min-height:" + (isM ? 40 : 34) + "px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-muted)",
       statsIcon: statsMini ? "M6 9l6 6 6-6" : "M18 15l-6-6-6 6",
       statsBtnTitle: statsMini ? "Show the full figures" : "Collapse the figures for more floor space",
       statsMini: statsMini, statsFull: !statsMini,
@@ -3393,7 +3394,10 @@ class Component extends DCLogic {
         : (s.pane === "bill"
             ? "flex:1;background:var(--bg-1);display:flex;flex-direction:column;min-height:0;overflow-y:auto;width:100%;max-width:560px;margin:0 auto;border-left:1px solid var(--line);border-right:1px solid var(--line)"
             : "display:none"),
-      grabberStyle: isM ? "width:100%;padding:11px 0 7px;flex-shrink:0;display:block;background:transparent" : "display:none",
+      // The sheet grabber. It is a drag handle, so it is thin by design — but
+      // it is also a tap target that opens the sheet, and the layout law does
+      // not have an exception for "it looks like a line".
+      grabberStyle: isM ? "width:100%;min-height:40px;padding:11px 0 7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:transparent" : "display:none",
       // ── Floor · Menu · Bill ──────────────────────────────────────────────
       // Three destinations, one strip above the pane, the same three at every
       // width. Seating a table hands you the Menu; ringing a dish fills Bill's
@@ -3471,7 +3475,7 @@ class Component extends DCLogic {
       })(),
       goSync: () => this.setState({ view: "sync" }),
       outboxLabel: queued ? (isM ? String(queued) : queued + " queued") : (s.syncing ? (isM ? "" : "Syncing") : (s.online ? (isM ? "" : "Synced") : "Offline")),
-      outboxStyle: "display:flex;align-items:center;gap:6px;padding:" + (isM ? "7px 9px 7px 7px" : "7px 12px 7px 8px") + ";font-size:11px;font-weight:600;flex-shrink:0;white-space:nowrap;border-left:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";color:" + (!s.online ? "var(--red-bright)" : queued ? "var(--warn-bright)" : "var(--text-dim)"),
+      outboxStyle: "display:flex;align-items:center;justify-content:center;gap:6px;min-height:" + (isM ? 40 : 34) + "px;min-width:" + (isM ? 40 : 0) + "px;padding:" + (isM ? "0 9px 0 7px" : "7px 12px 7px 8px") + ";font-size:11px;font-weight:600;flex-shrink:0;white-space:nowrap;border-left:1px solid " + (!s.online ? "var(--red-line)" : queued ? "var(--warn-line)" : "var(--line)") + ";color:" + (!s.online ? "var(--red-bright)" : queued ? "var(--warn-bright)" : "var(--text-dim)"),
       _outboxStyleOld: "display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid " + (queued ? "var(--warn-line)" : "var(--line)") + ";background:" + (queued ? "var(--warn-dim)" : "var(--bg-2)") + ";color:" + (queued ? "var(--warn-bright)" : "var(--text-dim)"),
       spinStyle: s.syncing ? "animation:kspin 1s linear infinite" : "",
       shift: this.shiftLabel(),
@@ -4114,6 +4118,12 @@ class Component extends DCLogic {
     const o = opt || {};
     const size = o.size || "md";
     const box = { xs: [28, "6px 11px", 10.5], sm: [34, "8px 13px", 11], md: [44, "11px 16px", 12.5], lg: [50, "13px 18px", 13.5] }[size] || [44, "11px 16px", 12.5];
+    /* On a phone every button is a thumb, whatever size the design called it.
+       The layout law is 40px on the shorter axis, and it is enforced HERE
+       rather than at each call site — otherwise it is enforced at most of them
+       and the one that was missed is the one somebody has to hit twice while
+       holding a tray. */
+    if (this.effBp() === "m" && box[0] < 40) box[0] = 40;
     // Fills name the ink colour explicitly rather than inheriting: a button that
     // borrows the surface's text colour goes unreadable the moment the theme flips.
     const fam = {
@@ -4337,7 +4347,7 @@ class Component extends DCLogic {
                 cur.lines[i] = Object.assign({}, cur.lines[i], { done: true });
                 t[tk.key] = cur;
                 this.setState({ tickets: t, kdsRecall: { key: tk.key, idx: [i], name: m.name, table: this.slotName(tk.num), at: Date.now() } });
-                this.queue("kds_bump", m.name + " bumped \u00b7 T" + pad(tk.num) + " \u00b7 " + this.me(), "order_lines");
+                this.queue("kds_bump", m.name + " bumped \u00b7 T" + pad(tk.num) + " \u00b7 " + this.me(), "order_lines", { id: m.kdsId || m.id, stage: "Ready" });
                 this.syncStageFromPass(tk.key, tk.num, cur.lines);
               }
             };
@@ -4937,7 +4947,7 @@ class Component extends DCLogic {
       // prints on the receipt. So it lives on the bill, as one segmented
       // control, always visible: pick Takeaway with nothing open and a takeaway
       // ticket opens; pick it on a live dine-in bill and the bill converts.
-      orderTypeRowStyle: "display:flex;gap:3px;padding:" + (tight ? 3 : 3) + "px;margin-top:" + (tight ? 6 : 10) + "px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line)",
+      orderTypeRowStyle: "display:flex;gap:3px;padding:3px;margin-top:" + (tight ? 6 : 10) + "px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line);min-height:" + (isPhone ? 46 : 40) + "px",
       orderTypes: [
         { k: "dine_in", label: "Dine-in", icon: "M7 3v7M5 3v4a2 2 0 0 0 4 0V3M7 10v11M17 3c-1.4 1.8-2 3.8-2 6h4M17 9v12" },
         { k: "qr", label: "QR", icon: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM15 15h5v5h-5z" },
@@ -4974,7 +4984,7 @@ class Component extends DCLogic {
             this.toast("Pick a table for a " + c.label.toLowerCase() + " bill");
           },
           style: "flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;padding:" + (tight ? "6px 2px" : "7px 3px")
-            + ";border-radius:7px;font-size:10px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:" + (tight ? 34 : 36) + "px;"
+            + ";border-radius:7px;font-size:10px;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;font-weight:" + (on ? 700 : 600) + ";font-family:inherit;white-space:nowrap;min-height:" + (isPhone ? 40 : tight ? 34 : 36) + "px;"
             + (on ? "background:var(--warn-dim);color:var(--warn-bright);box-shadow:inset 0 0 0 1px var(--warn-line)" : "background:transparent;color:var(--text-dim)")
         };
       }),
@@ -5498,7 +5508,7 @@ class Component extends DCLogic {
             style: "width:100%;display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:11px;background:var(--bg);border:1px solid var(--line);min-height:56px;text-align:left",
             go: () => this.setState({ modal: { kind: "lock", who: u.user, pin: "" } })
           })),
-          lockHint: "Demo build — each person's own PIN is shown beside their name. In production these are hashed and never displayed: a shared or visible PIN would make every \u201cwho voided this\u201d answer in the audit log a guess. Suspended accounts are refused at the keypad rather than hidden from it."
+          lockHint: "Tap your own name, then key your own PIN. It is checked by the server against a hash this terminal has never seen \u2014 a PIN compared in the browser is a PIN shipped to the browser, and then every \u201cwho voided this\u201d answer in the audit log is a guess. Five wrong attempts hold this terminal for fifteen minutes. A suspended account is refused at the keypad rather than hidden from it, so nobody is left wondering."
         };
       }
       const u = (K().USERS || []).find((x) => x.user === m.who) || {};
@@ -7174,14 +7184,14 @@ class Component extends DCLogic {
     if (rows.find((c) => c.staff === staffId && !c.out)) { this.toast(st.name + " is already clocked in", "warn"); return; }
     rows.push({ id: "ck" + Date.now(), staff: staffId, outlet: st.outlet, in: Date.now(), out: 0, late: 0 });
     this.setState({ clock: rows, modal: null });
-    this.queue("clock_in", st.name + " clocked in · " + this.locName(st.outlet), "time_entries");
+    this.queue("clock_in", st.name + " clocked in · " + this.locName(st.outlet), "time_entries", { emp: staffId, at: Date.now(), bizDate: this.today() });
     this.toast(st.name + " clocked in");
   }
   clockOut(entryId) {
     const rows = this.clockRows().map((c) => c.id === entryId ? Object.assign({}, c, { out: Date.now() }) : c);
     const e = rows.find((c) => c.id === entryId), st = this.staffFor(e.staff);
     this.setState({ clock: rows });
-    this.queue("clock_out", st.name + " clocked out · " + this.clockHours(e).toFixed(2) + "h", "time_entries");
+    this.queue("clock_out", st.name + " clocked out · " + this.clockHours(e).toFixed(2) + "h", "time_entries", { clockId: entryId, at: Date.now() });
     this.toast(st.name + " clocked out — " + this.clockHours(e).toFixed(2) + " hours");
   }
   // Per-employee monthly payroll. Pensionable wage is the contract basic, not
@@ -7353,7 +7363,20 @@ class Component extends DCLogic {
           if (posted) { this.toast(month + " payroll is already posted — a correction is a reversing entry", "warn"); return; }
           const p = Object.assign({}, s.payrollPosted); p[month] = Date.now();
           this.setState({ payrollPosted: p });
-          this.queue("post_payroll", month + " payroll · gross " + MVRc(gross) + " · Dr 5300/5310 Cr 1010/2500/2600", "journal_entries");
+          this.queue("post_payroll", month + " payroll · gross " + MVRc(gross) + " · Dr 5300/5310 Cr 1010/2500/2600", "journal_entries", {
+            // Employer pension is its OWN expense taken from wages, not netted
+            // into them — the run and the posting agree because both read the
+            // same rows.
+            period: month, date: this.today(), gross: gross,
+            pensionEe: mrpsEe, pensionEr: mrpsEr,
+            withholding: wht, service: sc.distributable || 0,
+            lines: run.map((r) => ({
+              emp: (r.st || {}).id, hours: r.hours || 0, ot: r.otHours || 0,
+              basic: r.basic || 0, otPay: r.otPay || 0, service: r.svc || 0,
+              pensionEe: r.mrpsEe || 0, pensionEr: r.mrpsEr || 0,
+              wht: r.wht || 0, net: r.net || 0
+            }))
+          });
           this.toast("Payroll posted · Dr 5300 " + MVRc(gross) + " · Cr 2500 " + MVRc(mrpsEe + mrpsEr) + " · Cr 2600 " + MVRc(wht));
         } },
         { label: "Export payroll CSV", go: () => this.csv("payroll-" + month.replace(" ", "-"), ["Employee", "Job", "Type", "Basic", "OT", "Allowance", "Service charge", "Gross", "MRPS 7% employee", "WHT", "Net pay", "MRPS 7% employer", "Employer cost"], run.map((x) => [x.st.name, x.st.job, x.st.kind, x.st.basic.toFixed(2), x.otPay.toFixed(2), x.allow.toFixed(2), x.share.toFixed(2), x.gross.toFixed(2), x.mrpsEe.toFixed(2), x.wht.toFixed(2), x.net.toFixed(2), x.mrpsEr.toFixed(2), x.employerCost.toFixed(2)])) },
@@ -10898,12 +10921,82 @@ class Component extends DCLogic {
       arr.forEach((x) => { if (p.keys.indexOf(this.rowKey(x)) >= 0) Object.assign(x, p.set); });
     });
   }
+  /* ── master data, one seam ───────────────────────────────────────────────
+     Three mutators cover every master record the back office edits — a dish,
+     an ingredient, a supplier, a customer, a person, an asset, an operating
+     cost, a promotion, a banner. They already queued an op each; what they did
+     not carry was the ROW, so the server had an audit trail of edits it could
+     not apply.
+
+     COLLECTION_OP maps the collection to the handler that materialises it and
+     the shape that handler expects. One table, so a new collection is one line
+     rather than a new code path — and a collection with no entry stays
+     audit-only rather than silently pretending to have saved. */
+  COLLECTION_OP() {
+    const num = (x) => Number(x) || 0;
+    return {
+      menu: ["dish_upsert", (r) => ({
+        id: r.id, name: r.name, cat: r.cat, price: num(r.price),
+        desc: r.desc, station: r.station, img: r.img,
+        active: r.off ? false : true, offMenu: !!r.off,
+        diets: r.veg ? ["veg"] : [], recipe: r.recipe || []
+      })],
+      items: ["item_upsert", (r) => (Array.isArray(r) ? {
+        // The item master is positional: [id, cat, name, stockUnit,
+        // costPerStockUnit, kind, code, baseUnit, stockUnit, costPerBase, par]
+        id: r[0], name: r[2], cat: r[1], base: r[7], stock: r[8],
+        factor: num(r[4]) && num(r[9]) ? num(r[4]) / num(r[9]) : 1,
+        cost: num(r[9]), par: num(r[10]), producible: r[5] === "prep"
+      } : {
+        id: r.id, name: r.name, cat: r.cat, base: r.base, stock: r.stock,
+        factor: num(r.factor) || 1, cost: num(r.cost), par: num(r.par)
+      })],
+      vendors: ["vendor_upsert", (r) => ({
+        name: r.name, trn: r.trn, contact: r.contact, phone: r.phone,
+        email: r.email, terms: num(r.termsDays) || 30, lead: num(r.lead) || 2
+      })],
+      staff: ["employee_upsert", (r) => ({
+        id: r.id, name: r.name, job: r.job, kind: r.kind, basic: num(r.basic),
+        hourly: num(r.hourly), joined: r.joined, mrps: !!r.mrps,
+        ot: r.ot !== false, svc: r.svc !== false, type: r.type
+      })],
+      opex: ["opex_insert", (r) => ({
+        id: r.id, cat: r.cat, vendor: r.vendor, amt: num(r.amt),
+        freq: r.freq, due: num(r.due), acct: r.acct, note: r.note
+      })],
+      assets: ["asset_insert", (r) => ({
+        id: r.id, name: r.name, cat: r.cat, cost: num(r.cost),
+        bought: r.bought, life: num(r.life), residual: num(r.residual),
+        serial: r.serial, loc: r.loc, warranty: r.warranty
+      })],
+      banners: ["banner_upsert", (r) => ({
+        id: r.id, slot: r.slot, title: r.title, sub: r.sub, img: r.img,
+        code: r.code, active: r.active !== false
+      })],
+      promos: ["promo_upsert", (r) => ({
+        id: r.id, name: r.name, kind: r.kind || "percent",
+        value: num(r.pct || r.value), code: r.code, maxPct: num(r.maxPct),
+        channels: r.channels, active: r.active !== false
+      })]
+    };
+  }
+  // The row a mutation should send, in the shape its handler reads. A
+  // collection with no mapping returns nothing, and the op stays audit-only.
+  opFor(coll, row) {
+    const m = this.COLLECTION_OP()[coll];
+    if (!m || !row) return null;
+    try { return { kind: m[0], payload: m[1](row) }; }
+    catch (e) { return null; }
+  }
+
   insertRow(k, row, label, entity) {
     const arr = this.coll(k); if (arr) arr.unshift(row);
     const L = Object.assign({}, this.state.local || {});
     L[k] = (L[k] || []).concat([row]);
     this.setState({ local: L, modal: null });
-    this.queue((entity || k) + "_insert", label, entity || k);
+    const op = this.opFor(k, row);
+    if (op) this.queue(op.kind, label, entity || k, op.payload);
+    else this.queue((entity || k) + "_insert", label, entity || k);
     this.toast(label);
   }
   // The item master rows are arrays, so a key/value patch cannot express them —
@@ -10914,7 +11007,9 @@ class Component extends DCLogic {
     const L = Object.assign({}, this.state.local || {});
     L[k] = (L[k] || []).filter((r) => this.rowKey(r) !== id).concat([next]);
     this.setState({ local: L, modal: null });
-    this.queue((entity || k) + "_update", label, entity || k);
+    const opA = this.opFor(k, next);
+    if (opA) this.queue(opA.kind, label, entity || k, opA.payload);
+    else this.queue((entity || k) + "_update", label, entity || k);
     this.toast(label);
   }
   patchRows(k, keys, set, label, entity) {
@@ -10922,7 +11017,12 @@ class Component extends DCLogic {
     if (arr) arr.forEach((x) => { if (keys.indexOf(this.rowKey(x)) >= 0) { Object.assign(x, set); n++; } });
     if (!n) { this.toast("Nothing to change", "warn"); return; }
     this.setState({ patches: (this.state.patches || []).concat([{ coll: k, keys: keys, set: set }]), modal: null });
-    this.queue((entity || k) + "_update", label, entity || k);
+    // The rows AFTER the patch, so the server stores what the screen now shows
+    // rather than a diff it would have to replay against a row it cannot see.
+    const touched = (arr || []).filter((x) => keys.indexOf(this.rowKey(x)) >= 0);
+    const ops = touched.map((row) => this.opFor(k, row)).filter(Boolean);
+    if (ops.length) ops.forEach((op) => this.queue(op.kind, label, entity || k, op.payload));
+    else this.queue((entity || k) + "_update", label, entity || k);
     this.toast(label);
   }
   // One place that validates and shapes a vendor record, so the create and the
@@ -11466,7 +11566,10 @@ class Component extends DCLogic {
     next[p.no] = ok ? "posted" : "query";
     this.setState({ grnState: next, modal: null });
     if (ok) {
-      this.queue("grn_priced", p.no + " price-checked and posted \u00b7 " + MVRc(p.total) + " \u00b7 by " + this.me(), "purchases");
+      this.queue("grn_priced", p.no + " price-checked and posted \u00b7 " + MVRc(p.total) + " \u00b7 by " + this.me(), "purchases", {
+      deliveryId: p.serverId || null, vendor: p.vendor, invoiceNo: p.inv,
+      date: p.date || this.today(), net: p.net || p.total, tax: p.tax || 0, terms: p.terms
+    });
       this.queue("post_journal", "Dr 1200 Inventory \u00b7 Cr 2100 Payables \u00b7 " + MVRc(p.total) + " \u00b7 " + p.no, "journal_entries");
       this.toast(p.no + " priced \u2014 cost re-averaged and the payable booked");
     } else {
@@ -11527,7 +11630,7 @@ class Component extends DCLogic {
     if (!this.canApprove()) return this.toast("Closing a month needs a manager", "warn");
     if (this.closedPeriods().indexOf(per) >= 0) return this.toast(per + " is already closed");
     this.setState({ periods: this.closedPeriods().concat([per]) });
-    this.queue("period_close", per + " closed \u00b7 by " + this.me(), "periods");
+    this.queue("period_close", per + " closed \u00b7 by " + this.me(), "periods", { period: per });
     this.toast(per + " closed \u2014 its figures are frozen and quotable");
   }
   reopenPeriod(per) {
@@ -11829,7 +11932,10 @@ class Component extends DCLogic {
     this.setState({ acqRuns: runs, modal: null });
     // The money and the fee are two entries, not one net line: netting them hides
     // the fee inside revenue and makes the rate impossible to audit later.
-    this.queue("acq_match", "Batch " + b.date + " settled · " + MVRc(paid) + " received against " + MVRc(b.expected) + " expected", "payments");
+    this.queue("acq_match", "Batch " + b.date + " settled · " + MVRc(paid) + " received against " + MVRc(b.expected) + " expected", "payments", {
+      acquirer: b.acquirer || "BML", batch: b.batch || b.date, date: b.date,
+      gross: b.gross, mdr: b.mdr || 0, net: paid
+    });
     this.queue("post_journal", "Dr 1020 Bank " + MVRc(paid) + " · Dr 5600 Bank and card charges " + MVRc(b.gross - paid) + " · Cr 1030 Card receivable " + MVRc(b.gross) + " · batch " + b.date, "journal_entries");
     if (Math.abs(variance) > 1) {
       this.toast("Paid " + MVRc(Math.abs(variance)) + (variance < 0 ? " short of" : " above") + " the agreed rate — the batch stays flagged", "warn");
@@ -11880,7 +11986,10 @@ class Component extends DCLogic {
       modal: null,
       view: "counts"
     });
-    this.queue("count_post", lines.length + " lines counted · variance " + MVRc(varValue) + " · " + this.me(), "stock_counts");
+    this.queue("count_post", lines.length + " lines counted · variance " + MVRc(varValue) + " · " + this.me(), "stock_counts", {
+      scope: "all",
+      lines: lines.map((l) => ({ ing: l.id, theo: l.theo, actual: l.actual, cost: l.cost || 0 }))
+    });
     this.queue("post_journal", "Dr 5100 Wastage & variance " + MVRc(Math.abs(varValue)) + " · Cr 1200 Inventory · blind count", "journal_entries");
     this.info("Count posted", lines.length + " lines · variance " + MVRc(varValue) + " at cost",
       [["Theoretical usage", MVRc(theoValue) + " since the last count"],
@@ -12356,7 +12465,11 @@ class Component extends DCLogic {
           if (!it) return this.toast("Pick an item", "warn");
           const val = (it[4] || 0) * qty, out = v.dir !== "in";
           this.setState({ modal: null });
-          this.queue("stock_adjust", (out ? "Write-off" : "Write-on") + " · " + this.itemName(+v.item) + " " + qty + " " + (it[8] || "kg") + " · " + v.reason + " · " + MVRc(val), "stock_ledger");
+          this.queue("stock_adjust", (out ? "Write-off" : "Write-on") + " · " + this.itemName(+v.item) + " " + qty + " " + (it[8] || "kg") + " · " + v.reason + " · " + MVRc(val), "stock_ledger", {
+            ing: v.item, qty: (out ? -1 : 1) * Math.abs(qty * this.convFactor(it)),
+            cost: this.costPerBase(it), value: val,
+            reason: out ? "waste" : "manual", note: v.reason, loc: v.loc || null
+          });
           this.queue("post_journal", out ? "Dr 5100 Cr 1200 " + MVRc(val) : "Dr 1200 Cr 5100 " + MVRc(val), "journal_entries");
           this.toast((out ? "Written off " : "Written on ") + qty + " " + (it[8] || "kg") + " · " + MVRc(val) + " to 5100 · " + v.reason);
         }
@@ -12386,7 +12499,12 @@ class Component extends DCLogic {
           const R = Object.assign({}, this.state.refunds || {});
           R[ord.no] = { amt: amt, reason: v.reason, note: v.note, at: Date.now(), by: this.me() };
           this.setState({ refunds: R, modal: null });
-          this.queue("refund", ord.no + " · " + MVRc(amt) + " · " + v.reason + " · " + v.note + " · authorised by " + this.me(), "refunds");
+          this.queue("refund", ord.no + " · " + MVRc(amt) + " · " + v.reason + " · " + v.note + " · authorised by " + this.me(), "refunds", {
+            saleId: ord.id || null, bizDate: ord.bizDate || this.today(),
+            net: amt / (1 + ((ord.taxRate || 0) / 100)), tax: amt - amt / (1 + ((ord.taxRate || 0) / 100)),
+            svc: 0, amt: amt, method: ord.tender || "cash",
+            reason: v.reason + (v.note ? " \u00b7 " + v.note : ""), lines: ord.sold || []
+          });
           const tk = ord.tender || "cash";
           this.queue("post_journal", "Refund " + ord.no + " · Dr 4000 " + MVRc(amt) + " · Cr " + this.tenderAcct(tk), "journal_entries");
           // A credit refund is not a payout: it has to reduce what the customer
@@ -12568,7 +12686,7 @@ class Component extends DCLogic {
             fxRows.push([f.code + " counted", this.fmtCur(f.code, c) + (d ? "  (" + (d > 0 ? "+" : "") + this.fmtCur(f.code, d) + ")" : "  exact"), d ? "var(--red-bright)" : "var(--green)"]);
           });
           this.setState({ register: null, modal: null });
-          this.queue("close_register", "Register closed · counted " + MVRc(counted) + " · expected " + MVRc(expected) + " · variance " + MVRc(variance) + (fxRows.length ? " · plus " + (fxRows.length / 2) + " foreign currenc" + (fxRows.length === 2 ? "y" : "ies") : ""), "shifts");
+          this.queue("close_register", "Register closed · counted " + MVRc(counted) + " · expected " + MVRc(expected) + " · variance " + MVRc(variance) + (fxRows.length ? " · plus " + (fxRows.length / 2) + " foreign currenc" + (fxRows.length === 2 ? "y" : "ies") : ""), "shifts", { counted: counted, note: v.note || "" });
           this.info("Register closed", (r.no || "") + " · " + (r.openedBy || ""),
             [["Opening float", MVRc(r.float || 0)], ["Rufiyaa takings", MVRc(this.cashTakings())], ["Expected in drawer", MVRc(expected)], ["Counted", MVRc(counted)], ["Variance", (variance >= 0 ? "+" : "") + MVRc(variance), Math.abs(variance) > 50 ? "var(--red-bright)" : "var(--green)"]].concat(fxRows).concat([["Declared tips", MVRc(+v.tips || 0)]]),
             Math.abs(variance) > 50 || fxVar > 50
@@ -12887,7 +13005,9 @@ class Component extends DCLogic {
           // unmatched is a statement nobody has reconciled.
           const r = this.runBankMatch(have.concat(add), true);
           const open = r.lines.filter((l) => l.state === "open").length;
-          this.queue("bank_import", add.length + " statement lines imported \u00b7 " + r.auto + " auto-cleared \u00b7 " + r.prop + " proposed \u00b7 by " + this.me(), "bank");
+          this.queue("bank_import", add.length + " statement lines imported \u00b7 " + r.auto + " auto-cleared \u00b7 " + r.prop + " proposed \u00b7 by " + this.me(), "bank", {
+            lines: add.map((l) => ({ date: l.date, descr: l.desc, amt: l.amt, bal: l.bal, ref: l.ref }))
+          });
           this.toast(add.length + " line" + (add.length === 1 ? "" : "s") + " imported \u00b7 " + r.auto + " cleared against the ledger"
             + (r.prop ? " \u00b7 " + r.prop + " to decide" : "") + (open ? " \u00b7 " + open + " unexplained" : ""), r.prop || open ? "warn" : "ok");
         }
@@ -13136,7 +13256,7 @@ class Component extends DCLogic {
           const p = Math.max(1, Math.min(40, +v.party || 1));
           this.mutate(row.n, (t) => { t.party = p; });
           this.setState({ modal: null });
-          this.queue("covers_update", this.slotName(row.n) + " · " + p + " covers · by " + this.me(), "orders");
+          this.queue("covers_update", this.slotName(row.n) + " · " + p + " covers · by " + this.me(), "orders", { ticketId: (this.ticketAt(row.n) || {}).id || null, party: p });
           this.toast(this.slotName(row.n) + " · " + p + " cover" + (p === 1 ? "" : "s"));
         }
       },
@@ -13180,7 +13300,11 @@ class Component extends DCLogic {
           if (!v.name) return this.toast("Guest name is required", "warn");
           const row = { t: v.t, name: v.name, party: +v.party || 2, table: String(v.table || "").toUpperCase(), status: "confirmed", note: v.note, phone: v.phone || "", source: "Till" };
           this.setState({ res: (this.state.res || []).concat([row]), modal: null });
-          this.queue("reservation_insert", "Reservation · " + v.name + " " + v.t + " " + row.table, "reservations");
+          this.queue("reservation_insert", "Reservation · " + v.name + " " + v.t + " " + row.table, "reservations", {
+            name: v.name, phone: v.phone || "", party: +v.party || 1,
+            at: new Date(this.today() + "T" + (v.t || "19:00") + ":00").getTime(),
+            mins: +v.mins || 90, table: row.table || null, note: v.note || ""
+          });
           this.toast("Booked · " + v.name + " at " + v.t);
         }
       },
