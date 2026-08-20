@@ -1,5 +1,6 @@
 'use strict';
 const { tableName } = require('./tables');
+const addons = require('./addons');
 /* Sending a round to the kitchen, and moving it along the pass.
  *
  * 02-POS-SPEC.md §4. Two operations, both idempotent through op_log because
@@ -50,13 +51,19 @@ async function sendRound(c, p, ctx) {
      rule the sale path follows, for the same reason. */
   const ids = p.lines.map((l) => String(l.itemId));
   const items = await c.query(
-    'SELECT id, name, price, station FROM item WHERE id = ANY($1) AND active', [ids]);
+    'SELECT id, name, price, station, category, addons_own FROM item'
+    + ' WHERE id = ANY($1) AND active', [ids]);
   const byId = new Map(items.rows.map((r) => [r.id, r]));
   for (const id of ids) {
     if (!byId.has(id)) {
       throw Object.assign(new Error('unknown or inactive item: ' + id), { status: 409 });
     }
   }
+
+  /* Add-ons are priced HERE, off the catalogue, for the same reason the dish is
+     (src/addons.js). The terminal sent ids; what "extra sambol" costs and
+     whether this dish offers it at all are the server's answer. */
+  const offered = await addons.offeredFor(c, items.rows);
 
   /* WHICH BILL ON THIS TABLE. `split` has been in the schema and in the unique
      index since the first migration and every insert wrote a literal 0, so a
@@ -105,10 +112,17 @@ async function sendRound(c, p, ctx) {
     const it = byId.get(String(l.itemId));
     const qty = Number(l.qty);
     if (!(qty > 0)) throw Object.assign(new Error('a line quantity must be positive'), { status: 400 });
+    /* The add-on extra folds into the UNIT price, so every figure downstream —
+       line total, tax, service charge, the receipt — stays the arithmetic it
+       already was. The rows themselves are kept alongside so the docket and the
+       bill can still say what was added and what each one cost. */
+    const picked = addons.priceLine(l.addons, offered.get(it.id) || [], it.name);
+    const unitPrice = Math.round((Number(it.price) + picked.extra) * 100) / 100;
     await c.query(
-      'INSERT INTO ticket_line (ticket_id, item_id, name, qty, unit_price, note, sent_at, by_staff, device_id)'
-      + ' VALUES ($1,$2,$3,$4,$5,$6, now(), $7,$8)',
-      [ticketId, it.id, it.name, qty, it.price, l.note || null, ctx.actor, ctx.deviceId]);
+      'INSERT INTO ticket_line (ticket_id, item_id, name, qty, unit_price, addons, note, sent_at, by_staff, device_id)'
+      + ' VALUES ($1,$2,$3,$4,$5,$6,$7, now(), $8,$9)',
+      [ticketId, it.id, it.name, qty, unitPrice, JSON.stringify(picked.addons),
+        l.note || null, ctx.actor, ctx.deviceId]);
 
     /* An unrouted dish still reaches the kitchen. §4's columns are per station,
        and a dish nobody has assigned would otherwise vanish from the pass — a

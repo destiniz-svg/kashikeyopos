@@ -368,7 +368,7 @@ r.get('/me', function (req, res) { res.json(req.ctx); });
 r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) {
   try {
     const data = await withOutlet(req.ctx, async function (c) {
-      const [outlet, tax, items, tickets, stages] = await Promise.all([
+      const [outlet, tax, items, sections, modifiers, itemMods, tickets, stages] = await Promise.all([
         /* `cash_round_laari` rides along because the TILL has to be able to
            compute the same total the server will. Without it the till sent the
            unrounded figure, the server rounded the bill because the tender was
@@ -381,7 +381,20 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
           + ' AND effective_from <= current_date'
           + ' AND (effective_to IS NULL OR effective_to >= current_date)'
           + ' ORDER BY effective_from DESC LIMIT 1', [req.ctx.outletId]),
-        c.query('SELECT id, name, category, price, off_menu, station FROM item WHERE active'),
+        /* The dish as the prototype draws it (migration 037): its photograph,
+           its own words, its heat and its diet tags. A till that only knows a
+           name and a price can only draw a rectangle of text. */
+        c.query('SELECT id, name, category, price, off_menu, station,'
+          + ' description, image_url, tags, spice, addons_own FROM item WHERE active'),
+        /* Sections and add-ons ride on the same snapshot for the same reason
+           stations do: the till is offline half the time, and a menu that
+           needs a second round trip to know what an "extra sambol" costs is a
+           menu that stops working when the wifi does. */
+        c.query('SELECT name, color, icon, station, sort, hidden FROM menu_section'
+          + ' ORDER BY sort, name'),
+        c.query('SELECT id, name, price, sections, sort FROM modifier'
+          + ' WHERE active ORDER BY sort, name'),
+        c.query('SELECT item_id, modifier_id FROM item_modifier'),
         /* A GUEST sees ONE table's ticket — its own. The projection used to
            return every open ticket in the outlet, so a phone at table 4 could
            read what table 9 had eaten and what they owed. Nothing in the app
@@ -414,6 +427,12 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
           + (req.ctx.guest ? "" : "   'id', l.id, 'itemId', l.item_id, ")
           + "   'name', l.name, 'qty', l.qty,"
           + "   'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
+          /* What was added on top, and what each one cost. The ticket panel
+             prints them under the dish, the KOT prints them for the kitchen,
+             and the till sends them back at settlement — a unit price with no
+             explanation is how a guest gets charged 285 for a 240 curry and
+             nobody can say why. */
+          + "   'addons', l.addons,"
           + "   'station', i.station)"
           + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
           + ' FROM ticket t LEFT JOIN ticket_line l'
@@ -458,6 +477,13 @@ r.get('/outlet/:outletId/snapshot', sameOutlet, async function (req, res, next) 
         outlet: outlet.rows[0] || null,
         tax: tax.rows[0] || null,
         items: items.rows,
+        /* Resolved on the CLIENT from these three, not flattened here: a
+           section's add-on list is one row whichever way it is sent, and
+           flattening it per dish would send the same "extra sambol" forty
+           times to a tablet on a hot kitchen's wifi. */
+        sections: sections.rows,
+        modifiers: modifiers.rows,
+        itemModifiers: itemMods.rows,
         tickets: tickets.rows,
         /* A GUEST'S OWN ROUNDS, so the tracker can stop guessing. Until this
            existed the phone matched its stage with a predicate that could
@@ -589,6 +615,86 @@ r.delete('/outlet/:outletId/menu/:itemId', sameOutlet, staffOnly, atLeast('manag
     try {
       const out = await withOutlet(req.ctx, function (c) {
         return menu.retire(c, req.params.itemId);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+/* ── sections and add-ons (migration 037) ───────────────────────────────────
+ *
+ * Both hang off the menu because both ARE the menu: a section is what bands
+ * the till grid and colours the docket rail, an add-on is a priced thing a
+ * guest can order. Same rank as a dish for the same reason — all three are the
+ * price list, and the price list is a manager's signature.
+ *
+ * These sit ABOVE nothing and BELOW /menu/:itemId only in the file; Express
+ * matches on segment count, and none of these collide with it.
+ */
+r.get('/outlet/:outletId/menu/sections', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { sections: await menu.sections(c), stations: await menu.stations(c, req.ctx.outletId) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.put('/outlet/:outletId/menu/sections/:name', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.saveSection(c, req.params.name, req.body || {}, req.ctx);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/menu/sections/:name', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.dropSection(c, req.params.name);
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.get('/outlet/:outletId/menu/addons', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        return { addons: await menu.modifiers(c), sections: await menu.sections(c) };
+      });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
+r.post('/outlet/:outletId/menu/addons', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.createModifier(c, req.body || {});
+      });
+      res.status(201).json(out);
+    } catch (e) { next(e); }
+  });
+
+r.patch('/outlet/:outletId/menu/addons/:addonId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.updateModifier(c, req.params.addonId, req.body || {});
+      });
+      res.json(out);
+    } catch (e) { next(e); }
+  });
+
+r.delete('/outlet/:outletId/menu/addons/:addonId', sameOutlet, staffOnly, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, function (c) {
+        return menu.retireModifier(c, req.params.addonId);
       });
       res.json(out);
     } catch (e) { next(e); }
@@ -2004,9 +2110,24 @@ r.post('/outlet/:outletId/sync/push', sameOutlet, staffOnly, atLeast('kitchen'),
           if (!op || !op.opId) { out.push({ error: 'opId required' }); continue; }
           const seen = await c.query('SELECT result FROM op_log WHERE op_id = $1', [op.opId]);
           if (seen.rows.length) { out.push({ opId: op.opId, replay: true, result: seen.rows[0].result }); continue; }
+          /* ── ONE OP, ONE SAVEPOINT ────────────────────────────────────
+             The whole batch is one transaction, and a refused op used to fall
+             straight through to `continue` — so whatever it had written before
+             it threw stayed in that transaction and was committed alongside
+             the ops that succeeded. Firing a round is the clearest case:
+             sendRound opens the ticket and THEN prices the lines, so a round
+             refused on its third line left an empty open ticket on the floor,
+             shading a table busy over a bill that had never been ordered.
+             Rolling back to a savepoint undoes exactly that op and leaves the
+             rest of the batch intact, which is what "refused" has to mean. */
           let result;
-          try { result = await apply(c, op, req.ctx); }
-          catch (e) {
+          await c.query('SAVEPOINT op');
+          try {
+            result = await apply(c, op, req.ctx);
+            await c.query('RELEASE SAVEPOINT op');
+          } catch (e) {
+            await c.query('ROLLBACK TO SAVEPOINT op');
+            await c.query('RELEASE SAVEPOINT op');
             /* A REFUSED OP LEAVES A TRACE. This used to be swallowed into the
                response body and nowhere else: the HTTP layer answers 200
                because the REQUEST was fine, so a till whose sales were all

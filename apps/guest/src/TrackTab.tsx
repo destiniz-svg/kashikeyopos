@@ -64,7 +64,13 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
     try {
       const res = await api.sendRound(
         opId, table,
-        cart.map((l) => ({ itemId: l.itemId, qty: l.qty, note: l.note })),
+        /* Ids and counts, never a price — the till reads the add-on catalogue
+           when it accepts the round (backend/src/addons.js). */
+        cart.map((l) => ({
+          itemId: l.itemId, qty: l.qty, note: l.note,
+          ...(l.addons && l.addons.length
+            ? { addons: l.addons.map((a) => ({ id: a.id, qty: a.qty })) } : {}),
+        })),
         promo || undefined, ident?.name, ident?.phone,
       );
       setSent((s) => s.concat([{ ...round, serverId: res.id }]));
@@ -129,6 +135,13 @@ export function TrackTab({ snap, table, cart, setCart, sent, setSent, promo, set
               <div key={l.lineId} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 0', minHeight: HIT.row, borderBottom: '1px solid ' + C.hairlineSoft }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: C.ink }}>{l.name}</div>
+                  {/* What was added on top, so the guest can see WHY this line
+                      costs more than the menu said before they send it. */}
+                  {l.addons && l.addons.length > 0 && (
+                    <div style={{ marginTop: 3, fontSize: 12, color: C.inkMuted, lineHeight: 1.4 }}>
+                      {l.addons.map((a) => (a.qty > 1 ? a.qty + '× ' : '') + a.name).join(' · ')}
+                    </div>
+                  )}
                   {l.note && <div style={{ marginTop: 3, fontSize: 12, color: C.inkMuted, lineHeight: 1.4 }}>{l.note}</div>}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>

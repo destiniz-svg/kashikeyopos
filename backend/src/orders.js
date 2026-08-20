@@ -154,7 +154,10 @@ async function receipt(c, saleId, rank) {
   const sale = s.rows[0];
 
   const [lines, payments, jrnl, moves] = await Promise.all([
-    c.query('SELECT id, item_id, name, qty, unit_price, line_total, unit_cost, line_cost'
+    /* `addons` rides along so the receipt can answer the one question a
+       unit price cannot: why this curry cost 200 when the menu says 185.
+       See migration 037. */
+    c.query('SELECT id, item_id, name, qty, unit_price, line_total, unit_cost, line_cost, addons'
       + ' FROM sale_line WHERE sale_id = $1 ORDER BY id', [saleId]),
     c.query('SELECT p.id, p.method, p.amount, p.currency, p.fx_amount, p.fx_rate,'
       + ' p.tendered, p.change_given, p.tip, p.auth_ref, p.at, st.name AS taken_by_name'
@@ -226,6 +229,7 @@ async function receipt(c, saleId, rank) {
       id: r.id, itemId: r.item_id, name: r.name, qty: num(r.qty),
       unitPrice: num(r.unit_price), lineTotal: num(r.line_total),
       unitCost: num(r.unit_cost), lineCost: num(r.line_cost),
+      addons: r.addons || [],
     })),
     payments: payments.rows.map((r) => ({
       id: r.id, method: r.method, amount: num(r.amount), currency: r.currency,

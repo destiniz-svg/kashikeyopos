@@ -194,7 +194,25 @@ export function Kds({ snap, now, onQueued }: Props) {
                             <span style={{ fontSize: 12, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)', minWidth: 18 }}>
                               {Number(l.qty)}
                             </span>
-                            <span style={{ fontSize: 12.5, color: 'var(--text-dim)' }}>{l.name}</span>
+                            <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', fontSize: 12.5, color: 'var(--text-dim)' }}>{l.name}</span>
+                              {/* WHAT THE KITCHEN HAS TO DO DIFFERENTLY. An
+                                  add-on the pass cannot see is an add-on the
+                                  guest paid for and did not get — and when it
+                                  is "no nuts" rather than "extra sambol", it is
+                                  considerably worse than that. So it prints
+                                  under the dish, on every docket, always. */}
+                              {l.addons && l.addons.length > 0 && (
+                                <span style={{
+                                  display: 'block', marginTop: 2, paddingLeft: 8,
+                                  borderLeft: '2px solid var(--line-3)',
+                                  fontSize: 11, fontWeight: 600, color: 'var(--text-muted)',
+                                  lineHeight: 1.45,
+                                }}>
+                                  {l.addons.map((a) => (a.qty > 1 ? a.qty + '× ' : '') + a.name).join(' · ')}
+                                </span>
+                              )}
+                            </span>
                           </div>
                         ))}
                       </div>

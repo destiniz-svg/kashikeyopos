@@ -148,7 +148,11 @@ BEGIN
       unit_price numeric(12,2) NOT NULL,
       line_total numeric(12,2) NOT NULL,
       unit_cost  numeric(12,4) NOT NULL DEFAULT 0,
-      line_cost  numeric(12,2) NOT NULL DEFAULT 0
+      line_cost  numeric(12,2) NOT NULL DEFAULT 0,
+      -- What was actually charged on top of the dish (migration 037). "Reef
+      -- curry 240" and "Reef curry 240 + double portion 45" are different
+      -- money, and a reprint that cannot tell them apart is not a tax record.
+      addons     jsonb NOT NULL DEFAULT '[]'
     );
     CREATE INDEX IF NOT EXISTS sale_line_sale ON %1$I.sale_line(sale_id);
 
@@ -232,7 +236,55 @@ BEGIN
       off_menu boolean NOT NULL DEFAULT false,
       -- Which station cooks it (chain.station). NULL = not routed yet; the KDS
       -- shows those on the first station rather than dropping the order.
-      station  text
+      station  text,
+      -- The face of the dish (migration 037). A photograph is a URL rather than
+      -- a blob: no object store, and a database that grows four megabytes per
+      -- dish cannot be replicated to an edge box. NULL photograph is a first
+      -- class state -- the till draws the section artifact in its place.
+      description text,
+      image_url   text,
+      tags        text[] NOT NULL DEFAULT '{}',
+      spice       int NOT NULL DEFAULT 0,
+      -- false = offer whatever this dish's section publishes; true = offer the
+      -- item_modifier rows below, even when there are none.
+      addons_own  boolean NOT NULL DEFAULT false,
+      CONSTRAINT item_spice_range CHECK (spice BETWEEN 0 AND 3)
+    );
+
+    -- Sections are keyed BY THE TEXT item.category already holds, so every
+    -- query written against that column keeps working and a section with no row
+    -- is simply an unconfigured section. The colour is not decoration: it bands
+    -- the till grid, tints the artifact on a dish with no photograph, and
+    -- colours the KDS docket rail (migration 037).
+    CREATE TABLE IF NOT EXISTS %1$I.menu_section (
+      name    text PRIMARY KEY,
+      color   text,
+      icon    text,
+      station text,
+      sort    int NOT NULL DEFAULT 0,
+      hidden  boolean NOT NULL DEFAULT false
+    );
+
+    -- The priced add-on catalogue. The till posts IDs and the server does the
+    -- arithmetic -- an add-on repriceable from a tablet is a hole in the price
+    -- list (migration 037).
+    CREATE TABLE IF NOT EXISTS %1$I.modifier (
+      id       text PRIMARY KEY,
+      name     text NOT NULL,
+      price    numeric(12,2) NOT NULL DEFAULT 0 CHECK (price >= 0),
+      sections text[] NOT NULL DEFAULT '{}',
+      active   boolean NOT NULL DEFAULT true,
+      sort     int NOT NULL DEFAULT 0,
+      -- What it costs the kitchen, optionally: an add-on that names a dish
+      -- explodes through that dish's recipe when it sells, so add-on revenue
+      -- carries add-on cost. NULL is a real answer -- "no ice" consumes
+      -- nothing (migration 037).
+      recipe_item_id text REFERENCES %1$I.item(id)
+    );
+    CREATE TABLE IF NOT EXISTS %1$I.item_modifier (
+      item_id     text NOT NULL REFERENCES %1$I.item(id) ON DELETE CASCADE,
+      modifier_id text NOT NULL REFERENCES %1$I.modifier(id) ON DELETE CASCADE,
+      PRIMARY KEY (item_id, modifier_id)
     );
 
     CREATE TABLE IF NOT EXISTS %1$I.recipe_line (
@@ -838,6 +890,12 @@ BEGIN
   -- A service booked against the wrong machine is deleted; a capitalised asset
   -- is disposed of, never deleted.
   EXECUTE format('GRANT DELETE ON %I.asset_service TO %I', s, r);
+  -- The menu's presentation layer is configuration, not a record of anything
+  -- that happened: unticking an add-on on a dish, retiring a section nobody
+  -- sells from, deleting an add-on that was never ordered. What a sale actually
+  -- charged is captured on sale_line.addons and is untouched by any of it.
+  -- See migration 037.
+  EXECUTE format('GRANT DELETE ON %I.item_modifier, %I.menu_section, %I.modifier TO %I', s, s, s, r);
   EXECUTE format('GRANT SELECT ON chain.outlet, chain.staff, chain.device, chain.tax_version, chain.supplier, chain.member TO %I', r);
   -- Loyalty (§2 `loyalty`). The scheme is chain-wide configuration; the point
   -- ledger is append-only, so no UPDATE or DELETE on it ever. See migration 020.

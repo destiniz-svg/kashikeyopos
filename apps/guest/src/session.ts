@@ -23,6 +23,11 @@ export interface CartLine {
   name: string;
   qty: number;
   unitPrice: number;    // laari, as quoted by the snapshot when it was added
+  /* What was added on top. `unitPrice` already includes it — the phone shows
+     one figure per line, and the TILL prices the round again when it accepts
+     it, from its own catalogue. This is what the guest was quoted, never what
+     they will be charged: those two agreeing is the server's job. */
+  addons?: Array<{ id: string; name: string; price: number; qty: number }>;
   note?: string;
 }
 

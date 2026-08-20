@@ -65,6 +65,10 @@ interface Receipt {
   lines: Array<{
     id: string; itemId: string; name: string; qty: number; unitPrice: number;
     lineTotal: number; unitCost: number | null; lineCost: number | null;
+    /* What was charged on top of the dish, captured at settlement. A unit
+       price cannot answer "why is this curry 200 when the menu says 185";
+       this can (migration 037). */
+    addons?: Array<{ id: string; name: string; price: number; qty: number }>;
   }>;
   payments: Array<{
     id: string; method: string; amount: number; currency: string;
@@ -407,6 +411,10 @@ function ReceiptSheet({ r, rank, session, onClose, onCredited }: {
             <Row key={l.id}
               main={l.name}
               sub={l.qty + ' × ' + mvr(l.unitPrice) + (l.lineCost !== null ? ' · cost ' + mvr(l.lineCost) : '')}
+              note={(l.addons || []).length
+                ? (l.addons || []).map((a) => (a.qty > 1 ? a.qty + '× ' : '') + a.name
+                  + (a.price ? ' +' + mvr(a.price) : '')).join(' · ')
+                : undefined}
               amount={mvr(l.lineTotal)} />
           ))}
 
@@ -588,11 +596,21 @@ function Withheld({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Row({ main, sub, amount, muted }: { main: string; sub?: string; amount: string; muted?: boolean }) {
+function Row({ main, sub, note, amount, muted }: { main: string; sub?: string; note?: string; amount: string; muted?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--line-soft)' }}>
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: muted ? 'var(--text-faint)' : 'var(--text)', textDecoration: muted ? 'line-through' : 'none' }}>{main}</span>
+        {/* Set off with a rule rather than run into the figures line: what was
+            added is a different KIND of fact from the quantity and the cost,
+            and it is the one a guest disputes. */}
+        {note && (
+          <span style={{
+            display: 'block', marginTop: 3, paddingLeft: 8,
+            borderLeft: '2px solid var(--line-3)', fontSize: 10.5,
+            color: 'var(--text-muted)', lineHeight: 1.45,
+          }}>{note}</span>
+        )}
         {sub && <span style={{ display: 'block', marginTop: 2, fontSize: 10, color: 'var(--text-faint)' }}>{sub}</span>}
       </span>
       <span style={{ fontSize: 12.5, fontFamily: MONO, color: muted ? 'var(--text-faint)' : 'var(--text-dim)' }}>{amount}</span>

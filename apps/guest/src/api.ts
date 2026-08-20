@@ -36,6 +36,29 @@ export interface Item {
   category: string | null;
   price: string;        // MVR, as numeric(12,2) from the database
   off_menu: boolean;
+  /* The dish as the merchant published it (migration 037). A guest reading a
+     menu on their own phone gets the photograph and the description the till
+     shows — one dish, one description, two surfaces. */
+  description?: string | null;
+  image_url?: string | null;
+  tags?: string[];
+  spice?: number;
+  addons_own?: boolean;
+}
+
+/** A section, as the merchant styled it. Used for the chip order and its hue —
+ *  the same wayfinding the till uses, so a guest and a cashier are looking at
+ *  the same menu in the same order. */
+export interface Section {
+  name: string; color: string | null; icon: string | null;
+  station: string | null; sort: number; hidden: boolean;
+}
+
+/** The priced add-on catalogue. THE PHONE NEVER NAMES A PRICE — it shows these
+ *  figures and sends ids and counts; the till prices the round when it accepts
+ *  it (backend/src/addons.js). */
+export interface Modifier {
+  id: string; name: string; price: string; sections: string[]; sort: number;
 }
 
 export interface TicketLine { name: string; qty: string; price: string; sent: boolean; }
@@ -82,12 +105,20 @@ export interface Snapshot {
   outlet: Outlet | null;
   tax: Tax | null;
   items: Item[];
+  sections?: Section[];
+  modifiers?: Modifier[];
+  itemModifiers?: Array<{ item_id: string; modifier_id: string }>;
   tickets: Ticket[];
   stages: Stage[];
   guestOrders?: GuestOrder[];
 }
 
-export interface GuestOrderLine { itemId: string; qty: number; addons?: string[]; note?: string; }
+export interface GuestOrderLine {
+  itemId: string; qty: number;
+  /* Ids and counts. The price is the till's answer, never the phone's. */
+  addons?: Array<{ id: string; qty: number }>;
+  note?: string;
+}
 
 export class ApiError extends Error {
   status: number;

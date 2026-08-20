@@ -4,6 +4,7 @@ import * as api from './api';
 import type { Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { navFor, landingFor, FILTERABLE } from './nav';
+import { HButton, LIFT } from './ui';
 import { Lock } from './Lock';
 import { Floor } from './Floor';
 import { Kds } from './Kds';
@@ -344,8 +345,9 @@ export function App({ outletId }: { outletId: number }) {
           }}
       >
         <div style={{ padding: labelled ? '14px 14px 10px' : '14px 8px 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <button
+          <HButton
             onClick={() => (isPhone ? setDrawer(false) : setRailOpen((v) => !v))}
+            hover={{ background: 'var(--bg-3)', color: 'var(--text)' }}
             /* On the tablet rail the column is 60px and a label cannot fit, so
                there is nothing for this to toggle — it closes the drawer on a
                phone and collapses the rail on a desktop. */
@@ -360,7 +362,7 @@ export function App({ outletId }: { outletId: number }) {
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M4 6h16M4 12h16M4 18h16" />
             </svg>
-          </button>
+          </HButton>
           {labelled && (
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: '-.01em' }}>
               KashikeyoPOS
@@ -379,11 +381,17 @@ export function App({ outletId }: { outletId: number }) {
               {g.items.map((it) => {
                 const on = view === it.id;
                 return (
-                  <button
+                  <HButton
                     key={it.id}
                     onClick={() => { setView(it.id); setDrawer(false); }}
                     title={labelled ? undefined : it.label}
                     aria-current={on ? 'page' : undefined}
+                    /* The prototype's rule: a hover only ever deepens what the
+                       rest state already said. The entry you are ON keeps its
+                       amber; the ones you are not lift one step and come up to
+                       full ink, which is what "you could go here" looks like
+                       without introducing a colour that means something else. */
+                    hover={on ? { background: 'var(--bg-3)' } : LIFT}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                       padding: labelled ? '8px 8px' : '8px 6px', borderRadius: 7,
@@ -404,7 +412,7 @@ export function App({ outletId }: { outletId: number }) {
                         {it.label}
                       </span>
                     )}
-                  </button>
+                  </HButton>
                 );
               })}
             </div>
@@ -430,12 +438,13 @@ export function App({ outletId }: { outletId: number }) {
                   {['', 'Kitchen', 'Till', 'Manager', 'Admin', 'Owner'][session.rank]}
                 </span>
               </span>
-              <button onClick={signOut} title="Sign out" aria-label="Sign out"
+              <HButton onClick={signOut} title="Sign out" aria-label="Sign out"
+                hover={{ background: 'var(--bg-3)', color: 'var(--red-bright)' }}
                 style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--bg-2)', color: 'var(--text-faint)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
                 </svg>
-              </button>
+              </HButton>
             </>
           )}
         </div>
@@ -464,10 +473,11 @@ export function App({ outletId }: { outletId: number }) {
               rather than the rail because on a phone the rail is not on
               screen to be tapped. */}
           {isPhone && (
-            <button
+            <HButton
               onClick={() => setDrawer(true)}
               aria-label="Open the menu"
               aria-expanded={drawer}
+              hover={{ background: 'var(--bg-3)', color: 'var(--text)' }}
               style={{
                 width: 40, height: 40, flexShrink: 0, borderRadius: 9,
                 background: 'var(--bg-2)', color: 'var(--text-dim)',
@@ -477,7 +487,7 @@ export function App({ outletId }: { outletId: number }) {
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M4 6h16M4 12h16M4 18h16" />
               </svg>
-            </button>
+            </HButton>
           )}
           <span style={{
             fontSize: isPhone ? 15 : 13, fontWeight: isPhone ? 700 : 600,
@@ -492,10 +502,11 @@ export function App({ outletId }: { outletId: number }) {
           {/* On a phone this is the icon alone — the label and the ⌘K hint are
               the first things the prototype drops, because a phone has no ⌘
               and the header has no room for a word. */}
-          <button
+          <HButton
             type="button" onClick={() => setPal(true)}
             title="Go anywhere, or say what you want to do — ⌘K"
             aria-label="Go anywhere"
+            hover={{ background: 'var(--bg-3)', borderColor: 'var(--line-2)', color: 'var(--text)' }}
             style={{
               display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
               minHeight: isPhone ? 38 : 34, padding: isPhone ? '0 10px' : '0 11px',
@@ -513,7 +524,7 @@ export function App({ outletId }: { outletId: number }) {
                 color: 'var(--text-faint)', border: '1px solid var(--line)', borderRadius: 4, padding: '2px 5px',
               }}>⌘K</span>
             )}
-          </button>
+          </HButton>
 
           {/* The filter. Hidden on a phone, exactly as the prototype hides it —
               there is no room beside the outlet name, and no keyboard to press
@@ -649,15 +660,16 @@ export function App({ outletId }: { outletId: number }) {
                       && ' — this till recorded nothing. Check Orders & Tickets before taking it again.'}
                   </span>
                 </span>
-                <button
+                <HButton
                   onClick={() => { void outbox.clearConflict(o.opId).then(async () => setRefused(await outbox.conflicts())); }}
+                  hover={{ background: 'var(--bg-3)', color: 'var(--text)' }}
                   style={{
                     flexShrink: 0, minHeight: 32, padding: '0 12px', borderRadius: 7,
                     background: 'var(--bg-2)', border: '1px solid var(--line)',
                     color: 'var(--text-dim)', fontSize: 11.5, fontWeight: 700,
                   }}>
                   Got it
-                </button>
+                </HButton>
               </div>
             ))}
             {refused.length > 3 && (

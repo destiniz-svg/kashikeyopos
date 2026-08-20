@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Item, Session, Snapshot } from './api';
+import type { Item, LineAddon, Modifier, Session, Snapshot } from './api';
 import * as outbox from './outbox';
 import { Payment } from './Payment';
 /* One bill calculation, shared with the server. See packages/money/money.js —
@@ -9,6 +9,8 @@ import { Register } from './Register';
 import { useIntent } from './intent';
 import type { Intent } from './intent';
 import { useBreakpoint } from './useBreakpoint';
+import { addonsFor, dishArt, sectionColor, sectionIcon, sectionsOf, SPICE, tagLabel } from './dishes';
+import { DishPhoto, HButton, LIFT, LIFT_CARD, shimmer } from './ui';
 
 /* POS Floor — 02-POS-SPEC.md §3.
  *
@@ -26,7 +28,23 @@ const toLaari = (mvr: string) => Math.round(Number(mvr) * 100);
 const money = (laari: number) =>
   (laari / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export interface Line { itemId: string; name: string; qty: number; unitPrice: number }
+export interface Line {
+  itemId: string; name: string; qty: number; unitPrice: number;
+  /* What was added on top, priced by the server and carried here so the ticket
+     panel can print it under the dish. `unitPrice` ALREADY INCLUDES the extra —
+     the server folds it in so every figure downstream stays the arithmetic it
+     already was (backend/src/addons.js). */
+  addons?: LineAddon[];
+}
+
+/* Two of the same dish with different add-ons are two lines, not one with a
+   quantity of two: "burger, extra sambol" and "burger" are different food and
+   different money. The signature is what tells them apart, and it is built from
+   the catalogue's own order so two identical picks always agree. */
+const sigOf = (itemId: string, addons?: LineAddon[]) =>
+  itemId + '|' + (addons || []).map((a) => a.id + 'x' + a.qty).join(',');
+const extraOf = (addons?: LineAddon[]) =>
+  (addons || []).reduce((a, x) => a + Math.round(Number(x.price) * 100) * Number(x.qty), 0);
 
 interface Props {
   snap: Snapshot | null;
@@ -76,6 +94,14 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const [promoCode, setPromoCode] = useState<string | undefined>();
   const [cat, setCat] = useState('all');
   const [q, setQ] = useState('');
+  /* The dish whose add-on sheet is open, and the counts picked so far. Held
+     here rather than on the tile so pressing Escape, or tapping the scrim,
+     closes it from one place. */
+  const [picking, setPicking] = useState<Item | null>(null);
+  const [picks, setPicks] = useState<Record<string, number>>({});
+  /* Which tile was last rung, so it can flash. The prototype's kaddline says
+     "that one" to a cashier who is looking at the guest, not the screen. */
+  const [lastAdd, setLastAdd] = useState('');
   /* THE BILL AS IT STOOD WHEN PAY WAS PRESSED.
      Not a boolean, and this is the point. The payment modal used to read the
      live ticket at CONFIRM time, seconds or minutes after it opened, while the
@@ -129,23 +155,46 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
   const outlet = snap?.outlet ?? null;
   const tableCount = outlet?.tables ?? 0;
 
-  const cats = useMemo(() => {
-    const out: string[] = [];
-    for (const it of items) {
-      const c = it.category || 'Other';
-      if (!out.includes(c)) out.push(c);
-    }
-    return out;
-  }, [items]);
+  /* Every section the menu uses, in the merchant's own order, styled where
+     anyone has styled it. A section nobody has opened the editor for still
+     gets a chip — see menu.ts. */
+  const sections = useMemo(() => sectionsOf(items, snap?.sections), [items, snap?.sections]);
+  const cats = useMemo(
+    () => sections.filter((sn) => !sn.hidden).map((sn) => sn.name), [sections]);
 
   const shown = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return items.filter((it) => {
       if (cat !== 'all' && (it.category || 'Other') !== cat) return false;
       if (!needle) return true;
-      return it.name.toLowerCase().includes(needle);
+      /* The description is searched too. A cashier who has been told "the one
+         with the coconut" has no other way in. */
+      return it.name.toLowerCase().includes(needle)
+        || (it.description || '').toLowerCase().includes(needle);
     });
   }, [items, cat, q]);
+
+  /* How many dishes each chip holds — the prototype prints it on the chip, and
+     it is the difference between "this section is empty" and "the search found
+     nothing", which look identical without it. */
+  const countIn = (name: string) =>
+    items.filter((it) => (it.category || 'Other') === name).length;
+
+  /* What the dish being picked offers, resolved from the snapshot so a till
+     with no signal can still open the sheet. */
+  const pickingAddons: Modifier[] = useMemo(
+    () => (picking ? addonsFor(picking, snap?.modifiers, snap?.itemModifiers) : []),
+    [picking, snap?.modifiers, snap?.itemModifiers]);
+
+  /* Tapping a dish rings it. Tapping one that OFFERS something opens the sheet
+     first — silently ringing it would charge the guest for the plain dish and
+     give the cashier no way to say "extra sambol" at all. */
+  const tapDish = (it: Item) => {
+    const offers = addonsFor(it, snap?.modifiers, snap?.itemModifiers);
+    if (!offers.length) { add(it); return; }
+    setPicks({});
+    setPicking(it);
+  };
 
   /* Which tables are busy, from the till's own open tickets. Free/Seated is
      derived from the server's state, never from a counter this screen keeps —
@@ -218,21 +267,52 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
      bill it was keyed against and must not follow the cashier to the next one. */
   useEffect(() => { setDraft([]); setFiring([]); setVoiding(null); }, [table, split]);
 
-  const add = (it: Item) => {
+  /* Escape closes the add-on sheet. Bound on the DOCUMENT rather than on the
+     dialog: nothing in the sheet is autofocused — a till is driven by touch —
+     so a handler on the dialog itself would only fire for somebody who had
+     already tabbed into it, which is nobody. */
+  useEffect(() => {
+    if (!picking) return;
+    const esc = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      setPicking(null); setPicks({});
+    };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [picking]);
+
+  const add = (it: Item, picks?: LineAddon[]) => {
+    const chosen = (picks || []).filter((a) => a.qty > 0);
     setDraft((ls) => {
-      const i = ls.findIndex((l) => l.itemId === it.id);
+      const sig = sigOf(it.id, chosen);
+      const i = ls.findIndex((l) => sigOf(l.itemId, l.addons) === sig);
       if (i >= 0) {
         const next = ls.slice();
         next[i] = { ...next[i], qty: next[i].qty + 1 };
         return next;
       }
-      return ls.concat([{ itemId: it.id, name: it.name, qty: 1, unitPrice: toLaari(it.price) }]);
+      return ls.concat([{
+        itemId: it.id, name: it.name, qty: 1,
+        /* The till's own figure, for the ticket panel only. The SERVER prices
+           the sale — this is what the cashier reads out while it is being
+           keyed, and it has to agree, which is why it is the same sum. */
+        unitPrice: toLaari(it.price) + extraOf(chosen),
+        ...(chosen.length ? { addons: chosen } : {}),
+      }]);
     });
+    /* Cleared after the flash, not left set. The prototype bounds it the same
+       way (`Date.now() - lastAdd.at < 700`), and for the same reason: a tile
+       still carrying an `animation` twenty minutes later replays it the moment
+       anything remounts, and a dish appearing to ring itself is worse on a till
+       than no feedback at all. */
+    setLastAdd(it.id + ':' + Date.now());
+    window.setTimeout(() => setLastAdd(''), 400);
   };
 
-  const step = (itemId: string, d: number) =>
+  const step = (sig: string, d: number) =>
     setDraft((ls) => ls
-      .map((l) => (l.itemId === itemId ? { ...l, qty: l.qty + d } : l))
+      .map((l) => (sigOf(l.itemId, l.addons) === sig ? { ...l, qty: l.qty + d } : l))
       .filter((l) => l.qty > 0));
 
   /* Taking a line off a bill the kitchen already has. Not a delete — a void
@@ -306,15 +386,21 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
      what has only been keyed. Priced from the menu where the dish is still on
      it, and from the ticket where it is not — a dish taken off the board after
      it was ordered still has to be charged at the price the guest was quoted. */
-  const priceOf = (itemId: string | undefined, fallback: string) => {
+  /* THE ADD-ON EXTRA IS ADDED BACK, because the menu price is the price of the
+     DISH and the ticket's is the price of the dish plus what was added to it.
+     Re-pricing from the menu alone quietly dropped every add-on off the till's
+     running total while the server still charged for them, so the cashier read
+     one figure to the guest and the receipt printed another. */
+  const priceOf = (itemId: string | undefined, fallback: string, addons?: LineAddon[]) => {
     const it = itemId ? items.find((i) => i.id === itemId) : undefined;
-    return toLaari(it ? it.price : fallback);
+    return it ? toLaari(it.price) + extraOf(addons) : toLaari(fallback);
   };
   const onKitchen: Line[] = sentLines.map((l, i) => ({
     itemId: l.itemId ?? ('srv' + i),
     name: l.name,
     qty: Number(l.qty),
-    unitPrice: priceOf(l.itemId, l.price),
+    unitPrice: priceOf(l.itemId, l.price, l.addons),
+    ...(l.addons && l.addons.length ? { addons: l.addons } : {}),
   }));
   const lines: Line[] = [...onKitchen, ...firing, ...draft];
 
@@ -338,7 +424,13 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
       split,
       covers: openByTable.get(table)?.covers ?? 1,
       channel: table === 'Takeaway' ? 'takeaway' : table === 'Delivery' ? 'delivery' : 'dine_in',
-      lines: draft.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+      /* IDS AND COUNTS ONLY — never a price. The server reads the add-on
+         catalogue and does the arithmetic, the same rule the dish follows. */
+      lines: draft.map((l) => ({
+        itemId: l.itemId, qty: l.qty,
+        ...(l.addons && l.addons.length
+          ? { addons: l.addons.map((a) => ({ id: a.id, qty: a.qty })) } : {}),
+      })),
     });
     /* Held on the bill against the quantity the ticket has NOW, so it survives
        the round trip — or the hours of it, offline — without being counted
@@ -382,7 +474,11 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
          so a paid table stayed shaded busy and its tab stayed on the Orders
          board beside the receipt for the very same meal. */
       ticketId: bill.ticketId,
-      lines: bill.lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+      lines: bill.lines.map((l) => ({
+        itemId: l.itemId, qty: l.qty,
+        ...(l.addons && l.addons.length
+          ? { addons: l.addons.map((a) => ({ id: a.id, qty: a.qty })) } : {}),
+      })),
       payments: payments.map((p) => ({
         method: p.method,
         amount: (p.amount / 100).toFixed(2),
@@ -545,18 +641,38 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           />
         </div>
 
+        {/* The section rail. A dot in the section's own hue, its glyph, its name
+            and its count — the prototype's wayfinding, in that order, because a
+            cashier aims at the colour before they read the word. */}
         <div className="krail" style={{ flexShrink: 0, display: 'flex', gap: 6, padding: '9px 12px', overflowX: 'auto' }}>
           {[{ id: 'all', name: 'All' }, ...cats.map((c) => ({ id: c, name: c }))].map((c) => {
             const on = cat === c.id;
+            const hue = c.id === 'all' ? 'var(--cat-all)' : sectionColor(sections, c.id);
+            const n = c.id === 'all' ? items.length : countIn(c.id);
             return (
-              <button key={c.id} onClick={() => setCat(c.id)}
+              <HButton key={c.id} onClick={() => setCat(c.id)}
+                hover={on ? undefined : LIFT}
                 style={{
-                  flexShrink: 0, padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
-                  whiteSpace: 'nowrap',
+                  flexShrink: 0, padding: '6px 11px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
+                  whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6,
                   background: on ? 'var(--amber)' : 'var(--bg-2)',
                   color: on ? 'var(--on-amber)' : 'var(--text-muted)',
                   border: '1px solid ' + (on ? 'var(--amber)' : 'var(--line)'),
-                }}>{c.name}</button>
+                }}>
+                <span aria-hidden style={{
+                  width: 7, height: 7, borderRadius: 999, flexShrink: 0,
+                  background: on ? 'var(--on-amber)' : hue,
+                }} />
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"
+                  strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ flexShrink: 0, opacity: .9 }} aria-hidden>
+                  <path d={c.id === 'all'
+                    ? 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z'
+                    : sectionIcon(sections, c.id)} />
+                </svg>
+                {c.name}
+                <span style={{ fontSize: 10, opacity: .55, fontFamily: MONO }}>{n}</span>
+              </HButton>
             );
           })}
         </div>
@@ -564,37 +680,159 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
         <div style={{
           flex: 1, minHeight: 0, overflowY: 'auto',
           padding: isPhone ? '0 12px 92px' : '0 12px 14px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 148px), 1fr))',
+          /* Wider tracks than the text-only tile needed. A photograph at 1.55
+             below 160px is a smear, and the description under it wraps to five
+             lines — the card stops being readable before it stops fitting. */
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(100%, 168px), 1fr))',
+          /* EACH ROW AS TALL AS ITS TALLEST TILE, and no taller. The default
+             `auto` rows are minmax(auto, auto), and this grid is a FLEX ITEM
+             with a definite height — so the rows were resolved against that
+             height rather than against their contents, and every row came out
+             91.83px on a phone against tiles that needed 203. The photograph
+             band was clipped away and the artifact inside it drew over the
+             dish's name. It only showed on a phone because that is where the
+             viewport is short enough for the clamp to bite. */
+          gridAutoRows: 'min-content',
           gap: 9, alignContent: 'start',
         }}>
-          {shown.map((it) => (
-            <button
-              key={it.id}
-              onClick={() => add(it)}
-              disabled={!table}
-              title={table ? undefined : 'Choose a table first'}
-              style={{
-                padding: 11, borderRadius: 9, minHeight: 74, textAlign: 'left',
-                background: 'var(--bg-1)', border: '1px solid var(--line)',
-                opacity: table ? 1 : .45,
-                // §3.2: "Off-menu dishes are visibly struck, not hidden."
-                textDecoration: it.off_menu ? 'line-through' : 'none',
-              }}
-            >
-              <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', lineHeight: 1.3 }}>
-                {it.name}
-              </span>
-              <span style={{ display: 'block', marginTop: 7, fontSize: 14, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>
-                {money(toLaari(it.price))}
-              </span>
-            </button>
+          {/* THE DISH TILE, as the prototype draws it: a photograph at 1.55, then
+              the name, the merchant's own words, the price and a footer. A dish
+              with no photograph gets the section artifact — its hue and the
+              dish's initials, in the same position a photo would occupy, never
+              an empty grey box. */}
+          {shown.map((it) => {
+            const art = dishArt(it, sections);
+            const offers = addonsFor(it, snap?.modifiers, snap?.itemModifiers);
+            const tags = it.tags ?? [];
+            const heat = it.spice ?? 0;
+            return (
+              <HButton
+                key={it.id}
+                onClick={() => tapDish(it)}
+                disabled={!table}
+                title={table ? undefined : 'Choose a table first'}
+                hover={table ? LIFT_CARD : undefined}
+                style={{
+                  borderRadius: 9, minHeight: 74, textAlign: 'left', overflow: 'hidden',
+                  display: 'flex', flexDirection: 'column',
+                  background: 'var(--bg-1)', border: '1px solid var(--line)',
+                  opacity: table ? 1 : .45,
+                  animation: lastAdd.startsWith(it.id + ':')
+                    ? 'kaddline .22s cubic-bezier(.2,.8,.3,1)' : undefined,
+                }}
+              >
+                <span style={{
+                  position: 'relative', width: '100%', aspectRatio: '1.55',
+                  overflow: 'hidden', display: 'block',
+                  /* flexShrink:0 as well, so a tile in a row made tall by
+                     somebody else's long description does not pay for it out of
+                     its own picture — the KDS card carries a comment about the
+                     identical bug. */
+                  flexShrink: 0,
+                }}>
+                  {/* §3.2: "Off-menu dishes are visibly struck, not hidden."
+                      On a photograph, struck means drained — a line through a
+                      picture is unreadable. */}
+                  <DishPhoto url={it.image_url} tint={art.tint} ink={art.ink}
+                    text={art.text} dimmed={it.off_menu} />
+                  {it.off_menu && (
+                    <span style={{
+                      position: 'absolute', left: 7, top: 7, padding: '2px 6px', borderRadius: 4,
+                      fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.07em',
+                      background: 'var(--danger-dim)', color: 'var(--red-bright)',
+                    }}>86</span>
+                  )}
+                  {offers.length > 0 && (
+                    <span title={offers.length + ' add-ons on this dish'} style={{
+                      position: 'absolute', right: 7, top: 7, padding: '2px 6px', borderRadius: 4,
+                      fontSize: 9, fontWeight: 800, letterSpacing: '.06em',
+                      background: 'var(--fwd-dim)', color: 'var(--blue-bright)',
+                    }}>+{offers.length}</span>
+                  )}
+                  {/* Heat and diet read off the picture, where the eye already
+                      is. Both are facts about the food, so both are drawn the
+                      same way wherever they appear. */}
+                  {(heat > 0 || tags.includes('veg') || tags.includes('vegan')) && (
+                    <span style={{
+                      position: 'absolute', left: 7, bottom: 7, display: 'flex', gap: 4,
+                      alignItems: 'center',
+                    }}>
+                      {(tags.includes('vegan') || tags.includes('veg')) && (
+                        <span title={tagLabel(tags.includes('vegan') ? 'vegan' : 'veg')} style={{
+                          width: 12, height: 12, borderRadius: 3, display: 'grid', placeItems: 'center',
+                          border: '1.5px solid var(--go)', background: 'var(--bg)',
+                        }}>
+                          <span style={{ width: 5, height: 5, borderRadius: 999, background: 'var(--go)' }} />
+                        </span>
+                      )}
+                      {heat > 0 && (
+                        <span title={SPICE[heat]} style={{
+                          fontSize: 9, fontWeight: 800, letterSpacing: '.06em', padding: '2px 5px',
+                          borderRadius: 4, background: 'var(--bg)', color: 'var(--red-bright)',
+                        }}>{'\u25B2'.repeat(heat)}</span>
+                      )}
+                    </span>
+                  )}
+                </span>
+                <span style={{
+                  padding: '9px 11px 10px', display: 'flex', flexDirection: 'column',
+                  gap: 2, flex: 1, minWidth: 0,
+                }}>
+                  <span style={{
+                    fontSize: 12.5, fontWeight: 600, lineHeight: 1.3, color: 'var(--text)',
+                    textDecoration: it.off_menu ? 'line-through' : 'none',
+                  }}>{it.name}</span>
+                  {it.description && (
+                    <span style={{
+                      fontSize: 10.5, color: 'var(--text-dim)', lineHeight: 1.35, flex: 1,
+                      marginBottom: 7,
+                      /* Two lines, then it stops. A dish with a paragraph on it
+                         must not push the price off the bottom of the tile —
+                         the price is the one thing on this card that is never
+                         allowed to be missing. */
+                      display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                    }}>{it.description}</span>
+                  )}
+                  <span style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                    gap: 6, marginTop: 'auto',
+                  }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, fontFamily: MONO, color: 'var(--warn-bright)' }}>
+                      {money(toLaari(it.price))}
+                    </span>
+                    {offers.length > 0 && (
+                      <span style={{
+                        fontSize: 9.5, color: 'var(--text-faint)', fontWeight: 600,
+                        letterSpacing: '.04em', textTransform: 'uppercase',
+                      }}>Add-ons</span>
+                    )}
+                  </span>
+                </span>
+              </HButton>
+            );
+          })}
+          {/* The shape of the answer while it is still arriving. A spinner in an
+              empty grid says only that something is missing; a skeleton lets the
+              operator aim their hand before the menu lands. */}
+          {!snap && Array.from({ length: 8 }, (_, i) => (
+            <div key={'skel' + i} aria-hidden style={{
+              borderRadius: 9, border: '1px solid var(--line)', overflow: 'hidden',
+              background: 'var(--bg-1)',
+            }}>
+              <div style={{ ...shimmer, width: '100%', aspectRatio: '1.55' }} />
+              <div style={{ padding: '11px 11px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ ...shimmer, height: 9, width: '72%', borderRadius: 4 }} />
+                <div style={{ ...shimmer, height: 8, width: '92%', borderRadius: 4 }} />
+                <div style={{ ...shimmer, height: 11, width: '38%', borderRadius: 4 }} />
+              </div>
+            </div>
           ))}
-          {!shown.length && (
+          {!shown.length && snap && (
             <div style={{ gridColumn: '1/-1', padding: '32px 6px', textAlign: 'center', fontSize: 12, lineHeight: 1.6, color: 'var(--text-faint)' }}>
-              {!snap ? 'Loading the menu…'
-                : items.length === 0
-                  ? 'No dishes yet. Add them in Menu Master and they appear here.'
-                  : 'Nothing matches that search.'}
+              {items.length === 0
+                ? 'No dishes yet. Add them in Menu Master and they appear here.'
+                : 'Nothing matches that search.'}
             </div>
           )}
         </div>
@@ -682,9 +920,10 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                   {l.name}
                 </span>
                 <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
-                  {money(priceOf(l.itemId, l.price) * Number(l.qty))}
+                  {money(priceOf(l.itemId, l.price, l.addons) * Number(l.qty))}
                 </span>
               </div>
+              <AddonNote addons={l.addons} />
               <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--go-bright)' }}>
                   with the kitchen
@@ -712,6 +951,7 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
                   {money(l.unitPrice * l.qty)}
                 </span>
               </div>
+              <AddonNote addons={l.addons} />
               <div style={{ marginTop: 5, fontSize: 9.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--warn-bright)' }}>
                 on its way to the kitchen
               </div>
@@ -719,23 +959,31 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           ))}
 
           {/* KEYED, NOT SENT — the only part this screen still owns outright. */}
-          {draft.map((l) => (
-            <div key={l.itemId} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
-                <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
-                  {money(l.unitPrice * l.qty)}
-                </span>
+          {/* Keyed by the SIGNATURE, not the dish. Two burgers with different
+              add-ons are two rows, and keying both by `BURGER` made React
+              reuse one of them — the second row inherited the first's counts
+              and the stepper moved the wrong line. */}
+          {draft.map((l) => {
+            const sig = sigOf(l.itemId, l.addons);
+            return (
+              <div key={sig} style={{ padding: '9px 0', borderBottom: '1px solid var(--line-soft)' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{l.name}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>
+                    {money(l.unitPrice * l.qty)}
+                  </span>
+                </div>
+                <AddonNote addons={l.addons} />
+                <div style={{ marginTop: 7, display: 'inline-flex', alignItems: 'center', gap: 0, borderRadius: 6, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                  <HButton onClick={() => step(sig, -1)} aria-label={'One less ' + l.name} hover={LIFT}
+                    style={{ width: 26, height: 24, color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>−</HButton>
+                  <span style={{ minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>{l.qty}</span>
+                  <HButton onClick={() => step(sig, 1)} aria-label={'One more ' + l.name} hover={LIFT}
+                    style={{ width: 26, height: 24, color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>+</HButton>
+                </div>
               </div>
-              <div style={{ marginTop: 7, display: 'inline-flex', alignItems: 'center', gap: 0, borderRadius: 6, background: 'var(--bg-2)', overflow: 'hidden' }}>
-                <button onClick={() => step(l.itemId, -1)} aria-label={'One less ' + l.name}
-                  style={{ width: 26, height: 24, color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>−</button>
-                <span style={{ minWidth: 26, textAlign: 'center', fontSize: 12, fontWeight: 700, fontFamily: MONO, color: 'var(--text)' }}>{l.qty}</span>
-                <button onClick={() => step(l.itemId, 1)} aria-label={'One more ' + l.name}
-                  style={{ width: 26, height: 24, color: 'var(--text-muted)', display: 'grid', placeItems: 'center' }}>+</button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* The reason. A void with no reason is a number nobody can answer
               for at the end of the month. */}
@@ -983,6 +1231,121 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
         </nav>
       )}
 
+      {/* ── THE ADD-ON SHEET ────────────────────────────────────────────────
+          Opened by tapping a dish that offers something. Ringing it silently
+          would charge the guest for the plain dish and leave the cashier no way
+          to say "extra sambol" at all — which is the state this build was in
+          before add-ons existed.
+
+          THE PRICES SHOWN HERE ARE THE SERVER'S. They come off the snapshot's
+          catalogue and are re-derived at the till and again at settlement; this
+          sheet sends ids and counts and never a figure. */}
+      {picking && (() => {
+        const base = toLaari(picking.price);
+        const extra = pickingAddons.reduce(
+          (a, m) => a + toLaari(m.price) * (picks[m.id] || 0), 0);
+        const chosen: LineAddon[] = pickingAddons
+          .filter((m) => picks[m.id] > 0)
+          .map((m) => ({ id: m.id, name: m.name, price: Number(m.price), qty: picks[m.id] }));
+        const close = () => { setPicking(null); setPicks({}); };
+        return (
+          <>
+            <div onClick={close} style={{
+              position: 'fixed', inset: 0, zIndex: 78,
+              background: 'var(--scrim, rgba(0,0,0,.55))', animation: 'kfade .14s',
+            }} />
+            <div role="dialog" aria-modal="true" aria-label={'Add-ons for ' + picking.name}
+              style={{
+                position: 'fixed', zIndex: 79,
+                ...(isPhone
+                  ? { left: 0, right: 0, bottom: 0, borderRadius: '16px 16px 0 0', animation: 'ksheet .2s cubic-bezier(.2,.7,.3,1)' }
+                  : {
+                    left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
+                    width: 'min(420px, calc(100vw - 32px))', borderRadius: 14,
+                  }),
+                maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+                background: 'var(--bg-1)', border: '1px solid var(--line-2)',
+                boxShadow: 'var(--shadow-lg)',
+              }}>
+              {/* The animation is on the INNER box on desktop, because the outer
+                  one is centred WITH a transform and kmodal animates transform —
+                  the two cannot share an element. */}
+              <div style={{
+                padding: '14px 16px 10px', borderBottom: '1px solid var(--line-soft)',
+                animation: isPhone ? undefined : 'kmodal .16s cubic-bezier(.2,.7,.3,1)',
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', letterSpacing: '-.01em' }}>
+                  {picking.name}
+                </div>
+                <div style={{ marginTop: 3, fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.5 }}>
+                  {picking.description || 'Anything extra goes on the kitchen docket and on the bill.'}
+                </div>
+              </div>
+
+              <div className="krail" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '8px 10px' }}>
+                {pickingAddons.map((m) => {
+                  const n = picks[m.id] || 0;
+                  return (
+                    <div key={m.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 6px',
+                      borderBottom: '1px solid var(--line-soft)',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{m.name}</div>
+                        <div style={{
+                          marginTop: 2, fontSize: 11, fontFamily: MONO,
+                          /* A free add-on reads GREEN rather than as a zero. It
+                             is still an add-on: it prints on the docket, the
+                             kitchen acts on it, and nobody is charged. */
+                          color: Number(m.price) ? 'var(--text-dim)' : 'var(--green)',
+                        }}>{Number(m.price) ? '+ ' + money(toLaari(m.price)) : 'Free'}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                        <HButton onClick={() => setPicks((x) => ({ ...x, [m.id]: Math.max(0, n - 1) }))}
+                          disabled={!n} aria-label={'One less ' + m.name} hover={LIFT}
+                          style={{
+                            width: 28, height: 28, borderRadius: 999, display: 'grid', placeItems: 'center',
+                            fontSize: 15, fontWeight: 700, color: 'var(--text-dim)',
+                            border: '1px solid var(--line)',
+                          }}>−</HButton>
+                        <span style={{
+                          minWidth: 20, textAlign: 'center', fontSize: 12.5, fontFamily: MONO,
+                          fontWeight: 700, color: n ? 'var(--text)' : 'var(--text-faint)',
+                        }}>{n}</span>
+                        <HButton onClick={() => setPicks((x) => ({ ...x, [m.id]: Math.min(99, n + 1) }))}
+                          aria-label={'One more ' + m.name} hover={LIFT}
+                          style={{
+                            width: 28, height: 28, borderRadius: 999, display: 'grid', placeItems: 'center',
+                            fontSize: 15, fontWeight: 700, color: 'var(--text-dim)',
+                            border: '1px solid var(--line)',
+                          }}>+</HButton>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ padding: '10px 12px 12px', borderTop: '1px solid var(--line-soft)', display: 'flex', gap: 8 }}>
+                <HButton onClick={close} hover={LIFT} style={{
+                  minHeight: 40, padding: '0 14px', borderRadius: 999, fontSize: 12.5, fontWeight: 600,
+                  background: 'var(--bg-2)', border: '1px solid var(--line)', color: 'var(--text-muted)',
+                }}>Cancel</HButton>
+                <HButton
+                  onClick={() => { add(picking, chosen); close(); }}
+                  style={{
+                    flex: 1, minHeight: 40, borderRadius: 999, textAlign: 'center',
+                    background: 'var(--amber)', color: 'var(--on-amber)',
+                    fontSize: 12.5, fontWeight: 700,
+                  }}
+                  hover={{ background: 'var(--amber-deep)' }}>
+                  {'Add · ' + money(base + extra)}
+                </HButton>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {paying && (
         <Payment
           /* Cash rounds, card does not — so the total depends on the tender,
@@ -1004,6 +1367,25 @@ export function Floor({ snap, now, session, online, onQueued, intent, onIntentDo
           onConfirm={settled}
         />
       )}
+    </div>
+  );
+}
+
+/* What was added on top, under the dish it was added to.
+ *
+ * The prototype's note on the kitchen note applies here word for word: an
+ * add-on is not a warning, so it loses the amber it used to borrow. It recedes
+ * on size and weight and keeps its 7:1 — a kitchen instruction that cannot be
+ * read at a glance is how allergies get missed. */
+function AddonNote({ addons }: { addons?: LineAddon[] }) {
+  if (!addons || !addons.length) return null;
+  return (
+    <div style={{
+      marginTop: 5, paddingLeft: 9, borderLeft: '2px solid var(--line-3)',
+      fontSize: 10.5, fontWeight: 500, color: 'var(--text-muted)', letterSpacing: '.005em',
+      lineHeight: 1.5,
+    }}>
+      {addons.map((a) => (a.qty > 1 ? a.qty + '× ' : '') + a.name).join(' · ')}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { HButton, LIFT_CARD } from './ui';
 import { useBreakpoint } from './useBreakpoint';
 
 /* The ONE table in this application, because the prototype has one.
@@ -97,11 +98,11 @@ export function DataGrid({ cols, rows, empty }: { cols: Col[]; rows: Row[]; empt
           }
           const head = cs.shift();
           const pairs = cs.filter((c) => c.cc.t !== '' && c.cc.t !== undefined);
-          const Tag = r.go ? 'button' : 'div';
+          const Tag = r.go ? HButton : 'div';
           return (
             <Tag
               key={r.key}
-              {...(r.go ? { onClick: r.go, type: 'button' as const } : {})}
+              {...(r.go ? { onClick: r.go, type: 'button' as const, hover: r.on ? undefined : LIFT_CARD } : {})}
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
                 width: '100%', padding: '13px 14px', borderRadius: 11, minHeight: 44,
@@ -194,11 +195,15 @@ export function DataGrid({ cols, rows, empty }: { cols: Col[]; rows: Row[]; empt
         ))}
       </div>
       {rows.map((r) => {
-        const Tag = r.go ? 'button' : 'div';
+        const Tag = r.go ? HButton : 'div';
         return (
           <Tag
             key={r.key}
-            {...(r.go ? { onClick: r.go, type: 'button' as const } : {})}
+            /* A row that goes somewhere says so under the cursor. The global
+               hover in pos.css is a brightness filter, and brightness on a
+               TRANSPARENT background changes nothing — so the one place in the
+               app where the rest state is transparent has to name its own. */
+            {...(r.go ? { onClick: r.go, type: 'button' as const, hover: r.on ? undefined : { background: 'var(--bg-1)' } } : {})}
             style={{
               display: 'grid', gridTemplateColumns: tmpl, gap: 12, padding: '11px 16px',
               width: '100%', alignItems: 'center', textAlign: 'left',

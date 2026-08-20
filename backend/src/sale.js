@@ -33,6 +33,7 @@
  */
 
 const money = require('../../packages/money/money');
+const addons = require('./addons');
 const costing = require('./costing');
 const customers = require('./customers');
 const loyalty = require('./loyalty');
@@ -140,7 +141,7 @@ async function settle(c, p, ctx, outlet) {
 
   const ids = p.lines.map((l) => String(l.itemId));
   const items = await c.query(
-    'SELECT id, name, price, category, active FROM item WHERE id = ANY($1)', [ids]);
+    'SELECT id, name, price, category, active, addons_own FROM item WHERE id = ANY($1)', [ids]);
   const byId = new Map(items.rows.map((r) => [r.id, r]));
 
   /* A RETIRED DISH CAN STILL BE PAID FOR IF IT IS ALREADY ON THE TICKET.
@@ -170,12 +171,46 @@ async function settle(c, p, ctx, outlet) {
   const tax = await taxAsAt(c, ctx.outletId, p.businessDate);
   const servicePct = Number(outlet.service_pct) || 0;
 
-  const billLines = p.lines.map((l) => ({
-    itemId: String(l.itemId),
-    name: byId.get(String(l.itemId)).name,
-    qty: Number(l.qty),
-    unitPrice: toLaari(byId.get(String(l.itemId)).price),
-  }));
+  /* ── ADD-ONS ARE PRICED HERE TOO ────────────────────────────────────────
+     The extra folds into the unit price, so the whole chain below — promo
+     base, service, tax extraction, rounding, the journal — is the arithmetic
+     it already was and needed no second money path (src/addons.js).
+
+     AND THE RETIRED-DISH RULE APPLIES TO ADD-ONS, for exactly the reason it
+     applies to dishes: an "extra sambol" taken out of the catalogue at four
+     o'clock must not make every open tab that already carries one impossible
+     to settle. The catalogue is widened by whatever this ticket was actually
+     fired with, at the price it was fired at — which is also the figure the
+     guest was quoted. */
+  const offered = await addons.offeredFor(c, items.rows);
+  if (p.ticketId) {
+    const t = await c.query(
+      'SELECT item_id, addons FROM ticket_line WHERE ticket_id = $1 AND void_at IS NULL',
+      [p.ticketId]);
+    for (const r of t.rows) {
+      const list = offered.get(r.item_id);
+      if (!list) continue;
+      for (const a of (r.addons || [])) {
+        if (a && a.id && !list.some((m) => m.id === a.id)) {
+          list.push({
+            id: a.id, name: a.name, price: a.price, recipe_item_id: a.recipeItemId || null,
+          });
+        }
+      }
+    }
+  }
+
+  const billLines = p.lines.map((l) => {
+    const it = byId.get(String(l.itemId));
+    const picked = addons.priceLine(l.addons, offered.get(it.id) || [], it.name);
+    return {
+      itemId: it.id,
+      name: it.name,
+      qty: Number(l.qty),
+      unitPrice: toLaari(it.price) + toLaari(picked.extra),
+      addons: picked.addons,
+    };
+  });
   for (const l of billLines) {
     if (!(l.qty > 0)) {
       throw Object.assign(new Error('a line quantity must be positive'), { status: 400 });
@@ -336,10 +371,22 @@ async function settle(c, p, ctx, outlet) {
   // Cost of what was sold, captured NOW: margin must never be recomputed from a
   // later ingredient price, or last month's profit changes when a supplier does.
   const costs = new Map();
-  for (const id of new Set(ids)) costs.set(id, (await costing.itemCost(c, id)).cost);
+  const costOf = async (id) => {
+    if (!costs.has(id)) costs.set(id, (await costing.itemCost(c, id)).cost);
+    return costs.get(id);
+  };
+  for (const id of new Set(ids)) await costOf(id);
   let cogs = 0;
   for (const l of billLines) {
-    l.unitCost = costs.get(l.itemId) || 0;
+    /* An add-on that names a dish costs what that dish costs, per unit, the
+       same way the dish itself does (migration 037). One that names none
+       consumes nothing and costs nothing — "no ice" is free to make as well as
+       free to buy. */
+    let addonCost = 0;
+    for (const a of (l.addons || [])) {
+      if (a.recipeItemId) addonCost += (await costOf(a.recipeItemId)) * a.qty;
+    }
+    l.unitCost = (costs.get(l.itemId) || 0) + addonCost;
     l.lineCost = Math.round(l.unitCost * l.qty);
     cogs += l.lineCost;
   }
@@ -371,9 +418,10 @@ async function settle(c, p, ctx, outlet) {
     const l = billLines[i];
     await c.query(
       'INSERT INTO sale_line (sale_id, item_id, name, qty, unit_price, line_total,'
-      + ' unit_cost, line_cost) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      + ' unit_cost, line_cost, addons) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
       [saleId, l.itemId, l.name, l.qty, toMVR(l.unitPrice),
-        toMVR(b.netLines[i]), (l.unitCost / 100).toFixed(4), toMVR(l.lineCost)]);
+        toMVR(b.netLines[i]), (l.unitCost / 100).toFixed(4), toMVR(l.lineCost),
+        JSON.stringify(l.addons || [])]);
   }
 
   for (const pay of (p.payments || [])) {
@@ -487,7 +535,16 @@ async function settle(c, p, ctx, outlet) {
 async function moveStock(c, saleId, lines, ctx) {
   const stock = require('./stock');
   const need = new Map();   // ingredientId -> qty
-  for (const l of lines) await costing.explode(c, l.itemId, Number(l.qty), need);
+  for (const l of lines) {
+    await costing.explode(c, l.itemId, Number(l.qty), need);
+    /* And whatever the add-ons consume. An "extra scoop" that named the ice
+       cream moves ice cream; one that named nothing moves nothing. */
+    for (const a of (l.addons || [])) {
+      if (a.recipeItemId) {
+        await costing.explode(c, a.recipeItemId, Number(l.qty) * Number(a.qty), need);
+      }
+    }
+  }
   for (const [ingredientId, qty] of need) {
     const ing = await c.query(
       'SELECT avg_cost FROM ingredient WHERE id = $1 FOR UPDATE', [ingredientId]);

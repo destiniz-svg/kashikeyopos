@@ -23,12 +23,38 @@ export interface Outlet {
 export interface Tax { code: string; rate: string; }
 export interface Item {
   id: string; name: string; category: string | null; price: string; off_menu: boolean;
+  station?: string | null;
+  /* The dish's face — migration 037. A null photograph is a first class state:
+     the till draws the section artifact in its place, never an empty box. */
+  description?: string | null;
+  image_url?: string | null;
+  tags?: string[];
+  spice?: number;
+  /* false = offer whatever this dish's section publishes; true = offer only the
+     add-ons this dish names, even when it names none. */
+  addons_own?: boolean;
+}
+/** A section, as the merchant styled it. A section with no row here still
+ *  exists — it is just one nobody has chosen a colour for yet. */
+export interface Section {
+  name: string; color: string | null; icon: string | null;
+  station: string | null; sort: number; hidden: boolean;
+}
+/** The priced add-on catalogue. `sections` are the sections that offer it. */
+export interface Modifier {
+  id: string; name: string; price: string; sections: string[]; sort: number;
+}
+/** What was actually added to a line, and what each one cost. Written by the
+ *  server, never by the terminal. */
+export interface LineAddon {
+  id: string; name: string; price: number; qty: number; recipeItemId?: string | null;
 }
 export interface TicketLine {
   /* Staff sessions only — a guest's phone is given the bill to READ, and an id
      it could send back is an id it could send back about somebody else's. */
   id?: string; itemId?: string;
   name: string; qty: string; price: string; sent: boolean; station: string | null;
+  addons?: LineAddon[];
 }
 export interface Ticket {
   id: string; table_no: string | null; split: number; covers: number;
@@ -48,6 +74,13 @@ export interface Snapshot {
   v: number; at: number;
   outlet: Outlet | null; tax: Tax | null;
   items: Item[]; tickets: Ticket[]; stages: Stage[]; stations: Station[];
+  /* The menu's presentation and its add-ons ride on the same snapshot the
+     dishes do, because the till is offline half the time and a menu that needs
+     a round trip to know what an "extra sambol" costs stops working when the
+     wifi does. Optional so an older cached snapshot still parses. */
+  sections?: Section[];
+  modifiers?: Modifier[];
+  itemModifiers?: Array<{ item_id: string; modifier_id: string }>;
 }
 
 export class ApiError extends Error {

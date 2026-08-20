@@ -236,6 +236,48 @@ button:active:not(:disabled){transform:scale(.97)}
 /* Disabled is a visible state, not an absent one: it must still read as a
    button so the operator knows where the control is and why it is refusing. */
 button:disabled{opacity:.42;cursor:not-allowed;transform:none;filter:saturate(.35)}
+
+/* ── HOVER ─────────────────────────────────────────────────────────────────
+   design/KashikeyoPOS Guest Theme v3.dc.html puts a hover on very nearly every
+   control, and its own note says what a hover is allowed to be: "It only ever
+   deepens what the rest state already said." Never a new colour, never a moved
+   pixel — one step further along the surface ramp the element is already on.
+
+   THIS IS A FILTER RATHER THAN A BACKGROUND, and that is not a shortcut. Every
+   style in this build is inline, transcribed literally from the prototype
+   (docs/01-DESIGN-TOKENS.md §0), and an inline `background` beats any rule in
+   this file. A stylesheet hover could only win with !important, which would
+   then also stamp on the specific hovers a screen legitimately wants. Nothing
+   in the app sets `filter` on a button, so this composes instead of fighting —
+   and it deepens a tonal chip, a solid action and a bare icon alike, in one
+   rule, without any of them having to opt in.
+
+   THE DIRECTION FOLLOWS THE THEME, because the ramp does. In the dark theme
+   elevation goes lighter (--bg-1 → --bg-2 → --bg-3); in the light theme it
+   cannot go past white, so --bg-3 steps DOWN. Same meaning, opposite sign — the
+   comment on the light block above says the same thing about the tokens. A
+   single brightness value would have lifted a dark surface and washed out a
+   light one.
+
+   Kept OFF the pressed state: :active already answers with a 3% squish, and
+   stacking a brightness change on top made a tap read as a flash.
+
+   Screens that want a different answer — a card whose BORDER comes in, a solid
+   whose family darkens rather than lightens — pass their own through
+   apps/pos/src/ui.tsx, which merges style objects in JS and has no precedence
+   problem at all.
+
+   ONE VARIANT, NOT TWO, because the palette above has one: light is selected by
+   [data-theme="light"] and by nothing else — Settings' "system" option REMOVES
+   the attribute, which lands on the dark ramp. A prefers-color-scheme rule here
+   would have darkened hovers on a light-preferring machine that was still
+   rendering the dark palette. */
+button:hover:not(:disabled):not(:active){filter:brightness(1.13)}
+[data-theme="light"] button:hover:not(:disabled):not(:active){filter:brightness(.955)}
+/* A device with no pointer has no hover. Leaving the rule on made a tapped
+   button stay lit on a tablet until something else was touched — a till with
+   three buttons "held down" at once, none of which were. */
+@media (hover:none){button:hover{filter:none}}
 /* Reduced motion: swap MOVEMENT for a FADE, never strip the feedback.
    The blunt "animation-duration:.01ms !important" this replaces was worse than
    nothing: it freezes the sync spinner mid-rotation (a stuck icon reads as a

@@ -128,8 +128,19 @@ async function take(c, p, ctx) {
        to discover that is while the customer is still on the telephone. */
     throw Object.assign(new Error('where is it going?'), { status: 400 });
   }
+  /* Add-ons ride along as IDS AND COUNTS, never prices. The order is a request
+     — nothing is priced until a till accepts it and kitchen.sendRound reads the
+     catalogue, which is what stops a phone from naming what an "extra sambol"
+     is worth (backend/src/addons.js). An add-on the dish does not offer is
+     refused there, at the moment it would become money. */
   const lines = p.lines.map((l) => ({
     itemId: String(l.itemId), qty: Number(l.qty), note: l.note || null,
+    addons: Array.isArray(l.addons)
+      ? l.addons.slice(0, 20).map((a) => ({
+        id: String((a && a.id) || a || ''),
+        qty: Math.max(0, Math.min(99, Math.trunc(Number(a && a.qty) || 1))),
+      })).filter((a) => a.id && a.qty)
+      : [],
   }));
   for (const l of lines) {
     if (!(l.qty > 0)) {
@@ -183,7 +194,10 @@ async function accept(c, id, p, ctx, kitchen) {
 
   const fired = await kitchen.sendRound(c, {
     table: slotFor(o),
-    lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty, note: l.note })),
+    lines: lines.map((l) => ({
+      itemId: l.itemId, qty: l.qty, note: l.note,
+      ...(l.addons && l.addons.length ? { addons: l.addons } : {}),
+    })),
     covers: o.channel === 'dine_in' ? undefined : 1,
     server: o.guest_name || null,
   }, ctx);
