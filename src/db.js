@@ -1,6 +1,14 @@
 'use strict';
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
 const { outletPassword } = require('./secrets');
+
+/* A business date is a DATE, not an instant. Left to the driver, Postgres
+   `date` columns arrive as JavaScript Date objects, are serialised to JSON as
+   "2026-08-20T00:00:00.000Z", and every downstream comparison against a
+   "2026-08-20" business date silently fails — the trading day stops matching
+   itself, and a sale lands on no day at all. Read them as the text they are.
+   (1082 = DATE.) */
+types.setTypeParser(1082, (v) => v);
 
 /* ═══ CONNECTIONS ═══════════════════════════════════════════════════════════
    Two belts of isolation, and this file is where the first one is fastened.

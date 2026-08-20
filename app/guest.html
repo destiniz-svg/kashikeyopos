@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""/>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet"/>
+<script src="./kashikeyo-raw.js"></script>
+<script src="./kashikeyo-data.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
+body{background:#1b0d0a;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;text-align:left;transition:transform .1s cubic-bezier(.2,.8,.3,1),opacity .12s,background .14s}
+button:active:not(:disabled){transform:scale(.975)}
+input,textarea,select{font:inherit;color:inherit;background:none;border:none;outline:none;width:100%}
+textarea{resize:none}
+a{color:#f4553c;text-decoration:none}
+a:hover{color:#d33d26}
+.qs::-webkit-scrollbar{height:0;width:0}
+.qs{scrollbar-width:none}
+@keyframes qrise{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes qriseb{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
+@keyframes qsheet{from{transform:translateY(100%)}to{transform:none}}
+@keyframes qfade{from{opacity:0}to{opacity:1}}
+@keyframes qpulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+</style>
+</helmet>
+
+<div style="{{ stageStyle }}">
+
+  <div style="{{ phoneStyle }}">
+    <div style="{{ screenStyle }}">
+
+      <div style="{{ statusStyle }}">
+        <span style="font-weight:700;letter-spacing:-.02em">{{ clock }}</span>
+        <span style="display:flex;align-items:center;gap:5px">
+          <svg viewBox="0 0 20 12" width="17" height="10" fill="currentColor"><rect x="0" y="7.5" width="3" height="4.5" rx="1"></rect><rect x="4.5" y="5" width="3" height="7" rx="1"></rect><rect x="9" y="2.5" width="3" height="9.5" rx="1"></rect><rect x="13.5" y="0" width="3" height="12" rx="1"></rect></svg>
+          <span style="width:22px;height:11px;border:1.3px solid currentColor;border-radius:3.2px;padding:1.5px;display:block;opacity:.5"><span style="display:block;width:72%;height:100%;background:currentColor;border-radius:1.4px"></span></span>
+        </span>
+      </div>
+
+      <sc-if value="{{ needTable }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:22px 22px 30px;animation:qfade .2s">
+          <div style="width:52px;height:52px;border-radius:17px;background:linear-gradient(150deg,#f4553c,#c2321c);display:grid;place-items:center;box-shadow:0 8px 22px rgba(244,85,60,.32)">
+            <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
+          </div>
+          <div style="margin-top:18px;font-size:25px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ welcomeTitle }}</div>
+          <div style="margin-top:9px;font-size:14px;color:#8a8a8f;line-height:1.6;text-wrap:pretty">{{ welcomeSub }}</div>
+
+          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">YOUR TABLE</div>
+          <div style="margin-top:11px;display:grid;grid-template-columns:repeat(auto-fill,minmax(62px,1fr));gap:9px">
+            <sc-for list="{{ tableChoices }}" as="t" hint-placeholder-count="12">
+              <button onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+          <div style="margin-top:18px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">{{ welcomeFoot }}</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ onMenu }}">
+        <div style="flex:1;min-height:0;overflow-y:auto" class="qs">
+          <div style="padding:6px 20px 0">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+              <div style="min-width:0">
+                <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.15">{{ outletName }}</div>
+                <div style="margin-top:5px;display:flex;align-items:center;gap:6px;font-size:13.5px;color:#f4553c;font-weight:600">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M4.5 11h15L15 5.5H9zM6 11v9M18 11v9"></path></svg>
+                  {{ tableLabel }}
+                </div>
+              </div>
+              <button onClick="{{ goYou }}" style="{{ avatarStyle }}">{{ avatarText }}</button>
+            </div>
+
+            <div style="margin-top:16px;height:46px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#f5f5f6">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#b4b4b9" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
+              <input value="{{ q }}" onChange="{{ setQ }}" placeholder="Search the menu" style="font-size:14.5px;color:#1a1a1a"/>
+              <button onClick="{{ clearQ }}" style="{{ clearQStyle }}">&#215;</button>
+            </div>
+          </div>
+
+          <div class="qs" style="margin-top:13px;padding:0 20px 3px;display:flex;gap:7px;overflow-x:auto">
+            <sc-for list="{{ diets }}" as="d" hint-placeholder-count="4">
+              <button onClick="{{ d.tap }}" style="{{ d.style }}">{{ d.label }}</button>
+            </sc-for>
+          </div>
+
+          <div class="qs" style="margin-top:9px;padding:0 20px 4px;display:flex;gap:8px;overflow-x:auto">
+            <sc-for list="{{ cats }}" as="c" hint-placeholder-count="5">
+              <button onClick="{{ c.tap }}" style="{{ c.style }}">{{ c.name }}</button>
+            </sc-for>
+          </div>
+
+          <div style="{{ filterNoteStyle }}">{{ filterNote }}</div>
+
+          <div style="{{ gridStyle }}">
+            <sc-for list="{{ items }}" as="it" hint-placeholder-count="6">
+              <button onClick="{{ it.tap }}" style="{{ it.cardStyle }}">
+                <span style="position:relative;display:block">
+                  <span style="{{ it.imgStyle }}"></span>
+                  <span style="{{ it.badgeStyle }}">{{ it.badge }}</span>
+                </span>
+                <span style="display:block;margin-top:9px;font-size:13.5px;font-weight:600;color:#1a1a1a;line-height:1.3;letter-spacing:-.015em">{{ it.name }}</span>
+                <span style="{{ it.tagStyle }}">{{ it.tags }}</span>
+                <span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
+                  <span style="font-size:14px;font-weight:700;color:#f4553c;letter-spacing:-.02em">{{ it.price }}</span>
+                  <span style="{{ it.plusStyle }}">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </span>
+                </span>
+              </button>
+            </sc-for>
+          </div>
+          <div style="{{ emptyStyle }}">{{ emptyMsg }}</div>
+          <div style="height:20px"></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ onTrack }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
+          <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">Your order</div>
+          <div style="margin-top:5px;font-size:13.5px;color:#8a8a8f">{{ trackSub }}</div>
+
+          <div style="{{ trackWrapStyle }}">
+            <sc-for list="{{ stages }}" as="st" hint-placeholder-count="4">
+              <div style="display:flex;gap:13px;align-items:flex-start">
+                <span style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;align-self:stretch">
+                  <span style="{{ st.dot }}">
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" style="{{ st.tickStyle }}"><path d="m5 13 4.5 4.5L19 7"></path></svg>
+                  </span>
+                  <span style="{{ st.rail }}"></span>
+                </span>
+                <span style="display:block;padding-bottom:16px;min-width:0;flex:1">
+                  <span style="{{ st.labelStyle }}">{{ st.label }}</span>
+                  <span style="display:block;font-size:12.5px;color:#9c9ca1;margin-top:3px;line-height:1.5;text-wrap:pretty">{{ st.sub }}</span>
+                </span>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="{{ roundsWrapStyle }}">
+            <div style="font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">ROUNDS SENT</div>
+            <sc-for list="{{ rounds }}" as="r" hint-placeholder-count="1">
+              <div style="margin-top:11px;border:1px solid #efefef;border-radius:16px;background:#fff;padding:14px 15px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+                  <span style="font-size:14px;font-weight:700;color:#111">{{ r.title }}</span>
+                  <span style="font-size:12px;color:#9c9ca1;font-family:'JetBrains Mono',monospace">{{ r.at }}</span>
+                </div>
+                <sc-for list="{{ r.lines }}" as="l" hint-placeholder-count="2">
+                  <div style="margin-top:7px;display:flex;justify-content:space-between;gap:10px;font-size:13px;color:#4a4a4f">
+                    <span style="min-width:0">{{ l.name }}</span>
+                    <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a">{{ l.amt }}</span>
+                  </div>
+                </sc-for>
+                <button onClick="{{ r.again }}" style="margin-top:12px;width:100%;padding:10px;border-radius:12px;background:#fff4f2;color:#f4553c;font-size:13px;font-weight:700;text-align:center;min-height:42px">Order this again</button>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="{{ trackEmptyStyle }}">{{ trackEmpty }}</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ onBill }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
+          <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">The bill</div>
+          <div style="margin-top:5px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ billSub }}</div>
+
+          <div style="{{ billBodyStyle }}">
+            <div style="margin-top:18px;border:1px solid #efefef;border-radius:18px;background:#fff;padding:16px;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+              <sc-for list="{{ billLines }}" as="l" hint-placeholder-count="3">
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;color:#4a4a4f">
+                  <span style="min-width:0">{{ l.name }}</span>
+                  <span style="flex-shrink:0;font-family:'JetBrains Mono',monospace;color:#1a1a1a;font-weight:500">{{ l.amt }}</span>
+                </div>
+              </sc-for>
+              <div style="margin-top:11px;padding-top:12px;border-top:1px solid #f0f0f0;display:flex;flex-direction:column;gap:7px">
+                <sc-for list="{{ billTotals }}" as="t" hint-placeholder-count="4">
+                  <div style="{{ t.style }}"><span>{{ t.label }}</span><span style="font-family:'JetBrains Mono',monospace">{{ t.amt }}</span></div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="margin-top:20px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">HOW ARE YOU SPLITTING IT?</div>
+            <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <sc-for list="{{ splitModes }}" as="m" hint-placeholder-count="4">
+                <button onClick="{{ m.tap }}" style="{{ m.style }}">
+                  <span style="display:block;font-size:13px;font-weight:700">{{ m.label }}</span>
+                  <span style="display:block;font-size:11.5px;opacity:.7;margin-top:2px;line-height:1.35">{{ m.sub }}</span>
+                </button>
+              </sc-for>
+            </div>
+
+            <div style="{{ splitEvenStyle }}">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <span style="font-size:13.5px;color:#4a4a4f">Between how many?</span>
+                <span style="display:flex;align-items:center;gap:12px">
+                  <button onClick="{{ splitLess }}" style="width:32px;height:32px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+                  </button>
+                  <span style="font-size:17px;font-weight:700;color:#111;min-width:20px;text-align:center;font-family:'JetBrains Mono',monospace">{{ splitN }}</span>
+                  <button onClick="{{ splitMore }}" style="width:32px;height:32px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                </span>
+              </div>
+              <div style="margin-top:11px;font-size:13.5px;color:#f4553c;font-weight:700">{{ splitEach }}</div>
+            </div>
+
+            <div style="{{ splitItemStyle }}">
+              <div style="font-size:12.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">Tap what you had. The rest stays on the table's bill for whoever is paying it.</div>
+              <sc-for list="{{ pickLines }}" as="l" hint-placeholder-count="3">
+                <button onClick="{{ l.tap }}" style="{{ l.style }}">
+                  <span style="{{ l.box }}">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" style="{{ l.tick }}"><path d="m5 13 4.5 4.5L19 7"></path></svg>
+                  </span>
+                  <span style="flex:1;min-width:0;font-size:13.5px;color:#1a1a1a">{{ l.name }}</span>
+                  <span style="flex-shrink:0;font-size:13.5px;font-family:'JetBrains Mono',monospace;color:#4a4a4f">{{ l.amt }}</span>
+                </button>
+              </sc-for>
+              <div style="margin-top:12px;font-size:13.5px;color:#f4553c;font-weight:700">{{ pickTotal }}</div>
+            </div>
+
+            <div style="{{ splitCustomStyle }}">
+              <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
+              <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
+                <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+              </div>
+              <div style="{{ customWarnStyle }}">{{ customWarn }}</div>
+            </div>
+
+            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">ADD A TIP FOR THE TEAM</div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <sc-for list="{{ tips }}" as="t" hint-placeholder-count="4">
+                <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+            <div style="margin-top:9px;font-size:12px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ tipNote }}</div>
+
+            <div style="margin-top:22px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PAYING WITH</div>
+            <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <sc-for list="{{ tenders }}" as="t" hint-placeholder-count="3">
+                <button onClick="{{ t.tap }}" style="{{ t.style }}">{{ t.label }}</button>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:20px;border-radius:18px;background:#fff8f6;border:1px solid #ffd9d1;padding:16px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+                <span style="font-size:14px;font-weight:700;color:#c2452f">You are paying</span>
+                <span style="font-size:23px;font-weight:800;color:#f4553c;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
+              </div>
+              <div style="margin-top:7px;font-size:12.5px;color:#c2452f;line-height:1.55;text-wrap:pretty">{{ payBreak }}</div>
+            </div>
+          </div>
+
+          <div style="{{ billEmptyStyle }}">{{ billEmpty }}</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ onYou }}">
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 24px" class="qs">
+          <div style="font-size:23px;font-weight:700;color:#111;letter-spacing:-.035em">{{ youTitle }}</div>
+          <div style="margin-top:5px;font-size:13.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ youSub }}</div>
+
+          <div style="{{ identFormStyle }}">
+            <div style="margin-top:18px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">YOUR NAME</div>
+            <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;background:#fff">
+              <input value="{{ identName }}" onChange="{{ setIdentName }}" placeholder="So the server knows who to ask for" style="font-size:14.5px;color:#1a1a1a"/>
+            </div>
+            <div style="margin-top:14px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">MOBILE</div>
+            <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
+              <span style="font-size:14.5px;color:#9c9ca1;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
+              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" inputmode="numeric" placeholder="777 0000" style="font-size:14.5px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
+            </div>
+            <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.3)">{{ saveIdentLabel }}</button>
+            <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
+          </div>
+
+          <div style="{{ identCardStyle }}">
+            <div style="margin-top:18px;border-radius:20px;padding:20px;background:linear-gradient(145deg,#f4553c,#b8341f);box-shadow:0 12px 30px rgba(244,85,60,.3)">
+              <div style="font-size:11px;font-weight:700;letter-spacing:.09em;color:rgba(255,255,255,.65)">{{ cardKicker }}</div>
+              <div style="margin-top:6px;font-size:22px;font-weight:700;color:#fff;letter-spacing:-.03em">{{ identName }}</div>
+              <div style="margin-top:14px;display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+                <span style="font-size:13px;color:rgba(255,255,255,.8);font-family:'JetBrains Mono',monospace">{{ identMasked }}</span>
+                <span style="{{ ptsStyle }}">{{ ptsLabel }}</span>
+              </div>
+            </div>
+            <button onClick="{{ forgetMe }}" style="margin-top:14px;width:100%;padding:13px;border-radius:14px;background:#f5f5f6;color:#8a8a8f;font-size:13px;font-weight:600;text-align:center;min-height:46px">Forget me on this phone</button>
+          </div>
+
+          <div style="{{ rateWrapStyle }}">
+            <div style="margin-top:24px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">HOW WAS IT?</div>
+            <div style="margin-top:11px;display:flex;gap:8px">
+              <sc-for list="{{ stars }}" as="st" hint-placeholder-count="5">
+                <button onClick="{{ st.tap }}" style="{{ st.style }}">
+                  <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
+                </button>
+              </sc-for>
+            </div>
+            <div style="{{ rateNoteStyle }}">
+              <textarea rows="3" value="{{ rateNote }}" onChange="{{ setRateNote }}" placeholder="Anything you want the kitchen to know?" style="font-size:13.5px;color:#1a1a1a;line-height:1.5;height:64px"></textarea>
+            </div>
+            <button onClick="{{ sendRating }}" style="{{ rateSendStyle }}">{{ rateSendLabel }}</button>
+            <div style="{{ rateDoneStyle }}">{{ rateDone }}</div>
+          </div>
+
+          <div style="margin-top:24px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">THIS TABLE</div>
+          <div style="margin-top:11px;display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ tableActions }}" as="a" hint-placeholder-count="3">
+              <button onClick="{{ a.tap }}" style="{{ a.style }}">
+                <span style="flex:1;min-width:0;display:block">
+                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a">{{ a.label }}</span>
+                  <span style="display:block;font-size:12px;color:#9c9ca1;margin-top:2px;line-height:1.4">{{ a.sub }}</span>
+                </span>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#c8c8cc" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 6 6 6-6 6"></path></svg>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ dishOpen }}">
+        <div onClick="{{ closeDish }}" style="position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:40;animation:qfade .14s"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:86%;background:#fff;border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:qsheet .24s cubic-bezier(.2,.8,.25,1)">
+          <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:#e0e0e3;display:block"></span></div>
+          <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 20px 18px" class="qs">
+            <span style="{{ dishImgStyle }}"></span>
+            <div style="margin-top:15px;font-size:21px;font-weight:700;color:#111;letter-spacing:-.03em;line-height:1.2">{{ dishName }}</div>
+            <div style="margin-top:7px;font-size:13.5px;color:#8a8a8f;line-height:1.6;text-wrap:pretty">{{ dishDesc }}</div>
+
+            <div style="{{ dishAllergenStyle }}">
+              <div style="font-size:11.5px;font-weight:700;color:#b0682c;letter-spacing:.05em">CONTAINS</div>
+              <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+                <sc-for list="{{ dishAllergens }}" as="a" hint-placeholder-count="2">
+                  <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#8a5320;background:#fff;border:1px solid #f0d9bc;border-radius:9px;padding:5px 9px">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="{{ a.icon }}"></path></svg>
+                    {{ a.label }}
+                  </span>
+                </sc-for>
+              </div>
+              <div style="margin-top:9px;font-size:11.5px;color:#a08050;line-height:1.5;text-wrap:pretty">{{ allergenFoot }}</div>
+            </div>
+
+            <div style="{{ addonWrapStyle }}">
+              <div style="margin-top:20px;font-size:15.5px;font-weight:700;color:#111;letter-spacing:-.02em">Make it yours</div>
+              <div style="margin-top:10px;display:flex;flex-direction:column;gap:2px">
+                <sc-for list="{{ addons }}" as="a" hint-placeholder-count="3">
+                  <div style="height:50px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <span style="min-width:0;font-size:14px;color:#1a1a1a">{{ a.name }}</span>
+                    <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
+                      <span style="font-size:13px;color:#9c9ca1;font-family:'JetBrains Mono',monospace">{{ a.price }}</span>
+                      <button onClick="{{ a.dec }}" style="{{ a.decStyle }}">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+                      </button>
+                      <span style="{{ a.qtyStyle }}">{{ a.qty }}</span>
+                      <button onClick="{{ a.inc }}" style="width:26px;height:26px;border-radius:50%;background:#f4553c;color:#fff;display:grid;place-items:center;flex-shrink:0">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                      </button>
+                    </span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div style="margin-top:18px;font-size:15.5px;font-weight:700;color:#111;letter-spacing:-.02em">Anything to tell the kitchen?</div>
+            <div style="margin-top:10px;border:1px solid #ececee;border-radius:15px;padding:13px 14px;background:#fafafb">
+              <textarea rows="2" value="{{ dishNote }}" onChange="{{ setDishNote }}" placeholder="No onions, extra spicy, allergy to..." style="font-size:13.5px;color:#1a1a1a;line-height:1.5;height:42px"></textarea>
+            </div>
+          </div>
+          <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:13px 20px calc(13px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:13px;background:#fff">
+            <span style="display:flex;align-items:center;gap:11px;flex-shrink:0">
+              <button onClick="{{ qtyDec }}" style="width:34px;height:34px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+              </button>
+              <span style="font-size:16px;font-weight:700;color:#111;min-width:16px;text-align:center;font-family:'JetBrains Mono',monospace">{{ dishQty }}</span>
+              <button onClick="{{ qtyInc }}" style="width:34px;height:34px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+            </span>
+            <button onClick="{{ addToCart }}" style="flex:1;min-width:0;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.32)">{{ addLabel }}</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ cartOpen }}">
+        <div onClick="{{ closeCart }}" style="position:absolute;inset:0;background:rgba(0,0,0,.42);z-index:40;animation:qfade .14s"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;z-index:41;max-height:84%;background:#fff;border-radius:26px 26px 0 0;display:flex;flex-direction:column;overflow:hidden;animation:qsheet .24s cubic-bezier(.2,.8,.25,1)">
+          <div style="flex-shrink:0;padding:9px 0 4px;display:grid;place-items:center"><span style="width:38px;height:4px;border-radius:2px;background:#e0e0e3;display:block"></span></div>
+          <div style="flex-shrink:0;padding:6px 20px 12px">
+            <div style="font-size:20px;font-weight:700;color:#111;letter-spacing:-.03em">This round</div>
+            <div style="margin-top:4px;font-size:13px;color:#8a8a8f">{{ cartSub }}</div>
+          </div>
+          <div style="flex:1;min-height:0;overflow-y:auto;padding:0 20px 14px" class="qs">
+            <sc-for list="{{ cart }}" as="l" hint-placeholder-count="2">
+              <div style="display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #f4f4f5">
+                <span style="{{ l.imgStyle }}"></span>
+                <span style="flex:1;min-width:0;display:block">
+                  <span style="display:block;font-size:14px;font-weight:600;color:#1a1a1a;line-height:1.3">{{ l.name }}</span>
+                  <span style="{{ l.optStyle }}">{{ l.opt }}</span>
+                  <span style="display:block;margin-top:5px;font-size:13.5px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ l.amt }}</span>
+                </span>
+                <span style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+                  <button onClick="{{ l.dec }}" style="width:27px;height:27px;border-radius:50%;background:#f5f5f6;display:grid;place-items:center;color:#f4553c">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M5 12h14"></path></svg>
+                  </button>
+                  <span style="font-size:14px;font-weight:700;color:#111;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace">{{ l.qty }}</span>
+                  <button onClick="{{ l.inc }}" style="width:27px;height:27px;border-radius:50%;background:#f4553c;display:grid;place-items:center;color:#fff">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                </span>
+              </div>
+            </sc-for>
+
+            <div style="margin-top:16px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PROMO CODE</div>
+            <div style="margin-top:9px;height:48px;border:1.3px solid {{ promoBorder }};border-radius:14px;display:flex;align-items:center;overflow:hidden;background:#fff">
+              <input value="{{ promo }}" onChange="{{ setPromo }}" placeholder="Enter a code" style="flex:1;font-size:14px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
+              <button onClick="{{ applyPromo }}" style="padding:0 18px;height:100%;font-size:13.5px;color:#f4553c;font-weight:700;flex-shrink:0">Apply</button>
+            </div>
+            <div style="{{ promoMsgStyle }}">{{ promoMsg }}</div>
+          </div>
+          <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:14px 20px calc(14px + env(safe-area-inset-bottom));background:#fff">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+              <span style="font-size:13.5px;color:#8a8a8f">{{ cartTotalLabel }}</span>
+              <span style="font-size:19px;font-weight:800;color:#111;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#a8a8ad;line-height:1.5;text-wrap:pretty">{{ cartFoot }}</div>
+            <button onClick="{{ sendOrder }}" style="margin-top:12px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(244,85,60,.32)">Send to the kitchen</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="{{ toastStyle }}">{{ toast }}</div>
+
+      <sc-if value="{{ showBar }}">
+        <div style="{{ barStyle }}">
+          <sc-if value="{{ cartBadgeOn }}">
+            <button onClick="{{ openCart }}" style="margin:0 12px 8px;padding:13px 16px;border-radius:16px;background:#f4553c;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;box-shadow:0 8px 22px rgba(244,85,60,.34);min-height:52px">
+              <span style="display:flex;align-items:center;gap:10px;min-width:0">
+                <span style="width:26px;height:26px;border-radius:9px;background:rgba(255,255,255,.22);display:grid;place-items:center;font-size:12.5px;font-weight:800;flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ cartCount }}</span>
+                <span style="font-size:14px;font-weight:700;letter-spacing:-.01em">Review this round</span>
+              </span>
+              <span style="font-size:14.5px;font-weight:800;flex-shrink:0;font-family:'JetBrains Mono',monospace">{{ cartTotal }}</span>
+            </button>
+          </sc-if>
+          <div style="display:flex;align-items:stretch;gap:2px;padding:4px 8px calc(4px + env(safe-area-inset-bottom));border-top:1px solid #ededef;background:#fff">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.tap }}" style="{{ t.style }}">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="{{ t.icon }}"></path></svg>
+                <span style="font-size:10px;font-weight:700;letter-spacing:.005em">{{ t.label }}</span>
+                <span style="{{ t.dotStyle }}"></span>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+    <span style="{{ notchStyle }}"></span>
+  </div>
+
+  <div style="{{ asideStyle }}">
+    <div style="font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.5)">SCAN TO ORDER</div>
+    <div style="margin-top:12px;font-size:30px;font-weight:700;color:#fff;letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ asideTitle }}</div>
+    <div style="margin-top:14px;font-size:14.5px;color:rgba(255,255,255,.72);line-height:1.65;text-wrap:pretty">{{ asideBody }}</div>
+    <div style="margin-top:26px;display:flex;flex-direction:column;gap:14px">
+      <sc-for list="{{ asideRows }}" as="r" hint-placeholder-count="4">
+        <div style="display:flex;gap:13px;align-items:flex-start">
+          <span style="width:30px;height:30px;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center;flex-shrink:0;color:#ffb3a4">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
+          </span>
+          <span style="display:block;min-width:0">
+            <span style="display:block;font-size:14px;font-weight:600;color:#fff">{{ r.title }}</span>
+            <span style="display:block;font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;line-height:1.55;text-wrap:pretty">{{ r.sub }}</span>
+          </span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="{{ liveStyle }}">
+      <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;flex-shrink:0;animation:qpulse 2s infinite;display:block"></span>
+      <span style="font-size:12.5px;color:rgba(255,255,255,.75);line-height:1.5;text-wrap:pretty">{{ liveText }}</span>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><rect width="120" height="120" rx="27" fill="#f4553c"></rect><text x="60" y="74" font-family="system-ui,sans-serif" font-size="34" font-weight="700" fill="#ffffff" text-anchor="middle">QR</text></svg></template>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1400,&quot;height&quot;:940}}">
+/* ═══ KASHIKEYO — GUEST QR ORDERING ═════════════════════════════════════════
+   A working table-side portal, not a picture of one.
+
+   The previous build was a static mockup: a fabricated two-line cart, an
+   add-on list written into the file, a promo code pre-applied at a flat 5%
+   taken off the TOTAL (the till takes discounts off the goods, before service
+   charge and tax), and an "Add to orders" button that cleared local state and
+   sent nothing. A guest order could never reach a kitchen.
+
+   Everything here reads the same sources the till reads and writes the same
+   bridge the member portal writes:
+
+     window.KPOS / KPOS_RAW   menu, prices, modifiers, tax, allergens
+     kashikeyo.session.v3     the till's own state: 86 list, the live ticket
+     kashikeyo.bridge.v1      phone -> till: orders, calls, pay intents
+     kashikeyo.fulfil.v1      till -> phone: the stage of each round
+
+   The rule the whole app obeys: a phone never decides money. It shows what
+   the till holds and posts intent. The guest asks to pay; the cashier takes
+   it; the ledger fires once, on the till, where it is attributable.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const QKEY = "kashikeyo.guest.v1";
+const POSKEY = "kashikeyo.session.v3";
+const BRIDGE = "kashikeyo.bridge.v1";
+const FKEY = "kashikeyo.fulfil.v1";
+
+class Component extends DCLogic {
+  state = {
+    ready: false, tab: "menu", table: null,
+    q: "", cat: "all", diet: [],
+    dish: null, dishQty: 1, addons: {}, dishNote: "",
+    cart: [], sent: [], cartOpen: false,
+    promo: "", promoOk: false, promoMsg: "",
+    split: "all", splitN: 2, picked: {}, customAmt: "",
+    tip: 0, tender: "card",
+    ident: null, identName: "", identPhone: "",
+    stars: 0, rateNote: "", rated: false,
+    toast: "", tick: 0, asked: 0
+  };
+
+  componentDidMount() {
+    this.restore();
+    // The till is another tab or another device; poll and also listen, because
+    // the storage event does not fire in the tab that wrote it.
+    this._t = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 2000);
+    this._on = (e) => { if (!e.key || e.key === FKEY || e.key === POSKEY) this.setState({ tick: this.state.tick + 1 }); };
+    window.addEventListener("storage", this._on);
+    if (!this.K()) {
+      this._w = setInterval(() => { if (this.K()) { clearInterval(this._w); this.setState({ ready: true }); } }, 60);
+    } else this.setState({ ready: true });
+  }
+  componentWillUnmount() {
+    clearInterval(this._t); clearInterval(this._w);
+    if (this._on) window.removeEventListener("storage", this._on);
+    if (this._toastT) clearTimeout(this._toastT);
+  }
+  componentDidUpdate() { this.save(); }
+
+  K() { const k = window.KPOS; return (k && k.MENU && k.MENU.length) ? k : null; }
+
+  save() {
+    const s = this.state;
+    try {
+      localStorage.setItem(QKEY, JSON.stringify({
+        v: 1, table: s.table, cart: s.cart, sent: s.sent, ident: s.ident,
+        promo: s.promo, promoOk: s.promoOk, rated: s.rated, diet: s.diet
+      }));
+    } catch (e) { /* private mode: the session lives in memory only */ }
+  }
+  restore() {
+    try {
+      const d = JSON.parse(localStorage.getItem(QKEY) || "null");
+      if (!d || d.v !== 1) return;
+      this.setState({
+        table: d.table || null, cart: d.cart || [], sent: d.sent || [],
+        ident: d.ident || null, identName: (d.ident || {}).name || "",
+        identPhone: (d.ident || {}).phone || "",
+        promo: d.promo || "", promoOk: !!d.promoOk, rated: !!d.rated, diet: d.diet || []
+      });
+    } catch (e) { /* nothing saved */ }
+  }
+
+  // ── what the till knows ──────────────────────────────────────────────────
+  pos() {
+    try { const d = JSON.parse(localStorage.getItem(POSKEY) || "null"); return (d && d.v === 3) ? d : null; }
+    catch (e) { return null; }
+  }
+  outlet() {
+    const k = this.K(); if (!k) return {};
+    const d = this.pos();
+    // Follow the till's own outlet when one is running, so a guest scanning in
+    // Hulhumale is not shown Male prices.
+    const byId = d && d.outletId ? (k.OUTLETS || []).filter((o) => o.id === d.outletId)[0] : null;
+    return byId || (k.OUTLETS || []).filter((o) => o.pos)[0] || {};
+  }
+  prefs() { const d = this.pos(); return (d && d.prefs) || {}; }
+  // The 86 list is the till's, not a guess: a dish the kitchen has stopped
+  // making must not be orderable from a phone thirty seconds later.
+  off86() {
+    const d = this.pos();
+    const raw = window.KPOS_RAW || {};
+    const out = {};
+    const o = this.outlet();
+    (this.menu() || []).forEach((m) => {
+      const rec = m.recipe || [];
+      const dead = rec.some((r) => {
+        const inv = (raw.inv || []).filter((x) => x[1] === r[0] && x[0] === o.id);
+        if (!inv.length) return false;
+        return inv.reduce((a, x) => a + (x[2] || 0), 0) <= 0;
+      });
+      if (dead) out[m.id] = 1;
+    });
+    const manual = (d && d.eightySix) || [];
+    manual.forEach((id) => { out[id] = 1; });
+    return out;
+  }
+  // The live ticket for this table, as the till holds it. This is the bill —
+  // the phone never keeps its own copy of what is owed.
+  ticket() {
+    const d = this.pos();
+    if (!d || !this.state.table) return null;
+    const key = (d.outletId || this.outlet().id) + ":" + this.state.table;
+    return (d.tickets || {})[key] || null;
+  }
+
+  menu() { const k = this.K(); return k ? (k.MENU || []) : []; }
+  item(id) { return this.menu().filter((m) => m.id === id)[0] || null; }
+  money(n) { return "MVR " + (Math.round((n || 0) * 100) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  fmt(n) { return "MVR " + Math.round(n || 0).toLocaleString("en-US"); }
+
+  price(m) {
+    const ov = ((this.pos() || {}).priceOv || {})[this.outlet().id] || {};
+    return ov[m.id] === undefined ? m.price : ov[m.id];
+  }
+  // Add-ons come from the merchant's modifier list, filtered to the ones
+  // offered on this dish's category — a guest can never pick an extra the
+  // kitchen has no ticket line for.
+  addonsFor(m) {
+    const k = this.K(); if (!k || !m) return [];
+    return (k.MODIFIERS || []).filter((x) => !x.cats || x.cats.indexOf(m.cat) >= 0);
+  }
+  allergensOf(m) {
+    const k = this.K();
+    return (k && k.dishAllergens) ? k.dishAllergens(m) : [];
+  }
+
+  toast(t) {
+    this.setState({ toast: t });
+    if (this._toastT) clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.setState({ toast: "" }), 2600);
+  }
+
+  // ── the bridge ───────────────────────────────────────────────────────────
+  push(kind, detail, extra) {
+    try {
+      const list = JSON.parse(localStorage.getItem(BRIDGE) || "[]");
+      list.push(Object.assign({
+        id: "q" + Date.now() + Math.floor(Math.random() * 1000),
+        outlet: this.outlet().id, table: this.state.table,
+        kind: kind, detail: detail || "", at: Date.now(), ack: 0,
+        guest: (this.state.ident || {}).name || ""
+      }, extra || {}));
+      // Acknowledged signals older than two hours are the till's business, not
+      // this phone's; trimming keeps the shared key from growing without bound.
+      localStorage.setItem(BRIDGE, JSON.stringify(list.filter((x) => !x.ack || x.at > Date.now() - 7200000)));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  cartSub() {
+    return this.state.cart.reduce((a, l) => {
+      const m = this.item(l.id);
+      return a + ((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty;
+    }, 0);
+  }
+
+  sendOrder() {
+    if (!this.state.cart.length) return;
+    const lines = this.state.cart.map((l) => ({
+      id: l.id, qty: l.qty,
+      // The note carries the add-ons, because the kitchen reads one line and
+      // has to see the whole instruction on it.
+      note: [l.opt, l.note].filter(Boolean).join(" · ") || "QR"
+    }));
+    const n = this.state.cart.reduce((a, l) => a + l.qty, 0);
+    const ok = this.push("order", n + " item" + (n === 1 ? "" : "s") + " from table " + this.state.table, {
+      lines: lines,
+      promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
+      pct: this.state.promoOk ? 5 : 0
+    });
+    this.setState({
+      sent: this.state.sent.concat([{ at: Date.now(), lines: this.state.cart.slice() }]),
+      cart: [], cartOpen: false, tab: "track"
+    });
+    this.toast(ok ? "Sent to the kitchen" : "Saved — it will send when you are back online");
+  }
+
+  // The stage the TILL published, never one this phone inferred from the
+  // ticket. A guest watching a tracker that guesses is worse than no tracker.
+  stage() {
+    try {
+      const all = JSON.parse(localStorage.getItem(FKEY) || "null");
+      if (!all || all.v !== 1 || !all.orders) return null;
+      const want = String(this.state.table);
+      const hit = Object.keys(all.orders).map((k) => all.orders[k])
+        .filter((o) => String(o.table) === want && o.kind === "qr")
+        .sort((a, b) => (b.at || 0) - (a.at || 0))[0];
+      return hit || null;
+    } catch (e) { return null; }
+  }
+
+  requestBill() {
+    const t = this.ticket();
+    if (!t) return this.toast("Nothing on this table yet");
+    const due = this.payDue();
+    const ok = this.push("bill", "Table " + this.state.table + " is ready to pay", {
+      tender: this.state.tender, tip: this.state.tip, due: Math.round(due * 100) / 100,
+      ref: (this.state.ident || {}).phone ? "G" + (this.state.ident || {}).phone.slice(-4) : "",
+      promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
+      split: this.state.split, parts: this.state.splitN
+    });
+    this.setState({ asked: Date.now() });
+    this.toast(ok ? "Your server is on the way with the card machine" : "Saved — it will send when you are back online");
+  }
+
+  // ── the bill, as the till computes it ────────────────────────────────────
+  // Deliberately mirrors the till's order of operations: discount comes off the
+  // goods, THEN service charge, THEN tax. Taking a discount off the total would
+  // hand back tax the guest never paid and leave the return wrong.
+  billMath() {
+    const t = this.ticket(), o = this.outlet();
+    if (!t) return null;
+    const lines = (t.lines || []).map((l) => {
+      const m = this.item(l.id);
+      return { id: l.id, name: (m ? m.name : "Item") + (l.qty > 1 ? " ×" + l.qty : ""), amt: (m ? this.price(m) : 0) * l.qty, qty: l.qty };
+    });
+    const sub = lines.reduce((a, l) => a + l.amt, 0);
+    const pr = t.promo || null;
+    const disc = pr ? sub * (Math.min(25, pr.pct || 0) / 100) : 0;
+    const net = sub - disc;
+    const svc = net * ((o.sc || 0) / 100);
+    const tax = (net + svc) * ((o.rate || 0) / 100);
+    return { lines: lines, sub: sub, disc: disc, discPct: pr ? pr.pct : 0, net: net, svc: svc, tax: tax, total: net + svc + tax, o: o };
+  }
+  // What THIS guest is putting in, before the tip.
+  myShare() {
+    const b = this.billMath();
+    if (!b) return 0;
+    const s = this.state;
+    if (s.split === "even") return b.total / Math.max(1, s.splitN);
+    if (s.split === "custom") return Math.max(0, +s.customAmt || 0);
+    if (s.split === "items") {
+      const picked = b.lines.filter((l, i) => s.picked[i]);
+      const goods = picked.reduce((a, l) => a + l.amt, 0);
+      // Their share of the discount, service and tax in the same proportion as
+      // the goods they claimed — not the headline rates on a subtotal, which
+      // would over-collect from whoever picks first.
+      return b.sub ? (goods / b.sub) * b.total : 0;
+    }
+    return b.total;
+  }
+  tipAmount() { return this.myShare() * (this.state.tip / 100); }
+  payDue() { return this.myShare() + this.tipAmount(); }
+
+  renderVals() {
+    const s = this.state, k = this.K();
+    const V = {
+      ready: !!k,
+      clock: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      stageStyle: "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#3d1a12 0%,#25100c 40%,#180a07 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
+      phoneStyle: "width:392px;height:812px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)",
+      screenStyle: "width:100%;height:100%;background:#fff;border-radius:46px;overflow:hidden;display:flex;flex-direction:column;position:relative",
+      notchStyle: "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:120px;height:33px;border-radius:20px;background:#0a0a0a;display:block",
+      statusStyle: "flex-shrink:0;height:52px;padding:15px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;color:#111;font-size:15px"
+    };
+    if (!k) {
+      return Object.assign(V, {
+        needTable: false, onMenu: false, onTrack: false, onBill: false, onYou: false,
+        dishOpen: false, cartOpen: false, showBar: false,
+        toastStyle: "display:none", toast: "",
+        asideStyle: "display:none", asideRows: [], liveStyle: "display:none",
+        tableChoices: [], diets: [], cats: [], items: [], addons: [], cart: [],
+        stages: [], rounds: [], billLines: [], billTotals: [], splitModes: [],
+        pickLines: [], tips: [], tenders: [], stars: [], tableActions: [], dishAllergens: []
+      });
+    }
+
+    const o = this.outlet();
+    const t = this.ticket();
+    const off = this.off86();
+    const self = this;
+
+    // ── aside ──────────────────────────────────────────────────────────────
+    V.asideStyle = "flex:0 1 380px;min-width:280px;max-width:420px";
+    V.asideTitle = o.name || "Order from your table";
+    V.asideBody = "Everything on this phone is the same data the till is running: the same menu, the same prices, the same dishes the kitchen has taken off tonight. Nothing here is a mock-up of a service — it is the service.";
+    V.asideRows = [
+      { icon: "M4 6h16M4 12h10M4 18h13", title: "One menu, one price", sub: "Read from the chain master with this outlet's overrides applied, so the phone and the till can never quote differently." },
+      { icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2", title: "The kitchen answers", sub: "A round goes to the pass over the local network and the tracker follows the stage the kitchen actually set." },
+      { icon: "M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z", title: "The phone never takes money", sub: "It asks to pay and says how the table is splitting it. The cashier settles, and the ledger fires once where it is attributable." },
+      { icon: "M12 3l9 16H3zM12 9v4M12 16h.01", title: "Allergens from the recipe", sub: "Derived from the ingredients each dish actually uses, so a recipe change updates the guest's filter the same moment it updates the kitchen." }
+    ];
+    const liveN = t ? (t.lines || []).length : 0;
+    V.liveStyle = "margin-top:28px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);display:flex;gap:10px;align-items:flex-start";
+    V.liveText = this.pos()
+      ? (liveN
+        ? "Live: table " + s.table + " has " + liveN + " line" + (liveN === 1 ? "" : "s") + " on the till right now."
+        : "Live: connected to " + (o.name || "the outlet") + ". Send a round and it appears on the floor terminal.")
+      : "The till is not open in this browser. Open the POS alongside this and the two talk to each other.";
+
+    // ── table gate ─────────────────────────────────────────────────────────
+    V.needTable = !s.table;
+    V.welcomeTitle = "Welcome to " + (o.name || "the restaurant");
+    V.welcomeSub = "Order from where you are sitting. No app, no queue, no waiting for someone to be free.";
+    V.welcomeFoot = "Your table number is printed on the card in front of you. Everything you order goes onto that table's bill.";
+    const nT = o.tables || 12;
+    V.tableChoices = Array.from({ length: nT }, (_, i) => i + 1).map((n) => ({
+      label: "T" + (n < 10 ? "0" + n : n),
+      style: "padding:13px 6px;border-radius:14px;background:#fff;border:1px solid #e8e8ea;font-size:13.5px;font-weight:700;color:#1a1a1a;text-align:center;min-height:46px;font-family:'JetBrains Mono',monospace",
+      pick: () => { self.setState({ table: n }); self.toast("Table " + n + " — here is the menu"); }
+    }));
+
+    V.onMenu = !!s.table && s.tab === "menu";
+    V.onTrack = !!s.table && s.tab === "track";
+    V.onBill = !!s.table && s.tab === "bill";
+    V.onYou = !!s.table && s.tab === "you";
+
+    V.outletName = o.name || "";
+    V.tableLabel = "Table " + s.table + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
+    V.avatarText = s.ident ? (s.ident.name || "G").trim().charAt(0).toUpperCase() : "?";
+    V.avatarStyle = "width:38px;height:38px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"
+      + (s.ident ? "background:#f4553c;color:#fff" : "background:#f5f5f6;color:#b0b0b5");
+    V.goYou = () => self.setState({ tab: "you" });
+
+    // ── menu ───────────────────────────────────────────────────────────────
+    V.q = s.q;
+    V.setQ = (e) => self.setState({ q: e.target.value });
+    V.clearQ = () => self.setState({ q: "" });
+    V.clearQStyle = s.q ? "width:22px;height:22px;border-radius:50%;background:#e2e2e5;color:#6a6a70;font-size:15px;line-height:1;display:grid;place-items:center;flex-shrink:0" : "display:none";
+
+    V.diets = (k.DIETS || []).map((d) => {
+      const on = s.diet.indexOf(d.k) >= 0;
+      return {
+        label: d.label,
+        style: "flex-shrink:0;padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;white-space:nowrap;min-height:36px;"
+          + (on ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
+        tap: () => self.setState({ diet: on ? s.diet.filter((x) => x !== d.k) : s.diet.concat([d.k]) })
+      };
+    });
+
+    V.cats = [{ id: "all", name: "Everything" }].concat(k.MENU_CATEGORIES || []).map((c) => {
+      const on = s.cat === c.id;
+      return {
+        name: c.name,
+        style: "flex-shrink:0;padding:9px 15px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:38px;"
+          + (on ? "background:#f4553c;color:#fff;box-shadow:0 4px 12px rgba(244,85,60,.28)" : "background:#fff;color:#6a6a70;border:1px solid #ececee"),
+        tap: () => self.setState({ cat: c.id })
+      };
+    });
+
+    const q = s.q.trim().toLowerCase();
+    const list = this.menu().filter((m) => {
+      if (s.cat !== "all" && m.cat !== s.cat) return false;
+      if (q && (m.name + " " + (m.desc || "")).toLowerCase().indexOf(q) < 0) return false;
+      return s.diet.every((d) => (k.dishSuits ? k.dishSuits(m, d) : true));
+    });
+    V.filterNote = s.diet.length
+      ? "Showing dishes that suit " + s.diet.map((d) => (k.DIETS.filter((x) => x.k === d)[0] || {}).label.toLowerCase()).join(" and ") + ". Worked out from each recipe, not from a label."
+      : "";
+    V.filterNoteStyle = s.diet.length ? "margin:10px 20px 0;font-size:11.5px;color:#a8a8ad;line-height:1.5;text-wrap:pretty" : "display:none";
+    // Two identical keyframes alternated by filter state: an animation restarts
+    // only when its NAME changes, so the grid lifts in each time the guest
+    // narrows the menu and it is obvious the list is now different.
+    V.gridStyle = "margin-top:12px;padding:0 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;animation:"
+      + ((s.cat.length + s.diet.length + q.length) % 2 ? "qrise" : "qriseb") + " .26s cubic-bezier(.2,.7,.3,1)";
+    V.items = list.map((m) => {
+      const dead = !!off[m.id];
+      const al = this.allergensOf(m);
+      return {
+        name: m.name, price: this.fmt(this.price(m)),
+        tags: al.length ? al.map((a) => a.label).join(" · ") : (k.dishHasMeat && !k.dishHasMeat(m) ? "Vegetarian" : ""),
+        tagStyle: (al.length || (k.dishHasMeat && !k.dishHasMeat(m)))
+          ? "display:block;margin-top:4px;font-size:11px;color:#a8a8ad;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          : "display:none",
+        imgStyle: "display:block;width:100%;aspect-ratio:1/1;border-radius:13px;background:#f1f1f3 center/cover url('" + (m.img || "") + "');"
+          + (dead ? "filter:grayscale(1);opacity:.5" : ""),
+        badge: dead ? "Sold out" : "",
+        badgeStyle: dead
+          ? "position:absolute;left:7px;top:7px;font-size:10px;font-weight:800;letter-spacing:.03em;background:#1a1a1a;color:#fff;padding:4px 8px;border-radius:8px"
+          : "display:none",
+        plusStyle: "width:27px;height:27px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
+          + (dead ? "background:#e8e8ea;color:#b0b0b5" : "background:#f4553c;color:#fff;box-shadow:0 2px 7px rgba(244,85,60,.34)"),
+        cardStyle: "background:#fff;border:1px solid #efeff1;border-radius:18px;padding:8px 8px 12px;box-shadow:0 2px 10px rgba(0,0,0,.045);display:block;"
+          + (dead ? "opacity:.72" : ""),
+        tap: () => dead
+          ? self.toast(m.name + " is off tonight")
+          : self.setState({ dish: m.id, dishQty: 1, addons: {}, dishNote: "" })
+      };
+    });
+    V.emptyMsg = q
+      ? "Nothing matches \u201c" + s.q.trim() + "\u201d" + (s.diet.length ? " with those filters." : ".")
+      : "Nothing on the menu suits those filters right now. Clear one and try again.";
+    V.emptyStyle = list.length ? "display:none" : "padding:54px 30px;text-align:center;font-size:13.5px;color:#a8a8ad;line-height:1.65;text-wrap:pretty";
+
+    // ── dish sheet ─────────────────────────────────────────────────────────
+    const d = s.dish ? this.item(s.dish) : null;
+    V.dishOpen = !!d;
+    if (d) {
+      const al = this.allergensOf(d);
+      V.dishName = d.name;
+      V.dishDesc = d.desc || "";
+      V.dishImgStyle = "display:block;width:100%;aspect-ratio:16/10;border-radius:18px;background:#f1f1f3 center/cover url('" + (d.img || "") + "')";
+      V.dishAllergens = al;
+      V.dishAllergenStyle = al.length ? "margin-top:15px;padding:13px 14px;border-radius:15px;background:#fff9f0;border:1px solid #f3e3cc" : "display:none";
+      V.allergenFoot = "Worked out from this dish's recipe. Tell your server about any allergy — a shared fryer or grill will not show up in an ingredient list.";
+      const mods = this.addonsFor(d);
+      V.addonWrapStyle = mods.length ? "display:block" : "display:none";
+      V.addons = mods.map((a) => {
+        const n = s.addons[a.id] || 0;
+        return {
+          name: a.name, price: "+" + this.fmt(a.price), qty: String(n),
+          qtyStyle: "font-size:14px;font-weight:700;min-width:14px;text-align:center;font-family:'JetBrains Mono',monospace;color:" + (n ? "#111" : "#c8c8cc"),
+          decStyle: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
+            + (n ? "background:#f5f5f6;color:#f4553c" : "background:#fafafb;color:#dcdce0"),
+          inc: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: n + 1 }) }),
+          dec: () => self.setState({ addons: Object.assign({}, s.addons, { [a.id]: Math.max(0, n - 1) }) })
+        };
+      });
+      V.dishNote = s.dishNote;
+      V.setDishNote = (e) => self.setState({ dishNote: e.target.value });
+      V.dishQty = String(s.dishQty);
+      V.qtyInc = () => self.setState({ dishQty: s.dishQty + 1 });
+      V.qtyDec = () => self.setState({ dishQty: Math.max(1, s.dishQty - 1) });
+      const extra = mods.reduce((a, m2) => a + (s.addons[m2.id] || 0) * m2.price, 0);
+      V.addLabel = "Add · " + this.fmt((this.price(d) + extra) * s.dishQty);
+      V.closeDish = () => self.setState({ dish: null });
+      V.addToCart = () => {
+        const opt = mods.filter((m2) => s.addons[m2.id]).map((m2) => (s.addons[m2.id] > 1 ? s.addons[m2.id] + "× " : "") + m2.name).join(", ");
+        self.setState({
+          cart: s.cart.concat([{ id: d.id, qty: s.dishQty, opt: opt, extra: extra, note: s.dishNote }]),
+          dish: null, addons: {}, dishNote: "", dishQty: 1
+        });
+        self.toast(d.name + " added");
+      };
+    } else {
+      V.dishAllergens = []; V.addons = []; V.dishAllergenStyle = "display:none"; V.addonWrapStyle = "display:none";
+      V.closeDish = () => {}; V.addToCart = () => {}; V.qtyInc = () => {}; V.qtyDec = () => {};
+      V.setDishNote = () => {}; V.dishName = ""; V.dishDesc = ""; V.dishImgStyle = "display:none";
+      V.dishNote = ""; V.dishQty = "1"; V.addLabel = ""; V.allergenFoot = "";
+    }
+
+    // ── cart sheet ─────────────────────────────────────────────────────────
+    const sub = this.cartSub();
+    V.cartOpen = s.cartOpen;
+    V.openCart = () => self.setState({ cartOpen: true });
+    V.closeCart = () => self.setState({ cartOpen: false });
+    V.cartCount = String(s.cart.reduce((a, l) => a + l.qty, 0));
+    V.cartTotal = this.fmt(sub);
+    V.cartTotalLabel = "Goods, before " + (o.sc ? "service and " : "") + (o.tax || "tax");
+    V.cartSub = s.cart.length + " item" + (s.cart.length === 1 ? "" : "s") + " · table " + s.table;
+    V.cartFoot = "Service charge and " + (o.tax || "tax") + " are added on the bill by the till. Send as many rounds as you like — they all join the same ticket.";
+    V.cart = s.cart.map((l, i) => {
+      const m = this.item(l.id);
+      return {
+        name: m ? m.name : "Item", qty: String(l.qty),
+        opt: [l.opt, l.note].filter(Boolean).join(" · "),
+        optStyle: (l.opt || l.note) ? "display:block;font-size:11.5px;color:#9c9ca1;margin-top:2px;line-height:1.4" : "display:none",
+        amt: this.fmt(((m ? this.price(m) : 0) + (l.extra || 0)) * l.qty),
+        imgStyle: "display:block;width:52px;height:52px;border-radius:13px;flex-shrink:0;background:#f1f1f3 center/cover url('" + ((m && m.img) || "") + "')",
+        inc: () => { const c = s.cart.slice(); c[i] = Object.assign({}, c[i], { qty: c[i].qty + 1 }); self.setState({ cart: c }); },
+        dec: () => {
+          const c = s.cart.slice();
+          if (c[i].qty <= 1) c.splice(i, 1); else c[i] = Object.assign({}, c[i], { qty: c[i].qty - 1 });
+          self.setState({ cart: c, cartOpen: c.length ? s.cartOpen : false });
+        }
+      };
+    });
+    V.promo = s.promo;
+    V.promoBorder = s.promoOk ? "#2ea44f" : "#e8e8ea";
+    V.setPromo = (e) => self.setState({ promo: e.target.value, promoOk: false, promoMsg: "" });
+    V.applyPromo = () => {
+      const code = s.promo.trim().toUpperCase();
+      if (code.length < 3) return self.setState({ promoOk: false, promoMsg: "Enter the code from the banner or your table card." });
+      // A phone cannot grant itself money off. The code travels with the order
+      // and the till decides — which is why the wording is an offer, not a fact.
+      self.setState({ promoOk: true, promoMsg: code + " will be sent with your order. The till checks it and applies it to the bill." });
+    };
+    V.promoMsg = s.promoMsg;
+    V.promoMsgStyle = s.promoMsg
+      ? "margin-top:9px;font-size:12px;line-height:1.55;text-wrap:pretty;color:" + (s.promoOk ? "#2ea44f" : "#c2452f")
+      : "display:none";
+    V.sendOrder = () => self.sendOrder();
+
+    // ── tracker ────────────────────────────────────────────────────────────
+    const fs = this.stage();
+    const STAGES = ["Received", "In the kitchen", "Ready", "Served"];
+    const at = fs ? Math.max(0, STAGES.indexOf(fs.stage)) : (s.sent.length ? 0 : -1);
+    V.trackSub = s.sent.length
+      ? "Table " + s.table + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
+      : "Nothing sent yet";
+    V.trackWrapStyle = s.sent.length ? "margin-top:20px;display:block" : "display:none";
+    V.stages = STAGES.map((label, i) => {
+      const done = i < at, on = i === at;
+      return {
+        label: label,
+        labelStyle: "display:block;font-size:14.5px;font-weight:" + (on ? 700 : 600) + ";color:" + (done || on ? "#111" : "#c0c0c5"),
+        sub: i === 0 ? (at >= 0 ? "The till has your round" : "Send a round to start")
+          : i === 1 ? (at >= 1 ? "Being cooked now" : "Fires once the kitchen accepts it")
+            : i === 2 ? (at >= 2 ? "Plated and waiting to come over" : "You will see this the moment it is plated")
+              : (at >= 3 ? "On your table — enjoy" : "Brought to table " + s.table),
+        dot: "width:26px;height:26px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
+          + (done ? "background:#2ea44f;color:#fff" : on ? "background:#f4553c;color:#fff;box-shadow:0 0 0 4px rgba(244,85,60,.15)" : "background:#f0f0f2;color:#f0f0f2"),
+        tickStyle: done || on ? "display:block" : "display:none",
+        rail: "width:2px;flex:1;min-height:14px;background:" + (done ? "#2ea44f" : "#eeeef0") + ";display:" + (i === STAGES.length - 1 ? "none" : "block")
+      };
+    });
+    V.roundsWrapStyle = s.sent.length ? "margin-top:6px;display:block" : "display:none";
+    V.rounds = s.sent.slice().reverse().map((r, ri) => ({
+      title: "Round " + (s.sent.length - ri),
+      at: new Date(r.at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      lines: r.lines.map((l) => {
+        const m = self.item(l.id);
+        return { name: (m ? m.name : "Item") + (l.qty > 1 ? " ×" + l.qty : ""), amt: self.fmt(((m ? self.price(m) : 0) + (l.extra || 0)) * l.qty) };
+      }),
+      // Reordering copies the round into the cart rather than sending it: the
+      // guest still confirms, because a stray tap must not put food on a bill.
+      again: () => {
+        self.setState({ cart: s.cart.concat(r.lines.map((l) => Object.assign({}, l))), cartOpen: true });
+        self.toast("Copied into this round — check it and send");
+      }
+    }));
+    V.trackEmpty = "Your order will appear here the moment you send it, and the steps above follow what the kitchen is actually doing.";
+    V.trackEmptyStyle = s.sent.length ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#a8a8ad;line-height:1.65;text-wrap:pretty";
+
+    // ── the bill ───────────────────────────────────────────────────────────
+    const b = this.billMath();
+    V.billSub = b
+      ? "Table " + s.table + " · as the till has it right now"
+      : "Nothing on this table yet";
+    V.billBodyStyle = b ? "display:block" : "display:none";
+    V.billEmpty = "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
+    V.billEmptyStyle = b ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#a8a8ad;line-height:1.65;text-wrap:pretty";
+    const rowS = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
+    V.billLines = b ? b.lines : [];
+    V.billTotals = b ? [
+      { label: "Subtotal", amt: this.money(b.sub), style: rowS },
+      { label: "Discount " + b.discPct + "%", amt: "\u2212 " + this.money(b.disc), style: b.disc ? rowS + ";color:#2ea44f" : "display:none" },
+      { label: "Service charge " + (b.o.sc || 0) + "%", amt: this.money(b.svc), style: b.o.sc ? rowS : "display:none" },
+      { label: (b.o.tax || "Tax") + " " + (b.o.rate || 0) + "%", amt: this.money(b.tax), style: rowS },
+      { label: "Table total", amt: this.money(b.total), style: "display:flex;justify-content:space-between;gap:12px;font-size:15px;font-weight:700;color:#111;padding-top:9px;border-top:1px solid #f0f0f0;margin-top:3px" }
+    ] : [];
+
+    V.splitModes = [
+      { k: "all", label: "I'll get it", sub: "The whole table" },
+      { k: "even", label: "Split evenly", sub: "Between everyone" },
+      { k: "items", label: "What I ate", sub: "Pick your dishes" },
+      { k: "custom", label: "My own amount", sub: "You decide" }
+    ].map((m) => ({
+      label: m.label, sub: m.sub,
+      style: "padding:13px 14px;border-radius:15px;min-height:60px;"
+        + (s.split === m.k
+          ? "background:#f4553c;color:#fff;box-shadow:0 5px 14px rgba(244,85,60,.28)"
+          : "background:#fff;color:#1a1a1a;border:1px solid #e8e8ea"),
+      tap: () => self.setState({ split: m.k })
+    }));
+    V.splitEvenStyle = s.split === "even" ? "margin-top:14px;padding:15px;border-radius:16px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.splitN = String(s.splitN);
+    V.splitLess = () => self.setState({ splitN: Math.max(2, s.splitN - 1) });
+    V.splitMore = () => self.setState({ splitN: Math.min(20, s.splitN + 1) });
+    V.splitEach = b ? this.money(b.total / Math.max(1, s.splitN)) + " each" : "";
+    V.splitItemStyle = s.split === "items" ? "margin-top:14px;padding:15px;border-radius:16px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.pickLines = b ? b.lines.map((l, i) => {
+      const on = !!s.picked[i];
+      return {
+        name: l.name, amt: self.money(l.amt),
+        style: "width:100%;margin-top:9px;display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:12px;min-height:46px;"
+          + (on ? "background:#fff;border:1.4px solid #f4553c" : "background:#fff;border:1px solid #ececee"),
+        box: "width:21px;height:21px;border-radius:7px;display:grid;place-items:center;flex-shrink:0;"
+          + (on ? "background:#f4553c;color:#fff" : "background:#f2f2f4;color:#f2f2f4"),
+        tick: on ? "display:block" : "display:none",
+        tap: () => self.setState({ picked: Object.assign({}, s.picked, { [i]: !on }) })
+      };
+    }) : [];
+    V.pickTotal = b ? "Your share: " + this.money(this.myShare()) + " (including your part of service and tax)" : "";
+    V.splitCustomStyle = s.split === "custom" ? "margin-top:14px;padding:15px;border-radius:16px;background:#fafafb;border:1px solid #eeeef0" : "display:none";
+    V.customAmt = s.customAmt;
+    V.setCustom = (e) => self.setState({ customAmt: e.target.value.replace(/[^0-9.]/g, "") });
+    const over = b && (+s.customAmt || 0) > b.total + 0.005;
+    V.customWarn = over ? "That is more than the whole table's bill. The rest would be a tip — add it below instead so the team actually receives it." : "";
+    V.customWarnStyle = over ? "margin-top:9px;font-size:12px;color:#c2452f;line-height:1.5;text-wrap:pretty" : "display:none";
+
+    V.tips = [0, 5, 10, 15].map((p) => ({
+      label: p ? p + "%" : "None",
+      style: "flex:1;padding:12px 4px;border-radius:14px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
+        + (s.tip === p ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
+      tap: () => self.setState({ tip: p })
+    }));
+    V.tipNote = s.tip
+      ? "Adding " + this.money(this.tipAmount()) + ". A tip is held apart from the service charge and paid out to the team in full."
+      : "The service charge already on your bill is shared with the team. Anything you add here is on top of it.";
+
+    V.tenders = [
+      { k: "card", label: "Card" },
+      { k: "cash", label: "Cash" },
+      { k: "wallet", label: "Wallet" }
+    ].map((x) => ({
+      label: x.label,
+      style: "padding:13px 6px;border-radius:14px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
+        + (s.tender === x.k ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
+      tap: () => self.setState({ tender: x.k })
+    }));
+
+    V.payAmount = this.money(this.payDue());
+    V.payBreak = b
+      ? (s.split === "all" ? "The whole table" : s.split === "even" ? "One of " + s.splitN + " shares" : s.split === "items" ? "The dishes you picked, with their share of service and tax" : "The amount you entered")
+        + (s.tip ? " · plus a " + s.tip + "% tip" : "")
+        + ". Your server brings the machine — nothing is charged from this phone."
+      : "";
+
+    // ── you ────────────────────────────────────────────────────────────────
+    V.youTitle = s.ident ? "Hello, " + (s.ident.name || "there").split(" ")[0] : "Order anonymously";
+    V.youSub = s.ident
+      ? "The till knows you are on table " + s.table + ", so your server can ask for you by name and any points land on this number."
+      : "You do not need to tell us anything to order. Leave your name and number only if you want the points, or to be recognised next time.";
+    V.identFormStyle = s.ident ? "display:none" : "display:block";
+    V.identCardStyle = s.ident ? "display:block" : "display:none";
+    V.identName = s.ident ? s.ident.name : s.identName;
+    V.identPhone = s.ident ? s.ident.phone : s.identPhone;
+    V.setIdentName = (e) => self.setState({ identName: e.target.value });
+    V.setIdentPhone = (e) => self.setState({ identPhone: e.target.value.replace(/[^0-9]/g, "").slice(0, 7) });
+    V.saveIdentLabel = "Save and tell the table";
+    V.identFoot = "Kept on this phone and sent to the till for tonight only. We do not ask for it to let you order — ordering works without it.";
+    V.saveIdent = () => {
+      const n = s.identName.trim(), p = s.identPhone.trim();
+      if (!n) return self.toast("A first name is enough");
+      if (p && p.length < 7) return self.toast("That number looks short");
+      self.setState({ ident: { name: n, phone: p } });
+      self.push("member", n + " is on table " + s.table, { memberName: n });
+      self.toast("Your server knows who to ask for");
+    };
+    V.cardKicker = "GUEST AT TABLE " + s.table;
+    V.identMasked = s.ident && s.ident.phone ? "+960 " + s.ident.phone.slice(0, 3) + " " + s.ident.phone.slice(3) : "No number on file";
+    const per = this.prefs().pointsPer || 10;
+    V.ptsLabel = b ? "+" + Math.floor(b.net / per) + " pts" : "";
+    V.ptsStyle = (b && s.ident && s.ident.phone)
+      ? "font-size:13px;font-weight:800;color:#fff;background:rgba(255,255,255,.2);padding:6px 11px;border-radius:10px;flex-shrink:0"
+      : "display:none";
+    V.forgetMe = () => { self.setState({ ident: null, identName: "", identPhone: "" }); self.toast("Forgotten on this phone"); };
+
+    // Rating only makes sense once the food has arrived — asking before it does
+    // is asking a guest to rate a photograph.
+    const served = at >= 3;
+    V.rateWrapStyle = served ? "display:block" : "display:none";
+    V.stars = [1, 2, 3, 4, 5].map((n) => ({
+      style: "width:42px;height:42px;border-radius:12px;display:grid;place-items:center;color:"
+        + (n <= s.stars ? "#f4553c" : "#e4e4e7") + ";background:" + (n <= s.stars ? "#fff4f2" : "#fafafb"),
+      tap: () => self.setState({ stars: n })
+    }));
+    V.rateNote = s.rateNote;
+    V.setRateNote = (e) => self.setState({ rateNote: e.target.value });
+    V.rateNoteStyle = s.stars ? "margin-top:12px;border:1px solid #ececee;border-radius:15px;padding:13px 14px;background:#fafafb" : "display:none";
+    V.rateSendStyle = (s.stars && !s.rated)
+      ? "margin-top:12px;width:100%;padding:14px;border-radius:15px;background:#1a1a1a;color:#fff;font-size:14px;font-weight:700;text-align:center;min-height:48px"
+      : "display:none";
+    V.rateSendLabel = "Send to the team";
+    V.sendRating = () => {
+      self.push("assist", "Table " + s.table + " rated the meal " + s.stars + "/5" + (s.rateNote ? " · " + s.rateNote : ""), { rating: s.stars });
+      self.setState({ rated: true });
+      self.toast("Thank you — the manager sees this straight away");
+    };
+    V.rateDone = s.rated ? "Sent. Thank you — a manager reads every one of these." : "";
+    V.rateDoneStyle = s.rated ? "margin-top:12px;font-size:12.5px;color:#2ea44f;line-height:1.55" : "display:none";
+
+    V.tableActions = [
+      {
+        label: "Ask for a server", sub: "Someone comes over to table " + s.table,
+        tap: () => { self.push("assist", "Table " + s.table + " is asking for a server"); self.toast("Someone is on their way"); }
+      },
+      {
+        label: "Ask for the bill", sub: b ? "Table total " + self.money(b.total) : "Nothing on the table yet",
+        tap: () => self.setState({ tab: "bill" })
+      },
+      {
+        label: "Change table", sub: "Currently table " + s.table,
+        tap: () => self.setState({ table: null, cart: [], sent: [] })
+      }
+    ].map((a) => Object.assign({
+      style: "width:100%;display:flex;align-items:center;gap:12px;padding:14px 15px;border-radius:15px;background:#fff;border:1px solid #ececee;min-height:56px;box-shadow:0 2px 8px rgba(0,0,0,.035)"
+    }, a));
+
+    // ── bar ────────────────────────────────────────────────────────────────
+    V.showBar = !!s.table && !s.dish && !s.cartOpen;
+    V.cartBadgeOn = s.cart.length > 0;
+    V.barStyle = "position:absolute;left:0;right:0;bottom:0;z-index:30;background:linear-gradient(180deg,rgba(255,255,255,0) 0%,#fff 22%)";
+    const dot = (on) => on
+      ? "position:absolute;top:6px;right:calc(50% - 15px);width:6px;height:6px;border-radius:50%;background:#f4553c;display:block"
+      : "display:none";
+    V.tabs = [
+      { k: "menu", label: "Menu", icon: "M4 6h16M4 12h16M4 18h10", on: false },
+      { k: "track", label: "Order", icon: "M6 2h9l5 5v15H6zM9 12h7M9 16h5", on: s.sent.length > 0 && at >= 0 && at < 3 },
+      { k: "bill", label: "Bill", icon: "M3 7h18v11H3zM3 11h18M7 15h4", on: !!s.asked },
+      { k: "you", label: "You", icon: "M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0z", on: served && !s.rated }
+    ].map((x) => ({
+      label: x.label, icon: x.icon, dotStyle: dot(x.on),
+      style: "position:relative;flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:7px 4px;border-radius:13px;min-height:52px;color:"
+        + (s.tab === x.k ? "#f4553c" : "#b0b0b5"),
+      tap: () => self.setState({ tab: x.k })
+    }));
+
+    V.toast = s.toast;
+    V.toastStyle = s.toast
+      ? "position:absolute;left:18px;right:18px;bottom:112px;z-index:60;padding:13px 16px;border-radius:15px;background:rgba(20,20,22,.94);color:#fff;font-size:13.5px;font-weight:600;line-height:1.45;text-align:center;animation:qfade .16s;box-shadow:0 10px 30px rgba(0,0,0,.3)"
+      : "display:none";
+    return V;
+  }
+}
+</script>
+</body>
+</html>

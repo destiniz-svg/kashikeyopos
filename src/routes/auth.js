@@ -23,11 +23,57 @@ r.get('/install', async function (req, res, next) {
       ? await owner().query('SELECT id, code, name, tax_code, service_pct, currency,'
         + ' active FROM chain.outlet WHERE active ORDER BY id').then((q) => q.rows)
       : [];
+    // The trading name and the brand mark are on the shopfront: a lock screen
+    // that cannot name the business it belongs to is a lock screen nobody
+    // trusts. The registration number, the TIN and the address are NOT here —
+    // those go out only to a signed-in session.
+    const co = Number(s.company) > 0
+      ? await owner().query('SELECT legal_name, country, base_currency, brand'
+        + ' FROM chain.company WHERE id = 1').then((q) => q.rows[0])
+      : null;
     res.set('cache-control', 'no-store').json({
       ready: Number(s.outlets) > 0 && Number(s.staff) > 0 && Number(s.company) > 0,
       outlets: outlets,
+      merchant: co ? {
+        name: (co.brand && co.brand.name) || co.legal_name,
+        country: co.country === 'Maldives' ? 'MV' : co.country,
+        currency: co.base_currency,
+        colour: (co.brand && co.brand.colour) || null,
+        tagline: (co.brand && co.brand.tagline) || ''
+      } : null,
       hasCompany: Number(s.company) > 0,
       hasStaff: Number(s.staff) > 0
+    });
+  } catch (e) { next(e); }
+});
+
+/* ── who can sign in at this terminal ───────────────────────────────────────
+   A shared till never asks for a password: staff tap their own face and key
+   four digits, which is what makes a void or a drawer opening attributable to
+   a person rather than to "the till".
+
+   That means the roster has to be readable before anyone is signed in. It
+   returns a display name, a role label and an initial — and nothing else. No
+   id that grants anything, no PIN, no hash, no employment record. The people
+   on this list are standing in front of the terminal; their names are not the
+   secret. The PIN is, and it is checked server-side against a scrypt hash
+   this terminal never receives.
+*/
+r.get('/roster', async function (req, res, next) {
+  const oid = Number(req.query.outletId);
+  if (!oid) return res.status(400).json({ error: 'outletId required' });
+  try {
+    const rows = await withOutlet({ outletId: oid, rank: 0 }, (c) =>
+      c.query('SELECT id, name, rank, role_key, locked_until FROM chain.pin_candidates($1)',
+        [oid]).then((q) => q.rows));
+    res.set('cache-control', 'no-store').json({
+      staff: rows.map((s) => ({
+        id: s.id, name: s.name, rank: s.rank, roleKey: s.role_key,
+        user: String(s.name || '').split(' ').pop().toLowerCase(),
+        initials: String(s.name || '').split(/\s+/).map((w) => w[0] || '')
+          .join('').slice(0, 2).toUpperCase(),
+        locked: !!(s.locked_until && new Date(s.locked_until) > new Date())
+      }))
     });
   } catch (e) { next(e); }
 });

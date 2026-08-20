@@ -68,9 +68,14 @@ async function buildBootstrap(ctx) {
     const unitsByIng = group(units.rows, 'ingredient_id');
     const modsByItem = group(itemMods.rows, 'item_id');
 
+    // The rate in force TODAY at each outlet, from its own versions. A rate is
+    // never defaulted: an outlet registered as NONE charges nothing, and
+    // `0 || 8` silently turning that into 8% would overcharge every guest.
+    const rateByOutlet = currentRates(taxVers.rows);
+
     const kpos = {
       CHAIN: chainOf(company.rows[0], setting),
-      OUTLETS: outlets.rows.map(outletOf),
+      OUTLETS: outlets.rows.map((o) => outletOf(o, rateByOutlet, zones.rows, tables.rows, ctx.outletId)),
       MENU_CATEGORIES: categories.rows.map((r) => ({
         id: r.id, name: r.name, icon: r.colour || 'main', section: r.section_id
       })),
@@ -232,6 +237,11 @@ async function buildState(ctx, opts) {
     ]);
 
     const linesByTicket = group(lines.rows, 'ticket_id');
+    // Which table a closed sale was rung on. The ticket is closed, so it is not
+    // in the open list; the receipt still has to say where it was served.
+    const ticketTable = {};
+    (await c.query('SELECT id, table_no FROM ticket')).rows
+      .forEach((t) => { ticketTable[t.id] = t.table_no; });
     const slByeSale = group(saleLines.rows, 'sale_id');
     const payBySale = group(payments.rows, 'sale_id');
     const clByCount = group(countLines.rows, 'count_id');
@@ -250,7 +260,8 @@ async function buildState(ctx, opts) {
         .map((t) => ticketOf(t, linesByTicket[t.id] || [])),
 
       // The money already taken. One row shape, whichever screen settled it.
-      settled: sales.rows.map((s) => settledOf(s, slByeSale[s.id] || [], payBySale[s.id] || [])),
+      settled: sales.rows.map((s) => settledOf(s, slByeSale[s.id] || [],
+        payBySale[s.id] || [], ctx.outletId, ticketTable[s.ticket_id])),
       refunds: creditMap(credits.rows),
 
       register: open ? {
@@ -433,15 +444,45 @@ function chainOf(co, setting) {
   };
 }
 
-function outletOf(r) {
+function outletOf(r, rates, zones, tables, mine) {
+  // The floor plan belongs to the outlet whose schema it lives in, so only the
+  // signed-in outlet carries one here. Another outlet's table count is not
+  // something this terminal has any business knowing.
+  const own = r.id === mine ? tables : [];
   return {
     id: r.id, code: r.code, name: r.name,
     type: r.kind, loc: r.kind, parent: r.parent_id || 0,
-    region: r.atoll || '', tax: r.tax_code, rate: 0, sc: num(r.service_pct),
+    region: r.atoll || '', tax: r.tax_code,
+    rate: rates[r.id] === undefined ? 0 : rates[r.id],
+    sc: num(r.service_pct),
     addr: r.address || '', mgr: '', pos: r.kind === 'restaurant',
-    seats: 0, tables: 0, slug: r.slug, tz: r.tz, currency: r.currency,
-    dayStart: r.day_start, active: r.active
+    seats: own.reduce((a, t) => a + (t.seats || 0), 0),
+    tables: own.length,
+    zones: r.id === mine ? zones.map((z) => ({ id: z.id, name: z.name, pos: z.pos })) : [],
+    floor: own.map((t) => ({
+      id: t.id, label: t.label, zone: t.zone_id, seats: t.seats,
+      pos: t.pos, shape: t.shape, status: t.status
+    })),
+    slug: r.slug, tz: r.tz, currency: r.currency,
+    dayStart: r.day_start, phone: r.phone || '', active: r.active
   };
+}
+
+/* The rate in force today, per outlet. An outlet's own version wins; the
+   statutory history (outlet_id NULL) is the fallback for a code an outlet has
+   not versioned yet. A rate is a fact about a date, so this reads the date. */
+function currentRates(versions) {
+  const today = new Date().toISOString().slice(0, 10);
+  const inForce = (v) => String(v.effective_from) <= today
+    && (!v.effective_to || String(v.effective_to) >= today);
+  const out = {};
+  const statutory = {};
+  versions.filter(inForce).forEach((v) => {
+    if (v.outlet_id == null) statutory[v.code] = num(v.rate);
+    else out[v.outlet_id] = num(v.rate);
+  });
+  out.__statutory = statutory;
+  return out;
 }
 
 // price is the chain master price; recipe is [ingredientId, qty in base unit].
@@ -526,13 +567,15 @@ function ticketOf(t, lines) {
 /* The settled row — ONE shape, both settle paths, twenty-nine fields. The
    reference's own defect was a second path writing thirteen of them and
    booking the pre-discount subtotal as revenue. */
-function settledOf(s, lines, pays) {
+function settledOf(s, lines, pays, outletId, table) {
   const tender = pays.length === 1 ? pays[0].method
     : pays.length > 1 ? 'split' : 'cash';
   return {
-    outletId: undefined,          // filled by the caller's context
+    // The row names its own outlet: the estate screens group by it, and an
+    // unlabelled sale is a sale that belongs to nobody.
+    outletId: outletId,
     id: s.id, no: s.receipt_no, time: iso(s.at), at: ms(s.at),
-    table: s.ticket_id ? undefined : null,
+    table: table || null,
     channel: s.channel, covers: s.covers,
     sub: num(s.subtotal), disc: num(s.discount), discCode: s.discount_code || '',
     net: num(s.net), svc: num(s.service), tax: num(s.tax),
@@ -540,7 +583,7 @@ function settledOf(s, lines, pays) {
     round: num(s.rounding), total: num(s.total), tip: num(s.tip),
     tender: tender, payments: pays.map((p) => ({
       method: p.method, amt: num(p.amount), cur: p.currency,
-      rate: num(p.fx_rate), fgn: num(p.fx_amount), tendered: num(p.tendered),
+      rate: num(p.fx_rate) || 1, fgn: num(p.fx_amount), tendered: num(p.tendered),
       chg: num(p.change_given), ref: p.auth_ref
     })),
     cur: s.currency, rate: num(s.fx_rate), fgn: num(s.fx_amount),

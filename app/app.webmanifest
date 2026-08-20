@@ -1,0 +1,14 @@
+{
+  "name": "KashikeyoPOS",
+  "short_name": "Kashikeyo",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111214",
+  "theme_color": "#111214",
+  "icons": [
+    { "src": "brand/kashikeyo-mark.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "brand/kashikeyo-mark.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
