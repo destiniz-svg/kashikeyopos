@@ -1,21 +1,20 @@
 {
-  "name": "kashikeyo-cloud",
-  "version": "1.0.0",
+  "name": "kashikeyopos",
+  "version": "3.0.0",
+  "private": true,
   "type": "commonjs",
+  "description": "KashikeyoPOS — offline-first, multi-outlet restaurant operating platform",
+  "engines": { "node": ">=20" },
+  "main": "server.js",
   "scripts": {
-    "start": "node favicon-patch.js && node guest-sync-patch.js",
-    "test": "node --test --test-concurrency=1 test/*.test.js",
-    "guards": "node tools/census.js --check && node --test test/money.test.js test/guest-quote.test.js",
-    "census": "node tools/census.js --report"
+    "start": "node server.js",
+    "migrate": "node src/scripts/migrate.js",
+    "provision:outlet": "node src/scripts/provision-outlet.js",
+    "leak-test": "node src/scripts/leak-test.js",
+    "test": "node --test test/"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.111.0",
-    "bcryptjs": "^2.4.3",
-    "compression": "^1.8.1",
-    "express": "^4.21.0",
-    "jose": "^6.2.3",
-    "jsonwebtoken": "^9.0.2",
-    "pg": "^8.13.0",
-    "qrcode": "^1.5.4"
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
   }
 }

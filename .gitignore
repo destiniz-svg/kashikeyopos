@@ -1,7 +1,6 @@
 node_modules/
-web2/node_modules
-
-# Written by favicon-patch.js on every boot (first half of `npm start`),
-# regenerated from a constant inside that script — generated, not source.
-web/dist/favicon.svg
-tour-shots/
+npm-debug.log*
+.env
+.env.*
+*.log
+.DS_Store

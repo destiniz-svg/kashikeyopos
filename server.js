@@ -1,0 +1,110 @@
+'use strict';
+const path = require('path');
+const express = require('express');
+const { owner, shutdown } = require('./src/db');
+const { migrate } = require('./src/scripts/migrate');
+
+const app = express();
+app.set('trust proxy', 1);              // Railway terminates TLS at the edge
+app.set('x-powered-by', false);
+app.use(express.json({ limit: '4mb' }));
+
+/* ── headers ────────────────────────────────────────────────────────────────
+   A till runs for months on the same tab in a browser nobody updates. The
+   headers are therefore strict by default and the app is written to live
+   inside them: no inline event handlers, no remote script, no remote font. */
+const origins = (process.env.ALLOWED_ORIGINS || '').split(',')
+  .map((s) => s.trim()).filter(Boolean);
+
+app.use(function (req, res, next) {
+  const o = req.get('origin');
+  if (o && (origins.indexOf('*') >= 0 || origins.indexOf(o) >= 0)) {
+    res.set('access-control-allow-origin', o);
+    res.set('vary', 'origin');
+    res.set('access-control-allow-headers', 'authorization,content-type,x-table-token');
+    res.set('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+    res.set('access-control-max-age', '600');
+  }
+  res.set('x-content-type-options', 'nosniff');
+  res.set('referrer-policy', 'no-referrer');
+  res.set('x-frame-options', 'SAMEORIGIN');
+  res.set('permissions-policy', 'geolocation=(), microphone=(), payment=()');
+  if (process.env.NODE_ENV === 'production') {
+    res.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+// Railway's healthcheck hits this: the service is only ready when the control
+// plane answers, otherwise a deploy that cannot see its database goes live.
+app.get('/readyz', async function (req, res) {
+  try {
+    await owner().query('SELECT 1 FROM chain.outlet LIMIT 1');
+    res.json({ ok: true, at: new Date().toISOString() });
+  } catch (e) {
+    res.status(503).json({ ok: false, error: 'database not ready' });
+  }
+});
+
+app.use('/api', require('./src/routes'));
+
+/* ── the app itself, served from disk. There is no build step: the terminal is
+      hand-written HTML and the DC runtime, so what ships is what was read. ── */
+const APP = path.join(__dirname, 'app');
+app.use(express.static(APP, {
+  etag: true,
+  maxAge: '5m',
+  setHeaders: function (res, file) {
+    // The shell must never be cached hard: a stale terminal is a terminal
+    // running last month's tax rate.
+    if (/\.(html|webmanifest)$/.test(file)) res.set('cache-control', 'no-cache');
+    if (/sw\.js$/.test(file)) {
+      res.set('cache-control', 'no-cache');
+      res.set('service-worker-allowed', '/');
+    }
+    if (/\.(woff2|png|jpg|svg)$/.test(file)) res.set('cache-control', 'public, max-age=604800');
+  }
+}));
+
+require('./src/routes/pages')(app, APP);
+
+app.use(function (req, res) {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'not found' });
+  res.status(404).sendFile(path.join(APP, 'index.html'));
+});
+
+app.use(function (err, req, res, next) {          // eslint-disable-line no-unused-vars
+  const status = err.status || 500;
+  // Never return a database message to a client: it names schemas and roles.
+  if (status >= 500) console.error('[error]', err.stack || err.message);
+  res.status(status).json({ error: status >= 500 ? 'server error' : err.message });
+});
+
+const port = Number(process.env.PORT || 8080);
+
+async function boot() {
+  if (process.env.SKIP_MIGRATE !== '1') {
+    try { await migrate(); }
+    catch (e) {
+      console.error('[boot] migration failed:', e.message);
+      if (process.env.NODE_ENV === 'production') process.exit(1);
+    }
+  }
+  const server = app.listen(port, function () {
+    console.log('KashikeyoPOS listening on ' + port);
+  });
+  ['SIGTERM', 'SIGINT'].forEach(function (sig) {
+    process.on(sig, function () {
+      server.close(function () { shutdown().then(() => process.exit(0)); });
+      setTimeout(() => process.exit(0), 10000).unref();
+    });
+  });
+  return server;
+}
+
+if (require.main === module) boot();
+
+module.exports = { app, boot };
