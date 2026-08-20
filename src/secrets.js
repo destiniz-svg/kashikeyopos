@@ -61,6 +61,15 @@ const verify = (t) => verifyWith(need('SESSION_SECRET'), t);
 const signTable = (p) => signWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), p);
 const verifyTable = (t) => verifyWith(process.env.PORTAL_SECRET || need('SESSION_SECRET'), t);
 
+/* An ACCOUNT token names the person who owns the business — the plane above
+   the outlet. It is signed with the session secret because it is a first-party
+   credential like a staff session, and it carries an account id and nothing
+   else: no rank, no outlet. What that account may reach is looked up per
+   request, so revoking an outlet takes effect on the next call rather than
+   whenever a token happens to expire. */
+const signAccount = (p) => signWith(need('SESSION_SECRET'), p);
+const verifyAccount = (t) => verifyWith(need('SESSION_SECRET'), t);
+
 // A member token is the same shape, minted only after a code is verified. It
 // carries a member id and nothing else, so a stolen one reads one card and
 // cannot order, price or settle.
@@ -103,5 +112,6 @@ function pairCode() {
 
 module.exports = {
   outletPassword, sign, verify, signTable, verifyTable, signMember, verifyMember,
+  signAccount, verifyAccount,
   hashPin, pinMatches, randomPin, pairCode, need
 };

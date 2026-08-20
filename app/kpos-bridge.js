@@ -83,13 +83,21 @@
 
     root.KPOS_INSTALL = install;
 
-    // An empty install lands on onboarding, not on the floor. A terminal that
-    // opens on a floor with no tables, no menu and no register teaches nothing
-    // except that the app is broken.
+    /* An empty install lands on onboarding, not on the floor — a terminal that
+       opens on a floor with no tables, no menu and no register teaches nothing
+       except that the app is broken.
+
+       But onboarding creates a BUSINESS, and a business belongs to somebody.
+       So an empty install with no account signed in on this browser goes to the
+       front door first: sign up, then set up, then trade. A browser that
+       already holds an account goes straight through. */
     if (install && !install.ready) {
       root.KPOS_ONBOARDING = true;
       try { root.dispatchEvent(new CustomEvent("kpos-onboarding", { detail: install })); } catch (e) {}
-      if (location.pathname !== "/onboarding") location.replace("/onboarding");
+      var held = "";
+      try { held = localStorage.getItem("kashikeyo.account.token") || ""; } catch (e) {}
+      var to = held ? "/onboarding" : "/account";
+      if (location.pathname !== to) location.replace(to);
       return;
     }
 

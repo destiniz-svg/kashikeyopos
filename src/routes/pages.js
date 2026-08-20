@@ -17,6 +17,14 @@ module.exports = function (app, APP) {
   // An empty install lands here, not on the floor.
   app.get('/onboarding', send('onboarding.html'));
 
+  /* The front door: where a business signs up before it has an outlet, a menu
+     or a till. The terminal at "/" decides for itself whether to send someone
+     here — it is the page that knows whether this install is set up and
+     whether this browser holds an account. */
+  app.get('/account', send('account.html'));
+  app.get('/signin', send('account.html'));
+  app.get('/signup', send('account.html'));
+
   // The guest portals. A QR resolves to /g/<slug>?t=<table>.
   app.get('/g/:slug', send('guest.html'));
   app.get('/m/:slug', send('member.html'));

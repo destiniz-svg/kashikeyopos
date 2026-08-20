@@ -74,6 +74,43 @@ The one deliberate cross-outlet read is `chain.estate_day(date)`: aggregates
 only, rank 5, group scope, through the read-only `kashikeyo_report` role, and
 audited.
 
+## Two planes: accounts and ranks
+
+An **account** signs up on the website with an email address and **owns the
+business**. A **staff member** taps their face at the till and keys four digits.
+Different people, different moments, different credentials — conflating them is
+how a waiter ends up able to change the company's TIN.
+
+```
+chain.account            an email address, scrypt password, verified state
+chain.account_identity   a Google or Apple subject, matched on the SUBJECT
+chain.account_outlet     what an account owns; one `owner` per outlet
+chain.company.owner_account_id
+```
+
+Four ways in, all landing on one account row: email + password, a six-digit
+code to the inbox, Google, Apple. `src/routes/account.js` is the whole of it,
+running on the **owner connection**, because migration 011 revokes every
+privilege on these tables from every outlet login role — there is no policy to
+get wrong, only that file. `test/api.test.js` asserts an outlet role cannot
+read `chain.account` at all.
+
+Sign-up, code-request and sign-in **never reveal whether an address is known**.
+The answers are byte-identical either way, or the endpoint enumerates the
+customer list.
+
+An account token carries an account id and nothing else — no rank, no outlet —
+so it cannot read an outlet, and a staff session cannot read the account plane.
+Both directions are asserted.
+
+The flow is: `/account` → sign up → `/onboarding` (the panel carries
+`x-account-token` on every step) → the account that completes it becomes the
+outlet's **owner** and keeps the rank-5 staff record it created for the floor.
+
+Email goes through `src/email.js` — one seam, Resend as the driver. With no
+transport configured the code is written to the audit trail and the call
+**says so** (`sent: false`); it never pretends.
+
 ## Ranks
 
 Kitchen 1 · Till 2 · Manager 3 · Admin 4 · Owner 5. That ladder is the **only**
@@ -105,6 +142,20 @@ and a manual journal to any of them is refused.
 
 ## Money
 
+**The books are kept in ONE currency**, chosen at onboarding — MVR or USD. Every
+price, receipt, report and ledger figure is in it. A guest may hand over the
+other currency at the counter: that is a **tender**, converted at a rate the
+till records on the receipt, and it does not make the ledger bilingual.
+
+There is one currency table, published by the outlet (`chain.setting`
+`currencies`), carrying `minor` and `cashRound` per currency. **Cash rounding is
+a property of the currency**: MVR settles to its 50-laari coin and the
+difference posts to 4900; USD has cents and rounds to nothing. Rates are
+re-based against the books, so the base is always 1.
+
+Do not write `"MVR"` into a string. `MVR()` and `MVRc()` read the current
+currency record; `this.base()` is the code of the books' currency.
+
 **GST is EXCLUSIVE in this build.** The menu price is the net; service is
 charged on the net; tax is charged on net + service:
 
@@ -125,6 +176,19 @@ places at once, and `test/api.test.js` will tell you if it did not.
 A store's tax rate is read from its own `chain.tax_version` row, effective-dated.
 `NONE` is a real answer: a business that is not GST-registered charges nothing,
 and `0 || 8` silently turning that into 8% is a bug this build refuses to ship.
+
+**GST registration is optional because it is conditional.** In the Maldives a
+business registers once taxable supplies pass a threshold (migration 009:
+MVR 1,000,000 over 12 months; tourism always). Below it, it charges nothing and
+**no tax line prints at all** — a document showing one claims a registration the
+business does not hold.
+
+Every tax row asks `taxRegistered()` first. Never guard on truthiness: `"NONE"`
+is a truthy string, and that is exactly the bug that shipped. The outlet
+measures its own rolling turnover against the threshold and publishes it as
+`GST_WATCH`; crossing it becomes a decision on the owner's Today list.
+`test/tax.test.js` sweeps every screen and modal for a tax class printed next
+to a rate.
 
 ## Sync
 
@@ -229,7 +293,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 57 tests
+npm test                          # 80 tests
 npm run leak-test                 # isolation, on its own
 ```
 

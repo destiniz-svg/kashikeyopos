@@ -9,19 +9,40 @@
    Every step therefore has an equivalent edit path once the app is running,
    and this router mostly delegates to the same handlers the sync path uses.
 
-   Only the first three steps run without a session, because until step 3 there
-   is nobody to sign in as. `chain.claim_first_owner()` can succeed exactly once
-   in the life of an installation.
+   Only the first three steps run without a STAFF session, because until step 3
+   there is nobody to sign in as. `chain.claim_first_owner()` can succeed exactly
+   once in the life of an installation.
+
+   An ACCOUNT session — the person who signed up on the website — may be present
+   from the first step, and if it is, the business that gets created is theirs.
+   It is attached optionally rather than required, so an install that predates
+   accounts still finishes, and a terminal onboarding itself on the counter is
+   not blocked by an email address nobody has typed yet.
    ═══════════════════════════════════════════════════════════════════════ */
 
 const express = require('express');
 const { owner, withOutlet } = require('../db');
 const { provisionOutlet } = require('../provision');
-const { hashPin, sign } = require('../secrets');
+const { hashPin, sign, verifyAccount } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { applyOp } = require('../apply');
 
 const r = express.Router();
+
+/* Attach the signed-up account when one is presented. Never refuses: the
+   account is who to CREDIT the business to, not permission to create it. */
+r.use(async function (req, res, next) {
+  const raw = String(req.get('x-account-token') || '');
+  if (!raw) return next();
+  const claims = verifyAccount(raw);
+  if (!claims || !claims.a) return next();
+  try {
+    const q = await owner().query(
+      "SELECT id, email, name, status FROM chain.account WHERE id = $1", [claims.a]);
+    if (q.rows.length && q.rows[0].status === 'active') req.account = q.rows[0];
+    next();
+  } catch (e) { next(); }
+});
 
 const STEPS = [
   { key: 'company', label: 'Company', sub: 'The entity that files the return' },
@@ -130,6 +151,13 @@ r.post('/company', async function (req, res, next) {
       [b.legalName, b.regNo, b.tin, b.address, b.atoll || null, b.country || null,
         b.phone || null, b.email || null, b.currency || null,
         b.fyStartMonth || null, JSON.stringify(b.brand || {})]);
+    // Whoever is signed in as they complete this owns the business. The
+    // question "whose is this" must not depend on which outlet you look at.
+    if (req.account) {
+      await owner().query(
+        'UPDATE chain.company SET owner_account_id = coalesce(owner_account_id, $1)'
+        + ' WHERE id = 1', [req.account.id]);
+    }
     res.json({ ok: true, step: 'company' });
   } catch (e) { next(e); }
 });
@@ -180,11 +208,27 @@ r.post('/owner', async function (req, res, next) {
       c.query('INSERT INTO chain.session (staff_id, outlet_id, rank, expires_at)'
         + " VALUES ($1,$2,5, now() + ($3 || ' hours')::interval)",
       [staffId, o.rows[0].id, String(hours)]));
+    /* The account that completed onboarding becomes this outlet's OWNER —
+       the master admin — and keeps the rank-5 staff record it just created for
+       the floor. A founder is usually both people; they are still two records,
+       because one signs in with an email and the other taps four digits. */
+    if (req.account) {
+      await owner().query(
+        'INSERT INTO chain.account_outlet (account_id, outlet_id, role, staff_id)'
+        + " VALUES ($1,$2,'owner',$3)"
+        + ' ON CONFLICT (account_id, outlet_id) DO UPDATE SET staff_id = $3',
+        [req.account.id, o.rows[0].id, staffId]);
+      await owner().query(
+        "SELECT chain.log_anon($1,'outlet_owner_set','account',$2,$3)",
+        [o.rows[0].id, req.account.id,
+          JSON.stringify({ email: req.account.email, staffId: staffId })]).catch(() => {});
+    }
     res.status(201).json({
       staffId,
       token: sign({ o: o.rows[0].id, r: 5, s: staffId, n: b.name,
         rk: 'SuperAdmin', exp: Date.now() + hours * 3600e3 }),
-      name: b.name, rank: 5, roleKey: 'SuperAdmin', outletId: o.rows[0].id
+      name: b.name, rank: 5, roleKey: 'SuperAdmin', outletId: o.rows[0].id,
+      ownedBy: req.account ? req.account.email : null
     });
   } catch (e) {
     if (/already exists/.test(e.message)) return res.status(409).json({ error: 'an owner already exists — sign in with a PIN' });

@@ -5,6 +5,8 @@ const { session, groupScope } = require('../auth');
 const r = express.Router();
 
 // Anonymous or self-authenticating.
+// The account plane sits above every outlet and authenticates on its own.
+r.use('/account', require('./account'));
 r.use('/auth', require('./auth'));
 r.use('/onboarding', require('./onboarding'));
 r.use('/g', require('./guest'));

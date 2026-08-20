@@ -577,6 +577,13 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
   function api(method, path, body) {
     var headers = { "content-type": "application/json" };
     if (state.token) headers.authorization = "Bearer " + state.token;
+    // The account that signed up on the website is who this business will
+    // belong to. Carried on every step, because the company is recorded on
+    // step 1 and the outlet ownership on step 3.
+    try {
+      var at = localStorage.getItem("kashikeyo.account.token");
+      if (at) headers["x-account-token"] = at;
+    } catch (e) { /* private mode: the install is simply unattributed */ }
     return fetch(path, {
       method: method, headers: headers,
       body: body === undefined ? undefined : JSON.stringify(body)

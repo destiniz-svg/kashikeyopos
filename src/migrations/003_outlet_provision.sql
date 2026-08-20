@@ -915,6 +915,11 @@ BEGIN
     || ' %1$I.credit_note, %1$I.document FROM %2$I', s, r);
   EXECUTE format('REVOKE UPDATE ON %1$I.stock_move FROM %2$I', s, r);
 
+  -- The account plane sits ABOVE the outlet and is not reachable from it.
+  -- Said explicitly, so a future GRANT has to argue with this line.
+  EXECUTE format('REVOKE ALL ON chain.account, chain.account_identity,'
+    || ' chain.account_outlet FROM %I', r);
+
   EXECUTE format('GRANT SELECT ON chain.company, chain.outlet, chain.staff,'
     || ' chain.device, chain.tax_version, chain.supplier, chain.member,'
     || ' chain.setting TO %I', r);

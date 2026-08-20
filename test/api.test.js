@@ -525,6 +525,129 @@ test('points are awarded by the outlet, never by the terminal', opts, async () =
     'fifty points on a five hundred rufiyaa net, at the outlet\'s own rate');
 });
 
+/* ═══ THE ACCOUNT PLANE ═════════════════════════════════════════════════════
+   An account signs up on the website and owns the business. A staff member
+   taps their face at the till and keys four digits. Different people,
+   different credentials, and the second must never reach the first.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('an account signs up, and is never told whether an address is known',
+  opts, async () => {
+    process.env.ACCOUNT_CODE_ECHO = '1';
+    const mine = await post('/api/account/signup',
+      { email: 'founder@example.mv', password: 'a-good-long-password', name: 'A Founder' });
+    assert.strictEqual(mine.status, 200, JSON.stringify(mine.body));
+    assert.ok(mine.body.code, 'the development echo returns the code');
+
+    // The SAME address again, and an address that has never been seen, must be
+    // indistinguishable — otherwise this endpoint enumerates the customer list.
+    const again = await post('/api/account/signup',
+      { email: 'founder@example.mv', password: 'another-long-password' });
+    const never = await post('/api/account/code', { email: 'stranger@example.mv' });
+    assert.strictEqual(again.status, never.status);
+    assert.strictEqual(again.body.note, never.body.note);
+    assert.deepStrictEqual(Object.keys(again.body).sort().filter((k) => k !== 'code'),
+      Object.keys(never.body).sort().filter((k) => k !== 'code'));
+  });
+
+test('a code signs an account in, and is spent on use', opts, async () => {
+  const issued = await post('/api/account/code', { email: 'founder@example.mv' });
+  const code = issued.body.code;
+  assert.ok(code, 'a code was issued');
+
+  const wrong = await post('/api/account/code/verify',
+    { email: 'founder@example.mv', code: '000000' });
+  assert.strictEqual(wrong.status, 401);
+
+  const ok = await post('/api/account/code/verify',
+    { email: 'founder@example.mv', code });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+  assert.ok(ok.body.token, 'an account token is minted');
+  assert.strictEqual(ok.body.account.email, 'founder@example.mv');
+  assert.strictEqual(ok.body.account.verified, true, 'the code proved the address');
+
+  const replay = await post('/api/account/code/verify',
+    { email: 'founder@example.mv', code });
+  assert.strictEqual(replay.status, 401, 'a used code is spent');
+});
+
+test('a password signs an account in, and a wrong one says nothing useful',
+  opts, async () => {
+    const good = await post('/api/account/signin',
+      { email: 'founder@example.mv', password: 'a-good-long-password' });
+    assert.strictEqual(good.status, 200, JSON.stringify(good.body));
+
+    const bad = await post('/api/account/signin',
+      { email: 'founder@example.mv', password: 'not-the-password' });
+    const missing = await post('/api/account/signin',
+      { email: 'nobody@example.mv', password: 'not-the-password' });
+    assert.strictEqual(bad.status, 401);
+    assert.strictEqual(missing.status, 401);
+    assert.deepStrictEqual(bad.body, missing.body,
+      'no such account and wrong password are the same answer');
+  });
+
+test('an account token is not a staff session, and vice versa', opts, async () => {
+  const s = await post('/api/account/signin',
+    { email: 'founder@example.mv', password: 'a-good-long-password' });
+  const accountToken = s.body.token;
+
+  // An account token must not open an outlet's data.
+  const cross = await get('/api/outlet/' + outletId + '/bootstrap', accountToken);
+  assert.ok(cross.status === 401 || cross.status === 403,
+    'an account token cannot read an outlet — it carries no rank (got '
+    + cross.status + ')');
+
+  // And a staff token must not read the account plane.
+  const back = await getWith('/api/account/me', { authorization: 'Bearer ' + token });
+  assert.strictEqual(back.status, 401,
+    'a floor session cannot reach the owner\'s account');
+});
+
+test('the account that onboards owns the outlet', opts, async () => {
+  const s = await post('/api/account/signin',
+    { email: 'founder@example.mv', password: 'a-good-long-password' });
+  const me = await getWith('/api/account/me', { authorization: 'Bearer ' + s.body.token });
+  assert.strictEqual(me.status, 200);
+  // This suite onboarded WITHOUT an account (the older path), so this account
+  // owns nothing — which is exactly what it should say.
+  assert.strictEqual(me.body.next, 'onboarding');
+  assert.deepStrictEqual(me.body.outlets, []);
+
+  /* Link one the way onboarding does — on the OWNER connection, because an
+     outlet's own role is granted nothing on the account plane. That the line
+     below has to use owner() is itself the isolation working. */
+  await db.owner().query(
+    "INSERT INTO chain.account_outlet (account_id, outlet_id, role)"
+    + " SELECT id, $1, 'owner' FROM chain.account WHERE email = 'founder@example.mv'"
+    + ' ON CONFLICT DO NOTHING', [outletId]);
+  const after = await getWith('/api/account/me', { authorization: 'Bearer ' + s.body.token });
+  assert.strictEqual(after.body.next, 'terminal');
+  assert.strictEqual(after.body.outlets.length, 1);
+  assert.strictEqual(after.body.outlets[0].role, 'owner');
+});
+
+test('an outlet login role cannot reach the account plane at all', opts, async () => {
+  // Not a policy question — the grant does not exist. Asserted from inside an
+  // outlet's own connection, which is the credential an attacker would have.
+  await assert.rejects(
+    () => db.withOutletRead({ outletId, rank: 5, actor: null },
+      (c) => c.query('SELECT email FROM chain.account')),
+    /permission denied|does not exist/i,
+    'chain.account is unreachable from an outlet role');
+});
+
+test('only enabled sign-in methods are offered', opts, async () => {
+  const p = await get('/api/account/providers');
+  assert.strictEqual(p.status, 200);
+  assert.strictEqual(p.password, undefined);
+  assert.strictEqual(p.body.password, true);
+  assert.strictEqual(p.body.code, true);
+  // No credentials configured in the test environment, so neither is offered —
+  // a button that cannot work is worse than no button.
+  assert.strictEqual(p.body.google, false);
+  assert.strictEqual(p.body.apple, false);
+});
+
 test('isolation holds — the leak test runs in the pipeline', opts, async () => {
   const { run } = require('../src/scripts/leak-test');
   const out = await run(() => {});
