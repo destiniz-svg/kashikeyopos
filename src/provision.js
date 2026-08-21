@@ -6,6 +6,7 @@
 
 const { owner, forget } = require('./db');
 const { outletPassword } = require('./secrets');
+const handle = require('./handle');
 
 async function nextOutletId(client) {
   const q = await client.query('SELECT coalesce(max(id), 0) + 1 AS n FROM chain.outlet');
@@ -39,7 +40,7 @@ async function provisionOutlet(opts) {
         opts.servicePct == null ? null : Number(opts.servicePct),
         opts.address || null, opts.atoll || null, opts.phone || null,
         opts.tz || null, opts.currency || null, opts.dayStart || null,
-        opts.slug || slugify(opts.name) + '-' + id]);
+        await claimHandle(client, opts, id)]);
 
     // The outlet's own tax version, effective from the day it opens. NONE is a
     // real answer: a business that is not GST-registered charges nothing, and
@@ -81,9 +82,41 @@ async function currentStatutory(client, code) {
   return q.rows.length ? Number(q.rows[0].rate) : 0;
 }
 
-function slugify(s) {
-  return String(s || '').toLowerCase().normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'outlet';
+/* The outlet's public address. A handle the business CHOSE is honoured or
+   refused by name — never quietly swapped for a free one, because they are
+   about to print it. A handle merely DERIVED from the business name is a
+   suggestion, so it steps aside for one that is already taken. */
+async function claimHandle(client, opts, id) {
+  const chosen = opts.slug != null && String(opts.slug).trim() !== '';
+
+  if (chosen) {
+    // A chosen handle is lower-cased and trimmed and NOTHING else. Silently
+    // reshaping "Sea House" into "sea-house" would refuse a handle they never
+    // typed, or worse accept one — the panel does the shaping, in front of
+    // them, and what arrives here is what they saw.
+    const want = String(opts.slug).trim().toLowerCase();
+    const shape = handle.shapeError(want);
+    if (shape) throw Object.assign(new Error(shape), { status: 400 });
+    const why = await client.query('SELECT chain.handle_why($1,$2) AS w', [want, id]);
+    if (why.rows[0].w) {
+      throw Object.assign(new Error(why.rows[0].w), { status: 409 });
+    }
+    return want;
+  }
+
+  const want = handle.normalise(opts.name);
+  const tries = [want];
+  for (let n = 2; n <= 9; n++) tries.push(want + '-' + n);
+  tries.push(want + '-' + id, 'store-' + id);
+  for (const t of tries) {
+    if (!handle.ok(t)) continue;
+    const free = await client.query('SELECT chain.handle_free($1,$2) AS f', [t, id]);
+    if (free.rows[0].f) return t;
+  }
+  // 'store-<id>' is unique by construction, so reaching here means the id is
+  // not what we were told it was. Say that rather than write a wrong address.
+  throw Object.assign(new Error('could not settle on a store address for outlet ' + id),
+    { status: 500 });
 }
 
-module.exports = { provisionOutlet, slugify };
+module.exports = { provisionOutlet, slugify: handle.normalise, claimHandle };

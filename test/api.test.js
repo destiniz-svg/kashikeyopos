@@ -656,6 +656,124 @@ test('isolation holds — the leak test runs in the pipeline', opts, async () =>
   assert.ok(out.results.length >= 12, 'every crossing attempt was made');
 });
 
+/* ═══ A STORE HAS AN ADDRESS ══════════════════════════════════════════════
+   The shape rule is written twice — src/handle.js for the browser, and
+   chain.handle_shape_ok() for the database — and two copies of a rule are two
+   rules the moment one is edited. Every case in test/handle.test.js is run
+   through the SQL half here, so a divergence fails rather than ships. */
+test('the browser rule and the database rule agree on an address', opts, async () => {
+  const HANDLE = require('../src/handle');
+  const cases = ['sea-house', 's3a-h0use-2', 'abc', 'a'.repeat(40),
+    'ab', '', 'a'.repeat(41), '-nope', 'nope-', 'no--pe',
+    'Sea-House', 'sea_house', 'sea house', 'sea.house', 'sea/house'];
+  const q = await db.owner().query(
+    'SELECT h, chain.handle_shape_ok(h) AS ok FROM unnest($1::text[]) AS h', [cases]);
+  q.rows.forEach((r) => assert.strictEqual(r.ok, HANDLE.ok(r.h),
+    JSON.stringify(r.h) + ': the database says ' + r.ok
+    + ' and the browser says ' + HANDLE.ok(r.h)));
+});
+
+test('a reserved address cannot become a store, and the refusal names why', opts, async () => {
+  // Not hypothetical: webmail. and demo. are probed by scanners on the live
+  // domain daily, and before migration 012 either was claimable.
+  for (const h of ['www', 'webmail', 'demo', 'api', 'admin', 'member']) {
+    const why = await db.owner().query('SELECT chain.handle_why($1) AS w', [h]);
+    assert.ok(why.rows[0].w, h + ' must not be free');
+    assert.ok(/reserved for/.test(why.rows[0].w),
+      h + ' is refused by name, not as "invalid": ' + why.rows[0].w);
+  }
+  // And the trigger refuses it even when nothing asked chain.handle_why first.
+  await assert.rejects(
+    db.owner().query("UPDATE chain.outlet SET slug = 'webmail' WHERE id = $1", [outletId]),
+    /reserved/, 'the database refuses it whoever asks');
+});
+
+test('a chosen address is honoured or refused, never quietly swapped', opts, async () => {
+  const { claimHandle } = require('../src/provision');
+  const c = await db.owner().connect();
+  try {
+    const mine = await c.query('SELECT slug FROM chain.outlet WHERE id = $1', [outletId]);
+    const taken = mine.rows[0].slug;
+    // Chosen and free: honoured exactly.
+    assert.strictEqual(await claimHandle(c, { slug: 'reef-grill-test' }, 999), 'reef-grill-test');
+    // Chosen and taken: refused BY NAME. Handing back a different address is
+    // how a business prints one thing and the database holds another.
+    await assert.rejects(() => claimHandle(c, { slug: taken }, 999), /already another/);
+    await assert.rejects(() => claimHandle(c, { slug: 'Sea House' }, 999), /letters, numbers/);
+    // Merely derived from the name: a suggestion, so it steps aside.
+    const derived = await claimHandle(c, { name: taken.replace(/-/g, ' ') }, 999);
+    assert.notStrictEqual(derived, taken, 'a derived address gives way to a taken one');
+    assert.ok(/^[a-z0-9-]+$/.test(derived), derived);
+  } finally { c.release(); }
+});
+
+test('a store answers on its own address; the apex answers with the terminal', opts, async () => {
+  process.env.PORTAL_BASE_DOMAIN = 'kashikeyopos.com';
+  const mine = await db.owner().query('SELECT slug FROM chain.outlet WHERE id = $1', [outletId]);
+  const handle = mine.rows[0].slug;
+
+  const portal = await callHost(handle + '.kashikeyopos.com', 'GET', '/');
+  assert.strictEqual(portal.status, 200);
+  assert.ok(/guest-bridge\.js/.test(portal.text), 'the QR ordering portal');
+  assert.ok(!/kpos-bridge\.js/.test(portal.text), 'and NOT the till');
+
+  const card = await callHost(handle + '.kashikeyopos.com', 'GET', '/member');
+  assert.ok(/guest-bridge\.js/.test(card.text), 'the customer card is on the same address');
+
+  const apex = await callHost('kashikeyopos.com', 'GET', '/');
+  assert.ok(/kpos-bridge\.js/.test(apex.text), 'the apex is the business\'s own software');
+
+  // A guest who mistypes a path on a store's address must not land on the
+  // back office.
+  const stray = await callHost(handle + '.kashikeyopos.com', 'GET', '/nonsense');
+  assert.strictEqual(stray.status, 404);
+  assert.ok(/guest-bridge\.js/.test(stray.text), 'and lands back on the portal');
+
+  // The till has one home, and it is not a store's subdomain.
+  for (const p of ['/pos', '/kds', '/admin', '/onboarding', '/account']) {
+    const r = await callHost(handle + '.kashikeyopos.com', 'GET', p);
+    assert.strictEqual(r.status, 308, p + ' redirects off the store address');
+    assert.strictEqual(r.headers.location, 'https://kashikeyopos.com' + p);
+  }
+});
+
+test('the host mints the same table token the path does', opts, async () => {
+  process.env.PORTAL_BASE_DOMAIN = 'kashikeyopos.com';
+  const mine = await db.owner().query('SELECT slug FROM chain.outlet WHERE id = $1', [outletId]);
+  const handle = mine.rows[0].slug;
+
+  const byHost = await callHost(handle + '.kashikeyopos.com', 'GET', '/api/g/token?t=T04');
+  assert.strictEqual(byHost.status, 200, byHost.text);
+  const a = JSON.parse(byHost.text);
+  assert.strictEqual(a.outlet.slug, handle);
+  assert.strictEqual(a.table, 'T04');
+
+  const byPath = await get('/api/g/' + handle + '/token?t=T04');
+  assert.strictEqual(byPath.body.outlet.id, a.outlet.id, 'the same store, either way');
+
+  // The apex is not a store, and neither is a handle nobody answers to.
+  const onApex = await callHost('kashikeyopos.com', 'GET', '/api/g/token');
+  assert.strictEqual(onApex.status, 404);
+  const nobody = await callHost('nosuchstore.kashikeyopos.com', 'GET', '/api/g/token');
+  assert.strictEqual(nobody.status, 404);
+});
+
+test('the onboarding address check answers the same question the save will', opts, async () => {
+  const mine = await db.owner().query('SELECT slug FROM chain.outlet WHERE id = $1', [outletId]);
+  const taken = mine.rows[0].slug;
+  const cases = [[taken, false], ['webmail', false], ['Sea House', false],
+    ['ab', false], ['a-brand-new-address', true]];
+  for (const [h, free] of cases) {
+    const r = await get('/api/onboarding/handle?h=' + encodeURIComponent(h));
+    assert.strictEqual(r.body.free, free, h + ' -> free=' + r.body.free);
+    if (!free) assert.ok(r.body.why, h + ' is refused with a reason');
+    else assert.strictEqual(r.body.url, 'https://' + h + '.' + r.body.base);
+  }
+  // It also hands back the suggestion, so the panel need not know the rules.
+  const s = await get('/api/onboarding/handle?h=&from=' + encodeURIComponent('Sea House Café'));
+  assert.strictEqual(s.body.suggested, 'sea-house-cafe');
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();
@@ -666,6 +784,23 @@ function uuid() { return require('crypto').randomUUID(); }
 function today() { return new Date().toISOString().slice(0, 10); }
 function round(n) { return Math.round(n * 100) / 100; }
 function today() { return new Date().toISOString().slice(0, 10); }
+
+/* `fetch` refuses to set a Host header, and Host is the whole question here. */
+function callHost(host, method, path) {
+  const http = require('http');
+  const u = new URL(base + path);
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: u.hostname, port: u.port, method,
+      path: u.pathname + u.search, headers: { host: host } }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (d) => { text += d; });
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, text }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 async function call(method, path, body, headers) {
   const res = await fetch(base + path, {

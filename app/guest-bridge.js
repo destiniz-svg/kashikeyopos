@@ -23,10 +23,25 @@
   function slugFromPath() {
     // /g/<slug> is the QR portal, /m/<slug> the member card, /p/<slug> the
     // legacy path. All three name the same store.
+    //
+    // A store's own address — https://<handle>.kashikeyopos.com — names it in
+    // the HOSTNAME instead, and this file does not try to read it there. Only
+    // the server knows where the base domain ends, and a page that guessed
+    // would read "kashikeyopos-staging" off a Railway URL and go looking for a
+    // store by that name. With no slug, token() asks the server instead.
     var m = String(location.pathname || "").match(/^\/(?:g|m|p)\/([a-z0-9-]+)/i);
     if (m) return m[1];
     var q = new URLSearchParams(location.search);
     return q.get("s") || q.get("slug") || "";
+  }
+  /* Could this hostname be naming a store? A single label (localhost) or an
+     apex (example.com) cannot; www is the apex under another name. Anything
+     else might, and the server decides — this only avoids a pointless request
+     on a page that plainly has no store in its address. */
+  function hostCouldName() {
+    var parts = String(location.hostname || "").toLowerCase().split(".");
+    if (parts.length < 3) return false;
+    return parts[0] !== "www";
   }
   function tableFromUrl() {
     var q = new URLSearchParams(location.search);
@@ -60,26 +75,36 @@
   // A token is scoped to one outlet and one table, and it expires. Cached so a
   // guest refreshing the page mid-order does not lose their round.
   function token() {
-    if (!state.slug) return Promise.reject(new Error("no store in this link"));
+    // Either the path named the store, or the address bar did. When it is the
+    // address bar there is no slug to send: /api/g/token resolves the store
+    // from the Host header and answers with the handle it settled on, and
+    // every call after this one is by handle again.
+    var hosted = !state.slug;
+    if (hosted && !hostCouldName()) {
+      return Promise.reject(new Error("no store in this link"));
+    }
     try {
       var kept = JSON.parse(localStorage.getItem(TOKEN_KEY) || "null");
-      if (kept && kept.slug === state.slug && kept.table === state.table
+      if (kept && kept.slug && (hosted ? kept.host === location.hostname
+        : kept.slug === state.slug) && kept.table === state.table
         && kept.exp > Date.now()) {
+        state.slug = kept.slug;
         state.token = kept.token;
         state.outlet = kept.outlet;
         return Promise.resolve(kept.token);
       }
     } catch (e) {}
-    return api("/api/g/" + encodeURIComponent(state.slug) + "/token"
+    return api("/api/g/" + (hosted ? "" : encodeURIComponent(state.slug) + "/") + "token"
       + (state.table ? "?t=" + encodeURIComponent(state.table) : ""))
       .then(function (r) {
         state.token = r.token;
         state.outlet = r.outlet;
+        if (r.outlet && r.outlet.slug) state.slug = r.outlet.slug;
         if (r.table) state.table = r.table;
         try {
           localStorage.setItem(TOKEN_KEY, JSON.stringify({
-            slug: state.slug, table: state.table, token: r.token,
-            outlet: r.outlet, exp: Date.now() + 3.5 * 3600e3
+            slug: state.slug, host: location.hostname, table: state.table,
+            token: r.token, outlet: r.outlet, exp: Date.now() + 3.5 * 3600e3
           }));
         } catch (e) {}
         return r.token;
@@ -292,14 +317,15 @@
     if (typeof root.KPOS_REPAINT === "function") root.KPOS_REPAINT();
   }
 
+  function fail(msg) {
+    // A link with no store in it, or a handle nobody answers to. Say so — a
+    // guest staring at an empty menu has no way to know the link is at fault.
+    root.KPOS_GUEST.error = msg || "This code does not name a store.";
+    try { root.dispatchEvent(new Event("kpos-guest-error")); } catch (e) {}
+  }
+
   function boot() {
-    if (!state.slug) {
-      // A QR with no store in it. Say so — a guest staring at an empty menu
-      // has no way to know the link is the problem.
-      root.KPOS_GUEST.error = "This code does not name a store.";
-      try { root.dispatchEvent(new Event("kpos-guest-error")); } catch (e) {}
-      return;
-    }
+    if (!state.slug && !hostCouldName()) return fail();
     token().then(refresh).then(function () {
       if (state.member) root.KPOS_GUEST_API.memberMe();
       // A table's own round can change under the guest — the till accepts it,

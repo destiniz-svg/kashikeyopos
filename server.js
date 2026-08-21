@@ -3,6 +3,7 @@ const path = require('path');
 const express = require('express');
 const { owner, shutdown } = require('./src/db');
 const { migrate } = require('./src/scripts/migrate');
+const { hostHandle } = require('./src/handle');
 
 // Set when a migration could not finish, and reported by both health
 // endpoints so a half-migrated schema cannot pass for a healthy one.
@@ -57,6 +58,14 @@ app.get('/readyz', async function (req, res) {
   }
 });
 
+/* Which store this request is addressed to — <handle>.kashikeyopos.com — or
+   null for the apex app. Resolved once, before anything routes on it, so the
+   API, the pages and the 404 all read the same answer. */
+app.use(function (req, res, next) {
+  req.storeHandle = hostHandle(req.hostname || req.get('host') || '');
+  next();
+});
+
 app.use('/api', require('./src/routes'));
 
 /* ── the app itself, served from disk. There is no build step: the terminal is
@@ -65,6 +74,10 @@ const APP = path.join(__dirname, 'app');
 app.use(express.static(APP, {
   etag: true,
   maxAge: '5m',
+  // "/" is not a file here: on the apex it is the terminal and on a store's
+  // own address it is that store's ordering portal. Letting static answer it
+  // would hand a guest the till.
+  index: false,
   setHeaders: function (res, file) {
     // The shell must never be cached hard: a stale terminal is a terminal
     // running last month's tax rate.
@@ -81,7 +94,9 @@ require('./src/routes/pages')(app, APP);
 
 app.use(function (req, res) {
   if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'not found' });
-  res.status(404).sendFile(path.join(APP, 'index.html'));
+  // An unknown path falls back to whichever app owns this hostname. A guest on
+  // a store's address who mistypes one must not land on the back office.
+  res.status(404).sendFile(path.join(APP, req.storeHandle ? 'guest.html' : 'index.html'));
 });
 
 app.use(function (err, req, res, next) {          // eslint-disable-line no-unused-vars

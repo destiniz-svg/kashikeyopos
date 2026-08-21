@@ -192,6 +192,12 @@ async function buildBootstrap(ctx) {
       })),
       UNITS: setting.units || [],
       CURRENCIES: setting.currencies || [],
+      /* The domain this install's stores hang off, so the terminal can print a
+         QR that resolves. The till must never SPELL a hostname — a laminated
+         card with a made-up domain on it is on forty tables before anyone
+         scans one. Empty in local development, and every link falls back to a
+         path, which is followable where a wrong hostname is not. */
+      PORTAL: { base: baseDomain() },
       LOCATIONS: locations.rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind })),
       VENDORS: suppliers.rows.map((r) => ({
         id: r.id, name: r.name, trn: r.trn || '', terms: r.terms_days,
@@ -889,6 +895,7 @@ const DEFAULT_TIERS = [
 // The allergen and diet rules are ONE table, shared with every browser that
 // loads kashikeyo-rules.js. The server holds the recipes, so the server is
 // what derives a dish's declaration from them (see src/apply.js).
+const { baseDomain } = require('./handle');
 const { ALLERGENS, DIETS } = require('../app/kashikeyo-rules.js');
 
 module.exports = { buildBootstrap, buildState, all, MODULES, rolesOf, ALLERGENS, DIETS };

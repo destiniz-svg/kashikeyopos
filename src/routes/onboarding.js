@@ -23,6 +23,7 @@
 const express = require('express');
 const { owner, withOutlet } = require('../db');
 const { provisionOutlet } = require('../provision');
+const { normalise, shapeError, baseDomain, storeUrl, memberUrl } = require('../handle');
 const { hashPin, sign, verifyAccount } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { applyOp } = require('../apply');
@@ -168,6 +169,30 @@ async function baseCurrency() {
   return (q.rows[0] || {}).base_currency || 'MVR';
 }
 
+/* Is this store address free? Asked while somebody is typing, so it answers
+   the same question the database will answer when they submit — one function,
+   chain.handle_why(), reached from both — and it says WHY rather than "no". A
+   panel that shows a green tick and then refuses on save is worse than one
+   that never checked. It also hands back the suggestion, so the field can fill
+   itself in from the business name without the page knowing the rules. */
+r.get('/handle', async function (req, res, next) {
+  try {
+    const raw = String(req.query.h || req.query.handle || '');
+    const want = raw.trim().toLowerCase();
+    const suggested = normalise(req.query.from || raw);
+    const shape = shapeError(want);
+    if (shape) {
+      return res.json({ handle: want, free: false, why: shape,
+        suggested: suggested, base: baseDomain(), url: null });
+    }
+    const q = await owner().query('SELECT chain.handle_why($1) AS w', [want]);
+    const why = q.rows[0].w;
+    res.json({ handle: want, free: !why, why: why || null,
+      suggested: suggested, base: baseDomain(),
+      url: why ? null : storeUrl(want, '') });
+  } catch (e) { next(e); }
+});
+
 /* ── 2 · First outlet. Creates the schema and the login role. ───────────── */
 r.post('/outlet', async function (req, res, next) {
   const b = req.body || {};
@@ -185,9 +210,17 @@ r.post('/outlet', async function (req, res, next) {
       address: b.address, atoll: b.atoll, phone: b.phone,
       // An outlet keeps the company's books, so it keeps the company's
       // currency unless it is explicitly given another one.
-      tz: b.tz, currency: b.currency || (await baseCurrency()), dayStart: b.dayStart
+      tz: b.tz, currency: b.currency || (await baseCurrency()), dayStart: b.dayStart,
+      // The store's public address. Absent, provisioning derives one from the
+      // name; given, it is honoured or refused by name — never quietly swapped,
+      // because they are about to print it on the tables.
+      slug: b.slug || b.handle || null
     });
-    res.status(201).json(out);
+    const q = await owner().query('SELECT slug FROM chain.outlet WHERE id = $1', [out.id]);
+    const h = (q.rows[0] || {}).slug || '';
+    res.status(201).json(Object.assign({}, out, {
+      handle: h, storeUrl: storeUrl(h, ''), memberUrl: memberUrl(h)
+    }));
   } catch (e) { next(e); }
 });
 

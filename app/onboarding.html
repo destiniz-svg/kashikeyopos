@@ -200,6 +200,9 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
       fields: [
         { k: "name", label: "Outlet name", req: true, full: true, ph: "e.g. Chaandhanee" },
         { k: "code", label: "Short code", req: true, mono: true, ph: "KOCHA", hint: "Goes in front of every document number. Letters and digits, up to eight." },
+        { k: "slug", label: "Store address", type: "handle", from: "name", full: true,
+          ph: "chaandhanee",
+          hint: "Where your guests scan to. This is printed on the table cards, so it is worth getting right — lower case letters, numbers and hyphens." },
         { k: "kind", label: "What it is", type: "select", options: [
           ["restaurant", "Restaurant — takes money"],
           ["central_kitchen", "Central kitchen — produces, does not sell"],
@@ -217,7 +220,7 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
         { k: "address", label: "Street address", full: true },
         { k: "phone", label: "Telephone" }
       ],
-      foot: "Saving creates the schema, the login role, the document series and the chart of accounts, and records the tax version in force from today.",
+      foot: "Saving creates the schema, the login role, the document series and the chart of accounts, records the tax version in force from today, and reserves the store address for good.",
       write: function (v) {
         v.servicePct = Number(v.servicePct) || 0;
         return post("outlet", v);
@@ -774,6 +777,56 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
     window.scrollTo(0, 0);
   }
 
+  /* A store address is the one field on this panel whose answer is not the
+     business's to decide alone — somebody else may already hold it. So it is
+     checked against the same function the database will use when the step is
+     saved (chain.handle_why), and it shows the whole address rather than the
+     label, because a subdomain read on its own does not look like a place you
+     can go. A field that shows a green tick and then refuses on save is worse
+     than one that never checked. */
+  function wireHandle(wrap, input, f, v) {
+    var note = el("div", { class: "hint" }, "");
+    note.style.marginTop = "2px";
+    wrap.appendChild(note);
+    var timer = null, seq = 0, typed = false;
+    input.addEventListener("input", function () { typed = true; });
+
+    function paint(tone, text) {
+      note.textContent = text;
+      note.style.color = tone === "ok" ? "var(--go-bright)"
+        : tone === "bad" ? "var(--danger-bright)" : "var(--text-muted)";
+    }
+
+    function ask() {
+      var mine = ++seq;
+      var q = "?h=" + encodeURIComponent(input.value || "")
+        + "&from=" + encodeURIComponent(v[f.from] || "");
+      api("GET", "/api/onboarding/handle" + q).then(function (r) {
+        if (mine !== seq) return;                 // a later keystroke won
+        // Nothing typed yet: offer the business's own name as the address,
+        // filled in rather than described, so it can be corrected in place.
+        if (!typed && !input.value && r.suggested) {
+          input.value = r.suggested;
+          v[f.k] = r.suggested;
+          return ask();
+        }
+        if (!input.value) return paint("", "");
+        if (r.free) return paint("ok", "https://" + input.value
+          + (r.base ? "." + r.base : "") + " is free");
+        paint("bad", r.why || "that address cannot be used");
+      }).catch(function () {
+        // The check is a courtesy; the database is the authority. Say that
+        // rather than block a business behind a failed fetch.
+        if (mine === seq) paint("", "Could not check that address just now — saving will tell you.");
+      });
+    }
+
+    input.addEventListener("input", function () {
+      clearTimeout(timer); timer = setTimeout(ask, 350);
+    });
+    ask();
+  }
+
   function renderFields(step, v) {
     var grid = el("div", { class: "grid" });
     (fieldsOf(step) || []).forEach(function (f) {
@@ -800,6 +853,7 @@ td input,td select{min-height:38px;padding:7px 9px;font-size:12.5px}
       input.addEventListener("input", function () { v[f.k] = input.value; });
       input.addEventListener("change", function () { v[f.k] = input.value; });
       wrap.appendChild(input);
+      if (f.type === "handle") wireHandle(wrap, input, f, v);
       if (f.hint) wrap.appendChild(el("div", { class: "hint" }, f.hint));
       grid.appendChild(wrap);
     });

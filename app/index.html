@@ -2975,6 +2975,31 @@ class Component extends DCLogic {
     return t ? t.name : "T" + pad(n);
   }
   slotIsTable(n) { return n !== this.TAKEAWAY && n !== this.DELIVERY; }
+
+  /* ── a store's public address ────────────────────────────────────────────
+     Every outlet answers on its own subdomain — https://<handle>.<base> — and
+     that is what a guest scans off the table and what a member opens for their
+     card. The till never SPELLS the domain: `base` is published by the server
+     in the bootstrap, because a hostname typed into the terminal is a hostname
+     that is right in production and wrong in staging, and a QR card is printed
+     once and stuck to a table for a year.
+
+     With no base domain (local development) every link falls back to the path
+     form, which is followable where a guessed hostname is not. */
+  portalBase() { return String((K().PORTAL || {}).base || ""); }
+  storeHandle(id) { const o = this.outlet(id); return String(o.slug || ""); }
+  storeUrl(path, id) {
+    const h = this.storeHandle(id), base = this.portalBase();
+    if (!h) return "";
+    if (!base) return "/g/" + encodeURIComponent(h) + (path || "");
+    return "https://" + h + "." + base + (path || "");
+  }
+  // The QR carries the table by the LABEL the floor uses, because that is the
+  // name the guest's order comes back under.
+  tableUrl(slot, id) {
+    return this.storeUrl("/?t=" + encodeURIComponent(this.slotName(slot)), id);
+  }
+  memberUrl(id) { return this.storeUrl("/member", id); }
   // One entry point for "start selling into X, and show me the menu".
   // One state write, not three: ensure-then-mutate reads a stale tickets map
   // inside the same batch, and the channel it sets can lose to the blank the
@@ -6127,7 +6152,8 @@ class Component extends DCLogic {
         qrOutlet: o.name,
         qrPoweredStyle: this.brandOf().poweredBy === false ? "display:none"
           : "font-size:7.5px;letter-spacing:.07em;color:#b8b0a4;margin-top:6px",
-        qrUrl: "https://order.kashikeyo.mv/t/" + this.fileTag() + "/" + pad(s.activeTable || 1) + "?k=8f3a91c2e7"
+        qrUrl: this.tableUrl(s.activeTable || 1)
+          || "This outlet has no store address yet — set one in Settings"
       });
     }
 
@@ -9151,7 +9177,10 @@ class Component extends DCLogic {
         { label: "Export flags", go: () => this.downloadCsv("kashikeyo-compliance-flags.csv", [["Raised", "Flag", "Detail", "Amount MVR", "Acknowledged by"]].concat(flags.map((f) => [f.at, f.kind, f.detail, Math.round(f.amt || 0), acks[f.key] || ""]))) }
       ] : [
         { label: "Export CSV", go: () => this.downloadCsv("kashikeyo-audit-log.csv", [["Timestamp", "Actor", "Action", "Details"]].concat(rows.map((l) => [l[0], l[1], l[2], l[3]]))) },
-        { label: "Stream to SIEM", go: () => this.info("Audit stream", "kpos.audit_log → logical replication slot", [["Endpoint", "wss://siem.kashikeyo.mv/ingest", "t"], ["Format", "JSON per row, Lamport-ordered", "t"], ["Rows today", String((window.KPOS_RAW || {}).logs ? (window.KPOS_RAW.logs || []).length : 0)], ["Retention", "13 months hot, 7 years cold", "t"], ["Backfill", "From the oldest unacked WAL position", "t"]]) }
+        // This described a streaming endpoint on a host nobody registered, with
+        // a retention policy nothing implements. The log is real; the stream
+        // was not. Say what is true — an auditor reads this screen.
+        { label: "About this log", go: () => this.info("The audit log", "What is recorded, and where it goes", [["Where it lives", "chain.audit — one append-only row per action", "t"], ["Rows on this screen", String(rows.length)], ["Off-box copy", "None configured on this install", "t"], ["Getting one out", "Export CSV here, or read chain.audit from a replica", "t"]]) }
       ],
       cols: tab === 1
         ? [{ label: "Flag", w: "1.2fr" }, { label: "What happened", w: "3fr" }, { label: "Raised", w: ".9fr", mono: 1 }, { label: "Amount", w: "1fr", a: "right", mono: 1 }, { label: "State", w: "1.1fr", a: "right" }]

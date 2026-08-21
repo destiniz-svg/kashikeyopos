@@ -34,6 +34,30 @@ secret the web tier holds and never sends anywhere.
 They must also be **different values per environment**. Staging and production
 sharing a secret means a staging token opens production.
 
+### The domain stores hang off
+
+| Variable | What it does |
+|---|---|
+| `PORTAL_BASE_DOMAIN` | The domain every store's subdomain hangs off — `kashikeyopos.com`. A leading `*.` is accepted and stripped. |
+| `PUBLIC_URL` | The apex, used for OAuth callbacks — and as the fallback base domain, so a normal deploy sets one variable rather than two. |
+
+Every store answers on `https://<handle>.<base>`, so the DNS record and the
+platform's own certificate have to cover `*.<base>` as well as the apex. On
+Railway that is a second custom domain (`*.kashikeyopos.com`) on the same
+service; the app needs no per-store configuration and provisioning a store
+creates no DNS.
+
+Set `PORTAL_BASE_DOMAIN` **empty** to turn store subdomains off deliberately —
+which is not the same as leaving it unset. An environment whose apex has no
+wildcard record (a staging box on a vendor domain) would otherwise inherit that
+apex from `PUBLIC_URL` and start printing `https://<handle>.<cannot-resolve>` on
+QR cards.
+
+Off — empty, or unset with no `PUBLIC_URL`, as in local development — host
+routing switches off and every store link falls back to its path form
+(`/g/<handle>`). A link that is merely long is followable; a link on a hostname
+that does not resolve is not.
+
 ## First deploy, into an empty database
 
 1. Set the environment variables. Do this **before** the first boot: the

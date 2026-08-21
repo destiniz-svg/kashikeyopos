@@ -28,6 +28,9 @@ src/auth.js            rank gates
 src/routes/            auth · onboarding · outlet · sync · guest · estate · pages
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
+                       008 line identity · 009 GST registration · 010 currency
+                       011 accounts · 012 store handle
+src/handle.js          what a store address is, and where the base domain comes from
 app/index.html         the terminal (POS, KDS, back office) — one app, gated by rank
 app/onboarding.html    the fourteen-step panel an empty install lands on
 app/guest.html         the QR portal
@@ -253,6 +256,52 @@ The same rule applies to anything else on screen. If you cannot measure it, say
 what is true — "Nothing counted on this outlet yet" — and never a plausible
 number.
 
+## Every store has an address
+
+A store's public face is a subdomain, not a path:
+
+```
+https://<handle>.kashikeyopos.com          the QR ordering portal
+https://<handle>.kashikeyopos.com/member   the customer's card
+```
+
+The handle IS `chain.outlet.slug` — one identifier, promoted from an internal
+convenience to a DNS label a business prints on table cards. Migration 012 makes
+it `NOT NULL`, constrains its shape (`chain.handle_shape_ok`: 3–40 characters,
+`a-z0-9-`, no leading, trailing or doubled hyphen) and refuses a **reserved**
+name through a trigger reading `chain.reserved_handle`. `www`, `mail`, `api`,
+`webmail` and `demo` are infrastructure — the last two are probed by scanners on
+the live domain daily, and before 012 a store could have claimed either.
+
+**Nothing spells a hostname.** `src/handle.js` is the only place that knows the
+base domain (`PORTAL_BASE_DOMAIN`, falling back to the host of `PUBLIC_URL`),
+and it is published to the terminal in the bootstrap as `PORTAL.base`. A domain
+typed into a page is right in production and wrong in staging, and a QR card is
+laminated onto forty tables before anyone scans one. `test/handle.test.js` fails
+on a literal store hostname anywhere in `app/`.
+
+**The page never guesses its store out of `location.hostname`.** Only the server
+knows where the base domain ends — a page splitting on the first label reads
+`kashikeyopos-staging` off a Railway URL. On a host-routed page the bridge calls
+`GET /api/g/token` with no slug and the server resolves it from `Host`, answering
+with the handle it settled on; every call after that is by handle again.
+
+`server.js` resolves `req.storeHandle` once, before anything routes on it.
+`express.static` is `index: false` so `/` is decided by host, not by a file, and
+the 404 falls back to whichever app owns the hostname. The till's own paths
+(`/pos`, `/kds`, `/admin`, `/onboarding`, `/account`) 308 back to the apex: one
+sign-in, one set of cookies, not one per store.
+
+A handle the business **chose** is honoured or refused **by name** — never
+quietly swapped for a free one, because they are about to print it. A handle
+merely **derived** from the outlet name is a suggestion, so it steps aside.
+`chain.handle_why()` gives the reason, and the onboarding panel asks the same
+function while somebody is typing, so a green tick cannot be followed by a
+refusal on save.
+
+The path forms `/g/<slug>` and `/m/<slug>` still answer everywhere, for as long
+as the cards printed before a store took its handle stay stuck to the tables.
+
 ## The guest portal and the member card
 
 `/g/<slug>?t=<table>` mints a **table token** scoped to one outlet and one
@@ -293,7 +342,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 80 tests
+npm test                          # 97 tests
 npm run leak-test                 # isolation, on its own
 ```
 

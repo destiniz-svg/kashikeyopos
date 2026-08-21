@@ -937,8 +937,12 @@ BEGIN
     || ' chain.member_code_take(text), chain.member_code_clear(uuid,boolean),'
     || ' chain.member_card(uuid) TO %I', r);
 
-  INSERT INTO chain.outlet (id, code, name, schema_name, db_role)
-  VALUES (p_id, p_code, p_name, s, r)
+  -- The slug is a public store ADDRESS (migration 012), so it is NOT NULL and
+  -- has to exist from the first insert. Provisioning writes a placeholder the
+  -- caller then replaces with the handle the business chose; 'store-<id>' is
+  -- always well-formed and always free, which is what a placeholder owes you.
+  INSERT INTO chain.outlet (id, code, name, schema_name, db_role, slug)
+  VALUES (p_id, p_code, p_name, s, r, 'store-' || p_id)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, code = excluded.code;
 
   INSERT INTO chain.doc_series (outlet_id, kind, prefix) VALUES

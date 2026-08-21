@@ -11,29 +11,48 @@ const { owner, withOutlet, withOutletRead } = require('../db');
 const { signTable, verifyTable, signMember, verifyMember,
   hashPin, pinMatches, randomPin } = require('../secrets');
 const { snapshot } = require('./outlet');
+const { hostHandle } = require('../handle');
 
 const r = express.Router();
 
-// A QR encodes the outlet slug and the table. The token is minted here, not
+// A QR encodes the outlet handle and the table. The token is minted here, not
 // carried in the URL, so a guest cannot retype it onto another table.
-r.get('/:slug/token', async function (req, res, next) {
+async function mintTable(req, res, want) {
+  const o = await owner().query('SELECT id, name, slug FROM chain.outlet'
+    + ' WHERE slug = $1 AND active', [want]);
+  if (!o.rows.length) {
+    // An unknown handle means a QR printed for a store that moved. Say so
+    // rather than silently landing the guest somewhere else.
+    return res.status(404).json({ error: 'That code is not in use here any more — ask for a new one' });
+  }
+  const table = String(req.query.t || '').slice(0, 12) || null;
+  const hours = 4;
+  return res.set('cache-control', 'no-store').json({
+    token: signTable({ o: o.rows[0].id, tb: table, sl: o.rows[0].slug,
+      exp: Date.now() + hours * 3600e3 }),
+    outlet: { id: o.rows[0].id, name: o.rows[0].name, slug: o.rows[0].slug },
+    table: table
+  });
+}
+
+/* The same door opened by the HOST rather than the path. On
+   <handle>.kashikeyopos.com the store is named by the address bar, so the page
+   has no slug to send — and it must not guess one out of location.hostname,
+   because only the server knows where the base domain ends. It answers with
+   the handle it resolved, and every call after this one is by path again. */
+r.get('/token', async function (req, res, next) {
   try {
-    const o = await owner().query('SELECT id, name, slug FROM chain.outlet'
-      + ' WHERE slug = $1 AND active', [req.params.slug]);
-    if (!o.rows.length) {
-      // An unknown handle means a QR printed for a store that moved. Say so
-      // rather than silently landing the guest somewhere else.
-      return res.status(404).json({ error: 'That code is not in use here any more — ask for a new one' });
+    const want = hostHandle(req.hostname || req.get('host') || '');
+    if (!want) {
+      return res.status(404).json({ error: 'This address does not name a store' });
     }
-    const table = String(req.query.t || '').slice(0, 12) || null;
-    const hours = 4;
-    res.set('cache-control', 'no-store').json({
-      token: signTable({ o: o.rows[0].id, tb: table, sl: o.rows[0].slug,
-        exp: Date.now() + hours * 3600e3 }),
-      outlet: { id: o.rows[0].id, name: o.rows[0].name, slug: o.rows[0].slug },
-      table: table
-    });
+    return await mintTable(req, res, want);
   } catch (e) { next(e); }
+});
+
+r.get('/:slug/token', async function (req, res, next) {
+  try { return await mintTable(req, res, req.params.slug); }
+  catch (e) { next(e); }
 });
 
 function guest(req, res, next) {

@@ -62,6 +62,18 @@ a:hover{color:#d63f27}
         </span>
       </div>
 
+      <sc-if value="{{ linkDead }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1;min-height:0;display:flex;flex-direction:column;justify-content:center;padding:20px 26px 40px;animation:qup .2s">
+          <span style="width:54px;height:54px;border-radius:16px;background:#f4f4f5;display:grid;place-items:center">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#8a8a8f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3zM12 9v4M12 16h.01"></path></svg>
+          </span>
+          <div style="margin-top:18px;font-size:26px;font-weight:700;color:#111;letter-spacing:-.035em;line-height:1.14">This link does not open a card</div>
+          <div style="margin-top:9px;font-size:14px;color:#8a8a8f;line-height:1.6;text-wrap:pretty">{{ linkDeadMsg }}</div>
+          <div style="margin-top:20px;padding:13px 15px;border-radius:13px;background:#f7f7f8;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#6a6a70;overflow-x:auto;white-space:nowrap">{{ linkDeadWhere }}</div>
+          <div style="margin-top:18px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">Ask the restaurant for their rewards address — your points are on your phone number, not on this link.</div>
+        </div>
+      </sc-if>
+
       <sc-if value="{{ sSignIn }}" hint-placeholder-val="{{ false }}">
         <div style="flex:1;min-height:0;overflow-y:auto;padding:20px 26px 24px;display:flex;flex-direction:column;animation:qup .2s">
           <div style="padding-top:16px">
@@ -718,7 +730,7 @@ a:hover{color:#d63f27}
 
 </x-dc>
 <template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120"><rect width="120" height="120" rx="27" fill="#c2321c"></rect><text x="60" y="74" font-family="system-ui,sans-serif" font-size="46" font-weight="700" fill="#ffffff" text-anchor="middle">M</text></svg></template>
-<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1000,&quot;height&quot;:940},&quot;shell&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;frame&quot;,&quot;bleed&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;showBrowserChrome&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;host&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;rewards.kashikeyo.mv&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Session&quot;},&quot;outletId&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;3&quot;,&quot;4&quot;,&quot;5&quot;,&quot;6&quot;,&quot;7&quot;],&quot;default&quot;:&quot;3&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Session&quot;}}">
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1000,&quot;height&quot;:940},&quot;shell&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;frame&quot;,&quot;bleed&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;showBrowserChrome&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Frame&quot;},&quot;host&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;store.kashikeyopos.com&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Session&quot;},&quot;outletId&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;3&quot;,&quot;4&quot;,&quot;5&quot;,&quot;6&quot;,&quot;7&quot;],&quot;default&quot;:&quot;3&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Session&quot;}}">
 /* Kashikeyo member portal — the registered-customer half of the QR product.
    The guest app is anonymous and table-bound; this one is a person with a
    history. Same shared surfaces, same money rules:
@@ -1248,7 +1260,10 @@ class Component extends DCLogic {
       islandStyle: M.bare ? "display:none" : "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:124px;height:35px;border-radius:20px;background:#0a0a0a;display:block;z-index:5",
       camStyle: M.bare ? "display:none" : "position:absolute;top:34px;left:calc(50% + 40px);width:11px;height:11px;border-radius:50%;background:#16171b;box-shadow:inset 0 0 0 1.5px #0d0d0f;display:block;z-index:6",
       statusStyle: M.bare ? "display:none" : "flex-shrink:0;height:54px;padding:16px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:#111",
-      host: this.props.host ?? "rewards.kashikeyo.mv",
+      // The address bar shows the address this page is actually at, and the
+      // prop is only a fallback for the design tool. A made-up hostname on a
+      // screenshot is a hostname somebody eventually types.
+      host: (location.host || "") || this.props.host || "",
       scrollRef: (el) => { this._scroll = el; },
       scrollStyle: "flex:1;min-height:0;overflow-y:auto;padding:6px " + M.pad + "px 18px",
       chipRowStyle: "margin:18px -" + M.pad + "px 0;padding:4px " + M.pad + "px 8px;display:flex;gap:10px;overflow-x:auto",
@@ -1285,9 +1300,17 @@ class Component extends DCLogic {
       toastMsg: s.toast ? s.toast.msg : ""
     };
 
+    /* A rewards link outlives the store that sent it. When the bridge could
+       not name a store, say so instead of asking for a phone number nothing
+       is listening for. */
+    const g = window.KPOS_GUEST || {};
+    V.linkDead = !!g.error;
+    V.linkDeadMsg = g.error || "";
+    V.linkDeadWhere = (location.host || "") + (location.pathname || "/");
+
     const signedIn = !!(this.K() && this.member());
-    V.signedIn = signedIn;
-    V.sSignIn = !signedIn;
+    V.signedIn = signedIn && !V.linkDead;
+    V.sSignIn = !signedIn && !V.linkDead;
     V.sCard = signedIn && s.tab === "card";
     V.sOrder = signedIn && s.tab === "order";
     V.sOrders = signedIn && s.tab === "orders";
