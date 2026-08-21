@@ -8,11 +8,31 @@
 <link rel="apple-touch-icon" href="brand/kashikeyo-mark.png">
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="kashikeyo.css">
+<script>
+/* Follow the reader's own setting. The terminal has a theme switcher of its
+   own; a front door does not, and a phone set to dark at midnight should not
+   be handed a white page. Inline and first, so there is no flash of the
+   wrong one. */
+(function () {
+  try {
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)");
+    var set = function () {
+      document.documentElement.setAttribute("data-theme", dark && dark.matches ? "dark" : "light");
+    };
+    set();
+    if (dark && dark.addEventListener) dark.addEventListener("change", set);
+  } catch (e) { /* the light default in the markup stands */ }
+})();
+</script>
 <style>
 /* ═══ THE FRONT DOOR ════════════════════════════════════════════════════════
    Where a business signs up, before it has an outlet, a menu or a till. Four
    ways in — a password, a code to the inbox, Google, Apple — all landing on
    one account, which then owns the business it goes on to create.
+
+   Two panes on a desk, one on a phone. The right-hand pane is not decoration:
+   it says the three things somebody typing their email here has not been told
+   yet, and every one of them is a fact about the build rather than a claim.
 
    The shared stylesheet locks the document down for the TERMINAL, which is an
    app shell with its own scroll panes. This is a form on a phone, so it
@@ -23,127 +43,231 @@ html,body{margin:0;padding:0;height:auto;min-height:100%;overflow-x:hidden;overf
 body{padding-bottom:env(safe-area-inset-bottom,0px);
   background:var(--bg);color:var(--text);
   font-family:'Inter',system-ui,sans-serif;font-size:14px;line-height:1.5;
-  -webkit-font-smoothing:antialiased}
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 
-.shell{min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr);
-  place-items:center;padding:28px 18px 44px}
-.card{width:100%;max-width:420px;min-width:0}
+/* ── the two panes ──────────────────────────────────────────────────────── */
+.shell{min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch}
+@media (min-width:1000px){ .shell{grid-template-columns:minmax(0,1fr) minmax(0,.92fr)} }
 
-.brand{display:flex;align-items:center;gap:12px;margin-bottom:26px}
-.brand img{width:40px;height:40px;border-radius:12px;background:var(--brand-plate);
+.pane{display:flex;flex-direction:column;justify-content:center;min-width:0;
+  padding:clamp(24px,4vw,64px) clamp(18px,5vw,72px) clamp(40px,5vw,64px)}
+.card{width:100%;max-width:452px;margin:0 auto;min-width:0;
+  animation:rise .42s cubic-bezier(.16,.84,.34,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ── identity ───────────────────────────────────────────────────────────── */
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:clamp(26px,4vw,40px)}
+.brand img{width:38px;height:38px;border-radius:12px;background:var(--brand-plate);
   border:1px solid var(--brand-plate-line);object-fit:contain;padding:3px}
-.brand b{font-size:16px;font-weight:800;letter-spacing:-.03em;display:block}
+.brand b{font-size:15px;font-weight:800;letter-spacing:-.03em;display:block;line-height:1.1}
 .brand span{color:var(--brand-olive-bright)}
-.brand small{display:block;font-size:9.5px;color:var(--text-muted);letter-spacing:.09em;
-  text-transform:uppercase;margin-top:1px}
+.brand small{display:block;font-size:9px;color:var(--text-muted);letter-spacing:.1em;
+  text-transform:uppercase;margin-top:3px}
 
-h1{font-size:clamp(22px,5vw,28px);font-weight:800;letter-spacing:-.035em;
-  margin:0 0 7px;text-wrap:balance}
-.sub{font-size:13.5px;color:var(--text-dim);margin:0 0 22px;text-wrap:pretty}
+h1{font-size:clamp(26px,4.2vw,34px);font-weight:800;letter-spacing:-.042em;
+  margin:0 0 8px;text-wrap:balance;line-height:1.08}
+.sub{font-size:14px;color:var(--text-dim);margin:0 0 24px;text-wrap:pretty;max-width:40ch}
 
-.f{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;min-width:0}
-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+/* ── the segmented control: two doors, both visible ─────────────────────── */
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;margin:0 0 24px;
+  background:var(--bg-2);border:1px solid var(--line);border-radius:13px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--text-muted);
+  font:inherit;font-size:13px;font-weight:600;padding:10px 8px;min-height:42px;
+  border-radius:9px;cursor:pointer;transition:background .16s,color .16s}
+.seg button:hover{color:var(--text-dim)}
+.seg button[aria-selected="true"]{background:var(--bg-1);color:var(--text);
+  box-shadow:0 1px 2px rgba(0,0,0,.14);font-weight:700}
+.seg button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+
+/* ── fields ─────────────────────────────────────────────────────────────── */
+.f{display:flex;flex-direction:column;gap:7px;margin-bottom:16px;min-width:0}
+label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.09em;
   color:var(--text-faint)}
-input{background:var(--bg-2);border:1px solid var(--line-2);border-radius:10px;
-  padding:12px 13px;min-height:46px;color:var(--text);font:inherit;font-size:15px;
-  width:100%;outline:none}
-input:focus{border-color:var(--amber);background:var(--bg-1)}
-.hint{font-size:11px;color:var(--text-muted);text-wrap:pretty}
-.err{font-size:12.5px;color:var(--danger-bright);font-weight:600;margin:0 0 14px;
-  text-wrap:pretty}
-.ok{font-size:12.5px;color:var(--go-bright);font-weight:600;margin:0 0 14px;
-  text-wrap:pretty}
+input{background:var(--bg-2);border:1px solid var(--line-2);border-radius:12px;
+  padding:13px 15px;min-height:50px;color:var(--text);font:inherit;font-size:15px;
+  width:100%;outline:none;transition:border-color .14s,background .14s,box-shadow .14s}
+input::placeholder{color:var(--text-faint);opacity:.7}
+input:hover{border-color:var(--line-3)}
+input:focus{border-color:var(--amber);background:var(--bg-1);
+  box-shadow:0 0 0 3px var(--amber-dim)}
+.hint{font-size:11.5px;color:var(--text-muted);text-wrap:pretty}
 
+/* ── the six digits ─────────────────────────────────────────────────────── */
+.otp{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:6px}
+.otp input{text-align:center;font-size:22px;font-weight:700;padding:12px 2px;
+  min-height:58px;font-family:'JetBrains Mono',monospace;letter-spacing:0}
+.otp input:focus{box-shadow:0 0 0 3px var(--amber-dim)}
+
+/* ── what happened ──────────────────────────────────────────────────────── */
+.err,.ok{font-size:13px;font-weight:600;margin:0 0 16px;text-wrap:pretty;
+  padding:11px 13px;border-radius:11px;border:1px solid transparent;line-height:1.5}
+.err{color:var(--danger-bright);background:var(--bad-dim);border-color:var(--danger-line)}
+.ok{color:var(--go-bright);background:var(--ok-dim);border-color:var(--go-line)}
+
+/* ── actions ────────────────────────────────────────────────────────────── */
 button{font:inherit;cursor:pointer}
-button.go{width:100%;padding:14px;min-height:50px;border-radius:12px;border:0;
-  background:var(--amber);color:var(--on-amber);font-size:15px;font-weight:700}
-button.go:disabled{opacity:.45;cursor:not-allowed}
-button.ghost{width:100%;padding:13px;min-height:48px;border-radius:12px;
-  border:1px solid var(--line);background:var(--bg-2);color:var(--text);
+button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+button.go{width:100%;padding:15px;min-height:54px;border-radius:13px;border:0;
+  background:var(--amber);color:var(--on-amber);font-size:15px;font-weight:700;
+  letter-spacing:-.01em;transition:transform .12s,filter .14s;
+  box-shadow:0 1px 2px rgba(0,0,0,.16),0 8px 22px var(--amber-dim)}
+button.go:hover:not(:disabled){filter:brightness(1.06)}
+button.go:active:not(:disabled){transform:translateY(1px)}
+button.go:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+button.ghost{width:100%;padding:13px;min-height:50px;border-radius:12px;
+  border:1px solid var(--line-2);background:var(--bg-1);color:var(--text);
   font-size:14px;font-weight:600;display:flex;align-items:center;
-  justify-content:center;gap:10px;margin-bottom:10px}
+  justify-content:center;gap:10px;transition:background .14s,border-color .14s}
+button.ghost:hover{background:var(--bg-2);border-color:var(--line-3)}
 button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
-  font-weight:600;padding:10px 4px;min-height:40px}
+  font-weight:600;padding:11px 6px;min-height:44px;border-radius:8px}
+button.link:hover{text-decoration:underline}
+.alts{display:grid;gap:10px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:520px){ .alts.two{grid-template-columns:1fr 1fr} }
+.links{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:8px}
 
-.or{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--text-muted);
-  font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.or{display:flex;align-items:center;gap:14px;margin:24px 0;color:var(--text-faint);
+  font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
 .or:before,.or:after{content:"";height:1px;background:var(--line);flex:1}
 
-.codes{display:flex;gap:8px;margin-bottom:14px}
-.codes input{text-align:center;font-size:22px;font-weight:700;letter-spacing:.1em;
-  font-family:'JetBrains Mono',monospace;padding:12px 4px}
-
-.foot{font-size:11.5px;color:var(--text-muted);line-height:1.6;margin-top:20px;
-  padding-top:16px;border-top:1px solid var(--line-soft);text-wrap:pretty}
+.foot{font-size:11.5px;color:var(--text-muted);line-height:1.65;margin-top:26px;
+  padding-top:18px;border-top:1px solid var(--line-soft);text-wrap:pretty}
 .foot b{color:var(--text-dim);font-weight:600}
+
+/* ── the canvas: three facts, not three adjectives ──────────────────────── */
+.canvas{display:none;position:relative;overflow:hidden;
+  background:
+    radial-gradient(120% 90% at 88% 4%, rgba(244,85,60,.24) 0%, transparent 56%),
+    radial-gradient(90% 80% at 6% 96%, rgba(138,148,64,.20) 0%, transparent 58%),
+    linear-gradient(158deg,#241110 0%,#171012 44%,#0e0e10 100%);
+  color:#f3efe8;padding:clamp(40px,5vw,72px)}
+@media (min-width:1000px){ .canvas{display:flex;flex-direction:column;justify-content:center} }
+.canvas:after{content:"";position:absolute;inset:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.05) 1px,transparent 1px);
+  background-size:22px 22px;mask-image:linear-gradient(180deg,#000,transparent 78%)}
+.cv{position:relative;z-index:1;max-width:430px}
+.cv h2{font-size:clamp(24px,2.3vw,31px);font-weight:800;letter-spacing:-.04em;
+  line-height:1.14;margin:0 0 14px;text-wrap:balance;color:#fbf7f1}
+.cv p{font-size:14px;line-height:1.65;color:rgba(243,239,232,.72);margin:0 0 34px;
+  text-wrap:pretty}
+.cv ul{list-style:none;margin:0;padding:0;display:grid;gap:20px}
+.cv li{display:flex;gap:14px;align-items:flex-start}
+.cv .dot{flex-shrink:0;width:30px;height:30px;border-radius:10px;display:grid;
+  place-items:center;background:rgba(255,255,255,.07);
+  border:1px solid rgba(255,255,255,.13);color:#ffb3a3}
+.cv li b{display:block;font-size:13.5px;font-weight:700;letter-spacing:-.015em;
+  color:#fbf7f1;margin-bottom:3px}
+.cv li span{display:block;font-size:12.5px;line-height:1.6;color:rgba(243,239,232,.62);
+  text-wrap:pretty}
+.cv code{font-family:'JetBrains Mono',monospace;font-size:11.5px;
+  color:#ffc9bd;background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px}
+
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
 <div class="shell">
-  <div class="card">
-    <div class="brand">
-      <img src="brand/kashikeyo-mark.png" alt="">
-      <div>
-        <b>Kashikeyo<span>POS</span></b>
-        <small>Restaurant operating platform</small>
-      </div>
-    </div>
-
-    <h1 id="title">Create your account</h1>
-    <p class="sub" id="sub">One account owns the business. Your staff sign in at the till with a four-digit PIN — this is not that.</p>
-
-    <p class="err" id="err" style="display:none"></p>
-    <p class="ok" id="ok" style="display:none"></p>
-
-    <form id="form" novalidate>
-      <div class="f" id="nameWrap">
-        <label for="name">Your name</label>
-        <input id="name" name="name" autocomplete="name" autocapitalize="words">
-      </div>
-      <div class="f" id="emailWrap">
-        <label for="email">Email address</label>
-        <input id="email" name="email" type="email" inputmode="email"
-               autocomplete="email" autocapitalize="off" spellcheck="false">
-      </div>
-      <div class="f" id="pwWrap">
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="new-password">
-        <span class="hint" id="pwHint">Eight characters or more. Or leave it blank and sign in with a code each time.</span>
-      </div>
-      <div id="codeWrap" style="display:none">
-        <div class="f">
-          <label for="code">The six digits we sent you</label>
-          <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code"
-                 maxlength="6" class="codes">
+  <div class="pane">
+    <div class="card">
+      <div class="brand">
+        <img src="brand/kashikeyo-mark.png" alt="">
+        <div>
+          <b>Kashikeyo<span>POS</span></b>
+          <small>Restaurant operating platform</small>
         </div>
       </div>
-      <button class="go" id="submit" type="submit">Create account</button>
-    </form>
 
-    <div id="alts">
-      <div class="or">or</div>
-      <button class="ghost" id="google" style="display:none">
-        <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-4H24v7.5h12c-.2 2-1.6 5-4.5 7l6.9 5.3C42.5 36.2 45 30.7 45 24z"/><path fill="#34A853" d="M24 46c6 0 11-2 14.4-5.3l-6.9-5.3c-1.9 1.3-4.4 2.2-7.5 2.2-5.8 0-10.7-3.8-12.4-9l-7.1 5.5C7.9 41.2 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.6 28.6c-.5-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1l-7.1-5.5C3 17.7 2 20.7 2 24s1 6.3 2.5 9.1l7.1-4.5z"/><path fill="#EA4335" d="M24 10.5c3.3 0 6.2 1.2 8.5 3.3l6.1-6.1C34.9 4.2 30 2 24 2 15.4 2 7.9 6.8 4.5 14.9l7.1 5.5c1.7-5.2 6.6-9.9 12.4-9.9z"/></svg>
-        Continue with Google
-      </button>
-      <button class="ghost" id="apple" style="display:none">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 12.54c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.71-3.19-1.73-1.36-.14-2.65.8-3.34.8-.69 0-1.75-.78-2.88-.76-1.48.02-2.85.86-3.61 2.18-1.54 2.67-.39 6.62 1.11 8.79.73 1.06 1.6 2.25 2.74 2.21 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.71.71 2.87.69 1.19-.02 1.94-1.08 2.66-2.15.84-1.23 1.19-2.42 1.21-2.48-.03-.01-2.32-.89-2.34-3.53zM14.9 5.6c.61-.74 1.02-1.77.91-2.8-.88.04-1.94.59-2.57 1.32-.56.65-1.05 1.7-.92 2.7.98.08 1.98-.5 2.58-1.22z"/></svg>
-        Continue with Apple
-      </button>
+      <h1 id="title">Create your account</h1>
+      <p class="sub" id="sub">One account owns the business. Your staff sign in at the till with a four-digit PIN — this is not that.</p>
+
+      <div class="seg" id="seg" role="tablist" aria-label="Sign up or sign in">
+        <button type="button" role="tab" id="segSignup" data-mode="signup" aria-selected="true">Create account</button>
+        <button type="button" role="tab" id="segSignin" data-mode="signin" aria-selected="false">Sign in</button>
+      </div>
+
+      <p class="err" id="err" style="display:none"></p>
+      <p class="ok" id="ok" style="display:none"></p>
+
+      <form id="form" novalidate>
+        <div class="f" id="nameWrap">
+          <label for="name">Your name</label>
+          <input id="name" name="name" autocomplete="name" autocapitalize="words" placeholder="Ahmed Nasheed">
+        </div>
+        <div class="f" id="emailWrap">
+          <label for="email">Email address</label>
+          <input id="email" name="email" type="email" inputmode="email" placeholder="you@yourrestaurant.mv"
+                 autocomplete="email" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="f" id="pwWrap">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="new-password">
+          <span class="hint" id="pwHint">Eight characters or more. Or leave it blank and sign in with a code each time.</span>
+        </div>
+        <div id="codeWrap" style="display:none">
+          <div class="f">
+            <label for="d1">The six digits we sent you</label>
+            <div class="otp" id="otp">
+              <input id="d1" inputmode="numeric" autocomplete="one-time-code" maxlength="1" aria-label="Digit 1">
+              <input id="d2" inputmode="numeric" maxlength="1" aria-label="Digit 2">
+              <input id="d3" inputmode="numeric" maxlength="1" aria-label="Digit 3">
+              <input id="d4" inputmode="numeric" maxlength="1" aria-label="Digit 4">
+              <input id="d5" inputmode="numeric" maxlength="1" aria-label="Digit 5">
+              <input id="d6" inputmode="numeric" maxlength="1" aria-label="Digit 6">
+            </div>
+            <input id="code" name="code" type="hidden">
+            <span class="hint">It lasts ten minutes and can be used once.</span>
+          </div>
+        </div>
+        <button class="go" id="submit" type="submit">Create account</button>
+      </form>
+
+      <div id="alts">
+        <div class="or">or</div>
+        <div class="alts" id="altBtns">
+          <button class="ghost" id="google" style="display:none">
+            <svg width="17" height="17" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-4H24v7.5h12c-.2 2-1.6 5-4.5 7l6.9 5.3C42.5 36.2 45 30.7 45 24z"/><path fill="#34A853" d="M24 46c6 0 11-2 14.4-5.3l-6.9-5.3c-1.9 1.3-4.4 2.2-7.5 2.2-5.8 0-10.7-3.8-12.4-9l-7.1 5.5C7.9 41.2 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.6 28.6c-.5-1.3-.7-2.7-.7-4.1s.3-2.8.7-4.1l-7.1-5.5C3 17.7 2 20.7 2 24s1 6.3 2.5 9.1l7.1-4.5z"/><path fill="#EA4335" d="M24 10.5c3.3 0 6.2 1.2 8.5 3.3l6.1-6.1C34.9 4.2 30 2 24 2 15.4 2 7.9 6.8 4.5 14.9l7.1 5.5c1.7-5.2 6.6-9.9 12.4-9.9z"/></svg>
+            Google
+          </button>
+          <button class="ghost" id="apple" style="display:none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.05 12.54c-.02-2.2 1.8-3.26 1.88-3.31-1.03-1.5-2.62-1.71-3.19-1.73-1.36-.14-2.65.8-3.34.8-.69 0-1.75-.78-2.88-.76-1.48.02-2.85.86-3.61 2.18-1.54 2.67-.39 6.62 1.11 8.79.73 1.06 1.6 2.25 2.74 2.21 1.1-.04 1.52-.71 2.85-.71 1.33 0 1.71.71 2.87.69 1.19-.02 1.94-1.08 2.66-2.15.84-1.23 1.19-2.42 1.21-2.48-.03-.01-2.32-.89-2.34-3.53zM14.9 5.6c.61-.74 1.02-1.77.91-2.8-.88.04-1.94.59-2.57 1.32-.56.65-1.05 1.7-.92 2.7.98.08 1.98-.5 2.58-1.22z"/></svg>
+            Apple
+          </button>
+        </div>
+      </div>
+
+      <div class="links">
+        <button class="link" id="useCode" type="button">Email me a code instead</button>
+        <button class="link" id="startOver" type="button" style="display:none">Use a different address</button>
+      </div>
+
+      <p class="foot" id="foot">
+        <b>This is the owner's account, not a till login.</b> Once you have set the business up,
+        your staff sign in on the floor with a PIN and their own rank — a waiter never
+        needs this password.
+      </p>
     </div>
-
-    <div style="text-align:center;margin-top:6px">
-      <button class="link" id="toggleMode" type="button">I already have an account</button>
-      <button class="link" id="useCode" type="button">Email me a code instead</button>
-    </div>
-
-    <p class="foot" id="foot">
-      <b>This is the owner's account, not a till login.</b> Once you have set the business up,
-      your staff sign in on the floor with a PIN and their own rank — a waiter never
-      needs this password.
-    </p>
   </div>
+
+  <aside class="canvas" aria-hidden="true">
+    <div class="cv">
+      <h2>The till, the kitchen and the back office, on one set of books.</h2>
+      <p>Set the business up once. The floor, the pass and the ledger all read the same records from the same moment.</p>
+      <ul>
+        <li>
+          <span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h10M4 17h13"/></svg></span>
+          <div><b>One account owns the business</b><span>Your staff tap their face at the till and key four digits. Different people, different credentials.</span></div>
+        </li>
+        <li>
+          <span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"/><path d="M4.5 5.5v13c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-13M4.5 12c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3"/></svg></span>
+          <div><b>Every outlet gets its own database</b><span>Its own schema and its own login role — another outlet's tables are unreachable, not merely hidden.</span></div>
+        </li>
+        <li>
+          <span class="dot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 20h1M17 20h1M20 17h1"/></svg></span>
+          <div><b>Every store gets its own address</b><span id="addrLine">Guests scan the card on the table and order from where they are sitting.</span></div>
+        </li>
+      </ul>
+    </div>
+  </aside>
 </div>
 
 <script>
@@ -159,6 +283,7 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
   var mode = "signup";                       // signup | signin | code
   var pending = "";                          // the address a code went to
   var busy = false;
+  var DIGITS = ["d1", "d2", "d3", "d4", "d5", "d6"];
 
   function token() { try { return localStorage.getItem(KEY) || ""; } catch (e) { return ""; } }
   function keep(t) { try { localStorage.setItem(KEY, t); } catch (e) {} }
@@ -169,6 +294,46 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
     $("ok").style.display = kind === "ok" && msg ? "block" : "none";
     $(kind === "err" ? "err" : "ok").textContent = msg || "";
   }
+
+  /* ── the six boxes ────────────────────────────────────────────────────────
+     Six inputs a thumb can hit, one hidden field the rest of this file reads.
+     Splitting the value across six elements and then asking six elements for
+     it is how a paste of "483920" ends up as "4". */
+  function otpValue() {
+    return DIGITS.map(function (d) { return $(d).value || ""; }).join("");
+  }
+  function otpSync() { $("code").value = otpValue(); }
+  function otpSet(v) {
+    var s = String(v || "").replace(/\D/g, "").slice(0, 6);
+    DIGITS.forEach(function (d, i) { $(d).value = s[i] || ""; });
+    otpSync();
+    var next = Math.min(s.length, 5);
+    $(DIGITS[next]).focus();
+  }
+  DIGITS.forEach(function (d, i) {
+    var el = $(d);
+    el.addEventListener("input", function () {
+      // A phone keyboard, an autofilled one-time code and a paste all arrive
+      // here; any of them may carry more than one digit.
+      var v = (el.value || "").replace(/\D/g, "");
+      if (v.length > 1) return otpSet(otpValue().slice(0, i) + v);
+      el.value = v;
+      otpSync();
+      if (v && i < 5) $(DIGITS[i + 1]).focus();
+      if (otpValue().length === 6) $("form").requestSubmit
+        ? $("form").requestSubmit() : submit();
+    });
+    el.addEventListener("keydown", function (e) {
+      if (e.key === "Backspace" && !el.value && i > 0) { $(DIGITS[i - 1]).focus(); }
+      if (e.key === "ArrowLeft" && i > 0) { e.preventDefault(); $(DIGITS[i - 1]).focus(); }
+      if (e.key === "ArrowRight" && i < 5) { e.preventDefault(); $(DIGITS[i + 1]).focus(); }
+    });
+    el.addEventListener("paste", function (e) {
+      e.preventDefault();
+      otpSet((e.clipboardData || window.clipboardData).getData("text"));
+    });
+    el.addEventListener("focus", function () { el.select(); });
+  });
 
   function api(path, body, headers) {
     return fetch("/api/account" + path, {
@@ -190,10 +355,15 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
     $("title").textContent = code ? "Check your email"
       : signup ? "Create your account" : "Sign in";
     $("sub").textContent = code
-      ? "We sent a six-digit code to " + pending + ". It lasts ten minutes and can be used once."
+      ? "We sent a six-digit code to " + pending + "."
       : signup
         ? "One account owns the business. Your staff sign in at the till with a four-digit PIN — this is not that."
         : "Welcome back.";
+    // The two doors stay visible next to each other; entering a code is a step
+    // INSIDE one of them, not a third door, so the control goes away there.
+    $("seg").style.display = code ? "none" : "grid";
+    $("segSignup").setAttribute("aria-selected", signup ? "true" : "false");
+    $("segSignin").setAttribute("aria-selected", !signup && !code ? "true" : "false");
     $("nameWrap").style.display = signup && !code ? "flex" : "none";
     $("emailWrap").style.display = code ? "none" : "flex";
     $("pwWrap").style.display = code ? "none" : "flex";
@@ -203,10 +373,11 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
       : signup ? "Create account" : "Sign in";
     $("password").setAttribute("autocomplete", signup ? "new-password" : "current-password");
     $("pwHint").style.display = signup ? "block" : "none";
-    $("toggleMode").textContent = signup ? "I already have an account" : "Create an account instead";
-    $("toggleMode").style.display = code ? "none" : "inline-block";
     $("useCode").style.display = code ? "none" : "inline-block";
-    if (code) setTimeout(function () { $("code").focus(); }, 30);
+    // Landing in the code step with no way out is a dead end: the address may
+    // simply have been typed wrong.
+    $("startOver").style.display = code ? "inline-block" : "none";
+    if (code) setTimeout(function () { $("d1").focus(); }, 30);
   }
 
   function land(session) {
@@ -242,7 +413,7 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
           say("ok", r.delivered === "not-sent"
             ? "No email is configured on this install yet — ask whoever runs it for your code. It is in the audit trail."
             : "Code sent. It lasts ten minutes.");
-          if (r.code) { $("code").value = r.code; say("ok", "Development install: your code is " + r.code + "."); }
+          if (r.code) { otpSet(r.code); say("ok", "Development install: your code is " + r.code + "."); }
         }));
       return;
     }
@@ -263,7 +434,7 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
       say("ok", r.delivered === "not-sent"
         ? "No email is configured on this install yet — ask whoever runs it for your code."
         : "Code sent. It lasts ten minutes.");
-      if (r.code) { $("code").value = r.code; say("ok", "Development install: your code is " + r.code + "."); }
+      if (r.code) { otpSet(r.code); say("ok", "Development install: your code is " + r.code + "."); }
     }));
   }
 
@@ -274,10 +445,17 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
   }
 
   $("form").addEventListener("submit", submit);
-  $("toggleMode").addEventListener("click", function () {
-    mode = mode === "signup" ? "signin" : "signup"; say("", ""); paint();
+  ["segSignup", "segSignin"].forEach(function (id) {
+    $(id).addEventListener("click", function () {
+      var want = $(id).getAttribute("data-mode");
+      if (mode === want) return;
+      mode = want; say("", ""); paint();
+    });
   });
   $("useCode").addEventListener("click", useCode);
+  $("startOver").addEventListener("click", function () {
+    mode = "signup"; pending = ""; otpSet(""); say("", ""); paint();
+  });
   $("google").addEventListener("click", function () { location.href = "/api/account/oauth/google/start"; });
   $("apple").addEventListener("click", function () { location.href = "/api/account/oauth/apple/start"; });
 
@@ -296,7 +474,14 @@ button.link{background:none;border:0;color:var(--amber-bright);font-size:13px;
   api("/providers").then(function (p) {
     if (p.google) $("google").style.display = "flex";
     if (p.apple) $("apple").style.display = "flex";
+    if (p.google && p.apple) $("altBtns").className = "alts two";
     if (!p.google && !p.apple) $("alts").style.display = "none";
+    // The store address, spelled by the SERVER. A domain typed into this page
+    // would be right in production and wrong in staging.
+    if (p.base) {
+      $("addrLine").textContent = "Guests scan the card on the table and land on "
+        + "your-store." + p.base + " — the menu and the customer's card, both.";
+    }
   }).catch(function () { $("alts").style.display = "none"; });
 
   // Already signed in? Go where this account belongs.

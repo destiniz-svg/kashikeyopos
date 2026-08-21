@@ -214,8 +214,12 @@ test('the onboarding panel works on a phone', { skip }, async (t) => {
       // screen.
       onPanel: !!document.getElementById('stage') && location.pathname === '/onboarding',
       scrollX: document.documentElement.scrollWidth > window.innerWidth + 2,
+      // getClientRects(), not offsetParent: a position:fixed element has NO
+      // offsetParent, so the moment the action bar was pinned to the bottom of
+      // the phone the primary button stopped being measured at all. The one
+      // control that must never be too small was the one this stopped checking.
       small: [...document.querySelectorAll('#stage button, #stage input, #stage select')]
-        .filter((e) => e.offsetParent && Math.min(
+        .filter((e) => e.getClientRects().length && Math.min(
           e.getBoundingClientRect().width, e.getBoundingClientRect().height) < 36)
         .slice(0, 6).map((e) => e.textContent.trim().slice(0, 18))
     }));

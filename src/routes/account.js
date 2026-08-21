@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const { owner } = require('../db');
 const { hashPin, pinMatches, signAccount, verifyAccount } = require('../secrets');
 const email = require('../email');
+const { baseDomain } = require('../handle');
 
 const r = express.Router();
 
@@ -280,7 +281,11 @@ r.get('/providers', function (req, res) {
     code: true,
     emailTransport: email.configured(),
     google: enabled('google'),
-    apple: enabled('apple')
+    apple: enabled('apple'),
+    // The domain stores hang off, so the front door can name a real address
+    // instead of spelling one. Empty where host routing is off, and the page
+    // then says nothing rather than something that will not resolve.
+    base: baseDomain()
   });
 });
 
