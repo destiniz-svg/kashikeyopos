@@ -143,6 +143,75 @@ test('an op that carries a consequence carries its payload', () => {
     'the payment records what was handed over, not only what was owed');
 });
 
+/* One number says where an order is, and every screen reads it. The pass
+   bumped both lines and finished the table; Orders & Tickets printed the
+   literal word "Open", because it read none of the three places the answer
+   was kept — and the ticket panel kept a fourth of its own, `tk.flow`, that
+   nothing else in the build ever wrote or read. */
+test('the orders list follows the pass, and the pass follows the counter', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  const line = (lid, id) => ({ id: id, lid: lid, qty: 1, note: '', split: 0,
+    fired: true, done: false, since: 1, firedAt: Date.now() });
+  F.state.tickets = Object.assign({}, F.state.tickets, {
+    [key]: Object.assign(F.blankTicket(), {
+      waiter: 'Test Cashier', party: 2, bizDate: F.today(),
+      lines: [line('lid-a', 'm1'), line('lid-b', 'm2')]
+    })
+  });
+
+  const statusOf = () => {
+    F.state.tab = Object.assign({}, F.state.tab, { ordSub: 'open' });
+    const row = F.g_orders().rows[0];
+    return row.cells[row.cells.length - 1].t;
+  };
+
+  assert.strictEqual(statusOf(), 'In the kitchen',
+    'two plates fired and none bumped — the order is with the kitchen');
+
+  // The pass finishes both, one at a time, the way a cook does.
+  const bumps = () => {
+    const v = F.kdsVals();
+    return v.kds.length ? v.kds[0].items : [];
+  };
+  F.setState({ prefs: Object.assign({}, F.prefs(), { kdsStation: 'expo' }) });
+  const first = bumps();
+  assert.ok(first.length, 'the pass has the table');
+  first[0].bump();
+  assert.strictEqual(statusOf(), 'In the kitchen',
+    'one plate up is not a finished table');
+  bumps()[0].bump();
+  assert.strictEqual(statusOf(), 'Ready at the pass',
+    'the kitchen is done — and the orders list is the screen that has to say so');
+
+  // The bump reaches the outlet by TABLE and by LINE. It used to carry a menu
+  // id, which matched no row on the server, so the bump never left the browser.
+  const bump = queued.filter((q) => q.kind === 'kds_bump').pop();
+  assert.ok(bump && bump.payload, 'the bump queued a payload');
+  assert.ok(bump.payload.table, 'kds_bump names its table: ' + JSON.stringify(bump.payload));
+  assert.ok(bump.payload.lid, 'kds_bump names its line: ' + JSON.stringify(bump.payload));
+
+  // The other direction: the counter marks it served, and the ONE rung moves,
+  // carrying the guest's tracker with it.
+  F.ticketPanelVals({ kind: 'ticket', slot: slot }).tkFlows[3].go();
+  assert.strictEqual(statusOf(), 'Served', 'the counter moved the same number');
+  assert.strictEqual(F.ticketStage(slot), 3, 'and the panel reads it back');
+
+  const stage = queued.filter((q) => q.kind === 'fulfil_stage').pop();
+  assert.ok(stage && stage.payload && stage.payload.stage === 3,
+    'the outlet is told the rung, not just an audit line: ' + JSON.stringify(stage && stage.payload));
+  assert.ok(stage.payload.table, 'and which table it belongs to');
+
+  // Dragging it back is a real correction: the food goes back on the pass.
+  F.ticketPanelVals({ kind: 'ticket', slot: slot }).tkFlows[1].go();
+  assert.strictEqual(statusOf(), 'In the kitchen', 'the correction moved everything back');
+  assert.ok(F.state.tickets[key].lines.every((l) => !l.done),
+    'and the plates are cooking again');
+});
+
 test('every queued op carries a client-generated opId', () => {
   const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
   const queued = [];

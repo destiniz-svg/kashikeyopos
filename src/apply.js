@@ -703,11 +703,29 @@ H.dispatch = async (c, p, ctx) => {
   return { dispatchId: d.id, no: no.no, value };
 };
 
-H.fulfil_stage = async (c, p) => {
-  await c.query('UPDATE dispatch SET status = $2, received_at = CASE WHEN $2 ='
-    + " 'received' THEN now() ELSE received_at END WHERE id = $1",
-  [p.id, p.stage || 'in_transit']);
-  return { ok: true };
+// The floor moving an order by hand: a waiter marks it served, a manager drags
+// a wrong rung back. This used to update `dispatch` — a stock transfer between
+// outlets, an entirely different noun — with an id the op does not carry, so it
+// silently changed nothing and the till's status was never anybody else's.
+//
+// Ready or later means the kitchen is done with it, so the pass agrees; earlier
+// puts the food back up, because dragging a stage backwards is a real
+// correction and half of it is worse than neither.
+H.fulfil_stage = async (c, p, ctx) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
+  const rung = Math.max(0, Math.min(3, num(p.stage)));
+  if (rung >= RUNG.READY) {
+    await c.query('UPDATE ticket_line SET ready_at = now(), ready_by = $2'
+      + ' WHERE ticket_id = $1 AND sent_at IS NOT NULL AND ready_at IS NULL',
+    [id, ctx.actor]);
+  } else {
+    await c.query('UPDATE ticket_line SET ready_at = NULL, ready_by = NULL'
+      + ' WHERE ticket_id = $1 AND ready_at IS NOT NULL', [id]);
+  }
+  await setRung(c, id, rung, ctx);
+  await log(c, 'fulfil_stage', 'ticket', id, null, { stage: rung });
+  return { ticketId: id, stage: rung };
 };
 
 // ═══ THE BOOKS ═════════════════════════════════════════════════════════════
@@ -1183,31 +1201,99 @@ H.fire_course = async (c, p, ctx) => {
     [id, ids, p.station || 'main', p.course || null,
       num(p.target) || 12, ctx.actor]);
   if (ids.length) {
-    await c.query('UPDATE ticket_line SET sent_at = now() WHERE id = ANY($1)', [ids]);
+    await c.query('UPDATE ticket_line SET sent_at = now() WHERE id = ANY($1)'
+      + ' AND sent_at IS NULL', [ids]);
   }
+  // A later course reopens an order the pass had already finished. Leaving the
+  // rung at Ready tells the guest their food has arrived while it is being
+  // cooked, so firing always puts the order back in the kitchen.
+  if (id) await setRung(c, id, RUNG.KITCHEN, ctx);
   return { kdsId: k.id, lines: ids.length };
 };
 
+// ── Where an order is ───────────────────────────────────────────────────────
+// Four rungs, the same four the guest's tracker shows. The pass moves it by
+// finishing food; the floor moves it by hand. Both write here, so a kitchen
+// that has finished a table cannot leave the orders list saying "Open".
+const RUNG = { TAKING: 0, KITCHEN: 1, READY: 2, SERVED: 3 };
+
+async function setRung(c, ticketId, n, ctx) {
+  const rung = Math.max(0, Math.min(3, num(n)));
+  await c.query('UPDATE ticket SET stage = $2, stage_at = now(), stage_by = $3'
+    + " WHERE id = $1 AND status <> 'closed'", [ticketId, rung, ctx.actor]);
+  return rung;
+}
+
+// The rung the PASS implies. Nothing fired means nobody has started, and a
+// ticket with food still up is in the kitchen whatever a stale device thinks.
+// "Served" is never inferred: carrying the plates is a person's act, not the
+// absence of one, and inferring it would tell a guest their food arrived while
+// it sat under the lamp.
+async function rungFromPass(c, ticketId) {
+  const r = await one(c, 'SELECT count(*) FILTER (WHERE sent_at IS NOT NULL) AS fired,'
+    + ' count(*) FILTER (WHERE sent_at IS NOT NULL AND ready_at IS NULL) AS cooking'
+    + ' FROM ticket_line WHERE ticket_id = $1 AND void_at IS NULL', [ticketId]);
+  if (!r || !num(r.fired)) return RUNG.TAKING;
+  return num(r.cooking) ? RUNG.KITCHEN : RUNG.READY;
+}
+
+// Which of a ticket's lines an op is talking about. The till names its lines,
+// so a bump sent from a tablet that has never seen a server id still lands on
+// the right plate. No `lids` at all means the whole ticket.
+async function linesOf(c, ticketId, p) {
+  const lids = arr(p.lids).concat(p.lid ? [p.lid] : []).filter(Boolean);
+  if (!lids.length) return null;
+  const q = await c.query('SELECT id FROM ticket_line WHERE ticket_id = $1'
+    + ' AND (client_id = ANY($2::text[]) OR id::text = ANY($2::text[]))',
+  [ticketId, lids.map(String)]);
+  return q.rows.map((r) => r.id);
+}
+
 H.kds_bump = async (c, p, ctx) => {
-  const next = p.stage || 'Ready';
-  await c.query('UPDATE kds_ticket SET stage = $2, bumped_by = $3,'
-    + " ready_at = CASE WHEN $2 = 'Ready' THEN now() ELSE ready_at END,"
-    + " served_at = CASE WHEN $2 = 'Served' THEN now() ELSE served_at END"
-    + ' WHERE id = $1', [p.id, next, ctx.actor]);
-  return { ok: true };
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
+  const ids = await linesOf(c, id, p);
+  // A line comes back up at the pass. `sent_at IS NOT NULL` is not a filter for
+  // tidiness — the constraint refuses a line finished before it was fired, and
+  // a device replaying an old bump must not abort the batch over it.
+  const q = await c.query('UPDATE ticket_line SET ready_at = now(), ready_by = $2'
+    + ' WHERE ticket_id = $1 AND sent_at IS NOT NULL AND ready_at IS NULL'
+    + (ids ? ' AND id = ANY($3)' : ''),
+  ids ? [id, ctx.actor, ids] : [id, ctx.actor]);
+  if (p.kdsId) {
+    await c.query("UPDATE kds_ticket SET stage = 'Ready', ready_at = now(),"
+      + ' bumped_by = $2 WHERE id = $1', [p.kdsId, ctx.actor]);
+  }
+  const rung = await setRung(c, id, await rungFromPass(c, id), ctx);
+  return { ticketId: id, bumped: q.rowCount, stage: rung };
 };
 
+// The expeditor calls the whole table away. Same write, no line filter.
 H.kds_bump_all = async (c, p, ctx) => {
-  const q = await c.query("UPDATE kds_ticket SET stage = 'Served', served_at = now(),"
-    + ' bumped_by = $2 WHERE station = $1 AND served_at IS NULL', [p.station, ctx.actor]);
-  return { bumped: q.rowCount };
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
+  const q = await c.query('UPDATE ticket_line SET ready_at = now(), ready_by = $2'
+    + ' WHERE ticket_id = $1 AND sent_at IS NOT NULL AND ready_at IS NULL', [id, ctx.actor]);
+  await c.query("UPDATE kds_ticket SET stage = 'Served', served_at = now(),"
+    + ' bumped_by = $2 WHERE ticket_id = $1 AND served_at IS NULL', [id, ctx.actor]);
+  const rung = await setRung(c, id, await rungFromPass(c, id), ctx);
+  return { ticketId: id, bumped: q.rowCount, stage: rung };
 };
 
+// A bump undone. The plate goes back on the screen and the order goes back to
+// the kitchen, because the guest was told Ready and it was not.
 H.kds_recall = async (c, p, ctx) => {
+  const id = await ticketRef(c, p);
+  if (!id) return { skipped: 'no open ticket' };
+  const ids = await linesOf(c, id, p);
+  const q = await c.query('UPDATE ticket_line SET ready_at = NULL, ready_by = NULL'
+    + ' WHERE ticket_id = $1 AND ready_at IS NOT NULL' + (ids ? ' AND id = ANY($2)' : ''),
+  ids ? [id, ids] : [id]);
   await c.query("UPDATE kds_ticket SET stage = 'Recalled', served_at = NULL,"
-    + ' bumped_by = $2 WHERE id = $1', [p.id, ctx.actor]);
-  await log(c, 'kds_recall', 'kds_ticket', p.id, null, null);
-  return { ok: true };
+    + ' ready_at = NULL, bumped_by = $2 WHERE ticket_id = $1', [id, ctx.actor]);
+  const rung = await setRung(c, id, await rungFromPass(c, id), ctx);
+  await log(c, 'kds_recall', 'ticket', id, null, { lines: q.rowCount });
+  return { ticketId: id, recalled: q.rowCount, stage: rung };
 };
 
 H.kds_station = async (c, p) => {

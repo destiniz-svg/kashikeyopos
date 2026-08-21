@@ -30,7 +30,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
                        011 accounts · 012 store handle · 013 handle history
-                       014 GST optional
+                       014 GST optional · 015 order stage
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -267,6 +267,51 @@ un-replayed lines may not have reached the outlet yet. **Do not merge
 `"<label>:<split>"` and the floor keys them `"<outletId>:<slot>"`, and mixing
 the two files a bill under a table that does not exist.
 
+## One number says where an order is
+
+A ticket carries a **rung** — `ticket.stage`: 0 taking the order · 1 in the
+kitchen · 2 ready at the pass · 3 served — and a fired line records the moment
+the pass finished it (`ticket_line.ready_at`). That pair is the whole answer,
+and every screen reads it: the KDS, Orders & Tickets, the ticket panel, the QR
+tracker and the member card.
+
+It is deliberately NOT `ticket.status`. That column is the bill's lifecycle —
+open, held, closed, void — and where the food is and whether the money has been
+taken are different questions. A served table that has not paid is exactly the
+row a manager is looking for.
+
+Both directions write here:
+
+- the **pass** finishing food (`kds_bump`, `kds_bump_all`, `kds_recall`) marks
+  the lines and recomputes the rung from them — 1 while anything is still up, 2
+  when nothing is. **Rung 3 is never derived**: carrying the plates is a
+  person's act, not the absence of one;
+- the **floor** moving it by hand (`fulfil_stage`) sets the rung and cascades —
+  Ready or later clears the pass, earlier puts the food back up, because
+  dragging a stage backwards is a real correction and half of it is worse than
+  neither;
+- **firing a course** always returns the order to rung 1, or a later round tells
+  the guest their food has arrived while it is on the grill.
+
+The terminal derives the rung from its own lines only when nothing has written
+one — a ticket adopted from the outlet, a session from an older build. An
+explicit row always wins, because somebody pressed it and the lines were
+cascaded in the same act.
+
+What this replaced is worth knowing, because all four failure modes are the
+same shape — a status nobody else could read:
+
+- Orders & Tickets printed the literal string `"Open"` for every live ticket;
+- the ticket panel kept `tk.flow`, a fifth idea nothing else ever read;
+- `kds_bump` sent a **menu id** to a handler expecting a docket row, and
+  `kds_bump_all` filtered on a station the payload never carried, so neither
+  changed anything on the server;
+- `fulfil_stage` updated **`dispatch`** — a stock transfer between outlets —
+  with an id the op does not carry.
+
+`ticket_status` still has a handler and no call site on purpose: a device that
+was offline across this change may still be holding one in its outbox.
+
 ## Allergens and diets
 
 One table, in `app/kashikeyo-rules.js`, loaded by the browser as a script and by
@@ -414,7 +459,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 123 tests
+npm test                          # 126 tests
 npm run leak-test                 # isolation, on its own
 ```
 

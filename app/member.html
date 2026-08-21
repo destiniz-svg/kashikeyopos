@@ -838,7 +838,14 @@ class Component extends DCLogic {
     // What the pass set on this member's own ticket, as the outlet published
     // it. The stage numbers here are the portal's five: 0 sent, 1 accepted,
     // 2 cooking, 3 ready, 4 served.
+    // The ticket's own rung first: it is the number the pass and the floor both
+    // write, and unlike the docket it is still there once the table is served.
+    const tkt = window.KPOS && window.KPOS.MEMBER_TICKET;
     const live = window.KPOS && window.KPOS.MEMBER_STAGE;
+    if (tkt && typeof tkt.stage === "number") {
+      return { stage: tkt.stage,
+        at: new Date((live && live.at) || Date.now()).getTime(), member: this.state.memberId };
+    }
     if (live) {
       const N = { Received: 0, "In the kitchen": 1, Ready: 2, Served: 3, Recalled: 0 };
       return { stage: N[live.stage] === undefined ? 0 : N[live.stage],

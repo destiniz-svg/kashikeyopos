@@ -1063,6 +1063,115 @@ test('the providers list says WHY a provider is off', opts, async () => {
    application behaves" is not something four route files can promise between
    them. This is the whole lifecycle: unregistered, trading, then registering
    when the threshold is crossed. It runs last because it changes the company. */
+/* ═══ WHERE AN ORDER IS ══════════════════════════════════════════════════════
+   The kitchen ticked both lines done and finished the table; Orders & Tickets
+   still said "Open". Four screens held four different answers and none of them
+   reached the database: the pass bumped a MENU id at an op that wanted a docket
+   row, the whole-table bump filtered on a station the payload never carried,
+   and the floor's own status move wrote to `dispatch` — a stock transfer
+   between outlets, an entirely different noun.
+
+   So none of it survived a refresh either, and the second tablet on the floor
+   never learned any of it.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('the pass finishing the food moves the order everyone reads', opts, async () => {
+  const table = 'T07';
+  const lidA = uuid(), lidB = uuid();
+  await push([
+    { opId: uuid(), kind: 'open_ticket', payload: { table: table, split: 0, covers: 2 } },
+    { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0, lid: lidA, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185 } },
+    { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0, lid: lidB, item: 'm2', name: 'Garlic Rice', qty: 1, price: 45 } }
+  ]);
+
+  const rung = async () => Number((await one('SELECT stage FROM ticket WHERE table_no = $1'
+    + " AND status = 'open'", [table])).stage);
+  const cooking = async () => Number((await one('SELECT count(*)::int AS n FROM ticket_line l'
+    + ' JOIN ticket t ON t.id = l.ticket_id WHERE t.table_no = $1'
+    + ' AND l.sent_at IS NOT NULL AND l.ready_at IS NULL', [table])).n);
+
+  assert.strictEqual(await rung(), 0, 'nothing fired — the order is still being taken');
+
+  await push([{ opId: uuid(), kind: 'fire_course',
+    payload: { table: table, split: 0, lids: [lidA, lidB], station: 'hot', target: 12 } }]);
+  assert.strictEqual(await rung(), 1, 'fired — the order is in the kitchen');
+  assert.strictEqual(await cooking(), 2, 'and both plates are up');
+
+  // One line comes back at the pass. The order stays in the kitchen, because
+  // the other plate is still cooking — this is the half of it a table plated
+  // in pieces gets wrong.
+  await push([{ opId: uuid(), kind: 'kds_bump',
+    payload: { table: table, split: 0, lid: lidA } }]);
+  assert.strictEqual(await cooking(), 1, 'that plate is finished');
+  assert.strictEqual(await rung(), 1, 'the table is not away on one plate');
+
+  // The second one. Now the kitchen is done, and the order says so — to the
+  // orders list, to the floor and to the guest, off one number.
+  await push([{ opId: uuid(), kind: 'kds_bump',
+    payload: { table: table, split: 0, lid: lidB } }]);
+  assert.strictEqual(await cooking(), 0, 'nothing left cooking');
+  assert.strictEqual(await rung(), 2, 'the order is ready at the pass');
+
+  // The terminal reads it back. A tablet coming up mid-service, and the same
+  // tablet after a refresh, must be told what the pass already did.
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const tk = boot.body.state.tickets[table + ':0'];
+  assert.ok(tk, 'the outlet holds the open ticket');
+  assert.strictEqual(tk.stage, 2, 'the bootstrap carries the rung');
+  assert.deepStrictEqual(tk.lines.map((l) => l.done), [true, true],
+    'and which plates the pass has finished');
+
+  // A bump undone puts the food back up and the order back in the kitchen —
+  // the guest was told Ready and it was not.
+  await push([{ opId: uuid(), kind: 'kds_recall',
+    payload: { table: table, split: 0, lids: [lidB] } }]);
+  assert.strictEqual(await rung(), 1, 'recalled — back in the kitchen');
+  assert.strictEqual(await cooking(), 1, 'and the plate is up again');
+});
+
+test('the floor moving the status moves the order, not a stock transfer', opts, async () => {
+  const table = 'T08';
+  const lid = uuid();
+  await push([
+    { opId: uuid(), kind: 'open_ticket', payload: { table: table, split: 0, covers: 2 } },
+    { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0, lid: lid, item: 'm2', name: 'Garlic Rice', qty: 1, price: 45 } },
+    { opId: uuid(), kind: 'fire_course', payload: { table: table, split: 0, lids: [lid], station: 'hot' } }
+  ]);
+
+  const row = async () => one('SELECT stage FROM ticket WHERE table_no = $1'
+    + " AND status = 'open'", [table]);
+  const ready = async () => (await one('SELECT ready_at FROM ticket_line l JOIN ticket t'
+    + ' ON t.id = l.ticket_id WHERE t.table_no = $1', [table])).ready_at;
+
+  // The counter says served. Ready or later means the kitchen is done with it,
+  // so the pass agrees rather than holding the ticket on screen for ever.
+  const r = await push([{ opId: uuid(), kind: 'fulfil_stage',
+    payload: { table: table, split: 0, stage: 3 } }]);
+  assert.strictEqual(r.body.results[0].result.stage, 3, 'the op reports the rung it set');
+  assert.strictEqual(Number((await row()).stage), 3, 'the order is served');
+  assert.ok(await ready(), 'and the pass was cleared with it');
+
+  // Dragging it back is a real correction: the food goes back up.
+  await push([{ opId: uuid(), kind: 'fulfil_stage',
+    payload: { table: table, split: 0, stage: 1 } }]);
+  assert.strictEqual(Number((await row()).stage), 1, 'back in the kitchen');
+  assert.strictEqual(await ready(), null, 'and the plate is cooking again');
+
+  // A later course reopens an order the pass had finished, or the guest is
+  // told Ready while their next round is on the grill.
+  await push([{ opId: uuid(), kind: 'fulfil_stage', payload: { table: table, split: 0, stage: 2 } }]);
+  const lid2 = uuid();
+  await push([
+    { opId: uuid(), kind: 'add_line', payload: { table: table, split: 0, lid: lid2, item: 'm1', name: 'Grilled Reef Fish', qty: 1, price: 185 } },
+    { opId: uuid(), kind: 'fire_course', payload: { table: table, split: 0, lids: [lid2], station: 'hot' } }
+  ]);
+  assert.strictEqual(Number((await row()).stage), 1, 'a fired course reopens the order');
+
+  // The op that used to run here wrote to `dispatch`. Nothing in this outlet's
+  // stock movements has been touched by a waiter pressing Served.
+  const disp = await one('SELECT count(*)::int AS n FROM dispatch');
+  assert.strictEqual(disp.n, 0, 'no stock transfer was invented by a status change');
+});
+
 test('an unregistered business cannot be given a rate to charge', opts, async () => {
   const o = db.owner();
   await o.query("UPDATE chain.outlet SET tax_code = 'NONE'");

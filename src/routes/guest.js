@@ -254,18 +254,21 @@ r.get('/:slug/member/me', member, async function (req, res, next) {
         + ' FROM sale WHERE member_id = $1 AND voided_at IS NULL'
         + ' ORDER BY at DESC LIMIT 25', [req.member.id]);
       const open = await c.query(
-        "SELECT t.id, t.table_no, t.covers,"
+        "SELECT t.id, t.table_no, t.covers, t.stage,"
         + " coalesce(json_agg(json_build_object('id', l.item_id, 'name', l.name,"
-        + "   'qty', l.qty, 'price', l.unit_price, 'sent', l.sent_at IS NOT NULL)"
+        + "   'qty', l.qty, 'price', l.unit_price, 'sent', l.sent_at IS NOT NULL,"
+        + "   'ready', l.ready_at IS NOT NULL)"
         + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
         + ' FROM ticket t LEFT JOIN ticket_line l'
         + '   ON l.ticket_id = t.id AND l.void_at IS NULL'
         + " WHERE t.status = 'open' AND t.member_id = $1 GROUP BY t.id",
         [req.member.id]);
-      // The stage the PASS set, never one this phone inferred from a ticket.
+      // The docket, for the station and the ETA. Where the order IS rides on
+      // the ticket above — this row is cleared the moment the table is served,
+      // so a card that read its stage went blank as the food arrived.
       const stage = open.rows.length ? await c.query(
         'SELECT station, stage, target_mins, fired_at FROM kds_ticket'
-        + ' WHERE ticket_id = $1 AND served_at IS NULL ORDER BY fired_at DESC LIMIT 1',
+        + ' WHERE ticket_id = $1 ORDER BY fired_at DESC LIMIT 1',
         [open.rows[0].id]) : { rows: [] };
       return {
         member: Object.assign({}, card.rows[0], {

@@ -70,6 +70,13 @@ BEGIN
       member_id   uuid,
       note        text,
       guests      jsonb NOT NULL DEFAULT '[]',
+      -- WHERE THE FOOD IS, on the same four rungs the guest's tracker reads:
+      -- 0 taking the order, 1 in the kitchen, 2 ready at the pass, 3 served.
+      -- `status` above is a different question — the bill's lifecycle — and a
+      -- served table that has not paid is the row a manager is looking for.
+      stage       smallint NOT NULL DEFAULT 0,
+      stage_at    timestamptz, stage_by uuid,
+      CONSTRAINT ticket_stage_rung CHECK (stage BETWEEN 0 AND 3),
       CONSTRAINT closed_has_time CHECK (status <> 'closed' OR closed_at IS NOT NULL)
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ticket_open_table
@@ -94,11 +101,18 @@ BEGIN
       -- add_line idempotent under replay.
       client_id  text,
       sent_at    timestamptz,
+      -- When the pass finished it. A bump that lives only in the browser is a
+      -- bump the next tablet never sees, and one refresh puts the whole table
+      -- back on the kitchen screen.
+      ready_at   timestamptz, ready_by uuid,
       void_at    timestamptz, void_by uuid, void_reason text,
       by_staff   uuid, device_id uuid,
-      at         timestamptz NOT NULL DEFAULT now()
+      at         timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT line_ready_was_fired CHECK (ready_at IS NULL OR sent_at IS NOT NULL)
     );
     CREATE INDEX IF NOT EXISTS ticket_line_ticket ON %1$I.ticket_line(ticket_id);
+    CREATE INDEX IF NOT EXISTS ticket_line_cooking ON %1$I.ticket_line(ticket_id)
+      WHERE sent_at IS NOT NULL AND ready_at IS NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS ticket_line_client
       ON %1$I.ticket_line(ticket_id, client_id) WHERE client_id IS NOT NULL;
 

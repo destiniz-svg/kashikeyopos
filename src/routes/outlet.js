@@ -169,10 +169,14 @@ async function snapshot(c, outletId) {
     floor: ['SELECT id, label, seats, zone_id FROM table_def WHERE active'
       + ' ORDER BY pos, label'],
     zones: ['SELECT id, name FROM zone WHERE active ORDER BY pos, name'],
-    tickets: ["SELECT t.id, t.table_no, t.split, t.covers, t.status,"
+    // `stage` is where the order IS — the rung the pass and the floor both
+    // write. The docket rows below carry the station and the ETA, but they
+    // vanish the moment a table is served, so a tracker that read them went
+    // blank exactly when the guest's food was ready.
+    tickets: ["SELECT t.id, t.table_no, t.split, t.covers, t.status, t.stage,"
       + " coalesce(json_agg(json_build_object('id', l.item_id, 'name', l.name,"
       + "   'qty', l.qty, 'price', l.unit_price, 'note', l.note,"
-      + "   'sent', l.sent_at IS NOT NULL)"
+      + "   'sent', l.sent_at IS NOT NULL, 'ready', l.ready_at IS NOT NULL)"
       + "   ORDER BY l.id) FILTER (WHERE l.id IS NOT NULL), '[]') AS lines"
       + ' FROM ticket t LEFT JOIN ticket_line l'
       + '   ON l.ticket_id = t.id AND l.void_at IS NULL'

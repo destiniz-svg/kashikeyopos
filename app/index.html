@@ -2618,6 +2618,11 @@ class Component extends DCLogic {
     const live = (window.KPOS_REAL || {}).state;
     if (!live || !live.tickets) return;
     const mine = {};
+    // Where each adopted order is. The rung is the outlet's, not this device's:
+    // a tablet coming up mid-service has to be told the kitchen already
+    // finished table six, and the same tablet after a refresh has to stop
+    // showing food it bumped ten minutes ago.
+    const rungs = {};
     Object.keys(live.tickets).forEach((k) => {
       const t = live.tickets[k];
       // The outlet names a ticket by its TABLE LABEL; this device keys its map
@@ -2625,6 +2630,7 @@ class Component extends DCLogic {
       // tablet lands on a table number this floor does not have.
       const slot = this.tableSlot(t.table || k.split(":")[0]);
       if (!slot) return;
+      rungs[slot] = Math.max(0, Math.min(3, +t.stage || 0));
       mine[this.state.outletId + ":" + slot] = Object.assign({}, t, {
         status: t.status === "open" ? "occupied" : t.status,
         openedAt: t.opened || Date.now()
@@ -2649,7 +2655,20 @@ class Component extends DCLogic {
       });
       mine[k] = Object.assign({}, there, here, { id: there.id || here.id, lines: lines });
     });
-    this.setState({ tickets: mine });
+    // Adopt the outlet's rung for every table it knows about, keyed the way the
+    // pass and the orders list read it. A ticket this device opened and has not
+    // yet replayed keeps whatever rung it already had — the outlet has never
+    // heard of it, so it has no opinion to adopt.
+    const fulfil = Object.assign({}, this.state.fulfil);
+    Object.keys(rungs).forEach((slot) => {
+      const id = this.stageIdFor(slot);
+      const steps = this.QR_STAGES, n = rungs[slot];
+      fulfil[id] = Object.assign({}, fulfil[id], {
+        kind: "qr", table: this.slotName(+slot), title: this.slotName(+slot),
+        stage: n, of: steps.length, label: steps[n], steps: steps, source: "outlet"
+      });
+    });
+    this.setState({ tickets: mine, fulfil: fulfil }, () => this.writeSession());
   }
   rng(seed) { let s = seed >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
 
@@ -4449,7 +4468,7 @@ class Component extends DCLogic {
       if (!items.length) return;
       // A till that has called this order Ready has taken it off the kitchen's
       // hands. The pass shows what is still being cooked, nothing else.
-      if (this.fStage("QR-T" + pad(num), -1) >= 2) return;
+      if (this.fStage(this.stageIdFor(num), -1) >= 2) return;
       out.push({ key: key, num: num, t: t, items: items, wait: Math.max.apply(null, items.map((l) => this.lineAge(l))) });
     });
     return out.sort((a, b) => b.wait - a.wait);
@@ -4539,7 +4558,9 @@ class Component extends DCLogic {
         cur.lines = cur.lines.map((l, i) => rec.idx.indexOf(i) >= 0 ? Object.assign({}, l, { done: false }) : l);
         t[rec.key] = cur;
         this.setState({ tickets: t, kdsRecall: null });
-        this.queue("kds_recall", rec.name + " recalled to the pass · " + rec.table + " · by " + this.me(), "order_lines");
+        this.queue("kds_recall", rec.name + " recalled to the pass · " + rec.table + " · by " + this.me(),
+          "order_lines", { table: rec.table, split: 0,
+            lids: (rec.idx || []).map((n) => ((t[rec.key] || {}).lines || [])[n]).filter(Boolean).map((l) => l.lid).filter(Boolean) });
         this.toast(rec.name + " is back on " + rec.table);
       },
       kdsFootStyle: list.length ? "margin-top:14px;font-size:11px;color:var(--text-faint);line-height:1.6;text-wrap:pretty" : "display:none",
@@ -4599,7 +4620,13 @@ class Component extends DCLogic {
                 cur.lines[i] = Object.assign({}, cur.lines[i], { done: true, doneAt: Date.now() });
                 t[tk.key] = cur;
                 this.setState({ tickets: t, kdsRecall: { key: tk.key, idx: [i], name: m.name, table: this.slotName(tk.num), at: Date.now() } });
-                this.queue("kds_bump", m.name + " bumped \u00b7 T" + pad(tk.num) + " \u00b7 " + this.me(), "order_lines", { id: m.kdsId || m.id, stage: "Ready" });
+                // Name the TABLE and the LINE, not the dish: the outlet holds
+                // one open ticket per table, and the line carries the id this
+                // till gave it. This used to send a menu id, which matched no
+                // row on the server \u2014 so a bump never left the browser.
+                this.queue("kds_bump", m.name + " bumped \u00b7 T" + pad(tk.num) + " \u00b7 " + this.me(),
+                  "order_lines", { table: this.slotName(tk.num), split: 0,
+                    lid: cur.lines[i].lid, kdsId: cur.lines[i].kdsId || null });
                 this.syncStageFromPass(tk.key, tk.num, cur.lines);
               }
             };
@@ -4633,7 +4660,9 @@ class Component extends DCLogic {
             });
             t[tk.key] = cur;
             this.setState({ tickets: t, kdsRecall: hit.length ? { key: tk.key, idx: hit, name: hit.length + " line" + (hit.length === 1 ? "" : "s"), table: this.slotName(tk.num), at: Date.now() } : this.state.kdsRecall });
-            this.queue("kds_bump_all", (isExpo ? "Table away \u00b7 " : this.stationName(scope) + " cleared \u00b7 ") + this.slotName(tk.num) + " \u00b7 " + this.me(), "orders");
+            this.queue("kds_bump_all", (isExpo ? "Table away \u00b7 " : this.stationName(scope) + " cleared \u00b7 ") + this.slotName(tk.num) + " \u00b7 " + this.me(),
+              "orders", { table: this.slotName(tk.num), split: 0,
+                lids: hit.map((n) => (cur.lines[n] || {}).lid).filter(Boolean) });
             this.syncStageFromPass(tk.key, tk.num, cur.lines);
           }
         };
@@ -5292,8 +5321,8 @@ class Component extends DCLogic {
         // A later course reopens an order the pass had finished: the stage must
         // come back to the kitchen or the guest is told Ready while food cooks.
         if (s.activeTable) {
-          const id = "QR-T" + pad(s.activeTable);
-          if (this.fStage(id, -1) >= 2) this.stageWrite(id, "qr", 1, { table: pad(s.activeTable), title: "Table T" + pad(s.activeTable), source: "pass" });
+          const id = this.stageIdFor(s.activeTable);
+          if (this.fStage(id, -1) >= 2) this.stageWrite(id, "qr", 1, { table: this.slotName(s.activeTable), title: this.slotName(s.activeTable), source: "pass" });
         }
         // The pass is told WHICH lines, by the ids this terminal gave them, so
         // a docket on the kitchen screen is the same lines as the ticket.
@@ -10726,6 +10755,8 @@ class Component extends DCLogic {
       ["credit", "House account", "Charged to the customer"]
     ];
   }
+  // The floor's wording for the four rungs the guest's tracker also reads —
+  // same ladder, same indices, the counter's vocabulary rather than the guest's.
   TICKET_FLOW() {
     return [["open", "Taking order"], ["fired", "In the kitchen"], ["ready", "Ready at the pass"], ["served", "Served"]];
   }
@@ -10735,7 +10766,11 @@ class Component extends DCLogic {
     const tk = (s.tickets || {})[key];
     const blank = { mTicket: true, tkLines: [], tkTotals: [], tkFlows: [], tkTenders: [], tkMeta: [], tkHasRef: false, tkRef: "", tkSettleStyle: "display:none", tkNote: "", tkSettleLabel: "" };
     if (!tk) return Object.assign(blank, { modalTitle: "Ticket closed", modalSub: "Nothing left to settle on this one", tkNote: "This ticket was closed while the panel was open. Its receipt is in the settled list below." });
-    const T = this.totals(tk), flow = m.flow || tk.flow || "open";
+    // Where this order is, read from the one place that holds it. It used to be
+    // `tk.flow`, a field this panel wrote and nothing else in the build ever
+    // read — so the pass, the orders list and the guest's phone all disagreed
+    // with the pills the cashier was looking at.
+    const T = this.totals(tk), flow = this.ticketStage(m.slot);
     const tender = m.tender || "", ref = m.ref || "";
     const setM = (p) => this.setState({ modal: Object.assign({}, this.state.modal, p) });
     const pill = (on) => "flex:1;min-width:84px;padding:9px 10px;border-radius:999px;font-size:11px;font-weight:700;text-align:center;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)");
@@ -10822,19 +10857,18 @@ class Component extends DCLogic {
         { k: "Cash rounding", v: (roundDiff >= 0 ? "+" : "") + MVRc(roundDiff), s: Math.abs(roundDiff) > 0.004 ? "font-size:11.5px;color:var(--text-dim)" : "display:none" },
         { k: "Cash due", v: MVRc(grossDue), s: Math.abs(roundDiff) > 0.004 ? "font-size:13px;font-weight:800;color:var(--warn-bright)" : "display:none" }
       ],
-      tkFlows: this.TICKET_FLOW().map((x) => ({
-        label: x[1], style: pill(flow === x[0]),
+      tkFlows: this.TICKET_FLOW().map((x, i) => ({
+        label: x[1], style: pill(flow === i),
         go: () => {
-          if (flow === x[0]) return;
-          // Read the ticket back out of live state rather than the copy this
+          // Read the rung back out of live state rather than the copy this
           // render closed over — two status changes without an intervening
           // repaint would otherwise write the second on top of the first.
-          const cur = this.state.tickets || {};
-          const tks = Object.assign({}, cur);
-          tks[key] = Object.assign({}, cur[key] || tk, { flow: x[0] });
-          this.setState({ tickets: tks, modal: Object.assign({}, this.state.modal, { flow: x[0] }) });
-          this.queue("ticket_status", this.slotName(m.slot) + " → " + x[1] + " · by " + this.me(), "orders");
-          this.toast(this.slotName(m.slot) + " · " + x[1]);
+          if (this.ticketStage(m.slot) === i) return;
+          // One write, and it moves everything: the pass clears or the food
+          // goes back up, the guest's tracker follows, and the outlet records
+          // it. Ready or later means the kitchen is done with this table.
+          this.setStage(this.stageIdFor(m.slot), "qr", i,
+            { table: this.slotName(m.slot), title: this.slotName(m.slot), source: "floor" });
         }
       })),
       tkTenders: this.TENDER_SET().map((x) => ({
@@ -10886,7 +10920,12 @@ class Component extends DCLogic {
         server: x.t.waiter || "Unassigned",
         tender: ((x.t.payIntent || {}).tender) || "",
         total: this.totals(x.t).total,
-        status: "open"
+        // Where the order actually is. This column printed the literal word
+        // "Open" for every live ticket, so a kitchen that had finished a table
+        // was invisible on the one screen the floor checks — and nobody ran the
+        // food. It now reads the same rung the pass writes and the guest sees.
+        stage: this.ticketStage(x.n),
+        status: this.TICKET_FLOW()[this.ticketStage(x.n)][1]
       }));
     const parked = (s.held || []).filter((h) => h.outletId === s.outletId).map((h) => ({
       parked: true, ref: h.ref, no: h.ref, time: "parked " + h.at,
@@ -10928,7 +10967,7 @@ class Component extends DCLogic {
           o.server,
           o.tender ? this.tenderName(o.tender) : { t: o.live || o.parked ? "—" : this.tenderName(o.tender), c: "var(--text-faint)" },
           { t: MVRc(o.total), c: "var(--warn-bright)", w: 600 },
-          o.live ? { t: "Open", chip: this.chip("warn") } : o.parked ? { t: "Parked", chip: this.chip("info") } : { t: String(o.status || "").charAt(0).toUpperCase() + String(o.status || "").slice(1), chip: this.chip(this.statusTone(o.status)) }
+          o.live ? { t: o.status, chip: this.chip(this.STAGE_TONE()[o.stage] || "warn") } : o.parked ? { t: "Parked", chip: this.chip("info") } : { t: String(o.status || "").charAt(0).toUpperCase() + String(o.status || "").slice(1), chip: this.chip(this.statusTone(o.status)) }
         ]
       }))
     };
@@ -10946,6 +10985,35 @@ class Component extends DCLogic {
     const r = (this.state.fulfil || {})[id];
     return r ? r.stage : (dflt || 0);
   }
+  // A floor ticket and its fulfilment row are the same order, and they join on
+  // this one string. The pass, the ticket panel and the orders list all used to
+  // spell it separately — which is how the kitchen finished a table the orders
+  // list still called Open.
+  stageIdFor(slot) { return "QR-T" + pad(slot); }
+  // Which rung a floor ticket is on.
+  //
+  // An explicit row wins: somebody pressed it, and the pass was cleared or the
+  // food put back up in the same act, so the lines already agree with it. With
+  // no row — a ticket adopted from the outlet, a session written by an older
+  // build, a course fired before anything wrote a stage — the PASS decides,
+  // because food on the grill is not an order still being taken. This is the
+  // same derivation the outlet makes in `rungFromPass`, and "Served" is never
+  // derived: carrying the plates is a person's act, not the absence of one.
+  //
+  // Clamped, because a saved session can carry a delivery's five-rung number
+  // and this ladder has four — a status column must not throw.
+  ticketStage(slot) {
+    const top = this.QR_STAGES.length - 1;
+    const row = (this.state.fulfil || {})[this.stageIdFor(slot)];
+    if (row && typeof row.stage === "number") return Math.max(0, Math.min(top, row.stage));
+    const tk = (this.state.tickets || {})[this.state.outletId + ":" + slot];
+    const fired = ((tk || {}).lines || []).filter((l) => l.fired);
+    if (!fired.length) return 0;
+    return fired.some((l) => !l.done) ? 1 : 2;
+  }
+  // Coloured by who the rung is waiting on: nobody yet, the kitchen, the floor,
+  // the till.
+  STAGE_TONE() { return ["mute", "warn", "ok", "info"]; }
   // The bare write. Callers decide whether it also moves the pass, because the
   // pass calls this too and two sides writing each other must not recurse.
   stageWrite(id, kind, i, meta) {
@@ -10962,7 +11030,11 @@ class Component extends DCLogic {
     const n = Math.max(0, Math.min(steps.length - 1, i));
     if (this.fStage(id, -1) === n) return this.toast(id + " is already at \u201c" + steps[n] + "\u201d", "warn");
     this.stageWrite(id, kind, n, meta);
-    this.queue("fulfil_stage", id + " \u00b7 " + steps[n] + " (step " + (n + 1) + " of " + steps.length + ") \u00b7 by " + this.me(), "order_fulfilment");
+    // The outlet has to learn the rung, not just the audit line: a status moved
+    // on the counter's screen that no other device can read is the defect this
+    // whole ladder exists to close.
+    this.queue("fulfil_stage", id + " \u00b7 " + steps[n] + " (step " + (n + 1) + " of " + steps.length + ") \u00b7 by " + this.me(),
+      "order_fulfilment", { table: (meta && meta.table) || ((this.state.fulfil || {})[id] || {}).table || null, split: 0, stage: n });
     // \u201cReady\u201d means the kitchen is done with it. If the cashier says so, the
     // pass has to agree \u2014 otherwise the ticket sits on the screen forever and
     // the guest is told something the kitchen never heard.
@@ -10976,7 +11048,11 @@ class Component extends DCLogic {
   passKeyFor(id, kind, meta) {
     if (kind === "delivery") return null;
     const raw = (meta && meta.table) || (((this.state.fulfil || {})[id] || {}).table) || "";
-    const num = +String(raw).replace(/^T/, "");
+    // Resolve the table the same way every other adoption does. Stripping a
+    // leading "T" only ever worked for tables actually called T01 — an outlet
+    // that named its tables "Window 1" got NaN here, and the till could not
+    // clear its own pass.
+    const num = this.tableSlot(raw);
     if (!num) return null;
     const key = this.state.outletId + ":" + num;
     return this.state.tickets[key] ? { key: key, num: num } : null;
@@ -10996,20 +11072,21 @@ class Component extends DCLogic {
     t[hit.key] = cur;
     this.setState({ tickets: t });
     this.queue(ready ? "kds_bump_all" : "kds_recall",
-      this.slotName(hit.num) + " \u00b7 " + changed.length + " line(s) " + (ready ? "bumped by the till" : "recalled to the pass") + " \u00b7 " + this.stageSet(kind)[n], "order_lines");
+      this.slotName(hit.num) + " \u00b7 " + changed.length + " line(s) " + (ready ? "bumped by the till" : "recalled to the pass") + " \u00b7 " + this.stageSet(kind)[n],
+      "order_lines", { table: this.slotName(hit.num), split: 0 });
     return true;
   }
   // The other direction: the pass moved, so the stage follows. Nothing left
   // fired and unbumped means the kitchen is finished \u2014 that is Ready.
   syncStageFromPass(key, num, lines) {
-    const id = "QR-T" + pad(num);
+    const id = this.stageIdFor(num);
     const left = (lines || []).filter((l) => l.fired && !l.done).length;
     const any = (lines || []).some((l) => l.fired);
     if (!any) return;
     const steps = this.QR_STAGES;
     const n = left ? 1 : 2;
     if (this.fStage(id, -1) === n) return;
-    this.stageWrite(id, "qr", n, { table: pad(num), title: "Table T" + pad(num), source: "pass" });
+    this.stageWrite(id, "qr", n, { table: this.slotName(num), title: this.slotName(num), source: "pass" });
     this.toast(left
       ? this.slotName(num) + " \u00b7 " + left + " item" + (left === 1 ? "" : "s") + " still cooking \u00b7 guest sees \u201c" + steps[1] + "\u201d"
       : this.slotName(num) + " away \u00b7 guest sees \u201c" + steps[2] + "\u201d");

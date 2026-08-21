@@ -804,12 +804,20 @@ class Component extends DCLogic {
   // The stage the TILL published, never one this phone inferred from the
   // ticket. A guest watching a tracker that guesses is worse than no tracker.
   stage() {
-    // What the pass actually set on this table's ticket.
+    // What the pass actually set on this table's ORDER. The rung lives on the
+    // ticket, so it is still there after the table is served — the docket rows
+    // below are cleared at that moment, and a tracker reading only those went
+    // blank exactly when the guest's food was ready.
     const k = window.KPOS || {};
-    const mine = (k.TICKETS || []).filter((t) => String(t.table) === String(this.state.table))
-      .map((t) => t.id);
+    const STEPS = ["Received", "In the kitchen", "Ready", "Served"];
+    const tks = (k.TICKETS || []).filter((t) => String(t.table) === String(this.state.table));
+    const mine = tks.map((t) => t.id);
+    // A table with two bills on it is as far along as its SLOWEST order: one
+    // round still cooking is not a table that has been served.
+    const rung = tks.length ? Math.min.apply(null, tks.map((t) => Number(t.stage) || 0)) : null;
     const live = (k.STAGES || []).filter((x) => mine.indexOf(x.ticket) >= 0)
       .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))[0];
+    if (rung !== null) return { stage: STEPS[rung], at: live ? live.at : null };
     // The kitchen calls it "Cooking"; a guest is told what that means.
     if (live) return { stage: live.stage === "Cooking" ? "In the kitchen" : live.stage, at: live.at };
     try {

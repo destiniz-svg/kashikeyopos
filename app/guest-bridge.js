@@ -182,9 +182,13 @@
     K.TICKETS = (snap.tickets || []).map(function (t) {
       return {
         id: t.id, table: t.table_no, split: t.split, covers: t.covers,
+        // Where this order is, on the outlet's own record: 0 taking the order,
+        // 1 in the kitchen, 2 ready at the pass, 3 served.
+        stage: Number(t.stage) || 0,
         lines: (t.lines || []).map(function (l) {
           return { id: l.id, name: l.name, qty: Number(l.qty) || 0,
-            price: Number(l.price) || 0, note: l.note || "", sent: !!l.sent };
+            price: Number(l.price) || 0, note: l.note || "",
+            sent: !!l.sent, ready: !!l.ready };
         })
       };
     });
@@ -299,11 +303,16 @@
     });
     K.MEMBER_TICKET = d.ticket ? {
       id: d.ticket.id, table: d.ticket.table_no, covers: d.ticket.covers,
+      // Where the order is, on the outlet's own record.
+      stage: Number(d.ticket.stage) || 0,
       lines: (d.ticket.lines || []).map(function (l) {
         return { id: l.id, name: l.name, qty: Number(l.qty) || 0,
-          price: Number(l.price) || 0 };
+          price: Number(l.price) || 0, sent: !!l.sent, ready: !!l.ready };
       })
     } : null;
+    // The docket: which station has it and how long it was told to take. It is
+    // not where the order IS — that rides on the ticket, so it survives the
+    // moment the table is served.
     K.MEMBER_STAGE = d.stage ? {
       station: d.stage.station,
       stage: d.stage.stage === "Cooking" ? "In the kitchen" : d.stage.stage,

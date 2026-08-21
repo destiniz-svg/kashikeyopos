@@ -706,6 +706,10 @@ function ticketOf(t, lines) {
   return {
     id: t.id, table: t.table_no, split: t.split, channel: t.channel,
     status: t.status, party: t.party, covers: t.covers,
+    // Where the food is, on the outlet's own record. A device that has just
+    // come up, or a second tablet that never saw the bump, reads the rung the
+    // pass actually left rather than guessing one from lines it half-has.
+    stage: t.stage == null ? 0 : Number(t.stage),
     bizDate: t.business_date, opened: ms(t.opened_at),
     waiter: t.server_name || '', member: t.member_id || '',
     note: t.note || '', guests: t.guests || [],
@@ -722,6 +726,9 @@ function ticketOf(t, lines) {
       split: l.guest_ix,
       note: l.note || '', course: l.course || '', station: l.station,
       fired: !!l.sent_at, firedAt: ms(l.sent_at), since: 0,
+      // Finished at the pass. Without it a refresh put every bumped plate back
+      // on the kitchen screen and the table cooked twice.
+      done: !!l.ready_at, doneAt: ms(l.ready_at),
       sent: !!l.sent_at, at: ms(l.at)
     }))
   };
