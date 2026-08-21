@@ -463,6 +463,39 @@ channel, send `code` from the `member/start` handler down it; nothing else
 changes. `MEMBER_CODE_ECHO=1` returns the code in the response and is
 **development only** — it turns a phone number into a login.
 
+### How a customer gets in
+
+A member is born at the counter. A waiter takes a name and a number in Guests &
+Credit, `member_upsert` writes `chain.member`, and the customer signs in at
+their store's own address. **The phone is the identity** — `NOT NULL UNIQUE`,
+with the email nullable — so both the server (`phone = $1 OR lower(email) =
+lower($1)`) and the card accept either half.
+
+**Invite to the portal** is on the customer, not the list, and it is two things
+a person hands across a counter: the address, and a code. `POST /api/outlet/:id/
+member/:memberId/invite` mints one at rank 2, exactly like the one the guest
+requests for themselves — four digits, salted hash, ten minutes, five tries,
+spent on use. Not an outbox op: a code replayed three hours later is a code
+nobody can use.
+
+The whole of that was missing, and each piece failed silently:
+
+- **nothing ever inserted a `chain.member` row.** The till's Add customer queued
+  a kind with no handler and no payload, so `applyOp` recorded it as
+  `unmodelled` and answered success — the toast said the customer was created
+  and the row lived in one browser;
+- **"Invite to portal" toasted "N invites sent by SMS"** while flipping a local
+  flag and sending nothing. `test/wiring.test.js` now fails on any screen that
+  claims a send this build cannot make;
+- **the card demanded an email** to enable its button, so the normal customer —
+  taken at the counter, no address on file — could never sign in and was never
+  told why;
+- **`memberUrl()` returned `/g/<handle>/member`**, which matches no route: a
+  guest handed that address fell through the 404 onto the TERMINAL's sign-in
+  screen. The card's path form is `/m/<handle>`;
+- **the card printed "Member since 2023"** as a literal, for every member, on
+  an install opened last week.
+
 Points are awarded by the outlet from its own earn rate (`chain.setting`
 `loyalty.pointsPer`), never from a number the terminal sent.
 
@@ -483,7 +516,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 126 tests
+npm test                          # 131 tests
 npm run leak-test                 # isolation, on its own
 ```
 

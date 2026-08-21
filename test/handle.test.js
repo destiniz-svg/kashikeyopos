@@ -103,7 +103,11 @@ test('with no base domain configured, a link is a path rather than a guess', () 
     assert.strictEqual(H.hostHandle('reef-grill.kashikeyopos.com'), null);
     // Followable, where a wrong hostname is not.
     assert.strictEqual(H.storeUrl('reef-grill', ''), '/g/reef-grill');
-    assert.strictEqual(H.memberUrl('reef-grill'), '/g/reef-grill/member');
+    // The card is its OWN route, /m/<handle>. This used to be the QR portal's
+    // path with /member glued on, which matches nothing in pages.js — so a
+    // guest handed that address by a server reading it off the till fell
+    // through the 404 and landed on the TERMINAL's sign-in screen.
+    assert.strictEqual(H.memberUrl('reef-grill'), '/m/reef-grill');
   } finally {
     if (pub) process.env.PUBLIC_URL = pub;
     process.env.PORTAL_BASE_DOMAIN = 'kashikeyopos.com';
@@ -250,6 +254,11 @@ test('the QR card prints the address the SERVER published, in both shapes', () =
   assert.strictEqual(F.portalBase(), '');
   assert.strictEqual(F.storeUrl('', o.id), '/g/' + o.slug);
   assert.strictEqual(F.tableUrl(1, o.id), '/g/' + o.slug + '/?t=' + encodeURIComponent(F.slotName(1)));
+  // The card's path form is its OWN route. Gluing /member onto the QR portal's
+  // path gives /g/<handle>/member, which routes nowhere — a guest handed that
+  // address by a server reading it off the till lands on the terminal's own
+  // sign-in screen.
+  assert.strictEqual(F.memberUrl(o.id), '/m/' + o.slug);
 
   // Published: the store's own subdomain, spelled by nobody.
   F.__win.KPOS.PORTAL = { base: 'kashikeyopos.com' };

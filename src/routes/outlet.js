@@ -4,6 +4,7 @@ const { withOutletRead, withOutlet, owner } = require('../db');
 const { shapeError, storeUrl, memberUrl, baseDomain } = require('../handle');
 const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
+const { randomPin, hashPin } = require('../secrets');
 const { buildBootstrap, buildState, all } = require('../bootstrap');
 
 const r = express.Router({ mergeParams: true });
@@ -146,6 +147,52 @@ r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next)
 /* ── the live snapshot both guest portals read. Prices, stages and what is
       owed — no margins, no costs, no staff records. A guest device has no
       business holding those, so they are not in the projection at all. ───── */
+/* ── inviting a customer to their own portal ─────────────────────────────
+   There is no SMS or email transport in this build, so an invite cannot be
+   something the terminal claims to have sent. It is two things a person can
+   hand over across a counter: WHERE to go, and a code to get in with.
+
+   The button used to flip a local flag and toast "invites sent by SMS". It
+   sent nothing. A screen that reports an action it did not take is worse than
+   one that offers no action at all.
+
+   Not an outbox op, for the same reason a rename is not: a sign-in code lives
+   ten minutes, and one that arrives later through a replay queue is a code
+   nobody can use. Rank 2 — the till. Whoever is standing with the guest.
+   ─────────────────────────────────────────────────────────────────────── */
+r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const m = await c.query('SELECT id, name, phone FROM chain.member'
+          + ' WHERE id = $1', [req.params.memberId]);
+        if (!m.rows.length) return null;
+        // Same shape as the code the member requests for themselves: four
+        // digits, hashed with a per-row salt, ten minutes, five tries, spent
+        // on use. What the database holds is never the code.
+        const code = randomPin();
+        const h = hashPin(code, null);
+        await c.query('SELECT chain.member_code_set($1,$2,$3,$4)',
+          [m.rows[0].phone, h.hash, h.salt, 10]);
+        const o = await c.query('SELECT slug FROM chain.outlet WHERE id = $1',
+          [req.ctx.outletId]);
+        await c.query("SELECT chain.log_anon($1,'member_invite','member',$2,$3)",
+          [req.ctx.outletId, m.rows[0].id, JSON.stringify({ by: req.ctx.actor })]);
+        return {
+          member: { id: m.rows[0].id, name: m.rows[0].name, phone: m.rows[0].phone },
+          // The server spells the address, because only the server knows where
+          // the base domain ends. A hostname typed into a terminal is right in
+          // production and wrong in staging.
+          url: memberUrl((o.rows[0] || {}).slug || ''),
+          code: code, mins: 10, tries: 5,
+          via: 'counter'
+        };
+      });
+      if (!out) return res.status(404).json({ error: 'no such customer' });
+      res.set('cache-control', 'no-store').json(out);
+    } catch (e) { next(e); }
+  });
+
 r.get('/snapshot', sameOutlet, async function (req, res, next) {
   try {
     const data = await withOutletRead(req.ctx, (c) => snapshot(c, req.ctx.outletId));

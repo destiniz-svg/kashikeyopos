@@ -100,7 +100,17 @@ function storeUrl(handle, path) {
   return 'https://' + handle + '.' + base + p;
 }
 
-function memberUrl(handle) { return storeUrl(handle, '/member'); }
+/* The card. On a store's own subdomain it is /member; where we do not know the
+   domain the path form is /m/<handle> — a DIFFERENT shape, not /g/<handle>
+   with /member glued on, which routes nowhere and lands a guest on the till's
+   own sign-in screen. The till reads this address out to customers, so a link
+   that only works in production is a link that sends people nowhere in
+   staging. */
+function memberUrl(handle) {
+  const base = baseDomain();
+  if (!base || !ok(handle)) return '/m/' + encodeURIComponent(handle || '');
+  return 'https://' + handle + '.' + base + '/member';
+}
 function tableUrl(handle, table) {
   return storeUrl(handle, '/?t=' + encodeURIComponent(String(table == null ? '' : table)));
 }

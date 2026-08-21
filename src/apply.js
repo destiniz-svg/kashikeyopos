@@ -1357,6 +1357,39 @@ H.flag_ack = async (c, p, ctx) => {
   return { ok: true };
 };
 
+// ═══ THE CUSTOMER ══════════════════════════════════════════════════════════
+// A member is born at the counter: a waiter takes a name and a number. Until
+// this existed the till's "Add customer" form queued a kind with no handler and
+// no payload, so `applyOp` recorded it as unmodelled and returned success —
+// the toast said the customer was created, the row lived in one browser's
+// local overrides, and `chain.member` stayed empty for ever. Which meant
+// nobody could ever sign in to the member portal, because the code function
+// only updates a member who already exists.
+//
+// Keyed on the phone, which is UNIQUE and is what the guest types to sign in.
+// The upsert is what makes it idempotent under replay: the same customer sent
+// twice is one customer, not a duplicate-key failure that aborts the batch.
+//
+// Points are NOT settable here. They are awarded by the outlet from its own
+// earn rate, and a terminal that could post them could mint them.
+H.member_upsert = async (c, p, ctx) => {
+  const phone = String(p.phone || '').trim();
+  if (!phone) return { skipped: 'a member is named by phone number' };
+  const q = await one(c, 'INSERT INTO chain.member (phone, name, email, tier,'
+    + ' credit_limit, home_outlet, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)'
+    + ' ON CONFLICT (phone) DO UPDATE SET'
+    + '   name = coalesce(excluded.name, chain.member.name),'
+    + '   email = coalesce(nullif(excluded.email, $8), chain.member.email),'
+    + '   tier = excluded.tier, credit_limit = excluded.credit_limit,'
+    + '   notes = coalesce(nullif(excluded.notes, $8), chain.member.notes)'
+    + ' RETURNING id, (xmax = 0) AS created',
+  [phone, p.name || null, p.email || null, p.tier || 'Member',
+    num(p.credit), ctx.outletId, p.note || null, '']);
+  await log(c, 'member_upsert', 'member', q.id, null,
+    { phone: phone, created: q.created });
+  return { memberId: q.id, created: q.created };
+};
+
 H.loyalty_update = async (c, p, ctx) => {
   if (p.member && p.points != null) {
     await c.query('UPDATE chain.member SET points = greatest(0, points + $2),'

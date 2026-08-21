@@ -49,7 +49,8 @@ async function buildBootstrap(ctx) {
       chainSettings: ['SELECT key, value FROM chain.setting'],
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
       members: ['SELECT id, phone, name, email, home_outlet, points, tier,'
-        + ' credit_limit, joined_at FROM chain.member ORDER BY joined_at DESC LIMIT 500'],
+        + ' credit_limit, joined_at, last_seen FROM chain.member'
+        + ' ORDER BY joined_at DESC LIMIT 500'],
       // A member's history is DERIVED from this outlet's own receipts. It was
       // once three zeroes on the card, which made every regular look like a
       // first-timer and made the credit limit unenforceable.
@@ -679,7 +680,12 @@ function customerOf(r, h) {
     visits: num(hist.visits), spent: num(hist.spent),
     points: num(r.points), tier: r.tier, credit: num(r.credit_limit),
     used: num(hist.on_account),
-    last: hist.last_visit || '', home: r.home_outlet
+    last: hist.last_visit || '', home: r.home_outlet,
+    // Whether this person has ever actually opened their card. The till used
+    // to carry an invented `portal` flag that no server ever set, so every
+    // customer read as "Registered · order tracking on" — including one who
+    // had never heard of the portal.
+    seen: r.last_seen ? r.last_seen.toISOString().slice(0, 10) : ''
   };
 }
 

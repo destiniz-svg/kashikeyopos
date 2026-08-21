@@ -37,7 +37,7 @@ const CONTRACT = [
   'device_paired', 'device_replay', 'fire_course', 'flag_ack', 'fulfil_stage',
   'fx_rates', 'grn_priced', 'grn_query', 'guest_add', 'kds_bump',
   'kds_bump_all', 'kds_recall', 'kds_station', 'line_note', 'loyalty_update',
-  'maintenance_log', 'mdr_set', 'menu_category_insert', 'menu_import',
+  'maintenance_log', 'mdr_set', 'member_upsert', 'menu_category_insert', 'menu_import',
   'menu_section_insert', 'menu_section_reorder', 'menu_section_update',
   'modifier_update', 'move_table', 'open_register', 'opex_insert',
   'outlet_switch_denied', 'par_set', 'park_bill', 'password_reset',
@@ -69,7 +69,7 @@ test('every kind in the contract has a handler on the server', () => {
   const missing = CONTRACT.filter((k) => typeof HANDLERS[k] !== 'function');
   assert.deepStrictEqual(missing, [],
     'the server would silently drop: ' + missing.join(', '));
-  assert.strictEqual(CONTRACT.length, 115, 'the contract is 115 kinds');
+  assert.strictEqual(CONTRACT.length, 116, 'the contract is 116 kinds');
 });
 
 test('every kind the terminal queues has a handler on the server', () => {
@@ -113,6 +113,17 @@ test('an op that carries a consequence carries its payload', () => {
   F.insertRow('vendors', { id: 'v2', name: 'New Supplier', termsDays: 30 },
     'Supplier added', 'vendors');
   has(grab('vendor_upsert'), ['name']);
+
+  // A customer, taken at the counter. This one queued a kind with no handler
+  // and no payload: the toast said the customer was created, the row lived in
+  // one browser, and the member portal could never let them in.
+  F.insertRow('custs', { id: 'c9', name: 'Aishath Waheed', phone: '9998877',
+    tier: 'Silver', credit: 500, visits: 0, spent: 0, points: 0, used: 0 },
+  'Customer created', 'customers');
+  const cust = grab('member_upsert');
+  has(cust, ['name', 'phone', 'tier', 'credit']);
+  assert.strictEqual(cust.payload.points, undefined,
+    'points are the outlet\'s to award — a till that could send them could mint them');
 
   // A line on an open ticket. This is the op that makes a floor shared: it
   // used to queue a LABEL and no payload, so the outlet never held the ticket
@@ -268,6 +279,21 @@ test('the till does not post its own journal — the server derives it', () => {
     assert.ok(!j.payload || !j.payload.lines,
       'a till-side post_journal must not carry lines — the server already posted them');
   });
+});
+
+/* No screen may report an action the build cannot take. There is no SMS or
+   email transport here, and the customers screen used to toast "N portal
+   invites sent by SMS" while flipping a local flag and sending nothing. */
+test('nothing claims to have sent an SMS', () => {
+  const claims = SRC.split('\n')
+    .map((line, i) => [i + 1, line])
+    // A DENIAL is the correct thing to say — "nothing was sent by SMS" is the
+    // sentence this rule exists to produce, not one it should fail on.
+    .filter(([, line]) => /sent by SMS|sent by sms|SMS sent|texted to/i.test(line))
+    .filter(([, line]) => !/^\s*(\/\/|\*)/.test(line))
+    .filter(([, line]) => !/\b(no|not|never|nothing|without)\b/i.test(line));
+  assert.deepStrictEqual(claims.map(([n, l]) => n + ': ' + l.trim()), [],
+    'this build has no SMS transport, so no screen may say it used one');
 });
 
 test('the audit-only kinds are named, not defaulted', () => {

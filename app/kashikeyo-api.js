@@ -336,6 +336,14 @@
       return this._fetch("/api/outlet/" + this.outletId + "/handle",
         { method: "PATCH", body: { handle: handle } });
     }
+    /* Inviting a customer to their own portal. Not an outbox op: a sign-in
+       code lives ten minutes, and one replayed later is a code nobody can
+       use. The answer carries the address the SERVER spelled, because only
+       the server knows where the base domain ends. */
+    inviteMember(id) {
+      return this._fetch("/api/outlet/" + this.outletId + "/member/"
+        + encodeURIComponent(id) + "/invite", { method: "POST", body: {} });
+    }
     onboarding() { return this._fetch("/api/onboarding/state", { anon: !this.token }); }
     onboard(step, body) {
       return this._fetch("/api/onboarding/" + step, { method: "POST", body, anon: !this.token });

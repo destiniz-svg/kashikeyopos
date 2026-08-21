@@ -3009,7 +3009,16 @@ class Component extends DCLogic {
   tableUrl(slot, id) {
     return this.storeUrl("/?t=" + encodeURIComponent(this.slotName(slot)), id);
   }
-  memberUrl(id) { return this.storeUrl("/member", id); }
+  // The card. On the store's own subdomain it is /member; where there is no
+  // base domain the path form is /m/<handle> — a DIFFERENT shape, not /g/<h>
+  // with /member glued on, which routes nowhere and drops a guest on the
+  // till's own sign-in screen. This address gets read out to customers.
+  memberUrl(id) {
+    const h = this.storeHandle(id), base = this.portalBase();
+    if (!h) return "";
+    if (!base) return "/m/" + encodeURIComponent(h);
+    return "https://" + h + "." + base + "/member";
+  }
   // One entry point for "start selling into X, and show me the menu".
   // One state write, not three: ensure-then-mutate reads a stale tickets map
   // inside the same batch, and the channel it sets can lose to the blank the
@@ -7009,8 +7018,35 @@ class Component extends DCLogic {
         // A house account is why this panel gets opened. Settling it and closing
         // it are the two things a manager does from here, so they sit under the
         // record rather than behind another screen.
-        detailActsStyle: (c.credit && this.can("customers", "e")) ? "display:flex;flex-wrap:wrap;gap:8px;margin-top:9px" : "display:none",
-        detailActs: (c.credit && this.can("customers", "e")) ? [
+        detailActsStyle: this.can("customers", "e") ? "display:flex;flex-wrap:wrap;gap:8px;margin-top:9px" : "display:none",
+        detailActs: (this.can("customers", "e") ? [
+          // The invite, and the whole of it: WHERE their card is, and a code to
+          // get in with. There is no SMS in this build, so it is two things a
+          // person hands across a counter rather than something the terminal
+          // claims to have sent.
+          {
+            label: "Invite to the portal",
+            style: "flex:1 1 150px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
+            go: async () => {
+              const B = window.KPOS_BRIDGE;
+              if (!B || !B.inviteMember) return this.toast("Sign in to the outlet first — the code is minted by the store, not by this device", "warn");
+              try {
+                const r = await B.inviteMember(c.id);
+                this.info("Read this out to " + (r.member || {}).name,
+                  (r.member || {}).phone || c.phone,
+                  [["Their card", r.url, "t"], ["Code", r.code], ["Good for", r.mins + " minutes · " + r.tries + " tries"]],
+                  "They open that address, enter the number above and then this code. "
+                  + "It is spent the moment it is used, and it is not stored anywhere "
+                  + "readable — the outlet keeps a salted hash of it, exactly like a "
+                  + "staff PIN. Nothing was sent by SMS or email: this build has no "
+                  + "transport wired, so the code is handed over the way a restaurant "
+                  + "already verifies a person.");
+              } catch (e) {
+                this.toast("Could not mint a code — " + (e && e.message ? e.message : "the outlet did not answer"), "err");
+              }
+            }
+          }
+        ] : []).concat((c.credit && this.can("customers", "e")) ? [
           {
             label: c.used ? "Settle " + MVRc(c.used) : "Nothing outstanding",
             style: "flex:1 1 150px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;" + (c.used ? "background:var(--amber);color:var(--on-amber);border:1px solid transparent" : "background:var(--bg-2);border:1px solid var(--line);color:var(--text-muted)"),
@@ -7026,9 +7062,9 @@ class Component extends DCLogic {
               this.setState({ modal: null });
             }
           }
-        ] : [],
+        ] : []),
         modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier",
-        detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.portal === false ? "Not invited" : "Registered · order tracking on")],
+        detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.seen ? "Signed in " + c.seen : "Never signed in")],
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -11271,16 +11307,29 @@ class Component extends DCLogic {
     const tier = { Platinum: "purple", Gold: "warn", Silver: "info", Bronze: "mute" };
     return {
       actions: [
+        // This used to say "Invite to portal", flip a local flag and toast
+        // "N invites sent by SMS". It sent nothing — there is no SMS in this
+        // build. A screen reporting an action it did not take is worse than
+        // one offering no action at all. So it says where the portal IS, which
+        // is a fact, and the invite itself lives on the customer who is
+        // standing in front of you.
         {
-          label: "Invite to portal", go: () => {
-            const keys = list.filter((c) => c.portal === false).map((c) => c.id);
-            if (!keys.length) return this.toast("Everyone shown already has portal access", "warn");
-            this.patchRows("custs", keys, { portal: true }, keys.length + " portal invite" + (keys.length > 1 ? "s" : "") + " sent by SMS", "customers");
+          label: "Portal address", go: () => {
+            const url = this.memberUrl();
+            if (!url) return this.toast("This outlet has no store address yet", "warn");
+            this.info("The customer's portal", this.outlet().name,
+              [["Card", url, "t"], ["Table QR", this.storeUrl("/"), "t"],
+                ["Sign-in", "Their phone or email, then a four-digit code", "t"],
+                ["Code lives", "10 minutes · five tries · spent on use", "t"]],
+              "Print it on the bill or a table card. A guest signs themselves in: "
+              + "they ask for a code on that page, it appears on the floor board here, "
+              + "and a server reads it out. Nothing is sent by SMS or email — this build "
+              + "has no transport wired, and it does not pretend otherwise.");
           }
         },
         { label: "Add customer", primary: true, go: () => this.openForm("cust") }
       ],
-      guideTitle: "Loyalty and credit", guide: ["Create the customer — loyalty and credit both key off this row", "A credit limit above zero opens a credit ledger for them", "Charges and settlements are ledger rows, never a balance field", "The limit is enforced in the database, not by the terminal"],
+      guideTitle: "Loyalty and credit", guide: ["Create the customer — loyalty and credit both key off this row", "A credit limit above zero opens a credit ledger for them", "Open a customer to invite them to their portal — the code is read out at the counter", "The credit limit is enforced in the database, not by the terminal"],
       
       cols: [{ label: "Customer", w: "1.6fr" }, { label: "Phone", w: "1.2fr", mono: 1 }, { label: "Tier", w: ".8fr" }, { label: "Visits", w: ".7fr", a: "right", mono: 1 }, { label: "Lifetime", w: "1fr", a: "right", mono: 1 }, { label: "Points", w: ".8fr", a: "right", mono: 1 }, { label: "Credit used", w: "1.2fr", a: "right", mono: 1 }, { label: "Last visit", w: ".9fr", a: "right" }],
       rows: list.map((c) => ({
@@ -11452,6 +11501,18 @@ class Component extends DCLogic {
         id: r.id, name: r.name, kind: r.kind || "percent",
         value: num(r.pct || r.value), code: r.code, maxPct: num(r.maxPct),
         channels: r.channels, active: r.active !== false
+      })],
+      // A customer, named by the phone number they will sign in with. Without
+      // this mapping "Add customer" queued a kind with no handler and no
+      // payload: the toast said the customer was created, the row lived in
+      // this browser and nowhere else, and the member portal could never let
+      // them in — the code function only updates a member who already exists.
+      //
+      // Points are absent on purpose. They are awarded by the outlet from its
+      // own earn rate; a till that could post them could mint them.
+      custs: ["member_upsert", (r) => ({
+        name: r.name, phone: r.phone, email: r.email || null,
+        tier: r.tier || "Member", credit: num(r.credit)
       })]
     };
   }
@@ -13802,7 +13863,7 @@ class Component extends DCLogic {
           if (!v.name || v.phone.trim().length < 8) return this.toast("Name and a full phone number are required", "warn");
           this.insertRow("custs", {
             id: this.nextId("custs", "c"), name: v.name, phone: v.phone, visits: 0, spent: 0, points: 0,
-            tier: v.tier, credit: +v.credit || 0, used: 0, last: "never", portal: false
+            tier: v.tier, credit: +v.credit || 0, used: 0, last: "never", seen: ""
           }, "Customer created · " + v.name, "customers");
         }
       },

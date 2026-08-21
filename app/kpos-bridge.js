@@ -203,6 +203,10 @@
        the cards are already on the tables — so the terminal re-reads the
        bootstrap afterwards rather than patching a slug it half knows. */
     handle: function (want) { return api.handle(want); },
+    /* Where a customer's card lives, and a code to get into it — read out at
+       the counter, because this build sends no SMS and will not pretend it
+       did. */
+    inviteMember: function (id) { return api.inviteMember(id); },
     rename: async function (h) {
       var r = await api.rename(h);
       hydrate(await api.bootstrap());

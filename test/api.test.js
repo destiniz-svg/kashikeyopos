@@ -485,6 +485,126 @@ test('a member reaches their own card and nobody else\'s', opts, async () => {
     'a table token cannot read a membership');
 });
 
+/* ═══ HOW A CUSTOMER GETS IN ════════════════════════════════════════════════
+   The whole member portal — the card, the points, the order tracker, the
+   receipts — assumed a `chain.member` row existed. Nothing in the build ever
+   created one. The till's "Add customer" queued a kind with no handler and no
+   payload, so `applyOp` recorded it as unmodelled and answered success: the
+   toast said the customer was created and the row lived in one browser.
+
+   So nobody could be invited and nobody could sign in, on any real install.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a customer taken at the counter reaches the outlet, and can sign in',
+  opts, async () => {
+    const phone = '9998877';
+    const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Aishath Waheed', phone: phone, email: 'aishath@example.mv',
+      tier: 'Silver', credit: 500
+    } }]);
+    const res = r.body.results[0].result;
+    assert.ok(res.memberId, 'the outlet holds the customer');
+    assert.strictEqual(res.created, true, 'and this one is new');
+
+    const row = await one('SELECT * FROM chain.member WHERE phone = $1', [phone]);
+    assert.strictEqual(row.name, 'Aishath Waheed', 'by name');
+    assert.strictEqual(Number(row.credit_limit), 500, 'with the credit the manager granted');
+    assert.strictEqual(Number(row.points), 0,
+      'and no points — those are the outlet\'s to award, never the till\'s to send');
+
+    // A replayed outbox is one customer, not two. The phone is the identity.
+    const again = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Aishath Waheed', phone: phone, tier: 'Gold', credit: 500
+    } }]);
+    assert.strictEqual(again.body.results[0].result.created, false, 'the second is an update');
+    const n = await one('SELECT count(*)::int AS n FROM chain.member WHERE phone = $1', [phone]);
+    assert.strictEqual(n.n, 1, 'one customer, however many times the till sent them');
+    const up = await one('SELECT tier FROM chain.member WHERE phone = $1', [phone]);
+    assert.strictEqual(up.tier, 'Gold', 'and the update landed');
+
+    // The invite. No SMS in this build, so it is what a person hands across a
+    // counter: where the card is, and a code to get in with.
+    const inv = await post('/api/outlet/' + outletId + '/member/' + res.memberId
+      + '/invite', {}, token);
+    assert.strictEqual(inv.status, 200, JSON.stringify(inv.body));
+    assert.match(String(inv.body.code), /^\d{4}$/, 'four digits');
+    assert.strictEqual(inv.body.via, 'counter', 'and it says how it travels');
+    // The address the SERVER spelled — absolute on a store's own subdomain,
+    // /m/<handle> where there is no base domain. Never the QR portal's path
+    // with /member glued on, which routes nowhere.
+    assert.match(String(inv.body.url), /(^\/m\/[a-z0-9-]+$)|(^https:\/\/[a-z0-9-]+\..+\/member$)/,
+      'the address the SERVER spelled: ' + inv.body.url);
+
+    // That code signs them in on their own card, through the guest portal.
+    const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const slug = b.body.kpos.OUTLETS[0].slug;
+    const t = await get('/api/g/' + slug + '/token');
+    const table = { 'x-table-token': t.body.token };
+    const ok = await postWith('/api/g/' + slug + '/member/verify',
+      { id: phone, code: inv.body.code }, table);
+    assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+    assert.ok(ok.body.token, 'a member token is minted from a code read out at the till');
+
+    // Spent on use, exactly like the one they request themselves.
+    const replay = await postWith('/api/g/' + slug + '/member/verify',
+      { id: phone, code: inv.body.code }, table);
+    assert.strictEqual(replay.status, 401, 'the code is spent');
+
+    // And the till now reports something it actually knows: they have been in.
+    const b2 = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const me = (b2.body.kpos.CUSTOMERS || []).find((c) => c.phone === phone);
+    assert.ok(me, 'the customer is on the terminal');
+    assert.match(String(me.seen), /^\d{4}-\d{2}-\d{2}$/,
+      'signed in on a real date — not an invented "Registered" flag');
+  });
+
+test('a member signs in by PHONE, which is what the outlet files them under',
+  opts, async () => {
+    // `chain.member.phone` is NOT NULL UNIQUE and the email is nullable; the
+    // till's Add customer form asks for a name and a phone and has no email
+    // field at all. The card demanded an email to enable its button, so the
+    // normal customer — taken at the counter, no address on file — could never
+    // get in, and the screen never said why.
+    const fs = require('fs');
+    const path = require('path');
+    const card = fs.readFileSync(path.join(__dirname, '..', 'app', 'member.html'), 'utf8');
+    const idOk = /idOk\(\)\s*\{([\s\S]*?)\n  \}/.exec(card);
+    assert.ok(idOk, 'the card validates what was typed');
+    assert.match(idOk[1], /indexOf\("@"\)/,
+      'and branches on whether it is an address at all');
+
+    // The path itself, through the server, with a member who has no email.
+    const phone = '7714455';
+    await push([{ opId: uuid(), kind: 'member_upsert',
+      payload: { name: 'Hassan Latheef', phone: phone } }]);
+    const row = await one('SELECT id, email FROM chain.member WHERE phone = $1', [phone]);
+    assert.strictEqual(row.email, null, 'no address on file — the normal case');
+
+    const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const slug = b.body.kpos.OUTLETS[0].slug;
+    const t = await get('/api/g/' + slug + '/token');
+    const table = { 'x-table-token': t.body.token };
+    process.env.MEMBER_CODE_ECHO = '1';
+    const started = await postWith('/api/g/' + slug + '/member/start',
+      { id: phone }, table);
+    assert.ok(started.body.code, 'the outlet issued a code against the number');
+    const ok = await postWith('/api/g/' + slug + '/member/verify',
+      { id: phone, code: started.body.code }, table);
+    assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+    assert.ok(ok.body.token, 'and the number alone signed them in');
+  });
+
+test('inviting a customer needs the till, and names a real one', opts, async () => {
+  // Rank 0 is a guest device. A sign-in code for somebody else's card is not
+  // something a scanned QR gets to mint.
+  const anon = await post('/api/outlet/' + outletId
+    + '/member/00000000-0000-4000-8000-000000000000/invite', {}, null);
+  assert.strictEqual(anon.status, 401, 'no token, no code');
+
+  const ghost = await post('/api/outlet/' + outletId
+    + '/member/00000000-0000-4000-8000-000000000000/invite', {}, token);
+  assert.strictEqual(ghost.status, 404, 'and a customer who does not exist is not invented');
+});
+
 test('a dish declares what its recipe contains, worked out where the recipe is',
   opts, async () => {
     // The guest device holds no recipe, so the outlet publishes the answer.
