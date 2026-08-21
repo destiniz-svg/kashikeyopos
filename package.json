@@ -16,7 +16,8 @@
     "test": "node --test test/*.test.js",
     "reset:database": "node src/scripts/reset-database.js",
     "drop:legacy": "node src/scripts/drop-legacy.js",
-    "gst:status": "node src/scripts/gst-status.js"
+    "gst:status": "node src/scripts/gst-status.js",
+    "seed:demo": "node src/scripts/seed-demo.js"
   },
   "dependencies": {
     "express": "^4.21.2",
