@@ -168,11 +168,12 @@ test('the orders list follows the pass, and the pass follows the counter', () =>
     })
   });
 
-  const statusOf = () => {
+  const cellOf = () => {
     F.state.tab = Object.assign({}, F.state.tab, { ordSub: 'open' });
     const row = F.g_orders().rows[0];
-    return row.cells[row.cells.length - 1].t;
+    return row.cells[row.cells.length - 1];
   };
+  const statusOf = () => cellOf().t;
 
   assert.strictEqual(statusOf(), 'In the kitchen',
     'two plates fired and none bumped — the order is with the kitchen');
@@ -204,6 +205,12 @@ test('the orders list follows the pass, and the pass follows the counter', () =>
   F.ticketPanelVals({ kind: 'ticket', slot: slot }).tkFlows[3].go();
   assert.strictEqual(statusOf(), 'Served', 'the counter moved the same number');
   assert.strictEqual(F.ticketStage(slot), 3, 'and the panel reads it back');
+
+  // A served table that has not paid is money still owed. Green appears once
+  // on this ladder, at Ready, and it means the kitchen delivered — not that
+  // the row is finished with.
+  assert.deepStrictEqual(cellOf().chip, F.chip('warn'),
+    'Served is amber while the bill is open — it is the row a manager chases');
 
   const stage = queued.filter((q) => q.kind === 'fulfil_stage').pop();
   assert.ok(stage && stage.payload && stage.payload.stage === 3,

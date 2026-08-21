@@ -10946,8 +10946,12 @@ class Component extends DCLogic {
     return fired.some((l) => !l.done) ? 1 : 2;
   }
   // Coloured by who the rung is waiting on: nobody yet, the kitchen, the floor,
-  // the till.
-  STAGE_TONE() { return ["mute", "warn", "ok", "info"]; }
+  // the till. Green appears exactly once, at Ready — the kitchen delivered.
+  //
+  // Served is amber, not blue. A served table that has not paid is money still
+  // owed, and it is the row a manager chases at the end of a shift; the calm
+  // colour read as "finished" on the one screen where it means the opposite.
+  STAGE_TONE() { return ["mute", "warn", "ok", "warn"]; }
   // The bare write. Callers decide whether it also moves the pass, because the
   // pass calls this too and two sides writing each other must not recurse.
   stageWrite(id, kind, i, meta) {
