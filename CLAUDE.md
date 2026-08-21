@@ -30,6 +30,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
                        011 accounts · 012 store handle · 013 handle history
+src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
 app/index.html         the terminal (POS, KDS, back office) — one app, gated by rank
@@ -380,7 +381,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 108 tests
+npm test                          # 117 tests
 npm run leak-test                 # isolation, on its own
 ```
 

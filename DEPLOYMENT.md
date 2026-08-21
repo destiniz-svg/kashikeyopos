@@ -86,6 +86,79 @@ right up until the deploy.
 Then: land the change, watch the deploy log for `[migrate]` lines, and confirm
 `/readyz` is 200. If a migration failed, both health endpoints say so by name.
 
+## Google and Apple sign-in
+
+Both are wired. Neither is offered until its credentials are set — a provider
+with nothing configured is not shown on the front door, because a button that
+cannot work is worse than no button. `GET /api/account/providers` reports which
+are on and, for the ones that are off, **which variable names are missing**
+(never values). That is the only thing a half-configured install cannot tell you
+from the outside.
+
+The callback URLs are fixed:
+
+```
+https://kashikeyopos.com/api/account/oauth/google/callback
+https://kashikeyopos.com/api/account/oauth/apple/callback
+```
+
+### Google
+
+1. Google Cloud Console → **APIs & Services → Credentials → Create OAuth client
+   ID → Web application**.
+2. Add the Google callback URL above under **Authorised redirect URIs**. It must
+   match byte for byte, including the scheme and no trailing slash.
+3. Fill in the **OAuth consent screen** (External). Scopes are `openid email
+   profile` — nothing sensitive, so no Google review is needed.
+4. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+
+### Apple
+
+Apple is the fiddly one, and it is fiddly in a way that fails silently months
+later. Read the whole list before starting.
+
+1. **App ID** — Certificates, Identifiers & Profiles → Identifiers → App IDs.
+   Create one if the business has none, and tick **Sign in with Apple**.
+2. **Services ID** — Identifiers → Services IDs. This is what
+   `APPLE_CLIENT_ID` must be (e.g. `com.kashikeyo.pos.web`). **The App ID will
+   not work here** — the web flow rejects it. Tick Sign in with Apple, then
+   **Configure**:
+   - Primary App ID: the App ID from step 1
+   - Domains: `kashikeyopos.com`
+   - Return URLs: the Apple callback URL above
+3. **Verify the domain.** Apple gives you
+   `apple-developer-domain-association.txt` on that same screen and will not
+   enable the Services ID until it can fetch it. Put it in **`app/well-known/`**
+   and it answers at `/.well-known/apple-developer-domain-association.txt`
+   (`express.static` ignores dotfiles, so `server.js` routes that path
+   explicitly — see the note in that directory).
+4. **Key** — Keys → new key → tick Sign in with Apple → download the `.p8`.
+   **You can download it exactly once.** Note the Key ID beside it.
+5. **Team ID** — top right of the developer portal, ten characters.
+6. Set `APPLE_CLIENT_ID` (the *Services* ID), `APPLE_TEAM_ID`, `APPLE_KEY_ID`
+   and `APPLE_PRIVATE_KEY` (the whole contents of the `.p8`, `BEGIN`/`END`
+   lines included — mangled newlines are repaired for you).
+
+**Apple's "client secret" is not a secret.** It is a JWT signed ES256 with that
+`.p8`, and Apple caps its lifetime at six months. `src/apple.js` mints it and
+re-mints it before it ages out, so there is nothing to diarise. If you already
+hold a pre-minted one, `APPLE_CLIENT_SECRET` still overrides — but then its
+expiry is yours to remember, and the failure looks like `invalid_client` from
+Apple's own page with nothing in the deploy log.
+
+### What the app does with what comes back
+
+An identity is matched on the provider's **subject**, never on the email: people
+change their address at a provider, and matching on it would either lock them
+out or hand them somebody else's business.
+
+The address is still used to JOIN an existing account the first time — somebody
+who signed up with a password and later taps *Continue with Google* means to
+reach the same business — **but only when the provider says it verified that
+address**. Unverified, the sign-in is refused by name and the person is told to
+sign in the ordinary way, because an unverified address is a claim rather than a
+fact and treating it as proof would walk a stranger into somebody's books.
+
 ## Removing the app that was here before
 
 This build keeps everything it owns in `chain`, `app` and `outlet_<id>`, and

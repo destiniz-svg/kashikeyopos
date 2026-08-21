@@ -102,6 +102,20 @@ app.use(express.static(APP, {
   }
 }));
 
+/* ── /.well-known ────────────────────────────────────────────────────────
+   express.static ignores dotfiles, so anything under /.well-known/ 404s — and
+   that is exactly where the world expects to find proof you control this
+   domain. Apple will not enable Sign in with Apple until it can fetch
+   /.well-known/apple-developer-domain-association.txt from here.
+
+   Mapped from a directory WITHOUT a leading dot, so turning this on cannot
+   also start serving .env or .git by accident. Drop the verification files
+   into app/well-known/ and they answer at /.well-known/. */
+app.use('/.well-known', express.static(path.join(APP, 'well-known'), {
+  dotfiles: 'ignore',
+  setHeaders: function (res) { res.set('cache-control', 'public, max-age=300'); }
+}));
+
 require('./src/routes/pages')(app, APP);
 
 app.use(function (req, res) {

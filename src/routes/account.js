@@ -29,6 +29,7 @@ const { owner } = require('../db');
 const { hashPin, pinMatches, signAccount, verifyAccount } = require('../secrets');
 const email = require('../email');
 const { baseDomain } = require('../handle');
+const apple = require('../apple');
 
 const r = express.Router();
 
@@ -256,24 +257,39 @@ r.post('/password', requireAccount, async function (req, res, next) {
    that cannot work. */
 const PROVIDERS = {
   google: {
-    id: () => process.env.GOOGLE_CLIENT_ID,
-    secret: () => process.env.GOOGLE_CLIENT_SECRET,
+    id: () => clean(process.env.GOOGLE_CLIENT_ID),
+    secret: () => clean(process.env.GOOGLE_CLIENT_SECRET),
+    ready: () => !!(clean(process.env.GOOGLE_CLIENT_ID)
+      && clean(process.env.GOOGLE_CLIENT_SECRET)),
     auth: 'https://accounts.google.com/o/oauth2/v2/auth',
     token: 'https://oauth2.googleapis.com/token',
-    scope: 'openid email profile'
+    scope: 'openid email profile',
+    // Somebody signing a business up on a shared machine should be asked WHICH
+    // Google account, not silently handed whichever one the browser remembers.
+    extra: { prompt: 'select_account' }
   },
   apple: {
-    id: () => process.env.APPLE_CLIENT_ID,
-    secret: () => process.env.APPLE_CLIENT_SECRET,
+    id: () => clean(process.env.APPLE_CLIENT_ID),
+    // Not a fixed string: Apple's client secret is a JWT this app mints from
+    // the .p8 and re-mints before it expires. See src/apple.js.
+    secret: () => apple.clientSecret(),
+    ready: () => apple.configured(),
     auth: 'https://appleid.apple.com/auth/authorize',
     token: 'https://appleid.apple.com/auth/token',
     scope: 'openid email name',
-    // Apple posts the callback back as a form rather than a query string.
+    // Apple posts the callback back as a form rather than a query string, and
+    // it only does that at all when a scope beyond openid was asked for.
     formPost: true
   }
 };
 
-const enabled = (k) => !!(PROVIDERS[k] && PROVIDERS[k].id() && PROVIDERS[k].secret());
+// `ready` rather than "has an id and a secret": Apple's secret is minted, and
+// minting it throws when the key material is wrong — which is a thing to
+// report, not a thing to crash the providers list with.
+const enabled = (k) => {
+  try { return !!(PROVIDERS[k] && PROVIDERS[k].ready()); }
+  catch (e) { return false; }
+};
 
 r.get('/providers', function (req, res) {
   res.json({
@@ -282,6 +298,20 @@ r.get('/providers', function (req, res) {
     emailTransport: email.configured(),
     google: enabled('google'),
     apple: enabled('apple'),
+    /* Why a provider is off, for whoever is setting this up. Never the values
+       — only which NAMES are missing, which is the one thing a half-configured
+       install cannot tell you from the outside. Apple in particular fails in a
+       way that reads as "invalid_client" from Apple's own error page, months
+       after anybody touched it. */
+    why: {
+      google: enabled('google') ? null
+        : (clean(process.env.GOOGLE_CLIENT_ID) || clean(process.env.GOOGLE_CLIENT_SECRET)
+          ? 'Google sign-in is missing '
+            + ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']
+              .filter((n) => !clean(process.env[n])).join(', ')
+          : 'Google sign-in is not configured'),
+      apple: apple.whyNot()
+    },
     // The domain stores hang off, so the front door can name a real address
     // instead of spelling one. Empty where host routing is off, and the page
     // then says nothing rather than something that will not resolve.
@@ -299,19 +329,30 @@ r.get('/oauth/:provider/start', function (req, res) {
   const key = String(req.params.provider);
   if (!enabled(key)) return res.status(404).json({ error: 'that sign-in method is not configured' });
   const p = PROVIDERS[key];
-  // The state is signed rather than stored: it has to survive a redirect to
-  // another site and back without a session to hang it on.
+  /* The state is signed rather than stored: it has to survive a redirect to
+     another site and back without a session to hang it on. The NONCE travels
+     inside it and comes back inside the id_token, which is what ties the token
+     we are handed to the request we actually made. */
+  const nonce = crypto.randomBytes(16).toString('base64url');
   const state = signAccount({ n: crypto.randomBytes(9).toString('base64url'),
-    p: key, exp: Date.now() + 10 * 60e3 });
-  const url = p.auth + '?' + new URLSearchParams({
+    p: key, nn: nonce, exp: Date.now() + 10 * 60e3 });
+
+  const params = {
     client_id: p.id(),
     redirect_uri: callbackUrl(req, key),
     response_type: 'code',
     scope: p.scope,
     state: state,
-    response_mode: p.formPost ? 'form_post' : undefined,
-    prompt: 'select_account'
-  }).toString().replace(/[^&=]+=undefined&?/g, '');
+    nonce: nonce
+  };
+  // form_post only where the provider asks for it. Sending a parameter a
+  // provider does not know is how a working sign-in becomes invalid_request.
+  if (p.formPost) params.response_mode = 'form_post';
+  Object.assign(params, p.extra || {});
+
+  let url;
+  try { url = p.auth + '?' + new URLSearchParams(params).toString(); }
+  catch (e) { return res.status(503).json({ error: 'that sign-in method is misconfigured' }); }
   res.redirect(url);
 });
 
@@ -325,8 +366,17 @@ async function oauthCallback(req, res, next) {
     if (src.error) return res.redirect('/account?error=' + encodeURIComponent(String(src.error).slice(0, 60)));
 
     const p = PROVIDERS[key];
+    let secret;
+    // Apple's is minted, and minting can fail on bad key material. That is a
+    // configuration fault, not a signed-in person's fault — say so on the page
+    // they are standing on rather than 500ing at them.
+    try { secret = p.secret(); }
+    catch (e) {
+      console.error('[oauth] ' + key + ': ' + e.message);   // eslint-disable-line no-console
+      return res.redirect('/account?error=' + encodeURIComponent('that sign-in method is misconfigured'));
+    }
     const body = new URLSearchParams({
-      client_id: p.id(), client_secret: p.secret(),
+      client_id: p.id(), client_secret: secret,
       code: String(src.code || ''), grant_type: 'authorization_code',
       redirect_uri: callbackUrl(req, key)
     });
@@ -350,8 +400,27 @@ async function oauthCallback(req, res, next) {
     const addr = lower(idc.email);
     if (!subject) return res.redirect('/account?error=' + encodeURIComponent('no identity returned'));
 
-    const account = await linkIdentity(key, subject, addr, clean(idc.name)
-      || clean((src.user && JSON.parse(src.user).name && JSON.parse(src.user).name.firstName) || ''));
+    // The nonce we sent must be the nonce that came back, or this id_token
+    // belongs to some other authorization request than the one we started.
+    if (claims.nn && clean(idc.nonce) !== claims.nn) {
+      return res.redirect('/account?error=' + encodeURIComponent('that sign-in did not complete — please start again'));
+    }
+
+    /* Apple sends the name ONCE, on the very first authorization, as a form
+       field beside the code — never in the id_token and never again. Miss it
+       here and it is gone for good, so it is read carefully rather than
+       optimistically: a malformed value must not take the sign-in down with it. */
+    let account;
+    try {
+      account = await linkIdentity(key, subject, addr,
+        clean(idc.name) || clean(idc.given_name) || appleName(src.user),
+        emailVerified(idc));
+    } catch (e) {
+      if (e && e.status === 409) {
+        return res.redirect('/account?error=' + encodeURIComponent(e.message));
+      }
+      throw e;
+    }
     await logAccount('account_sign_in', account.id, { by: key });
     const s = await session(account.id);
     // The token goes to the page in the fragment, which is never sent to a
@@ -361,6 +430,25 @@ async function oauthCallback(req, res, next) {
 }
 r.get('/oauth/:provider/callback', oauthCallback);
 r.post('/oauth/:provider/callback', express.urlencoded({ extended: false }), oauthCallback);
+
+/* Apple's `user` field, which arrives once and only once. */
+function appleName(raw) {
+  if (!raw) return '';
+  try {
+    const u = JSON.parse(String(raw));
+    const n = (u && u.name) || {};
+    return clean([clean(n.firstName), clean(n.lastName)].filter(Boolean).join(' '));
+  } catch (e) { return ''; }
+}
+
+/* Has the provider actually PROVED this address? Google sends a boolean;
+   Apple has been known to send the string "true". Anything else is a no —
+   an address the provider has not verified is a claim, not a fact, and the
+   difference decides whether it may reach an account somebody else made. */
+function emailVerified(idc) {
+  const v = idc && idc.email_verified;
+  return v === true || v === 'true';
+}
 
 function readJwtClaims(jwt) {
   try {
@@ -375,7 +463,7 @@ function readJwtClaims(jwt) {
    address is still used to JOIN an existing account the first time, because
    somebody who signed up with a password and later taps "Continue with
    Google" means to reach the same business. */
-async function linkIdentity(provider, subject, addr, name) {
+async function linkIdentity(provider, subject, addr, name, verified) {
   const found = await owner().query(
     'SELECT a.* FROM chain.account_identity i JOIN chain.account a ON a.id = i.account_id'
     + ' WHERE i.provider = $1 AND i.subject = $2', [provider, subject]);
@@ -386,11 +474,33 @@ async function linkIdentity(provider, subject, addr, name) {
     return found.rows[0];
   }
 
-  let account = addr ? await byEmail(addr) : null;
+  /* Joining by address is only safe when the provider has PROVED the address.
+     Unverified, "sign in with Google" as somebody else's email would walk
+     straight into their account — the provider is asserting an address it has
+     not checked, and we would be treating that assertion as proof of identity.
+     Google and Apple do verify in practice; this is the guard for the day one
+     of them, or a future provider, does not. */
+  let account = (addr && verified) ? await byEmail(addr) : null;
+
+  if (!account && addr && !verified) {
+    const taken = await byEmail(addr);
+    if (taken) {
+      // Refused by name. They have an account; they just have to prove the
+      // address the ordinary way, and then this identity can be attached.
+      throw Object.assign(new Error('that address already has an account — sign in'
+        + ' with your password or a code, and it will be linked'), { status: 409 });
+    }
+  }
+
   if (!account) {
     const q = await owner().query(
-      'INSERT INTO chain.account (email, name, verified_at) VALUES ($1,$2,now())'
-      + ' RETURNING *', [addr || (provider + ':' + subject), name || null]);
+      'INSERT INTO chain.account (email, name, verified_at) VALUES ($1,$2,$3)'
+      + ' RETURNING *',
+      [addr || (provider + ':' + subject), name || null,
+        // A brand-new account is verified only if the provider verified it. An
+        // unverified one still exists and can still sign in with this identity;
+        // it simply has not proved its inbox yet.
+        (addr && verified) ? new Date() : null]);
     account = q.rows[0];
     await logAccount('account_signup', account.id, { by: provider });
   } else if (!account.verified_at) {

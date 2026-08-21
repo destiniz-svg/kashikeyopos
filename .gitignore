@@ -2,5 +2,8 @@ node_modules/
 npm-debug.log*
 .env
 .env.*
+# ...except the one that DOCUMENTS them. `.env.*` swallowed it, so the file
+# DEPLOYMENT.md tells you to copy has never actually been in the repository.
+!.env.example
 *.log
 .DS_Store

@@ -939,6 +939,110 @@ test('the legacy drop clears public and leaves this app alone', opts, async () =
   assert.strictEqual(boot.status, 200, 'and still serving');
 });
 
+/* ═══ AN EMAIL FROM A PROVIDER IS A CLAIM, NOT A FACT ══════════════════════
+   Matching an incoming Google or Apple identity to an existing account BY
+   ADDRESS is the convenience that makes "Continue with Google" work for
+   somebody who first signed up with a password. It is only safe when the
+   provider says it verified that address — otherwise a provider account
+   asserting somebody else's email walks straight into their business.
+
+   Driven through the real callback with the provider's token endpoint stubbed,
+   because that is the only way to exercise the path a browser actually takes. */
+function fakeProvider(claims) {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  // An id_token as it arrives from a token endpoint: read, never trusted for
+  // authorisation, so an unsigned one exercises the same code path.
+  const idToken = b64({ alg: 'RS256' }) + '.' + b64(claims) + '.' + 'sig';
+  const real = global.fetch;
+  // ONLY the provider's token endpoint. A blanket stub also swallows this
+  // suite's own requests to the app, which is a test that fails for a reason
+  // that has nothing to do with the thing under test.
+  global.fetch = async (url, opts) => {
+    if (/googleapis\.com|appleid\.apple\.com/.test(String(url))) {
+      return { ok: true, json: async () => ({ id_token: idToken, access_token: 'x' }) };
+    }
+    return real(url, opts);
+  };
+  return () => { global.fetch = real; };
+}
+
+test('a social sign-in joins an existing account only on a VERIFIED address', opts, async () => {
+  const { signAccount } = require('../src/secrets');
+  const wasId = process.env.GOOGLE_CLIENT_ID;
+  const wasSecret = process.env.GOOGLE_CLIENT_SECRET;
+  process.env.GOOGLE_CLIENT_ID = 'test-client-id';
+  process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
+
+  const sign = (nonce) => signAccount({ n: 'x', p: 'google', nn: nonce,
+    exp: Date.now() + 60e3 });
+  const realFetch = global.fetch;
+
+  try {
+    // Somebody already has an account here, made the ordinary way.
+    const mine = 'owner-' + Date.now() + '@example.mv';
+    const made = await post('/api/account/signup', { email: mine, password: 'a-real-password' });
+    assert.strictEqual(made.status, 200, JSON.stringify(made.body));
+    const before = await db.owner().query(
+      'SELECT id FROM chain.account WHERE lower(email) = lower($1)', [mine]);
+    assert.strictEqual(before.rows.length, 1);
+
+    // 1 · An UNVERIFIED provider email bearing that address is refused, by name.
+    let restore = fakeProvider({ sub: 'g-stranger', email: mine,
+      email_verified: false, nonce: 'n1' });
+    let r = await call('GET', '/api/account/oauth/google/callback?code=c&state='
+      + encodeURIComponent(sign('n1')), undefined, {});
+    restore();
+    assert.strictEqual(r.status, 302, 'it redirects rather than signing in');
+    const to = String((r.headers && r.headers.location) || r.body && r.body.raw || '');
+    assert.ok(/error=/.test(to), 'and carries a refusal: ' + to);
+    assert.match(decodeURIComponent(to), /already has an account/);
+
+    const linked = await db.owner().query(
+      "SELECT 1 FROM chain.account_identity WHERE subject = 'g-stranger'");
+    assert.strictEqual(linked.rows.length, 0, 'no identity was attached to their account');
+
+    // 2 · The same address, VERIFIED, is the person coming back — it joins.
+    restore = fakeProvider({ sub: 'g-owner', email: mine, email_verified: true, nonce: 'n2' });
+    r = await call('GET', '/api/account/oauth/google/callback?code=c&state='
+      + encodeURIComponent(sign('n2')), undefined, {});
+    restore();
+    const back = String((r.headers && r.headers.location) || '');
+    assert.ok(/#token=/.test(back), 'signed in: ' + back);
+
+    const joined = await db.owner().query(
+      "SELECT account_id FROM chain.account_identity WHERE subject = 'g-owner'");
+    assert.strictEqual(joined.rows.length, 1);
+    assert.strictEqual(joined.rows[0].account_id, before.rows[0].id,
+      'and it is the SAME account, not a second one');
+
+    // 3 · A mismatched nonce is an id_token from some other request.
+    restore = fakeProvider({ sub: 'g-owner', email: mine, email_verified: true,
+      nonce: 'not-the-one' });
+    r = await call('GET', '/api/account/oauth/google/callback?code=c&state='
+      + encodeURIComponent(sign('n3')), undefined, {});
+    restore();
+    assert.match(decodeURIComponent(String((r.headers && r.headers.location) || '')),
+      /did not complete/, 'a replayed or swapped id_token is refused');
+  } finally {
+    // A stub left installed by a failing assertion breaks every test after it.
+    global.fetch = realFetch;
+    if (wasId === undefined) delete process.env.GOOGLE_CLIENT_ID;
+    else process.env.GOOGLE_CLIENT_ID = wasId;
+    if (wasSecret === undefined) delete process.env.GOOGLE_CLIENT_SECRET;
+    else process.env.GOOGLE_CLIENT_SECRET = wasSecret;
+  }
+});
+
+test('the providers list says WHY a provider is off', opts, async () => {
+  const p = await get('/api/account/providers');
+  assert.strictEqual(p.status, 200);
+  assert.strictEqual(p.body.google, false, 'not configured in the test environment');
+  assert.ok(p.body.why, 'and it says so');
+  assert.match(p.body.why.apple, /not configured|missing/);
+  // Never the values — only which names are absent.
+  assert.ok(!/=/.test(JSON.stringify(p.body.why)), 'no values leak into the reason');
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();
@@ -970,13 +1074,17 @@ function callHost(host, method, path) {
 async function call(method, path, body, headers) {
   const res = await fetch(base + path, {
     method,
+    // A redirect is the ANSWER for the OAuth callback, not a step on the way
+    // to one — following it would test the page it lands on instead.
+    redirect: 'manual',
     headers: Object.assign({ 'content-type': 'application/json' }, headers || {}),
     body: body === undefined ? undefined : JSON.stringify(body)
   });
   const text = await res.text();
   let parsed = null;
   try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = { raw: text }; }
-  return { status: res.status, body: parsed };
+  return { status: res.status, body: parsed,
+    headers: { location: res.headers.get('location') } };
 }
 const auth = (t) => (t ? { authorization: 'Bearer ' + t } : {});
 const get = (p, t) => call('GET', p, undefined, auth(t));
