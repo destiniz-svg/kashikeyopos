@@ -867,6 +867,78 @@ test('a rename is refused by name, and refusing changes nothing', opts, async ()
   assert.strictEqual(after, before, 'a refused rename left the store where it was');
 });
 
+/* ═══ THE PREVIOUS TENANT ══════════════════════════════════════════════════
+   This build keeps everything it owns in chain, app and outlet_<id>, and never
+   touches `public` — which is why it could be deployed onto a database that
+   still held the app before it without deleting anything first. Removing that
+   app afterwards is a separate, deliberate act, and it destroys data nothing in
+   this repository created. */
+test('the legacy drop refuses without both of its guards', opts, async () => {
+  const legacy = require('../src/scripts/drop-legacy');
+  const was = process.env.DROP_LEGACY_PUBLIC;
+  await db.owner().query('CREATE TABLE IF NOT EXISTS public.guarded (id int)');
+  try {
+    delete process.env.DROP_LEGACY_PUBLIC;
+    await assert.rejects(() => legacy.run(() => {}), /yes-i-mean-it/,
+      'a flag that can be set by accident is not a guard');
+    process.env.DROP_LEGACY_PUBLIC = 'maybe';
+    await assert.rejects(() => legacy.run(() => {}), /yes-i-mean-it/);
+
+    const still = await db.owner().query("SELECT to_regclass('public.guarded') IS NOT NULL AS ok");
+    assert.strictEqual(still.rows[0].ok, true, 'and nothing was dropped on the way');
+  } finally {
+    if (was === undefined) delete process.env.DROP_LEGACY_PUBLIC;
+    else process.env.DROP_LEGACY_PUBLIC = was;
+  }
+});
+
+test('the legacy drop clears public and leaves this app alone', opts, async () => {
+  const legacy = require('../src/scripts/drop-legacy');
+  const o = db.owner();
+  // A plausible previous tenant: rows, a view, a sequence, a routine, a type —
+  // and an extension, which is NOT the old app's data and may well be holding
+  // this one up.
+  await o.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+  await o.query('CREATE TABLE IF NOT EXISTS public.entities'
+    + ' (id serial PRIMARY KEY, org_id int, data jsonb)');
+  await o.query("INSERT INTO public.entities (org_id, data)"
+    + " SELECT g, '{}'::jsonb FROM generate_series(1,25) g");
+  await o.query('CREATE OR REPLACE VIEW public.v_old AS SELECT id FROM public.entities');
+  await o.query('CREATE SEQUENCE IF NOT EXISTS public.old_counter');
+  await o.query("CREATE OR REPLACE FUNCTION public.old_total(a int, b int)"
+    + " RETURNS int LANGUAGE sql AS 'SELECT a + b'");
+
+  const before = await o.query('SELECT count(*)::int AS n FROM chain.outlet');
+  const was = process.env.DROP_LEGACY_PUBLIC;
+  process.env.DROP_LEGACY_PUBLIC = 'yes-i-mean-it';
+  let out;
+  try { out = await legacy.run(() => {}); }
+  finally {
+    if (was === undefined) delete process.env.DROP_LEGACY_PUBLIC;
+    else process.env.DROP_LEGACY_PUBLIC = was;
+  }
+  assert.ok(out.dropped >= 4, 'it dropped what was there (' + out.dropped + ')');
+  assert.ok(out.rows >= 25, 'and counted the rows it destroyed (' + out.rows + ')');
+
+  const left = await o.query(
+    "SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+    + " WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','S','f')"
+    + "   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype = 'e')");
+  assert.strictEqual(left.rows[0].n, 0, 'public is clear');
+
+  // The extension survives, and so does what depends on it. DROP SCHEMA public
+  // CASCADE would have taken pgcrypto with the rest.
+  const ext = await o.query("SELECT count(*)::int AS n FROM pg_extension WHERE extname = 'pgcrypto'");
+  assert.strictEqual(ext.rows[0].n, 1, 'an extension in public is not the old app\'s data');
+  await o.query('SELECT gen_random_uuid()');
+
+  // And the only thing that actually matters.
+  const after = await o.query('SELECT count(*)::int AS n FROM chain.outlet');
+  assert.strictEqual(after.rows[0].n, before.rows[0].n, 'this app is untouched');
+  const boot = await get('/api/auth/install');
+  assert.strictEqual(boot.status, 200, 'and still serving');
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();

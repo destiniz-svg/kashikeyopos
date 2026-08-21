@@ -86,6 +86,36 @@ right up until the deploy.
 Then: land the change, watch the deploy log for `[migrate]` lines, and confirm
 `/readyz` is 200. If a migration failed, both health endpoints say so by name.
 
+## Removing the app that was here before
+
+This build keeps everything it owns in `chain`, `app` and `outlet_<id>`, and
+never reads or writes `public`. So it can be deployed onto a database that still
+holds a previous app without deleting anything — the two share a database and
+share no object, and the old data stays put as a free rollback until somebody
+has confirmed the new site works.
+
+Clearing it out afterwards is a separate, deliberate act:
+
+```bash
+DROP_LEGACY_PUBLIC=yes-i-mean-it npm run drop:legacy
+```
+
+There is no undo. Four guards stand in front of it:
+
+1. `DROP_LEGACY_PUBLIC` must be exactly `yes-i-mean-it`.
+2. It refuses unless `chain.outlet` exists — the proof that this database is
+   this app's and `public` is somebody else's leftovers. Pointed at a database
+   this app has never migrated, it would be deleting the only thing there.
+3. It names every object and its row count **before** dropping anything, so the
+   deploy log is the record of what was destroyed.
+4. It drops **objects, not the schema**. An extension installed into `public` —
+   `pgcrypto`, `uuid-ossp`, PostGIS — is not the old app's data and may well be
+   holding this one up; `DROP SCHEMA public CASCADE` would take it too.
+   Extension-owned objects are skipped and named in the log.
+
+On a platform with no shell, run it as a one-shot pre-deploy command and
+**disarm it afterwards** — both the command and the variable.
+
 ## Rotating `OUTLET_ROLE_SECRET`
 
 **This order is not optional.** Changing the secret changes every outlet's

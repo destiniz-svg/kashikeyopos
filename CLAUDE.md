@@ -380,7 +380,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 106 tests
+npm test                          # 108 tests
 npm run leak-test                 # isolation, on its own
 ```
 

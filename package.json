@@ -14,7 +14,8 @@
     "provision:outlet": "node src/scripts/provision-outlet.js",
     "leak-test": "node src/scripts/leak-test.js",
     "test": "node --test test/*.test.js",
-    "reset:database": "node src/scripts/reset-database.js"
+    "reset:database": "node src/scripts/reset-database.js",
+    "drop:legacy": "node src/scripts/drop-legacy.js"
   },
   "dependencies": {
     "express": "^4.21.2",
