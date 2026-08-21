@@ -46,6 +46,37 @@ async function run(say) {
     'SELECT count(*)::int AS n FROM chain.tax_version WHERE outlet_id IS NULL');
   log('[gst] statutory  : ' + statutory.rows[0].n + ' row(s) of the country\'s own rates');
 
+  /* ── are the guards even installed? ──────────────────────────────────────
+     Asked of the catalogue, so it is answerable on an EMPTY install — which is
+     the state a fresh environment is in, and exactly when you want to know
+     that a migration landed. The live probe below needs a business to probe
+     against; this does not. */
+  const parts = await pool.query(
+    "SELECT 'constraint company_tin_iff_registered' AS what,"
+    + "        EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'company_tin_iff_registered') AS ok"
+    + ' UNION ALL SELECT \'trigger outlet_tax_guard\','
+    + "        EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'outlet_tax_guard' AND NOT tgisinternal)"
+    + ' UNION ALL SELECT \'trigger tax_version_guard\','
+    + "        EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tax_version_guard' AND NOT tgisinternal)"
+    + ' UNION ALL SELECT \'function chain.gst_registered()\','
+    + "        to_regprocedure('chain.gst_registered()') IS NOT NULL"
+    + ' UNION ALL SELECT \'function chain.register_for_gst()\','
+    + "        to_regprocedure('chain.register_for_gst(text,text,numeric,date)') IS NOT NULL"
+    + ' UNION ALL SELECT \'company.tin is nullable\','
+    + '        (SELECT NOT attnotnull FROM pg_attribute'
+    + "          WHERE attrelid = 'chain.company'::regclass AND attname = 'tin')"
+    + ' UNION ALL SELECT \'provision_outlet follows the company\','
+    + "        (SELECT prosrc LIKE '%gst_registered()%' FROM pg_proc p"
+    + '          JOIN pg_namespace n ON n.oid = p.pronamespace'
+    + "          WHERE n.nspname = 'chain' AND p.proname = 'provision_outlet')");
+  const absent = parts.rows.filter((r) => !r.ok);
+  parts.rows.forEach((r) => log('[gst] installed  : ' + r.what + ' -> '
+    + (r.ok ? 'yes' : '*** MISSING ***')));
+  if (absent.length) {
+    throw new Error('not installed: ' + absent.map((a) => a.what).join(', ')
+      + ' — this environment has not run migration 014');
+  }
+
   /* ── the guards, proven rather than asserted ─────────────────────────────
      Every write below is expected to FAIL, and the whole block is rolled back
      whatever happens. If one of them succeeds, this install would let a
