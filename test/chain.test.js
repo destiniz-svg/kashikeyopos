@@ -5,11 +5,13 @@
    does travel from the floor to the kitchen to the drawer to the tax return to
    the stock ledger to the books.
 
-   It is run twice, from BOTH settle paths, and the rows must be identical
-   apart from the document number. In the reference they were not: the Orders
-   panel wrote thirteen of twenty-nine fields and booked the pre-discount
-   subtotal as revenue, so every discounted bill closed from Orders overstated
-   sales and understated food cost.
+   It is driven from Orders & Tickets, because there is now exactly ONE place
+   in the build where money is taken and that panel hands off to it. There used
+   to be two: the Orders panel wrote thirteen of twenty-nine fields and booked
+   the pre-discount subtotal as revenue, so every discounted bill closed from
+   Orders overstated sales and understated food cost — and after that was
+   repaired it still could not tender, so a cashier taking cash could not say
+   what the guest handed over and the drawer never learned the change.
    ═══════════════════════════════════════════════════════════════════════ */
 
 const test = require('node:test');
@@ -45,6 +47,24 @@ function ringUp(F, opts) {
   return { slot, key };
 }
 
+// Settling FROM Orders & Tickets. The panel has no settle of its own: Take
+// payment opens the till's own pay screen on this ticket, which is where the
+// cash, the change and the journal are written. `given` is what the guest
+// actually handed over — the thing this route could not express at all.
+function settleFromOrders(F, slot, given) {
+  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot });
+  assert.strictEqual(typeof panel.tkPay, 'function', 'the panel offers to take payment');
+  assert.strictEqual(panel.tkSettle, undefined,
+    'and keeps no settle of its own — a second one is a second set of bugs');
+  panel.tkPay();
+  assert.strictEqual((F.state.modal || {}).kind, 'pay',
+    'Take payment opens the till pay screen');
+  assert.strictEqual(F.state.activeTable, slot, 'on this ticket');
+  F.state.modal = Object.assign({}, F.state.modal,
+    { given: String(given === undefined ? 100000 : given) });
+  F.overlayVals().confirmPay();
+}
+
 test('the chain — a sale moves everything it is supposed to move', () => {
   const F = liveInstance();
   const { slot, key } = ringUp(F);
@@ -53,8 +73,7 @@ test('the chain — a sale moves everything it is supposed to move', () => {
   const T = F.totals(F.state.tickets[key]);
 
   // Settle from the Orders ticket panel.
-  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' });
-  panel.tkSettle();
+  settleFromOrders(F, slot);
 
   const row = (F.state.settled || [])[0];
 
@@ -99,43 +118,78 @@ test('the chain — a sale moves everything it is supposed to move', () => {
   }
 });
 
-test('both settle paths write the identical row', () => {
-  // Path A — the Orders ticket panel.
-  const A = liveInstance();
-  const a = ringUp(A);
-  const panel = A.ticketPanelVals({ kind: 'ticket', slot: a.slot, tender: 'cash' });
-  panel.tkSettle();
-  const rowA = A.state.settled[0];
+test('Orders & Tickets settles through the till, and takes a tender', () => {
+  // The defect this replaced: settling with cash from Orders & Tickets could
+  // not ask what the guest handed over. It assumed exact money, recorded no
+  // change, and the drawer count at the end of the shift was the first place
+  // anyone found out.
+  const queued = [];
+  const F = liveInstance();
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+  const { slot, key } = ringUp(F);
+  const T = F.totals(F.state.tickets[key]);
 
-  // Path B — the till pay sheet.
-  const B = liveInstance();
-  ringUp(B);
-  B.state.modal = { kind: 'pay', tender: 'cash', given: String(rowA.total), gIdx: 0 };
-  const pay = B.overlayVals();
-  pay.confirmPay();
-  const rowB = B.state.settled[0];
+  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot });
+  panel.tkPay();
+  const pay = F.overlayVals();
 
-  assert.ok(rowB, 'the till path settled');
+  // The cash pad is there: quick notes to press, a keypad to type on, and a
+  // confirm that refuses until enough has actually been tendered.
+  assert.ok((pay.quickTender || []).length, 'quick cash notes are offered');
+  assert.ok((pay.keys || []).length, 'and a keypad to type an amount on');
+  assert.match(String(pay.confirmLabel), /Tender/,
+    'nothing tendered yet — the button says how much more is needed');
 
-  // Field for field, apart from the document number and the instant.
-  const skip = new Set(['no', 'ref', 'at', 'time', 'id', 'table', 'tender', 'chg', 'payments', 'serverAudit']);
-  const keys = new Set(Object.keys(rowA).concat(Object.keys(rowB)));
-  const diffs = [];
-  keys.forEach((k) => {
-    if (skip.has(k)) return;
-    const x = JSON.stringify(rowA[k]), y = JSON.stringify(rowB[k]);
-    if (x !== y) diffs.push(k + ': orders=' + x + ' till=' + y);
-  });
-  assert.deepStrictEqual(diffs, [],
-    'the two settle paths must write the same row — this is the reference\'s worst defect');
+  // Hand over a 500 note against a bill of ~552.9, which is not enough.
+  F.state.modal = Object.assign({}, F.state.modal, { given: '500' });
+  assert.match(String(F.overlayVals().confirmLabel), /Tender/,
+    'a short tender is refused by name, not silently accepted');
+
+  // Now a 600.
+  F.state.modal = Object.assign({}, F.state.modal, { given: '600' });
+  const ready = F.overlayVals();
+  assert.doesNotMatch(String(ready.confirmLabel), /Tender/, 'enough is enough');
+  ready.confirmPay();
+
+  const row = F.state.settled[0];
+  assert.ok(row, 'the ticket settled');
+  assert.ok(!F.state.tickets[key], 'and the table was released');
+  assert.ok(Math.abs(row.total - Math.round(T.total * 2) / 2) < 0.005,
+    'the total is the cash-rounded figure');
+  assert.ok(Math.abs(row.chg - (600 - row.total)) < 0.005,
+    'the change that went back is on the row: ' + row.chg);
+
+  // And it reaches the outlet, because a drawer that reconciles only on this
+  // device is a drawer nobody else can count.
+  const sale = queued.filter((q) => q.kind === 'sale').pop();
+  const paid = ((sale.payload || {}).payments || [])[0] || {};
+  assert.ok(paid.tendered >= row.total,
+    'the payment records what was handed over (' + paid.tendered + '), not only what was owed');
+  assert.ok(Math.abs(paid.chg - (600 - row.total)) < 0.005,
+    'and the change on the same payment: ' + paid.chg);
+});
+
+test('there is one place in the build where money is taken', () => {
+  // Two settle implementations is two sets of arithmetic to keep in step, and
+  // this build has already been bitten once by exactly that. The panel is
+  // allowed to open the till's pay screen; it is not allowed to have its own.
+  const F = liveInstance();
+  const { slot } = ringUp(F);
+  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot });
+  assert.strictEqual(panel.tkSettle, undefined, 'the panel settles nothing itself');
+  assert.strictEqual(panel.tkTenders, undefined, 'and offers no tender list of its own');
+  assert.strictEqual(typeof F.TENDER_SET, 'undefined',
+    'the second list of tenders is gone — TENDERS() carries the account each posts to');
+
+  // What it does offer is the hand-off, and it names the amount.
+  assert.match(String(panel.tkPayLabel), /Take payment/, 'the panel offers to take payment');
 });
 
 test('cash rounding is on the row, and matches the button', () => {
   const F = liveInstance();
   const { slot, key } = ringUp(F);
   const T = F.totals(F.state.tickets[key]);
-  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' });
-  panel.tkSettle();
+  settleFromOrders(F, slot);
   const row = F.state.settled[0];
 
   // Cash rounds to the nearest 50 laari; the difference is its own figure and
@@ -153,8 +207,7 @@ test('a discounted bill books the discounted figure as revenue', () => {
   const T = F.totals(F.state.tickets[key]);
   assert.ok(T.disc > 0, 'the discount applied');
 
-  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' });
-  panel.tkSettle();
+  settleFromOrders(F, slot);
   const row = F.state.settled[0];
 
   assert.ok(Math.abs(row.net - (T.sub - T.disc)) < 0.005,
@@ -167,8 +220,7 @@ test('the sale carries a stock consequence to the server', () => {
   const F = liveInstance();
   F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
   const { slot } = ringUp(F);
-  const panel = F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' });
-  panel.tkSettle();
+  settleFromOrders(F, slot);
 
   const sale = queued.filter((q) => q.kind === 'sale')[0];
   assert.ok(sale, 'a sale op was queued');

@@ -135,7 +135,12 @@ test('an op that carries a consequence carries its payload', () => {
   });
   F.state.tickets = Object.assign({}, F.state.tickets, { [key]: tk });
   F.state.activeTable = slot;
-  F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' }).tkSettle();
+  F.state.register = { open: true, float: 1000, openedBy: 'u_owner', openedAt: Date.now() };
+  // Through the one settle path: Orders & Tickets hands off to the till's pay
+  // screen, and the cashier says what the guest handed over.
+  F.ticketPanelVals({ kind: 'ticket', slot: slot }).tkPay();
+  F.state.modal = Object.assign({}, F.state.modal, { given: '1000' });
+  F.overlayVals().confirmPay();
   const sale = grab('sale');
   has(sale, ['bizDate', 'covers', 'net', 'tax', 'taxRate', 'taxLabel', 'total',
     'sold', 'payments', 'stockMoves', 'table']);
@@ -246,7 +251,10 @@ test('the till does not post its own journal — the server derives it', () => {
     })
   });
   F.state.activeTable = slot;
-  F.ticketPanelVals({ kind: 'ticket', slot: slot, tender: 'cash' }).tkSettle();
+  F.state.register = { open: true, float: 1000, openedBy: 'u_owner', openedAt: Date.now() };
+  F.ticketPanelVals({ kind: 'ticket', slot: slot }).tkPay();
+  F.state.modal = Object.assign({}, F.state.modal, { given: '1000' });
+  F.overlayVals().confirmPay();
 
   const journals = queued.filter((q) => q.kind === 'post_journal');
   journals.forEach((j) => {

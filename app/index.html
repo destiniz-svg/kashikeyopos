@@ -1667,24 +1667,10 @@
                   </sc-for>
                 </div>
               </div>
-              <div>
-                <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:7px">Payment</div>
-                <div style="display:flex;gap:6px;flex-wrap:wrap">
-                  <sc-for list="{{ tkTenders }}" as="x" hint-placeholder-count="5">
-                    <button onClick="{{ x.go }}" title="{{ x.sub }}" style="{{ x.style }}">{{ x.label }}</button>
-                  </sc-for>
-                </div>
-              </div>
-              <sc-if value="{{ tkHasRef }}">
-                <label style="display:block">
-                  <span style="display:block;font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ tkRefLabel }} — optional</span>
-                  <input value="{{ tkRef }}" onChange="{{ tkRefChange }}" placeholder="Leave blank to settle without one" style="width:100%;padding:11px 12px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
-                </label>
-              </sc-if>
               <div style="font-size:11px;color:var(--text-muted);line-height:1.6">{{ tkNote }}</div>
               <div style="display:flex;gap:8px">
                 <button onClick="{{ tkFloorGo }}" style="padding:14px 16px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--text-dim);font-size:12.5px;font-weight:600;font-family:inherit;cursor:pointer;white-space:nowrap" style-hover="background:var(--bg-3);color:var(--text)">Open on the floor</button>
-                <button onClick="{{ tkSettle }}" style="{{ tkSettleStyle }}">{{ tkSettleLabel }}</button>
+                <button onClick="{{ tkPay }}" style="{{ tkPayStyle }}">{{ tkPayLabel }}</button>
               </div>
             </div>
           </sc-if>
@@ -10746,15 +10732,10 @@ class Component extends DCLogic {
      writes the same journal and closes the same ticket as the till does, so
      the floor, the customer's account and the guest's phone all read the
      change from one source rather than three. ─────────────────────────── */
-  TENDER_SET() {
-    return [
-      ["cash", "Cash", "Settles on the spot"],
-      ["card", "Card", "BML terminal"],
-      ["transfer", "Transfer", "Bank transfer"],
-      ["qr", "QR", "Scan to pay"],
-      ["credit", "House account", "Charged to the customer"]
-    ];
-  }
+  // There is one list of tenders and it is `TENDERS()`, which carries the
+  // account each one posts to. A second list lived here, for this panel's own
+  // settle screen: it had no wallet at all and called customer credit a "house
+  // account", so the two disagreed about both the set and the words.
   // The floor's wording for the four rungs the guest's tracker also reads —
   // same ladder, same indices, the counter's vocabulary rather than the guest's.
   TICKET_FLOW() {
@@ -10764,76 +10745,15 @@ class Component extends DCLogic {
     const s = this.state, K0 = K(), o = this.outlet();
     const key = s.outletId + ":" + m.slot;
     const tk = (s.tickets || {})[key];
-    const blank = { mTicket: true, tkLines: [], tkTotals: [], tkFlows: [], tkTenders: [], tkMeta: [], tkHasRef: false, tkRef: "", tkSettleStyle: "display:none", tkNote: "", tkSettleLabel: "" };
+    const blank = { mTicket: true, tkLines: [], tkTotals: [], tkFlows: [], tkMeta: [],
+      tkPayStyle: "display:none", tkNote: "", tkPayLabel: "" };
     if (!tk) return Object.assign(blank, { modalTitle: "Ticket closed", modalSub: "Nothing left to settle on this one", tkNote: "This ticket was closed while the panel was open. Its receipt is in the settled list below." });
     // Where this order is, read from the one place that holds it. It used to be
     // `tk.flow`, a field this panel wrote and nothing else in the build ever
     // read — so the pass, the orders list and the guest's phone all disagreed
     // with the pills the cashier was looking at.
     const T = this.totals(tk), flow = this.ticketStage(m.slot);
-    const tender = m.tender || "", ref = m.ref || "";
-    const setM = (p) => this.setState({ modal: Object.assign({}, this.state.modal, p) });
-    const pill = (on) => "flex:1;min-width:84px;padding:9px 10px;border-radius:999px;font-size:11px;font-weight:700;text-align:center;border:1px solid " + (on ? "var(--text)" : "var(--line)") + ";background:" + (on ? "var(--text)" : "var(--bg-2)") + ";color:" + (on ? "var(--bg)" : "var(--text-dim)");
     const nameOf = (l) => ((K0.MENU || []).find((x) => x.id === l.id) || { name: "Item" }).name;
-    const tname = (k) => (this.TENDER_SET().find((x) => x[0] === k) || [0, ""])[1];
-    // Cash is rounded here for the same reason it is rounded at the till: the
-    // guest hands over a real note. The difference is posted to 4900, never
-    // absorbed into revenue.
-    const rounding = tender === "cash" && this.prefs().cashRound !== false;
-    const grossDue = rounding ? Math.round(T.total * 2) / 2 : T.total;
-    const roundDiff = grossDue - T.total;
-    const settle = () => {
-      if (!tender) return this.toast("Pick how the guest is paying", "warn");
-      if (!this.can("pos", "a")) return this.toast("Taking money needs till rights", "warn");
-      const snap = {
-        no: this.docNext("INV").no,
-        time: pad(s.now.getHours()) + ":" + pad(s.now.getMinutes()),
-        table: this.slotName(m.slot), guest: "", tender: tender, cust: "",
-        lines: (tk.lines || []).map((l) => ({ n: l.qty + "× " + nameOf(l), v: MVRc(this.menuPrice((K0.MENU || []).find((x) => x.id === l.id) || {}) * l.qty) })),
-        T: T, given: tender === "cash" ? grossDue : 0, change: 0, server: tk.waiter || "", split: "",
-        ref: ref
-      };
-      const tables = Object.assign({}, s.tickets);
-      delete tables[key];
-      const sold = (tk.lines || []).map((l) => [l.id, l.qty]);
-      // ── One settle contract ────────────────────────────────────────────────
-      // This panel closes a ticket exactly as the till does, and the row it
-      // writes has to be the same row: the same tax split, the same tax
-      // version, the same business date, the same guest and cover count. It
-      // used to write eleven of twenty-four fields — no svc, no tax, no
-      // bizDate, no taxRate — so a bill closed from Orders reached the GST
-      // return, the Z read and the loyalty ledger as a figure that had to be
-      // re-derived rather than read. Worse, it booked T.sub as revenue, which
-      // is the subtotal BEFORE the discount: every discounted ticket closed
-      // here overstated sales and understated food cost.
-      const settledRow = {
-        outletId: s.outletId, no: snap.no, time: snap.time, table: snap.table,
-        channel: tk.channel || "dine_in", total: grossDue, round: roundDiff, tender: tender,
-        status: "closed", server: tk.waiter || "Unassigned", ref: ref,
-        tip: 0, customer: this.ticketMember(tk),
-        covers: Math.max(((this.guestsOf(tk) || []).length) || 0, tk.party || 0) || 1,
-        at: Date.now(), sold: sold, cogs: this.saleTrail({ sold: sold, T: T }).cogs,
-        net: T.net, disc: T.disc, discCode: T.discCode, svc: T.svc, tax: T.tax,
-        cur: this.base(), rate: 1, fgn: 0, chg: 0,
-        bizDate: tk.bizDate || this.today(), taxRate: T.taxRate, taxLabel: T.taxLabel
-      };
-      this.bookSale(settledRow, tk, T);
-      this.queue("close_ticket", "Ticket closed from Orders · " + this.slotName(m.slot) + " · " + MVR(grossDue) + " · " + tname(tender) + (tender === "cash" ? "" : ref ? " · ref " + ref : " · no reference given"),
-        "orders", { table: this.slotName(m.slot), split: 0 });
-      if (Math.abs(roundDiff) > 0.004) {
-        this.queue("post_journal", "Cash rounding · " + (roundDiff > 0 ? "Cr" : "Dr") + " 4900 Rounding · " + MVRc(Math.abs(roundDiff)) + " · " + snap.no, "journal_entries");
-      }
-      this.queue("post_journal", "Journal posted · Dr " + (tender === "cash" ? "1010" : tender === "credit" ? "1040" : "1030") + " · Cr 4000/2200", "journal_entries");
-      this.queue("consume_recipe", "Recipe consumption deducted from " + o.code, "stock_ledger");
-      this.setState({
-        tickets: tables,
-        settled: [settledRow].concat(this.state.settled || []),
-        activeTable: s.activeTable === m.slot ? null : s.activeTable,
-        activeSplit: 0,
-        modal: { kind: "settled", snap: snap }
-      });
-      this.toast(tender === "cash" ? "Settled in cash · drawer opened" : "Settled by " + tname(tender) + (ref ? " · ref " + ref : " · unreferenced"));
-    };
     return {
       mTicket: true,
       modalTitle: this.slotName(m.slot) + " · " + MVRc(T.total),
@@ -10848,17 +10768,21 @@ class Component extends DCLogic {
         noteStyle: l.note ? "display:block;font-size:10px;color:var(--text-muted);margin-top:2px" : "display:none",
         note: l.note || ""
       })),
+      // What is owed. Cash rounding is NOT shown here, because it is a property
+      // of the tender and of the currency — the till works it out against the
+      // outlet's own cash step once a cashier has said cash. This panel used to
+      // print it from a hardcoded half-rufiyaa, which is wrong for a dollar.
       tkTotals: [
         { k: "Subtotal", v: MVRc(T.sub), s: "font-size:11.5px;color:var(--text-dim)" },
         { k: "Service charge " + (o.sc || 0) + "%", v: MVRc(T.svc || 0), s: "font-size:11.5px;color:var(--text-dim)" },
         { k: this.taxLine(o) || "GST", v: this.taxRegistered(o) ? MVRc(T.tax || 0) : "not registered",
           s: "font-size:11.5px;color:var(--text-dim)" },
-        { k: "Total", v: MVRc(T.total), s: "font-size:13px;font-weight:800;color:var(--text);padding-top:7px;border-top:1px solid var(--line)" },
-        { k: "Cash rounding", v: (roundDiff >= 0 ? "+" : "") + MVRc(roundDiff), s: Math.abs(roundDiff) > 0.004 ? "font-size:11.5px;color:var(--text-dim)" : "display:none" },
-        { k: "Cash due", v: MVRc(grossDue), s: Math.abs(roundDiff) > 0.004 ? "font-size:13px;font-weight:800;color:var(--warn-bright)" : "display:none" }
+        { k: "Total", v: MVRc(T.total), s: "font-size:13px;font-weight:800;color:var(--text);padding-top:7px;border-top:1px solid var(--line)" }
       ],
       tkFlows: this.TICKET_FLOW().map((x, i) => ({
-        label: x[1], style: pill(flow === i),
+        label: x[1], style: "flex:1;min-width:84px;padding:9px 10px;border-radius:999px;font-size:11px;font-weight:700;text-align:center;border:1px solid "
+          + (flow === i ? "var(--text)" : "var(--line)") + ";background:" + (flow === i ? "var(--text)" : "var(--bg-2)")
+          + ";color:" + (flow === i ? "var(--bg)" : "var(--text-dim)"),
         go: () => {
           // Read the rung back out of live state rather than the copy this
           // render closed over — two status changes without an intervening
@@ -10871,23 +10795,33 @@ class Component extends DCLogic {
             { table: this.slotName(m.slot), title: this.slotName(m.slot), source: "floor" });
         }
       })),
-      tkTenders: this.TENDER_SET().map((x) => ({
-        label: x[1], sub: x[2], style: pill(tender === x[0]),
-        go: () => setM({ tender: x[0], ref: x[0] === "cash" ? "" : ref })
-      })),
-      tkHasRef: !!tender && tender !== "cash",
-      tkRef: ref,
-      tkRefLabel: tender === "card" ? "Approval code" : tender === "credit" ? "Reference" : "Transaction number",
-      tkRefChange: (e) => setM({ ref: e.target.value }),
-      tkSettleLabel: !tender ? "Pick a payment method" : tender === "cash" ? "Take " + MVRc(grossDue) + " cash · close ticket" : "Settle " + MVRc(T.total) + " by " + tname(tender),
-      tkSettleStyle: "width:100%;padding:14px 12px;border-radius:999px;font-size:13.5px;font-weight:800;min-height:50px;font-family:inherit;cursor:pointer;border:1px solid transparent;" + (tender ? "background:var(--amber);color:var(--on-amber)" : "background:var(--bg-2);border-color:var(--line);color:var(--text-faint)"),
-      tkSettle: settle,
+      // ── ONE SETTLE PATH ─────────────────────────────────────────────────
+      // This panel used to close a ticket itself, with a copy of the till's
+      // arithmetic that had drifted: no tendering at all, so a cashier taking
+      // cash could not say what the guest handed over and the drawer never
+      // learned the change; no foreign tender; no split; no tip; and cash
+      // rounded at a hardcoded half-rufiyaa.
+      //
+      // A second implementation of settlement is a second set of bugs, and this
+      // one had already been repaired once for writing eleven of twenty-four
+      // fields. So it stopped having one. Taking payment here opens the SAME
+      // pay screen the floor uses, against this ticket — quick cash, keypad,
+      // change due, currency, splits — and there is exactly one place in the
+      // build where money is taken.
+      tkPayLabel: "Take payment · " + MVRc(T.total),
+      tkPayStyle: "width:100%;padding:14px 12px;border-radius:999px;font-size:13.5px;font-weight:800;min-height:50px;font-family:inherit;cursor:pointer;border:1px solid transparent;background:var(--amber);color:var(--on-amber)",
+      tkPay: () => {
+        if (!this.can("pos", "a")) return this.toast("Taking money needs till rights", "warn");
+        // The same guard the floor's Pay button answers to: a drawer with no
+        // float opened against it cannot be reconciled at the end of the shift.
+        if (!this.guardRegister()) return;
+        this.setState({
+          activeTable: m.slot, activeSplit: 0,
+          modal: { kind: "pay", tender: ((tk.payIntent || {}).tender) || "cash", cust: "", given: "" }
+        });
+      },
       tkFloorGo: () => this.setState({ view: "pos", pane: "floor", activeTable: m.slot, activeSplit: 0, modal: null }),
-      tkNote: tender === "cash"
-        ? "Cash closes the ticket the moment you press it — the drawer is right there and there is nothing to wait for."
-        : tender
-        ? "The reference is optional. Settle without one and the payment still posts, flagged unreferenced so it surfaces on the reconciliation report rather than going quiet."
-        : "Moving the status here is what the kitchen screen and the guest's tracker read. Settling closes the ticket on the floor, posts the journal and clears it from the guest's phone."
+      tkNote: "Moving the status here is what the kitchen screen and the guest's tracker read. Take payment opens the till's own pay screen on this ticket, so the cash, the change and the journal are the ones the floor writes."
     };
   }
 
@@ -10946,7 +10880,7 @@ class Component extends DCLogic {
         .map((t) => ({ label: t[1], count: t[2], on: sub === t[0], pick: () => this.setState({ tab: Object.assign({}, s.tab, { ordSub: t[0] }) }) })),
       guideTitle: openList.length ? "Open first" : "Today's orders",
       guide: openList.length
-        ? [openList.length + " still open — live tickets and parked bills, newest first", "Open a ticket to move its status, then take payment in the same panel", "Cash closes on the press; card, transfer and QR take an optional reference"]
+        ? [openList.length + " still open — live tickets and parked bills, newest first", "The status column is where the order is, on the same rung the pass and the guest read", "Open a ticket to move that status, or take payment — which opens the till's own pay screen on it"]
         : ["Nothing open — every ticket rung today has been settled", "Most recent at the top", "Tap a row for its receipt, or export the day as CSV"],
       actions: [
         { label: "Z-report", go: () => this.setState({ modal: { kind: "z" } }) },

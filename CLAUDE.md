@@ -312,6 +312,30 @@ same shape — a status nobody else could read:
 `ticket_status` still has a handler and no call site on purpose: a device that
 was offline across this change may still be holding one in its outbox.
 
+## One place where money is taken
+
+Settling goes through the till's pay screen — `modalVals()` under `kind: "pay"`.
+It is the only implementation: cash tendering with quick notes and a keypad,
+change due, foreign tender at a captured rate, even splits, tips, customer
+credit against a limit, and cash rounding against the outlet's own `cashStep()`.
+
+Orders & Tickets does NOT settle. Its **Take payment** sets `activeTable` and
+opens that same screen on the ticket. The panel is for reading a bill, moving
+its rung, and getting to the floor.
+
+It used to close tickets itself, and the copy had drifted twice: first writing
+eleven of twenty-four fields and booking the pre-discount subtotal as revenue,
+and then — after that was repaired — still with **no tendering at all**. A
+cashier taking cash could not say what the guest handed over, so the change was
+never recorded and the drawer count at close was the first place anyone found
+out. It also rounded cash at a hardcoded half-rufiyaa, which is wrong for a
+dollar outlet, and carried a second tender list (`TENDER_SET`) that had no
+wallet and called customer credit a "house account".
+
+If you are tempted to add a settle button somewhere new, open the pay screen
+instead. `test/chain.test.js` asserts the panel exposes no `tkSettle` and no
+tender list of its own.
+
 ## Allergens and diets
 
 One table, in `app/kashikeyo-rules.js`, loaded by the browser as a script and by
