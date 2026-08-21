@@ -1350,6 +1350,9 @@ const AUDIT_ONLY = [
   'access_change', 'act_as', 'auto_lock', 'backup_create', 'backup_run',
   'cfo_query', 'device_deregister', 'device_diagnostics', 'device_lock',
   'device_paired', 'device_replay', 'grn_query', 'outlet_switch_denied',
+  // The rename itself happened over HTTP, at rank 5, behind a refusal the
+  // operator saw. What reaches the outbox is the record of it.
+  'outlet_handle_change',
   'password_reset', 'permission_change', 'permission_reset', 'pin_failed',
   'pin_lockout', 'pin_reset', 'restore_run', 'revoke_sessions', 'sign_in',
   'sign_in_refused', 'sign_out', 'stock_query', 'store_reset', 'vendor_query',

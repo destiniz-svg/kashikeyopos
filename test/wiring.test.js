@@ -197,3 +197,32 @@ test('the audit-only kinds are named, not defaulted', () => {
     'grn_priced', 'post_payroll', 'open_register', 'close_register'].indexOf(k) >= 0);
   assert.deepStrictEqual(overlap, [], 'nothing consequential is audit-only');
 });
+
+/* The form sweep in test/harness.js walks a HARDCODED list, and a form that is
+   not on it is a form nobody ever opens in anger. That is not hypothetical: the
+   store-address form was written, wired and nearly shipped before anybody
+   noticed the sweep did not know about it. */
+test('every form the terminal can open is on the list the harness sweeps', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const H = require('./harness');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const from = src.indexOf('formSpec(name) {');
+  const to = src.indexOf('return F[name] || null;', from);
+  assert.ok(from > 0 && to > from, 'found the form spec table');
+
+  const keys = (src.slice(from, to).match(/\n {6}[A-Za-z][A-Za-z0-9_]*: \{/g) || [])
+    .map((m) => m.trim().replace(':', '').replace('{', '').trim());
+  assert.ok(keys.length > 40, 'the extraction found the table, not a fragment');
+
+  const missing = keys.filter((k) => H.FORMS.indexOf(k) < 0);
+  assert.deepStrictEqual(missing, [],
+    'these forms exist and are never swept: ' + missing.join(', '));
+
+  // `aiResult` is a state key in the reference build, not a spec — counted
+  // honestly rather than quietly dropped from the list.
+  const stale = H.FORMS.filter((k) => keys.indexOf(k) < 0 && k !== 'aiResult');
+  assert.deepStrictEqual(stale, [],
+    'these are swept but no longer exist: ' + stale.join(', '));
+});

@@ -24,6 +24,8 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const H = require('../src/handle');
+const HARNESS = require('./harness');
+const FX = require('./fixtures');
 
 const APP = path.join(__dirname, '..', 'app');
 const read = (f) => fs.readFileSync(path.join(APP, f), 'utf8');
@@ -174,4 +176,91 @@ test('both portals say so when a link names no store', () => {
       f + ' has a screen for a dead link');
     assert.ok(/linkDeadMsg/.test(src), f + ' shows the reason it was given');
   });
+});
+
+/* ── renaming, from the operator's side ─────────────────────────────────── */
+
+/* A signed-in session carries the rank the SERVER issued, and that is what the
+   terminal gates on. The terminal's own role map disagrees with src/auth.js —
+   it reads ChainAdmin as 5 where the ladder says 4 — so a control gated on the
+   map would be offered to an admin the API then refuses. */
+function atRank(rank, roleKey) {
+  return HARNESS.makeInstance({
+    kpos: FX.kpos(), raw: FX.raw(), real: FX.real({ rank }),
+    role: roleKey,
+    session: { id: 'u_x', user: 'x', name: 'Rank ' + rank, role: roleKey,
+      rank: rank, outlet: 1, outlets: [] }
+  });
+}
+
+test('the terminal gates on the rank the server issued, not the one it infers', () => {
+  const { RANK, ROLE_KEY_BY_RANK } = require('../src/auth');
+  // ChainAdmin is rank 4 on the server. If the terminal read its own map it
+  // would call that 5 and hand an admin the owner's controls.
+  assert.strictEqual(RANK.admin, 4);
+  assert.strictEqual(ROLE_KEY_BY_RANK[4], 'ChainAdmin');
+  const F = atRank(4, 'ChainAdmin');
+  assert.strictEqual(F.rank(), 4, 'the session wins');
+  assert.strictEqual(F.RANKMAP().ChainAdmin, 5, 'and the map still disagrees');
+});
+
+test('changing a store address is offered to the owner and refused to anybody else', () => {
+  const seen = [];
+  [[3, 'OutletManager'], [4, 'ChainAdmin'], [5, 'SuperAdmin']].forEach(([rank, key]) => {
+    const F = atRank(rank, key);
+    const o = F.scopedOutlets()[0] || {};
+    F.state.modal = { kind: 'outletDetail', id: o.id };
+    const v = F.modalVals(F.state.modal);
+    const act = (v.detailActs || [])[0] || null;
+    seen.push([rank, act ? act.label : null]);
+    if (!o.slug) return;                       // nothing to rename yet
+    assert.ok(act, 'rank ' + rank + ' is told where the address lives');
+    // A gated action REFUSES with wording. A control that vanished teaches an
+    // operator the app is broken; one that explains teaches them what to ask.
+    if (rank < 5) assert.match(act.label, /owner only/i, 'rank ' + rank);
+    else assert.match(act.label, /Change store address/, 'rank 5');
+    assert.doesNotThrow(() => act.go(), 'rank ' + rank + ' can press it');
+    F.state.modal = null;
+  });
+  assert.strictEqual(seen.length, 3, JSON.stringify(seen));
+});
+
+test('the rename form names the address it is leaving', () => {
+  const F = atRank(5, 'SuperAdmin');
+  const o = F.scopedOutlets()[0] || {};
+  F.state.modal = { kind: 'outletDetail', id: o.id };
+  const spec = F.formSpec('storeAddress');
+  assert.ok(spec && spec.title, 'the form exists');
+  // Its consequence, stated on the form: this is the one thing that makes
+  // renaming safe, and an operator has to read it before they press save.
+  assert.match(spec.foot, /keeps pointing here/,
+    'the form says the old address goes on working: ' + spec.foot);
+  assert.match(spec.foot, /nobody else can ever take it/i, spec.foot);
+  const field = (spec.fields || [])[0];
+  assert.strictEqual(field.k, 'handle');
+  assert.strictEqual(field.v, F.storeHandle(o.id),
+    'it opens on the address the store is at, not empty');
+});
+
+test('the QR card prints the address the SERVER published, in both shapes', () => {
+  const F = atRank(5, 'SuperAdmin');
+  const o = F.scopedOutlets()[0] || {};
+
+  // No base domain published: the path form, which is followable.
+  assert.strictEqual(F.portalBase(), '');
+  assert.strictEqual(F.storeUrl('', o.id), '/g/' + o.slug);
+  assert.strictEqual(F.tableUrl(1, o.id), '/g/' + o.slug + '/?t=' + encodeURIComponent(F.slotName(1)));
+
+  // Published: the store's own subdomain, spelled by nobody.
+  F.__win.KPOS.PORTAL = { base: 'kashikeyopos.com' };
+  assert.strictEqual(F.portalBase(), 'kashikeyopos.com');
+  assert.strictEqual(F.storeUrl('', o.id), 'https://' + o.slug + '.kashikeyopos.com');
+  assert.strictEqual(F.memberUrl(o.id), 'https://' + o.slug + '.kashikeyopos.com/member');
+
+  // And that is what lands on the card, table label and all.
+  F.state.activeTable = 1;
+  const card = F.modalVals({ kind: 'qr' });
+  assert.strictEqual(card.qrUrl, 'https://' + o.slug + '.kashikeyopos.com/?t='
+    + encodeURIComponent(F.slotName(1)), card.qrUrl);
+  delete F.__win.KPOS.PORTAL;
 });

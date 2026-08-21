@@ -199,6 +199,16 @@
     },
     roster: loadRoster,
     refresh: async function () { return hydrate(await api.bootstrap()); },
+    /* The store's public address. Renaming keeps the old one pointing here —
+       the cards are already on the tables — so the terminal re-reads the
+       bootstrap afterwards rather than patching a slug it half knows. */
+    handle: function (want) { return api.handle(want); },
+    rename: async function (h) {
+      var r = await api.rename(h);
+      hydrate(await api.bootstrap());
+      repaint(null);
+      return r;
+    },
     // The network pill's "go offline" is a real switch, not a simulation: the
     // queue holds durably and nothing is POSTed until it is flipped back.
     setOffline: function (off) { root.__kposForceOffline = !!off; if (!off) api.flush(); }

@@ -3,7 +3,8 @@ const path = require('path');
 const express = require('express');
 const { owner, shutdown } = require('./src/db');
 const { migrate } = require('./src/scripts/migrate');
-const { hostHandle } = require('./src/handle');
+const { hostHandle, baseDomain } = require('./src/handle');
+const directory = require('./src/directory');
 
 // Set when a migration could not finish, and reported by both health
 // endpoints so a half-migrated schema cannot pass for a healthy one.
@@ -60,10 +61,21 @@ app.get('/readyz', async function (req, res) {
 
 /* Which store this request is addressed to — <handle>.kashikeyopos.com — or
    null for the apex app. Resolved once, before anything routes on it, so the
-   API, the pages and the 404 all read the same answer. */
+   API, the pages and the 404 all read the same answer.
+
+   A store may change its address, and the one it gave up is already printed on
+   the tables. So a retired handle is sent on, permanently, with the path it was
+   asked for — the guest ends up at the right menu with the right thing in their
+   address bar. A directory failure never blocks a guest: the request simply
+   carries on to the store it named. */
 app.use(function (req, res, next) {
   req.storeHandle = hostHandle(req.hostname || req.get('host') || '');
-  next();
+  if (!req.storeHandle) return next();
+  directory.movedTo(req.storeHandle).then(function (to) {
+    const base = baseDomain();
+    if (!to || !base) return next();
+    res.redirect(301, 'https://' + to + '.' + base + req.originalUrl);
+  }).catch(function () { next(); });
 });
 
 app.use('/api', require('./src/routes'));

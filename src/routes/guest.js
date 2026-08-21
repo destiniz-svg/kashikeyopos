@@ -18,19 +18,26 @@ const r = express.Router();
 // A QR encodes the outlet handle and the table. The token is minted here, not
 // carried in the URL, so a guest cannot retype it onto another table.
 async function mintTable(req, res, want) {
-  const o = await owner().query('SELECT id, name, slug FROM chain.outlet'
-    + ' WHERE slug = $1 AND active', [want]);
+  // Current address or one the store gave up — chain.handle_points_at answers
+  // both, so a card printed under the old name keeps opening the right menu.
+  const o = await owner().query(
+    'SELECT o.id, o.name, o.slug, p.retired FROM chain.handle_points_at($1) p'
+    + ' JOIN chain.outlet o ON o.id = p.outlet_id', [want]);
   if (!o.rows.length) {
-    // An unknown handle means a QR printed for a store that moved. Say so
-    // rather than silently landing the guest somewhere else.
+    // A handle nobody answers to. Say so rather than silently landing the
+    // guest somewhere else.
     return res.status(404).json({ error: 'That code is not in use here any more — ask for a new one' });
   }
+  const r = o.rows[0];
   const table = String(req.query.t || '').slice(0, 12) || null;
   const hours = 4;
   return res.set('cache-control', 'no-store').json({
-    token: signTable({ o: o.rows[0].id, tb: table, sl: o.rows[0].slug,
+    // The token names the store's CURRENT address, and the page adopts it, so
+    // one hop through a retired handle is the last one this device makes.
+    token: signTable({ o: r.id, tb: table, sl: r.slug,
       exp: Date.now() + hours * 3600e3 }),
-    outlet: { id: o.rows[0].id, name: o.rows[0].name, slug: o.rows[0].slug },
+    outlet: { id: r.id, name: r.name, slug: r.slug },
+    movedFrom: r.retired ? want : undefined,
     table: table
   });
 }

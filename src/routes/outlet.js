@@ -1,6 +1,8 @@
 'use strict';
 const express = require('express');
-const { withOutletRead } = require('../db');
+const { withOutletRead, owner } = require('../db');
+const { shapeError, storeUrl, memberUrl, baseDomain } = require('../handle');
+const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
 const { buildBootstrap, buildState, all } = require('../bootstrap');
 
@@ -22,6 +24,68 @@ r.get('/bootstrap', sameOutlet, groupScope, async function (req, res, next) {
       kpos: boot.kpos, raw: boot.raw, state: state
     });
   } catch (e) { next(e); }
+});
+
+/* ── the store's public address ──────────────────────────────────────────
+   Renaming is rank 5 and nothing less. It changes what is printed on the table
+   cards, on the receipts and in the message the host sent last week — a manager
+   who can discount a bill has no business changing where the business lives.
+
+   The old address is kept and redirects here (migration 013), so the cards
+   already stuck to the tables keep opening the right menu. It also stops being
+   claimable by anybody else: a dead QR is bad, and a QR pointing at a
+   competitor is worse. ────────────────────────────────────────────────────── */
+r.get('/handle', sameOutlet, atLeast('admin'), async function (req, res, next) {
+  try {
+    const want = String(req.query.h || '').trim().toLowerCase();
+    const id = req.ctx.outletId;
+    const mine = await owner().query(
+      'SELECT slug FROM chain.outlet WHERE id = $1', [id]);
+    const past = await owner().query(
+      'SELECT handle, retired_at FROM chain.outlet_handle_history'
+      + ' WHERE outlet_id = $1 ORDER BY retired_at DESC', [id]);
+    const now = {
+      handle: (mine.rows[0] || {}).slug || null,
+      url: storeUrl((mine.rows[0] || {}).slug || '', ''),
+      base: baseDomain(),
+      // Every address this store has given up. They still point here, and
+      // nobody else can take them.
+      former: past.rows.map((x) => ({ handle: x.handle, retiredAt: x.retired_at }))
+    };
+    if (!want) return res.json(now);
+
+    const shape = shapeError(want);
+    if (shape) return res.json(Object.assign(now, { want: want, free: false, why: shape }));
+    const why = await owner().query('SELECT chain.handle_why($1,$2) AS w', [want, id]);
+    res.json(Object.assign(now, {
+      want: want, free: !why.rows[0].w, why: why.rows[0].w || null,
+      wantUrl: why.rows[0].w ? null : storeUrl(want, '')
+    }));
+  } catch (e) { next(e); }
+});
+
+r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next) {
+  try {
+    const want = String((req.body || {}).handle || '').trim().toLowerCase();
+    const shape = shapeError(want);
+    if (shape) return res.status(400).json({ error: shape });
+
+    const id = req.ctx.outletId;
+    const q = await owner().query('SELECT chain.rename_outlet($1,$2) AS was', [id, want]);
+    const was = q.rows[0].was;
+    // The next request should see the new address rather than wait out the
+    // directory's refresh window.
+    directory.forget();
+    res.json({
+      handle: want, was: was, moved: was !== want,
+      url: storeUrl(want, ''), memberUrl: memberUrl(want),
+      base: baseDomain()
+    });
+  } catch (e) {
+    // 23514 is the rename function refusing a handle it will not give out.
+    if (e && e.code === '23514') return res.status(409).json({ error: e.message });
+    next(e);
+  }
 });
 
 /* ── the live snapshot both guest portals read. Prices, stages and what is

@@ -774,6 +774,99 @@ test('the onboarding address check answers the same question the save will', opt
   assert.strictEqual(s.body.suggested, 'sea-house-cafe');
 });
 
+/* ═══ A STORE MAY MOVE, AND ITS OLD ADDRESS MUST NOT ══════════════════════
+   The whole reason renaming is allowed is that the address it leaves keeps
+   working. A dead QR is bad; a QR pointing at somebody else's menu is worse. */
+test('renaming a store is the owner\'s, and nobody else\'s', opts, async () => {
+  const till = await post('/api/auth/pin', { outletId, pin: '6520' });
+  const mgr = await post('/api/auth/pin', { outletId, pin: '7364' });
+  for (const t of [till.body.token, mgr.body.token]) {
+    const r = await patch('/api/outlet/' + outletId + '/handle', { handle: 'nice-try' }, t);
+    assert.strictEqual(r.status, 403, 'a rank below owner cannot change the address');
+    assert.match(r.body.error, /Rank 5 required — Owner/, r.body.error);
+  }
+  const now = await db.owner().query('SELECT slug FROM chain.outlet WHERE id = $1', [outletId]);
+  assert.notStrictEqual(now.rows[0].slug, 'nice-try', 'and nothing moved');
+});
+
+test('a renamed store keeps the address it left', opts, async () => {
+  process.env.PORTAL_BASE_DOMAIN = 'kashikeyopos.com';
+  const before = (await db.owner().query(
+    'SELECT slug FROM chain.outlet WHERE id = $1', [outletId])).rows[0].slug;
+
+  const done = await patch('/api/outlet/' + outletId + '/handle',
+    { handle: 'moved-house' }, token);
+  assert.strictEqual(done.status, 200, JSON.stringify(done.body));
+  assert.strictEqual(done.body.was, before);
+  assert.strictEqual(done.body.handle, 'moved-house');
+  assert.strictEqual(done.body.url, 'https://moved-house.kashikeyopos.com');
+
+  // The card already on the table: 301, keeping the path and the table on it.
+  const old = await callHost(before + '.kashikeyopos.com', 'GET', '/?t=T04');
+  assert.strictEqual(old.status, 301, 'the address it left redirects');
+  assert.strictEqual(old.headers.location,
+    'https://moved-house.kashikeyopos.com/?t=T04');
+
+  // The new one does not.
+  const now = await callHost('moved-house.kashikeyopos.com', 'GET', '/');
+  assert.strictEqual(now.status, 200);
+
+  // The path form self-heals instead: it resolves and hands back the CURRENT
+  // address, which the page then uses for everything after.
+  const byPath = await get('/api/g/' + before + '/token?t=T04');
+  assert.strictEqual(byPath.status, 200, JSON.stringify(byPath.body));
+  assert.strictEqual(byPath.body.outlet.slug, 'moved-house');
+  assert.strictEqual(byPath.body.movedFrom, before);
+});
+
+test('the address a store left is nobody else\'s to take', opts, async () => {
+  const left = (await db.owner().query(
+    'SELECT handle FROM chain.outlet_handle_history WHERE outlet_id = $1'
+    + ' ORDER BY retired_at DESC LIMIT 1', [outletId])).rows[0].handle;
+
+  // To another outlet it is taken — a guest scanning the card in front of them
+  // must never land on a competitor's menu.
+  const other = outletId + 1;
+  const why = await db.owner().query('SELECT chain.handle_why($1,$2) AS w', [left, other]);
+  assert.ok(why.rows[0].w, left + ' must not be free to outlet ' + other);
+  assert.match(why.rows[0].w, /still points at it/, why.rows[0].w);
+
+  // To the outlet that left it, it is its own name to take back.
+  const mine = await db.owner().query('SELECT chain.handle_why($1,$2) AS w', [left, outletId]);
+  assert.strictEqual(mine.rows[0].w, null);
+
+  const back = await patch('/api/outlet/' + outletId + '/handle', { handle: left }, token);
+  assert.strictEqual(back.status, 200, JSON.stringify(back.body));
+  assert.strictEqual(back.body.handle, left);
+
+  // And it stops being history — an outlet at an address does not redirect to
+  // itself.
+  const still = await db.owner().query(
+    'SELECT 1 FROM chain.outlet_handle_history WHERE handle = $1', [left]);
+  assert.strictEqual(still.rows.length, 0, 'the address it took back is not history');
+  const hit = await callHost(left + '.kashikeyopos.com', 'GET', '/');
+  assert.strictEqual(hit.status, 200, 'and it answers there rather than redirecting');
+});
+
+test('a rename is refused by name, and refusing changes nothing', opts, async () => {
+  const before = (await db.owner().query(
+    'SELECT slug FROM chain.outlet WHERE id = $1', [outletId])).rows[0].slug;
+  const cases = [
+    ['webmail', 409, /reserved for mail/],
+    ['Sea House', 400, /letters, numbers/],
+    ['ab', 400, /at least 3/],
+    ['', 400, /required/]
+  ];
+  for (const [h, status, why] of cases) {
+    const r = await patch('/api/outlet/' + outletId + '/handle', { handle: h }, token);
+    assert.strictEqual(r.status, status, h + ' -> ' + r.status + ' ' + JSON.stringify(r.body));
+    assert.match(r.body.error, why, r.body.error);
+  }
+  const after = (await db.owner().query(
+    'SELECT slug FROM chain.outlet WHERE id = $1', [outletId])).rows[0].slug;
+  assert.strictEqual(after, before, 'a refused rename left the store where it was');
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();

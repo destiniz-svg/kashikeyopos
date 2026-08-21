@@ -29,8 +29,9 @@ src/routes/            auth · onboarding · outlet · sync · guest · estate �
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
-                       011 accounts · 012 store handle
+                       011 accounts · 012 store handle · 013 handle history
 src/handle.js          what a store address is, and where the base domain comes from
+src/directory.js       where an address points — current or one a store gave up
 app/index.html         the terminal (POS, KDS, back office) — one app, gated by rank
 app/onboarding.html    the fourteen-step panel an empty install lands on
 app/guest.html         the QR portal
@@ -302,6 +303,43 @@ refusal on save.
 The path forms `/g/<slug>` and `/m/<slug>` still answer everywhere, for as long
 as the cards printed before a store took its handle stay stuck to the tables.
 
+### A store may move, and its old address must not
+
+Renaming is rank 5 — `PATCH /api/outlet/:id/handle` — because it changes what is
+printed on every table card. `chain.rename_outlet()` does it in one transaction:
+validate, retire the old handle into `chain.outlet_handle_history`, set the new
+one. Half of that is worse than neither.
+
+A retired handle then does two things for ever:
+
+- it **redirects**, 301, keeping the path and the query — so
+  `old.kashikeyopos.com/?t=7` lands on `new.kashikeyopos.com/?t=7` with the
+  right thing in the guest's address bar. `src/directory.js` holds the map in
+  memory (30s TTL, refreshed wholesale, a failed refresh keeps serving the last
+  answer) because this is on the hot path of every guest request. The cache only
+  ever decides whether to REDIRECT — every endpoint that resolves a store asks
+  the database — so a stale entry costs one hop and never the wrong menu;
+- it **cannot be claimed by anybody else**. `chain.handle_why()` refuses it to
+  every outlet except the one that gave it up, which may take its own name back.
+  A dead QR is bad; a QR pointing at a competitor's menu is worse.
+
+Nothing expires. A card outlives the decision that renamed it, and a retired
+handle costs a row.
+
+The path form self-heals instead of redirecting: `/api/g/<old>/token` resolves
+through `chain.handle_points_at()`, mints against the right outlet and answers
+with the **current** handle, which the page then adopts — so one hop through a
+retired address is the last one that device makes.
+
+### The rank the server issued wins
+
+`app/index.html`'s own `RANKMAP()` does not agree with `src/auth.js`: it reads
+`ChainAdmin` as 5 where the ladder says 4, and `OutletManager` as 4 where it
+says 3. `rank()` now prefers `state.session.rank` — the rank the server put in
+the session — and falls back to the map only for a terminal that has not signed
+in against a server yet. Gating on the map would offer an admin controls the API
+then refuses, and a button that 403s is worse than no button.
+
 ## The guest portal and the member card
 
 `/g/<slug>?t=<table>` mints a **table token** scoped to one outlet and one
@@ -342,7 +380,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 97 tests
+npm test                          # 106 tests
 npm run leak-test                 # isolation, on its own
 ```
 

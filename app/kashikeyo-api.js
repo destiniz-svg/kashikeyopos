@@ -325,6 +325,17 @@
       var p = new URLSearchParams(q || {});
       return this._fetch("/api/outlet/" + this.outletId + "/sales?" + p.toString());
     }
+    /* The store's public address. Not an outbox op: a rename is refused by
+       name when somebody else holds the address, and a refusal that arrives
+       three hours later through a replay queue is a refusal nobody sees. */
+    handle(want) {
+      return this._fetch("/api/outlet/" + this.outletId + "/handle"
+        + (want ? "?h=" + encodeURIComponent(want) : ""));
+    }
+    rename(handle) {
+      return this._fetch("/api/outlet/" + this.outletId + "/handle",
+        { method: "PATCH", body: { handle: handle } });
+    }
     onboarding() { return this._fetch("/api/onboarding/state", { anon: !this.token }); }
     onboard(step, body) {
       return this._fetch("/api/onboarding/" + step, { method: "POST", body, anon: !this.token });

@@ -2159,7 +2159,8 @@ class Component extends DCLogic {
       const p = r.perms[it[0]]; return p && p.v && this.siteHas(it[0]);
     });
     this.setState({
-      session: { id: u.id, user: u.user, name: u.name, role: u.role, outlet: u.outlet, outlets: (u.outlets || []).slice(), at: Date.now() },
+      session: { id: u.id, user: u.user, name: u.name, role: u.role, rank: u.rank,
+        outlet: u.outlet, outlets: (u.outlets || []).slice(), at: Date.now() },
       roleKey: u.role, modal: null, view: first ? first[0] : "pos"
     });
     this.queue("sign_in", u.name + " signed in · " + this.deviceCode(), "sessions");
@@ -2281,8 +2282,10 @@ class Component extends DCLogic {
     this.setState({
       session: {
         id: sess.actor, user: (who || {}).user || "", name: sess.name || (who || {}).name || "",
-        role: sess.roleKey, outlet: sess.outletId, outlets: (who || {}).outlets || [],
-        at: Date.now()
+        // The rank the server issued this session, not the one the terminal's
+        // own role map would infer from the key.
+        role: sess.roleKey, rank: sess.rank, outlet: sess.outletId,
+        outlets: (who || {}).outlets || [], at: Date.now()
       },
       roleKey: sess.roleKey,
       outletId: sess.outletId || this.state.outletId,
@@ -6914,10 +6917,28 @@ class Component extends DCLogic {
     if (m.kind === "outletDetail") {
       const o = (K0.OUTLETS || []).find((x) => x.id === m.id) || {};
       const kids = (K0.OUTLETS || []).filter((x) => x.parent === o.id);
+      // Where this store's guests scan to. It is a fact about the outlet, so it
+      // sits with the other facts — and renaming it is rank 5, because it
+      // changes what is printed on every table card.
+      const owner = this.rank() >= 5;
+      const url = this.storeUrl("", o.id);
       return {
         hasDetailEdit: this.can("branches"), detailEditLabel: "Edit outlet, tax or service charge", detailEdit: () => this.openForm("outlet", o),
+        detailActsStyle: o.slug ? "display:flex;flex-wrap:wrap;gap:8px;margin-top:9px" : "display:none",
+        detailActs: o.slug ? [
+          {
+            label: owner ? "Change store address" : "Store address — owner only",
+            style: "flex:1 1 190px;min-width:0;padding:11px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var("
+              + (owner ? "--text" : "--text-faint") + ");font-size:12px;font-weight:600;text-align:center;font-family:inherit",
+            // A refusal with wording, not a button that vanished. An operator
+            // who cannot find the control assumes the app is broken.
+            go: () => owner
+              ? this.openForm("storeAddress", o)
+              : this.toast("Changing the store address needs the owner — it is printed on every table card", "warn")
+          }
+        ] : [],
         modalTitle: o.name, modalSub: o.code + " · " + (o.region || ""),
-        detailRows: [Rt("Type", o.type ? o.type.replace("_", " ") : ""), Rt("Manager", o.mgr || "—"), Rt("Address", o.addr || "—"), R("Tax class", this.taxLine(o) || "Not registered", "var(--warn-bright)"), R("Service charge", (o.sc || 0) + "%"), R("Seats", String(o.seats || 0)), R("Tables", String(o.tables || 0)), Rt("POS terminal", o.pos ? "Yes" : "No"), Rt("Stock locations", kids.length ? kids.map((k) => k.code).join(", ") : "None")],
+        detailRows: [Rt("Type", o.type ? o.type.replace("_", " ") : ""), Rt("Store address", url || "Not set"), Rt("Manager", o.mgr || "—"), Rt("Address", o.addr || "—"), R("Tax class", this.taxLine(o) || "Not registered", "var(--warn-bright)"), R("Service charge", (o.sc || 0) + "%"), R("Seats", String(o.seats || 0)), R("Tables", String(o.tables || 0)), Rt("POS terminal", o.pos ? "Yes" : "No"), Rt("Stock locations", kids.length ? kids.map((k) => k.code).join(", ") : "None")],
         detailNote: "outlet_ids in this outlet's staff tokens = [" + [o.id].concat(kids.map((k) => k.id)).join(", ") + "] — the outlet plus its stock sub-locations, nothing else.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -7509,7 +7530,17 @@ class Component extends DCLogic {
   // the same things. See ROLERANK above for the seniority question, which is
   // separate and must not be folded into this.
   RANKMAP() { return { SuperAdmin: 5, ChainAdmin: 5, Accountant: 3, OutletManager: 4, KitchenManager: 3, StoreKeeper: 3, Cashier: 2, Waiter: 2 }; }
-  rank() { return this.RANKMAP()[this.state.roleKey] || 2; }
+  /* The rank the SERVER put in this session wins, because the server is what
+     enforces it. This map does not agree with src/auth.js — it reads
+     ChainAdmin as 5 where the ladder says 4, and OutletManager as 4 where the
+     ladder says 3 — so trusting it would offer an admin controls the API then
+     refuses, and a button that 403s is worse than no button. It stays as the
+     fallback for a terminal that has not signed in against a server yet. */
+  rank() {
+    const s = this.state.session;
+    if (s && s.rank) return Number(s.rank);
+    return this.RANKMAP()[this.state.roleKey] || 2;
+  }
   rankFor(key) { return this.RANKMAP()[key] || 2; }
   rankName() { const r = this.rank(); const m = this.RANKS().find((x) => x.n === r); return m ? m.key : "Till"; }
   // Who may authorise an exception: a void after fire, a discount, an override.
@@ -12632,6 +12663,12 @@ class Component extends DCLogic {
 
   formSpec(name) {
     const K0 = K(), raw = window.KPOS_RAW || {};
+    // Which outlet a detail modal was opened on. formSpec is called twice —
+    // once by openForm while the DETAIL modal is still up, and again on every
+    // render once the FORM modal has replaced it — so it has to read the row
+    // either way or the second call quietly switches outlets.
+    const mo = this.state.modal || {};
+    const addrOutlet = (mo.edit && mo.edit.id) || mo.id;
     const sel = (list) => list.map((x) => ({ v: String(x.v), l: x.l }));
     const outletOpts = sel((K0.OUTLETS || []).map((o) => ({ v: o.id, l: o.name })));
     const storeOpts = sel((K0.OUTLETS || []).filter((o) => o.type !== "restaurant").map((o) => ({ v: o.id, l: o.name })));
@@ -14078,6 +14115,47 @@ class Component extends DCLogic {
           const set = this.vendorVals(v); if (!set) return;
           this.insertRow("vendors", Object.assign({ id: this.nextId("vendors") }, set),
             "Vendor created \u00b7 " + set.name + " \u00b7 " + this.termLabel(set.terms), "vendors");
+        }
+      },
+
+      /* ── the store's public address ────────────────────────────────────────
+         The one form here that is not an outbox op. A rename is refused by
+         name when somebody else holds the address, and a refusal that arrives
+         three hours later through a replay queue is a refusal nobody sees — so
+         it goes straight to the server and reports what came back.
+
+         The old address is kept and points here afterwards. That is the whole
+         reason renaming is allowed at all: the cards are already on the
+         tables. ─────────────────────────────────────────────────────────── */
+      storeAddress: {
+        title: "Change the store address",
+        sub: this.storeUrl("", addrOutlet) || "This store has no address yet",
+        save: "Change the address",
+        foot: "The address you are leaving keeps pointing here, so every QR card"
+          + " already on a table goes on working — and nobody else can ever take"
+          + " it. Lower case letters, numbers and hyphens.",
+        fields: [
+          { k: "handle", label: "New store address", v: this.storeHandle(addrOutlet), full: 1 }
+        ],
+        onSave: (v, row) => {
+          const id = (row && row.id) || addrOutlet || this.state.outletId;
+          const want = String(v.handle || "").trim().toLowerCase();
+          const was = this.storeHandle(id);
+          if (!want) return this.toast("A store address is required", "warn");
+          if (want === was) { this.setState({ modal: null }); return; }
+          // The shape rule is stated once, in the database, and the server
+          // answers with the same sentence chain.handle_why() gives. A second
+          // copy here would be a second rule the moment either is edited.
+          const B = window.KPOS_BRIDGE;
+          if (!B || !B.rename) return this.toast("Not connected to this outlet", "warn");
+          this.setState({ modal: null });
+          this.toast("Changing the address\u2026");
+          B.rename(want).then((r) => {
+            this.queue("outlet_handle_change",
+              "Store address \u00b7 " + r.was + " \u2192 " + r.handle, "branches",
+              { outlet: id, was: r.was, handle: r.handle });
+            this.toast("Now at " + (r.url || r.handle) + " \u00b7 " + r.was + " still points here");
+          }).catch((e) => this.toast(e.message || "That address could not be taken", "warn"));
         }
       }
     };
