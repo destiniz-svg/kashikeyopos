@@ -941,8 +941,15 @@ BEGIN
   -- has to exist from the first insert. Provisioning writes a placeholder the
   -- caller then replaces with the handle the business chose; 'store-<id>' is
   -- always well-formed and always free, which is what a placeholder owes you.
-  INSERT INTO chain.outlet (id, code, name, schema_name, db_role, slug)
-  VALUES (p_id, p_code, p_name, s, r, 'store-' || p_id)
+  -- tax_code follows the COMPANY. The column's default is GGST, which is right
+  -- for a registered business and refused outright for one that is not — so a
+  -- business below the threshold could not create an outlet at all, which is
+  -- the opposite of optional. (chain.gst_registered() arrives in migration 014;
+  -- this body is late-bound, so it resolves when an outlet is provisioned, long
+  -- after every migration has run.)
+  INSERT INTO chain.outlet (id, code, name, schema_name, db_role, slug, tax_code)
+  VALUES (p_id, p_code, p_name, s, r, 'store-' || p_id,
+          CASE WHEN chain.gst_registered() THEN 'GGST' ELSE 'NONE' END)
   ON CONFLICT (id) DO UPDATE SET name = excluded.name, code = excluded.code;
 
   INSERT INTO chain.doc_series (outlet_id, kind, prefix) VALUES

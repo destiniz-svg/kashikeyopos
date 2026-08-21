@@ -36,13 +36,46 @@ async function applySale(c, p, ctx) {
   const discount = r2(p.disc);
   const net = r2(subtotal - discount);
   const service = r2(p.svc);
-  const tax = r2(p.tax);
-  const rounding = r2(p.round);
+  let tax = r2(p.tax);
+  let rounding = r2(p.round);
+
+  /* WHETHER THERE IS TAX AT ALL IS THE OUTLET'S FACT, NOT THE TILL'S.
+     A terminal that has not caught up — deregistered this morning, bootstrapped
+     last week — still sends a tax code and a rate. Believing it would record a
+     GST liability for a business that holds no registration, which is a debt to
+     MIRA that nobody owes and an amount collected under a registration that
+     does not exist.
+
+     So it is read from chain.outlet, and a sale that disagrees is REPAIRED, not
+     rejected: a cashier has already taken the money. The over-collected amount
+     does not vanish — it rides in `rounding`, which posts to 4900, the account
+     that exists for differences somebody has to answer for. What the terminal
+     claimed is stamped beside it. */
+  const reg = await one(c, 'SELECT tax_code FROM chain.outlet WHERE id = $1',
+    [ctx.outletId]);
+  const outletCode = (reg && reg.tax_code) || 'NONE';
+  const registered = outletCode !== 'NONE';
+  const taxCode = registered ? (p.taxCode && p.taxCode !== 'NONE' ? p.taxCode : outletCode)
+    : 'NONE';
+  const taxRate = registered ? num(p.taxRate) : 0;
+
+  let unregisteredAudit = null;
+  if (!registered && tax !== 0) {
+    unregisteredAudit = { charged: tax, code: p.taxCode || null,
+      note: 'this outlet is not registered for GST; the terminal charged tax and'
+        + ' it has been recorded as a difference, not as a liability' };
+    rounding = r2(rounding + tax);
+    tax = 0;
+  }
+
   const total = r2(net + service + tax + rounding);
   const claimed = r2(p.total);
-  const audit = Math.abs(claimed - total) > 0.005
-    ? { at: new Date().toISOString(), claimed, computed: total,
-      note: 'terminal total did not tie to its own components' }
+  const tied = Math.abs(claimed - total) > 0.005
+    ? { claimed, computed: total, note: 'terminal total did not tie to its own components' }
+    : null;
+  const audit = (tied || unregisteredAudit)
+    ? Object.assign({ at: new Date().toISOString() }, tied || {},
+      unregisteredAudit ? { unregistered: unregisteredAudit } : {})
     : null;
 
   const sale = await one(c,
@@ -59,8 +92,8 @@ async function applySale(c, p, ctx) {
       subtotal, discount, p.discCode || null, p.discReason || null,
       // An unregistered outlet must not have a tax LABEL invented for it: the
       // receipt would name a registration the business does not hold.
-      p.discBy || null, net, service, p.taxCode || 'GGST',
-      p.taxCode === 'NONE' ? '' : (p.taxLabel || 'GST'), num(p.taxRate), tax, rounding, total, r2(p.tip),
+      p.discBy || null, net, service, taxCode,
+      registered ? (p.taxLabel || 'GST') : '', taxRate, tax, rounding, total, r2(p.tip),
       r2(p.cogs), p.cur || 'MVR', num(p.rate) || 1, r2(p.fgn),
       p.member || null, p.customer || null, p.server || null,
       ctx.actor, ctx.deviceId, claimed, audit ? JSON.stringify(audit) : null]);
@@ -1353,6 +1386,10 @@ const AUDIT_ONLY = [
   // The rename itself happened over HTTP, at rank 5, behind a refusal the
   // operator saw. What reaches the outbox is the record of it.
   'outlet_handle_change',
+  // Same for registering, or coming off the register: the consequence lands in
+  // chain.company and every outlet's rate history inside one transaction, and
+  // this is the record that it was asked for.
+  'gst_registration',
   'password_reset', 'permission_change', 'permission_reset', 'pin_failed',
   'pin_lockout', 'pin_reset', 'restore_run', 'revoke_sessions', 'sign_in',
   'sign_in_refused', 'sign_out', 'stock_query', 'store_reset', 'vendor_query',

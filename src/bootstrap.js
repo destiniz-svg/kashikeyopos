@@ -215,12 +215,19 @@ async function buildBootstrap(ctx) {
       GST_WATCH: (function () {
         const mine = outlets.rows.filter((x) => x.id === ctx.outletId)[0] || {};
         const code = mine.tax_code || 'NONE';
+        // Whether THIS outlet charges. `companyRegistered` is the separate
+        // question of whether the business registered at all — an outlet can
+        // be at NONE inside a registered company, and the two must not be
+        // collapsed or "register now" appears on a business already registered.
         const registered = code !== 'NONE';
+        const companyRegistered = (company.rows[0] || {}).gst_registered !== false
+          && !!company.rows[0];
         const threshold = num(gstRule.threshold) || 0;
         const turnover = num(rolled.net);
         const tourism = code === 'TGST' || mine.kind === 'resort';
         return {
           registered: registered,
+          companyRegistered: companyRegistered,
           code: code,
           threshold: threshold,
           months: num(gstRule.months) || 12,
@@ -229,8 +236,8 @@ async function buildBootstrap(ctx) {
           since: rolled.since || null,
           // Only ever true for a business that is NOT registered and has
           // measurably crossed the line. Nothing here is a projection.
-          due: !registered && threshold > 0 && turnover >= threshold,
-          near: !registered && threshold > 0
+          due: !companyRegistered && threshold > 0 && turnover >= threshold,
+          near: !companyRegistered && threshold > 0
             && turnover >= threshold * (num(gstRule.warnAt) || 0.8)
             && turnover < threshold,
           tourismAlways: gstRule.tourismAlways !== false && tourism,
@@ -560,12 +567,22 @@ function group(rows, k) {
 }
 
 function chainOf(co, setting) {
-  if (!co) return { id: 'ch', name: '', country: 'MV', currency: 'MVR', tin: '', regNo: '', hq: '', brand: {} };
+  if (!co) {
+    return { id: 'ch', name: '', country: 'MV', currency: 'MVR', tin: '',
+      regNo: '', hq: '', gstRegistered: false, brand: {} };
+  }
   const brand = co.brand || {};
   return {
     id: 'ch_' + (co.reg_no || 'kashikeyo').replace(/\W+/g, '').toLowerCase(),
     name: co.legal_name, country: co.country === 'Maldives' ? 'MV' : co.country,
-    currency: co.base_currency, tin: co.tin, regNo: co.reg_no,
+    currency: co.base_currency,
+    // Nullable since migration 014: a business that is not registered for GST
+    // has no TIN. Empty string, not null — a receipt that renders "null" where
+    // a tax number goes is worse than one that renders nothing.
+    tin: co.tin || '', regNo: co.reg_no,
+    // Registration is a COMPANY fact (the taxpayer registers with MIRA, not
+    // the shop). Which rate an outlet charges once registered is the outlet's.
+    gstRegistered: co.gst_registered !== false,
     hq: co.address, phone: co.phone || '', email: co.email || '',
     fyStart: co.fy_start_month,
     brand: {

@@ -30,6 +30,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
                        008 line identity · 009 GST registration · 010 currency
                        011 accounts · 012 store handle · 013 handle history
+                       014 GST optional
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -181,6 +182,38 @@ places at once, and `test/api.test.js` will tell you if it did not.
 A store's tax rate is read from its own `chain.tax_version` row, effective-dated.
 `NONE` is a real answer: a business that is not GST-registered charges nothing,
 and `0 || 8` silently turning that into 8% is a bug this build refuses to ship.
+
+**Registration is a COMPANY fact; the RATE is an outlet fact.** In the Maldives
+the taxpayer registers with MIRA, not the shop — so `chain.company.gst_registered`
+carries the decision and its TIN (nullable since migration 014: a business that
+is not registered has none, and asking it to invent one puts a false statement on
+every receipt). Which rate an outlet charges once the company is registered —
+GGST or TGST — stays on `chain.outlet.tax_code`.
+
+Two invariants live in the database rather than in the handlers, because "the
+whole application behaves" is not something four route files can promise between
+them:
+
+- a registered business HAS a TIN (`company_tin_iff_registered`);
+- an outlet cannot hold a tax code, or a rate version, that its company is not
+  registered to collect (`chain.outlet_tax_guard`, `chain.tax_version_guard`).
+  The statutory history — `outlet_id IS NULL` — is exempt: those are facts about
+  the country, shipped whoever is reading them.
+
+`chain.provision_outlet()` therefore takes its `tax_code` from
+`chain.gst_registered()` rather than the column default, or a business below the
+threshold could not create an outlet at all. `chain.register_for_gst()` is the
+other direction, in one transaction: set the TIN, mark the company, and put the
+rate on every outlet — because a company marked registered whose outlets still
+say NONE charges nothing while believing it charges GST, and that is a debt to
+MIRA nobody notices until an audit.
+
+**`applySale()` reads the outlet's registration, not the till's claim.** A
+terminal that has not caught up still sends a tax code and a rate. Believing it
+records a liability the business does not owe. The sale is repaired rather than
+rejected — a cashier has already taken the money — the over-collected amount
+rides in `rounding` to 4900, and what the terminal claimed is stamped in
+`sale.server_audit.unregistered`.
 
 **GST registration is optional because it is conditional.** In the Maldives a
 business registers once taxable supplies pass a threshold (migration 009:
@@ -381,7 +414,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 117 tests
+npm test                          # 123 tests
 npm run leak-test                 # isolation, on its own
 ```
 

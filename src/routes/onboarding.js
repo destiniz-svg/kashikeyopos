@@ -70,6 +70,11 @@ r.get('/state', async function (req, res, next) {
     const s = st.rows[0];
     const done = { company: Number(s.company) > 0, outlet: Number(s.outlets) > 0,
       owner: Number(s.staff) > 0 };
+    // Whether the business registered for GST reshapes steps 2 and 4, so the
+    // panel has to know it before it renders them — and it has to be the saved
+    // answer, not one inferred from an outlet that does not exist yet.
+    const reg = await owner().query('SELECT chain.gst_registered() AS on');
+    const gstRegistered = !!reg.rows[0].on;
     let deeper = {};
     if (done.outlet) {
       const o = await owner().query('SELECT id, schema_name FROM chain.outlet'
@@ -114,7 +119,8 @@ r.get('/state', async function (req, res, next) {
       steps: STEPS.map((x) => Object.assign({}, x, { done: !!state[x.key] })),
       done: STEPS.every((x) => state[x.key]),
       next: (STEPS.find((x) => !state[x.key]) || {}).key || null,
-      counts: deeper.counts || {}
+      counts: deeper.counts || {},
+      gstRegistered: gstRegistered
     });
   } catch (e) { next(e); }
 });
@@ -130,8 +136,19 @@ function q0(schema) {
 /* ── 1 · Company. The legal entity: this is who files the return. ────────── */
 r.post('/company', async function (req, res, next) {
   const b = req.body || {};
-  if (!b.legalName || !b.regNo || !b.tin || !b.address) {
-    return res.status(400).json({ error: 'legal name, registration number, TIN and registered address are all required' });
+  /* Registration is CONDITIONAL — migration 009 has the threshold, and a
+     business below it charges nothing. So the TIN is required of a REGISTERED
+     business and of nobody else: an unregistered one has none to give, and
+     asking it to invent one puts a false statement on every receipt it
+     prints. */
+  const registered = b.gstRegistered === true || b.gstRegistered === 'yes'
+    || b.gstRegistered === 'true';
+  const tin = String(b.tin == null ? '' : b.tin).trim();
+  if (!b.legalName || !b.regNo || !b.address) {
+    return res.status(400).json({ error: 'legal name, registration number and registered address are all required' });
+  }
+  if (registered && !tin) {
+    return res.status(400).json({ error: 'a TIN is required — it is what a GST-registered business puts on its receipts' });
   }
   try {
     const already = await owner().query('SELECT id FROM chain.company WHERE id = 1');
@@ -141,17 +158,28 @@ r.post('/company', async function (req, res, next) {
     }
     await owner().query(
       'INSERT INTO chain.company (id, legal_name, reg_no, tin, address, atoll,'
-      + ' country, phone, email, base_currency, fy_start_month, brand)'
+      + ' country, phone, email, base_currency, fy_start_month, brand, gst_registered)'
       + " VALUES (1,$1,$2,$3,$4,$5,coalesce($6,'Maldives'),$7,$8,coalesce($9,'MVR'),"
-      + ' coalesce($10,1), $11) ON CONFLICT (id) DO UPDATE SET legal_name = $1,'
+      + ' coalesce($10,1), $11, $12) ON CONFLICT (id) DO UPDATE SET legal_name = $1,'
       + ' reg_no = $2, tin = $3, address = $4, atoll = $5, phone = $7, email = $8,'
+      + ' gst_registered = $12,'
       // The base currency is the books' currency; re-running the step must be
       // able to correct it while the install is still empty.
       + " base_currency = coalesce($9, chain.company.base_currency),"
       + ' brand = $11, updated_at = now()',
-      [b.legalName, b.regNo, b.tin, b.address, b.atoll || null, b.country || null,
+      [b.legalName, b.regNo, registered ? tin : null, b.address,
+        b.atoll || null, b.country || null,
         b.phone || null, b.email || null, b.currency || null,
-        b.fyStartMonth || null, JSON.stringify(b.brand || {})]);
+        b.fyStartMonth || null, JSON.stringify(b.brand || {}), registered]);
+
+    /* Turning registration OFF has to reach the outlets, or they keep a rate
+       they may no longer charge. The database would refuse the next write
+       anyway; doing it here means the refusal never has to happen. */
+    if (!registered) {
+      await owner().query("UPDATE chain.outlet SET tax_code = 'NONE' WHERE tax_code <> 'NONE'");
+      await owner().query('DELETE FROM chain.tax_version WHERE outlet_id IS NOT NULL'
+        + " AND code <> 'NONE'");
+    }
     // Whoever is signed in as they complete this owns the business. The
     // question "whose is this" must not depend on which outlet you look at.
     if (req.account) {
@@ -159,7 +187,7 @@ r.post('/company', async function (req, res, next) {
         'UPDATE chain.company SET owner_account_id = coalesce(owner_account_id, $1)'
         + ' WHERE id = 1', [req.account.id]);
     }
-    res.json({ ok: true, step: 'company' });
+    res.json({ ok: true, step: 'company', gstRegistered: registered });
   } catch (e) { next(e); }
 });
 
@@ -205,7 +233,9 @@ r.post('/outlet', async function (req, res, next) {
     }
     const out = await provisionOutlet({
       name: b.name, code: b.code, kind: b.kind || 'restaurant',
-      taxCode: b.taxCode || 'GGST', taxRate: b.taxRate, taxFrom: b.taxFrom,
+      // provisionOutlet settles this against chain.gst_registered(); passing
+      // null lets it, rather than asserting GGST on a business that has none.
+      taxCode: b.taxCode || null, taxRate: b.taxRate, taxFrom: b.taxFrom,
       servicePct: b.servicePct == null ? 10 : b.servicePct,
       address: b.address, atoll: b.atoll, phone: b.phone,
       // An outlet keeps the company's books, so it keeps the company's
@@ -277,10 +307,16 @@ r.use(session, atLeast('admin'));
 r.post('/tax', async function (req, res, next) {
   const b = req.body || {};
   try {
+    /* The company decides whether there is a rate at all; the outlet decides
+       WHICH rate once there is. An unregistered business confirms nothing here
+       — and saying so is better than a step that quietly writes GGST because
+       the select defaulted to it. */
+    const reg = await owner().query('SELECT chain.gst_registered() AS on');
+    const code = reg.rows[0].on ? (b.code || 'GGST') : 'NONE';
     await withOutlet(req.ctx, async function (c) {
       await c.query('UPDATE chain.outlet SET tax_code = $2 WHERE id = $1',
-        [req.ctx.outletId, b.code || 'GGST']);
-      if (b.code === 'NONE') {
+        [req.ctx.outletId, code]);
+      if (code === 'NONE') {
         await c.query('INSERT INTO chain.tax_version (outlet_id, code, rate,'
           + " effective_from, authority_ref) VALUES ($1,'NONE',0,$2,'Not registered')"
           + ' ON CONFLICT DO NOTHING', [req.ctx.outletId, b.from || today()]);
@@ -288,7 +324,7 @@ r.post('/tax', async function (req, res, next) {
         await c.query('INSERT INTO chain.tax_version (outlet_id, code, rate,'
           + ' effective_from, authority_ref) VALUES ($1,$2,$3,$4,$5)'
           + ' ON CONFLICT (outlet_id, code, effective_from) DO UPDATE SET rate = $3',
-          [req.ctx.outletId, b.code, Number(b.rate), b.from || today(),
+          [req.ctx.outletId, code, Number(b.rate), b.from || today(),
             b.ref || 'Confirmed at onboarding']);
       }
       if (b.servicePct != null) {
@@ -296,7 +332,7 @@ r.post('/tax', async function (req, res, next) {
           [req.ctx.outletId, Number(b.servicePct)]);
       }
     });
-    res.json({ ok: true, step: 'tax' });
+    res.json({ ok: true, step: 'tax', code: code });
   } catch (e) { next(e); }
 });
 

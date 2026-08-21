@@ -27,16 +27,26 @@ async function provisionOutlet(opts) {
     if (!code) throw Object.assign(new Error('outlet code required'), { status: 400 });
     if (!opts.name) throw Object.assign(new Error('outlet name required'), { status: 400 });
 
+    /* An outlet cannot charge GST its company is not registered to collect —
+       the database refuses it (migration 014). Settle that here so a business
+       below the threshold gets an outlet rather than a constraint violation,
+       and so `GGST` arriving from an old client is corrected rather than
+       thrown back at somebody who never chose it. */
+    const reg = await client.query('SELECT chain.gst_registered() AS on');
+    const registered = !!reg.rows[0].on;
+    const wantedTax = opts.taxCode || null;
+    const taxCode = registered ? (wantedTax || 'GGST') : 'NONE';
+
     const schema = await client.query('SELECT chain.provision_outlet($1,$2,$3,$4) AS s',
       [id, code, opts.name, outletPassword(id)]).then((r) => r.rows[0].s);
 
     await client.query(
       'UPDATE chain.outlet SET kind = coalesce($2, kind), parent_id = $3,'
-      + ' tax_code = coalesce($4, tax_code), service_pct = coalesce($5, service_pct),'
+      + ' tax_code = $4, service_pct = coalesce($5, service_pct),'
       + ' address = $6, atoll = $7, phone = $8, tz = coalesce($9, tz),'
       + ' currency = coalesce($10, currency), day_start = coalesce($11, day_start),'
       + ' slug = $12 WHERE id = $1',
-      [id, opts.kind || null, opts.parentId || null, opts.taxCode || null,
+      [id, opts.kind || null, opts.parentId || null, taxCode,
         opts.servicePct == null ? null : Number(opts.servicePct),
         opts.address || null, opts.atoll || null, opts.phone || null,
         opts.tz || null, opts.currency || null, opts.dayStart || null,
@@ -45,7 +55,6 @@ async function provisionOutlet(opts) {
     // The outlet's own tax version, effective from the day it opens. NONE is a
     // real answer: a business that is not GST-registered charges nothing, and
     // `0 || 8` silently turning that into 8% is a bug we refuse to ship.
-    const taxCode = opts.taxCode || 'GGST';
     if (taxCode !== 'NONE') {
       const rate = opts.taxRate == null
         ? await currentStatutory(client, taxCode)

@@ -137,3 +137,64 @@ test('a registered outlet is never told to register', () => {
   assert.strictEqual(noise.length, 0,
     'the question is already answered: ' + noise.map((i) => i.title).join(', '));
 });
+
+/* ── the choice, and what it must not assert ────────────────────────────── */
+
+test('onboarding asks whether the business is registered, and defaults to NOT', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const panel = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
+
+  const field = (panel.match(/\{ k: "gstRegistered",[\s\S]{0,700}?\},\n/) || [''])[0];
+  assert.ok(field, 'step 1 asks the question outright');
+  assert.match(field, /"no", "Not registered for GST"/, 'both answers are offered');
+  assert.match(field, /"yes", "Registered for GST"/);
+  // Most new businesses are below the threshold. A default of "registered"
+  // is a default that puts 8% on a menu nobody agreed to.
+  assert.match(field, /v: "no"/, 'and the default is not registered');
+
+  // The TIN follows the answer rather than being demanded of everybody: a
+  // business below the threshold has none, and inventing one is a false
+  // statement on every receipt it prints.
+  const tin = (panel.match(/\{ k: "tin",[\s\S]{0,400}?\},\n/) || [''])[0];
+  assert.ok(tin, 'the TIN field is still there');
+  assert.ok(!/req:\s*true/.test(tin), 'but it is not required of everybody');
+  assert.match(tin, /showIf: \{ k: "gstRegistered", is: "yes" \}/,
+    'it appears only when it applies');
+});
+
+test('the tax step claims nothing of a business that charges nothing', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const panel = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'onboarding.html'), 'utf8');
+
+  const step = panel.slice(panel.indexOf('key: "tax"'), panel.indexOf('key: "series"'));
+  assert.match(step, /if \(!state\.gstRegistered\(\)\)/,
+    'the step branches on the answer');
+  assert.match(step, /No GST to confirm/, 'and says so');
+
+  /* The registered branch asserts "Prices on the menu are set exclusive of GST
+     and the tax is shown as its own line". For a business that is not
+     registered that is simply untrue, and the step used to say it to everybody
+     — over a rate box defaulting to 8%. */
+  const unreg = step.slice(step.indexOf('if (!state.gstRegistered()'),
+    step.indexOf('return {\n          fields:'));
+  assert.ok(!/shown as its own line/.test(unreg),
+    'the unregistered branch does not promise a tax line');
+  assert.ok(!/k: "rate"/.test(unreg), 'and does not ask for a rate');
+  assert.ok(!/k: "code"/.test(unreg), 'or a tax class');
+});
+
+test('a receipt prints no TIN when the business has none', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const app = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  // "TIN " followed by nothing is worse than no line at all: it reads as a
+  // missing number rather than an absent registration.
+  assert.match(app, /<sc-if value="\{\{ rcpHasTin \}\}">\s*\n\s*<div[^>]*>TIN \{\{ rcpTin \}\}<\/div>/,
+    'the TIN line is conditional');
+  assert.ok(/rcpHasTin: !!this\.chainOf\(\)\.tin/.test(app),
+    'and the condition is whether there is one');
+});

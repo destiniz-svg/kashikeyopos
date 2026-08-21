@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { withOutletRead, owner } = require('../db');
+const { withOutletRead, withOutlet, owner } = require('../db');
 const { shapeError, storeUrl, memberUrl, baseDomain } = require('../handle');
 const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
@@ -24,6 +24,61 @@ r.get('/bootstrap', sameOutlet, groupScope, async function (req, res, next) {
       kpos: boot.kpos, raw: boot.raw, state: state
     });
   } catch (e) { next(e); }
+});
+
+/* ── registering for GST, or not ─────────────────────────────────────────
+   Registration is CONDITIONAL and it is a decision that gets REVISITED: a
+   business opens below the threshold, charges nothing, grows, and crosses it.
+   GST_WATCH puts that on the owner's Today list — this is the control that
+   answers it, and without one the watch is a nag with nowhere to go.
+
+   Rank 5. It changes what every receipt in the business says, and it changes
+   the amount collected from every guest from that moment on. ─────────────── */
+r.patch('/gst', sameOutlet, atLeast('owner'), async function (req, res, next) {
+  const b = req.body || {};
+  const want = b.registered === true || b.registered === 'yes' || b.registered === 'true';
+  try {
+    if (want) {
+      const tin = String(b.tin == null ? '' : b.tin).trim();
+      if (!tin) {
+        return res.status(400).json({ error: 'a TIN is required to register — it is what MIRA issues and what your receipts will carry' });
+      }
+      const code = b.code === 'TGST' ? 'TGST' : 'GGST';
+      await owner().query('SELECT chain.register_for_gst($1,$2,$3,$4)',
+        [tin, code, b.rate == null ? null : Number(b.rate), b.from || null]);
+    } else {
+      /* Coming OFF the register. The outlets have to follow in the same
+         breath: a company marked unregistered whose outlets still hold a rate
+         would keep charging tax it may no longer collect. */
+      const c = await owner().connect();
+      try {
+        await c.query('BEGIN');
+        await c.query("UPDATE chain.outlet SET tax_code = 'NONE' WHERE tax_code <> 'NONE'");
+        await c.query("DELETE FROM chain.tax_version WHERE outlet_id IS NOT NULL AND code <> 'NONE'");
+        await c.query('UPDATE chain.company SET gst_registered = false, tin = NULL,'
+          + ' updated_at = now() WHERE id = 1');
+        await c.query('COMMIT');
+      } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; }
+      finally { c.release(); }
+    }
+
+    const now = await owner().query(
+      'SELECT gst_registered, tin FROM chain.company WHERE id = 1');
+    const mine = await owner().query(
+      'SELECT tax_code FROM chain.outlet WHERE id = $1', [req.ctx.outletId]);
+    await withOutlet(req.ctx, (c) => c.query('SELECT chain.log($1,$2,$3,$4,$5)',
+      ['gst_registration', 'company', '1', null,
+        JSON.stringify({ registered: want, code: (mine.rows[0] || {}).tax_code })]));
+
+    res.json({
+      registered: (now.rows[0] || {}).gst_registered === true,
+      tin: (now.rows[0] || {}).tin || '',
+      code: (mine.rows[0] || {}).tax_code || 'NONE'
+    });
+  } catch (e) {
+    if (e && e.code === '23514') return res.status(400).json({ error: e.message });
+    next(e);
+  }
 });
 
 /* ── the store's public address ──────────────────────────────────────────

@@ -274,13 +274,22 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       key: "company", n: 1, label: "Company",
       sub: "The entity that files the return",
       title: "Who is trading?",
-      lede: "This is the legal entity — the name on the tax return, the registration number and the TIN. The fascia a guest sees is set separately, per outlet, under branding.",
-      why: "A receipt carries the TIN of the entity that took the money. A placeholder here would be a false statement to a tax authority, which is why nothing is pre-filled.",
+      lede: "This is the legal entity — the name on the return and the registration number. The fascia a guest sees is set separately, per outlet, under branding.",
+      why: "A receipt carries the TIN of the entity that took the money, so it is asked for only if you have one. A business below the GST threshold has none, and inventing one here would be a false statement to a tax authority — which is also why nothing is pre-filled.",
       edit: "Settings → Company",
       fields: [
         { k: "legalName", label: "Registered legal name", req: true, full: true, ph: "e.g. Kashikeyo Group Pvt Ltd" },
         { k: "regNo", label: "Company registration number", req: true, mono: true, ph: "C-0000/2026" },
-        { k: "tin", label: "TIN", req: true, mono: true, ph: "1000000GST501" },
+        { k: "gstRegistered", label: "GST registration", type: "select", req: true, full: true,
+          v: "no",
+          options: [
+            ["no", "Not registered for GST"],
+            ["yes", "Registered for GST"]
+          ],
+          hint: "In the Maldives a business registers once taxable supplies pass MVR 1,000,000 in any 12 months — the tourism sector registers whatever the turnover. Below that, you charge nothing and no tax line prints at all. The app measures your own turnover against the threshold and tells you when this answer has to change." },
+        { k: "tin", label: "TIN", mono: true, ph: "1000000GST501",
+          showIf: { k: "gstRegistered", is: "yes" },
+          hint: "What MIRA issued you. It prints on every receipt." },
         { k: "address", label: "Registered address", req: true, full: true },
         { k: "atoll", label: "Atoll or city" },
         { k: "currency", label: "Base currency", type: "select", req: true, v: "MVR",
@@ -297,7 +306,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       sub: "Its own schema and its own login role",
       title: "The first place you trade from",
       lede: "An outlet is not a filter on shared data. It gets its own Postgres schema and its own database login, granted access to that schema alone — another outlet's tables are unreachable, not merely hidden.",
-      why: "Tax class is per outlet, not per company: GGST for a general outlet, TGST for one in a tourism zone. Choose “not registered” if the business is below the registration threshold — the app will charge nothing rather than quietly assuming 8%.",
+      why: "Tax class is per outlet, not per company: GGST for a general outlet, TGST for one in a tourism zone. Whether there is a rate at all was answered on step 1 — a business below the threshold charges nothing rather than quietly assuming 8%.",
       edit: "Chain & Outlets → the outlet",
       fields: [
         { k: "name", label: "Outlet name", req: true, full: true, ph: "e.g. Chaandhanee" },
@@ -310,11 +319,22 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
           ["central_kitchen", "Central kitchen — produces, does not sell"],
           ["main_store", "Main store — receives and dispatches"]
         ] },
-        { k: "taxCode", label: "Tax class", type: "select", options: [
-          ["GGST", "GGST — general goods and services"],
-          ["TGST", "TGST — tourism sector"],
-          ["NONE", "Not registered for GST"]
-        ] },
+        { k: "taxCode", label: "Tax class", type: "select",
+          /* Which rate, once the COMPANY is registered. Whether there is a rate
+             at all was answered on step 1, and offering "not registered" again
+             here invites two answers to one question. Deferred, because STEPS
+             is built before anybody has answered anything. */
+          options: function () {
+            return state.gstRegistered()
+              ? [["GGST", "GGST — general goods and services"],
+                ["TGST", "TGST — tourism sector"]]
+              : [["NONE", "Not registered for GST"]];
+          },
+          hint: function () {
+            return state.gstRegistered()
+              ? "TGST if this outlet is in a tourism zone; GGST otherwise."
+              : "This business is not registered for GST, so this outlet charges nothing. Change it on step 1 if that is wrong.";
+          } },
         { k: "servicePct", label: "Service charge %", type: "number", v: "10",
           hint: "Charged on the goods, distributed to staff, and itself taxable." },
         { k: "dayStart", label: "Trading day starts", type: "time", v: "04:00",
@@ -370,11 +390,26 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       edit: "Settings → Tax profile",
       dynamic: function () {
         var o = state.outlet || {};
+        // Not registered: there is no rate to confirm, and a select defaulting
+        // to GGST beside a "Rate %" box is how a business that charges nothing
+        // ends up with 8% in its history.
+        if (!state.gstRegistered()) {
+          return {
+            title: "No GST to confirm",
+            lede: "This business is not registered for GST, so it charges none and no tax line prints on anything it issues.",
+            why: "The app keeps measuring turnover against the registration threshold and will tell you the moment it is crossed. Registering then is one action in Settings — it sets the rate on every outlet at once, from the date you give it.",
+            foot: "Saving records that this outlet charges no GST. Nothing about that is permanent: register whenever the business has to, and every rate is dated from the day you give it.",
+            fields: [
+              { k: "servicePct", label: "Service charge %", type: "number",
+                v: String(Number(o.service_pct) || 10),
+                hint: "Service charge is not a tax. It is charged on the goods and distributed to staff, and it is unaffected by GST registration." }
+            ]
+          };
+        }
         return {
           fields: [
-            { k: "code", label: "Tax class", type: "select", v: o.tax_code || "GGST", options: [
-              ["GGST", "GGST"], ["TGST", "TGST"], ["NONE", "Not registered"]
-            ] },
+            { k: "code", label: "Tax class", type: "select", v: o.tax_code === 'TGST' ? 'TGST' : 'GGST',
+              options: [["GGST", "GGST — general"], ["TGST", "TGST — tourism sector"]] },
             { k: "rate", label: "Rate %", type: "number", v: String(state.statutory(o.tax_code || "GGST")),
               hint: "The statutory rate in force today is filled in. Change it only if yours differs." },
             { k: "from", label: "In force from", type: "date", v: today() },
@@ -659,6 +694,17 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
   var state = {
     token: null, at: 0, done: {}, outlet: null, install: null,
     vals: {},
+    /* Did the business say it is registered? Read from what step 1 saved where
+       it exists, and from what is on screen before it is saved — so steps 2 and
+       4 reshape themselves the moment the answer changes, rather than a step
+       later. */
+    gstRegistered: function () {
+      var typed = (state.vals && state.vals.company) || null;
+      if (typed && typed.gstRegistered !== undefined) return typed.gstRegistered === "yes";
+      if (state.gst !== undefined) return !!state.gst;
+      var o = state.outlet || {};
+      return !!o.tax_code && o.tax_code !== "NONE";
+    },
     statutory: function (code) {
       var rows = (state.install && state.install.tax) || [];
       var hit = rows.filter(function (r) { return r.code === code; })[0];
@@ -723,6 +769,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       (r.steps || []).forEach(function (s) { state.done[s.key] = s.done; });
       state.next = r.next;
       state.counts = r.counts || {};
+      state.gst = r.gstRegistered;
       return api("GET", "/api/auth/install");
     }).then(function (i) {
       state.install = i;
@@ -795,9 +842,33 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     });
     return row;
   }
+  /* A step's WORDS can depend on the answers too, not only its fields. The tax
+     step told an unregistered business "Confirm the rate you charge" over a
+     callout asserting that GST prints as its own line — the exact claim this
+     whole option exists to stop a business making. */
+  function viewOf(step) {
+    var d = step.dynamic ? step.dynamic() : null;
+    return d ? Object.assign({}, step, d) : step;
+  }
+
   function fieldsOf(step) {
-    if (step.dynamic) return step.dynamic().fields;
-    return step.fields;
+    var fields = step.dynamic ? step.dynamic().fields : step.fields;
+    /* A field may defer any of its own properties to render time by giving a
+       function instead of a value. STEPS is built before `state` exists — it is
+       a literal at the top of this file — so anything that depends on what the
+       business ANSWERED cannot be evaluated where it is written. Without this,
+       one conditional option list forces the whole step to be rewritten as a
+       dynamic() that duplicates its other nine fields. */
+    return (fields || []).map(function (f) {
+      var live = null;
+      Object.keys(f).forEach(function (k) {
+        if (typeof f[k] === "function" && k !== "showIf") {
+          live = live || Object.assign({}, f);
+          live[k] = f[k]();
+        }
+      });
+      return live || f;
+    });
   }
 
   /* ── render ───────────────────────────────────────────────────────────── */
@@ -832,14 +903,15 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 
     var doneN = STEPS.filter(function (s) { return state.done[s.key]; }).length;
 
+    var view = viewOf(step);
     var h = el("div");
     h.appendChild(el("div", { class: "chip" + (state.done[step.key] ? " ok" : "") },
       state.done[step.key] ? "Step " + step.n + " of 14 · done" : "Step " + step.n + " of 14"));
-    var title = el("h1", {}, step.title);
+    var title = el("h1", {}, view.title);
     title.style.marginTop = "12px";
     h.appendChild(title);
-    h.appendChild(el("p", { class: "sub" }, step.lede));
-    if (step.why) h.appendChild(el("p", { class: "why" }, step.why));
+    h.appendChild(el("p", { class: "sub" }, view.lede));
+    if (view.why) h.appendChild(el("p", { class: "why" }, view.why));
     var bar = el("div", { class: "bar" });
     bar.appendChild(el("i", { style: "width:" + Math.round((doneN / 14) * 100) + "%" }));
     h.appendChild(bar);
@@ -849,7 +921,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     if (step.table) card.appendChild(renderTable(step, v));
     else card.appendChild(renderFields(step, v));
     if (step.key === "chart") card.appendChild(renderChartSummary());
-    card.appendChild(el("div", { class: "foot" }, step.foot));
+    card.appendChild(el("div", { class: "foot" }, view.foot));
     stage.appendChild(card);
 
     var err = el("div", { class: "err" });
@@ -952,7 +1024,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
 
   function renderFields(step, v) {
     var grid = el("div", { class: "grid" });
-    var inputs = {}, derived = [];
+    var inputs = {}, derived = [], conditional = [];
     (fieldsOf(step) || []).forEach(function (f) {
       var wrap = el("div", { class: "f" + (f.full ? " full" : "") });
       var lab = el("label", {}, f.label);
@@ -979,8 +1051,24 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       wrap.appendChild(input);
       inputs[f.k] = input;
       if (f.type === "handle") derived.push({ wrap: wrap, input: input, f: f });
+      if (f.showIf) conditional.push({ wrap: wrap, input: input, f: f });
       if (f.hint) wrap.appendChild(el("div", { class: "hint" }, f.hint));
       grid.appendChild(wrap);
+    });
+
+    /* A field that only applies given another field's answer. Asking a business
+       below the GST threshold for a TIN is asking it to invent a tax number,
+       and the field going away is the clearest way to say it does not apply. */
+    conditional.forEach(function (c) {
+      var src = inputs[c.f.showIf.k];
+      var apply = function () {
+        var on = src && String(src.value) === String(c.f.showIf.is);
+        c.wrap.style.display = on ? "" : "none";
+        // A hidden field must not also be a submitted one.
+        if (!on) { c.input.value = ""; v[c.f.k] = ""; }
+      };
+      if (src) { src.addEventListener("change", apply); src.addEventListener("input", apply); }
+      apply();
     });
     // Wired after the loop, not inside it: a field that derives from another
     // one has to be able to find it, and the one it derives from may not have

@@ -49,17 +49,28 @@ let token, outletId;
 
 test('onboarding writes the records the running app reads', opts, async () => {
   // 1 · company
+  // This business IS registered for GST — everything below asserts GGST at 8%.
+  // Registration is a stated fact now, not an assumption: a business that says
+  // nothing is not registered, because most new ones are not.
   let r = await post('/api/onboarding/company', {
-    legalName: 'Test Trading Pvt Ltd', regNo: 'C-0001/2026',
+    legalName: 'Test Trading Pvt Ltd', regNo: 'C-0001/2026', gstRegistered: 'yes',
     tin: 'T1000001GST501', address: 'Test address, Malé'
   });
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  assert.strictEqual(r.body.gstRegistered, true, 'and it says so back');
 
-  // The legal entity is required IN FULL: a receipt without a TIN is not a
-  // receipt a tax authority accepts, and a blank is better than a placeholder.
+  // The legal entity is required in full — but the TIN is required of a
+  // REGISTERED business and of nobody else. Asking a business below the
+  // threshold to invent one puts a false statement on every receipt it prints.
   const partial = await post('/api/onboarding/company', { legalName: 'X' });
   assert.strictEqual(partial.status, 400, 'an incomplete company is refused');
-  assert.match(partial.body.error, /TIN/, partial.body.error);
+  assert.match(partial.body.error, /registration number/, partial.body.error);
+
+  const claiming = await post('/api/onboarding/company', {
+    legalName: 'X', regNo: 'C-1/2026', address: 'Somewhere', gstRegistered: 'yes'
+  });
+  assert.strictEqual(claiming.status, 400, 'registered, with no TIN, is refused');
+  assert.match(claiming.body.error, /TIN is required/, claiming.body.error);
 
   // And it is claimed once: after that, edits go through Settings.
   const again2 = await post('/api/onboarding/company', {
@@ -1041,6 +1052,108 @@ test('the providers list says WHY a provider is off', opts, async () => {
   assert.match(p.body.why.apple, /not configured|missing/);
   // Never the values — only which names are absent.
   assert.ok(!/=/.test(JSON.stringify(p.body.why)), 'no values leak into the reason');
+});
+
+/* ═══ NOT EVERY BUSINESS IS REGISTERED FOR GST ═════════════════════════════
+   Registration is conditional (migration 009: MVR 1,000,000 over 12 months,
+   tourism always). A business below the threshold charges nothing and NO TAX
+   LINE PRINTS — a document showing one claims a registration it does not hold.
+
+   The database refuses the inconsistent states outright, because "the whole
+   application behaves" is not something four route files can promise between
+   them. This is the whole lifecycle: unregistered, trading, then registering
+   when the threshold is crossed. It runs last because it changes the company. */
+test('an unregistered business cannot be given a rate to charge', opts, async () => {
+  const o = db.owner();
+  await o.query("UPDATE chain.outlet SET tax_code = 'NONE'");
+  await o.query("DELETE FROM chain.tax_version WHERE outlet_id IS NOT NULL AND code <> 'NONE'");
+  await o.query('UPDATE chain.company SET gst_registered = false, tin = NULL WHERE id = 1');
+
+  assert.strictEqual((await o.query('SELECT chain.gst_registered() AS on')).rows[0].on, false);
+
+  // A registered business has a TIN; an unregistered one has none to give.
+  await assert.rejects(
+    o.query('UPDATE chain.company SET gst_registered = true WHERE id = 1'),
+    /company_tin_iff_registered/, 'cannot be registered without a TIN');
+
+  // An outlet cannot charge what its company is not registered to collect.
+  await assert.rejects(
+    o.query("UPDATE chain.outlet SET tax_code = 'GGST' WHERE id = $1", [outletId]),
+    /not registered for GST/, 'refused by name, naming the outlet');
+
+  // Nor hold a rate version, which is the thing a receipt actually quotes.
+  await assert.rejects(
+    o.query('INSERT INTO chain.tax_version (outlet_id, code, rate, effective_from)'
+      + " VALUES ($1,'GGST',8,current_date)", [outletId]),
+    /cannot hold a GGST rate/);
+
+  // The STATUTORY history is untouched: those are facts about the Maldives,
+  // shipped whether or not this business is registered.
+  const statutory = await o.query(
+    'SELECT count(*)::int AS n FROM chain.tax_version WHERE outlet_id IS NULL');
+  assert.ok(statutory.rows[0].n > 0, 'the country\'s rates are still there');
+});
+
+test('a sale by an unregistered business carries no tax, anywhere', opts, async () => {
+  const before = await one('SELECT count(*)::int AS n FROM sale');
+  // The DELTA, not the balance: earlier sales in this suite were made while the
+  // business was registered, and their GST is rightly still sitting there.
+  const gstBefore = await one("SELECT coalesce(sum(cr - dr),0)::numeric AS n"
+    + " FROM journal_line WHERE account_code = '2200'");
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 2, sub: 400, disc: 0, net: 400, svc: 0,
+    // A till that has not caught up still sends a code and a rate. The server
+    // recomputes from the outlet's OWN registration rather than believing it.
+    tax: 32, round: 0, total: 432, taxCode: 'GGST', taxLabel: 'GGST 8%', taxRate: 8,
+    server: 'Test Cashier', cur: 'MVR', rate: 1,
+    sold: [{ id: 'm1', name: 'Grilled Reef Fish', qty: 2, price: 200, amount: 400, cost: 0 }],
+    payments: [{ method: 'cash', amt: 432 }]
+  } }]);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const after = await one('SELECT count(*)::int AS n FROM sale');
+  assert.strictEqual(after.n, before.n + 1, 'the sale still went through — a cashier took the money');
+
+  const sale = await one('SELECT tax, total, tax_code FROM sale ORDER BY at DESC LIMIT 1');
+  assert.strictEqual(Number(sale.tax), 0, 'no tax was charged');
+  assert.strictEqual(sale.tax_code, 'NONE', 'and the sale says which registration it was under');
+
+  // Nothing reached the GST account, which is what a return is built from.
+  const gstAfter = await one("SELECT coalesce(sum(cr - dr),0)::numeric AS n"
+    + " FROM journal_line WHERE account_code = '2200'");
+  assert.strictEqual(Number(gstAfter.n), Number(gstBefore.n),
+    'not one laari reached GST payable');
+
+  // The money the till over-collected did not evaporate: it rode into the
+  // difference account, where somebody has to answer for it, and the sale says
+  // so rather than quietly absorbing it.
+  const audit = await one('SELECT server_audit FROM sale ORDER BY at DESC LIMIT 1');
+  assert.ok(audit.server_audit && audit.server_audit.unregistered,
+    'the discrepancy is stamped on the sale: ' + JSON.stringify(audit.server_audit));
+  assert.strictEqual(Number(audit.server_audit.unregistered.charged), 32);
+});
+
+test('registering later sets the rate on every outlet at once', opts, async () => {
+  const o = db.owner();
+  // What GST_WATCH nags about, and the action that answers it.
+  await o.query("SELECT chain.register_for_gst('1000000GST501','GGST',8,current_date)");
+
+  const co = await o.query('SELECT gst_registered, tin FROM chain.company WHERE id = 1');
+  assert.strictEqual(co.rows[0].gst_registered, true);
+  assert.strictEqual(co.rows[0].tin, '1000000GST501');
+
+  const still = await o.query("SELECT count(*)::int AS n FROM chain.outlet WHERE tax_code = 'NONE'");
+  assert.strictEqual(still.rows[0].n, 0,
+    'no outlet is left charging nothing while the company believes it charges GST');
+
+  const rates = await o.query("SELECT count(*)::int AS n FROM chain.tax_version"
+    + " WHERE outlet_id IS NOT NULL AND code = 'GGST'");
+  assert.ok(rates.rows[0].n > 0, 'and each has a rate, dated');
+
+  // Registering is not a text field: it refuses a registration with no TIN.
+  await assert.rejects(o.query("SELECT chain.register_for_gst(NULL,'GGST',8,current_date)"),
+    /TIN is required/);
+  await assert.rejects(o.query("SELECT chain.register_for_gst('X','NONE',0,current_date)"),
+    /NONE is not a registration/);
 });
 
 test('shut down cleanly', opts, async () => {

@@ -1730,7 +1730,9 @@
                 <div style="font-size:10px;margin-top:5px">{{ rcpOutlet }}</div>
                 <div style="font-size:10px">{{ rcpAddr }}</div>
                 <div style="{{ rcpLegalStyle }}">{{ rcpLegal }}</div>
-                <div style="font-size:10px;margin-top:3px">TIN {{ rcpTin }}</div>
+                <sc-if value="{{ rcpHasTin }}">
+                  <div style="font-size:10px;margin-top:3px">TIN {{ rcpTin }}</div>
+                </sc-if>
               </div>
               <div style="border-top:1px dashed #999;border-bottom:1px dashed #999;padding:7px 0;display:flex;justify-content:space-between;font-size:10.5px">
                 <span>{{ rcpNo }}</span><span>{{ rcpTime }}</span>
@@ -3133,6 +3135,16 @@ class Component extends DCLogic {
      anyway is claiming a registration it does not have — so every tax row in
      this app asks here first, and an unregistered outlet shows no tax line at
      all rather than a zero one. */
+  /* Did the BUSINESS register with MIRA? Separate from whether THIS outlet
+     charges: an outlet can sit at NONE inside a registered company, and
+     collapsing the two puts "register now" in front of a business that
+     registered years ago. */
+  gstRegistered() {
+    const w = this.gstWatch();
+    if (w && w.companyRegistered !== undefined) return !!w.companyRegistered;
+    return !!this.chainOf().gstRegistered;
+  }
+
   taxRegistered(o) {
     const x = o || this.outlet();
     return !!x && !!x.tax && x.tax !== "NONE" && Number(x.rate || 0) > 0;
@@ -6737,7 +6749,7 @@ class Component extends DCLogic {
       if (p.split) rows.push({ n: "Split", v: p.split, style: "display:flex;justify-content:space-between;padding:2px 0" });
       return {
         modalTitle: "Settled · " + MVR(T.total), modalSub: p.table + " · " + p.guest + (s.online ? "" : " · queued offline"),
-        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
+        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin, rcpHasTin: !!this.chainOf().tin,
         rcpNo: p.no, rcpTime: p.time,
         rcpLines: p.lines, rcpTotals: rows,
         rcpFoot: "Served by " + (p.server || "—") + " · " + p.guest + "\n" + (this.brandOf().receiptFoot || "Thank you"),
@@ -6756,7 +6768,7 @@ class Component extends DCLogic {
       const RSN = { quality: "Food or drink not right", wrong: "Wrong item served", delay: "Excessive wait", overcharge: "Charged in error", goodwill: "Goodwill" };
       return {
         modalTitle: "Credit note · " + MVR(T.total), modalSub: d.no + " · against " + d.against,
-        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
+        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin, rcpHasTin: !!this.chainOf().tin,
         rcpNo: d.no, rcpTime: d.date,
         rcpTitle: "CREDIT NOTE",
         rcpTitleStyle: "text-align:center;font-size:12px;font-weight:700;letter-spacing:.16em;padding:7px 0 3px",
@@ -6820,7 +6832,7 @@ class Component extends DCLogic {
       const yr = new Date();
       return {
         modalTitle: "Z-report", modalSub: o.name + " · " + this.shiftLabel() + (reg.no ? " · " + reg.no : " · no register open"),
-        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
+        rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin, rcpHasTin: !!this.chainOf().tin,
         rcpTitle: "Z-REPORT",
         rcpTitleStyle: "text-align:center;font-size:12px;font-weight:700;letter-spacing:.16em;padding:7px 0 3px",
         rcpNo: "Z-" + yr.getFullYear() + pad(yr.getMonth() + 1) + pad(yr.getDate()) + "-" + (o.code || "OUT"),
@@ -6858,7 +6870,7 @@ class Component extends DCLogic {
     const tax = ord.tax === undefined ? (acc + svc) * ((o.rate || 0) / 100) : ord.tax;
     return {
       modalTitle: "Receipt " + ord.no, modalSub: (ord.channel || "").replace("_", " ") + " · " + this.tenderName(ord.tender),
-      rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin,
+      rcpOutlet: o.name, rcpAddr: o.addr || "", rcpTin: this.chainOf().tin, rcpHasTin: !!this.chainOf().tin,
       rcpNo: ord.no || "", rcpTime: ord.time || "",
       rcpLines: lines,
       rcpTotals: [
@@ -12727,16 +12739,27 @@ class Component extends DCLogic {
         foot: "The TIN and registration number print on every receipt and appear on the GST return. They belong to the company, not to an outlet, so changing them here changes them everywhere at once.",
         fields: [
           { k: "name", label: "Registered name", v: this.chainOf().name, full: 1 },
-          { k: "tin", label: "Taxpayer identification number", v: this.chainOf().tin },
+          { k: "tin", label: "Taxpayer identification number", v: this.chainOf().tin,
+            hint: this.gstRegistered()
+              ? "Printed on every receipt and on the GST return."
+              : "This business is not registered for GST, so it has none \u2014 leave it empty." },
           { k: "regNo", label: "Company registration", v: this.chainOf().regNo },
           { k: "hq", label: "Registered address", v: this.chainOf().hq, full: 1 },
           { k: "currency", label: "Currency", options: [{ v: "MVR", l: "MVR — Maldivian rufiyaa" }, { v: "USD", l: "USD — United States dollar" }] }
         ],
         onSave: (v) => {
-          if (!v.name || !v.tin) return this.toast("Registered name and TIN are required", "warn");
+          // A TIN is what a REGISTERED business has. Demanding one of a business
+          // below the threshold is asking it to invent a tax number, and an
+          // invented TIN on a receipt is a false statement to MIRA.
+          if (!v.name) return this.toast("A registered name is required", "warn");
+          if (this.gstRegistered() && !v.tin) {
+            return this.toast("A TIN is required — it prints on every receipt", "warn");
+          }
           const next = Object.assign({}, this.state.chainOverride || {}, { name: v.name, tin: v.tin, regNo: v.regNo, hq: v.hq, currency: v.currency });
           this.setState({ chainOverride: next, modal: null });
-          this.queue("chain_update", "Chain details updated · " + v.name + " · TIN " + v.tin + " · by " + this.me(), "settings");
+          this.queue("chain_update", "Chain details updated · " + v.name
+            + (v.tin ? " · TIN " + v.tin : " · not GST registered")
+            + " · by " + this.me(), "settings");
           this.toast("Chain details saved");
         }
       },
