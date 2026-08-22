@@ -296,3 +296,102 @@ test('a phone tap target is never under 40px in the panel', () => {
   assert.match(block, /button\.mini\{[^}]*min-width:40px/,
     'including its WIDTH — a single-glyph delete was 34px across');
 });
+
+/* ═══ THE ICON RAIL ═════════════════════════════════════════════════════════
+   Overlay, not push. Both of these were real defects and both are invisible to
+   a feature test: content auto-placing into the 60px track, and a rail whose
+   whole justification is touch shipping 34 × 36 targets.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('opening the menu panel does not move or resize the content', { skip }, async (t) => {
+  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  const b = await chromium.launch({ executablePath: PW });
+  try {
+    for (const [w, h, name] of [[924, 900, 'tablet'], [1440, 900, 'desktop']]) {
+      const p = await b.newPage({ viewport: { width: w, height: h } });
+      await p.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+      await p.waitForTimeout(2600);
+      if (PIN) {
+        for (const d of PIN) { await p.keyboard.press(d); await p.waitForTimeout(90); }
+        await p.waitForTimeout(2600);
+      }
+
+      // Anything wide sitting in the content pane will do: what is being
+      // measured is whether the pane moved, not what is in it.
+      const box = () => p.evaluate(() => {
+        const el = [...document.querySelectorAll('div')]
+          .filter((e) => {
+            const r = e.getBoundingClientRect();
+            return r.width > window.innerWidth * 0.5 && r.top > 60 && r.height > 40;
+          })[0];
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.x), w: Math.round(r.width) };
+      });
+
+      const before = await box();
+      if (!before) { await p.close(); continue; }
+
+      // The content pane must be at least most of the window: with the aside
+      // `position:fixed` and no explicit track, the content auto-places into
+      // track 1 — the 60px rail — and the whole app collapses to 60px, only
+      // still looking right because it overflows.
+      assert.ok(before.w > w * 0.5,
+        name + ': the content pane is ' + before.w + 'px of a ' + w + 'px window '
+        + '— it collapsed into the rail track');
+
+      const opened = await p.evaluate(() => {
+        const btn = [...document.querySelectorAll('button')]
+          .filter((e) => (e.getAttribute('title') || '') === 'Menu')[0];
+        if (!btn) return false;
+        btn.click();
+        return true;
+      });
+      if (!opened) { await p.close(); continue; }
+      await p.waitForTimeout(400);
+
+      const after = await box();
+      assert.strictEqual(after.x, before.x,
+        name + ': the content moved when the panel opened (' + before.x + ' → ' + after.x + ')');
+      assert.strictEqual(after.w, before.w,
+        name + ': the content resized when the panel opened (' + before.w + ' → ' + after.w + ')');
+
+      // Faded in, never transformed: a transform-based entrance parks the
+      // element off screen if the animation is throttled or never starts.
+      const panel = await p.evaluate(() => {
+        const el = [...document.querySelectorAll('aside')][0];
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return { x: Math.round(r.x), w: Math.round(r.width) };
+      });
+      assert.ok(panel && panel.x >= 0 && panel.w > 100,
+        name + ': the panel is off screen — ' + JSON.stringify(panel));
+      await p.close();
+    }
+  } finally { await b.close(); }
+});
+
+test('every rail target is at least 44px on its short axis', { skip }, async (t) => {
+  if (!(await reachable())) return t.skip('no server at ' + BASE);
+  const b = await chromium.launch({ executablePath: PW });
+  try {
+    const p = await b.newPage({ viewport: { width: 1440, height: 900 } });
+    await p.goto(BASE + '/', { waitUntil: 'domcontentloaded' });
+    await p.waitForTimeout(2600);
+    if (PIN) {
+      for (const d of PIN) { await p.keyboard.press(d); await p.waitForTimeout(90); }
+      await p.waitForTimeout(2600);
+    }
+    const small = await p.evaluate(() => {
+      const aside = document.querySelector('aside');
+      if (!aside) return [];
+      return [...aside.querySelectorAll('button')].map((e) => {
+        const r = e.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height),
+          t: (e.getAttribute('title') || e.textContent || '').trim().slice(0, 20) };
+      }).filter((r) => r.w > 0 && r.h > 0 && Math.min(r.w, r.h) < 44);
+    });
+    assert.deepStrictEqual(small, [],
+      'a rail whose justification is touch cannot ship targets under 44px: '
+      + JSON.stringify(small));
+  } finally { await b.close(); }
+});

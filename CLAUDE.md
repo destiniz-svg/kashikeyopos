@@ -660,6 +660,39 @@ The whole of that was missing, and each piece failed silently:
 Points are awarded by the outlet from its own earn rate (`chain.setting`
 `loyalty.pointsPer`), never from a number the terminal sent.
 
+## The navigation is a rail
+
+A **60px icon rail** at every width above a phone. Opening it floats a **236px
+labelled panel over the content** with a scrim; nothing behind it moves.
+
+Overlay rather than push, for two reasons a service terminal makes concrete: it
+is touched, not pointed at, so hover-to-expand has nothing to read; and widening
+the column reflows the floor grid, so the table a waiter is already reaching for
+slides out from under their thumb mid-tap.
+
+Two things here were real defects and both are invisible to a feature test:
+
+- **The content is pinned to grid track 2.** With the aside `position: fixed` it
+  leaves the grid, and without an explicit track the content auto-places into
+  track 1 — the 60px rail — so the whole app collapses to 60px and only still
+  looks right because it overflows.
+- **The panel fades in; it is never transformed.** A transform-based entrance
+  parks the element at `translateX(-100%)` — off screen — if the animation is
+  throttled or never starts.
+
+Rail targets state `min-height: 44px` with 4px of side padding on a 60px rail,
+so the target is 51 × 44 and the scroller gutter is hidden rather than eating
+into it. A rail whose whole justification is touch cannot ship 34 × 36 targets.
+
+"Keep it open" pins the labelled panel and persists per terminal in
+`prefs().navPinned`; pinned, the panel is part of the grid and there is nothing
+to dim, so the scrim and the menu button both go away. One control always does
+whatever the current state has left undone.
+
+`test/responsive.test.js` measures both: a content box's `x` and width before
+and after opening (they must be identical), and every button in the aside on its
+short axis.
+
 ## Editing `app/*.html` safely
 
 - **Mismatched string quotes** are the most common self-inflicted bug. Always
@@ -677,7 +710,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 149 tests
+npm test                          # 151 tests
 npm run leak-test                 # isolation, on its own
 ```
 
