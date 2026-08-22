@@ -118,12 +118,17 @@ test('an op that carries a consequence carries its payload', () => {
   // and no payload: the toast said the customer was created, the row lived in
   // one browser, and the member portal could never let them in.
   F.insertRow('custs', { id: 'c9', name: 'Aishath Waheed', phone: '9998877',
-    tier: 'Silver', credit: 500, visits: 0, spent: 0, points: 0, used: 0 },
+    email: 'aishath@example.mv', credit: 500, visits: 0, spent: 0, points: 0, used: 0 },
   'Customer created', 'customers');
   const cust = grab('member_upsert');
-  has(cust, ['name', 'phone', 'tier', 'credit']);
+  has(cust, ['name', 'phone', 'email', 'credit']);
   assert.strictEqual(cust.payload.points, undefined,
     'points are the outlet\'s to award — a till that could send them could mint them');
+  // And no tier: it is derived from those points against the published ladder
+  // every time it is read, so a till sending one would be telling the outlet
+  // what the outlet just told the till.
+  assert.strictEqual(cust.payload.tier, undefined,
+    'a tier is worked out, never sent: ' + JSON.stringify(cust.payload));
 
   // A line on an open ticket. This is the op that makes a floor shared: it
   // used to queue a LABEL and no payload, so the outlet never held the ticket

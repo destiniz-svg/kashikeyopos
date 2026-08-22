@@ -158,7 +158,7 @@ r.get('/:slug/member', guest, async function (req, res, next) {
   if (phone.length < 6) return res.status(400).json({ error: 'phone required' });
   try {
     const row = await withOutletRead(req.ctx, (c) => c.query(
-      'SELECT name, points, tier, joined_at FROM chain.member WHERE phone = $1',
+      'SELECT name, points, joined_at FROM chain.member WHERE phone = $1',
       [phone]).then((q) => q.rows[0] || null));
     res.set('cache-control', 'no-store').json({ member: row });
   } catch (e) { next(e); }

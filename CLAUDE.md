@@ -472,12 +472,22 @@ phone and Bronze at the counter.
 | Gold | 1,500 | MVR 15,000 |
 | Platinum | 3,000 | MVR 30,000 |
 
-Any column called `tier` is a cache. `memberLive()` composes the seed row with
-everything awarded since and works the tier out, and every surface reads that one
-composition — the customers table, the guest sheet, the pay screen, the published
-roster. Raising a threshold demotes exactly the members it should without editing
-a soul. The shipped tier rows survive only as presentation: the mark and the card
-gradient.
+**There is no `tier` column.** `chain.member.tier` was dropped in migration 019,
+along with the two functions that carried it out to a phone — `member_code_take()`
+and `member_card()`, each rebuilt without it, and re-granted to every outlet role
+because a dropped function takes its grants with it. The till stopped sending one
+on `member_upsert` at the same time: a value derived from what the outlet
+published is not something the outlet needs told back.
+
+A cache nothing reads is not harmless — it is a column still holding 'Platinum'
+for a guest sitting in Bronze, waiting for the next person to write a query
+against it. Which is exactly how three disagreeing ladders happened.
+
+`memberLive()` composes the seed row with everything awarded since and works the
+tier out, and every surface reads that one composition — the customers table, the
+guest sheet, the pay screen, the published roster. Raising a threshold demotes
+exactly the members it should without editing a soul. The shipped tier rows
+survive only as presentation: the mark and the card gradient.
 
 ### What the till publishes to the phone
 
@@ -774,10 +784,11 @@ facility on whichever of the two the next sale reached. The screen said
 till invented for a customer created offline are not uuids and still fall through
 to the insert, which is what creates them.
 
-**The tier dropdown is gone.** Tier is derived from points against the published
-ladder every time it is asked for, so a manager who set Gold wrote a column no
-screen reads and watched the panel keep saying Bronze. A control that cannot do
-what it appears to do is worse than no control.
+**The tier dropdown is gone**, and so is the column behind it (migration 019).
+Tier is derived from points against the published ladder every time it is asked
+for, so a manager who set Gold wrote a column no screen reads and watched the
+panel keep saying Bronze. A control that cannot do what it appears to do is worse
+than no control.
 
 The whole of that was missing, and each piece failed silently:
 

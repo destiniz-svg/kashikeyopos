@@ -48,7 +48,7 @@ async function buildBootstrap(ctx) {
         + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]],
       chainSettings: ['SELECT key, value FROM chain.setting'],
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
-      members: ['SELECT id, phone, name, email, home_outlet, points, tier,'
+      members: ['SELECT id, phone, name, email, home_outlet, points,'
         + ' credit_limit, joined_at, last_seen, invited_via, invited_to,'
         + ' invited_at, invite_count, revoked_at FROM chain.member'
         + ' ORDER BY joined_at DESC LIMIT 500'],
@@ -687,7 +687,10 @@ function customerOf(r, h) {
     id: r.id, name: r.name || r.phone, phone: r.phone, email: r.email || '',
     since: (r.joined_at || '').toString().slice(0, 10),
     visits: num(hist.visits), spent: num(hist.spent),
-    points: num(r.points), tier: r.tier, credit: num(r.credit_limit),
+    // No tier. It is worked out from these points against the published
+    // ladder, by the one reader every surface goes through, so a column here
+    // would be a second answer to a question that has one.
+    points: num(r.points), credit: num(r.credit_limit),
     used: num(hist.on_account),
     last: hist.last_visit || '', home: r.home_outlet,
     // Whether this person has ever actually opened their card. The till used

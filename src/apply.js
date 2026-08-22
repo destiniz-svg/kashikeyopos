@@ -1437,26 +1437,29 @@ H.member_upsert = async (c, p, ctx) => {
         return { refused: phone + ' is already ' + (t.name || 'another customer')
           + '\u2019s number \u2014 two customers cannot share one' };
       }
+      // No tier: it is derived from points against the published ladder every
+      // time it is asked for (migration 019), so a till sending one would be
+      // sending a figure nothing reads and everything disagrees with.
       const u = await one(c, 'UPDATE chain.member SET phone = $2,'
-        + ' name = coalesce($3, name), email = $4, tier = $5,'
-        + ' credit_limit = $6, notes = coalesce($7, notes)'
+        + ' name = coalesce($3, name), email = $4,'
+        + ' credit_limit = $5, notes = coalesce($6, notes)'
         + ' WHERE id = $1 RETURNING id', [id, phone, p.name || null, email,
-        p.tier || 'Member', num(p.credit), p.note || null]);
+        num(p.credit), p.note || null]);
       await log(c, 'member_upsert', 'member', u.id, null,
         { phone: phone, created: false });
       return { memberId: u.id, created: false };
     }
   }
 
-  const q = await one(c, 'INSERT INTO chain.member (phone, name, email, tier,'
-    + ' credit_limit, home_outlet, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)'
+  const q = await one(c, 'INSERT INTO chain.member (phone, name, email,'
+    + ' credit_limit, home_outlet, notes) VALUES ($1,$2,$3,$4,$5,$6)'
     + ' ON CONFLICT (phone) DO UPDATE SET'
     + '   name = coalesce(excluded.name, chain.member.name),'
-    + '   email = coalesce(nullif(excluded.email, $8), chain.member.email),'
-    + '   tier = excluded.tier, credit_limit = excluded.credit_limit,'
-    + '   notes = coalesce(nullif(excluded.notes, $8), chain.member.notes)'
+    + '   email = coalesce(nullif(excluded.email, $7), chain.member.email),'
+    + '   credit_limit = excluded.credit_limit,'
+    + '   notes = coalesce(nullif(excluded.notes, $7), chain.member.notes)'
     + ' RETURNING id, (xmax = 0) AS created',
-  [phone, p.name || null, email, p.tier || 'Member',
+  [phone, p.name || null, email,
     num(p.credit), ctx.outletId, p.note || null, '']);
   await log(c, 'member_upsert', 'member', q.id, null,
     { phone: phone, created: q.created });
@@ -1465,9 +1468,11 @@ H.member_upsert = async (c, p, ctx) => {
 
 H.loyalty_update = async (c, p, ctx) => {
   if (p.member && p.points != null) {
-    await c.query('UPDATE chain.member SET points = greatest(0, points + $2),'
-      + ' tier = coalesce($3, tier) WHERE id = $1',
-      [p.member, num(p.points), p.tier || null]);
+    // Points move; the tier follows from them wherever it is read. It used to
+    // be written here too, which is how a member could hold a tier their
+    // balance had not earned and nobody could say which was right.
+    await c.query('UPDATE chain.member SET points = greatest(0, points + $2)'
+      + ' WHERE id = $1', [p.member, num(p.points)]);
   }
   if (p.rules) await setSetting(c, ctx, 'loyalty_rules', p.rules);
   return { ok: true };

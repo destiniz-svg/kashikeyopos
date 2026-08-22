@@ -11914,7 +11914,11 @@ class Component extends DCLogic {
         // created in the first place.
         id: r.id || null,
         name: r.name, phone: r.phone, email: r.email || null,
-        tier: r.tier || "Member", credit: num(r.credit)
+        // No tier. It is derived from points against the published ladder by
+        // the one reader every surface goes through, so the value on this row
+        // is that derivation — sending it back would be the till telling the
+        // outlet what the outlet just told the till.
+        credit: num(r.credit)
       })]
     };
   }

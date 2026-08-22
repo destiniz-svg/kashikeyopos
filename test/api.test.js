@@ -432,9 +432,9 @@ test('a member reaches their own card and nobody else\'s', opts, async () => {
   const table = { 'x-table-token': t.body.token };
 
   // Two members, so "their own" is a claim with something to be wrong about.
-  await one("INSERT INTO chain.member (phone, name, email, points, tier)"
-    + " VALUES ('7770001','Member One','one@example.mv',100,'Bronze'),"
-    + " ('7770002','Member Two','two@example.mv',900,'Gold')"
+  await one("INSERT INTO chain.member (phone, name, email, points)"
+    + " VALUES ('7770001','Member One','one@example.mv',100),"
+    + " ('7770002','Member Two','two@example.mv',900)"
     + ' ON CONFLICT (phone) DO NOTHING');
 
   // Whether a number is a customer here is not a question a stranger may ask:
@@ -592,13 +592,20 @@ test('a customer taken at the counter reaches the outlet, and can sign in',
 
     // A replayed outbox is one customer, not two. The phone is the identity.
     const again = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
-      name: 'Aishath Waheed', phone: phone, tier: 'Gold', credit: 500
+      name: 'Aishath Waheed', phone: phone, tier: 'Gold', credit: 750
     } }]);
     assert.strictEqual(again.body.results[0].result.created, false, 'the second is an update');
     const n = await one('SELECT count(*)::int AS n FROM chain.member WHERE phone = $1', [phone]);
     assert.strictEqual(n.n, 1, 'one customer, however many times the till sent them');
-    const up = await one('SELECT tier FROM chain.member WHERE phone = $1', [phone]);
-    assert.strictEqual(up.tier, 'Gold', 'and the update landed');
+    const up = await one('SELECT credit_limit FROM chain.member WHERE phone = $1', [phone]);
+    assert.strictEqual(Number(up.credit_limit), 750, 'and the update landed');
+    // The tier the till sent went nowhere, because there is nowhere for it to
+    // go: it is derived from points against the published ladder every time it
+    // is read (migration 019).
+    const cols = await one("SELECT count(*)::int AS n FROM information_schema.columns"
+      + " WHERE table_schema = 'chain' AND table_name = 'member'"
+      + " AND column_name = 'tier'");
+    assert.strictEqual(cols.n, 0, 'a cache nothing reads is a second answer waiting to be believed');
 
     // The invite, on a named channel. With no transport configured it is what
     // a person hands across a counter: where the card is, and a code to get in
