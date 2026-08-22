@@ -281,6 +281,57 @@ test('the till does not post its own journal — the server derives it', () => {
   });
 });
 
+/* The business date is the outlet's local date. `toISOString()` is UTC, and
+   Malé is UTC+5 — so from 19:00 local, most of a restaurant's trading, every
+   receipt and Z read was filed under yesterday while the clock in the header
+   said tonight. `dayKey()` had always used local parts, so the two disagreed
+   inside this one file. */
+test('the terminal keeps one clock, and it is the local one', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const now = new Date();
+  assert.strictEqual(F.today(), F.dayKey(now),
+    'today() is the same day-key every other figure is bucketed by');
+  assert.strictEqual(F.dayOf(now.getTime()), F.dayKey(now),
+    'and so is the day of a timestamp');
+
+  // 20:00 UTC is 01:00 the NEXT day in Malé. This is the direction that used
+  // to lose a night's trading off the day view.
+  const evening = new Date(Date.UTC(2026, 2, 10, 20, 0));
+  assert.strictEqual(evening.toISOString().slice(0, 10), '2026-03-10',
+    'UTC calls it the 10th');
+  if (process.env.TZ === 'Indian/Maldives') {
+    assert.strictEqual(F.dayOf(evening.getTime()), '2026-03-11',
+      'and the till, standing in the outlet, calls it the 11th');
+  }
+
+  // No UTC day-key is left in the file except the one that is epoch-DAYS,
+  // where UTC is the correct reading.
+  const stray = SRC.split('\n')
+    .map((l, i) => [i + 1, l])
+    .filter(([, l]) => /toISOString\(\)\.slice\(0, 10\)/.test(l))
+    .filter(([, l]) => !/86400000/.test(l));
+  assert.deepStrictEqual(stray.map(([n, l]) => n + ': ' + l.trim().slice(0, 70)), [],
+    'a UTC day-key is a business date filed on the wrong day');
+});
+
+test('a business date written under UTC is refiled when the session is read', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  // A sale rung at 01:00 Malé, carrying the UTC date the old code wrote.
+  const at = Date.UTC(2026, 2, 10, 20, 0);
+  F.__win.localStorage.setItem(F.SKEY, JSON.stringify({
+    v: 3, settled: [{ no: 'INV-1', at: at, bizDate: '2026-03-10', total: 100 }]
+  }));
+  const back = F.restore();
+  const row = (back.settled || [])[0];
+  assert.ok(row, 'the row came back');
+  assert.strictEqual(row.bizDate, F.dayKey(new Date(at)),
+    'refiled from its own timestamp, never from now');
+  if (row.bizDate !== '2026-03-10') {
+    assert.strictEqual(row.bizDateWas, '2026-03-10',
+      'and what it used to say is kept, so the change is answerable');
+  }
+});
+
 /* No screen may report an action the build cannot take. There is no SMS or
    email transport here, and the customers screen used to toast "N portal
    invites sent by SMS" while flipping a local flag and sending nothing. */

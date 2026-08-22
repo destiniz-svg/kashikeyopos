@@ -2083,6 +2083,20 @@ class Component extends DCLogic {
         if (!t.openedAt) t.openedAt = t0 - (t.opened || 0) * 60000;
         (t.lines || []).forEach((l) => { if (!l.firedAt) l.firedAt = l.fired ? t0 - (l.since || 0) * 60000 : 0; });
       });
+      // Migrate on read, the second kind: every `bizDate` written before the
+      // clock was fixed is a UTC date, and after 19:00 local that is
+      // yesterday's. Left alone, `(bizDate || today) === today` misses on all
+      // of them and the whole day view empties while the settlement screen
+      // still shows the sales — which reads as data loss, not a date bug.
+      //
+      // Rewritten from the row's OWN timestamp, never from now: stamping a
+      // week of history with today would be a worse lie than the one being
+      // repaired.
+      (d.settled || []).forEach((r) => {
+        if (!r || !r.at) return;
+        const local = this.dayKey(new Date(r.at));
+        if (r.bizDate !== local) { r.bizDateWas = r.bizDate || null; r.bizDate = local; }
+      });
       return d;
     } catch (e) { return {}; }
   }
@@ -2221,7 +2235,7 @@ class Component extends DCLogic {
   openRegister(floatAmt) {
     const s = this.state, u = s.session || {};
     this.setState({
-      register: { open: true, no: "REG-" + s.now.toISOString().slice(0, 10).replace(/-/g, "") + "-1", float: floatAmt, openedBy: u.name || this.me(), openedAt: Date.now() },
+      register: { open: true, no: "REG-" + this.dayKey(s.now).replace(/-/g, "") + "-1", float: floatAmt, openedBy: u.name || this.me(), openedAt: Date.now() },
       modal: null
     });
     this.queue("open_register", "Register opened · float " + MVRc(floatAmt) + " · " + (u.name || this.me()), "shifts", { float: floatAmt });
@@ -3795,7 +3809,7 @@ class Component extends DCLogic {
       // The comparison is against the receipts of the same weekday last week,
       // which is the only week-on-week figure a restaurant can act on. If there
       // are none, the card says so rather than inventing a movement.
-      const weekAgo = new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10);
+      const weekAgo = this.dayKey(new Date(Date.now() - 7 * 86400e3));
       const then = (s.settled || []).filter((x) => x.bizDate === weekAgo)
         .reduce((a, x) => a + (x.net || 0), 0);
       const lastWeek = then > 0 ? then : null;
@@ -8290,7 +8304,7 @@ class Component extends DCLogic {
     const end = new Date(dayKey + "T12:00:00"), out = [];
     for (let i = 13; i >= 0; i--) {
       const dt = new Date(end); dt.setDate(dt.getDate() - i);
-      out.push({ d: dt, v: by[dt.toISOString().slice(0, 10)] || 0 });
+      out.push({ d: dt, v: by[this.dayKey(dt)] || 0 });
     }
     return out;
   }
@@ -11571,12 +11585,20 @@ class Component extends DCLogic {
       .filter((r) => r && (String(r.item || "").length || +r.qty))
       .map((r) => [+r.item || 0, +r.qty || 0, Math.round((+r.rate || 0) * 100) / 100]);
   }
+  /* The business date is the OUTLET's local date, and this till is standing in
+     the outlet. `toISOString()` is UTC: Malé is UTC+5, so from 19:00 local —
+     most of a restaurant's trading — every receipt, Z read, GST period and
+     document number was being filed under YESTERDAY, while the clock in the
+     header two lines above said tonight.
+
+     `dayKey()` below has always used local parts, so the two disagreed with
+     each other inside this one file. There is one clock now, and it is this. */
   today() {
     const n = (this.state || {}).now;
-    return (n instanceof Date ? n : new Date()).toISOString().slice(0, 10);
+    return this.dayKey(n instanceof Date ? n : new Date());
   }
   // The business date of a timestamp, on the same clock every other figure uses.
-  dayOf(ts) { return new Date(ts || 0).toISOString().slice(0, 10); }
+  dayOf(ts) { return this.dayKey(new Date(ts || 0)); }
   dayLabel(ts) {
     if (!ts) return "Never";
     const d = new Date(ts);
@@ -12278,7 +12300,7 @@ class Component extends DCLogic {
     // Cash: what the drawer took, per business date, banked the same or next day.
     const byDay = {};
     (s.settled || []).filter((x) => x.outletId === s.outletId && x.tender === "cash")
-      .forEach((x) => { const k = x.bizDate || new Date(x.at || Date.now()).toISOString().slice(0, 10); byDay[k] = (byDay[k] || 0) + (x.total || 0); });
+      .forEach((x) => { const k = x.bizDate || this.dayOf(x.at || Date.now()); byDay[k] = (byDay[k] || 0) + (x.total || 0); });
     Object.keys(byDay).forEach((k) => {
       out.push({ kind: "Cash banking", label: "Cash takings " + k, amt: Math.round(byDay[k] * 100) / 100, day: dnum(new Date(k + "T00:00:00")) + 1, tol: 5, ref: k, acct: "1010" });
     });
@@ -13334,7 +13356,7 @@ class Component extends DCLogic {
           const mrps = v.pension === "auto" ? local : v.pension === "yes";
           this.insertRow("staff", {
             id: id, name: v.name, outlet: +v.outlet || this.state.outletId, job: v.job,
-            kind: v.kind, basic: basic, hourly: 0, joined: new Date().toISOString().slice(0, 10),
+            kind: v.kind, basic: basic, hourly: 0, joined: this.today(),
             mrps: mrps, ot: v.ot !== "no", svc: v.svc !== "no",
             type: v.type || "fulltime", sex: v.sex || "m", photo: v.photo || ""
           }, "Employee added · " + v.name + " · " + v.job + " · " + MVRc(basic)
@@ -13400,7 +13422,7 @@ class Component extends DCLogic {
         },
         onSave: (v) => {
           if (!v.name) return this.toast("Give the equipment a name", "warn");
-          const today = new Date().toISOString().slice(0, 10);
+          const today = this.today();
           const row = { id: "a" + Date.now(), name: v.name, outlet: +v.outlet || this.state.outletId, kind: v.kind || "Cooking", bought: today, cost: +v.cost || 0, life: +v.life || 8, lastSvc: today, svcDays: +v.svcDays || 90, status: "ok", ytd: 0 };
           const local = Object.assign({}, this.state.local, { assets: (this.state.local.assets || []).concat([row]) });
           this.setState({ local: local, modal: null });
@@ -13423,7 +13445,7 @@ class Component extends DCLogic {
           const a = this.assetList().find((x) => x.id === v.asset) || {};
           const row = { id: "m" + Date.now(), asset: a.name, assetId: a.id, fault: v.fault, cost: +v.cost || 0, writeOff: +v.writeOff || 0, down: v.down === "yes", at: this.hhmm(Date.now()) + " today" };
           const st = Object.assign({}, this.state.assetState || {});
-          st[a.id] = { status: row.down ? "down" : "ok", ytd: (a.ytd || 0) + row.cost, lastSvc: row.down ? a.lastSvc : new Date().toISOString().slice(0, 10) };
+          st[a.id] = { status: row.down ? "down" : "ok", ytd: (a.ytd || 0) + row.cost, lastSvc: row.down ? a.lastSvc : this.today() };
           this.setState({ maint: (this.state.maint || []).concat([row]), assetState: st, modal: null });
           this.queue("maintenance_log", a.name + " · " + v.fault + " · repair " + MVRc(row.cost), "maintenance");
           this.queue("post_journal", "Repair " + MVRc(row.cost) + " · Dr 5400 Cr 2100", "journal_entries");
@@ -15413,6 +15435,9 @@ class Component extends DCLogic {
             [["Date", "Description", "Amount MVR", "Matched to", "Difference MVR", "State"]]
               .concat(proposed.concat(open).map((l) => [l.date, l.desc, l.amt, l.matchLabel || l.src || "", l.diff || 0, l.state]))
               .concat([[]], [["Ledger still awaiting", "", "", "", "", ""]])
+              // epoch-DAYS, so UTC is the right reading here and local parts
+              // would shift it back a day. This is the one date in the file
+              // that is not a wall clock.
               .concat(awaiting.map((e) => [e.day === null ? "" : new Date(e.day * 86400000).toISOString().slice(0, 10), e.label, e.amt, e.kind, "", "outstanding"]))) }
         ],
         cardMin: 250,

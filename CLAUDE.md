@@ -31,6 +31,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        008 line identity · 009 GST registration · 010 currency
                        011 accounts · 012 store handle · 013 handle history
                        014 GST optional · 015 order stage
+                       016 business date
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -266,6 +267,40 @@ un-replayed lines may not have reached the outlet yet. **Do not merge
 `state.tickets` from a bootstrap anywhere else** — the server keys them
 `"<label>:<split>"` and the floor keys them `"<outletId>:<slot>"`, and mixing
 the two files a bill under a table that does not exist.
+
+## The business date belongs to the outlet
+
+`current_date` is whatever timezone the SESSION is in, and a container is in
+UTC. Malé is UTC+5, so from 19:00 local — most of a restaurant's trading —
+every business date, document number and settlement key was filed under
+**yesterday**, while the clock in the terminal's own header said tonight. A GST
+return keyed on that is wrong for roughly a third of every day's takings.
+
+`chain.outlet.tz` has always been there and nothing read it. Now `setContext()`
+sets it on every transaction, so **every `current_date` and `now()::date` inside
+a request is the outlet's own local date** — one place, every handler at once,
+and `SET LOCAL` so a pooled connection cannot carry one outlet's midnight into
+another's request. `ctx.tz` is stamped alongside it, so `today(ctx)` in Node
+computes on the clock Postgres just adopted.
+
+In the terminal there is one day-key, `dayKey()`, and `today()` / `dayOf()` are
+it. `dayKey()` had always used local parts while `today()` used `toISOString()`,
+so the two disagreed inside one file.
+
+Rows already written are repaired rather than left: migration 016 rewrites every
+`business_date` from **its own timestamp in its own outlet's zone**, never from
+"now" — stamping a week of history with today would be a worse lie than the one
+being fixed. It is idempotent. The terminal does the same on read for persisted
+`settled` rows, keeping the old value in `bizDateWas` so the change is
+answerable.
+
+The one date that is still UTC is the CSV export of epoch-DAY buckets, where
+UTC is the correct reading and local parts would shift it back a day.
+
+`test/api.test.js` asserts the transaction's zone and the refile; the wiring
+test fails on any new UTC day-key in `app/index.html`. Run the suite under
+`TZ=Indian/Maldives` as well as UTC — the bug only shows when the container's
+zone differs from the outlet's.
 
 ## One number says where an order is
 
@@ -516,7 +551,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 131 tests
+npm test                          # 135 tests
 npm run leak-test                 # isolation, on its own
 ```
 

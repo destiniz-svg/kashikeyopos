@@ -488,7 +488,14 @@ r.post('/finish', async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
-function today() { return new Date().toISOString().slice(0, 10); }
+/* Onboarding runs before an outlet has a timezone of its own to read, so it
+   takes the country's — which is the only zone this build is ever installed in,
+   and is what the outlet will be created with. UTC here backdated the first tax
+   version by a day for anyone onboarding in the evening. */
+function today() {
+  return new Intl.DateTimeFormat('en-CA',
+    { timeZone: 'Indian/Maldives' }).format(new Date());
+}
 
 module.exports = r;
 module.exports.STEPS = STEPS;

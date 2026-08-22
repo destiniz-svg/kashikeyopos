@@ -62,13 +62,13 @@ async function provisionOutlet(opts) {
       await client.query(
         'INSERT INTO chain.tax_version (outlet_id, code, rate, effective_from, authority_ref)'
         + ' VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
-        [id, taxCode, rate, opts.taxFrom || new Date().toISOString().slice(0, 10),
+        [id, taxCode, rate, opts.taxFrom || new Intl.DateTimeFormat('en-CA', { timeZone: 'Indian/Maldives' }).format(new Date()),
           opts.taxRef || 'Outlet registration']);
     } else {
       await client.query(
         'INSERT INTO chain.tax_version (outlet_id, code, rate, effective_from, authority_ref)'
         + " VALUES ($1,'NONE',0,$2,'Not registered for GST') ON CONFLICT DO NOTHING",
-        [id, opts.taxFrom || new Date().toISOString().slice(0, 10)]);
+        [id, opts.taxFrom || new Intl.DateTimeFormat('en-CA', { timeZone: 'Indian/Maldives' }).format(new Date())]);
     }
 
     await client.query('COMMIT');

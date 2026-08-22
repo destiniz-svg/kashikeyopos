@@ -84,16 +84,54 @@ function poolFor(outletId) {
    pool and carry one outlet's context into the next request. This is not a
    style preference — `SET` without `LOCAL` is a cross-tenant leak waiting for
    load. */
+/* ── THE BUSINESS DATE BELONGS TO THE OUTLET ───────────────────────────────
+   `current_date` is whatever timezone the SESSION is in, and a Railway
+   container is in UTC. Malé is UTC+5, so from 19:00 local — most of a
+   restaurant's trading — every document number, business date and settlement
+   key was being filed under YESTERDAY while the clock in the header said
+   tonight.
+
+   The outlet has always carried its own zone (`chain.outlet.tz`, default
+   Indian/Maldives) and nothing read it. Setting it on the TRANSACTION makes
+   every `current_date` and `now()::date` inside a request the outlet's own
+   local date, in one place, for every handler at once — and because it is
+   `SET LOCAL` it dies at COMMIT, so a pooled connection cannot carry one
+   outlet's midnight into another's request.
+
+   Cached because a timezone changes approximately never, and the cache only
+   ever decides which zone to declare — every date is still computed by
+   Postgres against the zone it was told. */
+const OUTLET_TZ = new Map();
+const TZ_FALLBACK = 'Indian/Maldives';
+
 async function setContext(client, ctx) {
+  const known = ctx.outletId ? OUTLET_TZ.get(ctx.outletId) : null;
   await client.query(
     "SELECT set_config('app.outlet_id', $1, true),"
     + " set_config('app.user_rank', $2, true),"
     + " set_config('app.actor', $3, true),"
     + " set_config('app.scope', $4, true),"
-    + " set_config('app.device', $5, true)",
+    + " set_config('app.device', $5, true),"
+    + " set_config('timezone', $6, true)",
     [String(ctx.outletId || ''), String(ctx.rank || 0), ctx.actor || '',
-      ctx.scope === 'group' ? 'group' : 'outlet', ctx.deviceId || '']
+      ctx.scope === 'group' ? 'group' : 'outlet', ctx.deviceId || '',
+      known || TZ_FALLBACK]
   );
+  // Cold cache: the row is only readable once the context above is set, so it
+  // is a second statement rather than a subquery in the first — the order the
+  // target list is evaluated in is not something to bet a tenant boundary on.
+  if (ctx.outletId && !known) {
+    const q = await client.query('SELECT tz FROM chain.outlet WHERE id = $1',
+      [ctx.outletId]);
+    const tz = ((q.rows[0] || {}).tz || TZ_FALLBACK);
+    OUTLET_TZ.set(ctx.outletId, tz);
+    if (tz !== TZ_FALLBACK) {
+      await client.query("SELECT set_config('timezone', $1, true)", [tz]);
+    }
+  }
+  // Stamped on the context so a handler that has to compute a date in Node
+  // computes it on the same clock Postgres just adopted.
+  ctx.tz = (ctx.outletId ? OUTLET_TZ.get(ctx.outletId) : null) || TZ_FALLBACK;
 }
 
 /* A caught query error inside a transaction is a landmine: Postgres poisons

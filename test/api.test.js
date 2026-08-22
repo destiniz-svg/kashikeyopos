@@ -485,6 +485,85 @@ test('a member reaches their own card and nobody else\'s', opts, async () => {
     'a table token cannot read a membership');
 });
 
+/* ═══ THE BUSINESS DATE IS THE OUTLET'S ═════════════════════════════════════
+   `current_date` and `toISOString()` are both UTC, and Malé is UTC+5. So from
+   19:00 local — most of a restaurant's trading — every business date, document
+   number and settlement key was filed under YESTERDAY, while the clock in the
+   terminal's own header said tonight. A GST return keyed on that is wrong for
+   roughly a third of every day's takings.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('the business date is the outlet\'s local date, not the container\'s',
+  opts, async () => {
+    // What the outlet's own clock says, asked of the database inside a normal
+    // request — which is where every defaulted business_date comes from.
+    const local = await one("SELECT current_date::text AS d,"
+      + " current_setting('timezone') AS tz");
+    assert.strictEqual(local.tz, 'Indian/Maldives',
+      'the transaction adopted the outlet\'s zone, not the container\'s');
+
+    const utc = new Date().toISOString().slice(0, 10);
+    const maldives = new Intl.DateTimeFormat('en-CA',
+      { timeZone: 'Indian/Maldives' }).format(new Date());
+    assert.strictEqual(local.d, maldives,
+      'and current_date is the Malé date');
+
+    // The evening case, stated rather than waited for: 21:00 Malé on any day
+    // is still 16:00 UTC the same day, but 01:00 Malé is 20:00 UTC the day
+    // BEFORE — which is the direction that used to lose a night's trading.
+    const evening = new Date(Date.UTC(2026, 7, 21, 19, 30));  // 00:30 Malé, the 22nd
+    assert.strictEqual(evening.toISOString().slice(0, 10), '2026-08-21',
+      'UTC calls that the 21st');
+    assert.strictEqual(new Intl.DateTimeFormat('en-CA',
+      { timeZone: 'Indian/Maldives' }).format(evening), '2026-08-22',
+    'the outlet calls it the 22nd, and the outlet is right');
+
+    // Every `business_date date NOT NULL DEFAULT current_date` in the outlet
+    // plane resolves against that same session, so proving the session is on
+    // Malé time proves the defaults are — there is only the one clock to get
+    // right, which is the point of setting it in one place.
+    const dflt = await one("SELECT column_default FROM information_schema.columns"
+      + " WHERE table_schema = current_schema() AND table_name = 'ticket'"
+      + " AND column_name = 'business_date'");
+    assert.match(String(dflt.column_default), /CURRENT_DATE/i,
+      'the column still defaults to the session date rather than a stored string');
+    assert.notStrictEqual(maldives, undefined);
+    void utc;
+  });
+
+test('a row filed under UTC is refiled on the outlet\'s day', opts, async () => {
+  // Exactly the rows the old code left behind: a sale whose timestamp is
+  // 20:00 UTC — 01:00 the NEXT day in Malé — carrying the UTC date.
+  const at = '2026-03-10T20:00:00Z';
+  const staff = await one('SELECT id FROM chain.staff LIMIT 1');
+  await one("INSERT INTO sale (receipt_no, at, business_date, channel, covers,"
+    + " subtotal, discount, net, service, tax_code, tax_label, tax_rate, tax,"
+    + " rounding, total, tip, cogs, currency, fx_rate, fx_amount, server_name,"
+    + " closed_by)"
+    + " VALUES ('BIZDATE-TEST', $1::timestamptz, '2026-03-10', 'dine_in', 1,"
+    + " 100,0,100,0,'NONE','NONE',0,0,0,100,0,0,'MVR',1,0,'Test',$2)",
+  [at, staff.id]);
+
+  // The migration runner will not re-run a file it has already applied, so
+  // this drives the migration's own SQL rather than the runner — what is
+  // being tested is the repair, not the bookkeeping around it.
+  const fs = require('fs');
+  const path = require('path');
+  const sql = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '016_business_date_local.sql'), 'utf8');
+  await db.owner().query(sql);
+
+  const row = await one("SELECT business_date::text AS d FROM sale"
+    + " WHERE receipt_no = 'BIZDATE-TEST'");
+  assert.strictEqual(row.d, '2026-03-11',
+    'refiled onto the Mal\u00e9 day the money actually changed hands');
+
+  // Idempotent: running it again moves nothing.
+  await db.owner().query(sql);
+  const again = await one("SELECT business_date::text AS d FROM sale"
+    + " WHERE receipt_no = 'BIZDATE-TEST'");
+  assert.strictEqual(again.d, '2026-03-11', 'and re-running it is free');
+});
+
 /* ═══ HOW A CUSTOMER GETS IN ════════════════════════════════════════════════
    The whole member portal — the card, the points, the order tracker, the
    receipts — assumed a `chain.member` row existed. Nothing in the build ever

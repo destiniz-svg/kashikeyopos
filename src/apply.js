@@ -88,7 +88,7 @@ async function applySale(c, p, ctx) {
     + ' $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)'
     + ' RETURNING id, receipt_no',
     [no.no, p.ticketId || null, p.at ? new Date(p.at) : null,
-      p.bizDate || today(), p.channel || 'dine_in', Math.max(1, num(p.covers) || 1),
+      p.bizDate || today(ctx), p.channel || 'dine_in', Math.max(1, num(p.covers) || 1),
       subtotal, discount, p.discCode || null, p.discReason || null,
       // An unregistered outlet must not have a tax LABEL invented for it: the
       // receipt would name a registration the business does not hold.
@@ -129,7 +129,7 @@ async function applySale(c, p, ctx) {
   await postJournal(c, ctx, saleJournal(p, {
     net, service, tax, rounding, total, discount, cogs: r2(p.cogs),
     payments: arr(p.payments), stock: arr(p.stockMoves), channel: p.channel
-  }), 'sale', sale.id, p.bizDate || today(), 'Sale ' + sale.receipt_no);
+  }), 'sale', sale.id, p.bizDate || today(ctx), 'Sale ' + sale.receipt_no);
 
   // Close the bill this sale settled. A ticket opened offline reaches the
   // outlet as lines against a TABLE and has no server id on the device, so
@@ -144,7 +144,7 @@ async function applySale(c, p, ctx) {
   }
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
     + " VALUES ($1,'SALE',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
-    [sale.receipt_no, p.bizDate || today(), total, sale.id, ctx.actor]);
+    [sale.receipt_no, p.bizDate || today(ctx), total, sale.id, ctx.actor]);
 
   /* Points are awarded HERE, from the outlet's own earn rate — never from a
      number the terminal sent. A till that computes its own points is a till
@@ -211,11 +211,14 @@ async function postJournal(c, ctx, lines, source, sourceId, date, memo) {
     clean.push(d > 0 ? { acct: '4900', dr: d, memo: 'Rounding' }
       : { acct: '4900', cr: -d, memo: 'Rounding' });
   }
-  await ensurePeriodOpen(c, date);
+  // Resolve the entry date ONCE, on the outlet's clock, so the period this
+  // opens and the period the row lands in can never be different months.
+  const entryDate = date || today(ctx);
+  await ensurePeriodOpen(c, entryDate);
   const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['JV']);
   const j = await one(c, 'INSERT INTO journal (jv_no, entry_date, memo, source,'
     + ' source_id, posted_by) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [no.no, date || today(), memo || source, source, sourceId ? String(sourceId) : null, ctx.actor]);
+    [no.no, entryDate, memo || source, source, sourceId ? String(sourceId) : null, ctx.actor]);
   for (const l of clean) {
     await c.query('INSERT INTO journal_line (journal_id, account_code, dr, cr, memo)'
       + ' VALUES ($1,$2,$3,$4,$5)', [j.id, l.acct, r2(l.dr), r2(l.cr), l.memo || null]);
@@ -224,7 +227,10 @@ async function postJournal(c, ctx, lines, source, sourceId, date, memo) {
 }
 
 async function ensurePeriodOpen(c, date) {
-  const d = date || today();
+  // No date given means "now" — and now is the OUTLET's now, because the
+  // transaction's timezone was set to its own. Asking the database is the one
+  // clock that cannot disagree with the row about to be written.
+  const d = date || (await one(c, 'SELECT current_date::text AS d')).d;
   const id = String(d).slice(0, 7);
   const q = await c.query('SELECT state FROM period WHERE id = $1', [id]);
   if (!q.rows.length) {
@@ -299,7 +305,7 @@ H.close_register = async (c, p, ctx) => {
     await postJournal(c, ctx, variance < 0
       ? [{ acct: '6300', dr: -variance, memo: 'Cash short' }, { acct: '1010', cr: -variance }]
       : [{ acct: '1010', dr: variance }, { acct: '4900', cr: variance, memo: 'Cash over' }],
-    'drawer', d.id, today(), 'Drawer variance');
+    'drawer', d.id, today(ctx), 'Drawer variance');
   }
   await log(c, 'close_register', 'drawer', d.id, null, { expected, counted, variance });
   return { id: d.id, expected, counted, variance };
@@ -469,7 +475,7 @@ H.refund = async (c, p, ctx) => {
   const cn = await one(c, 'INSERT INTO credit_note (cn_no, sale_id, business_date,'
     + ' lines, net, tax, service, amount, method, reason, raised_by, approved_by)'
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id',
-    [no.no, p.saleId || null, p.bizDate || today(), JSON.stringify(p.lines || []),
+    [no.no, p.saleId || null, p.bizDate || today(ctx), JSON.stringify(p.lines || []),
       net, tax, svc, amount, p.method || 'cash', p.reason || 'Refund',
       ctx.actor, p.approvedBy || ctx.actor]);
 
@@ -479,7 +485,7 @@ H.refund = async (c, p, ctx) => {
     { acct: '2200', dr: tax, memo: 'Output tax reversed' },
     { acct: '2300', dr: svc, memo: 'Service charge reversed' },
     { acct: tenderAcct, cr: amount, memo: 'Refund paid' }
-  ], 'refund', cn.id, p.bizDate || today(), 'Credit note ' + no.no);
+  ], 'refund', cn.id, p.bizDate || today(ctx), 'Credit note ' + no.no);
 
   // Stock only comes back if it was actually returned to the kitchen.
   for (const m of arr(p.stockMoves)) {
@@ -488,7 +494,7 @@ H.refund = async (c, p, ctx) => {
   }
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
     + " VALUES ($1,'CN',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
-    [no.no, p.bizDate || today(), amount, cn.id, ctx.actor]);
+    [no.no, p.bizDate || today(ctx), amount, cn.id, ctx.actor]);
   await log(c, 'refund', 'credit_note', cn.id, null, { no: no.no, amount });
   return { creditNoteId: cn.id, no: no.no, amount };
 };
@@ -509,7 +515,7 @@ H.stock_adjust = async (c, p, ctx) => {
     await postJournal(c, ctx, [
       { acct: '5100', dr: Math.abs(r2(p.value)), memo: p.note || 'Stock adjustment' },
       { acct: '1200', cr: Math.abs(r2(p.value)) }
-    ], 'stock', id, today(), 'Stock adjustment');
+    ], 'stock', id, today(ctx), 'Stock adjustment');
   }
   return { moveId: id };
 };
@@ -558,7 +564,7 @@ H.count_post = async (c, p, ctx) => {
     await postJournal(c, ctx, value < 0
       ? [{ acct: '5100', dr: -value, memo: 'Count variance' }, { acct: '1200', cr: -value }]
       : [{ acct: '1200', dr: value }, { acct: '5100', cr: value, memo: 'Count variance' }],
-    'count', id, today(), 'Stock count variance');
+    'count', id, today(ctx), 'Stock count variance');
   }
   await log(c, 'count_post', 'stock_count', id, null, { value, lines: arr(p.lines).length });
   return { countId: id, value };
@@ -608,7 +614,7 @@ H.grn_receive = async (c, p, ctx) => {
   const no = await one(c, 'SELECT chain.next_doc_no($1) AS no', ['GRN']);
   const d = await one(c, 'INSERT INTO delivery (grn_no, po_id, supplier_id,'
     + ' business_date, received_by, note) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [no.no, p.po || null, p.vendor, p.bizDate || today(), ctx.actor, p.note || null]);
+    [no.no, p.po || null, p.vendor, p.bizDate || today(ctx), ctx.actor, p.note || null]);
   for (const l of arr(p.lines)) {
     await c.query('INSERT INTO grn_line (delivery_id, ingredient_id, qty, unit,'
       + ' unit_price, line_total, use_by, lot) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -625,7 +631,7 @@ H.grn_receive = async (c, p, ctx) => {
   }
   await c.query('INSERT INTO document (no, kind, business_date, ref_id, by_staff)'
     + " VALUES ($1,'GRN',$2,$3,$4) ON CONFLICT (no) DO NOTHING",
-    [no.no, p.bizDate || today(), d.id, ctx.actor]);
+    [no.no, p.bizDate || today(ctx), d.id, ctx.actor]);
   await log(c, 'grn_receive', 'delivery', d.id, null, { no: no.no, lines: arr(p.lines).length });
   return { deliveryId: d.id, no: no.no };
 };
@@ -643,15 +649,15 @@ H.grn_priced = async (c, p, ctx) => {
       + " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)"
       + ' ON CONFLICT (supplier_id, invoice_no) DO UPDATE SET net = excluded.net,'
       + ' tax = excluded.tax, amount = excluded.amount',
-      [p.vendor, p.invoiceNo, p.date || today(),
-        p.due || addDays(p.date || today(), num(p.terms) || 30),
+      [p.vendor, p.invoiceNo, p.date || today(ctx),
+        p.due || addDays(p.date || today(ctx), num(p.terms) || 30),
         net, tax, total, p.deliveryId, ctx.actor]);
   }
   await postJournal(c, ctx, [
     { acct: '1200', dr: net, memo: 'Stock received' },
     { acct: '2200', dr: tax, memo: 'Input tax' },
     { acct: '2100', cr: total, memo: 'Supplier payable' }
-  ], 'delivery', p.deliveryId, p.date || today(), 'Supplier invoice ' + (p.invoiceNo || ''));
+  ], 'delivery', p.deliveryId, p.date || today(ctx), 'Supplier invoice ' + (p.invoiceNo || ''));
   await log(c, 'grn_priced', 'delivery', p.deliveryId, null, { net, tax });
   return { ok: true, total };
 };
@@ -668,7 +674,7 @@ H.vendor_payment = async (c, p, ctx) => {
   await postJournal(c, ctx, [
     { acct: '2100', dr: amt, memo: 'Supplier paid' },
     { acct: p.method === 'cash' ? '1010' : '1020', cr: amt }
-  ], 'vendor_payment', v.id, today(), 'Supplier payment');
+  ], 'vendor_payment', v.id, today(ctx), 'Supplier payment');
   return { paymentId: v.id };
 };
 H.payment_run = H.vendor_payment;
@@ -744,7 +750,7 @@ H.post_journal = async (c, p, ctx) => {
       x.code + ' ' + x.name).join(', ') + ' — post through the operation that moves it'),
     { status: 403 });
   }
-  const id = await postJournal(c, ctx, p.lines, 'manual', null, p.date || today(), p.memo);
+  const id = await postJournal(c, ctx, p.lines, 'manual', null, p.date || today(ctx), p.memo);
   await log(c, 'post_journal', 'journal', id, null, { memo: p.memo });
   return { journalId: id };
 };
@@ -815,7 +821,7 @@ H.bank_opening = async (c, p, ctx) => {
   await c.query('INSERT INTO bank_opening (id, account_code, as_of, amount, set_by)'
     + ' VALUES (1,$1,$2,$3,$4) ON CONFLICT (id) DO UPDATE SET account_code = $1,'
     + ' as_of = $2, amount = $3, set_by = $4, set_at = now()',
-    [p.acct || '1020', p.asOf || today(), r2(p.amt), ctx.actor]);
+    [p.acct || '1020', p.asOf || today(ctx), r2(p.amt), ctx.actor]);
   return { ok: true };
 };
 
@@ -833,14 +839,14 @@ H.acq_match = async (c, p, ctx) => {
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(), $11)'
     + ' ON CONFLICT (acquirer, batch_no) DO UPDATE SET net = excluded.net,'
     + ' variance = excluded.variance, state = excluded.state RETURNING id',
-    [p.acquirer, p.batch, p.date || today(), gross, mdr, fee, net, expected,
+    [p.acquirer, p.batch, p.date || today(ctx), gross, mdr, fee, net, expected,
       variance, state, ctx.actor]);
   if (state === 'matched') {
     await postJournal(c, ctx, [
       { acct: '1020', dr: net, memo: 'Card settlement' },
       { acct: '5600', dr: fee, memo: 'Merchant fee' },
       { acct: '1030', cr: gross, memo: 'Card receivable cleared' }
-    ], 'settlement', b.id, p.date || today(), 'Card batch ' + p.batch);
+    ], 'settlement', b.id, p.date || today(ctx), 'Card batch ' + p.batch);
   }
   return { batchId: b.id, state, variance, fee };
 };
@@ -857,7 +863,7 @@ H.fx_rates = async (c, p, ctx) => setSetting(c, ctx, 'fx_rates', p.rates || p);
 H.tax_version = async (c, p, ctx) => {
   await c.query('INSERT INTO chain.tax_version (outlet_id, code, rate, effective_from,'
     + ' authority_ref) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
-    [ctx.outletId, p.code, num(p.rate), p.from || today(), p.ref || 'Rate change']);
+    [ctx.outletId, p.code, num(p.rate), p.from || today(ctx), p.ref || 'Rate change']);
   await log(c, 'tax_version', 'tax_version', p.code, null, { rate: num(p.rate), from: p.from });
   return { ok: true };
 };
@@ -901,7 +907,7 @@ H.post_payroll = async (c, p, ctx) => {
     { acct: '2600', cr: wht, memo: 'Withholding payable' },
     { acct: '2300', dr: svc, memo: 'Service charge distributed' },
     { acct: '2450', cr: net, memo: 'Net pay owed' }
-  ], 'payroll', p.period, p.date || today(), 'Payroll ' + p.period);
+  ], 'payroll', p.period, p.date || today(ctx), 'Payroll ' + p.period);
   await c.query('UPDATE payroll_run SET journal_id = $2 WHERE id = $1', [p.period, j]);
   await log(c, 'post_payroll', 'payroll_run', p.period, null, { gross, net });
   return { period: p.period, net, journalId: j };
@@ -923,10 +929,10 @@ H.opex_pay = async (c, p, ctx) => {
   const j = await postJournal(c, ctx, [
     { acct: p.acct || '6300', dr: amt, memo: p.cat || 'Operating cost' },
     { acct: p.method === 'cash' ? '1010' : '1020', cr: amt }
-  ], 'opex', p.id, p.on || today(), 'Operating cost · ' + (p.cat || ''));
+  ], 'opex', p.id, p.on || today(ctx), 'Operating cost · ' + (p.cat || ''));
   await c.query('INSERT INTO opex_payment (opex_id, period, paid_on, amount, by_staff,'
     + ' journal_id) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (opex_id, period) DO NOTHING',
-    [p.id, p.period || String(today()).slice(0, 7), p.on || today(), amt, ctx.actor, j]);
+    [p.id, p.period || String(today(ctx)).slice(0, 7), p.on || today(ctx), amt, ctx.actor, j]);
   return { ok: true };
 };
 
@@ -935,13 +941,13 @@ H.asset_insert = async (c, p, ctx) => {
     + ' residual, serial, location_id, warranty_to) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)'
     + ' ON CONFLICT (id) DO UPDATE SET name = excluded.name, cost = excluded.cost,'
     + ' life_years = excluded.life_years, residual = excluded.residual',
-    [p.id || slug(p.name), p.name, p.cat || null, r2(p.cost), p.bought || today(),
+    [p.id || slug(p.name), p.name, p.cat || null, r2(p.cost), p.bought || today(ctx),
       num(p.life) || 5, r2(p.residual), p.serial || null, p.loc || null,
       p.warranty || null]);
   await postJournal(c, ctx, [
     { acct: '1500', dr: r2(p.cost), memo: 'Equipment ' + p.name },
     { acct: p.method === 'cash' ? '1010' : '2100', cr: r2(p.cost) }
-  ], 'asset', p.id || slug(p.name), p.bought || today(), 'Equipment purchase');
+  ], 'asset', p.id || slug(p.name), p.bought || today(ctx), 'Equipment purchase');
   return { ok: true };
 };
 
@@ -958,7 +964,7 @@ H.maintenance_log = async (c, p, ctx) => {
   const j = cost ? await postJournal(c, ctx, [
     { acct: '5400', dr: cost, memo: p.detail || 'Repair' },
     { acct: p.method === 'cash' ? '1010' : '2100', cr: cost }
-  ], 'maintenance', p.asset, p.on || today(), 'Repairs & maintenance') : null;
+  ], 'maintenance', p.asset, p.on || today(ctx), 'Repairs & maintenance') : null;
   await c.query('INSERT INTO maintenance_log (asset_id, kind, detail, cost, vendor,'
     + ' by_staff, journal_id) VALUES ($1,$2,$3,$4,$5,$6,$7)',
     [p.asset, p.kind || 'repair', p.detail || '', cost, p.vendor || null, ctx.actor, j]);
@@ -971,7 +977,7 @@ H.depreciate = async (c, p, ctx) => {
   const j = await postJournal(c, ctx, [
     { acct: '5500', dr: amt, memo: 'Depreciation ' + p.period },
     { acct: '1510', cr: amt }
-  ], 'depreciation', p.period, p.date || today(), 'Depreciation ' + p.period);
+  ], 'depreciation', p.period, p.date || today(ctx), 'Depreciation ' + p.period);
   await c.query('INSERT INTO depreciation_run (period, posted_by, amount, journal_id)'
     + ' VALUES ($1,$2,$3,$4) ON CONFLICT (period) DO NOTHING', [p.period, ctx.actor, amt, j]);
   return { period: p.period, amount: amt };
@@ -1405,7 +1411,7 @@ H.settle_credit = async (c, p, ctx) => {
   await postJournal(c, ctx, [
     { acct: p.method === 'cash' ? '1010' : '1020', dr: amt, memo: 'Credit settled' },
     { acct: '1040', cr: amt }
-  ], 'credit', p.member, today(), 'Customer credit settled');
+  ], 'credit', p.member, today(ctx), 'Customer credit settled');
   return { ok: true };
 };
 
@@ -1577,7 +1583,18 @@ async function openTicket(c, ctx, p) {
     p.member || null, p.note || null, JSON.stringify(p.guests || [])]);
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
+/* The outlet's local date, never UTC. `toISOString()` here filed every
+   document after 19:00 Malé time under yesterday — the single highest-blast-
+   radius defect in the build, because a business date is what a GST return,
+   a Z read and a document series are all keyed by.
+
+   `ctx.tz` is stamped by `setContext`, which is also what the transaction's
+   own `current_date` is set to, so the two clocks cannot drift apart. en-CA
+   because it formats as YYYY-MM-DD, which is the shape every column wants. */
+function today(ctx) {
+  const tz = (ctx && ctx.tz) || 'Indian/Maldives';
+  return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(new Date());
+}
 function addDays(d, n) {
   const x = new Date(d);
   x.setDate(x.getDate() + n);

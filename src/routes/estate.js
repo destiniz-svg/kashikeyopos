@@ -9,7 +9,10 @@ const { atLeast } = require('../auth');
 const r = express.Router();
 
 r.get('/day', atLeast('owner'), async function (req, res, next) {
-  const date = String(req.query.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+  // The asking outlet's local date, not the container's. An estate roll-up
+  // taken at 21:00 Malé under UTC reported yesterday to every owner on it.
+  const date = String(req.query.date || new Intl.DateTimeFormat('en-CA',
+    { timeZone: req.ctx.tz || 'Indian/Maldives' }).format(new Date())).slice(0, 10);
   try {
     const rows = await withEstate(req.ctx, (c) =>
       c.query('SELECT * FROM chain.estate_day($1)', [date]).then((q) => q.rows));

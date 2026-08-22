@@ -133,7 +133,7 @@ async function buildBootstrap(ctx) {
     // The rate in force TODAY at each outlet, from its own versions. A rate is
     // never defaulted: an outlet registered as NONE charges nothing, and
     // `0 || 8` silently turning that into 8% would overcharge every guest.
-    const rateByOutlet = currentRates(taxVers.rows);
+    const rateByOutlet = currentRates(taxVers.rows, ctx.tz);
 
     const kpos = {
       CHAIN: chainOf(company.rows[0], setting),
@@ -621,11 +621,19 @@ function outletOf(r, rates, zones, tables, mine) {
   };
 }
 
+/* The outlet's local date. A tax rate is a fact about a DATE, and `today` in
+   UTC is yesterday from 19:00 Malé onward — so a rate that came into force at
+   midnight would not have been in force for the whole evening's trading. */
+function localToday(tz) {
+  return new Intl.DateTimeFormat('en-CA',
+    { timeZone: tz || 'Indian/Maldives' }).format(new Date());
+}
+
 /* The rate in force today, per outlet. An outlet's own version wins; the
    statutory history (outlet_id NULL) is the fallback for a code an outlet has
    not versioned yet. A rate is a fact about a date, so this reads the date. */
-function currentRates(versions) {
-  const today = new Date().toISOString().slice(0, 10);
+function currentRates(versions, tz) {
+  const today = localToday(tz);
   const inForce = (v) => String(v.effective_from) <= today
     && (!v.effective_to || String(v.effective_to) >= today);
   const out = {};
