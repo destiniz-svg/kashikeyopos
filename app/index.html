@@ -4705,7 +4705,20 @@ class Component extends DCLogic {
       const st = t ? t.status : "free";
       const on = s.activeTable === i;
       const tot = t && t.lines.length ? this.totals(t).total : 0;
-      const accent = st === "occupied" ? "var(--warn)" : st === "reserved" ? "var(--blue)" : "var(--line-3)";
+      // Where the food is, on the same rung the pass, the orders list and the
+      // guest's tracker read. The tile said "Open" for every seated table
+      // whatever the kitchen had done, so a waiter could not read the room
+      // from the floor plan — which is the one screen they are looking at.
+      // Ready is the only green on this floor: it means go and carry it.
+      const rung = st === "occupied" ? this.ticketStage(i) : -1;
+      const FLOOR = [
+        ["Open", "var(--warn)", "var(--warn-dim);color:var(--warn-bright)"],
+        ["Cooking", "var(--blue)", "var(--info-dim);color:var(--blue-bright)"],
+        ["Ready", "var(--green)", "var(--ok-dim);color:var(--green)"],
+        ["Served", "var(--warn)", "var(--warn-dim);color:var(--warn-bright)"]
+      ];
+      const rw = rung >= 0 ? FLOOR[rung] : null;
+      const accent = rw ? rw[1] : st === "reserved" ? "var(--blue)" : "var(--line-3)";
       tables.push({
         label: tb.name,
         go: () => {
@@ -4733,8 +4746,8 @@ class Component extends DCLogic {
             + ";border-left:3px solid " + accent
             + ";box-shadow:" + (on && !edit ? "inset 0 0 0 1px var(--text-dim)" : "none") + ";transition:.12s";
         })(),
-        chip: "font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (edit ? "var(--mute-dim);color:var(--text-dim)" : st === "occupied" ? "var(--warn-dim);color:var(--warn-bright)" : st === "reserved" ? "var(--info-dim);color:var(--blue-bright)" : "var(--mute-dim);color:var(--text-dim)"),
-        chipText: edit ? tb.seats + " seats" : st === "occupied" ? "Open" : st === "reserved" ? "Res" : "Free",
+        chip: "font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;padding:3px 6px;border-radius:4px;white-space:nowrap;background:" + (edit ? "var(--mute-dim);color:var(--text-dim)" : rw ? rw[2] : st === "reserved" ? "var(--info-dim);color:var(--blue-bright)" : "var(--mute-dim);color:var(--text-dim)"),
+        chipText: edit ? tb.seats + " seats" : rw ? rw[0] : st === "reserved" ? "Res" : "Free",
         meta: edit ? tb.zone
           : st === "reserved" ? t.resName + " · " + t.resAt
           : st === "occupied" ? (this.guestsOf(t).length > 1 ? this.guestsOf(t).length + " bills · " + this.tkAge(t) + "m" : t.party + " covers · " + this.tkAge(t) + "m")
@@ -6703,7 +6716,18 @@ class Component extends DCLogic {
     }
 
     if (m.kind === "ticket") return this.ticketPanelVals(m);
-    if (m.kind === "receipt" || m.kind === "z" || m.kind === "settled") return Object.assign({}, this.brandVals(), this.receiptVals(m));
+    // `creditNote` belongs on this line. `receiptVals` has always had a branch
+    // that builds the document — it was simply never routed here, so opening a
+    // credit note painted the receipt chrome around NOTHING and every refund
+    // handed the operator a blank page. The branch was unreachable, which is
+    // why nobody could see what was wrong with it.
+    //
+    // When a modal renders as an empty shell, suspect the dispatch, not the
+    // builder.
+    if (m.kind === "receipt" || m.kind === "z" || m.kind === "settled"
+      || m.kind === "creditNote") {
+      return Object.assign({}, this.brandVals(), this.receiptVals(m));
+    }
     return this.detailVals(m);
   }
 
@@ -6801,6 +6825,19 @@ class Component extends DCLogic {
       };
     }
     if (m.kind === "creditNote") {
+      // A credit note with no document behind it. Unreachable code cannot be
+      // swept, so nothing had ever opened this branch without one — and the
+      // moment the dispatch was repaired it threw on `d.T` and took the whole
+      // render with it. A stale modal restored from a session, or a state
+      // replayed from an older build, is exactly that case.
+      if (!m.doc || !m.doc.T) {
+        return { modalTitle: "Credit note", modalSub: "This document is no longer on this device",
+          rcpTitle: "CREDIT NOTE", rcpLines: [], rcpTotals: [],
+          rcpFoot: "The note was raised, and it is in the audit trail and the "
+            + "documents list — this terminal simply no longer holds its copy. "
+            + "Open it from Accounting \u00b7 Documents to reprint it.",
+          settledDone: () => this.setState({ modal: null }) };
+      }
       const d = m.doc, T = d.T;
       const rw = "display:flex;justify-content:space-between;padding:2px 0";
       const RSN = { quality: "Food or drink not right", wrong: "Wrong item served", delay: "Excessive wait", overcharge: "Charged in error", goodwill: "Goodwill" };
@@ -6814,7 +6851,8 @@ class Component extends DCLogic {
           { n: "Against tax invoice", v: d.against },
           { n: "Table", v: d.table || "—" },
           { n: "Reason", v: RSN[d.reason] || d.reason },
-          { n: "Repaid to", v: this.tenderName(d.tender) }
+          { n: "Repaid to", v: this.tenderName(d.tender) },
+          { n: "Returns via", v: this.returnsVia(d.tender) }
         ],
         rcpTotals: [
           { n: "Net reversed", v: MVRc(T.sub), style: rw },
@@ -9483,7 +9521,9 @@ class Component extends DCLogic {
         acts: may ? [
           { label: "Stock ledger", go: () => this.setState({ modal: null, view: "ledger" }) },
           { label: "Recipes & costing", go: () => this.setState({ modal: null, view: "recipes" }) },
-          { label: "Today's journal", go: () => this.setState({ modal: null, view: "accounting", tab: Object.assign({}, this.state.tab, { acc: 7 }) }) }
+          // Journal is 8. Index 7 is Documents — the two are one apart and the
+          // link had been landing on the wrong one.
+          { label: "Today's journal", go: () => this.setState({ modal: null, view: "accounting", tab: Object.assign({}, this.state.tab, { acc: 8 }) }) }
         ] : []
       }
     });
@@ -11718,18 +11758,34 @@ class Component extends DCLogic {
     arr.forEach((r) => { const m = String(r.no || "").match(/(\d+)$/); if (m) max = Math.max(max, +m[1]); });
     return prefix + String(max + 1).padStart(4, "0");
   }
+  /* Where each tender lands, and it must be what the SERVER actually posts —
+     this table told an accountant a card sale went to 1020 bank on the day it
+     was rung, which is a day early and unmatchable, while the ledger correctly
+     raised a receivable in 1030. A screen that contradicts the journal is worse
+     than one that says nothing.
+
+     Anything an intermediary is holding is a receivable until they pay it. */
   TENDERS() {
     return {
-      cash: { name: "Cash", acct: "1010 cash" },
-      card: { name: "Card", acct: "1020 card clearing" },
-      wallet: { name: "BML Pay", acct: "1020 card clearing" },
-      transfer: { name: "Transfer", acct: "1030 bank transfer" },
-      qr: { name: "QR", acct: "1030 bank transfer" },
-      credit: { name: "Customer credit", acct: "1200 customer receivable" }
+      cash: { name: "Cash", acct: "1010 cash", via: "the drawer · same day" },
+      card: { name: "Card", acct: "1030 card settlement receivable",
+        via: "the card acquirer · off the next settlement" },
+      wallet: { name: "BML Pay", acct: "1030 card settlement receivable",
+        via: "BML Pay · off the next settlement" },
+      transfer: { name: "Transfer", acct: "1020 bank",
+        via: "a bank transfer back · no fee either way" },
+      qr: { name: "QR", acct: "1030 card settlement receivable",
+        via: "the gateway · off the next settlement" },
+      credit: { name: "Customer credit", acct: "1040 customer credit receivable",
+        via: "the customer's account · off the balance drawn" }
     };
   }
   tenderName(k) { return (this.TENDERS()[k] || this.TENDERS().cash).name; }
   tenderAcct(k) { return (this.TENDERS()[k] || this.TENDERS().cash).acct; }
+  // How the money actually goes back. A single fallback to "the drawer" was
+  // lying about four of six, and a toast lasts three seconds where the credit
+  // note is what the guest and the auditor keep.
+  returnsVia(k) { return (this.TENDERS()[k] || this.TENDERS().cash).via; }
   me() {
     const sess = this.state.session;
     if (sess && sess.user) return sess.user;
@@ -15844,7 +15900,9 @@ class Component extends DCLogic {
     const shortPaid = this.cardBatches().filter((b) => b.state === "variance");
     if (shortPaid.length) {
       add("soon", "Acquirer paid short", MVRc(shortPaid.reduce((a, b) => a + Math.abs(b.variance || 0), 0)), "A card batch settled for less than the contract rate allows. A tenth of a percent is invisible monthly and material over a year.", "accounting",
-        { act: "Card settlements", go: () => this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 5 }) }) });
+        // Card settlements is 6. Index 5 is Bank & periods, so this control
+        // named one screen and opened another.
+        { act: "Card settlements", go: () => this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 6 }) }) });
     }
     const flags = this.openFlags();
     if (flags.length) {
@@ -15866,7 +15924,9 @@ class Component extends DCLogic {
     const awaiting = this.cardBatches().filter((b) => b.state === "awaiting");
     if (awaiting.length) {
       add("watch", "Card money in transit", MVRc(awaiting.reduce((a, b) => a + b.expected, 0)), "Revenue taken but not yet settled by the acquirer. Normal for a working day; a call to the bank after two.", "accounting",
-        { act: "Card settlements", go: () => this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 5 }) }) });
+        // Card settlements is 6. Index 5 is Bank & periods, so this control
+        // named one screen and opened another.
+        { act: "Card settlements", go: () => this.setState({ view: "accounting", tab: Object.assign({}, s.tab, { acc: 6 }) }) });
     }
     const drift = this.DEVICE_REGISTRY().filter((d) => d.outletCode === o.code && d.ver !== "4.2.1");
     if (drift.length) {

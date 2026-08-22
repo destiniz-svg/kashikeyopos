@@ -281,6 +281,78 @@ test('the till does not post its own journal — the server derives it', () => {
   });
 });
 
+/* Every refund handed the operator a BLANK document. `receiptVals` had always
+   had a branch that builds a credit note; the dispatch never routed
+   `creditNote` to it, so the receipt chrome painted around nothing and the
+   branch was unreachable — which is why nothing added to it could be seen.
+
+   When a modal renders as an empty shell, suspect the dispatch, not the
+   builder. */
+test('a credit note is a document, not an empty shell', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const doc = {
+    no: 'CN-0001', against: 'INV-0001', table: 'T01', date: F.today(),
+    reason: 'quality', tender: 'card', by: 'Harness', note: 'Test',
+    sc: 10, rate: 0, taxLabel: 'NONE',
+    T: { sub: 100, svc: 10, tax: 0, total: 110 }
+  };
+  const v = F.overlayVals.call(Object.assign(Object.create(Object.getPrototypeOf(F)), F,
+    { state: Object.assign({}, F.state, { modal: { kind: 'creditNote', doc: doc } }) }));
+  assert.strictEqual(v.rcpTitle, 'CREDIT NOTE', 'the document built');
+  assert.ok((v.rcpLines || []).length, 'and carries its lines');
+  assert.ok(v.rcpOutlet, 'and knows which outlet issued it');
+  assert.ok((v.rcpTotals || []).some((r) => /TOTAL CREDITED/.test(r.n)),
+    'and totals to something');
+
+  // The route the money takes back has to be true for every tender — a single
+  // fallback to "the drawer" was lying about four of six.
+  const via = (v.rcpLines || []).filter((r) => r.n === 'Returns via')[0];
+  assert.ok(via, 'the document says how the money goes back');
+  assert.match(String(via.v), /settlement/i, 'a card refund is off the next settlement');
+  assert.match(String(F.returnsVia('cash')), /drawer/i);
+  assert.match(String(F.returnsVia('credit')), /account/i);
+  assert.match(String(F.returnsVia('transfer')), /transfer/i);
+});
+
+/* A screen that names one account while the journal posts another is worse
+   than one that says nothing. */
+test('the till names the account the ledger actually posts to', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  // Anything an intermediary is holding is a receivable until they pay it.
+  ['card', 'wallet', 'qr'].forEach((k) => {
+    assert.match(F.tenderAcct(k), /^1030/, k + ' is a settlement receivable');
+  });
+  assert.match(F.tenderAcct('credit'), /^1040/, 'customer credit is 1040');
+  assert.match(F.tenderAcct('cash'), /^1010/, 'cash is in the drawer');
+  assert.match(F.tenderAcct('transfer'), /^1020/, 'a transfer is bank, no intermediary');
+});
+
+/* The floor plan is the screen a waiter is actually looking at. It printed
+   "Open" for every seated table whatever the kitchen had done. */
+test('a floor tile says where the food is', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  const line = (done) => ({ id: 'm1', lid: 'l' + (done ? 1 : 2), qty: 1, note: '',
+    split: 0, fired: true, done: done, since: 1, firedAt: Date.now() });
+  const put = (lines) => {
+    F.state.tickets = Object.assign({}, F.state.tickets, {
+      [key]: Object.assign(F.blankTicket(), { status: 'occupied', party: 2,
+        bizDate: F.today(), lines: lines })
+    });
+    F.state.pane = 'floor';
+    const t = (F.posVals().tables || []).filter((x) => x.label)[0];
+    return t;
+  };
+
+  assert.strictEqual(put([line(false)]).chipText, 'Cooking',
+    'fired and not bumped — the kitchen has it');
+  const ready = put([line(true)]);
+  assert.strictEqual(ready.chipText, 'Ready', 'bumped — it is at the pass');
+  assert.match(String(ready.chip), /--ok-dim|--green/,
+    'and it is the one green on the floor, so a waiter can read the room');
+  assert.strictEqual(put([]).chipText, 'Open', 'seated with nothing fired');
+});
+
 /* The business date is the outlet's local date. `toISOString()` is UTC, and
    Malé is UTC+5 — so from 19:00 local, most of a restaurant's trading, every
    receipt and Z read was filed under yesterday while the clock in the header

@@ -182,10 +182,7 @@ function saleJournal(p, T) {
   });
   if (!T.payments.length) byMethod.cash = T.total;
   Object.keys(byMethod).forEach((m) => {
-    const acct = m === 'card' || m === 'wallet' ? '1030'
-      : m === 'credit' ? '1040'
-        : m === 'transfer' ? '1020' : '1010';
-    dr(acct, byMethod[m], 'Tender · ' + m);
+    dr(tenderAccount(m), byMethod[m], 'Tender · ' + m);
   });
 
   cr(T.channel === 'delivery' ? '4100' : '4000', T.net + T.discount, 'Revenue');
@@ -479,7 +476,7 @@ H.refund = async (c, p, ctx) => {
       net, tax, svc, amount, p.method || 'cash', p.reason || 'Refund',
       ctx.actor, p.approvedBy || ctx.actor]);
 
-  const tenderAcct = p.method === 'card' ? '1030' : p.method === 'credit' ? '1040' : '1010';
+  const tenderAcct = tenderAccount(p.method);
   await postJournal(c, ctx, [
     { acct: '4000', dr: net, memo: 'Revenue reversed' },
     { acct: '2200', dr: tax, memo: 'Output tax reversed' },
@@ -1527,6 +1524,28 @@ AUDIT_ONLY.forEach((k) => {
     return { audited: true };
   };
 });
+
+/* Where a tender LANDS. One definition, because a sale and the credit note
+   that reverses it must debit and credit the same account or the receivable
+   never clears.
+
+   `qr` used to fall through to 1010 Cash — a hosted-gateway payment counted as
+   money in the drawer, so the drawer read a surplus that was never there and
+   the gateway's receivable was never raised at all. Transfer fell the same way
+   on the refund side. Anything an intermediary is holding is a receivable
+   until they pay it:
+
+     cash                    1010  in the drawer, now
+     card · wallet · qr      1030  card settlement receivable
+     transfer                1020  bank, no intermediary
+     credit                  1040  customer credit receivable                */
+function tenderAccount(method) {
+  const m = String(method || 'cash');
+  if (m === 'card' || m === 'wallet' || m === 'qr') return '1030';
+  if (m === 'credit') return '1040';
+  if (m === 'transfer') return '1020';
+  return '1010';
+}
 
 /* ── plumbing ───────────────────────────────────────────────────────────── */
 
