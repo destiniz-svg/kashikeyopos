@@ -115,5 +115,28 @@ function tableUrl(handle, table) {
   return storeUrl(handle, '/?t=' + encodeURIComponent(String(table == null ? '' : table)));
 }
 
+/* Where an invitation lands. `/join/<token>` on the store's own address, and
+   the path form everywhere the base domain is not known — the same shape as
+   the card, because a link printed in a message outlives the environment that
+   composed it.
+
+   The parameter is NEVER called `t`. `?t=` is the table on the QR portal and
+   the tracking parameter most email click-wrappers append, and a reader that
+   accepted one there would be taking a foreign credential into a membership
+   lookup. The path is canonical; `?invite=` is the fallback. */
+function joinUrl(handle, token) {
+  const t = encodeURIComponent(String(token || ''));
+  const base = baseDomain();
+  // Without a base domain there is no subdomain to name the store, so the slug
+  // rides a parameter the guest bridge already reads. `s`, not `t`: `t` is the
+  // table on the QR portal and the tracking parameter every email click-wrapper
+  // appends, and one reader taking another's `t` is exactly the bug this shape
+  // exists to avoid.
+  if (!base || !ok(handle)) {
+    return '/join/' + t + (handle ? '?s=' + encodeURIComponent(handle) : '');
+  }
+  return 'https://' + handle + '.' + base + '/join/' + t;
+}
+
 module.exports = { MIN, MAX, SHAPE, normalise, shapeError, ok,
-  baseDomain, hostHandle, storeUrl, memberUrl, tableUrl };
+  baseDomain, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl };

@@ -110,8 +110,32 @@ function pairCode() {
   return s;
 }
 
+/* THE INVITATION'S TOKEN. Shaped `MV-<secret>-<minted at>` so every reader can
+   hold it to one pattern, with 128 bits of CSPRNG in the middle: the tail only
+   makes a reissued token visibly different from the one it replaced, and is
+   not relied on for anything.
+
+   A code a person reads out loud is four digits and safe because it expires in
+   ten minutes and dies after five tries. This is not read out — it travels in
+   a message and lives seven days — so its safety has to be its entropy. */
+function inviteToken() {
+  const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let s = '';
+  for (let i = 0; i < 22; i++) s += A[crypto.randomInt(0, A.length)];
+  return 'MV-' + s + '-' + Date.now();
+}
+
+/* Stored as a hash, never as itself — the same discipline as a PIN and a
+   member code. This one is looked up BY value, so it is a plain digest rather
+   than a salted one: a per-row salt would make the lookup a table scan, and a
+   128-bit random has nothing a rainbow table can precompute. */
+function tokenHash(t) {
+  return crypto.createHash('sha256').update(String(t || ''), 'utf8').digest('hex');
+}
+
 module.exports = {
   outletPassword, sign, verify, signTable, verifyTable, signMember, verifyMember,
   signAccount, verifyAccount,
-  hashPin, pinMatches, randomPin, pairCode, need
+  hashPin, pinMatches, randomPin, pairCode, need,
+  inviteToken, tokenHash
 };

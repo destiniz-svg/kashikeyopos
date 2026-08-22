@@ -542,40 +542,81 @@ const LET_GO = {
   invites: 2, revoked: '2026-08-22'
 };
 
-test('an invitation is offered on a named channel', () => {
+test('an invitation is composed before it is sent', () => {
   const F = withCustomers([NEVER_ASKED]);
   const v = F.modalVals({ kind: 'customer', id: 'c1' });
   const labels = (v.detailActs || []).map((a) => a.label);
-  ['Email', 'Viber', 'WhatsApp'].forEach((ch) => {
-    assert.ok(labels.some((l) => l.indexOf(ch) >= 0),
-      ch + ' is offered by name, not folded into one "invite": ' + labels.join(' | '));
+  assert.ok(labels.some((l) => /Invite to the portal/.test(l)),
+    'one control, because the channel is chosen beside the message: ' + labels.join(' | '));
+
+  // The form names all three channels, and its foot IS the message.
+  const spec = F.formSpec('invite');
+  const chan = (spec.fields || []).filter((f) => f.k === 'chan')[0];
+  assert.ok(chan, 'a channel is picked in the form');
+  assert.deepStrictEqual((chan.options || []).map((o) => o.v).join(','),
+    'email,viber,whatsapp', 'all three, by name');
+  assert.strictEqual(spec.footPre, true,
+    'the foot is the artefact, so it keeps its line breaks');
+});
+
+test('the message proves it came from a restaurant that knows them', () => {
+  const known = Object.assign({}, NEVER_ASKED, {
+    name: 'Hassan Moosa', points: 1842, email: 'hassan@example.mv'
   });
-  // Never asked has nothing to resend.
-  assert.ok(labels.every((l) => l.indexOf('Resend') < 0),
-    'a customer nobody invited is invited, not re-invited');
+  const F = withCustomers([known]);
+  const msg = F.inviteMessage(known, 'whatsapp', 'MV-abc-1');
+  // Four things a bulk sender would not have.
+  assert.match(msg.body, /Hassan/, 'their own name');
+  assert.match(msg.body, /1,842/, 'their balance, as a quantity and not a serial number');
+  assert.ok(msg.body.indexOf('1842') < 0, 'never unseparated: ' + msg.body);
+  assert.match(msg.body, /Sent by /, 'a person to ask for at the counter');
+  // One paragraph, because a notification shows two lines.
+  assert.ok(msg.body.length < 320, 'app channels stay short: ' + msg.body.length);
+  assert.strictEqual(msg.subject, '', 'and carry no subject');
+
+  const mail = F.inviteMessage(known, 'email', 'MV-abc-1');
+  assert.match(mail.subject, /1,842 points are already yours/, mail.subject);
+});
+
+test('a member with no points is invited without a balance claim', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const msg = F.inviteMessage(NEVER_ASKED, 'whatsapp', 'MV-abc-1');
+  assert.ok(msg.body.indexOf('0 points') < 0,
+    'a zero balance argues against the invitation rather than for it: ' + msg.body);
+  assert.ok(msg.body.indexOf('points on it already') < 0, msg.body);
+  const mail = F.inviteMessage(NEVER_ASKED, 'email', 'MV-abc-1');
+  assert.match(mail.subject, /your membership is ready/, mail.subject);
+});
+
+test('the sender is a name, never a login handle', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  F.state.session = { id: 'u1', user: 'nashwa', name: 'Nashwa Ali', role: 'SuperAdmin' };
+  assert.strictEqual(F.meName(), 'Nashwa Ali',
+    '"Sent by nashwa" is a system talking about itself');
 });
 
 test('a channel the customer has no address for is refused by name', () => {
   const F = withCustomers([NEVER_ASKED]);
-  const v = F.modalVals({ kind: 'customer', id: 'c1' });
-  const email = (v.detailActs || []).filter((a) => a.label.indexOf('Email') >= 0)[0];
-  assert.ok(email, 'the control is still there — a screen that vanishes teaches'
-    + ' an operator the app is broken');
-  F.__toasts.length = 0;
-  email.go(H.EV);
-  const said = (F.__toasts[0] || {}).t || '';
-  assert.match(said, /Hassan Moosa/, 'refused BY NAME: ' + said);
-  assert.match(said, /email address/, 'and it says which address is missing');
+  // Refused in the form's own foot, where the operator is choosing, and
+  // refused again on send. The control never vanishes — one that does teaches
+  // an operator the app is broken.
+  F.state.modal = { kind: 'form', form: 'invite', edit: NEVER_ASKED };
+  F.state.formVals = { chan: 'email' };
+  const foot = F.formSpec('invite').foot();
+  assert.match(foot, /Hassan Moosa/, 'named in the preview: ' + foot);
+  assert.match(foot, /email address/, 'and which address is missing');
 
-  // Viber rides the mobile they already gave, so it is not refused for want
-  // of an address — it needs an outlet to mint the code, which is a different
-  // sentence entirely.
   F.__toasts.length = 0;
-  const viber = (v.detailActs || []).filter((a) => a.label.indexOf('Viber') >= 0)[0];
-  viber.go(H.EV);
-  const v2 = (F.__toasts[0] || {}).t || '';
-  assert.ok(v2.indexOf('no mobile number') < 0,
-    'the number is on the row, so nothing is missing: ' + v2);
+  F.sendInvite(NEVER_ASKED, 'email');
+  const said = (F.__toasts[0] || {}).t || '';
+  assert.match(said, /Hassan Moosa/, 'refused BY NAME on send: ' + said);
+
+  // Viber rides the mobile they already gave, so nothing is missing there.
+  F.state.formVals = { chan: 'viber' };
+  const ok = F.formSpec('invite').foot();
+  assert.ok(ok.indexOf('no mobile number') < 0,
+    'the number is on the row: ' + ok);
+  assert.match(ok, /Viber to 9995544/, ok);
 });
 
 /* The Email channel offered a send and the refusal said "add one on the
@@ -633,10 +674,8 @@ test('one address cannot sign two customers in', () => {
 
 test('a channel refused for want of an address opens the field that fixes it', () => {
   const F = withCustomers([NEVER_ASKED]);
-  const v = F.modalVals({ kind: 'customer', id: 'c1' });
-  const email = (v.detailActs || []).filter((a) => a.label.indexOf('Email') >= 0)[0];
   F.__toasts.length = 0;
-  email.go(H.EV);
+  F.sendInvite(F.member('c1'), 'email');
   assert.match((F.__toasts[0] || {}).t || '', /Hassan Moosa/, 'still refused by name');
   const m = F.state.modal || {};
   assert.strictEqual(m.kind, 'form', 'and lands on a form, not on a dead end');
@@ -664,7 +703,7 @@ test('a revoked customer reads Revoked, never Not invited', () => {
     'a member who was let go and one who was never asked are different answers');
 
   const labels = (v.detailActs || []).map((a) => a.label);
-  assert.ok(labels.some((l) => l.indexOf('Resend') >= 0),
+  assert.ok(labels.some((l) => /fresh invitation/.test(l)),
     'the history is still there, so the next one is a resend: ' + labels.join(' | '));
   assert.ok(labels.some((l) => /revoked/i.test(l)),
     'and the revocation control states the state it is already in');

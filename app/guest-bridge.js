@@ -66,7 +66,14 @@
       return r.text().then(function (t) {
         var d = null;
         try { d = t ? JSON.parse(t) : null; } catch (e) {}
-        if (!r.ok) throw new Error((d && d.error) || ("HTTP " + r.status));
+        if (!r.ok) {
+          // The STATUS matters to a caller deciding whether to retry: a 401
+          // before this device has its table token is a "try again in a
+          // moment", and a 404 is an answer.
+          var err = new Error((d && d.error) || ("HTTP " + r.status));
+          err.status = r.status;
+          throw err;
+        }
         return d;
       });
     });
@@ -248,6 +255,20 @@
        rank — so a stolen one reads one card and can neither order nor settle.
        The token outlives the table token deliberately: a loyalty card that
        signs you out every few hours is a loyalty card nobody carries. */
+    /* ARRIVING BY INVITATION. The phone hands the token over and the server
+       answers with ONE membership — never a roster lookup, which would mean
+       every device holding the keys to every account. */
+    memberJoin: function (token) {
+      return api("/api/g/" + encodeURIComponent(state.slug) + "/member/join",
+        { method: "POST", body: { token: token } });
+    },
+    /* "Send my code". The token is spent server-side and the code goes to the
+       address ON THE MEMBERSHIP, so a forwarded link cannot sign in whoever
+       it was forwarded to. */
+    memberJoinCode: function (token) {
+      return api("/api/g/" + encodeURIComponent(state.slug) + "/member/join/code",
+        { method: "POST", body: { token: token } });
+    },
     memberStart: function (id) {
       return api("/api/g/" + encodeURIComponent(state.slug) + "/member/start",
         { method: "POST", body: { id: id } });

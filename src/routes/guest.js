@@ -9,9 +9,10 @@
 const express = require('express');
 const { owner, withOutlet, withOutletRead } = require('../db');
 const { signTable, verifyTable, signMember, verifyMember,
-  hashPin, pinMatches, randomPin } = require('../secrets');
+  hashPin, pinMatches, randomPin, tokenHash } = require('../secrets');
 const { snapshot } = require('./outlet');
 const { hostHandle } = require('../handle');
+const INVITE = require('../../app/kashikeyo-invite.js');
 
 const r = express.Router();
 
@@ -192,6 +193,121 @@ r.post('/:slug/member/start', guest, async function (req, res, next) {
         code: (process.env.MEMBER_CODE_ECHO === '1' && id) ? code : undefined };
     });
     res.json(out);
+  } catch (e) { next(e); }
+});
+
+/* ═══ ARRIVING BY INVITATION ════════════════════════════════════════════════
+   The phone posts the token it was handed and the server answers with ONE
+   membership. The roster must never carry these: a roster that did would hand
+   every device the keys to every account, which is the opposite of what a
+   token is for.
+
+   The answer is deliberately small — a first name, a tier's worth of context
+   and a balance — because it is shown before anybody has proved they are that
+   person. What it does NOT do is sign them in: it names the card, and the code
+   that opens it goes to the address on the membership.
+
+   A lapsed token still resolves, and says so. The membership is real, so
+   dropping a guest with points on an account onto a dead end tells them there
+   is nothing here for them, which is false. ═══════════════════════════════ */
+r.post('/:slug/member/join', guest, async function (req, res, next) {
+  const tok = INVITE.cleanToken((req.body || {}).token);
+  // Anything failing the minted shape is not a near-miss to be looked up, it is
+  // somebody else's parameter. Nothing reaches the database.
+  if (!tok) return res.status(400).json({ error: 'not an invitation' });
+  try {
+    const out = await withOutletRead(req.ctx, async function (c) {
+      const q = await c.query('SELECT * FROM chain.member_by_invite($1)',
+        [tokenHash(tok)]);
+      const m = q.rows[0];
+      if (!m) return null;
+      const exp = m.token_exp ? new Date(m.token_exp).getTime() : 0;
+      const left = Math.ceil((exp - Date.now()) / 86400000);
+      const dead = m.revoked || m.used || !exp || exp <= Date.now();
+      const hist = await c.query('SELECT count(*)::int AS visits FROM sale'
+        + ' WHERE member_id = $1 AND voided_at IS NULL', [m.id]);
+      /* What those points are worth, from the OUTLET's own published rate —
+         the same figure the invitation's message quoted. The page used to work
+         it out from the published programme, which a browser arriving cold on
+         a link has never been sent: a guest holding 1,842 points was told they
+         were worth MVR 0.00. A phone is TOLD its balance, not asked to derive
+         one. */
+      const rate = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
+      const cfg = (rate.rows[0] || {}).value || {};
+      const cur = await c.query('SELECT currency FROM chain.outlet WHERE id = $1',
+        [req.ctx.outletId]);
+      const worth = ((cur.rows[0] || {}).currency || 'MVR') + ' '
+        + Math.round((Number(m.points) || 0) / (Number(cfg.redeemPts) || 100)
+          * (Number(cfg.redeemValue) || 25)).toLocaleString('en-US');
+      return {
+        // The state the landing card reads. `lapsed` is not a dead end — the
+        // page falls through to the ordinary sign-in with the address already
+        // filled in, because making somebody retype an address the app is
+        // holding is a small insult at the moment they have been let down once.
+        state: dead ? 'lapsed' : (left <= 2 ? 'expiring' : 'fresh'),
+        left: Math.max(0, left),
+        name: m.name || '',
+        first: INVITE.firstNameOf(m.name),
+        points: Number(m.points) || 0,
+        worth: worth,
+        visits: Number(hist.rows[0].visits) || 0,
+        joined: m.joined_at ? m.joined_at.toISOString().slice(0, 10) : '',
+        invitedBy: m.invited_by_name || '',
+        invitedAt: m.invited_at ? m.invited_at.toISOString().slice(0, 10) : '',
+        // The address the code will go to, and the one a lapsed link pre-fills.
+        // Never an address typed on this screen: a forwarded link must not be
+        // able to sign anybody else in.
+        to: m.email || m.phone || ''
+      };
+    });
+    // A token nobody minted and a token long since replaced are the same
+    // answer, for the same reason `member/start` gives one: this endpoint must
+    // not become a way to ask whether an invitation existed.
+    if (!out) return res.status(404).json({ error: 'not an invitation' });
+    res.set('cache-control', 'no-store').json(out);
+  } catch (e) { next(e); }
+});
+
+/* "Send my code" from the landing card. The token is spent HERE — it opened
+   the card once — and the code goes to the address on the membership, which is
+   what makes a forwarded link useless to whoever it was forwarded to. */
+r.post('/:slug/member/join/code', guest, async function (req, res, next) {
+  const tok = INVITE.cleanToken((req.body || {}).token);
+  if (!tok) return res.status(400).json({ error: 'not an invitation' });
+  try {
+    const out = await withOutlet(req.ctx, async function (c) {
+      const hash = tokenHash(tok);
+      const spent = await c.query('SELECT chain.member_invite_spend($1) AS id', [hash]);
+      const id = spent.rows[0].id;
+      if (!id) return null;
+      const who = await c.query('SELECT name, phone, email FROM chain.member'
+        + ' WHERE id = $1', [id]);
+      const m = who.rows[0] || {};
+      const code = randomPin();
+      const h = hashPin(code, null);
+      // Addressed by the membership's own identifier, never by anything in the
+      // request body.
+      await c.query('SELECT chain.member_code_set($1,$2,$3,$4)',
+        [m.phone, h.hash, h.salt, CODE_MINS]);
+      await c.query('INSERT INTO guest_request (table_no, kind, detail)'
+        + " VALUES ($1,'member_code',$2)",
+      ['card', 'Sign-in code for ' + (m.name || m.phone) + ': ' + code]);
+      await c.query("SELECT chain.log_anon($1,'member_join','member',$2,$3)",
+        [req.ctx.outletId, id, JSON.stringify({ mins: CODE_MINS })]);
+      return { m: m, code: code };
+    });
+    if (!out) {
+      return res.status(410).json({
+        error: 'That link has already been used or has expired'
+      });
+    }
+    res.set('cache-control', 'no-store').json({
+      sent: true, mins: CODE_MINS,
+      // The identifier the guest now keys their code against — the one on the
+      // membership, so the next step cannot be redirected either.
+      id: out.m.email || out.m.phone || '',
+      code: process.env.MEMBER_CODE_ECHO === '1' ? out.code : undefined
+    });
   } catch (e) { next(e); }
 });
 

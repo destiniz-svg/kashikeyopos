@@ -28,6 +28,7 @@
      state that names the action which fills it. -->
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-rules.js"></script>
+<script src="./kashikeyo-invite.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./kashikeyo-api.js"></script>
 <script src="./kpos-bridge.js"></script>
@@ -1832,7 +1833,7 @@
             </div>
             <button onClick="{{ formSave }}" style="{{ formSaveStyle }}" style-hover="{{ formSaveHover }}">{{ formSaveLabel }}</button>
             <button onClick="{{ formSecond }}" style="{{ formSecondStyle }}">{{ formSecondLabel }}</button>
-            <div style="margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.6">{{ formFoot }}</div>
+            <div style="{{ formFootStyle }}">{{ formFoot }}</div>
           </sc-if>
 
         </div>
@@ -6818,7 +6819,14 @@ class Component extends DCLogic {
           ? "margin-top:9px;" + this.btn("ghost", { size: "sm", full: 1, fs: 12, ink: "var(--red-bright)", line: "var(--red-line)" })
           : "display:none",
         formSecond: () => { if (m.edit && spec.second) spec.second.go(m.edit); },
-        formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save, formFoot: spec.foot,
+        formSaveLabel: (m.edit && spec.editSave) ? spec.editSave : spec.save,
+        // Most feet are one paragraph of guidance. A foot that IS the artefact
+        // — the message about to be sent — needs its line breaks kept and a
+        // size somebody can actually proofread at, so a spec can ask for that.
+        formFoot: typeof spec.foot === "function" ? spec.foot() : spec.foot,
+        formFootStyle: spec.footPre
+          ? "margin-top:12px;padding:12px 13px;border-radius:9px;background:var(--bg-2);border:1px solid var(--line);font-size:11.5px;color:var(--text-dim);line-height:1.65;white-space:pre-wrap;max-height:280px;overflow:auto"
+          : "margin-top:10px;font-size:11px;color:var(--text-muted);line-height:1.6",
         // A restore overwrites the chain. It cannot look like Save chain.
         formSaveStyle: "margin-top:14px;" + this.btn(spec.danger ? "tonal-danger" : "solid-brand", { size: "md", full: 1, fs: 12.5 }),
         formSaveHover: this.btnHover(spec.danger ? "tonal-danger" : "solid-brand"),
@@ -7294,58 +7302,15 @@ class Component extends DCLogic {
         // it are the two things a manager does from here, so they sit under the
         // record rather than behind another screen.
         detailActsStyle: this.can("customers", "e") ? "display:flex;flex-wrap:wrap;gap:8px;margin-top:9px" : "display:none",
-        detailActs: (this.can("customers", "e") ? this.INVITE_CHANNELS().map((ch) => {
-          // An invitation is an EVENT, on a named channel, and all three ride
-          // something the customer has already given: email is on the
-          // membership, Viber and WhatsApp both ride the mobile number. So
-          // nothing here asks a guest for anything new — which is the whole
-          // point of inviting from their row rather than from a form.
-          //
-          // A channel they have no address for is REFUSED BY NAME rather than
-          // hidden. A control that vanishes teaches an operator the app is
-          // broken; one that says "Aishath has no email address on file" tells
-          // them what to fix. The server refuses it too, on the same wording.
-          const to = ch.key === "email" ? (c.email || "") : (c.phone || "");
-          const has = !!to;
-          return {
-            label: (c.invites ? "Resend" : "Invite") + " \u00b7 " + ch.name,
-            style: "flex:1 1 150px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var("
-              + (has ? "--text" : "--text-muted") + ")",
-            go: async () => {
-              if (!has) {
-                // Refused by name, and then straight to the field that fixes
-                // it. "Add one on the customer first" is only an instruction
-                // if the operator can see where.
-                this.toast(c.name + " has no " + ch.needs
-                  + " on file \u2014 add one here and " + ch.name
-                  + " has somewhere to go", "warn");
-                return this.can("customers", "e") ? this.openForm("cust", c) : null;
-              }
-              const B = window.KPOS_BRIDGE;
-              if (!B || !B.inviteMember) return this.toast("Sign in to the outlet first \u2014 the code is minted by the store, not by this device", "warn");
-              try {
-                const r = await B.inviteMember(c.id, ch.key, to);
-                const rows = [["Their card", r.url, "t"], ["Code", r.code],
-                  ["Good for", r.mins + " minutes \u00b7 " + r.tries + " tries"],
-                  ["Sent to", (r.channel || ch.name) + " \u00b7 " + (r.to || to)],
-                  ["Invitations", String(r.count || 1)]];
-                this.info(
-                  r.sent ? ch.name + " sent to " + (r.to || to)
-                    : "Read this out to " + ((r.member || {}).name || c.name),
-                  (r.member || {}).phone || c.phone, rows,
-                  (r.restored ? "This customer had been revoked; a fresh invitation restores their access, because a code they cannot use is not an invitation. " : "")
-                  + "Sending again reissues the code, so any previous one has just stopped working \u2014 an invitation forwarded to the wrong person cannot be used. "
-                  + "It is spent the moment it is used, and it is not stored anywhere readable: the outlet keeps a salted hash of it, exactly like a staff PIN. "
-                  + (r.sent ? "" : this.sentence(r.reason || "Nothing was sent")
-                    + ", so the code is handed over the way a restaurant already verifies a person."));
-                // The count and the channel are on the row now, so re-read it.
-                if (B.refresh) B.refresh();
-              } catch (e) {
-                this.toast((e && e.message) ? e.message : "The outlet did not answer \u2014 no code was issued", "err");
-              }
-            }
-          };
-        }) : []).concat((c.invites && this.can("customers", "e")) ? [
+        detailActs: (this.can("customers", "e") ? [{
+          /* One control, because the channel is a decision made INSIDE the
+             form beside the message it will send. Three buttons sent copy
+             nobody had read — and the wording is the part a guest judges the
+             restaurant by. */
+          label: c.invites ? "Send a fresh invitation" : "Invite to the portal",
+          style: "flex:1 1 100%;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
+          go: () => this.openForm("invite", c)
+        }] : []).concat((c.invites && this.can("customers", "e")) ? [
           // Taking it back. The history STAYS — the row goes on reading
           // "Revoked", never "Not invited" — because a member who was let go
           // and one who was never asked are different answers, and support
@@ -12166,11 +12131,11 @@ class Component extends DCLogic {
      counter — and the answer says which of the two happened. A screen that
      reports a send it did not make is worse than one offering no send. */
   INVITE_CHANNELS() {
-    return [
-      { key: "email", name: "Email", needs: "email address" },
-      { key: "viber", name: "Viber", needs: "mobile number" },
-      { key: "whatsapp", name: "WhatsApp", needs: "mobile number" }
-    ];
+    // From the one module the server composes the message with. A second list
+    // here is a second vocabulary, and this build has been bitten by exactly
+    // that before — two allergen tables, one saying "shellfish" and the other
+    // "crustacean", so a diet that blocked one never blocked the other.
+    return ((window.KASHIKEYO_INVITE || {}).CHANNELS || []).slice();
   }
   /* An address, trimmed and lower-cased, or `false` if it is not one, or "" if
      the field was left empty. Three answers, because "empty" and "wrong" are
@@ -12202,8 +12167,90 @@ class Component extends DCLogic {
     const x = String(t || "").trim();
     return x ? x.charAt(0).toUpperCase() + x.slice(1) : "";
   }
+  /* THE MESSAGE, composed by the one module the server composes it from
+     (`app/kashikeyo-invite.js`, loaded here as a script and there as a
+     module). Two copies of this paragraph would mean a till that proofreads
+     one sentence and a guest who receives another. */
+  inviteMessage(c, chan, token) {
+    const I = window.KASHIKEYO_INVITE;
+    if (!I) return { subject: "", body: "", link: "" };
+    const mem = this.member(c.id) || c;
+    const pts = mem.points || 0;
+    return I.compose({
+      chan: chan,
+      name: mem.name,
+      outlet: (this.outlet() || {}).name || "",
+      chain: ((K() || {}).CHAIN || {}).name || "Kashikeyo",
+      points: pts,
+      worth: MVRc(this.ptsValue(pts)),
+      sender: this.meName(),
+      link: I.inviteLink(this.storeBase(), token)
+    });
+  }
+  /* Where this store's links point. The base is the SERVER's, published in the
+     bootstrap — a domain typed into a page is right in production and wrong in
+     staging, and a link goes into a message that outlives both. */
+  storeBase() {
+    const h = this.storeHandle(this.state.outletId), base = this.portalBase();
+    if (!base || !h) return "";
+    return "https://" + h + "." + base;
+  }
+  /* A guest should read a person's name, not a login handle: "Sent by nashwa"
+     is a system talking about itself. The audit trail keeps the handle; the
+     message carries the name they could ask for at the counter. */
+  meName() {
+    const se = this.state.session || {};
+    if (se.name) return se.name;
+    const u = ((K() || {}).USERS || []).find((x) => x.user === se.user);
+    return (u && u.name) || "the team";
+  }
   inviteChannel(k) {
     return this.INVITE_CHANNELS().filter((x) => x.key === k)[0] || null;
+  }
+  /* SENDING IT. Not an outbox op, for the same reason a rename is not: a
+     single-use token issued now and replayed three hours later is a token
+     nobody can use. The server mints it, composes from the same module, sends
+     what it can and says which of the two happened. */
+  sendInvite(c, chan) {
+    if (!c || !c.id) return this.toast("Open a customer first", "warn");
+    const ch = this.inviteChannel(chan) || {};
+    const to = chan === "email" ? (c.email || "") : (c.phone || "");
+    if (!to) {
+      // Refused by name, then straight to the field that fixes it. "Add one on
+      // the customer first" is only an instruction if the operator can see
+      // where.
+      this.toast(c.name + " has no " + ch.needs + " on file \u2014 add one here and "
+        + ch.label + " has somewhere to go", "warn");
+      return this.can("customers", "e") ? this.openForm("cust", c) : null;
+    }
+    const B = window.KPOS_BRIDGE;
+    if (!B || !B.inviteMember) {
+      return this.toast("Sign in to the outlet first \u2014 the link is minted by the store, not by this device", "warn");
+    }
+    return B.inviteMember(c.id, chan, to).then((r) => {
+      const rows = [
+        ["Their link", r.link, "t"],
+        ["Sent to", (r.channel || ch.label) + " \u00b7 " + (r.to || to)],
+        ["Good for", (r.days || 7) + " days \u00b7 one use"],
+        ["Invitations", String(r.count || 1)]
+      ];
+      // The one channel a person can complete by hand: click-to-chat opens
+      // THEIR WhatsApp with the message already composed.
+      if (r.handoff) rows.push(["Open WhatsApp", r.handoff, "t"]);
+      this.info(
+        r.sent ? ch.label + " sent to " + (r.to || to) : "Hand this to " + c.name,
+        c.phone || "", rows,
+        (r.restored ? "This customer had been revoked; a fresh invitation restores their access, because a link that cannot work is not an invitation. " : "")
+        + "Sending again issues a fresh token and invalidates the previous one, so an "
+        + "invitation forwarded to the wrong person stops working. Tapping it opens their "
+        + "card and sends a four-digit code to the address on their membership \u2014 never "
+        + "one typed on that screen, so a forwarded link cannot sign anybody else in. "
+        + (r.sent ? "" : this.sentence(r.reason || "Nothing was sent") + "."));
+      if (B.refresh) B.refresh();
+      this.setState({ modal: null });
+    }).catch((e) => {
+      this.toast((e && e.message) ? e.message : "The outlet did not answer \u2014 no invitation was issued", "err");
+    });
   }
   // What the row says about their access, in one line. "Revoked" and "Not
   // invited" are different answers and both have to survive being read.
@@ -12212,7 +12259,7 @@ class Component extends DCLogic {
     if (c.revoked) return "Revoked " + c.revoked;
     if (!c.invites && !c.invitedAt) return "Not invited";
     const ch = this.inviteChannel(c.invitedVia);
-    return "Invited by " + (ch ? ch.name : (c.invitedVia || "the counter"))
+    return "Invited by " + (ch ? ch.label : (c.invitedVia || "the counter"))
       + (c.invitedAt ? " \u00b7 " + c.invitedAt : "")
       + ((+c.invites || 0) > 1 ? " \u00b7 " + c.invites + " sends" : "");
   }
@@ -14655,6 +14702,57 @@ class Component extends DCLogic {
             invitedVia: "", invitedAt: "", invites: 0, revoked: ""
           }, "Customer created · " + v.name, "customers");
         }
+      },
+      /* ═══ THE INVITATION ════════════════════════════════════════════════
+         One control, one channel dropdown, and the message shown VERBATIM
+         underneath before anything is sent. Nobody at a till should send copy
+         they have not read, and the wording is the part a guest judges the
+         restaurant by — so it is composed by the system, addressed to the
+         person whose record this was opened from, and re-composed as the
+         channel changes.
+
+         All three channels carry the SAME link. The channel decides only the
+         transport and which field it addresses. */
+      invite: {
+        title: "Invite to the portal", sub: "One link, single use, seven days",
+        save: "Send the invitation", editSave: "Send the invitation",
+        fields: [
+          { k: "chan", label: "Channel", full: 1, options: [
+            { v: "email", l: "Email" }, { v: "viber", l: "Viber" },
+            { v: "whatsapp", l: "WhatsApp" }
+          ] }
+        ],
+        footPre: true,
+        foot: () => {
+          const v = this.state.formVals || {};
+          const c = this.member((this.state.modal || {}).edit
+            ? (this.state.modal.edit || {}).id : v.id) || {};
+          if (!c.id) return "Open a customer to invite them \u2014 the message is addressed to their record.";
+          const chan = v.chan || "email";
+          const ch = this.inviteChannel(chan) || {};
+          const to = chan === "email" ? (c.email || "") : (c.phone || "");
+          if (!to) {
+            return c.name + " has no " + ch.needs + " on file, so nothing can be sent on "
+              + ch.label + ". Add one on their record first \u2014 the invitation cannot pick "
+              + "an address they did not choose.";
+          }
+          /* A stand-in of exactly the shape AND LENGTH the server mints, so
+             the character count under an app-channel message is the real one
+             rather than twenty short. All x's, so nobody reads it as a live
+             token — and it is not one: nothing hashes to it, so the landing
+             would answer "not an invitation" if it ever went out. */
+          const msg = this.inviteMessage(c, chan,
+            "MV-xxxxxxxxxxxxxxxxxxxxxx-0000000000000");
+          const head = ch.label + " to " + to
+            + (msg.subject ? "\nSubject: " + msg.subject : "")
+            + (chan === "email" ? "" : " \u00b7 " + msg.body.length + " characters");
+          return head + "\n\n" + msg.body
+            + "\n\nThe link is single-use and expires in seven days. Sending again issues a "
+            + "fresh token and invalidates the previous one, so an invitation forwarded to the "
+            + "wrong person stops working.";
+        },
+        onSave: (v, c) => this.sendInvite(c || this.member(v.id), v.chan || "email"),
+        onEdit: (v, c) => this.sendInvite(c, v.chan || "email")
       },
       res: {
         title: "New reservation", sub: this.outlet().name, save: "Book table",

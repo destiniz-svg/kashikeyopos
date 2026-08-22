@@ -63,4 +63,14 @@ module.exports = function (app, APP) {
   app.get('/m/:slug', send('member.html'));
   app.get('/member', send('member.html'));
   app.get('/card', send('member.html'));
+
+  /* Where an invitation lands. The token is in the PATH, because a path is the
+     one part of an address a click-wrapper does not rewrite and a reader
+     cannot confuse with somebody else's query parameter.
+
+     It answers on a store's own subdomain and on the apex alike: a link is
+     printed into a message and outlives whatever we knew about hostnames the
+     day it was composed. The page reads the token itself and posts it — this
+     route only decides which app answers. */
+  app.get('/join/:token', send('member.html'));
 };

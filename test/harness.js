@@ -83,6 +83,8 @@ function loadLogic(opts) {
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-raw.js'), 'utf8'), ctx);
   // The rule table loads first in the browser, so it loads first here too.
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-rules.js'), 'utf8'), ctx);
+  // And the invitation's copy, which the server composes from the same file.
+  vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-invite.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-data.js'), 'utf8'), ctx);
   if (o.kpos) vm.runInContext('Object.assign(window.KPOS, ' + JSON.stringify(o.kpos) + ')', ctx);
   if (o.raw) vm.runInContext('Object.assign(window.KPOS_RAW, ' + JSON.stringify(o.raw) + ')', ctx);
@@ -163,7 +165,7 @@ const FORMS = [
   'bankOpening', 'user', 'earnRate', 'tier', 'rewardEdit', 'settleCredit',
   'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'indent', 'dispatch',
   'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'vendor',
-  'storeAddress', 'aiResult', 'processor'
+  'storeAddress', 'aiResult', 'processor', 'invite'
 ];
 
 // The message alone names the symptom; the frame names the line. A harness

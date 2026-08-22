@@ -607,38 +607,65 @@ test('a customer taken at the counter reaches the outlet, and can sign in',
       + " AND column_name = 'tier'");
     assert.strictEqual(cols.n, 0, 'a cache nothing reads is a second answer waiting to be believed');
 
-    // The invite, on a named channel. With no transport configured it is what
-    // a person hands across a counter: where the card is, and a code to get in
-    // with — and it SAYS so rather than claiming a send.
+    // The invite, on a named channel. It carries a LINK — one token, whichever
+    // channel takes it — and says honestly whether anything was sent.
     const inv = await post('/api/outlet/' + outletId + '/member/' + res.memberId
       + '/invite', { via: 'email' }, token);
     assert.strictEqual(inv.status, 200, JSON.stringify(inv.body));
-    assert.match(String(inv.body.code), /^\d{4}$/, 'four digits');
+    assert.match(String(inv.body.link), /\/join\/MV-[A-Za-z0-9]+-\d+/,
+      'the link the SERVER spelled: ' + inv.body.link);
     assert.strictEqual(inv.body.via, 'email', 'and it says which channel it went on');
     assert.strictEqual(inv.body.to, 'aishath@example.mv', 'to the address on the membership');
     assert.strictEqual(inv.body.count, 1, 'the first invitation');
     assert.strictEqual(inv.body.sent, false, 'no transport here, and it does not pretend');
     assert.ok(inv.body.reason, 'and it says why');
-    // The address the SERVER spelled — absolute on a store's own subdomain,
-    // /m/<handle> where there is no base domain. Never the QR portal's path
-    // with /member glued on, which routes nowhere.
+    assert.ok(String(inv.body.body).indexOf(inv.body.link) >= 0,
+      'the message carries the link it was composed around');
+    // The card's own address is still spelled, for a counter that would rather
+    // point than send. Never the QR portal's path with /member glued on, which
+    // routes nowhere.
     assert.match(String(inv.body.url), /(^\/m\/[a-z0-9-]+$)|(^https:\/\/[a-z0-9-]+\..+\/member$)/,
       'the address the SERVER spelled: ' + inv.body.url);
 
-    // That code signs them in on their own card, through the guest portal.
     const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
     const slug = b.body.kpos.OUTLETS[0].slug;
     const t = await get('/api/g/' + slug + '/token');
     const table = { 'x-table-token': t.body.token };
+    const tok = /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(inv.body.link)[1];
+
+    // Tapping it names the card and nothing more. It does not sign anybody in.
+    const land = await postWith('/api/g/' + slug + '/member/join', { token: tok }, table);
+    assert.strictEqual(land.status, 200, JSON.stringify(land.body));
+    assert.strictEqual(land.body.first, 'Aishath', 'their own name, from the token');
+    assert.strictEqual(land.body.state, 'fresh', 'seven days is not two');
+    assert.ok(!land.body.token, 'a landing is not a session');
+
+    // "Send my code" spends the token and sends to the address ON THE
+    // MEMBERSHIP, whatever the request body says.
+    const ask = await postWith('/api/g/' + slug + '/member/join/code',
+      { token: tok, id: 'someone@else.mv' }, table);
+    assert.strictEqual(ask.status, 200, JSON.stringify(ask.body));
+    assert.strictEqual(ask.body.id, 'aishath@example.mv',
+      'the address on the membership, never one carried in the request');
+    // Read off the floor board, the way a server reads it to a guest — the
+    // response carries it only under MEMBER_CODE_ECHO, and an earlier test in
+    // this file turns that on for the rest of the run.
+    const code = await boardCode('Aishath Waheed');
+    assert.match(code, /^\d{4}$/, 'four digits, on the floor board');
+
     const ok = await postWith('/api/g/' + slug + '/member/verify',
-      { id: phone, code: inv.body.code }, table);
+      { id: phone, code: code }, table);
     assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
-    assert.ok(ok.body.token, 'a member token is minted from a code read out at the till');
+    assert.ok(ok.body.token, 'and that code opens the card');
 
     // Spent on use, exactly like the one they request themselves.
     const replay = await postWith('/api/g/' + slug + '/member/verify',
-      { id: phone, code: inv.body.code }, table);
+      { id: phone, code: code }, table);
     assert.strictEqual(replay.status, 401, 'the code is spent');
+    // And so is the link.
+    const spent = await postWith('/api/g/' + slug + '/member/join/code',
+      { token: tok }, table);
+    assert.strictEqual(spent.status, 410, 'the invitation works once');
 
     // And the till now reports something it actually knows: they have been in.
     const b2 = await get('/api/outlet/' + outletId + '/bootstrap', token);
@@ -681,8 +708,11 @@ test('an address reaches the outlet, and signs its owner in', opts, async () => 
   const slug = b.body.kpos.OUTLETS[0].slug;
   const t = await get('/api/g/' + slug + '/token');
   const table = { 'x-table-token': t.body.token };
+  const tok = /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(inv.body.link)[1];
+  await postWith('/api/g/' + slug + '/member/join/code', { token: tok }, table);
+  const code = await boardCode('Aminath Shifa');
   const ok = await postWith('/api/g/' + slug + '/member/verify',
-    { id: 'SHIFA@example.mv', code: inv.body.code }, table);
+    { id: 'SHIFA@example.mv', code: code }, table);
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
 });
 
@@ -801,7 +831,7 @@ test('an invitation records the channel, and refuses one with no address by name
     assert.strictEqual(junk.status, 400, 'a channel that does not exist is not a send');
   });
 
-test('sending again reissues the code, so the forwarded one stops working',
+test('sending again reissues the link, so the forwarded one stops working',
   opts, async () => {
     const phone = '9993311';
     const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
@@ -814,19 +844,130 @@ test('sending again reissues the code, so the forwarded one stops working',
     const second = await post('/api/outlet/' + outletId + '/member/' + id
       + '/invite', { via: 'whatsapp' }, token);
     assert.strictEqual(second.body.count, 2, 'the row counts the sends');
+    assert.notStrictEqual(first.body.link, second.body.link, 'a fresh token each time');
 
     const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
     const slug = b.body.kpos.OUTLETS[0].slug;
     const t = await get('/api/g/' + slug + '/token');
     const table = { 'x-table-token': t.body.token };
+    const tokOf = (x) => /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(x.body.link)[1];
 
-    const stale = await postWith('/api/g/' + slug + '/member/verify',
-      { id: phone, code: first.body.code }, table);
-    assert.strictEqual(stale.status, 401,
-      'an invitation forwarded to the wrong person cannot be used');
-    const live = await postWith('/api/g/' + slug + '/member/verify',
-      { id: phone, code: second.body.code }, table);
+    // The first link is dead the moment the second is issued: an invitation
+    // forwarded to the wrong person stops working.
+    const stale = await postWith('/api/g/' + slug + '/member/join',
+      { token: tokOf(first) }, table);
+    assert.strictEqual(stale.status, 404, 'the replaced token resolves to nothing');
+
+    const live = await postWith('/api/g/' + slug + '/member/join',
+      { token: tokOf(second) }, table);
     assert.strictEqual(live.status, 200, JSON.stringify(live.body));
+    assert.strictEqual(live.body.first, 'Fathimath');
+  });
+
+/* Fix 22, and it bit hard in the prototype: the reader took `?t=` first and
+   shape-checked only the path. `?t=` is the table on the QR portal, the
+   hosting environment's own session token, and the parameter every email
+   click-wrapper appends — so the canonical path was unreachable and a foreign
+   credential went into a membership lookup. */
+test('a token is validated on every branch, and ?t= is never one', opts, async () => {
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token');
+  const table = { 'x-table-token': t.body.token };
+
+  for (const junk of ['', '7', 'MV-nodigits', 'MV--1', '../../etc/passwd',
+    t.body.token, 'MV-abc-1x']) {
+    const r = await postWith('/api/g/' + slug + '/member/join',
+      { token: junk }, table);
+    assert.strictEqual(r.status, 400,
+      'nothing shaped wrong reaches the database: ' + JSON.stringify(junk));
+  }
+  // Correctly shaped and simply not ours is a different answer, and it is the
+  // same one an expired invitation gets — this endpoint must not become a way
+  // to ask whether an invitation ever existed.
+  const nope = await postWith('/api/g/' + slug + '/member/join',
+    { token: 'MV-neverminted-1' }, table);
+  assert.strictEqual(nope.status, 404, JSON.stringify(nope.body));
+});
+
+test('the landing knows the guest, and expiry is not a dead end', opts, async () => {
+  const phone = '9998811';
+  const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Aminath Rasheedha', phone: phone, email: 'rasheedha@example.mv'
+  } }]);
+  const id = r.body.results[0].result.memberId;
+  await one('UPDATE chain.member SET points = 1842 WHERE id = $1', [id]);
+
+  const inv = await post('/api/outlet/' + outletId + '/member/' + id
+    + '/invite', { via: 'email' }, token);
+  const tok = /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(inv.body.link)[1];
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token');
+  const table = { 'x-table-token': t.body.token };
+
+  const fresh = await postWith('/api/g/' + slug + '/member/join', { token: tok }, table);
+  assert.strictEqual(fresh.status, 200, JSON.stringify(fresh.body));
+  assert.strictEqual(fresh.body.state, 'fresh', 'seven days out');
+  assert.strictEqual(fresh.body.first, 'Aminath', 'the first name, for the greeting');
+  assert.strictEqual(fresh.body.points, 1842, 'their real balance');
+  /* TOLD, not derived. A browser arriving cold on a link has never been sent a
+     programme, so a page working this out itself quoted a guest holding 1,842
+     points a worth of zero. */
+  assert.match(String(fresh.body.worth), /^[A-Z]{3} [\d,]+$/, fresh.body.worth);
+  assert.notStrictEqual(fresh.body.worth.replace(/\D/g, ''), '0',
+    'the outlet is asked what a point is worth: ' + fresh.body.worth);
+  assert.strictEqual(fresh.body.invitedBy, 'Test Owner',
+    'a person to ask for at the counter, not a handle');
+
+  // Inside two days it warns; past seven it lapses — and a lapse still
+  // resolves, because the membership is real and a dead end would say
+  // otherwise.
+  await one("UPDATE chain.member SET invite_token_exp = now() + interval '1 day'"
+    + ' WHERE id = $1', [id]);
+  const soon = await postWith('/api/g/' + slug + '/member/join', { token: tok }, table);
+  assert.strictEqual(soon.body.state, 'expiring', JSON.stringify(soon.body));
+  assert.strictEqual(soon.body.left, 1, 'one day is "tomorrow" on the strip');
+
+  await one("UPDATE chain.member SET invite_token_exp = now() - interval '1 day'"
+    + ' WHERE id = $1', [id]);
+  const late = await postWith('/api/g/' + slug + '/member/join', { token: tok }, table);
+  assert.strictEqual(late.status, 200, 'a lapsed link is not a 404');
+  assert.strictEqual(late.body.state, 'lapsed');
+  assert.strictEqual(late.body.to, 'rasheedha@example.mv',
+    'and it carries the address, so the ordinary sign-in arrives pre-filled');
+
+  // A lapsed link cannot mint a code, however it is asked.
+  const no = await postWith('/api/g/' + slug + '/member/join/code',
+    { token: tok }, table);
+  assert.strictEqual(no.status, 410, JSON.stringify(no.body));
+});
+
+test('what a guest was told is audited apart from the fact they were told',
+  opts, async () => {
+    const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Nashwa Ibrahim', phone: '9997722'
+    } }]);
+    const id = r.body.results[0].result.memberId;
+    await post('/api/outlet/' + outletId + '/member/' + id + '/invite',
+      { via: 'viber' }, token);
+
+    const body = await asOwner('SELECT after FROM chain.audit'
+      + " WHERE action = 'member_invite_body' AND entity_id = $1"
+      + ' ORDER BY at DESC LIMIT 1', [id]);
+    assert.ok(body, 'the wording is its own row — a support call three weeks '
+      + 'later needs the wording, not the timestamp');
+    assert.match(String(body.after.body), /Nashwa/, 'the message as composed');
+    // The token is not in it: an audit trail is read by more people than an
+    // inbox is.
+    assert.ok(String(body.after.body).indexOf('MV-') < 0,
+      'and never the live token: ' + body.after.body);
+    assert.match(String(body.after.body), /<link>/, 'which is stood in for');
+
+    const sent = await asOwner('SELECT after FROM chain.audit'
+      + " WHERE action = 'member_invite' AND entity_id = $1"
+      + ' ORDER BY at DESC LIMIT 1', [id]);
+    assert.strictEqual(sent.after.via, 'viber', 'the send is its own fact');
   });
 
 test('revoking stops the sign-in and keeps the history', opts, async () => {
@@ -838,6 +979,7 @@ test('revoking stops the sign-in and keeps the history', opts, async () => {
   const inv = await post('/api/outlet/' + outletId + '/member/' + id
     + '/invite', { via: 'viber' }, token);
   assert.strictEqual(inv.status, 200);
+  const tok = /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(inv.body.link)[1];
 
   const rev = await post('/api/outlet/' + outletId + '/member/' + id
     + '/revoke', {}, token);
@@ -868,18 +1010,22 @@ test('revoking stops the sign-in and keeps the history', opts, async () => {
   const issued = await one('SELECT code_hash FROM chain.member WHERE id = $1', [id]);
   assert.strictEqual(issued.code_hash, null,
     'and no code was minted: chain.member_code_set() refuses a revoked member');
-  const stale = await postWith('/api/g/' + slug + '/member/verify',
-    { id: phone, code: inv.body.code }, table);
-  assert.strictEqual(stale.status, 401, 'a revoked member cannot sign in');
+  // A revocation that leaves a working link in somebody's inbox is not one.
+  const dead = await postWith('/api/g/' + slug + '/member/join',
+    { token: tok }, table);
+  assert.strictEqual(dead.status, 404, 'the link died with the code');
 
-  // Inviting again IS restoring access: a code that cannot work is not one.
+  // Inviting again IS restoring access: a link that cannot work is not one.
   const back = await post('/api/outlet/' + outletId + '/member/' + id
     + '/invite', { via: 'viber' }, token);
   assert.strictEqual(back.status, 200, JSON.stringify(back.body));
   assert.strictEqual(back.body.restored, true, 'and it says the access was restored');
   assert.strictEqual(back.body.count, 2, 'on top of the history, not instead of it');
+  const tok2 = /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(back.body.link)[1];
+  await postWith('/api/g/' + slug + '/member/join/code', { token: tok2 }, table);
+  const code = await boardCode('Ibrahim Latheef');
   const ok = await postWith('/api/g/' + slug + '/member/verify',
-    { id: phone, code: back.body.code }, table);
+    { id: phone, code: code }, table);
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
 });
 
@@ -1810,6 +1956,25 @@ const post = (p, b, t) => call('POST', p, b, auth(t));
 const postWith = (p, b, h) => call('POST', p, b, h);
 const patch = (p, b, t) => call('PATCH', p, b, auth(t));
 const push = (ops) => post('/api/outlet/' + outletId + '/sync/push', { ops }, token);
+
+/* The code the outlet issued, read off the floor board — which is where a
+   server reads it out to the guest. The response never carries it (that is
+   MEMBER_CODE_ECHO, and it is development only, because it turns a phone
+   number into a login), so a test must look where a person would. */
+function boardCode(match) {
+  // ORDER BY `at`, not `id`: the id is a uuid, so ordering on it returns an
+  // arbitrary row and a test that passes by luck.
+  return one("SELECT detail FROM guest_request WHERE kind = 'member_code'"
+    + ' AND detail LIKE $1 ORDER BY at DESC LIMIT 1', ['%' + match + '%'])
+    .then((r) => (/(\d{4})\s*$/.exec((r || {}).detail || '') || [])[1] || '');
+}
+
+/* Through the OWNER connection, because an outlet's login role has INSERT on
+   chain.audit and nothing else — a till that could read its own trail could
+   edit its own story. This is the connection a support engineer uses. */
+function asOwner(sql, params) {
+  return db.owner().query(sql, params || []).then((q) => q.rows[0]);
+}
 
 function one(sql, params) {
   return db.withOutlet({ outletId, rank: 5, actor: null },

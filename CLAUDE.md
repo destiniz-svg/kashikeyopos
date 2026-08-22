@@ -31,7 +31,9 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        008 line identity · 009 GST registration · 010 currency
                        011 accounts · 012 store handle · 013 handle history
                        014 GST optional · 015 order stage
-                       016 business date
+                       016 business date · 017 member invitation
+                       018 member email · 019 drop member tier
+                       020 invite token
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -40,6 +42,7 @@ app/onboarding.html    the fourteen-step panel an empty install lands on
 app/guest.html         the QR portal
 app/member.html        the member card
 app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
+app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
 app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels) — no trade
 app/kashikeyo-api.js   the durable outbox and the API client
 app/kpos-bridge.js     terminal ↔ API
@@ -753,10 +756,94 @@ invitation belongs on their row rather than behind a form.
   Inviting again **restores** access, because a code that cannot work is not an
   invitation. Rank 3: withdrawing access is not a cashier's to make.
 
-**Email is a real transport when one is configured** (`src/email.js`); Viber and
-WhatsApp are recorded but not wired. Either way the answer carries `sent` and the
-reason, and the code comes back for the counter to read out — a screen that
-reports a send it did not make is worse than one offering no send at all.
+**Email is a real transport when one is configured** (`src/email.js`); WhatsApp
+is a click-to-chat handoff (`wa.me/<number>?text=`) opened from the staff
+member's own app, because that is the only WhatsApp send this build can honestly
+make; Viber is recorded and not wired. Either way the answer carries `sent` and
+the reason — a screen that reports a send it did not make is worse than one
+offering no send at all.
+
+### The invitation carries a link, and the link lands somewhere
+
+The invitation used to BE the four-digit code, minted at the counter and read
+out. That works across a counter and nowhere else: a code in an inbox is a
+credential in an inbox. So it splits in two, which is also what makes it safe to
+send (migration 020):
+
+- **the TOKEN says WHO.** `MV-<22 chars of CSPRNG>-<minted at>`, single use,
+  seven days, in the link. What is stored is its **hash**, never itself — the
+  same discipline as a staff PIN. Tapping it proves possession of the message
+  and nothing more;
+- **the CODE says IT IS THEM.** Four digits, ten minutes, five tries, and it goes
+  to the address **on the membership** — never one typed on the landing screen,
+  so a link forwarded to somebody else cannot sign them in.
+
+Neither half is enough alone, which is the point. Issuing a token invalidates the
+last one, so a resend is an invalidation rather than a second live key, and
+`chain.member_revoke()` kills the link with the code.
+
+**All three channels carry the same link.** The channel decides only the
+transport and which field it addresses.
+
+**The message is composed by the system, not typed at the till.** A loyalty link
+arriving cold reads as phishing, and a guest who suspects phishing does not tap
+it — so the copy proves provenance with four things a bulk sender would not have:
+the guest's own name, the **outlet's** name (not the chain's), their real points
+balance, and the sender's display name. The balance does most of that work and is
+**dropped at zero**, where it argues against the invitation rather than for it.
+`{senderName}` is a person to ask for at the counter: "Sent by nashwa" is a
+system talking about itself.
+
+`app/kashikeyo-invite.js` is that copy, loaded by the browser as a script and by
+the server as a module — **the same file both ways**, like `kashikeyo-rules.js`.
+It matters more here than anywhere: the till shows the guest the message before
+sending, and the server is what sends it. Two copies means a till that
+proofreads one sentence and a guest who receives another. The invite form's foot
+IS the message, verbatim, re-composed as the channel changes, with the address
+and (for the app channels) the character count.
+
+**The wording is audited separately from the send** (`member_invite_body` beside
+`member_invite`). What a guest was told is a different fact from the fact that
+they were told, and a support call three weeks later needs the wording, not the
+timestamp. The token is replaced with `<link>` in that row: an audit trail is
+read by more people than an inbox is. Reading it back is an owner-connection job
+— an outlet's login role has INSERT on `chain.audit` and nothing else.
+
+### Reading the token, and why the parameter is never `t`
+
+`/join/<token>` is canonical. `?invite=` / `?join=` are fallbacks, and where
+there is no base domain the slug rides `?s=`.
+
+**Read the path first, hold every branch to the shape, and never call the
+parameter `t`.** The prototype read `?t=` first and shape-checked only the path,
+so any `?t=` already in the address won, unvalidated — and `?t=` is the table on
+the QR portal, the hosting environment's own session token, and the tracking
+parameter most email click-wrappers append. The canonical path was unreachable
+and a foreign credential went into a membership lookup. Every branch — prop,
+path, query, hash — goes through one `cleanToken()` against
+`/^MV-[A-Za-z0-9]+-\d+$/`, and nothing failing it reaches the server.
+
+The phone **posts** the token and the server answers with that one membership.
+The roster must never carry these: a roster that did would hand every device the
+keys to every account.
+
+Three states on the landing:
+
+| State | Screen |
+| --- | --- |
+| Fresh | "Welcome back, {first}" and a card — name, tier, visits, balance, who invited them. One button: **Send my code**. Nothing to type, so it is never disabled |
+| Expiring (≤2 days) | The same, plus an accent strip naming the deadline; "tomorrow" at one day |
+| Lapsed (≥7 days) | **Not its own dead end.** Falls through to the ordinary sign-in with the explanation on top and the address **pre-filled** from the token — making somebody retype an address the app is holding is a small insult at the moment they have already been let down once |
+
+That pre-fill is a **state write, so it happens in `componentDidUpdate`**, never
+on the render path. "Not you?" steps around the invitation without clearing it:
+the token stays in the address, so a guest who taps it by mistake gets the card
+back by reloading, and a forwarded link leaves the second person a way in.
+
+**The landing is told what points are worth**, from the outlet's own published
+rate — the same figure the message quoted. Deriving it on the page quoted a guest
+holding 1,842 points a worth of MVR 0.00, because a browser arriving cold on a
+link has never been sent a programme.
 
 ### The address the Email channel needs
 
@@ -861,7 +948,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 174 tests
+npm test                          # 180 tests
 npm run leak-test                 # isolation, on its own
 ```
 

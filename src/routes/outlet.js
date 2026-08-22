@@ -1,12 +1,13 @@
 'use strict';
 const express = require('express');
 const { withOutletRead, withOutlet, owner } = require('../db');
-const { shapeError, storeUrl, memberUrl, baseDomain } = require('../handle');
+const { shapeError, storeUrl, memberUrl, joinUrl, baseDomain } = require('../handle');
 const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
-const { randomPin, hashPin } = require('../secrets');
+const { randomPin, hashPin, inviteToken, tokenHash } = require('../secrets');
 const { buildBootstrap, buildState, all } = require('../bootstrap');
 const email = require('../email');
+const INVITE = require('../../app/kashikeyo-invite.js');
 
 const r = express.Router({ mergeParams: true });
 
@@ -178,6 +179,21 @@ r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next)
    nobody can use. Rank 2 — the till. Whoever is standing with the guest.
    ─────────────────────────────────────────────────────────────────────── */
 const CHANNELS = { email: 'Email', viber: 'Viber', whatsapp: 'WhatsApp' };
+const TOKEN_DAYS = 7;
+
+/* What a point is worth, in the outlet's own currency, from the outlet's own
+   published rate. A hard-coded figure in a message quotes the guest a number
+   the till will not honour the moment the merchant edits it. */
+async function pointsWorth(c, points) {
+  const q = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
+  const cfg = (q.rows[0] || {}).value || {};
+  const per = Number(cfg.redeemPts) || 100;
+  const val = Number(cfg.redeemValue) || 25;
+  const cur = await c.query('SELECT currency FROM chain.outlet WHERE id ='
+    + ' current_setting(\'app.outlet_id\')::int');
+  const code = ((cur.rows[0] || {}).currency || 'MVR');
+  return code + ' ' + Math.round((Number(points) || 0) / per * val).toLocaleString('en-US');
+}
 
 r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
   async function (req, res, next) {
@@ -189,64 +205,98 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
     }
     try {
       const out = await withOutlet(req.ctx, async function (c) {
-        // The database resolves the address and refuses a channel the customer
-        // has no address for. One gate, and it reads the row it is writing.
+        // The token says WHO. It travels in the message, lives seven days, and
+        // is spent on use — so what is stored is its hash, never itself.
+        // Issuing one invalidates the last, which is what makes a resend an
+        // invalidation rather than a second live key.
+        const tok = inviteToken();
         const inv = await c.query(
-          'SELECT * FROM chain.member_invite($1,$2,$3,$4)',
-          [req.params.memberId, via, (req.body || {}).to || null, req.ctx.actor || null]);
+          'SELECT * FROM chain.member_invite($1,$2,$3,$4,$5,$6)',
+          [req.params.memberId, via, (req.body || {}).to || null,
+            req.ctx.actor || null, tokenHash(tok), TOKEN_DAYS]);
         if (!inv.rows.length) return null;
         const m = inv.rows[0];
-        // Same shape as the code the member requests for themselves: four
-        // digits, hashed with a per-row salt, ten minutes, five tries, spent
-        // on use. What the database holds is never the code. Setting it again
-        // overwrites the last one, which is what makes a resend an invalidation.
-        const code = randomPin();
-        const h = hashPin(code, null);
-        await c.query('SELECT chain.member_code_set($1,$2,$3,$4)',
-          [m.phone, h.hash, h.salt, 10]);
         const o = await c.query('SELECT slug, name FROM chain.outlet WHERE id = $1',
           [req.ctx.outletId]);
-        // The server spells the address, because only the server knows where
-        // the base domain ends. A hostname typed into a terminal is right in
-        // production and wrong in staging.
-        const url = memberUrl((o.rows[0] || {}).slug || '');
-        return { m: m, code: code, url: url, brand: (o.rows[0] || {}).name || '' };
+        const co = await c.query('SELECT brand FROM chain.company LIMIT 1');
+        // A guest should read a person's name, not a login handle: "Sent by
+        // nashwa" is a system talking about itself. The audit trail keeps the
+        // handle; the message carries the name they can ask for at the counter.
+        const by = req.ctx.actor
+          ? await c.query('SELECT name FROM chain.staff WHERE id = $1', [req.ctx.actor])
+          : { rows: [] };
+        const slug = (o.rows[0] || {}).slug || '';
+        const msg = INVITE.compose({
+          chan: via,
+          name: m.name || m.phone,
+          outlet: (o.rows[0] || {}).name || '',
+          chain: ((co.rows[0] || {}).brand || {}).name || 'Kashikeyo',
+          points: Number(m.points) || 0,
+          worth: await pointsWorth(c, m.points),
+          sender: (by.rows[0] || {}).name || req.ctx.name || '',
+          link: joinUrl(slug, tok)
+        });
+        return { m: m, token: tok, msg: msg, slug: slug,
+          brand: (o.rows[0] || {}).name || '' };
       });
       if (!out) return res.status(404).json({ error: 'no such customer' });
 
       // Sending happens OUTSIDE the transaction: a transport that hangs must
       // not hold a row lock, and a transport that refuses must not roll back an
-      // invitation the counter can still complete by reading the code out.
+      // invitation the counter can still complete by handing the link over.
       let delivery = { sent: false, via: 'none', reason: 'no transport configured' };
       if (via === 'email') {
         try {
-          delivery = await email.send(email.signInCode({
-            to: out.m.invited_to, code: out.code, mins: 10, brand: out.brand
-          }));
+          delivery = await email.send({
+            to: out.m.invited_to, subject: out.msg.subject,
+            text: out.msg.body
+          });
         } catch (e) {
           delivery = { sent: false, via: 'none', reason: e.message || 'the transport refused' };
         }
+      } else if (via === 'whatsapp') {
+        // The only WhatsApp send this build can honestly make is the staff
+        // member's own: click-to-chat opens THEIR WhatsApp with the message
+        // composed. A server cannot post to it, and a screen claiming
+        // otherwise is the defect this build keeps refusing to ship.
+        delivery = { sent: false, via: 'handoff',
+          reason: 'WhatsApp has no server transport here — open the link below '
+            + 'and WhatsApp will have the message ready to send' };
       } else {
-        delivery = {
-          sent: false, via: 'none',
-          reason: CHANNELS[via] + ' is recorded, not wired: this build has no '
-            + CHANNELS[via] + ' transport, so the code is read out at the counter'
-        };
+        delivery = { sent: false, via: 'none',
+          reason: 'Viber is recorded, not wired: this build has no Viber '
+            + 'business API configured, so the message is handed over at the counter' };
       }
 
-      await withOutlet(req.ctx, (c) => c.query(
-        "SELECT chain.log_anon($1,'member_invite','member',$2,$3)",
-        [req.ctx.outletId, out.m.id, JSON.stringify({
-          by: req.ctx.actor, via: via, to: out.m.invited_to,
-          n: out.m.invite_count, sent: delivery.sent,
-          // With no transport the code goes to the audit trail rather than
-          // nowhere, exactly as the account plane does it.
-          code: delivery.sent ? undefined : out.code
-        })]));
+      await withOutlet(req.ctx, async function (c) {
+        await c.query("SELECT chain.log_anon($1,'member_invite','member',$2,$3)",
+          [req.ctx.outletId, out.m.id, JSON.stringify({
+            by: req.ctx.actor, via: via, to: out.m.invited_to,
+            n: out.m.invite_count, sent: delivery.sent, exp: out.m.token_exp
+          })]);
+        /* The wording is audited SEPARATELY from the send. What a guest was
+           told is a different fact from the fact that they were told, and a
+           support call three weeks later needs the wording, not the timestamp.
+           The token is not in it: an audit trail is read by more people than
+           an inbox is. */
+        await c.query("SELECT chain.log_anon($1,'member_invite_body','member',$2,$3)",
+          [req.ctx.outletId, out.m.id, JSON.stringify({
+            via: via, to: out.m.invited_to,
+            subject: out.msg.subject || null,
+            body: out.msg.body.split(out.token).join('<link>')
+          })]);
+      });
 
       res.set('cache-control', 'no-store').json({
         member: { id: out.m.id, name: out.m.name, phone: out.m.phone },
-        url: out.url, code: out.code, mins: 10, tries: 5,
+        // Where their card is, for a counter that would rather point than send.
+        url: memberUrl(out.slug),
+        // The invitation itself: one link, whichever channel carries it.
+        link: out.msg.link, expires: out.m.token_exp, days: TOKEN_DAYS,
+        subject: out.msg.subject, body: out.msg.body,
+        // Click-to-chat, for the one channel a person can complete by hand.
+        handoff: via === 'whatsapp'
+          ? INVITE.whatsappHandoff(out.m.invited_to, out.msg.body) : '',
         via: via, channel: CHANNELS[via], to: out.m.invited_to,
         count: out.m.invite_count, restored: out.m.was_revoked === true,
         sent: delivery.sent === true, reason: delivery.reason || ''

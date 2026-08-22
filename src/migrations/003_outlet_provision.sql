@@ -953,8 +953,11 @@ BEGIN
     -- An invitation is an event (migration 017): the till issues one and a
     -- manager withdraws it, so both belong to every outlet role from the
     -- moment the outlet exists rather than to whoever happened to run 017.
-    || ' chain.member_invite(uuid,text,text,uuid),'
-    || ' chain.member_revoke(uuid,uuid) TO %I', r);
+    || ' chain.member_invite(uuid,text,text,uuid,text,int),'
+    || ' chain.member_revoke(uuid,uuid),'
+    -- The link the invitation carries, and spending it (migration 020).
+    || ' chain.member_by_invite(text),'
+    || ' chain.member_invite_spend(text) TO %I', r);
 
   -- The slug is a public store ADDRESS (migration 012), so it is NOT NULL and
   -- has to exist from the first insert. Provisioning writes a placeholder the

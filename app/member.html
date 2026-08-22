@@ -20,6 +20,7 @@
 <link rel="stylesheet" href="fonts.css"/>
 <script src="./kashikeyo-raw.js"></script>
 <script src="./kashikeyo-rules.js"></script>
+<script src="./kashikeyo-invite.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./guest-bridge.js"></script>
 <style>
@@ -83,6 +84,29 @@ a:hover{color:#d63f27}
             <div style="font-size:14px;color:#8a8a8f;margin-top:9px;line-height:1.6;text-wrap:pretty">{{ signInSub }}</div>
           </div>
 
+          <!-- The invitation landing card. It replaces the address field,
+               because the link already asserts who this is and asking a guest
+               to type it back is asking them to prove what they just handed
+               over. -->
+          <div style="{{ joinStepStyle }}">
+            <div style="border:1px solid #efefef;border-radius:18px;padding:16px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.04)">
+              <div style="display:flex;align-items:center;gap:12px">
+                <span style="{{ joinAvatarStyle }}">{{ joinInitials }}</span>
+                <span style="display:block;min-width:0">
+                  <span style="display:block;font-size:15.5px;font-weight:700;color:#111;letter-spacing:-.02em">{{ joinName }}</span>
+                  <span style="display:block;font-size:12.5px;color:#9c9ca1;margin-top:2px">{{ joinTier }}</span>
+                </span>
+              </div>
+              <div style="{{ joinPtsStyle }}">
+                <span style="display:block;font-size:12px;font-weight:700;letter-spacing:.08em;color:#b0b0b5">ALREADY YOURS</span>
+                <span style="display:block;margin-top:4px;font-size:30px;font-weight:700;color:#111;letter-spacing:-.035em;font-family:'JetBrains Mono',monospace">{{ joinPts }}</span>
+                <span style="display:block;font-size:13px;color:#8a8a8f">points · {{ joinWorth }} off a bill</span>
+              </div>
+              <div style="margin-top:14px;padding-top:13px;border-top:1px solid #f4f4f5;font-size:12.5px;color:#8a8a8f;line-height:1.55;text-wrap:pretty">{{ joinFrom }}</div>
+            </div>
+            <div style="{{ joinWarnStyle }}">{{ joinWarn }}</div>
+          </div>
+
           <div style="{{ phoneStepStyle }}">
             <div style="font-size:12.5px;font-weight:600;color:#5a5a60;letter-spacing:.02em">Phone or email</div>
             <div style="margin-top:9px;height:54px;border:1.4px solid #ececef;border-radius:14px;display:flex;align-items:center;gap:10px;padding:0 15px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04)">
@@ -114,7 +138,7 @@ a:hover{color:#d63f27}
           <div style="margin-top:22px;font-size:11.5px;color:#b6b6bb;line-height:1.55;text-wrap:pretty">{{ signInFoot }}</div>
         </div>
         <div style="flex-shrink:0;border-top:1px solid #f0f0f0;padding:14px 22px;background:#fff;display:flex;gap:12px;align-items:center">
-          <button onClick="{{ signInBack }}" style="{{ signInBackStyle }}">Back</button>
+          <button onClick="{{ signInBack }}" style="{{ signInBackStyle }}">{{ signInBackLabel }}</button>
           <button onClick="{{ signInNext }}" disabled="{{ signInDisabled }}" style="{{ signInBtnStyle }}">{{ signInBtn }}</button>
         </div>
       </sc-if>
@@ -776,6 +800,7 @@ const FKEY = "kashikeyo.fulfil.v1";
 class Component extends DCLogic {
   state = {
     tab: "card", step: "phone", chan: "email", phone: "", email: "", otp: "", otpErr: "",
+    join: null, joinOff: false, joinBusy: false, joinAsked: false, joinFilled: false,
     memberId: null, sheet: false, scan: false, toast: null, busy: false,
     split: "all", splitN: 2, picked: {}, customAmt: "", tip: 0, tender: "card", usePoints: false, asked: 0,
     table: 0, cart: [], q: "", cat: "all", sent: [],
@@ -789,7 +814,7 @@ class Component extends DCLogic {
   componentDidMount() {
     this.restore();
     if (!this.K()) this._boot = setInterval(() => { if (this.K()) { clearInterval(this._boot); this.forceUpdate(); } }, 60);
-    this._poll = setInterval(() => this.pullPos(), 2500);
+    this._poll = setInterval(() => { this.pullPos(); this.loadJoin(); }, 2500);
     // The wait clock has to keep counting even when the till is idle.
     this._tock = setInterval(() => this.setState({ tick: this.state.tick + 1 }), 20000);
     this._onStore = (e) => { if (!e.key || e.key === POSKEY) this.pullPos(); };
@@ -812,6 +837,7 @@ class Component extends DCLogic {
     this._onCard();
     this.pullPos();
     this.paintBackdrop();
+    this.loadJoin();
   }
   componentWillUnmount() {
     clearInterval(this._boot); clearInterval(this._poll); clearInterval(this._tock); clearTimeout(this._tt); clearTimeout(this._rs);
@@ -819,7 +845,21 @@ class Component extends DCLogic {
     window.removeEventListener("resize", this._onSize);
     window.removeEventListener("kpos-member-ready", this._onCard);
   }
-  componentDidUpdate() { this.save(); this.paintBackdrop(); }
+  componentDidUpdate() {
+    this.save();
+    this.paintBackdrop();
+    /* A lapsed link pre-fills the address it was sent to, and that is a STATE
+       WRITE — so it happens HERE, not on the render path. It was written from
+       inside `renderVals()` first, which is how a render becomes a loop.
+
+       Guarded on the field being empty, so a guest who clears it to sign in as
+       somebody else does not have it typed back at them. */
+    const j = this.joinLive();
+    if (j && !this.joinFresh() && j.to && !this.state.email
+        && this.state.step === "phone" && !this.state.joinFilled) {
+      this.setState({ email: j.to, joinFilled: true });
+    }
+  }
 
   /* The page backdrop follows the shell, written to the ELEMENTS rather than
      declared in the stylesheet: `body` is the one node a template cannot
@@ -1178,6 +1218,89 @@ class Component extends DCLogic {
   // Phone then a four-digit code, because that is what a Maldivian merchant can
   // actually send. The lookup is by the last seven digits so a guest can type
   // their number however they remember it.
+  /* ═══ THE TOKEN IN THE ADDRESS ═══════════════════════════════════════════
+     A minted token has a shape, and EVERY branch below is held to it.
+
+     The first cut of this read `?t=` first and applied the shape check only to
+     the path. So any `?t=` already in the address won, unvalidated — and `?t=`
+     is the table on the QR portal, the hosting environment's own session
+     token, and the tracking parameter most email click-wrappers append. The
+     canonical path was unreachable and a foreign credential was being carried
+     into a membership lookup, which is a value this page then POSTs to the API.
+
+     Hence: the canonical path wins, `?invite=` / `?join=` is the fallback,
+     the parameter is never called `t`, and nothing failing the shape survives
+     any branch. */
+  TOKEN_RE = /^MV-[A-Za-z0-9]+-\d+$/;
+  cleanToken(v) {
+    const t = String(v == null ? "" : v).trim();
+    return this.TOKEN_RE.test(t) ? t : "";
+  }
+  inviteToken() {
+    if (this.props.token) return this.cleanToken(this.props.token);
+    try {
+      const path = /\/join\/([A-Za-z0-9\-]+)/.exec(window.location.pathname || "");
+      const fromPath = path ? this.cleanToken(path[1]) : "";
+      if (fromPath) return fromPath;
+      const q = new URLSearchParams(window.location.search);
+      const fromQuery = this.cleanToken(q.get("invite") || q.get("join"));
+      if (fromQuery) return fromQuery;
+      const hash = /[?&](?:invite|join)=([A-Za-z0-9\-]+)/.exec(window.location.hash || "");
+      return hash ? this.cleanToken(hash[1]) : "";
+    } catch (e) { return ""; }
+  }
+  /* One membership, from the server, against the token this device was handed.
+     Never a roster lookup: a roster carrying every guest's token would hand
+     every device the keys to every account, which is the opposite of what a
+     token is for. */
+  loadJoin() {
+    const t = this.inviteToken();
+    if (!t || this.state.join || this.state.joinBusy) return;
+    const B = window.KPOS_GUEST_API;
+    // The table token is minted a beat after this page loads, so the first
+    // attempt at mount can arrive before the device has one. A 401 there is
+    // "not yet", not "no invitation" — the poll tries again, and treating it
+    // as a lapse would show a guest an expiry that had not happened.
+    if (!B || !B.memberJoin || !(window.KPOS_GUEST || {}).token) return;
+    this.setState({ joinBusy: true });
+    B.memberJoin(t).then((r) => {
+      this.setState({ joinBusy: false, join: r && r.name ? r : { state: "lapsed" } });
+    }).catch((e) => {
+      const st = e && e.status;
+      this.setState({ joinBusy: false,
+        // Only the server saying "this is not an invitation" settles it.
+        join: (st === 400 || st === 404 || st === 410) ? { state: "lapsed" } : null });
+    });
+  }
+  // The invitation as this screen should treat it: absent once the guest has
+  // stepped around it, and absent on a token the server would not resolve.
+  joinLive() {
+    const j = this.state.join;
+    if (this.state.joinOff || !j || !j.name) return null;
+    return j;
+  }
+  joinFresh() {
+    const j = this.joinLive();
+    return (j && j.state !== "lapsed") ? j : null;
+  }
+  /* "Send my code" — the token is spent server-side and the code goes to the
+     address ON THE MEMBERSHIP. Nothing typed on this screen decides where it
+     lands, which is what makes a forwarded link useless to whoever received
+     it. */
+  joinSend() {
+    const j = this.joinFresh();
+    const t = this.inviteToken();
+    if (!j || !t || this.state.joinBusy) return;
+    const B = window.KPOS_GUEST_API;
+    if (!B || !B.memberJoinCode) return;
+    this.setState({ joinBusy: true });
+    B.memberJoinCode(t).then((r) => {
+      this.setState({ joinBusy: false, joinAsked: true,
+        email: (r && r.id) || j.to || "", step: "otp", otp: "", otpErr: "" });
+    }).catch((e) => this.setState({ joinBusy: false,
+      join: { state: "lapsed", to: j.to },
+      otpErr: (e && e.message) || "That link has already been used" }));
+  }
   digits(s) { return (s || "").replace(/\D/g, ""); }
   // EITHER HALF OF THE MEMBERSHIP, because the outlet files people under both
   // and the guest cannot be expected to know which.
@@ -1232,6 +1355,10 @@ class Component extends DCLogic {
     const s = this.state, G = window.KPOS_GUEST_API;
     if (this.state.busy) return;
     if (s.step === "phone") {
+      // Arriving by invitation, the address is already known — asking the
+      // guest to type it back would be asking them to prove what the link
+      // already asserted.
+      if (this.joinFresh()) return this.joinSend();
       if (!this.idOk()) return;
       if (!G) return this.toast("Not connected — try again in a moment");
       /* Sign-in is gated on the INVITATION, not on knowing a number. A
@@ -1443,7 +1570,15 @@ class Component extends DCLogic {
       closeAll: () => this.setState({ sheet: false, scan: false }),
       signOut: () => this.signOut(),
       signInNext: () => this.signInNext(),
-      signInBack: () => s.step === "otp" ? this.setState({ step: "phone", otp: "", otpErr: "" }) : this.setState({ email: "" }),
+      /* "Not you?" steps AROUND the invitation without clearing it: the token
+         stays in the address, so a guest who taps it by mistake gets the card
+         back by reloading the link. A forwarded link has to leave the second
+         person a way in. */
+      signInBack: () => s.step === "otp"
+        ? this.setState({ step: "phone", otp: "", otpErr: "" })
+        : this.joinFresh()
+          ? this.setState({ joinOff: true, email: "" })
+          : this.setState({ email: "" }),
       announce: () => this.announce(),
       tabs: [], rewards: [], vouchers: [], activity: [], accRows: [], toggles: [], sheetRows: [], offers: [], bars: [], keys: [], otpBoxes: [], actTabs: [],
       cats: [], dishes: [], cart: [], usuals: [], tableChoices: [], sentLines: [],
@@ -1496,12 +1631,66 @@ class Component extends DCLogic {
     // ── sign in ────────────────────────────────────────────────────────────
     if (!signedIn) {
       const onOtp = s.step === "otp";
-      V.signInTitle = onOtp ? "Ask for your code" : (((this.K() || {}).CHAIN || {}).name || "Kashikeyo") + " Rewards";
+      /* ── arriving by invitation ──────────────────────────────────────
+         Three states, and only one of them is a dead end — which is the one
+         that ISN'T its own screen. A lapsed link drops through to the
+         ordinary sign-in with the explanation on top and the address already
+         filled in: the membership is real, and making somebody retype an
+         address the app is holding is a small insult at the moment they have
+         already been let down once. */
+      // The landing card belongs to the landing. Once the code step begins it
+      // is in the way — it pushed the keypad's last row below the fold — and
+      // "Not you?" is the wrong question next to four digits already sent.
+      const jn = onOtp ? null : this.joinFresh();
+      const lapsed = !onOtp && !jn && this.joinLive();
+      V.signInTitle = onOtp ? "Ask for your code"
+        : jn ? "Welcome back, " + (jn.first || "there")
+          : lapsed ? "That link has expired"
+            : (((this.K() || {}).CHAIN || {}).name || "Kashikeyo") + " Rewards";
       V.signInSub = onOtp
         ? "A four-digit code for " + this.maskedTarget()
           + " is on your server's screen. It lasts ten minutes."
-        : "Points on every visit, your house account, and the table you are sitting at — all in one place.";
-      V.phoneStepStyle = onOtp ? "display:none" : "margin-top:30px;display:block";
+        : jn ? "Your account is ready. Tap below and the code comes to the address on your membership \u2014 nothing to type."
+          : lapsed ? "An invitation lasts seven days. Yours has run out, but your membership has not \u2014 sign in below, or ask at the counter for a fresh link."
+            : "Points on every visit, your house account, and the table you are sitting at — all in one place.";
+
+      V.joinStepStyle = jn ? "margin-top:26px;display:block" : "display:none";
+      if (jn) {
+        const tierName = this.tierOf(jn.points || 0).name;
+        const t = this.tiers().filter((x) => x.name === tierName)[0] || {};
+        V.joinInitials = String(jn.name || "")
+          .split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+        V.joinAvatarStyle = "width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;"
+          + "font-size:16px;font-weight:700;color:#fff;background:linear-gradient(140deg,"
+          + (t.from || "#8a6a4f") + " 0%," + (t.to || "#5d4632") + " 100%)";
+        V.joinName = jn.name || "";
+        V.joinTier = tierName + " member"
+          + (jn.visits ? " \u00b7 " + jn.visits + " visit" + (jn.visits === 1 ? "" : "s") : "");
+        // Hidden at zero, where a balance argues against the invitation
+        // rather than for it.
+        V.joinPtsStyle = jn.points
+          ? "margin-top:15px;padding-top:14px;border-top:1px solid #f4f4f5"
+          : "display:none";
+        V.joinPts = (jn.points || 0).toLocaleString("en-US");
+        // What the OUTLET said they are worth. Deriving it here would quote a
+        // guest arriving cold on a link a figure of zero, because a browser
+        // that has never been sent a programme has no rate to derive from.
+        V.joinWorth = jn.worth || this.money(this.ptValue(jn.points || 0));
+        V.joinFrom = (jn.invitedBy ? jn.invitedBy + " invited you" : "You were invited")
+          + " at " + (this.outlet().name || "the restaurant")
+          + (jn.invitedAt ? " on " + jn.invitedAt : "") + ".";
+        // Only inside two days, and "tomorrow" at one — `left` is whole days.
+        V.joinWarnStyle = (jn.state === "expiring")
+          ? "margin-top:12px;padding:11px 13px;border-radius:12px;background:#fff4f2;border:1px solid #ffd9d1;font-size:12.5px;color:#c2452f;line-height:1.5"
+          : "display:none";
+        V.joinWarn = jn.left <= 1 ? "This link expires tomorrow."
+          : "This link expires in " + jn.left + " days.";
+      } else {
+        V.joinInitials = ""; V.joinAvatarStyle = "display:none"; V.joinName = "";
+        V.joinTier = ""; V.joinPtsStyle = "display:none"; V.joinPts = "";
+        V.joinWorth = ""; V.joinFrom = ""; V.joinWarnStyle = "display:none"; V.joinWarn = "";
+      }
+      V.phoneStepStyle = (onOtp || jn) ? "display:none" : "margin-top:30px;display:block";
       V.otpStepStyle = onOtp ? "margin-top:30px;display:block" : "display:none";
       // Never a list of addresses: this page must not be able to tell anyone
       // who is a member here.
@@ -1543,14 +1732,22 @@ class Component extends DCLogic {
       // read out by whoever is serving you. A button naming a channel that
       // does not exist is the same defect as a screen reporting a send that
       // never happened.
-      V.signInBtn = onOtp ? "Verify & sign in" : "Get my code";
-      V.signInDisabled = onOtp ? s.otp.length < 4 : !this.idOk();
+      /* Arriving by invitation there is nothing to type, so the primary is
+         never disabled: a button that cannot be pressed on a screen with no
+         field to fill is a dead end wearing a label. */
+      V.signInBtn = onOtp ? "Verify & sign in" : jn ? "Send my code" : "Get my code";
+      V.signInDisabled = onOtp ? s.otp.length < 4 : jn ? false : !this.idOk();
       V.signInBtnStyle = "flex:1.4;min-height:52px;padding:15px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em" + (V.signInDisabled ? ";opacity:.45" : "");
-      V.signInBackStyle = "flex:1;padding:15px 8px;border-radius:26px;border:1.4px solid #ececef;color:#8a8a8f;font-size:14.5px;font-weight:600;background:#fff";
+      V.signInBackLabel = jn ? "Not you?" : "Back";
+      V.signInBackStyle = "flex:1;min-height:52px;padding:15px 8px;border-radius:999px;border:1.4px solid #ececef;color:#8a8a8f;font-size:14.5px;font-weight:600;background:#fff";
       V.chromeStyle = "display:none";
-      V.signInFoot = "Your code is issued by the restaurant and lasts ten minutes. "
-        + "Ask whoever is serving you for it — they can see it on their screen the "
-        + "moment you tap below, and it is recorded against your card either way.";
+      V.signInFoot = jn
+        ? "The code goes to the address on your membership \u2014 never one typed on this "
+          + "screen \u2014 so a link forwarded to somebody else cannot sign them in. "
+          + "This invitation works once."
+        : "Your code is issued by the restaurant and lasts ten minutes. "
+          + "Ask whoever is serving you for it — they can see it on their screen the "
+          + "moment you tap below, and it is recorded against your card either way.";
       V.tabBarStyle = "display:none";
       return V;
     }
