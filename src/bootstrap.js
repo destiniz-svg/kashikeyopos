@@ -49,7 +49,8 @@ async function buildBootstrap(ctx) {
       chainSettings: ['SELECT key, value FROM chain.setting'],
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
       members: ['SELECT id, phone, name, email, home_outlet, points, tier,'
-        + ' credit_limit, joined_at, last_seen FROM chain.member'
+        + ' credit_limit, joined_at, last_seen, invited_via, invited_to,'
+        + ' invited_at, invite_count, revoked_at FROM chain.member'
         + ' ORDER BY joined_at DESC LIMIT 500'],
       // A member's history is DERIVED from this outlet's own receipts. It was
       // once three zeroes on the card, which made every regular look like a
@@ -693,7 +694,17 @@ function customerOf(r, h) {
     // to carry an invented `portal` flag that no server ever set, so every
     // customer read as "Registered · order tracking on" — including one who
     // had never heard of the portal.
-    seen: r.last_seen ? r.last_seen.toISOString().slice(0, 10) : ''
+    seen: r.last_seen ? r.last_seen.toISOString().slice(0, 10) : '',
+    // The invitation, as an event rather than a flag (migration 017). A row
+    // that was never invited and a row whose invitation was WITHDRAWN are
+    // different answers, and support needs to be able to read either — so
+    // `revoked` survives beside the history that earned it rather than
+    // erasing it back to "Not invited".
+    invitedVia: r.invited_via || '',
+    invitedTo: r.invited_to || '',
+    invitedAt: r.invited_at ? r.invited_at.toISOString().slice(0, 10) : '',
+    invites: num(r.invite_count),
+    revoked: r.revoked_at ? r.revoked_at.toISOString().slice(0, 10) : ''
   };
 }
 

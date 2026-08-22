@@ -803,41 +803,97 @@ class Component extends DCLogic {
 
   // The stage the TILL published, never one this phone inferred from the
   // ticket. A guest watching a tracker that guesses is worse than no tracker.
+  /* A table number written by two sides. The till holds "07" or "T07" or a
+     name the floor gave it; this phone holds whatever the QR put in `?t=`.
+     Comparing the raw strings meant tables 1 to 9 never found their own row —
+     so the tracker on exactly those tables never moved. */
+  sameTable(a, b) {
+    const norm = (v) => {
+      const t = String(v == null ? "" : v).trim().toLowerCase();
+      const d = t.replace(/\D/g, "");
+      // A purely numeric label compares as a NUMBER, so "07", "7" and "T07"
+      // are one table. A named table ("window 1") compares as itself.
+      return d && !/[a-z]{2,}/.test(t) ? String(+d) : t;
+    };
+    return norm(a) === norm(b);
+  }
   stage() {
-    // What the pass actually set on this table's ORDER. The rung lives on the
-    // ticket, so it is still there after the table is served — the docket rows
-    // below are cleared at that moment, and a tracker reading only those went
-    // blank exactly when the guest's food was ready.
+    /* THE STAGE IS AN INDEX, and the row carries its own step names.
+
+       This read the number back out of a hard-coded list of WORDS:
+       `indexOf(2)` returned −1, clamped to 0, and the tracker showed
+       "Received" for ever, on every table, whatever the kitchen did. It is
+       this app's central promise and it had never worked.
+
+       So: `at` is the index, `steps` are the row's own labels — renaming a
+       stage at the till renames it here rather than leaving a stale ladder
+       hard-coded in the phone. */
     const k = window.KPOS || {};
     const STEPS = ["Received", "In the kitchen", "Ready", "Served"];
-    const tks = (k.TICKETS || []).filter((t) => String(t.table) === String(this.state.table));
+    const tks = (k.TICKETS || []).filter((t) => this.sameTable(t.table, this.state.table));
     const mine = tks.map((t) => t.id);
     // A table with two bills on it is as far along as its SLOWEST order: one
     // round still cooking is not a table that has been served.
     const rung = tks.length ? Math.min.apply(null, tks.map((t) => Number(t.stage) || 0)) : null;
     const live = (k.STAGES || []).filter((x) => mine.indexOf(x.ticket) >= 0)
       .sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0))[0];
-    if (rung !== null) return { stage: STEPS[rung], at: live ? live.at : null };
+    if (rung !== null) return { at: rung, steps: STEPS, when: live ? live.at : null };
     // The kitchen calls it "Cooking"; a guest is told what that means.
-    if (live) return { stage: live.stage === "Cooking" ? "In the kitchen" : live.stage, at: live.at };
+    if (live) {
+      const word = live.stage === "Cooking" ? "In the kitchen" : live.stage;
+      return { at: Math.max(0, STEPS.indexOf(word)), steps: STEPS, when: live.at };
+    }
     try {
       const all = JSON.parse(localStorage.getItem(FKEY) || "null");
       if (!all || all.v !== 1 || !all.orders) return null;
-      const want = String(this.state.table);
-      const hit = Object.keys(all.orders).map((k) => all.orders[k])
-        .filter((o) => String(o.table) === want && o.kind === "qr")
+      const hit = Object.keys(all.orders).map((x) => all.orders[x])
+        .filter((o) => this.sameTable(o.table, this.state.table) && o.kind === "qr")
         .sort((a, b) => (b.at || 0) - (a.at || 0))[0];
-      return hit || null;
+      if (!hit) return null;
+      // The row's own index and the row's own ladder — never a word looked up
+      // in a list this phone happens to be carrying.
+      const steps = (hit.steps && hit.steps.length) ? hit.steps : STEPS;
+      return { at: Math.max(0, Math.min(steps.length - 1, Number(hit.stage) || 0)),
+        steps: steps, when: hit.at };
     } catch (e) { return null; }
   }
 
+  /* The receipt for a table that has just settled. Guarded: a closed row only
+     counts if it landed AFTER this phone's last round, so a receipt from an
+     earlier sitting cannot claim a bill that is still open in front of
+     somebody who has just ordered. */
+  paidReceipt() {
+    const d = this.pos();
+    if (!d || !d.closed) return null;
+    const want = String(this.state.table);
+    let hit = null;
+    Object.keys(d.closed).forEach((k) => {
+      if (!this.sameTable(k, want)) return;
+      hit = d.closed[k];
+    });
+    if (!hit) return null;
+    const sent = this.state.sent || [];
+    const lastRound = sent.length ? Math.max.apply(null, sent.map((r) => r.at || 0)) : 0;
+    if (lastRound && (hit.at || 0) < lastRound) return null;
+    const set = (d.tenders || []).filter((t) => t.k === hit.tender)[0];
+    return Object.assign({}, hit, { tenderName: set ? set.label : hit.tender });
+  }
   requestBill() {
     const t = this.ticket();
     if (!t) return this.toast("Nothing on this table yet");
     const due = this.payDue();
     const ok = this.push("bill", "Table " + this.tbl() + " is ready to pay", {
       tender: this.state.tender, tip: this.state.tip, due: Math.round(due * 100) / 100,
-      ref: (this.state.ident || {}).phone ? "G" + (this.state.ident || {}).phone.slice(-4) : "",
+      /* `guestRef`, NOT `ref`. A PHONE CANNOT WITNESS A CARD PAYMENT.
+         This built "G" + the last four digits of the guest's own number and
+         posted it as `ref` — the till stamped it on the ticket and wrote it
+         onto the settled row AS THE PROCESSOR'S APPROVAL CODE, so an
+         unreferenced card sale read as corroborated on the reconciliation
+         screen and defeated the one check that exists to catch it.
+
+         This is a way to call the right table back. The approval code comes
+         from the terminal or the operator, and nowhere else. */
+      guestRef: (this.state.ident || {}).phone ? "G" + (this.state.ident || {}).phone.slice(-4) : "",
       promo: this.state.promoOk ? this.state.promo.trim().toUpperCase() : "",
       split: this.state.split, parts: this.state.splitN
     });
@@ -1132,8 +1188,10 @@ class Component extends DCLogic {
 
     // ── tracker ────────────────────────────────────────────────────────────
     const fs = this.stage();
-    const STAGES = ["Received", "In the kitchen", "Ready", "Served"];
-    const at = fs ? Math.max(0, STAGES.indexOf(fs.stage)) : (s.sent.length ? 0 : -1);
+    // The ladder the TILL is using, not one hard-coded here.
+    const STAGES = (fs && fs.steps && fs.steps.length)
+      ? fs.steps : ["Received", "In the kitchen", "Ready", "Served"];
+    const at = fs ? Math.max(0, Math.min(STAGES.length - 1, fs.at)) : (s.sent.length ? 0 : -1);
     V.trackSub = s.sent.length
       ? "Table " + tno + " · " + s.sent.length + " round" + (s.sent.length === 1 ? "" : "s") + " sent"
       : "Nothing sent yet";
@@ -1173,12 +1231,22 @@ class Component extends DCLogic {
 
     // ── the bill ───────────────────────────────────────────────────────────
     const b = this.billMath();
+    // A ticket disappears from the published session the moment it settles, so
+    // this told someone who had just paid that nothing had happened — the app's
+    // answer to the one thing they had just done.
+    const paid = b ? null : this.paidReceipt();
     V.billSub = b
       ? "Table " + tno + " · as the till has it right now"
-      : "Nothing on this table yet";
+      : paid ? "Table " + tno + " · settled" : "Nothing on this table yet";
     V.billBodyStyle = b ? "display:block" : "display:none";
-    V.billEmpty = "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
-    V.billEmptyStyle = b ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:#a8a8ad;line-height:1.65;text-wrap:pretty";
+    V.billEmpty = paid
+      ? "Paid " + this.money(paid.total) + " by " + (paid.tenderName || paid.tender)
+        + " · Receipt " + paid.no
+        + (paid.tip ? " · including a " + paid.tip + "% tip" : "")
+        + ". Thank you — we hope to see you again."
+      : "Once something is on your table's ticket, the bill appears here and you can split it, tip and ask to pay.";
+    V.billEmptyStyle = b ? "display:none" : "margin-top:40px;text-align:center;font-size:13.5px;color:"
+      + (paid ? "#1f7a3d" : "#a8a8ad") + ";line-height:1.65;text-wrap:pretty";
     const rowS = "display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#6a6a70";
     V.billLines = b ? b.lines : [];
     V.billTotals = b ? [
@@ -1239,11 +1307,15 @@ class Component extends DCLogic {
       ? "Adding " + this.money(this.tipAmount()) + ". A tip is held apart from the service charge and paid out to the team in full."
       : "The service charge already on your bill is shared with the team. Anything you add here is on top of it.";
 
-    V.tenders = [
-      { k: "card", label: "Card" },
-      { k: "cash", label: "Cash" },
-      { k: "wallet", label: "Wallet" }
-    ].map((x) => ({
+    /* THE TENDER LIST BELONGS TO THE TILL. Hard-coded here, a guest could
+       choose a method this outlet had suspended and find out at the counter —
+       and transfer and QR, which the till does take, were never offered at
+       all. Customer credit is excluded: a table with no membership has no
+       account to charge. */
+    V.tenders = ((this.pos() || {}).tenders
+      || [{ k: "card", label: "Card" }, { k: "cash", label: "Cash" }, { k: "wallet", label: "Wallet" }])
+      .filter((x) => !x.memberOnly)
+      .map((x) => ({
       label: x.label,
       style: "padding:13px 6px;border-radius:14px;font-size:13.5px;font-weight:700;text-align:center;min-height:46px;"
         + (s.tender === x.k ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),

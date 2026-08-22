@@ -639,6 +639,40 @@ requests for themselves — four digits, salted hash, ten minutes, five tries,
 spent on use. Not an outbox op: a code replayed three hours later is a code
 nobody can use.
 
+### An invitation is an event, not a boolean
+
+It was a flag flipped in bulk: no channel, no time, no sender, no resend, no
+revoke — and on a row where the field was simply ABSENT it claimed the customer
+already had access. What support has to answer is "was this person invited, how,
+by whom, when, and is that invitation still good", so migration 017 puts all six
+on the row: `invited_via` · `invited_to` · `invited_by` · `invited_at` ·
+`invite_count` · `revoked_at`/`revoked_by`.
+
+Three channels — **email, Viber, WhatsApp** — and every one rides something the
+customer has already given: email is on the membership, Viber and WhatsApp both
+ride the mobile number. Nothing asks a guest for anything new, which is why the
+invitation belongs on their row rather than behind a form.
+
+- **A channel with no address on file is refused BY NAME** — "Hassan Moosa has no
+  email address on file" — never silently swapped for one they did not choose.
+  `chain.member_invite()` resolves the address and refuses, so both the handler
+  and the till say the same sentence; the control stays on screen, because one
+  that vanishes teaches an operator the app is broken.
+- **Sending again reissues the code**, so the previous one stops working: an
+  invitation forwarded to the wrong person cannot be used.
+- **Revoking keeps the history.** The row reads "Revoked", never "Not invited" —
+  a member who was let go and one who was never asked are different answers.
+  `chain.member_revoke()` spends any live code in the same statement, and
+  `chain.member_code_set()` refuses a revoked member, so the gate holds for the
+  code the guest asks for themselves as well as the one the counter issues.
+  Inviting again **restores** access, because a code that cannot work is not an
+  invitation. Rank 3: withdrawing access is not a cashier's to make.
+
+**Email is a real transport when one is configured** (`src/email.js`); Viber and
+WhatsApp are recorded but not wired. Either way the answer carries `sent` and the
+reason, and the code comes back for the counter to read out — a screen that
+reports a send it did not make is worse than one offering no send at all.
+
 The whole of that was missing, and each piece failed silently:
 
 - **nothing ever inserted a `chain.member` row.** The till's Add customer queued
@@ -710,7 +744,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 151 tests
+npm test                          # 162 tests
 npm run leak-test                 # isolation, on its own
 ```
 

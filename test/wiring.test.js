@@ -353,6 +353,101 @@ test('a floor tile says where the food is', () => {
   assert.strictEqual(put([]).chipText, 'Open', 'seated with nothing fired');
 });
 
+/* ═══ A PHONE NEVER DECIDES MONEY ═══════════════════════════════════════════
+   It shows what the till recorded, and it posts intent. Where a phone was
+   found computing its own version, that was a defect.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a phone cannot witness a card payment', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const guest = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+
+  // The guest app built "G" + the last four digits of the guest's own number
+  // and posted it as `ref`. The till stamped it onto the settled row AS THE
+  // PROCESSOR'S APPROVAL CODE, so an unreferenced card sale read as
+  // corroborated on the reconciliation screen — defeating the one check that
+  // exists to catch it.
+  assert.match(guest, /guestRef:/,
+    'the phone posts a way to call the table back, named as such');
+  const bill = /requestBill\(\)\s*\{[\s\S]*?\n  \}/.exec(guest);
+  assert.ok(bill, 'found the pay intent');
+  assert.doesNotMatch(bill[0], /(^|[^a-zA-Z])ref:/,
+    'and never a bare `ref` — a reference on a settled row is the processor\'s');
+
+  // The till must not fall through to it either.
+  assert.doesNotMatch(SRC, /ref: m\.ref \|\| \(\(tk \|\| \{\}\)\.payIntent/,
+    'the settled row takes only what a terminal or an operator supplied');
+
+  // Through the real thing: a table that asked to pay by QR settles with an
+  // empty reference unless somebody actually supplied one.
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  F.state.tickets = Object.assign({}, F.state.tickets, {
+    [key]: Object.assign(F.blankTicket(), {
+      party: 2, bizDate: F.today(),
+      payIntent: { tender: 'qr', tip: 5, due: 861, guestRef: 'G1234' },
+      lines: [{ id: 'm1', qty: 1, note: '', split: 0, fired: true, since: 1, firedAt: Date.now() }]
+    })
+  });
+  F.state.activeTable = slot;
+  F.state.register = { open: true, float: 1000, openedBy: 'u', openedAt: Date.now() };
+  F.state.modal = { kind: 'pay', tender: 'qr', given: '' };
+
+  // The till STATES what the table asked for rather than silently taking it.
+  const pay = F.overlayVals();
+  assert.match(String(pay.asked), /asked to pay by QR/, 'the request is shown');
+  assert.match(String(pay.asked), /5% tip/);
+  assert.match(String(pay.asked), /G1234/, 'and the guest reference, as a callback');
+  assert.match(String(pay.asked), /whole table/,
+    'MVR 861 exceeds this bill, and two money figures that disagree are explained');
+
+  pay.confirmPay();
+  assert.strictEqual(F.state.settled[0].ref, '',
+    'nobody witnessed an approval, so the row carries no reference');
+});
+
+/* The tracker is this app's central promise, and it had never worked. */
+test('the guest tracker reads the stage INDEX, and the row\'s own ladder', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const guest = fs.readFileSync(
+    path.join(__dirname, '..', 'app', 'guest.html'), 'utf8');
+
+  // `indexOf(2)` on a list of WORDS returns −1, clamps to 0, and the tracker
+  // shows "Received" for ever — on every table, whatever the kitchen does.
+  assert.doesNotMatch(guest, /STAGES\.indexOf\(fs\.stage\)/,
+    'the stage is an index; looking a number up in a list of words finds nothing');
+  assert.match(guest, /fs\.steps/,
+    "and the ladder comes off the row, so renaming a stage at the till renames it here");
+
+  // A till writes "07"; a phone holds 7. Comparing raw strings meant tables
+  // 1 to 9 never found their own row.
+  assert.match(guest, /sameTable\(/, 'the table number is normalised on both sides');
+});
+
+/* Publishing is a contract, not a dump — but a contract has to carry what the
+   other end needs. */
+test('the till publishes the tender set and the tables it just closed', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  F.state.settled = [{ outletId: F.state.outletId, no: 'INV-9', table: 'T01',
+    at: Date.now(), total: 843.5, tender: 'cash', covers: 2, customer: '' }];
+  F.publishGuest();
+  const pub = JSON.parse(F.__win.localStorage.getItem(F.GUESTKEY));
+
+  const ks = (pub.tenders || []).map((t) => t.k);
+  assert.ok(ks.indexOf('qr') >= 0 && ks.indexOf('transfer') >= 0,
+    'transfer and QR are offered — the till takes them and the phone never did');
+  assert.ok((pub.tenders || []).filter((t) => t.k === 'credit')[0].memberOnly,
+    'a table with no membership has no account to charge');
+
+  // A ticket vanishes the moment it settles, so the phone was told nothing had
+  // happened — its answer to the one thing the guest had just done.
+  assert.ok(pub.closed && pub.closed['T01'], 'the closed table is published');
+  assert.strictEqual(pub.closed['T01'].no, 'INV-9');
+  assert.strictEqual(pub.closed['T01'].total, 843.5);
+});
+
 /* The business date is the outlet's local date. `toISOString()` is UTC, and
    Malé is UTC+5 — so from 19:00 local, most of a restaurant's trading, every
    receipt and Z read was filed under yesterday while the clock in the header
@@ -417,6 +512,89 @@ test('nothing claims to have sent an SMS', () => {
     .filter(([, line]) => !/\b(no|not|never|nothing|without)\b/i.test(line));
   assert.deepStrictEqual(claims.map(([n, l]) => n + ': ' + l.trim()), [],
     'this build has no SMS transport, so no screen may say it used one');
+});
+
+/* ═══ AN INVITATION IS AN EVENT ══════════════════════════════════════════
+   The invite was a boolean flipped in bulk — no channel, no time, no sender,
+   no resend, no revoke — and on a row where the field was simply ABSENT it
+   claimed the customer already had access. Every one of those is a sentence
+   a screen said and could not back. ═══════════════════════════════════════ */
+function withCustomers(rows) {
+  const k = FX.kpos();
+  k.CUSTOMERS = rows;
+  return H.makeInstance({ kpos: k, raw: FX.raw(), real: FX.real() });
+}
+
+const NEVER_ASKED = {
+  id: 'c1', name: 'Hassan Moosa', phone: '9995544', email: '',
+  points: 0, visits: 0, spent: 0, credit: 0, used: 0, last: '', seen: '',
+  invitedVia: '', invitedTo: '', invitedAt: '', invites: 0, revoked: ''
+};
+const LET_GO = {
+  id: 'c2', name: 'Mariyam Zahira', phone: '9991100', email: 'm@example.mv',
+  points: 0, visits: 0, spent: 0, credit: 0, used: 0, last: '', seen: '',
+  invitedVia: 'email', invitedTo: 'm@example.mv', invitedAt: '2026-08-22',
+  invites: 2, revoked: '2026-08-22'
+};
+
+test('an invitation is offered on a named channel', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const v = F.modalVals({ kind: 'customer', id: 'c1' });
+  const labels = (v.detailActs || []).map((a) => a.label);
+  ['Email', 'Viber', 'WhatsApp'].forEach((ch) => {
+    assert.ok(labels.some((l) => l.indexOf(ch) >= 0),
+      ch + ' is offered by name, not folded into one "invite": ' + labels.join(' | '));
+  });
+  // Never asked has nothing to resend.
+  assert.ok(labels.every((l) => l.indexOf('Resend') < 0),
+    'a customer nobody invited is invited, not re-invited');
+});
+
+test('a channel the customer has no address for is refused by name', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const v = F.modalVals({ kind: 'customer', id: 'c1' });
+  const email = (v.detailActs || []).filter((a) => a.label.indexOf('Email') >= 0)[0];
+  assert.ok(email, 'the control is still there — a screen that vanishes teaches'
+    + ' an operator the app is broken');
+  F.__toasts.length = 0;
+  email.go(H.EV);
+  const said = (F.__toasts[0] || {}).t || '';
+  assert.match(said, /Hassan Moosa/, 'refused BY NAME: ' + said);
+  assert.match(said, /email address/, 'and it says which address is missing');
+
+  // Viber rides the mobile they already gave, so it is not refused for want
+  // of an address — it needs an outlet to mint the code, which is a different
+  // sentence entirely.
+  F.__toasts.length = 0;
+  const viber = (v.detailActs || []).filter((a) => a.label.indexOf('Viber') >= 0)[0];
+  viber.go(H.EV);
+  const v2 = (F.__toasts[0] || {}).t || '';
+  assert.ok(v2.indexOf('no mobile number') < 0,
+    'the number is on the row, so nothing is missing: ' + v2);
+});
+
+test('a revoked customer reads Revoked, never Not invited', () => {
+  const F = withCustomers([LET_GO]);
+  const v = F.modalVals({ kind: 'customer', id: 'c2' });
+  const portal = (v.detailRows || []).filter((r) => /Portal/.test(JSON.stringify(r)))[0];
+  const line = JSON.stringify(portal || {});
+  assert.match(line, /Revoked/, 'the row says what happened: ' + line);
+  assert.ok(line.indexOf('Not invited') < 0,
+    'a member who was let go and one who was never asked are different answers');
+
+  const labels = (v.detailActs || []).map((a) => a.label);
+  assert.ok(labels.some((l) => l.indexOf('Resend') >= 0),
+    'the history is still there, so the next one is a resend: ' + labels.join(' | '));
+  assert.ok(labels.some((l) => /revoked/i.test(l)),
+    'and the revocation control states the state it is already in');
+
+  const never = withCustomers([NEVER_ASKED])
+    .modalVals({ kind: 'customer', id: 'c1' });
+  assert.match(JSON.stringify((never.detailRows || [])
+    .filter((r) => /Portal/.test(JSON.stringify(r)))[0] || {}), /Not invited/,
+    'and a customer nobody asked reads exactly that');
+  assert.ok((never.detailActs || []).every((a) => !/revok/i.test(a.label)),
+    'there is nothing to withdraw from someone who was never let in');
 });
 
 test('the audit-only kinds are named, not defaulted', () => {

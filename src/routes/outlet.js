@@ -6,6 +6,7 @@ const directory = require('../directory');
 const { sameOutlet, atLeast, groupScope } = require('../auth');
 const { randomPin, hashPin } = require('../secrets');
 const { buildBootstrap, buildState, all } = require('../bootstrap');
+const email = require('../email');
 
 const r = express.Router({ mergeParams: true });
 
@@ -148,48 +149,141 @@ r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next)
       owed — no margins, no costs, no staff records. A guest device has no
       business holding those, so they are not in the projection at all. ───── */
 /* ── inviting a customer to their own portal ─────────────────────────────
-   There is no SMS or email transport in this build, so an invite cannot be
-   something the terminal claims to have sent. It is two things a person can
-   hand over across a counter: WHERE to go, and a code to get in with.
+   An invitation is an EVENT, not a boolean. It was a flag flipped in bulk:
+   no channel, no time, no sender, no resend, no revoke — and on a row where
+   the field was simply absent it claimed the customer already had access.
 
-   The button used to flip a local flag and toast "invites sent by SMS". It
-   sent nothing. A screen that reports an action it did not take is worse than
-   one that offers no action at all.
+   What support has to be able to answer is "was this person invited, how, by
+   whom, when, and is that invitation still good". So the row records all six,
+   and `chain.member_invite()` resolves the address for the channel and refuses
+   BY NAME when there is none — inviting on WhatsApp a customer with no mobile
+   silently falling back to email is how a code reaches the wrong person.
+
+   Three channels, because all three ride something the customer has already
+   given: email is on the membership, Viber and WhatsApp both ride the mobile
+   number. Nothing here asks a guest for anything new, which is the point of
+   inviting from that row rather than from a form.
+
+   Email is a real transport when one is configured (`src/email.js`); Viber and
+   WhatsApp are not wired in this build. Either way the response says which of
+   the two happened — `sent` is never a guess — and the code comes back for the
+   counter to read out, because a code that reached nobody is worse than one a
+   person hands over.
+
+   Sending again REISSUES the code, so the previous one stops working: an
+   invitation forwarded to the wrong person cannot be used.
 
    Not an outbox op, for the same reason a rename is not: a sign-in code lives
    ten minutes, and one that arrives later through a replay queue is a code
    nobody can use. Rank 2 — the till. Whoever is standing with the guest.
    ─────────────────────────────────────────────────────────────────────── */
+const CHANNELS = { email: 'Email', viber: 'Viber', whatsapp: 'WhatsApp' };
+
 r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
   async function (req, res, next) {
+    const via = String((req.body || {}).via || 'email').toLowerCase();
+    if (!CHANNELS[via]) {
+      return res.status(400).json({
+        error: 'not a channel this build can invite on: ' + via
+      });
+    }
     try {
       const out = await withOutlet(req.ctx, async function (c) {
-        const m = await c.query('SELECT id, name, phone FROM chain.member'
-          + ' WHERE id = $1', [req.params.memberId]);
-        if (!m.rows.length) return null;
+        // The database resolves the address and refuses a channel the customer
+        // has no address for. One gate, and it reads the row it is writing.
+        const inv = await c.query(
+          'SELECT * FROM chain.member_invite($1,$2,$3,$4)',
+          [req.params.memberId, via, (req.body || {}).to || null, req.ctx.actor || null]);
+        if (!inv.rows.length) return null;
+        const m = inv.rows[0];
         // Same shape as the code the member requests for themselves: four
         // digits, hashed with a per-row salt, ten minutes, five tries, spent
-        // on use. What the database holds is never the code.
+        // on use. What the database holds is never the code. Setting it again
+        // overwrites the last one, which is what makes a resend an invalidation.
         const code = randomPin();
         const h = hashPin(code, null);
         await c.query('SELECT chain.member_code_set($1,$2,$3,$4)',
-          [m.rows[0].phone, h.hash, h.salt, 10]);
-        const o = await c.query('SELECT slug FROM chain.outlet WHERE id = $1',
+          [m.phone, h.hash, h.salt, 10]);
+        const o = await c.query('SELECT slug, name FROM chain.outlet WHERE id = $1',
           [req.ctx.outletId]);
-        await c.query("SELECT chain.log_anon($1,'member_invite','member',$2,$3)",
-          [req.ctx.outletId, m.rows[0].id, JSON.stringify({ by: req.ctx.actor })]);
-        return {
-          member: { id: m.rows[0].id, name: m.rows[0].name, phone: m.rows[0].phone },
-          // The server spells the address, because only the server knows where
-          // the base domain ends. A hostname typed into a terminal is right in
-          // production and wrong in staging.
-          url: memberUrl((o.rows[0] || {}).slug || ''),
-          code: code, mins: 10, tries: 5,
-          via: 'counter'
-        };
+        // The server spells the address, because only the server knows where
+        // the base domain ends. A hostname typed into a terminal is right in
+        // production and wrong in staging.
+        const url = memberUrl((o.rows[0] || {}).slug || '');
+        return { m: m, code: code, url: url, brand: (o.rows[0] || {}).name || '' };
       });
       if (!out) return res.status(404).json({ error: 'no such customer' });
-      res.set('cache-control', 'no-store').json(out);
+
+      // Sending happens OUTSIDE the transaction: a transport that hangs must
+      // not hold a row lock, and a transport that refuses must not roll back an
+      // invitation the counter can still complete by reading the code out.
+      let delivery = { sent: false, via: 'none', reason: 'no transport configured' };
+      if (via === 'email') {
+        try {
+          delivery = await email.send(email.signInCode({
+            to: out.m.invited_to, code: out.code, mins: 10, brand: out.brand
+          }));
+        } catch (e) {
+          delivery = { sent: false, via: 'none', reason: e.message || 'the transport refused' };
+        }
+      } else {
+        delivery = {
+          sent: false, via: 'none',
+          reason: CHANNELS[via] + ' is recorded, not wired: this build has no '
+            + CHANNELS[via] + ' transport, so the code is read out at the counter'
+        };
+      }
+
+      await withOutlet(req.ctx, (c) => c.query(
+        "SELECT chain.log_anon($1,'member_invite','member',$2,$3)",
+        [req.ctx.outletId, out.m.id, JSON.stringify({
+          by: req.ctx.actor, via: via, to: out.m.invited_to,
+          n: out.m.invite_count, sent: delivery.sent,
+          // With no transport the code goes to the audit trail rather than
+          // nowhere, exactly as the account plane does it.
+          code: delivery.sent ? undefined : out.code
+        })]));
+
+      res.set('cache-control', 'no-store').json({
+        member: { id: out.m.id, name: out.m.name, phone: out.m.phone },
+        url: out.url, code: out.code, mins: 10, tries: 5,
+        via: via, channel: CHANNELS[via], to: out.m.invited_to,
+        count: out.m.invite_count, restored: out.m.was_revoked === true,
+        sent: delivery.sent === true, reason: delivery.reason || ''
+      });
+    } catch (e) {
+      // P0001 is the invite function refusing a channel by name — "Aishath has
+      // no email address on file". That is an answer, not a server fault.
+      if (e && e.code === 'P0001') return res.status(409).json({ error: e.message });
+      next(e);
+    }
+  });
+
+/* ── taking the portal back ──────────────────────────────────────────────
+   Revoking stops the sign-in and KEEPS the history: the row reads "Revoked",
+   never "Not invited", so support can tell a member who was let go from one
+   who was never asked. Any live code is spent in the same statement, because
+   a revocation that leaves a working code in a guest's inbox is not one.
+
+   The gate is in `chain.member_code_set()`, which refuses a revoked member —
+   so it holds for the code the guest requests for themselves as well as for
+   the one the counter issues, and a phone cannot get in by asking nicely.
+
+   Rank 3: withdrawing someone's access is not a cashier's to make. ──────── */
+r.post('/member/:memberId/revoke', sameOutlet, atLeast('manager'),
+  async function (req, res, next) {
+    try {
+      const out = await withOutlet(req.ctx, async function (c) {
+        const g = await c.query('SELECT * FROM chain.member_revoke($1,$2)',
+          [req.params.memberId, req.ctx.actor || null]);
+        if (!g.rows.length) return null;
+        await c.query("SELECT chain.log_anon($1,'member_revoke','member',$2,$3)",
+          [req.ctx.outletId, g.rows[0].id, JSON.stringify({ by: req.ctx.actor })]);
+        return g.rows[0];
+      });
+      if (!out) return res.status(404).json({ error: 'no such customer' });
+      res.set('cache-control', 'no-store')
+        .json({ member: { id: out.id, name: out.name }, revoked: true });
     } catch (e) { next(e); }
   });
 

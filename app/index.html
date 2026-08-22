@@ -1147,6 +1147,7 @@
                     </sc-for>
                   </div>
                 </div>
+                <div style="{{ askedStyle }}">{{ asked }}</div>
                 <div style="{{ ptsWrap }}">
                   <button onClick="{{ ptsGo }}" style="{{ ptsStyle }}">{{ ptsLabel }}</button>
                   <div style="{{ ptsNoteStyle }}">{{ ptsNote }}</div>
@@ -5766,6 +5767,26 @@ class Component extends DCLogic {
            Card and wallet fill it in themselves: the terminal approved the
            payment and knows the code, so a cashier retyping it is a figure
            entered twice and a digit waiting to be got wrong. */
+        /* WHAT THE TABLE ASKED FOR, said out loud rather than silently
+           pre-selected. A QR guest's choice of tender and tip is a request,
+           and the cashier settling the bill should be able to see it was one.
+           Where the guest's quoted figure exceeds the bill actually being
+           settled — a split — it says so: two money figures that disagree
+           without explanation is exactly what this build avoids elsewhere. */
+        askedStyle: (tk && tk.payIntent) ? "margin-bottom:12px;padding:10px 12px;border-radius:9px;background:var(--info-dim);border:1px solid var(--line);font-size:11.5px;line-height:1.55;color:var(--blue-bright)" : "display:none",
+        asked: (() => {
+          const pi = (tk || {}).payIntent;
+          if (!pi) return "";
+          const bits = ["Table asked to pay by " + this.tenderName(pi.tender)];
+          if (pi.tip) bits.push(pi.tip + "% tip");
+          if (pi.due) {
+            bits.push(pi.due > T.total + 0.005
+              ? "quoted " + MVRc(pi.due) + " — asked for the whole table"
+              : "quoted " + MVRc(pi.due));
+          }
+          if (pi.guestRef) bits.push("guest " + pi.guestRef);
+          return bits.join(" \u00b7 ");
+        })(),
         refWrap: payProc ? "margin-bottom:12px;display:block" : "display:none",
         refLabel: payProc ? payProc.evidence + (payProc.auto ? "" : " — optional") : "",
         refValue: m.ref || "",
@@ -5971,7 +5992,11 @@ class Component extends DCLogic {
             // always the ticket's pay INTENT — a QR guest's choice — so a
             // reference typed at the till never reached the row and the
             // settlement screen counted every card sale as unreferenced.
-            ref: m.ref || ((tk || {}).payIntent || {}).ref || "",
+            // ONLY what a terminal or an operator supplied. It used to fall
+            // through to the ticket's pay intent, which is a guest's own
+            // string — so every QR table settled as "referenced" without
+            // anyone ever having seen an approval code.
+            ref: m.ref || "",
               tip: Math.round((((tk || {}).payIntent || {}).tip || 0) / 100 * T.net * 100) / 100,
               customer: m.tender === "credit" ? (m.cust || "") : this.ticketMember(tk) || "",
               // A cover is a guest at the table, so it is the LARGER of the two
@@ -7266,30 +7291,73 @@ class Component extends DCLogic {
         // it are the two things a manager does from here, so they sit under the
         // record rather than behind another screen.
         detailActsStyle: this.can("customers", "e") ? "display:flex;flex-wrap:wrap;gap:8px;margin-top:9px" : "display:none",
-        detailActs: (this.can("customers", "e") ? [
-          // The invite, and the whole of it: WHERE their card is, and a code to
-          // get in with. There is no SMS in this build, so it is two things a
-          // person hands across a counter rather than something the terminal
-          // claims to have sent.
-          {
-            label: "Invite to the portal",
-            style: "flex:1 1 150px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var(--text)",
+        detailActs: (this.can("customers", "e") ? this.INVITE_CHANNELS().map((ch) => {
+          // An invitation is an EVENT, on a named channel, and all three ride
+          // something the customer has already given: email is on the
+          // membership, Viber and WhatsApp both ride the mobile number. So
+          // nothing here asks a guest for anything new — which is the whole
+          // point of inviting from their row rather than from a form.
+          //
+          // A channel they have no address for is REFUSED BY NAME rather than
+          // hidden. A control that vanishes teaches an operator the app is
+          // broken; one that says "Aishath has no email address on file" tells
+          // them what to fix. The server refuses it too, on the same wording.
+          const to = ch.key === "email" ? (c.email || "") : (c.phone || "");
+          const has = !!to;
+          return {
+            label: (c.invites ? "Resend" : "Invite") + " \u00b7 " + ch.name,
+            style: "flex:1 1 150px;min-width:0;padding:11px;border-radius:999px;font-size:12px;font-weight:700;text-align:center;font-family:inherit;background:var(--bg-2);border:1px solid var(--line);color:var("
+              + (has ? "--text" : "--text-muted") + ")",
             go: async () => {
+              if (!has) {
+                return this.toast(c.name + " has no " + ch.needs
+                  + " on file \u2014 add one on the customer first, then "
+                  + ch.name + " has somewhere to go", "warn");
+              }
               const B = window.KPOS_BRIDGE;
-              if (!B || !B.inviteMember) return this.toast("Sign in to the outlet first — the code is minted by the store, not by this device", "warn");
+              if (!B || !B.inviteMember) return this.toast("Sign in to the outlet first \u2014 the code is minted by the store, not by this device", "warn");
               try {
-                const r = await B.inviteMember(c.id);
-                this.info("Read this out to " + (r.member || {}).name,
-                  (r.member || {}).phone || c.phone,
-                  [["Their card", r.url, "t"], ["Code", r.code], ["Good for", r.mins + " minutes · " + r.tries + " tries"]],
-                  "They open that address, enter the number above and then this code. "
-                  + "It is spent the moment it is used, and it is not stored anywhere "
-                  + "readable — the outlet keeps a salted hash of it, exactly like a "
-                  + "staff PIN. Nothing was sent by SMS or email: this build has no "
-                  + "transport wired, so the code is handed over the way a restaurant "
-                  + "already verifies a person.");
+                const r = await B.inviteMember(c.id, ch.key, to);
+                const rows = [["Their card", r.url, "t"], ["Code", r.code],
+                  ["Good for", r.mins + " minutes \u00b7 " + r.tries + " tries"],
+                  ["Sent to", (r.channel || ch.name) + " \u00b7 " + (r.to || to)],
+                  ["Invitations", String(r.count || 1)]];
+                this.info(
+                  r.sent ? ch.name + " sent to " + (r.to || to)
+                    : "Read this out to " + ((r.member || {}).name || c.name),
+                  (r.member || {}).phone || c.phone, rows,
+                  (r.restored ? "This customer had been revoked; a fresh invitation restores their access, because a code they cannot use is not an invitation. " : "")
+                  + "Sending again reissues the code, so any previous one has just stopped working \u2014 an invitation forwarded to the wrong person cannot be used. "
+                  + "It is spent the moment it is used, and it is not stored anywhere readable: the outlet keeps a salted hash of it, exactly like a staff PIN. "
+                  + (r.sent ? "" : (r.reason || "Nothing was sent") + ", so the code is handed over the way a restaurant already verifies a person."));
+                // The count and the channel are on the row now, so re-read it.
+                if (B.refresh) B.refresh();
               } catch (e) {
-                this.toast("Could not mint a code — " + (e && e.message ? e.message : "the outlet did not answer"), "err");
+                this.toast((e && e.message) ? e.message : "The outlet did not answer \u2014 no code was issued", "err");
+              }
+            }
+          };
+        }) : []).concat((c.invites && this.can("customers", "e")) ? [
+          // Taking it back. The history STAYS — the row goes on reading
+          // "Revoked", never "Not invited" — because a member who was let go
+          // and one who was never asked are different answers, and support
+          // needs to be able to read either.
+          {
+            label: c.revoked ? "Access already revoked" : "Revoke portal access",
+            style: "flex:1 1 150px;min-width:0;padding:11px;border-radius:999px;background:transparent;font-size:12px;font-weight:600;text-align:center;font-family:inherit;border:1px solid var("
+              + (c.revoked ? "--line);color:var(--text-muted)" : "--red-line);color:var(--red-bright)"),
+            go: async () => {
+              if (c.revoked) return this.toast(c.name + " was revoked on " + c.revoked + " and cannot sign in");
+              if (!this.canApprove()) return this.toast("Withdrawing a customer's portal access needs a manager", "warn");
+              const B = window.KPOS_BRIDGE;
+              if (!B || !B.revokeMember) return this.toast("Sign in to the outlet first \u2014 access is held by the store, not by this device", "warn");
+              try {
+                await B.revokeMember(c.id);
+                this.toast(c.name + " can no longer sign in \u00b7 their history is kept");
+                if (B.refresh) B.refresh();
+                this.setState({ modal: null });
+              } catch (e) {
+                this.toast((e && e.message) ? e.message : "The outlet did not answer \u2014 access is unchanged", "err");
               }
             }
           }
@@ -7311,7 +7379,7 @@ class Component extends DCLogic {
           }
         ] : []),
         modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier · " + c.points + " pts",
-        detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.seen ? "Signed in " + c.seen : "Never signed in")],
+        detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", this.inviteState(c), this.inviteTone(c)), Rt("Signed in", c.seen ? c.seen : "Never")],
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -7628,9 +7696,12 @@ class Component extends DCLogic {
     rows.forEach((x) => {
       const key = this.state.outletId + ":" + x.table;
       if (!t[key]) return;
-      t[key] = Object.assign({}, t[key], { payIntent: { tender: x.tender, tip: x.tip || 0, due: x.due || 0, ref: x.ref || "", promo: x.promo || "" } });
+      // `guestRef` is a way to call the right table back, never evidence of a
+      // payment. It is kept apart from `ref` on purpose: a reference on the
+      // settled row is the PROCESSOR's, and a phone has none to give.
+      t[key] = Object.assign({}, t[key], { payIntent: { tender: x.tender, tip: x.tip || 0, due: x.due || 0, guestRef: x.guestRef || "", promo: x.promo || "", split: x.split || "", parts: x.parts || 0 } });
       this.patchSignal(x.id, { ing: 1 });
-      this.queue("qr_pay_intent", "T" + x.table + " chose " + x.tender + (x.tip ? " · tip " + x.tip + "%" : "") + (x.ref ? " · " + x.ref : ""), "orders");
+      this.queue("qr_pay_intent", "T" + x.table + " chose " + x.tender + (x.tip ? " · tip " + x.tip + "%" : "") + (x.guestRef ? " · " + x.guestRef : ""), "orders");
     });
     this.setState({ tickets: t });
   }
@@ -11353,6 +11424,38 @@ class Component extends DCLogic {
         prefs: { pointsPer: (s.prefs || {}).pointsPer || 10 },
         priceOv: s.priceOv || {},
         eightySix: this.eightySix(),
+        /* THE TENDER SET THE TILL WILL ACTUALLY ACCEPT. The phones hard-coded
+           card/cash/wallet, so a guest could choose a method this outlet had
+           SUSPENDED and find out at the counter — and transfer and QR, which
+           the till does take, were never offered at all. Customer credit is
+           published with its own flag: an anonymous table has no membership
+           and so no account to charge. */
+        tenders: [
+          { k: "cash", label: "Cash" }, { k: "card", label: "Card" },
+          { k: "wallet", label: "BML Pay" }, { k: "qr", label: "QR" },
+          { k: "transfer", label: "Transfer" }, { k: "credit", label: "Customer credit" }
+        ].filter((t) => this.tenderLive(t.k)).map((t) => {
+          const pr = this.procFor(t.k);
+          return { k: t.k, label: t.label, evidence: pr ? pr.evidence : "",
+            memberOnly: t.k === "credit" };
+        }),
+        /* RECENTLY CLOSED TABLES. A ticket vanishes from this payload the
+           moment it settles, so a guest who had just paid was told "nothing on
+           your table yet" — the app's answer to the one thing they had just
+           done. Keyed by TABLE, because an anonymous guest has no membership
+           to key on, and held for ninety minutes. */
+        closed: (() => {
+          const cut = Date.now() - 90 * 60000;
+          const out = {};
+          (s.settled || []).filter((x) => x.outletId === s.outletId && (x.at || 0) >= cut)
+            .sort((a, b) => (a.at || 0) - (b.at || 0))
+            .forEach((x) => {
+              if (!x.table) return;
+              out[String(x.table)] = { no: x.no, at: x.at, total: x.total,
+                tender: x.tender, tip: x.tip || 0, covers: x.covers || 1 };
+            });
+          return out;
+        })(),
         /* THE PROGRAMME, as the merchant runs it. A phone quoting a hard-coded
            "10 points = MVR 1" quotes the guest a figure the till will not
            honour the moment that rate is edited. */
@@ -11376,9 +11479,9 @@ class Component extends DCLogic {
           points: c.points, visits: c.visits, spent: c.spent, tier: c.tier,
           tierKey: c.tierKey, last: c.last, credit: c.credit, used: c.used,
           // Whether they may sign in at all, and how they were asked.
-          invited: !!c.seen || !!c.invitedAt, seen: c.seen || "",
+          invited: !!c.seen || !!c.invitedAt || !!c.invites, seen: c.seen || "",
           invitedAt: c.invitedAt || "", invitedVia: c.invitedVia || "",
-          revoked: !!c.revoked
+          invites: +c.invites || 0, revoked: !!c.revoked
         })),
         // Settled rows a member portal needs to show a real history. No costs,
         // no margins — a guest device has no business holding those.
@@ -12027,6 +12130,42 @@ class Component extends DCLogic {
   tierName(points) { return (this.tierFor(points) || {}).name || "Member"; }
   nextTier(points) {
     return this.TIERS().filter((x) => (+x.at || 0) > (+points || 0))[0] || null;
+  }
+  /* ═══ AN INVITATION IS AN EVENT ═════════════════════════════════════════
+     Three channels, and every one of them rides something the customer has
+     ALREADY given: email is on the membership, Viber and WhatsApp both ride
+     the mobile number. Nothing here asks a guest for anything new, which is
+     why the invitation belongs on their row rather than behind a form.
+
+     Email is a real transport when one is configured. Viber and WhatsApp are
+     recorded but not wired in this build, so the code is read out at the
+     counter — and the answer says which of the two happened. A screen that
+     reports a send it did not make is worse than one offering no send. */
+  INVITE_CHANNELS() {
+    return [
+      { key: "email", name: "Email", needs: "email address" },
+      { key: "viber", name: "Viber", needs: "mobile number" },
+      { key: "whatsapp", name: "WhatsApp", needs: "mobile number" }
+    ];
+  }
+  inviteChannel(k) {
+    return this.INVITE_CHANNELS().filter((x) => x.key === k)[0] || null;
+  }
+  // What the row says about their access, in one line. "Revoked" and "Not
+  // invited" are different answers and both have to survive being read.
+  inviteState(c) {
+    if (!c) return "Not invited";
+    if (c.revoked) return "Revoked " + c.revoked;
+    if (!c.invites && !c.invitedAt) return "Not invited";
+    const ch = this.inviteChannel(c.invitedVia);
+    return "Invited by " + (ch ? ch.name : (c.invitedVia || "the counter"))
+      + (c.invitedAt ? " \u00b7 " + c.invitedAt : "")
+      + ((+c.invites || 0) > 1 ? " \u00b7 " + c.invites + " sends" : "");
+  }
+  inviteTone(c) {
+    if (c && c.revoked) return "var(--red-bright)";
+    if (c && (c.invites || c.invitedAt)) return c.seen ? "var(--green)" : "var(--warn-bright)";
+    return "var(--text-muted)";
   }
   // A member as the till and the phone must both see them: the seed row with
   // everything awarded since composed over it, and the tier worked out rather

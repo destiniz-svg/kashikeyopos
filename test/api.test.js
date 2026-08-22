@@ -600,13 +600,18 @@ test('a customer taken at the counter reaches the outlet, and can sign in',
     const up = await one('SELECT tier FROM chain.member WHERE phone = $1', [phone]);
     assert.strictEqual(up.tier, 'Gold', 'and the update landed');
 
-    // The invite. No SMS in this build, so it is what a person hands across a
-    // counter: where the card is, and a code to get in with.
+    // The invite, on a named channel. With no transport configured it is what
+    // a person hands across a counter: where the card is, and a code to get in
+    // with — and it SAYS so rather than claiming a send.
     const inv = await post('/api/outlet/' + outletId + '/member/' + res.memberId
-      + '/invite', {}, token);
+      + '/invite', { via: 'email' }, token);
     assert.strictEqual(inv.status, 200, JSON.stringify(inv.body));
     assert.match(String(inv.body.code), /^\d{4}$/, 'four digits');
-    assert.strictEqual(inv.body.via, 'counter', 'and it says how it travels');
+    assert.strictEqual(inv.body.via, 'email', 'and it says which channel it went on');
+    assert.strictEqual(inv.body.to, 'aishath@example.mv', 'to the address on the membership');
+    assert.strictEqual(inv.body.count, 1, 'the first invitation');
+    assert.strictEqual(inv.body.sent, false, 'no transport here, and it does not pretend');
+    assert.ok(inv.body.reason, 'and it says why');
     // The address the SERVER spelled — absolute on a store's own subdomain,
     // /m/<handle> where there is no base domain. Never the QR portal's path
     // with /member glued on, which routes nowhere.
@@ -635,6 +640,178 @@ test('a customer taken at the counter reaches the outlet, and can sign in',
     assert.match(String(me.seen), /^\d{4}-\d{2}-\d{2}$/,
       'signed in on a real date — not an invented "Registered" flag');
   });
+
+/* ═══ AN INVITATION IS AN EVENT ══════════════════════════════════════════
+   Channel, address, sender, time, count, and a revocation that KEEPS the
+   history. Each of those was a boolean, and on a row where the field was
+   simply absent it claimed the customer already had access. ═══════════════ */
+test('an invitation records the channel, and refuses one with no address by name',
+  opts, async () => {
+    const phone = '9995544';
+    // No email on this one: taken at the counter with a number, which is the
+    // normal customer and exactly the row the old flag lied about.
+    const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Hassan Moosa', phone: phone
+    } }]);
+    const id = r.body.results[0].result.memberId;
+
+    const no = await post('/api/outlet/' + outletId + '/member/' + id
+      + '/invite', { via: 'email' }, token);
+    assert.strictEqual(no.status, 409, JSON.stringify(no.body));
+    assert.match(String(no.body.error), /Hassan Moosa/,
+      'refused BY NAME, so the counter knows whose record to fix');
+    assert.match(String(no.body.error), /email/, 'and which address is missing');
+
+    // Viber rides the mobile number they already gave, so it goes through.
+    const v = await post('/api/outlet/' + outletId + '/member/' + id
+      + '/invite', { via: 'viber' }, token);
+    assert.strictEqual(v.status, 200, JSON.stringify(v.body));
+    assert.strictEqual(v.body.to, phone, 'on the number already on file');
+    assert.strictEqual(v.body.sent, false, 'Viber is recorded, not wired');
+
+    const row = await one('SELECT invited_via, invited_to, invite_count, invited_by'
+      + ' FROM chain.member WHERE id = $1', [id]);
+    assert.strictEqual(row.invited_via, 'viber', 'the channel is on the row');
+    assert.strictEqual(row.invited_to, phone, 'with the address it went to');
+    assert.strictEqual(row.invite_count, 1, 'and how many times');
+    assert.ok(row.invited_by, 'and who handed it over');
+
+    // A channel this build has never heard of is refused before anything moves.
+    const junk = await post('/api/outlet/' + outletId + '/member/' + id
+      + '/invite', { via: 'telegram' }, token);
+    assert.strictEqual(junk.status, 400, 'a channel that does not exist is not a send');
+  });
+
+test('sending again reissues the code, so the forwarded one stops working',
+  opts, async () => {
+    const phone = '9993311';
+    const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Fathimath Nasr', phone: phone
+    } }]);
+    const id = r.body.results[0].result.memberId;
+
+    const first = await post('/api/outlet/' + outletId + '/member/' + id
+      + '/invite', { via: 'whatsapp' }, token);
+    const second = await post('/api/outlet/' + outletId + '/member/' + id
+      + '/invite', { via: 'whatsapp' }, token);
+    assert.strictEqual(second.body.count, 2, 'the row counts the sends');
+
+    const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const slug = b.body.kpos.OUTLETS[0].slug;
+    const t = await get('/api/g/' + slug + '/token');
+    const table = { 'x-table-token': t.body.token };
+
+    const stale = await postWith('/api/g/' + slug + '/member/verify',
+      { id: phone, code: first.body.code }, table);
+    assert.strictEqual(stale.status, 401,
+      'an invitation forwarded to the wrong person cannot be used');
+    const live = await postWith('/api/g/' + slug + '/member/verify',
+      { id: phone, code: second.body.code }, table);
+    assert.strictEqual(live.status, 200, JSON.stringify(live.body));
+  });
+
+test('revoking stops the sign-in and keeps the history', opts, async () => {
+  const phone = '9992200';
+  const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Ibrahim Latheef', phone: phone
+  } }]);
+  const id = r.body.results[0].result.memberId;
+  const inv = await post('/api/outlet/' + outletId + '/member/' + id
+    + '/invite', { via: 'viber' }, token);
+  assert.strictEqual(inv.status, 200);
+
+  const rev = await post('/api/outlet/' + outletId + '/member/' + id
+    + '/revoke', {}, token);
+  assert.strictEqual(rev.status, 200, JSON.stringify(rev.body));
+
+  const row = await one('SELECT invited_via, invite_count, revoked_at, code_hash'
+    + ' FROM chain.member WHERE id = $1', [id]);
+  assert.ok(row.revoked_at, 'the row is revoked');
+  assert.strictEqual(row.invited_via, 'viber',
+    'and it still reads Revoked rather than Not invited');
+  assert.strictEqual(row.invite_count, 1, 'the history survives the revocation');
+  assert.strictEqual(row.code_hash, null, 'any live code is spent in the same act');
+
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token');
+  const table = { 'x-table-token': t.body.token };
+
+  // The gate is in chain.member_code_set(), so it holds for the code the guest
+  // asks for themselves as much as for the one the counter issues.
+  const ask = await postWith('/api/g/' + slug + '/member/start',
+    { id: phone }, table);
+  const stranger = await postWith('/api/g/' + slug + '/member/start',
+    { id: '7000001' }, table);
+  assert.strictEqual(ask.status, stranger.status,
+    'a revoked member is not told apart from a stranger — that would enumerate them');
+  assert.deepStrictEqual(Object.keys(ask.body).sort(), Object.keys(stranger.body).sort());
+  const issued = await one('SELECT code_hash FROM chain.member WHERE id = $1', [id]);
+  assert.strictEqual(issued.code_hash, null,
+    'and no code was minted: chain.member_code_set() refuses a revoked member');
+  const stale = await postWith('/api/g/' + slug + '/member/verify',
+    { id: phone, code: inv.body.code }, table);
+  assert.strictEqual(stale.status, 401, 'a revoked member cannot sign in');
+
+  // Inviting again IS restoring access: a code that cannot work is not one.
+  const back = await post('/api/outlet/' + outletId + '/member/' + id
+    + '/invite', { via: 'viber' }, token);
+  assert.strictEqual(back.status, 200, JSON.stringify(back.body));
+  assert.strictEqual(back.body.restored, true, 'and it says the access was restored');
+  assert.strictEqual(back.body.count, 2, 'on top of the history, not instead of it');
+  const ok = await postWith('/api/g/' + slug + '/member/verify',
+    { id: phone, code: back.body.code }, table);
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+});
+
+test('the terminal is told the invitation, not a flag', opts, async () => {
+  const phone = '9991100';
+  const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Mariyam Zahira', phone: phone, email: 'mariyam@example.mv'
+  } }]);
+  const id = r.body.results[0].result.memberId;
+
+  const before = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const b0 = (before.body.kpos.CUSTOMERS || []).find((c) => c.phone === phone);
+  assert.strictEqual(b0.invitedVia, '', 'a customer nobody asked has no channel');
+  assert.strictEqual(b0.invites, 0, 'and no sends');
+  assert.strictEqual(b0.revoked, '', 'and is not revoked — those are different answers');
+
+  await post('/api/outlet/' + outletId + '/member/' + id + '/invite',
+    { via: 'email' }, token);
+  await post('/api/outlet/' + outletId + '/member/' + id + '/revoke', {}, token);
+
+  const after = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const b1 = (after.body.kpos.CUSTOMERS || []).find((c) => c.phone === phone);
+  assert.strictEqual(b1.invitedVia, 'email', 'the channel reaches the till');
+  assert.strictEqual(b1.invites, 1, 'with the count');
+  assert.match(String(b1.invitedAt), /^\d{4}-\d{2}-\d{2}$/, 'and when');
+  assert.match(String(b1.revoked), /^\d{4}-\d{2}-\d{2}$/,
+    'and the revocation, beside the history that earned it');
+});
+
+test('a cashier cannot withdraw a customer\'s portal access', opts, async () => {
+  const phone = '9990099';
+  const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Ali Rasheed', phone: phone
+  } }]);
+  const id = r.body.results[0].result.memberId;
+  await post('/api/outlet/' + outletId + '/member/' + id + '/invite',
+    { via: 'viber' }, token);
+
+  // Rank 2 issues an invitation — whoever is standing with the guest — but
+  // taking access back is rank 3. A credit facility is not a cashier's to
+  // withdraw and neither is this.
+  const cashier = await post('/api/auth/pin', { outletId, pin: '6520' });
+  assert.strictEqual(cashier.body.rank, 2, 'rank 2, the till');
+  const till = cashier.body.token;
+  const inv = await post('/api/outlet/' + outletId + '/member/' + id + '/invite',
+    { via: 'viber' }, till);
+  assert.strictEqual(inv.status, 200, 'the till may invite');
+  const rev = await post('/api/outlet/' + outletId + '/member/' + id + '/revoke',
+    {}, till);
+  assert.strictEqual(rev.status, 403, 'the till may not revoke');
+});
 
 test('a member signs in by PHONE, which is what the outlet files them under',
   opts, async () => {

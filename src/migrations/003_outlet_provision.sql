@@ -949,7 +949,12 @@ BEGIN
     || ' chain.pin_candidates(int), chain.pin_failed(int,int,int),'
     || ' chain.pin_ok(uuid), chain.member_code_set(text,text,text,int),'
     || ' chain.member_code_take(text), chain.member_code_clear(uuid,boolean),'
-    || ' chain.member_card(uuid) TO %I', r);
+    || ' chain.member_card(uuid),'
+    -- An invitation is an event (migration 017): the till issues one and a
+    -- manager withdraws it, so both belong to every outlet role from the
+    -- moment the outlet exists rather than to whoever happened to run 017.
+    || ' chain.member_invite(uuid,text,text,uuid),'
+    || ' chain.member_revoke(uuid,uuid) TO %I', r);
 
   -- The slug is a public store ADDRESS (migration 012), so it is NOT NULL and
   -- has to exist from the first insert. Provisioning writes a placeholder the
