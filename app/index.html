@@ -6753,7 +6753,10 @@ class Component extends DCLogic {
       if (!spec) return { modalTitle: "Form", modalSub: "", formFields: [] };
       const vals = s.formVals || {};
       return {
-        modalTitle: spec.title, modalSub: spec.sub,
+        // A form opened ON a record is not an "Add". Falls back to the create
+        // title, so a form that has not said otherwise is unchanged.
+        modalTitle: (m.edit && spec.editTitle) ? spec.editTitle : spec.title,
+        modalSub: (m.edit && spec.editSub) ? spec.editSub : spec.sub,
         formFields: spec.fields.map((f) => {
           // A goods document is a list of things and how many arrived. The money
           // is a consequence of the list, never typed over the top of it.
@@ -7286,7 +7289,7 @@ class Component extends DCLogic {
       // The composed member, not the raw seed row: the tier is derived.
       const c = this.member(m.id) || {};
       return {
-        hasDetailEdit: this.can("customers"), detailEditLabel: "Edit tier or credit limit", detailEdit: () => this.openForm("cust", c),
+        hasDetailEdit: this.can("customers"), detailEditLabel: "Edit contact details or credit limit", detailEdit: () => this.openForm("cust", c),
         // A house account is why this panel gets opened. Settling it and closing
         // it are the two things a manager does from here, so they sit under the
         // record rather than behind another screen.
@@ -7310,9 +7313,13 @@ class Component extends DCLogic {
               + (has ? "--text" : "--text-muted") + ")",
             go: async () => {
               if (!has) {
-                return this.toast(c.name + " has no " + ch.needs
-                  + " on file \u2014 add one on the customer first, then "
-                  + ch.name + " has somewhere to go", "warn");
+                // Refused by name, and then straight to the field that fixes
+                // it. "Add one on the customer first" is only an instruction
+                // if the operator can see where.
+                this.toast(c.name + " has no " + ch.needs
+                  + " on file \u2014 add one here and " + ch.name
+                  + " has somewhere to go", "warn");
+                return this.can("customers", "e") ? this.openForm("cust", c) : null;
               }
               const B = window.KPOS_BRIDGE;
               if (!B || !B.inviteMember) return this.toast("Sign in to the outlet first \u2014 the code is minted by the store, not by this device", "warn");
@@ -7329,7 +7336,8 @@ class Component extends DCLogic {
                   (r.restored ? "This customer had been revoked; a fresh invitation restores their access, because a code they cannot use is not an invitation. " : "")
                   + "Sending again reissues the code, so any previous one has just stopped working \u2014 an invitation forwarded to the wrong person cannot be used. "
                   + "It is spent the moment it is used, and it is not stored anywhere readable: the outlet keeps a salted hash of it, exactly like a staff PIN. "
-                  + (r.sent ? "" : (r.reason || "Nothing was sent") + ", so the code is handed over the way a restaurant already verifies a person."));
+                  + (r.sent ? "" : this.sentence(r.reason || "Nothing was sent")
+                    + ", so the code is handed over the way a restaurant already verifies a person."));
                 // The count and the channel are on the row now, so re-read it.
                 if (B.refresh) B.refresh();
               } catch (e) {
@@ -7379,7 +7387,12 @@ class Component extends DCLogic {
           }
         ] : []),
         modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier · " + c.points + " pts",
-        detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", this.inviteState(c), this.inviteTone(c)), Rt("Signed in", c.seen ? c.seen : "Never")],
+        // The email earns a row of its own. It is a second way into their card
+        // and the only address the Email invitation can reach, so "none on
+        // file" has to be readable rather than inferred from a refusal.
+        detailRows: [Rt("Email", c.email || "None on file",
+          c.email ? "var(--text)" : "var(--text-muted)"),
+          R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", this.inviteState(c), this.inviteTone(c)), Rt("Signed in", c.seen ? c.seen : "Never")],
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
       };
@@ -11893,6 +11906,13 @@ class Component extends DCLogic {
       // Points are absent on purpose. They are awarded by the outlet from its
       // own earn rate; a till that could post them could mint them.
       custs: ["member_upsert", (r) => ({
+        // The id the OUTLET issued, when there is one. Without it the handler
+        // keys on the phone number, so correcting a mistyped one created a
+        // second customer and left the visits, points and credit balance on
+        // the first. An id the till made up for a customer created offline is
+        // not a uuid and the handler ignores it, which is how that row gets
+        // created in the first place.
+        id: r.id || null,
         name: r.name, phone: r.phone, email: r.email || null,
         tier: r.tier || "Member", credit: num(r.credit)
       })]
@@ -12147,6 +12167,36 @@ class Component extends DCLogic {
       { key: "viber", name: "Viber", needs: "mobile number" },
       { key: "whatsapp", name: "WhatsApp", needs: "mobile number" }
     ];
+  }
+  /* An address, trimmed and lower-cased, or `false` if it is not one, or "" if
+     the field was left empty. Three answers, because "empty" and "wrong" are
+     different things to say back to a waiter: one is fine and the other is a
+     typo they can fix while the guest is still standing there.
+
+     Deliberately loose. An address this refuses is one nothing can deliver to,
+     and a stricter pattern rejects real addresses — a validator that turns a
+     guest away from their own membership is the more expensive mistake. */
+  emailOn(v) {
+    const t = String(v == null ? "" : v).trim().toLowerCase();
+    if (!t) return "";
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(t) ? t : false;
+  }
+  /* Who already holds it. The database refuses a duplicate outright (migration
+     018) because both sign-in functions resolve on `phone OR lower(email)` and
+     take one row silently — so two customers on one address is one guest being
+     let into another's card. Asked here as well, so the refusal names the
+     person rather than arriving as a constraint violation after the save. */
+  emailTaken(mail, exceptId) {
+    if (!mail) return null;
+    return this.members().filter((c) => c.id !== exceptId
+      && String(c.email || "").trim().toLowerCase() === mail)[0] || null;
+  }
+  // A reason that arrives from the server as a clause — "no transport
+  // configured" — is being used to START a sentence here. Lower case after a
+  // full stop reads as a bug in a screen whose whole job is to be believed.
+  sentence(t) {
+    const x = String(t || "").trim();
+    return x ? x.charAt(0).toUpperCase() + x.slice(1) : "";
   }
   inviteChannel(k) {
     return this.INVITE_CHANNELS().filter((x) => x.key === k)[0] || null;
@@ -14551,27 +14601,54 @@ class Component extends DCLogic {
         }
       },
       cust: {
-        title: "Add customer", sub: "Loyalty and credit are keyed off this row", save: "Create customer",
-        foot: "A credit limit greater than zero opens a credit_ledger account; the limit is enforced by a Postgres trigger, not the terminal.",
+        /* THE EMAIL IS A FIELD, because the portal invitation offers to send on
+           one and the refusal says "add one on the customer first" — which
+           pointed at nothing. The server has taken an email on `member_upsert`
+           since the handler was written; no screen ever collected one, so every
+           row's was null and the Email channel could never be used by anybody.
+
+           It stays OPTIONAL. The phone is the identity — NOT NULL UNIQUE — and
+           a customer taken at a counter has given a name and a number. Making
+           the address mandatory would turn "add this guest to loyalty" into an
+           interrogation, which is how a waiter stops bothering.
+
+           THE TIER DROPDOWN IS GONE. Tier is derived from points against the
+           published ladder every time it is asked for, so a manager who set
+           Gold here wrote a column no screen reads and watched the panel keep
+           saying Bronze. A control that cannot do what it appears to do is
+           worse than no control. */
+        title: "Add customer", sub: "Loyalty, credit and the portal are keyed off this row", save: "Create customer",
+        editTitle: "Edit customer", editSub: "Contact details, and what they may put on account",
+        foot: "The phone number is the identity and the portal accepts either half — an email is optional, and only needed to invite them by email. Tier is worked out from points against the loyalty ladder, so it is not set here. A credit limit greater than zero opens a credit_ledger account; the limit is enforced by a Postgres trigger, not the terminal.",
         fields: [
           { k: "name", label: "Customer name", v: "", full: 1 },
           { k: "phone", label: "Phone", v: "+960 " },
-          { k: "tier", label: "Tier", options: [{ v: "Bronze", l: "Bronze" }, { v: "Silver", l: "Silver" }, { v: "Gold", l: "Gold" }, { v: "Platinum", l: "Platinum" }] },
+          { k: "email", label: "Email (optional)", v: "" },
           { k: "credit", label: "Credit limit MVR", v: "0" }
         ],
         editSave: "Save changes",
         onEdit: (v, c) => {
           if (!v.name) return this.toast("A name is required", "warn");
+          const mail = this.emailOn(v.email);
+          if (mail === false) return this.toast("\u201c" + String(v.email).trim() + "\u201d is not an email address — leave it empty rather than guessing", "warn");
+          const clash = this.emailTaken(mail, c.id);
+          if (clash) return this.toast(mail + " is already on " + clash.name + "\u2019s record — an address can only sign one customer in", "warn");
           const lim = +v.credit || 0;
           if (lim < (c.used || 0)) return this.toast("Limit is below the " + MVRc(c.used) + " already drawn — settle the balance first", "warn");
-          this.patchRows("custs", [c.id], { name: v.name, phone: v.phone, tier: v.tier, credit: lim },
+          this.patchRows("custs", [c.id], { name: v.name, phone: v.phone, email: mail || "", credit: lim },
             c.name + " updated" + (lim !== c.credit ? " · credit limit " + MVRc(c.credit) + " to " + MVRc(lim) : ""), "customers");
         },
         onSave: (v) => {
           if (!v.name || v.phone.trim().length < 8) return this.toast("Name and a full phone number are required", "warn");
+          const mail = this.emailOn(v.email);
+          if (mail === false) return this.toast("\u201c" + String(v.email).trim() + "\u201d is not an email address — leave it empty rather than guessing", "warn");
+          const clash = this.emailTaken(mail, null);
+          if (clash) return this.toast(mail + " is already on " + clash.name + "\u2019s record — an address can only sign one customer in", "warn");
           this.insertRow("custs", {
-            id: this.nextId("custs", "c"), name: v.name, phone: v.phone, visits: 0, spent: 0, points: 0,
-            tier: v.tier, credit: +v.credit || 0, used: 0, last: "never", seen: ""
+            id: this.nextId("custs", "c"), name: v.name, phone: v.phone, email: mail || "",
+            visits: 0, spent: 0, points: 0,
+            credit: +v.credit || 0, used: 0, last: "never", seen: "",
+            invitedVia: "", invitedAt: "", invites: 0, revoked: ""
           }, "Customer created · " + v.name, "customers");
         }
       },

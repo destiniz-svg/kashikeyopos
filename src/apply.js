@@ -1390,9 +1390,64 @@ H.flag_ack = async (c, p, ctx) => {
 //
 // Points are NOT settable here. They are awarded by the outlet from its own
 // earn rate, and a terminal that could post them could mint them.
+/* THE ROW THE TILL IS EDITING, when it knows which one. This keyed on phone
+   alone, and `ON CONFLICT (phone)` meant correcting a mistyped number did not
+   rename the customer — it CREATED A SECOND ONE and left the first behind,
+   with the visits, the points and the credit balance on whichever of the two
+   the next sale happened to reach. The screen said "updated".
+
+   The phone is still the identity and still unique. It is now changeable by a
+   till that names the row it means, and refused BY NAME when the new number is
+   already somebody else's — because two customers cannot share a number any
+   more than they can share an address. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 H.member_upsert = async (c, p, ctx) => {
   const phone = String(p.phone || '').trim();
   if (!phone) return { skipped: 'a member is named by phone number' };
+  // An email is a SECOND way into a card (migration 018), so it is unique and
+  // the refusal has to name the customer already holding it. The index would
+  // refuse this anyway; a bare 23505 tells a waiter nothing they can act on,
+  // and the address they typed is almost always a typo for their own.
+  // Lower-cased on the way in, because that is how it is read on the way out:
+  // both sign-in functions resolve with `lower(email)`, and so does the unique
+  // index. Storing the shift key a waiter happened to be holding would leave
+  // the record and the lookup that uses it spelling the address differently.
+  const email = String(p.email || '').trim().toLowerCase() || null;
+  if (email) {
+    const taken = await c.query('SELECT name, phone FROM chain.member'
+      + ' WHERE lower(email) = lower($1) AND phone <> $2', [email, phone]);
+    if (taken.rows.length) {
+      const t = taken.rows[0];
+      return { refused: email + ' is already on ' + (t.name || t.phone)
+        + '\u2019s record \u2014 an address can only sign one customer in' };
+    }
+  }
+  // A row the outlet already issued an id for is EDITED, never re-inserted.
+  // Ids the till made up for itself (a customer created offline) are not uuids
+  // and fall through to the upsert below, which is what creates them.
+  const id = String(p.id || '').trim();
+  if (id && UUID.test(id)) {
+    const mine = await c.query('SELECT id FROM chain.member WHERE id = $1', [id]);
+    if (mine.rows.length) {
+      const clash = await c.query('SELECT name, phone FROM chain.member'
+        + ' WHERE phone = $1 AND id <> $2', [phone, id]);
+      if (clash.rows.length) {
+        const t = clash.rows[0];
+        return { refused: phone + ' is already ' + (t.name || 'another customer')
+          + '\u2019s number \u2014 two customers cannot share one' };
+      }
+      const u = await one(c, 'UPDATE chain.member SET phone = $2,'
+        + ' name = coalesce($3, name), email = $4, tier = $5,'
+        + ' credit_limit = $6, notes = coalesce($7, notes)'
+        + ' WHERE id = $1 RETURNING id', [id, phone, p.name || null, email,
+        p.tier || 'Member', num(p.credit), p.note || null]);
+      await log(c, 'member_upsert', 'member', u.id, null,
+        { phone: phone, created: false });
+      return { memberId: u.id, created: false };
+    }
+  }
+
   const q = await one(c, 'INSERT INTO chain.member (phone, name, email, tier,'
     + ' credit_limit, home_outlet, notes) VALUES ($1,$2,$3,$4,$5,$6,$7)'
     + ' ON CONFLICT (phone) DO UPDATE SET'
@@ -1401,7 +1456,7 @@ H.member_upsert = async (c, p, ctx) => {
     + '   tier = excluded.tier, credit_limit = excluded.credit_limit,'
     + '   notes = coalesce(nullif(excluded.notes, $8), chain.member.notes)'
     + ' RETURNING id, (xmax = 0) AS created',
-  [phone, p.name || null, p.email || null, p.tier || 'Member',
+  [phone, p.name || null, email, p.tier || 'Member',
     num(p.credit), ctx.outletId, p.note || null, '']);
   await log(c, 'member_upsert', 'member', q.id, null,
     { phone: phone, created: q.created });

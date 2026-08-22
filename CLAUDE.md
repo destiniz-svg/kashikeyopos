@@ -748,6 +748,37 @@ WhatsApp are recorded but not wired. Either way the answer carries `sent` and th
 reason, and the code comes back for the counter to read out — a screen that
 reports a send it did not make is worse than one offering no send at all.
 
+### The address the Email channel needs
+
+`member_upsert` has taken an email since it was written and **no screen ever
+collected one**, so every row's was null, the Email channel could never be used
+by anybody, and its refusal — "add one on the customer first" — pointed at a
+field that did not exist. The `cust` form has it now, optional, because the
+phone is the identity and a customer taken at a counter has given a name and a
+number. A refusal for want of an address **opens that form on their record**: an
+instruction to add one is only useful next to somewhere to add it.
+
+**An email is a second identity, so it is unique** (migration 018). Both
+`chain.member_code_set()` and `chain.member_code_take()` resolve a member with
+`phone = $1 OR lower(email) = lower($1)` and take one row silently, so two
+customers on one address is one guest signed into another's card, points and
+credit balance. Stored lower-cased, because that is how it is read back. Rows
+written before the index are repaired rather than dropped: the address stays with
+whoever has held it longest and the loser's copy moves into their notes.
+
+**`member_upsert` keys on the outlet's id when the till has one.** Keyed on the
+phone alone — `ON CONFLICT (phone)` — correcting a mistyped number did not rename
+the customer, it **created a second one** and left the visits, points and credit
+facility on whichever of the two the next sale reached. The screen said
+"updated". A number already belonging to somebody else is refused by name. Ids a
+till invented for a customer created offline are not uuids and still fall through
+to the insert, which is what creates them.
+
+**The tier dropdown is gone.** Tier is derived from points against the published
+ladder every time it is asked for, so a manager who set Gold wrote a column no
+screen reads and watched the panel keep saying Bronze. A control that cannot do
+what it appears to do is worse than no control.
+
 The whole of that was missing, and each piece failed silently:
 
 - **nothing ever inserted a `chain.member` row.** The till's Add customer queued
@@ -819,7 +850,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 164 tests
+npm test                          # 174 tests
 npm run leak-test                 # isolation, on its own
 ```
 

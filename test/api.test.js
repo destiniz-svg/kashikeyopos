@@ -645,6 +645,118 @@ test('a customer taken at the counter reaches the outlet, and can sign in',
    Channel, address, sender, time, count, and a revocation that KEEPS the
    history. Each of those was a boolean, and on a row where the field was
    simply absent it claimed the customer already had access. ═══════════════ */
+/* AN EMAIL IS A SECOND IDENTITY. Both sign-in functions resolve a member with
+   `phone = $1 OR lower(email) = lower($1)` and take one row silently, so two
+   customers on one address is one guest being let into another's card. That
+   was survivable only while no screen could enter an email; the till has the
+   field now. ═══════════════════════════════════════════════════════════════ */
+test('an address reaches the outlet, and signs its owner in', opts, async () => {
+  const phone = '9997733';
+  const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Aminath Shifa', phone: phone, email: 'Shifa@Example.MV'
+  } }]);
+  const id = r.body.results[0].result.memberId;
+  const row = await one('SELECT email FROM chain.member WHERE id = $1', [id]);
+  assert.strictEqual(row.email, 'shifa@example.mv',
+    'stored lower-cased, because the sign-in lookup is case-insensitive');
+
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const me = (b.body.kpos.CUSTOMERS || []).find((c) => c.phone === phone);
+  assert.strictEqual(me.email, 'shifa@example.mv', 'and it reaches the till');
+
+  // The address is the half the Email invitation needs, and it works.
+  const inv = await post('/api/outlet/' + outletId + '/member/' + id
+    + '/invite', { via: 'email' }, token);
+  assert.strictEqual(inv.status, 200, JSON.stringify(inv.body));
+  assert.strictEqual(inv.body.to, 'shifa@example.mv', 'sent to the address on file');
+
+  // And it signs them in — either half of the membership does.
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token');
+  const table = { 'x-table-token': t.body.token };
+  const ok = await postWith('/api/g/' + slug + '/member/verify',
+    { id: 'SHIFA@example.mv', code: inv.body.code }, table);
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+});
+
+test('one address cannot sign two customers in', opts, async () => {
+  const first = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Ahmed Niyaz', phone: '9996611', email: 'shared@example.mv'
+  } }]);
+  assert.ok(first.body.results[0].result.memberId, 'the first holds it');
+
+  const second = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Hawwa Latheefa', phone: '9996622', email: 'SHARED@example.mv'
+  } }]);
+  const res = second.body.results[0].result;
+  assert.ok(res.refused, 'the second is refused: ' + JSON.stringify(res));
+  assert.match(String(res.refused), /Ahmed Niyaz/,
+    'and it names who already holds it, so the counter can ask');
+
+  // Refused, not half-written: the customer still exists on their phone number,
+  // which is the identity, and simply has no address.
+  const row = await one('SELECT id, email FROM chain.member WHERE phone = $1',
+    ['9996622']);
+  assert.ok(!row, 'nothing was written under a refused address');
+
+  const n = await one("SELECT count(*)::int AS n FROM chain.member"
+    + " WHERE lower(email) = 'shared@example.mv'");
+  assert.strictEqual(n.n, 1, 'one row holds it, whatever the till sent');
+});
+
+test('updating a customer keeps their own address', opts, async () => {
+  const phone = '9995500';
+  await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Ismail Waheed', phone: phone, email: 'ismail@example.mv'
+  } }]);
+  // A resend of the same row is not a clash with itself.
+  const again = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Ismail Waheed', phone: phone, email: 'ismail@example.mv', credit: 750
+  } }]);
+  assert.ok(!again.body.results[0].result.refused,
+    'a customer is not refused their own address: '
+    + JSON.stringify(again.body.results[0].result));
+  const row = await one('SELECT email, credit_limit FROM chain.member'
+    + ' WHERE phone = $1', [phone]);
+  assert.strictEqual(row.email, 'ismail@example.mv', 'and it survives the update');
+  assert.strictEqual(Number(row.credit_limit), 750, 'along with what changed');
+});
+
+test('correcting a phone number renames the customer, it does not fork them',
+  opts, async () => {
+    const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Shifana Adam', phone: '9994400', credit: 300
+    } }]);
+    const id = r.body.results[0].result.memberId;
+
+    // A waiter mistyped the last digit and fixes it. Keyed on phone alone this
+    // INSERTED a second customer and left the first holding the credit.
+    const fix = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      id: id, name: 'Shifana Adam', phone: '9994411', credit: 300
+    } }]);
+    assert.strictEqual(fix.body.results[0].result.memberId, id, 'the same customer');
+    assert.strictEqual(fix.body.results[0].result.created, false, 'renamed, not created');
+
+    const n = await one("SELECT count(*)::int AS n FROM chain.member"
+      + " WHERE name = 'Shifana Adam'");
+    assert.strictEqual(n.n, 1, 'one customer, not two');
+    const row = await one('SELECT phone, credit_limit FROM chain.member WHERE id = $1', [id]);
+    assert.strictEqual(row.phone, '9994411', 'on the corrected number');
+    assert.strictEqual(Number(row.credit_limit), 300,
+      'and the credit facility travelled with them rather than being stranded');
+
+    // Two customers cannot share a number any more than an address.
+    const other = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Nashid Hassan', phone: '9994422'
+    } }]);
+    const otherId = other.body.results[0].result.memberId;
+    const clash = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      id: otherId, name: 'Nashid Hassan', phone: '9994411'
+    } }]);
+    assert.match(String(clash.body.results[0].result.refused || ''), /Shifana Adam/,
+      'refused by name: ' + JSON.stringify(clash.body.results[0].result));
+  });
+
 test('an invitation records the channel, and refuses one with no address by name',
   opts, async () => {
     const phone = '9995544';

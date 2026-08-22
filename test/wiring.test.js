@@ -573,6 +573,82 @@ test('a channel the customer has no address for is refused by name', () => {
     'the number is on the row, so nothing is missing: ' + v2);
 });
 
+/* The Email channel offered a send and the refusal said "add one on the
+   customer first" — and no screen in the terminal had the field. Every row's
+   email was null, so the channel could never be used by anybody, and the
+   instruction pointed at nothing. */
+test('the customer form collects the address the invitation needs', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const spec = F.formSpec('cust');
+  const keys = (spec.fields || []).map((f) => f.k);
+  assert.ok(keys.indexOf('email') >= 0,
+    'the Email channel needs somewhere to get an address: ' + keys.join(', '));
+  assert.ok(keys.indexOf('phone') >= 0, 'and the identity is still the phone');
+  // Optional, because a customer taken at a counter has given a name and a
+  // number. Making it mandatory turns adding a guest into an interrogation.
+  const em = spec.fields.filter((f) => f.k === 'email')[0];
+  assert.match(String(em.label), /optional/i, 'and it says so: ' + em.label);
+});
+
+test('a tier cannot be typed over, because it is derived', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const keys = (F.formSpec('cust').fields || []).map((f) => f.k);
+  assert.ok(keys.indexOf('tier') < 0,
+    'tier is worked out from points every time it is asked for, so a dropdown '
+    + 'here writes a column no screen reads and the panel keeps saying Bronze');
+});
+
+test('an address that cannot sign anyone in is refused before it is saved', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const spec = F.formSpec('cust');
+  F.__toasts.length = 0;
+  spec.onSave({ name: 'Ali Rasheed', phone: '+960 7770001', email: 'not-an-address', credit: '0' });
+  assert.match((F.__toasts[0] || {}).t || '', /not an email address/,
+    'a typo is caught while the guest is still standing there');
+
+  // Empty is fine and is not an error.
+  F.__toasts.length = 0;
+  spec.onSave({ name: 'Ali Rasheed', phone: '+960 7770001', email: '   ', credit: '0' });
+  assert.ok(((F.__toasts[0] || {}).t || '').indexOf('not an email') < 0,
+    'no address is a normal customer, not a mistake');
+});
+
+test('one address cannot sign two customers in', () => {
+  // Both `member_code_set` and `member_code_take` resolve on
+  // `phone = $1 OR lower(email) = lower($1)` and take one row silently, so a
+  // shared address is one guest being let into another's card.
+  const held = Object.assign({}, LET_GO, { email: 'shared@example.mv', revoked: '' });
+  const F = withCustomers([NEVER_ASKED, held]);
+  const spec = F.formSpec('cust');
+  F.__toasts.length = 0;
+  spec.onSave({ name: 'Ali Rasheed', phone: '+960 7770001', email: 'SHARED@example.mv', credit: '0' });
+  const said = (F.__toasts[0] || {}).t || '';
+  assert.match(said, /Mariyam Zahira/, 'refused BY NAME, however it was cased: ' + said);
+});
+
+test('a channel refused for want of an address opens the field that fixes it', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const v = F.modalVals({ kind: 'customer', id: 'c1' });
+  const email = (v.detailActs || []).filter((a) => a.label.indexOf('Email') >= 0)[0];
+  F.__toasts.length = 0;
+  email.go(H.EV);
+  assert.match((F.__toasts[0] || {}).t || '', /Hassan Moosa/, 'still refused by name');
+  const m = F.state.modal || {};
+  assert.strictEqual(m.kind, 'form', 'and lands on a form, not on a dead end');
+  assert.strictEqual(m.form, 'cust', 'the customer\'s own record');
+  assert.strictEqual((m.edit || {}).id, 'c1', 'opened ON them, not on a blank one');
+});
+
+test('the customer panel says what is on file', () => {
+  const F = withCustomers([NEVER_ASKED]);
+  const rows = JSON.stringify(F.modalVals({ kind: 'customer', id: 'c1' }).detailRows || []);
+  assert.match(rows, /None on file/,
+    'an absent address is readable, not inferred from a refusal');
+  const withMail = withCustomers([Object.assign({}, NEVER_ASKED, { email: 'h@example.mv' })]);
+  assert.match(JSON.stringify(withMail.modalVals({ kind: 'customer', id: 'c1' }).detailRows || []),
+    /h@example\.mv/, 'and a present one is on the record');
+});
+
 test('a revoked customer reads Revoked, never Not invited', () => {
   const F = withCustomers([LET_GO]);
   const v = F.modalVals({ kind: 'customer', id: 'c2' });
