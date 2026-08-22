@@ -14,6 +14,11 @@ const DB = require('./db');
 
 DB.secrets();
 
+/* A deploy has a public address, and the invitation refuses to compose a link
+   without one — so the suite has one too. Set before `../server` loads, and
+   left to the individual tests that clear it on purpose. */
+if (!process.env.PUBLIC_URL) process.env.PUBLIC_URL = 'https://kashikeyopos.com';
+
 const HAS_DB = DB.configured();
 const opts = HAS_DB ? {} : { skip: 'no Postgres configured (set PGHOST or DATABASE_URL)' };
 
@@ -888,6 +893,53 @@ test('a token is validated on every branch, and ?t= is never one', opts, async (
   const nope = await postWith('/api/g/' + slug + '/member/join',
     { token: 'MV-neverminted-1' }, table);
   assert.strictEqual(nope.status, 404, JSON.stringify(nope.body));
+});
+
+/* An invitation IS a link, so a deploy that cannot spell an absolute one has
+   no invitation to send. A message carrying `/join/MV-...` reaches an inbox
+   with nothing to resolve it against, and the guest holds a link that does
+   nothing while the row says they were invited. */
+test('an invitation is refused where no link can be spelled', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+    name: 'Yoosuf Manik', phone: '9996600'
+  } }]);
+  const id = r.body.results[0].result.memberId;
+
+  // A good one first, so there is a live token to protect.
+  const good = await post('/api/outlet/' + outletId + '/member/' + id + '/invite',
+    { via: 'viber' }, token);
+  assert.strictEqual(good.status, 200, JSON.stringify(good.body));
+  const tok = /\/join\/(MV-[A-Za-z0-9]+-\d+)/.exec(good.body.link)[1];
+
+  const pub = process.env.PUBLIC_URL, pbd = process.env.PORTAL_BASE_DOMAIN;
+  delete process.env.PUBLIC_URL;
+  process.env.PORTAL_BASE_DOMAIN = '';
+  try {
+    const no = await post('/api/outlet/' + outletId + '/member/' + id + '/invite',
+      { via: 'viber' }, token);
+    assert.strictEqual(no.status, 503, JSON.stringify(no.body));
+    assert.match(String(no.body.error), /PUBLIC_URL/,
+      'and it names what to set: ' + no.body.error);
+  } finally {
+    if (pub) process.env.PUBLIC_URL = pub; else delete process.env.PUBLIC_URL;
+    if (pbd === undefined) delete process.env.PORTAL_BASE_DOMAIN;
+    else process.env.PORTAL_BASE_DOMAIN = pbd;
+  }
+
+  /* And it refused BEFORE minting. `chain.member_invite()` replaces the live
+     token, so a refusal after it would kill a working invitation in order to
+     report a broken one. */
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const slug = b.body.kpos.OUTLETS[0].slug;
+  const t = await get('/api/g/' + slug + '/token');
+  const still = await postWith('/api/g/' + slug + '/member/join', { token: tok },
+    { 'x-table-token': t.body.token });
+  assert.strictEqual(still.status, 200,
+    'the invitation that already worked still works');
+  assert.strictEqual(still.body.first, 'Yoosuf');
+
+  const row = await one('SELECT invite_count FROM chain.member WHERE id = $1', [id]);
+  assert.strictEqual(row.invite_count, 1, 'and the refusal counted as no send');
 });
 
 test('the landing knows the guest, and expiry is not a dead end', opts, async () => {

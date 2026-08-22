@@ -809,6 +809,30 @@ timestamp. The token is replaced with `<link>` in that row: an audit trail is
 read by more people than an inbox is. Reading it back is an owner-connection job
 — an outlet's login role has INSERT on `chain.audit` and nothing else.
 
+### An invitation is a link, so no address means no invitation
+
+`joinUrl()` returns an absolute link or an **empty string** — never a path. Two
+absolute forms: the store's own subdomain when the base domain is known, and
+`PUBLIC_URL` with the slug on `?s=` when subdomains are deliberately off. And
+**not** the request's `Host`: that header is client-supplied, so deriving the
+link from it would let anyone who can reach the API put their own domain into an
+invitation a guest has been told to trust.
+
+Everything else in `src/handle.js` may fall back to a path form, because a path
+is followable from a page the guest is already on. An invitation is not — it
+travels to an inbox, where `/join/MV-...` resolves against nothing.
+
+So `POST /member/:id/invite` **refuses with 503** when no link can be spelled,
+and it refuses **before minting**: `chain.member_invite()` replaces the live
+token, so a refusal after it would kill a working invitation in order to report a
+broken one. The bootstrap publishes `PORTAL.origin` — where a link for THIS
+outlet would actually point — so the till's preview says what the send will say.
+A message that reads fine and then will not go is worse than one that says up
+front it cannot.
+
+Production sets `PUBLIC_URL` (or `PORTAL_BASE_DOMAIN`); with neither, the whole
+invitation feature is off and says so by name.
+
 ### Reading the token, and why the parameter is never `t`
 
 `/join/<token>` is canonical. `?invite=` / `?join=` are fallbacks, and where
@@ -948,7 +972,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 180 tests
+npm test                          # 183 tests
 npm run leak-test                 # isolation, on its own
 ```
 

@@ -199,7 +199,15 @@ async function buildBootstrap(ctx) {
          card with a made-up domain on it is on forty tables before anyone
          scans one. Empty in local development, and every link falls back to a
          path, which is followable where a wrong hostname is not. */
-      PORTAL: { base: baseDomain() },
+      /* `base` is the domain stores hang off; `origin` is where an invitation's
+         link would actually point for THIS outlet — empty when the deploy can
+         spell neither, which is the one case an invitation cannot be sent.
+         Published so the till's preview and the server's refusal say the same
+         thing: a message that reads fine and then will not send is worse than
+         one that says up front it cannot. */
+      PORTAL: { base: baseDomain(),
+        origin: portalOrigin(((outlets.rows.find(
+          (o) => o.id === ctx.outletId) || {}).slug) || '') },
       LOCATIONS: locations.rows.map((r) => ({ id: r.id, name: r.name, kind: r.kind })),
       VENDORS: suppliers.rows.map((r) => ({
         id: r.id, name: r.name, trn: r.trn || '', terms: r.terms_days,
@@ -947,7 +955,7 @@ const DEFAULT_TIERS = [
 // The allergen and diet rules are ONE table, shared with every browser that
 // loads kashikeyo-rules.js. The server holds the recipes, so the server is
 // what derives a dish's declaration from them (see src/apply.js).
-const { baseDomain } = require('./handle');
+const { baseDomain, portalOrigin } = require('./handle');
 const { ALLERGENS, DIETS } = require('../app/kashikeyo-rules.js');
 
 module.exports = { buildBootstrap, buildState, all, MODULES, rolesOf, ALLERGENS, DIETS };

@@ -124,19 +124,42 @@ function tableUrl(handle, table) {
    the tracking parameter most email click-wrappers append, and a reader that
    accepted one there would be taking a foreign credential into a membership
    lookup. The path is canonical; `?invite=` is the fallback. */
+/* WHERE A LINK IN A MESSAGE POINTS. Everything else in this file may fall back
+   to a path form, because a path is followable from a page the guest is already
+   on. An invitation is not: it travels to an inbox, and `/join/MV-...` in an
+   inbox resolves against nothing.
+
+   Two absolute forms, in order:
+
+     the store's own subdomain, when the base domain is known;
+     PUBLIC_URL, when subdomains are deliberately off (PORTAL_BASE_DOMAIN set
+     empty) or the deploy has no wildcard record — the slug then rides `?s=`,
+     which the guest bridge already reads.
+
+   And NOT the request's `Host`. That header is client-supplied, so deriving the
+   link from it would let anyone who can reach the API put their own domain into
+   an invitation a guest has been told to trust. A link this build asks somebody
+   to tap comes from configuration or it does not come at all. */
+function portalOrigin(handle) {
+  const base = baseDomain();
+  if (base && ok(handle)) return 'https://' + handle + '.' + base;
+  return String(process.env.PUBLIC_URL || '').trim().replace(/\/+$/, '');
+}
+
+/* An absolute `/join/<token>`, or an EMPTY STRING when this deploy cannot spell
+   one. The caller refuses rather than composing a message around a link that
+   goes nowhere — the same rule that stopped a screen claiming it had sent an
+   SMS. `s`, never `t`: `t` is the table on the QR portal and the tracking
+   parameter every email click-wrapper appends. */
 function joinUrl(handle, token) {
+  const origin = portalOrigin(handle);
+  if (!origin) return '';
   const t = encodeURIComponent(String(token || ''));
   const base = baseDomain();
-  // Without a base domain there is no subdomain to name the store, so the slug
-  // rides a parameter the guest bridge already reads. `s`, not `t`: `t` is the
-  // table on the QR portal and the tracking parameter every email click-wrapper
-  // appends, and one reader taking another's `t` is exactly the bug this shape
-  // exists to avoid.
-  if (!base || !ok(handle)) {
-    return '/join/' + t + (handle ? '?s=' + encodeURIComponent(handle) : '');
-  }
-  return 'https://' + handle + '.' + base + '/join/' + t;
+  if (base && ok(handle)) return origin + '/join/' + t;
+  return origin + '/join/' + t
+    + (handle ? '?s=' + encodeURIComponent(handle) : '');
 }
 
 module.exports = { MIN, MAX, SHAPE, normalise, shapeError, ok,
-  baseDomain, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl };
+  baseDomain, hostHandle, storeUrl, memberUrl, tableUrl, joinUrl, portalOrigin };

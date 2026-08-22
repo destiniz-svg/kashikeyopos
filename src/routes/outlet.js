@@ -205,6 +205,27 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
     }
     try {
       const out = await withOutlet(req.ctx, async function (c) {
+        const o = await c.query('SELECT slug, name FROM chain.outlet WHERE id = $1',
+          [req.ctx.outletId]);
+        const slug0 = (o.rows[0] || {}).slug || '';
+
+        /* AN INVITATION IS A LINK, so a deploy that cannot spell an absolute
+           one has no invitation to send. Checked HERE, before the token is
+           minted: `chain.member_invite()` replaces the live token, so a refusal
+           after it would kill a working invitation to report a broken one.
+
+           This is not a nicety. A message carrying `/join/MV-...` reaches an
+           inbox where there is nothing to resolve it against, and the guest is
+           left holding a link that does nothing while the row says they were
+           invited. Set PUBLIC_URL, or PORTAL_BASE_DOMAIN. */
+        if (!joinUrl(slug0, 'MV-probe-0')) {
+          const err = new Error('this deploy has no public address, so an '
+            + 'invitation would carry a link that resolves to nothing \u2014 set '
+            + 'PUBLIC_URL (or PORTAL_BASE_DOMAIN) and send it again');
+          err.status = 503;
+          throw err;
+        }
+
         // The token says WHO. It travels in the message, lives seven days, and
         // is spent on use — so what is stored is its hash, never itself.
         // Issuing one invalidates the last, which is what makes a resend an
@@ -216,8 +237,6 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
             req.ctx.actor || null, tokenHash(tok), TOKEN_DAYS]);
         if (!inv.rows.length) return null;
         const m = inv.rows[0];
-        const o = await c.query('SELECT slug, name FROM chain.outlet WHERE id = $1',
-          [req.ctx.outletId]);
         const co = await c.query('SELECT brand FROM chain.company LIMIT 1');
         // A guest should read a person's name, not a login handle: "Sent by
         // nashwa" is a system talking about itself. The audit trail keeps the
@@ -225,7 +244,6 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
         const by = req.ctx.actor
           ? await c.query('SELECT name FROM chain.staff WHERE id = $1', [req.ctx.actor])
           : { rows: [] };
-        const slug = (o.rows[0] || {}).slug || '';
         const msg = INVITE.compose({
           chan: via,
           name: m.name || m.phone,
@@ -234,9 +252,9 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
           points: Number(m.points) || 0,
           worth: await pointsWorth(c, m.points),
           sender: (by.rows[0] || {}).name || req.ctx.name || '',
-          link: joinUrl(slug, tok)
+          link: joinUrl(slug0, tok)
         });
-        return { m: m, token: tok, msg: msg, slug: slug,
+        return { m: m, token: tok, msg: msg, slug: slug0,
           brand: (o.rows[0] || {}).name || '' };
       });
       if (!out) return res.status(404).json({ error: 'no such customer' });
@@ -305,6 +323,9 @@ r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
       // P0001 is the invite function refusing a channel by name — "Aishath has
       // no email address on file". That is an answer, not a server fault.
       if (e && e.code === 'P0001') return res.status(409).json({ error: e.message });
+      // And a deploy with no public address is a configuration answer, which is
+      // the operator's to fix rather than the cashier's to retry.
+      if (e && e.status === 503) return res.status(503).json({ error: e.message });
       next(e);
     }
   });

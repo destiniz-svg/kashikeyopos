@@ -524,11 +524,13 @@ test('nothing claims to have sent an SMS', () => {
    no resend, no revoke — and on a row where the field was simply ABSENT it
    claimed the customer already had access. Every one of those is a sentence
    a screen said and could not back. ═══════════════════════════════════════ */
-function withCustomers(rows) {
+function withCustomers(rows, portal) {
   const k = FX.kpos();
   k.CUSTOMERS = rows;
+  if (portal) k.PORTAL = portal;
   return H.makeInstance({ kpos: k, raw: FX.raw(), real: FX.real() });
 }
+const LIVE_PORTAL = { base: 'kashikeyopos.com', origin: 'https://sea-house.kashikeyopos.com' };
 
 const NEVER_ASKED = {
   id: 'c1', name: 'Hassan Moosa', phone: '9995544', email: '',
@@ -559,11 +561,39 @@ test('an invitation is composed before it is sent', () => {
     'the foot is the artefact, so it keeps its line breaks');
 });
 
+/* An invitation IS a link, so a deploy that cannot spell an absolute one has
+   no invitation to send. The preview must say what the send will say — a
+   message that reads fine and then refuses is worse than one that says up
+   front it cannot go. */
+test('a deploy with no public address says so before it is asked to send', () => {
+  const F = withCustomers([Object.assign({}, NEVER_ASKED, { email: 'h@example.mv' })]);
+  F.state.modal = { kind: 'form', form: 'invite', edit: F.member('c1') };
+  F.state.formVals = { chan: 'email' };
+  const foot = F.formSpec('invite').foot();
+  assert.match(foot, /PUBLIC_URL/, 'and names what to set: ' + foot);
+  assert.ok(foot.indexOf('/join/') < 0,
+    'without showing a link that would land nowhere: ' + foot);
+  // Still useful: the card's own address, which a server can read out.
+  assert.match(foot, /\/m\//, foot);
+});
+
+test('with a public address the preview shows the link the server would spell', () => {
+  const k = FX.kpos();
+  k.CUSTOMERS = [Object.assign({}, NEVER_ASKED, { email: 'h@example.mv' })];
+  k.PORTAL = { base: '', origin: 'https://kashikeyopos.com' };
+  const F = H.makeInstance({ kpos: k, raw: FX.raw(), real: FX.real() });
+  F.state.modal = { kind: 'form', form: 'invite', edit: F.member('c1') };
+  F.state.formVals = { chan: 'email' };
+  const foot = F.formSpec('invite').foot();
+  assert.match(foot, /https:\/\/kashikeyopos\.com\/join\/MV-/, foot);
+  assert.ok(foot.indexOf('PUBLIC_URL') < 0, 'and nothing to fix: ' + foot);
+});
+
 test('the message proves it came from a restaurant that knows them', () => {
   const known = Object.assign({}, NEVER_ASKED, {
     name: 'Hassan Moosa', points: 1842, email: 'hassan@example.mv'
   });
-  const F = withCustomers([known]);
+  const F = withCustomers([known], LIVE_PORTAL);
   const msg = F.inviteMessage(known, 'whatsapp', 'MV-abc-1');
   // Four things a bulk sender would not have.
   assert.match(msg.body, /Hassan/, 'their own name');
@@ -579,7 +609,7 @@ test('the message proves it came from a restaurant that knows them', () => {
 });
 
 test('a member with no points is invited without a balance claim', () => {
-  const F = withCustomers([NEVER_ASKED]);
+  const F = withCustomers([NEVER_ASKED], LIVE_PORTAL);
   const msg = F.inviteMessage(NEVER_ASKED, 'whatsapp', 'MV-abc-1');
   assert.ok(msg.body.indexOf('0 points') < 0,
     'a zero balance argues against the invitation rather than for it: ' + msg.body);
@@ -596,7 +626,10 @@ test('the sender is a name, never a login handle', () => {
 });
 
 test('a channel the customer has no address for is refused by name', () => {
-  const F = withCustomers([NEVER_ASKED]);
+  // On a deploy that CAN send — otherwise the governing refusal is the
+  // deploy's, and telling a waiter to add an email would send them to fix
+  // something that still would not go.
+  const F = withCustomers([NEVER_ASKED], LIVE_PORTAL);
   // Refused in the form's own foot, where the operator is choosing, and
   // refused again on send. The control never vanishes — one that does teaches
   // an operator the app is broken.

@@ -12191,6 +12191,12 @@ class Component extends DCLogic {
      bootstrap — a domain typed into a page is right in production and wrong in
      staging, and a link goes into a message that outlives both. */
   storeBase() {
+    // What the SERVER said it would spell for this outlet. Deriving it from
+    // the base domain alone would disagree with the server wherever store
+    // subdomains are deliberately off and PUBLIC_URL carries the links — and a
+    // preview that disagrees with the send is worse than no preview.
+    const pub = String(((K() || {}).PORTAL || {}).origin || "");
+    if (pub) return pub;
     const h = this.storeHandle(this.state.outletId), base = this.portalBase();
     if (!base || !h) return "";
     return "https://" + h + "." + base;
@@ -14741,6 +14747,16 @@ class Component extends DCLogic {
              rather than twenty short. All x's, so nobody reads it as a live
              token — and it is not one: nothing hashes to it, so the landing
              would answer "not an invitation" if it ever went out. */
+          /* No public address, no invitation — the server refuses to compose
+             one, so the preview says so rather than showing a message that
+             reads fine and then will not send. */
+          if (!this.storeBase()) {
+            return "This install has no public address yet, so an invitation would "
+              + "carry a link that resolves to nothing \u2014 a guest would tap it and "
+              + "land nowhere. Set PUBLIC_URL (or PORTAL_BASE_DOMAIN) on the deploy "
+              + "and this becomes sendable. Until then their card is at "
+              + this.memberUrl(this.state.outletId) + ", which a server can read out.";
+          }
           const msg = this.inviteMessage(c, chan,
             "MV-xxxxxxxxxxxxxxxxxxxxxx-0000000000000");
           const head = ch.label + " to " + to
