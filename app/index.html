@@ -1146,6 +1146,13 @@
                     </sc-for>
                   </div>
                 </div>
+                <div style="{{ refWrap }}">
+                  <label style="display:block">
+                    <span style="display:block;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ refLabel }}</span>
+                    <input value="{{ refValue }}" onChange="{{ onRef }}" placeholder="{{ refHint }}" style="width:100%;padding:11px 12px;border-radius:9px;background:var(--bg);border:1px solid var(--line);color:var(--text);font-size:12.5px;font-family:'JetBrains Mono',monospace" />
+                  </label>
+                  <div style="{{ refNoteStyle }}">{{ refNote }}</div>
+                </div>
                 <div style="{{ creditWrap }}">
                   <div style="font-size:11px;color:var(--text-dim);margin-bottom:7px">Charge to a registered customer's credit facility</div>
                   <select value="{{ payCust }}" onChange="{{ onPayCust }}" style="width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:12.5px;color:var(--text);outline:none">
@@ -1897,6 +1904,10 @@ const MVRc = (n) => {
   return sym + gap + Math.round(n || 0).toLocaleString("en-US");
 };
 const pad = (n) => String(n).padStart(2, "0");
+// Money, to the laari. Five identical closures were spelling this out
+// separately; anything reaching for it outside one of those five scopes found
+// nothing at all.
+const r2 = (n) => Math.round((n || 0) * 100) / 100;
 
 // Grouped by how a day actually runs: the service floor first, then what
 // feeds it (menu, stock, buying), then the people and money behind it, then
@@ -2906,6 +2917,12 @@ class Component extends DCLogic {
       at: row.at, sold: sold, payments: payments, stockMoves: stockMoves
     });
     return row;
+  }
+  // What a terminal returns when it approves. Six digits is what BML's own
+  // slips carry, and it is the figure the settlement file is matched on.
+  approvalCode() {
+    const n = Math.floor(Math.random() * 1000000);
+    return String(n).padStart(6, "0");
   }
   clock() { const d = new Date(); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); }
 
@@ -5600,6 +5617,9 @@ class Component extends DCLogic {
       // unlicensed exchange desk, and the drawer would never reconcile.
       const change = Math.max(0, given - due);
       const cust = (K0.CUSTOMERS || []).find((c) => c.id === m.cust);
+      // Which company is going to move this money, if any. Cash and customer
+      // credit answer null: nobody stands between the guest and the till.
+      const payProc = this.procFor(m.tender);
       const rowS = "display:flex;justify-content:space-between;font-size:11.5px;font-weight:500;color:var(--text-dim);padding:3px 0";
       const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"].map((k) => ({
         label: k,
@@ -5631,15 +5651,42 @@ class Component extends DCLogic {
         shareNote: evenN > 1 ? "Share " + (paidN + 1) + " of " + evenN + " · " + MVRc(due) + " each"
           + (paidN ? " · " + MVRc(T.total - paidAmt) + " still to collect" : " · each share can use its own tender") : "",
         shareNoteStyle: evenN > 1 ? "margin-bottom:12px;padding:9px 12px;border-radius:8px;background:var(--bg-3);border:1px solid var(--line);font-size:11.5px;font-weight:600;color:var(--text-dim)" : "display:none",
+        // ONE tender set, and it is the one the processors define. This list
+        // was hardcoded to four, so Transfer and QR could not be taken at the
+        // till at all — and a suspended processor's tender stayed on screen to
+        // fail at the counter in front of a guest.
         tenders: [
           { k: "cash", label: "Cash", sub: "Drawer opens" },
           { k: "card", label: "Card", sub: "Terminal · BML" },
           { k: "wallet", label: "BML Pay", sub: "QR wallet" },
+          { k: "qr", label: "QR", sub: "Scan to pay" },
+          { k: "transfer", label: "Transfer", sub: "Bank transfer" },
           { k: "credit", label: "Customer credit", sub: "Registered accounts" }
-        ].map((t) => ({
+        ].filter((t) => this.tenderLive(t.k)).map((t) => ({
           label: t.label, sub: t.sub, pick: () => this.setState({ modal: Object.assign({}, m, { tender: t.k }) }),
           style: "display:flex;flex-direction:column;align-items:flex-start;padding:12px 14px;border-radius:9px;border:1px solid " + (m.tender === t.k ? "var(--text)" : "var(--line)") + ";background:" + (m.tender === t.k ? "var(--bg-3)" : "var(--bg-2)") + ";color:" + (m.tender === t.k ? "var(--text)" : "var(--text-dim)")
         })),
+        /* ── the evidence ────────────────────────────────────────────────
+           The reference the PROCESSOR issues, named the way that processor
+           names it. It lands on the settled row, which is what makes the
+           settlement screen's unreferenced count a real figure rather than an
+           artefact of the till never having asked.
+
+           Card and wallet fill it in themselves: the terminal approved the
+           payment and knows the code, so a cashier retyping it is a figure
+           entered twice and a digit waiting to be got wrong. */
+        refWrap: payProc ? "margin-bottom:12px;display:block" : "display:none",
+        refLabel: payProc ? payProc.evidence + (payProc.auto ? "" : " — optional") : "",
+        refValue: m.ref || "",
+        refHint: payProc && payProc.auto ? "Captured from the terminal"
+          : "Leave blank and the sale is flagged unreferenced",
+        onRef: (e) => this.setState({ modal: Object.assign({}, m, { ref: e.target.value }) }),
+        refNote: payProc && payProc.auto
+          ? "The terminal writes this in when it approves. It is on the receipt and on the settlement file, so the two can be matched."
+          : payProc
+            ? "Without it this sale cannot be matched against " + payProc.name + "'s statement. The sale still settles — the guest has paid — and it surfaces at close as one to chase."
+            : "",
+        refNoteStyle: payProc ? "margin-top:7px;font-size:10.5px;color:var(--text-muted);line-height:1.55" : "display:none",
         curWrap: m.tender === "cash" ? "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" : "display:none",
         curs: this.CURRENCIES().map((c) => {
           const on = payCur === c.code;
@@ -5727,12 +5774,16 @@ class Component extends DCLogic {
           // Cash is instant — the drawer is right there. Card and wallet go to
           // an acquirer, so the button holds the operator at the terminal until
           // the approval lands. Faking this on cash would only add delay.
-          if ((m.tender === "card" || m.tender === "wallet") && !m.approving) {
+          if (payProc && payProc.auto && !m.approving) {
             this.setState({ modal: Object.assign({}, m, { approving: 1 }) });
             setTimeout(() => {
               const cur = this.state.modal;
               if (!cur || cur.kind !== "pay") return;
-              this.setState({ modal: Object.assign({}, cur, { approving: 2 }) });
+              // The device that approved it knows the code. A cashier reading
+              // it off a slip and keying it back in is the same figure entered
+              // twice, and the second time is where the digit goes wrong.
+              const code = cur.ref || this.approvalCode();
+              this.setState({ modal: Object.assign({}, cur, { approving: 2, ref: code }) });
               setTimeout(() => {
                 const c2 = this.state.modal;
                 if (c2 && c2.kind === "pay") this.overlayVals().confirmPay();
@@ -5794,7 +5845,11 @@ class Component extends DCLogic {
               // absorbed into revenue.
               channel: (tk || {}).channel || "dine_in", total: paidAmt + due, round: roundDiff, tender: m.tender,
               status: "closed", server: (tk || {}).waiter || "Unassigned",
-              ref: ((tk || {}).payIntent || {}).ref || "",
+              // What the processor issued, captured at the counter. This was
+            // always the ticket's pay INTENT — a QR guest's choice — so a
+            // reference typed at the till never reached the row and the
+            // settlement screen counted every card sale as unreferenced.
+            ref: m.ref || ((tk || {}).payIntent || {}).ref || "",
               tip: Math.round((((tk || {}).payIntent || {}).tip || 0) / 100 * T.net * 100) / 100,
               customer: m.tender === "credit" ? (m.cust || "") : ((tk || {}).member || ""),
               // A cover is a guest at the table, so it is the LARGER of the two
@@ -12290,38 +12345,165 @@ class Component extends DCLogic {
   // correctly is to match its file to the tickets that made up each batch.
   // Bank reconciliation cannot do this: the statement shows one net figure, and
   // the fee is buried inside it.
-  MDR() { const f = this.prefs().mdr; return f === undefined ? 1.5 : +f; }
-  // POS card and wallet takings, batched by the day they were taken.
-  cardBatches() {
-    const s = this.state;
-    const by = {};
-    (s.settled || [])
-      .filter((x) => x.outletId === s.outletId && (x.tender === "card" || x.tender === "wallet"))
-      .forEach((x) => {
-        const d = new Date(x.at || Date.now());
-        const key = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-        if (!by[key]) by[key] = { date: key, gross: 0, n: 0, noRef: 0, tickets: [] };
-        by[key].gross += x.total || 0;
-        by[key].n += 1;
-        if (!x.ref) by[key].noRef += 1;
-        by[key].tickets.push(x.no);
-      });
-    const runs = s.acqRuns || {};
-    return Object.keys(by).sort().reverse().map((k) => {
-      const b = by[k];
-      const fee = Math.round(b.gross * (this.MDR() / 100) * 100) / 100;
-      const expected = Math.round((b.gross - fee) * 100) / 100;
-      const run = runs[k];
-      return Object.assign({}, b, {
-        fee: fee, expected: expected,
-        paid: run ? run.paid : null,
-        feeCharged: run ? Math.round((b.gross - run.paid) * 100) / 100 : null,
-        variance: run ? Math.round((run.paid - expected) * 100) / 100 : null,
-        at: run ? run.at : null,
-        state: run ? (Math.abs(run.paid - expected) > 1 ? "variance" : "matched") : "awaiting"
+  /* ═══ THE COMPANIES THAT MOVE THE MONEY ═════════════════════════════════
+     Tenders existed; the processors did not. Card, wallet and QR were blended
+     into one daily "card batch" checked against a single merchant rate — so a
+     gateway overcharging half a percent was indistinguishable from a terminal
+     batch landing a day early, and neither could be argued with a bank.
+
+     Four contracts, each with its own rate, cycle and evidence. `cash` and
+     `credit` have no processor: nobody stands between the guest and the till.
+
+     `batches: false` is load-bearing. A direct transfer is ROUTED but not
+     BATCHED — there is no advice to match and no cycle to be late on. Treating
+     it as a batch created a row that could never be settled and tripped the
+     overdue alert on the day the sale was taken. It posts its own bank
+     expectation on the day sent instead, which is a net gain: transfers were
+     not on the reconciliation screen at all before.                        */
+  PROCESSORS() {
+    return [
+      { id: "term", name: "BML Merchant Terminal", kind: "Card terminal \u00b7 card present",
+        takes: "card", rate: 1.5, cycle: 1, acct: "1030",
+        evidence: "Approval code", auto: true, batches: true },
+      { id: "wallet", name: "BML Pay", kind: "Wallet \u00b7 scan at the counter",
+        takes: "wallet", rate: 1.0, cycle: 1, acct: "1030",
+        evidence: "Wallet transaction id", auto: true, batches: true },
+      { id: "gw", name: "Kashikeyo Online Gateway", kind: "Hosted gateway \u00b7 card not present",
+        takes: "qr", rate: 2.4, cycle: 2, acct: "1030",
+        evidence: "Gateway reference", auto: false, batches: true },
+      { id: "direct", name: "Direct bank transfer", kind: "No intermediary",
+        takes: "transfer", rate: 0, cycle: 0, acct: "1020",
+        evidence: "Transfer slip", auto: false, batches: false }
+    ];
+  }
+  // Rate, cycle and suspension are the outlet's to override; the contract's
+  // shape is not. A non-batching contract has no rate or cycle to override —
+  // accepting a figure that never applies is worse than refusing it.
+  procs() {
+    const ov = this.prefs().processors || {};
+    return this.PROCESSORS().map((p) => {
+      const o = ov[p.id] || {};
+      return Object.assign({}, p, {
+        rate: p.batches && o.rate !== undefined ? +o.rate : p.rate,
+        cycle: p.batches && o.cycle !== undefined ? Math.max(0, +o.cycle) : p.cycle,
+        suspended: !!o.suspended
       });
     });
   }
+  proc(id) { return this.procs().find((p) => p.id === id) || null; }
+  // Which contract takes this tender. Cash and customer credit answer null,
+  // and that is the answer, not a gap.
+  procFor(tender) { return this.procs().find((p) => p.takes === tender) || null; }
+  // A suspended processor's tender comes off the till rather than failing at
+  // the counter in front of a guest.
+  tenderLive(k) {
+    const p = this.procFor(k);
+    return !p || !p.suspended;
+  }
+  MDR() { const f = this.prefs().mdr; return f === undefined ? 1.5 : +f; }
+  // Kept as the name the bank reconciliation still calls it by: every batch
+  // that is actually waiting on a processor.
+  cardBatches() { return this.settlementBatches().filter((b) => !b.reversalOnly); }
+  /* One batch per PROCESSOR per DAY, keyed "<procId>|<YYYY-MM-DD>". Keying on
+     the date alone put a terminal batch and a gateway batch in the same bucket
+     and checked both against one rate.
+
+       fee      = gross × rate
+       expected = gross − reversed − fee
+       variance = paid − expected            (flagged beyond a rufiyaa)
+
+     Sorted newest date first, then processor within the day. Sorting on the
+     composite key groups by counterparty and scrambles the chronology.    */
+  settlementBatches() {
+    const s = this.state;
+    const by = {};
+    const bucket = (proc, date) => {
+      const key = proc.id + "|" + date;
+      if (!by[key]) {
+        by[key] = { key: key, proc: proc.id, procName: proc.name, rate: proc.rate,
+          cycle: proc.cycle, acct: proc.acct, date: date, gross: 0, n: 0,
+          noRef: 0, reversed: 0, tickets: [] };
+      }
+      return by[key];
+    };
+    (s.settled || [])
+      .filter((x) => x.outletId === s.outletId)
+      .forEach((x) => {
+        const proc = this.procFor(x.tender);
+        if (!proc || !proc.batches) return;
+        const b = bucket(proc, x.bizDate || this.dayOf(x.at || Date.now()));
+        b.gross += x.total || 0;
+        b.n += 1;
+        if (!x.ref) b.noRef += 1;
+        b.tickets.push(x.no);
+      });
+
+    const runs = s.acqRuns || {};
+    const paidOf = (b) => {
+      // A batch filed under the bare date, before batches were keyed by
+      // processor, is still that terminal's batch.
+      const r = runs[b.key];
+      if (r) return r;
+      return b.proc === "term" ? runs[b.date] : undefined;
+    };
+
+    /* A refund on a processed tender nets off THE NEXT SETTLEMENT THAT
+       PROCESSOR HAS NOT YET PAID — walking forward from the day the reversal
+       was authorised, past any batch already matched and filed. Reopening a
+       filed batch would restate a figure the bank has already paid. */
+    const order = (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+    ((s.docs || []) || [])
+      .filter((d) => d && d.kind === "CN" && d.outletId === s.outletId)
+      .forEach((d) => {
+        const proc = this.procFor(d.tender);
+        if (!proc || !proc.batches) return;
+        const from = d.bizDate || this.dayOf(d.at || Date.now());
+        const mine = Object.keys(by).map((k) => by[k])
+          .filter((b) => b.proc === proc.id && b.date >= from)
+          .sort(order);
+        const open = mine.filter((b) => paidOf(b) === undefined)[0];
+        const target = open || bucket(proc, from);
+        target.reversed += (d.T || {}).total || 0;
+      });
+
+    return Object.keys(by).map((k) => {
+      const b = by[k];
+      const fee = r2(b.gross * (b.rate / 100));
+      const expected = r2(b.gross - b.reversed - fee);
+      const run = paidOf(b);
+      const paid = run ? run.paid : null;
+      return Object.assign({}, b, {
+        fee: fee, expected: expected, paid: paid,
+        feeCharged: run ? r2(b.gross - run.paid) : null,
+        variance: run ? r2(run.paid - expected) : null,
+        at: run ? run.at : null,
+        // Nothing was taken on this day and something was given back: the
+        // processor will DEBIT you. It is a carried debit, not a settlement.
+        reversalOnly: b.n === 0 && b.reversed > 0,
+        state: run ? (Math.abs(run.paid - expected) > 1 ? "variance" : "matched") : "awaiting"
+      });
+    }).sort((a, b) => (a.date === b.date
+      ? (a.procName < b.procName ? -1 : a.procName > b.procName ? 1 : 0)
+      : (a.date < b.date ? 1 : -1)));
+  }
+  // Money coming toward you. A reversal bucket is money going the other way,
+  // so it is stated separately rather than netted into a figure labelled
+  // "in transit" — and it can never be overdue, because nothing is arriving.
+  settlementInTransit() {
+    const open = this.settlementBatches().filter((b) => b.state === "awaiting");
+    const coming = open.filter((b) => !b.reversalOnly);
+    const back = open.filter((b) => b.reversalOnly);
+    return {
+      amount: r2(coming.reduce((a, b) => a + b.expected, 0)),
+      batches: coming.length,
+      processors: new Set(coming.map((b) => b.proc)).size,
+      owedBack: r2(back.reduce((a, b) => a + Math.abs(b.expected), 0)),
+      backBatches: back.length,
+      overdue: coming.filter((b) => this.dayNum(this.today()) - this.dayNum(b.date) > b.cycle)
+    };
+  }
+  dayNum(d) { return Math.floor(new Date(String(d) + "T00:00:00").getTime() / 86400000); }
+  // The old name, kept so nothing that reads it has to know about processors.
   BANKSEED() {
     return [
       { id: "b1", date: "10 Aug", desc: "BML MERCHANT SETTLEMENT 4471", amt: 128400, src: "Card settlement", state: "cleared" },
@@ -12344,15 +12526,30 @@ class Component extends DCLogic {
   bankExpect() {
     const s = this.state, out = [];
     const dnum = (dt) => Math.floor(dt.getTime() / 86400000);
-    const mdr = this.MDR() / 100;
-    // Card: gross less the contract fee, landing the next day. The fee itself
-    // arrives as its own debit, which is why it is expected separately.
-    this.cardBatches().forEach((b) => {
-      const d = new Date(b.date + "T00:00:00");
-      const land = dnum(d) + 1;
-      out.push({ kind: "Card settlement", label: "Card batch " + b.date + " \u00b7 " + b.n + " ticket" + (b.n === 1 ? "" : "s"), amt: b.expected, day: land, tol: 1, ref: b.date, acct: "1030" });
-      if (b.fee > 0.005) out.push({ kind: "Merchant fee", label: "Merchant service fee \u00b7 " + this.MDR() + "% of " + MVRc(b.gross), amt: -b.fee, day: land, tol: 1, ref: b.date, acct: "5600" });
+    // Each processor lands on ITS OWN cycle, net of ITS OWN rate. One rate and
+    // one T+1 for all of them made a gateway overcharging half a percent look
+    // exactly like a terminal batch landing a day early.
+    this.settlementBatches().forEach((b) => {
+      const land = this.dayNum(b.date) + b.cycle;
+      if (b.reversalOnly) {
+        // A debit coming back at you, not a settlement arriving.
+        out.push({ kind: "Settlement reversal", label: b.procName + " \u00b7 reversals carried forward from " + b.date, amt: b.expected, day: land, tol: 1, ref: b.key, acct: b.acct });
+        return;
+      }
+      out.push({ kind: "Card settlement", label: b.procName + " \u00b7 " + b.date + " \u00b7 " + b.n + " ticket" + (b.n === 1 ? "" : "s"), amt: b.expected, day: land, tol: 1, ref: b.key, acct: b.acct });
+      if (b.fee > 0.005) out.push({ kind: "Merchant fee", label: b.procName + " fee \u00b7 " + b.rate + "% of " + MVRc(b.gross), amt: -b.fee, day: land, tol: 1, ref: b.key, acct: "5600" });
     });
+    // A direct transfer has no intermediary, so it is never a batch — but the
+    // money still arrives, and it was not on this screen at all before.
+    const direct = this.procFor("transfer");
+    if (direct && !direct.suspended) {
+      const byT = {};
+      (s.settled || []).filter((x) => x.outletId === s.outletId && x.tender === "transfer")
+        .forEach((x) => { const k = x.bizDate || this.dayOf(x.at || Date.now()); byT[k] = r2((byT[k] || 0) + (x.total || 0)); });
+      Object.keys(byT).forEach((k) => {
+        out.push({ kind: "Bank transfer", label: "Transfers taken " + k + " \u00b7 no fee either way", amt: byT[k], day: this.dayNum(k) + direct.cycle, tol: 1, ref: "direct|" + k, acct: direct.acct });
+      });
+    }
     // Cash: what the drawer took, per business date, banked the same or next day.
     const byDay = {};
     (s.settled || []).filter((x) => x.outletId === s.outletId && x.tender === "cash")
@@ -12520,14 +12717,64 @@ class Component extends DCLogic {
   // over-portioning or a wrong recipe. All four are actionable; a single "stock
   // is short" figure is not, which is why the count reports the gap per line and
   // values it at cost.
+  /* Editing one contract. Every unmatched batch is re-checked against the new
+     figure the moment it is saved — `settlementBatches()` derives fee and
+     expected from the contract each time it is asked, so nothing has to be
+     rewritten. A MATCHED batch keeps its filed figures for the same reason a
+     reversal never reopens one: the bank has already paid it. */
+  setProcessor(id, v) {
+    const pr = this.proc(id);
+    if (!pr) return this.toast("No such payment contract", "warn");
+    if (!this.canApprove()) return this.toast("Changing a payment contract needs manager rights", "warn");
+    const want = {};
+    if (!pr.batches) {
+      // Refused BY NAME. A rate on a contract with no intermediary is a figure
+      // that would sit on the screen looking authoritative and never apply to
+      // anything.
+      const rate = String(v.rate === undefined ? "" : v.rate).trim();
+      const cycle = String(v.cycle === undefined ? "" : v.cycle).trim();
+      if ((rate !== "" && +rate !== 0) || (cycle !== "" && +cycle !== 0)) {
+        return this.toast(pr.name + " has no intermediary, so it has no rate and no cycle — there is nothing between the guest and the bank to charge one", "warn");
+      }
+    } else {
+      const rate = +v.rate;
+      if (!(rate >= 0 && rate <= 10)) return this.toast("A processor's rate is a small percentage of gross — check the figure", "warn");
+      const cycle = +v.cycle;
+      if (!(cycle >= 0 && cycle <= 30)) return this.toast("A settlement cycle is a number of days — check the figure", "warn");
+      want.rate = rate;
+      want.cycle = Math.round(cycle);
+    }
+    want.suspended = String(v.suspended || "") === "yes";
+    const all = Object.assign({}, this.prefs().processors || {});
+    all[id] = want;
+    this.setState({ prefs: Object.assign({}, this.prefs(), { processors: all }), modal: null });
+    this.queue("mdr_set", pr.name + " \u00b7 "
+      + (pr.batches ? want.rate + "% \u00b7 T+" + want.cycle + " \u00b7 " : "")
+      + (want.suspended ? "suspended" : "live") + " \u00b7 by " + this.me(), "settings",
+    { processor: id, rate: want.rate, cycle: want.cycle, suspended: want.suspended });
+    const open = this.settlementBatches().filter((b) => b.state === "awaiting").length;
+    this.toast(want.suspended
+      ? pr.name + " suspended \u00b7 " + this.tenderName(pr.takes) + " is off the till"
+      : pr.name + " saved \u00b7 " + open + " unmatched batch" + (open === 1 ? "" : "es") + " re-checked");
+  }
+  // The batches an advice could be covering: everything still waiting.
+  settlementOpen() {
+    return this.settlementBatches().filter((b) => b.state === "awaiting");
+  }
   acqImport(v) {
-    const date = String(v.date || "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return this.toast("Batch date must be written as YYYY-MM-DD", "warn");
-    const b = this.cardBatches().find((x) => x.date === date);
-    if (!b) return this.toast("No card tickets were taken on " + date + " — check the batch date on the advice", "warn");
+    const key = String(v.key || v.date || "").trim();
+    const b = this.settlementBatches().find((x) => x.key === key || x.date === key);
+    if (!b) return this.toast("Pick the batch the advice covers", "warn");
     const paid = +v.paid || 0;
+    // A reversals-only bucket is a DEBIT: the processor takes money back, and
+    // the figure on the advice is negative. Refusing it as "not a positive
+    // amount" would make the one row that most needs matching unmatchable.
+    if (b.reversalOnly) {
+      if (paid >= 0) return this.toast("This bucket is a debit — enter what " + b.procName + " took back, as a negative", "warn");
+      return this.acqPay(b, paid);
+    }
     if (paid <= 0) return this.toast("Enter the net amount credited", "warn");
-    if (paid > b.gross) return this.toast("The acquirer cannot pay more than the tickets came to — check the figure", "warn");
+    if (paid > b.gross) return this.toast(b.procName + " cannot pay more than the tickets came to — check the figure", "warn");
     this.acqPay(b, paid);
   }
   acqRow(b) {
@@ -12546,10 +12793,11 @@ class Component extends DCLogic {
         label: "Reopen this batch", sub: "Undo the match and wait for a corrected file",
         go: () => {
           const runs = Object.assign({}, this.state.acqRuns || {});
-          delete runs[b.date];
+          delete runs[b.key];
+          delete runs[b.date];      // a batch filed before batches had processors
           this.setState({ acqRuns: runs, modal: null });
-          this.queue("acq_reopen", "Settlement batch " + b.date + " reopened by " + this.me(), "payments");
-          this.toast("Batch " + b.date + " is open again");
+          this.queue("acq_reopen", "Settlement batch " + b.procName + " \u00b7 " + b.date + " reopened by " + this.me(), "payments");
+          this.toast(b.procName + " \u00b7 " + b.date + " is open again");
         }
       });
       if (b.state === "variance") {
@@ -12569,20 +12817,23 @@ class Component extends DCLogic {
   acqPay(b, paid) {
     if (!this.can("accounting", "e")) return this.toast("Matching a settlement needs accounting edit rights", "warn");
     const runs = Object.assign({}, this.state.acqRuns || {});
-    runs[b.date] = { paid: Math.round(paid * 100) / 100, at: Date.now(), by: this.me() };
-    const variance = Math.round((paid - b.expected) * 100) / 100;
+    // Keyed by the COMPOSITE batch key. Matching on the date alone let one
+    // advice credit another processor's batch on the same day.
+    runs[b.key] = { paid: r2(paid), at: Date.now(), by: this.me() };
+    const variance = r2(paid - b.expected);
     this.setState({ acqRuns: runs, modal: null });
+    const name = b.procName + " \u00b7 " + b.date;
     // The money and the fee are two entries, not one net line: netting them hides
     // the fee inside revenue and makes the rate impossible to audit later.
-    this.queue("acq_match", "Batch " + b.date + " settled · " + MVRc(paid) + " received against " + MVRc(b.expected) + " expected", "payments", {
-      acquirer: b.acquirer || "BML", batch: b.batch || b.date, date: b.date,
-      gross: b.gross, mdr: b.mdr || 0, net: paid
+    this.queue("acq_match", "Batch " + name + " settled \u00b7 " + MVRc(paid) + " received against " + MVRc(b.expected) + " expected", "payments", {
+      acquirer: b.proc, batch: b.key, date: b.date,
+      gross: b.gross, mdr: b.rate, net: paid
     });
-    this.queue("post_journal", "Dr 1020 Bank " + MVRc(paid) + " · Dr 5600 Bank and card charges " + MVRc(b.gross - paid) + " · Cr 1030 Card receivable " + MVRc(b.gross) + " · batch " + b.date, "journal_entries");
+    this.queue("post_journal", "Dr 1020 Bank " + MVRc(paid) + " \u00b7 Dr 5600 Bank and card charges " + MVRc(b.gross - paid) + " \u00b7 Cr " + b.acct + " " + MVRc(b.gross) + " \u00b7 batch " + name, "journal_entries");
     if (Math.abs(variance) > 1) {
       this.toast("Paid " + MVRc(Math.abs(variance)) + (variance < 0 ? " short of" : " above") + " the agreed rate — the batch stays flagged", "warn");
     } else {
-      this.toast("Batch " + b.date + " matched · " + MVRc(paid) + " to 1020");
+      this.toast(name + " matched \u00b7 " + MVRc(paid) + " to 1020");
     }
   }
   postCount(m, sheet) {
@@ -13246,17 +13497,50 @@ class Component extends DCLogic {
         onSave: (v) => this.saveSub(v, null),
         onEdit: (v, row) => this.saveSub(v, row)
       },
+      /* ── matching an advice ──────────────────────────────────────────────
+         ONE dropdown of the batches still waiting — processor, date and
+         expected net in the label. Not a processor field plus a typed date.
+
+         The old form defaulted the date to today() while every open batch was
+         dated differently, so the primary action of the whole screen failed on
+         first use, against the app's own default. Choosing the batch by name
+         removes the entire class of failure: there is nothing to mistype and
+         nothing that can name a batch which does not exist.               */
       acqFile: {
-        title: "Acquirer settlement", sub: "What the file says was actually paid",
+        title: "Settlement advice", sub: "What the processor's file says was actually paid",
         save: "Match this batch", editSave: "Match this batch",
-        foot: "Enter the net figure from the settlement advice, not the gross. The terminal already knows what the tickets came to and what the agreed rate should have taken off — if the two disagree the batch stays flagged rather than quietly absorbing the difference.",
+        foot: this.settlementOpen().length
+          ? "Enter the net figure from the advice, not the gross. This terminal already knows what the tickets came to and what the agreed rate should have taken off — if the two disagree the batch stays flagged rather than quietly absorbing the difference."
+          : "Nothing is waiting on a processor. A batch appears here the moment a card, wallet or QR sale is settled.",
         fields: [
-          { k: "date", label: "Batch date the file covers (YYYY-MM-DD)", v: this.today(), full: 1 },
-          { k: "paid", label: "Net amount credited MVR", v: "0" },
-          { k: "ref", label: "Settlement advice reference", v: "" }
+          { k: "key", label: "Which batch does the advice cover", full: 1,
+            v: (this.settlementOpen()[0] || {}).key || "",
+            options: this.settlementOpen().map((b) => ({ v: b.key,
+              l: b.procName + " · " + b.date + " · expecting " + MVRc(b.expected)
+                + (b.reversalOnly ? " (a debit back)" : " · " + b.n + " ticket" + (b.n === 1 ? "" : "s")) })) },
+          { k: "paid", label: "Net amount credited MVR",
+            v: String((this.settlementOpen()[0] || {}).expected || 0) },
+          { k: "ref", label: "Advice reference", v: "" }
         ],
         onSave: (v) => this.acqImport(v),
         onEdit: (v) => this.acqImport(v)
+      },
+      /* ── one contract ────────────────────────────────────────────────────
+         Rate, cycle and suspension are the outlet's to set. The contract's
+         SHAPE is not: rejecting a rate or a cycle on a non-batching contract
+         is deliberate, because accepting a figure that never applies is worse
+         than refusing it. */
+      processor: {
+        title: "Payment contract", sub: "Rate, cycle and whether it is taking money",
+        save: "Save contract", editSave: "Save contract",
+        foot: "Changing a rate re-checks every unmatched batch against the new figure and leaves the matched ones exactly as filed \u2014 a settlement the bank has already paid is not restated because a contract changed today.",
+        fields: [
+          { k: "rate", label: "Rate % of gross", v: "" },
+          { k: "cycle", label: "Settles T+", v: "" },
+          { k: "suspended", label: "Taking money", options: [{ v: "", l: "Live \u00b7 offered at the till" }, { v: "yes", l: "Suspended \u00b7 hidden from the till" }] }
+        ],
+        onEdit: (v, c) => this.setProcessor(c.id, v),
+        onSave: (v, c) => this.setProcessor((c || {}).id, v)
       },
       mdr: {
         title: "Merchant rate", sub: "The rate in your acquirer contract", save: "Set rate",
@@ -15216,41 +15500,58 @@ class Component extends DCLogic {
       };
     }
     if (tab === 6) {
-      const batches = this.cardBatches();
+      const batches = this.settlementBatches();
       const may = this.can("accounting", "e");
       const gate = (fn) => () => may ? fn() : this.toast("Matching a settlement needs accounting edit rights", "warn");
-      const awaiting = batches.filter((b) => b.state === "awaiting");
+      const transit = this.settlementInTransit();
       const varied = batches.filter((b) => b.state === "variance");
+      const matched = batches.filter((b) => b.state === "matched");
       const noRef = batches.reduce((a, b) => a + b.noRef, 0);
+      const live = this.procs().filter((p) => p.batches);
       return {
         tabs: tabs,
-        guideTitle: "Matching the acquirer",
+        guideTitle: "Matching each processor",
         guide: [
-          "Every card sale batches by the day it was taken",
-          "The acquirer pays the next morning, net of the merchant fee",
-          "Expected net is gross minus the agreed rate \u2014 the file has to agree",
-          "A short payment is the acquirer's error until proven otherwise"
+          "Every processed sale batches by processor and by the day it was taken",
+          "Each contract pays on its own cycle, net of its own rate",
+          "Expected net is gross, less anything reversed, less the agreed rate",
+          "A short payment is the processor's error until proven otherwise"
         ],
         actions: [
-          { label: "Import settlement file", primary: true, go: gate(() => this.openForm("acqFile")) },
-          { label: "Merchant rate", go: gate(() => this.openForm("mdr")) },
-          { label: "Export unmatched", go: () => this.downloadCsv("kashikeyo-card-settlements.csv",
-            [["Batch date", "Tickets", "POS gross MVR", "Agreed fee MVR", "Expected net MVR", "Acquirer paid MVR", "Variance MVR", "State"]]
-              .concat(batches.map((b) => [b.date, b.n, b.gross, b.fee, b.expected, b.paid === null ? "" : b.paid, b.variance === null ? "" : b.variance, b.state]))) }
+          { label: "Import settlement advice", primary: true, go: gate(() => this.openForm("acqFile")) },
+          { label: "Payment contracts", go: () => this.setState({ view: "settings", tab: Object.assign({}, s.tab, { set: "payments" }) }) },
+          { label: "Export unmatched", go: () => this.downloadCsv("kashikeyo-settlements.csv",
+            [["Processor", "Batch date", "Tickets", "POS gross MVR", "Reversed MVR", "Rate %", "Agreed fee MVR", "Expected net MVR", "Paid MVR", "Variance MVR", "State"]]
+              .concat(batches.map((b) => [b.procName, b.date, b.n, b.gross, b.reversed, b.rate, b.fee, b.expected, b.paid === null ? "" : b.paid, b.variance === null ? "" : b.variance, b.state]))) }
         ],
         cardMin: 246,
         cards: [
-          { title: "In transit", sub: awaiting.length ? awaiting.length + " batch" + (awaiting.length === 1 ? "" : "es") + " not yet paid" : "Everything has landed",
-            big: MVRc(awaiting.reduce((a, b) => a + b.expected, 0)), bigSize: 20,
-            chip: awaiting.length ? "Awaiting" : "Clear", chipBg: awaiting.length ? "var(--warn-dim)" : "var(--ok-dim)", chipFg: awaiting.length ? "var(--warn-bright)" : "var(--green)",
-            rows: [["Sits in", "1030 Card receivable"], ["Clears to", "1020 Bank on payment"], ["Normal age", "one working day"]],
-            foot: "Card takings are revenue the moment the guest pays, but they are not money until the acquirer settles. A balance here older than two working days is a call to the bank, not an accounting entry." },
-          { title: "Fee variance", sub: varied.length ? varied.length + " batch" + (varied.length === 1 ? "" : "es") + " paid wrong" : "Every batch paid to the rate",
+          // In transit is money coming TOWARD you. A reversal bucket is money
+          // going the other way, so it is stated separately rather than netted
+          // into a figure with that name — and it can never be overdue,
+          // because nothing is arriving.
+          { title: "In transit", sub: transit.batches
+              ? transit.batches + " batch" + (transit.batches === 1 ? "" : "es") + " across " + transit.processors + " processor" + (transit.processors === 1 ? "" : "s")
+              : "Everything has landed",
+            big: MVRc(transit.amount), bigSize: 20,
+            chip: transit.overdue.length ? transit.overdue.length + " past cycle" : transit.batches ? "Awaiting" : "Clear",
+            chipBg: transit.overdue.length ? "var(--bad-dim)" : transit.batches ? "var(--warn-dim)" : "var(--ok-dim)",
+            chipFg: transit.overdue.length ? "var(--red-bright)" : transit.batches ? "var(--warn-bright)" : "var(--green)",
+            rows: [["Sits in", "1030 settlement receivable"], ["Clears to", "1020 Bank on payment"],
+              ["Owed back", transit.owedBack ? "\u2212 " + MVRc(transit.owedBack) + " to be netted off" : "nothing"]],
+            foot: "Processed takings are revenue the moment the guest pays, but they are not money until the processor settles. A batch past its own cycle is a call to that processor, not an accounting entry." },
+          { title: "Paid off the rate", sub: varied.length ? varied.length + " batch" + (varied.length === 1 ? "" : "es") + " paid wrong" : matched.length ? "Every batch paid to its contract" : "Nothing matched yet",
             big: MVRc(varied.reduce((a, b) => a + Math.abs(b.variance || 0), 0)), bigSize: 20,
             bigColor: varied.length ? "var(--red-bright)" : "var(--green)",
-            chip: "at " + this.MDR() + "%", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)",
-            rows: [["Agreed rate", this.MDR() + "% of gross"], ["Checked per", "batch, not per month"], ["Posts to", "5600 Bank charges"]],
-            foot: "A tenth of a percent over the agreed rate is invisible on a monthly total and material over a year. Checking each batch against the contract rate is the only way it surfaces." },
+            chip: live.length + " contract" + (live.length === 1 ? "" : "s"), chipBg: "var(--bg-3)", chipFg: "var(--text-dim)",
+            rows: live.slice(0, 3).map((p) => [p.name, p.rate + "% \u00b7 T+" + p.cycle]),
+            foot: "Each contract is checked against its OWN rate. Blending them into one merchant rate made a gateway overcharging half a percent indistinguishable from a terminal batch landing a day early." },
+          { title: "Reversed and netted", sub: transit.backBatches ? transit.backBatches + " bucket" + (transit.backBatches === 1 ? "" : "s") + " carried forward" : "Nothing refunded on a processed tender",
+            big: transit.owedBack ? "\u2212" + MVRc(transit.owedBack) : MVRc(0), bigSize: 20,
+            bigColor: transit.owedBack ? "var(--amber-bright)" : "var(--green)",
+            chip: transit.owedBack ? "A debit back" : "Clear", chipBg: transit.owedBack ? "var(--warn-dim)" : "var(--ok-dim)", chipFg: transit.owedBack ? "var(--amber-bright)" : "var(--green)",
+            rows: [["Nets off", "the next unpaid settlement"], ["Never", "reopens a filed batch"], ["Overdue", "not applicable"]],
+            foot: "A refund on a processed tender comes off the next settlement that processor has not yet paid. Reopening a batch the bank has already paid would restate a figure that has been banked." },
           { title: "Unreferenced", sub: "Card sales with no approval code",
             big: String(noRef), bigSize: 20, bigColor: noRef ? "var(--red-bright)" : "var(--green)",
             chip: noRef ? "Cannot be matched" : "All referenced", chipBg: noRef ? "var(--bad-dim)" : "var(--ok-dim)", chipFg: noRef ? "var(--red-bright)" : "var(--green)",
@@ -15258,29 +15559,38 @@ class Component extends DCLogic {
             foot: "A card ticket with no approval reference is revenue the acquirer's file cannot corroborate. It is where a chargeback becomes unarguable." }
         ],
         cols: [
+          { label: "Processor", w: "1.4fr" },
           { label: "Batch", w: "1fr", mono: 1 },
-          { label: "Tickets", w: ".7fr", a: "right", mono: 1 },
+          { label: "Tickets", w: ".8fr", a: "right", mono: 1 },
           { label: "POS gross", w: "1.1fr", a: "right", mono: 1 },
-          { label: "Fee at " + this.MDR() + "%", w: "1fr", a: "right", mono: 1 },
+          { label: "Fee", w: "1fr", a: "right", mono: 1 },
           { label: "Expected net", w: "1.1fr", a: "right", mono: 1 },
-          { label: "Acquirer paid", w: "1.1fr", a: "right", mono: 1 },
+          { label: "Paid", w: "1.1fr", a: "right", mono: 1 },
           { label: "Variance", w: "1fr", a: "right", mono: 1 },
           { label: "State", w: "1.1fr", a: "right" }
         ],
         rows: batches.map((b) => ({
           go: gate(() => this.acqRow(b)),
           cells: [
+            { t: b.procName, size: 11.5 },
             { t: b.date, mono: 1, size: 11 },
-            { t: String(b.n) + (b.noRef ? " · " + b.noRef + " no ref" : ""), mono: 1 },
-            { t: MVRc(b.gross), mono: 1 },
-            { t: MVRc(b.fee), mono: 1, c: "var(--text-dim)" },
-            { t: MVRc(b.expected), mono: 1, w: 600 },
-            { t: b.paid === null ? "—" : MVRc(b.paid), mono: 1, c: b.paid === null ? "var(--text-faint)" : "var(--text)" },
-            { t: b.variance === null ? "—" : (b.variance >= 0 ? "+" : "") + MVRc(b.variance), mono: 1, w: 700, c: b.variance && Math.abs(b.variance) > 1 ? "var(--red-bright)" : "var(--text-dim)" },
+            // A bucket carrying only reversals has no tickets at all: it says
+            // what it is rather than reporting a hollow zero.
+            b.reversalOnly
+              ? { t: "reversals carried forward", size: 10.5, c: "var(--amber-bright)" }
+              : { t: String(b.n) + (b.noRef ? " · " + b.noRef + " no ref" : ""), mono: 1 },
+            { t: b.gross ? MVRc(b.gross) : "—", mono: 1, c: b.gross ? "var(--text)" : "var(--text-faint)" },
+            { t: b.fee ? MVRc(b.fee) : "—", mono: 1, c: "var(--text-dim)" },
+            // The processor will DEBIT you: minus before the currency, so it
+            // reads as a debit rather than a small settlement.
+            { t: (b.expected < 0 ? "\u2212" : "") + MVRc(Math.abs(b.expected)), mono: 1, w: 600,
+              c: b.expected < 0 ? "var(--amber-bright)" : "var(--text)" },
+            { t: b.paid === null ? "—" : (b.paid < 0 ? "\u2212" : "") + MVRc(Math.abs(b.paid)), mono: 1, c: b.paid === null ? "var(--text-faint)" : "var(--text)" },
+            { t: b.variance === null ? "—" : (b.variance >= 0 ? "+" : "\u2212") + MVRc(Math.abs(b.variance)), mono: 1, w: 700, c: b.variance && Math.abs(b.variance) > 1 ? "var(--red-bright)" : "var(--text-dim)" },
             { t: b.state === "matched" ? "Matched" : b.state === "variance" ? "Short paid" : "Awaiting", chip: this.chip(b.state === "matched" ? "ok" : b.state === "variance" ? "err" : "warn") }
           ]
         })),
-        empty: "No card sales at this outlet yet. Settle a bill by card and its batch appears here, waiting for the acquirer to pay it.",
+        empty: "Nothing processed at this outlet yet. Settle a bill by card, wallet or QR and its batch appears here, waiting for that processor to pay it.",
         notes: [
           ["Why this is not bank reconciliation", "The statement shows one net figure with the fee already inside it. Matching there proves the money arrived; it cannot prove the right amount arrived. This screen holds the acquirer to the contract rate, batch by batch, against the tickets that made it up."],
           ["What a variance actually means", "Short by roughly a fixed percentage: the acquirer is applying a different rate than the contract. Short by one ticket's value: a transaction was reversed or charged back. Short by nothing but late: it is in transit, and the age is what matters."]
@@ -15641,7 +15951,7 @@ class Component extends DCLogic {
     // Eleven cards in one grid was a wall. They split cleanly along who owns
     // them: the company, the fascia, the tax office, the floor, the auditor and
     // the device — which is also the order onboarding fills them in.
-    const CATS = [["company", "Company"], ["brand", "Branding"], ["tax", "Tax & receipts"], ["service", "Service"], ["security", "Security"], ["device", "Device & data"]];
+    const CATS = [["company", "Company"], ["brand", "Branding"], ["tax", "Tax & receipts"], ["payments", "Payments"], ["service", "Service"], ["security", "Security"], ["device", "Device & data"]];
     const cat = this.state.tab.set || "company";
     const CATOF = { "Theme": "brand", "Merchant branding": "brand", "Software branding": "brand", "Chain": "company", "Tax profile": "tax", "Receipt & printing": "tax", "Loyalty & credit": "service", "Service targets": "service", "Security": "security", "Service": "service", "Terminal": "device" };
     const all = [
@@ -15661,6 +15971,40 @@ class Component extends DCLogic {
           picks: [{ label: "What this business does", opts: this.ACTIVITIES().map((a) => ({ label: a[1], on: this.activity() === a[0], go: gate(() => this.setActivity(a[0])) })) }],
           rows: [["Modules hidden", (function (self) { const n = ["kds", "reservations", "recipes", "batches", "production", "aimenu"].filter((k) => self.hiddenBy(self.activity(), k)).length; return n ? String(n) : "None"; })(this)]],
           foot: "A grocery has stock, staff and a till but no pass and no book; a salon takes appointments and has neither. Carrying modules a trade will never open is how a back office starts to feel like someone else's software — so the activity hides them rather than greying them out." },
+        /* ── one card per contract ────────────────────────────────────────
+           A processor is a CONTRACT: a rate, a cycle and a piece of evidence.
+           Editing one re-checks every unmatched batch and leaves the matched
+           ones exactly as filed — a batch the bank has already paid is not
+           restated because a rate changed today. */
+        ...this.procs().map((pr) => ({
+          title: pr.name, sub: pr.kind,
+          chip: pr.suspended ? "Suspended" : pr.batches ? "T+" + pr.cycle + " \u00b7 " + pr.rate + "%" : "No intermediary",
+          chipBg: pr.suspended ? "var(--bad-dim)" : pr.batches ? "var(--bg-3)" : "var(--ok-dim)",
+          chipFg: pr.suspended ? "var(--red-bright)" : pr.batches ? "var(--text-dim)" : "var(--green)",
+          cat: "payments",
+          rows: [
+            ["Takes", this.tenderName(pr.takes)],
+            ["Rate", pr.batches ? pr.rate + "% of gross" : "none \u2014 no fee either way"],
+            ["Settles", pr.batches ? "T+" + pr.cycle : "the same day, direct"],
+            ["Sits in", pr.acct + (pr.acct === "1030" ? " settlement receivable" : " bank")],
+            ["Evidence", pr.evidence],
+            ["Batches", pr.batches ? "yes \u2014 one per day" : "no \u2014 nothing to match"]
+          ],
+          foot: pr.batches
+            ? "Suspending this contract takes " + this.tenderName(pr.takes) + " off the till rather than letting it fail at the counter in front of a guest."
+            : "A direct transfer is routed but never batched: there is no advice to match and no cycle to be late on. Treating it as a batch created a row that could never be settled and tripped the overdue alert on the day the sale was taken. It posts a bank expectation on the day sent instead.",
+          go: gate(() => this.openForm("processor", Object.assign({ id: pr.id }, pr)))
+        })),
+        // Derived, never typed: this is what the ledger actually does.
+        { title: "Tender routing", sub: "Where each tender lands", chip: "Derived", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "payments",
+          rows: Object.keys(this.TENDERS()).map((k) => {
+            const pr = this.procFor(k);
+            return [this.tenderName(k), this.tenderAcct(k) + (pr ? " \u00b7 " + pr.name : " \u00b7 no intermediary")];
+          }),
+          foot: "Anything an intermediary is holding is a receivable until they pay it. Posting a card sale to bank on the day it was rung is a day early and unmatchable \u2014 the acquirer has not paid." },
+        { title: "How a refund gets back", sub: "One route per tender", chip: "On the credit note", chipBg: "var(--bg-3)", chipFg: "var(--text-dim)", cat: "payments",
+          rows: Object.keys(this.TENDERS()).map((k) => [this.tenderName(k), this.returnsVia(k)]),
+          foot: "A toast lasts three seconds; the credit note is what the guest and the auditor keep, so the route belongs on the document." },
         { title: "Taxation",
           sub: this.taxRegistered() ? P0.taxClass + " · " + P0.taxRate + "%" : "Not registered for GST",
           chip: "Editable", chipBg: "var(--warn-dim)", chipFg: "var(--warn-bright)", cat: "tax",

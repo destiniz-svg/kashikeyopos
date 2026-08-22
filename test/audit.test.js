@@ -13,7 +13,8 @@ const H = require('./harness');
 const FX = require('./fixtures');
 
 // `aiResult` is listed among the forms in the handoff inventory, but it is a
-// state key in the reference, not a formSpec entry. Counted honestly at 54.
+// state key in the reference, not a formSpec entry. Counted honestly at 55
+// — `processor` is the payment contract each of the four is edited through.
 const FORMS = H.FORMS.filter((f) => f !== 'aiResult');
 
 function report(label, F) {
@@ -33,7 +34,7 @@ test('empty database — every screen renders and no handler throws', () => {
   assert.strictEqual(r.errs.length, 0, r.errs.join(' | '));
   assert.strictEqual(r.s.rendered, 34, 'all 34 screen generators render');
   assert.strictEqual(r.m.rendered, 34, 'all 34 modal kinds open');
-  assert.strictEqual(r.f.rendered, 54, 'all 54 forms have a spec');
+  assert.strictEqual(r.f.rendered, 55, 'all 55 forms have a spec');
   assert.ok(r.s.fired > 400, 'the handler sweep actually swept (' + r.s.fired + ' calls)');
 });
 

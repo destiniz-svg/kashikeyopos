@@ -238,3 +238,158 @@ test('the sale carries a stock consequence to the server', () => {
     assert.ok(m.qty > 0, 'a move has a quantity');
   });
 });
+
+/* ═══ WHO MOVES THE MONEY ════════════════════════════════════════════════════
+   Card, wallet and QR were blended into one daily batch checked against a
+   single merchant rate, so a gateway overcharging half a percent looked exactly
+   like a terminal batch landing a day early — and neither could be argued with
+   a bank.
+   ═══════════════════════════════════════════════════════════════════════ */
+function sale(F, over) {
+  return Object.assign({
+    outletId: F.state.outletId, no: 'INV-' + Math.random().toString(36).slice(2, 8),
+    tender: 'card', total: 1000, net: 1000, at: Date.now(), bizDate: F.today(),
+    ref: 'A1', status: 'closed'
+  }, over || {});
+}
+
+test('two processors taking money on the same day are two batches', () => {
+  const F = liveInstance();
+  F.state.settled = [
+    sale(F, { tender: 'card', total: 1000, bizDate: '2026-03-10' }),
+    sale(F, { tender: 'qr', total: 500, bizDate: '2026-03-10' })
+  ];
+  const b = F.settlementBatches();
+  assert.strictEqual(b.length, 2, 'two contracts, two batches');
+  const term = b.filter((x) => x.proc === 'term')[0];
+  const gw = b.filter((x) => x.proc === 'gw')[0];
+  assert.strictEqual(term.key, 'term|2026-03-10', 'keyed by processor AND day');
+  assert.strictEqual(gw.key, 'gw|2026-03-10');
+
+  // Each against its OWN rate: 1.5% of 1000 and 2.4% of 500.
+  assert.strictEqual(term.fee, 15, 'the terminal takes 1.5%');
+  assert.strictEqual(term.expected, 985);
+  assert.strictEqual(gw.fee, 12, 'the gateway takes 2.4%');
+  assert.strictEqual(gw.expected, 488);
+
+  // And each on its own cycle.
+  assert.strictEqual(term.cycle, 1, 'the terminal pays T+1');
+  assert.strictEqual(gw.cycle, 2, 'the gateway pays T+2');
+
+  // Matching one leaves the other waiting.
+  F.acqPay(term, 985);
+  const after = F.settlementBatches();
+  assert.strictEqual(after.filter((x) => x.proc === 'term')[0].state, 'matched');
+  assert.strictEqual(after.filter((x) => x.proc === 'gw')[0].state, 'awaiting',
+    'the gateway is untouched — an advice cannot credit another processor');
+});
+
+test('a direct transfer is never a batch, and never overdue', () => {
+  const F = liveInstance();
+  F.state.settled = [sale(F, { tender: 'transfer', total: 800, bizDate: '2026-03-10' })];
+  // `.length`, not deepStrictEqual: the logic class runs in a vm, so an array
+  // it returns has that realm's Array prototype and compares unequal to one
+  // built out here even when both are empty.
+  assert.strictEqual(F.settlementBatches().filter((b) => b.proc === 'direct').length, 0,
+    'nothing stands between the guest and the bank, so there is nothing to match');
+  assert.strictEqual(F.settlementInTransit().overdue.filter((b) => b.proc === 'direct').length, 0,
+    'and nothing that can be late');
+
+  // It does appear as a bank expectation on the day sent — it was not on the
+  // reconciliation screen at all before.
+  const exp = F.bankExpect().filter((e) => e.kind === 'Bank transfer');
+  assert.strictEqual(exp.length, 1, 'the money still arrives, and this says when');
+  assert.strictEqual(exp[0].amt, 800);
+  assert.strictEqual(exp[0].day, F.dayNum('2026-03-10'), 'T+0 — the same day');
+});
+
+test('a reversal nets off the next settlement not yet paid', () => {
+  const F = liveInstance();
+  F.state.settled = [
+    sale(F, { tender: 'card', total: 1000, bizDate: '2026-03-10' }),
+    sale(F, { tender: 'card', total: 2000, bizDate: '2026-03-11' })
+  ];
+  // File the first day, so it has been paid and banked.
+  F.acqPay(F.settlementBatches().filter((b) => b.date === '2026-03-10')[0], 985);
+
+  // Now refund against that filed day.
+  F.state.docs = [{ kind: 'CN', outletId: F.state.outletId, tender: 'card',
+    bizDate: '2026-03-10', at: Date.now(), T: { total: 300 } }];
+
+  const b = F.settlementBatches();
+  const filed = b.filter((x) => x.date === '2026-03-10')[0];
+  assert.strictEqual(filed.state, 'matched', 'the filed batch stays filed');
+  assert.strictEqual(filed.paid, 985, 'at the figure the bank actually paid');
+  assert.strictEqual(filed.reversed, 0, 'nothing was clawed back out of it');
+
+  const next = b.filter((x) => x.date === '2026-03-11')[0];
+  assert.strictEqual(next.reversed, 300, 'the refund walked forward to the open one');
+  assert.strictEqual(next.expected, 1670, '2000 − 300 reversed − 30 fee');
+});
+
+test('a bucket carrying only reversals is a debit, and cannot be overdue', () => {
+  const F = liveInstance();
+  F.state.settled = [];
+  F.state.docs = [{ kind: 'CN', outletId: F.state.outletId, tender: 'card',
+    bizDate: '2026-03-10', at: Date.now(), T: { total: 671 } }];
+
+  const b = F.settlementBatches();
+  assert.strictEqual(b.length, 1);
+  assert.strictEqual(b[0].n, 0, 'no tickets');
+  assert.strictEqual(b[0].reversalOnly, true);
+  assert.strictEqual(b[0].expected, -671, 'the processor will debit you');
+
+  const t = F.settlementInTransit();
+  assert.strictEqual(t.amount, 0, 'nothing is coming toward you');
+  assert.strictEqual(t.owedBack, 671, 'it is stated separately, as money going back');
+  assert.strictEqual(t.overdue.length, 0,
+    'a reversal bucket can never be late — nothing is arriving');
+});
+
+test('suspending a processor takes its tender off the till', () => {
+  const F = liveInstance();
+  const { slot } = ringUp(F);
+  const tenders = () => {
+    F.state.modal = { kind: 'pay', tender: 'cash', given: '' };
+    return F.overlayVals().tenders.map((t) => t.label);
+  };
+  assert.ok(tenders().indexOf('QR') >= 0, 'QR is offered at the till');
+  assert.ok(tenders().indexOf('Transfer') >= 0, 'and so is Transfer — neither was before');
+
+  F.state.prefs = Object.assign({}, F.prefs(), { processors: { gw: { rate: 2.4, cycle: 2, suspended: true } } });
+  assert.strictEqual(tenders().indexOf('QR'), -1,
+    'a suspended contract comes off the till rather than failing at the counter');
+  assert.ok(tenders().indexOf('Card') >= 0, 'the others are untouched');
+  void slot;
+});
+
+test('a contract with no intermediary refuses a rate, by name', () => {
+  const F = liveInstance();
+  const said = [];
+  F.toast = (m) => said.push(String(m));
+  F.setProcessor('direct', { rate: '2', cycle: '1' });
+  assert.match(said.join(' '), /no intermediary/i,
+    'refused by name — accepting a figure that never applies is worse');
+  assert.strictEqual((F.prefs().processors || {}).direct, undefined, 'and nothing was stored');
+
+  // The same contract can still be suspended: that is a real thing to do to it.
+  F.setProcessor('direct', { suspended: 'yes' });
+  assert.strictEqual(F.proc('direct').suspended, true);
+});
+
+test('editing a rate re-checks unmatched batches and leaves filed ones alone', () => {
+  const F = liveInstance();
+  F.state.settled = [
+    sale(F, { tender: 'card', total: 1000, bizDate: '2026-03-10' }),
+    sale(F, { tender: 'card', total: 1000, bizDate: '2026-03-11' })
+  ];
+  F.acqPay(F.settlementBatches().filter((b) => b.date === '2026-03-10')[0], 985);
+  F.setProcessor('term', { rate: '3', cycle: '1' });
+
+  const b = F.settlementBatches();
+  const filed = b.filter((x) => x.date === '2026-03-10')[0];
+  const open = b.filter((x) => x.date === '2026-03-11')[0];
+  assert.strictEqual(filed.paid, 985, 'the filed batch keeps what the bank paid');
+  assert.strictEqual(open.fee, 30, 'the unmatched one is re-checked at 3%');
+  assert.strictEqual(open.expected, 970);
+});

@@ -347,6 +347,66 @@ same shape — a status nobody else could read:
 `ticket_status` still has a handler and no call site on purpose: a device that
 was offline across this change may still be holding one in its outbox.
 
+## The companies that move the money
+
+A tender says how a guest paid. A **processor** is the contract that moves it —
+its own rate, its own cycle, its own evidence. Card, wallet and QR used to be
+blended into one daily batch checked against a single merchant rate, so a
+gateway overcharging half a percent was indistinguishable from a terminal batch
+landing a day early, and neither could be argued with a bank.
+
+| id | Contract | Takes | Rate | Cycle | Sits in | Evidence | Batches |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `term` | BML Merchant Terminal | card | 1.5% | T+1 | 1030 | Approval code | yes |
+| `wallet` | BML Pay | wallet | 1.0% | T+1 | 1030 | Wallet transaction id | yes |
+| `gw` | Kashikeyo Online Gateway | qr | 2.4% | T+2 | 1030 | Gateway reference | yes |
+| `direct` | Direct bank transfer | transfer | — | T+0 | 1020 | Transfer slip | **no** |
+
+`cash` and `credit` have no processor: nobody stands between the guest and the
+till. Rate, cycle and suspension are per-outlet overrides in `prefs().processors`;
+the contract's shape is not, and a rate on a non-batching contract is **refused
+by name**, because accepting a figure that never applies is worse.
+
+**`batches: false` is load-bearing.** A direct transfer is routed but never
+batched — no advice to match, no cycle to be late on. It posts its own bank
+expectation on the day sent, which is a net gain: transfers were not on the
+reconciliation screen at all.
+
+One batch per **processor per day**, keyed `"<procId>|<YYYY-MM-DD>"`:
+
+```
+fee      = gross × rate
+expected = gross − reversed − fee
+variance = paid − expected          (flagged beyond a rufiyaa)
+```
+
+Sorted date desc, then processor — sorting on the composite key groups by
+counterparty and scrambles the chronology. A batch filed under the bare date,
+from before batches had processors, still resolves for `term`.
+
+**A reversal never reopens a filed batch.** It nets off the next settlement that
+processor has not yet paid, walking forward from the day it was authorised.
+Reopening one the bank has already paid would restate a banked figure. A bucket
+carrying only reversals has no tickets and a **negative** expected — the
+processor will debit you — so it renders as a debit and can never be overdue,
+because nothing is arriving. `settlementInTransit()` keeps the two apart.
+
+The advice import offers **one dropdown of the batches still waiting**, labelled
+by processor, date and expected net. The old form defaulted a typed date to
+today while every open batch was dated differently, so the screen's primary
+action failed on first use against the app's own default.
+
+Suspending a contract takes its tender **off the till** rather than letting it
+fail at the counter. Editing a rate re-checks every unmatched batch — `fee` and
+`expected` are derived from the contract each time it is asked — and leaves
+matched ones exactly as filed.
+
+The till captures the evidence that processor issues, named the way it names it.
+Card and wallet **fill their own approval code in**: the device approved the
+payment and knows the code, so a cashier retyping it is one figure entered twice.
+The reference lands on the settled row, which is what makes the settlement
+screen's unreferenced count real rather than an artefact of never having asked.
+
 ## One place where money is taken
 
 Settling goes through the till's pay screen — `modalVals()` under `kind: "pay"`.
@@ -551,7 +611,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 135 tests
+npm test                          # 145 tests
 npm run leak-test                 # isolation, on its own
 ```
 
