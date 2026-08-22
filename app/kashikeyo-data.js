@@ -53,11 +53,20 @@
 
   // A tier ladder is a definition — a name and a threshold — and ships with
   // the product. The members standing on it do not.
+  //
+  // `at` is a threshold in POINTS. It used to hold spend-scale figures while
+  // being measured in points, so every member sat in Bronze while their row
+  // claimed Platinum — and the phone ranked on lifetime SPEND against a third
+  // set of thresholds again, so the same guest could read Platinum on their
+  // phone and Bronze at the counter. One ladder, in one unit.
+  //
+  // `spend` is the lifetime-goods equivalent, carried for the copy that quotes
+  // it to a guest. It is not a second way to rank: ranking is on points.
   var TIERS = [
-    { key: "bronze", name: "Bronze", at: 0, mark: "III", from: "#8a6a4f", to: "#5d4632" },
-    { key: "silver", name: "Silver", at: 3000, mark: "II", from: "#7c8290", to: "#4c515c" },
-    { key: "gold", name: "Gold", at: 7000, mark: "I", from: "#b8862f", to: "#7d5a17" },
-    { key: "platinum", name: "Platinum", at: 15000, mark: "\u2605", from: "#3c3f46", to: "#16171b" }
+    { key: "bronze", name: "Bronze", at: 0, spend: 0, mark: "III", from: "#8a6a4f", to: "#5d4632" },
+    { key: "silver", name: "Silver", at: 500, spend: 5000, mark: "II", from: "#7c8290", to: "#4c515c" },
+    { key: "gold", name: "Gold", at: 1500, spend: 15000, mark: "I", from: "#b8862f", to: "#7d5a17" },
+    { key: "platinum", name: "Platinum", at: 3000, spend: 30000, mark: "\u2605", from: "#3c3f46", to: "#16171b" }
   ];
 
   // There are no shipped PINs. A PIN is set per person at onboarding and is

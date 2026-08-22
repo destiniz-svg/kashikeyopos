@@ -431,6 +431,72 @@ If you are tempted to add a settle button somewhere new, open the pay screen
 instead. `test/chain.test.js` asserts the panel exposes no `tkSettle` and no
 tender list of its own.
 
+## Points are a liability, not a discount
+
+Redeeming **releases 2300 and recognises revenue**; it does not reduce the sale.
+Get this wrong and the P&L understates revenue by every point ever spent.
+
+At the till: whole redemption blocks only — a half block is not something the
+catalogue prices — never more than the bill, and taken off the **goods**, before
+service and tax. A guest should not have service charged on money they did not
+hand over, and the government should not be taxing a discount. One control steps
+a block on and wraps back to none, so the same button spends and cancels.
+
+Order of operations at close, and it matters:
+
+1. debit the points spent, and journal `Dr 2300 / Cr 4000`;
+2. **then** earn on what was actually charged for goods.
+
+So a guest cannot earn points on the points they just spent. `applySale()` earns
+on `net − ptsValue`, at the outlet's own rate, and a **paused** programme records
+that nothing was earned rather than earning silently. Replay is already a no-op —
+`op_log.op_id` is the primary key and a seen op short-circuits before the handler
+runs — so a queued sale that replays twice cannot award twice.
+
+Cash rounding is measured against **the figure actually being rounded**. It was
+measured against the pre-points gross, so the redemption reappeared as a "cash
+rounding" line worth exactly itself — on card sales, which are not rounded.
+
+### One tier ladder
+
+Thresholds are in **points**, and tier is **derived every time it is asked for**.
+They were set on the spend scale while being measured in points, so every member
+sat in Bronze while their row claimed Platinum — and the phone ranked on lifetime
+spend against a *third* set again, so the same guest could read Platinum on their
+phone and Bronze at the counter.
+
+| Tier | Points | Lifetime goods |
+| --- | --- | --- |
+| Bronze | 0 | — |
+| Silver | 500 | MVR 5,000 |
+| Gold | 1,500 | MVR 15,000 |
+| Platinum | 3,000 | MVR 30,000 |
+
+Any column called `tier` is a cache. `memberLive()` composes the seed row with
+everything awarded since and works the tier out, and every surface reads that one
+composition — the customers table, the guest sheet, the pay screen, the published
+roster. Raising a threshold demotes exactly the members it should without editing
+a soul. The shipped tier rows survive only as presentation: the mark and the card
+gradient.
+
+### What the till publishes to the phone
+
+`publishGuest()` carries the **programme** (earn rate, redemption rate, live flag,
+the ladder, the active rewards) and the **live roster** (points, visits, spend,
+tier, last seen, credit, whether they may sign in). Settled rows carry `pts` and
+`ptsValue`, so a receipt in the portal can say **why** the balance changed rather
+than only that it did.
+
+The phone quotes the merchant's published redemption rate, never a hard-coded
+one — a hard-coded "10 points = MVR 1" quotes the guest a figure the till will
+not honour the moment that rate is edited. A phone still awards itself nothing:
+it is being told, not asked.
+
+Portal sign-in is **gated on the invitation**. A revoked member keeps their
+history and is refused with wording that says what to do. If no roster is
+published at all the phone is offline, not withholding access — it falls through
+to the code rather than locking a member out because the terminal is asleep.
+
 ## Allergens and diets
 
 One table, in `app/kashikeyo-rules.js`, loaded by the browser as a script and by
@@ -611,7 +677,7 @@ Points are awarded by the outlet from its own earn rate (`chain.setting`
 ## Tests
 
 ```
-npm test                          # 145 tests
+npm test                          # 149 tests
 npm run leak-test                 # isolation, on its own
 ```
 

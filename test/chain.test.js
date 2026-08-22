@@ -393,3 +393,104 @@ test('editing a rate re-checks unmatched batches and leaves filed ones alone', (
   assert.strictEqual(open.fee, 30, 'the unmatched one is re-checked at 3%');
   assert.strictEqual(open.expected, 970);
 });
+
+/* ═══ POINTS ARE A LIABILITY, NOT A DISCOUNT ═══════════════════════════════
+   Redeeming RELEASES 2300 and recognises revenue; it does not reduce the sale.
+   Get this wrong and the P&L understates revenue by every point ever spent.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('one tier ladder, ranked on points, derived every time', () => {
+  const F = liveInstance();
+  const ladder = F.TIERS();
+  assert.ok(ladder.length >= 4, 'the ladder ships');
+  // `.join`, not deepStrictEqual: the logic class runs in a vm, so the arrays
+  // it returns carry that realm's Array prototype.
+  assert.strictEqual(ladder.map((t) => t.at).join(','), '0,500,1500,3000',
+    'thresholds are in POINTS — they held spend-scale figures while being '
+    + 'measured in points, so every member sat in Bronze claiming Platinum');
+
+  assert.strictEqual(F.tierName(0), 'Bronze');
+  assert.strictEqual(F.tierName(499), 'Bronze');
+  assert.strictEqual(F.tierName(500), 'Silver', 'exactly on the threshold counts');
+  assert.strictEqual(F.tierName(1500), 'Gold');
+  assert.strictEqual(F.tierName(9999), 'Platinum');
+
+  // Derived, never stored: a member composed from a row claiming otherwise
+  // reads the tier their points actually earn.
+  const live = F.memberLive({ id: 'c9', name: 'Test', points: 600, tier: 'Platinum' });
+  assert.strictEqual(live.tier, 'Silver',
+    'the stored column is a cache, and a cache that can be edited is a bug');
+  assert.strictEqual((live.nextTier || {}).name, 'Gold');
+});
+
+test('spending points takes it off the goods, and earns on what remained', () => {
+  const F = liveInstance();
+  const { slot, key } = ringUp(F);
+  // A member on the bill with points to spend.
+  F.__win.KPOS.CUSTOMERS = [{ id: 'c1', name: 'Aishath', phone: '7712345',
+    points: 1868, visits: 24, spent: 12000, credit: 0, used: 0, tier: 'Bronze' }];
+  const tk = Object.assign({}, F.state.tickets[key], { member: 'c1' });
+  F.state.tickets = Object.assign({}, F.state.tickets, { [key]: tk });
+  F.state.activeTable = slot;
+
+  const T = F.totals(F.state.tickets[key]);
+  // QR rather than card: a card sale now goes through the terminal-approval
+  // round trip, which is a timer. QR is the same thing for this test — a
+  // processed, non-cash tender — and it is one the till could not take at all
+  // until this round.
+  F.state.modal = { kind: 'pay', tender: 'qr', given: '', blocks: 2 };
+  const pay = F.overlayVals();
+
+  // 100 pts = MVR 25, so two blocks is 200 points and MVR 50 off the goods.
+  assert.match(String(pay.ptsLabel), /200 pts/, 'two whole blocks, never a half');
+  const rows = (pay.payRows || []).map((r) => String(r.label) + ' ' + String(r.value));
+  pay.confirmPay();
+
+  const row = F.state.settled[0];
+  assert.strictEqual(row.pts, 200, 'the points spent are on the row');
+  assert.strictEqual(row.ptsValue, 50, 'and what they were worth');
+  assert.strictEqual(row.net, T.net, 'revenue is NOT reduced — the liability is released');
+
+  // Service and tax follow the goods, so neither is charged on money the
+  // guest did not hand over.
+  assert.ok(row.svc < T.svc + 0.005 && row.svc >= 0, 'service followed the goods');
+  void rows;
+});
+
+test('no cash-rounding line appears on a processed sale that used points', () => {
+  const F = liveInstance();
+  const { slot, key } = ringUp(F);
+  F.__win.KPOS.CUSTOMERS = [{ id: 'c1', name: 'Aishath', phone: '7712345',
+    points: 1000, visits: 1, spent: 100, credit: 0, used: 0, tier: 'Bronze' }];
+  F.state.tickets = Object.assign({}, F.state.tickets,
+    { [key]: Object.assign({}, F.state.tickets[key], { member: 'c1' }) });
+  F.state.activeTable = slot;
+  F.state.modal = { kind: 'pay', tender: 'qr', given: '', blocks: 1 };
+  F.overlayVals().confirmPay();
+
+  const row = F.state.settled[0];
+  // `roundDiff` was measured against the PRE-POINTS gross, so the redemption
+  // reappeared as a "cash rounding" line worth exactly itself — on card sales,
+  // which are not rounded at all.
+  assert.strictEqual(row.round, 0,
+    'a processed sale is not rounded, and the redemption is not a rounding difference');
+});
+
+test('the phone is told what it is worth, and never works it out', () => {
+  const F = liveInstance();
+  F.__win.KPOS.CUSTOMERS = [{ id: 'c1', name: 'Aishath', phone: '7712345',
+    points: 731, visits: 3, spent: 4000, credit: 0, used: 0, tier: 'Bronze' }];
+  F.publishGuest();
+  const pub = JSON.parse(F.__win.localStorage.getItem(F.GUESTKEY));
+
+  assert.ok(pub.programme, 'the programme is published');
+  assert.strictEqual(pub.programme.redeemPts, 100);
+  assert.strictEqual(pub.programme.redeemValue, 25);
+  assert.deepStrictEqual(pub.programme.tiers.map((t) => t.at), [0, 500, 1500, 3000],
+    'and the ladder it ranks on, so the phone cannot use one of its own');
+
+  const me = (pub.roster || []).filter((r) => r.id === 'c1')[0];
+  assert.ok(me, 'the live roster is published');
+  assert.strictEqual(me.points, 731);
+  assert.strictEqual(me.tier, 'Silver',
+    'composed once, so the counter and the phone cannot disagree about a tier');
+});

@@ -1146,6 +1146,10 @@
                     </sc-for>
                   </div>
                 </div>
+                <div style="{{ ptsWrap }}">
+                  <button onClick="{{ ptsGo }}" style="{{ ptsStyle }}">{{ ptsLabel }}</button>
+                  <div style="{{ ptsNoteStyle }}">{{ ptsNote }}</div>
+                </div>
                 <div style="{{ refWrap }}">
                   <label style="display:block">
                     <span style="display:block;font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:6px">{{ refLabel }}</span>
@@ -2910,6 +2914,9 @@ class Component extends DCLogic {
       taxLabel: row.taxLabel, taxRate: row.taxRate,
       cur: row.cur, rate: row.rate, fgn: row.fgn,
       member: row.customer || null, customer: this.memberName(row.customer),
+      // What this visit spent, so the outlet earns on what was actually
+      // charged for goods rather than on the points the guest just spent.
+      pts: row.pts || 0, ptsValue: row.ptsValue || 0,
       server: row.server, ticketId: (tk || {}).id || null,
       // The table too, because a ticket opened offline has no server id yet
       // and the outlet still has to close the right bill.
@@ -5609,10 +5616,40 @@ class Component extends DCLogic {
       // total, and the drawer must expect the larger figure.
       const tipPct = ((tk || {}).payIntent || {}).tip || 0;
       const tipAmt = Math.round(T.net * (tipPct / 100) * 100) / 100;
+      /* ── points are a tender ─────────────────────────────────────────────
+         Whole redemption blocks only — a half block is not something the
+         catalogue prices — never more than the bill, and taken off the GOODS,
+         before service and tax. A guest should not have service charged on
+         money they did not hand over, and the government should not be taxing
+         a discount. */
+      const L = this.LOY();
+      const blockPts = Math.max(1, +L.redeemPts || 100);
+      const blockVal = Math.max(0, +L.redeemValue || 25);
+      const payMember = this.member(this.ticketMember(tk));
+      // Blocks the member can actually afford, capped by what the bill can
+      // absorb — points are released as revenue, so they cannot exceed goods.
+      const maxBlocks = (payMember && blockVal > 0)
+        ? Math.min(Math.floor((payMember.points || 0) / blockPts),
+          Math.floor((T.net || 0) / blockVal))
+        : 0;
+      const blocks = Math.min(Math.max(0, m.blocks || 0), maxBlocks);
+      const ptsSpent = blocks * blockPts;
+      const ptsValue = r2(blocks * blockVal);
+      // The bill after redemption, rebuilt from the components rather than
+      // discounted at the end: service and tax follow the goods.
+      const goods = r2((T.net || 0) - ptsValue);
+      const svcAfter = r2(goods * ((T.net ? (T.svc || 0) / T.net : 0)));
+      const taxAfter = r2((goods + svcAfter) * ((T.net + (T.svc || 0)) ? (T.tax || 0) / (T.net + (T.svc || 0)) : 0));
+      const billTotal = ptsValue > 0 ? r2(goods + svcAfter + taxAfter) : T.total;
       const rounding = (m.tender === "cash" && this.cashStep() > 0);
-      const rounded = rounding ? round50(gross) : gross;
-      const roundDiff = rounded - gross;
-      const due = rounded + tipAmt;
+      // Rounding is measured against THE FIGURE ACTUALLY BEING ROUNDED. It
+      // used to be measured against the pre-points gross, so the redemption
+      // reappeared as a "cash rounding" line worth exactly itself — on card
+      // sales, which are not rounded at all.
+      const grossAfter = evenN > 1 ? gross : billTotal;
+      const rounded = rounding ? round50(grossAfter) : grossAfter;
+      const roundDiff = r2(rounded - grossAfter);
+      const due = r2(rounded + tipAmt);
       // Change is always rufiyaa: a till that pays change in dollars is running an
       // unlicensed exchange desk, and the drawer would never reconcile.
       const change = Math.max(0, given - due);
@@ -5687,6 +5724,37 @@ class Component extends DCLogic {
             ? "Without it this sale cannot be matched against " + payProc.name + "'s statement. The sale still settles — the guest has paid — and it surfaces at close as one to chase."
             : "",
         refNoteStyle: payProc ? "margin-top:7px;font-size:10.5px;color:var(--text-muted);line-height:1.55" : "display:none",
+        /* One control steps a block on and wraps back to none, so the same
+           button spends and cancels. A member with nothing to spend, or a bill
+           too small to absorb a block, gets a control that says so rather than
+           one that does nothing when pressed. */
+        ptsWrap: payMember ? "margin-bottom:12px;display:block" : "display:none",
+        ptsLabel: payMember
+          ? (blocks
+            ? "Spending " + ptsSpent + " pts \u00b7 \u2212" + MVRc(ptsValue) + " off the goods"
+            : maxBlocks
+              ? payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 " + blockPts + " = " + MVRc(blockVal)
+              : payMember.name + " has " + (payMember.points || 0) + " pts \u00b7 not enough for a block")
+          : "",
+        ptsStyle: "width:100%;padding:11px 13px;border-radius:9px;font-size:12px;font-weight:700;text-align:left;font-family:inherit;border:1px solid "
+          + (blocks ? "var(--violet-bright)" : "var(--line)") + ";background:"
+          + (blocks ? "var(--violet-dim)" : "var(--bg-2)") + ";color:"
+          + (blocks ? "var(--violet-bright)" : maxBlocks ? "var(--text)" : "var(--text-faint)"),
+        ptsGo: () => {
+          if (!maxBlocks) {
+            return this.toast(payMember
+              ? payMember.name + " needs " + blockPts + " points for a block, and the bill has to be able to absorb it"
+              : "Link a member to the bill first", "warn");
+          }
+          // Steps on, then wraps back to none: one button spends and cancels.
+          this.setState({ modal: Object.assign({}, m, { blocks: (blocks + 1) > maxBlocks ? 0 : blocks + 1, given: "" }) });
+        },
+        ptsNote: payMember && blocks
+          ? "Released from 2300 Loyalty liability and recognised as revenue \u2014 points are a liability the business already owes, not a discount off the sale."
+          : payMember && maxBlocks
+            ? "Up to " + maxBlocks + " block" + (maxBlocks === 1 ? "" : "s") + " on this bill. Taken off the goods, so service and tax follow."
+            : "",
+        ptsNoteStyle: payMember && (blocks || maxBlocks) ? "margin-top:7px;font-size:10.5px;color:var(--text-muted);line-height:1.55" : "display:none",
         curWrap: m.tender === "cash" ? "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px" : "display:none",
         curs: this.CURRENCIES().map((c) => {
           const on = payCur === c.code;
@@ -5851,7 +5919,7 @@ class Component extends DCLogic {
             // settlement screen counted every card sale as unreferenced.
             ref: m.ref || ((tk || {}).payIntent || {}).ref || "",
               tip: Math.round((((tk || {}).payIntent || {}).tip || 0) / 100 * T.net * 100) / 100,
-              customer: m.tender === "credit" ? (m.cust || "") : ((tk || {}).member || ""),
+              customer: m.tender === "credit" ? (m.cust || "") : this.ticketMember(tk) || "",
               // A cover is a guest at the table, so it is the LARGER of the two
               // things the ticket knows: how many seats were opened, and the
               // party size the host recorded. Reading only the seat list made a
@@ -5861,8 +5929,16 @@ class Component extends DCLogic {
               // Revenue recognised is the DISCOUNTED figure. Booking the gross
               // would overstate sales by the discount and wreck every food-cost
               // percentage that divides COGS by it.
-              at: Date.now(), sold: snapshot.sold, cogs: trail.cogs, net: T.net,
-              disc: T.disc, discCode: T.discCode, svc: T.svc, tax: T.tax,
+              at: Date.now(), sold: snapshot.sold, cogs: trail.cogs,
+              // Redemption is not a discount: the points were a liability the
+              // business already owed, and spending them RELEASES 2300 and
+              // recognises revenue. Net stays what the goods came to; `pts`
+              // and `earned` say what this visit did to the balance, so a
+              // receipt in the portal can say WHY the number changed.
+              net: T.net, pts: ptsSpent, ptsValue: ptsValue,
+              customerName: payMember ? payMember.name : "",
+              disc: T.disc, discCode: T.discCode,
+              svc: ptsValue ? svcAfter : T.svc, tax: ptsValue ? taxAfter : T.tax,
               cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn, chg: change,
               // Which tax version this sale was charged under. Without it a
               // reprint after a rate change silently restates the invoice.
@@ -5872,6 +5948,15 @@ class Component extends DCLogic {
           // books it: dish ids so the volume can be joined to a recipe, and the
           // COGS the journal actually posted, so margin is never recomputed
           // from a guess.
+          /* Order of operations, and it matters:
+               1. debit the points spent, and journal Dr 2300 / Cr 4000;
+               2. THEN earn on what was actually charged for goods.
+             So a guest cannot earn points on the points they just spent. */
+          if (ptsSpent > 0 && payMember) {
+            this.queue("loyalty_update", payMember.name + " spent " + ptsSpent + " pts \u00b7 \u2212" + MVRc(ptsValue) + " on " + snapshot.no, "customers",
+              { member: payMember.id, points: -ptsSpent, reason: "redeem", sale: snapshot.no });
+            this.queue("post_journal", "Dr 2300 Loyalty liability " + MVRc(ptsValue) + " \u00b7 Cr 4000 Revenue \u00b7 " + ptsSpent + " pts redeemed on " + snapshot.no, "journal_entries");
+          }
           this.bookSale(settledRow, tk, T);
           this.setState({
             tickets: tables,
@@ -6677,7 +6762,7 @@ class Component extends DCLogic {
         nameWrapStyle: g.type === "walkin" ? "margin-top:14px" : "display:none",
         memberWrapStyle: g.type === "member" ? "margin-top:14px" : "display:none",
         guestCust: g.custId || "",
-        guestCustOpts: (K0.CUSTOMERS || []).map((c) => ({ id: c.id, label: c.name + " · " + c.tier + (c.credit ? " · credit " + MVRc(c.credit - c.used) : "") })),
+        guestCustOpts: this.members().map((c) => ({ id: c.id, label: c.name + " · " + c.tier + (c.credit ? " · credit " + MVRc(c.credit - c.used) : "") })),
         onGuestCust: (e) => { const v = e.target.value; this.mutate(undefined, (t) => { t.guests[m.idx] = Object.assign({}, t.guests[m.idx], { custId: v, type: "member" }); }); },
         removeGuestStyle: gs.length > 1 ? "width:100%;margin-top:10px;padding:10px;border-radius:999px;text-align:center;font-size:12px;font-weight:600;background:var(--bg-2);border:1px solid var(--line-3);color:var(--text)" : "display:none",
         removeGuest: () => {
@@ -7119,7 +7204,8 @@ class Component extends DCLogic {
       };
     }
     if (m.kind === "customer") {
-      const c = (K0.CUSTOMERS || []).find((x) => x.id === m.id) || {};
+      // The composed member, not the raw seed row: the tier is derived.
+      const c = this.member(m.id) || {};
       return {
         hasDetailEdit: this.can("customers"), detailEditLabel: "Edit tier or credit limit", detailEdit: () => this.openForm("cust", c),
         // A house account is why this panel gets opened. Settling it and closing
@@ -7170,7 +7256,7 @@ class Component extends DCLogic {
             }
           }
         ] : []),
-        modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier",
+        modalTitle: c.name, modalSub: c.phone + " · " + c.tier + " tier · " + c.points + " pts",
         detailRows: [R("Lifetime spend", MVRc(c.spent), "var(--warn-bright)"), R("Visits", String(c.visits)), R("Average cheque", MVR(c.spent / (c.visits || 1))), R("Loyalty points", String(c.points)), R("Credit limit", c.credit ? MVRc(c.credit) : "None"), R("Credit used", c.credit ? MVRc(c.used) : "—", c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--green)"), R("Available", c.credit ? MVRc(c.credit - c.used) : "—"), Rt("Last visit", c.last), Rt("Portal", c.seen ? "Signed in " + c.seen : "Never signed in")],
         detailNote: "The customer sees this same profile in the portal: past receipts, points, live order status and their credit statement. Credit is a ledger — every charge and settlement is a row, never a mutated balance.",
         detailNoteStyle: "margin-top:14px;font-size:11.5px;color:var(--text-dim);line-height:1.6;padding:11px 13px;background:var(--bg);border:1px solid var(--line);border-radius:9px"
@@ -11213,11 +11299,41 @@ class Component extends DCLogic {
         prefs: { pointsPer: (s.prefs || {}).pointsPer || 10 },
         priceOv: s.priceOv || {},
         eightySix: this.eightySix(),
+        /* THE PROGRAMME, as the merchant runs it. A phone quoting a hard-coded
+           "10 points = MVR 1" quotes the guest a figure the till will not
+           honour the moment that rate is edited. */
+        programme: (() => {
+          const L = this.LOY();
+          return {
+            earnPer: L.earnPer || 10,
+            redeemPts: L.redeemPts || 100,
+            redeemValue: L.redeemValue || 25,
+            live: L.live !== false,
+            tiers: this.TIERS().map((t) => ({ key: t.key, name: t.name, at: t.at, spend: t.spend || 0, mark: t.mark })),
+            rewards: (L.rewards || []).filter((r) => r.active)
+              .map((r) => ({ id: r.id, name: r.name, cost: r.cost, tier: r.tier }))
+          };
+        })(),
+        /* THE LIVE ROSTER: one composition of every member, tier and all, so
+           the phone is being TOLD what it is worth rather than working it out
+           against a ladder of its own. A phone still awards itself nothing. */
+        roster: this.members().map((c) => ({
+          id: c.id, name: c.name, phone: c.phone, email: c.email || "",
+          points: c.points, visits: c.visits, spent: c.spent, tier: c.tier,
+          tierKey: c.tierKey, last: c.last, credit: c.credit, used: c.used,
+          // Whether they may sign in at all, and how they were asked.
+          invited: !!c.seen || !!c.invitedAt, seen: c.seen || "",
+          invitedAt: c.invitedAt || "", invitedVia: c.invitedVia || "",
+          revoked: !!c.revoked
+        })),
         // Settled rows a member portal needs to show a real history. No costs,
         // no margins — a guest device has no business holding those.
         settled: (s.settled || []).filter((x) => x.customer).slice(0, 60).map((x) => ({
           outletId: x.outletId, no: x.no, at: x.at, total: x.total, net: x.net,
-          covers: x.covers, customer: x.customer, tender: x.tender
+          covers: x.covers, customer: x.customer, tender: x.tender,
+          // What the visit did to the balance, so a receipt can say WHY the
+          // number changed rather than only that it did.
+          pts: x.pts || 0, ptsValue: x.ptsValue || 0, earned: x.earned || 0
         }))
       }));
     } catch (e) { /* storage blocked on this device */ }
@@ -11412,7 +11528,7 @@ class Component extends DCLogic {
 
   g_customers() {
     const K0 = K(), s = this.state, q = s.search.toLowerCase();
-    const list = (K0.CUSTOMERS || []).filter((c) => !q || c.name.toLowerCase().indexOf(q) >= 0);
+    const list = this.members().filter((c) => !q || c.name.toLowerCase().indexOf(q) >= 0);
     const tier = { Platinum: "purple", Gold: "warn", Silver: "info", Bronze: "mute" };
     return {
       actions: [
@@ -11835,6 +11951,43 @@ class Component extends DCLogic {
         via: "the customer's account · off the balance drawn" }
     };
   }
+  /* ═══ ONE TIER LADDER ═══════════════════════════════════════════════════
+     Tier is DERIVED, every time it is asked for, from the member's points
+     against the published ladder. Any column called `tier` is a cache, and a
+     cache that can be edited is a bug waiting for someone to raise a
+     threshold: raising one here demotes exactly the members it should, without
+     editing a soul.
+
+     The thresholds were set on the SPEND scale while being measured in points,
+     so every member sat in Bronze while their row claimed Platinum — and the
+     phone ranked on lifetime spend against a third set again, so the same
+     guest could read Platinum on their phone and Bronze at the counter. */
+  TIERS() { return (K() || {}).TIERS || []; }
+  tierFor(points) {
+    const ladder = this.TIERS();
+    if (!ladder.length) return null;
+    let t = ladder[0];
+    ladder.forEach((x) => { if ((+points || 0) >= (+x.at || 0)) t = x; });
+    return t;
+  }
+  tierName(points) { return (this.tierFor(points) || {}).name || "Member"; }
+  nextTier(points) {
+    return this.TIERS().filter((x) => (+x.at || 0) > (+points || 0))[0] || null;
+  }
+  // A member as the till and the phone must both see them: the seed row with
+  // everything awarded since composed over it, and the tier worked out rather
+  // than read. One reader, so no two surfaces can disagree about a balance.
+  memberLive(c) {
+    if (!c) return null;
+    const pts = +c.points || 0;
+    const t = this.tierFor(pts);
+    return Object.assign({}, c, {
+      points: pts, tier: t ? t.name : "Member", tierKey: t ? t.key : "",
+      tierMark: t ? t.mark : "", nextTier: this.nextTier(pts)
+    });
+  }
+  members() { return ((K() || {}).CUSTOMERS || []).map((c) => this.memberLive(c)); }
+  member(id) { return this.members().filter((c) => c.id === id)[0] || null; }
   tenderName(k) { return (this.TENDERS()[k] || this.TENDERS().cash).name; }
   tenderAcct(k) { return (this.TENDERS()[k] || this.TENDERS().cash).acct; }
   // How the money actually goes back. A single fallback to "the drawer" was

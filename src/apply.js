@@ -152,14 +152,29 @@ async function applySale(c, p, ctx) {
      depends on which device settled the bill has no balance at all. */
   if (p.member) {
     const rate = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
-    const per = Number(((rate.rows[0] || {}).value || {}).pointsPer) || 10;
-    const earned = Math.floor(net / per);
+    const cfg = (rate.rows[0] || {}).value || {};
+    const per = Number(cfg.pointsPer) || 10;
+    // A paused programme records that nothing was earned rather than earning
+    // silently — the balance and the reason for it stay answerable.
+    const live = cfg.live !== false;
+    /* Earning is on GOODS, and on what was actually CHARGED for them.
+       Not tax, not service: a guest should not accrue on money the government
+       and the staff take, and a tax-rate change must not silently change what
+       a bill earns. And not on points just spent — the redemption comes off
+       first, or a guest earns on their own balance.
+
+       Replay is already a no-op: `op_log.op_id` is the primary key and a
+       seen op short-circuits before this handler runs, so a queued sale that
+       replays twice cannot award twice. */
+    const redeemed = num(p.ptsValue);
+    const base = Math.max(0, r2(net - redeemed));
+    const earned = live ? Math.floor(base / per) : 0;
     if (earned > 0) {
       await c.query('UPDATE chain.member SET points = points + $2 WHERE id = $1',
         [p.member, earned]);
-      await log(c, 'points_earned', 'member', p.member, null,
-        { sale: sale.receipt_no, net, per, points: earned });
     }
+    await log(c, live ? 'points_earned' : 'points_paused', 'member', p.member, null,
+      { sale: sale.receipt_no, net, redeemed, base, per, points: earned });
   }
 
   await log(c, 'sale', 'sale', sale.id, null, { no: sale.receipt_no, total });

@@ -93,6 +93,7 @@ a:hover{color:#d63f27}
               <input value="{{ idValue }}" onChange="{{ setId }}" placeholder="7712345 or you@example.com" style="font-size:16px;font-weight:500;color:#1a1a1a;letter-spacing:.02em"/>
             </div>
             <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ phoneHint }}</div>
+            <div style="{{ idErrStyle }}">{{ idErr }}</div>
           </div>
 
           <div style="{{ otpStepStyle }}">
@@ -949,15 +950,30 @@ class Component extends DCLogic {
   }
   members() { return this.K() ? (this.K().CUSTOMERS || []) : []; }
   member() { return this.members().filter((c) => c.id === this.state.memberId)[0] || null; }
-  // A tier is earned, not stored: derive it from lifetime spend so the card and
-  // the till can never drift apart.
-  tiers() { return this.K() ? (this.K().TIERS || []) : []; }
-  tierOf(spent) {
+  /* THE PROGRAMME THE MERCHANT PUBLISHED, never one this phone made up. A
+     hard-coded rate quotes the guest a figure the till will not honour the
+     moment the merchant edits it. Falls back to the shipped structure when no
+     till has published yet — that is a phone with nothing to read, not a
+     phone entitled to invent a rate. */
+  programme() {
+    const pub = (this.posSession() || {}).programme;
+    return pub || { earnPer: this.pointsPer(), redeemPts: 100, redeemValue: 25,
+      live: true, tiers: this.K() ? (this.K().TIERS || []) : [], rewards: [] };
+  }
+  // A tier is earned, not stored, and it is ranked on POINTS — the same unit
+  // the ladder's thresholds are in. This ranked on lifetime SPEND against
+  // spend-scale thresholds while the till ranked on points, so the same guest
+  // could read Platinum here and Bronze at the counter.
+  tiers() {
+    const t = this.programme().tiers;
+    return (t && t.length) ? t : (this.K() ? (this.K().TIERS || []) : []);
+  }
+  tierOf(points) {
     let t = this.tiers()[0];
-    this.tiers().forEach((x) => { if (spent >= x.at) t = x; });
+    this.tiers().forEach((x) => { if ((+points || 0) >= (+x.at || 0)) t = x; });
     return t || { name: "Member", at: 0, mark: "", from: "#8a6a4f", to: "#5d4632" };
   }
-  nextTier(spent) { return this.tiers().filter((x) => x.at > spent)[0] || null; }
+  nextTier(points) { return this.tiers().filter((x) => (+x.at || 0) > (+points || 0))[0] || null; }
   // Points redeemed on this phone are pending until the till clears them; show
   // the honest balance, not the flattering one.
   points() {
@@ -965,7 +981,12 @@ class Component extends DCLogic {
     if (!m) return 0;
     return Math.max(0, m.points - this.state.redeemed.reduce((a, r) => a + r.cost, 0));
   }
-  ptValue() { return this.points() / 10; }   // 10 points = MVR 1 off
+  // Worth at the MERCHANT's published redemption rate, not a hard-coded one.
+  ptValue() {
+    const P = this.programme();
+    const per = Math.max(1, +P.redeemPts || 100);
+    return this.points() / per * (+P.redeemValue || 25);
+  }
 
   // Is this member sitting at a table right now? The POS marks a seat with the
   // customer id when a server attaches a member to a cover.
@@ -1162,6 +1183,27 @@ class Component extends DCLogic {
     if (s.step === "phone") {
       if (!this.idOk()) return;
       if (!G) return this.toast("Not connected — try again in a moment");
+      /* Sign-in is gated on the INVITATION, not on knowing a number. A
+         revoked member keeps their history and is refused with wording that
+         says what to do, rather than being told their number is wrong.
+
+         If no roster is published at all the phone is OFFLINE, not
+         withholding access: falling through to the code is right, because
+         locking a member out because the terminal is asleep is the worse
+         failure. The outlet still decides — it issues the code. */
+      const roster = ((this.posSession() || {}).roster) || null;
+      if (roster && roster.length) {
+        const want = this.idValue().trim().toLowerCase();
+        const digits = want.replace(/\D/g, "");
+        const row = roster.filter((r) => (r.email || "").toLowerCase() === want
+          || (digits && String(r.phone || "").replace(/\D/g, "") === digits))[0];
+        if (row && row.revoked) {
+          return this.setState({ otpErr: "This card's access has been withdrawn. Ask at the counter and they can reissue it." });
+        }
+        if (row && !row.invited) {
+          return this.setState({ otpErr: "You have not been invited to the portal yet. Ask at the counter — they can send it while you are standing there." });
+        }
+      }
       this.setState({ busy: true });
       return G.memberStart(this.idValue().trim()).then((r) => {
         this.setState({ busy: false, step: "otp", otp: "", otpErr: "" });
@@ -1271,7 +1313,7 @@ class Component extends DCLogic {
   }
   announce() {
     const m = this.member();
-    this.bridgePush("member", m.name + " · " + this.tierOf(m.spent).name + " · " + this.points() + " pts is at the counter");
+    this.bridgePush("member", m.name + " · " + this.tierOf(this.points()).name + " · " + this.points() + " pts is at the counter");
     this.setState({ announced: Date.now() });
     this.toast("The till has been told you are here");
   }
@@ -1378,7 +1420,14 @@ class Component extends DCLogic {
           + ";background:" + (s.otp[i] ? "#fff8f6" : "#fff") + ";display:grid;place-items:center;font-size:24px;font-weight:700;color:#111"
       }));
       V.otpErr = s.otpErr;
-      V.otpErrStyle = s.otpErr ? "margin-top:12px;font-size:12.5px;color:#d64545;font-weight:500" : "display:none";
+      V.otpErrStyle = s.otpErr && onOtp ? "margin-top:12px;font-size:12.5px;color:#d64545;font-weight:500" : "display:none";
+      // A refusal at the ADDRESS step has to be visible at the address step:
+      // the OTP error line lives inside the code panel, which is not on screen
+      // yet, so a member told nothing would simply press the button again.
+      V.idErr = onOtp ? "" : s.otpErr;
+      V.idErrStyle = (!onOtp && s.otpErr)
+        ? "margin-top:13px;font-size:12.5px;color:#d64545;font-weight:500;line-height:1.55;text-wrap:pretty"
+        : "display:none";
       V.keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map((key) => ({
         label: key,
         tap: () => {
@@ -1415,7 +1464,8 @@ class Component extends DCLogic {
 
     // ── member ─────────────────────────────────────────────────────────────
     const m = this.member();
-    const tier = this.tierOf(m.spent), next = this.nextTier(m.spent);
+    // Ranked on POINTS, the unit the ladder is written in.
+    const tier = this.tierOf(this.points()), next = this.nextTier(this.points());
     const pts = this.points();
     const hr = new Date().getHours();
     V.greetLine = (hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening") + ",";
@@ -1442,13 +1492,19 @@ class Component extends DCLogic {
     V.cardStyle = "margin-top:16px;max-width:" + (M.wide ? "460px" : "none") + ";position:relative;overflow:hidden;border-radius:22px;padding:" + (M.scr < 360 ? 17 : 20) + "px;background:linear-gradient(140deg," + tier.from + " 0%," + tier.to + " 100%);box-shadow:0 14px 34px rgba(30,16,12,.32);display:block";
     V.tierBadgeStyle = "width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:800;color:#fff;letter-spacing:.04em";
 
-    const prevAt = tier.at, nextAt = next ? next.at : m.spent;
-    const pct = next ? Math.max(4, Math.min(100, ((m.spent - prevAt) / (nextAt - prevAt)) * 100)) : 100;
+    // The bar climbs in POINTS, because that is what the ladder measures. It
+    // ran on spend against point thresholds, so it was full at every tier.
+    const prevAt = +tier.at || 0, nextAt = next ? +next.at || 0 : pts;
+    const span = Math.max(1, nextAt - prevAt);
+    const pct = next ? Math.max(4, Math.min(100, ((pts - prevAt) / span) * 100)) : 100;
+    const toGo = next ? Math.max(0, nextAt - pts) : 0;
     V.nextTierTitle = next ? "Next: " + next.name : "Top tier reached";
-    V.nextTierMeta = next ? this.fmt(nextAt - m.spent) + " to go" : "Since 2023";
+    V.nextTierMeta = next ? toGo.toLocaleString("en-US") + " pts to go" : "";
     V.tierBarStyle = "display:block;height:100%;width:" + pct.toFixed(0) + "%;border-radius:5px;background:linear-gradient(90deg,#f4553c,#f6b81c)";
     V.nextTierSub = next
-      ? "Spend " + this.fmt(nextAt - m.spent) + " more across any " + k.CHAIN.name + " outlet to unlock " + next.name + " — priority reservations and a higher earn rate."
+      ? "Earn " + toGo.toLocaleString("en-US") + " more points across any " + k.CHAIN.name
+        + " outlet to unlock " + next.name
+        + (next.spend ? " — about " + this.fmt(next.spend) + " of lifetime spend on food and drink." : ".")
       : "You are on the highest tier. Chef's table invitations and priority booking are yours by default.";
 
     V.creditLeft = this.fmt(Math.max(0, (m.credit || 0) - (m.used || 0)));
@@ -1655,7 +1711,11 @@ class Component extends DCLogic {
       + ". Points post to your card when the till settles the bill.";
 
     // rewards
-    V.rewardsSub = "Earn 1 point for every " + this.fmt(this.pointsPer()) + " you spend. 10 points is worth MVR 1 off.";
+    const PR = this.programme();
+    V.rewardsSub = "Earn 1 point for every " + this.fmt(PR.earnPer || this.pointsPer())
+      + " you spend on food and drink. " + (PR.redeemPts || 100) + " points is worth "
+      + this.money(PR.redeemValue || 25) + " off."
+      + (PR.live === false ? " The programme is paused just now, so nothing is accruing." : "");
     V.earnRateLine = "1 pt per " + this.fmt(this.pointsPer()) + " spent";
     V.rewards = this.rewardCatalog().map((r) => {
       const tierLocked = r.tier && r.tier !== tier.name;
