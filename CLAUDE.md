@@ -604,6 +604,81 @@ the session — and falls back to the map only for a terminal that has not signe
 in against a server yet. Gating on the map would offer an admin controls the API
 then refuses, and a button that 403s is worse than no button.
 
+## Both phone apps are one product, in three shells
+
+`metrics()` is the same function in `app/guest.html` and `app/member.html`, and
+everything else is inside it:
+
+```js
+const touch = matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 0;
+const framed = shell === "frame" || (shell === "auto" && vw >= 900 && !touch);
+const scr    = framed ? (vw >= 1180 ? 430 : 392) : Math.min(vw, 720);
+const h      = framed ? Math.min(846, Math.max(660, vh - 96)) : vh;
+```
+
+**Width alone cannot decide this.** It cannot tell an iPad in landscape from a
+1024px laptop window and called both a desktop — so a guest holding a tablet got
+a painted phone floating in a dark room. A **coarse pointer** settles it: whatever
+the width, this is a device being held, and a device being held has its own
+chrome.
+
+The guest app had no `metrics()` at all: it was permanently framed at 392×812, so
+a guest scanning the card in front of them got a picture of a phone inside their
+phone — a drawn notch under the real one, a painted clock under the device's own,
+and the actual app in what was left.
+
+**Painted chrome is hidden, never shrunk**, and `display:none` rather than
+`visibility:hidden` — a hidden element still has a box, so a measurement still
+finds a battery under the real one. The notch inset it stood in moves onto the
+screen as `padding-top: env(safe-area-inset-top)`, because that box is real even
+when nothing is drawn in it.
+
+`100dvh`, never `100vh`: the static viewport height puts the bottom nav behind
+mobile Safari's address bar — the one control a guest needs, under the browser's.
+
+**The backdrop is written to `documentElement` and `body` on mount and every
+update.** `body` is the one element a template cannot reach and overscroll is the
+one place its colour still shows; without it, iOS rubber-band reveals a near-black
+band around a white app at both edges.
+
+Framed gets the explainer column beside it — a phone alone in an empty room is a
+screenshot — and its live line reads off what the till actually published, so
+"live" is a fact rather than decoration. Bare gets neither: a column below the app
+is a page nobody scrolls to.
+
+`test/responsive.test.js` measures all three on both apps, and asserts no tap
+target under 44px on its short axis.
+
+## The member portal reads as the same product
+
+It was Inter with `tabular-nums`, an 800 weight scale, a linear wash to brick, and
+an accent CTA — beside a guest app in Instrument Sans on a cornered radial. Two
+typefaces is the fastest way for one product to read as two.
+
+- **Instrument Sans**, with **JetBrains Mono for every figure** — balances,
+  points, prices, membership codes. A balance, a receipt and the till now share
+  one face. Tracking on mono is `.02em`; tracking tuned for a proportional face
+  reads as gaps, worst on the membership code, the one string a cashier reads
+  aloud.
+- **Weight 700**, not 800. 800 belongs on a poster.
+- **The primary CTA is near-black** (`#141416`, radius 999, layered shadow). An
+  accent CTA competed with every price on screen for the same red, so nothing read
+  as primary.
+- **The action bar is one shape at two temperatures**: accent while a round is in
+  the guest's hands — something to send, something on its way — and near-black
+  once the only thing left is to look at it.
+- **Sheets rise from the bottom edge.** One that fades reads as a dialog; one that
+  rises reads as a drawer.
+- The **tier card** is kept: gradient, mark and membership code are a genuine
+  membership device, restyled rather than replaced.
+
+**Signing in cannot wait on the menu.** The sign-in panel was rendered after
+`if (!this.K()) return V`, so on an outlet whose menu had not reached the browser
+it came back with none of its values — an unstyled "Back" and a primary button
+with no label and no size. Which is exactly the state a member is in the first
+time they open their card, and a card is points, receipts and a tier, none of
+which are a menu.
+
 ## The guest portal and the member card
 
 `/g/<slug>?t=<table>` mints a **table token** scoped to one outlet and one
@@ -744,7 +819,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 162 tests
+npm test                          # 164 tests
 npm run leak-test                 # isolation, on its own
 ```
 

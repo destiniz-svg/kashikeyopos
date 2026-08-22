@@ -395,3 +395,124 @@ test('every rail target is at least 44px on its short axis', { skip }, async (t)
       + JSON.stringify(small));
   } finally { await b.close(); }
 });
+
+/* ═══ THE THREE SHELLS ══════════════════════════════════════════════════════
+   Both phone apps share one `metrics()`. A guest who scans the card on their
+   own phone must get their phone — not a picture of one, with a second notch
+   under the real one and a painted clock under the device's own.
+
+   The tablet case is the one width alone got wrong: an iPad in landscape is
+   1024px, so a width-only rule called it a desktop and handed a device being
+   held a mock-up of a device. A COARSE POINTER settles it.
+   ═══════════════════════════════════════════════════════════════════════ */
+const PORTALS = [['guest', '/g/', '?t=7'], ['member', '/m/', '']];
+
+async function storeHandle() {
+  try {
+    const r = await fetch(BASE + '/healthz', { signal: AbortSignal.timeout(1500) });
+    if (!r.ok) return null;
+  } catch (e) { return null; }
+  return process.env.KPOS_HANDLE || 'sea-house';
+}
+
+test('a phone gets a phone, and a desktop gets the framed one', { skip }, async (t) => {
+  const handle = await storeHandle();
+  if (!handle) return t.skip('no server at ' + BASE);
+  const b = await chromium.launch({ executablePath: PW });
+  try {
+    for (const [name, path, qs] of PORTALS) {
+      const url = BASE + path + handle + qs;
+
+      // ── a real phone: bare, white, no painted chrome ──────────────────
+      const phone = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+      const pp = await phone.newPage();
+      await pp.goto(url, { waitUntil: 'domcontentloaded' });
+      await pp.waitForTimeout(2200);
+      const bare = await pp.evaluate(() => ({
+        doc: getComputedStyle(document.documentElement).backgroundColor,
+        body: getComputedStyle(document.body).backgroundColor,
+        scrollW: document.documentElement.scrollWidth,
+        clientW: document.documentElement.clientWidth,
+        // A bezel is a rounded box wider than the viewport's own padding. Any
+        // element carrying the frame's 56px radius is the mock-up.
+        bezels: [...document.querySelectorAll('div')]
+          .filter((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius) >= 46
+            && e.getBoundingClientRect().width > 200).length,
+        painted: [...document.querySelectorAll('svg')]
+          .filter((e) => e.getBoundingClientRect().top < 30
+            && e.getBoundingClientRect().height > 0).length
+      }));
+      assert.strictEqual(bare.doc, 'rgb(255, 255, 255)',
+        name + ': the backdrop follows the shell — a dark band around a white app '
+        + 'is what iOS rubber-band reveals');
+      assert.strictEqual(bare.body, 'rgb(255, 255, 255)', name + ': and on body too');
+      assert.strictEqual(bare.scrollW, bare.clientW, name + ': nothing scrolls sideways');
+      assert.strictEqual(bare.bezels, 0,
+        name + ': no painted bezel on a device that already is one');
+      assert.strictEqual(bare.painted, 0,
+        name + ': no painted signal or battery under the real ones');
+      await phone.close();
+
+      // ── a tablet: 1024px, but held. Width alone called this a desktop. ──
+      const tab = await b.newContext({ viewport: { width: 1024, height: 1366 }, hasTouch: true });
+      const tp = await tab.newPage();
+      await tp.goto(url, { waitUntil: 'domcontentloaded' });
+      await tp.waitForTimeout(2200);
+      const held = await tp.evaluate(() => ({
+        doc: getComputedStyle(document.documentElement).backgroundColor,
+        bezels: [...document.querySelectorAll('div')]
+          .filter((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius) >= 46
+            && e.getBoundingClientRect().width > 200).length
+      }));
+      assert.strictEqual(held.doc, 'rgb(255, 255, 255)',
+        name + ': a coarse pointer at 1024px is a device being held, not a desktop');
+      assert.strictEqual(held.bezels, 0, name + ': so it gets no mock-up either');
+      await tab.close();
+
+      // ── a desktop: framed, on the stage, with the explainer column ─────
+      const desk = await b.newContext({ viewport: { width: 1440, height: 900 }, hasTouch: false });
+      const dp = await desk.newPage();
+      await dp.goto(url, { waitUntil: 'domcontentloaded' });
+      await dp.waitForTimeout(2200);
+      const framed = await dp.evaluate(() => ({
+        doc: getComputedStyle(document.documentElement).backgroundColor,
+        scrollW: document.documentElement.scrollWidth,
+        clientW: document.documentElement.clientWidth,
+        bezels: [...document.querySelectorAll('div')]
+          .filter((e) => parseFloat(getComputedStyle(e).borderTopLeftRadius) >= 46
+            && e.getBoundingClientRect().width > 200).length
+      }));
+      assert.strictEqual(framed.doc, 'rgb(27, 13, 10)',
+        name + ': the stage backdrop, so overscroll matches the page');
+      assert.strictEqual(framed.scrollW, framed.clientW, name + ': and still no sideways scroll');
+      assert.ok(framed.bezels >= 1, name + ': a desktop gets the framed phone');
+      await desk.close();
+    }
+  } finally { await b.close(); }
+});
+
+test('no tap target in either phone app is under 44px on its short axis',
+  { skip }, async (t) => {
+    const handle = await storeHandle();
+    if (!handle) return t.skip('no server at ' + BASE);
+    const b = await chromium.launch({ executablePath: PW });
+    try {
+      for (const [name, path, qs] of PORTALS) {
+        const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+        const p = await ctx.newPage();
+        await p.goto(BASE + path + handle + qs, { waitUntil: 'domcontentloaded' });
+        await p.waitForTimeout(2200);
+        const small = await p.evaluate(() => [...document.querySelectorAll('button,a[href],input')]
+          .filter((e) => e.offsetParent !== null)
+          .map((e) => {
+            const r = e.getBoundingClientRect();
+            return { w: Math.round(r.width), h: Math.round(r.height),
+              t: (e.innerText || e.placeholder || e.tagName).slice(0, 26) };
+          })
+          .filter((x) => x.w > 0 && x.h > 0 && Math.min(x.w, x.h) < 44));
+        assert.deepStrictEqual(small.map((x) => x.t + ' ' + x.w + 'x' + x.h), [],
+          name + ': a chip a thumb misses is a control nobody uses');
+        await ctx.close();
+      }
+    } finally { await b.close(); }
+  });

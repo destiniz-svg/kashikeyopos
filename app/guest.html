@@ -104,7 +104,7 @@ a:hover{color:#d33d26}
 
             <div style="margin-top:16px;height:46px;border-radius:15px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#f5f5f6">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#b4b4b9" stroke-width="2" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
-              <input value="{{ q }}" onChange="{{ setQ }}" placeholder="Search the menu" style="font-size:14.5px;color:#1a1a1a"/>
+              <input value="{{ q }}" onChange="{{ setQ }}" placeholder="Search the menu" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
               <button onClick="{{ clearQ }}" style="{{ clearQStyle }}">&#215;</button>
             </div>
           </div>
@@ -255,7 +255,7 @@ a:hover{color:#d33d26}
               <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
               <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
                 <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
-                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
               </div>
               <div style="{{ customWarnStyle }}">{{ customWarn }}</div>
             </div>
@@ -296,12 +296,12 @@ a:hover{color:#d33d26}
           <div style="{{ identFormStyle }}">
             <div style="margin-top:18px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">YOUR NAME</div>
             <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;background:#fff">
-              <input value="{{ identName }}" onChange="{{ setIdentName }}" placeholder="So the server knows who to ask for" style="font-size:14.5px;color:#1a1a1a"/>
+              <input value="{{ identName }}" onChange="{{ setIdentName }}" placeholder="So the server knows who to ask for" style="min-height:44px;font-size:14.5px;color:#1a1a1a"/>
             </div>
             <div style="margin-top:14px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">MOBILE</div>
             <div style="margin-top:9px;height:50px;border:1px solid #e8e8ea;border-radius:15px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
               <span style="font-size:14.5px;color:#9c9ca1;flex-shrink:0;font-family:'JetBrains Mono',monospace">+960</span>
-              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" inputmode="numeric" placeholder="777 0000" style="font-size:14.5px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
+              <input value="{{ identPhone }}" onChange="{{ setIdentPhone }}" inputmode="numeric" placeholder="777 0000" style="min-height:44px;font-size:14.5px;color:#1a1a1a;font-family:'JetBrains Mono',monospace"/>
             </div>
             <button onClick="{{ saveIdent }}" style="margin-top:16px;width:100%;padding:15px;border-radius:16px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:700;text-align:center;min-height:50px;box-shadow:0 6px 18px rgba(244,85,60,.3)">{{ saveIdentLabel }}</button>
             <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.6;text-wrap:pretty">{{ identFoot }}</div>
@@ -444,7 +444,7 @@ a:hover{color:#d33d26}
 
             <div style="margin-top:16px;font-size:12px;font-weight:700;color:#b0b0b5;letter-spacing:.08em">PROMO CODE</div>
             <div style="margin-top:9px;height:48px;border:1.3px solid {{ promoBorder }};border-radius:14px;display:flex;align-items:center;overflow:hidden;background:#fff">
-              <input value="{{ promo }}" onChange="{{ setPromo }}" placeholder="Enter a code" style="flex:1;font-size:14px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
+              <input value="{{ promo }}" onChange="{{ setPromo }}" placeholder="Enter a code" style="min-height:44px;flex:1;font-size:14px;font-weight:600;color:#1a1a1a;padding:0 15px;text-transform:uppercase"/>
               <button onClick="{{ applyPromo }}" style="padding:0 18px;height:100%;font-size:13.5px;color:#f4553c;font-weight:700;flex-shrink:0">Apply</button>
             </div>
             <div style="{{ promoMsgStyle }}">{{ promoMsg }}</div>
@@ -554,8 +554,59 @@ class Component extends DCLogic {
     tip: 0, tender: "card",
     ident: null, identName: "", identPhone: "",
     stars: 0, rateNote: "", rated: false,
-    toast: "", tick: 0, asked: 0
+    toast: "", tick: 0, asked: 0,
+    vw: (typeof window !== "undefined" ? window.innerWidth : 1280),
+    vh: (typeof window !== "undefined" ? window.innerHeight : 900)
   };
+
+  /* ═══ THE THREE SHELLS ═══════════════════════════════════════════════════
+     This page was permanently FRAMED: a painted bezel, a painted notch and a
+     painted clock, at 392x812, whatever it was opened on. Which means a guest
+     scanning the card on their own phone got a picture of a phone inside their
+     phone — a second notch under the real one and a drawn clock under the
+     device's own — with the actual app squeezed into whatever was left.
+
+     WIDTH ALONE CANNOT DECIDE THIS. It cannot tell an iPad in landscape from a
+     1024px laptop window and called both a desktop, so a tablet held in two
+     hands got the mock-up too. A COARSE POINTER settles it: whatever the
+     width, this is a device being held, and a device being held already has
+     its own chrome.
+
+     `shell` forces it either way — "frame" for a marketing shot, "bleed" for an
+     embed — and "auto" is what a guest gets.
+
+     Painted chrome is HIDDEN, never shrunk. Half a bezel is worse than none. */
+  metrics() {
+    const vw = this.state.vw, vh = this.state.vh;
+    const shell = (this.props || {}).shell || "auto";
+    const touch = (typeof window !== "undefined" && window.matchMedia
+      && window.matchMedia("(pointer: coarse)").matches)
+      || (typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0);
+    const framed = shell === "frame" || (shell === "auto" && vw >= 900 && !touch);
+    const scr = framed ? (vw >= 1180 ? 430 : 392) : Math.min(vw, 720);
+    const h = framed ? Math.min(846, Math.max(660, vh - 96)) : vh;
+    // A tablet-width screen earns a third dish column; a 320px handset never does.
+    return { bare: !framed, framed: framed, scr: scr, h: h, cols: scr >= 620 ? 3 : 2 };
+  }
+
+  /* The page backdrop follows the shell, and it has to be written to the
+     ELEMENTS rather than declared in the stylesheet: `body` is the one node a
+     template cannot reach, and overscroll is the one place its colour still
+     shows. Without this, iOS rubber-band reveals a near-black band around a
+     white app at both edges. */
+  paintBackdrop() {
+    if (typeof document === "undefined") return;
+    const bg = this.metrics().bare ? "#fff" : "#1b0d0a";
+    const de = document.documentElement, bd = document.body;
+    if (de && de.style) {
+      de.style.background = bg;
+      de.style.overscrollBehavior = "none";
+    }
+    if (bd && bd.style) {
+      bd.style.background = bg;
+      bd.style.overscrollBehavior = "none";
+    }
+  }
 
   componentDidMount() {
     this.restore();
@@ -575,13 +626,26 @@ class Component extends DCLogic {
     if (!this.K()) {
       this._w = setInterval(() => { if (this.K()) { clearInterval(this._w); this.setState({ ready: true }); } }, 60);
     } else this.setState({ ready: true });
+    // Debounced: a drag-resize on a desktop fires this per frame, and every
+    // one of them would re-render the whole menu.
+    this._onSize = () => {
+      if (this._rs) return;
+      this._rs = setTimeout(() => {
+        this._rs = null;
+        this.setState({ vw: window.innerWidth, vh: window.innerHeight });
+      }, 120);
+    };
+    window.addEventListener("resize", this._onSize);
+    this.paintBackdrop();
   }
   componentWillUnmount() {
     clearInterval(this._t); clearInterval(this._w); clearInterval(this._gt);
+    clearTimeout(this._rs);
     if (this._on) window.removeEventListener("storage", this._on);
+    if (this._onSize) window.removeEventListener("resize", this._onSize);
     if (this._toastT) clearTimeout(this._toastT);
   }
-  componentDidUpdate() { this.save(); }
+  componentDidUpdate() { this.save(); this.paintBackdrop(); }
 
   K() { const k = window.KPOS; return (k && k.MENU && k.MENU.length) ? k : null; }
 
@@ -945,14 +1009,34 @@ class Component extends DCLogic {
 
   renderVals() {
     const s = this.state, k = this.K();
+    // `SH`, not `m`: this method uses `m` as a menu-item loop variable in a
+    // dozen places, and a shell that gets shadowed halfway down renders half
+    // an app.
+    const SH = this.metrics();
     const V = {
+      bare: SH.bare, framed: SH.framed,
       ready: !!k,
       clock: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
-      stageStyle: "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#3d1a12 0%,#25100c 40%,#180a07 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
-      phoneStyle: "width:392px;height:812px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)",
-      screenStyle: "width:100%;height:100%;background:#fff;border-radius:46px;overflow:hidden;display:flex;flex-direction:column;position:relative",
-      notchStyle: "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:120px;height:33px;border-radius:20px;background:#0a0a0a;display:block",
-      statusStyle: "flex-shrink:0;height:52px;padding:15px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;color:#111;font-size:15px"
+      /* 100dvh, never 100vh: on mobile Safari the static viewport height puts
+         the bottom bar behind the address bar, so the one control a guest
+         needs sits under the browser's own chrome. */
+      stageStyle: SH.bare
+        ? "min-height:100dvh;background:#fff;display:block"
+        : "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#3d1a12 0%,#25100c 40%,#180a07 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
+      phoneStyle: SH.bare
+        ? "width:100%;max-width:" + SH.scr + "px;margin:0 auto;height:100dvh;background:#fff;position:relative;display:flex;flex-direction:column"
+        : "width:" + (SH.scr + 22) + "px;height:" + (SH.h + 22) + "px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 40px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)",
+      // Bare keeps the notch inset the painted bar used to stand in — the box
+      // is real on a real phone even though nothing is drawn in it any more.
+      screenStyle: "width:100%;height:100%;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative"
+        + (SH.bare ? ";padding-top:env(safe-area-inset-top)" : ";border-radius:46px"),
+      // A drawn notch on a real phone is a second notch under the real one,
+      // and a painted clock sits under the device's own. Hidden, not shrunk.
+      notchStyle: SH.bare ? "display:none"
+        : "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:120px;height:33px;border-radius:20px;background:#0a0a0a;display:block",
+      statusStyle: SH.bare
+        ? "display:none"
+        : "flex-shrink:0;height:52px;padding:15px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;color:#111;font-size:15px"
     };
     if (!k) {
       return Object.assign(V, this.deadVals(), {
@@ -972,7 +1056,10 @@ class Component extends DCLogic {
     const self = this;
 
     // ── aside ──────────────────────────────────────────────────────────────
-    V.asideStyle = "flex:0 1 380px;min-width:280px;max-width:420px";
+    // The explainer column earns the space beside a framed phone. On the real
+    // thing there is no space to earn, and a column below the app is a page
+    // nobody scrolls to.
+    V.asideStyle = SH.bare ? "display:none" : "flex:0 1 380px;min-width:280px;max-width:420px";
     V.asideTitle = o.name || "Order from your table";
     V.asideBody = "Everything on this phone is the same data the till is running: the same menu, the same prices, the same dishes the kitchen has taken off tonight. Nothing here is a mock-up of a service — it is the service.";
     V.asideRows = [
@@ -1021,7 +1108,7 @@ class Component extends DCLogic {
     V.outletName = o.name || "";
     V.tableLabel = "Table " + tno + " · " + ((s.ident || {}).name ? "Welcome back, " + String(s.ident.name).trim().split(/\s+/)[0] : "Welcome — you're all set to order");
     V.avatarText = s.ident ? (s.ident.name || "G").trim().charAt(0).toUpperCase() : "?";
-    V.avatarStyle = "width:38px;height:38px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"
+    V.avatarStyle = "width:44px;height:44px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:14px;font-weight:800;"
       + (s.ident ? "background:#f4553c;color:#fff" : "background:#f5f5f6;color:#b0b0b5");
     V.goYou = () => self.setState({ tab: "you" });
 
@@ -1035,7 +1122,7 @@ class Component extends DCLogic {
       const on = s.diet.indexOf(d.k) >= 0;
       return {
         label: d.label,
-        style: "flex-shrink:0;padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;white-space:nowrap;min-height:36px;"
+        style: "flex-shrink:0;padding:8px 14px;border-radius:20px;font-size:12.5px;font-weight:600;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
           + (on ? "background:#1a1a1a;color:#fff" : "background:#f5f5f6;color:#6a6a70"),
         tap: () => self.setState({ diet: on ? s.diet.filter((x) => x !== d.k) : s.diet.concat([d.k]) })
       };
@@ -1045,7 +1132,7 @@ class Component extends DCLogic {
       const on = s.cat === c.id;
       return {
         name: c.name,
-        style: "flex-shrink:0;padding:9px 15px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:38px;"
+        style: "flex-shrink:0;padding:9px 15px;border-radius:22px;font-size:13.5px;font-weight:700;white-space:nowrap;min-height:44px;display:inline-flex;align-items:center;"
           + (on ? "background:#f4553c;color:#fff;box-shadow:0 4px 12px rgba(244,85,60,.28)" : "background:#fff;color:#6a6a70;border:1px solid #ececee"),
         tap: () => self.setState({ cat: c.id })
       };
@@ -1064,7 +1151,7 @@ class Component extends DCLogic {
     // Two identical keyframes alternated by filter state: an animation restarts
     // only when its NAME changes, so the grid lifts in each time the guest
     // narrows the menu and it is obvious the list is now different.
-    V.gridStyle = "margin-top:12px;padding:0 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;animation:"
+    V.gridStyle = "margin-top:12px;padding:0 20px;display:grid;grid-template-columns:repeat(" + SH.cols + ",1fr);gap:12px;animation:"
       + ((s.cat.length + s.diet.length + q.length) % 2 ? "qrise" : "qriseb") + " .26s cubic-bezier(.2,.7,.3,1)";
     V.items = list.map((m) => {
       const dead = !!off[m.id];

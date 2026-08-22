@@ -15,7 +15,6 @@
 <body>
 <x-dc>
 <helmet>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Self-hosted: a guest on a restaurant's wifi should not wait on a
      third-party font server to read a menu. -->
 <link rel="stylesheet" href="fonts.css"/>
@@ -25,7 +24,7 @@
 <script src="./guest-bridge.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-font-smoothing:antialiased}
-body{background:#8e3226;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+body{background:#1b0d0a;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
 button{font:inherit;color:inherit;background:none;border:none;cursor:pointer;transition:transform .09s cubic-bezier(.2,.8,.3,1),opacity .12s}
 button:active:not(:disabled){transform:scale(.96)}
 button:disabled{cursor:not-allowed}
@@ -37,7 +36,7 @@ a:hover{color:#d63f27}
 ::placeholder{color:#bcbcc0}
 @keyframes qup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 @keyframes qpop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
-@keyframes qsheet{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes qsheet{from{transform:translateY(100%)}to{transform:none}}
 @keyframes qtoast{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
 @keyframes qpulse{0%,100%{opacity:1}50%{opacity:.4}}
 @media (prefers-reduced-motion:reduce){
@@ -80,7 +79,7 @@ a:hover{color:#d63f27}
             <span style="width:54px;height:54px;border-radius:16px;background:#f4553c;display:grid;place-items:center;box-shadow:0 8px 20px rgba(244,85,60,.32)">
               <svg viewBox="0 0 24 24" width="27" height="27" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.7 5.7 6.3.8-4.6 4.3 1.2 6.2L12 17l-5.6 3 1.2-6.2L3 9.5l6.3-.8z"></path></svg>
             </span>
-            <div style="font-size:26px;font-weight:800;color:#111;letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
+            <div style="font-size:26px;font-weight:700;color:#111;letter-spacing:-.035em;margin-top:20px;line-height:1.15;text-wrap:pretty">{{ signInTitle }}</div>
             <div style="font-size:14px;color:#8a8a8f;margin-top:9px;line-height:1.6;text-wrap:pretty">{{ signInSub }}</div>
           </div>
 
@@ -90,7 +89,7 @@ a:hover{color:#d63f27}
               <span style="display:grid;place-items:center;flex-shrink:0">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#bcbcc0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18v12H3zM3 7l9 6 9-6"></path></svg>
               </span>
-              <input value="{{ idValue }}" onChange="{{ setId }}" placeholder="7712345 or you@example.com" style="font-size:16px;font-weight:500;color:#1a1a1a;letter-spacing:.02em"/>
+              <input value="{{ idValue }}" onChange="{{ setId }}" placeholder="7712345 or you@example.com" style="min-height:44px;font-size:16px;font-weight:500;color:#1a1a1a;letter-spacing:.02em"/>
             </div>
             <div style="margin-top:12px;font-size:12px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ phoneHint }}</div>
             <div style="{{ idErrStyle }}">{{ idErr }}</div>
@@ -153,22 +152,22 @@ a:hover{color:#d63f27}
             <span style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
               <span style="display:block">
                 <span style="display:block;font-size:10.5px;font-weight:700;letter-spacing:.16em;color:rgba(255,255,255,.62)">{{ chainName }}</span>
-                <span style="display:block;font-size:20px;font-weight:800;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
+                <span style="display:block;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.02em;margin-top:5px">{{ mTier }} member</span>
               </span>
               <span style="{{ tierBadgeStyle }}">{{ tierMark }}</span>
             </span>
             <span style="position:relative;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin-top:26px">
               <span style="display:block">
                 <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.09em;color:rgba(255,255,255,.6)">POINTS BALANCE</span>
-                <span style="display:block;font-size:34px;font-weight:800;color:#fff;letter-spacing:-.035em;margin-top:3px;font-variant-numeric:tabular-nums">{{ mPoints }}</span>
+                <span style="display:block;font-size:34px;font-weight:700;color:#fff;letter-spacing:-.035em;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPoints }}</span>
               </span>
               <span style="display:block;text-align:right">
                 <span style="display:block;font-size:11px;font-weight:600;letter-spacing:.09em;color:rgba(255,255,255,.6)">WORTH</span>
-                <span style="display:block;font-size:15px;font-weight:700;color:#fff;margin-top:4px;font-variant-numeric:tabular-nums">{{ mWorth }}</span>
+                <span style="display:block;font-size:15px;font-weight:700;color:#fff;margin-top:4px;font-family:'JetBrains Mono',monospace">{{ mWorth }}</span>
               </span>
             </span>
             <span style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:22px;padding-top:16px;border-top:1px solid rgba(255,255,255,.16)">
-              <span style="display:block;font-size:13px;font-weight:600;color:rgba(255,255,255,.9);letter-spacing:.06em;font-variant-numeric:tabular-nums">{{ mCode }}</span>
+              <span style="display:block;font-size:13px;font-weight:600;color:rgba(255,255,255,.9);letter-spacing:.02em;font-family:'JetBrains Mono',monospace">{{ mCode }}</span>
               <span style="display:block;font-size:11.5px;color:rgba(255,255,255,.6)">Member since {{ mSince }}</span>
             </span>
           </div>
@@ -181,7 +180,7 @@ a:hover{color:#d63f27}
           <div style="margin-top:22px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:16px">
             <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
               <span style="font-size:14.5px;font-weight:700;color:#111;letter-spacing:-.02em">{{ nextTierTitle }}</span>
-              <span style="font-size:12.5px;color:#9c9ca1;font-variant-numeric:tabular-nums">{{ nextTierMeta }}</span>
+              <span style="font-size:12.5px;color:#9c9ca1;font-family:'JetBrains Mono',monospace">{{ nextTierMeta }}</span>
             </div>
             <div style="margin-top:12px;height:8px;border-radius:5px;background:#f2f2f4;overflow:hidden">
               <span style="{{ tierBarStyle }}"></span>
@@ -192,12 +191,12 @@ a:hover{color:#d63f27}
           <div style="{{ tileGridStyle }}">
             <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
               <div style="font-size:11.5px;font-weight:600;color:#9c9ca1;letter-spacing:.05em">HOUSE ACCOUNT</div>
-              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-variant-numeric:tabular-nums">{{ creditLeft }}</div>
+              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-family:'JetBrains Mono',monospace">{{ creditLeft }}</div>
               <div style="font-size:11.5px;color:#a8a8ad;margin-top:4px;line-height:1.45">{{ creditSub }}</div>
             </div>
             <div style="border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);padding:15px">
               <div style="font-size:11.5px;font-weight:600;color:#9c9ca1;letter-spacing:.05em">LIFETIME</div>
-              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-variant-numeric:tabular-nums">{{ mSpent }}</div>
+              <div style="font-size:19px;font-weight:700;color:#111;letter-spacing:-.025em;margin-top:6px;font-family:'JetBrains Mono',monospace">{{ mSpent }}</div>
               <div style="font-size:11.5px;color:#a8a8ad;margin-top:4px;line-height:1.45">{{ visitsSub }}</div>
             </div>
           </div>
@@ -210,7 +209,7 @@ a:hover{color:#d63f27}
             <div style="margin-top:8px;font-size:12.5px;color:#8a8a8f;line-height:1.5;text-wrap:pretty">{{ liveSub }}</div>
             <div style="margin-top:12px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
               <span style="font-size:12.5px;color:#8a8a8f">Running total</span>
-              <span style="font-size:17px;font-weight:700;color:#f4553c;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ liveTotal }}</span>
+              <span style="font-size:17px;font-weight:700;color:#f4553c;letter-spacing:-.02em;font-family:'JetBrains Mono',monospace">{{ liveTotal }}</span>
             </div>
             <div style="margin-top:6px;font-size:12px;color:#a8a8ad">{{ liveEarn }}</div>
           </div>
@@ -272,7 +271,7 @@ a:hover{color:#d63f27}
 
             <div style="margin-top:18px;height:48px;border:1px solid #ececec;border-radius:16px;display:flex;align-items:center;gap:10px;padding:0 14px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.03)">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#c2c2c6" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.6-3.6"></path></svg>
-              <input placeholder="Search the menu..." value="{{ q }}" onChange="{{ setQ }}" style="font-size:15px;color:#1a1a1a"/>
+              <input placeholder="Search the menu..." value="{{ q }}" onChange="{{ setQ }}" style="min-height:44px;font-size:15px;color:#1a1a1a"/>
             </div>
 
             <div style="{{ catRowStyle }}">
@@ -389,7 +388,7 @@ a:hover{color:#d63f27}
                 </div>
                 <div style="padding:12px 15px;border-top:1px dashed #ececef;display:flex;align-items:center;justify-content:space-between;gap:12px">
                   <span style="font-size:12.5px;color:#8a8a8f">{{ rd.ptsLine }}</span>
-                  <span style="font-size:14px;font-weight:700;color:#f4553c;font-variant-numeric:tabular-nums">{{ rd.total }}</span>
+                  <span style="font-size:14px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ rd.total }}</span>
                 </div>
               </div>
             </sc-for>
@@ -400,7 +399,7 @@ a:hover{color:#d63f27}
           <div style="{{ visitFootStyle }}">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
               <span style="font-size:13.5px;color:#4a4a4f">Table total so far</span>
-              <span style="font-size:16px;font-weight:700;color:#f4553c;font-variant-numeric:tabular-nums">{{ visitTotal }}</span>
+              <span style="font-size:16px;font-weight:700;color:#f4553c;font-family:'JetBrains Mono',monospace">{{ visitTotal }}</span>
             </div>
             <div style="margin-top:8px;font-size:11.5px;color:#a8a8ad;line-height:1.55;text-wrap:pretty">{{ visitFoot }}</div>
           </div>
@@ -471,7 +470,7 @@ a:hover{color:#d63f27}
               <div style="font-size:13.5px;color:#4a4a4f">What are you putting in?</div>
               <div style="margin-top:10px;height:52px;border:1.4px solid #f4553c;border-radius:14px;display:flex;align-items:center;padding:0 15px;gap:9px;background:#fff">
                 <span style="font-size:14px;font-weight:700;color:#f4553c;flex-shrink:0">MVR</span>
-                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
+                <input value="{{ customAmt }}" onChange="{{ setCustom }}" inputmode="decimal" placeholder="0.00" style="min-height:44px;font-size:17px;font-weight:700;color:#111;font-family:'JetBrains Mono',monospace"/>
               </div>
             </div>
 
@@ -502,7 +501,7 @@ a:hover{color:#d63f27}
             <div style="margin-top:18px;border-radius:16px;background:#fff8f6;border:1px solid #ffd9d1;padding:16px">
               <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
                 <span style="font-size:14px;font-weight:700;color:#c2452f">You are paying</span>
-                <span style="font-size:22px;font-weight:800;color:#f4553c;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
+                <span style="font-size:22px;font-weight:700;color:#f4553c;letter-spacing:-.03em;font-family:'JetBrains Mono',monospace">{{ payAmount }}</span>
               </div>
               <div style="margin-top:7px;font-size:12.5px;color:#c2452f;line-height:1.55;text-wrap:pretty">{{ payBreak }}</div>
             </div>
@@ -523,7 +522,7 @@ a:hover{color:#d63f27}
           <div style="margin-top:16px;border-radius:16px;background:#fff5f2;border:1px solid #f7c8bd;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px">
             <span style="display:block">
               <span style="display:block;font-size:11.5px;font-weight:600;color:#c2452f;letter-spacing:.05em">AVAILABLE</span>
-              <span style="display:block;font-size:22px;font-weight:800;color:#f4553c;letter-spacing:-.03em;margin-top:3px;font-variant-numeric:tabular-nums">{{ mPoints }} pts</span>
+              <span style="display:block;font-size:22px;font-weight:700;color:#f4553c;letter-spacing:-.03em;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPoints }} pts</span>
             </span>
             <span style="font-size:12.5px;color:#c2452f;text-align:right;line-height:1.45;max-width:130px;text-wrap:pretty">{{ earnRateLine }}</span>
           </div>
@@ -551,7 +550,7 @@ a:hover{color:#d63f27}
                 </span>
                 <span style="flex:1;min-width:0;display:block">
                   <span style="display:block;font-size:14px;font-weight:700;color:#1a1a1a">{{ v.name }}</span>
-                  <span style="display:block;font-size:12px;color:#a05a48;margin-top:2px;font-variant-numeric:tabular-nums">{{ v.meta }}</span>
+                  <span style="display:block;font-size:12px;color:#a05a48;margin-top:2px;font-family:'JetBrains Mono',monospace">{{ v.meta }}</span>
                 </span>
                 <span style="font-size:12.5px;font-weight:700;color:#f4553c;flex-shrink:0;letter-spacing:.04em">{{ v.code }}</span>
               </div>
@@ -601,7 +600,7 @@ a:hover{color:#d63f27}
             <span style="{{ avatarStyle }}">{{ mInitials }}</span>
             <span style="flex:1;min-width:0;display:block">
               <span style="display:block;font-size:17px;font-weight:700;color:#111;letter-spacing:-.02em">{{ mName }}</span>
-              <span style="display:block;font-size:13px;color:#9c9ca1;margin-top:3px;font-variant-numeric:tabular-nums">{{ mPhone }}</span>
+              <span style="display:block;font-size:13px;color:#9c9ca1;margin-top:3px;font-family:'JetBrains Mono',monospace">{{ mPhone }}</span>
             </span>
           </div>
 
@@ -609,7 +608,7 @@ a:hover{color:#d63f27}
             <sc-for list="{{ accRows }}" as="r" hint-placeholder-count="4">
               <div style="{{ r.style }}">
                 <span style="font-size:13.5px;color:#5a5a60">{{ r.label }}</span>
-                <span style="font-size:13.5px;font-weight:600;color:#1a1a1a;text-align:right;font-variant-numeric:tabular-nums">{{ r.value }}</span>
+                <span style="font-size:13.5px;font-weight:600;color:#1a1a1a;text-align:right;font-family:'JetBrains Mono',monospace">{{ r.value }}</span>
               </div>
             </sc-for>
           </div>
@@ -634,7 +633,7 @@ a:hover{color:#d63f27}
         </div>
 
         <div style="flex-shrink:0;padding:10px 20px 14px;background:#fff;border-top:1px solid #f4f4f4">
-          <button onClick="{{ barTap }}" style="width:100%;height:56px;border-radius:28px;background:#f4553c;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 10px 0 20px;box-shadow:0 8px 22px rgba(244,85,60,.4)">
+          <button onClick="{{ barTap }}" style="{{ actionBarStyle }}">
             <span style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left">
               <span style="display:block;max-width:100%;font-size:14.5px;font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ barLine }}</span>
               <span style="display:block;max-width:100%;font-size:11.5px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ barSub }}</span>
@@ -686,11 +685,11 @@ a:hover{color:#d63f27}
               <span style="{{ b.style }}"></span>
             </sc-for>
           </div>
-          <div style="margin-top:16px;font-size:21px;font-weight:800;color:#111;letter-spacing:.14em;font-variant-numeric:tabular-nums">{{ mCode }}</div>
+          <div style="margin-top:16px;font-size:21px;font-weight:700;color:#111;letter-spacing:.02em;font-family:'JetBrains Mono',monospace">{{ mCode }}</div>
           <div style="margin-top:6px;font-size:12px;color:#9c9ca1">{{ mName }} · {{ mTier }}</div>
         </div>
         <div style="{{ announceStyle }}">{{ announceMsg }}</div>
-        <button onClick="{{ announce }}" style="margin-top:14px;width:100%;padding:14px;border-radius:26px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:600;box-shadow:0 4px 14px rgba(244,85,60,.35)">{{ announceBtn }}</button>
+        <button onClick="{{ announce }}" style="margin-top:14px;width:100%;min-height:52px;padding:14px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em">{{ announceBtn }}</button>
       </div>
 
       <div style="{{ sheetStyle }}">
@@ -726,6 +725,33 @@ a:hover{color:#d63f27}
     </div>
     <span style="{{ islandStyle }}"></span>
     <span style="{{ camStyle }}"></span>
+  </div>
+
+  <!-- The explainer column, framed viewports only. A phone floating alone in
+       an empty room is a screenshot; the column earns the space. Its live line
+       reads off the roster the till published, so it says whether the outlet
+       is actually talking rather than asserting that it is. -->
+  <div style="{{ asideStyle }}">
+    <div style="font-size:12px;font-weight:700;letter-spacing:.1em;color:rgba(255,255,255,.5)">YOUR MEMBERSHIP</div>
+    <div style="margin-top:12px;font-size:30px;font-weight:700;color:#fff;letter-spacing:-.035em;line-height:1.15;text-wrap:pretty">{{ asideTitle }}</div>
+    <div style="margin-top:14px;font-size:14.5px;color:rgba(255,255,255,.72);line-height:1.65;text-wrap:pretty">{{ asideBody }}</div>
+    <div style="margin-top:26px;display:flex;flex-direction:column;gap:14px">
+      <sc-for list="{{ asideRows }}" as="r" hint-placeholder-count="4">
+        <div style="display:flex;gap:13px;align-items:flex-start">
+          <span style="width:30px;height:30px;border-radius:10px;background:rgba(255,255,255,.1);display:grid;place-items:center;flex-shrink:0;color:#ffb3a4">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ r.icon }}"></path></svg>
+          </span>
+          <span style="display:block;min-width:0">
+            <span style="display:block;font-size:14px;font-weight:600;color:#fff">{{ r.title }}</span>
+            <span style="display:block;font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;line-height:1.55;text-wrap:pretty">{{ r.sub }}</span>
+          </span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="{{ liveStyle }}">
+      <span style="{{ liveDotStyle }}"></span>
+      <span style="font-size:12.5px;color:rgba(255,255,255,.75);line-height:1.5;text-wrap:pretty">{{ liveText }}</span>
+    </div>
   </div>
 </div>
 
@@ -785,6 +811,7 @@ class Component extends DCLogic {
     window.addEventListener("kpos-member-ready", this._onCard);
     this._onCard();
     this.pullPos();
+    this.paintBackdrop();
   }
   componentWillUnmount() {
     clearInterval(this._boot); clearInterval(this._poll); clearInterval(this._tock); clearTimeout(this._tt); clearTimeout(this._rs);
@@ -792,7 +819,20 @@ class Component extends DCLogic {
     window.removeEventListener("resize", this._onSize);
     window.removeEventListener("kpos-member-ready", this._onCard);
   }
-  componentDidUpdate() { this.save(); }
+  componentDidUpdate() { this.save(); this.paintBackdrop(); }
+
+  /* The page backdrop follows the shell, written to the ELEMENTS rather than
+     declared in the stylesheet: `body` is the one node a template cannot
+     reach, and overscroll is the one place its colour still shows. Without
+     this, iOS rubber-band reveals a near-black band around a white app at
+     both edges. */
+  paintBackdrop() {
+    if (typeof document === "undefined") return;
+    const bg = this.metrics().bare ? "#fff" : "#1b0d0a";
+    const de = document.documentElement, bd = document.body;
+    if (de && de.style) { de.style.background = bg; de.style.overscrollBehavior = "none"; }
+    if (bd && bd.style) { bd.style.background = bg; bd.style.overscrollBehavior = "none"; }
+  }
 
   // The portal is ready when THIS OUTLET's menu has arrived. It used to wait
   // on a customer roster — which a phone must never be sent, and which
@@ -1108,10 +1148,21 @@ class Component extends DCLogic {
     this._tt = setTimeout(() => this.setState({ toast: null }), 2600);
   }
 
+  /* WIDTH ALONE CANNOT DECIDE THIS. It cannot tell an iPad in landscape from a
+     1024px laptop window and called both a desktop — so a member holding a
+     tablet got a painted phone floating in a dark room, with a second notch
+     under the real one. A COARSE POINTER settles it: whatever the width, this
+     is a device being held, and a device being held has its own chrome.
+
+     The guest app runs the same function. Two phone apps with two ideas of
+     what a phone is were the fastest way for one product to read as two. */
   metrics() {
     const vw = this.state.vw, vh = this.state.vh;
     const shell = this.props.shell || "auto";
-    const framed = shell === "frame" || (shell === "auto" && vw >= 900);
+    const touch = (typeof window !== "undefined" && window.matchMedia
+      && window.matchMedia("(pointer: coarse)").matches)
+      || (typeof navigator !== "undefined" && (navigator.maxTouchPoints || 0) > 0);
+    const framed = shell === "frame" || (shell === "auto" && vw >= 900 && !touch);
     const scr = framed ? (vw >= 1180 ? 430 : 392) : Math.min(vw, 720);
     const h = framed ? Math.min(846, Math.max(660, vh - 96)) : vh;
     return {
@@ -1321,21 +1372,61 @@ class Component extends DCLogic {
   renderVals() {
     const s = this.state, M = this.metrics();
     const V = {
-      clock: "9:41",
+      // The painted clock is the device's own time, not a marketing 9:41. It
+      // sits beside a real one in framed mode and is hidden in bare mode, and
+      // a wrong figure next to a right one is the whole product's credibility.
+      clock: new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
+      // 100dvh, never 100vh: on mobile Safari the static viewport height puts
+      // the bottom nav behind the address bar.
+      //
+      // The stage is the guest app's cornered radial, not the old linear wash
+      // to brick. Same room, same product — a member walking from the QR menu
+      // to their card should not feel handed to somebody else.
       pageStyle: M.bare
-        ? "min-height:100vh;background:#fff;display:block"
-        : "min-height:100vh;padding:40px 20px 48px;background:linear-gradient(178deg,#25100c 0%,#5d2419 26%,#8e3527 62%,#b6503b 100%);display:flex;align-items:center;justify-content:center",
+        ? "min-height:100dvh;background:#fff;display:block"
+        : "min-height:100vh;padding:44px 26px 52px;background:radial-gradient(120% 90% at 15% 0%,#3d1a12 0%,#25100c 40%,#180a07 100%);display:flex;align-items:center;justify-content:center;gap:44px;flex-wrap:wrap",
       frameStyle: M.bare
-        ? "width:100%;max-width:" + M.scr + "px;margin:0 auto;height:100vh;position:relative;background:#fff;display:block"
+        ? "width:100%;max-width:" + M.scr + "px;margin:0 auto;height:100dvh;position:relative;background:#fff;display:block"
         : "width:" + (M.scr + 22) + "px;height:" + (M.h + 22) + "px;flex-shrink:0;position:relative;background:linear-gradient(148deg,#4a4a4d,#17171a 42%,#424245);border-radius:56px;padding:11px;box-shadow:0 44px 90px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.4)",
-      screenStyle: "width:100%;height:100%;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative" + (M.bare ? "" : ";border-radius:46px"),
+      // Bare keeps the notch inset the painted bar used to stand in — the box
+      // is real on a real phone even though nothing is drawn in it any more.
+      screenStyle: "width:100%;height:100%;background:#fff;overflow:hidden;display:flex;flex-direction:column;position:relative" + (M.bare ? ";padding-top:env(safe-area-inset-top)" : ";border-radius:46px"),
+      /* The explainer column, framed viewports only. On the real thing there
+         is no space to earn, and a column below the app is a page nobody
+         scrolls to. */
+      asideStyle: M.bare ? "display:none" : "flex:0 1 380px;min-width:280px;max-width:420px",
+      asideTitle: (this.outlet().name || "Your membership") + " keeps the record",
+      asideBody: "Points, visits and what is on your table are the outlet's own figures, published to this phone. Nothing here is worked out on the device \u2014 a phone that awards itself points is a phone that can be argued with at the counter.",
+      asideRows: [
+        { icon: "M12 3l2.6 5.6 6.1.8-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6L3.3 9.4l6.1-.8z", title: "One tier ladder", sub: "Your tier is worked out from your points against the merchant\u2019s own thresholds, every time it is asked for \u2014 so this card and the till can never disagree." },
+        { icon: "M4 6h16M4 12h10M4 18h13", title: "Their rates, not ours", sub: "Earn rate, redemption rate and the reward list all come off what the outlet published. Edit a rate at the till and this page quotes the new one." },
+        { icon: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2", title: "The kitchen answers", sub: "Your tracker reads the rung the pass actually set, so it says where the food is rather than how long ago you ordered." },
+        { icon: "M20.6 12.3 12 3.7H5v7l8.6 8.6a1.7 1.7 0 0 0 2.4 0l4.6-4.6a1.7 1.7 0 0 0 0-2.4z", title: "The phone never takes money", sub: "It asks to pay and says how you want to split it. The cashier settles, and the ledger fires once where it is attributable." }
+      ],
       islandStyle: M.bare ? "display:none" : "position:absolute;top:23px;left:50%;transform:translateX(-50%);width:124px;height:35px;border-radius:20px;background:#0a0a0a;display:block;z-index:5",
       camStyle: M.bare ? "display:none" : "position:absolute;top:34px;left:calc(50% + 40px);width:11px;height:11px;border-radius:50%;background:#16171b;box-shadow:inset 0 0 0 1.5px #0d0d0f;display:block;z-index:6",
+      // Painted chrome is HIDDEN, never shrunk — but the inset it occupied is
+      // real on a notched phone, so bare keeps the safe area and drops the paint.
       statusStyle: M.bare ? "display:none" : "flex-shrink:0;height:54px;padding:16px 30px 0;display:flex;align-items:flex-start;justify-content:space-between;font-size:15.5px;font-weight:700;letter-spacing:-.02em;color:#111",
       // The address bar shows the address this page is actually at, and the
       // prop is only a fallback for the design tool. A made-up hostname on a
       // screenshot is a hostname somebody eventually types.
       host: (location.host || "") || this.props.host || "",
+      /* Off the PUBLISHED ROSTER, so the line says whether the till is
+         actually talking. "Live" as decoration is the same class of claim as
+         an invented figure: it is a sentence nobody can check. */
+      liveStyle: M.bare ? "display:none" : "margin-top:28px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);display:flex;gap:10px;align-items:flex-start",
+      liveDotStyle: "width:7px;height:7px;border-radius:50%;flex-shrink:0;display:block;background:"
+        + (this.posSession() ? "#4ade80;animation:qpulse 2s infinite" : "#8a8a8f"),
+      liveText: (() => {
+        const d = this.posSession();
+        if (!d) return "The till is not open in this browser. Open the POS alongside this and the two talk to each other.";
+        const n = ((d.roster) || []).length;
+        return n
+          ? "Live: " + (this.outlet().name || "the outlet") + " has published " + n
+            + " membership" + (n === 1 ? "" : "s") + ". Points and tiers on this card are theirs, not this phone's."
+          : "Live: connected to " + (this.outlet().name || "the outlet") + ", with no roster published yet. Ask at the counter to be invited.";
+      })(),
       scrollRef: (el) => { this._scroll = el; },
       scrollStyle: "flex:1;min-height:0;overflow-y:auto;padding:6px " + M.pad + "px 18px",
       chipRowStyle: "margin:18px -" + M.pad + "px 0;padding:4px " + M.pad + "px 8px;display:flex;gap:10px;overflow-x:auto",
@@ -1395,15 +1486,17 @@ class Component extends DCLogic {
     V.sheetStyle = s.sheet ? sheetBase : "display:none";
     V.scanStyle = s.scan ? sheetBase : "display:none";
 
-    if (!this.K()) return V;
-    const k = this.K(), o = this.outlet();
-    V.chainName = (k.CHAIN.name || "Kashikeyo").toUpperCase();
-    V.poweredLine = k.CHAIN.brand.poweredBy ? "Powered by KashikeyoPOS™" : k.CHAIN.brand.name;
-
+    /* SIGNING IN CANNOT WAIT ON THE MENU. This screen used to be rendered
+       AFTER `if (!this.K()) return V`, so on an outlet whose menu had not
+       reached this browser the whole sign-in panel came back with none of its
+       values: an unstyled "Back", and a primary button with no label and no
+       size. Which is exactly the state a member is in the first time they open
+       their card — and a card is points, receipts and a tier, none of which
+       are a menu. The gate is now below it. */
     // ── sign in ────────────────────────────────────────────────────────────
     if (!signedIn) {
       const onOtp = s.step === "otp";
-      V.signInTitle = onOtp ? "Ask for your code" : (k.CHAIN.name || "Kashikeyo") + " Rewards";
+      V.signInTitle = onOtp ? "Ask for your code" : (((this.K() || {}).CHAIN || {}).name || "Kashikeyo") + " Rewards";
       V.signInSub = onOtp
         ? "A four-digit code for " + this.maskedTarget()
           + " is on your server's screen. It lasts ten minutes."
@@ -1452,7 +1545,7 @@ class Component extends DCLogic {
       // never happened.
       V.signInBtn = onOtp ? "Verify & sign in" : "Get my code";
       V.signInDisabled = onOtp ? s.otp.length < 4 : !this.idOk();
-      V.signInBtnStyle = "flex:1.4;padding:15px 8px;border-radius:26px;background:#f4553c;color:#fff;font-size:14.5px;font-weight:600;box-shadow:0 4px 14px rgba(244,85,60,.35)" + (V.signInDisabled ? ";opacity:.45" : "");
+      V.signInBtnStyle = "flex:1.4;min-height:52px;padding:15px 8px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:14.5px;font-weight:650;letter-spacing:-.01em" + (V.signInDisabled ? ";opacity:.45" : "");
       V.signInBackStyle = "flex:1;padding:15px 8px;border-radius:26px;border:1.4px solid #ececef;color:#8a8a8f;font-size:14.5px;font-weight:600;background:#fff";
       V.chromeStyle = "display:none";
       V.signInFoot = "Your code is issued by the restaurant and lasts ten minutes. "
@@ -1461,6 +1554,11 @@ class Component extends DCLogic {
       V.tabBarStyle = "display:none";
       return V;
     }
+
+    if (!this.K()) return V;
+    const k = this.K(), o = this.outlet();
+    V.chainName = (k.CHAIN.name || "Kashikeyo").toUpperCase();
+    V.poweredLine = k.CHAIN.brand.poweredBy ? "Powered by KashikeyoPOS™" : k.CHAIN.brand.name;
 
     // ── member ─────────────────────────────────────────────────────────────
     const m = this.member();
@@ -1490,7 +1588,7 @@ class Component extends DCLogic {
     V.mInitials = m.name.split(" ").map((x) => x[0]).slice(0, 2).join("");
     V.avatarStyle = "width:56px;height:56px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:700;color:#fff;letter-spacing:.02em;background:linear-gradient(140deg," + tier.from + "," + tier.to + ")";
     V.cardStyle = "margin-top:16px;max-width:" + (M.wide ? "460px" : "none") + ";position:relative;overflow:hidden;border-radius:22px;padding:" + (M.scr < 360 ? 17 : 20) + "px;background:linear-gradient(140deg," + tier.from + " 0%," + tier.to + " 100%);box-shadow:0 14px 34px rgba(30,16,12,.32);display:block";
-    V.tierBadgeStyle = "width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:800;color:#fff;letter-spacing:.04em";
+    V.tierBadgeStyle = "width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);display:grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:700;color:#fff;letter-spacing:.04em";
 
     // The bar climbs in POINTS, because that is what the ladder measures. It
     // ran on spend against point thresholds, so it was full at every tier.
@@ -1536,7 +1634,7 @@ class Component extends DCLogic {
       : "display:none";
     V.offers = promos.map((b) => ({
       title: b.title, sub: b.sub || "", tag: b.code ? "OFFER" : "WHAT'S ON",
-      tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:800;letter-spacing:.09em;white-space:nowrap",
+      tagStyle: "padding:3px 8px;border-radius:6px;background:#f4553c;color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.09em;white-space:nowrap",
       style: "position:relative;display:flex;width:100%;min-height:104px;border-radius:16px;overflow:hidden;background:#2a1a14;box-shadow:0 6px 18px rgba(94,32,22,.2)",
       imgStyle: "position:absolute;inset:0;display:block;background-image:url('" + (b.img || "img/hero.jpg") + "');background-size:cover;background-position:center",
       tap: () => this.toast(b.code ? b.code + " — mention it at the till" : b.title)
@@ -1727,7 +1825,7 @@ class Component extends DCLogic {
         redeem: () => this.redeem(r),
         rowStyle: "display:flex;align-items:center;gap:13px;padding:12px;border:1px solid #efefef;border-radius:16px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.04);opacity:" + (locked ? ".62" : "1"),
         imgStyle: "width:58px;height:58px;border-radius:12px;flex-shrink:0;display:block;background-image:url('" + r.img + "');background-size:cover;background-position:center;background-color:#eceae7" + (locked ? ";filter:grayscale(.7)" : ""),
-        costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#a8a8ad" : "#f4553c") + ";margin-top:5px;font-variant-numeric:tabular-nums",
+        costStyle: "display:block;font-size:12.5px;font-weight:700;color:" + (locked ? "#a8a8ad" : "#f4553c") + ";margin-top:5px;font-family:'JetBrains Mono',monospace",
         btn: tierLocked ? "Locked" : poor ? (r.cost - pts) + " pts" : "Redeem",
         btnStyle: "flex-shrink:0;padding:10px 15px;border-radius:22px;font-size:13px;font-weight:600;white-space:nowrap;"
           + (locked ? "background:#f4f4f6;color:#a8a8ad" : "background:#f4553c;color:#fff;box-shadow:0 3px 10px rgba(244,85,60,.32)")
@@ -1790,8 +1888,8 @@ class Component extends DCLogic {
     V.activity = shown.map((h) => ({
       title: h.title, meta: h.meta, amt: h.amt, pts: h.pts, icon: ICON[h.kind] || ICON.visit,
       iconWrapStyle: "width:40px;height:40px;border-radius:12px;flex-shrink:0;display:grid;place-items:center;background:" + (h.kind === "reward" ? "#fff2ef" : "#f6f6f7") + ";color:" + (h.kind === "reward" ? "#f4553c" : "#6a6a6f"),
-      amtStyle: "display:" + (h.amt ? "block" : "none") + ";font-size:14px;font-weight:600;color:#1a1a1a;font-variant-numeric:tabular-nums",
-      ptsStyle: "display:" + (h.pts ? "block" : "none") + ";font-size:12px;margin-top:2px;font-weight:600;font-variant-numeric:tabular-nums;color:" + (h.neg ? "#d64545" : h.pts === "pending" ? "#b4630f" : "#1f7a3d")
+      amtStyle: "display:" + (h.amt ? "block" : "none") + ";font-size:14px;font-weight:600;color:#1a1a1a;font-family:'JetBrains Mono',monospace",
+      ptsStyle: "display:" + (h.pts ? "block" : "none") + ";font-size:12px;margin-top:2px;font-weight:600;font-family:'JetBrains Mono',monospace;color:" + (h.neg ? "#d64545" : h.pts === "pending" ? "#b4630f" : "#1f7a3d")
     }));
     V.actEmptyStyle = shown.length ? "display:none" : "padding:38px 6px;text-align:center;font-size:13px;color:#a8a8ad";
 
@@ -1940,7 +2038,7 @@ class Component extends DCLogic {
         + (s.tip ? " · plus a " + s.tip + "% tip" : "")
         + ". Your server brings the machine — nothing is charged from this phone."
       : "";
-    V.askBillStyle = "margin-top:16px;width:100%;padding:16px;border-radius:16px;background:#f4553c;color:#fff;font-size:15px;font-weight:700;text-align:center;min-height:52px;box-shadow:0 6px 20px rgba(244,85,60,.3)";
+    V.askBillStyle = "margin-top:16px;width:100%;padding:16px;border-radius:999px;background:#141416;color:#fff;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16);font-size:15px;font-weight:650;letter-spacing:-.01em;text-align:center;min-height:52px";
     V.askBillLabel = s.asked ? "Ask again" : "Ask for the bill";
     V.askBill = () => this.requestBill();
     V.askedNote = s.asked ? "Asked at " + hhmm(s.asked) + ". Your server has it on the floor terminal." : "";
@@ -1974,12 +2072,25 @@ class Component extends DCLogic {
     });
     // The bar follows what the member is doing: a cart to send beats a card to
     // show, and a live table beats a points balance.
+    /* ONE SHAPE, TWO TEMPERATURES. The bar was accent in every state, so it
+       competed with every price on the screen for the same red and nothing
+       read as primary. It is accent only while a round is in the guest's
+       hands — something to send, something on its way — and near-black once
+       the only thing left to do is look at it. */
+    const barHot = (a) => {
+      V.actionBarStyle = "width:100%;height:56px;border-radius:28px;display:flex;"
+        + "align-items:center;justify-content:space-between;gap:12px;padding:0 10px 0 20px;color:#fff;"
+        + (a ? "background:#f4553c;box-shadow:0 8px 22px rgba(244,85,60,.4)"
+             : "background:#141416;box-shadow:0 1px 2px rgba(16,17,19,.10),0 8px 22px rgba(16,17,19,.16)");
+    };
     if (nCart) {
+      barHot(true);
       V.barLine = nCart + " item" + (nCart === 1 ? "" : "s") + " · " + this.fmt(this.cartSub());
       V.barSub = "Table " + s.table + " · +" + Math.floor(this.cartSub() / this.pointsPer()) + " pts when settled";
       V.barBtn = "Send order";
       V.barTap = () => this.sendOrder();
     } else if ((flat.length || posF) && stageNow < 4) {
+      barHot(true);
       V.barLine = V.trackTitle;
       V.barSub = "Table " + s.table + (stageNow === 3 ? " · on its way over"
         : stageNow === 2 && !late && !posF ? " · ~" + left + " min"
@@ -1987,11 +2098,13 @@ class Component extends DCLogic {
       V.barBtn = "Track";
       V.barTap = () => V.go("orders");
     } else if (seat) {
+      barHot(false);
       V.barLine = "Table " + seat.table + " · " + this.money(this.seatedTotal(seat.tk));
       V.barSub = "Open now at " + o.name;
       V.barBtn = "Show code";
       V.barTap = () => this.setState({ scan: true });
     } else {
+      barHot(false);
       V.barLine = pts.toLocaleString("en-US") + " points · " + this.money(this.ptValue());
       V.barSub = next ? this.fmt(nextAt - m.spent) + " to " + next.name : tier.name + " · top tier";
       V.barBtn = "Show code";
