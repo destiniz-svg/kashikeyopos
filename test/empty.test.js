@@ -72,7 +72,7 @@ test('the shipped catalogue is empty, and the shipped structure is not', () => {
   assert.strictEqual(K.CHAIN.tin, '', 'no placeholder TIN');
 
   // Structure: all of it ships.
-  assert.strictEqual(K.ACCOUNTS.length, 37, 'the chart of accounts ships complete');
+  assert.strictEqual(K.ACCOUNTS.length, 38, 'the chart of accounts ships complete');
   assert.strictEqual(K.MODULES.length, 33, 'the module catalogue ships');
   assert.strictEqual(K.ROLES.length, 7, 'the permission catalogue ships');
   assert.ok(K.TAX_VERSIONS.length >= 8, 'the statutory rate history ships — a tax version is law');

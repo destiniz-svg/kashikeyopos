@@ -356,7 +356,7 @@ test('the bootstrap carries this outlet and no trade from anywhere else', opts, 
   assert.strictEqual(k.OUTLETS[0].tables, 3, 'the floor came with it');
   assert.strictEqual(k.MENU.length, 2, 'the menu came with it');
   assert.strictEqual(k.MENU[0].recipe.length, 2, 'and its recipe');
-  assert.strictEqual(k.ACCOUNTS.length, 37, 'the chart is complete');
+  assert.strictEqual(k.ACCOUNTS.length, 38, 'the chart is complete');
   assert.strictEqual(k.MODULES, undefined, 'the module catalogue ships with the app, not the payload');
   assert.strictEqual(r.body.state.settled.length, 1, 'the one sale');
   assert.strictEqual(r.body.state.settled[0].outletId, outletId, 'labelled with its outlet');
@@ -1404,6 +1404,61 @@ test('a short settlement batch books what actually happened, once', opts, async 
     + " WHERE j.source = 'settlement' AND j.source_id = $1", [String(res.batchId)]);
   assert.strictEqual(Number(adj.bank), 985, '970 originally, +15 corrected — never restated');
 });
+
+test('a tip is held for the team, not booked as rounding', opts, async () => {
+  // The guest hands over 100 for a 90 bill: the payment carries the whole
+  // note, the bill total stays 90, and the 10 is a liability from the moment
+  // it lands. It used to overshoot the journal by exactly itself and be
+  // absorbed into 4900 — revenue nobody could ever pay out to the staff.
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 2, sub: 90, disc: 0, net: 90, svc: 0,
+    tax: 0, round: 0, total: 100, tip: 10, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 90, amount: 90 }],
+    payments: [{ method: 'cash', amt: 100, tip: 10, tendered: 100 }], stockMoves: []
+  } }]);
+  const res = r.body.results[0];
+  assert.ok(!res.error, JSON.stringify(res));
+
+  const row = await one('SELECT total, tip, server_audit FROM sale WHERE id = $1',
+    [res.result.saleId]);
+  assert.strictEqual(Number(row.total), 90, 'the BILL total — the tip is not the bill');
+  assert.strictEqual(Number(row.tip), 10);
+  assert.strictEqual(row.server_audit, null,
+    'a tipped sale is not a discrepancy: the claimed figure ties as total + tip');
+
+  const lines = await one("SELECT json_agg(json_build_object('a', l.account_code,"
+    + " 'dr', l.dr, 'cr', l.cr)) AS l FROM journal j"
+    + ' JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE j.source = 'sale' AND j.source_id = $1",
+  [String(res.result.saleId)]).then((q) => q.l);
+  assert.ok(lines.some((x) => x.a === '1010' && Number(x.dr) === 100),
+    'the drawer holds the whole note: ' + JSON.stringify(lines));
+  assert.ok(lines.some((x) => x.a === '2450' && Number(x.cr) === 10),
+    'and the tip is a liability to the team');
+  assert.strictEqual(lines.filter((x) => x.a === '4900').length, 0,
+    'no rounding line invents itself for a tip either');
+});
+
+test('net wages land on 2400, and the tips account keeps only tips',
+  opts, async () => {
+    const r = await push([{ opId: uuid(), kind: 'post_payroll', payload: {
+      period: '2026-07', gross: 10000, pensionEe: 700, pensionEr: 700,
+      withholding: 0, service: 990, lines: []
+    } }]);
+    const res = r.body.results[0];
+    assert.ok(!res.error, JSON.stringify(res));
+    assert.strictEqual(res.result.net, 10290, 'gross − pension − wht + service pool');
+
+    const lines = await one("SELECT json_agg(json_build_object('a', l.account_code,"
+      + " 'dr', l.dr, 'cr', l.cr)) AS l FROM journal j"
+      + ' JOIN journal_line l ON l.journal_id = j.id'
+      + " WHERE j.source = 'payroll' AND j.source_id = '2026-07'").then((q) => q.l);
+    assert.ok(lines.some((x) => x.a === '2400' && Number(x.cr) === 10290),
+      'wages owed on the wages account: ' + JSON.stringify(lines));
+    assert.ok(!lines.some((x) => x.a === '2450'),
+      'and NOT on 2450 — the tips account carried the whole payroll, and'
+      + ' neither figure could ever be reconciled');
+  });
 
 test('the manual journal form\'s payload is the journal', opts, async () => {
   const r = await push([{ opId: uuid(), kind: 'post_journal', payload: {

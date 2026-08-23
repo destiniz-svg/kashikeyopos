@@ -175,6 +175,7 @@
     { code: "2200", name: "GST payable (GGST/TGST)", type: "Liability", till: true },
     { code: "2300", name: "Service charge payable", type: "Liability" },
     { code: "2350", name: "Loyalty points liability", type: "Liability", till: true },
+    { code: "2400", name: "Net wages payable", type: "Liability" },
     { code: "2450", name: "Tips payable to staff", type: "Liability" },
     { code: "2500", name: "MRPS pension payable", type: "Liability" },
     { code: "2600", name: "Employee withholding tax payable", type: "Liability" },

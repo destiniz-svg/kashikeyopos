@@ -77,8 +77,18 @@ async function applySale(c, p, ctx) {
      the precise misstatement the loyalty doctrine forbids. */
   const redeemed = r2(num(p.ptsValue));
   const total = r2(net + service + tax + rounding - redeemed);
+  /* The tip rides OUTSIDE the bill's identity: sale.total is what the bill
+     came to, the tip is what the guest added, and the payment rows carry the
+     SUM — that is the note that physically entered the drawer, and the figure
+     the drawer count reconciles against. So the till's claimed figure is
+     total + tip, and the tie-check must say so: comparing it against the bare
+     total stamped every tipped sale as "did not tie", and the journal's
+     tender leg then overshot the credits by exactly the tip — which the old
+     unlimited netting absorbed into 4900 as fake rounding. Tips were revenue
+     nobody could pay out. */
+  const tip = r2(p.tip);
   const claimed = r2(p.total);
-  const tied = Math.abs(claimed - total) > 0.005
+  const tied = Math.abs(claimed - r2(total + tip)) > 0.005
     ? { claimed, computed: total, note: 'terminal total did not tie to its own components' }
     : null;
   const audit = (tied || unregisteredAudit)
@@ -164,7 +174,7 @@ async function applySale(c, p, ctx) {
 
   // The ledger legs. Derived from the sale that just happened, never keyed.
   await postJournal(c, ctx, saleJournal(p, {
-    net, service, tax, rounding, total, discount, cogs: r2(p.cogs),
+    net, service, tax, rounding, total, tip, discount, cogs: r2(p.cogs),
     ptsValue: redeemed, earnedValue,
     payments: arr(p.payments), stock: arr(p.stockMoves), channel: p.channel
   }), 'sale', sale.id, p.bizDate || today(ctx), 'Sale ' + sale.receipt_no);
@@ -202,7 +212,9 @@ function saleJournal(p, T) {
     const m = x.method || 'cash';
     byMethod[m] = r2((byMethod[m] || 0) + num(x.amt));
   });
-  if (!T.payments.length) byMethod.cash = T.total;
+  // The contract with the till: a payment's `amt` is what the guest handed
+  // over for bill AND tip, excluding change — the figure the drawer holds.
+  if (!T.payments.length) byMethod.cash = r2(T.total + T.tip);
   Object.keys(byMethod).forEach((m) => {
     dr(tenderAccount(m), byMethod[m], 'Tender · ' + m);
   });
@@ -220,6 +232,12 @@ function saleJournal(p, T) {
      spends it. Both accounts are till-owned; only this function writes them,
      which is what lets the liability tie to the member balances at all. */
   dr('2350', T.ptsValue, 'Loyalty points redeemed');
+  /* The tip was never the restaurant's money. It is held for the team — a
+     liability from the moment it lands — and paying it out is a manual
+     journal against 2450, which is why 2450 is NOT till-owned. Without this
+     leg, card tips made every settlement advice exceed the receivable by the
+     day's tips, and cash tips made every drawer count read over. */
+  cr('2450', T.tip, 'Tips held for staff');
   if (T.earnedValue > 0) {
     dr('6550', T.earnedValue, 'Loyalty points earned');
     cr('2350', T.earnedValue, 'Loyalty points earned');
@@ -1018,7 +1036,11 @@ H.post_payroll = async (c, p, ctx) => {
     { acct: '2500', cr: r2(ee + er), memo: 'MRPS payable' },
     { acct: '2600', cr: wht, memo: 'Withholding payable' },
     { acct: '2300', dr: svc, memo: 'Service charge distributed' },
-    { acct: '2450', cr: net, memo: 'Net pay owed' }
+    /* 2400, not 2450. Net wages used to be credited to "Tips payable to
+       staff", so the tips account carried the whole payroll and neither
+       figure could ever be reconciled — the tip float in the drawer against
+       a balance that included every salary in the company. */
+    { acct: '2400', cr: net, memo: 'Net pay owed' }
   ], 'payroll', p.period, p.date || today(ctx), 'Payroll ' + p.period);
   await c.query('UPDATE payroll_run SET journal_id = $2 WHERE id = $1', [p.period, j]);
   await log(c, 'post_payroll', 'payroll_run', p.period, null, { gross, net });

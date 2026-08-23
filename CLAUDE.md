@@ -183,6 +183,23 @@ for every batch, once, with a corrected advice file posting only its delta.
 Five composers of manual journals remain, each carrying `lines` and `memo`,
 and `test/wiring.test.js` pins the list: a sixth must justify itself there.
 
+## Tips are held, not earned
+
+A tip rides **outside the bill's identity**: `sale.total` is what the bill came
+to, `sale.tip` is what the guest added, and a payment's `amt` is the sum — the
+note that physically entered the drawer, which is what the drawer count
+reconciles against. The sale journals `Cr 2450 Tips payable to staff` for the
+tip, the tie-check compares the till's claimed figure against `total + tip`,
+and paying the team out is a manual journal against 2450 — which is why 2450 is
+deliberately **not** till-owned.
+
+Before this, tips overshot the sale journal by exactly themselves and were
+absorbed into 4900 as fake rounding — revenue nobody could ever pay out — while
+**payroll credited net wages to 2450**, so the tips account carried every
+salary in the company and neither figure could be reconciled. Net pay now lands
+on **2400 Net wages payable** (migration 023). Historical payroll rows are not
+restated: they are what was posted, and the trail says so.
+
 ## Money
 
 **The books are kept in ONE currency**, chosen at onboarding — MVR or USD. Every
@@ -1035,7 +1052,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 192 tests
+npm test                          # 194 tests
 npm run leak-test                 # isolation, on its own
 ```
 
