@@ -10680,8 +10680,14 @@ class Component extends DCLogic {
     const pays = Object.assign({}, this.state.vendPays || {});
     pays[inv.no] = { amt: inv.total, at: Date.now(), by: this.me(), ref: ref || "" };
     this.setState({ vendPays: pays, modal: null });
-    this.queue("vendor_payment", inv.vendor + " · " + inv.no + " · " + MVRc(inv.total) + (ref ? " · ref " + ref : "") + " · by " + this.me(), "payments");
-    this.queue("post_journal", "Dr 2100 Vendor payable " + MVRc(inv.total) + " · Cr 1020 Bank · " + inv.no, "journal_entries");
+    /* The op carries the MONEY, because the server's handler is what books it:
+       Dr 2100 / Cr bank, and the vendor_payment row. This used to queue the op
+       BARE — no payload — so the handler inserted a zero-amount payment against
+       no supplier and journalled nothing, while a second "post_journal"
+       announcement (also bare) was refused for want of a memo. Two ops, zero
+       ledger entries, on every supplier payment ever made. */
+    this.queue("vendor_payment", inv.vendor + " · " + inv.no + " · " + MVRc(inv.total) + (ref ? " · ref " + ref : "") + " · by " + this.me(), "payments",
+      { vendor: inv.vendorId, vendorName: inv.vendor, amt: inv.total, method: "transfer", ref: ref || "" });
     this.toast(inv.no + " paid · " + MVRc(inv.total) + " to " + inv.vendor);
   }
   payRun(vendorId) {
@@ -10699,8 +10705,12 @@ class Component extends DCLogic {
               const pays = Object.assign({}, this.state.vendPays || {});
               due.forEach((x) => { pays[x.no] = { amt: x.total, at: Date.now(), by: this.me(), ref: "run" }; });
               this.setState({ vendPays: pays, modal: null });
-              this.queue("payment_run", name + " · " + due.length + " invoices · " + MVRc(total) + " · by " + this.me(), "payments");
-              this.queue("post_journal", "Dr 2100 Vendor payable " + MVRc(total) + " · Cr 1020 Bank · payment run " + name, "journal_entries");
+              // One op per invoice, each carrying its own money — the server
+              // books each payment against its own row, and the run is the
+              // sum of its parts rather than a lump nothing reconciles to.
+              due.forEach((x) => this.queue("vendor_payment",
+                name + " · " + x.no + " · " + MVRc(x.total) + " · run · by " + this.me(),
+                "payments", { vendor: x.vendorId, vendorName: x.vendor, amt: x.total, method: "transfer", ref: "run " + name }));
               this.toast(MVRc(total) + " paid to " + name + " · " + due.length + " invoices cleared");
             } },
           // Oldest first is the only ordering that makes an ageing report mean
@@ -12731,10 +12741,11 @@ class Component extends DCLogic {
     this.setState({ grnState: next, modal: null });
     if (ok) {
       this.queue("grn_priced", p.no + " price-checked and posted \u00b7 " + MVRc(p.total) + " \u00b7 by " + this.me(), "purchases", {
-      deliveryId: p.serverId || null, vendor: p.vendor, invoiceNo: p.inv,
+      deliveryId: p.serverId || null, vendor: p.vendor,
+      vendorName: ((((window.KPOS_RAW || {}).vendors) || []).find((x) => x.id === +p.vendor) || {}).name || String(p.vendorName || ""),
+      invoiceNo: p.inv,
       date: p.date || this.today(), net: p.net || p.total, tax: p.tax || 0, terms: p.terms
     });
-      this.queue("post_journal", "Dr 1200 Inventory \u00b7 Cr 2100 Payables \u00b7 " + MVRc(p.total) + " \u00b7 " + p.no, "journal_entries");
       this.toast(p.no + " priced \u2014 cost re-averaged and the payable booked");
     } else {
       this.queue("grn_query", p.no + " raised as a price query \u00b7 by " + this.me(), "purchases");
@@ -13137,7 +13148,9 @@ class Component extends DCLogic {
       label: "Post it to " + l.book, sub: "Dr " + l.book + " Bank & card charges \u00b7 Cr 1020 Bank \u00b7 " + MVRc(Math.abs(l.amt)), style: btn,
       go: () => {
         put({ state: "cleared", src: "Bank charge" }, l.desc + " booked to " + l.book + " \u00b7 " + MVRc(Math.abs(l.amt)));
-        this.queue("post_journal", "Dr " + l.book + " \u00b7 Cr 1020 \u00b7 " + MVRc(Math.abs(l.amt)) + " \u00b7 bank charge", "journal_entries");
+        this.queue("post_journal", "Dr " + l.book + " \u00b7 Cr 1020 \u00b7 " + MVRc(Math.abs(l.amt)) + " \u00b7 bank charge", "journal_entries",
+          { memo: (l.desc || "Bank charge") + " \u00b7 booked from the bank feed",
+            lines: [{ acct: l.book, dr: Math.abs(l.amt) }, { acct: "1020", cr: Math.abs(l.amt) }] });
       }
     });
     if (l.state === "proposed" && !l.book) acts.push({
@@ -13145,7 +13158,11 @@ class Component extends DCLogic {
       sub: l.matchLabel + (l.diff ? " \u00b7 off by " + (l.diff > 0 ? "+" : "") + MVRc(l.diff) + ", which posts to 5200" : ""), style: btn,
       go: () => {
         put({ state: "cleared", auto: 0 }, l.desc + " matched to " + l.src);
-        if (Math.abs(l.diff || 0) > 0.005) this.queue("post_journal", "Bank match difference " + MVRc(Math.abs(l.diff)) + " \u00b7 Dr 5200 Cr 1020 \u00b7 " + l.desc, "journal_entries");
+        // 5600, not 5200 — 5200 is not in the chart, and journal_line's FK to
+        // account(code) would have refused the entry outright.
+        if (Math.abs(l.diff || 0) > 0.005) this.queue("post_journal", "Bank match difference " + MVRc(Math.abs(l.diff)) + " \u00b7 Dr 5600 Cr 1020 \u00b7 " + l.desc, "journal_entries",
+          { memo: "Bank match difference \u00b7 " + (l.desc || ""),
+            lines: [{ acct: "5600", dr: Math.abs(l.diff) }, { acct: "1020", cr: Math.abs(l.diff) }] });
         this.queue("bank_match_accept", l.desc + " \u00b7 accepted as " + l.src + " by " + this.me(), "bank");
       }
     });
@@ -13166,7 +13183,9 @@ class Component extends DCLogic {
       label: "Book as a bank charge", sub: "Dr 5600 Bank & card charges \u00b7 Cr 1020 Bank \u00b7 " + MVRc(Math.abs(l.amt)), style: btn,
       go: () => {
         put({ state: "cleared", src: "Bank charge" }, l.desc + " booked to 5600 \u00b7 " + MVRc(Math.abs(l.amt)));
-        this.queue("post_journal", "Dr 5600 \u00b7 Cr 1020 \u00b7 " + MVRc(Math.abs(l.amt)) + " \u00b7 bank charge", "journal_entries");
+        this.queue("post_journal", "Dr 5600 \u00b7 Cr 1020 \u00b7 " + MVRc(Math.abs(l.amt)) + " \u00b7 bank charge", "journal_entries",
+          { memo: (l.desc || "Bank charge") + " \u00b7 booked from the bank feed",
+            lines: [{ acct: "5600", dr: Math.abs(l.amt) }, { acct: "1020", cr: Math.abs(l.amt) }] });
       }
     });
     if (l.state !== "ignored") acts.push({
@@ -13263,7 +13282,8 @@ class Component extends DCLogic {
           delete runs[b.key];
           delete runs[b.date];      // a batch filed before batches had processors
           this.setState({ acqRuns: runs, modal: null });
-          this.queue("acq_reopen", "Settlement batch " + b.procName + " \u00b7 " + b.date + " reopened by " + this.me(), "payments");
+          this.queue("acq_reopen", "Settlement batch " + b.procName + " \u00b7 " + b.date + " reopened by " + this.me(), "payments",
+            { acquirer: b.proc, batch: b.key });
           this.toast(b.procName + " \u00b7 " + b.date + " is open again");
         }
       });
@@ -13271,7 +13291,14 @@ class Component extends DCLogic {
         acts.push({
           label: "Book the difference as a fee", sub: MVRc(Math.abs(b.variance)) + " to 5600 Bank and card charges",
           go: () => {
-            this.queue("post_journal", "Dr 5600 Bank and card charges " + MVRc(Math.abs(b.variance)) + " · Cr 1030 Card receivable · batch " + b.date, "journal_entries");
+            /* Re-sends the MATCH, not a journal: the server books the actual
+               deduction (fee plus shortfall) to 5600 when a batch first
+               matches, and skips batches whose entry already exists — so this
+               is the repair for batches matched before that was true, and a
+               harmless no-op on ones after. */
+            this.queue("acq_match", "Batch " + b.procName + " \u00b7 " + b.date + " \u00b7 difference booked to 5600 by " + this.me(), "payments",
+              { acquirer: b.proc, batch: b.key, date: b.date, gross: b.gross, mdr: b.rate,
+                net: b.paid != null ? b.paid : Math.round((b.expected + b.variance) * 100) / 100 });
             this.setState({ modal: null });
             this.toast("Difference booked — 1030 now clears for " + b.date);
           }
@@ -13296,7 +13323,6 @@ class Component extends DCLogic {
       acquirer: b.proc, batch: b.key, date: b.date,
       gross: b.gross, mdr: b.rate, net: paid
     });
-    this.queue("post_journal", "Dr 1020 Bank " + MVRc(paid) + " \u00b7 Dr 5600 Bank and card charges " + MVRc(b.gross - paid) + " \u00b7 Cr " + b.acct + " " + MVRc(b.gross) + " \u00b7 batch " + name, "journal_entries");
     if (Math.abs(variance) > 1) {
       this.toast("Paid " + MVRc(Math.abs(variance)) + (variance < 0 ? " short of" : " above") + " the agreed rate — the batch stays flagged", "warn");
     } else {
@@ -13350,7 +13376,6 @@ class Component extends DCLogic {
       scope: "all",
       lines: lines.map((l) => ({ ing: l.id, theo: l.theo, actual: l.actual, cost: l.cost || 0 }))
     });
-    this.queue("post_journal", "Dr 5100 Wastage & variance " + MVRc(Math.abs(varValue)) + " · Cr 1200 Inventory · blind count", "journal_entries");
     this.info("Count posted", lines.length + " lines · variance " + MVRc(varValue) + " at cost",
       [["Theoretical usage", MVRc(theoValue) + " since the last count"],
        ["Variance at cost", (varValue >= 0 ? "+" : "") + MVRc(varValue), Math.abs(varValue) > 200 ? "var(--red-bright)" : "var(--green)"],
@@ -13847,7 +13872,6 @@ class Component extends DCLogic {
             cost: this.costPerBase(it), value: val,
             reason: out ? "waste" : "manual", note: v.reason, loc: v.loc || null
           });
-          this.queue("post_journal", out ? "Dr 5100 Cr 1200 " + MVRc(val) : "Dr 1200 Cr 5100 " + MVRc(val), "journal_entries");
           this.toast((out ? "Written off " : "Written on ") + qty + " " + (it[8] || "kg") + " · " + MVRc(val) + " to 5100 · " + v.reason);
         }
       },
@@ -13883,7 +13907,6 @@ class Component extends DCLogic {
             reason: v.reason + (v.note ? " \u00b7 " + v.note : ""), lines: ord.sold || []
           });
           const tk = ord.tender || "cash";
-          this.queue("post_journal", "Refund " + ord.no + " · Dr 4000 " + MVRc(amt) + " · Cr " + this.tenderAcct(tk), "journal_entries");
           // A credit refund is not a payout: it has to reduce what the customer
           // still owes, or they stay billed for food they were refunded for and
           // the limit enforcement is working off a balance that is too high.
@@ -13917,7 +13940,12 @@ class Component extends DCLogic {
           const hit = locked[v.dr] || locked[v.cr];
           if (hit) return this.toast("Blocked — " + (locked[v.dr] ? v.dr : v.cr) + " is posted by the till. Correct the " + hit + " document instead.", "warn");
           this.setState({ modal: null });
-          this.queue("post_journal", "Manual " + v.kind + " · Dr " + v.dr + " Cr " + v.cr + " " + MVRc(amt) + " · " + v.memo + " · by " + this.me(), "journal_entries");
+          /* The PAYLOAD is the journal. This form validated the accounts, the
+             amount and the memo — and then queued only its own label, so the
+             server refused every manual journal ever posted from here for
+             want of the memo the operator had just typed. */
+          this.queue("post_journal", "Manual " + v.kind + " · Dr " + v.dr + " Cr " + v.cr + " " + MVRc(amt) + " · " + v.memo + " · by " + this.me(), "journal_entries",
+            { memo: v.memo + " · " + v.kind, lines: [{ acct: v.dr, dr: amt }, { acct: v.cr, cr: amt }] });
           this.toast("Posted · Dr " + v.dr + " Cr " + v.cr + " " + MVRc(amt));
         }
       },
@@ -14255,8 +14283,12 @@ class Component extends DCLogic {
           st[a.id] = { status: row.down ? "down" : "ok", ytd: (a.ytd || 0) + row.cost, lastSvc: row.down ? a.lastSvc : this.today() };
           this.setState({ maint: (this.state.maint || []).concat([row]), assetState: st, modal: null });
           this.queue("maintenance_log", a.name + " · " + v.fault + " · repair " + MVRc(row.cost), "maintenance");
-          this.queue("post_journal", "Repair " + MVRc(row.cost) + " · Dr 5400 Cr 2100", "journal_entries");
-          if (row.writeOff) this.queue("stock_writeoff", "Equipment failure · " + a.name + " · " + MVRc(row.writeOff) + " · Dr 5100 Cr 1200", "stock_ledger");
+          if (row.cost > 0) this.queue("post_journal", "Repair " + MVRc(row.cost) + " · Dr 5400 Cr 2100", "journal_entries",
+            { memo: "Repair · " + a.name + " · " + v.fault, lines: [{ acct: "5400", dr: row.cost }, { acct: "2100", cr: row.cost }] });
+          // 1200 is till-owned, so the stock loss travels as the stock op it
+          // is — the handler journals Dr 5100 / Cr 1200 from the value.
+          if (row.writeOff) this.queue("stock_writeoff", "Equipment failure · " + a.name + " · " + MVRc(row.writeOff) + " · Dr 5100 Cr 1200", "stock_ledger",
+            { value: row.writeOff, reason: "waste", note: "Equipment failure · " + a.name });
           this.toast(a.name + " logged" + (row.writeOff ? " · " + MVRc(row.writeOff) + " of stock written off to 5100" : "") + (row.down ? " · marked out of service" : ""));
         }
       },
@@ -14552,7 +14584,12 @@ class Component extends DCLogic {
           if (amt > (c.used || 0)) return this.toast("That is more than the " + MVRc(c.used) + " outstanding \u2014 an overpayment needs a credit note", "warn");
           this.patchRows("custs", [c.id], { used: Math.max(0, (c.used || 0) - amt) },
             MVRc(amt) + " settled against " + c.name + (v.ref ? " \u00b7 ref " + v.ref : " \u00b7 unreferenced"), "customers");
-          this.queue("post_journal", "Credit settlement \u00b7 Dr " + (v.tender === "cash" ? "1010" : "1030") + " \u00b7 Cr 1040 \u00b7 " + MVRc(amt), "journal_entries");
+          /* settle_credit is the op that books this — Dr the tender's own
+             account, Cr 1040 — and it had NEVER been queued: this form sent
+             only a memo-less announcement the server refused, so a settled
+             house account changed on the screen and nowhere else. */
+          this.queue("settle_credit", "Credit settlement \u00b7 " + c.name + " \u00b7 " + MVRc(amt) + (v.ref ? " \u00b7 ref " + v.ref : ""), "customers",
+            { member: c.id, amt: amt, method: v.tender, ref: v.ref || "" });
         }
       },
       resetStore: {
@@ -14925,7 +14962,15 @@ class Component extends DCLogic {
             notes: (row.notes || "") + " · priced by " + this.me() + (v.notes ? " · " + v.notes : "")
           }, "Price check posted · " + row.no + " · " + MVRc(total), "purchases");
           this.setState({ grnState: Object.assign({}, this.state.grnState || {}, { [row.no]: "posted" }) });
-          this.queue("post_journal", "Dr 1200 Inventory " + MVRc(total) + " · Cr 2100 Vendor payable · " + row.no, "journal_entries");
+          /* grn_priced is what books this — Dr 1200 stock, input tax, Cr 2100
+             payable — and re-averages nothing the recost below does not. The
+             announcement this replaced named a till-owned account and was
+             refused on every priced invoice. */
+          this.queue("grn_priced", row.no + " priced \u00b7 " + MVRc(total) + " \u00b7 by " + this.me(), "purchases",
+            { deliveryId: row.serverId || null, vendor: row.vendorId || (+row.vendor || null),
+              vendorName: ((((window.KPOS_RAW || {}).vendors) || []).find((x) => x.id === +row.vendor) || {}).name || String(row.vendorName || row.vendor || ""),
+              invoiceNo: String(v.inv || row.inv || "").trim() || null,
+              date: this.today(), net: total, tax: 0 });
           this.showRecost(row.no, this.recostFromLines(lines, "Price check " + row.no));
         }
       },

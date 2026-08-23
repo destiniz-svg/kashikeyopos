@@ -163,15 +163,25 @@ netting is how an entire feature's money hid inside "Cash rounding" for months.
 Eleven accounts are till-owned (1010, 1030, 1040, 1200, 2200, 2350, 4000, 4100,
 4200, 4900, 6550) and a manual journal to any of them is refused.
 
-**One author per journal.** The server derives every ledger leg of a sale from
-the sale op itself; the till composes no journal at settle. It used to queue
-two — rounding on 4900 and the tender legs — both naming till-owned accounts,
-both refused on every settled bill, both retrying from the outbox forever.
-KNOWN OPEN SWEEP: other client screens still queue `post_journal` beside server
-handlers that post the same movement — vendor payments (2100/1020) pass the
-guard and are plausibly **double-posted**; GRN, counts, refunds and settlement
-batches name till-owned accounts and poison the outbox instead. Each site needs
-its server twin verified and one author chosen.
+**One author per journal, and the payload is the journal.** The sweep of every
+`queue("post_journal")` in the terminal found that NO client screen had ever
+successfully posted one: every call sent a label and no payload, so the server
+refused each for want of a memo — including the manual journal form, which
+validated the accounts and the memo and then queued neither. The real ops were
+queued bare too, so `vendor_payment` minted zero-amount rows against no
+supplier and journalled nothing. Supplier payments, credit settlements, bank
+charges, repairs and short settlement batches were booked NOWHERE, and every
+attempt left a poison op retrying from the outbox.
+
+Now: the money ops carry their money (`vendor_payment`, `settle_credit`,
+`grn_priced`, `acq_match`, `acq_reopen`, `stock_writeoff`), suppliers resolve
+by name onto `chain.supplier` exactly as members do (a seed-era numeric id fed
+to a uuid column was killing every payment that named an invoice), a card
+credit-settlement lands on 1030 rather than pretending the acquirer pays
+instantly, and `acq_match` books the ACTUAL deduction — fee plus shortfall —
+for every batch, once, with a corrected advice file posting only its delta.
+Five composers of manual journals remain, each carrying `lines` and `memo`,
+and `test/wiring.test.js` pins the list: a sixth must justify itself there.
 
 ## Money
 
@@ -1025,7 +1035,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 187 tests
+npm test                          # 192 tests
 npm run leak-test                 # isolation, on its own
 ```
 

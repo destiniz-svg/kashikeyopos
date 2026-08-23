@@ -556,10 +556,13 @@ H.credit_reverse = async (c, p, ctx) => {
 
 // ═══ STOCK ═════════════════════════════════════════════════════════════════
 H.stock_adjust = async (c, p, ctx) => {
-  const id = await moveStock(c, ctx, {
+  // An equipment failure writes off VALUE with no single item to move — the
+  // journal legs are the truth there, and forcing an item row would invent
+  // one. With an item, the movement and the money travel together as ever.
+  const id = p.ing ? await moveStock(c, ctx, {
     ing: p.ing, qty: num(p.qty), cost: num(p.cost), value: r2(p.value),
     reason: p.reason === 'waste' ? 'waste' : 'manual', note: p.note, loc: p.loc
-  });
+  }) : null;
   if (r2(p.value)) {
     await postJournal(c, ctx, [
       { acct: '5100', dr: Math.abs(r2(p.value)), memo: p.note || 'Stock adjustment' },
@@ -692,13 +695,14 @@ H.grn_priced = async (c, p, ctx) => {
   await c.query('UPDATE delivery SET priced = true, priced_at = now(), priced_by = $2,'
     + ' net = $3, tax = $4, total = $5 WHERE id = $1',
     [p.deliveryId, ctx.actor, net, tax, total]);
-  if (p.invoiceNo) {
+  const sup = p.invoiceNo ? await supplierIdOf(c, p.vendor, p.vendorName) : null;
+  if (p.invoiceNo && sup) {
     await c.query('INSERT INTO vendor_invoice (supplier_id, invoice_no, invoice_date,'
       + ' due_date, net, tax, amount, delivery_id, approved_by)'
       + " VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)"
       + ' ON CONFLICT (supplier_id, invoice_no) DO UPDATE SET net = excluded.net,'
       + ' tax = excluded.tax, amount = excluded.amount',
-      [p.vendor, p.invoiceNo, p.date || today(ctx),
+      [sup, p.invoiceNo, p.date || today(ctx),
         p.due || addDays(p.date || today(ctx), num(p.terms) || 30),
         net, tax, total, p.deliveryId, ctx.actor]);
   }
@@ -711,11 +715,33 @@ H.grn_priced = async (c, p, ctx) => {
   return { ok: true, total };
 };
 
+/* A supplier as the LEDGER must know one: a uuid on chain.supplier. Tills
+   hold seed-era numeric ids and names; a payment op that fed either straight
+   into a uuid column died on the cast — the same disease member_upsert had,
+   and the same cure: resolve what the till sent, or create the real row from
+   the name it has always had. */
+async function supplierIdOf(c, id, name) {
+  if (id && UUID.test(String(id))) return String(id);
+  const nm = String(name || '').trim();
+  if (!nm) return null;
+  const q = await c.query('SELECT id FROM chain.supplier WHERE name = $1 LIMIT 1', [nm]);
+  if (q.rows.length) return q.rows[0].id;
+  const ins = await one(c, 'INSERT INTO chain.supplier (name) VALUES ($1) RETURNING id', [nm]);
+  return ins.id;
+}
+
 H.vendor_payment = async (c, p, ctx) => {
   const amt = r2(p.amt);
+  /* Devices that queued this op before it carried a payload may still replay
+     it bare. A zero-amount payment against no supplier is not a payment — it
+     is a row that breaks the ageing report — so it is recorded as skipped
+     rather than minted. */
+  if (!(amt > 0)) return { skipped: 'a payment needs an amount' };
+  const sup = await supplierIdOf(c, p.vendor, p.vendorName);
+  if (!sup) return { skipped: 'a payment needs a supplier' };
   const v = await one(c, 'INSERT INTO vendor_payment (supplier_id, invoice_id, amount,'
     + ' method, ref, by_staff) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
-    [p.vendor, p.invoiceId || null, amt, p.method || 'transfer', p.ref || null, ctx.actor]);
+    [sup, p.invoiceId || null, amt, p.method || 'transfer', p.ref || null, ctx.actor]);
   if (p.invoiceId) {
     await c.query('UPDATE vendor_invoice SET paid = paid + $2 WHERE id = $1',
       [p.invoiceId, amt]);
@@ -883,6 +909,11 @@ H.acq_match = async (c, p, ctx) => {
   const net = p.net == null ? expected : r2(p.net);
   const variance = r2(net - expected);
   const state = Math.abs(variance) <= 1 ? 'matched' : 'short';
+  // The net BEFORE this file: the correction delta must be measured against
+  // what was previously booked, and the upsert below overwrites it.
+  const before = await c.query('SELECT net FROM settlement_batch'
+    + ' WHERE acquirer = $1 AND batch_no = $2', [p.acquirer, p.batch]);
+  const priorNet = before.rows.length ? r2(before.rows[0].net) : null;
   const b = await one(c, 'INSERT INTO settlement_batch (acquirer, batch_no, value_date,'
     + ' gross, mdr_pct, fee, net, expected_net, variance, state, matched_at, matched_by)'
     + ' VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(), $11)'
@@ -890,19 +921,51 @@ H.acq_match = async (c, p, ctx) => {
     + ' variance = excluded.variance, state = excluded.state RETURNING id',
     [p.acquirer, p.batch, p.date || today(ctx), gross, mdr, fee, net, expected,
       variance, state, ctx.actor]);
-  if (state === 'matched') {
-    await postJournal(c, ctx, [
-      { acct: '1020', dr: net, memo: 'Card settlement' },
-      { acct: '5600', dr: fee, memo: 'Merchant fee' },
-      { acct: '1030', cr: gross, memo: 'Card receivable cleared' }
-    ], 'settlement', b.id, p.date || today(ctx), 'Card batch ' + p.batch);
+  /* The entry books what actually happened, matched or short: the bank paid
+     `net`, the receivable clears at `gross`, and the whole deduction — fee
+     plus any shortfall — is the cost of taking cards. Booking only when
+     |variance| ≤ 1 left every short batch OFF the books entirely, with a
+     dead client-side write-off button pointing at a till-owned account.
+
+     Once. A re-match of a batch whose entry exists posts only the DELTA of a
+     corrected net (a corrected advice file is a corrected payment, not a
+     licence to restate the original) — and nothing at all when unchanged,
+     so replays and the legacy repair button stay no-ops. */
+  const prior = await c.query('SELECT id FROM journal'
+    + " WHERE source = 'settlement' AND source_id = $1 LIMIT 1", [String(b.id)]);
+  if (!prior.rows.length) {
+    const ded = r2(gross - net);
+    const lines = [{ acct: '1020', dr: net, memo: 'Card settlement' }];
+    if (ded > 0) lines.push({ acct: '5600', dr: ded, memo: 'Merchant fee & shortfall' });
+    if (ded < 0) lines.push({ acct: '5600', cr: -ded, memo: 'Acquirer overpayment' });
+    lines.push({ acct: '1030', cr: gross, memo: 'Card receivable cleared' });
+    await postJournal(c, ctx, lines, 'settlement', b.id,
+      p.date || today(ctx), 'Card batch ' + p.batch);
+  } else {
+    const delta = r2(net - (priorNet == null ? net : priorNet));
+    if (Math.abs(delta) > 0.005) {
+      await postJournal(c, ctx, delta > 0
+        ? [{ acct: '1020', dr: delta, memo: 'Corrected settlement' },
+          { acct: '5600', cr: delta, memo: 'Deduction reduced' }]
+        : [{ acct: '5600', dr: -delta, memo: 'Deduction increased' },
+          { acct: '1020', cr: -delta, memo: 'Corrected settlement' }],
+      'settlement', b.id, p.date || today(ctx), 'Card batch ' + p.batch + ' corrected');
+    }
   }
   return { batchId: b.id, state, variance, fee };
 };
 
 H.acq_reopen = async (c, p) => {
-  await c.query("UPDATE settlement_batch SET state = 'reopened' WHERE id = $1", [p.id]);
-  return { ok: true };
+  // By server id when the caller holds one; by the acquirer's own batch key
+  // when the till does. It used to accept only p.id, which no till has —
+  // every reopen updated zero rows and reported ok.
+  const q = p.id
+    ? await c.query("UPDATE settlement_batch SET state = 'reopened' WHERE id = $1"
+      + ' RETURNING id', [p.id])
+    : await c.query("UPDATE settlement_batch SET state = 'reopened'"
+      + ' WHERE acquirer = $1 AND batch_no = $2 RETURNING id',
+    [p.acquirer || '', p.batch || '']);
+  return q.rows.length ? { ok: true } : { skipped: 'no such batch' };
 };
 
 H.mdr_set = async (c, p, ctx) => setSetting(c, ctx, 'acquirer_rates_outlet', p.rates || p);
@@ -1517,10 +1580,17 @@ H.loyalty_update = async (c, p, ctx) => {
 H.earn_rate = async (c, p, ctx) => setSetting(c, ctx, 'loyalty_earn', p);
 H.settle_credit = async (c, p, ctx) => {
   const amt = r2(p.amt);
+  if (!(amt > 0)) return { skipped: 'a settlement needs an amount' };
+  // The tender's OWN account: cash to the drawer, card to the card
+  // receivable, anything else to the bank. Card settlements used to land in
+  // 1020 directly, as if the acquirer paid instantly and free.
+  const acct = p.method === 'cash' ? '1010' : p.method === 'card' ? '1030' : '1020';
   await postJournal(c, ctx, [
-    { acct: p.method === 'cash' ? '1010' : '1020', dr: amt, memo: 'Credit settled' },
+    { acct: acct, dr: amt, memo: 'Credit settled' + (p.ref ? ' · ' + p.ref : '') },
     { acct: '1040', cr: amt }
   ], 'credit', p.member, today(ctx), 'Customer credit settled');
+  await log(c, 'settle_credit', 'member', p.member, null,
+    { amt, method: p.method || 'transfer', ref: p.ref || null });
   return { ok: true };
 };
 

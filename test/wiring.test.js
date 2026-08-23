@@ -756,6 +756,29 @@ test('a revoked customer reads Revoked, never Not invited', () => {
    single redemption and it retried from the outbox forever. The ledger legs
    of a redemption are the SERVER's, derived from the sale op like every other
    leg of the sale. The only journal a till may compose is the manual form. */
+/* Every journal the terminal queues carries its lines and its memo. A call
+   with a label and no payload is an ANNOUNCEMENT — the server refuses it, it
+   retries from the outbox forever, and the books get nothing. That was every
+   post_journal in this file, including the manual form's own. */
+test('every queued journal carries its lines and its memo', () => {
+  const calls = SRC.match(/this\.queue\("post_journal"[\s\S]{0,900}?\);/g) || [];
+  assert.strictEqual(calls.length, 5,
+    'five composers: the manual form, two bank charges, the match difference,'
+    + ' and the repair cost — a new one must justify itself here');
+  calls.forEach((call) => {
+    assert.ok(call.indexOf('lines:') >= 0,
+      'a journal without lines is an announcement: ' + call.slice(0, 120));
+    assert.ok(call.indexOf('memo:') >= 0,
+      'a journal without a memo is unauditable: ' + call.slice(0, 120));
+  });
+  // And the ops that carry money carry it.
+  const bare = (kind) => new RegExp(
+    'this\\.queue\\("' + kind + '",[^;]*"[a-z_]+"\\);').test(SRC);
+  ['vendor_payment', 'settle_credit', 'acq_match'].forEach((k) => {
+    assert.ok(!bare(k), k + ' is never queued without its payload');
+  });
+});
+
 test('the settle path composes no journal of its own', () => {
   // The sale op IS the journal: the server derives every leg — tender,
   // revenue, tax, rounding, the loyalty release and accrual — from the sale's

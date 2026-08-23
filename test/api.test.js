@@ -1312,6 +1312,110 @@ test('a sale with no member accrues nothing', opts, async () => {
   assert.strictEqual(lines.n, 0, 'the loyalty accounts move only when loyalty did');
 });
 
+/* ═══ ONE AUTHOR PER JOURNAL ════════════════════════════════════════════════
+   An audit found that NO client screen had ever successfully posted a journal:
+   every `post_journal` in the terminal was queued with a label and no payload,
+   so the server refused each one for want of a memo — including the manual
+   journal form itself, which validated the accounts and the memo and then
+   threw them away. Meanwhile the real ops were queued bare too, so their
+   handlers minted zero-amount rows and journalled nothing. Supplier payments,
+   credit settlements, bank charges and short settlement batches were booked
+   NOWHERE, and every attempt left a poison op retrying in the outbox.
+   These tests are the contract the screens now feed.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a supplier payment books once, and a bare replay mints nothing', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'vendor_payment', payload: {
+    vendor: 7, vendorName: 'Island Fresh Produce', amt: 1250, method: 'transfer',
+    ref: 'INV-0042' } }]);
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+  const pid = r.body.results[0].result.paymentId;
+  assert.ok(pid, JSON.stringify(r.body.results[0]));
+
+  // A seed-era numeric vendor id resolves to a REAL chain.supplier row by
+  // name — the same cure member_upsert got for the same disease.
+  const sup = await one("SELECT id FROM chain.supplier WHERE name = 'Island Fresh Produce'");
+  assert.ok(sup, 'the supplier exists as a row, not a number');
+  const row = await one('SELECT supplier_id, amount FROM vendor_payment WHERE id = $1', [pid]);
+  assert.strictEqual(row.supplier_id, sup.id);
+  assert.strictEqual(Number(row.amount), 1250);
+
+  const j = await one("SELECT count(*)::int AS n, sum(l.dr) AS dr FROM journal j"
+    + ' JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE j.source = 'vendor_payment' AND j.source_id = $1", [String(pid)]);
+  assert.strictEqual(Number(j.dr), 1250, 'Dr 2100 · Cr 1020, once');
+
+  // Devices still hold the op from before it carried money. A bare replay is
+  // recorded as skipped, not minted as a zero-amount payment.
+  const bare = await push([{ opId: uuid(), kind: 'vendor_payment', payload: {} }]);
+  assert.ok(bare.body.results[0].result.skipped, JSON.stringify(bare.body.results[0]));
+  const zeros = await one('SELECT count(*)::int AS n FROM vendor_payment WHERE amount <= 0');
+  assert.strictEqual(zeros.n, 0, 'no zero-amount rows, ever');
+});
+
+test('a settled house account reaches the books, on the tender\'s own account',
+  opts, async () => {
+    const mk = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'House Account Holder', phone: '9990055', credit: 1000 } }]);
+    const mid = mk.body.results[0].result.memberId;
+    const r = await push([{ opId: uuid(), kind: 'settle_credit', payload: {
+      member: mid, amt: 400, method: 'card', ref: 'A12345' } }]);
+    assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+    const lines = await one("SELECT json_agg(json_build_object('a', l.account_code,"
+      + " 'dr', l.dr, 'cr', l.cr)) AS l FROM journal j"
+      + ' JOIN journal_line l ON l.journal_id = j.id'
+      + " WHERE j.source = 'credit' AND j.source_id = $1", [String(mid)]).then((q) => q.l);
+    // Card money is a RECEIVABLE from the acquirer, not cash in the drawer and
+    // not money already in the bank.
+    assert.ok(lines.some((x) => x.a === '1030' && Number(x.dr) === 400), JSON.stringify(lines));
+    assert.ok(lines.some((x) => x.a === '1040' && Number(x.cr) === 400), JSON.stringify(lines));
+  });
+
+test('a short settlement batch books what actually happened, once', opts, async () => {
+  // Gross 1000 at 1.5%: expected 985. The bank paid 970 — short by 15.
+  const r = await push([{ opId: uuid(), kind: 'acq_match', payload: {
+    acquirer: 'term', batch: 'TB-2001', date: today(), gross: 1000, mdr: 1.5, net: 970
+  } }]);
+  const res = r.body.results[0].result;
+  assert.strictEqual(res.state, 'short', JSON.stringify(res));
+
+  const lines = await one("SELECT json_agg(json_build_object('a', l.account_code,"
+    + " 'dr', l.dr, 'cr', l.cr)) AS l FROM journal j"
+    + ' JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE j.source = 'settlement' AND j.source_id = $1",
+  [String(res.batchId)]).then((q) => q.l);
+  // The whole deduction — fee AND shortfall — is the cost of taking cards,
+  // and the receivable clears at gross. Short batches used to book NOTHING.
+  assert.ok(lines.some((x) => x.a === '1020' && Number(x.dr) === 970), JSON.stringify(lines));
+  assert.ok(lines.some((x) => x.a === '5600' && Number(x.dr) === 30), JSON.stringify(lines));
+  assert.ok(lines.some((x) => x.a === '1030' && Number(x.cr) === 1000), JSON.stringify(lines));
+
+  // The same figures again — the legacy repair button, or a replayed file —
+  // post nothing new; a CORRECTED net posts only its delta.
+  await push([{ opId: uuid(), kind: 'acq_match', payload: {
+    acquirer: 'term', batch: 'TB-2001', date: today(), gross: 1000, mdr: 1.5, net: 970 } }]);
+  const n1 = await one("SELECT count(*)::int AS n FROM journal"
+    + " WHERE source = 'settlement' AND source_id = $1", [String(res.batchId)]);
+  assert.strictEqual(n1.n, 1, 'unchanged figures restate nothing');
+
+  await push([{ opId: uuid(), kind: 'acq_match', payload: {
+    acquirer: 'term', batch: 'TB-2001', date: today(), gross: 1000, mdr: 1.5, net: 985 } }]);
+  const adj = await one("SELECT sum(l.dr) FILTER (WHERE l.account_code = '1020') AS bank"
+    + ' FROM journal j JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE j.source = 'settlement' AND j.source_id = $1", [String(res.batchId)]);
+  assert.strictEqual(Number(adj.bank), 985, '970 originally, +15 corrected — never restated');
+});
+
+test('the manual journal form\'s payload is the journal', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'post_journal', payload: {
+    memo: 'August rent · manual',
+    lines: [{ acct: '6100', dr: 18000 }, { acct: '2100', cr: 18000 }] } }]);
+  assert.ok(r.body.results[0].result.journalId, JSON.stringify(r.body.results[0]));
+  // And bare — as every device queued it before the form sent its payload —
+  // is refused for want of a memo, not posted as an empty entry.
+  const bare = await push([{ opId: uuid(), kind: 'post_journal', payload: {} }]);
+  assert.match(String(bare.body.results[0].error || ''), /memo/, JSON.stringify(bare.body.results[0]));
+});
+
 /* One bad op must never brick a till. The balance check is a deferred
    constraint trigger, which fires at the batch COMMIT — outside every
    savepoint — so an unbalanced journal used to poison the whole batch: 500 to
