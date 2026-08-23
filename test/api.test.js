@@ -2391,6 +2391,21 @@ test('database TLS verifies when a CA is pinned, and says so when not', opts, as
   }
 });
 
+test('a killed idle connection is a log line, not an outage', opts, async () => {
+  // A pool EMITS 'error' when an idle connection dies under it, and an
+  // 'error' event nobody listens to kills the process — so a Postgres
+  // restart used to take every till in every outlet down with it. Kill the
+  // pools' idle connections and the suite itself is the proof: without the
+  // guard in src/db.js this test does not fail, it exits.
+  const o = db.owner();
+  await o.query('SELECT 1');
+  await o.query("SELECT pg_terminate_backend(pid) FROM pg_stat_activity"
+    + " WHERE application_name LIKE 'kashikeyo-%' AND pid <> pg_backend_pid()");
+  await new Promise((r) => setTimeout(r, 200));
+  const q = await o.query('SELECT 1 AS ok');
+  assert.strictEqual(q.rows[0].ok, 1, 'the next query gets a fresh connection');
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();

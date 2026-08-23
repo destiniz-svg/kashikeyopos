@@ -2922,7 +2922,6 @@ class Component extends DCLogic {
       const m = (K0.MENU || []).find((x) => String(x.id) === String(id));
       return m ? this.menuPrice(m) : 0;
     };
-    const r2 = (n) => Math.round((n || 0) * 100) / 100;
     // Cost is apportioned to the line that caused it, so margin can be read
     // per dish rather than only per bill.
     const costByDish = {};
@@ -7127,7 +7126,7 @@ class Component extends DCLogic {
       const rw = "display:flex;justify-content:space-between;padding:2px 0";
       if (p.cur && p.cur !== this.base()) {
         rows.push({ n: "Paid in " + p.cur, v: this.fmtCur(p.cur, p.fgn || 0), style: rw + ";font-weight:700" });
-        rows.push({ n: "Rate applied", v: "1 " + p.cur + " = " + (p.rate || this.fxRate(p.cur)) + " MVR", style: rw });
+        rows.push({ n: "Rate applied", v: "1 " + p.cur + " = " + (p.rate || this.fxRate(p.cur)) + " " + this.base(), style: rw });
       }
       if (p.tender === "cash" && p.change > 0) rows.push({ n: "Change" + (p.cur && p.cur !== this.base() ? " (" + this.base() + ")" : ""), v: MVRc(p.change), style: "display:flex;justify-content:space-between;font-weight:700;padding:2px 0" });
       if (p.tender === "credit" && p.cust) rows.push({ n: "Charged to", v: p.cust.name, style: "display:flex;justify-content:space-between;padding:2px 0" });
@@ -9803,7 +9802,6 @@ class Component extends DCLogic {
       const base = (it[7] || "g").toLowerCase(), su = it[8] || it[3] || "";
       const onHand = (raw.inv || []).filter((r) => r[1] === g.id && locs.indexOf(r[0]) >= 0).reduce((a, r) => a + (r[2] || 0), 0);
       const left = onHand - this.stockQty(it, g.used);
-      const r2 = (n) => Math.round(n * 100) / 100;
       const nf = this.netFactor(g.id);
       return {
         name: g.name, id: g.id, cost: g.cost, dishes: g.dishes,
@@ -12148,7 +12146,6 @@ class Component extends DCLogic {
     const sub = gross / ((1 + scR) * (1 + txR));
     const svc = sub * scR;
     const tax = (sub + svc) * txR;
-    const r2 = (n) => Math.round(n * 100) / 100;
     return { sub: r2(sub), svc: r2(svc), tax: r2(tax), total: r2(gross) };
   }
   issueCreditNote(ord, amt, reason, note) {
@@ -13432,7 +13429,6 @@ class Component extends DCLogic {
       varValue += dVal;
       theoValue += theoStock * cost;
       const su = (it[8] || it[3] || "").toLowerCase();
-      const r2 = (n) => Math.round(n * 100) / 100;
       rows.push({
         name: it[2], id: id,
         counted: cnt, book: r2(book), dQty: r2(dQty), dVal: dVal,
@@ -16439,7 +16435,6 @@ class Component extends DCLogic {
       const closed = this.closedPeriods();
       const per = this.accPeriod();
       const bal = this.trialBalance(per);
-      const r2 = (n) => Math.round(n * 100) / 100;
       const drT = r2(bal.reduce((a, r) => a + r.dr, 0)), crT = r2(bal.reduce((a, r) => a + r.cr, 0));
       const isClosed = closed.indexOf(per) >= 0;
       return {
@@ -16839,7 +16834,7 @@ class Component extends DCLogic {
           goLabel: "Schedule a rate change", go: gate(() => this.openForm("taxVersion")) },
         { title: "Accepted currencies", sub: "MVR is the book currency", cat: "tax",
           chip: (P.fx && P.fx.at) ? "Set " + P.fx.at : "MMA peg", chipBg: "var(--info-dim)", chipFg: "var(--blue-bright)",
-          rows: this.CURRENCIES().slice(1).map((c) => [c.code + " · " + c.name, "1 = " + c.rate + " MVR"])
+          rows: this.CURRENCIES().slice(1).map((c) => [c.code + " · " + c.name, "1 = " + c.rate + " " + this.base()])
             .concat([["Change given in", "rufiyaa only"]]),
           foot: "A tender is recorded in the currency the note was handed over in, at the rate in force at that moment, and posts to the ledger in MVR. The rate travels on the ticket — so a receipt reprinted next year still shows the rate the guest was actually given, and a rate move between the sale and the bank deposit lands in 7100 FX gain / loss rather than in a cashier's variance.",
           goLabel: "Set rates", go: gate(() => this.openForm("fxrates")) },

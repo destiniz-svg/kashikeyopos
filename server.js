@@ -22,6 +22,60 @@ app.use(express.json({ limit: '4mb' }));
 const origins = (process.env.ALLOWED_ORIGINS || '').split(',')
   .map((s) => s.trim()).filter(Boolean);
 
+/* ── Content-Security-Policy ─────────────────────────────────────────────
+   The apps are deliberately self-contained — local scripts, local fonts, no
+   CDN — so the policy can say so and make it enforceable: a script injected
+   into a page has nowhere to run and nowhere to send anything. The two front
+   doors carry their app inline (the theme snippet must run before first
+   paint), so those exact blocks are allowlisted BY HASH, computed from the
+   files on disk — edit the page and the hash follows at the next boot,
+   where 'unsafe-inline' would have allowlisted the attacker's script too.
+   'unsafe-eval' stays: the DC runtime compiles its templates with
+   new Function, which is the price of shipping hand-written HTML with no
+   build step. Styles are inline throughout the apps, so style-src keeps
+   'unsafe-inline' — style attributes cannot exfiltrate or execute. */
+const cspCrypto = require('crypto');
+const cspFs = require('fs');
+let cspHeader = null;
+let cspBuiltAt = 0;
+function csp() {
+  // Development edits HTML without restarting; production computes once.
+  const ttl = process.env.NODE_ENV === 'production' ? Infinity : 2000;
+  if (cspHeader && Date.now() - cspBuiltAt < ttl) return cspHeader;
+  const hashes = new Set();
+  const dir = path.join(__dirname, 'app');
+  try {
+    for (const f of cspFs.readdirSync(dir)) {
+      if (!/\.html$/.test(f)) continue;
+      const src = cspFs.readFileSync(path.join(dir, f), 'utf8');
+      const re = /<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/gi;
+      let m;
+      while ((m = re.exec(src))) {
+        const type = ((m[1] || '').match(/type="([^"]+)"/) || [])[1];
+        // text/x-dc templates are data to the browser, not scripts.
+        if (type && type !== 'module'
+          && !/^(text|application)\/(java|ecma)script$/i.test(type)) continue;
+        hashes.add("'sha256-"
+          + cspCrypto.createHash('sha256').update(m[2]).digest('base64') + "'");
+      }
+    }
+  } catch (e) { /* an unreadable app dir already fails louder elsewhere */ }
+  cspHeader = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' " + Array.from(hashes).join(' '),
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'self'"
+  ].join('; ');
+  cspBuiltAt = Date.now();
+  return cspHeader;
+}
+
 app.use(function (req, res, next) {
   const o = req.get('origin');
   if (o && (origins.indexOf('*') >= 0 || origins.indexOf(o) >= 0)) {
@@ -31,6 +85,7 @@ app.use(function (req, res, next) {
     res.set('access-control-allow-methods', 'GET,POST,PATCH,DELETE,OPTIONS');
     res.set('access-control-max-age', '600');
   }
+  res.set('content-security-policy', csp());
   res.set('x-content-type-options', 'nosniff');
   res.set('referrer-policy', 'no-referrer');
   res.set('x-frame-options', 'SAMEORIGIN');

@@ -1106,10 +1106,27 @@ the one seam to move onto something shared. `RATE_LIMIT_SCALE` multiplies the
 ceilings so the test suite's single loopback address does not read as an attack;
 production ignores it.
 
+## The pages carry a Content-Security-Policy
+
+Built in `server.js` from the files on disk: everything is `'self'` — local
+scripts, local fonts, no CDN — and the two front doors' inline scripts
+(`onboarding.html`, `account.html`; the theme snippet must run before first
+paint) are allowlisted **by hash**, recomputed at boot (every 2s in
+development), so editing a page moves the hash rather than requiring
+`'unsafe-inline'`. `'unsafe-eval'` stays: the DC runtime compiles templates
+with `new Function`. If you add an inline `<script>` to a page it is covered
+automatically at the next boot; a CDN reference will be refused by design.
+
+Also in `src/db.js`: every pool is `guarded()` — a pg pool EMITS `'error'`
+when an idle connection dies under it (a Postgres restart, a failover), and
+an unhandled `'error'` event kills the process. The guard logs and lets the
+pool replace the corpse; `test/api.test.js` kills the pools' idle connections
+mid-suite to prove the process survives.
+
 ## Tests
 
 ```
-npm test                          # 199 tests
+npm test                          # 200 tests
 npm run leak-test                 # isolation, on its own
 ```
 

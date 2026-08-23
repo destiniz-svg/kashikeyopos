@@ -78,6 +78,19 @@ function baseConn() {
   };
 }
 
+/* A pool EMITS 'error' when an idle connection dies under it — a Postgres
+   restart, a failover, a dropped link — and an 'error' event nobody listens
+   to KILLS THE PROCESS. That turns a database blip the pool would have healed
+   on the next checkout into a full outage of every till in every outlet. So
+   every pool this file makes gets the listener: log it, let the pool discard
+   the corpse, and the next query gets a fresh connection. */
+function guarded(pool, name) {
+  pool.on('error', function (e) {
+    console.error('[db] idle connection lost on ' + name + ': ' + e.message);
+  });
+  return pool;
+}
+
 let ownerPool = null;
 function owner() {
   if (!ownerPool) {
@@ -88,7 +101,7 @@ function owner() {
         password: process.env.PGPASSWORD || '',
         ssl
       });
-    ownerPool = new Pool(Object.assign(cfg, { max: 3, application_name: 'kashikeyo-owner' }));
+    ownerPool = guarded(new Pool(Object.assign(cfg, { max: 3, application_name: 'kashikeyo-owner' })), 'owner');
   }
   return ownerPool;
 }
@@ -99,7 +112,7 @@ function poolFor(outletId) {
   const id = Number(outletId);
   if (!Number.isInteger(id) || id <= 0) throw Object.assign(new Error('bad outlet id'), { status: 400 });
   if (!pools.has(id)) {
-    pools.set(id, new Pool(Object.assign(baseConn(), {
+    pools.set(id, guarded(new Pool(Object.assign(baseConn(), {
       user: 'outlet_' + id + '_app',
       password: outletPassword(id),
       ssl,
@@ -107,7 +120,7 @@ function poolFor(outletId) {
       idleTimeoutMillis: 30000,
       statement_timeout: Number(process.env.PGSTATEMENT_TIMEOUT || 15000),
       application_name: 'kashikeyo-outlet-' + id
-    })));
+    })), 'outlet-' + id));
   }
   return pools.get(id);
 }
@@ -221,11 +234,11 @@ let reportPool = null;
 async function withEstate(ctx, fn) {
   if ((ctx.rank || 0) < 5) throw Object.assign(new Error('rank 5 required'), { status: 403 });
   if (!reportPool) {
-    reportPool = new Pool(Object.assign(baseConn(), {
+    reportPool = guarded(new Pool(Object.assign(baseConn(), {
       user: 'kashikeyo_report',
       password: process.env.REPORT_ROLE_PASSWORD || outletPassword('report'),
       ssl, max: 2, application_name: 'kashikeyo-report'
-    }));
+    })), 'report');
   }
   const client = await reportPool.connect();
   try {
