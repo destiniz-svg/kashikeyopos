@@ -47,6 +47,22 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
         await c.query('SAVEPOINT ' + sp);
         let result;
         try {
+          /* ── the containment ─────────────────────────────────────────────
+             The journal-balance check is a DEFERRED constraint trigger, and a
+             deferred trigger does not fire at savepoint release — it fires at
+             the batch's final COMMIT, where no savepoint can catch it. Left
+             alone, one unbalanced journal from one op would abort the whole
+             batch there: the client sees a 500, keeps everything queued, and
+             retries the same poison every five seconds for the life of the
+             device. One bad op must never brick a till.
+
+             So the deferral is collapsed PER OP: run the op with checks
+             deferred (a journal is written header-then-lines, momentarily
+             unbalanced by construction), then force everything pending to
+             fire HERE, while this savepoint can still contain the failure.
+             ROLLBACK TO a savepoint also reverts the constraint mode, which
+             is why DEFERRED is restored explicitly at the top of every op. */
+          await c.query('SET CONSTRAINTS ALL DEFERRED');
           result = await applyOp(c, op, req.ctx);
           // Inside the savepoint, so a duplicate that slipped past both checks
           // rolls back its own work rather than taking the batch with it. A
@@ -66,6 +82,8 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
             out.push({ opId: op.opId, replay: true, result: prev.rows[0] && prev.rows[0].result });
             continue;
           }
+          // Fire every check this op deferred, inside its own savepoint.
+          await c.query('SET CONSTRAINTS ALL IMMEDIATE');
         } catch (e) {
           await c.query('ROLLBACK TO SAVEPOINT ' + sp);
           out.push({ opId: op.opId, error: e.message });

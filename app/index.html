@@ -5826,7 +5826,7 @@ class Component extends DCLogic {
           this.setState({ modal: Object.assign({}, m, { blocks: (blocks + 1) > maxBlocks ? 0 : blocks + 1, given: "" }) });
         },
         ptsNote: payMember && blocks
-          ? "Released from 2300 Loyalty liability and recognised as revenue \u2014 points are a liability the business already owes, not a discount off the sale."
+          ? "Released from 2350 Loyalty points liability and recognised as revenue \u2014 points are a liability the business already owes, not a discount off the sale."
           : payMember && maxBlocks
             ? "Up to " + maxBlocks + " block" + (maxBlocks === 1 ? "" : "s") + " on this bill. Taken off the goods, so service and tax follow."
             : "",
@@ -5975,10 +5975,15 @@ class Component extends DCLogic {
           }
           this.queue("close_ticket", (last ? "Ticket closed · " : "Guest settled · " + gname + " · ") + this.slotName(s.activeTable) + " · " + MVR(T.total) + " · " + m.tender,
             "orders", { table: this.slotName(s.activeTable), split: 0 });
-          if (Math.abs(roundDiff) > 0.004) {
-            this.queue("post_journal", "Cash rounding · " + (roundDiff > 0 ? "Cr" : "Dr") + " 4900 Rounding · " + MVRc(Math.abs(roundDiff)) + " · " + snapshot.no, "journal_entries");
-          }
-          this.queue("post_journal", "Journal posted · Dr " + (m.tender === "cash" ? "1010" : m.tender === "credit" ? "1040" : "1030") + " · Cr 4000/2200", "journal_entries");
+          /* NO JOURNAL IS QUEUED FROM HERE. The sale op IS the journal: the
+             server derives every leg — tender, revenue, tax, rounding, the
+             loyalty release and accrual — from the components of the sale
+             that just happened. Two manual journals used to be queued here as
+             well, naming 4900 and the tender accounts; all of them are
+             till-owned, so the server refused both ops on EVERY settled bill
+             and they sat in the outbox retrying forever. An announcement of a
+             journal is not a journal, and a refused announcement is a poison
+             op. */
           this.queue("consume_recipe", "Recipe consumption deducted from " + o.code, "stock_ledger");
           const trail = this.saleTrail(snapshot);
           const settledRow = {
@@ -6011,7 +6016,7 @@ class Component extends DCLogic {
               // percentage that divides COGS by it.
               at: Date.now(), sold: snapshot.sold, cogs: trail.cogs,
               // Redemption is not a discount: the points were a liability the
-              // business already owed, and spending them RELEASES 2300 and
+              // business already owed, and spending them RELEASES 2350 and
               // recognises revenue. Net stays what the goods came to; `pts`
               // and `earned` say what this visit did to the balance, so a
               // receipt in the portal can say WHY the number changed.
@@ -6029,13 +6034,22 @@ class Component extends DCLogic {
           // COGS the journal actually posted, so margin is never recomputed
           // from a guess.
           /* Order of operations, and it matters:
-               1. debit the points spent, and journal Dr 2300 / Cr 4000;
+               1. debit the points spent;
                2. THEN earn on what was actually charged for goods.
-             So a guest cannot earn points on the points they just spent. */
+             So a guest cannot earn points on the points they just spent.
+
+             The JOURNAL is not queued from here. The redemption's ledger legs
+             — Dr 2350 releasing the liability, revenue kept whole — are
+             derived by the server from the sale op itself, exactly like every
+             other leg of the sale. This used to queue a manual journal naming
+             2300, which is the SERVICE CHARGE pool, crediting 4000, which the
+             till owns — so the server's own guard refused it on every single
+             redemption and the op sat in the outbox retrying forever. A
+             journal the till composes is a journal the till can compose
+             wrongly; the sale is the fact, and the ledger follows facts. */
           if (ptsSpent > 0 && payMember) {
             this.queue("loyalty_update", payMember.name + " spent " + ptsSpent + " pts \u00b7 \u2212" + MVRc(ptsValue) + " on " + snapshot.no, "customers",
               { member: payMember.id, points: -ptsSpent, reason: "redeem", sale: snapshot.no });
-            this.queue("post_journal", "Dr 2300 Loyalty liability " + MVRc(ptsValue) + " \u00b7 Cr 4000 Revenue \u00b7 " + ptsSpent + " pts redeemed on " + snapshot.no, "journal_entries");
           }
           this.bookSale(settledRow, tk, T);
           this.setState({
@@ -13899,7 +13913,7 @@ class Component extends DCLogic {
           if (!v.memo) return this.toast("A memo is required — a manual entry without a reason is unauditable", "warn");
           // The ledger reconciles to the POS by construction, and it only stays
           // that way if nobody can hand-key the accounts the till posts to.
-          const locked = { "4000": "sales", "4100": "delivery sales", "4200": "discount", "4900": "cash rounding", "1010": "cash", "1030": "card settlement", "1040": "customer credit", "1200": "stock", "2200": "GST", "2300": "service charge" };
+          const locked = { "4000": "sales", "4100": "delivery sales", "4200": "discount", "4900": "cash rounding", "1010": "cash", "1030": "card settlement", "1040": "customer credit", "1200": "stock", "2200": "GST", "2300": "service charge", "2350": "loyalty points", "6550": "loyalty expense" };
           const hit = locked[v.dr] || locked[v.cr];
           if (hit) return this.toast("Blocked — " + (locked[v.dr] ? v.dr : v.cr) + " is posted by the till. Correct the " + hit + " document instead.", "warn");
           this.setState({ modal: null });

@@ -165,6 +165,12 @@ BEGIN
       tax           numeric(12,2) NOT NULL,
       rounding      numeric(12,2) NOT NULL DEFAULT 0,
       total         numeric(12,2) NOT NULL,
+      -- What loyalty covered: how many points, and what they were worth. The
+      -- guest paid `total`; the goods came to `net`; the difference between
+      -- the two identities is pts_value, and a row that cannot say so forces
+      -- a wrong total — which is exactly what the old sale_adds_up did.
+      pts           int            NOT NULL DEFAULT 0,
+      pts_value     numeric(12,2)  NOT NULL DEFAULT 0,
       tip           numeric(12,2) NOT NULL DEFAULT 0,
       cogs          numeric(12,2) NOT NULL DEFAULT 0,
       currency      text NOT NULL DEFAULT 'MVR',
@@ -183,7 +189,7 @@ BEGIN
       server_audit  jsonb,
       CONSTRAINT sale_nets CHECK (round(subtotal - discount, 2) = round(net, 2)),
       CONSTRAINT sale_adds_up CHECK (
-        round(net + service + tax + rounding, 2) = round(total, 2))
+        round(net + service + tax + rounding - pts_value, 2) = round(total, 2))
     );
     CREATE INDEX IF NOT EXISTS sale_date ON %1$I.sale(business_date);
     CREATE INDEX IF NOT EXISTS sale_at ON %1$I.sale(at DESC);

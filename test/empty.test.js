@@ -72,7 +72,7 @@ test('the shipped catalogue is empty, and the shipped structure is not', () => {
   assert.strictEqual(K.CHAIN.tin, '', 'no placeholder TIN');
 
   // Structure: all of it ships.
-  assert.strictEqual(K.ACCOUNTS.length, 35, 'the chart of accounts ships complete');
+  assert.strictEqual(K.ACCOUNTS.length, 37, 'the chart of accounts ships complete');
   assert.strictEqual(K.MODULES.length, 33, 'the module catalogue ships');
   assert.strictEqual(K.ROLES.length, 7, 'the permission catalogue ships');
   assert.ok(K.TAX_VERSIONS.length >= 8, 'the statutory rate history ships — a tax version is law');
@@ -90,8 +90,10 @@ test('the chart of accounts carries the codes the till owns', () => {
   // A manual journal must refuse these: the ledger reconciles to the POS by
   // construction and only stays that way if nobody can hand-key them.
   assert.strictEqual(owned.join(','),
-    '1010,1030,1040,1200,2200,4000,4100,4200,4900',
-    'the till-owned accounts are exactly the nine the chain contract names');
+    '1010,1030,1040,1200,2200,2350,4000,4100,4200,4900,6550',
+    'the till-owned accounts are exactly the eleven the chain contract names'
+    + ' — 2350 and 6550 are written only by the sale, which is what lets the'
+    + ' loyalty liability tie to the member balances at all');
   // Codes are load-bearing: the P&L grouping and the GST return read them.
   const codes = win.KPOS.ACCOUNTS.map((a) => a.code);
   assert.strictEqual(new Set(codes).size, codes.length, 'no code appears twice');

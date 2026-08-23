@@ -33,7 +33,8 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        014 GST optional · 015 order stage
                        016 business date · 017 member invitation
                        018 member email · 019 drop member tier
-                       020 invite token
+                       020 invite token · 021 loyalty liability
+                       022 sale knows redemption
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -146,9 +147,31 @@ recomputes from the components, repairs the row into a consistent one, and
 stamps the discrepancy in `sale.server_audit` beside `sale.client_total` for
 someone to answer for.
 
-A deferred `CONSTRAINT TRIGGER` refuses an unbalanced journal at COMMIT. Nine
-accounts are till-owned (1010, 1030, 1040, 1200, 2200, 4000, 4100, 4200, 4900)
-and a manual journal to any of them is refused.
+A deferred `CONSTRAINT TRIGGER` refuses an unbalanced journal at COMMIT — and
+the sync handler collapses that deferral **per op** (`SET CONSTRAINTS ALL
+IMMEDIATE` inside each savepoint), because a deferred trigger fires at the batch
+COMMIT where no savepoint can contain it: left alone, one unbalanced journal
+poisoned the whole batch and the till retried it every five seconds forever.
+One bad op fails alone; its neighbours commit.
+
+`postJournal()` nets residual float dust (≤ five laari) onto 4900. A LARGER gap
+is a component bug: a non-sale journal refuses outright, and a sale — which is
+never refused, the money is taken — still posts but stamps `journal_imbalance`
+in the audit trail and labels the line `IMBALANCE absorbed`. The old unlimited
+netting is how an entire feature's money hid inside "Cash rounding" for months.
+
+Eleven accounts are till-owned (1010, 1030, 1040, 1200, 2200, 2350, 4000, 4100,
+4200, 4900, 6550) and a manual journal to any of them is refused.
+
+**One author per journal.** The server derives every ledger leg of a sale from
+the sale op itself; the till composes no journal at settle. It used to queue
+two — rounding on 4900 and the tender legs — both naming till-owned accounts,
+both refused on every settled bill, both retrying from the outbox forever.
+KNOWN OPEN SWEEP: other client screens still queue `post_journal` beside server
+handlers that post the same movement — vendor payments (2100/1020) pass the
+guard and are plausibly **double-posted**; GRN, counts, refunds and settlement
+batches name till-owned accounts and poison the outbox instead. Each site needs
+its server twin verified and one author chosen.
 
 ## Money
 
@@ -436,8 +459,38 @@ tender list of its own.
 
 ## Points are a liability, not a discount
 
-Redeeming **releases 2300 and recognises revenue**; it does not reduce the sale.
-Get this wrong and the P&L understates revenue by every point ever spent.
+Redeeming **releases 2350 `Loyalty points liability` and recognises revenue**;
+it does not reduce the sale. Get this wrong and the P&L understates revenue by
+every point ever spent.
+
+A CORRECTION THAT IS ALSO A WARNING: this paragraph used to say **2300**, which
+is the SERVICE CHARGE pool, and the chart carried no loyalty account at all.
+The till believed this file, queued `Dr 2300 / Cr 4000` on every redemption,
+the server's till-owned guard refused it every time, and the redemption's value
+was silently absorbed into 4900 as fake rounding. One wrong sentence here
+became three defects in code. This file is a witness, not a source — when it
+disagrees with the code, the code and the tests win, and the sentence gets
+fixed the way this one just was.
+
+The ledger legs are the server's, derived from the sale op
+(`saleJournal` in `src/apply.js`) — the till composes no journal:
+
+- at **earn**: `Dr 6550 Loyalty points expense / Cr 2350` for the granted
+  points at the outlet's own redemption rate — tonight's promise is tonight's
+  expense, not a surprise on the visit that spends it. A paused programme earns
+  nothing and accrues nothing;
+- at **redeem**: `Dr 2350` for `ptsValue`, while `4000` keeps the full goods
+  figure. The sale row carries `pts` and `pts_value`, and `sale_adds_up` now
+  reads `total = net + service + tax + rounding − pts_value` — the old
+  constraint hard-coded the no-redemption identity, forcing a wrong total onto
+  every redeemed sale (migration 022).
+
+Both accounts are till-owned, so only the sale can move them, which is what
+lets 2350 tie to the member balances. Disclosed: points earned before
+migration 021 were never accrued, so 2350 opens at zero and early redemptions
+can drive it negative until accruals wash through; points are also chain-wide
+while ledgers are per-outlet, so one outlet's 2350 may run negative while the
+estate's consolidated figure ties.
 
 At the till: whole redemption blocks only — a half block is not something the
 catalogue prices — never more than the bill, and taken off the **goods**, before
@@ -447,7 +500,7 @@ a block on and wraps back to none, so the same button spends and cancels.
 
 Order of operations at close, and it matters:
 
-1. debit the points spent, and journal `Dr 2300 / Cr 4000`;
+1. debit the points spent;
 2. **then** earn on what was actually charged for goods.
 
 So a guest cannot earn points on the points they just spent. `applySale()` earns
@@ -972,7 +1025,7 @@ short axis.
 ## Tests
 
 ```
-npm test                          # 183 tests
+npm test                          # 187 tests
 npm run leak-test                 # isolation, on its own
 ```
 

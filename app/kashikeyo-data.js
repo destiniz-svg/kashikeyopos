@@ -174,6 +174,7 @@
     { code: "2100", name: "Accounts payable", type: "Liability" },
     { code: "2200", name: "GST payable (GGST/TGST)", type: "Liability", till: true },
     { code: "2300", name: "Service charge payable", type: "Liability" },
+    { code: "2350", name: "Loyalty points liability", type: "Liability", till: true },
     { code: "2450", name: "Tips payable to staff", type: "Liability" },
     { code: "2500", name: "MRPS pension payable", type: "Liability" },
     { code: "2600", name: "Employee withholding tax payable", type: "Liability" },
@@ -197,6 +198,7 @@
     { code: "6300", name: "Administration", type: "Expense" },
     { code: "6400", name: "Licences & insurance", type: "Expense" },
     { code: "6500", name: "Marketing & promotion", type: "Expense" },
+    { code: "6550", name: "Loyalty points expense", type: "Expense", till: true },
     { code: "6600", name: "Travel & transport", type: "Expense" },
     { code: "6700", name: "Professional & recruitment", type: "Expense" },
     { code: "6800", name: "Cleaning, laundry & upkeep", type: "Expense" }

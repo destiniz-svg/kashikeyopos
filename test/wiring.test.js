@@ -750,6 +750,29 @@ test('a revoked customer reads Revoked, never Not invited', () => {
     'there is nothing to withdraw from someone who was never let in');
 });
 
+/* The till used to queue its own redemption journal — "Dr 2300 Loyalty
+   liability / Cr 4000" — and both halves were wrong: 2300 is the service
+   charge pool, and 4000 is till-owned, so the server refused the op on every
+   single redemption and it retried from the outbox forever. The ledger legs
+   of a redemption are the SERVER's, derived from the sale op like every other
+   leg of the sale. The only journal a till may compose is the manual form. */
+test('the settle path composes no journal of its own', () => {
+  // The sale op IS the journal: the server derives every leg — tender,
+  // revenue, tax, rounding, the loyalty release and accrual — from the sale's
+  // own components. The strings this pins are the three journals the till
+  // used to queue at settle, all naming till-owned accounts (2300-for-loyalty,
+  // which is the SERVICE CHARGE pool; 4900; the tender accounts), all refused
+  // by the server's guard, on every settled bill, forever.
+  assert.ok(SRC.indexOf('pts redeemed on') < 0,
+    'no redemption journal is queued from the till');
+  assert.ok(SRC.indexOf('Dr 2300 Loyalty') < 0 && SRC.indexOf('2300 Loyalty') < 0,
+    'nothing names the service-charge pool as the loyalty liability');
+  assert.ok(!/queue\("post_journal", "Cash rounding/.test(SRC),
+    'no rounding journal is queued at settle — the sale op carries rounding');
+  assert.ok(!/queue\("post_journal", "Journal posted/.test(SRC),
+    'no tender journal is queued at settle — an announcement is not a journal');
+});
+
 test('the audit-only kinds are named, not defaulted', () => {
   // "Not modelled yet" and "deliberately audit-only" must stay
   // distinguishable, or a gap hides inside a design decision.

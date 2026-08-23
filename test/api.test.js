@@ -356,7 +356,7 @@ test('the bootstrap carries this outlet and no trade from anywhere else', opts, 
   assert.strictEqual(k.OUTLETS[0].tables, 3, 'the floor came with it');
   assert.strictEqual(k.MENU.length, 2, 'the menu came with it');
   assert.strictEqual(k.MENU[0].recipe.length, 2, 'and its recipe');
-  assert.strictEqual(k.ACCOUNTS.length, 35, 'the chart is complete');
+  assert.strictEqual(k.ACCOUNTS.length, 37, 'the chart is complete');
   assert.strictEqual(k.MODULES, undefined, 'the module catalogue ships with the app, not the payload');
   assert.strictEqual(r.body.state.settled.length, 1, 'the one sale');
   assert.strictEqual(r.body.state.settled[0].outletId, outletId, 'labelled with its outlet');
@@ -1227,6 +1227,117 @@ test('points are awarded by the outlet, never by the terminal', opts, async () =
   const after = await one('SELECT points FROM chain.member WHERE id = $1', [m.id]);
   assert.strictEqual(Number(after.points) - Number(m.points), 50,
     'fifty points on a five hundred rufiyaa net, at the outlet\'s own rate');
+});
+
+/* ═══ POINTS ARE A LIABILITY, AND NOW THE LEDGER AGREES ═════════════════════
+   This is the test that never existed, and its absence is how three defects
+   lived in one feature: the server journal had no redemption line (postJournal
+   absorbed the value as fake "Cash rounding"), the till queued its own journal
+   against 2300 — the SERVICE CHARGE pool — and the server's till-owned guard
+   refused that op on every redemption, forever. The client arithmetic was
+   tested in a vm; nothing ever settled a redemption against Postgres.
+   ═══════════════════════════════════════════════════════════════════════ */
+test('a redemption releases the liability, and hides in no rounding line',
+  opts, async () => {
+    const mk = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Points Spender', phone: '9990088'
+    } }]);
+    const mid = mk.body.results[0].result.memberId;
+    await one('UPDATE chain.member SET points = 500 WHERE id = $1', [mid]);
+
+    // The spend and the sale travel together, as the till sends them.
+    const r = await push([
+      { opId: uuid(), kind: 'loyalty_update', lamport: 1, payload: {
+        member: mid, points: -200, reason: 'redeem' } },
+      { opId: uuid(), kind: 'sale', lamport: 2, payload: {
+        bizDate: today(), covers: 1, sub: 300, disc: 0, net: 300, svc: 0,
+        tax: 0, round: 0, total: 250, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+        member: mid, customer: 'Points Spender',
+        pts: 200, ptsValue: 50,
+        sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 300, amount: 300 }],
+        payments: [{ method: 'qr', amt: 250, tendered: 250 }], stockMoves: []
+      } }
+    ]);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    const saleRes = r.body.results[1];
+    assert.ok(!saleRes.error, 'the sale posts: ' + JSON.stringify(saleRes));
+
+    // The row carries what the guest was CHARGED, and it ties — no repair
+    // stamp, because the server now knows what a redemption is.
+    const row = await one('SELECT total, server_audit FROM sale WHERE id = $1',
+      [saleRes.result.saleId]);
+    assert.strictEqual(Number(row.total), 250, 'the charged figure, not the gross');
+    assert.strictEqual(row.server_audit, null,
+      'a redemption is not a discrepancy to be stamped');
+
+    const lines = await one(
+      "SELECT json_agg(json_build_object('acct', l.account_code,"
+      + " 'dr', l.dr, 'cr', l.cr) ORDER BY l.account_code, l.dr) AS l"
+      + ' FROM journal j JOIN journal_line l ON l.journal_id = j.id'
+      + " WHERE j.source = 'sale' AND j.source_id = $1",
+      [String(saleRes.result.saleId)]).then((q) => q.l);
+    const get = (acct, side) => lines.filter((x) => x.acct === acct
+      && Number(x[side]) > 0).reduce((a, x) => a + Number(x[side]), 0);
+
+    // Dr 2350 releases the liability; revenue stays the FULL goods figure.
+    assert.strictEqual(get('2350', 'dr'), 50, JSON.stringify(lines));
+    assert.strictEqual(get('4000', 'cr'), 300,
+      'revenue is not reduced by a redemption — that is the doctrine, in SQL');
+    // What tonight earned is accrued tonight: 25 pts on the 250 charged,
+    // worth 6.25 at the default 100-for-25 redemption rate.
+    assert.strictEqual(get('6550', 'dr'), 6.25, JSON.stringify(lines));
+    assert.strictEqual(get('2350', 'cr'), 6.25, JSON.stringify(lines));
+    // And NOTHING landed on 4900. Every redemption used to, labelled
+    // "Rounding", on card sales that round to nothing.
+    assert.strictEqual(lines.filter((x) => x.acct === '4900').length, 0,
+      'no rounding line invents itself: ' + JSON.stringify(lines));
+
+    // The balance moved by both truths: −200 spent, +25 earned on the charge.
+    const after = await one('SELECT points FROM chain.member WHERE id = $1', [mid]);
+    assert.strictEqual(Number(after.points), 325);
+  });
+
+test('a sale with no member accrues nothing', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }], stockMoves: []
+  } }]);
+  const lines = await one(
+    'SELECT count(*)::int AS n FROM journal j JOIN journal_line l'
+    + ' ON l.journal_id = j.id WHERE j.source = $1 AND j.source_id = $2'
+    + " AND l.account_code IN ('2350','6550')",
+    ['sale', String(r.body.results[0].result.saleId)]);
+  assert.strictEqual(lines.n, 0, 'the loyalty accounts move only when loyalty did');
+});
+
+/* One bad op must never brick a till. The balance check is a deferred
+   constraint trigger, which fires at the batch COMMIT — outside every
+   savepoint — so an unbalanced journal used to poison the whole batch: 500 to
+   the client, everything stays queued, same batch retried every five seconds
+   for the life of the device. The push handler now collapses the deferral per
+   op, and postJournal refuses a non-sale imbalance outright. */
+test('an unbalanced journal fails alone, not as a batch', opts, async () => {
+  const r = await push([
+    { opId: uuid(), kind: 'member_upsert', lamport: 1, payload: {
+      name: 'Before The Bad Op', phone: '9990077' } },
+    { opId: uuid(), kind: 'post_journal', lamport: 2, payload: {
+      memo: 'deliberately unbalanced',
+      lines: [{ acct: '6100', dr: 100 }, { acct: '2100', cr: 40 }] } },
+    { opId: uuid(), kind: 'member_upsert', lamport: 3, payload: {
+      name: 'After The Bad Op', phone: '9990066' } }
+  ]);
+  assert.strictEqual(r.status, 200, 'the batch survives its worst member');
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+  assert.match(String(r.body.results[1].error || ''), /out of balance/,
+    'the bad op is refused BY NAME: ' + JSON.stringify(r.body.results[1]));
+  assert.ok(!r.body.results[2].error, JSON.stringify(r.body.results[2]));
+
+  // And the neighbours actually committed — refusal contained, not contagious.
+  const n = await one("SELECT count(*)::int AS n FROM chain.member"
+    + " WHERE phone IN ('9990077','9990066')");
+  assert.strictEqual(n.n, 2, 'the good ops around the bad one landed');
 });
 
 /* ═══ THE ACCOUNT PLANE ═════════════════════════════════════════════════════

@@ -68,7 +68,15 @@ async function applySale(c, p, ctx) {
     tax = 0;
   }
 
-  const total = r2(net + service + tax + rounding);
+  /* What the redemption covered. Parsed HERE, not in the loyalty block,
+     because it changes what the guest was CHARGED — and the row, the receipt
+     document and the tender leg all carry the charged figure. Leaving it out
+     made the server's total disagree with the till's on every redemption, and
+     postJournal's self-balancer then absorbed the difference as a fake "Cash
+     rounding" debit — the redemption booked as a discount, invisibly, which is
+     the precise misstatement the loyalty doctrine forbids. */
+  const redeemed = r2(num(p.ptsValue));
+  const total = r2(net + service + tax + rounding - redeemed);
   const claimed = r2(p.total);
   const tied = Math.abs(claimed - total) > 0.005
     ? { claimed, computed: total, note: 'terminal total did not tie to its own components' }
@@ -81,11 +89,12 @@ async function applySale(c, p, ctx) {
   const sale = await one(c,
     'INSERT INTO sale (receipt_no, ticket_id, at, business_date, channel, covers,'
     + ' subtotal, discount, discount_code, discount_reason, discount_by, net,'
-    + ' service, tax_code, tax_label, tax_rate, tax, rounding, total, tip, cogs,'
+    + ' service, tax_code, tax_label, tax_rate, tax, rounding, total, pts,'
+    + ' pts_value, tip, cogs,'
     + ' currency, fx_rate, fx_amount, member_id, customer_name, server_name,'
     + ' closed_by, device_id, client_total, server_audit)'
     + ' VALUES ($1,$2,coalesce($3, now()),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'
-    + ' $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)'
+    + ' $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)'
     + ' RETURNING id, receipt_no',
     [no.no, p.ticketId || null, p.at ? new Date(p.at) : null,
       p.bizDate || today(ctx), p.channel || 'dine_in', Math.max(1, num(p.covers) || 1),
@@ -93,7 +102,8 @@ async function applySale(c, p, ctx) {
       // An unregistered outlet must not have a tax LABEL invented for it: the
       // receipt would name a registration the business does not hold.
       p.discBy || null, net, service, taxCode,
-      registered ? (p.taxLabel || 'GST') : '', taxRate, tax, rounding, total, r2(p.tip),
+      registered ? (p.taxLabel || 'GST') : '', taxRate, tax, rounding, total,
+      Math.max(0, Math.trunc(num(p.pts))), redeemed, r2(p.tip),
       r2(p.cogs), p.cur || 'MVR', num(p.rate) || 1, r2(p.fgn),
       p.member || null, p.customer || null, p.server || null,
       ctx.actor, ctx.deviceId, claimed, audit ? JSON.stringify(audit) : null]);
@@ -125,9 +135,37 @@ async function applySale(c, p, ctx) {
     });
   }
 
+  /* The loyalty programme, read ONCE and before the journal is built,
+     because two of its consequences are ledger lines: the release of what
+     this redemption spends, and the accrual of what this visit earns. Earning
+     stays on GOODS actually charged — net minus the redemption — never on
+     tax, service, or the points just spent. */
+  let earned = 0, earnedValue = 0;
+  if (p.member) {
+    const rate = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
+    const cfg = (rate.rows[0] || {}).value || {};
+    const per = Number(cfg.pointsPer) || 10;
+    const live = cfg.live !== false;
+    const base = Math.max(0, r2(net - redeemed));
+    earned = live ? Math.floor(base / per) : 0;
+    /* What the granted points are WORTH, at the outlet's own published
+       redemption rate — the figure the liability will one day be released at.
+       A paused programme earns nothing and therefore accrues nothing. */
+    earnedValue = earned > 0
+      ? r2(earned / (Number(cfg.redeemPts) || 100) * (Number(cfg.redeemValue) || 25))
+      : 0;
+    await log(c, live ? 'points_earned' : 'points_paused', 'member', p.member, null,
+      { sale: sale.receipt_no, net, redeemed, base, per, points: earned });
+    if (earned > 0) {
+      await c.query('UPDATE chain.member SET points = points + $2 WHERE id = $1',
+        [p.member, earned]);
+    }
+  }
+
   // The ledger legs. Derived from the sale that just happened, never keyed.
   await postJournal(c, ctx, saleJournal(p, {
     net, service, tax, rounding, total, discount, cogs: r2(p.cogs),
+    ptsValue: redeemed, earnedValue,
     payments: arr(p.payments), stock: arr(p.stockMoves), channel: p.channel
   }), 'sale', sale.id, p.bizDate || today(ctx), 'Sale ' + sale.receipt_no);
 
@@ -145,37 +183,6 @@ async function applySale(c, p, ctx) {
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
     + " VALUES ($1,'SALE',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
     [sale.receipt_no, p.bizDate || today(ctx), total, sale.id, ctx.actor]);
-
-  /* Points are awarded HERE, from the outlet's own earn rate — never from a
-     number the terminal sent. A till that computes its own points is a till
-     that can be made to award any number of them, and a member whose balance
-     depends on which device settled the bill has no balance at all. */
-  if (p.member) {
-    const rate = await c.query("SELECT value FROM chain.setting WHERE key = 'loyalty'");
-    const cfg = (rate.rows[0] || {}).value || {};
-    const per = Number(cfg.pointsPer) || 10;
-    // A paused programme records that nothing was earned rather than earning
-    // silently — the balance and the reason for it stay answerable.
-    const live = cfg.live !== false;
-    /* Earning is on GOODS, and on what was actually CHARGED for them.
-       Not tax, not service: a guest should not accrue on money the government
-       and the staff take, and a tax-rate change must not silently change what
-       a bill earns. And not on points just spent — the redemption comes off
-       first, or a guest earns on their own balance.
-
-       Replay is already a no-op: `op_log.op_id` is the primary key and a
-       seen op short-circuits before this handler runs, so a queued sale that
-       replays twice cannot award twice. */
-    const redeemed = num(p.ptsValue);
-    const base = Math.max(0, r2(net - redeemed));
-    const earned = live ? Math.floor(base / per) : 0;
-    if (earned > 0) {
-      await c.query('UPDATE chain.member SET points = points + $2 WHERE id = $1',
-        [p.member, earned]);
-    }
-    await log(c, live ? 'points_earned' : 'points_paused', 'member', p.member, null,
-      { sale: sale.receipt_no, net, redeemed, base, per, points: earned });
-  }
 
   await log(c, 'sale', 'sale', sale.id, null, { no: sale.receipt_no, total });
   return { saleId: sale.id, receiptNo: sale.receipt_no, total, repaired: !!audit };
@@ -206,6 +213,17 @@ function saleJournal(p, T) {
   cr('2200', T.tax, 'Output tax');
   if (T.rounding > 0) cr('4900', T.rounding, 'Cash rounding');
   if (T.rounding < 0) dr('4900', -T.rounding, 'Cash rounding');
+  /* POINTS ARE A LIABILITY, NOT A DISCOUNT. Redeeming releases 2350 — money
+     the business already owed the guest — while revenue stays the full goods
+     figure. And what this visit EARNS is accrued the moment it is granted:
+     the expense belongs to tonight's sale, not to the future visit that
+     spends it. Both accounts are till-owned; only this function writes them,
+     which is what lets the liability tie to the member balances at all. */
+  dr('2350', T.ptsValue, 'Loyalty points redeemed');
+  if (T.earnedValue > 0) {
+    dr('6550', T.earnedValue, 'Loyalty points earned');
+    cr('2350', T.earnedValue, 'Loyalty points earned');
+  }
   if (T.cogs > 0) { dr('5000', T.cogs, 'Cost of sales'); cr('1200', T.cogs, 'Stock consumed'); }
   return lines;
 }
@@ -217,11 +235,30 @@ async function postJournal(c, ctx, lines, source, sourceId, date, memo) {
   const drs = clean.reduce((a, l) => a + r2(l.dr), 0);
   const crs = clean.reduce((a, l) => a + r2(l.cr), 0);
   if (Math.abs(drs - crs) > 0.005) {
-    // Balance the rounding on 4900 rather than refusing: an unposted sale is a
-    // worse outcome than a one-laari rounding line somebody can see.
     const d = r2(crs - drs);
-    clean.push(d > 0 ? { acct: '4900', dr: d, memo: 'Rounding' }
-      : { acct: '4900', cr: -d, memo: 'Rounding' });
+    /* A few laari of float dust is what this netting exists for. A LARGER gap
+       is a component bug, and absorbing one silently is how a whole feature's
+       money hid inside "Cash rounding" for months — every points redemption
+       landed here, labelled Rounding, on card sales that round to nothing.
+
+       So the gap is capped. A non-sale journal that misses by more than five
+       laari REFUSES — under the sync handler that is one op failing on its
+       own, not a batch. A SALE still posts whatever happens, because the
+       cashier has already taken the money — but the absorption is stamped in
+       the audit trail with the gap it swallowed, so it is a finding, not a
+       hiding place. */
+    if (Math.abs(d) > 0.05 && source !== 'sale') {
+      throw Object.assign(new Error('journal out of balance by ' + d
+        + ' — refusing rather than absorbing a component bug into Rounding'),
+      { status: 422 });
+    }
+    if (Math.abs(d) > 0.05) {
+      await log(c, 'journal_imbalance', source, sourceId ? String(sourceId) : null,
+        null, { gap: d, memo: memo || source });
+    }
+    clean.push(d > 0
+      ? { acct: '4900', dr: d, memo: Math.abs(d) > 0.05 ? 'IMBALANCE absorbed — investigate' : 'Rounding' }
+      : { acct: '4900', cr: -d, memo: Math.abs(d) > 0.05 ? 'IMBALANCE absorbed — investigate' : 'Rounding' });
   }
   // Resolve the entry date ONCE, on the outlet's clock, so the period this
   // opens and the period the row lands in can never be different months.
