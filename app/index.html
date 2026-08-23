@@ -2514,6 +2514,17 @@ class Component extends DCLogic {
       this.syncCurrency();
       if (!this.state.session) this.adoptSession();
     });
+    /* Faults that would otherwise die silently — an uncaught throw in a
+       handler, a rejected promise nobody awaited — land in a ring buffer the
+       diagnostics screen reads. Not React state: a fault must never cause a
+       render that causes the fault. Fifty entries, oldest out first; the
+       point is "what broke this shift", not a full log. */
+    this._faults = this._faults || [];
+    window.addEventListener("error", (e) => this.fault("window", (e && e.message) || "script error"));
+    window.addEventListener("unhandledrejection", (e) => {
+      const r = e && e.reason;
+      this.fault("promise", (r && (r.message || String(r))) || "unhandled rejection");
+    });
     // Ages and the top-bar clock are minute-resolution; a 15s tick keeps them
     // honest without re-rendering the whole floor every second.
     this._t = setInterval(() => { this.setState({ now: new Date() }); this.checkIdle(); }, 15000);
@@ -2838,6 +2849,11 @@ class Component extends DCLogic {
     return all.filter((o) => granted.indexOf(o.id) >= 0 || granted.indexOf(o.parent) >= 0);
   }
   toast(msg, tone) { this.setState({ toast: { msg: msg, tone: tone || "ok", id: Date.now() } }); clearTimeout(this._tt); this._tt = setTimeout(() => this.setState({ toast: null }), 2800); }
+  fault(where, msg) {
+    this._faults = (this._faults || []).slice(-49);
+    this._faults.push({ at: this.clock(), where: where, msg: String(msg || "").slice(0, 200) });
+    try { console.warn("[kpos-fault]", where, msg); } catch (e) {}
+  }
 
   /* ── The one seam ────────────────────────────────────────────────────────
      Every mutation in this terminal comes through queue(), which is why the
@@ -15372,6 +15388,13 @@ class Component extends DCLogic {
       kb < 0 ? "Storage is blocked, so this session lives in memory only and will not survive a reload." : "The session survives a reload, a crash and a flat battery.");
     add("Session", s.session ? "ok" : "warn", s.session ? this.me() + " · " + this.rankName() : "nobody signed in",
       s.session ? "Every write from this device is attributable to this person." : "The terminal is locked; nothing can be attributed until someone signs in.");
+    const faults = this._faults || [];
+    const lastF = faults[faults.length - 1];
+    add("Script faults this session", faults.length ? "warn" : "ok",
+      faults.length ? faults.length + " caught" : "none",
+      faults.length
+        ? "Last at " + lastF.at + " (" + lastF.where + "): " + lastF.msg + " — the terminal recovered, but a fault that repeats on one action is a bug to report, not a glitch to re-tap."
+        : "No uncaught error or abandoned promise since this page loaded.");
     return out;
   }
   // One posted event becomes several journal lines, which is the point: a ticket
