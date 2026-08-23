@@ -2391,6 +2391,52 @@ test('database TLS verifies when a CA is pinned, and says so when not', opts, as
   }
 });
 
+test('history has a horizon, and the trail does not', opts, async () => {
+  const o = db.owner();
+  // One stale row in each pruned table, one fresh, and one old AUDIT row that
+  // must survive — the trail is kept, not trimmed.
+  const staleOp = uuid(), freshOp = uuid();
+  await o.query('INSERT INTO outlet_' + outletId + '.op_log'
+    + " (op_id, kind, client_at, applied_at) VALUES"
+    + " ($1,'sale', now() - interval '200 days', now() - interval '200 days'),"
+    + " ($2,'sale', now(), now())", [staleOp, freshOp]);
+  await o.query('INSERT INTO outlet_' + outletId + '.guest_request'
+    + " (table_no, kind, detail, at) VALUES"
+    + " ('T1','water','stale', now() - interval '200 days'),"
+    + " ('T1','water','fresh', now())");
+  await o.query('INSERT INTO chain.audit (outlet_id, action, entity, at)'
+    + " VALUES ($1,'probe_old_audit','retention', now() - interval '200 days')",
+  [outletId]);
+
+  const pruned = await o.query('SELECT * FROM chain.prune_history(90, 30)');
+  const mine = pruned.rows.filter((r) => r.outlet_id === outletId)[0];
+  assert.ok(Number(mine.op_rows) >= 1 && Number(mine.guest_rows) >= 1,
+    'the stale rows are gone: ' + JSON.stringify(mine));
+
+  const ops = await o.query('SELECT op_id FROM outlet_' + outletId + '.op_log'
+    + ' WHERE op_id = ANY($1)', [[staleOp, freshOp]]);
+  assert.deepStrictEqual(ops.rows.map((r) => r.op_id), [freshOp],
+    'the fresh replay window survives; the stale one does not');
+  const gr = await o.query('SELECT detail FROM outlet_' + outletId
+    + ".guest_request WHERE detail IN ('stale','fresh')");
+  assert.deepStrictEqual(gr.rows.map((r) => r.detail), ['fresh']);
+
+  const trail = await o.query("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'probe_old_audit'");
+  assert.strictEqual(trail.rows[0].n, 1, 'chain.audit is never pruned');
+  const logged = await o.query("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'history_pruned' AND outlet_id = $1", [outletId]);
+  assert.ok(logged.rows[0].n >= 1, 'and the prune itself is on the trail');
+
+  // A window short enough to eat live replays is a typo, not a policy.
+  await assert.rejects(o.query('SELECT chain.prune_history(5, 30)'), /at least 30/);
+  // A till cannot shred its own history early: `one()` runs on the OUTLET's
+  // login role, which was never granted EXECUTE on the pruner.
+  const tillTry = await one('SELECT chain.prune_history(90, 30)')
+    .then(() => 'allowed').catch((e) => e.message);
+  assert.match(tillTry, /permission denied/, 'no outlet role may execute the pruner');
+});
+
 test('a killed idle connection is a log line, not an outage', opts, async () => {
   // A pool EMITS 'error' when an idle connection dies under it, and an
   // 'error' event nobody listens to kills the process — so a Postgres

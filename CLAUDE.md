@@ -37,6 +37,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        020 invite token · 021 loyalty liability
                        022 sale knows redemption
                        023 wages are not tips · 024 device pushes
+                       025 retention
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -1106,6 +1107,27 @@ the one seam to move onto something shared. `RATE_LIMIT_SCALE` multiplies the
 ceilings so the test suite's single loopback address does not read as an attack;
 production ignores it.
 
+## History has a horizon, the trail does not
+
+`chain.prune_history(op_days, guest_days)` (migration 025), called at boot and
+daily from `server.js`. `op_log` is a replay window, not an archive — its
+consequences live on in the rows each op wrote — and `guest_request` is a
+floor board. Defaults 90 and 30 days (`RETAIN_OP_LOG_DAYS` /
+`RETAIN_GUEST_REQUEST_DAYS`; 0 disables; floors of 30/7 are enforced in the
+function, because a window short enough to eat live replays is a typo, not a
+policy). **`chain.audit` is never pruned** — the trail is kept, not trimmed,
+and archival if ever wanted is an export, not a DELETE. Owner-only EXECUTE, so
+a compromised till cannot shred its own history; each prune that removed
+anything is itself on the trail (`history_pruned`).
+
+The terminal's persisted session has a **quota ladder** (`writeSession`):
+settled history is capped at 800 rows in the primary write (an offline cache —
+the server refills `settled` wholesale on every bootstrap), and on
+QuotaExceeded it sheds history in two more rungs before persisting only live
+state: open tickets, the unreplayed outbox, session, register. History is shed
+before live state, never live state at all, and hitting the ladder registers a
+fault.
+
 ## The pages carry a Content-Security-Policy
 
 Built in `server.js` from the files on disk: everything is `'self'` — local
@@ -1126,7 +1148,7 @@ mid-suite to prove the process survives.
 ## Tests
 
 ```
-npm test                          # 200 tests
+npm test                          # 201 tests
 npm run leak-test                 # isolation, on its own
 ```
 

@@ -2145,11 +2145,36 @@ class Component extends DCLogic {
     // have to parse — or be trusted with — the whole till session.
     this.publishFulfil();
     this.publishGuest();
+    /* THE QUOTA LADDER. localStorage is ~5MB and this body is the whole
+       session, so a till that trades for months will eventually not fit — and
+       the old behaviour on that day was to silently stop persisting anything,
+       which surfaces as a crash losing a shift. History is shed before live
+       state, and never live state at all: the server holds every settled row
+       and refills them on the next bootstrap (applyLive replaces `settled`
+       wholesale), so what is being shed here is an offline CACHE, not the
+       record. The primary body already caps it. */
+    body.settled = (body.settled || []).slice(-800);
     const put = (b) => localStorage.setItem(this.SKEY, JSON.stringify(b));
     try { put(body); }
     catch (e) {
-      try { put(Object.assign({}, body, { outbox: body.outbox.filter((x) => x.state === "queued" || x.state === "conflict" || x.state === "parked") })); }
-      catch (e2) { /* storage blocked — session stays in memory */ }
+      const liveOps = body.outbox.filter((x) => x.state === "queued" || x.state === "conflict" || x.state === "parked");
+      try {
+        put(Object.assign({}, body, { outbox: liveOps,
+          settled: (body.settled || []).slice(-200),
+          printJobs: (body.printJobs || []).slice(-60),
+          costMoves: (body.costMoves || []).slice(-200) }));
+      } catch (e2) {
+        // Last rung: the money that is not yet anywhere else. Open tickets,
+        // the unreplayed outbox, who is signed in, and the drawer.
+        try {
+          put({ v: 3, tickets: body.tickets, held: body.held, outbox: liveOps,
+            conflicts: body.conflicts, session: body.session, register: body.register,
+            prefs: body.prefs, outletId: body.outletId, docSeq: body.docSeq, docs: (body.docs || []).slice(-100) });
+          this.fault("storage", "session did not fit — persisted live state only");
+        } catch (e3) {
+          this.fault("storage", "localStorage refused every write — session is memory-only");
+        }
+      }
     }
   }
   // Debounced, but never starved: if writes have been deferred for more than

@@ -189,6 +189,25 @@ app.use(function (err, req, res, next) {          // eslint-disable-line no-unus
 
 const port = Number(process.env.PORT || 8080);
 
+/* History has a horizon (migration 025): op_log is a replay window, not an
+   archive, and the floor board is not a record. Daily, and once at boot —
+   in-process because this build is one process, like the doorman. chain.audit
+   is never pruned; setting either knob to 0 disables that table's pruning. */
+async function pruneHistory() {
+  const opD = Number(process.env.RETAIN_OP_LOG_DAYS || 90);
+  const grD = Number(process.env.RETAIN_GUEST_REQUEST_DAYS || 30);
+  if (!opD || !grD) return;
+  try {
+    const q = await owner().query('SELECT * FROM chain.prune_history($1,$2)', [opD, grD]);
+    const op = q.rows.reduce((a, r) => a + Number(r.op_rows), 0);
+    const gr = q.rows.reduce((a, r) => a + Number(r.guest_rows), 0);
+    if (op || gr) {
+      console.log('[retention] pruned ' + op + ' op_log and ' + gr
+        + ' guest_request rows past ' + opD + '/' + grD + ' days');
+    }
+  } catch (e) { console.error('[retention] ' + e.message); }
+}
+
 async function boot() {
   if (process.env.SKIP_MIGRATE !== '1') {
     try { await migrate(); }
@@ -207,6 +226,8 @@ async function boot() {
   const server = app.listen(port, function () {
     console.log('KashikeyoPOS listening on ' + port);
   });
+  pruneHistory();
+  setInterval(pruneHistory, 24 * 3600e3).unref();
   ['SIGTERM', 'SIGINT'].forEach(function (sig) {
     process.on(sig, function () {
       server.close(function () { shutdown().then(() => process.exit(0)); });
