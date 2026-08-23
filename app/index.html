@@ -2227,9 +2227,18 @@ class Component extends DCLogic {
     // and takes rufiyaa change out of it, so a foreign sale REDUCES the MVR in the
     // till. Counting its MVR equivalent here would make every close look short by
     // exactly the change given.
+    // A split bill's cash is the CASH SHARES, not the whole total under the
+    // closing tender: cash-then-card must add only the cash to the drawer.
     return (this.state.settled || [])
-      .filter((x) => x.tender === "cash" && (x.at || 0) >= r.openedAt)
-      .reduce((a, x) => a + ((x.cur || this.base()) === this.base() ? (x.total || 0) : -(x.chg || 0)), 0);
+      .filter((x) => (x.at || 0) >= r.openedAt)
+      .reduce((a, x) => {
+        if (x.shares && x.shares.length) {
+          return a + x.shares.filter((sh) => sh.method === "cash")
+            .reduce((b, sh) => b + ((sh.cur || this.base()) === this.base() ? (sh.amt || 0) : -(sh.chg || 0)), 0);
+        }
+        if (x.tender !== "cash") return a;
+        return a + ((x.cur || this.base()) === this.base() ? (x.total || 0) : -(x.chg || 0));
+      }, 0);
   }
   // What foreign paper is physically in the drawer, by currency.
   fxTakings() {
@@ -2912,7 +2921,8 @@ class Component extends DCLogic {
         cost: r2(costByDish[name] || 0), unitCost: 0
       };
     });
-    const payments = [{
+    // A split bill already knows every share's tender; a whole bill has one.
+    const payments = (row.shares && row.shares.length) ? row.shares : [{
       method: row.tender === "wallet" ? "card" : (row.tender || "cash"),
       amt: row.total, cur: row.cur || this.base(), rate: row.rate || 1,
       fgn: row.fgn || 0, chg: row.chg || 0, tip: row.tip || 0,
@@ -5968,7 +5978,19 @@ class Component extends DCLogic {
           // ticket, its lines and its journal stay open until the bill is whole.
           if (evenN > 1 && paidN + 1 < evenN) {
             this.queue("split_payment", "Share " + (paidN + 1) + " of " + evenN + " settled · " + MVR(due) + " · " + m.tender + (payCur !== this.base() ? " in " + payCur + " @ " + fx : "") + " · " + this.slotName(s.activeTable), "payments");
-            this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidAmt: paidAmt + due, given: "", cust: "", approving: 0 }) });
+            /* This share's tender is REMEMBERED, not just announced. The sale
+               op used to carry one payment leg — the LAST share's tender for
+               the whole bill — so a table split cash-then-card booked the
+               entire total to whichever tender happened to close it: wrong
+               drawer, wrong receivable, wrong settlement batch. Each share's
+               rounding is accumulated for the same reason: the bill's rounding
+               is the sum of what each cash share rounded, not the last one's. */
+            const shareLeg = { method: m.tender === "wallet" ? "card" : (m.tender || "cash"),
+              amt: due, cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
+              chg: change, tip: 0, tendered: r2(due + change), ref: m.ref || "" };
+            this.setState({ modal: Object.assign({}, m, { paidN: paidN + 1, paidAmt: paidAmt + due, given: "", cust: "", approving: 0,
+              shares: (m.shares || []).concat([shareLeg]),
+              paidRound: r2((m.paidRound || 0) + roundDiff), ref: "" }) });
             this.toast("Share " + (paidN + 1) + " of " + evenN + " paid · " + MVRc(T.total - paidAmt - due) + " left to collect");
             return;
           }
@@ -6021,7 +6043,8 @@ class Component extends DCLogic {
               // rounded cash sale those differ, and the drawer reconciles against
               // this figure. The rounding sits on its own line rather than being
               // absorbed into revenue.
-              channel: (tk || {}).channel || "dine_in", total: paidAmt + due, round: roundDiff, tender: m.tender,
+              channel: (tk || {}).channel || "dine_in", total: r2(paidAmt + due),
+              round: evenN > 1 ? r2((m.paidRound || 0) + roundDiff) : roundDiff, tender: m.tender,
               status: "closed", server: (tk || {}).waiter || "Unassigned",
               // What the processor issued, captured at the counter. This was
             // always the ticket's pay INTENT — a QR guest's choice — so a
@@ -6058,6 +6081,17 @@ class Component extends DCLogic {
               // reprint after a rate change silently restates the invoice.
               bizDate: (tk || {}).bizDate || this.today(), taxRate: T.taxRate, taxLabel: T.taxLabel
           };
+          /* On a split bill, every share's own tender travels with the sale —
+             the legs recorded as each share paid, plus this closing one — so
+             the server journals cash to the drawer and card to the receivable
+             instead of booking the whole total under whichever tender closed
+             the bill. */
+          if (evenN > 1) {
+            settledRow.shares = (m.shares || []).concat([{
+              method: m.tender === "wallet" ? "card" : (m.tender || "cash"),
+              amt: due, cur: payCur, rate: fx, fgn: payCur === this.base() ? 0 : givenFgn,
+              chg: change, tip: settledRow.tip, tendered: r2(due + change), ref: m.ref || "" }]);
+          }
           // The same row shape the Orders panel writes, and the same method
           // books it: dish ids so the volume can be joined to a recipe, and the
           // COGS the journal actually posted, so margin is never recomputed

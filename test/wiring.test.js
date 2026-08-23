@@ -796,6 +796,24 @@ test('the settle path composes no journal of its own', () => {
     'no tender journal is queued at settle — an announcement is not a journal');
 });
 
+test('a split bill remembers every share\'s tender, not just the last', () => {
+  // The sale op used to carry one payment leg — the closing share's tender
+  // for the whole bill — so a table split cash-then-card booked its entire
+  // total to whichever tender happened to close it: wrong drawer, wrong
+  // receivable, wrong settlement batch. The server journals each method to
+  // its own account and always has; only the till was collapsing them.
+  assert.ok(SRC.indexOf('settledRow.shares = (m.shares || []).concat') >= 0,
+    'the closing share joins the ones already paid');
+  assert.ok(/const shareLeg = \{ method: m\.tender === "wallet"/.test(SRC),
+    'each interim share records its own leg as it pays');
+  assert.ok(/paidRound: r2\(\(m\.paidRound \|\| 0\) \+ roundDiff\)/.test(SRC),
+    'and its own cash rounding — the bill\'s rounding is the sum, not the last');
+  assert.ok(/row\.shares && row\.shares\.length\) \? row\.shares/.test(SRC),
+    'bookSale sends the shares as the payment legs');
+  assert.ok(/x\.shares\.filter\(\(sh\) => sh\.method === "cash"\)/.test(SRC),
+    'the drawer expectation counts only the cash shares of a split');
+});
+
 test('a poison op is parked, visible, and never silently resent', () => {
   const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
   const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');

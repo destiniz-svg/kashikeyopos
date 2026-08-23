@@ -2289,6 +2289,50 @@ test('the doors that send email or take guesses refuse a hammer', opts, async ()
   }
 });
 
+test('a split bill lands each share on its own account, to the laari', opts, async () => {
+  // 100.00 split three ways: the till floors each share to 33.33 and the last
+  // share takes the remainder, 33.34 — so cash-then-card-then-card must reach
+  // the ledger as Dr 1010 33.33 and Dr 1030 66.67, summing to the bill with
+  // no invented rounding and no repair stamp. Before this, the sale op
+  // carried ONE leg — the closing share's tender for the whole total — so a
+  // split bill booked its entire cash to the card receivable or vice versa.
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 3, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 2, price: 50, amount: 100 }],
+    payments: [
+      { method: 'cash', amt: 33.33, tendered: 33.33 },
+      { method: 'card', amt: 33.33, tendered: 33.33, ref: '111111' },
+      { method: 'card', amt: 33.34, tendered: 33.34, ref: '222222' }
+    ], stockMoves: []
+  } }]);
+  const res = r.body.results[0];
+  assert.ok(!res.error, JSON.stringify(res));
+
+  const row = await one('SELECT total, server_audit FROM sale WHERE id = $1',
+    [res.result.saleId]);
+  assert.strictEqual(Number(row.total), 100);
+  assert.strictEqual(row.server_audit, null,
+    'three shares that sum to the bill are not a discrepancy');
+
+  const pays = await one('SELECT count(*)::int AS n, sum(amount) AS amt FROM payment'
+    + ' WHERE sale_id = $1', [res.result.saleId]);
+  assert.strictEqual(pays.n, 3, 'every share is its own payment row');
+  assert.strictEqual(Number(pays.amt), 100, 'and not a laari is lost between them');
+
+  const lines = await one("SELECT json_agg(json_build_object('a', l.account_code,"
+    + " 'dr', l.dr, 'cr', l.cr)) AS l FROM journal j"
+    + ' JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE j.source = 'sale' AND j.source_id = $1",
+  [String(res.result.saleId)]).then((q) => q.l);
+  assert.ok(lines.some((x) => x.a === '1010' && Number(x.dr) === 33.33),
+    'the drawer holds exactly the cash share: ' + JSON.stringify(lines));
+  assert.ok(lines.some((x) => x.a === '1030' && Number(x.dr) === 66.67),
+    'the receivable holds exactly the card shares');
+  assert.strictEqual(lines.filter((x) => x.a === '4900').length, 0,
+    'no rounding line absorbs a split');
+});
+
 test('a delivered push stamps the device, so the outlet can see who went quiet', opts, async () => {
   // A registered device, and a session signed in ON it.
   const dev = await post('/api/auth/devices', { label: 'Till A', kind: 'till' }, token);

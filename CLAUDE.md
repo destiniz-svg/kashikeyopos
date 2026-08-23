@@ -502,6 +502,16 @@ out. It also rounded cash at a hardcoded half-rufiyaa, which is wrong for a
 dollar outlet, and carried a second tender list (`TENDER_SET`) that had no
 wallet and called customer credit a "house account".
 
+**A split bill remembers every share's tender.** Each share records its own
+payment leg as it pays — method, amount, currency, rounding, reference — and
+the sale op sends them all, so cash-then-card reaches the ledger as cash AND
+card. It used to send one leg, the closing share's tender for the whole total:
+wrong drawer, wrong receivable, wrong settlement batch. The share arithmetic
+floors each share to the laari and the last share takes the remainder, so
+nothing is lost between them — asserted against Postgres at 100.00 ÷ 3.
+`cashTakings()` counts only the cash shares of a split, and the bill's cash
+rounding is the SUM of what each cash share rounded, not the last one's.
+
 If you are tempted to add a settle button somewhere new, open the pay screen
 instead. `test/chain.test.js` asserts the panel exposes no `tkSettle` and no
 tender list of its own.
@@ -1099,7 +1109,7 @@ production ignores it.
 ## Tests
 
 ```
-npm test                          # 198 tests
+npm test                          # 199 tests
 npm run leak-test                 # isolation, on its own
 ```
 
