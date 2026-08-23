@@ -814,6 +814,27 @@ test('a split bill remembers every share\'s tender, not just the last', () => {
     'the drawer expectation counts only the cash shares of a split');
 });
 
+test('a printed docket is a claim a printer backed, or a spool that says so', () => {
+  // The old runJob marked every job "done" on a 620ms timer — a claimed
+  // print no printer made, on an app whose doctrine is that a reported send
+  // that was not made is worse than no send at all.
+  assert.ok(SRC.indexOf('kashikeyo-escpos.js') >= 0 && SRC.indexOf('kpos-print.js') >= 0,
+    'the terminal loads the composer and the transports');
+  assert.ok(/KPOS_PRINT\.send\(job\.target, bytes, cfg\)/.test(SRC),
+    'a configured transport actually sends the bytes');
+  assert.ok(/state: "spooled"/.test(SRC),
+    'no transport means SPOOLED — never "done" on a timer');
+  assert.ok(!/this\.patchJob\(id, \{ state: "done", doneAt: Date\.now\(\) \}\);\n    \}, 620\)/.test(SRC),
+    'the timer that claimed prints is gone');
+  // The drawer plugs into the receipt printer, so opening it is a print —
+  // and only CASH opens it: a card receipt popping the drawer is how cash
+  // walks.
+  assert.ok(/kick: p\.tender === "cash"/.test(SRC), 'cash kicks, card does not');
+  const ESC = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-escpos.js'), 'utf8');
+  assert.ok(/module\.exports = api/.test(ESC) && /root\.KASHIKEYO_ESCPOS = api/.test(ESC),
+    'one composer, loaded by browser and server alike');
+});
+
 test('a poison op is parked, visible, and never silently resent', () => {
   const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
   const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');

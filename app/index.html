@@ -31,6 +31,8 @@
 <script src="./kashikeyo-invite.js"></script>
 <script src="./kashikeyo-data.js"></script>
 <script src="./kashikeyo-api.js"></script>
+<script src="./kashikeyo-escpos.js"></script>
+<script src="./kpos-print.js"></script>
 <script src="./kpos-bridge.js"></script>
 </helmet>
 
@@ -5523,7 +5525,22 @@ class Component extends DCLogic {
         });
         // One docket per station, each its own job — the grill printing proves
         // nothing about the bar.
-        stns.forEach((st) => this.printJob("KOT", this.printerFor(st), "KOT · " + st.toLowerCase() + " · " + this.slotName(s.activeTable), { table: s.activeTable, lines: going.length }));
+        stns.forEach((st) => {
+          // The docket IS the lines: each item in double-size type with its
+          // note under it, only this station's dishes, because the grill does
+          // not cook what the bar pours.
+          const docRows = [];
+          going.forEach((l) => {
+            const mi = (K0.MENU || []).find((x) => x.id === l.id);
+            const at = mi ? this.stationName(this.dishStation(mi)) : "Hot pass";
+            if (at !== st) return;
+            docRows.push({ big: l.qty + " x " + ((mi || {}).name || "Item") });
+            if (l.note) docRows.push("   >> " + l.note);
+          });
+          this.printJob("KOT", this.printerFor(st), "KOT · " + st.toLowerCase() + " · " + this.slotName(s.activeTable),
+            { table: s.activeTable, lines: going.length,
+              doc: { title: st, sub: this.slotName(s.activeTable) + " · " + this.clock() + " · " + this.me(), rows: docRows, foot: "" } });
+        });
         this.setState({ modal: { kind: "kot", lines: going, table: s.activeTable, at: Date.now() } });
       },
       fireLabel: unfired ? "Fire " + unfired + " to KDS" : "All fired",
@@ -5541,7 +5558,13 @@ class Component extends DCLogic {
       payHover: this.btnHover("solid-brand", { disabled: !canPay }),
       printBill: () => {
         if (!canPay) return this.toast("Nothing to print", "warn");
-        this.printJob("Bill", "receipt", "Bill · " + this.slotName(s.activeTable), { total: T.total });
+        this.printJob("Bill", "receipt", "Bill · " + this.slotName(s.activeTable), { total: T.total,
+          doc: { title: this.outlet().name, sub: "Bill · " + this.slotName(s.activeTable),
+            rows: (tk ? tk.lines : []).map((l) => {
+              const mi = (K().MENU || []).find((x) => x.id === l.id) || { name: "Item" };
+              return [l.qty + " x " + mi.name, MVRc(this.menuPrice(mi) * l.qty)];
+            }).concat([{ rule: 1 }, ["TOTAL", MVRc(T.total)]]),
+            foot: "Not a tax invoice — settle to receive one" } });
         this.toast("Bill sent to " + this.printer("receipt").name);
       },
       qrOrder: () => s.activeTable ? this.setState({ modal: { kind: "qr" } }) : this.toast("Select a table first", "warn"),
@@ -7163,7 +7186,12 @@ class Component extends DCLogic {
         rcpLines: p.lines, rcpTotals: rows,
         rcpFoot: "Served by " + (p.server || "—") + " · " + p.guest + "\n" + (this.brandOf().receiptFoot || "Thank you"),
         settledDone: () => {
-          this.printJob("Receipt", "receipt", "Receipt " + (p.no || "") + " · " + MVRc(T.total), { no: p.no });
+          this.printJob("Receipt", "receipt", "Receipt " + (p.no || "") + " · " + MVRc(T.total), { no: p.no,
+            doc: { title: o.name, sub: "Receipt " + (p.no || "") + " · " + p.time + " · " + p.table,
+              rows: (p.lines || []).map((l) => [l.n, l.v]).concat([{ rule: 1 }],
+                rows.map((r) => [r.n, r.v])),
+              foot: "Served by " + (p.server || "-") + "\n" + (this.brandOf().receiptFoot || "Thank you"),
+              kick: p.tender === "cash" } });
           this.setState({ modal: null });
         },
         trailLabel: "Where this sale landed · stock, COGS, journal",
@@ -7269,7 +7297,15 @@ class Component extends DCLogic {
           + (reg.openedAt ? "\nRegister opened " + pad(new Date(reg.openedAt).getHours()) + ":" + pad(new Date(reg.openedAt).getMinutes()) + " by " + (reg.openedBy || "—") : "\nNo register was opened for this shift")
           + "\nCard and credit are revenue, not cash — the drawer reconciles on the rufiyaa line only.",
         settledDone: () => {
-          this.printJob("Z-report", "receipt", "Z-report · " + this.shiftLabel() + " · " + MVRc(net), { net: net });
+          this.printJob("Z-report", "receipt", "Z-report · " + this.shiftLabel() + " · " + MVRc(net), { net: net,
+            doc: { title: this.outlet().name, sub: "Z-report · " + this.shiftLabel(),
+              rows: [["Gross takings", MVRc(gross)], ["Net sales", MVRc(net)],
+                ["Service charge", MVRc(svc)], ["Tax collected", MVRc(tax)],
+                ["Discounts", MVRc(disc)], ["Cash rounding", MVRc(rnd)],
+                ["Refunded", MVRc(refunded)], { rule: 1 },
+                ["Cash", MVRc(byTender("cash"))], ["Card", MVRc(byTender("card"))],
+                ["Wallet", MVRc(byTender("wallet"))], ["NET SALES", MVRc(net - refunded)]],
+              foot: this.me() + " · " + this.rankName() + " rank" } });
           this.setState({ modal: null });
         }
       };
@@ -15129,6 +15165,26 @@ class Component extends DCLogic {
           }, "Batch started · " + no, "production");
         }
       },
+      printerConn: {
+        title: "Network printer", sub: "An Ethernet printer on the outlet's LAN",
+        save: "Use this printer",
+        foot: "The till cannot open a network socket, so the SERVER relays the bytes to the printer's port 9100 — which is only real when the server is on the same network as the printer. A cloud-hosted install with a LAN printer needs the USB or serial connection instead; a job sent down a route that cannot reach the paper fails in the spool with the reason, it does not pretend.",
+        pre: () => ({ host: (this.printConn(((this.state.modal || {}).edit || {}).id || "receipt").host || "") }),
+        fields: [
+          { k: "host", label: "Printer address on the LAN — an IP like 192.168.1.60, or a hostname", v: "" },
+          { k: "cols", label: "Paper width", options: [{ v: "42", l: "80mm · 42 columns" }, { v: "32", l: "58mm · 32 columns" }] }
+        ],
+        onSave: (v, edit) => {
+          const id = (edit || {}).id || "receipt";
+          const host = String(v.host || "").trim();
+          if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$/.test(host)) {
+            return this.toast("That does not look like a printer address", "warn");
+          }
+          this.setPrintConn(id, { conn: "net", host: host, cols: Number(v.cols) || 42 });
+          this.setState({ modal: null });
+          this.toast(this.printer(id).name + " prints over the network at " + host);
+        }
+      },
       pairKds: {
         title: "Add a kitchen display", sub: "Pair a screen and tell it which pass it serves",
         save: "Pair this screen",
@@ -15575,6 +15631,24 @@ class Component extends DCLogic {
     ];
   }
   printer(id) { return this.PRINTERS().find((x) => x.id === id) || this.PRINTERS()[0]; }
+  /* How each printer's bytes leave this till — per PRINTER, per TERMINAL,
+     because the receipt printer is cabled to THIS machine while the kitchen
+     bumper hangs on the LAN. Default is "spool": no transport, jobs hold as
+     documents, and the printers screen says so instead of claiming prints
+     nobody made. */
+  printConn(id) { return ((this.prefs().printConn || {})[id]) || { conn: "spool" }; }
+  setPrintConn(id, cfg) {
+    const all = Object.assign({}, this.prefs().printConn || {});
+    all[id] = cfg;
+    this.setState({ prefs: Object.assign({}, this.prefs(), { printConn: all }) });
+    this.queue("printer_state", this.printer(id).name + " transport set to " + cfg.conn
+      + (cfg.host ? " · " + cfg.host : "") + " · " + this.deviceCode(), "devices");
+  }
+  connLabel(id) {
+    const c = this.printConn(id);
+    return c.conn === "usb" ? "USB · this till" : c.conn === "serial" ? "Serial · this till"
+      : c.conn === "net" ? "Network · " + (c.host || "no address") : "Spool only";
+  }
   printerFor(station) {
     const st = String(station || "").toLowerCase();
     if (/bar|drink|bev/.test(st)) return "bar";
@@ -15601,20 +15675,93 @@ class Component extends DCLogic {
     const job = (this.state.printJobs || []).find((j) => j.id === id);
     if (!job) return;
     const pr = this.printer(job.target);
+    const cfg = this.printConn(job.target);
     this.patchJob(id, { state: "printing" });
+    const fail = (why) => {
+      this.patchJob(id, { state: "failed", err: why });
+      // Loud on purpose. A failed docket that only appears in a log is a docket
+      // nobody reprints.
+      this.toast(job.label + " did not print — " + why, "err");
+      this.queue("print_failed", job.id + " · " + job.label + " · " + why, "print_jobs");
+    };
+    /* A REAL TRANSPORT PRINTS. "done" on this path means a printer took the
+       bytes — WebUSB and Web Serial confirm the transfer, and the network
+       relay confirms the socket was accepted — and a rejection is the actual
+       reason: unplugged, refused, timed out. */
+    if (cfg.conn && cfg.conn !== "spool" && window.KPOS_PRINT && window.KASHIKEYO_ESCPOS) {
+      if (pr.down) return fail(pr.name + " is marked out of service");
+      const bytes = window.KASHIKEYO_ESCPOS.render(this.printDoc(job), cfg.cols || 42);
+      window.KPOS_PRINT.send(job.target, bytes, cfg).then((r) => {
+        this.patchJob(id, { state: "done", doneAt: Date.now(), via: (r && r.via) || cfg.conn });
+      }).catch((e) => fail(e && e.message ? e.message : "the printer did not answer"));
+      return;
+    }
+    /* NO TRANSPORT: the document holds in the spool as a document, and the
+       state says "spooled", never "done" — the old path marked jobs printed
+       on a timer, which is a claimed print no printer made. The down-toggle
+       still fails jobs, because rehearsing a printer outage is a feature. */
     setTimeout(() => {
       const live = (this.state.printJobs || []).find((j) => j.id === id);
       if (!live) return;
-      if (pr.down) {
-        this.patchJob(id, { state: "failed", err: pr.name + " is not responding" });
-        // Loud on purpose. A failed docket that only appears in a log is a docket
-        // nobody reprints.
-        this.toast(job.label + " did not print — " + pr.name + " is not responding", "err");
-        this.queue("print_failed", job.id + " · " + job.label + " · " + pr.name + " not responding", "print_jobs");
-        return;
-      }
-      this.patchJob(id, { state: "done", doneAt: Date.now() });
+      if (pr.down) return fail(pr.name + " is not responding");
+      this.patchJob(id, { state: "spooled" });
     }, 620);
+  }
+  /* The docket, as data. Call sites attach `meta.doc` rows built from what
+     they are already holding; anything without one still prints its label,
+     so no job renders blank paper. */
+  printDoc(job) {
+    const o = this.outlet();
+    const d = (job.meta || {}).doc || {};
+    return {
+      title: d.title || o.name || "Kashikeyo",
+      sub: d.sub || (job.kind + " · " + job.id),
+      rows: (d.rows || [job.label]).concat([{ rule: 1 }, [this.clock(), this.me()]]),
+      foot: d.foot || (job.kind === "KOT" ? "" : "Thank you"),
+      kick: !!d.kick
+    };
+  }
+  /* Connecting is a browser permission prompt, and the browser only shows
+     one inside a user gesture — these actions run on the tap, which is why
+     the printers screen has buttons and nothing ever prompts on its own. */
+  printerActions(pr) {
+    const may = this.canApprove();
+    const P = window.KPOS_PRINT;
+    const sup = P ? P.supports() : { usb: false, serial: false };
+    const save = (cfg, said) => {
+      this.setPrintConn(pr.id, cfg);
+      this.setState({ modal: null });
+      this.toast(said);
+    };
+    this.setState({ modal: { kind: "actions", title: pr.name,
+      sub: pr.role + " · " + this.connLabel(pr.id),
+      acts: [
+        { label: "Connect over USB", sub: sup.usb ? "The printer cabled to this till — the browser will ask which" : "This browser has no WebUSB (use Chrome or Edge)",
+          go: () => {
+            if (!sup.usb) return this.toast("This browser cannot reach USB printers — use Chrome or Edge", "warn");
+            P.connectUsb(pr.id).then((ids) => save(Object.assign({ conn: "usb" }, ids), pr.name + " connected over USB"))
+              .catch((e) => this.toast("Not connected — " + e.message, "err"));
+          } },
+        { label: "Connect over serial", sub: sup.serial ? "USB-serial and true serial printers" : "This browser has no Web Serial (use Chrome or Edge)",
+          go: () => {
+            if (!sup.serial) return this.toast("This browser cannot reach serial printers — use Chrome or Edge", "warn");
+            P.connectSerial(pr.id, 9600).then((ids) => save(Object.assign({ conn: "serial", baud: 9600 }, ids), pr.name + " connected over serial"))
+              .catch((e) => this.toast("Not connected — " + e.message, "err"));
+          } },
+        { label: "Network printer", sub: "An Ethernet printer on the outlet's LAN — the server relays to port 9100",
+          go: () => { this.setState({ modal: null }); setTimeout(() => this.openForm("printerConn", { id: pr.id }), 0); } },
+        { label: "Spool only", sub: "No transport — documents hold in the spool and say so",
+          go: () => save({ conn: "spool" }, pr.name + " set to spool only") },
+        { label: pr.down ? "Back in service" : "Rehearse an outage", sub: pr.down ? "Jobs go to the paper again" : "Every job to this printer fails, loudly — the drill matters",
+          go: () => {
+            if (!may) return this.toast("Marking a printer down needs manager rights", "warn");
+            const down = Object.assign({}, this.state.printerDown || {});
+            down[pr.id] = !down[pr.id];
+            this.setState({ printerDown: down, modal: null });
+            this.queue("printer_state", pr.name + " marked " + (down[pr.id] ? "out of service" : "back in service") + " by " + this.me(), "devices");
+            this.toast(pr.name + (down[pr.id] ? " marked out of service" : " back in service"), down[pr.id] ? "warn" : "ok");
+          } }
+      ] } });
   }
   retryJob(j) {
     this.patchJob(j.id, { state: "queued", tries: (j.tries || 1) + 1, err: "" });
@@ -15737,23 +15884,20 @@ class Component extends DCLogic {
           const bad = mine.filter((j) => j.state === "failed");
           return {
             title: pr.name, sub: pr.role,
-            chip: pr.down ? "Not responding" : "Ready",
-            chipBg: pr.down ? "var(--bad-dim)" : "var(--ok-dim)", chipFg: pr.down ? "var(--red-bright)" : "var(--green)",
+            chip: pr.down ? "Not responding" : this.printConn(pr.id).conn === "spool" ? "Spool only" : "Ready",
+            chipBg: pr.down ? "var(--bad-dim)" : this.printConn(pr.id).conn === "spool" ? "var(--warn-dim)" : "var(--ok-dim)",
+            chipFg: pr.down ? "var(--red-bright)" : this.printConn(pr.id).conn === "spool" ? "var(--warn-bright)" : "var(--green)",
             big: String(mine.length), bigSize: 19,
-            rows: [["Jobs this session", String(mine.length)],
+            rows: [["Connection", this.connLabel(pr.id), this.printConn(pr.id).conn === "spool" ? "var(--warn-bright)" : "var(--green)"],
+                   ["Jobs this session", String(mine.length)],
                    ["Failed", String(bad.length), bad.length ? "var(--red-bright)" : "var(--green)"],
                    ["Last job", mine.length ? when(mine[0].at) + " · " + mine[0].state : "none yet"]],
             foot: pr.down
               ? "Everything sent here is failing. Reprint once it is back — the documents are still in the spool, so nothing has to be recreated from memory."
-              : "Tap to simulate this printer going down mid-service, which is the failure worth designing for rather than the one worth assuming away.",
-            go: () => {
-              if (!may) return this.toast("Marking a printer down needs manager rights", "warn");
-              const down = Object.assign({}, s.printerDown || {});
-              down[pr.id] = !down[pr.id];
-              this.setState({ printerDown: down });
-              this.queue("printer_state", pr.name + " marked " + (down[pr.id] ? "out of service" : "back in service") + " by " + this.me(), "devices");
-              this.toast(pr.name + (down[pr.id] ? " marked out of service" : " back in service"), down[pr.id] ? "warn" : "ok");
-            }
+              : this.printConn(pr.id).conn === "spool"
+                ? "No transport is configured, so documents hold in the spool and nothing claims to have printed. Tap to connect a real printer."
+                : "Dockets go to the paper over " + this.connLabel(pr.id) + ". Tap to change the connection or rehearse an outage.",
+            go: () => this.printerActions(pr)
           };
         }),
         cols: [
@@ -15782,8 +15926,8 @@ class Component extends DCLogic {
             { t: j.label, size: 11.5 },
             { t: when(j.at), mono: 1, size: 11 },
             { t: String(j.tries || 1), mono: 1, c: (j.tries || 1) > 1 ? "var(--warn-bright)" : "var(--text-dim)" },
-            { t: j.state === "done" ? "Printed" : j.state === "failed" ? "Failed" : j.state === "abandoned" ? "Abandoned" : j.state === "printing" ? "Printing" : "Queued",
-              chip: this.chip(j.state === "done" ? "ok" : j.state === "failed" ? "err" : j.state === "abandoned" ? "mute" : "warn") }
+            { t: j.state === "done" ? "Printed" : j.state === "spooled" ? "Spooled" : j.state === "failed" ? "Failed" : j.state === "abandoned" ? "Abandoned" : j.state === "printing" ? "Printing" : "Queued",
+              chip: this.chip(j.state === "done" ? "ok" : j.state === "failed" ? "err" : j.state === "abandoned" || j.state === "spooled" ? "mute" : "warn") }
           ]
         })),
         empty: "Nothing printed yet this session. Fire a course or print a bill and every physical document appears here with its own state.",

@@ -482,5 +482,61 @@ r.get('/sales', sameOutlet, atLeast('till'), async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
+/* ═══ THE LAN PRINT RELAY ═══════════════════════════════════════════════════
+   An Ethernet receipt printer listens on raw TCP 9100 and a browser cannot
+   open a socket — so the till hands the composed ESC/POS bytes to the server,
+   and the server writes them to the printer. That is only REAL when the
+   server shares the printer's network (a LAN-hosted install); a cloud deploy
+   that tries it gets a timeout and the spool records the truth, which is the
+   contract everywhere else in this build.
+
+   A relay that connects wherever it is told is an SSRF primitive with a
+   payload, so the fence is explicit: the port is 9100 and not negotiable, and
+   the resolved ADDRESS — not the name, which anyone can point anywhere — must
+   not be loopback, link-local (169.254.x is every cloud's metadata service)
+   or this process's own host. Private LAN ranges stay open on purpose:
+   that is where printers live. */
+r.post('/print', sameOutlet, atLeast('kitchen'), async function (req, res, next) {
+  const b = req.body || {};
+  const host = String(b.host || '').trim();
+  const data = String(b.data || '');
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]{0,252}$/.test(host)) {
+    return res.status(400).json({ error: 'that is not a printer address' });
+  }
+  if (!data || data.length > 90000) {
+    return res.status(400).json({ error: 'a print job is at most 64KB of bytes' });
+  }
+  let buf;
+  try { buf = Buffer.from(data, 'base64'); } catch (e) { buf = null; }
+  if (!buf || !buf.length) return res.status(400).json({ error: 'no bytes to print' });
+
+  try {
+    const dns = require('dns');
+    const { address } = await dns.promises.lookup(host);
+    const loopback = /^127\./.test(address) || address === '::1';
+    const linkLocal = /^169\.254\./.test(address) || /^fe80:/i.test(address);
+    const allowLoop = process.env.NODE_ENV !== 'production'
+      && process.env.PRINT_ALLOW_LOOPBACK === '1';
+    if ((loopback && !allowLoop) || linkLocal) {
+      return res.status(400).json({ error: 'that address is not a printer' });
+    }
+    const net = require('net');
+    await new Promise(function (resolve, reject) {
+      const sock = net.connect({ host: address, port: 9100 });
+      const die = (msg) => { sock.destroy(); reject(new Error(msg)); };
+      sock.setTimeout(4000, () => die('the printer did not answer in 4 seconds'));
+      sock.on('error', (e) => die(e.code === 'ECONNREFUSED'
+        ? 'nothing is listening at ' + host + ':9100' : e.message));
+      sock.on('connect', function () {
+        sock.end(buf, () => resolve());
+      });
+    });
+    res.json({ sent: true, via: 'net', bytes: buf.length });
+  } catch (e) {
+    // An unreachable printer is an operational fact, not a server fault.
+    res.status(502).json({ error: e.message });
+  }
+});
+
 module.exports = r;
 module.exports.snapshot = snapshot;

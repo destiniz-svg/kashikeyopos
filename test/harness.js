@@ -165,7 +165,7 @@ const FORMS = [
   'bankOpening', 'user', 'earnRate', 'tier', 'rewardEdit', 'settleCredit',
   'resetStore', 'covers', 'cust', 'res', 'grnPrice', 'indent', 'dispatch',
   'prodbatch', 'pairKds', 'channelRates', 'discount', 'banner', 'vendor',
-  'storeAddress', 'aiResult', 'processor', 'invite'
+  'storeAddress', 'aiResult', 'processor', 'invite', 'printerConn'
 ];
 
 // The message alone names the symptom; the frame names the line. A harness

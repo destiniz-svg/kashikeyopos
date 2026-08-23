@@ -371,6 +371,17 @@
       }
     }
 
+    /* ── the LAN print relay ────────────────────────────────────────────
+       The till cannot open a TCP socket, so an Ethernet printer is reached
+       through the server — which is only real when the server shares the
+       printer's network. The server enforces that honestly; this just
+       carries the bytes. */
+    print(host, b64) {
+      return this._fetch("/api/outlet/" + this.outletId + "/print", {
+        method: "POST", body: { host: host, data: b64 }
+      });
+    }
+
     /* ── the only cross-outlet read, and it is aggregates ───────────────── */
     estateDay(date) {
       if (this.rank < 5) return Promise.reject(new Error("rank 5 required"));

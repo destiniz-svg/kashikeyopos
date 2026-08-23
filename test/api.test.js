@@ -2437,6 +2437,50 @@ test('history has a horizon, and the trail does not', opts, async () => {
   assert.match(tillTry, /permission denied/, 'no outlet role may execute the pruner');
 });
 
+test('the LAN print relay writes the exact bytes, inside its fence', opts, async () => {
+  const E = require('../app/kashikeyo-escpos.js');
+  const netMod = require('net');
+  const docket = E.render({ title: 'KAS-CHA', rows: [['Tea', '5.00']], kick: true });
+
+  // A little printer: everything port 9100 receives, kept for the assert.
+  const got = [];
+  const printer = netMod.createServer((sock) => sock.on('data', (d) => got.push(...d)));
+  await new Promise((res, rej) => { printer.on('error', rej); printer.listen(9100, '127.0.0.1', res); });
+
+  try {
+    // Loopback is refused by default — the fence, not a bug — and opened for
+    // this test alone, the way a LAN address would be open in production.
+    const fenced = await post('/api/outlet/' + outletId + '/print',
+      { host: '127.0.0.1', data: E.toBase64(docket) }, token);
+    assert.strictEqual(fenced.status, 400, 'loopback is not a printer');
+
+    process.env.PRINT_ALLOW_LOOPBACK = '1';
+    const r = await post('/api/outlet/' + outletId + '/print',
+      { host: '127.0.0.1', data: E.toBase64(docket) }, token);
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.strictEqual(r.body.bytes, docket.length);
+    await new Promise((res) => setTimeout(res, 150));
+    assert.deepStrictEqual(got, docket, 'the printer received the exact bytes composed');
+
+    // The rest of the fence: link-local is every cloud's metadata service,
+    // the port is not negotiable because it is not a parameter, and garbage
+    // is refused before any socket opens.
+    const meta = await post('/api/outlet/' + outletId + '/print',
+      { host: '169.254.169.254', data: E.toBase64(docket) }, token);
+    assert.strictEqual(meta.status, 400, 'link-local is never a printer');
+    const junk = await post('/api/outlet/' + outletId + '/print',
+      { host: 'not a host!', data: 'xx' }, token);
+    assert.strictEqual(junk.status, 400);
+    const dead = await post('/api/outlet/' + outletId + '/print',
+      { host: '127.0.0.2', data: E.toBase64(docket) }, token);
+    assert.strictEqual(dead.status, 502, 'an unreachable printer is an honest 502');
+    assert.match(dead.body.error, /nothing is listening|did not answer/);
+  } finally {
+    delete process.env.PRINT_ALLOW_LOOPBACK;
+    await new Promise((res) => printer.close(res));
+  }
+});
+
 test('a killed idle connection is a log line, not an outage', opts, async () => {
   // A pool EMITS 'error' when an idle connection dies under it, and an
   // 'error' event nobody listens to kills the process — so a Postgres

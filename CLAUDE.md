@@ -49,6 +49,8 @@ app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
 app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
 app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels) — no trade
 app/kashikeyo-api.js   the durable outbox and the API client
+app/kashikeyo-escpos.js ESC/POS bytes — one composer, browser AND server
+app/kpos-print.js      how the bytes reach the paper: WebUSB · serial · LAN relay
 app/kpos-bridge.js     terminal ↔ API
 app/guest-bridge.js    guest portal + member card ↔ API
 ```
@@ -1128,6 +1130,36 @@ state: open tickets, the unreplayed outbox, session, register. History is shed
 before live state, never live state at all, and hitting the ladder registers a
 fault.
 
+## Printing is bytes on paper, or a spool that says so
+
+`app/kashikeyo-escpos.js` composes ESC/POS — loaded by the browser and the
+server like `kashikeyo-rules.js`, so both paths print byte-identical dockets.
+ASCII only for now: outside 0x20–0x7E prints `?` (thermal printers speak code
+pages, not UTF-8; Thaana cannot print yet and the screen stays the reference).
+`test/print.test.js` asserts the bytes as bytes.
+
+**Per printer, per terminal**, the transport is one of (`prefs().printConn`):
+
+- `usb` / `serial` — the printer cabled to THIS till, over WebUSB/Web Serial
+  (Chrome/Edge). Connecting is a browser permission prompt and only works in a
+  user gesture, which is why the printers screen has the button and nothing
+  prompts on its own; the grant survives reload and is reattached lazily.
+- `net` — an Ethernet printer. The till cannot open a socket, so the SERVER
+  relays to port 9100 (`POST /api/outlet/:id/print`) — only real when the
+  server shares the printer's LAN. The relay is an SSRF primitive if left
+  open, so the fence is explicit: port 9100 not negotiable, and the resolved
+  ADDRESS must not be loopback or link-local (169.254.x is every cloud's
+  metadata service). Private LAN ranges stay open — that is where printers
+  live. `PRINT_ALLOW_LOOPBACK=1` opens loopback outside production, for tests.
+- `spool` — the default. **No transport means state `spooled`, never `done`**:
+  the old runJob marked every job printed on a 620ms timer, which is a claimed
+  print no printer made.
+
+**The drawer plugs into the receipt printer's RJ11, so opening it is a print**
+(`ESC p`). Only a CASH receipt kicks it — a card receipt popping the drawer is
+how cash walks. KOT dockets carry their station's lines in double-size type;
+the bill, receipt and Z-report carry their real rows.
+
 ## The pages carry a Content-Security-Policy
 
 Built in `server.js` from the files on disk: everything is `'self'` — local
@@ -1148,7 +1180,7 @@ mid-suite to prove the process survives.
 ## Tests
 
 ```
-npm test                          # 201 tests
+npm test                          # 210 tests
 npm run leak-test                 # isolation, on its own
 ```
 
