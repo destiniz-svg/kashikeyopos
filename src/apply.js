@@ -1716,6 +1716,10 @@ const AUDIT_ONLY = [
   // chain.company and every outlet's rate history inside one transaction, and
   // this is the record that it was asked for.
   'gst_registration',
+  // A device giving up on a parked op is a decision worth a permanent record:
+  // WHAT was discarded, WHY the server refused it, and WHO decided. The op it
+  // names was never applied — that is the point — so there is nothing to undo.
+  'op_discarded',
   'password_reset', 'permission_change', 'permission_reset', 'pin_failed',
   'pin_lockout', 'pin_reset', 'restore_run', 'revoke_sessions', 'sign_in',
   'sign_in_refused', 'sign_out', 'stock_query', 'store_reset', 'vendor_query',

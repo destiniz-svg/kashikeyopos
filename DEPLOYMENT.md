@@ -34,6 +34,21 @@ secret the web tier holds and never sends anywhere.
 They must also be **different values per environment**. Staging and production
 sharing a secret means a staging token opens production.
 
+### TLS to the database
+
+| Variable | What it does |
+|---|---|
+| `PGSSL` | `1`/`true`/`require` turns TLS on (it is on anyway in production when `DATABASE_URL` is set). `verify` REFUSES to boot unless a CA is pinned. |
+| `PGSSL_CA` | The database CA certificate, as PEM, pasted into the variable. When set, the server's certificate is **verified** — a man-in-the-middle gets a refusal, not the books. |
+| `PGSSLROOTCERT` | The same CA, as a file path, for platforms that mount certificates. |
+
+With TLS on and **no** CA pinned, the link is encrypted but the server is
+unauthenticated (`rejectUnauthorized: false`) and the boot log says so.
+Railway's managed Postgres signs with its own self-signed CA — copy the
+certificate from the database service's Connect tab into `PGSSL_CA`, then set
+`PGSSL=verify` so losing the variable later fails loudly instead of quietly
+degrading back to unauthenticated.
+
 ### The domain stores hang off
 
 | Variable | What it does |

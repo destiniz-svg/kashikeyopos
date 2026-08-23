@@ -24,10 +24,43 @@ types.setTypeParser(1082, (v) => v);
    `ownerOnly()` throws if it is reached while a request context is open.
    ═══════════════════════════════════════════════════════════════════════ */
 
-const ssl = /^(1|true|require)$/i.test(process.env.PGSSL || '')
-  || (process.env.NODE_ENV === 'production' && !!process.env.DATABASE_URL)
-  ? { rejectUnauthorized: false }
-  : false;
+/* ── TLS to the database ─────────────────────────────────────────────────
+   Three states, in order of preference:
+
+     a CA is pinned      PGSSL_CA holds the PEM (or PGSSLROOTCERT names a
+                         file), and the certificate is VERIFIED — a
+                         man-in-the-middle gets a refusal, not the books.
+                         Railway's managed Postgres signs with its own CA;
+                         copy it from the service's Connect tab.
+     TLS, no CA          the link is encrypted but the server unauthenticated
+                         (rejectUnauthorized: false). Warned about at boot,
+                         once, because silent is how this setting survived
+                         three audits.
+     no TLS              local development against loopback.
+
+   PGSSL=verify REQUIRES the pin and refuses to boot without one, so an
+   environment that promises verification cannot quietly degrade when the
+   variable carrying the certificate is lost. A pinned CA that cannot be read
+   fails loudly for the same reason. */
+function sslConfig() {
+  const mode = process.env.PGSSL || '';
+  const on = /^(1|true|require|verify)$/i.test(mode)
+    || (process.env.NODE_ENV === 'production' && !!process.env.DATABASE_URL);
+  if (!on) return false;
+  let ca = process.env.PGSSL_CA || '';
+  if (!ca && process.env.PGSSLROOTCERT) {
+    ca = require('fs').readFileSync(process.env.PGSSLROOTCERT, 'utf8');
+  }
+  if (ca) return { ca: ca, rejectUnauthorized: true };
+  if (/^verify$/i.test(mode)) {
+    throw new Error('PGSSL=verify needs a CA to verify against —'
+      + ' set PGSSL_CA (PEM) or PGSSLROOTCERT (path)');
+  }
+  console.warn('[db] TLS is on but no CA is pinned: the link is encrypted but'
+    + ' the server is UNAUTHENTICATED. Set PGSSL_CA or PGSSLROOTCERT to pin it.');
+  return { rejectUnauthorized: false };
+}
+const ssl = sslConfig();
 
 function baseConn() {
   if (process.env.DATABASE_URL) {
@@ -237,7 +270,7 @@ function forget(outletId) {
   if (p) { pools.delete(id); p.end().catch(() => {}); }
 }
 
-module.exports = {
+module.exports = { _sslConfig: sslConfig,
   owner, poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };

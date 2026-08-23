@@ -796,6 +796,38 @@ test('the settle path composes no journal of its own', () => {
     'no tender journal is queued at settle — an announcement is not a journal');
 });
 
+test('a poison op is parked, visible, and never silently resent', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+
+  // The lane exists: refusals are counted, the eighth parks the op, and a
+  // parked op leaves the replay on both ends of the loop.
+  assert.ok(/DEAD_TRIES = 8/.test(API), 'the allowance is stated, not implied');
+  assert.ok(/attempts >= KashikeyoAPI\.DEAD_TRIES/.test(API), 'refusals are counted against it');
+  assert.match(API, /outletId === this\.outletId && !o\.parked/,
+    'a parked op is not sent again');
+  assert.match(API, /\.filter\(function \(o\) \{ return !o\.parked; \}\)/,
+    'parked rows alone do not keep the five-second retry loop hot');
+
+  // Parking is announced, and the terminal listens.
+  assert.ok(API.indexOf('kpos-op-parked') >= 0, 'the outbox says so when it gives up');
+  const SRC2 = SRC;
+  assert.ok(SRC2.indexOf('kpos-op-parked') >= 0, 'the terminal hears it');
+  assert.ok(SRC2.indexOf('Send it again') >= 0 && SRC2.indexOf('Discard it') >= 0,
+    'a parked op offers exactly its two ways forward');
+
+  // Discarding is a decision with a record: the audit op replaces the op in
+  // the replay, carries what was given up, and the server files it.
+  assert.ok(/kind: "op_discarded"/.test(API), 'the discard replays as its own op');
+  assert.ok(/of: row\.opId/.test(API) && /error: row\.error/.test(API),
+    'the record names what was discarded and why it was refused');
+  assert.strictEqual(typeof HANDLERS.op_discarded, 'function', 'the server files it');
+  assert.ok(AUDIT_ONLY.indexOf('op_discarded') >= 0, 'audit-only by design, not by gap');
+
+  // Both decisions ride the bridge, so the terminal never touches IndexedDB.
+  assert.ok(/retryOp/.test(BRIDGE) && /discardOp/.test(BRIDGE), 'the bridge carries both');
+});
+
 test('the audit-only kinds are named, not defaulted', () => {
   // "Not modelled yet" and "deliberately audit-only" must stay
   // distinguishable, or a gap hides inside a design decision.

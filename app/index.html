@@ -2123,8 +2123,9 @@ class Component extends DCLogic {
   // never grows without bound.
   trimOutbox(list) {
     if (list.length <= 90) return list;
-    const live = list.filter((x) => x.state === "queued" || x.state === "conflict");
-    const done = list.filter((x) => x.state !== "queued" && x.state !== "conflict").slice(-60);
+    const keep = (x) => x.state === "queued" || x.state === "conflict" || x.state === "parked";
+    const live = list.filter(keep);
+    const done = list.filter((x) => !keep(x)).slice(-60);
     return live.concat(done).sort((a, b) => (a.lamport || 0) - (b.lamport || 0));
   }
   writeSession() {
@@ -2147,7 +2148,7 @@ class Component extends DCLogic {
     const put = (b) => localStorage.setItem(this.SKEY, JSON.stringify(b));
     try { put(body); }
     catch (e) {
-      try { put(Object.assign({}, body, { outbox: body.outbox.filter((x) => x.state === "queued" || x.state === "conflict") })); }
+      try { put(Object.assign({}, body, { outbox: body.outbox.filter((x) => x.state === "queued" || x.state === "conflict" || x.state === "parked") })); }
       catch (e2) { /* storage blocked — session stays in memory */ }
     }
   }
@@ -2482,6 +2483,21 @@ class Component extends DCLogic {
       }
       this.forceUpdate();
     };
+    // The durable outbox gave up on an op: the outlet refused it eight times
+    // with the same answer. Mark it on the mirror and say so out loud — a
+    // parked op is an operator's decision now, on Sync & Devices.
+    window.addEventListener("kpos-op-parked", (e) => {
+      const parked = e.detail || [];
+      if (!parked.length) return;
+      const ids = {};
+      parked.forEach((x) => { ids[x.opId] = x; });
+      this.setState({ outbox: this.state.outbox.map((x) => ids[x.opId]
+        ? Object.assign({}, x, { state: "parked", err: ids[x.opId].error }) : x) });
+      const one = parked[0];
+      this.toast(parked.length === 1
+        ? "The outlet keeps refusing \u201c" + (one.label || one.kind) + "\u201d \u2014 set aside on Sync & Devices"
+        : parked.length + " operations were refused repeatedly \u2014 set aside on Sync & Devices", "err");
+    });
     // Live rows the server has applied since this terminal last looked. The
     // floor is shared: a table opened on the handheld is a table on this till.
     window.addEventListener("kpos-live", (e) => {
@@ -4016,6 +4032,7 @@ class Component extends DCLogic {
       const devs = (K0.DEVICES || []).filter((d) => !d.revoked);
       const hour = Date.now() - 3600e3;
       const live = devs.filter((d) => d.seen && new Date(d.seen).getTime() > hour).length;
+      const parked = s.outbox.filter((x) => x.state === "parked").length;
       const acked = s.outbox.filter((x) => x.sentAt && x.queuedAt);
       const lag = acked.length
         ? Math.round(acked.reduce((a, x) => a + (x.sentAt - x.queuedAt), 0)
@@ -4026,8 +4043,10 @@ class Component extends DCLogic {
         card("Registered devices", String(devs.length),
           devs.length ? live + " seen in the last hour" : "This device is not paired yet"),
         card("Conflicts resolved", String(s.conflicts.length), "Last-writer-wins except closed tickets"),
-        card("Last replay", lag === null ? "—" : lag + "s",
-          lag === null ? "Nothing has replayed on this device" : "Time from queue to acknowledged")
+        parked
+          ? card("Parked operations", String(parked), "Refused repeatedly \u2014 decide on each", big + ";color:var(--red-bright)")
+          : card("Last replay", lag === null ? "—" : lag + "s",
+            lag === null ? "Nothing has replayed on this device" : "Time from queue to acknowledged")
       ];
     }
     if (v === "kds") {
@@ -15567,10 +15586,37 @@ class Component extends DCLogic {
     });
   }
 
+  /* A parked op offers exactly two ways forward, and both leave a trail:
+     back into the replay with a fresh allowance, or out of the outbox with an
+     audit op naming what was given up. What it never offers is silence. */
+  parkedActions(x) {
+    this.setState({ modal: { kind: "actions", title: x.label || x.op,
+      sub: "Refused by the outlet \u2014 " + (x.err || "no reason recorded"),
+      acts: [
+        { label: "Send it again", sub: "After whatever refused it has been fixed",
+          go: () => {
+            this.setState({ modal: null,
+              outbox: this.state.outbox.map((o) => o.opId === x.opId ? Object.assign({}, o, { state: "queued" }) : o) });
+            const B = window.KPOS_BRIDGE;
+            if (B && B.retryOp) B.retryOp(x.opId);
+            this.toast("Back in the replay \u2014 it gets a fresh allowance");
+          } },
+        { label: "Discard it", sub: "Deleted from the outbox \u00b7 an audit record of the discard replays in its place",
+          go: () => {
+            if (!this.canApprove()) { this.setState({ modal: null }); return this.toast("Discarding a refused operation needs manager rights", "warn"); }
+            this.setState({ modal: null,
+              outbox: this.state.outbox.map((o) => o.opId === x.opId ? Object.assign({}, o, { state: "discarded" }) : o) });
+            const B = window.KPOS_BRIDGE;
+            if (B && B.discardOp) B.discardOp(x.opId, this.me());
+            this.toast("Discarded \u2014 the decision is on the audit trail");
+          } }
+      ] } });
+  }
+
   g_sync() {
     const s = this.state, K0 = K();
     const devices = this.devices();
-    const tone = { queued: "warn", sent: "ok", conflict: "err" };
+    const tone = { queued: "warn", sent: "ok", conflict: "err", parked: "err", discarded: "mute" };
     const stab = s.tab.sync || 0;
     const stabs = ["Outbox & devices", "Printers & jobs"].map((t, i) => ({ label: t, on: stab === i, pick: () => this.setState({ tab: Object.assign({}, s.tab, { sync: i }) }) }));
 
@@ -15678,8 +15724,9 @@ class Component extends DCLogic {
       ],
       cols: [{ label: "Op", w: ".9fr", mono: 1 }, { label: "Lamport", w: ".7fr", a: "right", mono: 1 }, { label: "Entity", w: "1fr", mono: 1 }, { label: "Operation", w: "2.4fr" }, { label: "Captured", w: ".9fr", a: "right", mono: 1 }, { label: "State", w: ".9fr", a: "right" }],
       rows: s.outbox.slice().reverse().map((x) => ({
-        go: () => x.state === "conflict" ? this.setState({ modal: { kind: "conflict" } }) : null,
-        cells: [{ t: x.op, mono: 1, size: 11 }, { t: String(x.lamport), mono: 1 }, { t: x.entity, mono: 1, size: 11 }, x.label, { t: x.at, mono: 1, size: 11 }, { t: x.state, chip: this.chip(tone[x.state] || "mute") }]
+        go: () => x.state === "conflict" ? this.setState({ modal: { kind: "conflict" } })
+          : x.state === "parked" ? this.parkedActions(x) : null,
+        cells: [{ t: x.op, mono: 1, size: 11 }, { t: String(x.lamport), mono: 1 }, { t: x.entity, mono: 1, size: 11 }, x.state === "parked" ? { t: x.label + " \u2014 " + (x.err || "refused"), size: 11.5, c: "var(--red-bright)" } : x.label, { t: x.at, mono: 1, size: 11 }, { t: x.state, chip: this.chip(tone[x.state] || "mute") }]
       })),
       empty: "Outbox is clean. Flip the network pill to Offline on the POS floor, keep selling, and the writes stack up here.",
       cardMin: 250,
@@ -16815,6 +16862,11 @@ class Component extends DCLogic {
     if (s.conflicts.length) {
       add("now", "A money write was refused", s.conflicts.length + " conflict" + (s.conflicts.length === 1 ? "" : "s"), "Two terminals disagree about a closed ticket or a payment. The figures cannot be trusted until a human decides which is right.", "sync",
         { act: "Resolve", go: () => this.setState({ view: "sync", modal: { kind: "conflict" } }) });
+    }
+    const parkedOps = (s.outbox || []).filter((x) => x.state === "parked");
+    if (parkedOps.length) {
+      add("now", "Operations set aside", parkedOps.length + " parked", "The outlet refused " + (parkedOps.length === 1 ? "an operation" : "these operations") + " repeatedly with the same answer, so the replay stopped retrying. Each needs a decision: fix the cause and send again, or discard it on the record.", "sync",
+        { act: "Decide", go: () => this.setState({ view: "sync", tab: Object.assign({}, s.tab, { sync: 0 }) }) });
     }
     const stale = Object.keys(s.tickets || {}).filter((k) => {
       const t = s.tickets[k];

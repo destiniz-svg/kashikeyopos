@@ -256,11 +256,67 @@
       } catch (e) { return []; }
     }
 
+    /* The ops the replay has given up on, with the server's reason. */
+    async parked() {
+      var all = await this.pending();
+      var oid = this.outletId;
+      return all.filter(function (o) { return o.parked && o.outletId === oid; });
+    }
+
+    /* Back into the replay, with a fresh allowance — for after whatever
+       refused it has been fixed. */
+    async retryOp(opId) {
+      try {
+        var db = await this.db();
+        var rows = await this.pending();
+        var row = rows.filter(function (o) { return o.opId === opId; })[0];
+        if (!row) return false;
+        delete row.parked;
+        row.attempts = 0;
+        await tx(db, "readwrite", function (os) { os.put(row); });
+      } catch (e) { return false; }
+      this.flush();
+      return true;
+    }
+
+    /* Discarding is a decision, so it leaves a record: the op is deleted
+       from the outbox and an audit op naming exactly what was given up — and
+       by whom — takes its place in the replay. */
+    async discardOp(opId, by) {
+      var row;
+      try {
+        var db = await this.db();
+        var rows = await this.pending();
+        row = rows.filter(function (o) { return o.opId === opId; })[0];
+        if (!row) return false;
+        await tx(db, "readwrite", function (os) { os.delete(opId); });
+      } catch (e) { return false; }
+      await this.queue({
+        kind: "op_discarded",
+        label: (row.kind || "op") + " discarded after " + (row.attempts || 0)
+          + " refusals" + (by ? " · by " + by : "") + " · " + (row.error || "no reason recorded"),
+        entity: "sync",
+        payload: { of: row.opId, kind: row.kind, label: row.label,
+          error: row.error || "", attempts: row.attempts || 0, by: by || "" }
+      });
+      return true;
+    }
+
+    /* ── the dead-letter lane ──────────────────────────────────────────
+       A server REFUSAL is not a network failure: the outlet answered and
+       said no. Retrying it every five seconds forever is how one poison op
+       used to keep a till's outbox hot for the life of the device. So a
+       refusal is counted, and on the eighth the op is PARKED — still
+       durable, still visible with the server's reason, but out of the
+       replay. A parked op is an operator's decision now: send it again
+       after the cause is fixed, or discard it, which writes an audit op
+       naming what was given up. Network failures never count — a dead link
+       says nothing about the op. */
     async flush() {
       if (this._flushing || !this._online || !this.token || !this.outletId) return null;
       if (root.__kposForceOffline === true) return null;
       var ops = await this.pending();
-      ops = ops.filter((o) => o.outletId === this.outletId)
+      ops = ops.filter((o) => o.outletId === this.outletId && !o.parked)
         .sort(function (a, b) { return (a.lamport || 0) - (b.lamport || 0); });
       if (!ops.length) return null;
       this._flushing = true;
@@ -283,15 +339,25 @@
         }
         if (failed.length) {
           this.local("syncErrors", failed);
+          var parkedNow = [];
           for (const f of failed) {
             const row = ops.filter((o) => o.opId === f.opId)[0];
             if (!row) continue;
             row.attempts = (row.attempts || 0) + 1;
             row.error = f.error;
+            if (row.attempts >= KashikeyoAPI.DEAD_TRIES) {
+              row.parked = Date.now();
+              parkedNow.push({ opId: row.opId, kind: row.kind, label: row.label,
+                error: row.error, attempts: row.attempts });
+            }
             await tx(db, "readwrite", function (os) { os.put(row); });
           }
           try { root.dispatchEvent(new CustomEvent("kpos-sync-error", { detail: failed })); }
           catch (e) {}
+          if (parkedNow.length) {
+            try { root.dispatchEvent(new CustomEvent("kpos-op-parked", { detail: parkedNow })); }
+            catch (e) {}
+          }
         }
         try { root.dispatchEvent(new CustomEvent("kpos-sync-done", { detail: r.results || [] })); }
         catch (e) {}
@@ -300,7 +366,7 @@
         return null;   // stays queued
       } finally {
         this._flushing = false;
-        var left = await this.pending();
+        var left = (await this.pending()).filter(function (o) { return !o.parked; });
         if (left.length && this._online) setTimeout(() => this.flush(), 5000);
       }
     }
@@ -380,5 +446,11 @@
   }
 
   root.KashikeyoAPI = KashikeyoAPI;
+  // Eight refusals ≈ forty seconds of the outlet saying no. A transient
+  // ordering problem (a line before its ticket) resolves well inside that; a
+  // payload the server will never accept does not, and holding the whole
+  // outbox hot for it is the failure this lane exists to end.
+  KashikeyoAPI.DEAD_TRIES = 8;
+
   if (typeof module !== "undefined" && module.exports) module.exports = { KashikeyoAPI };
 })(typeof window !== "undefined" ? window : globalThis);

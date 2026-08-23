@@ -23,7 +23,12 @@
     // The terminal's queue() calls this for every mutation, 115 kinds of them.
     enqueue: function (op) { return api.queue(op); },
     flush: function () { return api.flush(); },
-    pending: function () { return api.pending(); }
+    pending: function () { return api.pending(); },
+    // The dead-letter lane: ops the replay gave up on, and the two decisions
+    // an operator can make about one.
+    parked: function () { return api.parked(); },
+    retryOp: function (opId) { return api.retryOp(opId); },
+    discardOp: function (opId, by) { return api.discardOp(opId, by); }
   };
   root.KPOS_SYNC = SYNC;
 

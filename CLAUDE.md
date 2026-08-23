@@ -298,7 +298,18 @@ distinguishable. `test/wiring.test.js` asserts both halves meet.
 
 The network pill is a real switch (`KPOS_BRIDGE.setOffline`), not a simulation:
 offline means nothing is POSTed and every write holds durably until it is
-flipped back. An op the server refuses stays queued, with the reason it gave.
+flipped back.
+
+**A refusal is not a network failure, and the eighth parks the op.** The outlet
+answered and said no; retrying it every five seconds forever is how one poison
+op used to keep a till's outbox hot for the life of the device. A parked op
+stays durable and visible — on the Sync screen with the server's reason, on the
+ribbon, on the Today list — and offers exactly two ways forward: **Send it
+again** (fresh allowance, for after the cause is fixed) or **Discard it**
+(manager rights; the op is deleted and an `op_discarded` audit op naming what
+was given up, why it was refused and who decided replays in its place — it is
+in `AUDIT_ONLY`). Network failures never count toward the eight: a dead link
+says nothing about the op. `test/wiring.test.js` pins the whole loop.
 
 ### An open ticket belongs to the outlet
 
@@ -1078,7 +1089,7 @@ production ignores it.
 ## Tests
 
 ```
-npm test                          # 195 tests
+npm test                          # 197 tests
 npm run leak-test                 # isolation, on its own
 ```
 
@@ -1128,6 +1139,11 @@ Browser checks: Chromium at `/opt/pw-browsers/chromium`, Playwright at
 See `DEPLOYMENT.md`. Short version: Railway builds the Dockerfile, `/readyz` is
 the health check, migrations run at boot inside the process, and **production
 exits rather than serving on a schema it could not finish migrating**.
+
+Database TLS: set `PGSSL_CA` (PEM) or `PGSSLROOTCERT` (path) and the server's
+certificate is **verified**; `PGSSL=verify` refuses to boot without a pin, so a
+lost variable fails loudly. TLS with no pin still works, encrypted but
+unauthenticated, and the boot log says so.
 
 Commit trailer: `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` plus the
 session link. Never put a model identifier in a commit message, a PR, a code

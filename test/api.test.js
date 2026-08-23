@@ -2289,6 +2289,35 @@ test('the doors that send email or take guesses refuse a hammer', opts, async ()
   }
 });
 
+test('database TLS verifies when a CA is pinned, and says so when not', opts, async () => {
+  const env = process.env;
+  const keep = { PGSSL: env.PGSSL, PGSSL_CA: env.PGSSL_CA,
+    PGSSLROOTCERT: env.PGSSLROOTCERT, DATABASE_URL: env.DATABASE_URL };
+  try {
+    delete env.PGSSL; delete env.PGSSL_CA; delete env.PGSSLROOTCERT; delete env.DATABASE_URL;
+    assert.strictEqual(db._sslConfig(), false, 'loopback development needs none');
+
+    env.PGSSL = '1';
+    assert.deepStrictEqual(db._sslConfig(), { rejectUnauthorized: false },
+      'TLS without a pin is encrypted but unauthenticated — and permitted, warned');
+
+    env.PGSSL_CA = '-----BEGIN CERTIFICATE-----\nnot-really\n-----END CERTIFICATE-----';
+    const pinned = db._sslConfig();
+    assert.strictEqual(pinned.rejectUnauthorized, true, 'a pinned CA is VERIFIED');
+    assert.ok(pinned.ca.includes('BEGIN CERTIFICATE'));
+
+    // An environment that promises verification cannot quietly degrade when
+    // the variable carrying the certificate is lost.
+    delete env.PGSSL_CA;
+    env.PGSSL = 'verify';
+    assert.throws(() => db._sslConfig(), /needs a CA/);
+  } finally {
+    for (const [k, v] of Object.entries(keep)) {
+      if (v === undefined) delete env[k]; else env[k] = v;
+    }
+  }
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();
