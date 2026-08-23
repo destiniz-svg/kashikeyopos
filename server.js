@@ -1,7 +1,7 @@
 'use strict';
 const path = require('path');
 const express = require('express');
-const { owner, shutdown } = require('./src/db');
+const { owner, shutdown, peerCaPem } = require('./src/db');
 const { migrate } = require('./src/scripts/migrate');
 const { hostHandle, baseDomain } = require('./src/handle');
 const directory = require('./src/directory');
@@ -226,6 +226,13 @@ async function boot() {
   const server = app.listen(port, function () {
     console.log('KashikeyoPOS listening on ' + port);
   });
+  // The unpinned-TLS warning names the fix; this hands over the ingredient.
+  // Prints only while nothing is pinned, so it silences itself once acted on.
+  peerCaPem().then(function (ca) {
+    if (!ca) return;
+    console.warn('[db] to pin this database, set PGSSL_CA to the certificate'
+      + ' below (then PGSSL=verify):\n' + ca);
+  }).catch(function () {});
   pruneHistory();
   setInterval(pruneHistory, 24 * 3600e3).unref();
   ['SIGTERM', 'SIGINT'].forEach(function (sig) {

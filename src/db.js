@@ -91,6 +91,43 @@ function guarded(pool, name) {
   return pool;
 }
 
+/* When TLS is on but nothing is pinned, the warning used to name the fix and
+   keep the one ingredient to itself — the certificate. The app is already
+   holding the live TLS socket, so it can READ the server's certificate and
+   put the PEM in the boot log, where an operator (or the agent driving the
+   deploy) copies it straight into PGSSL_CA. Public material only: a
+   certificate is the half the server shows everyone; the private key never
+   leaves the database. Walks to the ROOT of the chain, because the root is
+   what a pin verifies against — for Railway's self-signed Postgres the leaf
+   IS the root. */
+function pem(der) {
+  const b64 = Buffer.from(der).toString('base64');
+  const lines = b64.match(/.{1,64}/g) || [];
+  return '-----BEGIN CERTIFICATE-----\n' + lines.join('\n') + '\n-----END CERTIFICATE-----';
+}
+async function peerCaPem() {
+  if (!ssl || ssl.rejectUnauthorized !== false) return null;
+  let client = null;
+  try {
+    client = await owner().connect();
+    const sock = client.connection && client.connection.stream;
+    if (!sock || typeof sock.getPeerCertificate !== 'function') return null;
+    let cert = sock.getPeerCertificate(true);
+    if (!cert || !cert.raw) return null;
+    const seen = new Set();
+    while (cert.issuerCertificate && cert.issuerCertificate !== cert
+      && !seen.has(cert.issuerCertificate.fingerprint256)) {
+      seen.add(cert.fingerprint256);
+      cert = cert.issuerCertificate;
+    }
+    return pem(cert.raw);
+  } catch (e) {
+    return null;
+  } finally {
+    if (client) client.release();
+  }
+}
+
 let ownerPool = null;
 function owner() {
   if (!ownerPool) {
@@ -283,7 +320,7 @@ function forget(outletId) {
   if (p) { pools.delete(id); p.end().catch(() => {}); }
 }
 
-module.exports = { _sslConfig: sslConfig,
+module.exports = { _sslConfig: sslConfig, peerCaPem,
   owner, poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };
