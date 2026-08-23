@@ -25,6 +25,7 @@ src/provision.js       creating an outlet's schema + login role
 src/bootstrap.js       everything the terminal needs to come up, in one payload
 src/apply.js           the 115 op kinds and what each one consequences
 src/auth.js            rank gates
+src/limit.js           the doorman: token buckets on the open doors
 src/routes/            auth · onboarding · outlet · sync · guest · estate · pages
 src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        005 sign-in · 006 statutory · 007 member access
@@ -1049,10 +1050,35 @@ short axis.
   `new Function` against a stub `this` — that exercises the shipped text rather
   than a retyped copy. `test/harness.js` does this properly, in a vm.
 
+## The open doors have a doorman
+
+`src/limit.js`. The endpoints anybody on the internet may call each either send
+an email (which now costs real money, billed to the business) or burn a guess at
+a credential. Each gets two token buckets, and **both must have room**: an
+IDENTITY bucket keyed on who the request is ABOUT — the email, the phone,
+hashed before it is held — so one address cannot be hammered from many IPs, and
+an IP bucket several times wider, because a restaurant's wifi puts the whole
+room behind ONE address and a doorman who cannot tell forty guests from one
+attacker locks the room's members out of their own cards.
+
+Gated: account signup/code/verify/signin, the guest portal's member
+start/join/join-code/verify, and the counter's invite send (per OUTLET, 60 an
+hour — that one is about spend, not identity). The refusal is a 429 with
+Retry-After and the same bytes whether or not the address is a customer — the
+doorman keeps the enumeration promise the endpoints themselves make. The
+credential guards underneath (five tries per code, the outlet-wide PIN lockout)
+never left; the door just makes reaching them expensive.
+
+**In memory, on purpose.** One process, minutes-wide windows, fails open on a
+restart — the correct failure. If this app ever runs as replicas, `limit.js` is
+the one seam to move onto something shared. `RATE_LIMIT_SCALE` multiplies the
+ceilings so the test suite's single loopback address does not read as an attack;
+production ignores it.
+
 ## Tests
 
 ```
-npm test                          # 194 tests
+npm test                          # 195 tests
 npm run leak-test                 # isolation, on its own
 ```
 

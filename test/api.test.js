@@ -2228,6 +2228,67 @@ test('registering later sets the rate on every outlet at once', opts, async () =
     /NONE is not a registration/);
 });
 
+test('the doors that send email or take guesses refuse a hammer', opts, async () => {
+  /* Every request in this suite arrives from one loopback address, so the
+     harness runs with the ceilings scaled up (test/db.js). Here the scale
+     comes back to 1 — the shipped figures — and goes back up on the way out. */
+  const LIMIT = require('../src/limit');
+  const prev = process.env.RATE_LIMIT_SCALE;
+  process.env.RATE_LIMIT_SCALE = '1';
+  LIMIT._reset();
+  try {
+    // Three codes to one address are a guest retrying; the fourth is a hose.
+    for (let i = 0; i < 3; i++) {
+      const r = await post('/api/account/code', { email: 'hammered@example.mv' });
+      assert.strictEqual(r.status, 200, 'attempt ' + (i + 1) + ' is a guest retrying');
+    }
+    const fourth = await post('/api/account/code', { email: 'hammered@example.mv' });
+    assert.strictEqual(fourth.status, 429, 'the fourth is refused');
+    assert.match(fourth.body.error, /Too many attempts/);
+    assert.ok(Number(fourth.headers['retry-after']) >= 1,
+      'the refusal says when to come back');
+
+    // The refusal must not answer the question the endpoints refuse to answer:
+    // a KNOWN address hammered the same way gets the byte-identical refusal.
+    for (let i = 0; i < 3; i++) await post('/api/account/code', { email: 'founder@example.mv' });
+    const known = await post('/api/account/code', { email: 'founder@example.mv' });
+    assert.strictEqual(known.status, 429);
+    assert.deepStrictEqual(known.body, fourth.body,
+      'the doorman cannot be used to enumerate the customer list');
+
+    // Somebody else on the same connection is not locked out by the hammer —
+    // a restaurant's wifi is one address holding the whole room.
+    const bystander = await post('/api/account/code', { email: 'bystander@example.mv' });
+    assert.strictEqual(bystander.status, 200, 'one guest\'s flood is not another\'s problem');
+
+    // But a fresh address on every call is not fresh TRAFFIC: walking the
+    // identity space spends the connection's own, wider allowance.
+    let walked = null;
+    for (let i = 0; i < 12 && !walked; i++) {
+      const r = await post('/api/account/code', { email: 'walk' + i + '@example.mv' });
+      if (r.status === 429) walked = r;
+    }
+    assert.ok(walked, 'the connection has a ceiling of its own');
+
+    // The member door refuses the same hammer with the same wording.
+    LIMIT._reset();
+    const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const slug = b.body.kpos.OUTLETS[0].slug;
+    const t = await get('/api/g/' + slug + '/token');
+    const table = { 'x-table-token': t.body.token };
+    for (let i = 0; i < 3; i++) {
+      const r = await postWith('/api/g/' + slug + '/member/start', { id: '7779999' }, table);
+      assert.strictEqual(r.status, 200);
+    }
+    const spent = await postWith('/api/g/' + slug + '/member/start', { id: '7779999' }, table);
+    assert.strictEqual(spent.status, 429);
+    assert.match(spent.body.error, /Too many attempts/);
+  } finally {
+    process.env.RATE_LIMIT_SCALE = prev || '100';
+    LIMIT._reset();
+  }
+});
+
 test('shut down cleanly', opts, async () => {
   if (server) await new Promise((res) => server.close(res));
   if (db) await db.shutdown();
@@ -2269,7 +2330,8 @@ async function call(method, path, body, headers) {
   let parsed = null;
   try { parsed = text ? JSON.parse(text) : null; } catch (e) { parsed = { raw: text }; }
   return { status: res.status, body: parsed,
-    headers: { location: res.headers.get('location') } };
+    headers: { location: res.headers.get('location'),
+      'retry-after': res.headers.get('retry-after') } };
 }
 const auth = (t) => (t ? { authorization: 'Bearer ' + t } : {});
 const get = (p, t) => call('GET', p, undefined, auth(t));

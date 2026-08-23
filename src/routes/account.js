@@ -30,6 +30,7 @@ const { hashPin, pinMatches, signAccount, verifyAccount } = require('../secrets'
 const email = require('../email');
 const { baseDomain } = require('../handle');
 const apple = require('../apple');
+const { gate } = require('../limit');
 
 const r = express.Router();
 
@@ -101,8 +102,22 @@ function ackCode(res, extra) {
 // address into a login. Never set this anywhere real.
 const echoing = () => process.env.ACCOUNT_CODE_ECHO === '1';
 
+/* ── the doorman ─────────────────────────────────────────────────────────
+   These four doors are open to the internet, and each call either sends an
+   email or burns a guess. The identity bucket is keyed on the ADDRESS, so one
+   inbox cannot be flooded from many connections; the IP bucket is wider, so
+   an office behind one NAT is not read as an attacker. The refusal reveals
+   nothing about whether the address is a customer — the same 429 either way.
+
+   The per-account guards underneath (five tries per code, the lock after
+   eight failed passwords) still stand; this door just makes reaching them
+   expensive. */
+const who = (req) => lower((req.body || {}).email);
+const sendsMail = { id: [3, 10 * 60e3], ip: [12, 10 * 60e3] };
+const guesses = { id: [10, 10 * 60e3], ip: [40, 10 * 60e3] };
+
 /* ── sign up ─────────────────────────────────────────────────────────────── */
-r.post('/signup', async function (req, res, next) {
+r.post('/signup', gate('acct-code', sendsMail, who), async function (req, res, next) {
   const b = req.body || {};
   const addr = lower(b.email);
   const name = clean(b.name);
@@ -140,7 +155,7 @@ r.post('/signup', async function (req, res, next) {
 });
 
 /* ── a code to the inbox: sign in, or verify a new address ───────────────── */
-r.post('/code', async function (req, res, next) {
+r.post('/code', gate('acct-code', sendsMail, who), async function (req, res, next) {
   const b = req.body || {};
   const addr = lower(b.email);
   try {
@@ -157,7 +172,7 @@ r.post('/code', async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
-r.post('/code/verify', async function (req, res, next) {
+r.post('/code/verify', gate('acct-guess', guesses, who), async function (req, res, next) {
   const b = req.body || {};
   const addr = lower(b.email);
   const value = clean(b.code);
@@ -195,7 +210,7 @@ async function clearCode(id, verified) {
 }
 
 /* ── email and password ──────────────────────────────────────────────────── */
-r.post('/signin', async function (req, res, next) {
+r.post('/signin', gate('acct-guess', guesses, who), async function (req, res, next) {
   const b = req.body || {};
   const addr = lower(b.email);
   const password = String(b.password || '');

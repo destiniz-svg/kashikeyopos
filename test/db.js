@@ -62,6 +62,10 @@ function secrets() {
   process.env.PORTAL_SECRET = process.env.PORTAL_SECRET
     || 'test-portal-secret-at-least-32-characters!';
   process.env.NODE_ENV = 'test';
+  // The whole suite arrives from one loopback address, which is exactly what
+  // the rate limiter exists to refuse. Scaled up here; the limiter's own test
+  // sets the scale to 1 around its assertions. Production ignores this knob.
+  process.env.RATE_LIMIT_SCALE = process.env.RATE_LIMIT_SCALE || '100';
 }
 
 module.exports = { configured, freshDatabase, dropOutletRoles, secrets };

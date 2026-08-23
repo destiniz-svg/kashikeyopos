@@ -13,8 +13,23 @@ const { signTable, verifyTable, signMember, verifyMember,
 const { snapshot } = require('./outlet');
 const { hostHandle } = require('../handle');
 const INVITE = require('../../app/kashikeyo-invite.js');
+const { gate } = require('../limit');
 
 const r = express.Router();
+
+/* ── the doorman on the member doors ─────────────────────────────────────
+   Anybody with a table token — which is minted for anybody who scans a QR —
+   can ask for sign-in codes and probe invitation tokens. Each code request
+   writes rows and lands on the floor board; each verify burns one of a
+   code's five tries. The identity bucket is keyed on the phone or address the
+   request is ABOUT; the IP ceilings are deliberately wide, because a
+   restaurant's wifi puts the whole room behind one address and the doorman
+   must not lock forty guests out for the sins of none of them. */
+const askedFor = (req) => (req.body || {}).id || (req.body || {}).phone || '';
+const askedToken = (req) => INVITE.cleanToken((req.body || {}).token);
+const codeIssue = { id: [3, 10 * 60e3], ip: [20, 10 * 60e3] };
+const codeGuess = { id: [10, 10 * 60e3], ip: [40, 10 * 60e3] };
+const tokenLook = { ip: [30, 10 * 60e3] };
 
 // A QR encodes the outlet handle and the table. The token is minted here, not
 // carried in the URL, so a guest cannot retype it onto another table.
@@ -165,7 +180,7 @@ r.get('/:slug/member', guest, async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
-r.post('/:slug/member/start', guest, async function (req, res, next) {
+r.post('/:slug/member/start', guest, gate('member-code', codeIssue, askedFor), async function (req, res, next) {
   // Either half of the membership: the phone on the card or the email on file.
   const phone = String((req.body || {}).id || (req.body || {}).phone || '').trim();
   if (phone.length < 6) return res.status(400).json({ error: 'phone or email required' });
@@ -210,7 +225,7 @@ r.post('/:slug/member/start', guest, async function (req, res, next) {
    A lapsed token still resolves, and says so. The membership is real, so
    dropping a guest with points on an account onto a dead end tells them there
    is nothing here for them, which is false. ═══════════════════════════════ */
-r.post('/:slug/member/join', guest, async function (req, res, next) {
+r.post('/:slug/member/join', guest, gate('member-join', tokenLook, null), async function (req, res, next) {
   const tok = INVITE.cleanToken((req.body || {}).token);
   // Anything failing the minted shape is not a near-miss to be looked up, it is
   // somebody else's parameter. Nothing reaches the database.
@@ -271,7 +286,7 @@ r.post('/:slug/member/join', guest, async function (req, res, next) {
 /* "Send my code" from the landing card. The token is spent HERE — it opened
    the card once — and the code goes to the address on the membership, which is
    what makes a forwarded link useless to whoever it was forwarded to. */
-r.post('/:slug/member/join/code', guest, async function (req, res, next) {
+r.post('/:slug/member/join/code', guest, gate('member-code', codeIssue, askedToken), async function (req, res, next) {
   const tok = INVITE.cleanToken((req.body || {}).token);
   if (!tok) return res.status(400).json({ error: 'not an invitation' });
   try {
@@ -311,7 +326,7 @@ r.post('/:slug/member/join/code', guest, async function (req, res, next) {
   } catch (e) { next(e); }
 });
 
-r.post('/:slug/member/verify', guest, async function (req, res, next) {
+r.post('/:slug/member/verify', guest, gate('member-guess', codeGuess, askedFor), async function (req, res, next) {
   const b = req.body || {};
   const phone = String(b.id || b.phone || '').trim();
   const code = String(b.code || '').trim();

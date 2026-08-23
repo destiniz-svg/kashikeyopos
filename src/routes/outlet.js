@@ -8,6 +8,7 @@ const { randomPin, hashPin, inviteToken, tokenHash } = require('../secrets');
 const { buildBootstrap, buildState, all } = require('../bootstrap');
 const email = require('../email');
 const INVITE = require('../../app/kashikeyo-invite.js');
+const { gate } = require('../limit');
 
 const r = express.Router({ mergeParams: true });
 
@@ -195,7 +196,13 @@ async function pointsWorth(c, points) {
   return code + ' ' + Math.round((Number(points) || 0) / per * val).toLocaleString('en-US');
 }
 
+/* Rank 2 may invite, but the send is an email billed to the business, so one
+   outlet gets sixty an hour — a busy counter never sees the ceiling, and a
+   compromised till session cannot turn the outlet into a spam relay. Keyed on
+   the OUTLET, not the device: the till is signed in, so the doorman here is
+   about spend, not identity. */
 r.post('/member/:memberId/invite', sameOutlet, atLeast('till'),
+  gate('invite', { id: [60, 3600e3] }, (req) => 'outlet:' + req.ctx.outletId),
   async function (req, res, next) {
     const via = String((req.body || {}).via || 'email').toLowerCase();
     if (!CHANNELS[via]) {
