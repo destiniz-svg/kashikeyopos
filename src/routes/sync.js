@@ -92,6 +92,14 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
         await c.query('RELEASE SAVEPOINT ' + sp);
         out.push({ opId: op.opId, result: result });
       }
+      /* The delivery itself is worth recording, whatever was in it — even a
+         batch of pure replays proves the device can reach its outlet. This is
+         what lets any OTHER screen answer "which till has not delivered in an
+         hour", which matters precisely when that till cannot be asked. */
+      if (req.ctx.deviceId) {
+        await c.query('UPDATE chain.device SET last_seen = now(), last_push_at = now()'
+          + ' WHERE id = $1 AND outlet_id = $2', [req.ctx.deviceId, req.ctx.outletId]);
+      }
       return out;
     });
     res.json({ results, at: Date.now() });

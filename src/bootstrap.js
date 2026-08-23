@@ -44,7 +44,7 @@ async function buildBootstrap(ctx) {
       taxVers: ['SELECT * FROM chain.tax_version ORDER BY code, effective_from'],
       staff: ['SELECT id, name, rank, role_key, outlet_id, outlets, active,'
         + ' locked_until, perm_override FROM chain.staff ORDER BY rank DESC, name'],
-      devices: ['SELECT id, label, kind, station, paired_at, last_seen, revoked'
+      devices: ['SELECT id, label, kind, station, paired_at, last_seen, last_push_at, revoked'
         + ' FROM chain.device WHERE outlet_id = $1', [ctx.outletId]],
       chainSettings: ['SELECT key, value FROM chain.setting'],
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
@@ -215,7 +215,8 @@ async function buildBootstrap(ctx) {
       })),
       DEVICES: devices.rows.map((r) => ({
         id: r.id, label: r.label, kind: r.kind, station: r.station,
-        paired: iso(r.paired_at), seen: iso(r.last_seen), revoked: r.revoked
+        paired: iso(r.paired_at), seen: iso(r.last_seen),
+        pushed: iso(r.last_push_at), revoked: r.revoked
       })),
       ALLERGENS: ALLERGENS, DIETS: DIETS,
       /* Where this outlet stands on GST registration. `registered` is a fact

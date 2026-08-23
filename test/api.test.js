@@ -2289,6 +2289,35 @@ test('the doors that send email or take guesses refuse a hammer', opts, async ()
   }
 });
 
+test('a delivered push stamps the device, so the outlet can see who went quiet', opts, async () => {
+  // A registered device, and a session signed in ON it.
+  const dev = await post('/api/auth/devices', { label: 'Till A', kind: 'till' }, token);
+  assert.strictEqual(dev.status, 201, JSON.stringify(dev.body));
+  const sess = await post('/api/auth/pin', { outletId, pin: '4718', deviceId: dev.body.id });
+  assert.strictEqual(sess.status, 200, JSON.stringify(sess.body));
+
+  const before = await one('SELECT last_push_at FROM chain.device WHERE id = $1', [dev.body.id]);
+  assert.strictEqual(before.last_push_at, null, 'nothing delivered yet');
+
+  // Any delivered batch counts — even one carrying a single audit-only op.
+  const r = await post('/api/outlet/' + outletId + '/sync/push',
+    { ops: [{ opId: uuid(), kind: 'sign_in', label: 'stamp probe' }] }, sess.body.token);
+  assert.strictEqual(r.status, 200);
+
+  const after = await one('SELECT last_push_at, last_seen FROM chain.device WHERE id = $1', [dev.body.id]);
+  assert.ok(after.last_push_at, 'the delivery is on the record');
+  assert.ok(after.last_seen, 'and the device is seen');
+
+  // The devices list and the bootstrap both carry it, because a figure only
+  // the database can see is a figure nobody acts on.
+  const list = await get('/api/auth/devices', sess.body.token);
+  const mine = (list.body.devices || []).filter((d) => d.id === dev.body.id)[0];
+  assert.ok(mine && mine.last_push_at, 'the devices screen can read it');
+  const b = await get('/api/outlet/' + outletId + '/bootstrap', sess.body.token);
+  const bd = (b.body.kpos.DEVICES || []).filter((d) => d.id === dev.body.id)[0];
+  assert.ok(bd && bd.pushed, 'the terminal is told');
+});
+
 test('database TLS verifies when a CA is pinned, and says so when not', opts, async () => {
   const env = process.env;
   const keep = { PGSSL: env.PGSSL, PGSSL_CA: env.PGSSL_CA,

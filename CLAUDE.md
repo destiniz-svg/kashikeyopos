@@ -36,6 +36,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        018 member email · 019 drop member tier
                        020 invite token · 021 loyalty liability
                        022 sale knows redemption
+                       023 wages are not tips · 024 device pushes
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -299,6 +300,15 @@ distinguishable. `test/wiring.test.js` asserts both halves meet.
 The network pill is a real switch (`KPOS_BRIDGE.setOffline`), not a simulation:
 offline means nothing is POSTed and every write holds durably until it is
 flipped back.
+
+**Every delivered push stamps the device** (`chain.device.last_push_at`,
+migration 024) — even a batch of pure replays proves the till can reach its
+outlet. `last_seen` answers "when was somebody standing at it"; this answers
+"when did it last deliver its writes", which is the question that matters when
+a signed-in till is sitting on the only copy of the evening's sales behind a
+dead link. The bootstrap carries it as `pushed`, and the Sync ribbon warns on
+any writing device (not printers or displays — they never push) quiet for an
+hour.
 
 **A refusal is not a network failure, and the eighth parks the op.** The outlet
 answered and said no; retrying it every five seconds forever is how one poison
@@ -1089,7 +1099,7 @@ production ignores it.
 ## Tests
 
 ```
-npm test                          # 197 tests
+npm test                          # 198 tests
 npm run leak-test                 # isolation, on its own
 ```
 

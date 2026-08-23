@@ -4032,6 +4032,13 @@ class Component extends DCLogic {
       const devs = (K0.DEVICES || []).filter((d) => !d.revoked);
       const hour = Date.now() - 3600e3;
       const live = devs.filter((d) => d.seen && new Date(d.seen).getTime() > hour).length;
+      // Delivered ≠ seen: a signed-in till behind a dead link looks alive on
+      // every screen while it sits on the only copy of the evening's sales.
+      // Printers and displays are told, not asked — they never push, so their
+      // silence is not a warning.
+      const quiet = devs.filter((d) => d.paired
+        && d.kind !== "printer" && d.kind !== "display"
+        && (!d.pushed || new Date(d.pushed).getTime() < hour)).length;
       const parked = s.outbox.filter((x) => x.state === "parked").length;
       const acked = s.outbox.filter((x) => x.sentAt && x.queuedAt);
       const lag = acked.length
@@ -4041,7 +4048,10 @@ class Component extends DCLogic {
       return [
         card("Queued operations", String(q), q ? "Will replay in Lamport order" : "Outbox empty", q ? big + ";color:var(--red-bright)" : big + ";color:var(--green)"),
         card("Registered devices", String(devs.length),
-          devs.length ? live + " seen in the last hour" : "This device is not paired yet"),
+          devs.length
+            ? (quiet ? quiet + " ha" + (quiet === 1 ? "s" : "ve") + " not delivered ops in an hour" : live + " seen in the last hour")
+            : "This device is not paired yet",
+          quiet ? big + ";color:var(--warn-bright)" : undefined),
         card("Conflicts resolved", String(s.conflicts.length), "Last-writer-wins except closed tickets"),
         parked
           ? card("Parked operations", String(parked), "Refused repeatedly \u2014 decide on each", big + ";color:var(--red-bright)")

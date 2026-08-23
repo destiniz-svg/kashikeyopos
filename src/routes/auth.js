@@ -193,7 +193,7 @@ r.post('/revoke', atLeast('admin'), async function (req, res, next) {
 r.get('/devices', atLeast('manager'), async function (req, res, next) {
   try {
     const rows = await withOutlet(req.ctx, (c) => c.query(
-      'SELECT id, label, kind, station, paired_at, last_seen, revoked, pair_code,'
+      'SELECT id, label, kind, station, paired_at, last_seen, last_push_at, revoked, pair_code,'
       + ' pair_expires FROM chain.device WHERE outlet_id = $1 ORDER BY label',
       [req.ctx.outletId]).then((q) => q.rows));
     res.json({ devices: rows });
