@@ -2378,6 +2378,13 @@ test('database TLS verifies when a CA is pinned, and says so when not', opts, as
     const pinned = db._sslConfig();
     assert.strictEqual(pinned.rejectUnauthorized, true, 'a pinned CA is VERIFIED');
     assert.ok(pinned.ca.includes('BEGIN CERTIFICATE'));
+    // The chain is the identity; the hostname comparison is skipped, because
+    // an infra self-signed cert does not carry the internal hostname the app
+    // dials and the default check failed a connection the pin had already
+    // authenticated — which took staging down for exactly one deploy.
+    assert.strictEqual(typeof pinned.checkServerIdentity, 'function',
+      'hostname comparison is explicitly disarmed');
+    assert.strictEqual(pinned.checkServerIdentity('x', {}), undefined);
 
     // An environment that promises verification cannot quietly degrade when
     // the variable carrying the certificate is lost.

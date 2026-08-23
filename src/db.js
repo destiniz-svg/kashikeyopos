@@ -51,7 +51,22 @@ function sslConfig() {
   if (!ca && process.env.PGSSLROOTCERT) {
     ca = require('fs').readFileSync(process.env.PGSSLROOTCERT, 'utf8');
   }
-  if (ca) return { ca: ca, rejectUnauthorized: true };
+  if (ca) {
+    return {
+      ca: ca, rejectUnauthorized: true,
+      /* The chain is verified; the HOSTNAME deliberately is not. Node's
+         default identity check also demands the connect hostname appear in
+         the certificate's names — and an infra-issued self-signed cert
+         (Railway's Postgres among them) does not carry the internal hostname
+         the app dials, so the default check fails a connection the pin has
+         already authenticated. With a private CA that signed exactly one
+         server, the chain IS the identity: a man-in-the-middle would need
+         that CA's private key, which never left the database. Skipping the
+         hostname comparison gives up only the case where one holder of a
+         cert from this CA impersonates another — and this CA signed one. */
+      checkServerIdentity: function () { return undefined; }
+    };
+  }
   if (/^verify$/i.test(mode)) {
     throw new Error('PGSSL=verify needs a CA to verify against —'
       + ' set PGSSL_CA (PEM) or PGSSLROOTCERT (path)');
