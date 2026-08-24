@@ -21,14 +21,61 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 const express = require('express');
+const crypto = require('crypto');
 const { owner, withOutlet } = require('../db');
 const { provisionOutlet } = require('../provision');
 const { normalise, shapeError, baseDomain, storeUrl, memberUrl } = require('../handle');
 const { hashPin, sign, verifyAccount } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
 const { applyOp } = require('../apply');
+const { gate } = require('../limit');
 
 const r = express.Router();
+
+/* ── WHO GETS TO CLAIM A FRESH INSTALL ──────────────────────────────────────
+   The three steps before there is anybody to sign in as — company, first
+   outlet, first owner — cannot be behind a staff session, because the staff
+   session is what step 3 creates. They were therefore behind nothing at all,
+   and `chain.claim_first_owner()` succeeds exactly ONCE in the life of an
+   installation: whoever POSTs first is the rank-5 owner of the business.
+
+   That is a race, and the starting gun is public. A new install's hostname
+   reaches the certificate transparency logs within minutes of its first TLS
+   handshake, which is well inside the gap between "the seller provisions it"
+   and "the customer sits down and types their company name".
+
+   ONBOARDING_CLAIM_TOKEN closes it, and it is deliberately the same shape as
+   PANEL_SETUP_TOKEN in Mission Control: a secret set on the install at
+   provisioning time and handed to the customer with their address. Set, the
+   three steps require it and compare in constant time. UNSET, they stay open —
+   an install onboarding itself on a counter has no seller to get a code from —
+   and the boot log says so BY NAME, exactly as an unset PLATFORM_KEY makes the
+   platform door a 404 and says so. A fence that is silently absent is worse
+   than no fence, because somebody believes in it.
+
+   The doorman stands here either way: an open install is still not free to
+   hammer, and a wrong code should cost something. */
+function claim(req, res, next) {
+  const want = process.env.ONBOARDING_CLAIM_TOKEN || '';
+  if (want.length < 8) return next();                    // fence not enabled
+  const got = String(req.get('x-claim-token') || '');
+  const a = Buffer.from(got);
+  const b = Buffer.from(want);
+  const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+  if (ok) return next();
+  return res.status(403).json({
+    claim: true,
+    error: got
+      ? 'That setup code is not this install\'s. Ask whoever set the store up.'
+      : 'This install needs its setup code before it can be claimed.'
+  });
+}
+
+/* Wrong codes and company names are both cheap to send and expensive to
+   answer, so the three open steps are rate-limited whether or not the fence is
+   on. Wide enough that a customer correcting a typo four times never notices;
+   tight enough that walking a code space is not free. */
+const openDoor = gate('onboard-claim', { ip: [30, 900e3] }, null);
 
 /* Attach the signed-up account when one is presented. Never refuses: the
    account is who to CREDIT the business to, not permission to create it. */
@@ -120,7 +167,13 @@ r.get('/state', async function (req, res, next) {
       done: STEPS.every((x) => state[x.key]),
       next: (STEPS.find((x) => !state[x.key]) || {}).key || null,
       counts: deeper.counts || {},
-      gstRegistered: gstRegistered
+      gstRegistered: gstRegistered,
+      /* Whether this install wants its setup code — never the code itself,
+         and only while the three open steps are still open. Once an owner
+         exists there is nothing left to claim, so the panel should stop
+         asking rather than keep a field on screen that does nothing. */
+      claimRequired: (process.env.ONBOARDING_CLAIM_TOKEN || '').length >= 8
+        && !done.owner
     });
   } catch (e) { next(e); }
 });
@@ -134,7 +187,16 @@ function q0(schema) {
 }
 
 /* ── 1 · Company. The legal entity: this is who files the return. ────────── */
-r.post('/company', async function (req, res, next) {
+/* Is this the code? Asked at the gate, before the panel lets anybody type a
+   company name — because this build's own rule about the store handle applies
+   here too: a green tick must not be followed by a refusal on save. It shares
+   the company step's bucket by name, so checking a code costs exactly what
+   sending one costs and there is no cheaper oracle to walk. */
+r.post('/claim', openDoor, claim, function (req, res) {
+  res.json({ ok: true });
+});
+
+r.post('/company', openDoor, claim, async function (req, res, next) {
   const b = req.body || {};
   /* Registration is CONDITIONAL — migration 009 has the threshold, and a
      business below it charges nothing. So the TIN is required of a REGISTERED
@@ -222,7 +284,7 @@ r.get('/handle', async function (req, res, next) {
 });
 
 /* ── 2 · First outlet. Creates the schema and the login role. ───────────── */
-r.post('/outlet', async function (req, res, next) {
+r.post('/outlet', openDoor, claim, async function (req, res, next) {
   const b = req.body || {};
   if (!b.name || !b.code) return res.status(400).json({ error: 'outlet name and code required' });
   try {
@@ -255,7 +317,7 @@ r.post('/outlet', async function (req, res, next) {
 });
 
 /* ── 3 · Owner account. Rank 5. Callable once, then never again. ────────── */
-r.post('/owner', async function (req, res, next) {
+r.post('/owner', openDoor, claim, async function (req, res, next) {
   const b = req.body || {};
   if (!b.name || !b.pin) return res.status(400).json({ error: 'name and PIN required' });
   if (!/^\d{4,8}$/.test(String(b.pin))) return res.status(400).json({ error: 'PIN must be 4 to 8 digits' });

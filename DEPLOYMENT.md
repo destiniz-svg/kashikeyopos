@@ -384,8 +384,41 @@ Each customer install sets `PLATFORM_KEY` (≥32 chars, unique per customer).
 Unset, `/api/platform/summary` is a 404 — an install that was never sold has
 no platform. The panel holds each key in its registry and probes server-side;
 the browser gets figures, never keys. To onboard a customer: provision their
-app + database, set their `PLATFORM_KEY`, then register the install in the
-panel with its base URL and that key.
+app + database, set their `PLATFORM_KEY` **and `ONBOARDING_CLAIM_TOKEN`**, then
+register the install in the panel with its base URL, that key and that code.
+
+### `ONBOARDING_CLAIM_TOKEN` — who gets to claim a fresh install
+
+`chain.claim_first_owner()` succeeds exactly **once** in the life of an
+installation, and the three steps before it — company, first outlet, first
+owner — cannot be behind a staff session, because the staff session is what
+step 3 creates. Left open, whoever POSTs first owns the business, and the
+starting gun is public: a new install's hostname reaches the certificate
+transparency logs within minutes of its first TLS handshake, which is well
+inside the gap between provisioning it and the customer sitting down to type
+their company name.
+
+| Variable | What it does |
+|---|---|
+| `ONBOARDING_CLAIM_TOKEN` | ≥8 chars. Set, the three open onboarding steps require it as `x-claim-token`, compared in constant time; the panel asks for it once, up front. **Unset, they stay open** — an install onboarding itself on a counter has no seller to get a code from — and the boot log says which of the two this install is, by name. |
+
+Generate one per install and never reuse it:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(12).toString('base64url'))"
+```
+
+Record it in Mission Control's **Setup code** field when you register the
+install, and hand it to the customer with their address. It is stored so you
+can read it back — a customer who has lost their code rings the seller, not
+Railway — through **Show setup code** on the install sheet. It is deliberately
+not in the dashboard poll: a credential that grants ownership of an unclaimed
+install should be asked for, not delivered every thirty seconds into a browser
+left open on a desk.
+
+The code stops mattering the moment the install has an owner: `/state` stops
+advertising it and `claim_first_owner()` refuses regardless. Rotating or
+clearing it afterwards changes nothing.
 
 ## What is not automated, and needs a console
 

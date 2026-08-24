@@ -77,6 +77,12 @@ async function migrate() {
       archived boolean NOT NULL DEFAULT false,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    -- The setup code the customer types into their own /onboarding to claim
+    -- the install. It is NOT a key this panel uses — the panel never calls the
+    -- install with it — it is a string the seller has to be able to read back
+    -- when a customer says they have lost it. Which is exactly why it is here
+    -- and not only in a Railway variable nobody can find at nine on a Sunday.
+    ALTER TABLE panel.install ADD COLUMN IF NOT EXISTS claim_code text NOT NULL DEFAULT '';
     -- Written by the public website (site/server.js), decided here. The same
     -- CREATE IF NOT EXISTS lives on both sides so either service may boot first.
     CREATE TABLE IF NOT EXISTS panel.signup (
@@ -282,11 +288,32 @@ app.post('/api/installs', authed, async (req, res, next) => {
     if (String(b.platformKey || '').length < 32) return res.status(400).json({ error: 'the platform key is at least 32 characters — the same value set as PLATFORM_KEY on the install' });
     const kind = ['trial', 'paid', 'internal'].includes(b.kind) ? b.kind : 'trial';
     const ins = await pool.query(
-      'INSERT INTO panel.install (name, base_url, platform_key, kind, trial_ends, notes)'
-      + ' VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+      'INSERT INTO panel.install (name, base_url, platform_key, kind, trial_ends,'
+      + ' notes, claim_code) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
       [String(b.name).trim(), String(b.baseUrl).replace(/\/+$/, ''), String(b.platformKey),
-        kind, b.trialEnds || null, String(b.notes || '')]);
+        kind, b.trialEnds || null, String(b.notes || ''), String(b.claimCode || '')]);
     res.json({ id: ins.rows[0].id });
+  } catch (e) { next(e); }
+});
+
+/* The setup code, read back on purpose and on its own request. It is NOT in
+   the dashboard payload: everything else there is a figure, and a credential
+   that grants ownership of an unclaimed install should have to be ASKED for,
+   once, by a person who came looking — not ride along in a poll that refreshes
+   every thirty seconds into a browser left open on a desk. */
+app.get('/api/installs/:id/claim', authed, async (req, res, next) => {
+  try {
+    const q = await pool.query('SELECT name, claim_code FROM panel.install WHERE id = $1',
+      [req.params.id]);
+    if (!q.rows.length) return res.status(404).json({ error: 'no such install' });
+    res.set('cache-control', 'no-store').json({
+      name: q.rows[0].name,
+      claimCode: q.rows[0].claim_code || '',
+      // An empty code is not the same as a code nobody has looked at yet: it
+      // means this install was recorded without one, so its onboarding is open
+      // unless ONBOARDING_CLAIM_TOKEN was set on it by hand.
+      set: !!q.rows[0].claim_code
+    });
   } catch (e) { next(e); }
 });
 
@@ -304,6 +331,7 @@ app.patch('/api/installs/:id', authed, async (req, res, next) => {
       if (String(b.platformKey).length < 32) return res.status(400).json({ error: 'the platform key is at least 32 characters' });
       put('platform_key', String(b.platformKey));
     }
+    if (b.claimCode !== undefined) put('claim_code', String(b.claimCode));
     if (b.kind !== undefined) {
       if (!['trial', 'paid', 'internal'].includes(b.kind)) return res.status(400).json({ error: 'kind is trial, paid or internal' });
       put('kind', b.kind);

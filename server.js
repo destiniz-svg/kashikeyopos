@@ -248,6 +248,20 @@ async function boot() {
     console.log(co.rows.length
       ? '[install] company "' + co.rows[0].legal_name + '" \u00b7 ' + ou.rows[0].n + ' outlet(s)'
       : '[install] no company yet \u2014 onboarding is open');
+    /* Whoever POSTs the first owner OWNS the business, and that call cannot be
+       behind a staff session because it is what creates one. So on an install
+       that is still unclaimed, the boot says in one line whether the claim is
+       fenced — a fence that is silently absent is worse than no fence, because
+       somebody believes in it. */
+    if (!co.rows.length || !ou.rows[0].n) {
+      const st = await owner().query('SELECT * FROM chain.install_state()');
+      if (!Number((st.rows[0] || {}).staff)) {
+        console.log((process.env.ONBOARDING_CLAIM_TOKEN || '').length >= 8
+          ? '[install] unclaimed \u2014 a setup code is required (ONBOARDING_CLAIM_TOKEN)'
+          : '[install] unclaimed and OPEN \u2014 the first caller becomes the owner.'
+            + ' Set ONBOARDING_CLAIM_TOKEN to require a setup code.');
+      }
+    }
   }).catch((e) => console.error('[install] state unreadable: ' + e.message));
   pruneHistory();
   setInterval(pruneHistory, 24 * 3600e3).unref();

@@ -735,6 +735,11 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       var at = localStorage.getItem("kashikeyo.account.token");
       if (at) headers["x-account-token"] = at;
     } catch (e) { /* private mode: the install is simply unattributed */ }
+    // The setup code, where this install was provisioned with one. It proves
+    // the person claiming the install is the person the seller gave it to —
+    // sessionStorage rather than local, because it is spent on this sitting
+    // and a code left on a shared counter terminal is a code lying around.
+    if (state.claim) headers["x-claim-token"] = state.claim;
     return fetch(path, {
       method: method, headers: headers,
       body: body === undefined ? undefined : JSON.stringify(body)
@@ -742,7 +747,16 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       return res.text().then(function (t) {
         var data = null;
         try { data = t ? JSON.parse(t) : null; } catch (e) {}
-        if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+        if (!res.ok) {
+          var err = new Error((data && data.error) || ("HTTP " + res.status));
+          // A refused CLAIM is not an ordinary validation error: the answer is
+          // a different code, not a different company name. It is flagged so
+          // the screen can ask again instead of printing a sentence under a
+          // field the code was never in.
+          if (data && data.claim) err.claim = true;
+          err.status = res.status;
+          throw err;
+        }
         return data;
       });
     });
@@ -770,6 +784,7 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
       state.next = r.next;
       state.counts = r.counts || {};
       state.gst = r.gstRegistered;
+      state.claimWanted = !!r.claimRequired;
       return api("GET", "/api/auth/install");
     }).then(function (i) {
       state.install = i;
@@ -1241,6 +1256,15 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     }).catch(function (e) {
       button.disabled = false;
       button.textContent = was;
+      if (e.claim) {
+        // The code was wrong, or this install grew one since the page loaded.
+        // Forget it and ask again in the code's own words — leaving a bad code
+        // in place would refuse every subsequent step for the same reason.
+        state.claim = "";
+        try { sessionStorage.removeItem("kashikeyo.claim"); } catch (x) {}
+        askClaim(e.message);
+        return;
+      }
       errEl.textContent = e.message;
       errEl.style.display = "block";
       toast(e.message, "err");
@@ -1256,14 +1280,85 @@ td input,td select{min-height:40px;padding:8px 10px;font-size:12.5px;border-radi
     });
   }
 
+  /* ── the setup code ───────────────────────────────────────────────────────
+     An install provisioned by a seller is CLAIMED before it is configured, and
+     the claim is a code handed over with the address. It is asked once, up
+     front, rather than added as a field on step 1: it is not a fact about the
+     company, it is permission to create one — and putting it beside the legal
+     name would invite somebody to invent it the way they might invent a TIN.
+
+     There is nothing to remember and nothing to get wrong: one field, one
+     button, and the server's own words when it refuses. */
+  function askClaim(why) {
+    var stage = document.getElementById("stage");
+    stage.innerHTML = "";
+    stage.appendChild(el("div", { class: "chip" }, "Before you begin"));
+    var t = el("h1", {}, "This install has a setup code");
+    t.style.marginTop = "12px";
+    stage.appendChild(t);
+    stage.appendChild(el("p", { class: "sub" },
+      why || "It was given to you with your store's address. It proves this "
+        + "install is yours to set up."));
+
+    var card = el("div", { class: "card" });
+    var lab = el("label", { for: "claimcode" }, "Setup code");
+    card.appendChild(lab);
+    var inp = el("input", {
+      id: "claimcode", type: "text", autocomplete: "off",
+      spellcheck: "false", placeholder: "Paste the code"
+    });
+    card.appendChild(inp);
+    card.appendChild(el("div", { class: "foot" },
+      "Lost it? Whoever set the store up can read it back — it is not "
+      + "recoverable from this screen, by design."));
+    stage.appendChild(card);
+
+    var err = el("div", { class: "err" });
+    err.style.display = "none";
+    stage.appendChild(err);
+
+    var go = el("button", { class: "go" }, "Continue");
+    go.onclick = function () {
+      var v = inp.value.trim();
+      if (!v) { err.textContent = "Type the code you were given."; err.style.display = ""; return; }
+      // Checked HERE, not on the first save. Letting somebody past the gate on
+      // an unchecked code and refusing them three fields later is the same
+      // defect as a green tick on a store handle that is then taken.
+      go.disabled = true;
+      var was = go.textContent;
+      go.textContent = "Checking…";
+      state.claim = v;
+      api("POST", "/api/onboarding/claim", {}).then(function () {
+        try { sessionStorage.setItem("kashikeyo.claim", v); } catch (e) {}
+        begin();
+      }).catch(function (e) {
+        state.claim = "";
+        go.disabled = false;
+        go.textContent = was;
+        err.textContent = e.message;
+        err.style.display = "";
+        inp.select();
+      });
+    };
+    inp.onkeydown = function (e) { if (e.key === "Enter") go.click(); };
+    stage.appendChild(go);
+    inp.focus();
+  }
+
   /* ── boot ─────────────────────────────────────────────────────────────── */
-  refresh().then(function () {
-    // Land on the first step that is not done, not on step 1 every time.
-    var i = STEPS.findIndex(function (s) { return !state.done[s.key]; });
-    current = i < 0 ? 0 : i;
-    if (i < 0) { location.href = "/"; return; }
-    render();
-  }).catch(function (e) {
+  function begin() {
+    return refresh().then(function () {
+      if (state.claimWanted && !state.claim) return askClaim();
+      // Land on the first step that is not done, not on step 1 every time.
+      var i = STEPS.findIndex(function (s) { return !state.done[s.key]; });
+      current = i < 0 ? 0 : i;
+      if (i < 0) { location.href = "/"; return; }
+      render();
+    });
+  }
+
+  try { state.claim = sessionStorage.getItem("kashikeyo.claim") || ""; } catch (e) {}
+  begin().catch(function (e) {
     document.getElementById("stage").innerHTML = "";
     var stage = document.getElementById("stage");
     stage.appendChild(el("h1", {}, "The server is not answering"));

@@ -330,6 +330,7 @@
       name: el("input", { placeholder: "Seaside Café", value: inst ? inst.name : (pre.name || "") }),
       baseUrl: el("input", { placeholder: "https://pos-customer.up.railway.app", value: inst ? inst.base_url : (pre.baseUrl || "") }),
       platformKey: el("input", { type: "password", placeholder: isNew ? "the PLATFORM_KEY set on that install" : "leave blank to keep the current key" }),
+      claimCode: el("input", { placeholder: isNew ? "the ONBOARDING_CLAIM_TOKEN set on that install" : "leave blank to keep the current code", value: pre.claimCode || "" }),
       kind: el("select", {}, ["trial", "paid", "internal"].map(function (k) {
         var sel = inst ? inst.kind === k : (pre.kind || "trial") === k;
         var opt = el("option", { value: k, text: k[0].toUpperCase() + k.slice(1) });
@@ -344,6 +345,9 @@
       var body = { name: f.name.value, baseUrl: f.baseUrl.value, kind: f.kind.value,
         trialEnds: f.trialEnds.value || null, notes: f.notes.value };
       if (isNew || f.platformKey.value) body.platformKey = f.platformKey.value;
+      // Written only when typed. Blanking it here would silently un-fence the
+      // install's onboarding, which is not what "I left a field alone" means.
+      if (f.claimCode.value) body.claimCode = f.claimCode.value;
       var call = isNew ? api("POST", "/api/installs", body)
         : api("PATCH", "/api/installs/" + inst.id, body);
       call.then(function (r) {
@@ -353,11 +357,29 @@
         else reload();
       });
     } });
+    /* The code the CUSTOMER types into their own /onboarding. It is stored
+       here for one reason: when somebody rings up having lost it, the seller
+       has to be able to read it back — and a Railway variable is not something
+       anyone can find at nine on a Sunday. Shown only when asked for. */
+    var codeOut = el("div", { class: "sub", style: "margin-top:6px" });
+    var reveal = el("button", { class: "mini", text: "Show setup code", onclick: function () {
+      api("GET", "/api/installs/" + inst.id + "/claim").then(function (r) {
+        if (r.status !== 200) { codeOut.textContent = "could not read it back"; return; }
+        codeOut.textContent = r.body.set
+          ? "Setup code: " + r.body.claimCode
+          : "No setup code recorded — this install's onboarding is open unless "
+            + "ONBOARDING_CLAIM_TOKEN was set on it by hand.";
+      });
+    } });
+
     var kids = [err, field("Name", f.name), field("Base URL", f.baseUrl),
       field("Platform key", f.platformKey),
+      field("Setup code", f.claimCode),
       el("div", { class: "row2" }, [field("Kind", f.kind), field("Trial ends", f.trialEnds)]),
       field("Notes", f.notes),
       el("div", { class: "acts" }, [save])];
+    if (!isNew) kids.push(el("div", { style: "margin-top:10px;text-align:center" },
+      [reveal, codeOut]));
     if (!isNew) kids.push(el("div", { style: "margin-top:14px;text-align:center" }, [
       el("button", { class: "mini", text: inst.archived ? "Restore this install" : "Archive this install",
         onclick: function () {
@@ -371,7 +393,8 @@
         el("h2", { text: o.heading || (isNew ? "Add an install" : inst.name) }),
         el("div", { class: "sub", text: o.sub || (isNew
           ? "One customer, one install: their app service's address and the PLATFORM_KEY you set on it."
-          : "The key is held server-side and never shown back.") })].concat(kids))]);
+          : "The platform key is held server-side and never shown back. The "
+            + "setup code can be — it is the customer's to type.") })].concat(kids))]);
     scrim.addEventListener("click", function (ev) { if (ev.target === scrim) close(); });
     function close() { scrim.remove(); }
     document.body.appendChild(scrim);

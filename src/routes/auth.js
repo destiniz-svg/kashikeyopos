@@ -3,13 +3,47 @@ const express = require('express');
 const { owner, withOutlet } = require('../db');
 const { sign, pinMatches, hashPin, pairCode } = require('../secrets');
 const { session, atLeast, ROLE_KEY_BY_RANK } = require('../auth');
+const { take, room, gate } = require('../limit');
 
 const r = express.Router();
 
-// Five tries at one outlet locks every unlocked account there for fifteen
-// minutes. A PIN is four digits: the lockout, not the entropy, is what makes
-// it safe.
-const LOCK_TRIES = 5, LOCK_MINS = 15;
+/* ── WHO A WRONG PIN COSTS ──────────────────────────────────────────────────
+   A PIN is four digits, so the lockout — not the entropy — is what makes it
+   safe. The lockout that shipped was outlet-wide and reachable by anyone who
+   could reach the endpoint: five POSTs, no credential, no device, and every
+   keypad on the floor is dead for fifteen minutes, at seven on a Friday,
+   repeatable for as long as the attacker cares to keep going. It was a
+   security guard that doubled as a denial-of-service lever, and the lever was
+   cheaper to pull than the attack it defended against.
+
+   Two tiers now, and the difference between them is what the failures PROVE.
+
+   TIER ONE — the caller. Six wrong PINs and THIS caller is refused for fifteen
+   minutes: the till it was keyed on, or the connection when the caller is not
+   a paired till. Somebody standing at a keypad fat-fingering their own PIN
+   slows down; nobody else on the floor notices. An attacker can lock exactly
+   one thing, and it is themselves.
+
+   TIER TWO — the outlet. Forty wrong PINs at one outlet inside the same window
+   is no longer somebody mistyping. It is a distributed attempt on a four-digit
+   space, the accounts themselves are now at risk, and the original outlet-wide
+   lockout engages exactly as it always did. Getting there costs an attacker
+   seven distinct callers rather than one request.
+
+   The budget is spent only on FAILURE. A counter signing its staff in
+   correctly all evening never touches it. */
+const LOCK_MINS = 15;
+const CALLER_TRIES = 6;          // tier one: what one caller may get wrong
+const OUTLET_FAILS = 40;         // tier two: what an outlet may get wrong
+
+/* A paired till names itself; an unpaired caller is its connection. A device
+   id is client-supplied and therefore forgeable — which only ever buys the
+   forger more tier-one budget, and tier two is the wall that stands behind
+   it. What it buys everyone else is that one till's mistakes are never
+   charged to the till beside it. */
+function callerKey(req, deviceId) {
+  return deviceId ? 'pin-dev:' + deviceId : 'pin-ip:' + (req.ip || 'unknown');
+}
 
 /* ── is this installation still empty? ──────────────────────────────────────
    The front door asks before deciding between onboarding and the PIN pad, and
@@ -67,7 +101,14 @@ r.get('/install', async function (req, res, next) {
    secret. The PIN is, and it is checked server-side against a scrypt hash
    this terminal never receives.
 */
-r.get('/roster', async function (req, res, next) {
+r.get('/roster',
+  /* Anonymous by design — the people on it are standing in front of the
+     terminal — but "not a secret" is not the same as "free to harvest". One
+     connection asking for a roster four hundred times an hour is building a
+     staff list, not opening a till. The ceiling is wide enough that a whole
+     restaurant behind one address never reaches it. */
+  gate('roster', { ip: [120, 600e3] }, null),
+  async function (req, res, next) {
   const oid = Number(req.query.outletId);
   if (!oid) return res.status(400).json({ error: 'outletId required' });
   try {
@@ -89,7 +130,7 @@ r.get('/roster', async function (req, res, next) {
 /* ── sign in with a PIN, at one outlet, on one device ───────────────────────
    One implementation, used by both the keypad and the hand-over sheet, so
    there is one lockout, one audit record and one token shape. */
-async function pinSignIn(oid, pin, deviceId) {
+async function pinSignIn(oid, pin, deviceId, caller) {
   return withOutlet({ outletId: oid, rank: 0 }, async function (c) {
     const q = await c.query('SELECT * FROM chain.pin_candidates($1)', [oid]);
     const now = Date.now();
@@ -120,9 +161,16 @@ async function pinSignIn(oid, pin, deviceId) {
         staffId: s.id, outletId: oid, expiresAt: now + hours * 3600e3
       };
     }
-    // Wrong PIN: count the attempt against every unlocked account at this
-    // outlet, so brute force locks the door rather than probing it.
-    await c.query('SELECT chain.pin_failed($1,$2,$3)', [oid, LOCK_TRIES, LOCK_MINS]);
+    /* Wrong PIN. Tier one first — this caller pays for its own mistake — and
+       then tier two, which only engages once the outlet's whole allowance is
+       gone. pin_failed() keeps its contract; the DECISION moved up here, where
+       both tiers can be seen together. */
+    if (caller) take(caller, CALLER_TRIES, LOCK_MINS * 60e3);
+    const wide = take('pin-outlet:' + oid, OUTLET_FAILS, LOCK_MINS * 60e3);
+    if (!wide.ok) {
+      await c.query('SELECT chain.pin_failed($1,$2,$3)', [oid, 1, LOCK_MINS]);
+      return { refused: true, locked: true, wide: true };
+    }
     return { refused: true, locked: anyLocked };
   });
 }
@@ -133,11 +181,26 @@ function refusal(out) {
     : 'PIN not recognised';
 }
 
+/* The tier-one refusal names the terminal rather than the floor, because that
+   is what is actually locked. An operator told "the keypad is locked" while
+   the till beside them is taking money learns the app is lying to them. */
+function tooMany(res, retry) {
+  res.set('retry-after', String(Math.max(1, retry)));
+  return res.status(429).json({
+    error: 'Too many wrong PINs on this terminal — try again in '
+      + (retry > 90 ? Math.ceil(retry / 60) + ' minutes' : 'a minute')
+      + '. Other terminals are unaffected.'
+  });
+}
+
 r.post('/pin', async function (req, res, next) {
   const { outletId, pin, deviceId } = req.body || {};
   if (!outletId || !pin) return res.status(400).json({ error: 'outletId and pin required' });
+  const caller = callerKey(req, deviceId);
+  const left = room(caller, CALLER_TRIES, LOCK_MINS * 60e3);
+  if (!left.ok) return tooMany(res, left.retry);
   try {
-    const out = await pinSignIn(Number(outletId), pin, deviceId);
+    const out = await pinSignIn(Number(outletId), pin, deviceId, caller);
     if (out.refused) return res.status(401).json({ error: refusal(out) });
     res.json(out);
   } catch (e) { next(e); }
@@ -167,8 +230,15 @@ r.post('/signout', async function (req, res, next) {
 r.post('/switch', async function (req, res, next) {
   const { pin, deviceId } = req.body || {};
   if (!pin) return res.status(400).json({ error: 'pin required' });
+  // A hand-over is a PIN attempt like any other and pays into the same two
+  // tiers — it is behind a session, but the session belongs to the person
+  // handing OVER, which is exactly who a shoulder-surfer already is.
+  const dev = deviceId || req.ctx.deviceId;
+  const caller = callerKey(req, dev);
+  const left = room(caller, CALLER_TRIES, LOCK_MINS * 60e3);
+  if (!left.ok) return tooMany(res, left.retry);
   try {
-    const out = await pinSignIn(req.ctx.outletId, pin, deviceId || req.ctx.deviceId);
+    const out = await pinSignIn(req.ctx.outletId, pin, dev, caller);
     if (out.refused) return res.status(401).json({ error: refusal(out) });
     res.json(out);
   } catch (e) { next(e); }

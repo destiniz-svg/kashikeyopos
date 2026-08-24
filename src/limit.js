@@ -67,6 +67,21 @@ function take(key, burst, windowMs) {
   return { ok: true };
 }
 
+/* Is there allowance left, WITHOUT spending it? The PIN door needs the two
+   halves separated: an attempt is checked before it is made and paid for only
+   if it turned out to be wrong. A counter signing its staff in correctly all
+   evening never spends a token, so the guard is invisible to the people it is
+   not aimed at — which is the difference between a doorman and a turnstile. */
+function room(key, burst, windowMs) {
+  const cap = burst * scale();
+  const now = Date.now();
+  const b = BUCKETS.get(key);
+  if (!b) return { ok: true, retry: 0 };
+  const tokens = Math.min(cap, b.tokens + (now - b.at) * (cap / windowMs));
+  if (tokens >= 1) return { ok: true, retry: 0 };
+  return { ok: false, retry: Math.ceil(((1 - tokens) * windowMs) / cap / 1000) };
+}
+
 function idHash(v) {
   return crypto.createHash('sha256').update(String(v).toLowerCase()).digest('hex').slice(0, 24);
 }
@@ -118,4 +133,4 @@ if (sweeper.unref) sweeper.unref();
 
 function _reset() { BUCKETS.clear(); }
 
-module.exports = { gate, take, _reset, _buckets: BUCKETS };
+module.exports = { gate, take, room, _reset, _buckets: BUCKETS };

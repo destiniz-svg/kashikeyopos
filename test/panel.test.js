@@ -124,6 +124,46 @@ test('the overview needs a session, and never carries a platform key', opts, asy
     JSON.stringify(o.body.installs[0].live));
 });
 
+test('the setup code is readable back, and never rides in the dashboard poll',
+  opts, async () => {
+  /* The code a customer types into their own /onboarding to claim the install.
+     The seller has to be able to read it back — that is the whole reason it is
+     in the registry rather than only in a Railway variable — but a credential
+     that grants ownership of an unclaimed install should be ASKED for, not
+     delivered every thirty seconds into a browser left open on a desk. */
+  const add = await call(panelBase, 'POST', '/api/installs', {
+    name: 'Coded Install', baseUrl: 'http://127.0.0.1:1',
+    platformKey: 'a-platform-key-0123456789abcdef-abc',
+    claimCode: 'the-setup-code-for-coded-install'
+  }, token);
+  assert.strictEqual(add.status, 200, JSON.stringify(add.body));
+
+  const o = await call(panelBase, 'GET', '/api/overview', undefined, token);
+  assert.ok(!JSON.stringify(o.body).includes('the-setup-code'),
+    'the dashboard poll carries no setup code');
+
+  assert.strictEqual((await call(panelBase, 'GET', '/api/installs/' + add.body.id + '/claim'))
+    .status, 401, 'and reading one back needs a session');
+
+  const back = await call(panelBase, 'GET', '/api/installs/' + add.body.id + '/claim',
+    undefined, token);
+  assert.strictEqual(back.status, 200);
+  assert.strictEqual(back.body.claimCode, 'the-setup-code-for-coded-install',
+    'the seller can read it back to a customer who lost it');
+  assert.strictEqual(back.body.set, true);
+
+  // An install recorded WITHOUT one says so rather than showing an empty box:
+  // no code recorded and no code required are the same string and different
+  // facts, and the seller is the one who has to tell them apart.
+  const bare = await call(panelBase, 'POST', '/api/installs', {
+    name: 'Uncoded Install', baseUrl: 'http://127.0.0.1:1',
+    platformKey: 'a-platform-key-0123456789abcdef-def'
+  }, token);
+  const none = await call(panelBase, 'GET', '/api/installs/' + bare.body.id + '/claim',
+    undefined, token);
+  assert.strictEqual(none.body.set, false, 'an install with no code recorded says so');
+});
+
 test('a short or http-in-production base URL is refused', opts, async () => {
   const shortKey = await call(panelBase, 'POST', '/api/installs',
     { name: 'X', baseUrl: 'https://x.example', platformKey: 'short' }, token);

@@ -52,6 +52,76 @@ test('the server starts on an empty database and reports not-ready', opts, async
 
 let token, outletId;
 
+test('a fresh install is claimed with a code, not by whoever gets there first',
+  opts, async () => {
+  /* chain.claim_first_owner() succeeds exactly ONCE in the life of an
+     installation, and the three steps before it cannot be behind a staff
+     session — the staff session is what step 3 creates. So they were behind
+     nothing, and a new install's hostname is in the certificate transparency
+     logs minutes after its first TLS handshake. Whoever POSTed first owned
+     the business.
+
+     Asserted here on the FENCE rather than on a completed claim, so the test
+     proves the door without writing a company the next test then rewrites. */
+  const prev = process.env.ONBOARDING_CLAIM_TOKEN;
+  process.env.ONBOARDING_CLAIM_TOKEN = 'setup-code-for-this-install';
+  try {
+    const advertised = await get('/api/onboarding/state');
+    assert.strictEqual(advertised.body.claimRequired, true,
+      'the panel is told a code is wanted');
+    assert.ok(!JSON.stringify(advertised.body).includes('setup-code-for-this-install'),
+      'and never told what it is');
+
+    const body = { legalName: 'Squatter Ltd', regNo: 'X-1', address: 'nowhere' };
+    for (const [label, headers] of [
+      ['with no code', {}],
+      ['with the wrong code', { 'x-claim-token': 'setup-code-for-this-instal' }],
+      ['with a longer wrong code', { 'x-claim-token': 'setup-code-for-this-installX' }]
+    ]) {
+      const r = await postWith('/api/onboarding/company', body, headers);
+      assert.strictEqual(r.status, 403, 'the company step is refused ' + label);
+      assert.strictEqual(r.body.claim, true, 'and says the refusal was the claim');
+    }
+
+    for (const step of ['outlet', 'owner']) {
+      const r = await postWith('/api/onboarding/' + step, {}, {});
+      assert.strictEqual(r.status, 403, 'the ' + step + ' step is fenced too');
+    }
+
+    /* The gate checks the code BEFORE the panel lets anybody type a company
+       name. This build's rule about the store handle applies here too: a green
+       tick must not be followed by a refusal on save. */
+    assert.strictEqual((await postWith('/api/onboarding/claim', {}, {})).status, 403,
+      'the gate refuses a missing code');
+    assert.strictEqual((await postWith('/api/onboarding/claim', {},
+      { 'x-claim-token': 'nope' })).status, 403, 'and a wrong one');
+    assert.strictEqual((await postWith('/api/onboarding/claim', {},
+      { 'x-claim-token': 'setup-code-for-this-install' })).status, 200,
+    'and lets the right one through without writing anything');
+
+    // With the code, the request reaches the handler — proved by the handler's
+    // own validation refusing it, which is a 400 and not a 403.
+    const through = await postWith('/api/onboarding/company', { legalName: 'X' },
+      { 'x-claim-token': 'setup-code-for-this-install' });
+    assert.strictEqual(through.status, 400,
+      'the right code is let past the fence and stopped by the form');
+
+    // asOwner, not one(): there is no outlet yet to scope a read to.
+    const squatter = await asOwner(
+      "SELECT count(*)::int AS n FROM chain.company WHERE legal_name = 'Squatter Ltd'");
+    assert.strictEqual(squatter.n, 0, 'and the squatter wrote nothing');
+  } finally {
+    if (prev === undefined) delete process.env.ONBOARDING_CLAIM_TOKEN;
+    else process.env.ONBOARDING_CLAIM_TOKEN = prev;
+  }
+
+  // Unset, the door is open again — an install onboarding itself on a counter
+  // has no seller to get a code from, and that is a stated decision, not a
+  // hole: the boot log says which of the two this install is.
+  const open = await get('/api/onboarding/state');
+  assert.strictEqual(open.body.claimRequired, false, 'and the fence is off by default');
+});
+
 test('onboarding writes the records the running app reads', opts, async () => {
   // 1 · company
   // This business IS registered for GST — everything below asserts GGST at 8%.
@@ -180,19 +250,54 @@ test('a series that has issued a number cannot be renumbered', opts, async () =>
     'a used series is refused — that is what makes the trail auditable');
 });
 
-test('the PIN pad locks rather than being probed', opts, async () => {
-  for (let i = 0; i < 6; i++) {
-    const r = await post('/api/auth/pin', { outletId, pin: '0000' });
-    assert.strictEqual(r.status, 401, 'a wrong PIN is refused');
-  }
-  const locked = await post('/api/auth/pin', { outletId, pin: '4718' });
-  assert.strictEqual(locked.status, 401, 'the right PIN is refused while the door is locked');
-  assert.match(locked.body.error, /locked/i, 'and it says so: ' + locked.body.error);
+test('a wrong PIN costs the caller, not the floor', opts, async () => {
+  /* The lockout that shipped was outlet-wide and free to trigger: five POSTs
+     from anybody killed every keypad in the building for fifteen minutes, on
+     repeat. Two tiers now, and this asserts BOTH — that one caller can only
+     lock itself, and that a distributed attempt still hits the old wall. */
+  const LIMIT = require('../src/limit');
+  const prev = process.env.RATE_LIMIT_SCALE;
+  process.env.RATE_LIMIT_SCALE = '1';
+  LIMIT._reset();
+  const till = () => uuid();
+  try {
+    // TIER ONE. Six wrong PINs from one till, and that till is refused.
+    const a = till();
+    for (let i = 0; i < 6; i++) {
+      const r = await post('/api/auth/pin', { outletId, pin: '0000', deviceId: a });
+      assert.strictEqual(r.status, 401, 'wrong PIN ' + (i + 1) + ' is refused');
+    }
+    const seventh = await post('/api/auth/pin', { outletId, pin: '0000', deviceId: a });
+    assert.strictEqual(seventh.status, 429, 'the seventh from that till is turned away');
+    assert.match(seventh.body.error, /this terminal/i,
+      'and it names the terminal, not the floor: ' + seventh.body.error);
 
-  // Unlock through the admin path so the rest of the suite can carry on.
-  const staff = await get('/api/auth/staff', token);
-  for (const s of staff.body.staff) {
-    await patch('/api/auth/staff/' + s.id, { unlock: true }, token);
+    // The whole point: the counter beside it is still taking money.
+    const beside = await post('/api/auth/pin', { outletId, pin: '4718' });
+    assert.strictEqual(beside.status, 200,
+      'the till beside it signs in — one caller cannot lock the building');
+
+    // TIER TWO. Forty wrong PINs at one outlet is no longer somebody
+    // mistyping, so the accounts themselves lock exactly as they always did.
+    // Reaching it costs seven distinct callers rather than one request.
+    for (let d = 0; d < 7; d++) {
+      const dev = till();
+      for (let i = 0; i < 6; i++) {
+        await post('/api/auth/pin', { outletId, pin: '0000', deviceId: dev });
+      }
+    }
+    const locked = await post('/api/auth/pin', { outletId, pin: '4718', deviceId: till() });
+    assert.strictEqual(locked.status, 401, 'the right PIN is refused once the accounts lock');
+    assert.match(locked.body.error, /locked/i, 'and it says so: ' + locked.body.error);
+  } finally {
+    // Unlock through the admin path, and give the doorman its allowance back,
+    // so the rest of the suite is not standing behind this test's attack.
+    const staff = await get('/api/auth/staff', token);
+    for (const s of staff.body.staff) {
+      await patch('/api/auth/staff/' + s.id, { unlock: true }, token);
+    }
+    process.env.RATE_LIMIT_SCALE = prev || '100';
+    LIMIT._reset();
   }
   const ok = await post('/api/auth/pin', { outletId, pin: '4718' });
   assert.strictEqual(ok.status, 200, 'and it opens again once unlocked');

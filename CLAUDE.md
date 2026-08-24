@@ -1170,6 +1170,68 @@ the one seam to move onto something shared. `RATE_LIMIT_SCALE` multiplies the
 ceilings so the test suite's single loopback address does not read as an attack;
 production ignores it.
 
+## The two doors that had nothing behind them
+
+**A wrong PIN cost the whole floor.** Five failures at an outlet locked EVERY
+account there for fifteen minutes, and anybody who could reach the endpoint
+could spend those five: no credential, no device, no cost, repeatable for as
+long as somebody cared to keep going. It was a security guard that doubled as
+a denial-of-service lever, and the lever was cheaper to pull than the attack it
+defended against.
+
+Two tiers now, and the difference between them is what the failures PROVE:
+
+- **the caller** — six wrong PINs and THIS caller is refused for fifteen
+  minutes: the till it was keyed on (`chain.device`), or the connection when
+  the caller is not a paired till. Somebody fat-fingering their own PIN slows
+  down and nobody else on the floor notices. An attacker can lock exactly one
+  thing, and it is themselves. The refusal says *this terminal*, because
+  telling an operator "the keypad is locked" while the till beside them takes
+  money teaches them the app lies;
+- **the outlet** — forty wrong PINs inside the same window is no longer
+  mistyping. It is a distributed attempt on a four-digit space, the accounts
+  are now at risk, and the original outlet-wide lockout engages exactly as it
+  always did. Getting there costs seven distinct callers rather than one
+  request.
+
+The budget is spent **only on failure** (`room()` checks, `take()` charges), so
+a counter signing its staff in correctly all evening never touches it — the
+difference between a doorman and a turnstile. A device id is client-supplied
+and forgeable, which only ever buys the forger more tier-one budget; what it
+buys everyone else is that one till's mistakes are never charged to the till
+beside it.
+
+**A fresh install went to whoever got there first.** `chain.claim_first_owner()`
+succeeds exactly ONCE in the life of an installation, and the three steps
+before it — company, first outlet, first owner — cannot be behind a staff
+session, because the staff session is what step 3 creates. So they were behind
+nothing, and the starting gun is public: a new install's hostname reaches the
+certificate transparency logs within minutes of its first TLS handshake, which
+is well inside the gap between provisioning it and the customer sitting down.
+
+`ONBOARDING_CLAIM_TOKEN` closes it, deliberately the same shape as Mission
+Control's `PANEL_SETUP_TOKEN`: a secret set on the install at provisioning and
+handed to the customer with their address, compared in constant time. The panel
+asks for it **once, up front** rather than as a field on step 1 — it is not a
+fact about the company, it is permission to create one, and putting it beside
+the legal name invites somebody to invent it the way they might invent a TIN.
+
+**Unset, the three steps stay open** — an install onboarding itself on a
+counter has no seller to get a code from — and the boot log says which of the
+two this install is, BY NAME. A fence that is silently absent is worse than no
+fence, because somebody believes in it.
+
+Mission Control holds the code (`panel.install.claim_code`) so a customer who
+has lost it rings the seller rather than Railway, and reveals it on its own
+request — never in the dashboard poll, because a credential that grants
+ownership of an unclaimed install should be asked for, not delivered every
+thirty seconds into a browser left open on a desk.
+
+The anonymous roster keeps its doorman too. It is readable before sign-in on
+purpose — the people on it are standing in front of the terminal — but "not a
+secret" is not "free to harvest": one connection asking four hundred times an
+hour is building a staff list, not opening a till.
+
 ## History has a horizon, the trail does not
 
 `chain.prune_history(op_days, guest_days)` (migration 025), called at boot and
@@ -1328,7 +1390,7 @@ separate services on their own ports and are not in this suite.
 ## Tests
 
 ```
-npm test                          # 239 tests
+npm test                          # 241 tests
 npm run leak-test                 # isolation, on its own
 ```
 
