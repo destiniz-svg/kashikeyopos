@@ -199,6 +199,51 @@ test('the settle button cannot book the same sale twice', () => {
   assert.strictEqual(F.state.modal.kind, 'settled', 'the modal settled, and stayed settled');
 });
 
+/* THE HALF-BUILT RECIPE USED TO BE THE PRICE OF A MISSING INGREDIENT. When the
+   search found nothing there was no way to create the item without leaving the
+   modal — and the lines entered so far live in that modal, so leaving discarded
+   them. The audit brief names this exact case: a user must be able to create a
+   missing ingredient from any ingredient-selection workflow without losing what
+   they have entered. */
+test('a missing ingredient can be created mid-recipe, and the recipe survives', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const dish = (FX.kpos().MENU || [])[0];
+  assert.ok(dish, 'the fixture has a dish to cost');
+  F.state.modal = { kind: 'recipeb', dish: dish.id, lines: [], q: '' };
+
+  // One line already entered — this is what used to be thrown away.
+  const firstItem = (F.__win.KPOS_RAW.items || []).filter((it) => F.aiCostable(it))[0];
+  assert.ok(firstItem, 'the fixture has a costable item');
+  F.state.modal = Object.assign({}, F.state.modal, { lines: [[firstItem[0], 100]] });
+
+  // Now search for something that does not exist, and create it inline.
+  F.state.modal = Object.assign({}, F.state.modal,
+    { q: 'Dhonkeyo Powder', newCost: '250', newUnit: 'KG' });
+  const before = (F.__win.KPOS_RAW.items || []).length;
+  F.overlayVals().rbNewGo();
+
+  const created = queued.filter((q) => q.kind === 'item_upsert').pop();
+  assert.ok(created, 'the item reaches the outlet, not just this browser');
+  assert.strictEqual((F.__win.KPOS_RAW.items || []).length, before + 1, 'and the master has it');
+
+  assert.ok(F.state.modal, 'the recipe modal is STILL OPEN — that is the whole fix');
+  assert.strictEqual(F.state.modal.kind, 'recipeb');
+  assert.strictEqual(F.state.modal.lines.length, 2,
+    'the line already entered survived, and the new item was added beside it');
+  assert.strictEqual(F.state.modal.lines[0][0], firstItem[0], 'in the order they were added');
+  assert.strictEqual(F.state.modal.q, '', 'and the search is cleared for the next one');
+
+  // A cost is required: an ingredient costed at nothing makes the dish look free.
+  F.state.modal = Object.assign({}, F.state.modal, { q: 'Nother Thing', newCost: '0' });
+  const n = queued.filter((q) => q.kind === 'item_upsert').length;
+  F.overlayVals().rbNewGo();
+  assert.strictEqual(queued.filter((q) => q.kind === 'item_upsert').length, n,
+    'a zero cost is refused rather than defaulted');
+});
+
 /* One number says where an order is, and every screen reads it. The pass
    bumped both lines and finished the table; Orders & Tickets printed the
    literal word "Open", because it read none of the three places the answer

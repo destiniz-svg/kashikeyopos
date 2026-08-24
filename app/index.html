@@ -1319,6 +1319,18 @@
                         </button>
                       </sc-for>
                     </div>
+                    <div style="{{ rbNewStyle }}">
+                      <div style="font-size:11.5px;color:var(--text-dim);line-height:1.55">{{ rbNewSay }}</div>
+                      <div style="display:flex;gap:7px;margin-top:9px">
+                        <input value="{{ rbNewCost }}" onChange="{{ onRbNewCost }}" inputmode="decimal" placeholder="Cost" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:12px;color:var(--text);outline:none"/>
+                        <select value="{{ rbNewUnit }}" onChange="{{ onRbNewUnit }}" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 8px;font-size:12px;color:var(--text);outline:none">
+                          <sc-for list="{{ rbUnitOpts }}" as="u" hint-placeholder-count="3">
+                            <option value="{{ u.v }}" label="{{ u.l }}"></option>
+                          </sc-for>
+                        </select>
+                      </div>
+                      <button onClick="{{ rbNewGo }}" style="width:100%;margin-top:8px;padding:10px;border-radius:999px;min-height:44px;background:var(--bg-2);border:1px solid var(--line-3);color:var(--text);font-size:12px;font-weight:700;text-align:center">{{ rbNewLabel }}</button>
+                    </div>
                   </div>
 
                   <div style="font-size:11px;color:var(--text-muted);line-height:1.6">{{ rbFoot }}</div>
@@ -6988,6 +7000,46 @@ class Component extends DCLogic {
           add: () => set({ lines: lines.concat([[it[0], startQty(it)]]), q: "" })
         })),
         rbResultsStyle: pool.length ? "display:flex;flex-direction:column;gap:5px;margin-top:8px;max-height:min(210px,26dvh);overflow-y:auto" : "display:none",
+        /* NOTHING MATCHED, AND THE RECIPE IS HALF BUILT. Leaving to create the
+           item used to be the only way forward, and leaving discarded every
+           line entered so far — the modal is where they live. So the item is
+           created HERE, and the only two facts that cannot be guessed are
+           asked for: what it costs and what it is bought by. A zero cost is
+           refused rather than defaulted, because an ingredient costed at
+           nothing makes the dish look free and quietly poisons every food-cost
+           figure that reads it. */
+        rbNewStyle: (m.q || "").trim().length >= 2 && !pool.length
+          ? "margin-top:9px;padding:12px;border:1px dashed var(--line-2);border-radius:11px"
+          : "display:none",
+        rbNewSay: "Nothing in the item master matches \u201c" + (m.q || "").trim()
+          + "\u201d. Create it without losing this recipe \u2014 what does it cost, and what is it bought by?",
+        rbNewCost: m.newCost == null ? "" : String(m.newCost),
+        onRbNewCost: (e) => set({ newCost: e.target.value }),
+        rbNewUnit: m.newUnit || "KG",
+        onRbNewUnit: (e) => set({ newUnit: e.target.value }),
+        rbUnitOpts: [{ v: "KG", l: "per kilo \u00b7 recipes in grams" },
+          { v: "LTR", l: "per litre \u00b7 recipes in ml" },
+          { v: "PCS", l: "per piece \u00b7 recipes in pieces" }],
+        rbNewLabel: "Create \u201c" + (m.q || "").trim().toUpperCase() + "\u201d and add it",
+        rbNewGo: () => {
+          const nm = (m.q || "").trim();
+          const cst = +String(m.newCost || "").replace(/[^\d.]/g, "") || 0;
+          if (nm.length < 2) return this.toast("Give the item a name first", "warn");
+          if (cst <= 0) return this.toast("A cost per purchase unit is required \u2014 an item costed at nothing makes the dish look free", "warn");
+          const stock = m.newUnit || "KG";
+          const base = stock === "KG" ? "GRM" : stock === "LTR" ? "ML" : "PCS";
+          const items = (raw.items || []);
+          const nid = items.reduce((a, x) => Math.max(a, x[0] || 0), 0) + 1;
+          const code = "IT-" + String(nid).padStart(4, "0");
+          const row = [nid, 1, nm.toUpperCase(), stock, cst, "raw", code, base, stock, "180", 100, 0, 0];
+          // Inserted WITHOUT closing the modal: the lines already entered are
+          // modal state, and closing is exactly what used to lose them.
+          this.insertRow("items", row, "Item created \u00b7 " + nm.toUpperCase() + " \u00b7 " + code
+            + " \u00b7 " + MVR(cst) + "/" + stock, "items", true);
+          const fresh = this.item(nid) || row;
+          set({ lines: lines.concat([[nid, startQty(fresh)]]), q: "", newCost: "", newUnit: stock });
+          this.toast(nm.toUpperCase() + " created and added to the recipe");
+        },
         rbBack: () => set({ dish: null, lines: [], q: "" }),
         rbSaveLabel: lines.length ? "Save recipe \u00b7 " + lines.length + " line" + (lines.length > 1 ? "s" : "") + " \u00b7 " + MVR(cost) + " a portion" : "Save an empty recipe",
         rbSave: () => this.patchRows("menu", [dish.id], { recipe: lines.map((r) => [r[0], r[1]]) },
@@ -12227,11 +12279,15 @@ class Component extends DCLogic {
     catch (e) { return null; }
   }
 
-  insertRow(k, row, label, entity) {
+  /* `keepModal` is for creating a record from inside another record's form —
+     a missing ingredient in the middle of a half-built recipe. Closing the
+     modal is what used to discard the lines already entered, so the caller
+     that owns unsaved state says "keep it open" and keeps its own. */
+  insertRow(k, row, label, entity, keepModal) {
     const arr = this.coll(k); if (arr) arr.unshift(row);
     const L = Object.assign({}, this.state.local || {});
     L[k] = (L[k] || []).concat([row]);
-    this.setState({ local: L, modal: null });
+    this.setState(keepModal ? { local: L } : { local: L, modal: null });
     const op = this.opFor(k, row);
     if (op) this.queue(op.kind, label, entity || k, op.payload);
     else this.queue((entity || k) + "_insert", label, entity || k);

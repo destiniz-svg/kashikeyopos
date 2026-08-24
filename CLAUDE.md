@@ -1279,7 +1279,7 @@ website — they set their own on their own install's `/account`.
 ## Tests
 
 ```
-npm test                          # 243 tests
+npm test                          # 244 tests
 npm run leak-test                 # isolation, on its own
 ```
 
