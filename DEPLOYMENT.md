@@ -297,6 +297,29 @@ every future deploy wipes the environment. The pre-deploy runs before the new
 container starts, so the sequence in a single deploy is: wipe, then migrate
 from nothing, then serve.
 
+## Mission Control — the seller's panel
+
+The product is sold one install per customer: each customer gets their own app
+service and their own Postgres, provisioned exactly as above. Mission Control
+is the seller's view across those installs. It ships in the same image and is
+selected by the start command — a separate Railway service from the same repo:
+
+```
+start command   node panel/server.js
+healthcheck     /readyz
+DATABASE_URL    its OWN small Postgres (the registry), never a customer's
+PANEL_SECRET    ≥32 chars — signs the admin session tokens
+PANEL_SETUP_TOKEN  gates the one-time first-run admin creation; spend it,
+                   then clear or rotate it
+```
+
+Each customer install sets `PLATFORM_KEY` (≥32 chars, unique per customer).
+Unset, `/api/platform/summary` is a 404 — an install that was never sold has
+no platform. The panel holds each key in its registry and probes server-side;
+the browser gets figures, never keys. To onboard a customer: provision their
+app + database, set their `PLATFORM_KEY`, then register the install in the
+panel with its base URL and that key.
+
 ## What is not automated, and needs a console
 
 Two things in this build cannot be verified from the repository and have to be
