@@ -244,11 +244,6 @@
       return api("/api/g/" + encodeURIComponent(state.slug) + "/request",
         { method: "POST", body: { table: state.table, kind: kind, detail: detail || "" } });
     },
-    member: function (phone) {
-      return api("/api/g/" + encodeURIComponent(state.slug) + "/member?phone="
-        + encodeURIComponent(phone));
-    },
-
     /* ── the member portal ──────────────────────────────────────────────────
        A member holds a card, not a table. Signing in is a code checked like a
        staff PIN, traded for a token that names ONE member id and carries no

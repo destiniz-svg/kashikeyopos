@@ -167,18 +167,18 @@ r.post('/:slug/request', guest, async function (req, res, next) {
 const CODE_MINS = 10;
 const CODE_TRIES = 5;
 
-// A member checks their own points by phone. It returns their record and
-// nothing else — no other member, no spend history from another outlet.
-r.get('/:slug/member', guest, async function (req, res, next) {
-  const phone = String(req.query.phone || '').trim();
-  if (phone.length < 6) return res.status(400).json({ error: 'phone required' });
-  try {
-    const row = await withOutletRead(req.ctx, (c) => c.query(
-      'SELECT name, points, joined_at FROM chain.member WHERE phone = $1',
-      [phone]).then((q) => q.rows[0] || null));
-    res.set('cache-control', 'no-store').json({ member: row });
-  } catch (e) { next(e); }
-});
+/* THERE IS NO LOOK-A-MEMBER-UP-BY-PHONE DOOR, AND THAT IS THE POINT.
+   `GET /:slug/member?phone=` used to answer with a customer's name, points and
+   join date behind nothing but a table token — and a table token is mintable by
+   anyone who can read a QR sticker. Walking a range of Maldivian mobile numbers
+   would have harvested the roster: who is a customer here, what they are called,
+   what they are worth. Every other door in this file keeps the opposite promise
+   — /member/start answers identically whether or not the address is known — so
+   this one contradicted the design rather than extending it.
+
+   Nothing called it: the card signs in with a code (/member/start → /verify),
+   which is the honest way to ask "am I a member here". It is deleted rather
+   than rate-limited, because a slower leak is still a leak. */
 
 r.post('/:slug/member/start', guest, gate('member-code', codeIssue, askedFor), async function (req, res, next) {
   // Either half of the membership: the phone on the card or the email on file.

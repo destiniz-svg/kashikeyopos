@@ -184,7 +184,13 @@ app.use(function (err, req, res, next) {          // eslint-disable-line no-unus
   const status = err.status || 500;
   // Never return a database message to a client: it names schemas and roles.
   if (status >= 500) console.error('[error]', err.stack || err.message);
-  res.status(status).json({ error: status >= 500 ? 'server error' : err.message });
+  /* Backpressure is the exception: a pool that ran out of connections is a
+     BUSY outlet, not a broken one, and the caller needs to know it may simply
+     go again. The message is ours, written for an operator, and names nothing
+     about the schema. */
+  if (err.retryable) res.set('retry-after', '1');
+  const speak = status < 500 || err.retryable;
+  res.status(status).json({ error: speak ? err.message : 'server error' });
 });
 
 const port = Number(process.env.PORT || 8080);

@@ -153,7 +153,8 @@ function owner() {
         password: process.env.PGPASSWORD || '',
         ssl
       });
-    ownerPool = guarded(new Pool(Object.assign(cfg, { max: 3, application_name: 'kashikeyo-owner' })), 'owner');
+    ownerPool = guarded(new Pool(Object.assign(cfg, { max: 3, connectionTimeoutMillis: CHECKOUT_MS,
+      application_name: 'kashikeyo-owner' })), 'owner');
   }
   return ownerPool;
 }
@@ -170,6 +171,7 @@ function poolFor(outletId) {
       ssl,
       max: Number(process.env.PGPOOL_MAX || 6),
       idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: CHECKOUT_MS,
       statement_timeout: Number(process.env.PGSTATEMENT_TIMEOUT || 15000),
       application_name: 'kashikeyo-outlet-' + id
     })), 'outlet-' + id));
@@ -237,6 +239,31 @@ async function setContext(client, ctx) {
    with no error raised. The caller then reports success on work that was
    discarded. Every commit is therefore checked — if the server said ROLLBACK,
    so do we, loudly. */
+/* WAITING FOR A CONNECTION IS NOT THE SAME AS RUNNING A SLOW QUERY.
+   `statement_timeout` bounds the query; nothing bounded the QUEUE. With more
+   transactions in flight than the pool holds, the next connect() waited for
+   ever — and the till's five-second retry piled on more waiters. It was the
+   first thing to fail under a burst, and it failed by HANGING, which is the
+   one failure a busy counter cannot see or act on.
+
+   Now the wait is bounded and the answer is a fast 503. That is safe by
+   construction on the sync path: a whole-request failure is a dead link as far
+   as the outbox is concerned, so nothing counts toward the dead-letter lane and
+   nothing is parked — the ops simply go again when the rush passes. */
+const CHECKOUT_MS = Number(process.env.PGCHECKOUT_TIMEOUT || 8000);
+
+async function checkout(pool) {
+  try {
+    return await pool.connect();
+  } catch (e) {
+    if (/timeout exceeded when trying to connect/i.test(e.message || '')) {
+      throw Object.assign(new Error('the outlet is busy — send it again in a moment'),
+        { status: 503, retryable: true });
+    }
+    throw e;
+  }
+}
+
 async function commit(client) {
   const q = await client.query('COMMIT');
   if (q && q.command === 'ROLLBACK') {
@@ -247,7 +274,7 @@ async function commit(client) {
 }
 
 async function withOutlet(ctx, fn) {
-  const client = await poolFor(ctx.outletId).connect();
+  const client = await checkout(poolFor(ctx.outletId));
   try {
     await client.query('BEGIN');
     await setContext(client, ctx);
@@ -264,7 +291,7 @@ async function withOutlet(ctx, fn) {
 
 // Read-only variant: a report can never be the thing that changed the books.
 async function withOutletRead(ctx, fn) {
-  const client = await poolFor(ctx.outletId).connect();
+  const client = await checkout(poolFor(ctx.outletId));
   try {
     await client.query('BEGIN READ ONLY');
     await setContext(client, ctx);
@@ -289,10 +316,11 @@ async function withEstate(ctx, fn) {
     reportPool = guarded(new Pool(Object.assign(baseConn(), {
       user: 'kashikeyo_report',
       password: process.env.REPORT_ROLE_PASSWORD || outletPassword('report'),
-      ssl, max: 2, application_name: 'kashikeyo-report'
+      ssl, max: 2, connectionTimeoutMillis: CHECKOUT_MS,
+      application_name: 'kashikeyo-report'
     })), 'report');
   }
-  const client = await reportPool.connect();
+  const client = await checkout(reportPool);
   try {
     await client.query('BEGIN READ ONLY');
     await setContext(client, { outletId: ctx.outletId || 0, rank: 5, actor: ctx.actor, scope: 'group' });
@@ -308,7 +336,7 @@ async function withEstate(ctx, fn) {
 /* Provisioning and migrations only. A route that needs this is a route with a
    design fault: the owner role bypasses both belts. */
 async function withOwner(fn) {
-  const client = await owner().connect();
+  const client = await checkout(owner());
   try {
     await client.query('BEGIN');
     const out = await fn(client);
@@ -335,7 +363,7 @@ function forget(outletId) {
   if (p) { pools.delete(id); p.end().catch(() => {}); }
 }
 
-module.exports = { _sslConfig: sslConfig, peerCaPem,
+module.exports = { _sslConfig: sslConfig, peerCaPem, _checkout: checkout,
   owner, poolFor, withOutlet, withOutletRead, withEstate, withOwner,
   setContext, commit, shutdown, forget
 };

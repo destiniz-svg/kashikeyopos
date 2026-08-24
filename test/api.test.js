@@ -2741,6 +2741,73 @@ test('the platform door does not exist until a key is set, then opens to it alon
     'clearing the key closes the door again');
 });
 
+test('a stranger cannot walk phone numbers and harvest the customer roster',
+  opts, async () => {
+    /* GET /g/<slug>/member?phone= answered with a customer's name, points and
+       join date behind only a table token — and a table token is mintable by
+       anyone who can read a QR sticker on a table. Every other door in the
+       guest file refuses to say whether an address is a customer; this one
+       said it, with their name attached. It is gone, not throttled. */
+    const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const slug = b.body.kpos.OUTLETS[0].slug;
+    const t = await get('/api/g/' + slug + '/token');
+    const table = { 'x-table-token': t.body.token };
+    assert.strictEqual(t.status, 200, 'the table token is freely mintable — that is the threat');
+
+    const known = await getWith('/api/g/' + slug + '/member?phone=9998877', table);
+    // The route is gone, so the path falls past the guest router into the
+    // session gate. What matters is that it never answers WITH A CUSTOMER.
+    assert.notStrictEqual(known.status, 200, 'the door does not open: ' + JSON.stringify(known.body));
+    assert.ok(!/Aishath|points|joined/i.test(JSON.stringify(known.body || {})),
+      'and it names nobody: ' + JSON.stringify(known.body));
+
+    // The honest way to ask "am I a member here" is still open, and it still
+    // answers the same for a stranger as for a customer. Asserted with the dev
+    // echo OFF, because that is production: MEMBER_CODE_ECHO returns the code
+    // in the body and is exactly the thing that would tell the two apart.
+    const echo = process.env.MEMBER_CODE_ECHO;
+    delete process.env.MEMBER_CODE_ECHO;
+    try {
+      const mine = await postWith('/api/g/' + slug + '/member/start', { phone: '9998877' }, table);
+      const nobody = await postWith('/api/g/' + slug + '/member/start', { phone: '9000001' }, table);
+      assert.strictEqual(mine.status, nobody.status, 'known and unknown answer alike');
+      assert.deepStrictEqual(mine.body, nobody.body, 'byte for byte');
+    } finally {
+      if (echo !== undefined) process.env.MEMBER_CODE_ECHO = echo;
+    }
+  });
+
+test('an exhausted pool answers fast and retryably, instead of hanging', opts, async () => {
+  /* statement_timeout bounds a running query; nothing bounded the WAIT for a
+     free connection. Past the pool's size the next checkout waited for ever
+     while the till's five-second retry piled on more waiters — the first thing
+     to fail under a burst, failing by hanging, which a busy counter cannot see.
+
+     Tested against a REAL pool, not a stub: the value of this test is proving
+     that pg's actual timeout wording is the wording the mapping matches. */
+  const { Pool } = require('pg');
+  const tiny = new Pool(Object.assign({
+    host: process.env.PGHOST, port: Number(process.env.PGPORT) || 5432,
+    database: process.env.PGTESTDB || 'kashikeyo_test',
+    user: process.env.PGUSER || 'postgres', password: process.env.PGPASSWORD || ''
+  }, { max: 1, connectionTimeoutMillis: 300 }));
+  const held = await tiny.connect();          // the only connection there is
+  try {
+    const began = Date.now();
+    await assert.rejects(() => db._checkout(tiny), (e) => {
+      assert.strictEqual(e.status, 503, 'a busy outlet is not a broken one');
+      assert.strictEqual(e.retryable, true, 'and the caller is told it may go again');
+      assert.doesNotMatch(e.message, /timeout exceeded|pool|connect/i,
+        'in words an operator can act on: ' + e.message);
+      return true;
+    });
+    assert.ok(Date.now() - began < 3000, 'and it answers fast, rather than hanging');
+  } finally {
+    held.release();
+    await tiny.end();
+  }
+});
+
 test('a killed idle connection is a log line, not an outage', opts, async () => {
   // A pool EMITS 'error' when an idle connection dies under it, and an
   // 'error' event nobody listens to kills the process — so a Postgres
