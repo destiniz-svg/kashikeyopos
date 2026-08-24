@@ -38,6 +38,8 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        022 sale knows redemption
                        023 wages are not tips · 024 device pushes
                        025 retention · 026 install identity
+src/routes/platform.js the one door an install opens to its seller — aggregates only
+panel/                 Mission Control — the seller's panel, its own service
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -1190,10 +1192,36 @@ an unhandled `'error'` event kills the process. The guard logs and lets the
 pool replace the corpse; `test/api.test.js` kills the pools' idle connections
 mid-suite to prove the process survives.
 
+## The product is sold one install per customer
+
+Each customer gets their own app service and their own database — that is what
+keeps every isolation guarantee in this file true per-customer by construction,
+and it is the fence against the staging-into-production replay class: separate
+databases, separate secrets, separate install uuids.
+
+**The platform door** (`src/routes/platform.js`): `GET /api/platform/summary`,
+guarded by `PLATFORM_KEY` (≥32 chars, constant-time compare). Unset, the door
+is a 404 — an install that was never sold has no platform. It answers
+AGGREGATES ONLY — company name, outlets, fourteen days of takings through the
+report role, device staleness — never members, staff, or line items; the test
+pins the exact response shape so nothing can ride in later. Every read lands
+on the audit trail as `platform_read`.
+
+**Mission Control** (`panel/`) is the seller's panel: a SEPARATE service
+(`node panel/server.js`) with its own small registry database. Admin sign-in
+is scrypt + HMAC tokens, first-run gated on `PANEL_SETUP_TOKEN`, the sign-in
+door rate-limited through `src/limit.js`. Each install's `PLATFORM_KEY` lives
+in the registry and is used SERVER-SIDE — the browser gets figures, never
+keys. The page (`panel/panel.html` + `panel.js`) is vanilla DOM through a
+textContent-only builder (a customer's install name must not script the
+seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
+AND label; trials carry their deadline; an unreachable install says why.
+Trial enforcement is a person's decision, not automated — the panel monitors.
+
 ## Tests
 
 ```
-npm test                          # 214 tests
+npm test                          # 215 tests
 npm run leak-test                 # isolation, on its own
 ```
 

@@ -1,0 +1,352 @@
+/* ═══ MISSION CONTROL — THE PAGE ═════════════════════════════════════════════
+   Vanilla DOM, no framework, no build. Everything on screen is a figure the
+   server measured or an honest empty state — the panel never invents a
+   number, and a status is always an icon AND a label, never a colour alone.
+   All content goes through textContent (the `el` helper), so a customer's
+   install name cannot script the seller's panel. */
+(function () {
+  "use strict";
+
+  var TOKEN = null;
+  try { TOKEN = localStorage.getItem("panel.token"); } catch (e) {}
+  var root = document.getElementById("app");
+  var timer = null;
+
+  /* ── tiny DOM builder: attributes set, text set, nothing parsed ───────── */
+  function el(tag, attrs, kids) {
+    var n = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === "text") n.textContent = attrs[k];
+      else if (k === "onclick") n.addEventListener("click", attrs[k]);
+      else n.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) n.appendChild(c); });
+    return n;
+  }
+  function frag(kids) { var f = document.createDocumentFragment(); kids.forEach(function (c) { if (c) f.appendChild(c); }); return f; }
+  function mount(view) { root.className = view.cls || ""; root.replaceChildren(view.node); }
+
+  function api(method, path, body) {
+    return fetch(path, {
+      method: method,
+      headers: Object.assign({ "content-type": "application/json" },
+        TOKEN ? { authorization: "Bearer " + TOKEN } : {}),
+      body: body === undefined ? undefined : JSON.stringify(body)
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        var b = null; try { b = t ? JSON.parse(t) : null; } catch (e) { b = null; }
+        return { status: r.status, body: b };
+      });
+    });
+  }
+
+  function setToken(t) {
+    TOKEN = t;
+    try { t ? localStorage.setItem("panel.token", t) : localStorage.removeItem("panel.token"); } catch (e) {}
+  }
+
+  function fmtMoney(n, cur) {
+    var v = Number(n) || 0;
+    return (cur || "") + " " + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function daysUntil(dateStr) {
+    if (!dateStr) return null;
+    var d = new Date(String(dateStr).slice(0, 10) + "T23:59:59");
+    return Math.ceil((d - new Date()) / 86400e3);
+  }
+
+  /* ── gate screens ─────────────────────────────────────────────────────── */
+  function gateCard(title, sub, fields, ctaLabel, onSubmit) {
+    var err = el("div", { class: "err", style: "display:none" });
+    var inputs = {};
+    var form = el("form", {}, [err].concat(fields.map(function (f) {
+      inputs[f.name] = el("input", { type: f.type || "text", placeholder: f.ph || "",
+        autocomplete: f.auto || "off", required: "" });
+      return el("div", { class: "field" }, [el("label", { text: f.label }), inputs[f.name]]);
+    })).concat([el("button", { class: "cta", type: "submit", text: ctaLabel })]));
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      err.style.display = "none";
+      var vals = {}; Object.keys(inputs).forEach(function (k) { vals[k] = inputs[k].value; });
+      onSubmit(vals, function (msg) { err.textContent = msg; err.style.display = "block"; });
+    });
+    return { cls: "center", node: el("div", { class: "gatecard" }, [
+      el("div", { class: "brand", style: "margin-bottom:16px" }, [
+        el("span", { class: "dot" }), el("b", { text: "Mission Control" })]),
+      el("h1", { text: title }), el("div", { class: "sub", text: sub }), form]) };
+  }
+
+  function showSetup() {
+    mount(gateCard("Set up the panel",
+      "First run. The setup token is the PANEL_SETUP_TOKEN value from this service's environment — proof you are the person who deployed it.",
+      [{ name: "token", label: "Setup token", type: "password" },
+       { name: "email", label: "Your email", type: "email", auto: "username" },
+       { name: "password", label: "Password (12+ characters)", type: "password", auto: "new-password" }],
+      "Create the admin", function (v, fail) {
+        api("POST", "/api/setup", v).then(function (r) {
+          if (r.status !== 200) return fail((r.body && r.body.error) || "setup failed");
+          setToken(r.body.token); showDash();
+        });
+      }));
+  }
+
+  function showSignin() {
+    mount(gateCard("Sign in", "The seller's view across every install.",
+      [{ name: "email", label: "Email", type: "email", auto: "username" },
+       { name: "password", label: "Password", type: "password", auto: "current-password" }],
+      "Sign in", function (v, fail) {
+        api("POST", "/api/signin", v).then(function (r) {
+          if (r.status !== 200) return fail((r.body && r.body.error) || "sign-in failed");
+          setToken(r.body.token); showDash();
+        });
+      }));
+  }
+
+  /* ── the dashboard ────────────────────────────────────────────────────── */
+  function statusOf(inst) {
+    var l = inst.live || {};
+    if (l.state === "archived") return { cls: "mute", label: "Archived" };
+    if (l.state === "live") {
+      if (!l.summary || !l.summary.company) return { cls: "onb", label: "Onboarding open" };
+      return { cls: "live", label: "Live" };
+    }
+    if (l.state === "nokey") return { cls: "warn", label: "No platform key", note: l.note };
+    if (l.state === "refused") return { cls: "bad", label: "Key refused", note: l.note };
+    return { cls: "bad", label: "Unreachable", note: l.note };
+  }
+
+  function trialChip(inst) {
+    if (inst.kind !== "trial") return null;
+    var d = daysUntil(inst.trial_ends);
+    if (d === null) return el("span", { class: "chip mute" }, [el("span", { class: "pip" }),
+      document.createTextNode("Trial · no end date")]);
+    if (d < 0) return el("span", { class: "chip bad" }, [el("span", { class: "pip" }),
+      document.createTextNode("Trial ended " + (-d) + "d ago")]);
+    if (d <= 7) return el("span", { class: "chip warn" }, [el("span", { class: "pip" }),
+      document.createTextNode("Trial · " + (d === 0 ? "ends today" : d + "d left"))]);
+    return el("span", { class: "chip mute" }, [el("span", { class: "pip" }),
+      document.createTextNode("Trial · ends " + String(inst.trial_ends).slice(0, 10))]);
+  }
+
+  /* One hue, 2px, honest about zero — the standard stat-tile trend mark. */
+  function sparkline(days) {
+    var W = 100, H = 34, PAD = 3;
+    var nets = (days || []).map(function (d) { return Number(d.net) || 0; });
+    if (!nets.length) return null;
+    var max = Math.max.apply(null, nets), min = 0;
+    var span = (max - min) || 1;
+    var pts = nets.map(function (v, i) {
+      var x = PAD + (i / Math.max(1, nets.length - 1)) * (W - 2 * PAD);
+      var y = H - PAD - ((v - min) / span) * (H - 2 * PAD);
+      return [x, y];
+    });
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("height", "44");
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Last 14 days of net takings");
+    var pl = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    pl.setAttribute("points", pts.map(function (p) { return p[0].toFixed(1) + "," + p[1].toFixed(1); }).join(" "));
+    pl.setAttribute("fill", "none");
+    pl.setAttribute("stroke", "var(--fwd)");
+    pl.setAttribute("stroke-width", "2");
+    pl.setAttribute("stroke-linejoin", "round");
+    pl.setAttribute("vector-effect", "non-scaling-stroke");
+    svg.appendChild(pl);
+    var last = pts[pts.length - 1];
+    var dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    dot.setAttribute("cx", last[0].toFixed(1)); dot.setAttribute("cy", last[1].toFixed(1));
+    dot.setAttribute("r", "2.6"); dot.setAttribute("fill", "var(--fwd-bright)");
+    svg.appendChild(dot);
+    return svg;
+  }
+
+  function installCard(inst, reload) {
+    var st = statusOf(inst);
+    var s = (inst.live || {}).summary || null;
+    var today = s && s.days && s.days.length ? s.days[s.days.length - 1] : null;
+    var cur = s && s.company ? s.company.currency : "";
+
+    var meta = [];
+    if (s) {
+      meta.push(el("span", { text: (s.outlets || []).length + " outlet" + ((s.outlets || []).length === 1 ? "" : "s") }));
+      var dv = s.devices || {};
+      if (dv.writers) {
+        var t = dv.writers + " till" + (dv.writers === 1 ? "" : "s");
+        meta.push(dv.quiet ? el("span", { class: "warn-t", text: t + " · " + dv.quiet + " quiet >1h" })
+          : el("span", { text: t + " · all pushing" }));
+      } else meta.push(el("span", { text: "no tills paired yet" }));
+      if (today) meta.push(el("span", { text: today.covers + " covers today" }));
+      if (s.commit) meta.push(el("span", { class: "mono", text: String(s.commit).slice(0, 7) }));
+    } else if (st.note) {
+      meta.push(el("span", { class: "warn-t", text: st.note }));
+    }
+    if (inst.kind === "paid") meta.push(el("span", { text: "Paid" }));
+    if (inst.kind === "internal") meta.push(el("span", { text: "Internal" }));
+
+    var figs = null;
+    if (s) {
+      figs = el("div", { class: "figs" }, [
+        el("div", { class: "today" }, [
+          el("div", { class: "k", text: "Today, net" }),
+          el("div", { class: "v mono", text: today ? fmtMoney(today.net, cur) : "—" })]),
+        sparkline(s.days)]);
+    }
+
+    return el("div", { class: "card" + (inst.archived ? " archived" : "") }, [
+      el("div", { class: "head" }, [
+        el("div", { class: "nm" }, [
+          el("b", { text: inst.name }),
+          el("span", { text: s && s.company ? s.company.name + " · " + inst.base_url.replace(/^https:\/\//, "")
+            : inst.base_url.replace(/^https:\/\//, "") })]),
+        el("span", { class: "chip " + st.cls }, [el("span", { class: "pip" }),
+          document.createTextNode(st.label)])]),
+      trialChip(inst) ? el("div", {}, [trialChip(inst)]) : null,
+      figs,
+      meta.length ? el("div", { class: "meta" }, meta) : null,
+      inst.notes ? el("div", { class: "note", text: inst.notes }) : null,
+      el("div", { class: "foot" }, [
+        el("a", { href: inst.base_url, target: "_blank", rel: "noopener", style: "text-decoration:none" },
+          [el("button", { class: "mini", text: "Open" })]),
+        el("span", { class: "grow" }),
+        el("button", { class: "mini", text: "Edit", onclick: function () { sheet(inst, reload); } })])]);
+  }
+
+  function kpis(installs) {
+    var act = installs.filter(function (i) { return !i.archived; });
+    var live = act.filter(function (i) { var c = statusOf(i).cls; return c === "live" || c === "onb"; });
+    var unreachable = act.filter(function (i) { var c = statusOf(i).cls; return c === "bad" || c === "warn"; });
+    var trialsSoon = act.filter(function (i) {
+      if (i.kind !== "trial") return false;
+      var d = daysUntil(i.trial_ends);
+      return d !== null && d <= 7;
+    });
+    var byCur = {};
+    live.forEach(function (i) {
+      var s = (i.live || {}).summary;
+      if (!s || !s.company || !s.days || !s.days.length) return;
+      var last = s.days[s.days.length - 1];
+      byCur[s.company.currency] = (byCur[s.company.currency] || 0) + (Number(last.net) || 0);
+    });
+    var curKeys = Object.keys(byCur);
+    var tiles = [
+      { k: "Installs", v: String(act.length), s: installs.length > act.length ? (installs.length - act.length) + " archived" : "every one on this page" },
+      { k: "Live now", v: String(live.length), s: act.length ? "of " + act.length + " installs" : "nothing to reach yet" },
+      { k: "Trials ending ≤7d", v: String(trialsSoon.length), s: trialsSoon.length ? trialsSoon.map(function (i) { return i.name; }).join(", ") : "no deadlines this week" },
+      { k: "Unreachable", v: String(unreachable.length), s: unreachable.length ? unreachable.map(function (i) { return i.name; }).join(", ") : "every install answered" }
+    ];
+    if (curKeys.length) tiles.push({
+      k: "Today, all live installs",
+      v: curKeys.map(function (c) { return fmtMoney(byCur[c], c); }).join("  ·  "),
+      s: "net of " + live.length + " live install" + (live.length === 1 ? "" : "s"), small: true });
+    return el("div", { class: "kpis" }, tiles.map(function (t) {
+      return el("div", { class: "kpi" }, [
+        el("div", { class: "k", text: t.k }),
+        el("div", { class: "v", text: t.v, style: t.small ? "font-size:17px" : "" }),
+        el("div", { class: "s", text: t.s })]);
+    }));
+  }
+
+  /* ── add / edit sheet ─────────────────────────────────────────────────── */
+  function sheet(inst, reload) {
+    var isNew = !inst;
+    var err = el("div", { class: "err", style: "display:none" });
+    function fail(m) { err.textContent = m; err.style.display = "block"; }
+    var f = {
+      name: el("input", { placeholder: "Seaside Café", value: inst ? inst.name : "" }),
+      baseUrl: el("input", { placeholder: "https://pos-customer.up.railway.app", value: inst ? inst.base_url : "" }),
+      platformKey: el("input", { type: "password", placeholder: isNew ? "the PLATFORM_KEY set on that install" : "leave blank to keep the current key" }),
+      kind: el("select", {}, ["trial", "paid", "internal"].map(function (k) {
+        var o = el("option", { value: k, text: k[0].toUpperCase() + k.slice(1) });
+        if (inst && inst.kind === k) o.setAttribute("selected", "");
+        return o;
+      })),
+      trialEnds: el("input", { type: "date", value: inst && inst.trial_ends ? String(inst.trial_ends).slice(0, 10) : "" }),
+      notes: el("input", { placeholder: "who this is, contact, anything worth remembering", value: inst ? inst.notes : "" })
+    };
+    function field(label, input) { return el("div", { class: "field" }, [el("label", { text: label }), input]); }
+    var save = el("button", { class: "cta", text: isNew ? "Add the install" : "Save", onclick: function () {
+      var body = { name: f.name.value, baseUrl: f.baseUrl.value, kind: f.kind.value,
+        trialEnds: f.trialEnds.value || null, notes: f.notes.value };
+      if (isNew || f.platformKey.value) body.platformKey = f.platformKey.value;
+      var call = isNew ? api("POST", "/api/installs", body)
+        : api("PATCH", "/api/installs/" + inst.id, body);
+      call.then(function (r) {
+        if (r.status !== 200) return fail((r.body && r.body.error) || "save failed");
+        close(); reload();
+      });
+    } });
+    var kids = [err, field("Name", f.name), field("Base URL", f.baseUrl),
+      field("Platform key", f.platformKey),
+      el("div", { class: "row2" }, [field("Kind", f.kind), field("Trial ends", f.trialEnds)]),
+      field("Notes", f.notes),
+      el("div", { class: "acts" }, [save])];
+    if (!isNew) kids.push(el("div", { style: "margin-top:14px;text-align:center" }, [
+      el("button", { class: "mini", text: inst.archived ? "Restore this install" : "Archive this install",
+        onclick: function () {
+          api("PATCH", "/api/installs/" + inst.id, { archived: !inst.archived }).then(function (r) {
+            if (r.status !== 200) return fail((r.body && r.body.error) || "failed");
+            close(); reload();
+          });
+        } })]));
+    var scrim = el("div", { class: "scrim" }, [
+      el("div", { class: "sheet" }, [
+        el("h2", { text: isNew ? "Add an install" : inst.name }),
+        el("div", { class: "sub", text: isNew
+          ? "One customer, one install: their app service's address and the PLATFORM_KEY you set on it."
+          : "The key is held server-side and never shown back." })].concat(kids))]);
+    scrim.addEventListener("click", function (ev) { if (ev.target === scrim) close(); });
+    function close() { scrim.remove(); }
+    document.body.appendChild(scrim);
+  }
+
+  /* ── dashboard shell + refresh loop ───────────────────────────────────── */
+  function showDash() {
+    if (timer) clearInterval(timer);
+    var body = el("div", {});
+    var updated = el("div", { class: "updated" });
+    var page = el("div", { class: "wrap" }, [
+      el("div", { class: "top" }, [
+        el("div", { class: "brand" }, [el("span", { class: "dot" }),
+          el("b", { text: "Mission Control" }), el("span", { text: "KashikeyoPOS" })]),
+        el("span", { class: "grow" }),
+        el("button", { class: "primary", text: "Add install", onclick: function () { sheet(null, load); } }),
+        el("button", { class: "ghost", text: "Sign out", onclick: function () {
+          setToken(null); if (timer) clearInterval(timer); showSignin();
+        } })]),
+      body, updated]);
+    mount({ cls: "", node: page });
+
+    function load() {
+      api("GET", "/api/overview").then(function (r) {
+        if (r.status === 401) { setToken(null); if (timer) clearInterval(timer); return showSignin(); }
+        if (r.status !== 200) {
+          body.replaceChildren(el("div", { class: "empty" }, [
+            el("b", { text: "The panel could not read its registry" }),
+            document.createTextNode((r.body && r.body.error) || "try again in a moment")]));
+          return;
+        }
+        var installs = r.body.installs || [];
+        if (!installs.length) {
+          body.replaceChildren(el("div", { class: "empty" }, [
+            el("b", { text: "No installs registered yet" }),
+            document.createTextNode("Add your first customer's install — its base URL and the PLATFORM_KEY you set on it.")]));
+        } else {
+          body.replaceChildren(frag([kpis(installs),
+            el("div", { class: "cards" }, installs.map(function (i) { return installCard(i, load); }))]));
+        }
+        updated.textContent = "Updated " + new Date(r.body.at).toLocaleTimeString();
+      });
+    }
+    load();
+    timer = setInterval(load, 60e3);
+  }
+
+  /* ── boot ─────────────────────────────────────────────────────────────── */
+  api("GET", "/api/state").then(function (r) {
+    if (r.body && r.body.setup) return showSetup();
+    if (TOKEN) return showDash();
+    showSignin();
+  });
+}());

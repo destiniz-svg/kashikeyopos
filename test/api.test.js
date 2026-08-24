@@ -2535,6 +2535,58 @@ test('every install has a name, and the bootstrap says it', opts, async () => {
   assert.strictEqual(row.id, inst, 'and it is the database\'s own name');
 });
 
+test('the platform door does not exist until a key is set, then opens to it alone', opts, async () => {
+  // The product is sold one install per customer, and the seller's panel
+  // reads each install through this one door. Unset, the door is a 404 —
+  // indistinguishable from any other unknown path, so an install that was
+  // never sold advertises nothing.
+  delete process.env.PLATFORM_KEY;
+  assert.strictEqual((await get('/api/platform/summary')).status, 404,
+    'no key configured — no door');
+
+  // A short key is a weak key, and a weak key is no key.
+  process.env.PLATFORM_KEY = 'short';
+  assert.strictEqual(
+    (await getWith('/api/platform/summary', { authorization: 'Bearer short' })).status,
+    404, 'under 32 characters never enables the door');
+
+  const KEY = 'platform-test-key-0123456789abcdef-0123456789';
+  process.env.PLATFORM_KEY = KEY;
+  assert.strictEqual((await get('/api/platform/summary')).status, 401, 'no bearer — refused');
+  assert.strictEqual(
+    (await getWith('/api/platform/summary',
+      { authorization: 'Bearer ' + KEY.slice(0, -1) + 'X' })).status,
+    401, 'a wrong key is refused');
+
+  const r = await getWith('/api/platform/summary', { authorization: 'Bearer ' + KEY });
+  assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+
+  // AGGREGATES ONLY — the whole shape is pinned, so a member list or a staff
+  // roster cannot ride in later without failing here first.
+  assert.deepStrictEqual(Object.keys(r.body).sort(),
+    ['at', 'commit', 'company', 'days', 'devices', 'install', 'outlets']);
+  assert.match(String(r.body.install),
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    'the install names itself: ' + r.body.install);
+  assert.strictEqual(r.body.company.name, 'Test Trading Pvt Ltd');
+  assert.ok(r.body.outlets.length >= 1, 'the outlets are listed');
+  assert.deepStrictEqual(Object.keys(r.body.outlets[0]).sort(),
+    ['currency', 'id', 'name', 'slug', 'tz'], 'an outlet row is identity, not trade');
+  assert.strictEqual(typeof r.body.devices.writers, 'number');
+  assert.strictEqual(typeof r.body.devices.quiet, 'number');
+  assert.strictEqual(r.body.days.length, 14, 'fourteen days, oldest first');
+  const last = r.body.days[13];
+  assert.ok(last.net > 0, 'today carries the suite\'s own settled sales: ' + JSON.stringify(last));
+
+  // The read is on the trail: a platform looking in is never invisible.
+  const trail = await asOwner("SELECT count(*)::int AS n FROM chain.audit WHERE action = 'platform_read'");
+  assert.ok(trail.n >= 1, 'platform_read audited');
+
+  delete process.env.PLATFORM_KEY;
+  assert.strictEqual((await get('/api/platform/summary')).status, 404,
+    'clearing the key closes the door again');
+});
+
 test('a killed idle connection is a log line, not an outage', opts, async () => {
   // A pool EMITS 'error' when an idle connection dies under it, and an
   // 'error' event nobody listens to kills the process — so a Postgres

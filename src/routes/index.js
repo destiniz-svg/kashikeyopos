@@ -10,6 +10,8 @@ r.use('/account', require('./account'));
 r.use('/auth', require('./auth'));
 r.use('/onboarding', require('./onboarding'));
 r.use('/g', require('./guest'));
+// The platform door authenticates with its own key, or does not exist at all.
+r.use('/platform', require('./platform'));
 
 // Everything below needs a staff session.
 r.use(session, groupScope);
