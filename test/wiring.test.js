@@ -164,6 +164,41 @@ test('an op that carries a consequence carries its payload', () => {
     'the payment records what was handed over, not only what was owed');
 });
 
+/* A double-tap on the settle button used to book the sale twice. The button
+   has no disabled state and queue() mints a fresh opId on every call, so the
+   server's op_log could not dedup the two — the evening's bill went through
+   twice and the drawer over-counted. The guard reads the modal state, which
+   the first tap flipped to "settled" synchronously, and returns the second. */
+test('the settle button cannot book the same sale twice', () => {
+  const F = H.makeInstance({ kpos: FX.kpos(), raw: FX.raw(), real: FX.real() });
+  const queued = [];
+  F.__win.KPOS_SYNC = { enqueue: (op) => { queued.push(op); return op.opId; } };
+
+  const slot = 1, key = F.state.outletId + ':' + slot;
+  const tk = Object.assign(F.blankTicket(), {
+    waiter: 'Test Cashier', party: 4, bizDate: F.today(),
+    lines: [{ id: 'm1', qty: 2, note: '', split: 0, fired: true, since: 1, firedAt: Date.now() }]
+  });
+  F.state.tickets = Object.assign({}, F.state.tickets, { [key]: tk });
+  F.state.activeTable = slot;
+  F.state.register = { open: true, float: 1000, openedBy: 'u_owner', openedAt: Date.now() };
+  F.ticketPanelVals({ kind: 'ticket', slot: slot }).tkPay();
+  F.state.modal = Object.assign({}, F.state.modal, { given: '1000' });
+
+  // Two taps on the still-mounted button, before the DOM re-renders. The
+  // overlay closure is captured ONCE, exactly as a real double-tap reuses the
+  // same button's handler.
+  const pay = F.overlayVals();
+  pay.confirmPay();
+  pay.confirmPay();
+
+  const sales = queued.filter((q) => q.kind === 'sale');
+  assert.strictEqual(sales.length, 1, 'one tap, one sale — not ' + sales.length);
+  const closes = queued.filter((q) => q.kind === 'close_ticket');
+  assert.strictEqual(closes.length, 1, 'and the ticket is closed once');
+  assert.strictEqual(F.state.modal.kind, 'settled', 'the modal settled, and stayed settled');
+});
+
 /* One number says where an order is, and every screen reads it. The pass
    bumped both lines and finished the table; Orders & Tickets printed the
    literal word "Open", because it read none of the three places the answer

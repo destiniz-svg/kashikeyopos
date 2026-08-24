@@ -6143,6 +6143,19 @@ class Component extends DCLogic {
             this.toast("Share " + (paidN + 1) + " of " + evenN + " paid · " + MVRc(T.total - paidAmt - due) + " left to collect");
             return;
           }
+          /* DOUBLE-TAP GUARD. From here the settle is irreversible: it mints an
+             invoice number, queues the sale, books it, and only THEN flips the
+             modal to "settled" — all synchronous. The confirm button has no
+             disabled state and the DOM re-render is asynchronous, so a second
+             tap on the still-mounted button lands here before the button is
+             gone. queue() mints a fresh opId on every call, so the server's
+             op_log cannot dedup two sales — the till would book the evening's
+             bill twice and over-count the drawer. The state, unlike the DOM,
+             updates synchronously (the card and split paths above both read it
+             back), so the first tap has already set the modal to "settled" and
+             the second returns here. A throw before the flip leaves it "pay",
+             so a genuine retry still works. */
+          if (this.state.modal && this.state.modal.kind === "settled") return;
           const gname = this.guestLabel(gAll[gIdx]);
           const snapshot = {
             no: this.docNext("INV").no,
@@ -14184,6 +14197,12 @@ class Component extends DCLogic {
         pre: (r) => ({ amt: String(Math.round(r.max)), kind: "full" }),
         onSave: (v, row) => {
           const ord = row || {};
+          // Double-tap guard, the same shape as the pay screen's: authorising a
+          // refund queues a refund op with a fresh opId the server cannot dedup,
+          // then closes the form. The first tap nulls the modal synchronously,
+          // so a second tap on the still-mounted button returns here; a
+          // deliberate later refund reopens the form and proceeds.
+          if (!this.state.modal) return;
           const amt = +v.amt || 0;
           if (amt <= 0) return this.toast("Enter the amount to refund", "warn");
           if (ord.max && amt > ord.max + 0.005) return this.toast("A refund cannot exceed the " + MVRc(ord.max) + " taken — issue a credit note instead", "warn");
