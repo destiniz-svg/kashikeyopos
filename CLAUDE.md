@@ -52,6 +52,7 @@ app/onboarding.html    the fourteen-step panel an empty install lands on
 app/guest.html         the QR portal
 app/member.html        the member card
 app/kashikeyo-rules.js allergen + diet rules, loaded by BOTH browser and server
+app/kashikeyo-yield.js  what a kilo plates — the estimate BOTH runtimes read
 app/kashikeyo-invite.js the invitation's copy, loaded by BOTH browser and server
 app/kashikeyo-data.js  structure that ships (chart, ranks, units, labels) — no trade
 app/kashikeyo-api.js   the durable outbox and the API client
@@ -356,10 +357,43 @@ sales (nothing left the shelf, and 1200 used to be credited anyway — that was
 the defect), and the till's percentage estimate stays on the sale row as the
 margin figure it is, so the food-cost card still reads.
 
-Quantities still come from the till's recipe expansion. Re-deriving those
-server-side — addons, modifiers, sub-recipes — is the remaining half, and it is
-open; the yield factor it needs is now an outlet fact rather than a device one,
-which is what had made the comparison impossible to do without crying wolf.
+**And HOW MUCH is the server's answer too, now.** The value was re-derived; the
+quantity was still the till's word, computed against whatever menu that browser
+was holding — so a device offline across a recipe change deducted yesterday's
+recipe for ever, and the only symptom was a ledger that drifted a little every
+service until a count found it weeks later with nothing to attribute it to.
+
+`deriveConsumption()` in `src/apply.js` re-derives the expansion from the
+outlet's own `recipe_line`, its own batches and its own measured yields — a
+recursive walk in the database, bounded at twelve levels because a sauce whose
+batch draws on itself does not error an unbounded `UNION ALL`, it hangs. Where
+the outlet can answer, the outlet answers; the till's figures move to
+`server_audit.qty_mismatch` **by ingredient**, and `recipe_drift` goes on the
+trail, so a stale device names itself in the first bill it rings.
+
+Three things it deliberately does not do. It does not reject — the money is
+taken. It does not fire where there is nothing to compare: a dish with no
+recipe moves no stock on either side, so the two agree at zero. And **a partial
+derivation never replaces a whole one** — if any sold item is one this outlet
+has never heard of, or the walk hit its cap, the till's figures stand and the
+REASON is stamped (`qty_underived`), because overwriting them with a partial
+answer would under-deduct the shelf.
+
+The yield table is now **one file both runtimes read** — `app/kashikeyo-yield.js`,
+loaded by the browser as a script and required by the server as a module,
+exactly like `kashikeyo-rules.js`. It matters here for the same reason: a check
+computed from a DIFFERENT table is not a check, it is a second opinion, and the
+disagreement would present as a stock discrepancy on every bill in the shop.
+`test/api.test.js` runs the SHIPPED terminal's `saleTrail()` in a vm against a
+real outlet's bootstrap and the server's derivation against the same outlet, on
+the same bill, and asserts they agree to six places.
+
+Writing this found something else: the API fixtures had been sending the
+PLATED quantity — 400 g of fish for two 200 g portions — which is not what any
+real terminal has ever sent, because a kitchen takes a whole fish off the shelf
+to plate a fillet and the till has always grossed up by the yield first. The
+tests passed because the server accepted whatever it was given. They send what
+the terminal sends now, computed from that same shared table.
 
 **What a kilo actually plates is an OUTLET fact.** A recipe says how much of an
 ingredient reaches the plate; what has to LEAVE THE SHELF to put it there is a
@@ -1669,8 +1703,9 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 265 tests
+npm test                          # 283 tests
 npm run leak-test                 # isolation, on its own
+node src/scripts/loadtest.js ...  # stages A–G — see LOAD.md
 ```
 
 `test/harness.js` loads the terminal's logic class into a vm and sweeps it:

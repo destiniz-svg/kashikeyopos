@@ -10,6 +10,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
+/* THE SAME TABLE THE TILL AND THE SERVER BOTH READ. A fixture that spells its
+   own quantities is a third opinion: these figures used to be written by hand
+   as the PLATED amount, which is not what any real terminal has ever sent —
+   a kitchen takes a whole fish off the shelf to plate 200g of fillet, and the
+   till has always grossed up by the yield before queueing the move. The tests
+   passed anyway, because the server accepted whatever it was given. */
+const YIELD = require('../app/kashikeyo-yield.js');
+const gross = (name, net) => YIELD.grossQty(YIELD.shipped(name), net);
 const DB = require('./db');
 
 DB.secrets();
@@ -202,7 +210,13 @@ test('onboarding writes the records the running app reads', opts, async () => {
   ] }, token);
   await post('/api/onboarding/dishes', { dishes: [
     { id: 'm1', name: 'Grilled Reef Fish', cat: 'mains', price: 185, station: 'grill', recipe: [['ing_fish', 200, 4], ['ing_oil', 15, 0]] },
-    { id: 'm2', name: 'Garlic Rice', cat: 'sides', price: 45, station: 'main', recipe: [['ing_rice', 120, 2], ['ing_oil', 10, 0]] }
+    { id: 'm2', name: 'Garlic Rice', cat: 'sides', price: 45, station: 'main', recipe: [['ing_rice', 120, 2], ['ing_oil', 10, 0]] },
+    /* A DISH THE KITCHEN DOES NOT MAKE. Nobody writes a recipe for a bottle of
+       water, and plenty of cafés write one for nothing at all — so this is the
+       fixture for every test whose subject is the money rather than the shelf.
+       Selling a dish that HAS a recipe while claiming no stock moved is not a
+       café, it is a till that lost its expansion, and the server now says so. */
+    { id: 'm3', name: 'Bottled water', cat: 'sides', price: 25, station: 'main', recipe: [] }
   ] }, token);
   await post('/api/onboarding/zones', { zones: [{ zones: [{ id: 'main', name: 'Main floor', pos: 1 }] }] }, token);
   await post('/api/onboarding/tables', { tables: [
@@ -331,7 +345,13 @@ test('a sale settles exactly once, however many times it is pushed', opts, async
   const raw = sub + svc + tax;
   const total = Math.round(raw * 2) / 2;     // cash rounds to the nearest 50 laari
   const rounding = round(total - raw);
-  const cogs = round(2 * (200 * 0.18 + 15 * 0.028) + 2 * (120 * 0.032 + 10 * 0.028));
+  /* What the till really sends: the PURCHASED quantity needed to plate the
+     recipe, grossed up by the ingredient's yield. And what it costs, at the
+     figure the server will re-value it at anyway. */
+  const gFish = gross('Reef fish', 2 * 200);
+  const gOil = gross('Sunflower oil', 2 * 15 + 2 * 10);
+  const gRice = gross('Basmati rice', 2 * 120);
+  const cogs = round(round(gFish * 0.18) + round(gOil * 0.028) + round(gRice * 0.032));
 
   const op = {
     opId: uuid(), kind: 'sale', lamport: 10, at: Date.now(),
@@ -346,9 +366,9 @@ test('a sale settles exactly once, however many times it is pushed', opts, async
       ],
       payments: [{ method: 'cash', amt: total, tendered: 600, chg: round(600 - total) }],
       stockMoves: [
-        { ing: 'ing_fish', qty: 400, cost: 0.18, value: 72 },
-        { ing: 'ing_oil', qty: 50, cost: 0.028, value: 1.4 },
-        { ing: 'ing_rice', qty: 240, cost: 0.032, value: 7.68 }
+        { ing: 'ing_fish', qty: gFish, cost: 0.18, value: round(gFish * 0.18) },
+        { ing: 'ing_oil', qty: gOil, cost: 0.028, value: round(gOil * 0.028) },
+        { ing: 'ing_rice', qty: gRice, cost: 0.032, value: round(gRice * 0.032) }
       ]
     }
   };
@@ -379,7 +399,9 @@ test('a sale settles exactly once, however many times it is pushed', opts, async
 
   // Stock fell by exactly what the recipe consumed.
   const fish = await one("SELECT on_hand FROM ingredient WHERE id = 'ing_fish'");
-  assert.strictEqual(Number(fish.on_hand), 10000 - 400, 'the ingredient moved once, not four times');
+  assert.ok(Math.abs(Number(fish.on_hand) - (10000 - gFish)) < 0.001,
+    'the ingredient moved once, not four times — and by what the RECIPE says'
+    + ' left the shelf: ' + fish.on_hand);
 
   // And the books square.
   const tb = await one('SELECT sum(dr) AS dr, sum(cr) AS cr FROM journal_line');
@@ -459,8 +481,10 @@ test('the bootstrap carries this outlet and no trade from anywhere else', opts, 
   assert.strictEqual(k.OUTLETS.length, 1, 'one outlet');
   assert.strictEqual(k.OUTLETS[0].rate, 8, 'the rate in force is resolved, not defaulted');
   assert.strictEqual(k.OUTLETS[0].tables, 3, 'the floor came with it');
-  assert.strictEqual(k.MENU.length, 2, 'the menu came with it');
-  assert.strictEqual(k.MENU[0].recipe.length, 2, 'and its recipe');
+  assert.strictEqual(k.MENU.length, 3, 'the menu came with it');
+  // By id, not by position: a menu gains a dish and an index moves.
+  assert.strictEqual((k.MENU.find((m) => m.id === 'm1') || {}).recipe.length, 2,
+    'and its recipe');
   assert.strictEqual(k.ACCOUNTS.length, 38, 'the chart is complete');
   assert.strictEqual(k.MODULES, undefined, 'the module catalogue ships with the app, not the payload');
   assert.strictEqual(r.body.state.settled.length, 1, 'the one sale');
@@ -808,7 +832,7 @@ test('a credit sale moves the balance, and an overrun is recorded not rejected',
       bizDate: today(), covers: 1, sub: 200, disc: 0, net: 200, svc: 0,
       tax: 0, round: 0, total: 200, taxCode: 'NONE', taxLabel: '', taxRate: 0,
       member: mid, customer: 'Credit Customer',
-      sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 200, amount: 200 }],
+      sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 200, amount: 200 }],
       payments: [{ method: 'credit', amt: 200 }], stockMoves: []
     } }]);
     assert.ok(!within.body.results[0].error, JSON.stringify(within.body.results[0]));
@@ -824,7 +848,7 @@ test('a credit sale moves the balance, and an overrun is recorded not rejected',
       bizDate: today(), covers: 1, sub: 150, disc: 0, net: 150, svc: 0,
       tax: 0, round: 0, total: 150, taxCode: 'NONE', taxLabel: '', taxRate: 0,
       member: mid, customer: 'Credit Customer',
-      sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 150, amount: 150 }],
+      sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 150, amount: 150 }],
       payments: [{ method: 'credit', amt: 150 }], stockMoves: []
     } }]);
     assert.ok(!over.body.results[0].error, 'the sale is NOT rejected: ' + JSON.stringify(over.body.results[0]));
@@ -1392,7 +1416,7 @@ test('points are awarded by the outlet, never by the terminal', opts, async () =
     member: m.id, customer: 'Member Two',
     // The terminal claims a thousand points. It does not get to.
     points: 1000,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 500, amount: 500 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 500, amount: 500 }],
     payments: [{ method: 'cash', amt: 500, tendered: 500 }], stockMoves: []
   } }]);
   assert.strictEqual(r.status, 200, JSON.stringify(r.body));
@@ -1427,7 +1451,7 @@ test('a redemption releases the liability, and hides in no rounding line',
         tax: 0, round: 0, total: 250, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
         member: mid, customer: 'Points Spender',
         pts: 200, ptsValue: 50,
-        sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 300, amount: 300 }],
+        sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 300, amount: 300 }],
         payments: [{ method: 'qr', amt: 250, tendered: 250 }], stockMoves: []
       } }
     ]);
@@ -1480,7 +1504,7 @@ test('a tax figure struck at the wrong rate is recorded and flagged', opts, asyn
   const ok = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 8, round: 0, total: 108, taxCode: 'GGST', taxLabel: 'GST', taxRate: 8,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 108, tendered: 108 }], stockMoves: []
   } }]);
   const okRow = await one('SELECT server_audit FROM sale WHERE id = $1',
@@ -1491,7 +1515,7 @@ test('a tax figure struck at the wrong rate is recorded and flagged', opts, asyn
   const bad = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 6, round: 0, total: 106, taxCode: 'GGST', taxLabel: 'GST', taxRate: 6,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 106, tendered: 106 }], stockMoves: []
   } }]);
   assert.ok(!bad.body.results[0].error, 'the sale is NOT rejected: money was taken');
@@ -1507,7 +1531,7 @@ test('a tax figure struck at the wrong rate is recorded and flagged', opts, asyn
   const zero = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }], stockMoves: []
   } }]);
   const zeroRow = await one('SELECT server_audit FROM sale WHERE id = $1',
@@ -1583,7 +1607,11 @@ test('a full shift ties: gross to net to tax to cash to COGS', opts, async () =>
   // ── the trade ───────────────────────────────────────────────────────────
   const bill = (o) => ({ opId: uuid(), kind: 'sale', payload: Object.assign({
     bizDate: day, covers: 2, taxCode: 'GGST', taxLabel: 'GGST 8%', taxRate: 8,
-    sold: [{ id: 'm1', name: 'Dish', qty: 1, price: o.net, amount: o.net }],
+    /* A dish with no recipe, deliberately: this shift's subject is the money,
+       and the stock move is hand-picked so the COGS arithmetic below is a
+       known figure rather than a recipe explosion. Where the outlet HAS a
+       recipe the server derives what left the shelf — that is its own test. */
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: o.net, amount: o.net }],
     stockMoves: [{ ing: ing.id, qty: 2, cost: 0, value: 0 }]
   }, o) });
 
@@ -1912,7 +1940,7 @@ test('an outlet that tracks no stock is not flagged on every bill', opts, async 
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
     cogs: 30,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100, cost: 30 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100, cost: 30 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }],
     stockMoves: []
   } }]);
@@ -1951,7 +1979,7 @@ test('the stock ledger and account 1200 are one figure, not two', opts, async ()
     tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
     // The till's own valuation is deliberately nonsense in both fields.
     cogs: 999,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }],
     stockMoves: [{ ing: ing.id, qty: qty, cost: 999, value: 999 }]
   } }]);
@@ -1984,7 +2012,7 @@ test('a sale that oversells says which ingredient went short', opts, async () =>
   const r = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 50, disc: 0, net: 50, svc: 0,
     tax: 0, round: 0, total: 50, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 50, amount: 50 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 50, amount: 50 }],
     payments: [{ method: 'cash', amt: 50, tendered: 50 }],
     stockMoves: [{ ing: ing.id, qty: take, cost: 1, value: take }]
   } }]);
@@ -2039,7 +2067,7 @@ test('a sale with no member accrues nothing', opts, async () => {
   const r = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }], stockMoves: []
   } }]);
   const lines = await one(
@@ -2163,7 +2191,7 @@ test('a sale replayed is one sale, one payment, one journal', opts, async () => 
   const op = { opId, kind: 'sale', payload: {
     bizDate: today(), covers: 2, sub: 200, disc: 0, net: 200, svc: 0, tax: 0,
     round: 0, total: 200, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 200, amount: 200 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 200, amount: 200 }],
     payments: [{ method: 'cash', amt: 200, tendered: 200 }], stockMoves: []
   } };
 
@@ -2222,7 +2250,7 @@ test('a replayed sale does not award its points a second time', opts, async () =
     bizDate: today(), covers: 1, sub: 500, disc: 0, net: 500, svc: 0, tax: 0,
     round: 0, total: 500, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
     member: m.id,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 500, amount: 500 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 500, amount: 500 }],
     payments: [{ method: 'cash', amt: 500, tendered: 500 }], stockMoves: []
   } };
   await push([op]);
@@ -2235,6 +2263,168 @@ test('a replayed sale does not award its points a second time', opts, async () =
   assert.ok(Number(once.points) > Number(m.points), 'and it did earn on the first');
 });
 
+/* ═══ THE OTHER HALF OF "STOCK AND THE LEDGER ARE ONE FIGURE" ══════════════
+   The server already decides what a consumed portion is WORTH. What it took on
+   trust until now was HOW MUCH — the quantities came from the till's own recipe
+   expansion, against whatever menu that browser happened to be holding.
+
+   A device offline across a recipe change deducts yesterday's recipe for ever,
+   and the only symptom is a stock ledger that drifts a little every service
+   until a count finds it, weeks later, with nothing to attribute it to. */
+test('the recipe this outlet holds decides what left the shelf', opts, async () => {
+  // An ingredient whose name the shipped yield table does NOT match, so the
+  // arithmetic here is the recipe's and not an estimate's: 1.0 yield, 2% trim.
+  await push([{ opId: uuid(), kind: 'item_upsert', payload: {
+    id: 'ing_drift', name: 'Kurumba pith', base: 'g', stock: 'g',
+    factor: 1, cost: 0.4 } }]);
+  await push([{ opId: uuid(), kind: 'grn_priced', payload: {
+    lines: [{ ing: 'ing_drift', qty: 50000, cost: 0.4 }], supplier: 'Drift Supply',
+    total: 20000, invoice: 'DR-1' } }]);
+
+  await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: 'dish_drift', name: 'Drift dish', price: 120 } }]);
+  // 200 g on the plate, per dish.
+  await push([{ opId: uuid(), kind: 'recipe_update', payload: {
+    item: 'dish_drift', lines: [['ing_drift', 200]] } }]);
+
+  const before = Number((await one(
+    'SELECT on_hand FROM ingredient WHERE id = $1', ['ing_drift'])).on_hand);
+
+  /* The till rings two, and sends a quantity from a recipe that said 150 g —
+     the shape a stale device produces. Gross for 2 × 200 g at a 1.0 yield and
+     2% trim is 400 / 0.98 = 408.163…; the till's stale figure is 300 / 0.98. */
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 240, disc: 0, net: 240, svc: 0, tax: 0,
+    round: 0, total: 240, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'dish_drift', name: 'Drift dish', qty: 2, price: 120, amount: 240 }],
+    payments: [{ method: 'cash', amt: 240, tendered: 240 }],
+    stockMoves: [{ ing: 'ing_drift', qty: 306.122449, cost: 0.4, value: 122.45 }]
+  } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+
+  const after = Number((await one(
+    'SELECT on_hand FROM ingredient WHERE id = $1', ['ing_drift'])).on_hand);
+  const moved = before - after;
+  assert.ok(Math.abs(moved - 408.163265) < 0.01,
+    'the shelf lost what the OUTLET\'s recipe says, not what the device'
+    + ' believed — moved ' + moved.toFixed(4));
+
+  const sale = await one("SELECT id, cogs, server_audit FROM sale"
+    + " WHERE receipt_no IS NOT NULL ORDER BY at DESC LIMIT 1");
+  const drift = (sale.server_audit || {}).qty_mismatch;
+  assert.ok(drift, 'and the divergence is stamped: ' + JSON.stringify(sale.server_audit));
+  assert.strictEqual(drift.items.length, 1);
+  assert.strictEqual(drift.items[0].ing, 'ing_drift',
+    'named by ingredient — "stock is off somewhere" is not an answer');
+  assert.ok(Math.abs(drift.items[0].recipe - 408.1633) < 0.01
+    && Math.abs(drift.items[0].till - 306.1224) < 0.01,
+    'with both figures, so somebody can see which device is stale: '
+    + JSON.stringify(drift.items[0]));
+
+  // On the trail as well as on the row — that is where somebody looks for
+  // "when did this start".
+  // asOwner: an outlet's login role has INSERT on chain.audit and nothing
+  // else, so reading the trail back is a support job by design.
+  const trail = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+    + " WHERE action = 'recipe_drift' AND outlet_id = $1", [outletId]);
+  assert.ok(trail.n >= 1, 'a manager can find it without reading sale rows');
+});
+
+test('a sale the outlet cannot cost keeps the till\'s figures, and says why',
+  opts, async () => {
+    /* THE OTHER DIRECTION, and it is the one that could do damage. A dish the
+       outlet has never heard of — created on a device that has not pushed it
+       yet — cannot be expanded here. Replacing the till's moves with a partial
+       derivation would under-deduct the shelf, which is worse than trusting
+       the device. So the till's figures stand and the REASON is recorded. */
+    const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+      bizDate: today(), covers: 1, sub: 90, disc: 0, net: 90, svc: 0, tax: 0,
+      round: 0, total: 90, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+      sold: [{ id: 'dish_never_pushed', name: 'Offline dish', qty: 1,
+        price: 90, amount: 90 }],
+      payments: [{ method: 'cash', amt: 90, tendered: 90 }],
+      stockMoves: [{ ing: 'ing_drift', qty: 100, cost: 0.4, value: 40 }]
+    } }]);
+    assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+
+    const sale = await one('SELECT id, server_audit FROM sale ORDER BY at DESC LIMIT 1');
+    const why = (sale.server_audit || {}).qty_underived;
+    assert.ok(why, 'the reason is on the row: ' + JSON.stringify(sale.server_audit));
+    assert.ok(/does not carry/.test(why.why), why.why);
+    assert.ok(!(sale.server_audit || {}).qty_mismatch,
+      'and it is NOT reported as a divergence — there is nothing to diverge'
+      + ' from, and a flag that fires on the absence of a figure is one nobody'
+      + ' reads by the second week');
+
+    const mv = await one('SELECT sum(abs(qty)) AS q FROM stock_move'
+      + ' WHERE sale_id = $1', [sale.id]);
+    assert.strictEqual(Math.round(Number(mv.q)), 100,
+      "the till's own quantity moved, unaltered");
+  });
+
+test('a cafe with no recipes at all is never flagged', opts, async () => {
+  /* The anti-wolf-crying case, asserted rather than assumed. An outlet costing
+     its menu at a flat percentage sends a COGS estimate and NO stock moves, on
+     every bill, for ever. */
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 60, disc: 0, net: 60, svc: 0, tax: 0,
+    round: 0, total: 60, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    cogs: 18,
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 60, amount: 60 }],
+    payments: [{ method: 'cash', amt: 60, tendered: 60 }], stockMoves: []
+  } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+  const sale = await one('SELECT cogs, server_audit FROM sale ORDER BY at DESC LIMIT 1');
+  const a = sale.server_audit || {};
+  assert.ok(!a.qty_mismatch && !a.qty_underived && !a.cogs_mismatch,
+    'nothing to compare, so nothing is claimed: ' + JSON.stringify(a));
+  assert.strictEqual(Number(sale.cogs), 18,
+    "and the till's percentage estimate stays on the row as the margin figure"
+    + ' it is, rather than being zeroed');
+});
+
+/* ═══ THE TILL'S EXPANSION AND THE SERVER'S, ON THE SAME OUTLET ════════════
+   The server's derivation is only worth having if it is the SAME expansion the
+   till performs. Two expansions that disagree would present as a stock
+   discrepancy on every bill — and it would be the check, not the till, that
+   was wrong.
+
+   So this runs both: the SHIPPED terminal source in a vm, fed this outlet's
+   real bootstrap, and the server's own derivation against the same outlet, on
+   the same bill. Not two retyped copies of the arithmetic — the two that
+   actually run in production. */
+test('the till and the server expand one recipe to one answer', opts, async () => {
+  const HARNESS = require('./harness');
+  const { deriveConsumption } = require('../src/apply');
+
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.strictEqual(boot.status, 200);
+  const dish = (boot.body.kpos.MENU || []).find((m) => (m.recipe || []).length);
+  assert.ok(dish, 'the fixture outlet has a dish with a recipe');
+
+  const F = HARNESS.makeInstance({ kpos: boot.body.kpos, raw: boot.body.raw || {} });
+  const till = F.saleTrail({ sold: [[dish.id, 3]], T: {} }).stock
+    .map((s) => ({ ing: String(s.id), qty: Number(s.used.toFixed(6)) }))
+    .sort((a, b) => (a.ing < b.ing ? -1 : 1));
+  assert.ok(till.length, 'the terminal expanded it to something');
+
+  const server = await db.withOutletRead({ outletId, rank: 5, actor: null },
+    (c) => deriveConsumption(c, [{ id: dish.id, qty: 3 }]));
+  assert.strictEqual(server.complete, true, server.reason || '');
+  const srv = server.moves
+    .map((m) => ({ ing: String(m.ing), qty: Number(m.qty.toFixed(6)) }))
+    .sort((a, b) => (a.ing < b.ing ? -1 : 1));
+
+  /* Compared as JSON: `till` was built by the vm's own Array.prototype.map,
+     so its objects carry the sandbox realm's prototypes and deepStrictEqual
+     would fail on that rather than on any number. */
+  assert.strictEqual(JSON.stringify(srv), JSON.stringify(till),
+    'the same bill, the same recipe, the same yields — and therefore the same'
+    + ' quantities, to six places. A divergence here is not a stock finding,'
+    + ' it is these two implementations having drifted:\n  till   '
+    + JSON.stringify(till) + '\n  server ' + JSON.stringify(srv));
+});
+
 test('a tip is held for the team, not booked as rounding', opts, async () => {
   // The guest hands over 100 for a 90 bill: the payment carries the whole
   // note, the bill total stays 90, and the 10 is a liability from the moment
@@ -2243,7 +2433,7 @@ test('a tip is held for the team, not booked as rounding', opts, async () => {
   const r = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 2, sub: 90, disc: 0, net: 90, svc: 0,
     tax: 0, round: 0, total: 100, tip: 10, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 90, amount: 90 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 90, amount: 90 }],
     payments: [{ method: 'cash', amt: 100, tip: 10, tendered: 100 }], stockMoves: []
   } }]);
   const res = r.body.results[0];
@@ -3250,7 +3440,7 @@ test('a split bill lands each share on its own account, to the laari', opts, asy
   const r = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 3, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 2, price: 50, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 2, price: 50, amount: 100 }],
     payments: [
       { method: 'cash', amt: 33.33, tendered: 33.33 },
       { method: 'card', amt: 33.33, tendered: 33.33, ref: '111111' },
@@ -3456,7 +3646,7 @@ test('one outlet\'s ops cannot reach another outlet, by token or by side effect'
   const r = await push([{ opId: opId, kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 10, disc: 0, net: 10, svc: 0, tax: 0,
     round: 0, total: 10, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 10, amount: 10 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 10, amount: 10 }],
     payments: [{ method: 'cash', amt: 10 }], stockMoves: []
   } }]);
   assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
@@ -3594,7 +3784,7 @@ test('voiding a settled sale reverses its money, stock, points and credit',
       bizDate: today(), covers: 2, sub: 200, disc: 0, net: 200, svc: 0,
       tax: 0, round: 0, total: 200, taxCode: 'NONE', taxLabel: '', taxRate: 0,
       member: mid, customer: 'Void Customer',
-      sold: [{ id: 'm1', name: 'Test dish', qty: 2, price: 100, amount: 200 }],
+      sold: [{ id: 'm3', name: 'Bottled water', qty: 2, price: 100, amount: 200 }],
       payments: [{ method: 'credit', amt: 200 }], stockMoves: []
     } }]);
     const saleId = sold.body.results[0].result.saleId;
@@ -3643,7 +3833,7 @@ test('voiding a settled sale reverses its money, stock, points and credit',
     const other = await push([{ opId: uuid(), kind: 'sale', payload: {
       bizDate: today(), covers: 1, sub: 50, disc: 0, net: 50, svc: 0,
       tax: 0, round: 0, total: 50, taxCode: 'NONE', taxLabel: '', taxRate: 0,
-      sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 50, amount: 50 }],
+      sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 50, amount: 50 }],
       payments: [{ method: 'cash', amt: 50, tendered: 50 }], stockMoves: []
     } }]);
     const bare = await push([{ opId: uuid(), kind: 'void_sale',
@@ -3668,7 +3858,7 @@ test('a refund marked "untouched — return to stock" actually returns it', opts
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, taxCode: 'NONE', taxLabel: '', taxRate: 0,
     cogs: round(2 * cost),
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }],
     stockMoves: [{ ing: ing.id, qty: 2, cost: cost, value: round(2 * cost) }]
   } }]);
@@ -3690,7 +3880,7 @@ test('a refund marked "untouched — return to stock" actually returns it', opts
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, taxCode: 'NONE', taxLabel: '', taxRate: 0,
     cogs: round(cost),
-    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    sold: [{ id: 'm3', name: 'Bottled water', qty: 1, price: 100, amount: 100 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }],
     stockMoves: [{ ing: ing.id, qty: 1, cost: cost, value: round(cost) }]
   } }]);

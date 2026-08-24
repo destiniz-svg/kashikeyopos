@@ -17,6 +17,7 @@
    ═══════════════════════════════════════════════════════════════════════ */
 
 const RULES = require('../app/kashikeyo-rules.js');
+const YIELD = require('../app/kashikeyo-yield.js');
 
 const num = (v) => (v == null || v === '' ? 0 : Number(v) || 0);
 const r2 = (v) => Math.round(num(v) * 100) / 100;
@@ -213,7 +214,32 @@ async function applySale(c, p, ctx) {
      client ones that nothing compared. */
   let stockValue = 0;
   const oversold = [];
-  for (const m of arr(p.stockMoves)) {
+
+  /* WHAT MOVED is the outlet's own recipe where the outlet can answer, and the
+     till's expansion where it cannot. See deriveConsumption(): a partial
+     answer never replaces a whole one, because under-deducting the shelf is
+     worse than trusting the device. */
+  const derived = await deriveConsumption(c, arr(p.sold));
+  const supplied = arr(p.stockMoves);
+  /* Where the outlet can answer, the outlet answers — including for a till
+     that sent no moves at all, which is what an older build does: the recipe
+     says stock left the shelf, so stock left the shelf. But a DIVERGENCE still
+     needs two numbers, so nothing is flagged unless the till sent its own. */
+  const useDerived = derived.complete && derived.moves.length > 0;
+  const qtyOff = useDerived && supplied.length
+    ? quantityGap(derived.moves, supplied) : [];
+
+  // The till's own row for an ingredient, kept for the location it named —
+  // which shelf a portion came off is a fact about the floor, not the recipe.
+  const locOf = new Map();
+  supplied.forEach((m) => { if (m.loc) locOf.set(String(m.ing), m.loc); });
+
+  const moving = useDerived
+    ? derived.moves.map((m) => ({ ing: m.ing, qty: m.qty, cost: 0, value: 0,
+      loc: locOf.get(String(m.ing)) || null }))
+    : supplied;
+
+  for (const m of moving) {
     const mv = await moveStock(c, ctx, {
       ing: m.ing, qty: -Math.abs(num(m.qty)), cost: num(m.cost),
       value: r2(m.value), reason: 'sale', saleId: sale.id, loc: m.loc || null
@@ -239,7 +265,7 @@ async function applySale(c, p, ctx) {
      both zero and agree — and the till's percentage estimate stays on the sale
      row as the margin figure it is, while the ledger books no cost of sales
      because no stock left the shelf. */
-  const tracked = arr(p.stockMoves).length > 0;
+  const tracked = moving.length > 0;
   const cogsAudit = tracked && Math.abs(cogsClaimed - stockValue) > 0.05
     ? { cogs: cogsClaimed, stockValue,
       note: 'the till valued this sale differently from the stock it moved;'
@@ -262,17 +288,46 @@ async function applySale(c, p, ctx) {
     await c.query('UPDATE sale SET cogs = $2 WHERE id = $1', [sale.id, stockValue]);
   }
 
-  const audit = (tied || unregisteredAudit || creditAudit || taxAudit || cogsAudit || shortAudit)
+  /* The till's expansion disagreed with the outlet's own recipe. The ledger
+     is written from the recipe; what the device believed is kept here, by
+     ingredient, so somebody can see WHICH one and by how much — a device
+     carrying a stale menu names itself in the first bill it rings. */
+  const qtyAudit = qtyOff.length
+    ? { items: qtyOff,
+      note: 'the till deducted different quantities from the recipe this'
+        + ' outlet holds; the stock ledger is written from the recipe and the'
+        + " till's figures are kept here — usually a device that has been"
+        + ' offline across a recipe change' }
+    : null;
+  /* And the other direction: the server could not derive it at all. Not a
+     divergence — there is nothing to diverge from — but it IS the reason the
+     till's numbers were taken on trust, and that reason belongs on the row
+     rather than nowhere. */
+  const underived = supplied.length && !derived.complete && derived.reason
+    ? { why: derived.reason, items: derived.unknown.length ? derived.unknown : undefined }
+    : null;
+
+  const audit = (tied || unregisteredAudit || creditAudit || taxAudit || cogsAudit
+    || shortAudit || qtyAudit || underived)
     ? Object.assign({ at: new Date().toISOString() }, tied || {},
       unregisteredAudit ? { unregistered: unregisteredAudit } : {},
       taxAudit ? { tax_mismatch: taxAudit } : {},
       cogsAudit ? { cogs_mismatch: cogsAudit } : {},
+      qtyAudit ? { qty_mismatch: qtyAudit } : {},
+      underived ? { qty_underived: underived } : {},
       shortAudit ? { stock_short: shortAudit } : {},
       creditAudit ? { credit_over: creditAudit } : {})
     : null;
   if (audit) {
     await c.query('UPDATE sale SET server_audit = $2 WHERE id = $1',
       [sale.id, JSON.stringify(audit)]);
+  }
+  /* On the trail as well as on the row. A stale recipe on one device shows up
+     as a stock discrepancy weeks later, on a count, with nothing to attribute
+     it to; the trail is where somebody looks for "when did this start". */
+  if (qtyAudit) {
+    await log(c, 'recipe_drift', 'sale', sale.id, null,
+      { receipt: sale.receipt_no, device: ctx.device || null, items: qtyOff });
   }
 
   /* The loyalty programme, read ONCE and before the journal is built,
@@ -453,6 +508,138 @@ async function ensurePeriodOpen(c, date) {
    two things upstream need those and used to guess at them: the journal, which
    must credit 1200 with the value the stock ledger really carries, and the
    sale, which has to say out loud when it sold something that was not there. */
+/* ═══ WHAT THE RECIPE SAYS LEFT THE SHELF ══════════════════════════════════
+   The server already decides what a consumed portion is WORTH — `moveStock()`
+   re-values a sale move at the outlet's own weighted-average cost. What it
+   still took on trust was HOW MUCH: the quantities came from the till's own
+   recipe expansion, computed against whatever menu that browser was holding.
+
+   A device that has been offline across a recipe change deducts yesterday's
+   recipe for ever, silently, and the only symptom is a stock ledger that
+   drifts a little every service. Nothing on any screen compares the two,
+   because until now there was only one of them.
+
+   So the expansion is re-derived here, from the outlet's own `recipe_line`,
+   its own batches and its own measured yields — and it is derived by exactly
+   the rule the till uses, out of exactly the same shipped table
+   (app/kashikeyo-yield.js), because a check computed from a different table is
+   a second opinion rather than a check.
+
+   Three things this deliberately does NOT do:
+
+     · it does not reject. The money is taken and the food is gone; the same
+       repair-and-flag doctrine as tax and COGS applies;
+     · it does not fire where there is nothing to compare. A dish the outlet
+       has no recipe for moves no stock on either side — the till costs it at
+       a flat percentage and deducts nothing — so the two agree at zero and
+       there is no divergence to report. Flag a wrong figure, never the
+       absence of one;
+     · it does not replace an INCOMPLETE derivation. If any sold item is one
+       this outlet has never heard of, the server cannot know what it
+       consumed, and overwriting the till's answer with a partial one would
+       under-deduct the shelf. The till's figures stand and the gap is named.
+
+   The recursion is bounded at twelve levels, like the declaration walk. A
+   recipe cycle — a sauce whose batch draws on itself — is a data error
+   somebody made, and an unbounded `UNION ALL` on it does not error, it hangs. */
+const DERIVE_DEPTH = 12;
+
+async function deriveConsumption(c, sold) {
+  const lines = arr(sold).filter((s) => s && s.id != null && num(s.qty) > 0);
+  if (!lines.length) return { complete: false, moves: [], unknown: [], reason: 'nothing sold' };
+
+  const ids = lines.map((s) => String(s.id));
+  const qtys = lines.map((s) => num(s.qty));
+
+  /* An id the outlet's own catalogue does not carry. Not necessarily a fault —
+     a till that created a dish offline has not pushed it yet — but it makes
+     the derivation partial, and a partial derivation must not be believed. */
+  const known = await c.query('SELECT id FROM item WHERE id = ANY($1)', [ids]);
+  const have = new Set(known.rows.map((r) => String(r.id)));
+  const unknown = [...new Set(ids.filter((i) => !have.has(i)))];
+  if (unknown.length) {
+    return { complete: false, moves: [], unknown,
+      reason: 'sold an item this outlet does not carry' };
+  }
+
+  /* The walk, in the database, because a batch drawing on a batch is a join
+     and not a round trip. `mult` is how many of the component's own units one
+     unit of the thing being sold needs; a batch divides by what it actually
+     YIELDS (its output net of reduction loss), which is why 4 litres of stock
+     that boils down to 3.28 makes a millilitre cost more than the inputs over
+     four. */
+  const walk = await c.query(
+    'WITH RECURSIVE want(item_id, mult, depth) AS ('
+    + '  SELECT s.id, s.q, 0'
+    + '    FROM unnest($1::text[], $2::numeric[]) AS s(id, q)'
+    + '  UNION ALL'
+    + '  SELECT rl.sub_item_id,'
+    + '         w.mult * (rl.qty / (b.yield_qty * (1 - b.loss_pct))),'
+    + '         w.depth + 1'
+    + '    FROM want w'
+    + '    JOIN recipe_line rl ON rl.item_id = w.item_id'
+    + '     AND rl.sub_item_id IS NOT NULL'
+    + '    JOIN item b ON b.id = rl.sub_item_id'
+    + '   WHERE w.depth < $3'
+    + '     AND b.yield_qty IS NOT NULL AND b.yield_qty > 0'
+    + '     AND b.loss_pct < 1'
+    + ') SELECT rl.ingredient_id AS ing, ing.name AS name,'
+    + '         ing.yield_pct AS y, ing.waste_pct AS w,'
+    + '         sum(w2.mult * rl.qty) AS net,'
+    + '         max(w2.depth) AS deepest'
+    + '    FROM want w2'
+    + '    JOIN recipe_line rl ON rl.item_id = w2.item_id'
+    + '     AND rl.ingredient_id IS NOT NULL'
+    + '    JOIN ingredient ing ON ing.id = rl.ingredient_id'
+    + '   GROUP BY 1, 2, 3, 4',
+    [ids, qtys, DERIVE_DEPTH]);
+
+  /* NET is what reaches the plate; GROSS is what leaves the shelf to get it
+     there. Deducting net would leave the trimmings on the books for ever. */
+  const moves = walk.rows.map((r) => {
+    const a = YIELD.assess(r.name, { y: r.y, w: r.w });
+    return { ing: String(r.ing), name: r.name,
+      net: Number(r.net), qty: YIELD.grossQty(a, Number(r.net)) };
+  }).filter((m) => m.qty > 0);
+
+  const deepest = walk.rows.reduce((a, r) => Math.max(a, Number(r.deepest || 0)), 0);
+  if (deepest >= DERIVE_DEPTH) {
+    // The frontier was still moving when the cap stopped it, so what came back
+    // is a floor rather than the answer — and a floor must not overwrite the
+    // till's figure. Same rule as a truncated declaration.
+    return { complete: false, moves, unknown: [],
+      reason: 'the recipe nests deeper than ' + DERIVE_DEPTH + ' levels' };
+  }
+  return { complete: true, moves, unknown: [], reason: null };
+}
+
+/* Two expansions compared as quantities rather than as lists: an ingredient in
+   one and not the other is a difference of its whole quantity. The tolerance
+   is relative, because a recipe measured in grams and one measured in litres
+   cannot share an absolute one, with an absolute floor so a rounding tail on a
+   pinch of saffron does not read as a divergence. */
+function quantityGap(derived, supplied) {
+  const bag = new Map();
+  derived.forEach((m) => bag.set(String(m.ing),
+    { ing: String(m.ing), name: m.name, want: m.qty, sent: 0 }));
+  supplied.forEach((m) => {
+    const k = String(m.ing);
+    if (!bag.has(k)) bag.set(k, { ing: k, name: null, want: 0, sent: 0 });
+    bag.get(k).sent += Math.abs(num(m.qty));
+  });
+  const off = [];
+  bag.forEach((v) => {
+    const scale = Math.max(v.want, v.sent);
+    const gap = Math.abs(v.want - v.sent);
+    if (gap > 0.0005 && gap > scale * 0.005) {
+      off.push({ ing: v.ing, name: v.name,
+        recipe: Math.round(v.want * 1e4) / 1e4,
+        till: Math.round(v.sent * 1e4) / 1e4 });
+    }
+  });
+  return off;
+}
+
 async function moveStock(c, ctx, m) {
   if (!m.ing) return null;
   const qty = num(m.qty);
@@ -2298,4 +2485,7 @@ async function applyOp(c, op, ctx) {
   return fn(c, op.payload || {}, ctx) || {};
 }
 
-module.exports = { applyOp, postJournal, moveStock, publishDeclaration, HANDLERS: H, AUDIT_ONLY };
+module.exports = { applyOp, postJournal, moveStock, publishDeclaration,
+  // Exported so a test can run the server's expansion against the TILL's,
+  // on the same outlet, and prove the two cannot drift apart.
+  deriveConsumption, quantityGap, HANDLERS: H, AUDIT_ONLY };

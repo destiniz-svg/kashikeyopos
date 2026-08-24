@@ -83,6 +83,8 @@ function loadLogic(opts) {
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-raw.js'), 'utf8'), ctx);
   // The rule table loads first in the browser, so it loads first here too.
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-rules.js'), 'utf8'), ctx);
+  // The shipped yield table, which the SERVER loads too — see kashikeyo-yield.js.
+  vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-yield.js'), 'utf8'), ctx);
   // And the invitation's copy, which the server composes from the same file.
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-invite.js'), 'utf8'), ctx);
   vm.runInContext(fs.readFileSync(path.join(APP, 'kashikeyo-data.js'), 'utf8'), ctx);

@@ -1310,8 +1310,10 @@ test('a measured yield leaves the browser it was measured in', () => {
   const y = IDX.slice(IDX.indexOf('yieldOf(id) {'), IDX.indexOf('netFactor(id)'));
   assert.ok(y.indexOf('it[13]') > y.indexOf('state.local.yields'),
     'a local measurement is read first (it may not have synced yet)');
-  assert.ok(y.indexOf('it[13]') < y.indexOf('YIELD_TABLE'),
-    'but the OUTLET\'s figure beats the shipped estimate — that is the fix');
+  assert.ok(y.indexOf('it[13]') < y.indexOf('KPOS_YIELD.shipped'),
+    'but the OUTLET\'s figure beats the shipped estimate — that is the fix.'
+    + ' The estimate now comes from the file the server reads too, so the'
+    + ' fallback is the same fallback on both sides');
 
   assert.ok(/const held = this\.state\.local\.yields/.test(IDX)
     && /if \(it && it\[13\] != null\) \{ dropped\+\+; return; \}/.test(IDX),
@@ -1426,4 +1428,69 @@ test('the two ways a dish comes off sale each survive a bootstrap', () => {
 
   assert.ok(/WHERE active AND NOT off_menu AND NOT is_batch/.test(OUT),
     'and a guest is offered neither a hidden dish nor a batch');
+});
+
+/* ═══ ONE YIELD TABLE, NOT TWO ══════════════════════════════════════════════
+   The server re-derives the till's recipe expansion to check it. A check
+   computed from a DIFFERENT table is not a check — it is a second opinion,
+   and the disagreement would present as a stock discrepancy on every bill in
+   the shop. So the table lives in app/kashikeyo-yield.js and both runtimes
+   read that one file, exactly as they do for the allergen rules.
+
+   This is the same defect shape as the two allergen tables with different key
+   vocabularies ("shellfish" vs "crustacean"), and it is pinned the same way. */
+test('the till and the server read one yield table', () => {
+  const src = SRC;
+
+  // The terminal must LOAD it, or window.KPOS_YIELD is undefined and every
+  // recipe expansion throws on the first bill.
+  assert.match(src, /<script src="\.\/kashikeyo-yield\.js"><\/script>/,
+    'the page loads the shared table');
+
+  // And it must not carry a copy. A second table here is the whole defect.
+  const inline = src.slice(src.indexOf('YIELD_TABLE'), src.indexOf('YIELD_TABLE') + 4000);
+  assert.ok(!/\[\/tuna\|reef fish/.test(inline),
+    'the regexes live in the shared file, not inlined here as well');
+  assert.match(src, /YIELD_TABLE\(\)\s*\{\s*return \(window\.KPOS_YIELD/,
+    'and the accessor reads the shared one');
+
+  // The three functions the expansion turns on all delegate, so a change to
+  // the rule cannot reach one runtime and not the other.
+  ['netFactor', 'grossQty', 'shipped'].forEach((fn) => {
+    assert.ok(src.indexOf('window.KPOS_YIELD.' + fn) > 0,
+      'the terminal reaches for the shared ' + fn + '()');
+  });
+
+  // The server reads the same file as a module.
+  const apply = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  assert.match(apply, /require\('\.\.\/app\/kashikeyo-yield\.js'\)/,
+    'the server requires it rather than restating it');
+  assert.ok(/YIELD\.grossQty\(/.test(apply),
+    'and derives its own expansion through it');
+
+  // The harness loads it too — without that the whole terminal is untestable
+  // and the failure is a bare "cannot read property of undefined".
+  const harness = fs.readFileSync(path.join(__dirname, 'harness.js'), 'utf8');
+  assert.ok(harness.indexOf('kashikeyo-yield.js') > 0,
+    'the vm gets it as well, or every screen test dies on the first expansion');
+});
+
+test('the derivation is bounded, and a partial answer never wins', () => {
+  const apply = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  /* An unbounded UNION ALL over a recipe that references itself does not
+     error — it hangs, holding the sale's transaction open. */
+  assert.match(apply, /w\.depth < \$3/,
+    'the recursive walk carries a depth guard');
+  assert.match(apply, /const DERIVE_DEPTH = \d+/, 'and the bound is named');
+
+  /* The three ways the derivation declines, each of which must leave the
+     till's own figures alone rather than overwrite them with a partial
+     answer: an unknown item, a walk that hit the cap, and nothing sold. */
+  ['does not carry', 'nests deeper than', 'nothing sold'].forEach((why) => {
+    assert.ok(apply.indexOf(why) > 0, 'it says why it declined: ' + why);
+  });
+  assert.match(apply, /const useDerived = derived\.complete && derived\.moves\.length > 0;/,
+    'and only a COMPLETE derivation replaces what the till sent');
+  assert.match(apply, /qtyOff = useDerived && supplied\.length/,
+    'while a divergence still needs two numbers to be a divergence');
 });
