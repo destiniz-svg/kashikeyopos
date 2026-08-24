@@ -414,7 +414,7 @@
                   <span style="{{ m.mediaStyle }}">
                     <span style="{{ m.photoStyle }}">{{ m.initial }}</span>
                     <span style="{{ m.tagStyle }}">{{ m.tag }}</span>
-                    <span style="{{ m.vegStyle }}"></span>
+                    <span style="{{ m.vegStyle }}" role="img" aria-label="{{ m.vegLabel }}" title="{{ m.vegLabel }}"></span>
                   </span>
                   <span style="padding:9px 11px 10px;display:flex;flex-direction:column;gap:2px;flex:1">
                     <span style="font-size:12.5px;font-weight:600;line-height:1.3">{{ m.name }}</span>
@@ -5021,6 +5021,13 @@ class Component extends DCLogic {
           tag: off ? "86'd" : (m.recipe && m.recipe.length ? "" : ""),
           tagStyle: off ? "position:absolute;top:7px;left:7px;font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 7px;border-radius:4px;background:var(--red);color:#fff" : "display:none",
           vegStyle: m.veg ? "position:absolute;top:7px;right:7px;width:12px;height:12px;border-radius:3px;border:1.5px solid var(--go);box-shadow:inset 0 0 0 2.5px var(--bg-1),inset 0 0 0 5px var(--go)" : "display:none",
+          // The green square is the Indian convention and reads instantly to
+          // anybody who knows it — but it is colour and shape and nothing else,
+          // and every other state on this card carries a word ("86'd", the cost
+          // percentage). A cashier asked "is this one vegetarian" across a
+          // counter needs the answer to survive a screen reader, a colour-blind
+          // eye and a grayscale print of the menu.
+          vegLabel: m.veg ? "Vegetarian" : "",
           foot: showCost ? Math.round((cost / price) * 100) + "% cost" : (m.veg ? "Veg" : "")
         };
       });
@@ -5044,6 +5051,30 @@ class Component extends DCLogic {
             this.queue("void_refused", this.me() + " attempted to void " + m.name + " · " + this.slotName(s.activeTable), "order_lines");
             return;
           }
+          /* A FIRED LINE ASKS TWICE. The rank gate says who may do this; it
+             does not say they meant to. Voiding food already on the grill
+             throws away stock and money, and this control sits a thumb's width
+             from the quantity buttons on a screen being used at speed — the
+             one place in the app where the destructive action and the routine
+             one are neighbours.
+
+             Two taps rather than a dialog, because a dialog on a touch
+             terminal is dismissed by muscle memory before it is read, and
+             because this screen has no confirm of its own to borrow. The arm
+             expires in four seconds, so a stray tap cannot leave the button
+             loaded for the next person to find. An unfired line still goes on
+             the first tap: removing something the kitchen never saw is
+             correcting a keystroke, and asking about it teaches the operator
+             to tap through the question that matters. */
+          if (l.fired && this._voidArm !== l.lid) {
+            this._voidArm = l.lid;
+            clearTimeout(this._voidArmT);
+            this._voidArmT = setTimeout(() => { this._voidArm = null; }, 4000);
+            this.toast("Tap void again to throw away " + m.name + " — it is already cooking", "warn");
+            return;
+          }
+          this._voidArm = null;
+          clearTimeout(this._voidArmT);
           this.mutate(undefined, (t) => t.lines.splice(i, 1));
           this.queue("void_line", "Void " + m.name + " · " + this.slotName(s.activeTable) + (l.fired ? " · FIRED, authorised by " + this.me() : "") , "order_lines",
             { table: this.slotName(s.activeTable), split: 0, lid: l.lid,

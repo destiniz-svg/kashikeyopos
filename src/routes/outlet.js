@@ -80,10 +80,41 @@ r.patch('/gst', sameOutlet, atLeast('owner'), async function (req, res, next) {
       code: (mine.rows[0] || {}).tax_code || 'NONE'
     });
   } catch (e) {
-    if (e && e.code === '23514') return res.status(400).json({ error: e.message });
+    const says = checkSays(e);
+    if (says) return res.status(400).json({ error: says });
     next(e);
   }
 });
+
+/* ── what a 23514 is allowed to say out loud ─────────────────────────────
+   Two kinds of thing raise a check violation here, and only one of them wrote
+   a sentence for a person.
+
+   A trigger or a function RAISEs with a MESSAGE somebody composed — "this
+   business is not registered for GST, so Sea House cannot charge GGST" — and
+   passing that through is the whole point of writing it.
+
+   A DECLARATIVE check has no message. Postgres phrases it itself, as `new row
+   for relation "outlet" violates check constraint "outlet_slug_is_a_handle"`,
+   and that went to the browser verbatim: an internal constraint name and a
+   table name handed to whoever asked, saying nothing an operator can act on.
+
+   So: `e.constraint` present means Postgres wrote the sentence, and it gets
+   translated by name or falls back to a plain refusal. Absent means a person
+   wrote it, and it is repeated as written. */
+const CHECK_SAYS = {
+  outlet_slug_is_a_handle: 'A store address is 3 to 40 characters, lower-case'
+    + ' letters, numbers and single hyphens — no leading, trailing or doubled'
+    + ' hyphen',
+  company_tin_iff_registered: 'A GST-registered business has a TIN, and one'
+    + ' that is not registered has none — the two have to agree'
+};
+function checkSays(e) {
+  if (!e || e.code !== '23514') return null;
+  if (!e.constraint) return e.message;      // written for a person; say it
+  return CHECK_SAYS[e.constraint]
+    || 'That change is not one the books allow';
+}
 
 /* ── the store's public address ──────────────────────────────────────────
    Renaming is rank 5 and nothing less. It changes what is printed on the table
@@ -141,8 +172,10 @@ r.patch('/handle', sameOutlet, atLeast('owner'), async function (req, res, next)
       base: baseDomain()
     });
   } catch (e) {
-    // 23514 is the rename function refusing a handle it will not give out.
-    if (e && e.code === '23514') return res.status(409).json({ error: e.message });
+    // 23514 is the rename function refusing a handle it will not give out —
+    // with its own words, unless it was the shape constraint, which has none.
+    const says = checkSays(e);
+    if (says) return res.status(409).json({ error: says });
     next(e);
   }
 });

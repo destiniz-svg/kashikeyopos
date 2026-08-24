@@ -1145,3 +1145,103 @@ test('the company step is one transaction, not four statements', () => {
   assert.ok(!/await owner\(\)\.query/.test(step),
     'nothing inside it reaches past the transaction to a fresh connection');
 });
+
+/* ═══ THE CONNECTION THAT BYPASSES BOTH BELTS ═══════════════════════════════
+   owner() is the role that ignores the per-outlet schema grant AND the RLS
+   policies, so where a REQUEST handler reaches for it is a list rather than a
+   habit. CLAUDE.md said "no request handler imports it", which was not true of
+   the code and had not been for a long time — and an invariant nobody keeps is
+   worse than one nobody wrote down, because it stops anyone looking.
+
+   Six files, each answering a question that cannot be asked from inside one
+   outlet. A seventh has to justify itself here. */
+test('only the six named routers reach for the owner connection', () => {
+  const dir = path.join(__dirname, '..', 'src', 'routes');
+  const allowed = {
+    'account.js': 'migration 011 revokes the account plane from every outlet role',
+    'onboarding.js': 'steps 1-3 run before an outlet or a session exists',
+    'auth.js': 'the lock screen asks before anybody has signed in',
+    'guest.js': 'resolves a handle TO an outlet — the outlet is the answer',
+    'outlet.js': 'handle uniqueness and GST registration span every outlet',
+    'platform.js': 'aggregates for the seller, key-guarded and audited'
+  };
+  const uses = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).filter((f) => {
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    // The IMPORT, not the word: several files name it in a comment explaining
+    // why they do not use it, and a comment connects to nothing.
+    return /require\('\.\.\/db'\)[^\n]*\bowner\b|\bowner\b[^\n]*require\('\.\.\/db'\)/.test(src)
+      && /\bowner\(\)/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''));
+  });
+  uses.forEach((f) => {
+    assert.ok(allowed[f], 'src/routes/' + f + ' reaches past both isolation belts'
+      + ' — if that is deliberate, name it and its reason in this test and in'
+      + ' CLAUDE.md, because an unexplained owner() is how a leak gets written');
+  });
+  Object.keys(allowed).forEach((f) => {
+    assert.ok(uses.includes(f), 'src/routes/' + f + ' no longer uses owner() —'
+      + ' take it off the list rather than leaving a stale exception standing');
+  });
+});
+
+/* ═══ THE SEVEN SMALL ONES ═══════════════════════════════════════════════════
+   Each of these is cheap to get wrong again, and none of them is visible from
+   the screen it affects — which is the definition of something a test has to
+   hold rather than a reviewer. */
+test('a credential never rides in a query string', () => {
+  const ACC = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'account.js'), 'utf8');
+  assert.ok(!/req\.query \|\| \{\}\)\.at/.test(ACC),
+    'the ?at= fallback is gone — a token in a URL is a token in the proxy log,'
+    + ' the browser history and every Referer a no-referrer policy misses');
+  assert.ok(/authorization/.test(ACC), 'the header is still how an account is named');
+});
+
+test('a check violation speaks English, not a constraint name', () => {
+  const OUT = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+  assert.ok(/CHECK_SAYS/.test(OUT) && /e\.constraint/.test(OUT),
+    'a declarative check is translated by name');
+  assert.ok(!/code === '23514'\) return res[^\n]*e\.message/.test(OUT),
+    'and Postgres\'s own "violates check constraint \\"outlet_slug_is_a_handle\\""'
+    + ' never reaches a browser');
+});
+
+test('a declaration is complete or it is not published', () => {
+  const AP = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const fn = AP.slice(AP.indexOf('async function publishDeclaration'),
+    AP.indexOf('async function republishUsing'));
+  assert.ok(/MAX_DEPTH = 12/.test(fn), 'the walk goes deeper than a real kitchen nests');
+  assert.ok(/if \(frontier\.length\) \{/.test(fn) && /declaration_truncated/.test(fn),
+    'and if it still has not finished, nothing is published: a PARTIAL'
+    + ' declaration replacing a complete one is worse than no update');
+  assert.ok(fn.indexOf('declaration_truncated') < fn.indexOf('UPDATE item SET allergens'),
+    'the refusal comes before the write, not after it');
+});
+
+test('the veg mark carries a word, not only a colour and a shape', () => {
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.ok(/vegLabel: m\.veg \? "Vegetarian"/.test(IDX), 'the label exists');
+  assert.ok(/aria-label="\{\{ m\.vegLabel \}\}"/.test(IDX),
+    'and reaches a screen reader, a colour-blind eye and a grayscale print');
+});
+
+test('voiding food that is already cooking asks twice', () => {
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  assert.ok(/_voidArm !== l\.lid/.test(IDX), 'a fired line arms before it voids');
+  assert.ok(/_voidArmT = setTimeout/.test(IDX),
+    'and the arm expires, so a stray tap cannot leave it loaded for the next person');
+  assert.ok(/l\.fired && this\._voidArm/.test(IDX),
+    'an unfired line still goes on the first tap — asking about a keystroke'
+    + ' teaches an operator to tap through the question that matters');
+});
+
+test('the outbox waits rather than pushing into an install it cannot name', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  // pending() is defined ABOVE flush() in this file, so slice forward from
+  // flush to the next method rather than to a name that is already behind us.
+  const from = API.indexOf('async flush()');
+  const flush = API.slice(from, API.indexOf('async ', from + 20));
+  assert.ok(/if \(!inst\) \{[\s\S]*return null;/.test(flush),
+    'an unnamed install holds the flush — signing in flushes, and signing in'
+    + ' happens before the first bootstrap, which is exactly the window the'
+    + ' fence used to sit out');
+  assert.ok(/_heldFor/.test(flush), 'and says why it is holding rather than doing nothing');
+});

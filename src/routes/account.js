@@ -532,8 +532,13 @@ async function linkIdentity(provider, subject, addr, name, verified) {
 
 /* ── who am I, and what do I own ─────────────────────────────────────────── */
 async function requireAccount(req, res, next) {
-  const raw = (req.get('authorization') || '').replace(/^Bearer\s+/i, '')
-    || String((req.query || {}).at || '');
+  /* THE HEADER, AND ONLY THE HEADER. This used to fall back to `?at=`, and
+     nothing has ever sent it — but a credential in a query string is a
+     credential in the proxy's access log, in the browser's history, in the
+     bookmark somebody shares, and in every Referer the page emits that a
+     no-referrer policy does not happen to cover. A fallback nobody uses is
+     all cost. */
+  const raw = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
   const claims = verifyAccount(raw);
   if (!claims || !claims.a) return res.status(401).json({ error: 'sign in again' });
   try {

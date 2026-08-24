@@ -84,8 +84,24 @@ supplier, setting, audit). The policies read the transaction's own context.
 app.scope / app.device` via `set_config(..., true)`. It dies at COMMIT, so a
 pooled connection cannot carry one request's identity into the next.
 
-The owner connection (`owner()`) runs migrations and provisioning only. **No
-request handler imports it** — the owner role bypasses both belts.
+The owner connection (`owner()`) bypasses both belts, so where a request
+handler reaches for it is a list, not a habit. There are six situations, and
+every one of them is a question that CANNOT be asked from inside a single
+outlet:
+
+| Where | Why no outlet role can answer it |
+| --- | --- |
+| `account.js` | migration 011 revokes every privilege on the account plane from every outlet role. There is no policy to get wrong here, only this file. |
+| `onboarding.js` | steps 1–3 run before an outlet, a staff record or a session exists. There is nothing to be scoped to yet. |
+| `auth.js` — install state, merchant name | asked by the lock screen before anybody has signed in. |
+| `guest.js` — `handle_points_at()` | resolves a handle TO an outlet; the outlet is the answer, so it cannot be the context. |
+| `outlet.js` — handles and GST registration | handle uniqueness spans every outlet, and registration is a COMPANY fact that must reach all of them in one transaction. Rank 5. |
+| `platform.js` | aggregates for the seller, guarded by `PLATFORM_KEY` and audited. |
+
+`test/wiring.test.js` pins that list. A seventh has to justify itself there,
+exactly like a sixth composer of manual journals does — which is the only thing
+that keeps "six deliberate exceptions" from drifting into "wherever it was
+convenient".
 
 `npm run leak-test` makes thirteen crossing attempts (read another outlet's
 sales, write its stock, forge a rank, reach the estate aggregate without rank 5,
@@ -1474,10 +1490,50 @@ state and every rail screen; it does not open every modal, sheet and form, and
 no screen reader has been driven over any of it. `site/` and `panel/` are
 separate services on their own ports and are not in this suite.
 
+## The seven small ones
+
+Each was cheap, invisible from the screen it affected, and pinned in
+`test/wiring.test.js` so it stays fixed.
+
+- **A credential never rides in a query string.** `requireAccount` fell back to
+  `?at=` and nothing has ever sent it — but a token in a URL is a token in the
+  proxy's access log, the browser's history, the bookmark somebody shares, and
+  every `Referer` a no-referrer policy does not happen to cover.
+- **A check violation speaks English.** Two handlers passed a `23514` message
+  straight through. A trigger's `RAISE` carries a sentence somebody wrote, and
+  repeating it is the point; a DECLARATIVE check has none, so Postgres wrote
+  `violates check constraint "outlet_slug_is_a_handle"` and that went to the
+  browser. `e.constraint` present means translate it by name.
+- **A declaration is complete or it is not published.** The recipe walk stopped
+  at four levels. `seen` already terminates a cycle, so the cap was never about
+  safety — a fifth level was simply dropped, and a dish whose deepest component
+  is a reef fish came out claiming Vegetarian. Twelve now, and if the frontier
+  is still not empty the previous declaration STANDS and the truncation goes on
+  the trail: a partial declaration replacing a complete one is worse than no
+  update at all.
+- **The veg mark carries a word.** Colour and shape only, next to states that
+  all carry text ("86'd", the cost percentage). A cashier asked across a
+  counter needs the answer to survive a screen reader, a colour-blind eye and a
+  grayscale print.
+- **Voiding food that is already cooking asks twice.** The rank gate says who
+  may; it does not say they meant to. This control sits a thumb's width from
+  the quantity buttons — the one place where the destructive action and the
+  routine one are neighbours. Two taps rather than a dialog, because a dialog
+  on a touch terminal is dismissed by muscle memory before it is read; the arm
+  expires in four seconds. An unfired line still goes on the first tap: asking
+  about a keystroke teaches an operator to tap through the question that
+  matters.
+- **The outbox waits rather than pushing into an install it cannot name.** The
+  fence read `if (inst)`, so before the first bootstrap it simply did not run —
+  and signing in flushes, which happens before the first bootstrap. Ops are
+  durable; holding them costs seconds, and pushing them blind is the incident
+  the fence exists for.
+- **`owner()` is a list, not a habit** — see the isolation section above.
+
 ## Tests
 
 ```
-npm test                          # 247 tests
+npm test                          # 254 tests
 npm run leak-test                 # isolation, on its own
 ```
 

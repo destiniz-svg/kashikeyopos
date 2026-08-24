@@ -395,7 +395,23 @@
          another store's books, so it PARKS instead: durable, visible with
          the reason, and "Send it again" adopts it into this install only
          because a person decided that. */
+      /* AND THE FENCE IS NOT OPTIONAL BECAUSE IT IS EARLY. Until a bootstrap
+         has named this install, `inst` is empty — and the fence below used to
+         simply not run, so anything already in the outbox pushed unchecked.
+         That window is real: signing in flushes, and signing in happens before
+         the first bootstrap. A terminal whose storage was cleared, or one
+         holding ops from before installs had names, drained them into whatever
+         database it had just been pointed at.
+
+         Ops are DURABLE. Holding them costs a few seconds; pushing them blind
+         is the incident the fence exists for. The next bootstrap names the
+         install and the very next tick releases them. */
       var inst = this.installId || this.local("install") || "";
+      if (!inst) {
+        this._heldFor = "waiting to be told which install this outlet is";
+        return null;
+      }
+      this._heldFor = null;
       if (inst) {
         var strangers = ops.filter((o) => o.outletId === this.outletId
           && !o.parked && (o.install || "") !== inst);

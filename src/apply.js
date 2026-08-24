@@ -1490,7 +1490,20 @@ async function publishDeclaration(c, itemId) {
   const add = {};
   let frontier = [itemId];
   const seen = new Set([itemId]);
-  for (let depth = 0; depth < 4 && frontier.length; depth++) {
+  /* THE CAP WAS FOUR, AND IT FAILED SILENTLY. `seen` already makes a cycle
+     terminate, so the depth limit was never about safety — and a fifth level
+     of sub-recipe simply stopped being walked. Its ingredients were dropped
+     from the declaration, which is not a smaller answer but a WRONG one: a
+     dish whose deepest component is a reef fish came out claiming Vegetarian,
+     and the only symptom was a badge nobody could argue with.
+
+     Twelve, because a real kitchen nests three at the outside and a stock that
+     goes twelve deep is a data error worth hearing about. And if the frontier
+     is STILL not empty at twelve, nothing is published: the previous
+     declaration stands and the truncation goes on the trail. A partial
+     declaration replacing a complete one is strictly worse than no update. */
+  const MAX_DEPTH = 12;
+  for (let depth = 0; depth < MAX_DEPTH && frontier.length; depth++) {
     const q = await c.query(
       'SELECT r.item_id, r.sub_item_id, i.name, i.category, i.allergens'
       + ' FROM recipe_line r LEFT JOIN ingredient i ON i.id = r.ingredient_id'
@@ -1508,6 +1521,15 @@ async function publishDeclaration(c, itemId) {
       (row.allergens || []).forEach((k) => { add[k] = 1; });
     });
     frontier = next;
+  }
+  if (frontier.length) {
+    await log(c, 'declaration_truncated', 'item', itemId, null, {
+      depth: MAX_DEPTH, unwalked: frontier.length,
+      note: 'this dish nests deeper than the expansion walks, so what it'
+        + ' contains cannot be stated in full; the declaration it already'
+        + ' carried is left alone rather than replaced with a partial one'
+    });
+    return { truncated: true };
   }
   const declared = Object.keys(add);
   const allergens = RULES.allergenKeys(parts, declared);
