@@ -19,6 +19,10 @@ RUN npm ci --omit=dev
 COPY server.js ./
 COPY src ./src
 COPY app ./app
+# Mission Control rides in the same image and is selected by the start
+# command (`node panel/server.js`) on its own Railway service — one build,
+# two very small programs, no second Dockerfile to drift.
+COPY panel ./panel
 
 ENV NODE_ENV=production
 ENV PORT=8080
