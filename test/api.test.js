@@ -680,6 +680,74 @@ test('a customer taken at the counter reaches the outlet, and can sign in',
       'signed in on a real date — not an invented "Registered" flag');
   });
 
+/* ═══ CREDIT IS A BALANCE THE SERVER KEEPS ═══════════════════════════════════
+   A house account has a limit, and it used to be decoration: the till promised
+   a Postgres trigger would reject an over-limit charge "offline or not", and
+   there was no trigger, no CHECK, no per-member balance. Now the server keeps
+   the outstanding figure — a credit sale raises it, a settlement lowers it —
+   and an overrun is STAMPED, not rejected, because a sale that already happened
+   is never thrown away (migration 028). ═════════════════════════════════════ */
+test('a credit sale moves the balance, and an overrun is recorded not rejected',
+  opts, async () => {
+    const phone = '9995500';
+    const made = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Credit Customer', phone: phone, credit: 300 } }]);
+    const mid = made.body.results[0].result.memberId;
+    const used = () => one('SELECT credit_used FROM chain.member WHERE id = $1', [mid])
+      .then((r) => Number(r.credit_used));
+
+    assert.strictEqual(await used(), 0, 'a fresh account owes nothing');
+
+    // A charge within the limit raises the balance and stamps nothing.
+    const within = await push([{ opId: uuid(), kind: 'sale', payload: {
+      bizDate: today(), covers: 1, sub: 200, disc: 0, net: 200, svc: 0,
+      tax: 0, round: 0, total: 200, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+      member: mid, customer: 'Credit Customer',
+      sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 200, amount: 200 }],
+      payments: [{ method: 'credit', amt: 200 }], stockMoves: []
+    } }]);
+    assert.ok(!within.body.results[0].error, JSON.stringify(within.body.results[0]));
+    assert.strictEqual(await used(), 200, 'the outstanding balance rose by the charge');
+    const s1 = await one('SELECT server_audit FROM sale WHERE id = $1',
+      [within.body.results[0].result.saleId]);
+    assert.strictEqual(s1.server_audit, null, 'within the limit, nothing to answer for');
+
+    // A second charge takes them past the 300 limit. The sale still posts — a
+    // cashier does not un-serve a meal — but the overrun is on the row and the
+    // trail, never silent.
+    const over = await push([{ opId: uuid(), kind: 'sale', payload: {
+      bizDate: today(), covers: 1, sub: 150, disc: 0, net: 150, svc: 0,
+      tax: 0, round: 0, total: 150, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+      member: mid, customer: 'Credit Customer',
+      sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 150, amount: 150 }],
+      payments: [{ method: 'credit', amt: 150 }], stockMoves: []
+    } }]);
+    assert.ok(!over.body.results[0].error, 'the sale is NOT rejected: ' + JSON.stringify(over.body.results[0]));
+    assert.strictEqual(await used(), 350, 'the balance carries the full charge, over limit and all');
+    const s2 = await one('SELECT server_audit FROM sale WHERE id = $1',
+      [over.body.results[0].result.saleId]);
+    assert.ok(s2.server_audit && s2.server_audit.credit_over, 'the overrun is stamped on the sale');
+    assert.strictEqual(Number(s2.server_audit.credit_over.over), 50, 'by exactly the amount over');
+    const trail = await asOwner("SELECT count(*)::int AS n FROM chain.audit"
+      + " WHERE action = 'credit_over_limit' AND entity_id = $1", [mid]);
+    assert.strictEqual(trail.n, 1, 'and on the audit trail once');
+
+    // A settlement lowers the balance; it can never drive it below zero.
+    await push([{ opId: uuid(), kind: 'settle_credit', payload: {
+      member: mid, amt: 350, method: 'cash' } }]);
+    assert.strictEqual(await used(), 0, 'paid in full, the account owes nothing again');
+    await push([{ opId: uuid(), kind: 'settle_credit', payload: {
+      member: mid, amt: 50, method: 'cash' } }]);
+    assert.strictEqual(await used(), 0, 'a settlement never floors below zero');
+
+    // The bootstrap publishes the real outstanding — charges minus settlements —
+    // so the till's own gate reads the truth, not just the sum of charges.
+    const b = await get('/api/outlet/' + outletId + '/bootstrap', token);
+    const pub = (b.body.kpos.CUSTOMERS || []).find((cu) => cu.id === mid);
+    assert.ok(pub, 'the customer is published');
+    assert.strictEqual(Number(pub.used), 0, 'and their published balance is net of settlement');
+  });
+
 /* ═══ AN INVITATION IS AN EVENT ══════════════════════════════════════════
    Channel, address, sender, time, count, and a revocation that KEEPS the
    history. Each of those was a boolean, and on a row where the field was

@@ -91,9 +91,38 @@ async function applySale(c, p, ctx) {
   const tied = Math.abs(claimed - r2(total + tip)) > 0.005
     ? { claimed, computed: total, note: 'terminal total did not tie to its own components' }
     : null;
-  const audit = (tied || unregisteredAudit)
+  /* A credit tender draws down a house account that has a LIMIT, and the till's
+     own pay screen blocks a charge past it. But an offline terminal charges
+     against a stale balance — two of them can each believe there is headroom —
+     so the outstanding balance is the SERVER's to keep, and an overrun is
+     recorded rather than rejected: the sale already happened, and a sale is
+     never thrown away. The member's balance moves here, under the same
+     transaction as the sale, so it is right the moment the op applies. */
+  let creditAudit = null;
+  const creditCharged = r2(arr(p.payments)
+    .filter((x) => (x.method || 'cash') === 'credit')
+    .reduce((a, x) => a + num(x.amt), 0));
+  if (p.member && creditCharged > 0) {
+    const mrow = await one(c, 'SELECT credit_limit, credit_used FROM chain.member'
+      + ' WHERE id = $1', [p.member]);
+    const limit = r2((mrow && mrow.credit_limit) || 0);
+    const wasUsed = r2((mrow && mrow.credit_used) || 0);
+    const nowUsed = r2(wasUsed + creditCharged);
+    await c.query('UPDATE chain.member SET credit_used = credit_used + $2'
+      + ' WHERE id = $1', [p.member, creditCharged]);
+    if (limit > 0 && nowUsed - limit > 0.005) {
+      creditAudit = { limit, wasUsed, charged: creditCharged, nowUsed,
+        over: r2(nowUsed - limit),
+        note: 'this credit charge takes the customer past their limit; the sale'
+          + ' is recorded and the overrun is flagged for a manager' };
+      await log(c, 'credit_over_limit', 'member', p.member, null, creditAudit);
+    }
+  }
+
+  const audit = (tied || unregisteredAudit || creditAudit)
     ? Object.assign({ at: new Date().toISOString() }, tied || {},
-      unregisteredAudit ? { unregistered: unregisteredAudit } : {})
+      unregisteredAudit ? { unregistered: unregisteredAudit } : {},
+      creditAudit ? { credit_over: creditAudit } : {})
     : null;
 
   const sale = await one(c,
@@ -1611,6 +1640,12 @@ H.settle_credit = async (c, p, ctx) => {
     { acct: acct, dr: amt, memo: 'Credit settled' + (p.ref ? ' · ' + p.ref : '') },
     { acct: '1040', cr: amt }
   ], 'credit', p.member, today(ctx), 'Customer credit settled');
+  // The outstanding balance falls by what was paid, floored at zero — a
+  // settlement can never drive the account into credit the customer is owed.
+  if (p.member) {
+    await c.query('UPDATE chain.member SET credit_used = greatest(0, credit_used - $2)'
+      + ' WHERE id = $1', [p.member, amt]);
+  }
   await log(c, 'settle_credit', 'member', p.member, null,
     { amt, method: p.method || 'transfer', ref: p.ref || null });
   return { ok: true };

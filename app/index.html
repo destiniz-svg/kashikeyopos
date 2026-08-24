@@ -6070,7 +6070,7 @@ class Component extends DCLogic {
         payCust: m.cust || "",
         custOpts: (K0.CUSTOMERS || []).filter((c) => c.credit > 0).map((c) => ({ id: c.id, label: c.name + " · " + MVRc(c.credit - c.used) + " available" })),
         onPayCust: (e) => this.setState({ modal: Object.assign({}, m, { cust: e.target.value }) }),
-        creditInfo: cust ? (cust.credit - cust.used >= gross ? cust.name + " has " + MVRc(cust.credit - cust.used) + " of headroom. The charge posts a debit to the credit ledger and Dr 1040." : cust.name + " is over the limit — a Postgres trigger will reject this charge at commit, offline or not.") : "",
+        creditInfo: cust ? (cust.credit - cust.used >= gross ? cust.name + " has " + MVRc(cust.credit - cust.used) + " of headroom. The charge posts Dr 1040 and raises their outstanding balance." : cust.name + " is over the limit — this charge is blocked here. An overrun that reaches the outlet offline is recorded and flagged for a manager, never silent.") : "",
         creditInfoStyle: cust ? "margin-top:10px;font-size:11.5px;line-height:1.6;padding:10px 12px;border-radius:8px;background:" + (cust.credit - cust.used >= gross ? "var(--ok-dim);border:1px solid var(--ok-dim);color:var(--green-soft)" : "var(--bad-dim);border:1px solid var(--bad-dim);color:var(--red-soft)") : "display:none",
         payRows: [
           { label: "Subtotal", value: MVR(T.sub), style: rowS },
@@ -9245,7 +9245,7 @@ class Component extends DCLogic {
             : "Nothing has ever been counted at this outlet, so every stock figure is what the recipes predict rather than what is on the shelf. No variance to report is not the same as no variance."
         };
       })(),
-      { label: "Credit outstanding", v: MVRc(d.credit), pct: Math.min(100, (d.credit / 12000) * 100), tone: d.overdue ? "r" : "g", chip: d.overdue ? d.overdue + " at limit" : "All within limit", note: "House accounts are the slowest money in the business. The limit is enforced by a database trigger, not a form." },
+      { label: "Credit outstanding", v: MVRc(d.credit), pct: Math.min(100, (d.credit / 12000) * 100), tone: d.overdue ? "r" : "g", chip: d.overdue ? d.overdue + " at limit" : "All within limit", note: "House accounts are the slowest money in the business. The till blocks a charge past the limit, and the server keeps each customer's outstanding balance so an offline overrun is recorded, not silent." },
       (() => {
         const B = this.cardBatches();
         const openV = B.filter((x) => x.state === "awaiting").reduce((a, x) => a + x.expected, 0);
@@ -12014,7 +12014,7 @@ class Component extends DCLogic {
         go: () => this.setState({ modal: { kind: "customer", id: c.id } }),
         cells: [c.name, { t: c.phone, mono: 1 }, { t: c.tier, chip: this.chip(tier[c.tier]) }, String(c.visits), MVRc(c.spent), String(c.points), { t: c.credit ? MVRc(c.used) + " / " + MVRc(c.credit) : "No facility", c: c.credit && c.used >= c.credit ? "var(--red-bright)" : "var(--text-dim)", w: c.credit ? 600 : 400 }, c.last]
       })),
-      notes: [["Credit management", "Credit is a ledger, not a field. Every charge writes a debit row and every settlement a credit row to kpos.credit_ledger; the limit check is a Postgres trigger, so an offline terminal that replays a charge over the limit gets rejected at replay time rather than silently overdrawing."]]
+      notes: [["Credit management", "Every credit charge raises the customer's outstanding balance and every settlement lowers it — the server keeps that figure (charges minus settlements), so the limit is real money owed, not a decoration. The till blocks an over-limit charge at the counter; an offline terminal that replays a charge over the limit has the overrun recorded and flagged for a manager rather than silently overdrawing."]]
     };
   }
 
@@ -15019,7 +15019,7 @@ class Component extends DCLogic {
            worse than no control. */
         title: "Add customer", sub: "Loyalty, credit and the portal are keyed off this row", save: "Create customer",
         editTitle: "Edit customer", editSub: "Contact details, and what they may put on account",
-        foot: "The phone number is the identity and the portal accepts either half — an email is optional, and only needed to invite them by email. Tier is worked out from points against the loyalty ladder, so it is not set here. A credit limit greater than zero opens a credit_ledger account; the limit is enforced by a Postgres trigger, not the terminal.",
+        foot: "The phone number is the identity and the portal accepts either half — an email is optional, and only needed to invite them by email. Tier is worked out from points against the loyalty ladder, so it is not set here. A credit limit greater than zero opens a house account; the server tracks the outstanding balance and every overrun is recorded on the audit trail.",
         fields: [
           { k: "name", label: "Customer name", v: "", full: 1 },
           { k: "phone", label: "Phone", v: "+960 " },

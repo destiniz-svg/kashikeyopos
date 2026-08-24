@@ -49,7 +49,7 @@ async function buildBootstrap(ctx) {
       chainSettings: ['SELECT key, value FROM chain.setting'],
       suppliers: ['SELECT * FROM chain.supplier WHERE active ORDER BY name'],
       members: ['SELECT id, phone, name, email, home_outlet, points,'
-        + ' credit_limit, joined_at, last_seen, invited_via, invited_to,'
+        + ' credit_limit, credit_used, joined_at, last_seen, invited_via, invited_to,'
         + ' invited_at, invite_count, revoked_at FROM chain.member'
         + ' ORDER BY joined_at DESC LIMIT 500'],
       // A member's history is DERIVED from this outlet's own receipts. It was
@@ -705,7 +705,10 @@ function customerOf(r, h) {
     // ladder, by the one reader every surface goes through, so a column here
     // would be a second answer to a question that has one.
     points: num(r.points), credit: num(r.credit_limit),
-    used: num(hist.on_account),
+    // The outstanding balance the server keeps — charges MINUS settlements,
+    // chain-wide, the real headroom. The old `on_account` summed only charges,
+    // so a settled customer still read as owing every laari they had ever run up.
+    used: num(r.credit_used),
     last: hist.last_visit || '', home: r.home_outlet,
     // Whether this person has ever actually opened their card. The till used
     // to carry an invented `portal` flag that no server ever set, so every
