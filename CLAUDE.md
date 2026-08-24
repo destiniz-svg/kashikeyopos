@@ -38,6 +38,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        022 sale knows redemption
                        023 wages are not tips · 024 device pushes
                        025 retention · 026 install identity
+                       027 reserve panel · 028 credit outstanding
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -289,6 +290,39 @@ measures its own rolling turnover against the threshold and publishes it as
 `GST_WATCH`; crossing it becomes a decision on the owner's Today list.
 `test/tax.test.js` sweeps every screen and modal for a tax class printed next
 to a rate.
+
+**The registration flag was authoritative; the AMOUNT was not.** `applySale()`
+now recomputes the expected tax from the outlet's own effective-dated
+`chain.tax_version` rate, on the same base the till uses — net less any
+redemption, plus the service billed — and stamps `server_audit.tax_mismatch`
+when the RATE applied is wrong (a stale build carrying yesterday's rate through
+a change). It flags a wrong non-zero rate, never a zero-tax sale: a registered
+business has zero-rated and exempt supplies, and second-guessing every one
+cries wolf until nobody reads the flag. Same doctrine as the registration
+sweep — repair-and-flag, never reject, because the money is already taken.
+`COGS` and the value of the stock it moved are the same money; a gap between
+them stamps `server_audit.cogs_mismatch` (full recipe-and-WAC re-derivation of
+COGS server-side is the deeper follow-up this leaves open).
+
+## Credit is a balance the server keeps
+
+A house account has a limit, and it used to be decoration. The till told the
+operator, in four places, that a Postgres trigger would reject an over-limit
+charge "offline or not" — there was no trigger, no CHECK, and no per-member
+outstanding balance anywhere. A credit sale just debited 1040 and two offline
+tills could run one customer arbitrarily over.
+
+`chain.member.credit_used` (migration 028) is the outstanding, **chain-wide**
+because the limit is one figure across every outlet, maintained by the two ops
+that move it: `applySale()` raises it by the credit tender, `settle_credit`
+lowers it (floored at zero). An overrun is **stamped** in
+`server_audit.credit_over` and logged as `credit_over_limit`, not rejected — a
+sale that already happened is never thrown away, the same doctrine as tax — and
+the till's own pay screen still blocks an over-limit charge before it is rung:
+prevented at the counter, detected and recorded on replay. The bootstrap now
+publishes `used` from `credit_used` (charges **minus** settlements), where the
+old `on_account` summed only charges and left a paid-up customer reading as
+still owing.
 
 ## Sync
 
@@ -1244,7 +1278,7 @@ website — they set their own on their own install's `/account`.
 ## Tests
 
 ```
-npm test                          # 225 tests
+npm test                          # 239 tests
 npm run leak-test                 # isolation, on its own
 ```
 
