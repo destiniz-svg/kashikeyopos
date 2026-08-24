@@ -213,7 +213,72 @@
         el("button", { class: "mini", text: "Edit", onclick: function () { sheet(inst, reload); } })])]);
   }
 
-  function kpis(installs) {
+  /* ── store requests from the website ──────────────────────────────────── */
+  function ageOf(ts) {
+    var ms = Date.now() - new Date(ts).getTime();
+    var h = Math.floor(ms / 3600e3);
+    if (h < 1) return "just now";
+    if (h < 24) return h + "h ago";
+    return Math.floor(h / 24) + "d ago";
+  }
+
+  function requestCard(s, reload) {
+    var open = s.status === "new" || s.status === "contacted";
+    var chip = s.status === "new" ? ["warn", "New request"]
+      : s.status === "contacted" ? ["onb", "Contacted"]
+      : s.status === "provisioned" ? ["live", "Provisioned"] : ["mute", "Declined"];
+    var meta = [el("span", { class: "mono", text: s.email }),
+      el("span", { class: "mono", text: s.phone })];
+    if (s.island) meta.push(el("span", { text: s.island }));
+    meta.push(el("span", { text: ageOf(s.created_at) }));
+
+    var foot = null;
+    if (open) {
+      var decline = el("button", { class: "mini", text: "Decline" });
+      decline.addEventListener("click", function () {
+        if (decline.dataset.armed) {
+          api("PATCH", "/api/signups/" + s.id, { status: "declined" }).then(reload);
+        } else {
+          decline.dataset.armed = "1";
+          decline.textContent = "Really decline?";
+          decline.style.color = "var(--danger-bright)";
+        }
+      });
+      var kids = [];
+      if (s.status === "new") kids.push(el("button", { class: "mini", text: "Mark contacted",
+        onclick: function () { api("PATCH", "/api/signups/" + s.id, { status: "contacted" }).then(reload); } }));
+      kids.push(decline, el("span", { class: "grow" }),
+        el("button", { class: "mini", text: "Provision →",
+          style: "border-color:var(--go-line);color:var(--go-bright)",
+          onclick: function () {
+            var end = new Date(Date.now() + 14 * 86400e3);
+            sheet(null, reload, {
+              heading: "Provision " + s.store_name,
+              sub: "Create their app service and database first (DEPLOYMENT.md), set its PLATFORM_KEY, then enter them here. The trial is pre-set to 14 days from today.",
+              prefill: { name: s.store_name, kind: "trial",
+                trialEnds: end.toISOString().slice(0, 10),
+                notes: s.contact_name + " · " + s.phone + " · " + s.email + (s.island ? " · " + s.island : "") },
+              onSaved: function (installId) {
+                api("PATCH", "/api/signups/" + s.id, { status: "provisioned", installId: installId }).then(reload);
+              }
+            });
+          } }));
+      foot = el("div", { class: "foot" }, kids);
+    }
+
+    return el("div", { class: "card" + (open ? "" : " archived") }, [
+      el("div", { class: "head" }, [
+        el("div", { class: "nm" }, [
+          el("b", { text: s.store_name }),
+          el("span", { text: s.contact_name })]),
+        el("span", { class: "chip " + chip[0] }, [el("span", { class: "pip" }),
+          document.createTextNode(chip[1])])]),
+      meta.length ? el("div", { class: "meta" }, meta) : null,
+      s.note ? el("div", { class: "note", text: s.note }) : null,
+      foot]);
+  }
+
+  function kpis(installs, signups) {
     var act = installs.filter(function (i) { return !i.archived; });
     var live = act.filter(function (i) { var c = statusOf(i).cls; return c === "live" || c === "onb"; });
     var unreachable = act.filter(function (i) { var c = statusOf(i).cls; return c === "bad" || c === "warn"; });
@@ -240,6 +305,10 @@
       k: "Today, all live installs",
       v: curKeys.map(function (c) { return fmtMoney(byCur[c], c); }).join("  ·  "),
       s: "net of " + live.length + " live install" + (live.length === 1 ? "" : "s"), small: true });
+    var fresh = (signups || []).filter(function (s) { return s.status === "new"; });
+    if (fresh.length) tiles.unshift({
+      k: "New store requests", v: String(fresh.length),
+      s: fresh.map(function (s) { return s.store_name; }).join(", ") });
     return el("div", { class: "kpis" }, tiles.map(function (t) {
       return el("div", { class: "kpi" }, [
         el("div", { class: "k", text: t.k }),
@@ -248,22 +317,27 @@
     }));
   }
 
-  /* ── add / edit sheet ─────────────────────────────────────────────────── */
-  function sheet(inst, reload) {
+  /* ── add / edit sheet ─────────────────────────────────────────────────────
+     opts (optional): { prefill, heading, sub, onSaved(installId) } — used by
+     "Provision" on a store request, which pre-fills what the request said. */
+  function sheet(inst, reload, opts) {
+    var o = opts || {};
+    var pre = o.prefill || {};
     var isNew = !inst;
     var err = el("div", { class: "err", style: "display:none" });
     function fail(m) { err.textContent = m; err.style.display = "block"; }
     var f = {
-      name: el("input", { placeholder: "Seaside Café", value: inst ? inst.name : "" }),
-      baseUrl: el("input", { placeholder: "https://pos-customer.up.railway.app", value: inst ? inst.base_url : "" }),
+      name: el("input", { placeholder: "Seaside Café", value: inst ? inst.name : (pre.name || "") }),
+      baseUrl: el("input", { placeholder: "https://pos-customer.up.railway.app", value: inst ? inst.base_url : (pre.baseUrl || "") }),
       platformKey: el("input", { type: "password", placeholder: isNew ? "the PLATFORM_KEY set on that install" : "leave blank to keep the current key" }),
       kind: el("select", {}, ["trial", "paid", "internal"].map(function (k) {
-        var o = el("option", { value: k, text: k[0].toUpperCase() + k.slice(1) });
-        if (inst && inst.kind === k) o.setAttribute("selected", "");
-        return o;
+        var sel = inst ? inst.kind === k : (pre.kind || "trial") === k;
+        var opt = el("option", { value: k, text: k[0].toUpperCase() + k.slice(1) });
+        if (sel) opt.setAttribute("selected", "");
+        return opt;
       })),
-      trialEnds: el("input", { type: "date", value: inst && inst.trial_ends ? String(inst.trial_ends).slice(0, 10) : "" }),
-      notes: el("input", { placeholder: "who this is, contact, anything worth remembering", value: inst ? inst.notes : "" })
+      trialEnds: el("input", { type: "date", value: inst && inst.trial_ends ? String(inst.trial_ends).slice(0, 10) : (pre.trialEnds || "") }),
+      notes: el("input", { placeholder: "who this is, contact, anything worth remembering", value: inst ? inst.notes : (pre.notes || "") })
     };
     function field(label, input) { return el("div", { class: "field" }, [el("label", { text: label }), input]); }
     var save = el("button", { class: "cta", text: isNew ? "Add the install" : "Save", onclick: function () {
@@ -274,7 +348,9 @@
         : api("PATCH", "/api/installs/" + inst.id, body);
       call.then(function (r) {
         if (r.status !== 200) return fail((r.body && r.body.error) || "save failed");
-        close(); reload();
+        close();
+        if (isNew && o.onSaved && r.body && r.body.id) o.onSaved(r.body.id);
+        else reload();
       });
     } });
     var kids = [err, field("Name", f.name), field("Base URL", f.baseUrl),
@@ -292,10 +368,10 @@
         } })]));
     var scrim = el("div", { class: "scrim" }, [
       el("div", { class: "sheet" }, [
-        el("h2", { text: isNew ? "Add an install" : inst.name }),
-        el("div", { class: "sub", text: isNew
+        el("h2", { text: o.heading || (isNew ? "Add an install" : inst.name) }),
+        el("div", { class: "sub", text: o.sub || (isNew
           ? "One customer, one install: their app service's address and the PLATFORM_KEY you set on it."
-          : "The key is held server-side and never shown back." })].concat(kids))]);
+          : "The key is held server-side and never shown back.") })].concat(kids))]);
     scrim.addEventListener("click", function (ev) { if (ev.target === scrim) close(); });
     function close() { scrim.remove(); }
     document.body.appendChild(scrim);
@@ -319,7 +395,8 @@
     mount({ cls: "", node: page });
 
     function load() {
-      api("GET", "/api/overview").then(function (r) {
+      Promise.all([api("GET", "/api/overview"), api("GET", "/api/signups")]).then(function (rs) {
+        var r = rs[0], rq = rs[1];
         if (r.status === 401) { setToken(null); if (timer) clearInterval(timer); return showSignin(); }
         if (r.status !== 200) {
           body.replaceChildren(el("div", { class: "empty" }, [
@@ -328,14 +405,23 @@
           return;
         }
         var installs = r.body.installs || [];
-        if (!installs.length) {
-          body.replaceChildren(el("div", { class: "empty" }, [
-            el("b", { text: "No installs registered yet" }),
-            document.createTextNode("Add your first customer's install — its base URL and the PLATFORM_KEY you set on it.")]));
-        } else {
-          body.replaceChildren(frag([kpis(installs),
-            el("div", { class: "cards" }, installs.map(function (i) { return installCard(i, load); }))]));
+        var signups = (rq.status === 200 && rq.body.signups) || [];
+        var openReqs = signups.filter(function (s) { return s.status === "new" || s.status === "contacted"; });
+        var out = [];
+        if (installs.length || openReqs.length) out.push(kpis(installs, signups));
+        if (openReqs.length) {
+          out.push(el("div", { class: "sechead", text: "Store requests" }));
+          out.push(el("div", { class: "cards" }, openReqs.map(function (s) { return requestCard(s, load); })));
         }
+        if (installs.length) {
+          if (openReqs.length) out.push(el("div", { class: "sechead", text: "Installs" }));
+          out.push(el("div", { class: "cards" }, installs.map(function (i) { return installCard(i, load); })));
+        } else if (!openReqs.length) {
+          out.push(el("div", { class: "empty" }, [
+            el("b", { text: "No installs registered yet" }),
+            document.createTextNode("Add your first customer's install — or wait for a store request from the website.")]));
+        }
+        body.replaceChildren(frag(out));
         updated.textContent = "Updated " + new Date(r.body.at).toLocaleTimeString();
       });
     }

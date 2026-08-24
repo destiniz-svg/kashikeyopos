@@ -51,7 +51,14 @@ const pool = new Pool({
 pool.on('error', (e) => console.error('[panel] idle connection lost:', e.message));
 
 async function migrate() {
-  await pool.query(`
+  /* The panel and the website boot together against one registry, and two
+     concurrent CREATE IF NOT EXISTS still race inside Postgres's catalogs
+     (pg_type unique violation — seen in anger). One advisory lock, held by
+     whoever gets there first, and the race is gone. */
+  const c = await pool.connect();
+  try {
+    await c.query('SELECT pg_advisory_lock(881234)');
+    await c.query(`
     CREATE SCHEMA IF NOT EXISTS panel;
     CREATE TABLE IF NOT EXISTS panel.admin (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -70,7 +77,27 @@ async function migrate() {
       archived boolean NOT NULL DEFAULT false,
       created_at timestamptz NOT NULL DEFAULT now()
     );
+    -- Written by the public website (site/server.js), decided here. The same
+    -- CREATE IF NOT EXISTS lives on both sides so either service may boot first.
+    CREATE TABLE IF NOT EXISTS panel.signup (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      store_name text NOT NULL,
+      contact_name text NOT NULL,
+      email text NOT NULL,
+      phone text NOT NULL DEFAULT '',
+      island text NOT NULL DEFAULT '',
+      note text NOT NULL DEFAULT '',
+      status text NOT NULL DEFAULT 'new'
+        CHECK (status IN ('new','contacted','provisioned','declined')),
+      install_id uuid,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      decided_at timestamptz
+    );
   `);
+  } finally {
+    await c.query('SELECT pg_advisory_unlock(881234)').catch(() => {});
+    c.release();
+  }
 }
 
 /* ── credentials, the same discipline as the POS ────────────────────────── */
@@ -217,6 +244,35 @@ function urlOk(u) {
   return /^https:\/\/\S+$/.test(u)
     || (process.env.NODE_ENV !== 'production' && /^http:\/\/\S+$/.test(u));
 }
+
+/* ── store requests from the website ────────────────────────────────────────
+   The website records them; the seller decides here. "Provisioned" links the
+   request to the install it became, so a request's story stays answerable. */
+app.get('/api/signups', authed, async (req, res, next) => {
+  try {
+    const q = await pool.query(
+      'SELECT id, store_name, contact_name, email, phone, island, note, status,'
+      + ' install_id, created_at, decided_at FROM panel.signup'
+      + " ORDER BY (status IN ('new','contacted')) DESC, created_at DESC LIMIT 200");
+    res.set('cache-control', 'no-store').json({ signups: q.rows });
+  } catch (e) { next(e); }
+});
+
+app.patch('/api/signups/:id', authed, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    if (!['new', 'contacted', 'provisioned', 'declined'].includes(b.status)) {
+      return res.status(400).json({ error: 'status is new, contacted, provisioned or declined' });
+    }
+    const q = await pool.query(
+      'UPDATE panel.signup SET status = $1, install_id = $2,'
+      + " decided_at = CASE WHEN $1 IN ('provisioned','declined') THEN now() ELSE decided_at END"
+      + ' WHERE id = $3 RETURNING id',
+      [b.status, b.installId || null, req.params.id]);
+    if (!q.rows.length) return res.status(404).json({ error: 'no such request' });
+    res.json({ ok: true });
+  } catch (e) { next(e); }
+});
 
 app.post('/api/installs', authed, async (req, res, next) => {
   try {

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Start your free trial — KashikeyoPOS</title>
+<meta name="description" content="Request your store. Every new store starts on a 14-day free trial — no card required." />
+<link rel="icon" href="/logo-mark.png" />
+<style>
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-400.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-500.woff2) format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-600.woff2) format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-700.woff2) format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url(/fonts/jbmono-500.woff2) format('woff2');font-weight:500;font-display:swap}
+:root{
+  --bg:#0b0c0e;--bg-1:#111214;--bg-2:#17181b;
+  --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
+  --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#6f747d;
+  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--on-accent:#fff4f0;
+  --go:#34c77b;--danger:#ff7b8e;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg)}
+body{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
+  font-family:'Instrument Sans',system-ui,sans-serif;color:var(--text);
+  -webkit-font-smoothing:antialiased;position:relative;overflow-x:hidden}
+.orb{position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none}
+.orb.a{width:520px;height:520px;top:-240px;left:-160px;background:rgba(244,85,60,.2)}
+.orb.b{width:420px;height:420px;bottom:-220px;right:-140px;background:rgba(124,146,245,.12)}
+.card{position:relative;width:100%;max-width:460px;padding:34px 30px;
+  background:rgba(17,18,20,.82);border:1px solid var(--line-2);border-radius:22px;
+  backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
+  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 40px 100px rgba(0,0,0,.6)}
+.back{display:inline-flex;align-items:center;gap:6px;margin-bottom:20px;color:var(--mute);font-size:13px;text-decoration:none}
+.back:hover{color:var(--text)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;margin-bottom:20px}
+.logo .mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+h1{font-size:22px;letter-spacing:-.02em;margin-bottom:6px}
+p.sub{color:var(--mute);font-size:14px;line-height:1.55;margin-bottom:20px}
+p.sub b{color:var(--dim)}
+label{display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--faint);margin:14px 0 7px}
+input,textarea{width:100%;padding:12px 14px;border-radius:11px;border:1px solid var(--line-2);
+  background:var(--bg);color:var(--text);font-size:15px;font-family:inherit;outline:none;
+  transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(244,85,60,.18)}
+::placeholder{color:var(--faint)}
+textarea{resize:vertical;min-height:74px}
+.row{display:flex;gap:12px}.row>div{flex:1}
+@media (max-width:460px){.row{flex-direction:column;gap:0}}
+button.primary{width:100%;margin-top:24px;padding:14px;border-radius:999px;border:none;
+  font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;min-height:48px;
+  background:var(--accent);color:var(--on-accent);
+  box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 8px 24px rgba(244,85,60,.35);
+  transition:background .15s,transform .15s}
+button.primary:hover{background:var(--accent-deep)}
+button.primary:active{transform:scale(.99)}
+button.primary:disabled{opacity:.55;cursor:default}
+.error{display:none;margin-top:16px;padding:11px 13px;border-radius:10px;font-size:13px;
+  background:rgba(242,68,94,.1);border:1px solid rgba(242,68,94,.35);color:var(--danger)}
+.fine{margin-top:16px;font-size:12px;color:var(--faint);line-height:1.5;text-align:center}
+.foot{margin-top:18px;text-align:center;font-size:13px;color:var(--mute)}
+.foot a{color:var(--accent-2);text-decoration:none;font-weight:600}
+/* success state */
+.done{display:none;text-align:center;padding:18px 0 8px}
+.done .badge{width:56px;height:56px;border-radius:50%;margin:0 auto 18px;
+  background:rgba(52,199,123,.12);border:1px solid rgba(52,199,123,.4);
+  display:flex;align-items:center;justify-content:center;color:var(--go);font-size:24px}
+.done h1{margin-bottom:8px}
+.done p{color:var(--mute);font-size:14px;line-height:1.6}
+.done p b{color:var(--dim)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="orb a"></div><div class="orb b"></div>
+<div class="card">
+  <a class="back" href="/">&larr; kashikeyopos.com</a>
+  <div class="logo"><span class="mark">K</span>KashikeyoPOS</div>
+
+  <form id="reqForm">
+    <h1>Start your free trial</h1>
+    <p class="sub">Tell us about your store. We provision <b>your own private install</b> — your own
+      database, shared with nobody — and email your address and sign-in, usually within a day.
+      Every new store starts on a <b>14-day free trial</b>. No card required.</p>
+
+    <label for="storeName">Store name</label>
+    <input id="storeName" required maxlength="120" placeholder="Seaside Café" />
+
+    <div class="row">
+      <div><label for="contactName">Your name</label>
+        <input id="contactName" required maxlength="120" autocomplete="name" placeholder="Hassan Moosa" /></div>
+      <div><label for="phone">Phone</label>
+        <input id="phone" required maxlength="40" autocomplete="tel" inputmode="tel" placeholder="+960 7XX XXXX" /></div>
+    </div>
+
+    <label for="email">Email</label>
+    <input id="email" type="email" required maxlength="200" autocomplete="email" placeholder="you@business.mv" />
+
+    <label for="island">Island / city <span style="text-transform:none;letter-spacing:0;color:var(--faint)">(optional)</span></label>
+    <input id="island" maxlength="120" placeholder="Malé · Hulhumalé · Addu…" />
+
+    <label for="note">Anything we should know? <span style="text-transform:none;letter-spacing:0;color:var(--faint)">(optional)</span></label>
+    <textarea id="note" maxlength="1000" placeholder="Café with 12 tables, two outlets, we already use QR menus…"></textarea>
+
+    <div class="error" id="err"></div>
+    <button class="primary" type="submit" id="sendBtn">Request my store</button>
+    <div class="fine">By requesting a store you agree to the <a href="/terms" style="color:var(--mute)">Terms</a>
+      &amp; <a href="/privacy" style="color:var(--mute)">Privacy Policy</a>.</div>
+  </form>
+
+  <div class="done" id="done">
+    <div class="badge">✓</div>
+    <h1>Request received</h1>
+    <p>We're setting up your store. You'll get an email at <b id="doneEmail"></b> with your store's
+      address and sign-in — usually within a day. Your <b>14-day free trial</b> starts the day your
+      store goes live, not today.</p>
+    <div class="foot" style="margin-top:22px"><a href="/">&larr; Back to kashikeyopos.com</a></div>
+  </div>
+
+  <div class="foot" id="footLine">Already have a store? <a href="/login">Sign in</a></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  function $(id) { return document.getElementById(id); }
+  function fail(msg) { var e = $("err"); e.textContent = msg; e.style.display = "block"; }
+  $("reqForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    $("err").style.display = "none";
+    var body = {
+      storeName: $("storeName").value.trim(),
+      contactName: $("contactName").value.trim(),
+      email: $("email").value.trim().toLowerCase(),
+      phone: $("phone").value.trim(),
+      island: $("island").value.trim(),
+      note: $("note").value.trim()
+    };
+    if (!body.storeName) return fail("What is your store called?");
+    if (!body.contactName) return fail("Your name is required.");
+    if (!/^\S+@\S+\.\S+$/.test(body.email)) return fail("Enter a valid email address.");
+    if (!body.phone) return fail("A contact number is required.");
+    var btn = $("sendBtn"); btn.disabled = true; btn.textContent = "Sending…";
+    fetch("/api/site/signup", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, j: j }; });
+    }).then(function (x) {
+      btn.disabled = false; btn.textContent = "Request my store";
+      if (!x.ok) return fail(x.j.error || "Could not send your request — try again.");
+      $("doneEmail").textContent = body.email;
+      $("reqForm").classList.add("hide");
+      $("footLine").classList.add("hide");
+      $("done").style.display = "block";
+    }).catch(function () {
+      btn.disabled = false; btn.textContent = "Request my store";
+      fail("Network error — check your connection and try again.");
+    });
+  });
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KashikeyoPOS — Point of sale built for the Maldives</title>
+<meta name="description" content="Offline-first POS, QR ordering, loyalty, GST and real double-entry accounts — sold as your own private install. 14-day free trial." />
+<link rel="icon" href="/logo-mark.png" />
+<style>
+/* ═══ One committed look: near-black, one coral accent, mono figures ══════
+   The marketing page wears the product's own clothes — the terminal's dark
+   ramp, Instrument Sans, JetBrains Mono for every figure — so the thing you
+   are shown is the thing you get. */
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-400.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-500.woff2) format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-600.woff2) format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-700.woff2) format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url(/fonts/jbmono-400.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url(/fonts/jbmono-500.woff2) format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url(/fonts/jbmono-700.woff2) format('woff2');font-weight:700;font-display:swap}
+:root{
+  --bg:#0b0c0e;--bg-1:#111214;--bg-2:#17181b;--bg-3:#1e2024;
+  --line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
+  --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#6f747d;
+  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--on-accent:#fff4f0;
+  --go:#34c77b;--fwd:#7c92f5;--warn:#f2a43a;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+  --r:18px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+html,body{background:var(--bg);overflow-x:clip}
+body{font-family:'Instrument Sans',system-ui,sans-serif;color:var(--text);
+  font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.hero,.final{overflow-x:clip}
+a{color:inherit;text-decoration:none}
+img{max-width:100%}
+.mono{font-family:var(--mono);letter-spacing:.02em}
+.wrap{max-width:1160px;margin:0 auto;padding:0 22px}
+
+/* glows — pure CSS, no assets */
+.orb{position:absolute;border-radius:50%;filter:blur(90px);pointer-events:none;opacity:.5}
+.grid-tex{position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(var(--line) 1px,transparent 1px),
+    linear-gradient(90deg,var(--line) 1px,transparent 1px);
+  background-size:56px 56px;
+  -webkit-mask-image:radial-gradient(ellipse 90% 62% at 50% 0%,#000 35%,transparent 78%);
+  mask-image:radial-gradient(ellipse 90% 62% at 50% 0%,#000 35%,transparent 78%)}
+
+/* ── nav ──────────────────────────────────────────────────────────────── */
+header{position:fixed;z-index:50;top:14px;left:50%;transform:translateX(-50%);
+  width:min(1060px,calc(100% - 24px));border-radius:16px;
+  background:rgba(17,18,20,.72);border:1px solid var(--line-2);
+  backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
+  box-shadow:0 18px 50px rgba(0,0,0,.45)}
+header .bar{display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px 18px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;letter-spacing:-.01em}
+.logo .mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px}
+nav.links{display:flex;gap:4px}
+nav.links a{padding:10px 13px;min-height:44px;display:inline-flex;align-items:center;border-radius:10px;
+  font-size:13.5px;font-weight:500;color:var(--dim)}
+nav.links a:hover{color:var(--text);background:rgba(255,255,255,.05)}
+.cta-row{display:flex;gap:8px;align-items:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px 18px;min-height:44px;border-radius:999px;font-size:14px;font-weight:600;
+  border:none;cursor:pointer;white-space:nowrap;transition:transform .15s,background .15s,box-shadow .15s}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--accent);color:var(--on-accent);
+  box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 8px 24px rgba(244,85,60,.35)}
+.btn-primary:hover{background:var(--accent-deep)}
+.btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--line-2)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+@media (max-width:760px){nav.links{display:none}}
+
+/* ── hero ─────────────────────────────────────────────────────────────── */
+.hero{position:relative;padding:150px 0 40px;text-align:center}
+.hero .orb.a{width:560px;height:560px;top:-220px;left:calc(50% - 620px);background:rgba(244,85,60,.24)}
+.hero .orb.b{width:460px;height:460px;top:-160px;right:calc(50% - 640px);background:rgba(124,146,245,.14)}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;
+  background:rgba(244,85,60,.1);border:1px solid rgba(244,85,60,.3);
+  font-size:12.5px;font-weight:600;color:var(--accent-2);margin-bottom:22px}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+h1{font-size:clamp(40px,7vw,76px);line-height:1.02;letter-spacing:-.035em;font-weight:700;max-width:900px;margin:0 auto}
+h1 .grad{background:linear-gradient(100deg,var(--accent) 10%,var(--accent-2) 55%,#ffd9a3 95%);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .sub{max-width:620px;margin:22px auto 0;font-size:clamp(16px,2vw,19px);color:var(--mute);line-height:1.6}
+.hero .ctas{display:flex;gap:12px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+.hero .btn-primary{padding:15px 30px;font-size:15.5px}
+.hero .btn-ghost{padding:15px 26px;font-size:15.5px}
+.hero .fine{margin-top:14px;font-size:12.5px;color:var(--faint)}
+
+/* ── the terminal, drawn in CSS ───────────────────────────────────────── */
+.stage{position:relative;margin:64px auto 0;max-width:980px;padding:0 22px}
+.shot{position:relative;border-radius:20px;border:1px solid var(--line-2);overflow:hidden;
+  background:var(--bg-1);
+  box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 40px 120px rgba(0,0,0,.6),0 0 120px rgba(244,85,60,.12)}
+.shot .tbar{display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--line);background:var(--bg-2)}
+.shot .tbar .d{width:10px;height:10px;border-radius:50%;background:var(--bg-3)}
+.shot .tbar .addr{margin-left:10px;font-family:var(--mono);font-size:11px;color:var(--faint)}
+.shot .body{display:grid;grid-template-columns:56px 1.4fr 1fr;min-height:380px}
+.shot .rail{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0;background:var(--bg-1)}
+.shot .rail i{width:32px;height:32px;border-radius:9px;background:var(--bg-3);display:block}
+.shot .rail i.on{background:linear-gradient(135deg,var(--accent),var(--accent-deep))}
+.shot .floor{padding:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-content:start}
+.shot .tb{border-radius:12px;border:1px solid var(--line);background:var(--bg-2);padding:10px;min-height:74px}
+.shot .tb b{font-size:12px;font-weight:600;display:block}
+.shot .tb span{font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+.shot .tb.busy{border-color:rgba(244,85,60,.4);background:rgba(244,85,60,.07)}
+.shot .tb.busy span{color:var(--accent-2)}
+.shot .tb.ready{border-color:rgba(52,199,123,.35);background:rgba(52,199,123,.06)}
+.shot .tb.ready span{color:var(--go)}
+.shot .bill{border-left:1px solid var(--line);background:var(--bg-2);padding:18px;display:flex;flex-direction:column}
+.shot .bill h4{font-size:12px;font-weight:600;color:var(--dim);margin-bottom:10px}
+.shot .li{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);padding:5px 0}
+.shot .li .p{font-family:var(--mono);font-size:11.5px}
+.shot .tot{margin-top:auto;border-top:1px solid var(--line);padding-top:10px}
+.shot .tot .li{font-weight:600;color:var(--text)}
+.shot .tot .li .p{color:var(--accent-2);font-size:14px}
+.shot .paybtn{margin-top:10px;background:var(--accent);color:var(--on-accent);border-radius:10px;
+  text-align:center;font-size:12.5px;font-weight:700;padding:10px}
+.shot .offline{position:absolute;top:56px;left:76px;display:flex;align-items:center;gap:6px;
+  font-size:10.5px;font-weight:600;color:var(--warn);background:rgba(242,164,58,.12);
+  border:1px solid rgba(242,164,58,.35);padding:5px 10px;border-radius:999px}
+.shot .offline .dot{width:5px;height:5px;border-radius:50%;background:var(--warn)}
+@media (max-width:720px){.shot .body{grid-template-columns:44px 1fr}.shot .bill{display:none}
+  .shot .floor{grid-template-columns:repeat(2,1fr)}}
+
+/* ── honest numbers ───────────────────────────────────────────────────── */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:70px auto 0}
+.stats .s{background:var(--bg-1);padding:26px 22px;text-align:center}
+.stats .v{font-family:var(--mono);font-size:30px;font-weight:700;letter-spacing:-.01em}
+.stats .k{font-size:12.5px;color:var(--mute);margin-top:5px}
+@media (max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ── marquee ──────────────────────────────────────────────────────────── */
+.marq{overflow:hidden;margin:70px 0 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  padding:16px 0;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.marq .track{display:flex;gap:14px;width:max-content;animation:slide 36s linear infinite}
+.marq span{font-family:var(--mono);font-size:12.5px;color:var(--faint);
+  border:1px solid var(--line-2);border-radius:999px;padding:8px 16px;white-space:nowrap}
+@keyframes slide{to{transform:translateX(-50%)}}
+
+/* ── sections ─────────────────────────────────────────────────────────── */
+section{position:relative;padding:96px 0 0}
+.kicker{font-family:var(--mono);font-size:12px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.14em;color:var(--accent-2);margin-bottom:14px}
+h2{font-size:clamp(28px,4.4vw,44px);letter-spacing:-.025em;line-height:1.08;font-weight:700;max-width:640px}
+.lead{color:var(--mute);font-size:17px;max-width:560px;margin-top:16px}
+
+/* bento */
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-top:44px}
+.cell{grid-column:span 2;border-radius:var(--r);border:1px solid var(--line);background:var(--bg-1);
+  padding:26px 24px;position:relative;overflow:hidden;transition:transform .25s,border-color .25s}
+.cell:hover{transform:translateY(-3px);border-color:var(--line-2)}
+.cell.w3{grid-column:span 3}
+.cell.w6{grid-column:span 6}
+.cell .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+  font-size:17px;margin-bottom:16px;background:rgba(244,85,60,.12);border:1px solid rgba(244,85,60,.25)}
+.cell h3{font-size:17px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px}
+.cell p{font-size:14px;color:var(--mute);line-height:1.6}
+.cell .tag{position:absolute;top:22px;right:22px;font-family:var(--mono);font-size:10.5px;
+  color:var(--faint);border:1px solid var(--line-2);border-radius:999px;padding:4px 10px}
+.cell .glow{position:absolute;width:260px;height:260px;border-radius:50%;filter:blur(70px);
+  background:rgba(244,85,60,.13);top:-120px;right:-80px;pointer-events:none}
+.cell .code{margin-top:16px;font-family:var(--mono);font-size:11.5px;line-height:1.8;color:var(--dim);
+  background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-x:auto}
+.cell .code em{font-style:normal;color:var(--go)}
+.cell .code b{font-weight:500;color:var(--accent-2)}
+@media (max-width:900px){.cell,.cell.w3{grid-column:span 3}}
+@media (max-width:640px){.cell,.cell.w3,.cell.w6{grid-column:span 6}}
+
+/* ── how it works ─────────────────────────────────────────────────────── */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px;counter-reset:step}
+.step{border-radius:var(--r);border:1px solid var(--line);background:var(--bg-1);padding:28px 24px;position:relative}
+.step::before{counter-increment:step;content:"0" counter(step);
+  font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent-2);
+  display:inline-block;margin-bottom:14px}
+.step h3{font-size:17px;font-weight:600;margin-bottom:8px}
+.step p{font-size:14px;color:var(--mute);line-height:1.6}
+@media (max-width:760px){.steps{grid-template-columns:1fr}}
+
+/* ── isolation band ───────────────────────────────────────────────────── */
+.band{margin-top:96px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(244,85,60,.05),transparent 70%);padding:80px 0}
+.band .inner{display:grid;grid-template-columns:1.1fr 1fr;gap:56px;align-items:center}
+.band ul{list-style:none;display:flex;flex-direction:column;gap:14px;margin-top:26px}
+.band li{display:flex;gap:12px;font-size:14.5px;color:var(--dim);line-height:1.55}
+.band li .tick{flex-shrink:0;width:20px;height:20px;border-radius:6px;margin-top:1px;
+  background:rgba(52,199,123,.14);border:1px solid rgba(52,199,123,.35);
+  display:flex;align-items:center;justify-content:center;color:var(--go);font-size:11px}
+.vault{border-radius:var(--r);border:1px solid var(--line-2);background:var(--bg-1);padding:26px;
+  font-family:var(--mono);font-size:12px;line-height:2;color:var(--dim);
+  box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.vault .row{display:flex;justify-content:space-between;border-bottom:1px solid var(--line);padding:4px 0}
+.vault .row:last-child{border-bottom:none}
+.vault .ok{color:var(--go)}
+.vault .no{color:var(--faint)}
+@media (max-width:860px){.band .inner{grid-template-columns:1fr}}
+
+/* ── trial / cta ──────────────────────────────────────────────────────── */
+.final{position:relative;text-align:center;padding:120px 0 110px;overflow:hidden}
+.final .orb.c{width:640px;height:640px;left:calc(50% - 320px);bottom:-420px;background:rgba(244,85,60,.22)}
+.final h2{margin:0 auto;max-width:700px}
+.final .lead{margin:16px auto 0}
+.final .ctas{display:flex;gap:12px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+
+/* ── footer ───────────────────────────────────────────────────────────── */
+footer{border-top:1px solid var(--line);padding:36px 0 46px}
+footer .row{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}
+footer .links{display:flex;gap:22px;font-size:13px;color:var(--mute);flex-wrap:wrap}
+footer .links a:hover{color:var(--text)}
+footer .fine{font-size:12px;color:var(--faint);margin-top:14px}
+#statusPill{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mute)}
+#statusPill .dot{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+#statusPill.ok .dot{background:var(--go)}
+#statusPill.ok{color:var(--go)}
+
+/* reveal on scroll — CSS-only fallback stays visible */
+.rv{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+.rv.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .rv{opacity:1;transform:none;transition:none}
+  .marq .track{animation:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <a class="logo" href="/"><span class="mark">K</span>KashikeyoPOS</a>
+    <nav class="links">
+      <a href="#features">Features</a>
+      <a href="#how">How it works</a>
+      <a href="#isolation">Your data</a>
+      <a href="/docs">Docs</a>
+    </nav>
+    <div class="cta-row">
+      <a class="btn btn-ghost" href="/login">Sign in</a>
+      <a class="btn btn-primary" href="/signup">Start free trial</a>
+    </div>
+  </div>
+</header>
+
+<!-- ═══ HERO ═══ -->
+<div class="hero">
+  <div class="grid-tex"></div>
+  <div class="orb a"></div><div class="orb b"></div>
+  <div class="wrap" style="position:relative">
+    <div class="pill rv"><span class="dot"></span>Built in the Maldives, for the Maldives</div>
+    <h1 class="rv">The till that keeps selling<br><span class="grad">when the island loses signal.</span></h1>
+    <p class="sub rv">Point of sale, QR ordering, loyalty, GST and real double-entry accounts — one system,
+      running on your own private install. Offline-first by design: a dropped connection never drops a sale.</p>
+    <div class="ctas rv">
+      <a class="btn btn-primary" href="/signup">Start your 14-day free trial</a>
+      <a class="btn btn-ghost" href="#how">See how it works</a>
+    </div>
+    <div class="fine rv">No card required · Your own database · Set up for you within a day</div>
+  </div>
+
+  <!-- the terminal, drawn honestly in CSS -->
+  <div class="stage rv">
+    <div class="shot">
+      <div class="tbar"><span class="d"></span><span class="d"></span><span class="d"></span>
+        <span class="addr">your-store.kashikeyopos.com</span></div>
+      <div class="offline"><span class="dot"></span>Offline — 7 ops queued, nothing lost</div>
+      <div class="body">
+        <div class="rail"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+        <div class="floor">
+          <div class="tb busy"><b>Table 1</b><span>3 covers · MVR 486.00</span></div>
+          <div class="tb"><b>Table 2</b><span>Free</span></div>
+          <div class="tb ready"><b>Table 3</b><span>Ready at the pass</span></div>
+          <div class="tb busy"><b>Table 4</b><span>In the kitchen</span></div>
+          <div class="tb"><b>Table 5</b><span>Free</span></div>
+          <div class="tb busy"><b>Terrace 1</b><span>2 covers · MVR 210.00</span></div>
+        </div>
+        <div class="bill">
+          <h4>Table 1 · Bill</h4>
+          <div class="li"><span>Mas riha</span><span class="p">120.00</span></div>
+          <div class="li"><span>Garudhiya set ×2</span><span class="p">190.00</span></div>
+          <div class="li"><span>Kurumba ×3</span><span class="p">90.00</span></div>
+          <div class="li"><span>Service 10%</span><span class="p">40.00</span></div>
+          <div class="li"><span>GST 8%</span><span class="p">35.20</span></div>
+          <div class="tot"><div class="li"><span>Total</span><span class="p">MVR 486.00</span></div></div>
+          <div class="paybtn">Take payment</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="stats rv">
+      <div class="s"><div class="v">100%</div><div class="k">of sales kept through an outage</div></div>
+      <div class="s"><div class="v">115</div><div class="k">operation kinds synced &amp; replay-safe</div></div>
+      <div class="s"><div class="v">215</div><div class="k">automated tests on every release</div></div>
+      <div class="s"><div class="v">1</div><div class="k">private install per customer</div></div>
+    </div>
+  </div>
+
+  <div class="marq" aria-hidden="true">
+    <div class="track" id="marqTrack">
+      <span>Offline-first outbox</span><span>QR table ordering</span><span>Kitchen display</span>
+      <span>Split bills</span><span>Loyalty &amp; tiers</span><span>GGST · TGST</span>
+      <span>Double-entry ledger</span><span>Settlement reconciliation</span><span>ESC/POS printing</span>
+      <span>Cash drawer control</span><span>Member portal</span><span>Multi-outlet estate</span>
+      <span>Store subdomains</span><span>MVR cash rounding</span><span>Audit trail</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FEATURES ═══ -->
+<section id="features">
+  <div class="wrap">
+    <div class="kicker rv">Everything a floor runs on</div>
+    <h2 class="rv">One system, from the QR on the table to the trial balance.</h2>
+    <p class="lead rv">Not a till with apps bolted on — one chain of consequence:
+      ticket → sale → payment → tax → stock → ledger → settlement, in a single transaction.</p>
+
+    <div class="bento">
+      <div class="cell w3 rv"><div class="glow"></div>
+        <div class="ic">⚡</div><span class="tag">offline-first</span>
+        <h3>A dropped connection never drops a sale</h3>
+        <p>Every action queues durably on the till and replays exactly once when the link returns.
+           Take orders, settle bills and print receipts through a full outage — the outbox holds
+           until the network is back, and a replay can never double-charge.</p>
+        <div class="code">ticket → sale → payment → tax → stock → journal<br><em>✓ replayed once</em> · <b>op 7f3a…</b> already applied — skipped</div>
+      </div>
+      <div class="cell w3 rv">
+        <div class="ic">📱</div><span class="tag">guest QR</span>
+        <h3>Guests order from the table</h3>
+        <p>Each table's QR mints a token scoped to that one table — a guest can't wander into
+           another table's bill. Orders land on the till and the kitchen display instantly, and the
+           guest tracks their food from "in the kitchen" to "ready at the pass".</p>
+      </div>
+      <div class="cell rv">
+        <div class="ic">🧾</div>
+        <h3>GST the way MIRA expects</h3>
+        <p>GGST or TGST from your own effective-dated rate. Not registered? No tax line prints at
+           all — and the system watches your rolling turnover against the MVR 1,000,000 threshold
+           for you.</p>
+      </div>
+      <div class="cell rv">
+        <div class="ic">📒</div>
+        <h3>Real double-entry accounts</h3>
+        <p>Every sale posts its full journal — revenue, tax, service, COGS, tender. An unbalanced
+           entry is refused by the database itself. Your P&amp;L is a fact, not a hope.</p>
+      </div>
+      <div class="cell rv">
+        <div class="ic">💳</div>
+        <h3>Settlement that ties to the bank</h3>
+        <p>Card, wallet and QR each carry their own contract — rate, cycle, evidence. Daily batches
+           reconcile against the advice file, and a half-percent overcharge has nowhere to hide.</p>
+      </div>
+      <div class="cell rv">
+        <div class="ic">⭐</div>
+        <h3>Loyalty guests can check</h3>
+        <p>Points, tiers and receipts on the member's own phone at your store's address. Tiers are
+           derived live from the ladder you publish — no stale "Platinum" from last year.</p>
+      </div>
+      <div class="cell rv">
+        <div class="ic">🖨️</div>
+        <h3>Bytes on paper</h3>
+        <p>ESC/POS dockets over USB, serial or the kitchen's LAN printer. The cash drawer opens on
+           cash — and only on cash. A job with no printer says "spooled", never pretends.</p>
+      </div>
+      <div class="cell rv">
+        <div class="ic">🏝️</div>
+        <h3>Your store's own address</h3>
+        <p><span class="mono" style="font-size:12.5px">your-store.kashikeyopos.com</span> on every
+           table card. Rename later and the old address redirects for ever — a printed QR outlives
+           any decision.</p>
+      </div>
+      <div class="cell w6 rv"><div class="glow"></div>
+        <div class="ic">🍽️</div><span class="tag">floor · pass · office</span>
+        <h3>Waiter, counter, kitchen and back office — one bill, four screens</h3>
+        <p>A tablet takes the order, the pass fires it, the counter settles it, the office reads the
+           day — the open ticket lives with the outlet, not trapped on one device. Split bills
+           remember every share's tender; tips are held for staff, never absorbed into revenue; five
+           staff ranks gate every screen, enforced by the database underneath the app.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ HOW IT WORKS ═══ -->
+<section id="how">
+  <div class="wrap">
+    <div class="kicker rv">From request to first sale</div>
+    <h2 class="rv">Ask for a store today, sell on it tomorrow.</h2>
+    <div class="steps">
+      <div class="step rv">
+        <h3>Request your store</h3>
+        <p>Tell us your store's name and how to reach you — two minutes, no card. Every new store
+           starts on a 14-day free trial.</p>
+      </div>
+      <div class="step rv">
+        <h3>We provision your install</h3>
+        <p>You get your own private install — your own service, your own database, shared with
+           nobody. We email your address and your sign-in, usually within a day.</p>
+      </div>
+      <div class="step rv">
+        <h3>Onboard and sell</h3>
+        <p>A guided setup walks your company, outlet, taxes, menu and staff in fourteen steps.
+           Print your table QRs and take the first order the same afternoon.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ ISOLATION ═══ -->
+<div class="band" id="isolation">
+  <div class="wrap inner">
+    <div>
+      <div class="kicker rv">Your data</div>
+      <h2 class="rv">One customer, one install. Your books share a building with no one.</h2>
+      <ul>
+        <li class="rv"><span class="tick">✓</span><span><b>Your own database.</b> Not a row in someone
+          else's — an entire private install per customer, so another store's bug can never read your sales.</span></li>
+        <li class="rv"><span class="tick">✓</span><span><b>Everything on the record.</b> Every sensitive
+          action lands on an audit trail that is never pruned — who, what, when, answerable years later.</span></li>
+        <li class="rv"><span class="tick">✓</span><span><b>Staff see their rank, nothing more.</b> Five
+          ranks from kitchen to owner, enforced twice — in the app and again by the database.</span></li>
+        <li class="rv"><span class="tick">✓</span><span><b>Guests see a menu, not a business.</b> The QR
+          portal carries no costs, no margins, no staff, no other table's bill.</span></li>
+      </ul>
+    </div>
+    <div class="vault rv">
+      <div class="row"><span>install</span><span class="ok">yours alone</span></div>
+      <div class="row"><span>database</span><span class="ok">yours alone</span></div>
+      <div class="row"><span>ledger &amp; audit trail</span><span class="ok">kept, never trimmed</span></div>
+      <div class="row"><span>guest portal</span><span class="ok">menu only</span></div>
+      <div class="row"><span>other customers</span><span class="no">no shared anything</span></div>
+      <div class="row"><span>seller's view</span><span class="no">aggregates only, audited</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FINAL CTA ═══ -->
+<div class="final">
+  <div class="orb c"></div>
+  <div class="wrap" style="position:relative">
+    <div class="kicker rv">14 days, free, no card</div>
+    <h2 class="rv">Put a real till on your counter this week.</h2>
+    <p class="lead rv">Request your store now — we set it up for you and email your address,
+      usually within a day.</p>
+    <div class="ctas rv">
+      <a class="btn btn-primary" href="/signup">Start your free trial</a>
+      <a class="btn btn-ghost" href="/docs">Read the docs</a>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <a class="logo" href="/"><span class="mark">K</span>KashikeyoPOS</a>
+      <div class="links">
+        <a href="/docs">Docs</a><a href="/status">Status</a>
+        <a href="/terms">Terms</a><a href="/privacy">Privacy</a>
+      </div>
+      <span id="statusPill"><span class="dot"></span><span id="statusTxt">Checking status…</span></span>
+    </div>
+    <div class="fine">© KashikeyoPOS · Malé, Maldives</div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  // Reveal on scroll. Content is never hidden from a browser without IO.
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    document.querySelectorAll(".rv").forEach(function (el) { io.observe(el); });
+  } else {
+    document.querySelectorAll(".rv").forEach(function (el) { el.classList.add("in"); });
+  }
+  // The marquee loops by doubling its own row — content written once.
+  var t = document.getElementById("marqTrack");
+  if (t) t.innerHTML += t.innerHTML;
+  // Live status pill: a real probe, not a painted green dot.
+  fetch("/api/health").then(function (r) { return r.json(); }).then(function (d) {
+    var p = document.getElementById("statusPill");
+    if (d && d.ok) { p.classList.add("ok"); document.getElementById("statusTxt").textContent = "All systems operational"; }
+    else document.getElementById("statusTxt").textContent = "Status unavailable";
+  }).catch(function () { document.getElementById("statusTxt").textContent = "Status unavailable"; });
+}());
+</script>
+</body>
+</html>

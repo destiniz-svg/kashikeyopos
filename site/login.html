@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Sign in — KashikeyoPOS</title>
+<link rel="icon" href="/logo-mark.png" />
+<style>
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-400.woff2) format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-500.woff2) format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-600.woff2) format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'Instrument Sans';src:url(/fonts/instrument-700.woff2) format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'JetBrains Mono';src:url(/fonts/jbmono-500.woff2) format('woff2');font-weight:500;font-display:swap}
+:root{
+  --bg:#0b0c0e;--bg-1:#111214;--line:rgba(255,255,255,.07);--line-2:rgba(255,255,255,.12);
+  --text:#f5f6f7;--dim:#c9ccd2;--mute:#9a9fa8;--faint:#6f747d;
+  --accent:#f4553c;--accent-2:#ff8a5c;--accent-deep:#d63f27;--on-accent:#fff4f0;
+  --mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{background:var(--bg)}
+body{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:24px;
+  font-family:'Instrument Sans',system-ui,sans-serif;color:var(--text);-webkit-font-smoothing:antialiased}
+.orb{position:fixed;border-radius:50%;filter:blur(100px);pointer-events:none}
+.orb.a{width:520px;height:520px;top:-240px;left:-160px;background:rgba(244,85,60,.18)}
+.card{position:relative;width:100%;max-width:440px;padding:34px 30px;
+  background:rgba(17,18,20,.82);border:1px solid var(--line-2);border-radius:22px;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:0 40px 100px rgba(0,0,0,.6)}
+.back{display:inline-block;margin-bottom:20px;color:var(--mute);font-size:13px;text-decoration:none}
+.back:hover{color:var(--text)}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;margin-bottom:20px}
+.logo .mark{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent-deep));
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px}
+h1{font-size:22px;letter-spacing:-.02em;margin-bottom:6px}
+p.sub{color:var(--mute);font-size:14px;line-height:1.6;margin-bottom:18px}
+p.sub b{color:var(--dim)}
+.hintbox{border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:14px 16px;
+  font-size:13px;color:var(--mute);line-height:1.6;margin-bottom:8px}
+.hintbox .mono{font-family:var(--mono);font-size:12px;color:var(--accent-2)}
+.foot{margin-top:20px;text-align:center;font-size:13px;color:var(--mute)}
+.foot a{color:var(--accent-2);text-decoration:none;font-weight:600}
+</style>
+</head>
+<body>
+<div class="orb a"></div>
+<div class="card">
+  <a class="back" href="/">&larr; kashikeyopos.com</a>
+  <div class="logo"><span class="mark">K</span>KashikeyoPOS</div>
+  <h1>Sign in at your store</h1>
+  <p class="sub">Every store runs on its <b>own private install</b>, so you sign in at your store's
+    own address — the one in your welcome email.</p>
+  <div class="hintbox">
+    <b style="color:var(--dim)">Staff at the till</b><br>
+    Open your store's address and tap your name — your four-digit PIN signs you in.
+  </div>
+  <div class="hintbox">
+    <b style="color:var(--dim)">Owners &amp; back office</b><br>
+    Your welcome email links your install's <span class="mono">/account</span> page — email and
+    password, or Google / Apple.
+  </div>
+  <div class="hintbox">
+    <b style="color:var(--dim)">Lost your address?</b><br>
+    Reply to your welcome email or write to us — we'll send it again.
+  </div>
+  <div class="foot">Don't have a store yet? <a href="/signup">Start your free trial</a></div>
+</div>
+</body>
+</html>

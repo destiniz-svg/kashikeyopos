@@ -40,6 +40,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        025 retention · 026 install identity
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
+site/                  the public website — landing, docs, legal, store signup
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -1218,10 +1219,22 @@ seller's panel), wearing the terminal's tokens and fonts. Statuses are icon
 AND label; trials carry their deadline; an unreachable install says why.
 Trial enforcement is a person's decision, not automated — the panel monitors.
 
+**The website** (`site/`) is the third service from the same image
+(`node site/server.js`): landing, docs, legal, and the signup. A signup is a
+STORE REQUEST — it writes `panel.signup` in the registry (advisory-locked
+DDL, since both services boot against one database and concurrent
+`CREATE IF NOT EXISTS` races Postgres's catalogs), rate-limited through
+`src/limit.js`, one open request per address with byte-identical answers.
+It does NOT provision: a form anybody can post must not spin up paid
+infrastructure, so requests land on Mission Control, where **Provision**
+pre-fills the install sheet (trial pre-set to 14 days) and links the request
+to the install it became. The customer's credentials are never taken by the
+website — they set their own on their own install's `/account`.
+
 ## Tests
 
 ```
-npm test                          # 215 tests
+npm test                          # 223 tests
 npm run leak-test                 # isolation, on its own
 ```
 
