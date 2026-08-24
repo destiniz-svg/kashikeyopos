@@ -10036,13 +10036,31 @@ class Component extends DCLogic {
   };
   palIndex() {
     const out = [];
+    const seen = {};
+    const dest = (key, label, sub, icon) => {
+      if (seen[key] || !this.can(key) || !this.siteHas(key) || !this.activityHas(key)) return;
+      seen[key] = 1;
+      out.push({
+        kind: "go", key: "go:" + key, label: label, sub: sub, icon: icon,
+        // The view's own KEY is a word too: "kds" must find the Kitchen
+        // Display, because that is what the kitchen calls it.
+        words: key + " " + (this.PALWORDS[key] || "") + " " + sub,
+        go: () => this.setState({ pal: false, palQ: "", view: key, sel: null, search: "", drawer: false, cart: false })
+      });
+    };
     NAVDEF.forEach((grp) => {
-      grp[1].filter((it) => this.can(it[3] || it[0]) && this.siteHas(it[0]) && this.activityHas(it[0]))
-        .forEach((it) => out.push({
-          kind: "go", key: "go:" + it[0], label: it[1], sub: grp[0], icon: it[2],
-          words: (this.PALWORDS[it[0]] || "") + " " + grp[0],
-          go: () => this.setState({ pal: false, palQ: "", view: it[0], sel: null, search: "", drawer: false, cart: false })
-        }));
+      grp[1].forEach((it) => {
+        if (!this.can(it[3] || it[0])) return;
+        dest(it[0], it[1], grp[0], it[2]);
+        /* THE FOLDED SCREENS ARE DESTINATIONS TOO. The palette used to walk
+           only the sidebar's sixteen primaries, so every folded sibling —
+           Sync & devices, Suppliers, Counts, Payroll, Reports, twenty of
+           them — had search words defined and NO entry to hang them on:
+           typing "sync" into "Go anywhere" answered "Nothing matches that"
+           for a screen the sidebar names. A palette that cannot reach half
+           the app teaches people to stop typing. */
+        (FOLDS[it[0]] || []).forEach((f) => dest(f[0], f[1], "Inside " + it[1], it[2]));
+      });
     });
     // Things a newcomer wants to DO, named as the job rather than the screen.
     const ICO = {
