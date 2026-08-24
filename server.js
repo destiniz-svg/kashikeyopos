@@ -237,10 +237,10 @@ async function boot() {
      clean" must never require a database client to answer. It also catches
      the surprise the promote just met: a database everyone believed empty
      that an earlier build had already migrated. */
-  owner().query('SELECT name FROM chain.company LIMIT 1').then(async (co) => {
+  owner().query('SELECT legal_name FROM chain.company LIMIT 1').then(async (co) => {
     const ou = await owner().query('SELECT count(*)::int AS n FROM chain.outlet');
     console.log(co.rows.length
-      ? '[install] company "' + co.rows[0].name + '" \u00b7 ' + ou.rows[0].n + ' outlet(s)'
+      ? '[install] company "' + co.rows[0].legal_name + '" \u00b7 ' + ou.rows[0].n + ' outlet(s)'
       : '[install] no company yet \u2014 onboarding is open');
   }).catch((e) => console.error('[install] state unreadable: ' + e.message));
   pruneHistory();
