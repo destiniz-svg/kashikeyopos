@@ -97,7 +97,10 @@ header.open .burger span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
   font-size:12.5px;font-weight:600;color:var(--accent-2);margin-bottom:20px}
 .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(244,85,60,.5)}70%{box-shadow:0 0 0 7px rgba(244,85,60,0)}100%{box-shadow:0 0 0 0 rgba(244,85,60,0)}}
-h1{font-size:clamp(38px,8.6vw,80px);line-height:1.02;letter-spacing:-.035em;font-weight:700;max-width:920px;margin:0 auto}
+/* Sized by width AND height: a foldable's inner screen is nearly square, and
+   a headline scaled to its width alone fills the whole first screen — the
+   demo below never gets seen. vh keeps the hero honest on short screens. */
+h1{font-size:clamp(36px,min(8.6vw,11vh),80px);line-height:1.02;letter-spacing:-.035em;font-weight:700;max-width:920px;margin:0 auto}
 h1 .grad{background:linear-gradient(100deg,var(--accent) 0%,var(--accent-2) 40%,var(--accent-3) 70%,var(--accent-2) 100%);
   background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
   animation:shimmer 7s ease-in-out infinite alternate}
@@ -107,6 +110,15 @@ h1 .grad{background:linear-gradient(100deg,var(--accent) 0%,var(--accent-2) 40%,
 .hero .btn-primary{padding:15px 28px;font-size:15.5px}
 .hero .btn-ghost{padding:15px 24px;font-size:15.5px}
 .hero .fine{margin-top:13px;font-size:12.5px;color:var(--faint);padding:0 16px}
+/* Short, wide screens (an unfolded foldable, a small landscape laptop): pull
+   everything up so the demo's edge shows on the first screen. */
+@media (max-height:760px) and (min-width:560px){
+  .hero{padding-top:104px}
+  .pill{margin-bottom:14px}
+  .hero .sub{margin-top:14px}
+  .hero .ctas{margin-top:22px}
+  .stage{margin-top:32px}
+}
 
 /* ── the demo: a service, played on loop ────────────────────────────────── */
 .stage{position:relative;margin:56px auto 0;max-width:960px;padding:0 14px}
@@ -128,7 +140,10 @@ h1 .grad{background:linear-gradient(100deg,var(--accent) 0%,var(--accent-2) 40%,
 .shot .rail{border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0;background:var(--bg-1)}
 .shot .rail i{width:30px;height:30px;border-radius:9px;background:var(--bg-3)}
 .shot .rail i.on{background:linear-gradient(135deg,var(--accent),var(--accent-deep))}
-.floor{padding:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:9px;align-content:start}
+/* auto-fill, not a fixed count: between a fold's cover screen, its square
+   inner screen and a desktop there is no width where a hard column count is
+   right — the tiles decide for themselves. */
+.floor{padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:9px;align-content:start}
 .tb{border-radius:12px;border:1px solid var(--line);background:var(--bg-2);padding:10px;min-height:70px;transition:all .45s}
 .tb b{font-size:12px;font-weight:600;display:block}
 .tb span{font-family:var(--mono);font-size:10px;color:var(--faint);display:block;margin-top:3px;transition:color .45s}
@@ -166,12 +181,11 @@ h1 .grad{background:linear-gradient(100deg,var(--accent) 0%,var(--accent-2) 40%,
 @media (max-width:700px){.mob-bill{display:block}}
 
 /* ── honest numbers ─────────────────────────────────────────────────────── */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);
   border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin:64px auto 0}
 .stats .s{background:var(--bg-1);padding:24px 16px;text-align:center}
 .stats .v{font-family:var(--mono);font-size:clamp(24px,3.4vw,30px);font-weight:700;letter-spacing:-.01em}
 .stats .k{font-size:12px;color:var(--mute);margin-top:5px;line-height:1.4}
-@media (max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
 
 /* ── marquee ────────────────────────────────────────────────────────────── */
 .marq{overflow:hidden;margin:64px 0 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
@@ -289,7 +303,7 @@ h2{font-size:clamp(27px,5vw,44px);letter-spacing:-.025em;line-height:1.07;font-w
 }
 
 /* ── features ───────────────────────────────────────────────────────────── */
-.feats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px}
+.feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px;margin-top:40px}
 .feat{border-radius:var(--r);border:1px solid var(--line);background:var(--bg-1);padding:24px 22px;
   position:relative;overflow:hidden;transition:transform .3s,border-color .3s,box-shadow .3s}
 .feat:hover{transform:translateY(-4px);border-color:var(--line-2);box-shadow:0 20px 50px rgba(0,0,0,.4)}
@@ -301,18 +315,15 @@ h2{font-size:clamp(27px,5vw,44px);letter-spacing:-.025em;line-height:1.07;font-w
 .feat .chipline{margin-top:13px;display:flex;gap:6px;flex-wrap:wrap}
 .feat .chipline span{font-family:var(--mono);font-size:10px;color:var(--faint);
   border:1px solid var(--line-2);border-radius:6px;padding:3px 8px}
-@media (max-width:900px){.feats{grid-template-columns:repeat(2,1fr)}}
-@media (max-width:600px){.feats{grid-template-columns:1fr}}
 
 /* ── how it works ───────────────────────────────────────────────────────── */
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px;counter-reset:step}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px;margin-top:40px;counter-reset:step}
 .step{border-radius:var(--r);border:1px solid var(--line);background:var(--bg-1);padding:26px 24px;position:relative;overflow:hidden}
 .step::before{counter-increment:step;content:"0" counter(step);
   font-family:var(--mono);font-size:44px;font-weight:700;color:transparent;
   -webkit-text-stroke:1px rgba(255,255,255,.14);position:absolute;top:12px;right:16px}
 .step h3{font-size:16.5px;font-weight:600;margin-bottom:8px;margin-top:4px}
 .step p{font-size:13.5px;color:var(--mute);line-height:1.65}
-@media (max-width:760px){.steps{grid-template-columns:1fr}}
 
 /* ── isolation band ─────────────────────────────────────────────────────── */
 .band{margin-top:92px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
