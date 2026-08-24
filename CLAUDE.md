@@ -344,6 +344,17 @@ The journal sums the **rounded** move values rather than rounding a sum, so it
 agrees with the rows in `stock_move` to the laari. A tenth of a laari per move,
 unchecked, is how a valuation and a ledger part company over a year.
 
+**A divergence needs two numbers.** An outlet with no recipes at all — a café
+costing its menu at a flat percentage, which is an ordinary way to run one —
+sends a COGS estimate and NO stock moves, on every sale, for ever. Comparing
+them there flags every bill in the shop, and a flag that fires on every bill is
+one nobody reads by the second week. Same doctrine as the tax sweep: flag a
+wrong figure, never the absence of one. So the comparison runs only when the
+till actually moved stock; where it moved none the ledger books no cost of
+sales (nothing left the shelf, and 1200 used to be credited anyway — that was
+the defect), and the till's percentage estimate stays on the sale row as the
+margin figure it is, so the food-cost card still reads.
+
 Quantities still come from the till's recipe expansion. Re-deriving those
 server-side — addons, modifiers, sub-recipes — is the remaining half, and it is
 open.
@@ -1533,7 +1544,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 254 tests
+npm test                          # 255 tests
 npm run leak-test                 # isolation, on its own
 ```
 

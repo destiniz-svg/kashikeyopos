@@ -1515,30 +1515,62 @@ test('a tax figure struck at the wrong rate is recorded and flagged', opts, asyn
   assert.strictEqual(zeroRow.server_audit, null, 'a zero-rated sale is not second-guessed');
 });
 
-/* COGS and the value of stock moved are the same money. When the till's two
-   figures disagree, the sale is still recorded — the money was taken — but the
-   gap is stamped, because a GL COGS and a stock-ledger valuation that drift
-   apart in silence is exactly how a month's margin goes quietly wrong. */
+/* COGS and the value of stock moved are the same money. Where the outlet
+   tracks stock and the two disagree, the sale is still recorded — the money was
+   taken — and the gap is stamped, because a GL COGS and a stock-ledger
+   valuation drifting apart in silence is how a month's margin goes quietly
+   wrong. Where the outlet does NOT track stock, there is nothing to compare. */
 test('COGS that disagrees with the stock it moved is recorded and flagged', opts, async () => {
+  const ing = await one('SELECT id FROM ingredient WHERE avg_cost > 0 LIMIT 1');
   const r = await push([{ opId: uuid(), kind: 'sale', payload: {
     bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
     tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
-    // The till claims COGS of 40 but moves no stock at all — inconsistent.
+    // The till claims COGS of 40 while moving stock worth a great deal less.
     cogs: 40,
     sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100, cost: 40 }],
     payments: [{ method: 'cash', amt: 100, tendered: 100 }],
-    stockMoves: []
+    stockMoves: [{ ing: ing.id, qty: 1, cost: 40, value: 40 }]
   } }]);
   assert.ok(!r.body.results[0].error, 'not rejected — the sale happened');
   const row = await one('SELECT cogs, server_audit FROM sale WHERE id = $1',
     [r.body.results[0].result.saleId]);
   assert.ok(row.server_audit && row.server_audit.cogs_mismatch, 'the gap is stamped');
   assert.strictEqual(Number(row.server_audit.cogs_mismatch.cogs), 40);
-  assert.strictEqual(Number(row.server_audit.cogs_mismatch.stockValue), 0);
   // And the SALE is repaired to what actually moved, so the P&L and the stock
   // ledger cannot disagree even while the flag is waiting to be answered.
-  assert.strictEqual(Number(row.cogs), 0,
+  assert.strictEqual(Number(row.cogs), Number(row.server_audit.cogs_mismatch.stockValue),
     'the sale is booked at the stock it moved, not at the figure it claimed');
+  assert.notStrictEqual(Number(row.cogs), 40, 'which is not what it claimed');
+});
+
+/* A CAFE THAT COSTS ITS MENU AT A FLAT PERCENTAGE has no recipes and moves no
+   stock — an ordinary way to run one. It sends a COGS estimate and no moves,
+   every sale, for ever. Comparing them there would flag every bill in the shop,
+   and a flag that fires on every bill is one nobody reads by the second week.
+   Same doctrine as the tax sweep: flag a wrong figure, never the absence. */
+test('an outlet that tracks no stock is not flagged on every bill', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    cogs: 30,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100, cost: 30 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }],
+    stockMoves: []
+  } }]);
+  const saleId = r.body.results[0].result.saleId;
+  const row = await one('SELECT cogs, server_audit FROM sale WHERE id = $1', [saleId]);
+  assert.ok(!(row.server_audit && row.server_audit.cogs_mismatch),
+    'nothing moved, so there is no divergence to report');
+  assert.strictEqual(Number(row.cogs), 30,
+    'and the percentage estimate stays — it is the only costing the business has');
+
+  // The LEDGER still books no cost of sales, because no stock left the shelf.
+  // That is the half that had to change: 1200 used to be credited for stock
+  // that never moved.
+  const gl = await one("SELECT coalesce(sum(cr), 0)::numeric AS cr FROM journal_line jl"
+    + ' JOIN journal j ON j.id = jl.journal_id'
+    + " WHERE j.source_id = $1 AND jl.account_code = '1200'", [saleId]);
+  assert.strictEqual(Number(gl.cr), 0, '1200 is untouched by a sale that moved nothing');
 });
 
 /* THE GL AND THE STOCK LEDGER WERE FED BY TWO DIFFERENT CLIENT NUMBERS. 1200

@@ -227,7 +227,20 @@ async function applySale(c, p, ctx) {
     if (mv.short) oversold.push(mv.short);
   }
 
-  const cogsAudit = Math.abs(cogsClaimed - stockValue) > 0.05
+  /* A DIVERGENCE NEEDS TWO NUMBERS. An outlet with no recipes at all — a café
+     that costs its menu at a flat percentage, which is a perfectly ordinary way
+     to run one — sends a COGS estimate and NO stock moves, every sale, for
+     ever. Comparing the two there flags every bill in the shop, and a flag that
+     fires on every bill is one nobody reads by the second week. Same doctrine
+     as the tax sweep: flag a wrong figure, never the absence of one.
+
+     So the comparison only runs when the till actually moved stock. When it
+     moved none there is nothing to reconcile — the GL and the stock ledger are
+     both zero and agree — and the till's percentage estimate stays on the sale
+     row as the margin figure it is, while the ledger books no cost of sales
+     because no stock left the shelf. */
+  const tracked = arr(p.stockMoves).length > 0;
+  const cogsAudit = tracked && Math.abs(cogsClaimed - stockValue) > 0.05
     ? { cogs: cogsClaimed, stockValue,
       note: 'the till valued this sale differently from the stock it moved;'
         + ' the ledger is posted at the outlet\'s own weighted-average cost'
@@ -240,9 +253,12 @@ async function applySale(c, p, ctx) {
         + ' the sale stands and the shortfall is named' }
     : null;
 
-  // What the sale COST is the value of the stock it moved. The till's claim is
-  // in server_audit, where a difference can be answered for.
-  if (Math.abs(cogsClaimed - stockValue) > 0.005) {
+  /* Where stock IS tracked, what the sale cost is the value of what left the
+     shelf, and the till's claim moves to server_audit to be answered for.
+     Where it is not, the till's figure is the only costing the business has
+     and overwriting it with zero would empty the food-cost card on every
+     screen that reads it — a worse answer than the estimate. */
+  if (tracked && Math.abs(cogsClaimed - stockValue) > 0.005) {
     await c.query('UPDATE sale SET cogs = $2 WHERE id = $1', [sale.id, stockValue]);
   }
 
