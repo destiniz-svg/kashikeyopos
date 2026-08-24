@@ -329,10 +329,40 @@ ordered document numbers — a tax return keyed on a sequence with holes in it i
 worse than a slower push — so the mitigation is smaller batches (the till
 already caps at 100 ops), not a redesign.
 
-**None of this has been load-tested.** The figures above are architectural
-reasoning, not measurements. Before a multi-terminal rollout, run the audit's
-Stage A–G workload against staging and watch: p95 on `/sync/push`, pool
-checkout failures, and lock waits on `doc_series`.
+### Measured, on a development box
+
+`node src/scripts/loadtest.js --url … --outlet 1 --pin … --workers 16 --seconds 60`
+drives the real API with the audit's own service mix (simple bills, modifiers,
+table service, split tenders) and replays every tenth op deliberately, then
+checks the books. Against a local install:
+
+| Concurrent terminals | Bills / hour | p50 | p95 | p99 | Errors |
+|---|---|---|---|---|---|
+| 4 | 610,000 | 20 ms | 47 ms | 63 ms | 0 |
+| 16 | 610,000 | 73 ms | 206 ms | 313 ms | 0 |
+| 64 | 640,000 | 313 ms | 450 ms | 537 ms | 0 |
+| 200 | 590,000 | 1,091 ms | 1,266 ms | 1,378 ms | 0 |
+
+Throughput plateaus around **170 bills a second** and stays there; past that,
+latency grows linearly with concurrency instead of collapsing, because the
+excess queues on the pool and drains well inside the checkout timeout. A
+three-minute soak settled 31,086 bills with no errors, connections flat at 12,
+and resident memory plateauing at 172 MB (28 kB of drift across a further
+30,000 bills — warm-up, not a leak). No deadlocks. Across 78,292 sales and
+317,114 journal lines the trial balance came out **exact**: debits
+25,468,736.04, credits 25,468,736.04, gap 0.00.
+
+**Read these numbers for their shape, not their size.** They come from a
+development box with Postgres on loopback: no internet round trip, no TLS
+handshake, a bigger machine than a small Railway container. Production will be
+materially slower per request. What transfers is the shape — a flat throughput
+ceiling with graceful queueing, no leak, no deadlock — and the correctness,
+which is logic and not hardware: no duplicate op, one sale per bill, every
+journal balanced, revenue tying to the sales that made it.
+
+Run the same harness against staging before a multi-terminal rollout to get
+figures that describe production. Watch p95 on `/sync/push`, pool checkout
+failures, and lock waits on `doc_series`.
 
 ## Mission Control — the seller's panel
 
