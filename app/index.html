@@ -2520,6 +2520,20 @@ class Component extends DCLogic {
       }
       this.forceUpdate();
     };
+    /* THE SERVER CHANGED UNDERNEATH THIS TERMINAL. Same origin, same outlet
+       number, different database — the shape of "staging's demo night ends
+       up on the real store's floor". Everything trade-local here belongs to
+       the OLD install: tables, held bills, the settled cache, conflicts.
+       Shed it (the durable outbox is handled separately — its foreign ops
+       PARK rather than vanish, because money is never silently deleted). */
+    window.addEventListener("kpos-install-changed", (e) => {
+      this.setState({ tickets: {}, held: [], settled: [], conflicts: [],
+        activeTable: null });
+      this.persist();
+      this.toast("This terminal last served a different install \u2014 its local history was set aside, and any unsent operations are parked on Sync & Devices", "warn");
+      this.fault("install", "changed from " + ((e.detail || {}).from || "?")
+        + " to " + ((e.detail || {}).to || "?"));
+    });
     // The durable outbox gave up on an op: the outlet refused it eight times
     // with the same answer. Mark it on the mirror and say so out loud — a
     // parked op is an operator's decision now, on Sync & Devices.

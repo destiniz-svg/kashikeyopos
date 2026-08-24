@@ -835,6 +835,30 @@ test('a printed docket is a claim a printer backed, or a spool that says so', ()
     'one composer, loaded by browser and server alike');
 });
 
+test('one install\'s outbox never replays into another', () => {
+  // The incident this fences: a terminal that queued demo ops against one
+  // database (staging) later signs into another (production) whose outlet
+  // happens to share the same small integer id — and the outbox, keyed on
+  // that id, replays the demo night into the real store's books.
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+
+  assert.ok(/INSTALL: \(\(chainSettings\.rows\.find/.test(BOOT),
+    'the bootstrap publishes the install\'s uuid');
+  assert.ok(/install: this\.install \|\| this\.local\("install"\)/.test(API),
+    'every queued op is stamped with the install it was queued against');
+  assert.ok(API.indexOf('queued against a different install') >= 0
+    && API.indexOf('queued before this terminal knew which install') >= 0,
+    'a stranger op PARKS with its reason — it is never silently pushed');
+  assert.ok(/row\.install = this\.install/.test(API),
+    'Send it again adopts the op into this install, because a person decided');
+  assert.ok(API.indexOf('kpos-install-changed') >= 0,
+    'a change of install is announced');
+  assert.ok(SRC.indexOf('kpos-install-changed') >= 0
+    && SRC.indexOf('its local history was set aside') >= 0,
+    'and the terminal sheds the other install\'s trade state, saying so');
+});
+
 test('a poison op is parked, visible, and never silently resent', () => {
   const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
   const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');

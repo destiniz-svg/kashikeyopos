@@ -205,6 +205,11 @@ async function buildBootstrap(ctx) {
          Published so the till's preview and the server's refusal say the same
          thing: a message that reads fine and then will not send is worse than
          one that says up front it cannot. */
+      /* Which DATABASE this is. Outlet ids repeat across installs (staging's
+         outlet 1 and production's outlet 1 are both "1"), and the terminal's
+         durable outbox keys rows by outlet id — so the install's own name is
+         what lets a till refuse to replay one install's ops into another. */
+      INSTALL: ((chainSettings.rows.find((r) => r.key === 'install') || {}).value || {}).id || '',
       PORTAL: { base: baseDomain(),
         origin: portalOrigin(((outlets.rows.find(
           (o) => o.id === ctx.outletId) || {}).slug) || '') },

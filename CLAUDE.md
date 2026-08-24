@@ -37,7 +37,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        020 invite token · 021 loyalty liability
                        022 sale knows redemption
                        023 wages are not tips · 024 device pushes
-                       025 retention
+                       025 retention · 026 install identity
 src/apple.js           Apple's client secret, which is a JWT this app mints
 src/handle.js          what a store address is, and where the base domain comes from
 src/directory.js       where an address points — current or one a store gave up
@@ -312,6 +312,19 @@ a signed-in till is sitting on the only copy of the evening's sales behind a
 dead link. The bootstrap carries it as `pushed`, and the Sync ribbon warns on
 any writing device (not printers or displays — they never push) quiet for an
 hour.
+
+**One install's outbox never replays into another.** Outlet ids are small
+serial integers, so staging's outlet 1 and production's outlet 1 are both
+"1" — and the durable outbox keys its rows by that number. Migration 026
+names every DATABASE with one uuid (`chain.setting` `install`), the bootstrap
+publishes it as `INSTALL`, and every queued op is stamped with the install it
+was queued against. An op whose stamp names a different install — or none —
+PARKS with the reason instead of pushing; **Send it again** adopts it into the
+current install because a person decided. A detected install change also
+sheds the terminal's trade-local state (tickets, held bills, the settled
+cache) with a toast that says so. This is the fence against the real
+incident: demo ops queued on a test install replaying into a real store that
+happened to share the outlet number.
 
 **A refusal is not a network failure, and the eighth parks the op.** The outlet
 answered and said no; retrying it every five seconds forever is how one poison
@@ -1180,7 +1193,7 @@ mid-suite to prove the process survives.
 ## Tests
 
 ```
-npm test                          # 210 tests
+npm test                          # 214 tests
 npm run leak-test                 # isolation, on its own
 ```
 

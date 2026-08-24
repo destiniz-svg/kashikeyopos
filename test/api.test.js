@@ -2488,6 +2488,53 @@ test('the LAN print relay writes the exact bytes, inside its fence', opts, async
   }
 });
 
+test('one outlet\'s ops cannot reach another outlet, by token or by side effect', opts, async () => {
+  // The URL names outlet 2; the TOKEN was signed for outlet 1. The gate reads
+  // the signature, not the URL — an outlet id typed into a path buys nothing.
+  const cross = await post('/api/outlet/2/sync/push',
+    { ops: [{ opId: uuid(), kind: 'sign_in', label: 'crossing attempt' }] }, token);
+  assert.strictEqual(cross.status, 403, JSON.stringify(cross.body));
+  assert.match(cross.body.error, /outlet mismatch/);
+  const boot2 = await get('/api/outlet/2/bootstrap', token);
+  assert.strictEqual(boot2.status, 403, 'nor can it READ another outlet');
+
+  // And an op legitimately pushed to outlet 1 leaves no trace in outlet 2:
+  // the handler runs as outlet 1's own database role, whose search_path ends
+  // at its own schema — outlet 2's tables are unreachable, not just filtered.
+  const opId = uuid();
+  const r = await push([{ opId: opId, kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 10, disc: 0, net: 10, svc: 0, tax: 0,
+    round: 0, total: 10, tip: 0, taxCode: 'GGST', taxLabel: 'GST', taxRate: 0,
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 10, amount: 10 }],
+    payments: [{ method: 'cash', amt: 10 }], stockMoves: []
+  } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+  const saleId = r.body.results[0].result.saleId;
+
+  const o = db.owner();
+  const mine = await o.query('SELECT 1 FROM outlet_1.op_log WHERE op_id = $1', [opId]);
+  assert.strictEqual(mine.rows.length, 1, 'the op landed at its own outlet');
+  const theirsOp = await o.query('SELECT 1 FROM outlet_2.op_log WHERE op_id = $1', [opId]);
+  assert.strictEqual(theirsOp.rows.length, 0, 'and nowhere else');
+  const theirsSale = await o.query('SELECT 1 FROM outlet_2.sale WHERE id = $1', [saleId]);
+  assert.strictEqual(theirsSale.rows.length, 0, 'no sale row crossed either');
+});
+
+test('every install has a name, and the bootstrap says it', opts, async () => {
+  // Outlet ids repeat across databases — staging's outlet 1 and production's
+  // outlet 1 are both "1" — so the install's uuid is what lets a terminal
+  // refuse to replay one install's outbox into another. It is minted once by
+  // migration 026 and published in every bootstrap.
+  const b1 = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  const inst = b1.body.kpos.INSTALL;
+  assert.match(String(inst), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    'a uuid, present: ' + inst);
+  const b2 = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.strictEqual(b2.body.kpos.INSTALL, inst, 'stable across calls');
+  const row = await asOwner("SELECT value->>'id' AS id FROM chain.setting WHERE key = 'install'");
+  assert.strictEqual(row.id, inst, 'and it is the database\'s own name');
+});
+
 test('a killed idle connection is a log line, not an outage', opts, async () => {
   // A pool EMITS 'error' when an idle connection dies under it, and an
   // 'error' event nobody listens to kills the process — so a Postgres

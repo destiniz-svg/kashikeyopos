@@ -187,6 +187,25 @@
       try {
         var b = await this._fetch("/api/outlet/" + this.outletId + "/bootstrap"
           + (days ? "?days=" + days : ""));
+        /* WHICH DATABASE IS THIS? Outlet ids repeat across installs —
+           staging's outlet 1 and production's outlet 1 are both "1" — and
+           this outbox keys its rows by that number. The install's uuid is
+           what tells them apart. A CHANGE of install on the same origin and
+           outlet id is exactly the accident that once replayed demo data
+           into a real store, so it is announced, and flush() parks every op
+           the old install queued. */
+        var inst = ((b && b.kpos) || {}).INSTALL || "";
+        if (inst) {
+          var prev = this.local("install");
+          this.install = inst;
+          this.local("install", inst);
+          if (prev && prev !== inst) {
+            try {
+              root.dispatchEvent(new CustomEvent("kpos-install-changed",
+                { detail: { from: prev, to: inst } }));
+            } catch (e2) {}
+          }
+        }
         this.local("bootstrap", b);
         return b;
       } catch (e) {
@@ -230,6 +249,7 @@
         payload: op.payload || {},
         lamport: op.lamport || Date.now(),
         at: op.at || Date.now(),
+        install: this.install || this.local("install") || "",
         attempts: 0, error: ""
       };
       try {
@@ -273,6 +293,9 @@
         if (!row) return false;
         delete row.parked;
         row.attempts = 0;
+        // An operator sending a parked op again is adopting it into THIS
+        // install — that decision is exactly what the park was waiting for.
+        row.install = this.install || this.local("install") || row.install || "";
         await tx(db, "readwrite", function (os) { os.put(row); });
       } catch (e) { return false; }
       this.flush();
@@ -316,7 +339,35 @@
       if (this._flushing || !this._online || !this.token || !this.outletId) return null;
       if (root.__kposForceOffline === true) return null;
       var ops = await this.pending();
-      ops = ops.filter((o) => o.outletId === this.outletId && !o.parked)
+      /* ANOTHER INSTALL'S OPS NEVER REPLAY HERE. An op stamped with a
+         different install id — or with none, from before installs had names
+         — was queued against a different database that happens to share this
+         outlet's number. Pushing it would file one store's demo night into
+         another store's books, so it PARKS instead: durable, visible with
+         the reason, and "Send it again" adopts it into this install only
+         because a person decided that. */
+      var inst = this.install || this.local("install") || "";
+      if (inst) {
+        var strangers = ops.filter((o) => o.outletId === this.outletId
+          && !o.parked && (o.install || "") !== inst);
+        if (strangers.length) {
+          var db0 = await this.db();
+          var parkedNow = [];
+          for (const row of strangers) {
+            row.parked = Date.now();
+            row.error = row.install
+              ? "queued against a different install of this outlet"
+              : "queued before this terminal knew which install it serves";
+            parkedNow.push({ opId: row.opId, kind: row.kind, label: row.label,
+              error: row.error, attempts: row.attempts || 0 });
+            await tx(db0, "readwrite", function (os) { os.put(row); });
+          }
+          try { root.dispatchEvent(new CustomEvent("kpos-op-parked", { detail: parkedNow })); }
+          catch (e) {}
+        }
+      }
+      ops = ops.filter((o) => o.outletId === this.outletId && !o.parked
+        && (!inst || (o.install || "") === inst))
         .sort(function (a, b) { return (a.lamport || 0) - (b.lamport || 0); });
       if (!ops.length) return null;
       this._flushing = true;
