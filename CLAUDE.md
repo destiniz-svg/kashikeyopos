@@ -838,6 +838,40 @@ declaration is derived where the recipe lives — `publishDeclaration()` in
 published onto the item. A dish nobody has written a recipe for **claims
 nothing**: silence beats an unearned "Vegetarian" on a reef fish.
 
+## Two ways a dish comes off sale, and neither survived a bootstrap
+
+**Hiding a dish and 86-ing one are different decisions.** Hiding is a standing
+menu decision that reaches the guest's phone too — the toggle says so: "till, QR
+menu and printed list alike". An 86 is tonight's stock, and the dish stays on
+the till's grid wearing its tag, which is what a cashier needs when a guest asks
+for it.
+
+The terminal has always spoken of `hidden` and `off`. The bootstrap published
+neither — it published `offMenu` and `soldOutReason` — so both controls wrote a
+local flag, queued an op, and were **wiped by the next bootstrap**: the dish
+came back on the menu, the 86 came back on sale, and nothing on any screen said
+why. `menuVisible()` filtered on `hidden`, a field no server-backed row ever
+carried, so the filter was dead on real data.
+
+The op made it worse. `COLLECTION_OP.menu` derived **both** `offMenu` and
+`active` from `off`, and never sent `hidden` at all — so 86-ing a dish took it
+off the menu AND deactivated it, while the "Hidden from every channel" toggle
+sent nothing. On the server, `off_menu = excluded.off_menu` with an insert-time
+`coalesce(…, false)` meant any save that did not mention it put a hidden dish
+back on the menu.
+
+Fixed as one round trip: the bootstrap publishes `hidden` and `off` in the words
+the terminal reads; the op sends the decision it actually made; `off_menu` is
+**preserved when the caller is silent** (`coalesce($15, item.off_menu)`) because
+saying nothing is not the same as saying "show it again", while
+`sold_out_reason` is the opposite by nature — null IS back on sale. `active` is
+passed through rather than derived: a dish is deactivated by being deleted, not
+by being out of prawns.
+
+The guest snapshot filtered on `active` alone, which let a hidden dish onto a
+phone — and, once batches existed, a litre of fish stock with it. It is
+`active AND NOT off_menu AND NOT is_batch` now.
+
 ## A batch the kitchen makes is an item
 
 `recipe_line`'s component has been either an `ingredient_id` or a
@@ -1635,7 +1669,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 263 tests
+npm test                          # 265 tests
 npm run leak-test                 # isolation, on its own
 ```
 

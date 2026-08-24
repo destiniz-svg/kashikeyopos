@@ -1543,6 +1543,66 @@ test('COGS that disagrees with the stock it moved is recorded and flagged', opts
   assert.notStrictEqual(Number(row.cogs), 40, 'which is not what it claimed');
 });
 
+/* HIDING A DISH AND 86-ING ONE ARE DIFFERENT DECISIONS, and neither round trip
+   closed. The bootstrap published `offMenu` and `soldOutReason`; the terminal
+   reads `hidden` and `off`. So both controls wrote a local flag, queued an op,
+   and were wiped by the next bootstrap — the dish came back on the menu and the
+   86 came back on sale, with nothing on any screen to say why. Worse, the op
+   mapped BOTH offMenu and active from `off`, so 86-ing a dish took it off the
+   menu and deactivated it, while the toggle that says "Hidden from every
+   channel" sent nothing at all. */
+test('hiding a dish sticks, and 86-ing one does not hide it', opts, async () => {
+  const dish = await one('SELECT id FROM item WHERE NOT is_batch AND active LIMIT 1');
+
+  // Hide it. The op is what the terminal's own mapping now sends.
+  await push([{ opId: uuid(), kind: 'dish_upsert',
+    payload: { id: dish.id, name: 'Hidden dish', price: 50, offMenu: true } }]);
+  let row = await one('SELECT off_menu, sold_out_reason, active FROM item WHERE id = $1',
+    [dish.id]);
+  assert.strictEqual(row.off_menu, true, 'the outlet holds the decision');
+
+  // And the terminal is told in the word it reads. This is the half that was
+  // missing: `hidden` was never published, so menuVisible() saw nothing.
+  let boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  let m = (boot.body.kpos.MENU || []).find((x) => x.id === dish.id);
+  assert.strictEqual(m.hidden, true, 'published as hidden, which is what the grid filters on');
+
+  // A guest is never offered it — the toggle says "till, QR menu and printed
+  // list alike", and the QR snapshot used to filter on `active` alone.
+  const snap = await get('/api/outlet/' + outletId + '/snapshot', token);
+  assert.ok(!(snap.body.items || []).some((x) => x.id === dish.id),
+    'and it never reaches the QR menu');
+
+  // An ORDINARY save that says nothing about it must not put it back.
+  await push([{ opId: uuid(), kind: 'dish_upsert',
+    payload: { id: dish.id, name: 'Hidden dish', price: 55 } }]);
+  row = await one('SELECT off_menu FROM item WHERE id = $1', [dish.id]);
+  assert.strictEqual(row.off_menu, true,
+    'silence is not the same as saying "show it again"');
+
+  // Back on the menu, said explicitly.
+  await push([{ opId: uuid(), kind: 'dish_upsert',
+    payload: { id: dish.id, name: 'Hidden dish', price: 55, offMenu: false } }]);
+  row = await one('SELECT off_menu FROM item WHERE id = $1', [dish.id]);
+  assert.strictEqual(row.off_menu, false, 'and a caller that means it is obeyed');
+
+  // 86 it. That is tonight's stock, not a menu decision: it stays ON the grid
+  // wearing its tag, which is what a cashier needs when a guest asks for it.
+  await push([{ opId: uuid(), kind: 'dish_upsert', payload: {
+    id: dish.id, name: 'Hidden dish', price: 55, soldOutReason: "86'd on the floor"
+  } }]);
+  row = await one('SELECT off_menu, sold_out_reason, active FROM item WHERE id = $1',
+    [dish.id]);
+  assert.strictEqual(row.off_menu, false, '86 is not hiding');
+  assert.strictEqual(row.active, true, 'nor is it deactivating the dish');
+  assert.ok(row.sold_out_reason, 'it is a stock-out, and it is recorded as one');
+
+  boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  m = (boot.body.kpos.MENU || []).find((x) => x.id === dish.id);
+  assert.strictEqual(m.off, true, 'and the terminal is told in the word it reads');
+  assert.strictEqual(m.hidden, false, 'while still being on the menu');
+});
+
 /* A BATCH THE KITCHEN MAKES IS AN ITEM, and recipe_line.sub_item_id has
    referenced item(id) since 003 — but nothing ever wrote one, so that foreign
    key had no possible referent and a dish drawing on a batch could not be

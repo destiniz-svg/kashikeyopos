@@ -1396,3 +1396,34 @@ test('the contract can see a kind that is chosen, not spelled', () => {
   ['member', 'reward'].forEach((k) => assert.ok(!kinds.has(k),
     '"' + k + '" is something being compared against, not an op'));
 });
+
+/* ═══ HIDING A DISH AND 86-ING ONE ARE DIFFERENT DECISIONS ═══════════════════
+   The terminal has always spoken of `hidden` (a standing menu decision) and
+   `off` (tonight's stock), and the bootstrap published NEITHER — it published
+   `offMenu` and `soldOutReason`. So both controls wrote a local flag, queued an
+   op, and were wiped by the next bootstrap. The op made it worse: it derived
+   BOTH offMenu and active from `off`, and never sent `hidden` at all. */
+test('the two ways a dish comes off sale each survive a bootstrap', () => {
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  const AP = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const OUT = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'outlet.js'), 'utf8');
+
+  assert.ok(/hidden: !!r\.off_menu, off: !!r\.sold_out_reason/.test(BOOT),
+    'the bootstrap publishes both in the words the terminal reads');
+
+  const map = IDX.slice(IDX.indexOf('menu: ["dish_upsert"'), IDX.indexOf('items: ["item_upsert"'));
+  assert.ok(/offMenu: !!r\.hidden/.test(map), 'the toggle sends the decision it makes');
+  assert.ok(/soldOutReason: r\.off \?/.test(map), 'and 86 sends a stock-out');
+  assert.ok(!/offMenu: !!r\.off\b/.test(map) && !/active: r\.off \?/.test(map),
+    '86-ing a dish no longer hides it or deactivates it');
+
+  assert.ok(/menuVisible\(m\) \{ return !m\.hidden && !m\.offMenu/.test(IDX),
+    'the grid filters on the decision, from either side of a half-finished sync');
+
+  assert.ok(/off_menu = coalesce\(\$15, item\.off_menu\)/.test(AP),
+    'a save that says nothing about it does not put a hidden dish back');
+
+  assert.ok(/WHERE active AND NOT off_menu AND NOT is_batch/.test(OUT),
+    'and a guest is offered neither a hidden dish nor a batch');
+});

@@ -413,8 +413,14 @@ async function snapshot(c, outletId) {
       + ' AND effective_from <= current_date'
       + ' AND (effective_to IS NULL OR effective_to >= current_date)'
       + ' ORDER BY effective_from DESC LIMIT 1', [outletId]],
+    /* What a GUEST may be offered. `active` was the only filter, which let two
+       things onto a phone that must never be there: a dish the back office has
+       taken off the menu — the toggle says "till, QR menu and printed list
+       alike" — and a BATCH the kitchen makes, which is an item so that
+       recipe_line.sub_item_id resolves and is not something anybody orders. */
     items: ['SELECT id, name, category_id, price, description, image, allergens,'
-      + ' diets, off_menu, sold_out_reason FROM item WHERE active ORDER BY pos, name'],
+      + ' diets, off_menu, sold_out_reason FROM item'
+      + ' WHERE active AND NOT off_menu AND NOT is_batch ORDER BY pos, name'],
     cats: ['SELECT id, name, pos FROM menu_category WHERE active ORDER BY pos, name'],
     // The floor is the outlet's own, never a count guessed by the phone: a
     // room with six tables must not offer a guest twelve to sit at.

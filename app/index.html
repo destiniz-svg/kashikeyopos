@@ -4649,7 +4649,12 @@ class Component extends DCLogic {
     const all = this.modList();
     return m.addons ? all.filter((x) => m.addons.indexOf(x.id) >= 0) : all.filter((x) => (x.cats || []).indexOf(m.cat) >= 0);
   }
-  menuVisible(m) { return !m.hidden && !this.catMeta(m.cat).hidden; }
+  /* A dish nobody may order. `hidden` is the terminal's word and `offMenu` the
+     outlet's for the same decision — both are checked, because a row can come
+     from either side of a sync that has not finished. An 86'd dish is NOT
+     hidden: it stays on the grid wearing its tag, which is what a cashier
+     needs when a guest asks for it. */
+  menuVisible(m) { return !m.hidden && !m.offMenu && !this.catMeta(m.cat).hidden; }
   // One button vocabulary for the whole till, so a cashier learns the weight of
   // a control once. Three ranks, and the rank is the fill:
   //   solid  — the one act this surface exists for. Filled, never more than one.
@@ -12304,10 +12309,24 @@ class Component extends DCLogic {
   COLLECTION_OP() {
     const num = (x) => Number(x) || 0;
     return {
+      /* HIDING A DISH AND 86-ING ONE ARE DIFFERENT DECISIONS, and this
+         mapping used to send the second in place of the first: `offMenu` and
+         `active` were both derived from `r.off` (tonight's stock-out) while
+         `r.hidden` — the "Hidden from every channel" toggle — was never sent
+         at all. So the toggle wrote a local flag the next bootstrap wiped,
+         86-ing a dish silently took it off the menu AND deactivated it, and
+         `coalesce($15,false)` on the server meant every ordinary save cleared
+         whatever off_menu had been set.
+
+         `active` is not a floor decision at all: a dish is deactivated by
+         being deleted, not by being out of prawns, so it is passed through
+         rather than derived. */
       menu: ["dish_upsert", (r) => ({
         id: r.id, name: r.name, cat: r.cat, price: num(r.price),
         desc: r.desc, station: r.station, img: r.img,
-        active: r.off ? false : true, offMenu: !!r.off,
+        active: r.active === false ? false : true,
+        offMenu: !!r.hidden,
+        soldOutReason: r.off ? (r.offReason || "86'd on the floor") : null,
         diets: r.veg ? ["veg"] : [], recipe: r.recipe || []
       })],
       items: ["item_upsert", (r) => (Array.isArray(r) ? {

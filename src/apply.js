@@ -1477,7 +1477,14 @@ H.dish_upsert = async (c, p, ctx) => {
     + ' price = excluded.price, yield_qty = excluded.yield_qty, unit = excluded.unit,'
     + ' prep_mins = excluded.prep_mins, description = excluded.description,'
     + ' image = excluded.image, allergens = excluded.allergens, diets = excluded.diets,'
-    + ' tags = excluded.tags, active = excluded.active, off_menu = excluded.off_menu,'
+    + ' tags = excluded.tags, active = excluded.active,'
+    /* Preserved when the caller is SILENT about it. off_menu is a standing
+       menu decision, and `excluded.off_menu` (coalesced to false at insert)
+       meant any save that did not mention it — a bulk import, an older build —
+       quietly put a hidden dish back on the menu. A caller that means to show
+       it again says false; saying nothing is not the same as saying false.
+       sold_out_reason is the opposite by nature: null IS "back on sale". */
+    + ' off_menu = coalesce($15, item.off_menu),'
     + ' sold_out_reason = excluded.sold_out_reason',
     [id, p.name, p.cat || null, p.station || 'main', r2(p.price), num(p.yield) || 1,
       p.unit || 'plate', num(p.prep) || 12, p.desc || null, p.img || null,

@@ -702,6 +702,17 @@ function menuOf(r, recipe) {
     price: num(r.price), veg: (r.diets || []).indexOf('veg') >= 0,
     img: r.image || '', station: r.station, prep: r.prep_mins,
     yield: num(r.yield_qty), unit: r.unit, active: r.active,
+    /* The two names the TERMINAL reads. It has always spoken of `hidden` (a
+       menu decision) and `off` (86'd tonight), and this projection published
+       neither — so both controls wrote a local flag, queued an op, and were
+       wiped by the next bootstrap. The dish came back on the menu and the 86
+       came back on sale, with nothing on any screen to say why.
+
+       They are DIFFERENT facts and are kept apart: hiding is permanent and
+       reaches the guest's menu too; 86 is tonight's stock and leaves the dish
+       on the till's grid wearing its tag, which is what a cashier needs when a
+       guest asks for it. */
+    hidden: !!r.off_menu, off: !!r.sold_out_reason,
     offMenu: r.off_menu, soldOutReason: r.sold_out_reason || '',
     allergens: r.allergens || [], diets: r.diets || [], tags: r.tags || [],
     recipe: recipe.map((l) => [l.ingredient_id || l.sub_item_id, num(l.qty),
