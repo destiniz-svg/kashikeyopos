@@ -6272,7 +6272,14 @@ class Component extends DCLogic {
         lockWhoName: u.name, lockWhoRole: role.label || u.role, lockWhoIni: ini(u.name || "?"), lockWhoAv: av(this.tone(role.color)),
         lockBack: () => this.setState({ modal: { kind: "lock" } }),
         lockDots: [0, 1, 2, 3].map((i) => "width:13px;height:13px;border-radius:50%;background:" + (i < entered.length ? "var(--warn)" : "transparent") + ";border:1.5px solid " + (i < entered.length ? "var(--warn)" : "var(--line-3)")),
-        lockErr: held ? "Terminal held for " + held + " more minute" + (held === 1 ? "" : "s") + " — ask a manager" : (m.err || ("Demo PIN " + demoPin)),
+        // The hint line under the dots: an error, a demo PIN when the roster
+        // actually carries one (the standalone demo only — a server-issued
+        // roster never ships a PIN to the browser), and otherwise a true
+        // sentence. A real till used to read "Demo PIN " with nothing after
+        // it, which is demo furniture on the credential screen of a real
+        // business.
+        lockErr: held ? "Terminal held for " + held + " more minute" + (held === 1 ? "" : "s") + " — ask a manager"
+          : (m.err || (demoPin ? "Demo PIN " + demoPin : "Checked by the outlet — never stored on this terminal")),
         lockErrStyle: (held || m.err) ? "font-size:11.5px;color:var(--red-bright);text-align:center;text-wrap:pretty" : "font-size:11px;color:var(--text-faint);text-align:center;font-family:'JetBrains Mono',monospace;letter-spacing:.06em",
         lockKeys: ["1", "2", "3", "4", "5", "6", "7", "8", "9"].map(key).concat([
           { label: "", style: "visibility:hidden", go: () => {} },
