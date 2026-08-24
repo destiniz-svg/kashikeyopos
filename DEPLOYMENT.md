@@ -313,6 +313,27 @@ stores hang off are different names now, so both are stated. The website
 service sets `APP_URL=https://app.kashikeyopos.com` (where it forwards the
 till's old apex paths) and `CANONICAL_HOST=kashikeyopos.com`.
 
+## What limits throughput, and which knob moves it
+
+One install is one Node process against one Postgres. A request holds a
+connection for the whole of its transaction, so the concurrent-request ceiling
+for an outlet is its pool size — `PGPOOL_MAX`, 12 by default. Past it,
+`checkout()` refuses in `PGCHECKOUT_TIMEOUT` (8s) with a retryable 503 rather
+than queueing for ever; the till treats that as a dead link, so nothing is
+parked and the ops simply go again.
+
+The other ceiling is deliberate. Receipt and journal numbers are allocated
+under a row lock on the outlet's document series and held to COMMIT, which
+serialises concurrent pushes to the same outlet. That is the price of gapless,
+ordered document numbers — a tax return keyed on a sequence with holes in it is
+worse than a slower push — so the mitigation is smaller batches (the till
+already caps at 100 ops), not a redesign.
+
+**None of this has been load-tested.** The figures above are architectural
+reasoning, not measurements. Before a multi-terminal rollout, run the audit's
+Stage A–G workload against staging and watch: p95 on `/sync/push`, pool
+checkout failures, and lock waits on `doc_series`.
+
 ## Mission Control — the seller's panel
 
 The product is sold one install per customer: each customer gets their own app

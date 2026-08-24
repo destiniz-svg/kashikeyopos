@@ -169,7 +169,14 @@ function poolFor(outletId) {
       user: 'outlet_' + id + '_app',
       password: outletPassword(id),
       ssl,
-      max: Number(process.env.PGPOOL_MAX || 6),
+      /* One connection is held for the whole of a request's transaction, and a
+         sync push can carry a hundred ops — so the ceiling on concurrent
+         requests to one outlet IS this number. Six was low enough that a rush
+         across five or six terminals could reach it; twelve costs one idle
+         backend each at worst, against a Postgres that allows a hundred, and
+         one install serves one customer. Past it, checkout() now refuses
+         quickly and retryably rather than queueing for ever. */
+      max: Number(process.env.PGPOOL_MAX || 12),
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: CHECKOUT_MS,
       statement_timeout: Number(process.env.PGSTATEMENT_TIMEOUT || 15000),
