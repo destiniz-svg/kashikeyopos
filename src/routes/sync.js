@@ -22,7 +22,18 @@ r.post('/push', sameOutlet, atLeast('kitchen'), async function (req, res, next) 
       const out = [];
       const inThisBatch = new Set();
       let n = 0;
-      for (const op of ops.slice().sort((a, b) => (a.lamport || 0) - (b.lamport || 0))) {
+      /* Lamport first, then the position the device sent them in — because a
+         device that has not yet been raised by a poll can send several ops
+         carrying the same number (an outbox that has never been polled numbers
+         from its own high-water mark, and a batch of unstamped ops carries
+         zero), and Array.prototype.sort is not required to be stable about
+         what it then does with them. The batch's own order is the only
+         tiebreak that MEANS anything: it is the order the operator did the
+         work in. Open the ticket, add the line, fire the course — sorted by
+         anything else, the line is added to a ticket that does not exist. */
+      const ordered = ops.map((op, i) => ({ op, i })).sort((a, b) =>
+        ((a.op && a.op.lamport) || 0) - ((b.op && b.op.lamport) || 0) || a.i - b.i);
+      for (const { op } of ordered) {
         if (!op || !op.opId) { out.push({ error: 'opId required' }); continue; }
         if (!op.kind) { out.push({ opId: op.opId, error: 'kind required' }); continue; }
 

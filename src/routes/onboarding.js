@@ -212,13 +212,27 @@ r.post('/company', openDoor, claim, async function (req, res, next) {
   if (registered && !tin) {
     return res.status(400).json({ error: 'a TIN is required — it is what a GST-registered business puts on its receipts' });
   }
+  /* ONE TRANSACTION, BECAUSE THIS STEP IS FOUR WRITES AND THREE OF THEM ARE
+     CONSEQUENCES. Turning registration off has to reach the outlets and the
+     rate versions, and crediting the account has to reach the company — and
+     these ran as four separate statements on a pooled connection. A crash, a
+     dropped connection or a container restart between any two of them left the
+     install in a state the database's own guards call impossible: a company
+     marked unregistered whose outlets still hold a tax code, or a business
+     with nobody owning it. Both are recoverable by hand and neither is
+     discoverable without looking. */
+  const c = await owner().connect();
   try {
-    const already = await owner().query('SELECT id FROM chain.company WHERE id = 1');
+    await c.query('BEGIN');
+    const already = await c.query('SELECT id FROM chain.company WHERE id = 1');
     if (already.rows.length) {
       // Editable from Settings afterwards, through the same columns.
-      if (!req.get('authorization')) return res.status(409).json({ error: 'company already set — edit it in Settings' });
+      if (!req.get('authorization')) {
+        await c.query('ROLLBACK');
+        return res.status(409).json({ error: 'company already set — edit it in Settings' });
+      }
     }
-    await owner().query(
+    await c.query(
       'INSERT INTO chain.company (id, legal_name, reg_no, tin, address, atoll,'
       + ' country, phone, email, base_currency, fy_start_month, brand, gst_registered)'
       + " VALUES (1,$1,$2,$3,$4,$5,coalesce($6,'Maldives'),$7,$8,coalesce($9,'MVR'),"
@@ -238,19 +252,23 @@ r.post('/company', openDoor, claim, async function (req, res, next) {
        they may no longer charge. The database would refuse the next write
        anyway; doing it here means the refusal never has to happen. */
     if (!registered) {
-      await owner().query("UPDATE chain.outlet SET tax_code = 'NONE' WHERE tax_code <> 'NONE'");
-      await owner().query('DELETE FROM chain.tax_version WHERE outlet_id IS NOT NULL'
+      await c.query("UPDATE chain.outlet SET tax_code = 'NONE' WHERE tax_code <> 'NONE'");
+      await c.query('DELETE FROM chain.tax_version WHERE outlet_id IS NOT NULL'
         + " AND code <> 'NONE'");
     }
     // Whoever is signed in as they complete this owns the business. The
     // question "whose is this" must not depend on which outlet you look at.
     if (req.account) {
-      await owner().query(
+      await c.query(
         'UPDATE chain.company SET owner_account_id = coalesce(owner_account_id, $1)'
         + ' WHERE id = 1', [req.account.id]);
     }
+    await c.query('COMMIT');
     res.json({ ok: true, step: 'company', gstRegistered: registered });
-  } catch (e) { next(e); }
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => {});
+    next(e);
+  } finally { c.release(); }
 });
 
 // The books' currency, as the company step recorded it.

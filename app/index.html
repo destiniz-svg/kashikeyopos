@@ -2922,7 +2922,17 @@ class Component extends DCLogic {
      we want visible, not a write we silently dropped. */
   queue(op, label, entity, payload) {
     const prev = this.state.outbox;
-    const lamport = prev.reduce((a, x) => Math.max(a, x.lamport || 0), 0) + 1;
+    /* The outbox's own high-water mark is a FLOOR, not the clock. It walks
+       backwards every time the outbox drains or is trimmed, so on its own it
+       numbered a device's second evening the same as its first — and two
+       tills each counting from one gave the server nothing it could order
+       them by. KPOS_SYNC.tick() is monotonic across restarts and raised by
+       every poll past whatever this outlet has already accepted from anybody;
+       the floor is what a terminal with no bridge (the test harness, a page
+       opened before the bridge loads) falls back to. */
+    const floor = prev.reduce((a, x) => Math.max(a, x.lamport || 0), 0) + 1;
+    const lamport = (window.KPOS_SYNC && window.KPOS_SYNC.tick)
+      ? window.KPOS_SYNC.tick(floor) : floor;
     this._opn = (this._opn || 0) + 1;
     const opId = this.opId();
     const row = {

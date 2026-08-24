@@ -39,7 +39,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        023 wages are not tips · 024 device pushes
                        025 retention · 026 install identity
                        027 reserve panel · 028 credit outstanding
-                       029 void a sale
+                       029 void a sale · 030 the polled tables
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -418,6 +418,49 @@ again** (fresh allowance, for after the cause is fixed) or **Discard it**
 was given up, why it was refused and who decided replays in its place — it is
 in `AUDIT_ONLY`). Network failures never count toward the eight: a dead link
 says nothing about the op. `test/wiring.test.js` pins the whole loop.
+
+### The clock that orders one outlet's work
+
+A Lamport clock means nothing unless it is RECEIVED as well as sent, and this
+one never was. Each device numbered from its own outbox, starting at one — and
+the number walked BACKWARDS every time that outbox drained or was trimmed. Two
+tills therefore produced two independent sequences that both restarted, so the
+server's `ORDER BY lamport` sorted a batch against numbers meaningless outside
+the device that wrote them, and concurrent edits to one ticket resolved by
+whichever connection was luckier.
+
+Both halves are there now, in `app/kashikeyo-api.js`: `tick()` is monotonic and
+**persisted**, so a drained outbox cannot walk it back, and `seen()` is the
+receive rule — every poll raises this device's clock past the highest the
+outlet has already accepted from anybody. `queue()` asks the bridge for it and
+keeps its own outbox high-water mark only as a FLOOR, for a terminal with no
+bridge (the harness, a page opened before the bridge loads).
+
+The server's tiebreak is the **batch's own order**, and that is not cosmetic:
+ops carrying no lamport all compare equal, and `Array.prototype.sort` is not
+required to be stable about them. Sorted by anything else — an id, say — a line
+is added to a ticket that has not been opened yet. The batch order is the order
+the operator did the work in, which is the only tiebreak that means anything.
+
+This does not make concurrent scalar edits MERGE. Two waiters retyping the
+covers on one table still resolve last-write-wins; what changed is that "last"
+now means the later event rather than the luckier connection. Per-field
+versioning is the answer to the rest, and it is not here.
+
+### The tables a poll reads every five seconds
+
+Every signed-in terminal asks the outlet what changed every five seconds, and
+four of those queries are "the open ones, oldest first". Three had an index.
+`guest_order` and `guest_request` had nothing beyond their primary key, so both
+were sequential scans on tables that only ever grow — every open terminal,
+twelve times a minute, reading every order the store has ever taken to find the
+four nobody has accepted. Migration 030 adds PARTIAL indexes, because the
+predicate is the whole point: the index holds a handful of rows however large
+the table grows, and a row leaves it the moment somebody accepts it. It costs
+nothing on an install opened last week, which is exactly why it survived.
+
+`stock_move` gained one too: a void reads back exactly the rows one sale wrote
+in order to negate them, and the table was indexed by ingredient.
 
 ### An open ticket belongs to the outlet
 
@@ -1434,7 +1477,7 @@ separate services on their own ports and are not in this suite.
 ## Tests
 
 ```
-npm test                          # 244 tests
+npm test                          # 247 tests
 npm run leak-test                 # isolation, on its own
 ```
 

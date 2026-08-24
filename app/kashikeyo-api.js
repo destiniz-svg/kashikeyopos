@@ -138,6 +138,13 @@
       }
     }
 
+    /* The install STATE call. Its name is public API — kpos-bridge's boot() is
+       its only caller and calls it by that name — which is why the install's
+       IDENTITY is held on `installId` beside it. It was held on `install`,
+       overwriting this method with a string the first time a bootstrap
+       returned one: every call after that threw "api.install is not a
+       function". Boot survived it because boot runs before any bootstrap,
+       and a soft reconnect that boots again on a live object did not. */
     install() { return this._fetch("/api/auth/install", { anon: true }); }
 
     async signIn(opts) {
@@ -197,7 +204,7 @@
         var inst = ((b && b.kpos) || {}).INSTALL || "";
         if (inst) {
           var prev = this.local("install");
-          this.install = inst;
+          this.installId = inst;
           this.local("install", inst);
           if (prev && prev !== inst) {
             try {
@@ -215,6 +222,40 @@
       }
     }
 
+    /* ── the clock that orders one outlet's work ───────────────────────────
+       A Lamport clock only means anything if it is RECEIVED as well as sent,
+       and this one never was: every device counted its own outbox, from one,
+       and the count went BACKWARDS whenever the outbox drained or was trimmed.
+       So two tills produced two independent sequences that both restarted, and
+       the server's "sort by lamport" ordered a batch against numbers that
+       meant nothing outside the device that wrote them. Concurrent edits to
+       one ticket resolved by whichever batch arrived first.
+
+       Both halves are here now. `tick()` is monotonic and PERSISTED, so a
+       drained outbox cannot walk it back; `seen()` is the receive rule — every
+       poll raises this device's clock past the highest it has been told about,
+       which is what makes one till's number comparable with another's.
+
+       It does not make concurrent scalar edits merge. Two waiters retyping the
+       covers on one table still resolve last-write-wins; what changes is that
+       "last" now means the later event rather than the luckier connection.
+       Per-field versioning is the answer to the rest, and it is not here. */
+    clock() {
+      if (this._lam == null) this._lam = Number(this.local("lamport")) || 0;
+      return this._lam;
+    }
+    seen(n) {
+      var v = Number(n) || 0;
+      if (v > this.clock()) { this._lam = v; this.local("lamport", v); }
+      return this._lam;
+    }
+    tick(atLeast) {
+      var next = Math.max(this.clock(), Number(atLeast) || 0) + 1;
+      this._lam = next;
+      this.local("lamport", next);
+      return next;
+    }
+
     /* ── the tick ──────────────────────────────────────────────────────── */
     async pull() {
       if (!this.outletId || !this.token || !this._online) return null;
@@ -222,6 +263,14 @@
         var out = await this._fetch("/api/outlet/" + this.outletId + "/sync/pull?since="
           + encodeURIComponent(this._since || 0));
         this._since = out.now;
+        // The receive half of the rule, applied to everything the outlet has
+        // accepted since this device last asked — including its OWN ops, which
+        // is what keeps a device that reinstalled from starting again at one.
+        var top = 0;
+        (out.ops || []).forEach(function (o) {
+          if (Number(o.lamport) > top) top = Number(o.lamport);
+        });
+        if (top) this.seen(top);
         return out;
       } catch (e) { return null; }
     }
@@ -249,7 +298,7 @@
         payload: op.payload || {},
         lamport: op.lamport || Date.now(),
         at: op.at || Date.now(),
-        install: this.install || this.local("install") || "",
+        install: this.installId || this.local("install") || "",
         attempts: 0, error: ""
       };
       try {
@@ -295,7 +344,7 @@
         row.attempts = 0;
         // An operator sending a parked op again is adopting it into THIS
         // install — that decision is exactly what the park was waiting for.
-        row.install = this.install || this.local("install") || row.install || "";
+        row.install = this.installId || this.local("install") || row.install || "";
         await tx(db, "readwrite", function (os) { os.put(row); });
       } catch (e) { return false; }
       this.flush();
@@ -346,7 +395,7 @@
          another store's books, so it PARKS instead: durable, visible with
          the reason, and "Send it again" adopts it into this install only
          because a person decided that. */
-      var inst = this.install || this.local("install") || "";
+      var inst = this.installId || this.local("install") || "";
       if (inst) {
         var strangers = ops.filter((o) => o.outletId === this.outletId
           && !o.parked && (o.install || "") !== inst);

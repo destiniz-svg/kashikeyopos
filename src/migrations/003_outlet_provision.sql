@@ -448,6 +448,9 @@ BEGIN
     );
     CREATE INDEX IF NOT EXISTS stock_move_ing ON %1$I.stock_move(ingredient_id, at DESC);
     CREATE INDEX IF NOT EXISTS stock_move_date ON %1$I.stock_move(business_date);
+    -- A void reads back exactly the rows one sale wrote, to negate them.
+    CREATE INDEX IF NOT EXISTS stock_move_sale ON %1$I.stock_move(sale_id)
+      WHERE sale_id IS NOT NULL;
 
     -- First expiry, first out: the table IS the pick order.
     CREATE TABLE IF NOT EXISTS %1$I.batch (
@@ -873,6 +876,11 @@ BEGIN
       ticket_id uuid REFERENCES %1$I.ticket(id),
       rejected_reason text
     );
+    -- Read by the five-second poll as "the open ones, oldest first". Partial,
+    -- because that predicate is the whole point: the index holds a handful of
+    -- rows however large the table grows. See migration 030.
+    CREATE INDEX IF NOT EXISTS guest_order_open ON %1$I.guest_order(at)
+      WHERE accepted_at IS NULL AND rejected_reason IS NULL;
     CREATE TABLE IF NOT EXISTS %1$I.guest_request (
       id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       table_no text NOT NULL,
@@ -881,6 +889,8 @@ BEGIN
       at       timestamptz NOT NULL DEFAULT now(),
       ack_at   timestamptz, ack_by uuid
     );
+    CREATE INDEX IF NOT EXISTS guest_request_open ON %1$I.guest_request(at)
+      WHERE ack_at IS NULL;
     CREATE TABLE IF NOT EXISTS %1$I.print_job (
       id      uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       kind    text NOT NULL, target text NOT NULL, label text NOT NULL,

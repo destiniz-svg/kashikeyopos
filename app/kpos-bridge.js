@@ -28,7 +28,11 @@
     // an operator can make about one.
     parked: function () { return api.parked(); },
     retryOp: function (opId) { return api.retryOp(opId); },
-    discardOp: function (opId, by) { return api.discardOp(opId, by); }
+    discardOp: function (opId, by) { return api.discardOp(opId, by); },
+    // The outlet's clock, not this browser's outbox. See kashikeyo-api.js:
+    // monotonic, persisted, and raised by every poll past whatever the outlet
+    // has already accepted from anybody.
+    tick: function (atLeast) { return api.tick(atLeast); }
   };
   root.KPOS_SYNC = SYNC;
 

@@ -951,12 +951,16 @@ test('one install\'s outbox never replays into another', () => {
 
   assert.ok(/INSTALL: \(\(chainSettings\.rows\.find/.test(BOOT),
     'the bootstrap publishes the install\'s uuid');
-  assert.ok(/install: this\.install \|\| this\.local\("install"\)/.test(API),
+  // installId, not install: the METHOD is called install() and holding the
+  // identity on the same name overwrote it with a string.
+  assert.ok(/install: this\.installId \|\| this\.local\("install"\)/.test(API),
     'every queued op is stamped with the install it was queued against');
+  assert.ok(/^\s*install\(\)\s*\{/m.test(API),
+    'and the install() call still exists to be called by name');
   assert.ok(API.indexOf('queued against a different install') >= 0
     && API.indexOf('queued before this terminal knew which install') >= 0,
     'a stranger op PARKS with its reason — it is never silently pushed');
-  assert.ok(/row\.install = this\.install/.test(API),
+  assert.ok(/row\.install = this\.installId/.test(API),
     'Send it again adopts the op into this install, because a person decided');
   assert.ok(API.indexOf('kpos-install-changed') >= 0,
     'a change of install is announced');
@@ -1069,4 +1073,75 @@ test('every app draws a keyboard focus ring', () => {
         f + ' declares a focus ring that its own inline outline:none overrides');
     }
   });
+});
+
+
+/* ═══ THE CLOCK THAT ORDERS ONE OUTLET'S WORK ═══════════════════════════════
+   A Lamport clock only means anything if it is RECEIVED as well as sent. This
+   one never was: each device counted its own outbox from one, and the count
+   went BACKWARDS whenever that outbox drained or was trimmed — so two tills
+   produced two independent sequences that both restarted, and "sort by
+   lamport" ordered a batch against numbers meaningless outside the device
+   that wrote them. */
+test('the sync clock is monotonic, persisted, and raised by what it receives', () => {
+  const API = fs.readFileSync(path.join(__dirname, '..', 'app', 'kashikeyo-api.js'), 'utf8');
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+  const BRIDGE = fs.readFileSync(path.join(__dirname, '..', 'app', 'kpos-bridge.js'), 'utf8');
+  const SYNC = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes', 'sync.js'), 'utf8');
+
+  assert.ok(/this\.local\("lamport", next\)/.test(API),
+    'the clock is persisted, so a drained outbox cannot walk it back');
+  assert.ok(/seen\(n\)/.test(API) && /if \(top\) this\.seen\(top\)/.test(API),
+    'and every poll raises it past what the outlet has already accepted');
+  assert.ok(/tick: function \(atLeast\)/.test(BRIDGE),
+    'the bridge exposes it, because the terminal is where ops are numbered');
+  assert.ok(/KPOS_SYNC\.tick\(floor\)/.test(IDX),
+    'queue() asks the outlet\'s clock, not its own outbox');
+  assert.ok(/const floor = prev\.reduce/.test(IDX),
+    'with the outbox high-water mark kept as a floor for a bridgeless terminal');
+
+  /* And the SERVER's tiebreak is the batch's own order. It is not cosmetic:
+     ops with no lamport all compare equal, and sorting those by anything else
+     adds a line to a ticket that has not been opened yet. */
+  assert.ok(/a\.i - b\.i/.test(SYNC),
+    'equal lamports keep the order the operator did the work in');
+  assert.ok(!/localeCompare/.test(SYNC),
+    'and never an arbitrary one — an id sort shuffles an unstamped batch');
+});
+
+/* The two tables every signed-in terminal reads twelve times a minute had
+   nothing beyond a primary key, so both were sequential scans on tables that
+   only ever grow. It costs nothing on an install opened last week, which is
+   exactly why it survives to production. */
+test('the tables the five-second poll reads are indexed for what it asks', () => {
+  const P = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '003_outlet_provision.sql'), 'utf8');
+  const M = fs.readFileSync(path.join(__dirname, '..', 'src', 'migrations',
+    '030_the_polled_tables.sql'), 'utf8');
+  [['guest_order_open', 'accepted_at IS NULL'],
+    ['guest_request_open', 'ack_at IS NULL'],
+    ['stock_move_sale', 'sale_id IS NOT NULL']].forEach(([name, pred]) => {
+    // In the template, so a NEW outlet is provisioned with them...
+    assert.ok(P.includes(name) && P.includes(pred),
+      '003 provisions ' + name + ' as a partial index');
+    // ...and in the migration, so every outlet that already exists gets them.
+    assert.ok(M.includes(name), '030 adds ' + name + ' to the outlets that exist');
+  });
+});
+
+/* Four writes and three of them are consequences: turning registration off has
+   to reach the outlets and the rate versions, and crediting the account has to
+   reach the company. Run as four statements on a pooled connection, a crash
+   between any two left the install in a state the database's own guards call
+   impossible — and neither half is discoverable without looking. */
+test('the company step is one transaction, not four statements', () => {
+  const ONB = fs.readFileSync(path.join(__dirname, '..', 'src', 'routes',
+    'onboarding.js'), 'utf8');
+  const step = ONB.slice(ONB.indexOf("r.post('/company'"), ONB.indexOf("async function baseCurrency"));
+  assert.ok(step.includes("c.query('BEGIN')") && step.includes("c.query('COMMIT')"),
+    'the company step opens and closes a transaction');
+  assert.ok(step.includes("ROLLBACK"), 'and rolls back rather than half-writing');
+  assert.ok(step.includes('c.release()'), 'and always gives the connection back');
+  assert.ok(!/await owner\(\)\.query/.test(step),
+    'nothing inside it reaches past the transaction to a fresh connection');
 });
