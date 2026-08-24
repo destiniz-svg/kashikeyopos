@@ -171,6 +171,11 @@ BEGIN
       -- a wrong total — which is exactly what the old sale_adds_up did.
       pts           int            NOT NULL DEFAULT 0,
       pts_value     numeric(12,2)  NOT NULL DEFAULT 0,
+      -- What this visit GRANTED. Recorded, not recomputed, so a void gives
+      -- back exactly what was given: the earn rate can change between the sale
+      -- and its reversal, and a reversal struck at the new rate takes back a
+      -- different number of points from the one the guest was told they had.
+      pts_earned    int            NOT NULL DEFAULT 0,
       tip           numeric(12,2) NOT NULL DEFAULT 0,
       cogs          numeric(12,2) NOT NULL DEFAULT 0,
       currency      text NOT NULL DEFAULT 'MVR',

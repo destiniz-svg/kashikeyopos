@@ -39,6 +39,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        023 wages are not tips · 024 device pushes
                        025 retention · 026 install identity
                        027 reserve panel · 028 credit outstanding
+                       029 void a sale
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -1278,7 +1279,7 @@ website — they set their own on their own install's `/account`.
 ## Tests
 
 ```
-npm test                          # 239 tests
+npm test                          # 243 tests
 npm run leak-test                 # isolation, on its own
 ```
 

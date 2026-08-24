@@ -2777,6 +2777,136 @@ test('a stranger cannot walk phone numbers and harvest the customer roster',
     }
   });
 
+/* ═══ A VOID HAS TO UNDO SOMETHING ═══════════════════════════════════════════
+   sale.voided_at existed from the first migration and five readers trusted it;
+   nothing ever wrote it, so voiding a settled sale was a line in the trail and
+   nothing else — revenue recognised, stock consumed, points granted, credit
+   owed. The reversal is now derived from the server's own records: the sale's
+   journal legs swapped, its stock_move rows negated, what it recorded spending
+   and granting handed back. ═══════════════════════════════════════════════ */
+test('voiding a settled sale reverses its money, stock, points and credit',
+  opts, async () => {
+    const phone = '9994422';
+    const made = await push([{ opId: uuid(), kind: 'member_upsert', payload: {
+      name: 'Void Customer', phone: phone, credit: 500 } }]);
+    const mid = made.body.results[0].result.memberId;
+    const member = () => one('SELECT points, credit_used FROM chain.member WHERE id = $1', [mid]);
+    const before = await member();
+
+    const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
+      bizDate: today(), covers: 2, sub: 200, disc: 0, net: 200, svc: 0,
+      tax: 0, round: 0, total: 200, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+      member: mid, customer: 'Void Customer',
+      sold: [{ id: 'm1', name: 'Test dish', qty: 2, price: 100, amount: 200 }],
+      payments: [{ method: 'credit', amt: 200 }], stockMoves: []
+    } }]);
+    const saleId = sold.body.results[0].result.saleId;
+    const afterSale = await member();
+    assert.ok(Number(afterSale.points) > Number(before.points), 'the visit granted points');
+    assert.strictEqual(Number(afterSale.credit_used) - Number(before.credit_used), 200,
+      'and put 200 on the house account');
+
+    const bal = () => one("SELECT coalesce(sum(l.dr) - sum(l.cr), 0)::numeric AS v"
+      + ' FROM journal j JOIN journal_line l ON l.journal_id = j.id'
+      + " WHERE l.account_code = '4000'").then((r) => Number(r.v));
+    const revenueBefore = await bal();
+
+    // The void, through the same outbox as everything else.
+    const v = await push([{ opId: uuid(), kind: 'void_sale', payload: {
+      saleId: saleId, reason: 'Wrong table charged', bizDate: today() } }]);
+    assert.ok(!v.body.results[0].error, JSON.stringify(v.body.results[0]));
+
+    const row = await one('SELECT voided_at, voided_by FROM sale WHERE id = $1', [saleId]);
+    assert.ok(row.voided_at, 'the sale is marked void, not deleted');
+    assert.ok(row.voided_by, 'by somebody');
+
+    // Revenue came back out: the reversal is the sale's own legs, swapped.
+    // dr − cr on 4000: the sale credited revenue, the void debits it back out.
+    assert.strictEqual(await bal(), revenueBefore + 200,
+      'revenue is reversed exactly, not approximately');
+
+    const back = await member();
+    assert.strictEqual(Number(back.points), Number(before.points),
+      'the points the visit granted are taken back');
+    assert.strictEqual(Number(back.credit_used), Number(before.credit_used),
+      'and the customer no longer owes for a sale that did not happen');
+
+    // A replayed void is a no-op — this arrives through the outbox like
+    // everything else, and the second pass must not reverse twice.
+    const again = await push([{ opId: uuid(), kind: 'void_sale', payload: {
+      saleId: saleId, reason: 'Wrong table charged' } }]);
+    assert.strictEqual(again.body.results[0].result.skipped, 'already void');
+    assert.strictEqual(await bal(), revenueBefore + 200, 'and the ledger did not move again');
+    const twice = await member();
+    assert.strictEqual(Number(twice.points), Number(before.points), 'nor the points');
+
+    /* A void with no reason is refused: an unexplained reversal is unauditable.
+       Asked of a LIVE sale — an already-void one short-circuits as a no-op
+       first, which is what makes a replay safe. */
+    const other = await push([{ opId: uuid(), kind: 'sale', payload: {
+      bizDate: today(), covers: 1, sub: 50, disc: 0, net: 50, svc: 0,
+      tax: 0, round: 0, total: 50, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+      sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 50, amount: 50 }],
+      payments: [{ method: 'cash', amt: 50, tendered: 50 }], stockMoves: []
+    } }]);
+    const bare = await push([{ opId: uuid(), kind: 'void_sale',
+      payload: { saleId: other.body.results[0].result.saleId } }]);
+    assert.ok(bare.body.results[0].error, 'a void needs a written reason');
+    const still = await one('SELECT voided_at FROM sale WHERE id = $1',
+      [other.body.results[0].result.saleId]);
+    assert.strictEqual(still.voided_at, null, 'and the refused void changed nothing');
+  });
+
+test('a refund marked "untouched — return to stock" actually returns it', opts, async () => {
+  /* The refund form asks the one question that matters for the shelf, and the
+     answer used to go nowhere: "untouched" queued a stock_return op carrying no
+     payload, which resolved to an adjustment of nothing. The operator said the
+     food came back, the screen agreed, and the count never moved. */
+  const ing = await one('SELECT id, on_hand, avg_cost FROM ingredient'
+    + ' WHERE on_hand > 5 ORDER BY name LIMIT 1');
+  assert.ok(ing, 'the fixture has stock to move');
+  const cost = Number(ing.avg_cost) || 1;
+
+  const sold = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+    cogs: round(2 * cost),
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }],
+    stockMoves: [{ ing: ing.id, qty: 2, cost: cost, value: round(2 * cost) }]
+  } }]);
+  const saleId = sold.body.results[0].result.saleId;
+  const afterSale = await one('SELECT on_hand FROM ingredient WHERE id = $1', [ing.id]);
+  assert.strictEqual(Number(afterSale.on_hand), Number(ing.on_hand) - 2,
+    'the sale took two off the shelf');
+
+  await push([{ opId: uuid(), kind: 'refund', payload: {
+    saleId: saleId, bizDate: today(), net: 100, tax: 0, svc: 0, amt: 100,
+    method: 'cash', reason: 'Sent back to the kitchen', restock: true
+  } }]);
+  const back = await one('SELECT on_hand FROM ingredient WHERE id = $1', [ing.id]);
+  assert.strictEqual(Number(back.on_hand), Number(ing.on_hand),
+    'and the refund put both back — from the sale\'s own ledger rows');
+
+  // "Consumed or discarded" must NOT return it: that answer is also real.
+  const sold2 = await push([{ opId: uuid(), kind: 'sale', payload: {
+    bizDate: today(), covers: 1, sub: 100, disc: 0, net: 100, svc: 0,
+    tax: 0, round: 0, total: 100, taxCode: 'NONE', taxLabel: '', taxRate: 0,
+    cogs: round(cost),
+    sold: [{ id: 'm1', name: 'Test dish', qty: 1, price: 100, amount: 100 }],
+    payments: [{ method: 'cash', amt: 100, tendered: 100 }],
+    stockMoves: [{ ing: ing.id, qty: 1, cost: cost, value: round(cost) }]
+  } }]);
+  const eaten = await one('SELECT on_hand FROM ingredient WHERE id = $1', [ing.id]);
+  await push([{ opId: uuid(), kind: 'refund', payload: {
+    saleId: sold2.body.results[0].result.saleId, bizDate: today(),
+    net: 100, tax: 0, svc: 0, amt: 100, method: 'cash', reason: 'Guest ate it'
+  } }]);
+  const stillGone = await one('SELECT on_hand FROM ingredient WHERE id = $1', [ing.id]);
+  assert.strictEqual(Number(stillGone.on_hand), Number(eaten.on_hand),
+    'food that was eaten does not come back just because the money did');
+});
+
 test('an exhausted pool answers fast and retryably, instead of hanging', opts, async () => {
   /* statement_timeout bounds a running query; nothing bounded the WAIT for a
      free connection. Past the pool's size the next checkout waited for ever

@@ -254,6 +254,9 @@ async function applySale(c, p, ctx) {
     if (earned > 0) {
       await c.query('UPDATE chain.member SET points = points + $2 WHERE id = $1',
         [p.member, earned]);
+      // Recorded on the sale, so a void can give back exactly what was given
+      // rather than recomputing against a rate that may have moved since.
+      await c.query('UPDATE sale SET pts_earned = $2 WHERE id = $1', [sale.id, earned]);
     }
   }
 
@@ -639,10 +642,32 @@ H.refund = async (c, p, ctx) => {
     { acct: tenderAcct, cr: amount, memo: 'Refund paid' }
   ], 'refund', cn.id, p.bizDate || today(ctx), 'Credit note ' + no.no);
 
-  // Stock only comes back if it was actually returned to the kitchen.
-  for (const m of arr(p.stockMoves)) {
-    await moveStock(c, ctx, { ing: m.ing, qty: Math.abs(num(m.qty)), cost: num(m.cost),
-      value: r2(m.value), reason: 'refund' });
+  /* Stock only comes back if it was actually returned to the kitchen — that is
+     the operator's call, and the refund form asks it plainly ("Untouched —
+     return to stock" against "Consumed or discarded"). What was missing was
+     the consequence: answering "untouched" queued a stock_return op carrying NO
+     payload, which resolved to a stock adjustment of nothing. The operator said
+     the food came back, the screen agreed, and the shelf count never moved.
+
+     So the return is derived HERE, from the sale's own stock_move rows — what
+     actually left the shelf, at the cost it left at — rather than from a list
+     the till would have to compose correctly. An explicit list still wins if a
+     caller sends one: a partial refund knows better than the whole sale does. */
+  const supplied = arr(p.stockMoves);
+  if (supplied.length) {
+    for (const m of supplied) {
+      await moveStock(c, ctx, { ing: m.ing, qty: Math.abs(num(m.qty)), cost: num(m.cost),
+        value: r2(m.value), reason: 'refund' });
+    }
+  } else if (p.restock && p.saleId) {
+    const moves = await c.query('SELECT ingredient_id, qty, unit_cost, value,'
+      + ' location_id FROM stock_move WHERE sale_id = $1 AND reason = $2',
+    [p.saleId, 'sale']);
+    for (const m of moves.rows) {
+      await moveStock(c, ctx, { ing: m.ingredient_id, qty: Math.abs(num(m.qty)),
+        cost: num(m.unit_cost), value: r2(Math.abs(num(m.value))), reason: 'refund',
+        saleId: p.saleId, loc: m.location_id });
+    }
   }
   await c.query('INSERT INTO document (no, kind, business_date, amount, ref_id, by_staff)'
     + " VALUES ($1,'CN',$2,$3,$4,$5) ON CONFLICT (no) DO NOTHING",
@@ -651,6 +676,102 @@ H.refund = async (c, p, ctx) => {
   return { creditNoteId: cn.id, no: no.no, amount };
 };
 H.credit_note = H.refund;
+
+/* ═══ VOIDING A SETTLED SALE ══════════════════════════════════════════════════
+   The columns were there from the first migration and five readers trusted
+   them; nothing ever wrote them, so "void" on a paid sale was a line in the
+   audit trail and nothing else — the revenue stayed recognised, the stock
+   stayed consumed, the points stayed granted.
+
+   What makes this reversal trustworthy is that NONE of it is taken from the
+   till. The journal is the sale's own legs with debit and credit swapped, so
+   it balances by construction and cannot invent a figure. The stock is the
+   sale's own `stock_move` rows negated, so exactly what left the shelf comes
+   back — the client-trust gap that the refund path still carries. The loyalty
+   is what the sale recorded it spent and granted.
+
+   A void is not an edit: the sale row stays, marked, and the reversal is its
+   own journal. Replaying it is a no-op (the second pass finds it already
+   void), which matters because this arrives through the same outbox as
+   everything else. */
+H.void_sale = async (c, p, ctx) => {
+  const sale = await one(c,
+    'SELECT id, receipt_no, business_date, member_id, pts, pts_value, pts_earned,'
+    + ' total, voided_at FROM sale WHERE id = $1::uuid OR receipt_no = $2 LIMIT 1',
+    [/^[0-9a-f-]{36}$/i.test(String(p.saleId || '')) ? p.saleId : null,
+      String(p.no || p.receiptNo || '')]);
+  if (!sale) return { skipped: 'no such sale' };
+  if (sale.voided_at) return { skipped: 'already void', saleId: sale.id };
+  if (!p.reason || !String(p.reason).trim()) {
+    throw Object.assign(new Error('A void needs a written reason'), { status: 400 });
+  }
+
+  await c.query('UPDATE sale SET voided_at = now(), voided_by = $2 WHERE id = $1',
+    [sale.id, ctx.actor]);
+
+  /* The ledger, reversed from itself. Every leg of the sale's own entry with
+     the sides swapped — including the rounding and the loyalty legs — so the
+     reversal is exact and balanced without anything being recomputed. */
+  const legs = await c.query('SELECT l.account_code, l.dr, l.cr FROM journal j'
+    + ' JOIN journal_line l ON l.journal_id = j.id'
+    + " WHERE j.source = 'sale' AND j.source_id = $1", [String(sale.id)]);
+  const reversal = legs.rows.map((l) => ({
+    acct: l.account_code, dr: r2(l.cr), cr: r2(l.dr),
+    memo: 'Void of ' + sale.receipt_no
+  }));
+  const journalId = reversal.length
+    ? await postJournal(c, ctx, reversal, 'void', sale.id,
+      p.bizDate || today(ctx), 'Void of sale ' + sale.receipt_no + ' · ' + p.reason)
+    : null;
+
+  /* The stock, returned from the ledger's own rows rather than from a list the
+     till composed. Whatever the sale consumed comes back, at the cost it left
+     at, against the same location. */
+  const moves = await c.query('SELECT ingredient_id, qty, unit_cost, value,'
+    + ' location_id FROM stock_move WHERE sale_id = $1 AND reason = $2',
+  [sale.id, 'sale']);
+  for (const m of moves.rows) {
+    await moveStock(c, ctx, { ing: m.ingredient_id, qty: -num(m.qty),
+      cost: num(m.unit_cost), value: r2(-num(m.value)), reason: 'void',
+      saleId: sale.id, loc: m.location_id, date: p.bizDate || null });
+  }
+
+  /* Loyalty, both directions: the points the visit granted are taken back and
+     the points it spent are handed back. A sale written before the outlet
+     recorded what it granted carries 0 earned, and the stamp says so rather
+     than guessing at a rate. */
+  let loyalty = null;
+  if (sale.member_id) {
+    const earned = Math.max(0, Math.trunc(num(sale.pts_earned)));
+    const spent = Math.max(0, Math.trunc(num(sale.pts)));
+    if (earned || spent) {
+      await c.query('UPDATE chain.member SET points = greatest(0, points - $2 + $3)'
+        + ' WHERE id = $1', [sale.member_id, earned, spent]);
+    }
+    loyalty = { earnedTakenBack: earned, spentGivenBack: spent };
+  }
+
+  /* Customer credit: a voided credit sale is no longer owed. */
+  let credit = null;
+  if (sale.member_id) {
+    const onAccount = await one(c, "SELECT coalesce(sum(amount), 0)::numeric AS amt"
+      + " FROM payment WHERE sale_id = $1 AND method = 'credit'", [sale.id]);
+    const owed = r2(num(onAccount && onAccount.amt));
+    if (owed > 0) {
+      await c.query('UPDATE chain.member SET credit_used ='
+        + ' greatest(0, credit_used - $2) WHERE id = $1', [sale.member_id, owed]);
+      credit = { released: owed };
+    }
+  }
+
+  await log(c, 'void_sale', 'sale', sale.id, { total: sale.total },
+    { no: sale.receipt_no, reason: p.reason, journalId,
+      stockReturned: moves.rows.length, loyalty, credit,
+      earnUnknown: sale.member_id && !num(sale.pts_earned) ? true : undefined });
+  return { saleId: sale.id, no: sale.receipt_no, journalId,
+    stockReturned: moves.rows.length };
+};
+
 
 H.credit_reverse = async (c, p, ctx) => {
   await log(c, 'credit_reverse', 'credit_note', p.id, null, { reason: p.reason });

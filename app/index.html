@@ -14215,6 +14215,11 @@ class Component extends DCLogic {
             saleId: ord.id || null, bizDate: ord.bizDate || this.today(),
             net: amt / (1 + ((ord.taxRate || 0) / 100)), tax: amt - amt / (1 + ((ord.taxRate || 0) / 100)),
             svc: 0, amt: amt, method: ord.tender || "cash",
+            // Whether the food came back is the operator's answer, and it
+            // travels WITH the refund: the outlet returns what the sale itself
+            // moved. It used to ride on a separate stock_return op that carried
+            // no payload at all, so "untouched" returned nothing to the shelf.
+            restock: v.restock === "yes",
             reason: v.reason + (v.note ? " \u00b7 " + v.note : ""), lines: ord.sold || []
           });
           const tk = ord.tender || "cash";
@@ -14222,7 +14227,6 @@ class Component extends DCLogic {
           // still owes, or they stay billed for food they were refunded for and
           // the limit enforcement is working off a balance that is too high.
           if (tk === "credit") this.queue("credit_reverse", "Refund " + ord.no + " · " + MVRc(amt) + " off the customer's drawn balance", "credit_ledger");
-          if (v.restock === "yes") this.queue("stock_return", "Refund " + ord.no + " · untouched items returned to stock", "stock_ledger");
           // The document is the deliverable, not the journal line. Showing it at
           // once means the guest can be handed it before they leave the counter.
           const cn = this.issueCreditNote(ord, amt, v.reason, v.note);
