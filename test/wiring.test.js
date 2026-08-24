@@ -54,14 +54,48 @@ const CONTRACT = [
   'vendor_payment', 'vendor_query', 'void_line', 'void_refused', 'yield_test'
 ];
 
+/* EVERY KIND, INCLUDING THE ONES NOT SPELLED AT THE OPENING BRACKET.
+
+   This used to be `/this\.queue\(\s*"([a-z_]+)"/`, which only sees a call whose
+   first character after the bracket is a quote. A kind chosen by a ternary —
+   `this.queue(row ? "subrecipe_update" : "subrecipe_add", …)` — begins with an
+   identifier, so it matched nothing and the kind was invisible to the contract.
+   SIX kinds were hiding behind that: both sub-recipe writes, both guest
+   signals and both discount events. The whole point of this file is that a
+   queued kind cannot go unhandled without somebody noticing, and the check was
+   quietly excusing the calls most likely to be forgotten.
+
+   So: take the first ARGUMENT of every call — text up to the comma at bracket
+   depth zero — and collect every string literal in it that has the shape of a
+   kind. Concatenated suffixes ("_insert", "_update") start with an underscore
+   and are deliberately excluded: those are the generic back-office fallback,
+   which is a different contract. */
 function kindsInSource() {
   const out = new Set();
-  const re = /this\.queue\(\s*"([a-z_]+)"/g;
-  let m;
-  while ((m = re.exec(SRC))) out.add(m[1]);
-  // One call site builds the kind from a status, which is how the reference
-  // spells the reservation lifecycle: reservation_confirmed, _arrived, _seated.
-  if (/this\.queue\("reservation_" \+ status/.test(SRC)) out.add('reservation_');
+  const CALL = 'this.queue(';
+  let at = SRC.indexOf(CALL);
+  while (at >= 0) {
+    let i = at + CALL.length, depth = 0, q = null;
+    for (; i < SRC.length; i++) {
+      const ch = SRC[i];
+      if (q) { if (ch === '\\') i++; else if (ch === q) q = null; continue; }
+      if (ch === '"' || ch === "'" || ch === '`') { q = ch; continue; }
+      if (ch === '(' || ch === '[' || ch === '{') depth++;
+      else if (ch === ')' || ch === ']' || ch === '}') { if (depth === 0) break; depth--; }
+      else if (ch === ',' && depth === 0) break;
+    }
+    /* A ternary's CONDITION lives in the first argument too, and its literals
+       are things being compared against — `x.kind === "member" ? …` names a
+       signal kind, not an op kind. Comparison operands are dropped before the
+       rest is read, or the contract gains kinds nobody ever queued. */
+    const firstArg = SRC.slice(at + CALL.length, i)
+      .replace(/[!=]==?\s*"[^"]*"/g, '')
+      .replace(/"[^"]*"\s*[!=]==?/g, '');
+    const lit = /"([a-z][a-z0-9_]*)"/g;
+    let m;
+    while ((m = lit.exec(firstArg))) out.add(m[1]);
+    at = SRC.indexOf(CALL, i);
+  }
   return out;
 }
 
@@ -1317,4 +1351,48 @@ test('nothing in the outlet template is mistaken for a format directive', () => 
   assert.deepStrictEqual(bad, [],
     'a bare % in the provisioning template breaks provision_outlet() for every'
     + ' future outlet — use %% or reword:\n  ' + bad.join('\n  '));
+});
+
+/* ═══ A BATCH THE KITCHEN MAKES ══════════════════════════════════════════════
+   recipe_line.sub_item_id has referenced item(id) since 003, and nothing ever
+   wrote one — so it was a foreign key with no possible referent and a dish
+   drawing on a batch could not be stored at all. The terminal carried three
+   batches hard-coded in its source plus per-browser edits, and the ops meant to
+   record one had no handler and no payload. */
+test('a sub-recipe is written, published, and kept off the dish grid', () => {
+  const AP = fs.readFileSync(path.join(__dirname, '..', 'src', 'apply.js'), 'utf8');
+  const BOOT = fs.readFileSync(path.join(__dirname, '..', 'src', 'bootstrap.js'), 'utf8');
+  const IDX = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
+
+  assert.strictEqual(typeof HANDLERS.subrecipe_add, 'function', 'it lands somewhere');
+  assert.strictEqual(HANDLERS.subrecipe_update, HANDLERS.subrecipe_add,
+    'and saving again corrects the batch rather than forking it');
+
+  const h = AP.slice(AP.indexOf('H.subrecipe_add'), AP.indexOf('H.recipe_update'));
+  assert.ok(/is_batch/.test(h), 'a batch says it is one — a batch and a hidden'
+    + ' dish are both off_menu, and inferring the difference is a guess');
+  assert.ok(/publishDeclaration/.test(h),
+    'and its allergens reach every dish that draws on it');
+
+  assert.ok(/MENU: items\.rows\.filter\(\(r\) => !r\.is_batch\)/.test(BOOT),
+    'the dish grid, the guest menu and the KDS never see a batch');
+  assert.ok(/SUBS: items\.rows\.filter\(\(r\) => r\.is_batch\)/.test(BOOT),
+    'and it is published on its own list instead');
+
+  assert.ok(/const published = \(K\(\) \|\| \{\}\)\.SUBS/.test(IDX),
+    'the terminal reads the outlet\'s batches rather than only its own');
+});
+
+/* The extractor above is the whole contract: if it cannot see a kind, nothing
+   checks that the kind lands anywhere. It used to read only a literal at the
+   opening bracket, which excused every call whose kind is chosen by a ternary
+   — six of them, including both sub-recipe writes. */
+test('the contract can see a kind that is chosen, not spelled', () => {
+  const kinds = kindsInSource();
+  ['subrecipe_add', 'subrecipe_update', 'guest_signal', 'member_signal',
+    'discount_applied', 'discount_cleared', 'kds_bump_all', 'kds_recall']
+    .forEach((k) => assert.ok(kinds.has(k), k + ' is invisible to the contract'));
+  // And the ternary's CONDITION is not mistaken for a kind.
+  ['member', 'reward'].forEach((k) => assert.ok(!kinds.has(k),
+    '"' + k + '" is something being compared against, not an op'));
 });

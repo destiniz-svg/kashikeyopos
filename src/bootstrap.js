@@ -16,6 +16,10 @@
 const { withOutletRead } = require('./db');
 
 const num = (v) => (v == null ? 0 : Number(v));
+// Three decimals, because a batch is measured in grams and millilitres and a
+// half-gram matters to nobody, while a rounded-to-the-unit batch size changes
+// what a gram of it costs.
+const r2 = (v) => Math.round(Number(v) * 1000) / 1000;
 const iso = (d) => (d ? new Date(d).toISOString() : null);
 const ms = (d) => (d ? new Date(d).getTime() : 0);
 
@@ -143,7 +147,28 @@ async function buildBootstrap(ctx) {
         id: r.id, name: r.name, icon: r.colour || 'main', section: r.section_id
       })),
       MENU_SECTIONS: sections.rows.map((r) => ({ id: r.id, name: r.name, pos: r.pos })),
-      MENU: items.rows.map((r) => menuOf(r, recipeByItem[r.id] || [])),
+      /* Dishes only. A BATCH is an item too — that is what makes
+         recipe_line.sub_item_id resolve — but nobody orders a litre of fish
+         stock, and the till's grid, the guest's menu and the KDS all build
+         from this list. It is published separately, below. */
+      MENU: items.rows.filter((r) => !r.is_batch)
+        .map((r) => menuOf(r, recipeByItem[r.id] || [])),
+      /* The batches the kitchen makes, with what each yields net of reduction
+         and the loss that explains why that is less than went in. This is what
+         a sub-recipe used to be: three of them hard-coded into the terminal's
+         source, plus whatever one browser had edited locally. */
+      SUBS: items.rows.filter((r) => r.is_batch).map((r) => ({
+        id: r.id, name: r.name, unit: r.unit,
+        loss: num(r.loss_pct),
+        // The till's own model holds the batch as it went IN; the outlet holds
+        // what came out. One is the other divided by (1 - loss), and the till
+        // is the side that cannot be changed without touching every costing
+        // screen, so the conversion happens here.
+        batch: num(r.loss_pct) < 1 ? r2(num(r.yield_qty) / (1 - num(r.loss_pct)))
+          : num(r.yield_qty),
+        note: r.description || '',
+        lines: (recipeByItem[r.id] || []).map((l) => [l.ingredient_id, num(l.qty)])
+      })),
       MODIFIERS: modifiers.rows.map((r) => ({
         id: r.id, name: r.name, price: num(r.price), group: r.group_id,
         cats: catsForModGroup(r.group_id, modsByItem, items.rows)

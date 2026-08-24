@@ -1499,6 +1499,61 @@ H.ai_menu_draft = async (c, p, ctx) => {
   return { drafted: arr(p.dishes).length };
 };
 
+/* ── a batch the kitchen makes, and the dishes that draw on it ─────────────
+   A sub-recipe IS AN ITEM. The schema has said so since 003 — `recipe_line`'s
+   component is either an `ingredient_id` or a `sub_item_id REFERENCES item(id)`
+   — but nothing ever wrote one, so `sub_item_id` was a foreign key with no
+   possible referent and a dish drawing on a batch could not be stored at all.
+
+   Meanwhile the terminal carried its own parallel model: three batches
+   hard-coded into the source with ingredient ids from an old seed, plus
+   whatever an operator had edited into THIS browser's local state. So a
+   kitchen costing its curry base was costing it for itself, on one device,
+   and the op that was meant to record it had no handler and no payload.
+
+   Written as an item because that is what makes the rest of the model work:
+   the declaration walk already recurses through `sub_item_id`, the allergens
+   of a batch reach every dish that uses it, and `yield_qty` is where the
+   batch's OUTPUT belongs. Off-menu, so it never appears on the till's grid —
+   nobody orders a litre of fish stock.
+
+   The output is stored net of reduction: a 4-litre batch that loses 18% to
+   evaporation yields 3.28 litres, and a dish drawing 200ml draws 200/3280 of
+   the batch's cost. Keeping the loss separately as well is what lets the
+   costing screen say WHY a litre of stock costs more than its inputs over
+   four. */
+H.subrecipe_add = async (c, p, ctx) => {
+  if (!p || !p.id || !p.name) return { skipped: 'a batch needs a name' };
+  const batch = num(p.batch);
+  const loss = Math.min(0.8, Math.max(0, num(p.loss)));
+  if (!(batch > 0)) {
+    throw Object.assign(new Error('A batch size is what a gram of it is costed'
+      + ' against — it cannot be ' + p.batch), { status: 400 });
+  }
+  const lines = arr(p.lines).filter((l) => l && l.ing && num(l.qty) > 0);
+  if (!lines.length) return { skipped: 'a batch needs at least one ingredient' };
+
+  const yielded = r2(batch * (1 - loss));
+  await c.query(
+    'INSERT INTO item (id, name, price, yield_qty, unit, off_menu, is_batch,'
+    + ' loss_pct, description) VALUES ($1,$2,0,$3,$4,true,true,$5,$6)'
+    + ' ON CONFLICT (id) DO UPDATE SET name = $2, yield_qty = $3, unit = $4,'
+    + ' off_menu = true, is_batch = true, loss_pct = $5, description = $6',
+    [p.id, p.name, yielded || batch, p.unit || 'g', loss, p.note || null]);
+  await writeRecipe(c, p.id, lines.map((l) => ({ ing: l.ing, qty: num(l.qty) })));
+  // A batch has allergens of its own, and every dish drawing on it inherits
+  // them — the walk already recurses, it just never had a batch to recurse into.
+  await publishDeclaration(c, p.id);
+  const users = await c.query('SELECT DISTINCT item_id FROM recipe_line'
+    + ' WHERE sub_item_id = $1', [p.id]);
+  for (const u of users.rows) await publishDeclaration(c, u.item_id);
+  await log(c, 'subrecipe_upsert', 'item', p.id, null,
+    { name: p.name, batch: batch, loss: loss, yielded: yielded,
+      unit: p.unit || 'g', inputs: lines.length, dishes: users.rows.length });
+  return { id: p.id, yielded: yielded, inputs: lines.length };
+};
+H.subrecipe_update = H.subrecipe_add;
+
 H.recipe_update = async (c, p) => {
   await writeRecipe(c, p.item, arr(p.lines));
   await publishDeclaration(c, p.item);
@@ -2104,6 +2159,19 @@ const AUDIT_ONLY = [
   // WHAT was discarded, WHY the server refused it, and WHO decided. The op it
   // names was never applied — that is the point — so there is nothing to undo.
   'op_discarded',
+  /* A discount's CONSEQUENCE rides on the sale — `disc` is a column on it, and
+     the journal's discount leg is derived from that. These two are the moment
+     it was applied and the moment it was taken off again, which is what a
+     manager asking "who discounted table six, and when" needs and the sale row
+     cannot say. Audit-only by design, and now by declaration: they were
+     invisible to the contract test until it learned to read a ternary. */
+  'discount_applied', 'discount_cleared',
+  /* A guest asking for the bill is already a row in guest_request, and a member
+     arriving at the counter is already in the portal's own trail. These record
+     that THIS TERMINAL announced it to the floor — which is the fact a shift
+     dispute turns on, and a fact no other row holds. Acknowledging the request
+     is a separate op with a separate consequence. */
+  'guest_signal', 'member_signal',
   'password_reset', 'permission_change', 'permission_reset', 'pin_failed',
   'pin_lockout', 'pin_reset', 'restore_run', 'revoke_sessions', 'sign_in',
   'sign_in_refused', 'sign_out', 'stock_query', 'store_reset', 'vendor_query',

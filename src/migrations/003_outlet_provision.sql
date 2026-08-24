@@ -315,7 +315,14 @@ BEGIN
       category_id text REFERENCES %1$I.menu_category(id),
       station     text NOT NULL DEFAULT 'main',
       price       numeric(12,2) NOT NULL CHECK (price >= 0),
+      -- For a dish this is 1 plate. For a BATCH the kitchen makes — a stock, a
+      -- sambol, a curry base — it is what the batch yields, net of reduction,
+      -- and loss_pct is why that is less than what went in. See migration 032.
       yield_qty   numeric(10,3) NOT NULL DEFAULT 1 CHECK (yield_qty > 0),
+      loss_pct    numeric(5,4) NOT NULL DEFAULT 0 CHECK (loss_pct >= 0 AND loss_pct < 1),
+      -- A batch the kitchen makes, not a dish anybody orders. Said rather than
+      -- inferred: a batch and a hidden dish are both off_menu.
+      is_batch    boolean NOT NULL DEFAULT false,
       unit        text NOT NULL DEFAULT 'plate',
       prep_mins   int NOT NULL DEFAULT 12,
       description text,
@@ -435,6 +442,9 @@ BEGIN
         (ingredient_id IS NOT NULL) <> (sub_item_id IS NOT NULL))
     );
     CREATE INDEX IF NOT EXISTS recipe_item ON %1$I.recipe_line(item_id);
+    -- Walked backwards from a batch to the dishes that draw on it.
+    CREATE INDEX IF NOT EXISTS recipe_line_sub ON %1$I.recipe_line(sub_item_id)
+      WHERE sub_item_id IS NOT NULL;
 
     -- The immutable signed ledger. Never updated, never deleted: a correction
     -- is another move, so the timeline stays readable.

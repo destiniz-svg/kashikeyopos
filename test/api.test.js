@@ -1543,6 +1543,80 @@ test('COGS that disagrees with the stock it moved is recorded and flagged', opts
   assert.notStrictEqual(Number(row.cogs), 40, 'which is not what it claimed');
 });
 
+/* A BATCH THE KITCHEN MAKES IS AN ITEM, and recipe_line.sub_item_id has
+   referenced item(id) since 003 — but nothing ever wrote one, so that foreign
+   key had no possible referent and a dish drawing on a batch could not be
+   stored at all. The terminal carried three batches hard-coded in its source
+   plus per-browser edits, and the ops meant to record one had no handler and
+   no payload: a kitchen costing "the backbone of six dishes" costed it for
+   itself, on one device, while the screen said it was saved. */
+test('a batch the kitchen makes reaches the outlet, and a dish can draw on it',
+  opts, async () => {
+  const ings = await all2('SELECT id FROM ingredient ORDER BY name LIMIT 2');
+  assert.ok(ings.length >= 2, 'the seeded outlet has ingredients to make it from');
+
+  const r = await push([{ opId: uuid(), kind: 'subrecipe_add', payload: {
+    id: 'SB1', name: 'Curry base', batch: 3000, unit: 'g', loss: 0.12,
+    note: 'the backbone of six dishes',
+    lines: [{ ing: ings[0].id, qty: 900 }, { ing: ings[1].id, qty: 300 }]
+  } }]);
+  assert.ok(!r.body.results[0].error, JSON.stringify(r.body.results[0]));
+  // 3000g reducing by 12% yields 2640 — what a gram of it is costed against.
+  assert.strictEqual(Number(r.body.results[0].result.yielded), 2640);
+
+  const it = await one('SELECT name, yield_qty, loss_pct, off_menu, price'
+    + " FROM item WHERE id = 'SB1'");
+  assert.ok(it, 'the batch is an item');
+  assert.strictEqual(Number(it.yield_qty), 2640, 'holding what it yields');
+  assert.strictEqual(Number(it.loss_pct), 0.12, 'and why that is less than went in');
+  assert.strictEqual(it.off_menu, true, 'off the till grid — nobody orders a litre of stock');
+
+  const lines = await all2("SELECT ingredient_id, qty FROM recipe_line"
+    + " WHERE item_id = 'SB1' ORDER BY qty DESC");
+  assert.strictEqual(lines.length, 2, 'with its inputs');
+
+  // THE POINT: a dish can now reference it. This insert used to fail the
+  // foreign key, because no item was ever written for sub_item_id to find.
+  const dish = await one('SELECT id FROM item WHERE off_menu = false LIMIT 1');
+  const d = await push([{ opId: uuid(), kind: 'recipe_update', payload: {
+    item: dish.id, lines: [[ 'SB1', 200, 0, 'sub' ]]
+  } }]);
+  assert.ok(!d.body.results[0].error, JSON.stringify(d.body.results[0]));
+  const drawn = await one('SELECT sub_item_id, qty FROM recipe_line'
+    + ' WHERE item_id = $1', [dish.id]);
+  assert.strictEqual(drawn.sub_item_id, 'SB1', 'the dish draws on the batch');
+
+  /* A BATCH IS NOT A DISH. Nobody orders a litre of fish stock, and the till's
+     grid, the guest's menu and the KDS all build from MENU — so it is
+     published on its own list, and said rather than inferred: a batch and a
+     dish taken off the menu are both off_menu. */
+  const boot = await get('/api/outlet/' + outletId + '/bootstrap', token);
+  assert.ok(!(boot.body.kpos.MENU || []).some((m) => m.id === 'SB1'),
+    'the batch never reaches the dish grid');
+  const pub = (boot.body.kpos.SUBS || []).find((x) => x.id === 'SB1');
+  assert.ok(pub, 'it is published as a batch');
+  assert.strictEqual(Number(pub.loss), 0.12, 'with its reduction loss');
+  assert.strictEqual(Number(pub.batch), 3000,
+    'and the size that went IN, which is what the costing screens divide by');
+  assert.strictEqual(pub.lines.length, 2, 'and its inputs');
+
+  // Re-saving it is an update, not a second batch.
+  await push([{ opId: uuid(), kind: 'subrecipe_update', payload: {
+    id: 'SB1', name: 'Curry base', batch: 3000, unit: 'g', loss: 0.2,
+    lines: [{ ing: ings[0].id, qty: 900 }]
+  } }]);
+  const again = await one("SELECT loss_pct, yield_qty FROM item WHERE id = 'SB1'");
+  assert.strictEqual(Number(again.loss_pct), 0.2, 'the batch is corrected in place');
+  const n = await one("SELECT count(*)::int AS n FROM item WHERE id = 'SB1'");
+  assert.strictEqual(n.n, 1, 'not forked into a second one');
+});
+
+test('a batch with no size is refused, not costed against nothing', opts, async () => {
+  const r = await push([{ opId: uuid(), kind: 'subrecipe_add',
+    payload: { id: 'SB9', name: 'Nothing', batch: 0, lines: [{ ing: 'x', qty: 1 }] } }]);
+  assert.ok(r.body.results[0].error, 'a batch size of zero cannot cost a gram');
+});
+
 /* WHAT A KILO AS PURCHASED ACTUALLY PLATES decides how much stock every sale
    deducts — grossQty = net / (yield x (1 - waste)) — and it lived in ONE
    BROWSER's local state, falling back to a regex matched on the ingredient's
@@ -3320,6 +3394,12 @@ function boardCode(match) {
    edit its own story. This is the connection a support engineer uses. */
 function asOwner(sql, params) {
   return db.owner().query(sql, params || []).then((q) => q.rows[0]);
+}
+
+// Every row, where a test needs more than the first.
+function all2(sql, params) {
+  return db.withOutlet({ outletId, rank: 5, actor: null },
+    (c) => c.query(sql, params || []).then((q) => q.rows));
 }
 
 function one(sql, params) {

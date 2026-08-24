@@ -3438,8 +3438,25 @@ class Component extends DCLogic {
       { id: "S3", name: "Maldivian curry base", batch: 3000, unit: "g", loss: 0.12, lines: [[21, 900], [22, 300], [24, 250], [26, 400], [30, 120]],
         note: "The backbone of six dishes. Costed once here, so a rise in the price of onions moves all six at the same moment and by the same amount." }
     ];
-    return seeded.concat((this.state.local.subs || []).filter((x) => !seeded.some((y) => y.id === x.id)))
-      .map((x) => Object.assign({}, x, (this.state.local.subs || []).find((y) => y.id === x.id) || {}));
+    /* THE OUTLET'S BATCHES, layered exactly the way yields are: what the outlet
+       published, then anything shipped, then this browser's own un-synced
+       edits on top. The three above are demo content — they carry ingredient
+       ids from an old seed and belong to no real outlet — so a store that has
+       saved any batch of its own reads its own, and one that has not still has
+       something to look at.
+
+       Before this, SUBS() was those three plus state.local and nothing else:
+       a kitchen costing its curry base costed it in one browser, and the op
+       that was meant to record it had no handler and no payload. */
+    const published = (K() || {}).SUBS || [];
+    const local = this.state.local.subs || [];
+    const byId = {};
+    (published.length ? published : seeded).forEach((x) => { byId[String(x.id)] = x; });
+    if (published.length) seeded.forEach((x) => { if (!byId[String(x.id)]) byId[String(x.id)] = x; });
+    local.forEach((x) => {
+      byId[String(x.id)] = Object.assign({}, byId[String(x.id)] || {}, x);
+    });
+    return Object.keys(byId).map((k) => byId[k]);
   }
   sub(id) { return this.SUBS().find((x) => String(x.id) === String(id)); }
   isSub(id) { return String(id).charAt(0) === "S"; }
@@ -13882,7 +13899,15 @@ class Component extends DCLogic {
     const at = subs.findIndex((x) => x.id === id);
     if (at >= 0) subs[at] = Object.assign({}, subs[at], next); else subs.push(next);
     this.setState({ local: Object.assign({}, this.state.local, { subs: subs }), modal: null });
-    this.queue(row ? "subrecipe_update" : "subrecipe_add", v.name + " · " + lines.length + " inputs · " + Math.round(batch * (1 - loss)) + " " + (v.unit || "g") + " yielded", "recipes");
+    /* WITH ITS PAYLOAD, AND TO A HANDLER THAT EXISTS. This op was queued bare
+       and had nothing to land on: a batch recipe — "the backbone of six
+       dishes" — was written into one browser and nowhere else, while the
+       screen reported a cost per kilo as though it had been saved. It was
+       invisible to the sync contract test too, because the kind is chosen by a
+       ternary and the test only read a literal at the opening bracket. */
+    this.queue(row ? "subrecipe_update" : "subrecipe_add", v.name + " · " + lines.length + " inputs · " + Math.round(batch * (1 - loss)) + " " + (v.unit || "g") + " yielded", "recipes",
+      { id: id, name: v.name, batch: batch, unit: v.unit || "g", loss: loss,
+        note: v.note || "", lines: lines.map((L) => ({ ing: String(L[0]), qty: +L[1] || 0 })) });
     this.toast(v.name + " · " + MVR(this.subCostPerBase(next) * 1000) + " per " + ((v.unit || "g") === "ml" ? "litre" : "kg"));
   }
   openForm(name, row) {

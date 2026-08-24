@@ -40,7 +40,7 @@ src/migrations/        001 control · 002 RLS · 003 outlet plane · 004 chart
                        025 retention · 026 install identity
                        027 reserve panel · 028 credit outstanding
                        029 void a sale · 030 the polled tables
-                       031 yield is an outlet fact
+                       031 yield is an outlet fact · 032 a batch is an item
 src/routes/platform.js the one door an install opens to its seller — aggregates only
 panel/                 Mission Control — the seller's panel, its own service
 site/                  the public website — landing, docs, legal, store signup
@@ -838,6 +838,62 @@ declaration is derived where the recipe lives — `publishDeclaration()` in
 published onto the item. A dish nobody has written a recipe for **claims
 nothing**: silence beats an unearned "Vegetarian" on a reef fish.
 
+## A batch the kitchen makes is an item
+
+`recipe_line`'s component has been either an `ingredient_id` or a
+`sub_item_id REFERENCES item(id)` since migration 003. Nothing ever wrote the
+second kind, so it was a foreign key with **no possible referent**: a dish
+drawing on a batch could not be stored at all — the insert failed on the key,
+confirmed against a live outlet.
+
+The terminal carried a parallel model instead: three batches hard-coded into
+`app/index.html` with ingredient ids from an old seed, plus whatever an operator
+had edited into THAT BROWSER's `state.local`. `subrecipe_add` and
+`subrecipe_update` had **no handler and no payload**, so a kitchen costing "the
+backbone of six dishes" costed it for itself, on one device, while the screen
+reported a price per kilo as though it were saved.
+
+A batch is now written as the item the schema always said it was: off-menu,
+`yield_qty` holding what the batch OUTPUTS net of reduction, `loss_pct` holding
+why that is less than what went in (4 litres yielding 3.28 tells you what a
+millilitre costs; 18% tells you why it costs more than the inputs over four),
+and `is_batch` saying so out loud. **Said rather than inferred** — a batch and a
+dish taken off the menu are both `off_menu`, and telling them apart by price,
+category or yield is a guess that breaks the first time somebody prices a batch.
+
+The bootstrap keeps batches out of `MENU` — the till's grid, the guest's menu
+and the KDS all build from it, and nobody orders a litre of fish stock — and
+publishes them as `SUBS`. `SUBS()` in the terminal layers the outlet's batches
+under this browser's un-synced edits, the same three-source shape as yields.
+The three shipped batches survive only as demo content for a store that has
+saved none of its own.
+
+Saving one re-publishes the declaration of **every dish that draws on it**: the
+allergen walk already recursed through `sub_item_id`, it had never had a batch
+to recurse into.
+
+## Six kinds were invisible to the sync contract
+
+`test/wiring.test.js` exists so that a queued op kind cannot go unhandled
+without somebody noticing. Its extractor was
+`/this\.queue\(\s*"([a-z_]+)"/` — a literal at the opening bracket — so a kind
+chosen by a **ternary** matched nothing and was excused entirely. Six were
+hiding there: both sub-recipe writes, both guest signals and both discount
+events. The check was quietly skipping exactly the calls most likely to be
+forgotten.
+
+It now takes the first ARGUMENT of every call — text to the comma at bracket
+depth zero — and collects every string literal shaped like a kind. Comparison
+operands are stripped first, or `x.kind === "member" ? …` contributes "member"
+as an op nobody ever queued. Concatenated suffixes (`"_insert"`, `"_update"`)
+start with an underscore and stay excluded: that is the generic back-office
+fallback, a different contract. 124 kinds are visible now, up from 118.
+
+Of the six, four were genuinely audit-only and are now **named** in
+`AUDIT_ONLY`: a discount's consequence rides on the sale, and a guest signal
+records that this terminal announced something to the floor. The two
+sub-recipe writes were a real gap.
+
 ## No invented figures
 
 Every ribbon card is a number a manager acts on. `test/audit.test.js` walks
@@ -1579,7 +1635,7 @@ Each was cheap, invisible from the screen it affected, and pinned in
 ## Tests
 
 ```
-npm test                          # 259 tests
+npm test                          # 263 tests
 npm run leak-test                 # isolation, on its own
 ```
 
